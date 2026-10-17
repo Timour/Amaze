@@ -19,7 +19,9 @@ from amaze.helpers import helpers
 from amaze.helpers import hostos
 from amaze import messages
 from amaze.prefs import prefs
-from amaze.render import thumbs, nodes, material_converter, husk_job
+from amaze.render import thumbs, nodes, husk_job
+from amaze.render.material_conversion import engine as conversion_engine
+from amaze.render.material_conversion.report import ConversionReport
 
 
 def _count(count: int, noun: str) -> str:
@@ -1637,70 +1639,28 @@ class MaterialLibrary(AssetLibrary):
             self._assets[index.row()], target, context_node=context_node
         )
 
-    def convert_redshift_to_karma(self, index: QtCore.QModelIndex):
-        """Best-effort conversion of a Redshift material to a Karma/MaterialX equivalent, registered as a NEW entry beside the source and never replacing it. Returns (ok, report), and READ the report even when ok - a successful conversion can still have skipped or approximated inputs. render/material_converter.py says what is handled."""
+    def convert(self, index: QtCore.QModelIndex, target: str):
+        """This row as a `target` material, saved beside it under its name: (ok, report)."""
         mat = self._assets[index.row()]
-        if "Redshift" not in mat.renderer:
-            report = material_converter.ConversionReport(mat.name)
-            report.skip("not a Redshift material")
+        report = ConversionReport(mat.name)
+        reason = conversion_engine.why_not(mat.renderer, target)
+        if reason:    # before the rebuild: a missing plugin makes it raise
+            report.skip(reason)
             return False, report
 
         handler = nodes.NodeHandler(self.preferences)
-        with hou.undos.disabler():  # off the undo stack at BOTH ends, or a create/destroy pair on the live stack resurrects the scratch with the converted network on one Ctrl+Z ▸r/undo-groups
+        with hou.undos.disabler():    # off the undo stack at BOTH ends ▸r/undo-groups
             scratch = hou.node("/obj").createNode("matnet")
         try:
-            report_holder = {}  # the converter is one ADAPTER producing the shader network; build_karma_material owns the container, wiring, layout and the surface-terminal check, and the material has to be built inside a real Karma builder because kma_* nodes are not valid outside one
-
-
-            def produce(builder):
-                shader, disp, report = material_converter.convert_redshift_material(
-                    handler, mat, builder
-                )
-                report_holder["report"] = report
-                return (shader, disp)
-
-            builder, mtlx_node, wired = nodes.build_karma_material(
-                scratch, mat.name, produce
-            )
-            report = report_holder.get("report")
-            if mtlx_node is None:
-                return False, report
-            if not wired and report is not None:
-                report.skip(  # THE ENGINE'S VERDICT REACHES THE REPORT: it is the only thing read after a convert-all sweep, and is_clean() asks about skips, so an unwired terminal has to arrive as one
-                    "the surface output is not wired, so this "
-                    "material renders black until it is "
-                    "connected by hand")
-            saved = self.add_asset(
-                builder, ",".join(mat.categories), ",".join(mat.tags), False)
-            return bool(saved), report  # the scratch dies in the finally, so a refused save leaves NOTHING behind and True here would tell a convert-all sweep that an unreachable material is in the library
-        finally:
-            with hou.undos.disabler():  # the live Karma network exists only to be copied by add_asset's save path - never left in the scene
-
-                scratch.destroy()
-
-    def convert_karma_to_redshift(self, index: QtCore.QModelIndex):
-        """Best-effort conversion of a Karma material to a Redshift equivalent, registered as a NEW entry beside the source and never replacing it - the mirror of `convert_redshift_to_karma`. Returns (ok, report)."""
-        from amaze.render import redshift_converter    # late, like the forward converter's own import chain: render/ reaches back into core/
-
-        mat = self._assets[index.row()]
-        if "Karma" not in str(mat.renderer):
-            report = material_converter.ConversionReport(mat.name)
-            report.skip("not a Karma material")
-            return False, report
-
-        handler = nodes.NodeHandler(self.preferences)
-        with hou.undos.disabler():
-            scratch = hou.node("/obj").createNode("matnet")
-        try:
-            source = handler.rebuild_saved(mat, scratch)    # scratch scaffolding for reading values
-            builder, shader, wired, report = redshift_converter.convert_karma_builder(
-                source, scratch, mat.name)
-            if shader is None:
+            source = handler.rebuild_saved(mat, scratch)
+            made = conversion_engine.convert(
+                source, mat.renderer, target, scratch, mat.name, report)
+            if made.shader is None:
                 return False, report
             saved = self.add_asset(
-                builder, ",".join(mat.categories), ",".join(mat.tags), False,
-                name=mat.name)    # the twin keeps the source's name: the builder's own carries a `1`, unique beside the reconstructed source in the same scratch
-            return bool(saved), report
+                made.builder, ",".join(mat.categories), ",".join(mat.tags), False,
+                name=mat.name)
+            return bool(saved), report    # a refused save leaves nothing: the scratch goes below
         finally:
             with hou.undos.disabler():
                 scratch.destroy()

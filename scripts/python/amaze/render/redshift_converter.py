@@ -10,6 +10,7 @@ import json
 from amaze.core import debug, material
 from amaze.helpers import helpers
 from amaze.render import nodes
+from amaze.render.material_conversion import engine, materialx
 from amaze.render.material_converter import (    # the forward converter's tables and helpers are the ONE home for the pairing and the width-aware copy
     ConversionReport,
     OPENPBR_MATERIAL_PARM_MAP,
@@ -20,8 +21,6 @@ from amaze.render.material_converter import (    # the forward converter's table
     _effective_signature,
     _named_inputs,
 )
-
-KARMA_SHADERS = ("mtlxstandard_surface", "mtlxopen_pbr_surface")
 
 OPENPBR_COLOUR_INPUTS = frozenset(    # the standard colour inputs by their OpenPBR names ▸r/redshift-nodes
     openpbr for openpbr, standard in OPENPBR_MATERIAL_PARM_MAP
@@ -90,27 +89,6 @@ def build_redshift_material(parent, name, produce) -> RedshiftMaterial:
     return RedshiftMaterial(builder, shader, wired)
 
 
-def find_karma_shader(container: hou.Node):
-    """The MaterialX surface shader inside a Karma material's container, or None."""
-    for node in container.allSubChildren():
-        if node.type().name() in KARMA_SHADERS:
-            return node
-    return None
-
-
-def find_karma_conductor(container: hou.Node):
-    """The MaterialX conductor BSDF a measured metal is built as, or None."""
-    for node in container.allSubChildren():
-        if node.type().name() == "mtlxconductor_bsdf":
-            return node
-    return None
-
-
-def normal_incidence_reflectance(n: float, k: float) -> float:
-    """Fresnel reflectance at normal incidence for a conductor with complex index n + ik: ((n-1)^2 + k^2) / ((n+1)^2 + k^2). ▸r/redshift-nodes"""
-    return ((n - 1.0) ** 2 + k ** 2) / ((n + 1.0) ** 2 + k ** 2)
-
-
 def convert_conductor(node: hou.Node, builder: hou.Node, report: ConversionReport):
     """mtlxconductor_bsdf -> RS Standard Material at metalness 1, its base colour the per-channel normal-incidence reflectance of the measured complex index; roughness copied from the conductor's first axis. Reported as approximated: Redshift has no complex IOR input. ▸r/redshift-nodes"""
     rs = builder.createNode("redshift::StandardMaterial")
@@ -119,7 +97,7 @@ def convert_conductor(node: hou.Node, builder: hou.Node, report: ConversionRepor
     ior = list(node.parmTuple("ior").eval()) if node.parmTuple("ior") else [1.0, 1.0, 1.0]
     extinction = list(node.parmTuple("extinction").eval()) if node.parmTuple("extinction") else [0.0, 0.0, 0.0]
     rs.parmTuple("base_color").set(tuple(
-        normal_incidence_reflectance(float(n), float(k))
+        materialx.normal_incidence_reflectance(float(n), float(k))
         for n, k in zip(ior[:3], extinction[:3])))
     roughness = node.parmTuple("roughness")
     if roughness is not None:
@@ -131,32 +109,24 @@ def convert_conductor(node: hou.Node, builder: hou.Node, report: ConversionRepor
     return rs
 
 
-def find_karma_displacement(container: hou.Node):
-    for node in container.allSubChildren():
-        if node.type().name() == "mtlxdisplacement":
-            return node
-    return None
-
-
-def convert_karma_builder(source: hou.Node, parent: hou.Node, name: str):
+def convert_karma_builder(source: hou.Node, parent: hou.Node, name: str, report=None):
     """A Karma container (the saved subnet, or a builder) into a new Redshift builder under `parent`: (builder, shader, wired, report)."""
-    report = ConversionReport(name)
+    report = report if report is not None else ConversionReport(name)
 
     def produce(builder):
         return convert_karma_network(source, builder, report)
 
     made = build_redshift_material(parent, name, produce)
     if made.shader is not None and not made.wired:
-        report.skip("the surface output is not wired, so this material "
-                    "renders black until it is connected by hand")
+        report.skip(engine.UNWIRED)
     return made.builder, made.shader, made.wired, report
 
 
 def convert_karma_network(source: hou.Node, builder: hou.Node, report: ConversionReport):
     """Inside `builder`: the Redshift shader for `source`'s MaterialX one, every wired input converted or reported, the normal map as a Bump Map, the displacement as one. Answers (shader, displacement)."""
-    src = find_karma_shader(source)
+    src = materialx.find_shader(source)
     if src is None:
-        conductor = find_karma_conductor(source)
+        conductor = materialx.find_conductor(source)
         if conductor is not None:
             return convert_conductor(conductor, builder, report), None
         report.skip("no MaterialX surface shader found inside the saved network")
@@ -208,7 +178,7 @@ def convert_karma_network(source: hou.Node, builder: hou.Node, report: Conversio
             terminal.setNamedInput(spelling, bump, 0)
 
     displacement = None
-    disp_src = find_karma_displacement(source)
+    disp_src = materialx.find_displacement(source)
     if disp_src is not None:
         displacement = convert_displacement(disp_src, builder, report)
     return rs, displacement

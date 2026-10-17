@@ -16,17 +16,14 @@ from amaze.dialogs import code_dialog
 from amaze.helpers import helpers, hostos, ui_helpers
 from amaze import messages
 from amaze.panel import grid
-from amaze.render import material_converter
 from amaze.render import nodes as nodes_mod
+from amaze.render.material_conversion import engine as conversion_engine
 
 
 AssetStack = collections.namedtuple(
     "AssetStack", "model proxy selection categories")
 
 CommentSubject = collections.namedtuple("CommentSubject", "key name type")
-
-Conversion = collections.namedtuple(
-    "Conversion", "target source verb needs_redshift")
 
 FilterEntry = collections.namedtuple(    # `id` is what the remembered choice saves, so a label can change
     "FilterEntry", "id label value icon", defaults=(None,))
@@ -708,27 +705,18 @@ class MaterialSection(AssetSection):
             else:
                 self.panel.import_asset_to_mat()
 
-    CONVERSIONS = (    # what a material can become, what it must be first, and the model's converter
-        Conversion("Karma", "Redshift", "convert_redshift_to_karma", False),
-        Conversion("Redshift", "Karma", "convert_karma_to_redshift", True),
-    )
-
-    @classmethod
-    def conversion_to(cls, target: str):
-        """The CONVERSIONS row that ends in `target`, or None."""
-        return next((row for row in cls.CONVERSIONS if row.target == target), None)
-
     def _sources_held(self, indexes) -> frozenset:
-        """The conversion sources among these rows: one walk per menu, kept for the list asked about."""
+        """The renderers among these rows that convert: one walk per menu, kept for the list asked about."""
         held = getattr(self, "_held", None)
         if held is not None and held[0] is indexes:
             return held[1]
-        wanted = {row.source for row in self.CONVERSIONS}
+        wanted = set(conversion_engine.targets())
         found = set()
         st = self.stack()
         for index in (indexes if st is not None else ()):
             renderer = st.model.assets[st.proxy.mapToSource(index).row()].renderer
-            found.update(source for source in wanted if source in renderer)
+            if material.normalized_renderer(renderer) in wanted:
+                found.add(material.normalized_renderer(renderer))
             if found == wanted:
                 break
         self._held = (indexes, frozenset(found))
@@ -739,13 +727,12 @@ class MaterialSection(AssetSection):
         return any(live for *_child, live in self.convert_targets(indexes, current))
 
     def convert_targets(self, indexes, current) -> tuple:
-        """What the selection can BECOME: a child is live when the selection holds its source."""
+        """What the selection can BECOME: a child is live when a held material converts to it here."""
         held = self._sources_held(indexes)
         return tuple(
-            (material.shown_renderer(row.target), row.target, "", row.source in held and (
-                not row.needs_redshift
-                or material_converter._redshift_type_available()))    # greyed without the plugin
-            for row in self.CONVERSIONS)
+            (material.shown_renderer(target), target, "",
+             any(conversion_engine.can_convert(source, target) for source in held))
+            for target in conversion_engine.targets())
 
     def menu_convert_to(self, indexes, current, payload=None) -> None:
         self.panel.convert_selected(payload or "Karma")
@@ -1680,10 +1667,12 @@ class OnlineContext(Section):
         return records
 
     def import_targets(self, indexes, current) -> tuple:
-        """The renderer the import BUILDS AS - drawn C06a/C06b; Redshift greys when its plugin is not loaded, so the row still shows where the door leads."""
-        return ((material.shown_renderer("Karma"), "Karma", "", True),
-                ("Redshift", "Redshift", "",
-                 material_converter._redshift_type_available()))
+        """The renderer the import BUILDS AS - drawn C06a/C06b; a row greys without its plugin."""
+        hub = conversion_engine.HUB
+        return tuple(
+            (material.shown_renderer(target), target, "",
+             target == hub or conversion_engine.can_convert(hub, target))
+            for target in conversion_engine.targets())
 
     def menu_import_to_library(self, indexes, current, payload=None) -> None:
         self.panel._import_online_records(self._records(indexes),

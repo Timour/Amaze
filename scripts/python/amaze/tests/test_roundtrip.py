@@ -938,13 +938,13 @@ class AStaleCompanionGoesWhateverTheExtension(unittest.TestCase):
 
 class TheTwinIsRebuiltThroughTheHandlersDoor(unittest.TestCase):
 
-    def test_convert_to_redshift_points_no_handler_field_by_hand(self):
+    def test_convert_points_no_handler_field_by_hand(self):
         """`rebuild_saved` is the one door that rebuilds a saved asset in a scratch network."""
         import ast
         import inspect
         import textwrap
         source = textwrap.dedent(inspect.getsource(
-            library_mod.MaterialLibrary.convert_karma_to_redshift))
+            library_mod.MaterialLibrary.convert))
         poked = [ast.unparse(target)
                  for node in ast.walk(ast.parse(source))
                  if isinstance(node, ast.Assign)

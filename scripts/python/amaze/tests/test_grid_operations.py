@@ -717,7 +717,7 @@ class NoRowMovesInsideALayoutChange(unittest.TestCase):
 
     def _saving_a_twin(self, name):
         """A converter whose last step is the real one, add_asset."""
-        def convert(_index):
+        def convert(_index, _target):
             saved = self.model.add_asset(
                 _karma_material(self, name), "", "", False)
             return bool(saved), types.SimpleNamespace(
@@ -734,7 +734,7 @@ class NoRowMovesInsideALayoutChange(unittest.TestCase):
         self.model.assets[1].renderer = "Karma"
         self._select(1)
         before = self.model.rowCount()
-        with mock.patch.object(self.model, "convert_karma_to_redshift",
+        with mock.patch.object(self.model, "convert",
                                self._saving_a_twin("rs_twin")), \
                 test_support.row_moves_inside_a_layout_change(
                     self.model) as caught:
@@ -747,7 +747,7 @@ class NoRowMovesInsideALayoutChange(unittest.TestCase):
         self.model.assets[1].renderer = "Redshift"
         self._select(1)
         before = self.model.rowCount()
-        with mock.patch.object(self.model, "convert_redshift_to_karma",
+        with mock.patch.object(self.model, "convert",
                                self._saving_a_twin("karma_twin")), \
                 test_support.row_moves_inside_a_layout_change(
                     self.model) as caught:
@@ -760,14 +760,14 @@ class NoRowMovesInsideALayoutChange(unittest.TestCase):
         """One verb, two directions: each summary names both renderers as the menus show them."""
         ui = mock.Mock()
         report = types.SimpleNamespace(summary_lines=lambda: ["a line"])
-        for target, source, verb, shown in (
-                ("Redshift", "Karma", "convert_karma_to_redshift", ("MaterialX", "Redshift")),
-                ("Karma", "Redshift", "convert_redshift_to_karma", ("Redshift", "MaterialX"))):
+        for target, source, shown in (
+                ("Redshift", "Karma", ("MaterialX", "Redshift")),
+                ("Karma", "Redshift", ("Redshift", "MaterialX"))):
             with self.subTest(target=target):
                 self.model.assets[1].renderer = source
                 self._select(1)
-                with mock.patch.object(self.model, verb,
-                                       lambda _index: (True, report)), \
+                with mock.patch.object(self.model, "convert",
+                                       lambda _index, _target: (True, report)), \
                         mock.patch.object(hou, "ui", ui, create=True):
                     self.panel.convert_selected(target)
                 self.assertEqual(
@@ -958,12 +958,12 @@ class ARowHeldAcrossASaveIsFoundAgain(unittest.TestCase):
         self._deleted_elsewhere(model, shown[0].mat_id)
         converted = []
 
-        def convert(index):
+        def convert(index, _target):
             converted.append(model.assets[index.row()])
             model.save()    # the twin's own save, which takes the deletion in
             return True, types.SimpleNamespace(summary_lines=lambda: [])
 
-        with mock.patch.object(model, "convert_karma_to_redshift", convert):
+        with mock.patch.object(model, "convert", convert):
             self.panel.convert_selected("Redshift")
         self.assertEqual(self._ids(chosen), self._ids(converted),
                          "Convert reached other tiles: each twin saves, and the first "

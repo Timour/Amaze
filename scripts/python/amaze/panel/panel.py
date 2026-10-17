@@ -64,6 +64,7 @@ from amaze.render import (
     nodes,
     thumbs,
 )
+from amaze.render.material_conversion import engine as conversion_engine
 from amaze import preview
 
 _DEV_RELOAD = bool(os.environ.get("AMAZE_DEV_RELOAD"))    # the reload chain below is OFF by default: it re-runs on every panel open to serve a reopen-to-refresh the live-test loop forbids anyway ▸r/module-reload
@@ -1581,9 +1582,8 @@ class AmazePanel(QtWidgets.QWidget):
         context.toggle_favourite(list(indexes))    # the flip is the context's own verb, and re-mapping a favourites-only grid after it is the proxy's own invariant (grid_proxy.py) - nothing to force from here
 
     def convert_selected(self, target: str) -> None:
-        """Right-click `Convert to`: each selected material `target` converts from gets a twin beside it."""
-        conversion = sections.MaterialSection.conversion_to(target)
-        if not self.material_model or conversion is None:
+        """Right-click `Convert to`: each selected material with a route to `target` gets a twin."""
+        if not self.material_model or target not in conversion_engine.targets():
             return
         indexes = grid_columns.selected_rows(self.material_selection_model)
         if not indexes:
@@ -1591,26 +1591,28 @@ class AmazePanel(QtWidgets.QWidget):
         model = self.material_model
         ids = [model.tile_key(self.material_sorted_model.mapToSource(index).row())
                for index in indexes]    # by ID, with no layout pair: each twin inserts and saves
-        lines, converted, eligible = [], 0, 0
+        lines, converted, eligible, sources = [], 0, 0, set()
         for row in (model.find_asset_row_by_id(mat_id) for mat_id in ids):
             if row < 0:
                 continue
             mat = model.assets[row]
-            if conversion.source not in mat.renderer:
+            if not conversion_engine.has_route(mat.renderer, target):
                 continue
             eligible += 1
+            sources.add(material.normalized_renderer(mat.renderer))
             try:
-                ok, report = getattr(model, conversion.verb)(model.index(row, 0))
+                ok, report = model.convert(model.index(row, 0), target)
             except Exception as exc:                          # noqa: BLE001
                 lines.append(f'"{mat.name}": crashed - {exc}')
                 continue
             converted += 1 if ok else 0
             lines.extend(report.summary_lines())
+        shown = " and ".join(material.shown_renderer(source)
+                             for source in conversion_engine.targets() if source in sources)
         ui = getattr(hou, "ui", None)
-        if ui is not None:
+        if ui is not None and eligible:
             ui.displayMessage(messages.CONVERSION_SUMMARY % (
-                converted, eligible, material.shown_renderer(conversion.source),
-                material.shown_renderer(target), "\n".join(lines)))
+                converted, eligible, shown, material.shown_renderer(target), "\n".join(lines)))
 
     def show_prefs(self) -> None:
         """Show the Preferences Dialog - NON-MODAL, floating above the main window, and opening with or without a library set (its Library tab is the only way to set one). A second open while the window exists just fronts it."""
@@ -2282,7 +2284,7 @@ class AmazePanel(QtWidgets.QWidget):
                 self.set_conversion_bar_visible(False)
 
     def _import_online_records(self, records, renderer="Karma") -> None:
-        """Import one or more online records into the LIBRARY, built as `renderer` - Karma, or Redshift through the converter."""
+        """Import online records into the LIBRARY, built as `renderer` through the conversion engine."""
         if not len(records):
             return
         total = len(records)
@@ -2308,7 +2310,7 @@ class AmazePanel(QtWidgets.QWidget):
 
     def import_online_material(self, record, on_progress=None,
                                renderer="Karma"):
-        """Download (if needed) and register one online material as a normal library material built as `renderer` - Karma, or Redshift through the converter; on_progress(frac) is called with a 0..1 fraction during the download when given. Returns (ok, reason) - the CALLER reports, never this."""
+        """Download and save one online material as `renderer`, calling on_progress(0..1): (ok, reason)."""
         if record is None or not self.material_model:
             return (False, "No library to import into.")
         source, resolution, error = self._online_source_for(record)

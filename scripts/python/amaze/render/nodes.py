@@ -778,6 +778,9 @@ class NodeHandler:
         if "Redshift" in mat.renderer and node_type_available(
                 "rs_usd_material_builder"):    # a legacy container is rebuilt into the USD one on its way into a LOP library (load_items_file), so every Redshift material is LOP-capable while the plugin offers that container
             return {"mat", "lop"}
+        if "Octane" in mat.renderer and node_type_available(
+                "octane_solaris_material_builder"):    # the classic one is rebuilt, as Redshift's is
+            return {"mat", "lop"}
         return {"mat"}
 
     def _payload_or_refusal(self, mat) -> tuple:
@@ -1186,11 +1189,9 @@ class NodeHandler:
 
         texstore.resolve_parms(self._builder_node, self._preferences)    # the whole container, before it moves
 
-        if (self._import_path.type().name() == "materiallibrary"
-                and self._builder_node.type().name() == "redshift_vopnet"):    # Solaris needs the USD container; saved files untouched
-            from amaze.render import redshift_converter    # late: render/ reaches back into this module
-            self._builder_node = redshift_converter.upgrade_to_usd_builder(
-                self._builder_node)
+        if self._import_path.type().name() == "materiallibrary":    # a classic container is rebuilt
+            from amaze.render.material_conversion import engine    # late: its APIs import this module
+            self._builder_node = engine.ready_for_solaris(self._builder_node, mat.renderer)
         new_mat = hou.moveNodesTo((self._builder_node,), self._import_path)  # type: ignore
         if not new_mat:
             raise hou.OperationFailed(

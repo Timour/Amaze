@@ -8,34 +8,7 @@ from amaze.core import debug
 from amaze.core import material
 
 from amaze.helpers import helpers
-
-
-class ConversionReport:
-    """What happened during one material's conversion, so the caller can show an honest summary instead of a bare pass/fail."""
-
-    def __init__(self, mat_name: str) -> None:
-        self.mat_name = mat_name
-        self.skipped: list[str] = []
-        self.approximated: list[str] = []
-
-    def skip(self, msg: str) -> None:
-        self.skipped.append(msg)
-
-    def approximate(self, msg: str) -> None:
-        self.approximated.append(msg)
-
-    def is_clean(self) -> bool:
-        return not self.skipped and not self.approximated
-
-    def summary_lines(self) -> list[str]:
-        lines = [f'"{self.mat_name}":']
-        for msg in self.approximated:
-            lines.append("  [approximated] " + msg)
-        for msg in self.skipped:
-            lines.append("  [skipped] " + msg)
-        if self.is_clean():
-            lines.append("  fully converted, no skipped inputs")
-        return lines
+from amaze.render.material_conversion.report import ConversionReport    # noqa: F401  the one home
 
 
 def _redshift_type_available() -> bool:
@@ -1399,64 +1372,69 @@ def convert_redshift_material(
         )
         return None, None, report
 
-    with hou.undos.disabler():    # off the undo stack at BOTH ends: a create/destroy pair on the live stack resurrects the scratch with the whole reconstructed copy on one Ctrl+Z (#278)
+    with hou.undos.disabler():    # off the undo stack at BOTH ends (#278)
         scratch = hou.node("/obj").createNode("matnet")
     try:
         vopnet = node_handler.rebuild_saved(source_mat, scratch)
-        shader = find_redshift_shader(vopnet)
-        if shader is None:
-            reason = out_of_scope_reason(vopnet)
-            report.skip(
-                reason or "no surface shader node found inside the "
-                "saved network"
-            )
-            return None, None, report
-        shader_type = shader.type().name()
-        converter = _shader_converter(shader_type)
-        if shader_type in _OUT_OF_SCOPE_SHADERS:
-            report.skip(_OUT_OF_SCOPE_SHADERS[shader_type])
-            return None, None, report
-        if converter is None:
-            report.skip(
-                f"shader is {shader_type}, which has no conversion "
-                "mapping yet"
-            )
-            return None, None, report
-        mtlx = converter(shader, prefs_dir_parent, report)
-        if mtlx is None:    # a blend with no convertible base; the converter put the reason in the report
-            return None, None, report
-
-        out_node = material.redshift_terminal(vopnet)    # bump and displacement live on the terminal
-        out_inputs = _named_inputs(out_node) if out_node is not None else {}
-        shader_inputs = _named_inputs(shader)    # bump arrives THREE ways - the shader's bump_input (StandardMaterial), its geometry_normal (OpenPBR), or the output node's bump input, asked by ROLE because the classic and USD forms spell it differently (material.TERMINAL_INPUTS); shader-level wins when both exist
-        bump_src = (
-            shader_inputs.get("geometry_normal")
-            or shader_inputs.get("bump_input")
-            or material.terminal_input(out_inputs, "bump")
-        )
-        if bump_src is not None:
-            nm = convert_bump_map(bump_src, prefs_dir_parent, report)
-            if nm is not None:
-                try:
-                    mtlx.setNamedInput("normal", nm, 0)
-                except hou.OperationFailed:
-                    report.skip(
-                        "converted bump couldn't be wired to the "
-                        "shader's normal input"
-                    )
-        mtlx_disp = None
-        if out_node is not None:
-            disp_src = material.terminal_input(out_inputs, "displacement")
-            if disp_src is not None:
-                mtlx_disp = convert_displacement(disp_src, prefs_dir_parent, report)
-
-        mtlx.setName(
-            helpers.sanitize_usd_path(source_mat.name), unique_name=True    # sanitized with the import path's own helper - library names carry spaces/dashes a node name cannot, and an unsanitized setName() aborts the whole conversion
-        )
-        return mtlx, mtlx_disp, report    # NOT bundled through a collect node: the KARMA_REF subnetconnector builder's surface terminal refuses a collect's output (hou.InvalidInput), and displacement saves as part of the whole builder now
+        mtlx, mtlx_disp = convert_redshift_container(vopnet, prefs_dir_parent, report)
+        return mtlx, mtlx_disp, report
     finally:
         with hou.undos.disabler():
-            scratch.destroy()    # the reconstructed copy is scratch scaffolding for reading values, never left in the scene
+            scratch.destroy()    # the rebuilt copy is read, never left in the scene
+
+
+def convert_redshift_container(vopnet, prefs_dir_parent, report):
+    """A rebuilt Redshift container's network as MaterialX nodes: (shader, displacement)."""
+    shader = find_redshift_shader(vopnet)
+    if shader is None:
+        reason = out_of_scope_reason(vopnet)
+        report.skip(
+            reason or "no surface shader node found inside the "
+            "saved network"
+        )
+        return None, None
+    shader_type = shader.type().name()
+    converter = _shader_converter(shader_type)
+    if shader_type in _OUT_OF_SCOPE_SHADERS:
+        report.skip(_OUT_OF_SCOPE_SHADERS[shader_type])
+        return None, None
+    if converter is None:
+        report.skip(
+            f"shader is {shader_type}, which has no conversion "
+            "mapping yet"
+        )
+        return None, None
+    mtlx = converter(shader, prefs_dir_parent, report)
+    if mtlx is None:    # a blend with no convertible base; the reason is in the report
+        return None, None
+
+    out_node = material.redshift_terminal(vopnet)    # bump and displacement live on the terminal
+    out_inputs = _named_inputs(out_node) if out_node is not None else {}
+    shader_inputs = _named_inputs(shader)    # bump: the shader's own input wins over the terminal's
+    bump_src = (
+        shader_inputs.get("geometry_normal")
+        or shader_inputs.get("bump_input")
+        or material.terminal_input(out_inputs, "bump")
+    )
+    if bump_src is not None:
+        nm = convert_bump_map(bump_src, prefs_dir_parent, report)
+        if nm is not None:
+            try:
+                mtlx.setNamedInput("normal", nm, 0)
+            except hou.OperationFailed:
+                report.skip(
+                    "converted bump couldn't be wired to the "
+                    "shader's normal input"
+                )
+    mtlx_disp = None
+    if out_node is not None:
+        disp_src = material.terminal_input(out_inputs, "displacement")
+        if disp_src is not None:
+            mtlx_disp = convert_displacement(disp_src, prefs_dir_parent, report)
+
+    mtlx.setName(    # a library name may hold spaces; setName takes node names only
+        helpers.sanitize_usd_path(report.mat_name), unique_name=True)
+    return mtlx, mtlx_disp    # no collect node: the builder's surface connector refuses one
 
 
 NODE_CONVERTERS.update({    # registered here, not in the literal above: these converters lean on the material entry point, so the table completes once everything it names exists

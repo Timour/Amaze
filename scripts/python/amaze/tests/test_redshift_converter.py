@@ -274,7 +274,7 @@ class AConstantOnAWireLandsAsAValue(unittest.TestCase):
 @unittest.skipUnless(_redshift_available(),
                      "the Redshift plugin is not loaded")
 class TheLibraryDoorMakesANewRedshiftEntry(unittest.TestCase):
-    """`MaterialLibrary.convert_karma_to_redshift`: the saved Karma material is read back from disk, converted, and registered BESIDE the source, never in its place."""
+    """`MaterialLibrary.convert` to Redshift: the saved Karma material is read back from disk, converted, and registered BESIDE the source, never in its place."""
 
     @classmethod
     def setUpClass(cls):
@@ -296,7 +296,7 @@ class TheLibraryDoorMakesANewRedshiftEntry(unittest.TestCase):
 
     def test_a_redshift_twin_is_added_beside_the_karma_source(self):
         before = len(self.model.assets)
-        ok, report = self.model.convert_karma_to_redshift(self.model.index(self.row, 0))
+        ok, report = self.model.convert(self.model.index(self.row, 0), "Redshift")
         self.assertTrue(ok, report.summary_lines())
         self.assertEqual(before + 1, len(self.model.assets), "no new entry was added")
         source, twin = self.model.assets[self.row], self.model.assets[-1]
@@ -306,7 +306,7 @@ class TheLibraryDoorMakesANewRedshiftEntry(unittest.TestCase):
         self.assertEqual(list(source.categories), list(twin.categories))
 
     def test_the_twin_points_at_the_same_textures(self):
-        ok, _report = self.model.convert_karma_to_redshift(self.model.index(self.row, 0))
+        ok, _report = self.model.convert(self.model.index(self.row, 0), "Redshift")
         self.assertTrue(ok)
         twin = self.model.assets[-1]
         path = material.payload_path(self.prefs, twin.mat_id, self.prefs.ext)
@@ -323,7 +323,7 @@ class TheLibraryDoorMakesANewRedshiftEntry(unittest.TestCase):
 
     def test_the_twin_can_be_copied_into_a_lop_material_library(self):
         """A twin saved as an `rs_usd_material_builder` passes the import door's LOP check; a `redshift_vopnet` twin was refused with `Use Copy To /mat instead` (seen 2026-09-04)."""
-        ok, _report = self.model.convert_karma_to_redshift(self.model.index(self.row, 0))
+        ok, _report = self.model.convert(self.model.index(self.row, 0), "Redshift")
         self.assertTrue(ok)
         twin = self.model.assets[-1]
         handler = nodes.NodeHandler(self.prefs)
@@ -333,7 +333,7 @@ class TheLibraryDoorMakesANewRedshiftEntry(unittest.TestCase):
 
     def test_a_non_karma_row_is_refused_with_a_reason(self):
         self.model.assets[self.row].renderer = "Redshift"
-        ok, report = self.model.convert_karma_to_redshift(self.model.index(self.row, 0))
+        ok, report = self.model.convert(self.model.index(self.row, 0), "Redshift")
         self.assertFalse(ok)
         self.assertTrue(report.skipped, "no reason given")
 
@@ -429,8 +429,8 @@ class ABlendWithNoBaseIsReportedNotCrashed(unittest.TestCase):
 
     def test_convert_to_karma_reports_instead_of_crashing(self):
         before = len(self.model.assets)
-        ok, report = self.model.convert_redshift_to_karma(
-            self.model.index(self.row, 0))
+        ok, report = self.model.convert(
+            self.model.index(self.row, 0), "Karma")
         self.assertFalse(ok)
         self.assertIn(self.NO_BASE, report.skipped)
         self.assertEqual(before, len(self.model.assets),

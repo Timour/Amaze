@@ -17,28 +17,6 @@ FLOOR_TEXTURE = {    # Octane reads no `.rat`; the EXR is the same picture ▸r/
 }
 OCTANE_LOP_CONTAINER = "octane_solaris_material_builder"    # wired at creation ▸r/octane-builder
 COPIED_WHOLE = ("subnet", OCTANE_LOP_CONTAINER)    # containers a material library takes as they are
-PLUMBING = ("subinput", "suboutput")
-
-
-def _octane_classic_into(lib, vopnet):
-    """A classic `octane_vopnet` rebuilt inside `lib` into the container a LOP renders."""
-    builder = lib.createNode(OCTANE_LOP_CONTAINER, vopnet.name())
-    terminal = next(c for c in builder.children()
-                    if c.type().name() == "octane_material")
-    stock = [c for c in builder.children()
-             if c != terminal and c.type().name() not in PLUMBING]
-    items = [item for item in vopnet.allItems()    # dots too, or wires through them break
-             if not (isinstance(item, hou.Node)
-                     and item.type().name() in PLUMBING)]
-    copies = dict(zip((item.path() for item in items), builder.copyItems(items)))
-    out = next((c for c in vopnet.children() if c.type().name() == "suboutput"), None)
-    surface = next((c for c in (out.inputConnections() if out is not None else ())
-                    if c.inputIndex() == 0), None)
-    copy = copies.get(surface.inputNode().path()) if surface is not None else None
-    terminal.setInput(0, copy, surface.outputIndex() if copy is not None else 0)
-    for child in stock:    # last: never leave the terminal wired to a deleted node
-        child.destroy()
-    return builder
 
 
 def _karma_settings(net, preferences) -> tuple:
@@ -171,7 +149,8 @@ def _stage_material(lib, node, asset_id, prim_path: str) -> str:
 
     with debug.timed("batch", "copy nodes into lib", asset_id=str(asset_id)):
         if not isinstance(node, list) and node.type().name() == "octane_vopnet":
-            curr_nodes = [_octane_classic_into(lib, node)]
+            from amaze.render.material_conversion import octane    # late: it imports render/
+            curr_nodes = [octane.classic_into(lib, node)]
         else:
             curr_nodes = hou.copyNodesTo(curr_items, lib)  # type: ignore
     if curr_nodes:    # empty for a builder subnet with no children: nothing to render

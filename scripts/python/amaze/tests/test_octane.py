@@ -25,6 +25,7 @@ from amaze.prefs import persistence  # noqa: E402
 from amaze.prefs import prefs as prefs_mod  # noqa: E402
 from amaze.render import material_converter  # noqa: E402
 from amaze.render import nodes  # noqa: E402
+from amaze.render.material_conversion import octane as octane_api  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
 OCTANE_SHADER = "octane::NT_MAT_STANDARD_SURFACE"
@@ -254,13 +255,31 @@ class OctanesOwnBuilderRoundTrips(unittest.TestCase):
         self.assertEqual("Octane:Standard Surface", self.model.renderer_label(asset))
 
     def test_the_classic_container_keeps_its_shape(self):
-        """`octane_vopnet` still saves its contents, rebuilds by type and stays out of /stage."""
+        """`octane_vopnet` still saves its contents and rebuilds by type in /mat."""
         asset = self._saved(self.mat.createNode("octane_vopnet"))
         handler = nodes.NodeHandler(self.prefs)
         self.assertEqual("octane_vopnet", handler.get_saved_node_type(asset))
-        self.assertEqual({"mat"}, handler.import_targets(asset))
         self.assertEqual("octane_vopnet", self._imported(asset).type().name())
         self.assertEqual("Octane:Standard Surface", self.model.renderer_label(asset))
+
+    def test_the_classic_container_is_rebuilt_on_its_way_into_solaris(self):
+        """Copy To /stage: the classic one becomes the Solaris builder, its shader kept."""
+        classic = self.mat.createNode("octane_vopnet")
+        classic.node("Standard_Surface").parmTuple("baseColor").set(RED)
+        asset = self._saved(classic)
+        self.assertEqual({"mat", "lop"}, nodes.NodeHandler(self.prefs).import_targets(asset))
+        stage = hou.node("/obj").createNode("lopnet", "octane_classic_probe")
+        self.addCleanup(stage.destroy)
+        imported = self._imported(asset, target="lop", context=stage)
+        self.assertEqual(octane_api.SOLARIS_CONTAINER, imported.type().name())
+        for got, want in zip(octane_api.find_shader(imported).parmTuple("baseColor").eval(), RED):
+            self.assertAlmostEqual(want, got, places=5)
+        from pxr import UsdShade
+        outputs = [o.GetFullName()
+                   for prim in imported.parent().stage().Traverse()
+                   if prim.GetTypeName() == "Material"
+                   for o in UsdShade.Material(prim).GetOutputs()]
+        self.assertIn("outputs:Octane:surface", outputs)
 
     def test_the_solaris_container_reads_as_usd(self):
         asset = self._saved(self.mat.createNode("octane_solaris_material_builder"))
@@ -378,7 +397,7 @@ class TheOctaneThumbnailIsTheMaterialXStage(unittest.TestCase):
         self.addCleanup(self._drop, vopnet)
         vopnet.node("Standard_Surface").parmTuple("baseColor").set(RED)
         lib = self.scaffold["net"].createNode("materiallibrary")
-        rebuilt = preview.usd_scene._octane_classic_into(lib, vopnet)
+        rebuilt = octane_api.classic_into(lib, vopnet)
         fed = rebuilt.node("octane_material").input(0)
         self.assertIsNotNone(fed, "nothing feeds the rebuilt material")
         self.assertEqual("Standard_Surface", fed.name())

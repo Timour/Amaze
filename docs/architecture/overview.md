@@ -553,6 +553,24 @@ the container, the wiring, activation and verification; each input is an
   `make_karma_builder()` → a MaterialX Material Builder subnet matching
   **KARMA_REF** (see §8). Wired via `wire_builder_output()`; verified by
   `surface_terminal_wired()`.
+- **The Material Conversion Engine** (`render/material_conversion/`) — every
+  conversion between renderers, routed through MaterialX, the hub.
+  `engine.py` routes: `targets()` in menu order, `can_convert(source,
+  target)` and `why_not` (a route exists and both plugins are loaded),
+  `convert(container, source, target, parent, name)` answering
+  `Converted(builder, shader, wired, report)`, and
+  `ready_for_solaris(container, renderer)` for Copy To /stage. Each renderer is one API with the same
+  calls - `available()`, `build(parent, name, produce)`,
+  `to_materialx(container, builder, report)`, `from_materialx(container,
+  parent, name, report)`, `for_solaris(container)`: `materialx.py` (the hub,
+  built by the Material Engine above), `redshift.py` (the Redshift Converter
+  and Karma → Redshift), and `octane.py` (MaterialX copied into Octane's own
+  builder, which renders MaterialX; the classic container rebuilt for
+  Solaris) reading through `octane_reader.py` (Octane's nodes → MaterialX).
+  A new renderer is a new module named in `engine.API_MODULES`. The callers:
+  `MaterialLibrary.convert(index, target)`, the Convert to menu, the online
+  import's `matx_import.to_renderer`, and `NodeHandler.load_items_file` on
+  the way into a LOP library. `ConversionReport` lives in `report.py`.
 
 ### 4e. The **Generator Engine**
 
@@ -1061,6 +1079,12 @@ core/matx_translate.py    Adapter: online .mtlx -> clean VOP
 core/matx_usd.py          Adapter: a USD OpenPBR material -> that .mtlx
 render/material_converter.py     Adapter: Redshift -> Karma
 render/redshift_converter.py     Engine + adapter: Karma -> Redshift
+render/material_conversion/engine.py      Material Conversion Engine: every pair via MaterialX
+render/material_conversion/materialx.py   its MaterialX API, the hub
+render/material_conversion/redshift.py    its Redshift API, over the two converters above
+render/material_conversion/octane.py      its Octane API: the MaterialX copy, classic -> Solaris
+render/material_conversion/octane_reader.py   Adapter: Octane -> MaterialX
+render/material_conversion/report.py      ConversionReport: what a conversion skipped
 core/matx_sources.py      Online source adapters (GPUOpen/PolyHaven/...)
 core/matx_import.py       Online import orchestration + Values Adapter
 core/matx_library.py      Online Browser model

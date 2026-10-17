@@ -423,8 +423,8 @@ class StructuralSignalsStayOutsideRelayout(unittest.TestCase):
 
     ROW_WRITERS = (    # each inserts or removes rows, or saves - and a save adopts a peer's rows
         "save", "add_asset", "import_record", "update_asset",
-        "update_asset_content", "convert_karma_to_redshift",
-        "convert_redshift_to_karma", "check_add_category", "remove_asset",
+        "update_asset_content", "convert",
+        "check_add_category", "remove_asset",
         "removeRow", "removeRows", "insertRow", "insertRows")
     CATEGORY_WRITERS = ("remove_category", "rename_category")    # move rows or save on a CATEGORIES model
 

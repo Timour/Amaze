@@ -188,9 +188,9 @@ Versions**.
 - **Double-click** imports into the context you are working in.
 - **Copy To ▸ /mat** and **Copy To ▸ /stage/materiallibrary** name the
   destination explicitly. The second lands inside a material library
-  under `/stage`. A Redshift material saved in the classic Redshift
-  container is rebuilt into the Solaris container on the way in; the
-  saved material is not changed.
+  under `/stage`. A Redshift or Octane material saved in its renderer's
+  classic container is rebuilt into that renderer's Solaris container on
+  the way in; the saved material is not changed.
 - **Drag it** — see [Drag and drop](#drag-and-drop).
 
 ### Organising
@@ -207,11 +207,17 @@ Assets can also be dragged onto a sidebar category to file them there.
 
 ### Convert to
 
-Right-click a material ▸ **Convert to** ▸ **MaterialX** or **Redshift**.
-The renderer the material already uses is greyed. The conversion
-rebuilds the network for the other renderer as a new entry next to the
-original, on the same texture files, and reports what it could not
-translate. Shaders with no equivalent are named in the report.
+Right-click a material ▸ **Convert to** ▸ **MaterialX**, **Redshift** or
+**Octane**. The renderer the material already uses is greyed, and so is
+any conversion whose renderer is not loaded in this Houdini, the
+material's own included. The conversion rebuilds the network for the
+other renderer as a new entry next to the original, under the same name,
+on the same texture files, and reports what it could not translate.
+Every conversion passes through MaterialX, so Redshift to Octane is
+Redshift to MaterialX and then MaterialX to Octane. A material becomes
+Octane in Octane's own material builder, which renders MaterialX itself;
+the nodes Octane's builder does not take are wired through, rebuilt or
+named in the report. Shaders with no equivalent are named in the report.
 
 ---
 
@@ -236,13 +242,13 @@ strip where the section tabs were.
 
 Right-click a material, or a multi-selection:
 
-- **Import to Materials ▸ MaterialX** or **▸ Redshift** downloads it,
-  builds the material for that renderer and saves it into your library,
-  with a thumbnail if renders are on. Redshift is greyed when the plugin
-  is not loaded.
-- **Import to Scene ▸ MaterialX** or **▸ Redshift** builds it into the
-  material library you are working in, or `/mat`, and writes nothing to
-  your library.
+- **Import to Materials ▸ MaterialX**, **▸ Redshift** or **▸ Octane**
+  downloads it, builds the material for that renderer and saves it into
+  your library, with a thumbnail if renders are on. A renderer is greyed
+  when its plugin is not loaded.
+- **Import to Scene ▸ MaterialX**, **▸ Redshift** or **▸ Octane** builds
+  it into the material library you are working in, or `/mat`, and writes
+  nothing to your library.
 - **Restore** appears on Amaze packages and puts back the entries a
   package carries.
 - **Refresh** re-reads the source now.

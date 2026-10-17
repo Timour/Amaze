@@ -247,6 +247,18 @@ def row_moves_inside_a_layout_change(*models):
                 pass             # the model went first
 
 
+def plugins_loaded(*renderers):
+    """Each material conversion API answers loaded for `renderers` alone, MaterialX always."""
+    from unittest import mock
+    from amaze.render.material_conversion import engine
+    stack = contextlib.ExitStack()
+    for each in engine.apis().values():
+        if each.name != engine.HUB:
+            stack.enter_context(mock.patch.object(
+                each, "available", lambda name=each.name: name in renderers))
+    return stack
+
+
 def live_library_to_rehearse_on(testcase):
     """The machine's configured REAL library (`real_dir`, never the Test Mode overlay) or a skip - recovery rehearsals recover the owner's own snapshots or they prove nothing. ▸p/harness-isolation"""
     live = prefs.Prefs()

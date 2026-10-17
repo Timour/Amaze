@@ -11,6 +11,7 @@ import hou
 from amaze.core import debug, material, matx_sources, matx_translate
 from amaze.helpers import helpers, hostos
 from amaze.render import nodes as nodes_mod
+from amaze.render.material_conversion import engine as conversion_engine
 
 MATX_DIRNAME = "matX"   # folder inside the library holding downloaded MaterialX sources - PERMANENT, not staging: the imported network's mtlximage nodes point at these texture files
 
@@ -206,22 +207,22 @@ def _producer_for(record, source, resolution, preferences, progress=None):
 
 
 def to_renderer(builder, scratch, name: str, renderer: str):
-    """The builder the caller asked for: the Karma one as built, or its Redshift twin converted beside it in `scratch` with the Karma one gone. Answers (builder, shader, wired, report-or-None)."""
-    if renderer != "Redshift":
+    """MaterialX's builder, or its `renderer` twin made in `scratch`: (builder, shader, wired, report)."""
+    if material.normalized_renderer(renderer) == conversion_engine.HUB:
         return builder, None, None, None
-    from amaze.render import redshift_converter    # late: render/ reaches back into core/
-    rs_builder, shader, wired, report = redshift_converter.convert_karma_builder(
-        builder, scratch, name)
+    made = conversion_engine.convert(builder, conversion_engine.HUB, renderer, scratch, name)
     builder.destroy()
-    try:
-        rs_builder.setName(helpers.sanitize_usd_path(name) or "material",
-                           unique_name=True)    # built BESIDE the Karma one, so it carried a `1`; the Karma one is gone now and the name is free
-    except hou.Error as exc:
-        debug.event("import", "twin not renamed", error=str(exc))
+    if made.builder is not None:
+        try:
+            made.builder.setName(helpers.sanitize_usd_path(name) or "material",
+                                 unique_name=True)    # it was built beside the MaterialX one
+        except hou.Error as exc:
+            debug.event("import", "twin not renamed", error=str(exc))
+    report = made.report
     if report.skipped or report.approximated:
         debug.alert("\n".join(report.summary_lines()),
-                    key="redshift-conversion")    # on screen, not only in the console: `note` prints nothing on Windows, and the material lands with inputs left at defaults
-    return rs_builder, shader, wired, report
+                    key=renderer.lower() + "-conversion")    # on screen: `note` is silent on Windows
+    return made.builder, made.shader, made.wired, report
 
 
 @contextlib.contextmanager
@@ -242,11 +243,12 @@ def _staged_build(record, source, resolution, preferences, progress,
         if shader is None:
             yield None, note, "Could not build a shading network for " + name
             return
-        if renderer == "Redshift":    # the Karma network is the way in; its Redshift twin lands
+        if material.normalized_renderer(renderer) != conversion_engine.HUB:    # MaterialX is the way in
             builder, shader, wired, _report = to_renderer(
                 builder, scratch, name, renderer)
             if shader is None:
-                yield None, note, "Could not convert %s to Redshift" % name
+                yield None, note, "Could not convert %s to %s" % (
+                    name, material.shown_renderer(renderer))
                 return
         if not wired:    # a warning on a success: the artist can wire it by hand
             debug.note(

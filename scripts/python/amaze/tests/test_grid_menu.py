@@ -19,10 +19,16 @@ sys.path.insert(
 
 from amaze.core import file_library  # noqa: E402
 from amaze.panel import grid, sections  # noqa: E402
-from amaze.render import material_converter  # noqa: E402
+from amaze.render.material_conversion import engine as conversion_engine  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
 PACKAGE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+plugins_loaded = test_support.plugins_loaded
+
+
+def off_unless_loaded(renderer) -> str:
+    """The marker a child shows on THIS host: greyed where the plugin is not loaded."""
+    return "" if conversion_engine.api(renderer).available() else "(off)"
 
 MENU_CONTEXTS = ("MaterialSection", "GradientSection", "CopSection",  # every context that offers a grid menu, by class name
                  "CodeSection", "FileSection", "OnlineContext")
@@ -242,31 +248,37 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
                 if (proxy.index(row, 0).data(role) or "") == kind]
 
     def test_material_with_one_selected(self):
+        with plugins_loaded("Redshift", "Octane"):
+            shown = self._show("material", (0,))
         self.assertEqual(
             ["Copy To > [/mat, /stage/materiallibrary]",
-             "Convert to > [MaterialX(off), Redshift(off)](off)",    # the first fixture material is neither
+             "Convert to > [MaterialX(off), Redshift(off), Octane(off)](off)",    # neither renderer
              "----",
              "Update Preview", "Customize", "Favorite", "Export Package",
              "Delete"],
-            self._show("material", (0,)))
+            shown)
 
     def test_material_with_two_selected(self):
         """Every entry acts on the whole selection and stays live."""
+        with plugins_loaded("Redshift", "Octane"):
+            shown = self._show("material", (0, 1))
         self.assertEqual(
             ["Copy To > [/mat, /stage/materiallibrary]",
-             "Convert to > [MaterialX(off), Redshift]",
+             "Convert to > [MaterialX(off), Redshift, Octane]",
              "----",
              "Update Preview", "Customize", "Favorite", "Export Package",
              "Delete"],
-            self._show("material", (0, 1)))
+            shown)
 
     def test_material_with_nothing_selected(self):
+        with plugins_loaded("Redshift", "Octane"):
+            shown = self._show("material")
         self.assertEqual(
             ["Copy To > [/mat, /stage/materiallibrary](off)",
-             "Convert to > [MaterialX(off), Redshift(off)](off)", "----",
+             "Convert to > [MaterialX(off), Redshift(off), Octane(off)](off)", "----",
              "Update Preview(off)", "Customize(off)", "Favorite(off)",
              "Export Package(off)", "Delete(off)"],
-            self._show("material"))
+            shown)
 
     def test_color_with_one_selected(self):
         shown = self._show("gradient", (0,))
@@ -393,10 +405,10 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
         """Built directly rather than by entering the online world (that world reaches the network) - CHANGED 2026-08-03: it used to show Refresh alone, because both imports were built only `if records`; Refresh acts on nothing, so it is the one that stays live."""
         context = self.panel.online_context
         menu, _verbs = grid.build_grid_menu(self.panel, context, [], None)
-        redshift = "" if material_converter._redshift_type_available() else "(off)"    # the child follows the HOST: greyed where the plugin is not loaded, never a lie either way
+        plugins = (off_unless_loaded("Redshift"), off_unless_loaded("Octane"))
         self.assertEqual(
-            ["Import to Materials > [MaterialX, Redshift%s](off)" % redshift,
-             "Import to Scene > [MaterialX, Redshift%s](off)" % redshift,
+            ["Import to Materials > [MaterialX, Redshift%s, Octane%s](off)" % plugins,
+             "Import to Scene > [MaterialX, Redshift%s, Octane%s](off)" % plugins,
              "Refresh"],
             render(menu))
 
@@ -570,16 +582,15 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
                     [], called,
                     "%s ran %s after the menu was dismissed" % (key, called))
 
-    def _material_convert_children(self, karma, redshift):
-        """The Convert to submenu's rendered children with the two selection facts pinned - the facts are the panel's, so pinning them here tests the TABLE, not the fixture library."""
+    def _material_convert_children(self, *held):
+        """Convert to's children with the selection's renderers and every plugin pinned: the TABLE."""
         panel = self.panel
         panel.section_tabs.setChecked("material")
         QtWidgets.QApplication.processEvents()
         context = panel._section()
-        held = frozenset(source for source, holds in
-                         (("Karma", karma), ("Redshift", redshift)) if holds)
         with mock.patch.object(type(context), "_sources_held",
-                               lambda _self, _indexes: held):
+                               lambda _self, _indexes: frozenset(held)), \
+                plugins_loaded("Redshift", "Octane"):
             indexes = context.grid_selection()
             menu, _verbs = grid.build_grid_menu(
                 panel, context, indexes, None)
@@ -587,13 +598,17 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
         return row[0] if row else None
 
     def test_convert_to_greys_the_renderer_the_selection_already_is(self):
-        """Drawn as C01b: the submenu always opens, and the child naming what the selection already is greys - a Karma material offers Redshift alone, a Redshift one Karma alone, a mixed selection both."""
-        self.assertEqual("Convert to > [MaterialX(off), Redshift]",
-                         self._material_convert_children(True, False))
-        self.assertEqual("Convert to > [MaterialX, Redshift(off)]",
-                         self._material_convert_children(False, True))
-        self.assertEqual("Convert to > [MaterialX, Redshift]",
-                         self._material_convert_children(True, True))
+        """Drawn as C01b: the child naming what the selection already is greys; the others are live."""
+        self.assertEqual("Convert to > [MaterialX(off), Redshift, Octane]",
+                         self._material_convert_children("Karma"))
+        self.assertEqual("Convert to > [MaterialX, Redshift(off), Octane]",
+                         self._material_convert_children("Redshift"))
+        self.assertEqual("Convert to > [MaterialX, Redshift, Octane]",
+                         self._material_convert_children("Karma", "Redshift"))
+
+    def test_an_octane_material_converts_to_the_other_two(self):
+        self.assertEqual("Convert to > [MaterialX, Redshift, Octane(off)]",
+                         self._material_convert_children("Octane"))
 
     def _select_karma_rows(self, count):
         """Select up to `count` Karma materials; answers the menu's own selection."""
@@ -629,15 +644,14 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
             % (len(indexes), mapped.call_count))
 
     def test_the_parent_greys_when_no_child_is_live(self):
-        """A Karma selection where Redshift is not loaded has nothing to become."""
+        """A Karma selection where neither Redshift nor Octane is loaded has nothing to become."""
         panel = self.panel
         indexes = self._select_karma_rows(1)
-        with mock.patch.object(material_converter,
-                               "_redshift_type_available", lambda: False):
+        with plugins_loaded():
             menu, _verbs = grid.build_grid_menu(
                 panel, panel._section(), indexes, indexes[0])
         row = [r for r in render(menu) if r.startswith("Convert to")]
-        self.assertEqual(["Convert to > [MaterialX(off), Redshift(off)](off)"], row)
+        self.assertEqual(["Convert to > [MaterialX(off), Redshift(off), Octane(off)](off)"], row)
 
     def test_convert_to_dispatches_by_the_child_picked(self):
         """One verb, the payload names the renderer: Redshift reaches the Redshift door and nothing else, Karma the Karma one."""
