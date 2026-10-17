@@ -74,7 +74,9 @@ elif ! command -v hython >/dev/null 2>&1 && [ -z "${HFS:-}" ]; then
     export HFS
 fi
 
-if ! command -v hython >/dev/null 2>&1; then
+# AMAZE_HOUDINI too: a hython started without houdini_setup runs plugins differently
+# ▸r/octane-builder-removal-crash
+if [ -n "${AMAZE_HOUDINI:-}" ] || ! command -v hython >/dev/null 2>&1; then
     if [ -z "${HFS:-}" ] || [ ! -d "$HFS" ]; then
         echo "hython not on PATH and no Houdini found - set HFS" >&2
         exit 1
