@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.1
+
+- The test suite starts each Houdini version with its own setup; nothing in the app changes.
+
 ## 1.4.0
 
 - Materials built in Octane's own material builder save and import as Octane materials, and their tiles name the shader.
