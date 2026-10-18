@@ -1316,10 +1316,11 @@ class HoudiniPathTest(unittest.TestCase):
     def test_the_default_style_pins_home(self):
         """Write Paths As defaults to $HOME: a path under $HIP still says $HOME/... unless the user chooses otherwise."""
         home = hou.expandString("$HOME").replace("\\", "/").rstrip("/")
-        hip = hou.expandString("$HIP").replace("\\", "/").rstrip("/")
-        if not hip or not hip.startswith(home + "/"):
-            self.skipTest("$HIP does not live under $HOME here")
-        collapsed = file_library.houdini_path(hip + "/render.exr")
+        if not home or home in ("/", "."):
+            self.skipTest("no $HOME in this session")
+        self.addCleanup(hou.putenv, "HIP", hou.text.expandString("$HIP"))
+        hou.putenv("HIP", home + "/amaze_hip")    # its own $HIP: hython's is wherever the suite started
+        collapsed = file_library.houdini_path(home + "/amaze_hip/render.exr")
         self.assertTrue(collapsed.startswith("$HOME/"),
                         "the default style is not $HOME: %r" % collapsed)
 
