@@ -55,7 +55,7 @@ from amaze.prefs import prefs
 from amaze.helpers import helpers, hostos, theme, ui_helpers, vex_syntax
 from amaze.core import (
     database, dragengine, gallery_import, lop_assign, matx_icon, matx_translate, packages,
-    tile_icons, users,
+    renderers, tile_icons, users,
 )
 from amaze.render import (
     generator,
@@ -88,6 +88,7 @@ _reload(library_policy)    # before library, which gates overwriting on it
 _reload(versions)
 _reload(notes)
 _reload(users)    # before versions and the dialogs showing a user: both resolve a UID through it, so a stale one answers from the previous library's people
+_reload(renderers)
 _reload(material)
 _reload(texstore)    # before nodes and library, which adopt and resolve through it
 if _DEV_RELOAD:
@@ -1599,7 +1600,7 @@ class AmazePanel(QtWidgets.QWidget):
             if not conversion_engine.has_route(mat.renderer, target):
                 continue
             eligible += 1
-            sources.add(material.normalized_renderer(mat.renderer))
+            sources.add(renderers.normalized(mat.renderer))
             try:
                 ok, report = model.convert(model.index(row, 0), target)
             except Exception as exc:                          # noqa: BLE001
@@ -1607,12 +1608,12 @@ class AmazePanel(QtWidgets.QWidget):
                 continue
             converted += 1 if ok else 0
             lines.extend(report.summary_lines())
-        shown = " and ".join(material.shown_renderer(source)
+        shown = " and ".join(renderers.label(source)
                              for source in conversion_engine.targets() if source in sources)
         ui = getattr(hou, "ui", None)
         if ui is not None and eligible:
             ui.displayMessage(messages.CONVERSION_SUMMARY % (
-                converted, eligible, shown, material.shown_renderer(target), "\n".join(lines)))
+                converted, eligible, shown, renderers.label(target), "\n".join(lines)))
 
     def show_prefs(self) -> None:
         """Show the Preferences Dialog - NON-MODAL, floating above the main window, and opening with or without a library set (its Library tab is the only way to set one). A second open while the window exists just fronts it."""
@@ -2283,7 +2284,7 @@ class AmazePanel(QtWidgets.QWidget):
             if show_bar:
                 self.set_conversion_bar_visible(False)
 
-    def _import_online_records(self, records, renderer="Karma") -> None:
+    def _import_online_records(self, records, renderer=renderers.HUB.key) -> None:
         """Import online records into the LIBRARY, built as `renderer` through the conversion engine."""
         if not len(records):
             return
@@ -2309,7 +2310,7 @@ class AmazePanel(QtWidgets.QWidget):
             )
 
     def import_online_material(self, record, on_progress=None,
-                               renderer="Karma"):
+                               renderer=renderers.HUB.key):
         """Download and save one online material as `renderer`, calling on_progress(0..1): (ok, reason)."""
         if record is None or not self.material_model:
             return (False, "No library to import into.")
@@ -2470,7 +2471,7 @@ class AmazePanel(QtWidgets.QWidget):
         return (source, resolution, "")
 
     def _import_online_records_to_scene(self, records,
-                                        renderer="Karma") -> None:
+                                        renderer=renderers.HUB.key) -> None:
         """Build online records straight into the scene - the current LOP material library (or /mat) - without adding them to the library; amazepkg records split off to the LIBRARY door, a store tile being library data of ANY section (palette, snippet, material row) with no scene-build path of its own."""
         packages_only = [r for r in records
                          if getattr(r, "kind", "") == "amazepkg"]
@@ -3935,14 +3936,10 @@ class AmazePanel(QtWidgets.QWidget):
         self._refresh_sidebar_categories()
 
     def enable_renderer_on_add(self, renderer: str) -> None:
-        """Switch a renderer's Filter entry on when its first material is saved, so the thing the user just saved is visible in the tab they saved it from. Walks the ONE renderer table (sections.renderer_prefs) rather than repeating it as another if/elif chain."""
-        if material.is_karma_renderer(renderer):    # Karma is asked by name and FIRST: is_karma_renderer covers the legacy stored labels (MaterialX, MtlX) that no substring match against the table would
-            self.prefs.renderer_matx_enabled = True
-        else:
-            for label, attr in sections.renderer_prefs():
-                if label != "Karma" and label in renderer:
-                    setattr(self.prefs, attr, True)
-                    break
+        """Switch a renderer on when its first material is saved, so the save shows in its own tab."""
+        found = renderers.get(renderer)
+        if found is not None:
+            setattr(self.prefs, found.switch, True)
         self.prefs.save()
 
     def import_asset(self, target: str = "auto"):

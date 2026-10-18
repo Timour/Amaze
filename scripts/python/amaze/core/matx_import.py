@@ -8,7 +8,7 @@ import shutil
 
 import hou
 
-from amaze.core import debug, material, matx_sources, matx_translate
+from amaze.core import debug, material, matx_sources, matx_translate, renderers
 from amaze.helpers import helpers, hostos
 from amaze.render import nodes as nodes_mod
 from amaze.render.material_conversion import engine as conversion_engine
@@ -208,7 +208,7 @@ def _producer_for(record, source, resolution, preferences, progress=None):
 
 def to_renderer(builder, scratch, name: str, renderer: str):
     """MaterialX's builder, or its `renderer` twin made in `scratch`: (builder, shader, wired, report)."""
-    if material.normalized_renderer(renderer) == conversion_engine.HUB:
+    if renderers.normalized(renderer) == conversion_engine.HUB:
         return builder, None, None, None
     made = conversion_engine.convert(builder, conversion_engine.HUB, renderer, scratch, name)
     builder.destroy()
@@ -243,12 +243,12 @@ def _staged_build(record, source, resolution, preferences, progress,
         if shader is None:
             yield None, note, "Could not build a shading network for " + name
             return
-        if material.normalized_renderer(renderer) != conversion_engine.HUB:    # MaterialX is the way in
+        if renderers.normalized(renderer) != conversion_engine.HUB:    # MaterialX is the way in
             builder, shader, wired, _report = to_renderer(
                 builder, scratch, name, renderer)
             if shader is None:
                 yield None, note, "Could not convert %s to %s" % (
-                    name, material.shown_renderer(renderer))
+                    name, renderers.label(renderer))
                 return
         if not wired:    # a warning on a success: the artist can wire it by hand
             debug.note(
@@ -265,7 +265,7 @@ def _staged_build(record, source, resolution, preferences, progress,
 
 
 def build_in_scene(record, source, resolution, destination, preferences,
-                   progress=None, renderer: str = "Karma"):
+                   progress=None, renderer: str = renderers.HUB.key):
     """One online record built under `destination` in the scene, the library untouched: (builder, why)."""
     if destination is None:
         return (None, "No destination network for the material.")
@@ -300,7 +300,7 @@ def build_in_scene(record, source, resolution, destination, preferences,
 
 
 def import_record(record, source, resolution, library, preferences,
-                  progress=None, renderer: str = "Karma"):
+                  progress=None, renderer: str = renderers.HUB.key):
     """One online record added to `library` with nothing left in the scene: (ok, why)."""
     name = record_name(record)
     debug.event("import", "start", title=record.title, name=name,

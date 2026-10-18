@@ -11,6 +11,7 @@ import voptoolutils
 from amaze import messages
 from amaze.render import thumbs
 from amaze.core import material
+from amaze.core import renderers
 from amaze.core import texstore
 from amaze.prefs import prefs
 from amaze.core import debug
@@ -767,7 +768,7 @@ class NodeHandler:
 
     def import_targets(self, mat: material.Material, saved_type=None) -> set:
         """Which of {"mat", "lop"} this material can be imported into; `saved_type` spares a read."""
-        if material.is_karma_renderer(mat.renderer):
+        if renderers.is_karma(mat.renderer):
             return {"mat", "lop"}
         if saved_type is None:
             saved_type = self.get_saved_node_type(mat)
@@ -872,7 +873,7 @@ class NodeHandler:
                 debug.event(
                     "import", "routing by renderer",
                     material=mat.name, renderer=mat.renderer,
-                    karma_family=material.is_karma_renderer(mat.renderer),
+                    karma_family=renderers.is_karma(mat.renderer),
                     targets=sorted(self.import_targets(mat, saved_type)),
                     saved_node_type=saved_type,
                 )
@@ -882,7 +883,7 @@ class NodeHandler:
 
             loaded_ok = True
             if (
-                material.is_karma_renderer(mat.renderer)
+                renderers.is_karma(mat.renderer)
                 and self._builder_node.parent() == self._hou_parent
             ):
                 with debug.timed("import", "move builder to destination"):
@@ -1115,7 +1116,7 @@ class NodeHandler:
 
     def _load_saved(self, mat: material.Material, saved_type=None) -> tuple:
         """Rebuild the saved builder under `_hou_parent` by renderer family: (ok, refusal)."""
-        if material.is_karma_renderer(mat.renderer):
+        if renderers.is_karma(mat.renderer):
             self.load_interface_mtlx(mat)
             self.load_items_file_mtlx(mat)
         elif "Redshift" in mat.renderer:
@@ -1732,7 +1733,7 @@ class NodeHandler:
             return self.save_node_redshift
         if "Octane" in self._renderer:
             return self.save_node_octane
-        if not material.is_karma_renderer(self._renderer):
+        if not renderers.is_karma(self._renderer):
             return None
         kind = node.type().name()
         if (kind == "collect" or "mtlxopen_pbr_surface" in kind

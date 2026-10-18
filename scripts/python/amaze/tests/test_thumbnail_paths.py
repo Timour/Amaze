@@ -499,12 +499,12 @@ class AKarmaThumbnailLeavesTheSceneAsItFoundIt(unittest.TestCase):
 
     def test_update_preview_adds_no_undo_entries(self):
         """The import feeding the render and the cleanup ending it are a pair too. ▸r/undo-groups"""
-        from amaze.core import material
+        from amaze.core import renderers
         from amaze.render import nodes
         test_support.reset_database_singletons()
         model = library_mod.MaterialLibrary(preferences=self.prefs)
         asset = next(a for a in model.assets
-                     if material.is_karma_renderer(a.renderer))
+                     if renderers.is_karma(a.renderer))
         imported = []
         real = nodes.NodeHandler.import_asset_to_scene
 
@@ -551,13 +551,13 @@ class AKarmaThumbnailLeavesTheSceneAsItFoundIt(unittest.TestCase):
 
     def _asset_with_a_companion(self):
         """A Karma fixture asset whose saved COP companion restores as `/obj/Amaze/<net>`."""
-        from amaze.core import material
+        from amaze.core import material, renderers
         self._sweep_cop_root()
         self.addCleanup(self._sweep_cop_root)
         test_support.reset_database_singletons()
         model = library_mod.MaterialLibrary(preferences=self.prefs)
         asset = next(a for a in model.assets
-                     if material.is_karma_renderer(a.renderer))
+                     if renderers.is_karma(a.renderer))
         with hou.undos.disabler():
             source = hou.node("/obj").createNode("copnet")
             source.createNode("constant")

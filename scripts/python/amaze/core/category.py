@@ -5,7 +5,7 @@ from PySide6 import QtCore
 
 from amaze import messages
 from amaze.prefs import prefs
-from amaze.core import database, debug, material
+from amaze.core import database, debug, material, renderers
 
 SIDEBAR_COUNT_ROLE = int(QtCore.Qt.ItemDataRole.UserRole) + 40  # the ONLY declaration - every sidebar model and SidebarItemDelegate import it from here
 SIDEBAR_COLOR_ROLE = int(QtCore.Qt.ItemDataRole.UserRole) + 41  # a category's colour, for the sidebar's left-edge bar
@@ -71,7 +71,7 @@ class Categories(QtCore.QAbstractListModel):
         rf = self._renderer_filter
         if not rf:
             return True
-        renderer = material.normalized_renderer(asset.get("renderer", "")).lower()
+        renderer = renderers.normalized(asset.get("renderer", "")).lower()
         if rf in renderer:
             return True
         return "all_renderers" in rf  # All passes EVERY row, an empty renderer included

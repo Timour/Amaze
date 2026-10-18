@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from amaze.core import renderers
 from amaze.render import material_converter, redshift_converter
 from amaze.render.material_conversion import engine
 
@@ -9,7 +10,7 @@ from amaze.render.material_conversion import engine
 class RedshiftAPI(engine.RendererAPI):
     """Reads with `material_converter`, writes with `redshift_converter`."""
 
-    name = "Redshift"
+    name = renderers.REDSHIFT.key
 
     def available(self) -> bool:
         return material_converter._redshift_type_available()

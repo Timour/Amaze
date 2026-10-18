@@ -10,7 +10,7 @@ from PySide6 import QtCore, QtWidgets
 
 from amaze import amazetheme
 from amaze.core import (category, code_library, cop_library, debug, dragengine, file_library,
-                        grid_columns, locations, material, multifilterproxy_model, packages,
+                        grid_columns, locations, multifilterproxy_model, packages, renderers,
                         scene_captures, notes)
 from amaze.dialogs import code_dialog
 from amaze.helpers import helpers, hostos, ui_helpers
@@ -715,8 +715,8 @@ class MaterialSection(AssetSection):
         st = self.stack()
         for index in (indexes if st is not None else ()):
             renderer = st.model.assets[st.proxy.mapToSource(index).row()].renderer
-            if material.normalized_renderer(renderer) in wanted:
-                found.add(material.normalized_renderer(renderer))
+            if renderers.normalized(renderer) in wanted:
+                found.add(renderers.normalized(renderer))
             if found == wanted:
                 break
         self._held = (indexes, frozenset(found))
@@ -730,12 +730,13 @@ class MaterialSection(AssetSection):
         """What the selection can BECOME: a child is live when a held material converts to it here."""
         held = self._sources_held(indexes)
         return tuple(
-            (material.shown_renderer(target), target, material.renderer_icon(target),
-             any(conversion_engine.can_convert(source, target) for source in held))
-            for target in conversion_engine.targets())
+            (renderer.label, renderer.key, renderer.icon,
+             any(conversion_engine.can_convert(source, renderer.key) for source in held))
+            for renderer in renderers.offered(self.panel.prefs)
+            if renderer.key in conversion_engine.targets())
 
     def menu_convert_to(self, indexes, current, payload=None) -> None:
-        self.panel.convert_selected(payload or "Karma")
+        self.panel.convert_selected(payload or renderers.HUB.key)
 
     library_model_attrs = ("material_model", "category_model")
     model_attr = "material_model"
@@ -747,20 +748,13 @@ class MaterialSection(AssetSection):
     tile_badges = ("favourite", "versions", "comment")
     filter_tooltip = "Show materials for one renderer."
 
-    RENDERER_PREFS = (    # (stored renderer value, the preference offering it); shown via material.shown_renderer
-        ("Karma", "renderer_matx_enabled"),
-        ("Redshift", "renderer_redshift_enabled"),
-        ("Octane", "renderer_octane_enabled"),
-    )
     FILTER_ALL_ICON = "filter_all"
 
     def filter_entries(self) -> tuple:
-        prefs = self.panel.prefs    # the only section whose entries are not a constant: a renderer switched off in Preferences is not offered here. Rebuilt rather than shown and hidden, so there is one mechanism, and the panel's own fallback to All covers a remembered choice no longer on offer, in every section rather than only this one
+        """Rebuilt, never hidden: the panel falls back to All for a choice no longer offered."""
         return (FilterEntry(self.ALL_ID, self.ALL_LABEL, None, self.FILTER_ALL_ICON),) + tuple(
-            FilterEntry(stored, material.shown_renderer(stored), stored,
-                        material.renderer_icon(stored))
-            for stored, flag in self.RENDERER_PREFS if getattr(prefs, flag, False)
-        )
+            FilterEntry(renderer.key, renderer.label, renderer.key, renderer.icon)
+            for renderer in renderers.offered(self.panel.prefs))
 
     def double_click(self, index) -> None:
         self.panel.click_on_row(self, index)
@@ -1666,20 +1660,21 @@ class OnlineContext(Section):
 
     def import_targets(self, indexes, current) -> tuple:
         """The renderer the import BUILDS AS - drawn C06a/C06b; a row greys without its plugin."""
-        hub = conversion_engine.HUB
+        hub = renderers.HUB.key
         return tuple(
-            (material.shown_renderer(target), target, material.renderer_icon(target),
-             target == hub or conversion_engine.can_convert(hub, target))
-            for target in conversion_engine.targets())
+            (renderer.label, renderer.key, renderer.icon,
+             renderer.key == hub or conversion_engine.can_convert(hub, renderer.key))
+            for renderer in renderers.offered(self.panel.prefs)
+            if renderer.key in conversion_engine.targets())
 
     def menu_import_to_library(self, indexes, current, payload=None) -> None:
         self.panel._import_online_records(self._records(indexes),
-                                          renderer=payload or "Karma")
+                                          renderer=payload or renderers.HUB.key)
 
     def menu_import_to_scene(self, indexes, current, payload=None) -> None:
         with helpers.preserving_selection_and_current():    # same wrapper as menu_copy_to: a menu import must not move the artist's selection, current node or view
             self.panel._import_online_records_to_scene(
-                self._records(indexes), renderer=payload or "Karma")
+                self._records(indexes), renderer=payload or renderers.HUB.key)
 
     def selection_is_amaze_packages(self, indexes, current) -> bool:
         """Every selected record is an amazepkg - Restore means nothing for a material source."""
@@ -1943,11 +1938,6 @@ def save_guess(keys, nodes, prefer: str = "") -> str:
 def all_sections() -> tuple:
     """((key, label), ...) in tab order - the ONE source everything that lists the sections reads: the tab strip, the Show/Hide toggles, and the pref that persists them."""
     return tuple((cls.key, cls.label) for cls in SECTION_CLASSES)
-
-
-def renderer_prefs() -> tuple:
-    """((label, preference-attribute), ...) - the ONE renderer table, beside all_sections() and for the same reason. Every reader comes here: add a renderer to this tuple alone and the Filter menu offers it while Preferences has no switch to hide it; add it to Preferences alone and the switch toggles a preference no menu reads; add it to both but not to enable_renderer_on_add and the first material saved of that renderer is invisible in the tab it was saved from, the exact defect that function exists to prevent."""
-    return MaterialSection.RENDERER_PREFS
 
 
 def build_sections(panel) -> dict:

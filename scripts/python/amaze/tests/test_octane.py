@@ -20,7 +20,7 @@ sys.path.insert(
 
 from amaze import preview  # noqa: E402
 from amaze.core import library as library_mod  # noqa: E402
-from amaze.core import material  # noqa: E402
+from amaze.core import material, renderers  # noqa: E402
 from amaze.prefs import persistence  # noqa: E402
 from amaze.prefs import prefs as prefs_mod  # noqa: E402
 from amaze.render import material_converter  # noqa: E402
@@ -118,7 +118,7 @@ class TheOctaneSamplesSetting(unittest.TestCase):
             persistence.SHARED_KEYS.get("octane_rendersamples"))
         p = prefs_mod.Prefs()
         self.assertEqual(256, p.octane_rendersamples)
-        low, high = prefs_mod.OCTANE_SAMPLES_RANGE
+        low, high = renderers.OCTANE.samples_range
         p.octane_rendersamples = high + 500
         self.assertEqual(high, p.octane_rendersamples)
         p.octane_rendersamples = 0

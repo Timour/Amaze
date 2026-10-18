@@ -470,10 +470,10 @@ class TheWholeLoopThroughTheModelTest(unittest.TestCase):
 
     def setUp(self):
         from amaze.core import library as library_mod
-        from amaze.core import material as material_mod
+        from amaze.core import renderers
         from amaze.render import nodes as nodes_mod
         self.nodes = nodes_mod
-        self.material = material_mod
+        self.renderers = renderers
         self.prefs = test_support.fixture_prefs(self)
         test_support.reset_database_singletons()
         self.addCleanup(test_support.reset_database_singletons)
@@ -485,7 +485,7 @@ class TheWholeLoopThroughTheModelTest(unittest.TestCase):
 
     def _karma_row(self):
         return next(r for r in range(self.model.rowCount())
-                    if self.material.is_karma_renderer(
+                    if self.renderers.is_karma(
                         self.model.assets[r].renderer))
 
     def test_parameter_only_update_creates_versions(self):

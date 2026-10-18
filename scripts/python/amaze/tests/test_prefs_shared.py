@@ -17,7 +17,7 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze.core import keyed_store           # noqa: E402
+from amaze.core import keyed_store, renderers  # noqa: E402
 from amaze.prefs import prefs as prefs_mod   # noqa: E402
 from amaze.tests import test_support         # noqa: E402,F401
 
@@ -302,6 +302,8 @@ class TheTestLibrarySwitchKeepsEachLibrarysSettings(SharedPrefsCase):
         from amaze.prefs import persistence
         reread = {prop for _row, prop in self.dialog._SHARED_ROWS}
         reread |= set(self.dialog._renderer_boxes)
+        reread |= {renderer.samples for renderer in renderers.ALL
+                   if renderer.key in self.dialog._samples_spins}
         shared = {prop for prop, _attr, _default
                   in persistence.SHARED_KEYS.values() if prop}
         self.assertEqual(

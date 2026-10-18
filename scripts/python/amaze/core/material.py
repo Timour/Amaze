@@ -6,6 +6,8 @@ import re
 import uuid
 import datetime
 
+from amaze.core import renderers
+
 REDSHIFT_TERMINALS = ("redshift_material", "redshift_usd_material")
 
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"    # the stored `date`, seconds always present
@@ -70,38 +72,6 @@ def payload_path(preferences, asset_id, suffix: str) -> str:
     from amaze.helpers import hostos
     assets = os.path.join(preferences.dir, preferences.asset_dir)
     return hostos.contained_join(assets, str(asset_id) + suffix)
-
-
-KARMA_RENDERERS = ("Karma", "MaterialX", "MtlX")
-
-
-def is_karma_renderer(renderer) -> bool:
-    """True for any Karma-family label - Karma, the legacy "MaterialX" and the brief "MtlX" are ONE renderer for capability, routing and thumbnails (overview.md ▸ Renderer terms), and one predicate keeps a new label from splitting them again."""
-    name = str(renderer or "")
-    return any(known in name for known in KARMA_RENDERERS)
-
-
-def normalized_renderer(name) -> str:
-    """The display/matching name for a STORED renderer string - every consumer must map through here or filters and counts drift apart."""
-    name = str(name or "")
-    return "Karma" if name in ("MaterialX", "MtlX") else name
-
-
-KARMA_SHOWN = "MaterialX"    # what a person reads for the Karma family; records keep "Karma"
-
-
-def shown_renderer(name) -> str:
-    """The name shown for a stored renderer: the Karma family reads MaterialX, others as stored."""
-    return KARMA_SHOWN if is_karma_renderer(name) else str(name or "")
-
-
-RENDERER_ICONS = {"Karma": "filter_materialx", "Redshift": "filter_redshift",
-                  "Octane": "filter_octane"}    # ▸ C13: ui/<name>.svg, the one table every menu reads
-
-
-def renderer_icon(name) -> str:
-    """The icon a stored renderer wears in every menu that lists it; "" for one without."""
-    return RENDERER_ICONS.get("Karma" if is_karma_renderer(name) else str(name or ""), "")
 
 
 class Material:
@@ -285,7 +255,7 @@ class Material:
     @property
     def renderer(self) -> str:
         """The stored renderer, normalized for display and matching."""
-        return normalized_renderer(self._renderer)
+        return renderers.normalized(self._renderer)
 
     @renderer.setter
     def renderer(self, value: str) -> None:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hou
 
-from amaze.core import debug
+from amaze.core import debug, renderers
 from amaze.helpers import helpers
 from amaze.render import material_converter, nodes
 from amaze.render.material_conversion import engine, materialx, octane_reader
@@ -239,7 +239,7 @@ def upgrade_to_solaris_builder(container: hou.Node) -> hou.Node:
 class OctaneAPI(engine.RendererAPI):
     """Writes by copying MaterialX into Octane's builder, which renders MaterialX itself."""
 
-    name = "Octane"
+    name = renderers.OCTANE.key
 
     def available(self) -> bool:
         return material_converter._octane_type_available()

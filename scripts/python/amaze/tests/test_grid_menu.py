@@ -18,7 +18,7 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze.core import file_library, material  # noqa: E402
+from amaze.core import file_library, renderers  # noqa: E402
 from amaze.helpers import ui_helpers  # noqa: E402
 from amaze.panel import grid, sections  # noqa: E402
 from amaze.render.material_conversion import engine as conversion_engine  # noqa: E402
@@ -604,8 +604,25 @@ class EveryRendererRowWEARSTheFilterMenusIcon(unittest.TestCase):
                             icon_image(rows[renderer]),
                             "%s ▸ %s is not the Filter menu's icon" % (name, renderer))
 
+    def test_a_renderer_switched_off_is_offered_by_no_menu(self):
+        """Hidden in Preferences ▸ Show/Hide: gone from Filter, Convert to and both Imports."""
+        panel = self.panel
+        for hidden in renderers.ALL:
+            with self.subTest(hidden=hidden.label), self._everything_offered() as stack:
+                stack.callback(setattr, panel.prefs, hidden.switch,
+                               getattr(panel.prefs, hidden.switch))
+                setattr(panel.prefs, hidden.switch, False)
+                filter_menu, material_menu, online_menu = self._build()
+                self.assertNotIn(hidden.label, [act.text() for act in filter_menu.actions()])
+                for menu, name in ((material_menu, "Convert to"),
+                                   (online_menu, "Import to Materials"),
+                                   (online_menu, "Import to Scene")):
+                    rows = self._rows(menu, name)
+                    self.assertTrue(rows, "premise: %s still lists the others" % name)
+                    self.assertNotIn(hidden.label, rows, "%s offers a hidden renderer" % name)
+
     def test_one_engine_draws_them_from_one_table(self):
-        """material.renderer_icon names the icon; ui_helpers.menu_icon draws every menu row's."""
+        """renderers.icon names the icon; ui_helpers.menu_icon draws every menu row's."""
         drawn = []
         engine = ui_helpers.menu_icon
 
@@ -626,14 +643,14 @@ class EveryRendererRowWEARSTheFilterMenusIcon(unittest.TestCase):
                 kept = build()
                 for stored in ("Karma", "Redshift", "Octane"):
                     with self.subTest(build=build, renderer=stored):
-                        self.assertEqual(times, drawn.count(material.renderer_icon(stored)))
+                        self.assertEqual(times, drawn.count(renderers.icon(stored)))
                 del kept
         owners = [os.path.relpath(os.path.join(root, name), PACKAGE)
                   for root, _dirs, files in os.walk(PACKAGE)
                   if os.sep + "tests" not in root
                   for name in files if name.endswith(".py")
                   and "filter_redshift" in open(os.path.join(root, name)).read()]
-        self.assertEqual([os.path.join("core", "material.py")], owners,
+        self.assertEqual([os.path.join("core", "renderers.py")], owners,
                          "the renderer icon table has more than one home")
 
 

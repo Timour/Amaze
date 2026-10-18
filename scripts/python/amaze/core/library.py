@@ -12,7 +12,7 @@ import hou
 from amaze.core import debug, library_policy
 from amaze.core import grid_columns
 from amaze.core import locations
-from amaze.core import material, database, thumbnails, tile_icons
+from amaze.core import material, database, renderers, thumbnails, tile_icons
 from amaze.core import versions
 from amaze.core import quarantine
 from amaze.helpers import helpers
@@ -1476,7 +1476,7 @@ class MaterialLibrary(AssetLibrary):
 
     def renderer_label(self, asset) -> str:
         """'USD ' for a USD-builder type, ':<shader>' where a table names it: `USD Redshift:PBR`."""
-        renderer = material.shown_renderer(str(asset.renderer or "").strip())
+        renderer = renderers.label(str(asset.renderer or "").strip())
         if not renderer:
             return ""
         label = ("USD " + renderer) if self.is_usd_material(asset) else renderer

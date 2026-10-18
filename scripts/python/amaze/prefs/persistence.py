@@ -2,7 +2,7 @@
 
 import os
 
-from amaze.core import debug, keyed_store, users
+from amaze.core import debug, keyed_store, renderers, users
 from amaze.helpers import hostos
 
 
@@ -84,17 +84,9 @@ def _through_setter(target, name, value, default):
         setattr(target, name, default)
 
 
-RENDERER_DEFAULTS = {  # the renderers a library shows before anyone chooses; SHARED_KEYS carries them
-    "_renderer_matx_enabled": True,
-    "_renderer_redshift_enabled": True,
-    "_renderer_octane_enabled": True,
-}
+RENDERER_DEFAULTS = {"_" + r.switch: True for r in renderers.ALL}  # every renderer offered at first
 
-RENDERER_KEYS = {  # attribute -> the key it is stored under, which is a contract with data on disk and may not be tidied to match
-    "_renderer_matx_enabled": "renderer_materialx",
-    "_renderer_redshift_enabled": "renderer_redshift",
-    "_renderer_octane_enabled": "renderer_octane",
-}  # `renderer_mantra` was the fourth until 2026-08-14; nothing migrates it away and nothing may re-declare that spelling
+RENDERER_KEYS = {"_" + r.switch: r.switch_stored for r in renderers.ALL}  # data on disk, never tidied
 
 IMG_SUBDIR = "img/"  # the two folders a library needs ▸p/library-creation-doors
 ASSET_SUBDIR = "mat/"
@@ -105,11 +97,6 @@ SHARED_KEYS = {  # truth in the library's prefs.json: stored key -> (property or
     "img_dir": (None, "_img_dir", IMG_SUBDIR),
     "asset_dir": (None, "_asset_dir", ASSET_SUBDIR),
     "rendersize": ("rendersize", "_rendersize", 256),
-    "rendersamples": ("rendersamples", "_rendersamples", 256),
-    "karma_rendersamples":
-        ("karma_rendersamples", "_karma_rendersamples", 9),
-    "octane_rendersamples":
-        ("octane_rendersamples", "_octane_rendersamples", 256),
     "render_on_import": ("render_on_import", "_render_on_import", 1),
     "matx_resolution": ("matx_resolution", "_matx_resolution", "2k"),
     "ram_cache_mb": ("ram_cache_mb", "_ram_cache_mb", 256),
@@ -127,6 +114,8 @@ SHARED_KEYS = {  # truth in the library's prefs.json: stored key -> (property or
 SHARED_KEYS.update({  # every walker and __init__ read this one table ▸p/prefs-defaults
     stored: (attr[1:], attr, RENDERER_DEFAULTS[attr])
     for attr, stored in RENDERER_KEYS.items()})
+SHARED_KEYS.update({r.samples: (r.samples, "_" + r.samples, r.samples_default)
+                    for r in renderers.ALL})
 
 _INTRODUCED_SECTIONS = ("file",)  # sections younger than settings: absent from a saved list without its seen flag means the list predates the section, not a deliberate OFF
 

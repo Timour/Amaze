@@ -22,9 +22,8 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze.core import file_library  # noqa: E402
+from amaze.core import file_library, renderers  # noqa: E402
 from amaze.helpers import hostos  # noqa: E402
-from amaze.panel import sections  # noqa: E402
 from amaze.prefs import prefs as prefs_mod  # noqa: E402
 from amaze.tests import test_support  # noqa: E402,F401
 
@@ -53,17 +52,18 @@ def calls(relative, func_name, callee) -> bool:
 
 
 class TheRendererTableIsWrittenOnce(unittest.TestCase):
-    """ONE renderer table, read by the Filter menu, the Preferences switches and `enable_renderer_on_add` alike."""
+    """ONE renderer table, `core/renderers.py`: every preference, switch and menu reads it."""
 
-    def test_sections_exports_it(self):
-        table = sections.renderer_prefs()
-        self.assertTrue(table, "the renderer table is empty")
-        for label, attr in table:
-            self.assertTrue(hasattr(prefs_mod.Prefs, attr),
-                            "%s (%s) names no preference" % (label, attr))
+    def test_each_renderer_has_its_preferences(self):
+        self.assertTrue(renderers.ALL, "the renderer table is empty")
+        for renderer in renderers.ALL:
+            for attr in (renderer.switch, renderer.samples):
+                with self.subTest(renderer=renderer.key, attr=attr):
+                    self.assertTrue(hasattr(prefs_mod.Prefs, attr),
+                                    "%s names no preference %s" % (renderer.key, attr))
 
     def test_every_renderer_can_be_switched_on_by_saving_one(self):
-        """The behaviour the third copy exists for."""
+        """A first save of a renderer switched off would be invisible in the tab it came from."""
         class Panel:
             prefs = prefs_mod.Prefs()
 
@@ -73,15 +73,33 @@ class TheRendererTableIsWrittenOnce(unittest.TestCase):
         from amaze.panel import panel as panel_mod
         fake = Panel()
         fake.prefs.save = lambda: None
-        for label, attr in sections.renderer_prefs():
-            setattr(fake.prefs, attr, False)
-        for label, attr in sections.renderer_prefs():
-            panel_mod.AmazePanel.enable_renderer_on_add(fake, label)
-            self.assertTrue(
-                getattr(fake.prefs, attr),
-                "saving a %s material did not switch %s on, so the "
-                "material would be invisible in the tab it was saved "
-                "from" % (label, label))
+        for renderer in renderers.ALL:
+            setattr(fake.prefs, renderer.switch, False)
+        for renderer in renderers.ALL:
+            for stored in (renderer.key,) + renderer.aliases:
+                with self.subTest(stored=stored):
+                    setattr(fake.prefs, renderer.switch, False)
+                    panel_mod.AmazePanel.enable_renderer_on_add(fake, stored)
+                    self.assertTrue(getattr(fake.prefs, renderer.switch),
+                                    "saving a %s material did not switch it on" % stored)
+
+    def test_no_other_module_spells_a_renderer_preference(self):
+        """A switch or sample count named outside the table is a second home for a renderer."""
+        spelled = []
+        for root, _dirs, files in os.walk(PACKAGE):
+            if os.sep + "tests" in root:
+                continue
+            for name in files:
+                path = os.path.join(root, name)
+                if not name.endswith(".py") or path.endswith(os.path.join("core", "renderers.py")):
+                    continue
+                with open(path, encoding="utf-8") as handle:
+                    source = handle.read()
+                for renderer in renderers.ALL:
+                    for attr in (renderer.switch, renderer.switch_stored, renderer.icon):
+                        if '"%s"' % attr in source or "'%s'" % attr in source:
+                            spelled.append("%s: %s" % (os.path.relpath(path, PACKAGE), attr))
+        self.assertEqual([], spelled, "a renderer fact is spelled outside core/renderers.py")
 
 
 class RendererDefaultsAgree(unittest.TestCase):
@@ -109,8 +127,7 @@ class RendererDefaultsAgree(unittest.TestCase):
         p = prefs_mod.Prefs()
         p.path = empty
         p.load()
-        offered = [label for label, attr in sections.renderer_prefs()
-                   if getattr(p, attr, False)]
+        offered = [renderer.key for renderer in renderers.offered(p)]
         self.assertIn("Karma", offered)
         self.assertIn("Redshift", offered)
 
@@ -220,7 +237,7 @@ class LoadNeverRaisesAndAlwaysValidates(unittest.TestCase):
         dlg = prefs_dialog.PrefsDialog(p, panel=None)
         self.addCleanup(dlg.deleteLater)
         self.assertEqual(256, dlg.line_rendersize.value())
-        self.assertEqual(256, dlg.line_rendersamples.value())
+        self.assertEqual(256, dlg._samples_spins["Redshift"].value())
         self.assertTrue(dlg.cbx_render_on_import.isChecked())
 
     def test_the_render_setters_cast_and_clamp_to_the_rows_ranges(self):
@@ -249,9 +266,9 @@ class LoadNeverRaisesAndAlwaysValidates(unittest.TestCase):
         self.addCleanup(dlg.deleteLater)
         for row, name, scale in (
                 (dlg.line_rendersize, "rendersize", 1),
-                (dlg.line_rendersamples, "rendersamples", 1),
-                (dlg.spin_karma_samples, "karma_rendersamples", 1),
-                (dlg.spin_octane_samples, "octane_rendersamples", 1),
+                (dlg._samples_spins["Redshift"], "rendersamples", 1),
+                (dlg._samples_spins["Karma"], "karma_rendersamples", 1),
+                (dlg._samples_spins["Octane"], "octane_rendersamples", 1),
                 (dlg.spin_ram_cache, "ram_cache_mb", 1),
                 (dlg.spin_parallel, "texture_parallel_conversions", 1),
                 (dlg.spin_matx_parallel, "matx_parallel_downloads", 1),
@@ -263,6 +280,24 @@ class LoadNeverRaisesAndAlwaysValidates(unittest.TestCase):
                     self.assertEqual(end, round(getattr(p, name) * scale),
                                      "the setter keeps a value its row "
                                      "cannot show")
+
+    def test_a_hidden_renderer_has_no_samples_row(self):
+        """Its Show/Hide switch hides the Render tab's row, and brings it back."""
+        from amaze.dialogs import prefs_dialog
+        from amaze.tests import test_support
+        p = test_support.fixture_prefs(self)
+        for renderer in renderers.ALL:
+            setattr(p, renderer.switch, renderer is not renderers.OCTANE)
+        dlg = prefs_dialog.PrefsDialog(p, panel=None)
+        self.addCleanup(dlg.deleteLater)
+        form, row = dlg._samples_rows[renderers.OCTANE.key]
+        self.assertFalse(form.isRowVisible(row), "a hidden renderer kept its samples row")
+        for renderer in (renderers.KARMA, renderers.REDSHIFT):
+            shown_form, shown_row = dlg._samples_rows[renderer.key]
+            self.assertTrue(shown_form.isRowVisible(shown_row))
+        dlg._renderer_boxes[renderers.OCTANE.switch].setChecked(True)
+        self.assertTrue(form.isRowVisible(row), "switching it on did not bring the row back")
+        self.assertTrue(p.renderer_octane_enabled)
 
 
 class ThePerUserBlocksRoundTripAndMerge(unittest.TestCase):

@@ -12,7 +12,7 @@ from PySide6.QtGui import QCloseEvent
 import amaze
 from amaze import amazetheme
 from amaze import branding
-from amaze.core import (debug, keyed_store, library_policy, material,
+from amaze.core import (debug, keyed_store, library_policy, renderers,
                         texture_library, users)
 from amaze.dialogs import base_dialog, user_dialog
 from amaze.helpers import hostos
@@ -373,36 +373,19 @@ class PrefsDialog(base_dialog.AssetDialog):
             tooltips.PREFS_RENDER_SIZE))
         form.addRow(self._label("RenderSize"), self._field_slider_row(
             self.line_rendersize, *prefs_mod.RENDERSIZE_RANGE))
-        self.line_rendersamples = QtWidgets.QSpinBox()   # the Redshift dial (its ROP's UnifiedMaxSamples); Karma is CPU and needs its own far smaller scale
-        self.line_rendersamples.setRange(*prefs_mod.RENDERSAMPLES_RANGE)
-        self.line_rendersamples.setValue(self._prefs.rendersamples)
-        self.line_rendersamples.valueChanged.connect(self.set_rendersamples)
-        self.line_rendersamples.setToolTip(ui_helpers.tooltip_text(
-            tooltips.PREFS_SAMPLES_REDSHIFT))
-        form.addRow(self._label("Samples (Redshift)"),
-            self._field_slider_row(self.line_rendersamples,
-                                   *prefs_mod.RENDERSAMPLES_RANGE),
-        )
-        self.spin_karma_samples = QtWidgets.QSpinBox()
-        self.spin_karma_samples.setRange(*prefs_mod.KARMA_SAMPLES_RANGE)
-        self.spin_karma_samples.setValue(self._prefs.karma_rendersamples)
-        self.spin_karma_samples.valueChanged.connect(self.set_karma_rendersamples)
-        self.spin_karma_samples.setToolTip(ui_helpers.tooltip_text(
-            tooltips.PREFS_SAMPLES_KARMA))
-        form.addRow(self._label("Samples (Karma)"),
-            self._field_slider_row(self.spin_karma_samples,
-                                   *prefs_mod.KARMA_SAMPLES_RANGE),
-        )
-        self.spin_octane_samples = QtWidgets.QSpinBox()
-        self.spin_octane_samples.setRange(*prefs_mod.OCTANE_SAMPLES_RANGE)
-        self.spin_octane_samples.setValue(self._prefs.octane_rendersamples)
-        self.spin_octane_samples.valueChanged.connect(self.set_octane_rendersamples)
-        self.spin_octane_samples.setToolTip(ui_helpers.tooltip_text(
-            tooltips.PREFS_SAMPLES_OCTANE))
-        form.addRow(self._label("Samples (Octane)"),
-            self._field_slider_row(self.spin_octane_samples,
-                                   *prefs_mod.OCTANE_SAMPLES_RANGE),
-        )
+        self._samples_spins, self._samples_rows = {}, {}
+        for renderer in renderers.RENDER_TAB:
+            spin = QtWidgets.QSpinBox()
+            spin.setRange(*renderer.samples_range)
+            spin.setValue(getattr(self._prefs, renderer.samples))
+            spin.valueChanged.connect(
+                lambda value, attr=renderer.samples: setattr(self._prefs, attr, value))
+            spin.setToolTip(ui_helpers.tooltip_text(getattr(tooltips, renderer.samples_tip)))
+            row = self._field_slider_row(spin, *renderer.samples_range)
+            form.addRow(self._label("Samples (%s)" % renderer.engine), row)
+            self._samples_spins[renderer.key] = spin
+            self._samples_rows[renderer.key] = (form, row)
+        self._show_offered_rows()
         self.spin_ram_cache = QtWidgets.QSpinBox()
         self.spin_ram_cache.setRange(*prefs_mod.RAM_CACHE_RANGE)
         self.spin_ram_cache.setValue(self._prefs.ram_cache_mb)
@@ -474,10 +457,9 @@ class PrefsDialog(base_dialog.AssetDialog):
             self._field_slider_row(self.spin_matx_parallel,
                                    *prefs_mod.DOWNLOADS_RANGE),
         )
-        spins = (self.line_rendersize, self.line_rendersamples,
-                 self.spin_karma_samples, self.spin_octane_samples,
-                 self.spin_ram_cache, self.spin_parallel,
-                 self.spin_matx_parallel)
+        spins = ((self.line_rendersize,)
+                 + tuple(self._samples_spins[r.key] for r in renderers.RENDER_TAB)
+                 + (self.spin_ram_cache, self.spin_parallel, self.spin_matx_parallel))
         self._tab_built["D05"] = {
             "QComboBox": (self._combo_geo_shading, self._combo_geo_bg,
                           self.cbb_matx_res),
@@ -490,16 +472,14 @@ class PrefsDialog(base_dialog.AssetDialog):
         page, form = self._tab_page()
 
         self._renderer_boxes = {}
-        # the ONE table, like the section list below it
-        for label, attr in sections_module.renderer_prefs():
-            box = ui_helpers.ToggleSwitch(material.shown_renderer(label))
+        for renderer in renderers.ALL:
+            box = ui_helpers.ToggleSwitch(renderer.label)
             box.setToolTip(ui_helpers.tooltip_text(
                 tooltips.PREFS_RENDERER_SWITCH))
-            box.setChecked(bool(getattr(self._prefs, attr)))
+            box.setChecked(bool(getattr(self._prefs, renderer.switch)))
             box.toggled.connect(
-                lambda checked, a=attr: setattr(self._prefs, a, checked)
-            )
-            self._renderer_boxes[attr] = box
+                lambda checked, attr=renderer.switch: self._offer_renderer(attr, checked))
+            self._renderer_boxes[renderer.switch] = box
             form.addRow(self._label(""), box)
 
         self._add_divider(form)
@@ -948,9 +928,6 @@ class PrefsDialog(base_dialog.AssetDialog):
 
     _SHARED_ROWS = (    # (row attribute, the shared setting it shows); renderer switches ride beside
         ("line_rendersize", "rendersize"),
-        ("line_rendersamples", "rendersamples"),
-        ("spin_karma_samples", "karma_rendersamples"),
-        ("spin_octane_samples", "octane_rendersamples"),
         ("spin_ram_cache", "ram_cache_mb"),
         ("spin_parallel", "texture_parallel_conversions"),
         ("spin_matx_parallel", "matx_parallel_downloads"),
@@ -976,6 +953,8 @@ class PrefsDialog(base_dialog.AssetDialog):
             yield getattr(self, name), getattr(prefs, prop)
         for attr, box in self._renderer_boxes.items():
             yield box, getattr(prefs, attr)
+        for renderer in renderers.RENDER_TAB:
+            yield self._samples_spins[renderer.key], getattr(prefs, renderer.samples)
         for key, box in self._section_boxes.items():
             yield box, key in prefs.enabled_sections
         yield self.spin_scroll_speed, round(prefs.scroll_speed * 100)
@@ -989,6 +968,7 @@ class PrefsDialog(base_dialog.AssetDialog):
             for shown in (widget, self._sliders.get(widget)):
                 if shown is not None:
                     _show_quietly(shown, value)
+        self._show_offered_rows()
         if self._prefs.icon_line_weight != drawn_weight:
             self._recompose_tile_icons()
 
@@ -1153,8 +1133,16 @@ class PrefsDialog(base_dialog.AssetDialog):
         """RenderSize is ALSO the resolution texture and geometry thumbnails generate at; their caches are keyed by it."""
         self._prefs.rendersize = self.line_rendersize.value()
 
-    def set_rendersamples(self):
-        self._prefs.rendersamples = self.line_rendersamples.value()
+    def _offer_renderer(self, switch, checked) -> None:
+        """A Show/Hide switch: the preference, and that renderer's samples row with it."""
+        setattr(self._prefs, switch, checked)
+        self._show_offered_rows()
+
+    def _show_offered_rows(self) -> None:
+        """A renderer hidden in Show/Hide has no samples row on the Render tab either."""
+        offered = {renderer.key for renderer in renderers.offered(self._prefs)}
+        for key, (form, row) in getattr(self, "_samples_rows", {}).items():
+            form.setRowVisible(row, key in offered)
 
     def set_scroll_speed(self, value: int) -> None:
         self._prefs.scroll_speed = value / 100.0
@@ -1197,13 +1185,6 @@ class PrefsDialog(base_dialog.AssetDialog):
     def set_step_size(self, checked: bool) -> None:
         self._prefs.step_size = checked
         self._prefs.save()
-
-    def set_karma_rendersamples(self):
-        """Set the Karma-specific thumbnail sample count"""
-        self._prefs.karma_rendersamples = self.spin_karma_samples.value()
-
-    def set_octane_rendersamples(self):
-        self._prefs.octane_rendersamples = self.spin_octane_samples.value()
 
     def set_render_on_import(self):
         self._prefs.render_on_import = int(self.cbx_render_on_import.isChecked())

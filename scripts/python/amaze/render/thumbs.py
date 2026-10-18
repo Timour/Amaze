@@ -6,6 +6,7 @@ import hou
 
 from amaze.core import debug
 from amaze.core import material
+from amaze.core import renderers
 import amaze
 from amaze.core import tile_icons
 from amaze.render import husk_job
@@ -20,7 +21,7 @@ from amaze.helpers import helpers, hostos
 
 def usd_renderer(mat) -> str:
     """`Karma` or `Octane` for a material husk renders in the background, "" for the rest."""
-    if material.is_karma_renderer(mat.renderer):
+    if renderers.is_karma(mat.renderer):
         return "Karma"
     if "Octane" in str(mat.renderer):
         return "Octane"

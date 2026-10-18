@@ -680,8 +680,10 @@ Downloads** for the online sources.
 
 <img src="docs/images/prefs_showhide.png" width="440">
 
-Which renderers appear in the [Filter](#the-panel-at-a-glance) menu,
-and which sections appear at all.
+Which renderers Amaze offers, and which sections appear at all. A
+renderer switched off is gone from the [Filter](#the-panel-at-a-glance)
+menu, Convert to, Import to Materials and Import to Scene, and its
+Samples row leaves the Render tab.
 
 ### Look
 

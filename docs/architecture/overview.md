@@ -181,7 +181,7 @@ undeclared.
 | `verb` | NAME of a method on the section, called as `verb(indexes, current, payload)` |
 | `needs` | what makes the row LIVE — `any` (the default), `one`, `always`, or the name of a fact — and it greys, never hides |
 | `shown` | the fact deciding whether the row EXISTS at all |
-| `children` | a method returning `((label, payload, icon, live[, checked]), ...)`; the icon is a hex colour, painted as a chip at `amazetheme.MENU_CHIP`, a `ui/` icon name, drawn by `ui_helpers.menu_icon` as the Filter menu's are, or empty. A renderer's icon is named once, in `material.renderer_icon` |
+| `children` | a method returning `((label, payload, icon, live[, checked]), ...)`; the icon is a hex colour, painted as a chip at `amazetheme.MENU_CHIP`, a `ui/` icon name, drawn by `ui_helpers.menu_icon` as the Filter menu's are, or empty. A renderer's icon is named once, in `core/renderers.py` |
 | `count_suffix` | appends ` (N)` on a multi-selection |
 | `checkable` | the fact giving the CURRENT state, making it a tick-box whose verb is handed the state the user asked for |
 
@@ -567,7 +567,8 @@ the container, the wiring, activation and verification; each input is an
   and Karma → Redshift), and `octane.py` (MaterialX copied into Octane's own
   builder, which renders MaterialX; the classic container rebuilt for
   Solaris) reading through `octane_reader.py` (Octane's nodes → MaterialX).
-  A new renderer is a new module named in `engine.API_MODULES`. The callers:
+  A new renderer is a new module here and one entry in `core/renderers.py`,
+  which names the module and the order every menu lists it. The callers:
   `MaterialLibrary.convert(index, target)`, the Convert to menu, the online
   import's `matx_import.to_renderer`, and `NodeHandler.load_items_file` on
   the way into a LOP library. `ConversionReport` lives in `report.py`.
@@ -1017,8 +1018,15 @@ an unknown file might be the user's and a leftover scratch never is.
   in the About/License credit, not the renderer tag).
 - **Karma-family** — Karma plus the legacy stored labels MaterialX and
   MtlX, treated identically for routing, thumbnails and capability, and
-  normalized to "Karma" everywhere via `material.normalized_renderer()`.
-  One predicate: `material.is_karma_renderer()`.
+  normalized to "Karma" everywhere via `renderers.normalized()`.
+  One predicate: `renderers.is_karma()`.
+- **The renderer table** — `core/renderers.py` holds every renderer once:
+  the key libraries store, the name every menu shows, its icon, its
+  converter module, its Preferences ▸ Show/Hide switch (and the key that
+  switch is stored under) and its Render tab samples row. A switch turned
+  off hides that renderer from the Filter, Convert to and both Import
+  menus and from the Render tab (`renderers.offered`); renaming one is its
+  `label`; the `key` never changes, being data on disk.
 - **USD-builder** — a material that can live in a LOP/Solaris context
   (`rs_usd_material_builder`, `octane_solaris_material_builder`, and all
   Karma-family). MAT-only otherwise. Its tile reads `USD Redshift` or
@@ -1072,7 +1080,8 @@ render/nodes.py           MATERIAL ENGINE (build_karma_material) + save/import
 core/debug.py             DEBUG ENGINE
 core/library.py           Library Model (Materials) + base for Cop/Code
 core/model_registry.py    the ONE source-model set per library; panels are views
-core/material.py          Material record + is_karma_renderer()
+core/material.py          Material record
+core/renderers.py         the renderer table: names, icons, switches, samples, converters
 core/category.py          Categories Model + Sidebar Proxy
 core/multifilterproxy_model.py   Filter Proxy
 core/matx_translate.py    Adapter: online .mtlx -> clean VOP

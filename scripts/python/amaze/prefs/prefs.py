@@ -8,6 +8,7 @@ from amaze import branding
 from amaze import messages
 from amaze.core import database
 from amaze.core import debug
+from amaze.core import renderers
 from amaze.helpers import hostos
 from amaze.prefs.persistence import (
     ASSET_SUBDIR,
@@ -23,9 +24,6 @@ from amaze.prefs.persistence import (
 TEST_LIB_SUBDIR = "lib"  # the library inside a test folder, named once because the dialog, the seeder and the overlay all have to agree. A `cache/` left in an older test folder is inert ▸ `cache_dir`
 
 RENDERSIZE_RANGE = (64, 1024)  # the setter clamps to it, and the Preferences row offers it
-RENDERSAMPLES_RANGE = (1, 1024)
-KARMA_SAMPLES_RANGE = (1, 256)
-OCTANE_SAMPLES_RANGE = (1, 1024)
 RAM_CACHE_RANGE = (64, 4096)
 CONVERSIONS_RANGE = (1, 8)
 DOWNLOADS_RANGE = (1, 16)
@@ -90,6 +88,21 @@ def seed_test_folder(folder: str) -> tuple:
     return (True, ", ".join(made) if made else "already complete")
 
 
+def _renderer_settings(cls):
+    """Each renderer's Show/Hide switch and sample count, as properties, from the one table."""
+    for renderer in renderers.ALL:
+        switch, samples = "_" + renderer.switch, "_" + renderer.samples
+        setattr(cls, renderer.switch, property(
+            lambda self, attr=switch: getattr(self, attr),
+            lambda self, val, attr=switch: setattr(self, attr, val)))
+        setattr(cls, renderer.samples, property(
+            lambda self, attr=samples: getattr(self, attr),
+            lambda self, val, attr=samples, bounds=renderer.samples_range: setattr(
+                self, attr, _clamped(val, bounds))))
+    return cls
+
+
+@_renderer_settings
 class Prefs(_Persistence):
     """Holds and loads the Preferences. A location is ONE RECORD in the library's `locations.json` and `locations.FIELDS` defines it; the settings.json keys are the copy, not the home. Asset favourites are NOT here - every section's star goes through `locations.is_favourite`/`set_favourite`, and `material_favorites` in settings.json is a migration source `locations.migrate_asset_favourites` reads and retires."""
 
@@ -201,14 +214,6 @@ class Prefs(_Persistence):
         self._rendersize = _clamped(val, RENDERSIZE_RANGE)
 
     @property
-    def rendersamples(self) -> int:
-        return self._rendersamples
-
-    @rendersamples.setter
-    def rendersamples(self, val: int) -> None:
-        self._rendersamples = _clamped(val, RENDERSAMPLES_RANGE)
-
-    @property
     def show_categories(self) -> bool:
         return self._show_categories
 
@@ -274,14 +279,6 @@ class Prefs(_Persistence):
         return self._ext
 
     @property
-    def renderer_matx_enabled(self) -> bool:
-        return self._renderer_matx_enabled
-
-    @renderer_matx_enabled.setter
-    def renderer_matx_enabled(self, val: bool) -> None:
-        self._renderer_matx_enabled = val
-
-    @property
     def matx_resolution(self) -> str:
         """Preferred texture resolution for online MaterialX downloads - a FLOOR, not a requirement: lacking it the importer takes the next highest, else the highest below ▸ `matx_sources.pick_resolution`."""
         return self._matx_resolution
@@ -289,22 +286,6 @@ class Prefs(_Persistence):
     @matx_resolution.setter
     def matx_resolution(self, val: str) -> None:
         self._matx_resolution = str(val or "2k")
-
-    @property
-    def renderer_redshift_enabled(self) -> bool:
-        return self._renderer_redshift_enabled
-
-    @renderer_redshift_enabled.setter
-    def renderer_redshift_enabled(self, val: bool) -> None:
-        self._renderer_redshift_enabled = val
-
-    @property
-    def renderer_octane_enabled(self) -> bool:
-        return self._renderer_octane_enabled
-
-    @renderer_octane_enabled.setter
-    def renderer_octane_enabled(self, val: bool) -> None:
-        self._renderer_octane_enabled = val
 
 
     @property
@@ -592,24 +573,6 @@ class Prefs(_Persistence):
     @texture_parallel_conversions.setter
     def texture_parallel_conversions(self, val: int) -> None:
         self._texture_parallel_conversions = _clamped(val, CONVERSIONS_RANGE)
-
-    @property
-    def karma_rendersamples(self) -> int:
-        """Karma CPU's samples per pixel, apart from `rendersamples`, which is the Redshift dial."""
-        return self._karma_rendersamples
-
-    @karma_rendersamples.setter
-    def karma_rendersamples(self, val: int) -> None:
-        self._karma_rendersamples = _clamped(val, KARMA_SAMPLES_RANGE)
-
-    @property
-    def octane_rendersamples(self) -> int:
-        """Octane path tracing's sample cap, its own dial like Karma's."""
-        return self._octane_rendersamples
-
-    @octane_rendersamples.setter
-    def octane_rendersamples(self, val: int) -> None:
-        self._octane_rendersamples = _clamped(val, OCTANE_SAMPLES_RANGE)
 
     @property
     def scroll_speed(self) -> float:

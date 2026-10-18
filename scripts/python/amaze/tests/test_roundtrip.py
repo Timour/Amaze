@@ -22,7 +22,7 @@ import shutil  # noqa: E402
 import tempfile  # noqa: E402
 
 from amaze.core import library as library_mod  # noqa: E402
-from amaze.core import material  # noqa: E402
+from amaze.core import material, renderers  # noqa: E402
 from amaze.helpers import hostos  # noqa: E402
 from amaze.render import nodes  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
@@ -235,7 +235,7 @@ class TestRoundTrip(unittest.TestCase):
     def _failing_lop_import(self, stage):
         """Import a Karma asset whose `.mat` is damaged into `stage`; answers the import's ok."""
         asset = next(a for a in self.model.assets
-                     if material.is_karma_renderer(a.renderer))
+                     if renderers.is_karma(a.renderer))
         payload = material.payload_path(self.prefs, asset.mat_id,
                                         self.prefs.ext)
         with open(payload, "w", encoding="utf-8") as handle:
@@ -266,7 +266,7 @@ class TestRoundTrip(unittest.TestCase):
 
     def _karma_asset(self):
         return next(a for a in self.model.assets
-                    if material.is_karma_renderer(a.renderer))
+                    if renderers.is_karma(a.renderer))
 
     def _assert_refused_plainly(self, handler, stage):
         """The staging failure answers the plain sentence naming the material, never a raise."""
@@ -788,8 +788,8 @@ class UpdateExistingIsGuardedAgainstTheOtherSessionTest(unittest.TestCase):
 
     def test_our_own_update_rebaselines(self):
         """A session's own write must not trip its own guard - two updates in a row from one session are ordinary use."""
-        row = next(r for r in range(self.model.rowCount())  # is_karma_renderer, not a literal match: the stored value is "MaterialX" but the renderer property NORMALISES, so matching the raw string finds nothing
-                   if material.is_karma_renderer(
+        row = next(r for r in range(self.model.rowCount())  # the stored value may be MaterialX
+                   if renderers.is_karma(
                        self.model.assets[r].renderer))
         node = _build_material(self.staging, "update_guard_probe")
         first = self.model.update_asset_content(row, node)
@@ -814,7 +814,7 @@ class AStaleCompanionGoesWhateverTheExtension(unittest.TestCase):
         staging = hou.node("/obj").createNode("matnet")
         self.addCleanup(staging.destroy)
         row = next(r for r in range(model.rowCount())
-                   if material.is_karma_renderer(model.assets[r].renderer))
+                   if renderers.is_karma(model.assets[r].renderer))
         companion = model.asset_files(model.assets[row].mat_id)["cop"]
         self.assertTrue(companion.endswith("_cop.cpio"), companion)
         with open(companion, "w", encoding="utf-8") as handle:
@@ -870,7 +870,7 @@ class StructureSignatureTest(unittest.TestCase):
     def test_staged_asset_loads_and_cleans_up_even_when_the_loader_raises(self):
         model = library_mod.MaterialLibrary(preferences=self.prefs)
         row = next(r for r in range(model.rowCount())
-                   if material.is_karma_renderer(model.assets[r].renderer))
+                   if renderers.is_karma(model.assets[r].renderer))
         mat = model.assets[row]
         obj_before = set(hou.node("/obj").children())
         signature = nodes.staged_asset(self.prefs, mat,
@@ -976,7 +976,7 @@ class ASavedAssetRebuildsInsideAScratchNetwork(unittest.TestCase):
         self.model = library_mod.MaterialLibrary(preferences=self.prefs)
         self.karma = next(
             self.model.assets[r] for r in range(self.model.rowCount())
-            if material.is_karma_renderer(self.model.assets[r].renderer))
+            if renderers.is_karma(self.model.assets[r].renderer))
         with hou.undos.disabler():
             self.scratch = hou.node("/obj").createNode("matnet")
         self.addCleanup(self.scratch.destroy)

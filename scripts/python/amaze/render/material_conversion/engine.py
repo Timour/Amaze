@@ -7,12 +7,12 @@ from typing import NamedTuple
 
 import hou
 
-from amaze.core import material
+from amaze.core import renderers
 from amaze.helpers import helpers
 from amaze.render.material_conversion.report import ConversionReport
 
-HUB = "Karma"    # MaterialX as records store it
-API_MODULES = ("materialx", "redshift", "octane")    # the order the menus list them
+HUB = renderers.HUB.key
+API_MODULES = tuple(renderer.converter for renderer in renderers.ALL)
 UNWIRED = ("the surface output is not wired, so this material renders black until "
            "it is connected by hand")
 
@@ -72,7 +72,7 @@ def targets() -> tuple:
 
 def api(renderer):
     """The API for a stored renderer value, the MaterialX family as MaterialX; None if none."""
-    return apis().get(material.normalized_renderer(renderer))
+    return apis().get(renderers.normalized(renderer))
 
 
 def has_route(source, target) -> bool:
@@ -86,13 +86,13 @@ def why_not(source, target) -> str:
     reading, writing = api(source), api(target)
     if reading is None or writing is None:
         return "%s materials have no conversion to %s" % (
-            material.shown_renderer(source), material.shown_renderer(target))
+            renderers.label(source), renderers.label(target))
     if reading is writing:
-        return "the material is already %s" % material.shown_renderer(target)
+        return "the material is already %s" % renderers.label(target)
     for each in (reading, writing):
         if not each.available():
             return ("%s isn't loaded in this Houdini, so the conversion "
-                    "can't run" % material.shown_renderer(each.name))
+                    "can't run" % renderers.label(each.name))
     return ""
 
 

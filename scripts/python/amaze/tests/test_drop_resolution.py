@@ -246,11 +246,11 @@ class MaterialNetworkGateTest(unittest.TestCase):
                          "nothing was the ruling")
 
     def test_a_matlib_release_builds_inside_it(self):
-        from amaze.core import material as material_mod
+        from amaze.core import renderers
         model = self.panel.material_model
         karma_row = next(
             (i for i, a in enumerate(model.assets)
-             if material_mod.is_karma_renderer(str(a.renderer))), None)
+             if renderers.is_karma(str(a.renderer))), None)
         self.assertIsNotNone(karma_row,
                              "premise: a Karma material exists - a "
                              "Redshift one is refused at a LOP library "

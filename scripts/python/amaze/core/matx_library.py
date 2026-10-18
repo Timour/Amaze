@@ -11,7 +11,7 @@ import hashlib
 
 from PySide6 import QtCore, QtGui
 
-from amaze.core import debug, material, matx_icon, matx_sources, thumbnails
+from amaze.core import debug, matx_icon, matx_sources, renderers, thumbnails
 from amaze.core import grid_columns
 
 PREVIEW_DIR_NAME = "matx_previews"    # a NAME only - where it lives resolves per call in preview_cache(), like CATALOGUE_NAME below
@@ -553,11 +553,11 @@ class MatxOnlineLibrary(grid_columns.GridColumnsMixin,
                 if section == "material":
                     row = ((rec.payload.get("entry") or {})
                            .get("record") or {})
-                    return material.shown_renderer(row.get("renderer")) or "Material"
+                    return renderers.label(row.get("renderer")) or "Material"
                 return SECTION_TILE_LABELS.get(section, "Amaze")
             return rec.source if rec.kind == "package" else rec.source + " (values)"
         if role == self.RendererRole:
-            return "Karma"    # what an import becomes - so the Karma renderer filter behaves the same over the online grid as over the library
+            return renderers.HUB.key    # what an import becomes, so the Filter reads it as the library
         if role == self.CategoryRole:
             return [rec.category]
         if role == self.TagRole:

@@ -1,31 +1,4 @@
-"""Generate builder sidecars for a library saved before they existed.
-
-    tools/migrate-sidecars.sh --dry-run [LIBRARY]
-    tools/migrate-sidecars.sh [LIBRARY]
-
-WHAT AND WHY. `.interface` is `asCode()` output - Python whose contract
-is that it RUNS - and importing a material used to execute it. The
-loader no longer does. For most assets nothing is lost (measured: a
-Karma or legacy `redshift_vopnet` builder comes back identical from the
-maker plus the `.mat`), but an `rs_usd_material_builder` also carries an
-OpenGL viewport-preview block that lived only in that file. This writes
-that block out as data, once, so the loader never has to run anything.
-
-THE ONE EXECUTION. To read what a legacy `.interface` holds, it has to
-be run - there is no parser, and writing one would swap a security hole
-for a dependency on a format Houdini never promised to keep stable. So
-this tool runs each file exactly once, deliberately, on a library the
-owner already trusts, and after that nothing runs it again. That is the
-whole point: the exec happens under a tool the user invoked, not on
-every import of every material forever.
-
-ADDITIVE ONLY. Nothing existing is modified or deleted. `.interface`
-files stay exactly where they are - `get_saved_node_type` still reads
-one by regex, without executing it - and the only change on disk is a
-new `<id>.builder.json` beside each pair. A backup is taken anyway,
-outside the library, because "additive" is a claim about intent and a
-backup is a fact.
-"""
+"""Writes builder sidecars for a library saved before them, running each .interface once."""
 
 from __future__ import annotations
 
@@ -53,19 +26,16 @@ sys.path.insert(
 )
 
 from amaze.core import library as library_mod  # noqa: E402
-from amaze.core import material  # noqa: E402
+from amaze.core import renderers  # noqa: E402
 from amaze.helpers import hostos  # noqa: E402
 from amaze.prefs import prefs as prefs_mod  # noqa: E402
 from amaze.render import nodes as nodes_mod  # noqa: E402
 
-#: Development backups live outside the library, so the library keeps
-#: the shape a real user's would have.
-BACKUP_ROOT = os.path.expanduser("~/Developer/backup/amaze")
+BACKUP_ROOT = os.path.expanduser("~/Developer/backup/amaze")    #: outside the library, which keeps its shape
 
 
 def configured_library() -> str:
-    """The configured library, read WITHOUT Prefs.load(), which migrates
-    a real settings file as a side effect."""
+    """The configured library, read WITHOUT Prefs.load(), which migrates a real settings file."""
     settings = os.path.join(hostos.config_root(), "settings.json")
     try:
         with open(settings, encoding="utf-8") as handle:
@@ -76,15 +46,7 @@ def configured_library() -> str:
 
 
 def back_up(library: str, ids: list, asset_dir: str) -> str:
-    """Copy every .interface this run will read, outside the library.
-
-    Named by CONTENT, not by clock. A timestamped name takes a fresh
-    full copy on every run: five runs while developing this tool left
-    five byte-identical 6.7MB directories, 34MB to hold 6.7MB of files -
-    in the very folder that exists to keep clutter out of the library.
-    With a content digest an unchanged library backs up once and every
-    later run recognises the copy it already has.
-    """
+    """Copies each .interface this run reads outside the library, named by content, held once."""
     digest = hashlib.sha256()
     sources = []
     for asset_id in sorted(ids):
@@ -109,12 +71,7 @@ def back_up(library: str, ids: list, asset_dir: str) -> str:
 
 
 def loaded_now(model, row: int) -> str:
-    """Capture the builder the CURRENT loader produces - no exec.
-
-    This is the half that makes the migration self-verifying. A sidecar
-    is only worth writing when the loader cannot already reproduce the
-    builder, and the only honest way to know that is to ask the loader.
-    """
+    """The builder the CURRENT loader produces, no exec: a sidecar is written only if it differs."""
     hou.hipFile.clear(suppress_save_prompt=True)
     before = set(hou.node("/mat").children())
     ok, _reason = model.import_asset_to_scene(model.index(row), target="mat")
@@ -127,13 +84,7 @@ def loaded_now(model, row: int) -> str:
 
 
 def capture_one(library: str, asset_dir: str, asset_id: str) -> str:
-    """Run one legacy `.interface` and capture what it built.
-
-    The exec is scoped to this function and its result is data. It runs
-    inside `hou.undos.disabler()` because createNode/destroy otherwise
-    land on the live undo stack, where one undo resurrects the throwaway
-    container and its children (#278).
-    """
+    """Runs one legacy `.interface` with undo off and captures what it built, as data."""
     path = os.path.join(library, asset_dir, asset_id + ".interface")
     if not os.path.exists(path):
         return ""
@@ -144,7 +95,7 @@ def capture_one(library: str, asset_dir: str, asset_id: str) -> str:
         hou_parent = hou.node("/obj").createNode("matnet")
         try:
             scope = {"hou": hou, "hou_parent": hou_parent}
-            exec(code, scope)  # noqa: S102 - see the module docstring
+            exec(code, scope)  # noqa: S102 - the one deliberate run, code-prose.md
             built = hou_parent.children()
             if not built:
                 return ""
@@ -214,9 +165,7 @@ def main(argv=None) -> int:
                          % (number, len(todo), asset.get("name")))
         try:
             legacy = capture_one(library, asset_dir, asset_id)
-        except Exception as exc:  # noqa: BLE001 - one bad file must not
-            # end the run; the asset simply keeps no sidecar and the
-            # loader degrades for it exactly as it does today.
+        except Exception as exc:  # noqa: BLE001 - one bad file keeps no sidecar; the run goes on
             print("  FAILED %s: %s: %s"
                   % (asset.get("name"), type(exc).__name__, exc))
             failed += 1
@@ -225,19 +174,11 @@ def main(argv=None) -> int:
             failed += 1
             continue
 
-        # ONLY write when the loader cannot already reproduce it, and
-        # SKIP KARMA entirely: load_interface_mtlx discards the exec'd
-        # container for make_karma_builder's, so a sidecar captured here
-        # describes a node the loader never uses. Writing them made 147
-        # perfect materials differ.
-        if material.is_karma_renderer(asset.get("renderer")):
+        if renderers.is_karma(asset.get("renderer")):    # Karma's loader builds its own builder
             skipped += 1
             continue
 
-        # BOTH halves, not just the interface: an asset whose parameter
-        # INTERFACE the loader reproduces perfectly may still have values
-        # it does not, and comparing dialog_script alone loses them.
-        row = model.find_asset_row_by_id(asset_id)
+        row = model.find_asset_row_by_id(asset_id)    # compare values too, not the interface alone
         current = loaded_now(model, row) if row != -1 else ""
         if current:
             now, was = json.loads(current), json.loads(legacy)
