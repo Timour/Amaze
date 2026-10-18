@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.2
+
+- A renderer switched off in Preferences ▸ Show/Hide is gone from the Filter menu, Convert to, Import to Materials and Import to Scene, and its Samples row leaves the Render tab.
+- Opening the Amaze pane builds the panel in about half the time.
+- Amaze's code loads about five times faster when the pane first opens: it stays compiled after an update, and the dialogs, converters and render code load only when used.
+- A library folder written without its trailing slash in the settings file opens.
+- Amaze is developed and tested on Houdini 22.0.
+
 ## 1.6.1
 
 - The Label and Copy Color submenus draw their colour chips 2 px lower.
