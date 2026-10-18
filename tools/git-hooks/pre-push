@@ -7,8 +7,8 @@
 # Wired with `git config core.hooksPath tools/git-hooks` so it travels
 # with a clone (sync-install.sh re-wires it automatically).
 #
-# A push of UI files alone, from a terminal, runs the UI modules; any
-# other push runs the whole suite.
+# A push runs the tests its changes reach, by the map the last green full
+# run wrote; the whole suite runs whenever that answer cannot be trusted.
 #
 # Escape hatch for a genuine emergency: git push --no-verify, or
 # AMAZE_SKIP_TESTS=$(git rev-parse HEAD) git push - sha-bound so it
@@ -41,59 +41,7 @@ elif [ -n "${AMAZE_SKIP_TESTS:-}" ]; then
     echo "pre-push: AMAZE_SKIP_TESTS set but does not match HEAD - running anyway" >&2
 fi
 
-# UI MODULES - every module that asserts on the art or reads a UI file. Pinned
-# by test_the_ui_modules_cover_every_module_that_reads_the_ui_files, so a new
-# one cannot fall outside the short run silently.
-UI_MODULES="test_hip_section test_notes test_tooltips test_ui_labels"
-
-# Art, hover texts and the documents carry no logic, so a push of nothing else
-# earns the UI modules instead of the whole suite. REFUSES TO SKIP ON ANY DOUBT:
-# no refs, an unreadable range, a deletion, one path off the list, or a push
-# with no terminal - the old skip logic put code on main while printing it skipped.
-#
-# A TTY IS THE TEST. The short run is for a person who just redrew a badge or
-# reworded a label and can see the result; anything automated gets the whole
-# gate, because automation is what pushes a range it did not look at.
-ui_only=0
-if [ -t 2 ]; then
-    refs="$(cat)"
-    if [ -n "$refs" ]; then
-        ui_only=1
-        while read -r _local_ref local_sha _remote_ref remote_sha; do
-            [ -n "$local_sha" ] || continue
-            case "$local_sha$remote_sha" in
-                *[!0]*) ;;
-                *) ui_only=0; break ;;
-            esac
-            if [ "$local_sha" = "0000000000000000000000000000000000000000" ] \
-               || [ "$remote_sha" = "0000000000000000000000000000000000000000" ]; then
-                ui_only=0; break
-            fi
-            if ! changed="$(git diff --name-only \
-                    "$remote_sha".."$local_sha" 2>/dev/null)"; then
-                ui_only=0; break
-            fi
-            [ -n "$changed" ] || { ui_only=0; break; }
-            while read -r path; do
-                [ -n "$path" ] || continue
-                case "$path" in
-                    *.svg|scripts/python/amaze/ui/*.png) ;;
-                    scripts/python/amaze/tooltips.py) ;;
-                    MANUAL.md|README.md|CHANGELOG.md|docs/*) ;;
-                    scripts/python/amaze/branding.py)    # the version bump a UI push needs, alone
-                        if ! bump="$(git diff -U0 "$remote_sha".."$local_sha" -- "$path" \
-                                | sed -n '/^@@/,$p' | grep '^[-+]')" \
-                           || printf '%s\n' "$bump" \
-                                | grep -qvE '^[-+]APP_VERSION = "[0-9]+\.[0-9]+\.[0-9]+"( .*)?$'; then
-                            ui_only=0; break
-                        fi ;;
-                    *) ui_only=0; break ;;
-                esac
-            done <<< "$changed"
-            [ "$ui_only" = 1 ] || break
-        done <<< "$refs"
-    fi
-fi
+refs="$(cat)"
 
 # A git hook inherits almost no environment - resolve Houdini here.
 # shellcheck source=tools/houdini-env.sh
@@ -108,17 +56,58 @@ if ! command -v hython >/dev/null 2>&1 && [ ! -d "${HFS:-}" ]; then
     exit 1
 fi
 
+# THE SELECTION: the tests the push reaches, by the map the last green full run
+# wrote (tools/select-tests.py ▸p/suite-selects). The suite proves the WORKING
+# TREE, so the whole suite runs for anything that tree may not be: no refs, a
+# ref that is not HEAD, a new branch or a deletion, an unreadable range, or
+# uncommitted files. A new minor or major version (1.7 to 1.8) gets the whole
+# suite, and so does a map that cannot answer; a patch (1.7.0 to 1.7.1) gets
+# what it reaches. Only a whole run updates the install.
+whole=""
+head="$(git rev-parse HEAD 2>/dev/null || echo none)"
+[ -n "$refs" ] || whole="no refs on stdin"
+while [ -z "$whole" ] && read -r _local_ref local_sha _remote_ref remote_sha; do
+    [ -n "$local_sha" ] || continue
+    if [ "$local_sha" != "$head" ]; then
+        whole="a pushed ref is not the checked-out commit"
+    elif [ "$remote_sha" = "0000000000000000000000000000000000000000" ]; then
+        whole="a new branch"
+    elif ! bump="$(git diff -U0 "$remote_sha".."$local_sha" \
+            -- scripts/python/amaze/branding.py 2>/dev/null)"; then
+        whole="an unreadable range"
+    elif [ "$(printf '%s\n' "$bump" | awk -F'"' '/^[-+]APP_VERSION/ {
+            split($2, v, "."); k = v[1] "." v[2]; if (!(k in seen)) { seen[k]; n++ } }
+            END { print n + 0 }')" -gt 1 ]; then
+        whole="a new minor or major version"
+    fi
+done <<< "$refs"
+if [ -z "$whole" ] && [ -n "$(git status --porcelain 2>/dev/null)" ]; then
+    whole="uncommitted files"
+fi
+selection=""
+if [ -z "$whole" ]; then
+    if ! selection="$("$(amaze_python || echo python3)" "$repo/tools/select-tests.py")"; then
+        whole="the selection failed"
+    elif [ "$selection" = "ALL" ]; then
+        whole="the map cannot answer"
+    fi
+fi
+
 # The figure is here so a long wait does not read as a hang, and it is
 # DATED because it tracks the test count and nothing updates it: 130s was
 # true at roughly half this many tests and understated the wait by 2x by
 # the time anybody noticed. Re-measure when it misleads, and move the date.
-if [ "$ui_only" = 1 ]; then
-    echo "pre-push: UI only - running $UI_MODULES, not the whole suite"
-    # shellcheck disable=SC2086
-    output="$("$repo/scripts/python/amaze/tests/start_test.sh" $UI_MODULES 2>&1)"
-else
-    echo "pre-push: running the suite (minutes, not seconds - the Mac and the stick differ by 2.5x) ▸p/suite-timing"
+if [ -n "$whole" ]; then
+    echo "pre-push: running the suite ($whole) - minutes, not seconds ▸p/suite-timing"
     output="$("$repo/tools/run-tests.sh" 2>&1)"
+elif [ -z "$selection" ]; then
+    echo "pre-push: the push reaches no test - nothing to run"
+    echo "pre-push: DONE"
+    exit 0
+else
+    echo "pre-push: running the tests this push reaches, not the whole suite"
+    # shellcheck disable=SC2086
+    output="$("$repo/tools/run-tests.sh" $selection 2>&1)"
 fi
 status=$?
 

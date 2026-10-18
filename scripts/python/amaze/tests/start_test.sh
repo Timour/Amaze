@@ -25,11 +25,11 @@ if [ $# -gt 0 ]; then
     missing=""
     for module in "$@"; do
         # `[ ] || assign` ends 0 either way, so errexit-safe. ▸r/shell-errexit
-        [ -f "$tests_dir/$module.py" ] || missing="$missing $module"
+        [ -f "$tests_dir/${module%%.*}.py" ] || missing="$missing $module"
     done
     if [ -n "$missing" ]; then
         echo "start_test.sh: no such test module(s):$missing" >&2
-        echo "Modules are <name>.py in $tests_dir" >&2
+        echo "Modules are <name>.py in $tests_dir, a test <name>.<Class>.<test>" >&2
         exit 2
     fi
     wanted_modules="$*"
@@ -133,7 +133,8 @@ test_design_document test_drawn_binding test_messages test_tooltips \
 test_fresh_library test_grouped_import test_row_addressing \
 test_device_pixmap test_switch_rereads test_upgrade_tool \
 test_fixture_guard test_packages test_texstore test_event_pumps \
-test_bug_report test_peer_read test_two_panels test_peer_merge test_peer_refresh test_file_lock"
+test_bug_report test_peer_read test_two_panels test_peer_merge test_peer_refresh test_file_lock \
+test_impact_map"
 
 # Vulkan viewport multithreading OFF, every platform: ten panel modules
 # crash 10/10 with it on. Suite-only - a live Houdini keeps its defaults.
@@ -155,6 +156,12 @@ if [ -n "$wanted_modules" ]; then
     echo "pushing.  Modules: $run_modules"
 else
     run_modules="$MODULES"
+    # A full run in one hython maps what each module runs, for run-tests.sh --affected.
+    if [ "$isolated" = "0" ] && [ -z "${AMAZE_IMPACT_MAP:-}" ]; then
+        common="$(git -C "$tests_dir" rev-parse --path-format=absolute \
+            --git-common-dir 2>/dev/null || true)"
+        [ -z "$common" ] || export AMAZE_IMPACT_MAP="$common/amaze-test-impact.json"
+    fi
 fi
 
 # `run_suite.py`, never `-m unittest`: it owns its exit, so a helper

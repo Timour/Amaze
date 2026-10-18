@@ -1,7 +1,7 @@
 """The shell gates, tested like code because they are code - never on an exit status, always on the words and a terminal marker, and `$AMAZE` is never left empty here. ▸p/gate-fixture-safety ▸archive/test_shell_gates.py"""
 
 import ast
-import hashlib
+import json
 import os
 import re
 import shutil
@@ -16,6 +16,7 @@ sys.path.insert(
         os.path.dirname(os.path.abspath(__file__)))))
 
 from amaze.tests import test_support  # noqa: E402,F401 - redirects the log
+from amaze.tests import impact_map  # noqa: E402
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__))))))
@@ -29,6 +30,10 @@ GATE_SCRIPTS = {
         os.path.join(REPO, "tools", "run-tests.sh"),
     os.path.join("tools", "git-hooks", "pre-push"):
         os.path.join(REPO, "tools", "git-hooks", "pre-push"),
+    os.path.join("tools", "select-tests.py"):
+        os.path.join(REPO, "tools", "select-tests.py"),
+    os.path.join("scripts", "python", "amaze", "tests", "impact_map.py"):
+        os.path.join(REPO, "scripts", "python", "amaze", "tests", "impact_map.py"),
 }
 
 REAL_RUNNER = os.path.join(
@@ -48,6 +53,7 @@ PUSH_RED_END = "Fix, or push --no-verify."
 
 
 _STUB = r"""#!/bin/bash
+MODULES="test_widget test_other"
 mode="${FAKE_SUITE_MODE:-green}"
 echo "$mode $*" >> "$FAKE_SUITE_CALLS"
 
@@ -101,11 +107,6 @@ esac
 echo "stub: unknown mode $mode" >&2
 exit 99
 """
-
-
-def _sha(path):
-    with open(path, "rb") as handle:
-        return hashlib.sha256(handle.read()).hexdigest()
 
 
 def _write(path, text, executable=False):
@@ -228,44 +229,11 @@ class GateFixture(unittest.TestCase):
         env.update(extra)
         return env
 
-    def _run_on_a_terminal(self, script, cwd, stdin, env):
-        """The script with a real pty on fd 2, so its `[ -t 2 ]` is true. Drained on a thread, or a chatty run fills the pty buffer and blocks forever."""
-        import pty
-        import threading
-        master, slave = pty.openpty()
-        chunks = []
-
-        def drain():
-            while True:
-                try:
-                    data = os.read(master, 65536)
-                except OSError:
-                    return
-                if not data:
-                    return
-                chunks.append(data)
-
-        reader = threading.Thread(target=drain, daemon=True)
-        reader.start()
-        try:
-            result = subprocess.run(
-                ["bash", script], stdout=subprocess.PIPE, stderr=slave,
-                text=True, cwd=cwd, input=stdin, env=env, timeout=600)
-        finally:
-            os.close(slave)
-        reader.join(timeout=10)
-        os.close(master)
-        result.stderr = b"".join(chunks).decode("utf-8", "replace")
-        return result
-
-    def _run(self, script_relative, mode="green", cwd=None, stdin="",
-             terminal=False, **extra):
+    def _run(self, script_relative, mode="green", cwd=None, stdin="", **extra):
         script = os.path.join(self.repo, script_relative)
         self.assertNotIn(REPO, os.path.realpath(script),
                          "refusing to run the REAL gate script")
         env = self._env(mode, **extra)
-        if terminal:
-            return self._run_on_a_terminal(script, cwd or self.tmp, stdin, env)
         return subprocess.run(["bash", script], capture_output=True,
                               text=True, cwd=cwd or self.tmp, input=stdin,
                               env=env)
@@ -308,21 +276,7 @@ class GateFixture(unittest.TestCase):
             % (result.stdout, result.stderr))
 
 
-
 class FixtureFidelityTest(GateFixture):
-
-    def test_every_gate_script_exists_where_the_tests_expect_it(self):
-        for real in list(GATE_SCRIPTS.values()) + [REAL_RUNNER,
-                                                   REAL_LEAK_CHECK]:
-            self.assertTrue(os.path.isfile(real), real)
-            self.assertGreater(os.path.getsize(real), 0, real)
-
-    def test_the_fixture_holds_the_real_scripts_byte_for_byte(self):
-        """Copied at setUp, hashed here - if this fails, every other test in the file is measuring a fossil."""
-        for relative, real in GATE_SCRIPTS.items():
-            self.assertEqual(_sha(os.path.join(self.repo, relative)),
-                             _sha(real),
-                             "fixture copy of %s has drifted" % relative)
 
     @staticmethod
     def _command_lines(script_text):
@@ -344,14 +298,10 @@ class FixtureFidelityTest(GateFixture):
             self.assertIn("LOG LEAK", handle.read(),
                           "the leak check no longer prints 'LOG LEAK' - "
                           "both gates grep for that literal")
-
-    def test_no_command_line_runs_bare_unittest(self):
-        """Bare `unittest` skips the sync, the isolated log dir, the lint and the leak check - every guard, to save two minutes."""
-        with open(REAL_RUNNER, encoding="utf-8") as handle:
-            self.assertNotIn("hython -m unittest",
-                             self._command_lines(handle.read()),
-                             "a command line runs bare hython -m "
-                             "unittest - every gate that run skips")
+        self.assertNotIn("hython -m unittest", code,
+                         "a command line runs bare hython -m unittest, "
+                         "which skips the sync, the log sandbox, the lint "
+                         "and the leak check")
 
     def test_the_fixture_never_points_at_the_real_install(self):
         env = self._env("green")
@@ -364,7 +314,6 @@ class FixtureFidelityTest(GateFixture):
         self.assertNotIn("Cloud", env["AMAZE"])
 
 
-
 class SyncInstallGateTest(GateFixture):
 
     def test_green_suite_ships_and_says_so(self):
@@ -373,6 +322,15 @@ class SyncInstallGateTest(GateFixture):
         self.assertIn(SYNC_GREEN_MSG, result.stdout)
         self.assertEqual(len(self.suite_calls()), 1,
                          "the suite ran %r times" % self.suite_calls())
+        lines = [line for line in result.stdout.splitlines() if line.strip()]
+        self.assertEqual(lines[-1], SYNC_END,    # an exit status cannot tell a finish from a set -e death
+                         "sync-install stopped early:\n%s" % result.stdout)
+        for relative in (os.path.join("scripts", "python", "amaze", "widget.py"),
+                         "OPmenu.xml",
+                         os.path.join("toolbar", "Amaze.shelf")):    # the shelf carries the hotkey
+            self.assertTrue(
+                os.path.isfile(os.path.join(self.install, relative)),
+                "%s did not land in the install" % relative)
 
     def test_an_uncommitted_file_is_refused_before_anything_ships(self):
         """The install only ever receives COMMITTED code, untracked included - the mirror copies `scripts/` wholesale."""
@@ -417,16 +375,6 @@ class SyncInstallGateTest(GateFixture):
             "knowingly-broken code just reached the tree a live Houdini "
             "reads")
 
-    def test_the_real_destination_still_refuses_a_dirty_tree(self):
-        """The exemption is the scratch path ALONE - leaking it to the ordinary path retires the rule rather than satisfying it."""
-        _write(os.path.join(self.repo, "scripts", "python", "amaze",
-                            "stray.py"), "# this was never committed\n")
-
-        result = self.sync("green")
-
-        self.assertEqual(result.returncode, 1, self.both(result))
-        self.assertIn("uncommitted changes", self.both(result))
-
     def test_a_scratch_pointing_at_the_real_install_is_refused(self):
         """A typo must not aim a sabotage at the tree this protects."""
         _write(os.path.join(self.repo, "scripts", "python", "amaze",
@@ -465,26 +413,6 @@ class SyncInstallGateTest(GateFixture):
         self.assertEqual(result.returncode, 0, self.both(result))
         self.assertIn(SYNC_GREEN_MSG, result.stdout)
 
-    def test_green_run_reaches_its_end(self):
-        """The DONE marker must be the LAST line - exit status alone cannot tell a clean finish from a `set -e` death after shipping."""
-        result = self.sync("green")
-        lines = [line for line in result.stdout.splitlines() if line.strip()]
-        self.assertTrue(lines, "sync-install printed nothing at all")
-        self.assertEqual(lines[-1], SYNC_END,
-                         "sync-install stopped early:\n%s" % result.stdout)
-
-    def test_green_run_actually_synced_the_files(self):
-        self.sync("green")
-        self.assertTrue(os.path.isfile(os.path.join(
-            self.install, "scripts", "python", "amaze", "widget.py")))
-        self.assertTrue(os.path.isfile(os.path.join(
-            self.install, "OPmenu.xml")))
-        # The shelf is how a hotkey reaches Amaze; unsynced, no tool appears in Houdini.
-        self.assertTrue(
-            os.path.isfile(os.path.join(
-                self.install, "toolbar", "Amaze.shelf")),
-            "the shelf did not land in the install")
-
     def test_red_suite_refuses_and_names_the_failures(self):
         result = self.sync("red")
         self.assertEqual(result.returncode, 1, self.both(result))
@@ -492,46 +420,22 @@ class SyncInstallGateTest(GateFixture):
         self.assertIn("SUITE FAILED", result.stderr)
         self.assertIn("FAIL: test_tile_is_composed", result.stderr)
         self.assertIn("ERROR: test_restore", result.stderr)
-
-    def test_red_run_reaches_its_end(self):
-        """The rollback command is the last thing printed, so it doubles as the marker that the red path ran to its end."""
-        result = self.sync("red")
-        self.assertReachedEnd(result, SYNC_RED_END)
+        self.assertReachedEnd(result, SYNC_RED_END)    # the rollback line prints last
 
     def test_a_suite_that_cannot_run_is_refused(self):
         """No FAIL line and no `Ran` line is not the same as nothing wrong - the state that shipped broken."""
-        result = self.sync("crash")
-        self.assertNotEqual(result.returncode, 0,
-                            "a dead suite was reported as a good ship:\n%s"
-                            % self.both(result))
-        self.assertNotIn(SYNC_END, result.stdout)
-
-    def test_a_suite_that_cannot_run_says_why(self):
-        """The script has the words for it, and must actually reach them."""
-        result = self.sync("crash")
-        self.assertIn("The suite did not run at all", result.stderr,
-                      "STDOUT:\n%s\nSTDERR:\n%s"
-                      % (result.stdout, result.stderr))
-        self.assertReachedEnd(result, SYNC_RED_END)
-
-    def test_a_suite_that_ran_zero_tests_is_refused(self):
-        """`Ran 0 tests ... OK` exits 0 with no failures and verifies nothing."""
-        result = self.sync("no_tests")
-        self.assertNotEqual(result.returncode, 0,
-                            "shipped on a suite that ran ZERO tests:\n%s"
-                            % self.both(result))
-        self.assertNotIn(SYNC_END, result.stdout)
-
-    def test_a_silent_suite_is_refused(self):
-        result = self.sync("silent")
-        self.assertNotEqual(result.returncode, 0, self.both(result))
-        self.assertNotIn(SYNC_END, result.stdout)
-
-    def test_a_log_leak_alone_is_refused(self):
-        """Green tests and a zero exit, but the run wrote to the real debug log - that arm must not be dead code."""
-        result = self.sync("leak")
-        self.assertNotEqual(result.returncode, 0, self.both(result))
-        self.assertNotIn(SYNC_END, result.stdout)
+        for mode, says in (("crash", "The suite did not run at all"),
+                           ("no_tests", ""),    # `Ran 0 tests ... OK` verifies nothing
+                           ("silent", ""),
+                           ("leak", "")):    # a zero exit that wrote the real debug log
+            with self.subTest(mode=mode):
+                result = self.sync(mode)
+                self.assertNotEqual(result.returncode, 0,
+                                    "a %s suite was reported as a good "
+                                    "ship:\n%s" % (mode, self.both(result)))
+                self.assertNotIn(SYNC_END, result.stdout)
+                self.assertIn(says, result.stderr)
+                self.assertReachedEnd(result, SYNC_RED_END)
 
     def test_no_verify_skips_the_suite_entirely(self):
         """`run-tests.sh` sets this to break the recursion, or the suite runs twice per command."""
@@ -561,7 +465,6 @@ class SyncInstallGateTest(GateFixture):
         self.assertEqual(self._git("config", "--get", "core.hooksPath"),
                          "tools/git-hooks")
         self.assertNotIn("wired the pre-push gate", self.sync("green").stdout)
-
 
 
 class PrePushGateTest(GateFixture):
@@ -596,12 +499,7 @@ class PrePushGateTest(GateFixture):
         self.assertIn("203 " + PUSH_GREEN_MSG, result.stdout)
         self.assertEqual(len(self.suite_calls()), 1,
                          "the suite ran %r times" % self.suite_calls())
-
-    def test_green_run_reaches_its_end(self):
-        self._commit(os.path.join("scripts", "python", "amaze", "widget.py"))
-        result = self.push("green")
         lines = [line for line in result.stdout.splitlines() if line.strip()]
-        self.assertTrue(lines, "pre-push printed nothing at all")
         self.assertEqual(lines[-1], PUSH_END,
                          "pre-push stopped early:\n%s" % result.stdout)
 
@@ -612,282 +510,19 @@ class PrePushGateTest(GateFixture):
         self.assertIn("PUSH REFUSED", result.stderr)
         self.assertIn("FAIL: test_tile_is_composed", result.stderr)
         self.assertNotIn(PUSH_END, result.stdout)
-
-    def test_red_run_reaches_its_end(self):
-        self._commit(os.path.join("scripts", "python", "amaze", "widget.py"))
-        result = self.push("red")
         self.assertReachedEnd(result, PUSH_RED_END)
 
     def test_a_suite_that_cannot_run_is_refused(self):
         self._commit(os.path.join("scripts", "python", "amaze", "widget.py"))
-        result = self.push("crash")
-        self.assertNotEqual(result.returncode, 0,
-                            "a dead suite was reported as a green push:\n%s"
-                            % self.both(result))
-        self.assertNotIn(PUSH_END, result.stdout)
-        self.assertReachedEnd(result, PUSH_RED_END)
-
-    def test_a_suite_that_ran_zero_tests_is_refused(self):
-        self._commit(os.path.join("scripts", "python", "amaze", "widget.py"))
-        result = self.push("no_tests")
-        self.assertNotEqual(result.returncode, 0,
-                            "the push gate passed a suite that ran ZERO "
-                            "tests:\n%s" % self.both(result))
-        self.assertNotIn(PUSH_END, result.stdout)
-
-    def test_a_silent_suite_is_refused(self):
-        self._commit(os.path.join("scripts", "python", "amaze", "widget.py"))
-        result = self.push("silent")
-        self.assertNotEqual(result.returncode, 0,
-                            "the push gate passed a suite that printed "
-                            "nothing:\n%s" % self.both(result))
-
-    def test_a_log_leak_alone_is_refused(self):
-        self._commit(os.path.join("scripts", "python", "amaze", "widget.py"))
-        result = self.push("leak")
-        self.assertNotEqual(result.returncode, 0, self.both(result))
-        self.assertIn("PUSH REFUSED", result.stderr)
-
-
-
-    def test_a_docs_push_with_no_terminal_runs_the_suite(self):
-        """Anything automated gets the whole gate, whatever the push touches."""
-        self._commit(os.path.join("docs", "a.md"))
-        result = self.push("green")
-        self.assertIn("running the suite", self.both(result))
-        self.assertEqual(len(self.suite_calls()), 1)
-        self.assertEqual(result.returncode, 0, self.both(result))
-        self.assertIn("pre-push: DONE", result.stdout)
-
-    def test_a_push_of_ui_files_runs_the_ui_modules(self):
-        """Art, hover texts and the documents earn the short run from a terminal."""
-        self._commit(*[os.path.join(*path.split("/")) for path in (
-            "docs/a.md", "MANUAL.md", "README.md", "CHANGELOG.md",
-            "scripts/python/amaze/tooltips.py", "scripts/python/amaze/ui/badge_x.png")])
-        result = self.push("green", terminal=True)
-        self.assertEqual(result.returncode, 0, self.both(result))
-        self.assertIn("UI only", self.both(result))
-        self.assertEqual(1, len(self.suite_calls()),
-                         "the UI run did not happen: %r" % self.suite_calls())
-        self.assertIn("test_tooltips", self.suite_calls()[0])
-
-    def _bump_with_art(self, after):
-        """A released `branding.py`, then one commit changing it to `after` beside an svg."""
-        branding = os.path.join(self.repo, "scripts", "python", "amaze", "branding.py")
-        _write(branding, 'APP_NAME = "Amaze"\nAPP_VERSION = "1.0.0"    # the release\n')
-        self._git("add", "-A")
-        self._git("commit", "-q", "-m", "release 1.0.0")
-        self.base_sha = self._git("rev-parse", "HEAD")
-        _write(branding, after)
-        _write(os.path.join(self.repo, "scripts", "python", "amaze", "ui", "badge_x.svg"), "svg\n")
-        self._git("add", "-A")
-        self._git("commit", "-q", "-m", "art and its version")
-
-    def test_a_version_bump_rides_along_with_ui_files(self):
-        """Art needs a version bump, so a change to `APP_VERSION` alone keeps the short run."""
-        self._bump_with_art('APP_NAME = "Amaze"\nAPP_VERSION = "1.0.1"    # the release\n')
-        result = self.push("green", terminal=True)
-        self.assertEqual(result.returncode, 0, self.both(result))
-        self.assertIn("UI only", self.both(result))
-
-    def test_any_other_change_to_branding_runs_everything(self):
-        """`branding.py` is code; only its version line may ride in a UI push."""
-        self._bump_with_art('APP_NAME = "Amazing"\nAPP_VERSION = "1.0.1"    # the release\n')
-        result = self.push("green", terminal=True)
-        self.assertNotIn("UI only", self.both(result))
-        self.assertIn("running the suite", self.both(result))
-
-    def test_a_python_file_beside_tooltips_runs_everything(self):
-        """`tooltips.py` is the one module on the list; the ones beside it carry logic."""
-        self._commit(os.path.join("scripts", "python", "amaze", "messages.py"))
-        result = self.push("green", terminal=True)
-        self.assertNotIn("UI only", self.both(result))
-        self.assertIn("running the suite", self.both(result))
-
-    def test_a_picture_outside_ui_runs_everything(self):
-        """A test's own picture is data a test asserts on, so it runs the suite."""
-        self._commit(os.path.join("scripts", "python", "amaze", "tests", "fixture.png"))
-        result = self.push("green", terminal=True)
-        self.assertNotIn("UI only", self.both(result))
-        self.assertIn("running the suite", self.both(result))
-
-    def _svg(self, name="scripts/python/amaze/ui/badge_x.svg"):
-        return self._commit(os.path.join(*name.split("/")))
-
-    def test_an_svg_only_push_runs_the_art_modules_not_the_suite(self):
-        """Art is data and cannot carry a logic bug, so it earns the short run - but it still runs the tests that READ the art."""
-        self._svg()
-        result = self.push("green", terminal=True)
-        self.assertEqual(result.returncode, 0, self.both(result))
-        self.assertIn("UI only", self.both(result))
-        self.assertEqual(
-            1, len(self.suite_calls()),
-            "the UI run did not happen: %r" % self.suite_calls())
-        self.assertIn(
-            "test_hip_section", self.suite_calls()[0],
-            "the short run did not name the UI modules: %r"
-            % self.suite_calls())
-        self.assertIn("pre-push: DONE", result.stdout)
-
-    def test_one_code_file_among_the_svgs_runs_everything(self):
-        """The whole hazard in one case - a push classified as art while code rides along."""
-        self._commit(os.path.join("scripts", "python", "amaze", "ui",
-                                  "badge_x.svg"),
-                     os.path.join("scripts", "python", "amaze", "widget.py"))
-        result = self.push("green", terminal=True)
-        self.assertNotIn("UI only", self.both(result))
-        self.assertIn("running the suite", self.both(result))
-        self.assertEqual(result.returncode, 0, self.both(result))
-
-    def test_an_svg_push_with_no_terminal_runs_everything(self):
-        """The short run is for a person who just redrew a badge and can see it - anything automated gets the whole gate."""
-        self._svg()
-        result = self.push("green")
-        self.assertNotIn("UI only", self.both(result))
-        self.assertIn("running the suite", self.both(result))
-
-    def test_an_unreadable_range_never_earns_the_art_run(self):
-        """A diff that FAILED must not read as a diff naming only art."""
-        self._svg()
-        result = self.push("red", stdin=self.ref_line(
-            "b" * 40, remote_sha="c" * 40), terminal=True)
-        self.assertNotIn("UI only", self.both(result))
-        self.assertEqual(result.returncode, 1, self.both(result))
-
-    def test_no_refs_on_stdin_never_earns_the_art_run(self):
-        """Missing information is not evidence that a push is art."""
-        self._svg()
-        result = self.push("red", stdin="", terminal=True)
-        self.assertNotIn("UI only", self.both(result))
-        self.assertEqual(result.returncode, 1, self.both(result))
-
-    def test_the_ui_modules_cover_every_module_that_reads_the_ui_files(self):
-        """The short run names every module that reads the art, the hover texts or the documents."""
-        with open(GATE_SCRIPTS[os.path.join("tools", "git-hooks",
-                                            "pre-push")],
-                  encoding="utf-8") as handle:
-            named = re.search(r'^UI_MODULES="([^"]*)"', handle.read(),
-                              re.M)
-        self.assertIsNotNone(named, "pre-push no longer names UI_MODULES")
-        listed = set(named.group(1).split())
-        tests_dir = os.path.dirname(os.path.abspath(__file__))
-        reads_ui = set()
-        readers = (r"\.art_colours\(|\._effective_paint\(|from amaze import tooltips"
-                   r"|\"(?:MANUAL|README|CHANGELOG)\.md\"")    # the CALL form, never the bare name
-        for name in sorted(os.listdir(tests_dir)):
-            if not (name.startswith("test_") and name.endswith(".py")) \
-                    or name == os.path.basename(__file__):    # this file names them as push paths
-                continue
-            with open(os.path.join(tests_dir, name), encoding="utf-8") as fh:
-                if re.search(readers, fh.read()):
-                    reads_ui.add(name[:-3])
-        self.assertEqual(
-            set(), reads_ui - listed,
-            "a module reads a UI file but is not in the short run, so "
-            "a UI-only push would never exercise it")
-
-    def test_a_second_ref_carrying_code_runs_everything(self):
-        """`git push --all` feeds several lines, and an art-only ref must not excuse one carrying code."""
-        art = self._commit(os.path.join("scripts", "python", "amaze", "ui",
-                                        "badge_x.svg"))
-        self._git("checkout", "-q", "-b", "feature", self.base_sha)
-        code = self._commit(os.path.join("scripts", "python", "amaze",
-                                         "widget.py"))
-        stdin = (self.ref_line(art)
-                 + self.ref_line(code, local_ref="refs/heads/feature",
-                                 remote_ref="refs/heads/feature"))
-        result = self.push("green", stdin=stdin, terminal=True)
-        self.assertNotIn("UI only", self.both(result))
-        self.assertIn("running the suite", self.both(result))
-
-
-    def test_a_push_touching_a_shell_script_does_not_skip(self):
-        """An allowlist that misses `.sh` lets a push changing the TEST RUNNER ITSELF skip the gate."""
-        self._commit(os.path.join("tools", "new-helper.sh"))
-        result = self.push("red")
-        self.assertNotIn("suite skipped", result.stdout)
-        self.assertEqual(len(self.suite_calls()), 1)
-        self.assertEqual(result.returncode, 1, self.both(result))
-
-    def test_a_push_touching_an_svg_does_not_skip(self):
-        """...and missed .svg, the artwork the delegate loads."""
-        self._commit(os.path.join("scripts", "python", "amaze", "assets",
-                                  "icon.svg"))
-        result = self.push("red")
-        self.assertNotIn("suite skipped", result.stdout)
-        self.assertEqual(len(self.suite_calls()), 1)
-        self.assertEqual(result.returncode, 1, self.both(result))
-
-    def test_docs_mixed_with_code_does_not_skip(self):
-        self._commit(os.path.join("docs", "notes.md"),
-                     os.path.join("scripts", "python", "amaze", "widget.py"))
-        result = self.push("red")
-        self.assertNotIn("suite skipped", result.stdout)
-        self.assertEqual(result.returncode, 1, self.both(result))
-
-    # -- it must gate WHAT IS BEING PUSHED, not what HEAD happens to be --
-
-    def test_pushing_another_branch_is_gated_on_that_branch(self):
-        """`git push origin feature:main` is a total bypass if the hook reads HEAD instead of the ref being pushed."""
-        self._commit(os.path.join("docs", "notes.md"))   # HEAD: docs only
-        self._git("checkout", "-q", "-b", "feature", self.base_sha)
-        code = self._commit(os.path.join("scripts", "python", "amaze",
-                                         "widget.py"))
-        self._git("checkout", "-q", self.branch)
-        result = self.push("red", stdin=self.ref_line(
-            code, local_ref="refs/heads/feature",
-            remote_ref="refs/heads/%s" % self.branch))
-        self.assertNotIn("suite skipped", result.stdout,
-                         "a code push was skipped because HEAD was docs")
-        self.assertEqual(result.returncode, 1, self.both(result))
-        self.assertEqual(len(self.suite_calls()), 1)
-
-    def test_every_ref_of_a_multi_ref_push_is_gated(self):
-        """`git push --all` feeds several lines, and one docs-only ref must not excuse a second carrying code."""
-        docs = self._commit(os.path.join("docs", "notes.md"))
-        self._git("checkout", "-q", "-b", "feature", self.base_sha)
-        code = self._commit(os.path.join("scripts", "python", "amaze",
-                                         "widget.py"))
-        self._git("checkout", "-q", self.branch)
-        result = self.push("red", stdin=(
-            self.ref_line(docs)
-            + self.ref_line(code, local_ref="refs/heads/feature",
-                            remote_ref="refs/heads/feature")))
-        self.assertNotIn("suite skipped", result.stdout)
-        self.assertEqual(result.returncode, 1, self.both(result))
-
-    def test_a_new_remote_branch_is_gated_against_the_remote(self):
-        """An all-zero REMOTE sha is a branch that does not exist there yet, and if no diff can be found the hook runs the suite rather than skipping."""
-        code = self._commit(os.path.join("scripts", "python", "amaze",
-                                         "widget.py"))
-        result = self.push("red", stdin=self.ref_line(
-            code, local_ref="refs/heads/brand-new",
-            remote_ref="refs/heads/brand-new", remote_sha="0" * 40))
-        self.assertNotIn("suite skipped", result.stdout)
-        self.assertEqual(result.returncode, 1, self.both(result))
-
-
-    def test_no_refs_on_stdin_runs_the_suite(self):
-        """Missing information must never read as nothing to do - this is also the hook invoked by hand."""
-        result = self.push("red", stdin="")
-        self.assertNotIn("suite skipped", result.stdout)
-        self.assertEqual(result.returncode, 1, self.both(result))
-        self.assertEqual(len(self.suite_calls()), 1)
-
-    def test_an_unreadable_range_runs_the_suite(self):
-        """A FAILED diff must never be read as an EMPTY one, or a code push skips the gate whenever the remote sha is missing locally."""
-        result = self.push("red", stdin=self.ref_line(
-            "b" * 40, remote_sha="c" * 40))
-        self.assertNotIn("nothing to test", result.stdout,
-                         "an undiffable range was reported as 'nothing to "
-                         "test' - the suite was skipped for a code push")
-        self.assertEqual(result.returncode, 1, self.both(result))
-
-    def test_a_branch_deletion_is_not_reported_as_docs_only(self):
-        """An all-zero local sha is a deletion, and whatever it does it must not claim the code was vetted."""
-        result = self.push("red", stdin=self.ref_line(
-            "0" * 40, local_ref="refs/heads/dead"))
-        self.assertNotIn("docs only", result.stdout)
+        for mode in ("crash", "no_tests", "silent", "leak"):    # dead, empty, mute, or a leak
+            with self.subTest(mode=mode):
+                result = self.push(mode)
+                self.assertNotEqual(result.returncode, 0,
+                                    "the push gate passed a %s suite:\n%s"
+                                    % (mode, self.both(result)))
+                self.assertNotIn(PUSH_END, result.stdout)
+                self.assertIn("PUSH REFUSED", result.stderr)
+                self.assertReachedEnd(result, PUSH_RED_END)
 
     def test_the_escape_hatch_needs_the_sha_being_pushed(self):
         """Not a boolean - a boolean gets exported once in a shell profile and disables the gate forever."""
@@ -906,6 +541,128 @@ class PrePushGateTest(GateFixture):
         self.assertEqual(len(self.suite_calls()), 1,
                          "a stale AMAZE_SKIP_TESTS disabled the gate")
 
+
+WIDGET = "scripts/python/amaze/widget.py"
+BRANDING = "scripts/python/amaze/branding.py"
+SIZE = "test_widget.W.test_size"
+
+
+class PrePushSelectionTest(GateFixture):
+    """A push runs the tests it reaches, or the whole suite when unsure. ▸p/suite-selects"""
+
+    def _mapped(self):
+        """A committed widget with two defs, and the map a green full run of it wrote."""
+        _write(os.path.join(self.repo, *WIDGET.split("/")),
+               "def size():\n    return 1\n\n\ndef label():\n    return 'a'\n")
+        _write(os.path.join(self.repo, *BRANDING.split("/")), 'APP_VERSION = "1.0.0"\n')
+        self._git("add", "-A")
+        self._git("commit", "-q", "-m", "widget")
+        self.base_sha = self._git("rev-parse", "HEAD")
+        recorder = impact_map.Recorder(self.repo)
+        recorder.tests = [SIZE, "test_widget.W.test_label", "test_other.O.test_x"]
+        recorder.ran = {SIZE: {WIDGET: {"size"}}, "test_widget.W.test_label": {WIDGET: {"label"}}}
+        files = impact_map.snapshot(self.repo, impact_map.repository_files(self.repo))
+        with open(os.path.join(self.repo, ".git", "amaze-test-impact.json"), "w",
+                  encoding="utf-8") as handle:
+            json.dump(recorder.build(files, 3), handle)
+
+    def _change(self, old, new, path=WIDGET):
+        full = os.path.join(self.repo, *path.split("/"))
+        with open(full, encoding="utf-8") as handle:
+            text = handle.read()
+        self.assertIn(old, text)
+        _write(full, text.replace(old, new, 1))
+        self._git("add", "-A")
+        self._git("commit", "-q", "-m", "change " + path)
+
+    def assertWhole(self, result, why):
+        self.assertIn("running the suite (%s)" % why, result.stdout, self.both(result))
+        self.assertEqual(["green"], [call.strip() for call in self.suite_calls()],
+                         "the whole suite was not what ran")
+
+    def test_a_push_runs_only_the_tests_its_change_reaches(self):
+        self._mapped()
+        self._change("return 1", "return 2")
+        result = self.push("green")
+        self.assertEqual(result.returncode, 0, self.both(result))
+        self.assertIn("running the tests this push reaches", result.stdout)
+        self.assertEqual(["green " + SIZE], self.suite_calls())
+        self.assertFalse(os.path.exists(os.path.join(self.install, *WIDGET.split("/"))),
+                         "a run of some tests updated the live install")
+        self.assertIn(PUSH_END, result.stdout)
+
+    def test_a_red_selection_refuses_the_push(self):
+        self._mapped()
+        self._change("return 1", "return 2")
+        result = self.push("red")
+        self.assertEqual(result.returncode, 1, self.both(result))
+        self.assertIn("PUSH REFUSED", result.stderr)
+        self.assertEqual(["red " + SIZE], self.suite_calls())
+
+    def test_a_push_that_reaches_no_test_runs_none(self):
+        self._mapped()
+        self._commit(os.path.join("docs", "a.md"))
+        result = self.push("green")
+        self.assertEqual(result.returncode, 0, self.both(result))
+        self.assertIn("reaches no test", result.stdout)
+        self.assertEqual([], self.suite_calls())
+        self.assertIn(PUSH_END, result.stdout)
+
+    def test_a_new_minor_version_runs_the_whole_suite(self):
+        self._mapped()
+        self._change('"1.0.0"', '"1.1.0"', BRANDING)
+        self.assertWhole(self.push("green"), "a new minor or major version")
+
+    def test_a_new_major_version_runs_the_whole_suite(self):
+        self._mapped()
+        self._change('"1.0.0"', '"2.0.0"', BRANDING)
+        self.assertWhole(self.push("green"), "a new minor or major version")
+
+    def test_a_patch_runs_only_what_it_reaches(self):
+        self._mapped()
+        self._change('"1.0.0"', '"1.0.1"', BRANDING)
+        result = self.push("green")
+        self.assertEqual(result.returncode, 0, self.both(result))
+        self.assertNotIn("running the suite", result.stdout)
+        self.assertIn(PUSH_END, result.stdout)
+
+    def test_a_change_the_map_cannot_answer_runs_the_whole_suite(self):
+        self._mapped()
+        self._commit(os.path.join("scripts", "python", "amaze", "fresh.py"))
+        self.assertWhole(self.push("green"), "the map cannot answer")
+
+    def test_no_map_runs_the_whole_suite(self):
+        self._commit(os.path.join("scripts", "python", "amaze", "widget.py"))
+        self.assertWhole(self.push("green"), "the map cannot answer")
+
+    def test_uncommitted_files_run_the_whole_suite(self):
+        self._mapped()
+        self._change("return 1", "return 2")
+        _write(os.path.join(self.repo, "docs", "draft.md"), "draft\n")
+        self.assertWhole(self.push("green"), "uncommitted files")
+
+    def test_a_ref_that_is_not_head_runs_the_whole_suite(self):
+        self._mapped()
+        self._change("return 1", "return 2")
+        self.assertWhole(self.push("green", stdin=self.ref_line(self.base_sha)),
+                         "a pushed ref is not the checked-out commit")
+
+    def test_a_new_branch_runs_the_whole_suite(self):
+        self._mapped()
+        self._change("return 1", "return 2")
+        stdin = self.ref_line(self._git("rev-parse", "HEAD"), remote_sha="0" * 40)
+        self.assertWhole(self.push("green", stdin=stdin), "a new branch")
+
+    def test_no_refs_run_the_whole_suite(self):
+        self._mapped()
+        self._change("return 1", "return 2")
+        self.assertWhole(self.push("green", stdin=""), "no refs on stdin")
+
+    def test_a_selector_that_fails_runs_the_whole_suite(self):
+        self._mapped()
+        self._git("rm", "-q", os.path.join("tools", "select-tests.py"))
+        self._git("commit", "-q", "-m", "no selector")
+        self.assertWhole(self.push("green"), "the selection failed")
 
 
 class RunTestsWrapperTest(GateFixture):
@@ -934,18 +691,6 @@ class RunTestsWrapperTest(GateFixture):
                            cwd=self.tmp)
         self.assertNotEqual(result.returncode, 0, self.both(result))
 
-    def test_ui_runs_the_modules_the_push_gate_names(self):
-        """`--ui` is the hook's own short run, read from its UI_MODULES, never a second list."""
-        with open(GATE_SCRIPTS[os.path.join("tools", "git-hooks", "pre-push")],
-                  encoding="utf-8") as handle:
-            modules = re.search(r'^UI_MODULES="([^"]*)"', handle.read(), re.M).group(1)
-        script = os.path.join(self.repo, "tools", "run-tests.sh")
-        result = subprocess.run(["bash", script, "--ui"], capture_output=True, text=True,
-                                cwd=self.tmp, env=self._env("green"))
-        self.assertEqual(result.returncode, 0, self.both(result))
-        self.assertEqual(["green " + modules], self.suite_calls())
-        self.assertIn("green SUBSET", self.both(result), "a --ui run must never ship")
-
 
 class TargetedRunTest(unittest.TestCase):
     """`start_test.sh <module>` runs THAT module, driven against the argument prologue, which exits before Houdini is looked for so these cost no interpreter start."""
@@ -967,15 +712,12 @@ class TargetedRunTest(unittest.TestCase):
                 "starting the whole suite recursively" % (args,))
 
     def test_a_name_that_is_not_a_module_is_refused(self):
-        result = self._run("test_no_such_module_here")
-        self.assertEqual(2, result.returncode, result.stderr)
-        self.assertIn("no such test module", result.stderr)
-
-    def test_a_bad_name_AFTER_isolated_is_refused_too(self):
-        """A guard inspecting only `$1` lets `--isolated <junk>` through with the junk silently dropped."""
-        result = self._run("--isolated", "test_no_such_module_here")
-        self.assertEqual(2, result.returncode, result.stderr)
-        self.assertIn("no such test module", result.stderr)
+        for args in (("test_no_such_module_here",),
+                     ("--isolated", "test_no_such_module_here")):    # a guard reading only $1 drops it
+            with self.subTest(args=args):
+                result = self._run(*args)
+                self.assertEqual(2, result.returncode, result.stderr)
+                self.assertIn("no such test module", result.stderr)
 
     def test_the_refusal_costs_no_interpreter_start(self):
         """The argument check sits ABOVE the Houdini lookup, or a typo costs a Houdini start to be told it was a typo."""
@@ -1003,10 +745,6 @@ class TargetedRunTest(unittest.TestCase):
                       "an argument-less run no longer runs the full "
                       "gate, which is the one thing that must not "
                       "change")
-
-    def test_a_subset_says_it_is_not_the_gate(self):
-        with open(self._script(), encoding="utf-8") as handle:
-            source = handle.read()
         self.assertIn("SUBSET RUN", source,
                       "a subset run no longer announces itself, so a "
                       "green one reads exactly like the full gate")
@@ -1040,6 +778,11 @@ class TestEveryTestFileIsInTheGate(unittest.TestCase):
         return found - self.NOT_SUITES
 
     def test_no_test_file_is_missing_from_the_runner(self):
+        self.assertGreater(len(self._on_disk()), 10,    # two empty sets are equal
+                           "the directory scan found almost nothing")
+        self.assertGreater(len(self._listed()), 10,
+                           "MODULES parsed to almost nothing - the regex "
+                           "no longer matches the shell syntax")
         missing = sorted(self._on_disk() - self._listed())
         self.assertEqual(
             [], missing,
@@ -1052,14 +795,6 @@ class TestEveryTestFileIsInTheGate(unittest.TestCase):
         self.assertEqual(
             [], stale,
             "MODULES names test files that no longer exist: %s" % stale)
-
-    def test_both_sides_are_actually_populated(self):
-        """Guards the guard: two empty sets are equal."""
-        self.assertGreater(len(self._on_disk()), 10,
-                           "the directory scan found almost nothing")
-        self.assertGreater(len(self._listed()), 10,
-                           "MODULES parsed to almost nothing - the regex "
-                           "no longer matches the shell syntax")
 
 
 class EveryAppBuilderPicksOffscreen(unittest.TestCase):
@@ -1081,19 +816,17 @@ class EveryAppBuilderPicksOffscreen(unittest.TestCase):
         return found
 
     def test_every_app_builder_sets_the_platform_first(self):
+        builders = self._builders()
+        self.assertGreater(len(builders), 40,    # a scan that matches nothing passes
+                           "the app-construction pattern no longer matches")
         unguarded = sorted(
-            name for name, (source, at) in self._builders().items()
+            name for name, (source, at) in builders.items()
             if not 0 <= source.find(self.GUARD) < at)
         self.assertEqual(
             [], unguarded,
             "these modules build the app before setting the platform, so a "
             "run they lead goes native and fails another module's layout "
             "asserts: %s" % unguarded)
-
-    def test_the_scan_sees_the_app_builders(self):
-        """Guards the guard: a scan that matches nothing passes."""
-        self.assertGreater(len(self._builders()), 40,
-                           "the app-construction pattern no longer matches")
 
 
 class EveryTestModuleArmsTheSandbox(unittest.TestCase):

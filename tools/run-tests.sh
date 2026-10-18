@@ -56,17 +56,19 @@ promote() {
     return 1
 }
 
-# --ui runs the pre-push hook's UI_MODULES, the short run a UI-only push gets.
+# --affected runs the tests a change reaches, by the last green full run's map.
 args=()
 for arg in "$@"; do
-    if [ "$arg" = "--ui" ]; then
-        ui_modules="$(sed -n 's/^UI_MODULES="\(.*\)"$/\1/p' "$repo/tools/git-hooks/pre-push")"
-        if [ -z "$ui_modules" ]; then
-            echo "run-tests: the pre-push hook names no UI_MODULES" >&2
-            exit 1
+    if [ "$arg" = "--affected" ]; then
+        affected="$("$(amaze_python || echo python3)" "$repo/tools/select-tests.py")"
+        if [ -z "$affected" ]; then
+            echo "run-tests: the changes reach no test - nothing to run"
+            exit 0
         fi
-        # shellcheck disable=SC2206
-        args+=($ui_modules)
+        if [ "$affected" != "ALL" ]; then
+            # shellcheck disable=SC2206
+            args+=($affected)
+        fi
     else
         args+=("$arg")
     fi

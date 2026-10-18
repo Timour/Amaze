@@ -4,6 +4,8 @@ import os
 import sys
 import unittest
 
+import impact_map
+
 sys.path.insert(
     0, os.path.dirname(os.path.dirname(os.path.dirname(
         os.path.abspath(__file__)))))
@@ -36,9 +38,17 @@ def host_line() -> str:
 
 def main(argv) -> None:
     print(host_line(), flush=True)
+    map_path = os.environ.get(impact_map.MAP_VAR)
+    recorder = impact_map.recorder(map_path)
     program = unittest.main(module=None, argv=["unittest"] + list(argv),
                             exit=False)
     ok = program.result.wasSuccessful()
+    if recorder is not None and ok:    # a red run may not have reached what a green one does
+        try:
+            recorder.save(map_path, program.result.testsRun)
+        except Exception as exc:                             # noqa: BLE001
+            print("run_suite: could not write the impact map to %s (%s)"
+                  % (map_path, exc), file=sys.stderr)
     report_path = os.environ.get(SKIP_REPORT_VAR)
     if report_path:
         try:
