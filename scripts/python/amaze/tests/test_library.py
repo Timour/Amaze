@@ -36,7 +36,8 @@ class TestMaterialLibrary(unittest.TestCase):
     """Test suite for MaterialLibrary class"""
 
     def setUp(self):
-        """Set up test fixtures and mocks"""
+        """Set up test fixtures and mocks; the patches stop even when setUp fails part way."""
+        self.addCleanup(patch.stopall)
         self.prefs_patcher = patch("amaze.core.library.prefs.Prefs")
         self.db_patcher = patch("amaze.core.library.database.DatabaseConnector")
         self.material_patcher = patch("amaze.core.library.material.Material")
@@ -104,10 +105,6 @@ class TestMaterialLibrary(unittest.TestCase):
         from amaze.core import library  # imported after the patches are live
 
         self.library = library.MaterialLibrary(self.mock_prefs)
-
-    def tearDown(self):
-        """Clean up patches"""
-        patch.stopall()
 
     def test_a_positional_prefs_is_the_preferences(self):
         """`preferences` is first and positional, so the plain call binds it. ▸p/duplication-third-verb"""

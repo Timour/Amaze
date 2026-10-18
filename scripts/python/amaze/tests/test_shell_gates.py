@@ -917,6 +917,74 @@ class EveryTestModuleArmsTheSandbox(unittest.TestCase):
                            "the test directory scan went vacuous")
 
 
+def _is_patch_call(node) -> bool:
+    """`patch(...)`, `patch.object(...)`, `mock.patch.dict(...)` and the like."""
+    if not isinstance(node, ast.Call):
+        return False
+    spelled = ast.unparse(node.func)
+    return spelled == "patch" or spelled.startswith(("patch.", "mock.patch", "unittest.mock.patch"))
+
+
+def _starts_left_running(tree) -> list:
+    """Lines where a patch starts with no stop registered before it or on the very next line."""
+    found = []
+
+    def walk_block(block, patchers, stopall):
+        for index, stmt in enumerate(block):
+            for call in (n for n in ast.walk(stmt) if isinstance(n, ast.Call)):
+                spelled = ast.unparse(call.func)
+                if spelled.endswith("addCleanup") and any(
+                        ast.unparse(a).endswith("patch.stopall") for a in call.args):
+                    stopall = True
+            if isinstance(stmt, ast.Assign) and _is_patch_call(stmt.value):
+                patchers |= {ast.unparse(target) for target in stmt.targets}
+            for call in (n for n in ast.walk(stmt) if isinstance(n, ast.Call)):
+                receiver = getattr(call.func, "value", None)
+                if getattr(call.func, "attr", "") != "start" or receiver is None:
+                    continue
+                if not (_is_patch_call(receiver) or ast.unparse(receiver) in patchers):
+                    continue
+                after = ast.unparse(block[index + 1]) if index + 1 < len(block) else ""
+                if not stopall and "addCleanup(%s.stop)" % ast.unparse(receiver) not in after:
+                    found.append(stmt.lineno)
+            for field in ("body", "orelse", "finalbody"):
+                inner = getattr(stmt, field, None)
+                if inner and not isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef,
+                                                   ast.ClassDef)):
+                    stopall = walk_block(inner, patchers, stopall)
+        return stopall
+
+    for func in ast.walk(tree):
+        if isinstance(func, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            walk_block(func.body, set(), False)
+    return sorted(set(found))
+
+
+class AStartedPatchIsUndoneWhenWhatFollowsRaises(unittest.TestCase):
+    """tearDown never runs after a failed setUp, so a started patch needs a cleanup to stop it."""
+
+    def test_no_test_module_leaves_a_started_patch_running(self):
+        offences = []
+        for name, tree in EveryTestModuleArmsTheSandbox._modules(self).items():
+            offences.extend("%s.py:%d" % (name, line) for line in _starts_left_running(tree))
+        self.assertEqual(
+            [], offences,
+            "a patch started with no cleanup to stop it: if setUp then fails, the patch "
+            "stays on for every later test (one moved import once failed 821): %s" % offences)
+
+    def test_the_scan_tells_a_leak_from_the_two_safe_shapes(self):
+        """Guards the guard: a scan that matches nothing passes everything."""
+        leak = ("def setUp(self):\n    self.p = patch('a.B')\n    self.b = self.p.start()\n"
+                "    self.q = patch('a.C')\n    self.q.start()\n")
+        stopall = ("def setUp(self):\n    self.addCleanup(patch.stopall)\n"
+                   "    self.p = patch('a.B')\n    self.p.start()\n")
+        paired = ("def setUp(self):\n    p = mock.patch.object(a, 'b')\n    p.start()\n"
+                  "    self.addCleanup(p.stop)\n    t = threading.Thread()\n    t.start()\n")
+        self.assertEqual([3, 5], _starts_left_running(ast.parse(leak)))
+        self.assertEqual([], _starts_left_running(ast.parse(stopall)))
+        self.assertEqual([], _starts_left_running(ast.parse(paired)))
+
+
 class EveryToolSpeaksTheResolver(unittest.TestCase):
     """Every `tools/*.sh` reaching for hython sources the one resolver, and the two recorded trap spellings are banned from the directory."""
 

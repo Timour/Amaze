@@ -46,15 +46,12 @@ class TestCategories(unittest.TestCase):
         )
 
         self.patcher_qtcore.start()
+        self.addCleanup(self.patcher_qtcore.stop)
         self.patcher_prefs.start()
+        self.addCleanup(self.patcher_prefs.stop)
         self.patcher_db.start()
+        self.addCleanup(self.patcher_db.stop)
         self.category_module = category  # bound after patching
-
-    def tearDown(self):
-        """Clean up patches after each test."""
-        self.patcher_qtcore.stop()
-        self.patcher_prefs.stop()
-        self.patcher_db.stop()
 
     def test_init_loads_preferences_and_categories(self):
         """Test that __init__ takes the given preferences and loads categories from database."""
