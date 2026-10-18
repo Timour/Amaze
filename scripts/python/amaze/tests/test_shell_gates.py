@@ -211,10 +211,11 @@ class GateFixture(unittest.TestCase):
         return self._git("rev-parse", "HEAD")
 
     def _env(self, mode, **extra):
-        """Never inherits a real bypass variable from the calling suite."""
+        """Never inherits a real bypass variable, or the pushing repository, from the calling suite."""
         env = dict(os.environ)
         for name in ("AMAZE_SYNC_NO_VERIFY", "AMAZE_SKIP_TESTS",
-                     "AMAZE_SCRATCH_INSTALL"):
+                     "AMAZE_SCRATCH_INSTALL",
+                     "GIT_DIR", "GIT_WORK_TREE"):    # a worktree's pre-push sets GIT_DIR ▸r/git-hook-surface
             env.pop(name, None)
         env.update(self.git_env)
         env.update({
