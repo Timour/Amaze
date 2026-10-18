@@ -649,14 +649,66 @@ class PrePushGateTest(GateFixture):
 
 
 
-    def test_a_docs_only_push_still_runs_the_suite(self):
-        """Only `.svg` earns the short run - every other file type runs the whole suite, however harmless it looks."""
+    def test_a_docs_push_with_no_terminal_runs_the_suite(self):
+        """Anything automated gets the whole gate, whatever the push touches."""
         self._commit(os.path.join("docs", "a.md"))
         result = self.push("green")
         self.assertIn("running the suite", self.both(result))
         self.assertEqual(len(self.suite_calls()), 1)
         self.assertEqual(result.returncode, 0, self.both(result))
         self.assertIn("pre-push: DONE", result.stdout)
+
+    def test_a_push_of_ui_files_runs_the_ui_modules(self):
+        """Art, hover texts and the documents earn the short run from a terminal."""
+        self._commit(*[os.path.join(*path.split("/")) for path in (
+            "docs/a.md", "MANUAL.md", "README.md", "CHANGELOG.md",
+            "scripts/python/amaze/tooltips.py", "scripts/python/amaze/ui/badge_x.png")])
+        result = self.push("green", terminal=True)
+        self.assertEqual(result.returncode, 0, self.both(result))
+        self.assertIn("UI only", self.both(result))
+        self.assertEqual(1, len(self.suite_calls()),
+                         "the UI run did not happen: %r" % self.suite_calls())
+        self.assertIn("test_tooltips", self.suite_calls()[0])
+
+    def _bump_with_art(self, after):
+        """A released `branding.py`, then one commit changing it to `after` beside an svg."""
+        branding = os.path.join(self.repo, "scripts", "python", "amaze", "branding.py")
+        _write(branding, 'APP_NAME = "Amaze"\nAPP_VERSION = "1.0.0"    # the release\n')
+        self._git("add", "-A")
+        self._git("commit", "-q", "-m", "release 1.0.0")
+        self.base_sha = self._git("rev-parse", "HEAD")
+        _write(branding, after)
+        _write(os.path.join(self.repo, "scripts", "python", "amaze", "ui", "badge_x.svg"), "svg\n")
+        self._git("add", "-A")
+        self._git("commit", "-q", "-m", "art and its version")
+
+    def test_a_version_bump_rides_along_with_ui_files(self):
+        """Art needs a version bump, so a change to `APP_VERSION` alone keeps the short run."""
+        self._bump_with_art('APP_NAME = "Amaze"\nAPP_VERSION = "1.0.1"    # the release\n')
+        result = self.push("green", terminal=True)
+        self.assertEqual(result.returncode, 0, self.both(result))
+        self.assertIn("UI only", self.both(result))
+
+    def test_any_other_change_to_branding_runs_everything(self):
+        """`branding.py` is code; only its version line may ride in a UI push."""
+        self._bump_with_art('APP_NAME = "Amazing"\nAPP_VERSION = "1.0.1"    # the release\n')
+        result = self.push("green", terminal=True)
+        self.assertNotIn("UI only", self.both(result))
+        self.assertIn("running the suite", self.both(result))
+
+    def test_a_python_file_beside_tooltips_runs_everything(self):
+        """`tooltips.py` is the one module on the list; the ones beside it carry logic."""
+        self._commit(os.path.join("scripts", "python", "amaze", "messages.py"))
+        result = self.push("green", terminal=True)
+        self.assertNotIn("UI only", self.both(result))
+        self.assertIn("running the suite", self.both(result))
+
+    def test_a_picture_outside_ui_runs_everything(self):
+        """A test's own picture is data a test asserts on, so it runs the suite."""
+        self._commit(os.path.join("scripts", "python", "amaze", "tests", "fixture.png"))
+        result = self.push("green", terminal=True)
+        self.assertNotIn("UI only", self.both(result))
+        self.assertIn("running the suite", self.both(result))
 
     def _svg(self, name="scripts/python/amaze/ui/badge_x.svg"):
         return self._commit(os.path.join(*name.split("/")))
@@ -666,13 +718,13 @@ class PrePushGateTest(GateFixture):
         self._svg()
         result = self.push("green", terminal=True)
         self.assertEqual(result.returncode, 0, self.both(result))
-        self.assertIn("art only", self.both(result))
+        self.assertIn("UI only", self.both(result))
         self.assertEqual(
             1, len(self.suite_calls()),
-            "the art run did not happen: %r" % self.suite_calls())
+            "the UI run did not happen: %r" % self.suite_calls())
         self.assertIn(
             "test_hip_section", self.suite_calls()[0],
-            "the short run did not name the art modules: %r"
+            "the short run did not name the UI modules: %r"
             % self.suite_calls())
         self.assertIn("pre-push: DONE", result.stdout)
 
@@ -682,7 +734,7 @@ class PrePushGateTest(GateFixture):
                                   "badge_x.svg"),
                      os.path.join("scripts", "python", "amaze", "widget.py"))
         result = self.push("green", terminal=True)
-        self.assertNotIn("art only", self.both(result))
+        self.assertNotIn("UI only", self.both(result))
         self.assertIn("running the suite", self.both(result))
         self.assertEqual(result.returncode, 0, self.both(result))
 
@@ -690,7 +742,7 @@ class PrePushGateTest(GateFixture):
         """The short run is for a person who just redrew a badge and can see it - anything automated gets the whole gate."""
         self._svg()
         result = self.push("green")
-        self.assertNotIn("art only", self.both(result))
+        self.assertNotIn("UI only", self.both(result))
         self.assertIn("running the suite", self.both(result))
 
     def test_an_unreadable_range_never_earns_the_art_run(self):
@@ -698,38 +750,40 @@ class PrePushGateTest(GateFixture):
         self._svg()
         result = self.push("red", stdin=self.ref_line(
             "b" * 40, remote_sha="c" * 40), terminal=True)
-        self.assertNotIn("art only", self.both(result))
+        self.assertNotIn("UI only", self.both(result))
         self.assertEqual(result.returncode, 1, self.both(result))
 
     def test_no_refs_on_stdin_never_earns_the_art_run(self):
         """Missing information is not evidence that a push is art."""
         self._svg()
         result = self.push("red", stdin="", terminal=True)
-        self.assertNotIn("art only", self.both(result))
+        self.assertNotIn("UI only", self.both(result))
         self.assertEqual(result.returncode, 1, self.both(result))
 
-    def test_the_art_modules_cover_every_module_that_reads_the_art(self):
-        """A list nothing derives goes stale silently - the short run must name every module that asserts on the artwork. Keyed on the CALL form, or the search matches its own pattern and the helper that defines it."""
+    def test_the_ui_modules_cover_every_module_that_reads_the_ui_files(self):
+        """The short run names every module that reads the art, the hover texts or the documents."""
         with open(GATE_SCRIPTS[os.path.join("tools", "git-hooks",
                                             "pre-push")],
                   encoding="utf-8") as handle:
-            named = re.search(r'^ART_MODULES="([^"]*)"', handle.read(),
+            named = re.search(r'^UI_MODULES="([^"]*)"', handle.read(),
                               re.M)
-        self.assertIsNotNone(named, "pre-push no longer names ART_MODULES")
+        self.assertIsNotNone(named, "pre-push no longer names UI_MODULES")
         listed = set(named.group(1).split())
         tests_dir = os.path.dirname(os.path.abspath(__file__))
-        reads_art = set()
+        reads_ui = set()
+        readers = (r"\.art_colours\(|\._effective_paint\(|from amaze import tooltips"
+                   r"|\"(?:MANUAL|README|CHANGELOG)\.md\"")    # the CALL form, never the bare name
         for name in sorted(os.listdir(tests_dir)):
-            if not (name.startswith("test_") and name.endswith(".py")):
+            if not (name.startswith("test_") and name.endswith(".py")) \
+                    or name == os.path.basename(__file__):    # this file names them as push paths
                 continue
             with open(os.path.join(tests_dir, name), encoding="utf-8") as fh:
-                if re.search(r"\.art_colours\(|\._effective_paint\(",
-                             fh.read()):
-                    reads_art.add(name[:-3])
+                if re.search(readers, fh.read()):
+                    reads_ui.add(name[:-3])
         self.assertEqual(
-            set(), reads_art - listed,
-            "a module asserts on the art but is not in the short run, so "
-            "an svg-only push would never exercise it")
+            set(), reads_ui - listed,
+            "a module reads a UI file but is not in the short run, so "
+            "a UI-only push would never exercise it")
 
     def test_a_second_ref_carrying_code_runs_everything(self):
         """`git push --all` feeds several lines, and an art-only ref must not excuse one carrying code."""
@@ -742,7 +796,7 @@ class PrePushGateTest(GateFixture):
                  + self.ref_line(code, local_ref="refs/heads/feature",
                                  remote_ref="refs/heads/feature"))
         result = self.push("green", stdin=stdin, terminal=True)
-        self.assertNotIn("art only", self.both(result))
+        self.assertNotIn("UI only", self.both(result))
         self.assertIn("running the suite", self.both(result))
 
 
@@ -878,6 +932,18 @@ class RunTestsWrapperTest(GateFixture):
         result = self._run(os.path.join("tools", "run-tests.sh"), "red",
                            cwd=self.tmp)
         self.assertNotEqual(result.returncode, 0, self.both(result))
+
+    def test_ui_runs_the_modules_the_push_gate_names(self):
+        """`--ui` is the hook's own short run, read from its UI_MODULES, never a second list."""
+        with open(GATE_SCRIPTS[os.path.join("tools", "git-hooks", "pre-push")],
+                  encoding="utf-8") as handle:
+            modules = re.search(r'^UI_MODULES="([^"]*)"', handle.read(), re.M).group(1)
+        script = os.path.join(self.repo, "tools", "run-tests.sh")
+        result = subprocess.run(["bash", script, "--ui"], capture_output=True, text=True,
+                                cwd=self.tmp, env=self._env("green"))
+        self.assertEqual(result.returncode, 0, self.both(result))
+        self.assertEqual(["green " + modules], self.suite_calls())
+        self.assertIn("green SUBSET", self.both(result), "a --ui run must never ship")
 
 
 class TargetedRunTest(unittest.TestCase):

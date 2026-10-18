@@ -7,9 +7,8 @@
 # Wired with `git config core.hooksPath tools/git-hooks` so it travels
 # with a clone (sync-install.sh re-wires it automatically).
 #
-# It used to also decide WHICH pushes deserved the suite. That skip
-# logic was deleted on 2026-07-28 and the suite now ALWAYS runs; what
-# the skip cost is recorded in the private notes (devlog #283).
+# A push of UI files alone, from a terminal, runs the UI modules; any
+# other push runs the whole suite.
 #
 # Escape hatch for a genuine emergency: git push --no-verify, or
 # AMAZE_SKIP_TESTS=$(git rev-parse HEAD) git push - sha-bound so it
@@ -42,47 +41,56 @@ elif [ -n "${AMAZE_SKIP_TESTS:-}" ]; then
     echo "pre-push: AMAZE_SKIP_TESTS set but does not match HEAD - running anyway" >&2
 fi
 
-# ART MODULES - every module that asserts on the artwork itself. Pinned by
-# test_the_art_modules_cover_every_module_that_reads_the_art, so a new art
-# test cannot fall outside the short run silently.
-ART_MODULES="test_hip_section test_notes"
+# UI MODULES - every module that asserts on the art or reads a UI file. Pinned
+# by test_the_ui_modules_cover_every_module_that_reads_the_ui_files, so a new
+# one cannot fall outside the short run silently.
+UI_MODULES="test_hip_section test_notes test_tooltips test_ui_labels"
 
-# An .svg cannot carry a logic bug, so a push of nothing else earns the art
-# modules instead of the whole suite. REFUSES TO SKIP ON ANY DOUBT: no refs,
-# an unreadable range, a deletion, one non-svg path, or a push with no
-# terminal - the old skip logic put code on main while printing it skipped.
+# Art, hover texts and the documents carry no logic, so a push of nothing else
+# earns the UI modules instead of the whole suite. REFUSES TO SKIP ON ANY DOUBT:
+# no refs, an unreadable range, a deletion, one path off the list, or a push
+# with no terminal - the old skip logic put code on main while printing it skipped.
 #
-# A TTY IS THE TEST. The short run is for a person who just redrew a badge
-# and can see the result; anything automated gets the whole gate, because
-# automation is what pushes a range it did not look at.
-art_only=0
+# A TTY IS THE TEST. The short run is for a person who just redrew a badge or
+# reworded a label and can see the result; anything automated gets the whole
+# gate, because automation is what pushes a range it did not look at.
+ui_only=0
 if [ -t 2 ]; then
     refs="$(cat)"
     if [ -n "$refs" ]; then
-        art_only=1
+        ui_only=1
         while read -r _local_ref local_sha _remote_ref remote_sha; do
             [ -n "$local_sha" ] || continue
             case "$local_sha$remote_sha" in
                 *[!0]*) ;;
-                *) art_only=0; break ;;
+                *) ui_only=0; break ;;
             esac
             if [ "$local_sha" = "0000000000000000000000000000000000000000" ] \
                || [ "$remote_sha" = "0000000000000000000000000000000000000000" ]; then
-                art_only=0; break
+                ui_only=0; break
             fi
             if ! changed="$(git diff --name-only \
                     "$remote_sha".."$local_sha" 2>/dev/null)"; then
-                art_only=0; break
+                ui_only=0; break
             fi
-            [ -n "$changed" ] || { art_only=0; break; }
+            [ -n "$changed" ] || { ui_only=0; break; }
             while read -r path; do
                 [ -n "$path" ] || continue
                 case "$path" in
-                    *.svg) ;;
-                    *) art_only=0; break ;;
+                    *.svg|scripts/python/amaze/ui/*.png) ;;
+                    scripts/python/amaze/tooltips.py) ;;
+                    MANUAL.md|README.md|CHANGELOG.md|docs/*) ;;
+                    scripts/python/amaze/branding.py)    # the version bump a UI push needs, alone
+                        if ! bump="$(git diff -U0 "$remote_sha".."$local_sha" -- "$path" \
+                                | sed -n '/^@@/,$p' | grep '^[-+]')" \
+                           || printf '%s\n' "$bump" \
+                                | grep -qvE '^[-+]APP_VERSION = "[0-9]+\.[0-9]+\.[0-9]+"( .*)?$'; then
+                            ui_only=0; break
+                        fi ;;
+                    *) ui_only=0; break ;;
                 esac
             done <<< "$changed"
-            [ "$art_only" = 1 ] || break
+            [ "$ui_only" = 1 ] || break
         done <<< "$refs"
     fi
 fi
@@ -104,10 +112,10 @@ fi
 # DATED because it tracks the test count and nothing updates it: 130s was
 # true at roughly half this many tests and understated the wait by 2x by
 # the time anybody noticed. Re-measure when it misleads, and move the date.
-if [ "$art_only" = 1 ]; then
-    echo "pre-push: art only - running $ART_MODULES, not the whole suite"
+if [ "$ui_only" = 1 ]; then
+    echo "pre-push: UI only - running $UI_MODULES, not the whole suite"
     # shellcheck disable=SC2086
-    output="$("$repo/scripts/python/amaze/tests/start_test.sh" $ART_MODULES 2>&1)"
+    output="$("$repo/scripts/python/amaze/tests/start_test.sh" $UI_MODULES 2>&1)"
 else
     echo "pre-push: running the suite (minutes, not seconds - the Mac and the stick differ by 2.5x) ▸p/suite-timing"
     output="$("$repo/tools/run-tests.sh" 2>&1)"

@@ -2,6 +2,7 @@
 
 import ast
 import os
+import re
 import unittest
 
 from amaze import tooltips
@@ -95,3 +96,14 @@ class TheHoverTextsAreReadable(unittest.TestCase):
             text = getattr(tooltips, name)
             self.assertTrue(isinstance(text, str) and text.strip(),
                             name + " is not a hover text: %r" % (text,))
+
+    def test_every_hover_text_the_code_names_exists(self):
+        """A push of `tooltips.py` alone runs this module, so a renamed hover text fails here."""
+        missing = []
+        for path in _sources():
+            with open(path, encoding="utf-8") as handle:
+                source = handle.read()
+            for name in sorted(set(re.findall(r"\btooltips\.([A-Z][A-Z0-9_]*)\b", source))):
+                if not hasattr(tooltips, name):
+                    missing.append("%s: tooltips.%s" % (os.path.relpath(path, _PKG), name))
+        self.assertEqual([], missing, "the code names hover texts tooltips.py does not have")
