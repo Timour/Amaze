@@ -141,13 +141,30 @@ def fresh_files_folder(testcase) -> str:
     return posix_path(dest) + "/"
 
 
-def fresh_library(testcase) -> str:
+def fresh_library(testcase, source=None) -> str:
     """A throwaway COPY of the committed fixture library, auto-removed after the test, in the `prefs.dir` convention WHOLE - forward slashes AND trailing separator. Tests may mutate and save freely. ▸p/harness-isolation"""
     tmp = scratch_dir("amaze_test_lib_")
     testcase.addCleanup(shutil.rmtree, tmp, True)
     dest = os.path.join(tmp, "library")
-    shutil.copytree(FIXTURE_DIR, dest)
+    shutil.copytree(source or FIXTURE_DIR, dest)
     return posix_path(dest) + "/"
+
+
+_SEEDED = []    # the first seeded panel library, which later fixture panels copy
+_PER_PANEL = ("locations.json", "location_paths.json")    # each panel writes its own
+
+
+def _keep_seeded(library: str) -> None:
+    """The first seeded panel library, minus its location files: what later panels copy."""
+    from amaze.core import gradient_library
+    marker = os.path.join(library, gradient_library.GradientLibrary._SEED_MARKER)
+    if _SEEDED or not os.path.exists(marker):
+        return
+    keep = os.path.join(scratch_dir("amaze_seeded_fixture_"), "library")
+    atexit.register(shutil.rmtree, os.path.dirname(keep), True)
+    shutil.copytree(library, keep, ignore=lambda _folder, names: [
+        name for name in names if name.startswith(_PER_PANEL)])
+    _SEEDED.append(keep)
 
 
 class _RecordedLog:
@@ -324,7 +341,7 @@ def fixture_panel(testcase):
 
     config = scratch_dir("amaze_fixture_panel_")
     testcase.addCleanup(shutil.rmtree, config, True)
-    library = fresh_library(testcase)
+    library = fresh_library(testcase, _SEEDED[0] if _SEEDED else None)
     files = fresh_files_folder(testcase)
     with open(os.path.join(config, "settings.json"), "w",
               encoding="utf-8") as handle:
@@ -363,6 +380,7 @@ def fixture_panel(testcase):
             "the fixture panel did not load its library, so setup() never "
             "ran - this fixture is not building the panel tests need"
         )
+    _keep_seeded(panel.prefs.dir)
     return panel
 
 
