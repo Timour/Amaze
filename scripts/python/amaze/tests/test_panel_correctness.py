@@ -24,6 +24,7 @@ sys.path.insert(
 from amaze.core import file_library, folders, geo_library  # noqa: E402
 from amaze.core import grid_columns  # noqa: E402
 from amaze.core import keyed_store, locations, notes, tile_icons  # noqa: E402
+from amaze.dialogs import save_dialog  # noqa: E402
 from amaze.prefs import prefs as prefs_mod  # noqa: E402
 from amaze.helpers import theme, ui_helpers  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
@@ -298,8 +299,7 @@ class TheSaveDialogOffersEveryCategory(unittest.TestCase):
             def exec(self):
                 return 0
 
-        with mock.patch.object(panel_mod.save_dialog, "SaveDialog",
-                               _Dialog):
+        with mock.patch.object(save_dialog, "SaveDialog", _Dialog):
             panel.get_material_info_user([_material(self, "alloy_mat")])
         self.assertIn(
             "Alloys", offered.get("cats", []),
@@ -330,8 +330,7 @@ class TheMaterialSaveOffersANameOnlyWhenOneWillDo(unittest.TestCase):
             def exec(self):
                 return 0
 
-        with mock.patch.object(panel_mod.save_dialog, "SaveDialog",
-                               _Dialog):
+        with mock.patch.object(save_dialog, "SaveDialog", _Dialog):
             panel.get_material_info_user(selection)
         return seen.get("name"), seen.get("enabled")
 

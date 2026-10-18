@@ -10,7 +10,6 @@ import threading
 import hou
 from PySide6 import QtCore
 
-from amaze import preview
 from amaze.core import debug
 
 DELEGATES = {"Karma": "BRAY_HdKarma", "Octane": "HdOctaneRendererPlugin"}
@@ -255,6 +254,7 @@ class Jobs(QtCore.QObject):
             return
         asset_id, png = job.frames[frame - 1]
         exr = job.exr(frame)
+        from amaze import preview
         if os.path.exists(exr) and preview.exr_to_png(exr, png, job.batch["ocio"], asset_id):
             self.thumbnailWritten.emit(asset_id)
         try:

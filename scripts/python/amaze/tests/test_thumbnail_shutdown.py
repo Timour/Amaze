@@ -24,7 +24,7 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze.core import thumbnails  # noqa: E402
+from amaze.core import conversion, thumbnails  # noqa: E402
 from amaze.tests import test_support  # noqa: E402,F401 - import redirects the debug log
 
 
@@ -162,7 +162,7 @@ class TestAConvertIsMissingOnlyWhenItFails(unittest.TestCase):
         loader.failed.connect(engine._on_failed)
         engine._states = {"c1": "pending"}
         answer = mock.Mock(image=image)
-        with mock.patch.object(thumbnails.conversion, "convert_image", return_value=answer):
+        with mock.patch.object(conversion, "convert_image", return_value=answer):
             loader.run()    # in this thread, so the signals deliver at once
         return engine._states.get("c1")
 

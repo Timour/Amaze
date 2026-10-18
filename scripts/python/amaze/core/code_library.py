@@ -9,7 +9,7 @@ from PySide6 import QtCore, QtGui
 import amaze
 from amaze import amazetheme
 from amaze.core import debug, library, category, material, thumbnails, tile_icons
-from amaze.helpers import hostos, vex_syntax
+from amaze.helpers import hostos
 
 _STARTER_DEF = "res/def/starter_snippets.json"  # example snippets shipped with the plugin, seeded ONCE per library into an "Examples" category (see seed_starter_snippets)
 _STARTER_MARKER = ".amaze_code_starter_v1"  # the marker file name is versioned, so a future batch can seed again without re-adding snippets the user may have deleted from the first
@@ -21,6 +21,7 @@ PREVIEW_MARGIN = 20  # text inset, also 2x the 256-canvas value so the layout is
 
 def paint_code_preview(code: str) -> QtGui.QImage:
     """The Code section's tile face for a snippet: a syntax-colored monospace preview on a PREVIEW_SIZE square, soft-wrapping long source lines and stopping at the bottom margin - shared with the online browser's amazepkg snippet tiles."""
+    from amaze.helpers import vex_syntax
     image = QtGui.QImage(
         PREVIEW_SIZE, PREVIEW_SIZE, QtGui.QImage.Format.Format_RGB32
     )

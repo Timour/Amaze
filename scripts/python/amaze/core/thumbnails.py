@@ -6,7 +6,7 @@ from collections import OrderedDict
 
 from PySide6 import QtCore, QtGui
 
-from amaze.core import conversion, debug
+from amaze.core import debug
 
 
 _unstoppable: list = globals().get("_unstoppable", [])    # threads that refused to stop, parked FOREVER and carried across reloads: the parked reference must exist at thread COMPLETION, and an isRunning()-based prune re-opens the dealloc-inside-run window - they finish or the process ends ▸r/model-contracts ▸r/module-reload
@@ -74,6 +74,7 @@ class _ConvertLoader(QtCore.QThread):
 
     def run(self) -> None:
         """One call to the Conversion Engine per item, and nothing else - the engine owns decoder policy, this worker owns staying off the UI thread and stopping when told."""
+        from amaze.core import conversion
         for key, full_path, size in self._items:
             if self._canceled:
                 return

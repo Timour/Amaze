@@ -11,7 +11,7 @@ import hashlib
 
 from PySide6 import QtCore, QtGui
 
-from amaze.core import debug, matx_icon, matx_sources, renderers, thumbnails
+from amaze.core import debug, matx_sources, renderers, thumbnails
 from amaze.core import grid_columns
 
 PREVIEW_DIR_NAME = "matx_previews"    # a NAME only - where it lives resolves per call in preview_cache(), like CATALOGUE_NAME below
@@ -409,6 +409,7 @@ class MatxOnlineLibrary(grid_columns.GridColumnsMixin,
             QtCore.QTimer.singleShot(0, self._flush_pending)
 
     def _queue_previews(self, records):
+        from amaze.core import matx_icon
         jobs = []
         for rec in records:
             key = self._preview_key(rec)

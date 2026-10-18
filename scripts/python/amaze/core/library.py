@@ -9,19 +9,16 @@ from PySide6 import QtCore, QtGui
 
 import hou
 
-from amaze.core import debug, library_policy
+from amaze.core import debug
 from amaze.core import grid_columns
 from amaze.core import locations
 from amaze.core import material, database, renderers, thumbnails, tile_icons
 from amaze.core import versions
 from amaze.core import quarantine
-from amaze.helpers import helpers
 from amaze.helpers import hostos
 from amaze import messages
 from amaze.prefs import prefs
-from amaze.render import thumbs, nodes, husk_job
-from amaze.render.material_conversion import engine as conversion_engine
-from amaze.render.material_conversion.report import ConversionReport
+from amaze.render import husk_job, nodes
 
 
 def _count(count: int, noun: str) -> str:
@@ -969,6 +966,7 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
 
     def find_asset_row_by_name(self, name: str) -> int:
         """Row of the asset whose (possibly sanitized) name matches, but only if the match is UNIQUE - with duplicates there is no safe answer, so -1, and the caller treats the save as a new asset."""
+        from amaze.helpers import helpers
         matches = []
         for row, asset in enumerate(self._assets):
             if asset.name == name or helpers.sanitize_usd_path(asset.name) == name:
@@ -1063,6 +1061,7 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
 
     def cleanup_db(self, show_dialog: bool = True) -> int:
         """Clean Library: scan, report rows whose files are missing, quarantine files no section lists, rescue uncategorised rows. Never renders, never unlinks anything in the library - a file it takes is MOVED to the quarantine, which prune_quarantine empties after QUARANTINE_DAYS - and it holds the ownership sweep back on incomplete knowledge. Read ▸p/clean-library-sweep before changing any of it. Returns 1 if anything was rescued. The summary lines are left on self.last_cleanup_summary EITHER WAY; show_dialog=False only skips the dialog, so the panel can combine several libraries into one report."""
+        from amaze.helpers import helpers
         summary = []
 
         assets_dir = os.path.join(  # THE ASSET FOLDER MUST BE READABLE BEFORE ANY OF THIS - never delete on incomplete knowledge, and the FOLDER is knowledge as much as a sibling list is
@@ -1290,6 +1289,7 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
 
     def _what_an_empty_section_means(self, empty_sections: list) -> list:
         """ONE line for ALL the sections that list nothing, saying why Amaze will not decide on its own - the refusal above states the fact, and this states what the reader cannot know from it: that the two explanations look identical from here. One line rather than one each, or two empty sections produce two near-identical thirty-word sentences in one dialog."""
+        from amaze.helpers import helpers
         if not empty_sections:
             return []
         sections = helpers.and_list(sorted(database.section_label(filename)
@@ -1526,6 +1526,7 @@ class MaterialLibrary(AssetLibrary):
 
     def update_asset_content(self, row: int, node: hou.Node) -> str:
         """Overwrite an EXISTING entry's node content from the given scene node - same id, name, categories, tags and favourite; new files, thumbnail, renderer info and date. The Update Existing half of the save flow. Returns the detected renderer, "" on failure."""
+        from amaze.core import library_policy
         if row < 0 or row >= len(self._assets):
             return ""
         mat = self._assets[row]
@@ -1622,6 +1623,7 @@ class MaterialLibrary(AssetLibrary):
 
     def render_thumbnails(self, rows) -> None:
         """Re-render every row in the model: Karma's and Octane's in ONE husk each. ▸r/husk-startup"""
+        from amaze.render import thumbs
         rows = [row for row in rows if 0 <= row < self.rowCount()]
         if not rows:
             return
@@ -1644,6 +1646,8 @@ class MaterialLibrary(AssetLibrary):
 
     def convert(self, index: QtCore.QModelIndex, target: str):
         """This row as a `target` material, saved beside it under its name: (ok, report)."""
+        from amaze.render.material_conversion import engine as conversion_engine
+        from amaze.render.material_conversion.report import ConversionReport
         mat = self._assets[index.row()]
         report = ConversionReport(mat.name)
         reason = conversion_engine.why_not(mat.renderer, target)

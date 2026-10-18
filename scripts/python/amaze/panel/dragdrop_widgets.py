@@ -3,8 +3,7 @@
 from PySide6 import QtWidgets, QtGui, QtCore
 import hou
 
-from amaze.core import cop_library, debug, dragengine, file_library
-from amaze.helpers import helpers
+from amaze.core import cop_library, debug, file_library
 from amaze.helpers import theme
 from amaze.helpers import ui_helpers
 from amaze.panel import sections
@@ -151,6 +150,7 @@ class GridGestureMixin:
             ):
                 self._begin_drag()
             if self._dragging:
+                from amaze.core import dragengine
                 if self._promote_to_field_drag():
                     return
                 self._move_preview()
@@ -187,6 +187,7 @@ class GridGestureMixin:
 
     def _begin_drag(self) -> None:
         """Start the shared self-managed drag: a floating name tag following the cursor, one gesture for every ARMED_SECTIONS row, File included - a File row only leaves it if the cursor later crosses a Parameters pane."""
+        from amaze.core import dragengine
         self._dragging = True
         dragengine.begin(self._drag_section or "")
         name = ""
@@ -266,6 +267,7 @@ class GridGestureMixin:
 
     def _promote_to_field_drag(self) -> bool:
         """The parameter-field hand-off: a FILE row crossing into a Parameters pane becomes the one real QDrag, because only mime fills a field. After it the drag is Qt's, so a release back over a network editor gets Houdini's stock answer. It is a hand-off and not a miss, so the tag goes quietly and no indicator is shown."""
+        from amaze.core import dragengine
         if self._drag_section != "file":
             return False
         ui = getattr(hou, "ui", None)
@@ -325,6 +327,8 @@ class GridGestureMixin:
         super().mouseReleaseEvent(event)
 
     def _release(self, event: QtGui.QMouseEvent) -> None:
+        from amaze.core import dragengine
+        from amaze.helpers import helpers
         if self._dragging and event.button() != QtCore.Qt.MouseButton.LeftButton:    # a right/middle release mid-drag CANCELS: unfiltered, backing out performed a real import wherever the cursor was. Tear down rather than bare-return, which leaves the tag floating and the gesture live
             if self._preview is not None:
                 self._preview.hide()
@@ -390,6 +394,7 @@ class GridGestureMixin:
 
     def _ghost_update(self, panel, pane_tab, pane_type) -> None:
         """Per move: the outline where the payload would land, asking the SAME questions the release will, so what is drawn is what will happen - the pane arrives TRACKED from the caller, the outline's POSITION follows every move, and the target questions run on the engine's tick (a full per-move resolution saturated the loop at the mouse's own rate, ▸p/drag-move-cost). Over a node the editor's own drop-target highlight owns it and no ghost is drawn. ▸r/node-graph"""
+        from amaze.core import dragengine
         section = self._drag_section
         idx = self._drag_index
         if panel is None or idx is None:
@@ -471,6 +476,8 @@ class GridGestureMixin:
     @staticmethod
     def _splice_if_on_a_wire(panel, event) -> None:
         """A release over a WIRE inserts what landed into that chain, read from the placement funnel (`helpers.place_nodes`/`auto_place`) rather than a diff of the network's children, so one question answers for every door including ones added later."""
+        from amaze.core import dragengine
+        from amaze.helpers import helpers
         landed = helpers.placed_nodes()
         if not landed:
             return

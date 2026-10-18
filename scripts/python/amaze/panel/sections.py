@@ -9,15 +9,13 @@ import hou
 from PySide6 import QtCore, QtWidgets
 
 from amaze import amazetheme
-from amaze.core import (category, code_library, cop_library, debug, dragengine, file_library,
-                        grid_columns, locations, multifilterproxy_model, packages, renderers,
+from amaze.core import (category, code_library, cop_library, debug, file_library,
+                        grid_columns, locations, multifilterproxy_model, renderers,
                         scene_captures, notes)
-from amaze.dialogs import code_dialog
-from amaze.helpers import helpers, hostos, ui_helpers
+from amaze.helpers import hostos, ui_helpers
 from amaze import messages
 from amaze.panel import grid
 from amaze.render import nodes as nodes_mod
-from amaze.render.material_conversion import engine as conversion_engine
 
 
 AssetStack = collections.namedtuple(
@@ -430,6 +428,7 @@ class AssetSection(Section):
     def export_package_to(self, indexes, path: str) -> int:
         """ACT half: the selected rows (proxy indexes) leave as one `.amazepkg` - record, existing family files and note per asset - answering the entry count."""
         st = self.stack()
+        from amaze.core import packages
         if st is None:
             return 0
         items = []
@@ -447,6 +446,7 @@ class AssetSection(Section):
     def export_category_to(self, category, path: str) -> int:
         """ACT half of the sidebar export: every asset carrying `category` (None means the whole section) leaves as one package."""
         st = self.stack()
+        from amaze.core import packages
         if st is None:
             return 0
         items = []
@@ -662,6 +662,7 @@ class MaterialSection(AssetSection):
 
     def drop_material_at_release(self, index) -> bool:
         """Land a released material drag where it was dropped, nothing having been created before this moment: LOP viewport gets the ancestor-prim menu and an import into a materiallibrary in THAT stage, never /mat; OBJ viewport imports to /mat and assigns to the picked object; a network editor imports into the network under the cursor; anything else is a silent miss. Returns True for a hit, False for a miss, and "menu" when a menu carried the interaction, which the drag widgets map to the outcome icon."""
+        from amaze.core import dragengine
         panel = self.panel
         if not panel.material_model or index is None or not index.isValid():
             return False
@@ -699,6 +700,7 @@ class MaterialSection(AssetSection):
                 ("/stage/materiallibrary", "lop", "", True))    # names the LANDING: the copy goes INSIDE a material library under /stage, never stage root
 
     def menu_copy_to(self, indexes, current, payload=None) -> None:
+        from amaze.helpers import helpers
         with helpers.preserving_selection_and_current():    # a menu import leaves the artist where they were, like a drop; the drag and click dispatchers wrap, the menu dispatcher does not, so the scene-importing verbs carry it themselves
             if payload == "lop":
                 self.panel.import_asset_to_lop()
@@ -707,6 +709,7 @@ class MaterialSection(AssetSection):
 
     def _sources_held(self, indexes) -> frozenset:
         """The renderers among these rows that convert: one walk per menu, kept for the list asked about."""
+        from amaze.render.material_conversion import engine as conversion_engine
         held = getattr(self, "_held", None)
         if held is not None and held[0] is indexes:
             return held[1]
@@ -728,6 +731,7 @@ class MaterialSection(AssetSection):
 
     def convert_targets(self, indexes, current) -> tuple:
         """What the selection can BECOME: a child is live when a held material converts to it here."""
+        from amaze.render.material_conversion import engine as conversion_engine
         held = self._sources_held(indexes)
         return tuple(
             (renderer.label, renderer.key, renderer.icon,
@@ -807,6 +811,8 @@ class CopSection(AssetSection):
 
     def drop_cop_at_release(self, index) -> bool:
         """Nodes drag released: the same context rules as double-click, but against the network editor under the RELEASE POINT - released ON a network container (a geo, a copnet, a lopnet...) or INSIDE one, the saved nodes load directly into it, and any other network gets a fresh container. An asset whose context doesn't match where it landed is refused with a message rather than half created, and a release over nothing is silent, a miss being a normal drag outcome rather than an error."""
+        from amaze.core import dragengine
+        from amaze.helpers import helpers
         panel = self.panel
         if not panel.cop_model:
             return False
@@ -832,6 +838,7 @@ class CopSection(AssetSection):
         return True
 
     def menu_load(self, indexes, current, payload=None) -> None:
+        from amaze.helpers import helpers
         with helpers.preserving_selection_and_current():    # same wrapper as menu_copy_to: a menu import must not move the artist's selection, current node or view
             self.panel.import_cop_assets()
     library_model_attrs = ("cop_model", "cop_category_model")
@@ -938,6 +945,8 @@ class CodeSection(AssetSection):
 
     def create_code_node_in(self, index, dest, position=None) -> bool:
         """The snippet's carrier in `dest`, where that network kind has one, loaded with the snippet."""
+        from amaze.core import dragengine
+        from amaze.helpers import helpers
         panel = self.panel
         row, asset = self._code_asset(index)
         type_name = self._carrier_for(asset, dest)
@@ -957,6 +966,7 @@ class CodeSection(AssetSection):
 
     def drop_code_at_release(self, index, node: hou.Node) -> bool:
         """Code snippet drag released (self-managed): apply the snippet to the node under the cursor - the same as a double-click, but targeting where the drag landed. A release over nothing is silent, and a node with no code/snippet parm reports why."""
+        from amaze.core import dragengine
         panel = self.panel
         if not panel.code_model or index is None or node is None:
             return False
@@ -1000,6 +1010,7 @@ class CodeSection(AssetSection):
             debug.refuse(messages.SNIPPET_RUN_FAILED % (asset.name, problem))
 
     def _edit_code_row(self, row: int) -> None:
+        from amaze.dialogs import code_dialog
         panel = self.panel
         asset = panel.code_model.assets[row]
         dialog = code_dialog.CodeDialog(
@@ -1050,6 +1061,7 @@ class CodeSection(AssetSection):
     takes_language = True
 
     def can_save(self, nodes) -> bool:
+        from amaze.helpers import helpers
         parm = helpers.find_code_parm(nodes[0]) if len(nodes) == 1 else None
         return parm is not None and bool(parm.eval().strip())    # an empty snippet saves nothing
 
@@ -1357,6 +1369,7 @@ class FileSection(FolderSection):
 
     def export_package_to(self, indexes, path: str) -> int:    # the File flavour: each selected row's file rides whole under its kind
         items = []
+        from amaze.core import packages
         for index in indexes:
             if index is None or not index.isValid():
                 continue
@@ -1376,6 +1389,8 @@ class FileSection(FolderSection):
 
     def drop_geo_at_release(self, index: QtCore.QModelIndex) -> bool:
         """Geometry drag released: import in context at the release point - on a SOP-capable node (geo, SOP Create) the loader lands inside it, an OBJ network gets a new geo, a LOP network a new SOP Create. A release over nothing is silent, a miss being a normal drag outcome rather than an error."""
+        from amaze.core import dragengine
+        from amaze.helpers import helpers
         panel = self.panel
         context = panel._drop_context_under_cursor(
             panel._is_sop_container, include_viewports=True
@@ -1426,6 +1441,8 @@ class FileSection(FolderSection):
     def drop_file_path_on_node(self, index, node) -> bool:
         """A File row released on a node: the node's FIRST file parameter takes the spelled path - the same act as selecting the node and double-clicking the row, aimed by the cursor instead of the selection, and uniform across kinds with unknown files included. A node with no file parameter answers False, so the gesture shows its own refusal - the miss indicator - never a dialog, and the status line carries the why."""
         panel = self.panel
+        from amaze.core import dragengine
+        from amaze.helpers import helpers
         path = index.data(panel.file_files_model.PathRole)
         if not path:
             return False
@@ -1441,6 +1458,8 @@ class FileSection(FolderSection):
     def create_image_node_in(self, index, dest, position=None) -> bool:
         """The image creation rule: a release on empty network space, or a double-click with nothing selected, makes a mtlximage carrying the spelled path wherever the network can hold one."""
         panel = self.panel
+        from amaze.core import dragengine
+        from amaze.helpers import helpers
         path = index.data(panel.file_files_model.PathRole)
         if not path:
             return False
@@ -1660,6 +1679,7 @@ class OnlineContext(Section):
 
     def import_targets(self, indexes, current) -> tuple:
         """The renderer the import BUILDS AS - drawn C06a/C06b; a row greys without its plugin."""
+        from amaze.render.material_conversion import engine as conversion_engine
         hub = renderers.HUB.key
         return tuple(
             (renderer.label, renderer.key, renderer.icon,
@@ -1672,6 +1692,7 @@ class OnlineContext(Section):
                                           renderer=payload or renderers.HUB.key)
 
     def menu_import_to_scene(self, indexes, current, payload=None) -> None:
+        from amaze.helpers import helpers
         with helpers.preserving_selection_and_current():    # same wrapper as menu_copy_to: a menu import must not move the artist's selection, current node or view
             self.panel._import_online_records_to_scene(
                 self._records(indexes), renderer=payload or renderers.HUB.key)
@@ -1745,6 +1766,8 @@ class GradientSection(AssetSection):
         basis: str = "",
     ) -> bool:
         """Drag-drop completion for the Gradients section: apply the dragged combination to the node the drag was released over. A node that takes nothing answers False, so the gesture shows its own miss - drag-door rule, the red indicator and the status line, never a dialog."""
+        from amaze.core import dragengine
+        from amaze.helpers import helpers
         entry = self._entry_at(index)
         if entry is None:
             return False
@@ -1759,6 +1782,7 @@ class GradientSection(AssetSection):
 
     @staticmethod
     def _entry_ramp(entry: dict, basis: str = "") -> hou.Ramp:
+        from amaze.helpers import helpers
         if basis:    # an explicit basis rebuilds the ramp from the gradient's colours on that one interpolation; otherwise the recorded ramp (bases/keys/values) applies exactly as saved
             return helpers.build_basis_ramp(
                 [c["hex"] for c in entry["colors"]], basis)
@@ -1779,6 +1803,8 @@ class GradientSection(AssetSection):
     def _create_gradient_carrier(self, entry, dest, basis: str = "",
                                  position=None) -> bool:
         """The carrier half shared by the drag door (an index) and the double-click and menu doors (an entry, optionally re-based by Apply as)."""
+        from amaze.core import dragengine
+        from amaze.helpers import helpers
         name = helpers.sanitize_usd_path(
             str(entry.get("name") or "")) or "gradient"
         with dragengine.drop_group("Amaze Create Gradient Node"):
@@ -1850,6 +1876,7 @@ class GradientSection(AssetSection):
 
     def ramp_bases(self, indexes, current) -> tuple:
         """Every interpolation, always offered."""
+        from amaze.helpers import helpers
         return tuple((basis, basis, "", True)
                      for basis in helpers.RAMP_BASES)
 
@@ -1888,6 +1915,7 @@ class GradientSection(AssetSection):
         self.panel.click_on_row(self, index)
 
     def can_save(self, nodes) -> bool:
+        from amaze.helpers import helpers
         return (len(nodes) == 1
                 and helpers.find_color_ramp_parm(nodes[0]) is not None)
 

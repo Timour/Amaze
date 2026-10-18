@@ -3,7 +3,7 @@
 import hou
 
 from amaze.core import debug, library, category, material
-from amaze.render import nodes, thumbs
+from amaze.render import nodes
 
 
 def accepts_context(node, context: str) -> bool:
@@ -195,6 +195,7 @@ class CopLibrary(library.AssetLibrary):
         try:
             asset = self._assets[row]
             info = asset.cop_net or {}
+            from amaze.render import thumbs
             thumber = thumbs.ThumbNailRenderer(self.preferences)
             context = str(asset.renderer or "").upper()
             outcome = thumber.render_network_thumbnail(    # the Cop-or-Sop decision lives there, the one home shared with the save side; it answers None for a context with no picture, which is the branch below

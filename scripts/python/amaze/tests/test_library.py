@@ -41,7 +41,7 @@ class TestMaterialLibrary(unittest.TestCase):
         self.prefs_patcher = patch("amaze.core.library.prefs.Prefs")
         self.db_patcher = patch("amaze.core.library.database.DatabaseConnector")
         self.material_patcher = patch("amaze.core.library.material.Material")
-        self.thumbs_patcher = patch("amaze.core.library.thumbs.ThumbNailRenderer")
+        self.thumbs_patcher = patch("amaze.render.thumbs.ThumbNailRenderer")
         self.nodes_patcher = patch("amaze.core.library.nodes.NodeHandler")
         self.qimage_patcher = patch("PySide6.QtGui.QImage")
 

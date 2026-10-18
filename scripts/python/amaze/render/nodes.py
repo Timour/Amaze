@@ -5,22 +5,21 @@ import os
 import re
 from typing import NamedTuple
 import hou
-import voptoolutils
 
 
 from amaze import messages
-from amaze.render import thumbs
 from amaze.core import material
 from amaze.core import renderers
 from amaze.core import texstore
 from amaze.prefs import prefs
 from amaze.core import debug
-from amaze.helpers import helpers
 from amaze.helpers import hostos
 
 
 def make_karma_builder(parent: hou.Node, name: str) -> hou.Node:
     """The mtlx builder, starters gone, connectors KEPT for wiring."""
+    import voptoolutils
+    from amaze.helpers import helpers
     builder = parent.createNode("subnet")
     builder.setName(helpers.sanitize_usd_path(name), unique_name=True)
     builder = voptoolutils._setupMtlXBuilderSubnet(
@@ -416,6 +415,7 @@ def node_type_available(type_name: str) -> bool:
 
 def register_in_materiallibrary(library, builder) -> bool:
     """Cover `builder` with ONE entry. True when covered. ▸r/matlib-entries"""
+    from amaze.helpers import helpers
     if library is None or builder is None:
         return False
     lib_parm = library.parm("materials")
@@ -826,6 +826,7 @@ class NodeHandler:
         context_node: hou.Node | None = None,
     ):
         """Import a material - target "auto" reads the active editor, "mat"/"lop" force one, context_node overrides both; answers (ok, reason) and the ORDER of the refusals below is load-bearing. ▸p/material-import-door"""
+        from amaze.helpers import helpers
         payload, refusal = self._payload_or_refusal(mat)
         if refusal:
             self._context_override = None
@@ -1161,6 +1162,7 @@ class NodeHandler:
     def load_interface_other(self, mat: material.Material, builder_name: str,
                              saved_type=None) -> None:
         """Rebuild the saved container bare, no exec; a type this session lacks gets `builder_name`."""
+        from amaze.helpers import helpers
         if saved_type is None:
             saved_type = self.get_saved_node_type(mat)
         saved_type = saved_type or builder_name
@@ -1185,6 +1187,7 @@ class NodeHandler:
         )
 
         problem = load_items_strict(self._builder_node, file_name)  # absorbs the unreadable file and NAMES it; a caller that re-catches OSError here catches nothing and loses the reason
+        from amaze.helpers import helpers
         if problem:
             raise hou.OperationFailed(problem)
 
@@ -1224,6 +1227,7 @@ class NodeHandler:
 
     def _place_whole_builder(self, mat: material.Material, inner) -> None:
         """The .mat held the builder itself: move it out of its holder into place, drop the holder."""
+        from amaze.helpers import helpers
         moved = hou.moveNodesTo((inner,), self._import_path)[0]  # type: ignore
         holder = self._builder_node
         self._builder_node = moved
@@ -1240,6 +1244,7 @@ class NodeHandler:
 
     def load_octane_builder(self, mat: material.Material) -> None:
         """Octane's builder is saved whole, so one loaded subnet IS the material. ▸r/octane-builder"""
+        from amaze.helpers import helpers
         self._builder_node = self._hou_parent.createNode("subnet")    # the holder
         loaded = self._load_into_holder(mat)
         if len(loaded) == 1 and loaded[0].type().name() == "subnet":
@@ -1254,6 +1259,7 @@ class NodeHandler:
     def load_items_file_mtlx(self, mat: material.Material) -> None:
         """Karma's load: keep the wrap so every library material has ONE container shape, and pick the terminal by output data type rather than by name. ▸r/node-items"""
         loaded = self._load_into_holder(mat)
+        from amaze.helpers import helpers
         if len(loaded) == 1 and loaded[0].type().name() == "subnet":
             self._place_whole_builder(mat, loaded[0])
             return
@@ -1466,6 +1472,7 @@ class NodeHandler:
 
     def restore_cop_companion(self, mat: material.Material):
         """Restore the saved COP network; returns only what THIS call made."""
+        from amaze.helpers import helpers
         info = getattr(mat, "cop_net", {}) or {}
         if not info or not info.get("name"):
             return
@@ -1524,6 +1531,8 @@ class NodeHandler:
         items: list | None = None,
     ) -> bool:
         """Save a COP network, or a selection inside one. ▸r/node-items"""
+        from amaze.helpers import helpers
+        from amaze.render import thumbs
         ui = getattr(hou, "ui", None)  # ▸r/status-bar
         if items is not None:
             net = node.parent()
@@ -1591,6 +1600,7 @@ class NodeHandler:
         context_node: hou.Node | None = None,
     ):
         """Rebuild a COP asset: direct into a matching context, else boxed."""
+        from amaze.helpers import helpers
         file_name, refusal = self._payload_or_refusal(mat)
         if refusal:
             return (False, refusal)
@@ -1706,6 +1716,7 @@ class NodeHandler:
 
     def save_node(self, node: hou.Node, asset_id: str, update: bool) -> bool:
         """Save Node wrapper for different Material Types"""
+        from amaze.helpers import helpers
         self.texture_inventory = []    # filled by the staged save paths; add_asset/update copy it onto the row
         ui = getattr(hou, "ui", None)  # both refusals below return False on their own, so a missing screen costs the SENTENCE and never the refusal ▸r/status-bar
         if not hou.getenv("OCIO"):    # not `is None`: `OCIO =` in `houdini.env` is the documented way to unset a default and it leaves the variable EXISTING and empty
@@ -1750,6 +1761,8 @@ class NodeHandler:
             self._preferences, str(asset_id), ".interface"
         )
 
+        from amaze.helpers import helpers
+        from amaze.render import thumbs
         nodetree = [      # a connector belongs to the container, not the material
             n for n in helpers.get_connected_nodes(node)
             if n.type().name() not in ("subnetconnector", "suboutput")
@@ -1803,6 +1816,7 @@ class NodeHandler:
         renderer: str, thumb_method: str,
     ) -> bool:
         """A builder subnet saved whole, its own data riding along: MaterialX's and Octane's."""
+        from amaze.render import thumbs
         file_name = material.payload_path(
             self._preferences, asset_id, self._preferences.ext
         )
@@ -1863,6 +1877,7 @@ class NodeHandler:
         file_name = material.payload_path(
             self._preferences, str(asset_id), self._preferences.ext
         )
+        from amaze.render import thumbs
         parms_file_name = material.payload_path(
             self._preferences, str(asset_id), ".interface"
         )

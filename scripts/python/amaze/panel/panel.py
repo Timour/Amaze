@@ -7,6 +7,7 @@ _BODY_T0 = time.perf_counter()    #: when THIS module body began - stamped BEFOR
 import os
 import importlib
 import contextlib
+import sys
 
 from PySide6 import QtWidgets, QtGui, QtCore
 import hou
@@ -15,7 +16,7 @@ import amaze
 from amaze.core import grid_columns
 from amaze.panel import (dragdrop_widgets, empty_state, grid, notes_panel,
                          sections, sidebar)
-from amaze.core import debug, keyed_store, library_policy, locations, repair
+from amaze.core import debug, keyed_store, locations
 from amaze.core import versions
 from amaze.core import notes
 from amaze.core import scene_captures
@@ -34,38 +35,17 @@ from amaze.core import (
     file_library,
     code_library,
     matx_library,
-    matx_import,
     matx_sources,
     model_registry,
-)
-from amaze.dialogs import (
-    base_dialog,
-    prefs_dialog,
-    save_dialog,
-    gradient_dialog,
-    code_dialog,
-    icon_dialog,
-    user_dialog,
 )
 from amaze import amazetheme
 from amaze import branding
 from amaze import messages
 from amaze import tooltips
 from amaze.prefs import prefs
-from amaze.helpers import bytecode, helpers, hostos, theme, ui_helpers, vex_syntax
-from amaze.core import (
-    database, dragengine, gallery_import, lop_assign, matx_icon, matx_translate, packages,
-    renderers, tile_icons, users,
-)
-from amaze.render import (
-    generator,
-    husk_job,
-    material_converter,
-    nodes,
-    thumbs,
-)
-from amaze.render.material_conversion import engine as conversion_engine
-from amaze import preview
+from amaze.helpers import bytecode, hostos, theme, ui_helpers
+from amaze.core import database, renderers, tile_icons, users
+from amaze.render import husk_job, nodes
 
 _DEV_RELOAD = bool(os.environ.get("AMAZE_DEV_RELOAD"))    # the reload chain below is OFF by default: it re-runs on every panel open to serve a reopen-to-refresh the live-test loop forbids anyway ▸r/module-reload
 
@@ -76,33 +56,39 @@ def _reload(module):
         importlib.reload(module)
 
 
+def _reload_loaded(name):
+    """`_reload` for a module imported where it is used, so only once something has loaded it."""
+    if _DEV_RELOAD and name in sys.modules:
+        importlib.reload(sys.modules[name])
+
+
 _reload(keyed_store)    # FIRST: eleven modules read their stores through it, so a stale engine keeps old tables while every caller gets new code; a re-register keeps existing bindings, so binder modules outside this chain stay whole
 _reload(locations)      # right after the engine it binds two stores into - and the switch door calls locations.forget()
 _reload(hostos)    # before library: the models import the shared thumbnail engine
 _reload(bytecode)
 _reload(debug)
-_reload(dragengine)
-_reload(lop_assign)
+_reload_loaded("amaze.core.dragengine")
+_reload_loaded("amaze.core.lop_assign")
 _reload(thumbnails)
 _reload(database)
-_reload(library_policy)    # before library, which gates overwriting on it
+_reload_loaded("amaze.core.library_policy")    # before library, which gates overwriting on it
 _reload(versions)
 _reload(notes)
 _reload(users)    # before versions and the dialogs showing a user: both resolve a UID through it, so a stale one answers from the previous library's people
 _reload(renderers)
 _reload(material)
 _reload(texstore)    # before nodes and library, which adopt and resolve through it
-if _DEV_RELOAD:
-    preview.reload_engine()    # the package RELOADS ITSELF: reloading a package re-runs only __init__.py, which hands back the cached submodules, so the chain would look complete and refresh nothing
-_reload(material_converter)
+if _DEV_RELOAD and "amaze.preview" in sys.modules:
+    sys.modules["amaze.preview"].reload_engine()    # the package reloads itself ▸r/package-reload
+_reload_loaded("amaze.render.material_converter")
 _reload(nodes)
 _reload(husk_job)    # before thumbs, which submits to its queue
-_reload(thumbs)
+_reload_loaded("amaze.render.thumbs")
 _reload(tile_icons)    # before gradient_library and the Node Info dialog, which read its facts
 _reload(grid_columns)    # BEFORE library and its siblings: they mix in GridColumnsMixin, so a stale one has the models answering old columns while the header answers new
 _reload(library)
 _reload(category)
-_reload(repair)
+_reload_loaded("amaze.core.repair")
 _reload(folders)
 _reload(prefs)
 _reload(messages)      # the wording every dialog shows; reloaded like `branding`, so a reworded message reaches an already-open Houdini ▸p/messages-need-one-home
@@ -111,24 +97,24 @@ _reload(amazetheme)    # before theme and ui_helpers: their class bodies read th
 _reload(theme)    # before ui_helpers, whose class bodies read theme colours
 _reload(branding)    # FIRST of the ones below: everything reads its constants, and a stale branding produced 38 unhandled AttributeErrors live when APP_VERSION was added
 _reload(ui_helpers)
-_reload(helpers)
+_reload_loaded("amaze.helpers.helpers")
 _reload(texture_library)
 _reload(gradient_library)
 _reload(cop_library)    # after library/category, so its subclasses bind to the freshly reloaded material classes
 _reload(geo_library)    # after texture_library, whose ThumbnailCache/proxy it reuses
 _reload(scene_captures)
 _reload(file_library)    # after texture/geo/hip: it composes all three engines
-_reload(vex_syntax)    # before code_library/code_dialog, which consume its palette and tokenizer
+_reload_loaded("amaze.helpers.vex_syntax")    # before code_library/code_dialog, which consume its palette and tokenizer
 _reload(code_library)    # after library/category: it subclasses the material machinery
 _reload(model_registry)    # LAST of the models: it names all ten classes, so a stale one hands the next panel the previous build's classes
 
-_reload(base_dialog)    # FIRST of the dialogs: user_dialog from-imports AssetDialog by CLASS, so reloading it without this re-binds the SAME stale class
-_reload(prefs_dialog)
-_reload(save_dialog)
-_reload(icon_dialog)
-_reload(gradient_dialog)
-_reload(code_dialog)
-_reload(user_dialog)
+_reload_loaded("amaze.dialogs.base_dialog")    # FIRST of the dialogs: user_dialog binds its AssetDialog class
+_reload_loaded("amaze.dialogs.prefs_dialog")
+_reload_loaded("amaze.dialogs.save_dialog")
+_reload_loaded("amaze.dialogs.icon_dialog")
+_reload_loaded("amaze.dialogs.gradient_dialog")
+_reload_loaded("amaze.dialogs.code_dialog")
+_reload_loaded("amaze.dialogs.user_dialog")
 _reload(dragdrop_widgets)
 _reload(grid)    # BEFORE sections, which imports it: every section's menu table reads the Grid area's builder and ListColumns
 _reload(sidebar)
@@ -137,13 +123,13 @@ _reload(empty_state)    # after grid AND sections: it imports the first and read
 _reload(notes_panel)
 _reload(multifilterproxy_model)
 _reload(matx_sources)    # the online stack, which was never in this chain at all
-_reload(matx_translate)
-_reload(matx_icon)
-_reload(matx_import)
+_reload_loaded("amaze.core.matx_translate")
+_reload_loaded("amaze.core.matx_icon")
+_reload_loaded("amaze.core.matx_import")
 _reload(matx_library)
-_reload(gallery_import)    # reachable from the Online menu, and missing here meant editing it did nothing until a full restart
-_reload(packages)
-_reload(generator)
+_reload_loaded("amaze.core.gallery_import")    # reachable from the Online menu
+_reload_loaded("amaze.core.packages")
+_reload_loaded("amaze.render.generator")
 
 
 
@@ -229,6 +215,7 @@ class AmazePanel(QtWidgets.QWidget):
 
     def _offer_index_repair(self, broken) -> bool:
         """The dialog an unreadable library.json earns - Repair (the newest saved copy, else the per-asset recovery stamps) or open without a library. True = repaired AND reopened; no success dialog, the recovered grid is the announcement"""
+        from amaze.core import repair
         debug.exception("library index unreadable at open", broken)
         ui = getattr(hou, "ui", None)
         if ui is None:
@@ -683,6 +670,7 @@ class AmazePanel(QtWidgets.QWidget):
         known = users.all_users(preferences)
         if chooser is None:
             def chooser(entries):
+                from amaze.dialogs import user_dialog
                 dialog = user_dialog.UserPickerDialog(entries, parent=self)
                 dialog.exec()
                 if dialog.canceled:
@@ -1547,6 +1535,7 @@ class AmazePanel(QtWidgets.QWidget):
 
     def ask_category_name(self, title: str, default: str = ""):
         """The category-name dialog, once, so no caller unpacks CategoryDialog's two-field answer itself: None means CANCELLED, "" means the user cleared the field, and the two are NOT the same thing."""
+        from amaze.dialogs import gradient_dialog
         dialog = gradient_dialog.CategoryDialog(title, default, parent=self)
         dialog.exec()
         if dialog.canceled:
@@ -1599,6 +1588,7 @@ class AmazePanel(QtWidgets.QWidget):
 
     def convert_selected(self, target: str) -> None:
         """Right-click `Convert to`: each selected material with a route to `target` gets a twin."""
+        from amaze.render.material_conversion import engine as conversion_engine
         if not self.material_model or target not in conversion_engine.targets():
             return
         indexes = grid_columns.selected_rows(self.material_selection_model)
@@ -1635,6 +1625,7 @@ class AmazePanel(QtWidgets.QWidget):
         if self._thumbsize_save_timer.isActive():    # flush a pending debounced thumbsize save first: prefs.load() at close re-reads settings.json, and a still-pending write would silently revert the newest slider value
             self._thumbsize_save_timer.stop()
             self.prefs.save()
+        from amaze.dialogs import prefs_dialog
         existing = getattr(self, "_prefs_dialog", None)
         if existing is not None:
             try:
@@ -1718,6 +1709,7 @@ class AmazePanel(QtWidgets.QWidget):
 
     def import_package_file(self, path: str, restore: bool = False) -> dict:
         """ACT half of the whole-package import: every asset lands in its own section (fresh ids, `Import` category; `restore=True` adopts by original id), plain files land in the library's `import/` folder which registers as a location - answering the core summary."""
+        from amaze.core import packages
         summary = packages.import_package(self._package_models(),
                                           self.prefs, path,
                                           restore=restore)
@@ -1726,6 +1718,7 @@ class AmazePanel(QtWidgets.QWidget):
 
     def import_amaze_package(self) -> None:
         """Package Import: the read-mode picker, then the act door; the summary speaks once, dialog-free when headless."""
+        from amaze.core import packages
         ui = getattr(hou, "ui", None)
         if not self.prefs.dir:
             if ui is not None:
@@ -1753,6 +1746,7 @@ class AmazePanel(QtWidgets.QWidget):
 
     def ask_package_destination(self) -> str:
         """The write-mode picker for an `.amazepkg` export - "" when headless or cancelled, the suffix appended when the user leaves it off."""
+        from amaze.core import packages
         ui = getattr(hou, "ui", None)
         if ui is None:
             return ""
@@ -1773,6 +1767,7 @@ class AmazePanel(QtWidgets.QWidget):
 
     def import_galleries(self) -> None:
         """Gallery Import: every material preset in a .gal file becomes a library material through the same save funnel a hand-saved one takes. Thumbnails are NOT rendered during the run - the summary says how to render them afterwards."""
+        from amaze.core import gallery_import
         ui = getattr(hou, "ui", None)
         if not self.material_model:
             if ui is not None:
@@ -2327,6 +2322,7 @@ class AmazePanel(QtWidgets.QWidget):
     def import_online_material(self, record, on_progress=None,
                                renderer=renderers.HUB.key):
         """Download and save one online material as `renderer`, calling on_progress(0..1): (ok, reason)."""
+        from amaze.core import matx_import
         if record is None or not self.material_model:
             return (False, "No library to import into.")
         source, resolution, error = self._online_source_for(record)
@@ -2389,6 +2385,7 @@ class AmazePanel(QtWidgets.QWidget):
     def _import_amaze_package_record(self, record, source, restore,
                                      on_progress=None):
         """One TILE into the library - its entry read straight out of the hosted package by member, fresh or restore - answering (ok, reason) like the material path beside it. The ranged reads report per-block progress into `on_progress`, whose pump is what keeps Houdini ALIVE through a slow transfer."""
+        from amaze.core import packages
         url = record.payload.get("package")
         debug.event("import", "package tile start", title=record.title,
                     package=str(url), restore=bool(restore))
@@ -2488,6 +2485,7 @@ class AmazePanel(QtWidgets.QWidget):
     def _import_online_records_to_scene(self, records,
                                         renderer=renderers.HUB.key) -> None:
         """Build online records straight into the scene - the current LOP material library (or /mat) - without adding them to the library; amazepkg records split off to the LIBRARY door, a store tile being library data of ANY section (palette, snippet, material row) with no scene-build path of its own."""
+        from amaze.core import matx_import
         packages_only = [r for r in records
                          if getattr(r, "kind", "") == "amazepkg"]
         if packages_only:
@@ -2565,6 +2563,7 @@ class AmazePanel(QtWidgets.QWidget):
     def edit_tile_icon(self, model, proxy, proxy_indexes,
                        categories=()) -> None:
         """Customize on any tile: one handler for every section, applied to the WHOLE selection."""
+        from amaze.dialogs import icon_dialog
         if model is None or not proxy_indexes:
             return
         held = []    # IDENTITY, not row numbers and not Qt indexes: this dialog is non-modal, so the library can move while it is open - a save appends, a delete shifts every row after it, a RELOAD renumbers the lot - and a QPersistentModelIndex is no better, because endResetModel() invalidates every one of them even when nothing moved
@@ -2711,6 +2710,7 @@ class AmazePanel(QtWidgets.QWidget):
         self, code: str, language: str, default_name: str
     ) -> None:
         """Shared save flow for both Save-from-Node and New Snippet: open the Code dialog prefilled, then register the snippet."""
+        from amaze.dialogs import code_dialog
         if not self.code_model:
             ui = getattr(hou, "ui", None)
             if ui is not None:
@@ -2743,6 +2743,7 @@ class AmazePanel(QtWidgets.QWidget):
 
     def _commit_code_save(self, node: hou.Node, dialog) -> None:
         """The snippet is the node's code parm as it reads now."""
+        from amaze.helpers import helpers
         parm = helpers.find_code_parm(node)
         if dialog.categories:
             self.code_category_model.check_add_category(dialog.categories)
@@ -2762,6 +2763,7 @@ class AmazePanel(QtWidgets.QWidget):
 
     def click_on_row(self, section, index, payload=None) -> None:    # THE CLICK WALKER: the second half of the interaction engine, with sections.DropRule carrying the declarations. It replaced FIVE hand-written double-click handlers that answered one question five ways - three carried a selection VETO, where a selected node that could not take the payload refused instead of creating, and two never consulted the selection at all. The drag walker has read these same declarations since the behaviour table shipped; this is the aiming method it was missing
         """A click door on `index` in `section` - aimed by the SELECTION, executed from the section's own declaration. BOTH DOORS COME THROUGH HERE: the double-click, and the menu entry labelled with the same verb."""
+        from amaze.helpers import helpers
         if index is None or not index.isValid():
             return
         rule = sections.drop_rule(section, self, index)    # THE DRAG WALKER'S READER, not a second one - both doors read the one declaration through it
@@ -2887,6 +2889,7 @@ class AmazePanel(QtWidgets.QWidget):
 
     def import_geo_asset(self, index: QtCore.QModelIndex) -> None:
         """Double-click/right-click import for a geometry file, CONTEXT-AWARE per network (the branches of _import_geo_in_context spell out which). The drag imports the same way at the release point (drop_geo_at_release)."""
+        from amaze.helpers import helpers
         path = index.data(self.file_files_model.PathRole)
         if not path:
             return
@@ -2896,6 +2899,7 @@ class AmazePanel(QtWidgets.QWidget):
     def _import_geo_in_context(
         self, path: str, dest: hou.Node | None
     ) -> hou.Node | None:
+        from amaze.helpers import helpers
         ui = getattr(hou, "ui", None)
         base = os.path.basename(path)
         name = helpers.sanitize_usd_path(os.path.splitext(base)[0]) or "geo"
@@ -3077,6 +3081,8 @@ class AmazePanel(QtWidgets.QWidget):
 
     def _material_lop_viewport_drop(self, ids, viewer, primpath) -> bool:
         """LOP-viewport release: our ancestor-prim menu, then import into a materiallibrary resolved by Houdini's STOCK helper and assign with its stock assignMat - SideFX semantics, Amaze law."""
+        from amaze.core import dragengine, lop_assign
+        from amaze.helpers import helpers
         ui = getattr(hou, "ui", None)
         stock = dragengine.stock_lop()
         if stock is None:
@@ -3203,12 +3209,14 @@ class AmazePanel(QtWidgets.QWidget):
     def _import_materials_into_context(self, context, ids,
                                        position=None) -> None:
         """Network-release import for the material section, in ONE undo group so the whole multi-drop reverts as one step. Placement rides the import seam - the import RETURNS what it created and `helpers.place_nodes` is the one placement rule - so a position lands each copy at the release point, a multi-drop cascading from it."""
+        from amaze.core import dragengine
         with dragengine.drop_group("Amaze Import Materials"):
             self._import_materials_into_context_grouped(
                 context, ids, position)
 
     def _import_materials_into_context_grouped(self, context, ids,
                                                position=None) -> None:
+        from amaze.helpers import helpers
         for offset, aid in enumerate(ids):
             row = self.material_model.find_asset_row_by_id(aid)
             if row < 0:
@@ -3261,6 +3269,7 @@ class AmazePanel(QtWidgets.QWidget):
 
     def _pane_and_kind_under_cursor(self):
         """The pane tab under the cursor and its type, or (None, None) - compare the type at the CALL SITE, never here."""
+        from amaze.core import dragengine
         pane_tab = dragengine.pane_tab_under_cursor()
         if pane_tab is None:
             return None, None
@@ -3298,6 +3307,7 @@ class AmazePanel(QtWidgets.QWidget):
 
     def _commit_gradient_save(self, node: hou.Node, dialog) -> None:
         """The node's first color ramp, registered as a user gradient."""
+        from amaze.helpers import helpers
         parm = helpers.find_color_ramp_parm(node)
         ramp_data = helpers.ramp_to_data(parm.evalAsRamp())
         self.gradient_model.add_user_gradient(
@@ -3672,6 +3682,8 @@ class AmazePanel(QtWidgets.QWidget):
 
     def generate_random_material(self) -> None:
         """The Generator Engine's first output: one random plausible material, built INTO THE SCENE where the user is working - the current LOP material library (or one created per the drop placement law) when the context is LOP, else /mat. A generated material is a scene node, not a library entry: keeping one is a deliberate `Save to <app>`, exactly like any other material the user builds by hand."""
+        from amaze.helpers import helpers
+        from amaze.render import generator
         builder = None
         destination = None
         ui = getattr(hou, "ui", None)
@@ -3777,6 +3789,8 @@ class AmazePanel(QtWidgets.QWidget):
     def _save_new(self, nodes: list, key: str,
                   node: hou.Node | None = None) -> None:
         """D09 for these nodes, opened on section `key`, then that section's save."""
+        from amaze.dialogs import save_dialog
+        from amaze.helpers import helpers
         node = node or nodes[0]
         keys = self._save_targets(nodes) or [key]
         cats, current = self.sections[key].save_categories()
@@ -3812,6 +3826,7 @@ class AmazePanel(QtWidgets.QWidget):
 
     def save_asset(self) -> None:
         """Saves the selected nodes (Network Editor) to the Library, with standard file-save semantics at ANY selection size: nodes matching an EXISTING library material - by the id stamp a previous save/import left on them, or by a unique name match - raise one save-over / Save New / Cancel choice for the whole selection, with the save-over button offered only where the library allows it; anything else goes straight to the normal new-material dialog."""
+        from amaze.core import library_policy
         ui = getattr(hou, "ui", None)
         sel = hou.selectedNodes()
         debug.event("save", "save_asset entry", selected=len(sel))
@@ -4009,6 +4024,7 @@ class AmazePanel(QtWidgets.QWidget):
 
     def _release_position_in(self, net):
         """The release position, ONLY when the editor under the cursor is showing `net` itself - a cross-space release answers None and the carrier auto-places, exactly like the import seam's gate."""
+        from amaze.core import dragengine
         pane_tab = dragengine.pane_tab_under_cursor()
         if pane_tab is None or net is None:
             debug.event("interact", "no drop point - no editor under "
@@ -4057,6 +4073,7 @@ class AmazePanel(QtWidgets.QWidget):
     def _create_carrier(self, dest, type_name: str, name: str,
                         position=None):
         """Create `type_name` inside `dest` when that network can hold one - the type existing in the network's child category IS the capability test - or answer None. The carrier half of the matrix's creation rule; the caller loads the payload and owns the undo group. A position places the node where the release happened; without one it auto-places."""
+        from amaze.helpers import helpers
         if dest is None:
             return None
         try:
