@@ -451,6 +451,7 @@ class _Persistence:
 
         if not isinstance(self._directory, str):  # _decode_path passes a non-str straight through, and `null`, `{}` or `[]` then reach os.path.exists
             self._directory = ""
+        self._directory = _normalised_dir(self._directory)    # a folder saved without its slash glues onto file names
         self._settle_user_blocks()
         self._adopt_shared()  # a pure READ: no migration runs here, so no caller of load() writes the library - the product surfaces run those instead
         library = self.dir  # the overlay-aware property, never the raw field: with Test Mode on they name different folders, and on a fresh machine the raw one is empty

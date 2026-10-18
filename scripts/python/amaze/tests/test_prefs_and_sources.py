@@ -174,6 +174,15 @@ class SharedDefaultsLiveInOneTable(unittest.TestCase):
         self.assertEqual(("img/", ".mat"), (p.img_dir, p.ext),
                          "a junk folder-layout value loaded raw")
 
+    def test_a_library_folder_saved_without_its_slash_loads_with_it(self):
+        """A folder without its slash glued onto file names: `librarylibrary.json`."""
+        library = tempfile.mkdtemp(prefix="amaze_no_slash_").replace("\\", "/")
+        self.addCleanup(shutil.rmtree, library, True)
+        p = prefs_mod.Prefs()
+        p.path = self._settings({"directory": library.rstrip("/")})
+        p.load()
+        self.assertEqual(library.rstrip("/") + "/library.json", p.dir + "library.json")
+
     def test_load_clamps_parallel_downloads_as_the_adopt_does(self):
         p = prefs_mod.Prefs()
         p.path = self._settings(
