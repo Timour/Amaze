@@ -1,14 +1,48 @@
 #!/usr/bin/env python3
-"""What the app actually did in the user's last session. - Run this FIRST on any report - a bug, a change request, or an attempt that went wrong. Not because a rule says so: it has repeatedly held information the code cannot give. It once showed 38 unhandled exceptions from a stale module, and a `sources unavailable (URLError)` line that named a corrupted hostname while the UI looked completely normal. - It exists as a script because the reason the check got skipped was friction - writing a bespoke query each time. This is one command. - tools/log-check.py the last session tools/log-check.py --all every session in the file"""
+"""What the app did, from its own log: run it FIRST on any report. --all, --recent [hours]"""
 
 import collections
 import json
 import os
 import sys
+import time
 
 sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "scripts", "python"))
+
+
+def recent(rows, hours=72.0) -> list:
+    """The last `hours` of the log in a few lines: what went wrong, then updates and open times."""
+    since = time.time() - hours * 3600
+    recs = [r for r in rows if (r.get("t") or 0) >= since]
+
+    def when(record):
+        return time.strftime("%b %d %H:%M", time.localtime(record.get("t") or 0))
+
+    out = ["Amaze log, last %g h: %d records, %d sessions"
+           % (hours, len(recs), len({r.get("session") for r in recs}))]
+    for cat, label in (("exception", "unhandled exceptions"), ("refuse", "refusals"),
+                       ("note", "notes")):
+        hits = [r for r in recs if r.get("cat") == cat]
+        if hits:
+            out.append("  %d %s:" % (len(hits), label))
+            for r in hits[-5:]:
+                value = str((r.get("data") or {}).get("value", "")).replace("\n", " ")
+                out.append("    %s  %s %s" % (when(r), str(r.get("msg", ""))[:70], value[:110]))
+    if len(out) == 1:
+        out.append("  no unhandled exceptions, refusals or notes")
+    applied = [when(r) for r in recs
+               if r.get("cat") == "updater" and r.get("msg") == "update applied"]
+    if applied:
+        out.append("  %d updates applied: %s" % (len(applied), ", ".join(applied)))
+    opens = [r.get("data") or {} for r in recs
+             if r.get("cat") == "session" and r.get("msg") == "panel ready"]
+    if opens:
+        out.append("  pane opens, code load / build ms: " + ", ".join(
+            "%d/%d" % (d.get("module_body_ms") or 0, d.get("construction_ms") or 0)
+            for d in opens[-6:]))
+    return out
 
 
 def main() -> int:
@@ -30,6 +64,10 @@ def main() -> int:
                 pass
     if not rows:
         print("log is empty")
+        return 0
+    if "--recent" in sys.argv:
+        hours = sys.argv[sys.argv.index("--recent") + 1:][:1] or ["72"]
+        print("\n".join(recent(rows, float(hours[0]))))
         return 0
 
     sessions = sorted({r.get("session") for r in rows if r.get("session")})
