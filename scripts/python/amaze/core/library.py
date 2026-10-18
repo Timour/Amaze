@@ -1033,10 +1033,13 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         return moved
 
     def _content_stat(self, mat_id: str):
-        """(mtime_ns, size) of an asset's .mat, or None when absent."""
+        """(mtime_ns, size) of an asset's .mat, or None when absent; composes that one path only."""
+        if not material.is_safe_asset_id(str(mat_id)):
+            return None
         try:
-            return hostos.disk_state(self.asset_files(mat_id)["mat"])
-        except (hostos.PathEscape, TypeError, KeyError):
+            return hostos.disk_state(material.payload_path(
+                self.preferences, mat_id, self.preferences.ext))
+        except (hostos.PathEscape, TypeError):
             return None
 
     def _remember_content_state(self) -> None:

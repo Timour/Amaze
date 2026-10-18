@@ -3,6 +3,7 @@
 import atexit
 import contextlib
 import errno
+import functools
 import glob
 import gzip
 import hashlib
@@ -873,10 +874,16 @@ class PathEscape(ValueError):
     """A composed path landed outside the directory it had to stay in."""
 
 
+@functools.lru_cache(maxsize=64)
+def _real_base(base: str) -> str:
+    """`base` with its links resolved, once: a base retargeted later only refuses joins."""
+    return os.path.realpath(base)
+
+
 def contained_join(base: str, *parts: str) -> str:
     """`os.path.join(base, *parts)`, raising `PathEscape` for anything that lands outside `base` - asset filenames are composed from an id that comes verbatim out of `library.json`, which the app does not author alone and cannot assume is honest."""
     composed = os.path.join(base, *parts)
-    real_base = os.path.realpath(base)  # REAL paths, so a symlink planted inside the asset directory cannot be the hop out. Base itself need not exist - the check is about where the result points, and a library directory can legitimately be missing when this is asked
+    real_base = _real_base(base)
     real_composed = os.path.realpath(composed)
     if real_composed != real_base and not real_composed.startswith(
             real_base.rstrip(os.sep) + os.sep):

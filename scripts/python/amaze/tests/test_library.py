@@ -678,6 +678,24 @@ class SchemaStampTest(unittest.TestCase):
             "a save stamped this build's schema over a newer one")
 
 
+class OpeningALibraryComposesOnePathPerAssetTest(unittest.TestCase):
+    """Loading stats each asset's `.mat` and composes no other path. ▸r/pane-open-cost"""
+
+    def test_a_load_composes_one_contained_path_per_asset(self):
+        from amaze.core import library as library_mod
+        from amaze.helpers import hostos
+        prefs = test_support.fixture_prefs(self)
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        with patch.object(hostos, "contained_join", wraps=hostos.contained_join) as spy:
+            model = library_mod.MaterialLibrary(preferences=prefs)
+        self.assertTrue(model.assets, "premise: the fixture has assets")
+        self.assertLessEqual(
+            spy.call_count, len(model.assets) + 4,
+            "opening composed %d contained paths for %d assets, where the stale-write "
+            "baseline needs one each" % (spy.call_count, len(model.assets)))
+
+
 class ARetiredFieldDoesNotComeBackOnASaveTest(unittest.TestCase):
     """End to end, through the model that actually writes the file. THE DOCUMENT IS STAMPED AT THE CURRENT SCHEMA ON PURPOSE and carries the retired fields anyway: stamped at 4 the migration strips them before `Material` sees a row, so `_KNOWN_KEYS` is never consulted and this passes with the mechanism DELETED. The case it is for is a row reaching `from_dict` still carrying a retired key - a peer's row, or one merged in raw, on a document no step will run over again. A key `_KNOWN_KEYS` does not name is carried verbatim by `_extra` and re-emitted on every save."""
 
