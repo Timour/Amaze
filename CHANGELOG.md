@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.1
+
+- The Label and Copy Color submenus draw their colour chips 2 px lower.
+- Convert to, Import to Materials and Import to Scene show each renderer with the icon the Material Filter menu gives it.
+
 ## 1.6.0
 
 - Convert to ▸ Octane: a MaterialX or Redshift material becomes an Octane material, built in Octane's own material builder.
