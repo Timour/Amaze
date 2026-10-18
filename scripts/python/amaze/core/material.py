@@ -95,6 +95,15 @@ def shown_renderer(name) -> str:
     return KARMA_SHOWN if is_karma_renderer(name) else str(name or "")
 
 
+RENDERER_ICONS = {"Karma": "filter_materialx", "Redshift": "filter_redshift",
+                  "Octane": "filter_octane"}    # ▸ C13: ui/<name>.svg, the one table every menu reads
+
+
+def renderer_icon(name) -> str:
+    """The icon a stored renderer wears in every menu that lists it; "" for one without."""
+    return RENDERER_ICONS.get("Karma" if is_karma_renderer(name) else str(name or ""), "")
+
+
 class Material:
     """One asset record. `_RETIRED_KEYS` are keys this build understands but no longer writes - named so they are recognised and DROPPED, because an unknown key rides `_extra` verbatim and the next save would put a retired one straight back, undoing the schema step that stripped it. `MULTIPLE_VALUES` is the mixed-selection sentinel, COMPARED against, so it stays the one spelling (test_library.TheSentinelHasOneHome)."""
 

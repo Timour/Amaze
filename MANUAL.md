@@ -208,7 +208,8 @@ Assets can also be dragged onto a sidebar category to file them there.
 ### Convert to
 
 Right-click a material ▸ **Convert to** ▸ **MaterialX**, **Redshift** or
-**Octane**. The renderer the material already uses is greyed, and so is
+**Octane**, each with the icon the Filter menu shows for that renderer.
+The renderer the material already uses is greyed, and so is
 any conversion whose renderer is not loaded in this Houdini, the
 material's own included. The conversion rebuilds the network for the
 other renderer as a new entry next to the original, under the same name,
@@ -240,7 +241,8 @@ strip where the section tabs were.
 | **Amaze** | The official [packages](#packages), ready to import or restore | per package |
 
 
-Right-click a material, or a multi-selection:
+Right-click a material, or a multi-selection. Both Import submenus show
+each renderer with its Filter menu icon:
 
 - **Import to Materials ▸ MaterialX**, **▸ Redshift** or **▸ Octane**
   downloads it, builds the material for that renderer and saves it into

@@ -730,7 +730,7 @@ class MaterialSection(AssetSection):
         """What the selection can BECOME: a child is live when a held material converts to it here."""
         held = self._sources_held(indexes)
         return tuple(
-            (material.shown_renderer(target), target, "",
+            (material.shown_renderer(target), target, material.renderer_icon(target),
              any(conversion_engine.can_convert(source, target) for source in held))
             for target in conversion_engine.targets())
 
@@ -752,15 +752,13 @@ class MaterialSection(AssetSection):
         ("Redshift", "renderer_redshift_enabled"),
         ("Octane", "renderer_octane_enabled"),
     )
-    FILTER_ICONS = {"Karma": "filter_materialx", "Redshift": "filter_redshift",
-                    "Octane": "filter_octane"}    # each entry's Filter menu icon, ui/<name>.svg, 16 px
     FILTER_ALL_ICON = "filter_all"
 
     def filter_entries(self) -> tuple:
         prefs = self.panel.prefs    # the only section whose entries are not a constant: a renderer switched off in Preferences is not offered here. Rebuilt rather than shown and hidden, so there is one mechanism, and the panel's own fallback to All covers a remembered choice no longer on offer, in every section rather than only this one
         return (FilterEntry(self.ALL_ID, self.ALL_LABEL, None, self.FILTER_ALL_ICON),) + tuple(
             FilterEntry(stored, material.shown_renderer(stored), stored,
-                        self.FILTER_ICONS.get(stored))
+                        material.renderer_icon(stored))
             for stored, flag in self.RENDERER_PREFS if getattr(prefs, flag, False)
         )
 
@@ -1670,7 +1668,7 @@ class OnlineContext(Section):
         """The renderer the import BUILDS AS - drawn C06a/C06b; a row greys without its plugin."""
         hub = conversion_engine.HUB
         return tuple(
-            (material.shown_renderer(target), target, "",
+            (material.shown_renderer(target), target, material.renderer_icon(target),
              target == hub or conversion_engine.can_convert(hub, target))
             for target in conversion_engine.targets())
 

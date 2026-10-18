@@ -3461,12 +3461,10 @@ class AmazePanel(QtWidgets.QWidget):
                     section.filter_tooltip))
         if not entries:
             return
-        side, ratio = theme.ui_px(amazetheme.MENU_ICON), theme.screen_ratio(self)
         for entry_id, label, value, icon in entries:
             act = self.menu_filter.addAction(label)
             if icon:
-                act.setIcon(QtGui.QIcon(ui_helpers.device_pixmap(
-                    amaze.package_file("ui", icon + ".svg"), side, ratio)))
+                act.setIcon(ui_helpers.menu_icon(icon, self))
             act.setCheckable(True)
             act.setData(entry_id)
             self.filter_action_group.addAction(act)

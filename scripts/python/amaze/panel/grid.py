@@ -33,6 +33,11 @@ def _enabled(context, entry, indexes, current):
     return _resolve(context, entry.needs, indexes, current, False)
 
 
+def _is_chip(icon) -> bool:
+    """A child's icon that is a colour ("#rrggbb"), painted as a chip; any other names a ui/ icon."""
+    return bool(icon) and icon.startswith("#")
+
+
 def _chip_room():
     """A clear icon the size of a chip: the row keeps its icon column, and the chip is painted over it."""
     pixmap = QtGui.QPixmap(*(theme.ui_px(n) for n in amazetheme.MENU_CHIP[2:]))
@@ -94,21 +99,24 @@ def build_menu(panel, context, entries, indexes, current):
         enabled = _enabled(context, entry, indexes, current)
         if entry.children:
             children = getattr(context, entry.children)(indexes, current)
-            if any(child and child[2] for child in children):    # colour chips: the menu paints them
+            if any(child and _is_chip(child[2]) for child in children):    # colour chips: the menu paints them
                 submenu = _ChipMenu(label, menu)
                 menu.addMenu(submenu)
             else:
                 submenu = menu.addMenu(label)
             submenu.menuAction().setEnabled(enabled)    # the PARENT carries the enabled state - an openable submenu with nothing to pick reads as broken
-            for child in children:    # (label, payload, colour, live[, checked]); None is a divider
+            for child in children:    # (label, payload, icon, live[, checked]); None is a divider
                 if child is None:
                     submenu.addSeparator()
                     continue
-                child_label, payload, colour, live = child[:4]
+                child_label, payload, icon, live = child[:4]
                 checked = child[4] if len(child) > 4 else None
-                if colour:
+                if _is_chip(icon):
                     action = submenu.addAction(_chip_room(), child_label)
-                    submenu.chips[action] = colour
+                    submenu.chips[action] = icon
+                elif icon:    # a ui/ icon, drawn as the Filter menu draws its own
+                    action = submenu.addAction(
+                        ui_helpers.menu_icon(icon, panel), child_label)
                 else:
                     action = submenu.addAction(child_label)
                 action.setEnabled(bool(live))    # greys when it has nothing to act on, as at the top

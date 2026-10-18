@@ -1,6 +1,7 @@
 """The Grid area's MENU: one builder over a per-section entry table - the table says what the UI text register says, and the builder turns it into exactly the menu that shipped. THE PINNED MENUS BELOW ARE RECORDED OUTPUT of the six handlers this replaced, captured at 723a574 before a line was moved, not a transcription of intent - do not correct one to match a reading of the code. The single deliberate difference is the empty selection: the menu always opens and entries needing a selection grey out."""
 
 import ast
+import contextlib
 import os
 import sys
 import unittest
@@ -17,7 +18,8 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze.core import file_library  # noqa: E402
+from amaze.core import file_library, material  # noqa: E402
+from amaze.helpers import ui_helpers  # noqa: E402
 from amaze.panel import grid, sections  # noqa: E402
 from amaze.render.material_conversion import engine as conversion_engine  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
@@ -683,6 +685,109 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
             context.menu_import_to_library([], None)
             self.assertEqual({"renderer": "Karma"},
                              lib.call_args.kwargs)
+
+
+def icon_image(action):
+    """What a row's icon draws at 16 px: two rows wear the same icon when these match."""
+    return action.icon().pixmap(QtCore.QSize(16, 16)).toImage()
+
+
+class EveryRendererRowWEARSTheFilterMenusIcon(unittest.TestCase):
+    """Drawn as C13, C01b, C06a and C06b: one icon per renderer, named once, drawn by one engine."""
+
+    RENDERERS = ("MaterialX", "Redshift", "Octane")
+
+    @classmethod
+    def setUpClass(cls):
+        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
+
+    def _everything_offered(self):
+        """Every renderer offered in Preferences and loaded, Convert to asked about Karma rows."""
+        panel = self.panel
+        stack = contextlib.ExitStack()
+        stack.callback(panel.build_filter_menu)    # runs LAST: the fixture's own offer, back
+        for flag in ("renderer_redshift_enabled", "renderer_octane_enabled"):
+            stack.callback(setattr, panel.prefs, flag, getattr(panel.prefs, flag))
+            setattr(panel.prefs, flag, True)    # a property with no deleter: mock cannot undo it
+        stack.enter_context(plugins_loaded("Redshift", "Octane"))
+        stack.enter_context(mock.patch.object(
+            sections.MaterialSection, "_sources_held",
+            lambda _self, _indexes: frozenset({"Karma"})))
+        panel.section_tabs.setChecked("material")
+        QtWidgets.QApplication.processEvents()
+        return stack
+
+    def _build(self):
+        """The Filter menu, then the material and online grid menus: (filter, material, online)."""
+        panel = self.panel
+        panel.build_filter_menu()
+        context = panel._section()
+        material_menu, _verbs = grid.build_grid_menu(
+            panel, context, context.grid_selection(), None)
+        online_menu, _verbs = grid.build_grid_menu(
+            panel, panel.online_context, [], None)
+        return panel.menu_filter, material_menu, online_menu
+
+    @staticmethod
+    def _rows(menu, name):
+        """{label: action} for submenu `name` of `menu`."""
+        for action in menu.actions():
+            if action.text() == name and action.menu() is not None:
+                return {child.text(): child for child in action.menu().actions()}
+        return {}
+
+    def test_convert_to_and_import_wear_the_filter_menus_icons(self):
+        with self._everything_offered():
+            filter_menu, material_menu, online_menu = self._build()
+            filtered = {act.text(): act for act in filter_menu.actions()}
+            for renderer in self.RENDERERS:
+                self.assertFalse(filtered[renderer].icon().isNull(),
+                                 "premise: C13 draws %s's icon" % renderer)
+            for menu, name in ((material_menu, "Convert to"),
+                               (online_menu, "Import to Materials"),
+                               (online_menu, "Import to Scene")):
+                rows = self._rows(menu, name)
+                for renderer in self.RENDERERS:
+                    with self.subTest(menu=name, renderer=renderer):
+                        self.assertIn(renderer, rows, "%s lost %s" % (name, renderer))
+                        self.assertFalse(rows[renderer].icon().isNull(),
+                                         "%s ▸ %s has no icon" % (name, renderer))
+                        self.assertEqual(
+                            icon_image(filtered[renderer]),
+                            icon_image(rows[renderer]),
+                            "%s ▸ %s is not the Filter menu's icon" % (name, renderer))
+
+    def test_one_engine_draws_them_from_one_table(self):
+        """material.renderer_icon names the icon; ui_helpers.menu_icon draws every menu row's."""
+        drawn = []
+        engine = ui_helpers.menu_icon
+
+        def spy(spec, widget=None):
+            drawn.append(spec)
+            return engine(spec, widget)
+
+        with self._everything_offered(), mock.patch.object(ui_helpers, "menu_icon", spy):
+            panel = self.panel
+            context = panel._section()
+            for build, times in (
+                    (panel.build_filter_menu, 1),
+                    (lambda: grid.build_grid_menu(
+                        panel, context, context.grid_selection(), None), 1),
+                    (lambda: grid.build_grid_menu(
+                        panel, panel.online_context, [], None), 2)):
+                del drawn[:]
+                kept = build()
+                for stored in ("Karma", "Redshift", "Octane"):
+                    with self.subTest(build=build, renderer=stored):
+                        self.assertEqual(times, drawn.count(material.renderer_icon(stored)))
+                del kept
+        owners = [os.path.relpath(os.path.join(root, name), PACKAGE)
+                  for root, _dirs, files in os.walk(PACKAGE)
+                  if os.sep + "tests" not in root
+                  for name in files if name.endswith(".py")
+                  and "filter_redshift" in open(os.path.join(root, name)).read()]
+        self.assertEqual([os.path.join("core", "material.py")], owners,
+                         "the renderer icon table has more than one home")
 
 
 class EveryVerbREACHESItsOwner(unittest.TestCase):

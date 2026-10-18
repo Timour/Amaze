@@ -168,6 +168,13 @@ def device_pixmap(path, side, dpr, color_replacements=None, opacity=None):
     return pixmap
 
 
+def menu_icon(name: str, widget=None):
+    """A menu row's ui/<name>.svg icon, as the Filter menu draws it: every menu's icons come from here."""
+    return QtGui.QIcon(device_pixmap(
+        amaze.package_file("ui", name + ".svg"),
+        theme.ui_px(amazetheme.MENU_ICON), theme.screen_ratio(widget)))
+
+
 class DesignedComboBox(QtWidgets.QComboBox):
     """A combo whose POPUP is the width of the box, not of its longest item. Qt sizes the popup to its widest entry and neither `sizeAdjustPolicy`, a fixed view width nor a stylesheet changes it; reimplementing `showPopup` is the documented hook ▸r/combo-popup-width"""
 

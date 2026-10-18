@@ -181,7 +181,7 @@ undeclared.
 | `verb` | NAME of a method on the section, called as `verb(indexes, current, payload)` |
 | `needs` | what makes the row LIVE — `any` (the default), `one`, `always`, or the name of a fact — and it greys, never hides |
 | `shown` | the fact deciding whether the row EXISTS at all |
-| `children` | a method returning `((label, payload, swatch_colour), ...)`, the colour a hex string or empty |
+| `children` | a method returning `((label, payload, icon, live[, checked]), ...)`; the icon is a hex colour, painted as a chip at `amazetheme.MENU_CHIP`, a `ui/` icon name, drawn by `ui_helpers.menu_icon` as the Filter menu's are, or empty. A renderer's icon is named once, in `material.renderer_icon` |
 | `count_suffix` | appends ` (N)` on a multi-selection |
 | `checkable` | the fact giving the CURRENT state, making it a tick-box whose verb is handed the state the user asked for |
 
