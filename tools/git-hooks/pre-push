@@ -60,10 +60,12 @@ fi
 # wrote (tools/select-tests.py ▸p/suite-selects). The suite proves the WORKING
 # TREE, so the whole suite runs for anything that tree may not be: no refs, a
 # ref that is not HEAD, a new branch or a deletion, an unreadable range, or
-# uncommitted files. A new minor or major version (1.7 to 1.8) gets the whole
-# suite, and so does a map that cannot answer; a patch (1.7.0 to 1.7.1) gets
-# what it reaches. Only a whole run updates the install.
+# uncommitted files, and so does a map that cannot answer. A new minor or major
+# version (1.7 to 1.8) runs it on EVERY installed Houdini, the only push that
+# tests an older one; a patch (1.7.0 to 1.7.1) runs what it reaches. Only a
+# whole run updates the install.
 whole=""
+every=""
 head="$(git rev-parse HEAD 2>/dev/null || echo none)"
 [ -n "$refs" ] || whole="no refs on stdin"
 while [ -z "$whole" ] && read -r _local_ref local_sha _remote_ref remote_sha; do
@@ -79,6 +81,7 @@ while [ -z "$whole" ] && read -r _local_ref local_sha _remote_ref remote_sha; do
             split($2, v, "."); k = v[1] "." v[2]; if (!(k in seen)) { seen[k]; n++ } }
             END { print n + 0 }')" -gt 1 ]; then
         whole="a new minor or major version"
+        every="--all-versions"
     fi
 done <<< "$refs"
 if [ -z "$whole" ] && [ -n "$(git status --porcelain 2>/dev/null)" ]; then
@@ -98,8 +101,9 @@ fi
 # true at roughly half this many tests and understated the wait by 2x by
 # the time anybody noticed. Re-measure when it misleads, and move the date.
 if [ -n "$whole" ]; then
-    echo "pre-push: running the suite ($whole) - minutes, not seconds ▸p/suite-timing"
-    output="$("$repo/tools/run-tests.sh" 2>&1)"
+    echo "pre-push: running the suite${every:+ on every Houdini} ($whole) - minutes, not seconds ▸p/suite-timing"
+    # shellcheck disable=SC2086
+    output="$("$repo/tools/run-tests.sh" $every 2>&1)"
 elif [ -z "$selection" ]; then
     echo "pre-push: the push reaches no test - nothing to run"
     echo "pre-push: DONE"
@@ -120,7 +124,7 @@ if [ "$status" -ne 0 ] || [ "$failed" -ne 0 ] || [ "$leak" -ne 0 ] \
    || [ "$tests_ran" -eq 0 ]; then
     echo >&2
     echo "PUSH REFUSED - the suite is not green." >&2
-    printf '%s\n' "$output" | grep -E '^(FAIL|ERROR):|^FAILED|LOG LEAK|^Testing |^run-tests: ' | tail -25 >&2 || true
+    printf '%s\n' "$output" | grep -E '^(FAIL|ERROR):|^FAILED|LOG LEAK|^DEAD|^Testing |^run-tests: ' | tail -25 >&2 || true
     echo >&2
     echo "  $tests_ran test(s) ran, $failed suite(s) failed. Fix, or push --no-verify." >&2
     exit 1

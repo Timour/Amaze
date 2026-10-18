@@ -36,7 +36,7 @@ Everything saved to the library appears as a tile in the grid — a picture and 
 
 ## Compatibility
 
-Houdini 21.0 or newer — developed and tested on 21.0 and 22.0, macOS (Apple Silicon). Linux and Windows are expected to work but receive less testing.
+Developed and tested on Houdini 22.0, macOS (Apple Silicon). Linux and Windows are expected to work but receive less testing.
 
 ## Installation
 

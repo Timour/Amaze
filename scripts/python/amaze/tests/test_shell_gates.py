@@ -34,6 +34,8 @@ GATE_SCRIPTS = {
         os.path.join(REPO, "tools", "select-tests.py"),
     os.path.join("scripts", "python", "amaze", "tests", "impact_map.py"):
         os.path.join(REPO, "scripts", "python", "amaze", "tests", "impact_map.py"),
+    os.path.join("scripts", "python", "amaze", "tests", "check_dead_cover.py"):
+        os.path.join(REPO, "scripts", "python", "amaze", "tests", "check_dead_cover.py"),
 }
 
 REAL_RUNNER = os.path.join(
@@ -55,7 +57,11 @@ PUSH_RED_END = "Fix, or push --no-verify."
 _STUB = r"""#!/bin/bash
 MODULES="test_widget test_other"
 mode="${FAKE_SUITE_MODE:-green}"
-echo "$mode $*" >> "$FAKE_SUITE_CALLS"
+echo "$mode $*${AMAZE_HOUDINI:+ on $AMAZE_HOUDINI}" >> "$FAKE_SUITE_CALLS"
+if [ -n "${AMAZE_SKIP_REPORT:-}" ]; then
+    printf '{"testsRun": 203, "houdini": "%s", "skipped": %s}\n' \
+        "${AMAZE_HOUDINI:-}" "${FAKE_SKIPPED:-[]}" > "$AMAZE_SKIP_REPORT"
+fi
 
 case "$mode" in
 green)
@@ -215,7 +221,7 @@ class GateFixture(unittest.TestCase):
         """Never inherits a real bypass variable, or the pushing repository, from the calling suite."""
         env = dict(os.environ)
         for name in ("AMAZE_SYNC_NO_VERIFY", "AMAZE_SKIP_TESTS",
-                     "AMAZE_SCRATCH_INSTALL",
+                     "AMAZE_SCRATCH_INSTALL", "AMAZE_HOUDINI", "AMAZE_SKIP_REPORT",
                      "GIT_DIR", "GIT_WORK_TREE"):    # a worktree's pre-push sets GIT_DIR ▸r/git-hook-surface
             env.pop(name, None)
         env.update(self.git_env)
@@ -580,6 +586,23 @@ class PrePushSelectionTest(GateFixture):
         self.assertEqual(["green"], [call.strip() for call in self.suite_calls()],
                          "the whole suite was not what ran")
 
+    def _houdinis(self, *names):
+        """Fake installs in the copied houdini-env.sh, committed by `_mapped`: never this machine's."""
+        roots = [os.path.join(self.tmp, name) for name in names]
+        with open(os.path.join(self.repo, "tools", "houdini-env.sh"), "a",
+                  encoding="utf-8") as handle:
+            handle.write("amaze_houdini_roots() { printf '%%s\\n' %s; }\n"
+                         % " ".join("'%s'" % root for root in roots))
+        return roots
+
+    def assertEveryHoudini(self, result, roots):
+        self.assertEqual(result.returncode, 0, self.both(result))
+        self.assertIn("running the suite on every Houdini (a new minor or major version)",
+                      result.stdout, self.both(result))
+        self.assertEqual(["green on " + root for root in roots],
+                         [" ".join(call.split()) for call in self.suite_calls()],
+                         "the whole suite did not run once on each Houdini")
+
     def test_a_push_runs_only_the_tests_its_change_reaches(self):
         self._mapped()
         self._change("return 1", "return 2")
@@ -608,15 +631,32 @@ class PrePushSelectionTest(GateFixture):
         self.assertEqual([], self.suite_calls())
         self.assertIn(PUSH_END, result.stdout)
 
-    def test_a_new_minor_version_runs_the_whole_suite(self):
+    def test_a_new_minor_version_runs_the_whole_suite_on_every_houdini(self):
+        roots = self._houdinis("Houdini21", "Houdini22")
         self._mapped()
         self._change('"1.0.0"', '"1.1.0"', BRANDING)
-        self.assertWhole(self.push("green"), "a new minor or major version")
+        self.assertEveryHoudini(self.push("green"), roots)
 
-    def test_a_new_major_version_runs_the_whole_suite(self):
+    def test_a_new_major_version_runs_the_whole_suite_on_every_houdini(self):
+        roots = self._houdinis("Houdini21", "Houdini22")
         self._mapped()
         self._change('"1.0.0"', '"2.0.0"', BRANDING)
-        self.assertWhole(self.push("green"), "a new minor or major version")
+        self.assertEveryHoudini(self.push("green"), roots)
+
+    def test_a_test_skipped_on_every_houdini_refuses_a_new_version(self):
+        self._houdinis("Houdini21", "Houdini22")
+        self._mapped()
+        self._change('"1.0.0"', '"1.1.0"', BRANDING)
+        result = self.push("green", FAKE_SKIPPED='[["%s", "needs a GPU"]]' % SIZE)
+        self.assertEqual(result.returncode, 1, self.both(result))
+        self.assertIn("PUSH REFUSED", result.stderr)
+        self.assertIn("DEAD COVER", result.stderr)
+
+    def test_a_whole_run_for_any_other_reason_tests_one_houdini(self):
+        self._houdinis("Houdini21", "Houdini22")
+        self._mapped()
+        self._commit(os.path.join("scripts", "python", "amaze", "fresh.py"))
+        self.assertWhole(self.push("green"), "the map cannot answer")
 
     def test_a_patch_runs_only_what_it_reaches(self):
         self._mapped()
