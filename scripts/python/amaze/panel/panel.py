@@ -52,7 +52,7 @@ from amaze import branding
 from amaze import messages
 from amaze import tooltips
 from amaze.prefs import prefs
-from amaze.helpers import helpers, hostos, theme, ui_helpers, vex_syntax
+from amaze.helpers import bytecode, helpers, hostos, theme, ui_helpers, vex_syntax
 from amaze.core import (
     database, dragengine, gallery_import, lop_assign, matx_icon, matx_translate, packages,
     renderers, tile_icons, users,
@@ -79,6 +79,7 @@ def _reload(module):
 _reload(keyed_store)    # FIRST: eleven modules read their stores through it, so a stale engine keeps old tables while every caller gets new code; a re-register keeps existing bindings, so binder modules outside this chain stay whole
 _reload(locations)      # right after the engine it binds two stores into - and the switch door calls locations.forget()
 _reload(hostos)    # before library: the models import the shared thumbnail engine
+_reload(bytecode)
 _reload(debug)
 _reload(dragengine)
 _reload(lop_assign)
@@ -648,6 +649,7 @@ class AmazePanel(QtWidgets.QWidget):
             return
         self._first_show_logged = True
         QtCore.QTimer.singleShot(0, self.ensure_library_user)    # after the first paint, never during construction: a modal dialog raised from a half-built panel blocks the paint it is sitting on top of
+        QtCore.QTimer.singleShot(self.FILL_DELAY_MS, self.fill_compiled_files)
         t0 = getattr(self, "_construct_t0", None)
         if t0 is None:
             return
@@ -659,6 +661,19 @@ class AmazePanel(QtWidgets.QWidget):
                     (time.perf_counter() - t0) * 1000, 1))
 
         QtCore.QTimer.singleShot(0, _record)
+
+    FILL_DELAY_MS = 5000    #: well after the first paint: the compile holds Python's lock ▸r/pane-open-cost
+
+    def fill_compiled_files(self):
+        """Compiles, in the background, Amaze's own files an update left uncompiled ▸r/pane-open-cost"""
+        started = time.perf_counter()
+
+        def _done(written):
+            if written:
+                debug.event("session", "compiled files written", count=written,
+                            ms=round((time.perf_counter() - started) * 1000))
+
+        return bytecode.compile_missing_in_background(amaze.PACKAGE_ROOT, _done)
 
     def ensure_library_user(self, chooser=None) -> str:
         """Ask WHICH user this machine is, and ONLY where the library already has some and this one is not among them (`users.ASK`): a library with nobody in it mints silently, a machine whose pointer already resolves is never questioned, and cancelling is allowed - it leaves no user, so nothing is keyed under a blank this session and the question comes back next time. `chooser` takes `{uid: name}` and answers `(uid, new_name)`, both empty for a cancel, so the decision can be driven without a dialog on screen"""

@@ -263,7 +263,7 @@ def install_root() -> str:
 def install(found, into: str = "") -> None:
     """Fetch, verify, stage and swap in the release `found` names - every failure raises OSError carrying a FINISHED sentence, and nothing is changed unless the swap completes. ▸p/updater-shape"""
     from amaze import messages
-    from amaze.helpers import hostos
+    from amaze.helpers import bytecode, hostos
 
     if not found or not getattr(found, "url", ""):
         raise OSError(messages.NO_RELEASE_TO_INSTALL)
@@ -275,6 +275,7 @@ def install(found, into: str = "") -> None:
         staged = fetch_and_stage(found.url, workspace,
                                  digest=getattr(found, "digest", ""),
                                  size=getattr(found, "size", 0))
+        bytecode.compile_missing(os.path.join(staged, "scripts"))    # a release carries .py only ▸r/pane-open-cost
         return apply_update(staged, into)
     finally:    # the workspace is a means, not a result, and a failed install leaves a repo-sized tree in the cache without this
         shutil.rmtree(workspace, ignore_errors=True)

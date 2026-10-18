@@ -1,6 +1,6 @@
 import sys
 
-sys.dont_write_bytecode = True    # only sync-install.sh may write a cache, and it writes HASH-validated .pyc; a runtime write would be timestamp-validated and restore the stale-bytecode hazard ▸r/module-reload
+sys.dont_write_bytecode = True    # Python's own write is timestamp-checked; helpers/bytecode.py writes hash-checked
 
 import os as _os
 

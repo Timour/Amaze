@@ -1156,6 +1156,9 @@ preview/usd_scene.py      Karma's and Octane's, one USD stage: written
 helpers/hostos.py         OS-INTEGRATION ENGINE (all platform branches)
 helpers/hostver.py        HOST-CAPABILITY ENGINE - every "does this
                           environment behave differently here?" question
+helpers/bytecode.py       Amaze's compiled files, always hash-checked:
+                          the updater writes them for a release, the
+                          panel fills in what is missing after it paints
 helpers/                  theme, ui widgets, vex syntax, generic helpers
 utils/rc_calls.py         the entry points Houdini itself calls (shelf
                           tools, OPmenu) - finds the open panel by its
