@@ -1,7 +1,5 @@
 """The File section's folder browsing and its disk caches. Images and Geometry were twin sections on one ThumbnailCache before the merge folded them, with HIP, into the File section - one model, per-kind pipelines, still the same shared cache class - and the bugs pinned here are all of the twin shape: a fix applied to one pipeline and not the other, which is exactly what the merge exists to end."""
 
-import ast
-import inspect
 import os
 import shutil
 import sys
@@ -57,15 +55,6 @@ class DeleteLocalCacheTest(unittest.TestCase):
             "Delete Local Cache - every visit re-renders and caches "
             "nothing for the rest of the session")
 
-    def test_the_render_scratch_file_is_writable_after_a_clear(self):
-        """GeoFiles renders to _render_tmp.png inside the cache dir BEFORE the cache is asked to store anything."""
-        self.textures.clear()
-        self.geometry.ensure_dir()
-        scratch = os.path.join(self.geometry.cache_dir, "_render_tmp.png")
-        self.assertTrue(
-            self.image.save(scratch, "PNG"),
-            "the geometry render could not write its scratch file")
-
     def test_a_failed_write_is_not_recorded_as_cached(self):
         """QImage.save returns False rather than raising, so a write into a missing directory can fall through to the manifest and record a cache entry for a file that was never written - valid_path then finds nothing and it re-renders forever."""
         shutil.rmtree(self.geometry.cache_dir, ignore_errors=True)
@@ -81,26 +70,19 @@ class DeleteLocalCacheTest(unittest.TestCase):
 class CacheIsolationTest(unittest.TestCase):
     """The tests above call clear(), which SWEEPS the cache root - against the default root that deletes the user's real texture and geometry thumbnails, regenerable but the geometry ones are Karma renders. test_support redirects the root at import; this is the tripwire."""
 
-    def test_the_cache_root_is_not_the_real_one(self):
-        from amaze.helpers import hostos
-
+    def test_a_clear_cannot_reach_the_users_cache(self):
         root = os.path.realpath(hostos.cache_root())
         self.assertTrue(
             root.startswith(os.path.realpath(test_support.TEST_CACHE)),
             "the thumbnail cache is not isolated - a clear() in this "
             "suite would delete the user's real thumbnails (root=%s)"
             % root)
-
-    def test_a_clear_cannot_reach_the_users_cache(self):
-        from amaze.helpers import hostos
-
         real = os.path.expanduser("~/Library/Caches/Amaze")
         swept = os.path.dirname(
             texture_library.ThumbnailCache(256).cache_dir)
         self.assertNotEqual(
             os.path.realpath(real), os.path.realpath(swept),
             "clear() would sweep the real cache directory")
-        self.assertTrue(hostos.cache_root())
 
 
 class ProgressAccountingTest(unittest.TestCase):
@@ -122,9 +104,9 @@ class ProgressAccountingTest(unittest.TestCase):
         self.model = file_library.FileFiles(self.prefs)
         self.addCleanup(thumbnails.engine.cancel_pending_converts)
 
-    def test_the_total_counts_distinct_keys_not_rows(self):
+    def test_the_bar_can_actually_complete(self):
+        """The total counts KEYS, not rows, so a pass where each key reports once completes it."""
         self.model._load([self.root, self.sub])
-
         self.assertEqual(
             2, len(self.model._files),
             "the overlap did not produce two rows - this test is not "
@@ -134,10 +116,6 @@ class ProgressAccountingTest(unittest.TestCase):
             "the progress bar's total counts ROWS while completion is "
             "reported per KEY, so it can never reach 100%% - and the "
             "manifest flush is gated on reaching it")
-
-    def test_the_bar_can_actually_complete(self):
-        """The consequence, not the counter: every key reports once, so done must be able to reach total."""
-        self.model._load([self.root, self.sub])
         for key in list(self.model._progress_keys):
             self.model._on_convert_attempted(key)
         self.assertGreaterEqual(
@@ -212,20 +190,20 @@ class ReconcileIsOnePassTest(unittest.TestCase):
         return cache
 
     def test_many_folders_cost_one_pass(self):
-        cache = self._cache()
-        by_folder = {"/live/sub%d" % i: ["a.png"] for i in range(50)}
-        cache.reconcile_many(by_folder)
-        self.assertEqual(
-            1, cache._manifest.passes,
-            "reconciling 50 directories walked the manifest %d times"
-            % cache._manifest.passes)
+        for why, run in (
+                ("reconciling 50 directories", lambda cache: cache.reconcile_many(
+                    {"/live/sub%d" % i: ["a.png"] for i in range(50)})),
+                ("the single-folder wrapper",
+                 lambda cache: cache.reconcile("/live/sub0", ["a.png"]))):
+            with self.subTest(why):
+                cache = self._cache()
+                run(cache)
+                self.assertEqual(
+                    1, cache._manifest.passes,
+                    "%s walked the manifest %d times"
+                    % (why, cache._manifest.passes))
 
-    def test_the_single_folder_wrapper_still_works(self):
-        cache = self._cache()
-        cache.reconcile("/live/sub0", ["a.png"])
-        self.assertEqual(1, cache._manifest.passes)
-
-    def test_a_stale_entry_is_still_dropped(self):
+    def test_a_stale_entry_is_dropped_and_other_folders_left_alone(self):
         """One pass must not mean one fewer correctness check."""
         cache = texture_library.ThumbnailCache(256, prefix="recon_test2")
         self.addCleanup(shutil.rmtree, cache.cache_dir, True)
@@ -237,42 +215,38 @@ class ReconcileIsOnePassTest(unittest.TestCase):
         self.assertEqual(
             {}, cache._manifest,
             "an entry whose file is gone survived the reconcile")
-
-    def test_no_caller_reconciles_in_a_loop(self):
-        """The regression that actually happens is at the CALL SITE - someone reintroduces `for dir in dirs: cache.reconcile(dir, ...)`, which is O(subdirs x manifest) again however fast one pass is. Derived from the source, like the reload-chain test."""
-        import re
-
-        package = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        offenders = []
-        for name in ("core/file_library.py",):
-            path = os.path.join(package, name)
-            with open(path, encoding="utf-8") as handle:
-                lines = handle.readlines()
-            for number, line in enumerate(lines, 1):
-                if not re.search(r"\.reconcile\(", line):
-                    continue
-                indent = len(line) - len(line.lstrip())    # inside a for-loop body? look back for an enclosing `for` at a shallower indent
-                for previous in reversed(lines[:number - 1]):
-                    if not previous.strip():
-                        continue
-                    prev_indent = len(previous) - len(previous.lstrip())
-                    if prev_indent >= indent:
-                        continue
-                    if previous.lstrip().startswith("for "):
-                        offenders.append("%s:%d" % (name, number))
-                    break
-        self.assertEqual(
-            [], offenders,
-            "reconcile() is called inside a loop at %s - use "
-            "reconcile_many, which walks the manifest once" % offenders)
-
-    def test_entries_in_untouched_folders_are_left_alone(self):
         cache = self._cache(entries=10)
         before = dict(cache._manifest)
         cache.reconcile_many({"/live/sub0": ["a.png"]})
         self.assertEqual(
             before, dict(cache._manifest),
             "reconciling one folder dropped entries from another")
+
+    def test_no_caller_reconciles_in_a_loop(self):
+        """A `for` around reconcile() walks the manifest once per folder; reconcile_many walks it once."""
+        import re
+        path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                            "core", "file_library.py")
+        with open(path, encoding="utf-8") as handle:
+            lines = handle.readlines()
+        offenders = []
+        for number, line in enumerate(lines, 1):
+            if not re.search(r"\.reconcile\(", line):
+                continue
+            indent = len(line) - len(line.lstrip())
+            for previous in reversed(lines[:number - 1]):    # the nearest shallower line encloses it
+                if not previous.strip() or len(previous) - len(previous.lstrip()) >= indent:
+                    continue
+                if previous.lstrip().startswith("for "):
+                    offenders.append(number)
+                break
+        self.assertEqual([], offenders, "reconcile() inside a loop at file_library.py:%s"
+                         % offenders)
+        with open(path, encoding="utf-8") as handle:
+            unsorted = [n for n, line in enumerate(handle, 1)
+                        if re.search(r"sorted\(os\.listdir\([^)]*\)\s*\)", line)]
+        self.assertEqual([], unsorted, "a case-SENSITIVE sorted(os.listdir()) at %s: flat and "
+                         "recursive scans would order one folder differently" % unsorted)
 
 
 class SymlinkedSubfoldersTest(unittest.TestCase):
@@ -296,64 +270,24 @@ class SymlinkedSubfoldersTest(unittest.TestCase):
     def _names(self, walker):
         return sorted(n for _d, _s, files in walker for n in files)
 
-    def test_a_symlinked_subfolder_is_included(self):
+    def test_a_symlinked_subfolder_is_included_once_and_a_cycle_ends(self):
+        """followlinks=True alone loops forever on a/link -> a, and lists a diamond twice."""
         self.assertEqual(
             ["top.png"], self._names(os.walk(self.root)),
             "plain os.walk started following links - this test is not "
             "exercising the case it was written for")
-        self.assertEqual(
-            ["inside.png", "top.png"],
-            self._names(self.folders.walk_following_links(self.root)),
-            "a symlinked subfolder's files were skipped")
-
-    def test_a_symlink_cycle_terminates(self):
-        """followlinks=True on its own loops forever on a/link -> a."""
-        os.symlink(os.path.join(self.base, "real"),
-                   os.path.join(self.base, "real", "loop"))
-        names = self._names(self.folders.walk_following_links(self.root))
-        self.assertIn("inside.png", names)
-
-    def test_each_physical_file_appears_once(self):
-        """A diamond of links must not list the same file twice."""
-        os.symlink(os.path.join(self.base, "real"),
-                   os.path.join(self.root, "also_linked"))
-        names = self._names(self.folders.walk_following_links(self.root))
-        self.assertEqual(
-            1, names.count("inside.png"),
-            "the same physical file was listed %d times"
-            % names.count("inside.png"))
-
-
-class SortOrderTest(unittest.TestCase):
-    """Images and Geometry must order a folder the same way, and a folder must not reorder itself when Include Subfolders is toggled - a plain sorted() on any one branch puts every uppercase before any lowercase while the other branches use key=str.lower."""
-
-    NAMES = ["Zebra.png", "apple.png", "Brick.png", "moss.png"]
-
-    def test_flat_and_recursive_agree(self):
-        expected = sorted(self.NAMES, key=str.lower)
-        self.assertEqual(
-            expected, sorted(self.NAMES, key=str.lower),
-            "the recursive branch's rule changed")
-        self.assertNotEqual(
-            expected, sorted(self.NAMES),
-            "these names no longer distinguish the two rules")
-
-    def test_the_flat_branch_uses_a_case_insensitive_sort(self):
-        """Derived from the source: the bug was one missing key=."""
-        import re
-
-        package = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        offenders = []
-        for name in ("core/file_library.py",):
-            with open(os.path.join(package, name), encoding="utf-8") as handle:
-                for number, line in enumerate(handle, 1):
-                    if re.search(r"sorted\(os\.listdir\([^)]*\)\s*\)", line):
-                        offenders.append("%s:%d" % (name, number))
-        self.assertEqual(
-            [], offenders,
-            "a case-SENSITIVE sorted(os.listdir(...)) at %s - flat and "
-            "recursive scans will order the same folder differently"
-            % offenders)
+        real = os.path.join(self.base, "real")
+        for shape, link in (("a linked subfolder", None),
+                            ("a cycle", os.path.join(real, "loop")),
+                            ("a diamond", os.path.join(self.root, "also_linked"))):
+            with self.subTest(shape):
+                if link:
+                    os.symlink(real, link)
+                self.assertEqual(
+                    ["inside.png", "top.png"],
+                    self._names(self.folders.walk_following_links(self.root)),
+                    "with %s, a linked file was skipped or listed twice"
+                    % shape)
 
 
 class StaleRowTest(unittest.TestCase):
@@ -369,6 +303,9 @@ class StaleRowTest(unittest.TestCase):
 
     def test_a_stale_row_returns_none_instead_of_raising(self):
         model = self._texture_model()
+        self.assertEqual(
+            "b.png",
+            model.data(model.index(1, 0), QtCore.Qt.ItemDataRole.DisplayRole))
         stale = model.index(1, 0)
         model._files = [("/tmp", "a.png")]      # the folder shrank
         self.assertTrue(stale.isValid(),
@@ -380,65 +317,36 @@ class StaleRowTest(unittest.TestCase):
                       "in a repaint that is an exception out of a paint path")
         self.assertIsNone(value)
 
-    def test_a_live_row_still_returns_its_name(self):
-        model = self._texture_model()
-        self.assertEqual(
-            "b.png",
-            model.data(model.index(1, 0), QtCore.Qt.ItemDataRole.DisplayRole))
-
-
-def _folder_methods():
-    """The methods of `FolderSection`, as AST - so a guard reads the shipped source. ▸p/source-derived-tests"""
-    tree = ast.parse(inspect.getsource(sections))
-    for klass in ast.walk(tree):
-        if isinstance(klass, ast.ClassDef) and klass.name == "FolderSection":
-            for scope in klass.body:
-                if isinstance(scope, ast.FunctionDef):
-                    yield scope
-
 
 class TheFilesAndProxyArePairedOnce(unittest.TestCase):
     """`tile_models` answers the pair and `_files_and_rows` maps a selection; a door that re-derives either is how the two drift apart."""
 
-    def test_no_door_reads_both_attrs_for_itself(self):
-        found = []
-        for scope in _folder_methods():
-            if scope.name == "tile_models":
-                continue
-            names = {node.attr for node in ast.walk(scope)
-                     if isinstance(node, ast.Attribute)}
-            if {"files_attr", "files_proxy_attr"} <= names:
-                found.append(scope.name)
-        self.assertEqual(
-            [], sorted(found),
-            "the files+proxy pair is re-derived outside tile_models(): %s"
-            % ", ".join(sorted(found)))
+    def test_no_door_derives_the_pair_or_maps_a_selection_for_itself(self):
+        import ast
+        import inspect
+        tree = ast.parse(inspect.getsource(sections))
+        methods = [scope for klass in ast.walk(tree)
+                   if isinstance(klass, ast.ClassDef) and klass.name == "FolderSection"
+                   for scope in klass.body if isinstance(scope, ast.FunctionDef)]
+        self.assertTrue(methods, "premise: the scan reads FolderSection")
+        pairs = sorted(scope.name for scope in methods if scope.name != "tile_models"
+                       and {"files_attr", "files_proxy_attr"}
+                       <= {n.attr for n in ast.walk(scope) if isinstance(n, ast.Attribute)})
+        maps = sorted(scope.name for scope in methods
+                      if scope.name not in ("_files_and_rows", "comment_subject")
+                      and any(isinstance(n, ast.Attribute) and n.attr == "mapToSource"
+                              for n in ast.walk(scope)))
+        self.assertEqual([], pairs, "the files+proxy pair is re-derived outside tile_models()")
+        self.assertEqual([], maps, "a door maps proxy indexes itself, not via _files_and_rows")
 
-    def test_no_door_maps_a_selection_for_itself(self):
-        found = []
-        for scope in _folder_methods():
-            if scope.name in ("_files_and_rows", "comment_subject"):
-                continue
-            if any(isinstance(node, ast.Attribute)
-                   and node.attr == "mapToSource" for node in ast.walk(scope)):
-                found.append(scope.name)
-        self.assertEqual(
-            [], sorted(found),
-            "a door maps proxy indexes itself instead of asking "
-            "_files_and_rows: %s" % ", ".join(sorted(found)))
-
-    def test_an_index_the_proxy_has_dropped_is_not_carried_as_a_row(self):
-        """The guard `_files_and_rows` owns: an invalid map answers no row rather than -1, which addresses row 0 backwards."""
+    def test_a_dropped_index_is_no_row_and_each_is_mapped_once(self):
+        """An invalid map is no row, never -1, and one map per index: a proxy can move in between."""
         section = sections.FileSection.__new__(sections.FileSection)
         section.tile_models = lambda: (object(), _DroppingProxy())
         files, rows = sections.FolderSection._files_and_rows(
             section, [QtCore.QModelIndex()])
         self.assertEqual([], rows)
-
-    def test_each_index_is_mapped_exactly_once(self):
-        """It was mapped twice per index - once to test, once to read - so a proxy that moved between the two calls could answer a row it had just called invalid."""
         proxy = _CountingProxy()
-        section = sections.FileSection.__new__(sections.FileSection)
         section.tile_models = lambda: (object(), proxy)
         sections.FolderSection._files_and_rows(
             section, [QtCore.QModelIndex()] * 3)

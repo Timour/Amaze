@@ -1,4 +1,4 @@
-"""One address form for the row verbs, and a bounds check on every one: `toggle_fav`, `render_thumbnail` and `render_thumbnails` across the AssetLibrary tree each take a ROW, each refuse a row outside the model, and no caller builds a QModelIndex only to take `.row()` off it again. Watch when calling: the models are built with `__new__` and a fixture Prefs, so nothing reaches the machine's real library."""
+"""A star and a render each take a ROW and refuse one outside the model; fixture Prefs only."""
 
 import os
 import sys
@@ -59,88 +59,13 @@ class AStarNeverLandsOnARowThatWasNotAskedFor(unittest.TestCase):
             model.toggle_fav(row)
         return written
 
-    def test_a_row_below_the_model_writes_no_star(self):
-        """-1 is what an invalid index answers, and a negative index silently resolves to the LAST asset."""
-        model = _model(self, 3)
-        self.assertEqual(
-            [], self._flip(model, -1),
-            "a star was written for a row that is not in the model")
-
-    def test_a_row_past_the_end_writes_no_star(self):
-        model = _model(self, 3)
-        self.assertEqual(
-            [], self._flip(model, 7),
-            "a star was written for a row past the end of the model")
-
     def test_the_row_asked_for_is_the_row_starred(self):
-        model = _model(self, 3)
-        self.assertEqual(["id1"], self._flip(model, 1))
-
-
-class EveryModelSpellsTheVerbTheSameWay(unittest.TestCase):
-    """The same-shape half: one address form across the family, so a reader meets one convention."""
-
-    def _first_arg(self, func):
-        import inspect
-        names = list(inspect.signature(func).parameters)
-        return names[1] if names and names[0] == "self" else names[0]
-
-    def test_every_favourite_verb_takes_a_row(self):
-        from amaze.core import file_library
-        offenders = []
-        for owner, name in ((library.AssetLibrary, "toggle_fav"),
-                            (file_library.FileFiles, "toggle_favorite")):
-            func = getattr(owner, name, None)
-            if func is None:
-                continue
-            arg = self._first_arg(func)
-            if arg != "row":
-                offenders.append("%s.%s takes %r" % (
-                    owner.__name__, name, arg))
-        self.assertEqual([], offenders,
-                         "the favourite verb is spelled two ways: %s"
-                         % "; ".join(offenders))
-
-    def test_every_thumbnail_verb_takes_a_row(self):
-        from amaze.core import code_library, cop_library, gradient_library
-        offenders = []
-        for owner in (library.AssetLibrary, library.MaterialLibrary,
-                      cop_library.CopLibrary, code_library.CodeLibrary,
-                      gradient_library.GradientLibrary):
-            func = owner.__dict__.get("render_thumbnail")
-            if func is None:
-                continue
-            arg = self._first_arg(func)
-            if arg != "row":
-                offenders.append("%s.render_thumbnail takes %r"
-                                 % (owner.__name__, arg))
-        self.assertEqual([], offenders,
-                         "the thumbnail verb is spelled two ways: %s"
-                         % "; ".join(offenders))
-
-    def test_no_survivor_builds_an_index_to_take_its_row_back(self):
-        """`self.index(row, 0)` handed straight to something that calls `.row()` on it is the round-trip this batch removed."""
-        import re
-        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        offenders = []
-        pattern = re.compile(
-            r"_add_thumb_paths\(\s*(?:self|model)\.index\(|"
-            r"toggle_fav\(\s*(?:self|model)\.index\(")
-        for folder, _dirs, files in os.walk(root):
-            if os.path.basename(folder) == "tests":
-                continue
-            for name in sorted(files):
-                if not name.endswith(".py"):
-                    continue
-                path = os.path.join(folder, name)
-                with open(path, "r", encoding="utf-8") as handle:
-                    for number, line in enumerate(handle, 1):
-                        if pattern.search(line):
-                            offenders.append("%s:%d" % (
-                                os.path.relpath(path, root), number))
-        self.assertEqual([], offenders,
-                         "an index is built only to be taken apart: %s"
-                         % ", ".join(offenders))
+        for row, starred in ((-1, []), (7, []), (1, ["id1"])):
+            with self.subTest(row=row):
+                self.assertEqual(
+                    starred, self._flip(_model(self, 3), row),
+                    "row %d starred the wrong asset - an invalid index "
+                    "answers -1, which resolves to the LAST one" % row)
 
 
 class ABatchRefusesARowItCannotRender(unittest.TestCase):

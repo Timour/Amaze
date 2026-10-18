@@ -98,25 +98,24 @@ class TheCommandAndItsEnvironment(unittest.TestCase):
         return husk_job.HuskJob(batch, "/x", [("id%d" % i, "/p%d.png" % i)
                                               for i in range(count)])
 
-    def test_karma_skips_both_other_renderers_plugins(self):
-        self.assertEqual("{redshift4houdini.*,Houdini_Octane*}",
-                         husk_job.plugin_exclusion("Karma"))
-
-    def test_octane_keeps_its_own_plugin(self):
-        """Octane aborts without its own Houdini plugin; only Redshift's goes."""
-        self.assertEqual("redshift4houdini.*", husk_job.plugin_exclusion("Octane"))
-
-    def test_a_pattern_already_set_is_kept(self):
-        self.assertEqual("{mine*,redshift4houdini.*}",
-                         husk_job.plugin_exclusion("Octane", "mine*"))
-        self.assertEqual("{a,b}", husk_job.plugin_exclusion("Karma", "{a,b}"))
+    def test_each_husk_skips_the_other_renderers_plugins(self):
+        """Octane aborts without its own plugin; a pattern already set is kept, a braced one wins."""
+        for renderer, current, expected in (
+                ("Karma", "", "{redshift4houdini.*,Houdini_Octane*}"),
+                ("Octane", "", "redshift4houdini.*"),
+                ("Octane", "mine*", "{mine*,redshift4houdini.*}"),
+                ("Karma", "{a,b}", "{a,b}")):
+            with self.subTest(renderer=renderer, current=current):
+                self.assertEqual(expected,
+                                 husk_job.plugin_exclusion(renderer, current))
 
     def test_the_environment_carries_the_exclusion(self):
         with mock.patch.dict(os.environ, {husk_job.EXCLUDE: ""}):
             env = self._job("Karma").environment()
         self.assertEqual(husk_job.plugin_exclusion("Karma"), env[husk_job.EXCLUDE])
 
-    def test_one_husk_renders_every_frame_with_progress(self):
+    def test_one_husk_renders_every_frame_and_only_octane_restarts(self):
+        """Octane keeps frame 1's material unless restarted ▸r/husk-startup."""
         cmd = self._job("Karma", 3).command()
         self.assertEqual(["-f", "1", "-n", "3"], cmd[cmd.index("-f"):cmd.index("-f") + 4])
         self.assertIn("1a", cmd[cmd.index("-V") + 1])    # `a` prints ALF_PROGRESS
@@ -124,10 +123,7 @@ class TheCommandAndItsEnvironment(unittest.TestCase):
         self.assertIn("--preframe-script", cmd)
         self.assertIn("--postframe-script", cmd)
         self.assertEqual("/x/__render__.usd", cmd[-1])
-
-    def test_only_octane_restarts_its_renderer_every_frame(self):
-        """Octane keeps frame 1's material unless restarted ▸r/husk-startup."""
-        self.assertNotIn("--restart-delegate", self._job("Karma").command())
+        self.assertNotIn("--restart-delegate", cmd)
         octane = self._job("Octane").command()
         self.assertEqual("1", octane[octane.index("--restart-delegate") + 1])
 

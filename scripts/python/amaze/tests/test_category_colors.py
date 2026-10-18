@@ -47,8 +47,13 @@ class CategoryColorTest(unittest.TestCase):
         lop.destroy()
         return len(self.model.assets) - 1
 
-    def test_an_uncoloured_category_leaves_the_tile_alone(self):
-        self.assertEqual("", self.model.category_color(self.row))
+    def test_an_uncoloured_or_uncategorised_tile_has_no_colour(self):
+        self.assertEqual("", self.model.category_color(self.row),
+                         "an uncoloured category coloured its tile")
+        row = self._an_asset("")
+        self.cats.set_color("Metal", "#4af2a1")
+        self.assertEqual("", self.model.category_color(row),
+                         "an asset with no category took a colour")
 
     def test_the_colour_reaches_the_grid(self):
         """The asset model and the category model share one connector's data, so the grid sees the sidebar's edit with nothing wired between them."""
@@ -56,9 +61,6 @@ class CategoryColorTest(unittest.TestCase):
         self.assertEqual("#4af2a1", self.model.category_color(self.row))
         self.assertEqual("#4af2a1", self.model.data(
             self.model.index(self.row, 0), self.model.CategoryColorRole))
-
-    def test_the_colour_reaches_the_sidebar(self):
-        self.cats.set_color("Metal", "#4af2a1")
         row = self.cats._categories.index("Metal")
         self.assertEqual("#4af2a1", self.cats.data(
             self.cats.index(row, 0), category.SIDEBAR_COLOR_ROLE))
@@ -89,11 +91,6 @@ class CategoryColorTest(unittest.TestCase):
         fresh = cop_library.CopCategories(preferences=self.prefs)
         self.assertEqual("#e28248", fresh.color_of("Metal"))
 
-    def test_an_asset_with_no_category_has_no_colour(self):
-        row = self._an_asset("")
-        self.cats.set_color("Metal", "#4af2a1")
-        self.assertEqual("", self.model.category_color(row))
-
 
 class BandTextTest(unittest.TestCase):
     """The name and subtitle have to stay readable on any colour."""
@@ -109,18 +106,12 @@ class BandTextTest(unittest.TestCase):
             ("#20304f", light),     # navy
             ("#262626", light),
             ("#000000", light),
+            ("#00ff00", dark),      # weighted, never averaged: green reads far brighter than blue
+            ("#0000ff", light),
         ):
             self.assertEqual(
                 expected.name(), text_on(QtGui.QColor(colour)).name(),
                 "wrong text colour on %s" % colour)
-
-    def test_it_weighs_the_channels_perceptually(self):
-        """Weighted, never a plain average - pure green reads far brighter than pure blue at the same value, and averaging puts both on one side of the line."""
-        text_on = delegates.AssetItemDelegate.text_on
-        self.assertEqual(delegates.AssetItemDelegate.BAND_TEXT_DARK.name(),
-                         text_on(QtGui.QColor("#00ff00")).name())
-        self.assertEqual(delegates.AssetItemDelegate.BAND_TEXT_LIGHT.name(),
-                         text_on(QtGui.QColor("#0000ff")).name())
 
 
 if __name__ == "__main__":

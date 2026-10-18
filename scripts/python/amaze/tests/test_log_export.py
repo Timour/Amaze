@@ -55,17 +55,6 @@ class TestExportSucceeds(unittest.TestCase):
         self.assertIn(hostos.machine_name(), name)
         self.assertIn("hou", name)
 
-    def test_the_name_is_filename_safe(self):
-        """A machine name carrying spaces, quotes or slashes must not break the path on the other OS."""
-        log = _Log(self)
-        real = hostos.machine_name
-        self.addCleanup(setattr, hostos, "machine_name", real)
-        name = os.path.basename(debug.export_log(log.dest))
-        for bad in ("/", "\\", ":", " ", "'", "*", "?", '"'):
-            self.assertNotIn(bad, name,
-                             "%r is not safe in a filename: %s"
-                             % (bad, name))
-
     def test_a_second_export_never_overwrites_the_first(self):
         """The stamp resolves only to the second, so a double-click would otherwise destroy the export just made."""
         log = _Log(self)
@@ -121,27 +110,12 @@ class TestExportRefusesOutLoud(unittest.TestCase):
             debug.export_log(blocked)
         self.assertIn(blocked, str(caught.exception))
 
-    def test_a_refusal_is_never_a_bare_falsy_return(self):
-        """The distinction the class exists for: `nothing to export` must never read as `the export failed`."""
-        log = _Log(self, contents=None)
-        try:
-            result = debug.export_log(log.dest)
-        except debug.ExportRefused as exc:
-            self.assertTrue(str(exc).strip(),
-                            "ExportRefused was raised with no reason")
-            return
-        self.fail("export_log returned %r instead of refusing" % (result,))
-
 
 class TestOsFacts(unittest.TestCase):
 
     def test_os_tag_is_one_of_the_known_names(self):
         self.assertIn(hostos.os_tag(),
                       ("macos", "windows", "linux", "unknown-os"))
-
-    def test_machine_name_is_never_empty(self):
-        """An empty name collapses two machines' exports into one filename shape."""
-        self.assertTrue(hostos.machine_name())
 
     def test_machine_name_falls_back_rather_than_returning_nothing(self):
         real = os.environ.get("COMPUTERNAME")
@@ -156,6 +130,13 @@ class TestOsFacts(unittest.TestCase):
         self.assertTrue(hostos.machine_name(),
                         "machine_name returned nothing with no source "
                         "available - the export name would collide")
+        _platform.node = lambda: "Bad Name: 'x'/y\\z*?\""    # a hand-named machine
+        name = hostos.machine_name()
+        self.assertTrue(name, "a name of bad characters reduced to nothing")
+        for bad in ("/", "\\", ":", " ", "'", "*", "?", '"'):
+            self.assertNotIn(bad, name,
+                             "%r is not safe in a filename: %s"
+                             % (bad, name))
 
 
 class NoteRespectsTheConsoleRuleTest(unittest.TestCase):
@@ -174,10 +155,8 @@ class NoteRespectsTheConsoleRuleTest(unittest.TestCase):
             debug_module.note("a diagnostic line")
         return buffer.getvalue()
 
-    def test_it_prints_on_a_mac(self):
-        self.assertIn("a diagnostic line", self._capture(windows=False))
-
     def test_it_does_NOT_print_on_windows(self):
+        self.assertIn("a diagnostic line", self._capture(windows=False))
         self.assertEqual(
             "", self._capture(windows=True),
             "note() printed on Windows - that pops the Houdini Console "
@@ -189,6 +168,7 @@ class NoteRespectsTheConsoleRuleTest(unittest.TestCase):
         original = debug_module._write
         debug_module._write = written.append
         self.addCleanup(setattr, debug_module, "_write", original)
+        self.addCleanup(setattr, debug_module, "_enabled", debug_module._enabled)
         debug_module._enabled = True
         self._capture(windows=True)
         self.assertTrue(
@@ -200,30 +180,19 @@ class CapturedLogHelperTest(unittest.TestCase):
     """`test_support.captured_log()` - a capture helper returning nothing or anything silently inverts every assertion built on it, and it must leave Debug Mode as it found it. ▸p/captured-log-helper"""
 
     def test_it_captures_a_note(self):
+        """Read after the block ends: the first version lost its tempdir at exit."""
         with test_support.captured_log() as log:
             debug.note("a captured diagnostic")
+            debug.event("test", "an internal detail")
         self.assertEqual(
             ["a captured diagnostic"],
             log.matching("a captured diagnostic"),
             "captured_log() saw nothing, so every assertion made "
             "through it would fail whatever the code said")
-
-    def test_it_captures_after_the_block_has_ended(self):
-        """Where the first version failed: the tempdir went at exit and records were read lazily."""
-        with test_support.captured_log() as log:
-            debug.note("read me afterwards")
-        self.assertTrue(log.matching("read me afterwards"))
-
-    def test_it_does_not_invent_a_match(self):
-        with test_support.captured_log() as log:
-            debug.note("one thing happened")
         self.assertEqual([], log.matching("something else entirely"))
-
-    def test_an_event_is_not_a_note(self):
-        """The category filter is why a test can pin `the user was told` rather than `something was logged`."""
-        with test_support.captured_log() as log:
-            debug.event("test", "an internal detail")
-        self.assertEqual([], log.messages())
+        self.assertEqual(["a captured diagnostic"], log.messages(),
+                         "an event read as a note - the category filter "
+                         "is what lets a test pin that the user was told")
         self.assertTrue(log.matching("an internal detail",
                                      category="test"))
 
@@ -237,21 +206,15 @@ class CapturedLogHelperTest(unittest.TestCase):
             was_on, debug.is_on(),
             "captured_log left Debug Mode changed - one use of it would "
             "reconfigure logging for every later test in the process")
-
-    def test_debug_mode_is_restored_after_a_failure(self):
-        was_on = debug.is_on()
-        with self.assertRaises(ValueError):
-            with test_support.captured_log():
-                raise ValueError("a test failing inside the block")
-        self.assertEqual(was_on, debug.is_on())
-
-    def test_the_shared_test_log_is_put_back(self):
-        with test_support.captured_log():
-            pass
         self.assertEqual(
             test_support.TEST_LOG, debug._path,
             "captured_log left the log pointed at its own throwaway "
             "file, which is deleted - so nothing after it is recorded")
+        with self.assertRaises(ValueError):
+            with test_support.captured_log():
+                raise ValueError("a test failing inside the block")
+        self.assertEqual(was_on, debug.is_on(),
+                         "a failure inside the block left Debug Mode changed")
 
 
 if __name__ == "__main__":

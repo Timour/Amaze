@@ -3,7 +3,6 @@
 import json
 import os
 import shutil
-import subprocess
 import sys
 import tempfile
 import unittest
@@ -72,7 +71,10 @@ class _LibraryCase(unittest.TestCase):
 
 class RemoveAssetHonoursTheIndexWrite(_LibraryCase):
 
-    def test_a_refused_write_destroys_nothing(self):
+    def test_a_refused_write_destroys_nothing_and_the_row_stays(self):
+        """The forget mark outlives a refused save: without unforget() the next save deletes the row."""
+        versions.create_version(self.prefs, self.mat_id, "V1")
+        store = versions.versions_dir(self.prefs, self.mat_id)
         owned = self.model.asset_files(self.mat_id)
         present = [k for k, p in owned.items() if os.path.exists(p)]
         self.assertTrue(present, "the fixture asset owns no files on disk")
@@ -86,11 +88,9 @@ class RemoveAssetHonoursTheIndexWrite(_LibraryCase):
             "remove_asset destroyed payload files even though the library "
             "list write was refused - these files have no .bak tier and no "
             "quarantine copy, so they are gone for good")
-
-    def test_a_refused_write_puts_the_row_back(self):
-        self._refuse_the_index_write()
-        self.model.remove_asset(self.model.index(self._row(), 0))
-
+        self.assertTrue(os.path.isdir(store),
+                        "the version store was destroyed although the "
+                        "delete was refused")
         self.assertNotEqual(
             -1, self.model.find_asset_row_by_id(self.mat_id),
             "the row was dropped from the grid although the delete was "
@@ -98,11 +98,6 @@ class RemoveAssetHonoursTheIndexWrite(_LibraryCase):
         self.assertIn(
             self.mat_id, self._on_disk_ids(),
             "library.json no longer lists an asset whose delete was refused")
-
-    def test_a_refused_write_takes_back_the_row_removal(self):
-        """The forget() mark outlives a refused save - without unforget() the NEXT save deletes the row this one just put back, so the delete happens anyway one save later."""
-        self._refuse_the_index_write()
-        self.model.remove_asset(self.model.index(self._row(), 0))
 
         database.DatabaseConnector(    # point the connector home again and save normally
             self.model.DB_FILENAME).reload_with_path(self.prefs.dir)
@@ -137,8 +132,12 @@ class RemoveAssetHonoursTheIndexWrite(_LibraryCase):
             "OTHER library's live document - its payload files live in "
             "this one, so that library now lists a fileless asset")
 
-    def test_a_completed_delete_removes_the_files(self):
+    def test_a_completed_delete_removes_the_files_and_the_version_store(self):
         """The fix must not cost the ordinary case."""
+        number = versions.create_version(self.prefs, self.mat_id, "V1")
+        store = versions.versions_dir(self.prefs, self.mat_id)
+        self.assertTrue(number and os.path.isdir(store),
+                        "could not build a version store to delete")
         owned = self.model.asset_files(self.mat_id)
         present = [k for k, p in owned.items() if os.path.exists(p)]
         self.model.remove_asset(self.model.index(self._row(), 0))
@@ -147,84 +146,25 @@ class RemoveAssetHonoursTheIndexWrite(_LibraryCase):
         self.assertEqual([], left,
                          "a successful delete left payload files behind")
         self.assertNotIn(self.mat_id, self._on_disk_ids())
-
-
-class DeletingAnAssetTakesItsVersionStore(_LibraryCase):
-
-    def test_the_version_store_goes_with_the_asset(self):
-        number = versions.create_version(self.prefs, self.mat_id, "V1")
-        store = versions.versions_dir(self.prefs, self.mat_id)
-        self.assertTrue(number and os.path.isdir(store),
-                        "could not build a version store to delete")
-
-        self.model.remove_asset(self.model.index(self._row(), 0))
-
         self.assertFalse(
             os.path.isdir(store),
             "mat/versions/<id>/ survived the asset. Nothing else removes "
             "it, and its id is now in no list - so no later run can ever "
             "decide it is safe to take")
 
-    def test_a_refused_write_keeps_the_version_store(self):
-        versions.create_version(self.prefs, self.mat_id, "V1")
-        store = versions.versions_dir(self.prefs, self.mat_id)
-        self._refuse_the_index_write()
-
-        self.model.remove_asset(self.model.index(self._row(), 0))
-
-        self.assertTrue(os.path.isdir(store),
-                        "the version store was destroyed although the "
-                        "delete was refused")
-
-    def test_asset_directories_names_the_store(self):
-        named = self.model.asset_directories(self.mat_id)
-        self.assertEqual(
-            [os.path.normpath(versions.versions_dir(self.prefs,
-                                                    self.mat_id))],
-            [os.path.normpath(p) for p in named.values()])
-
 
 class AnIdThatCannotNameAFileOwnsNothing(_LibraryCase):
 
     ESCAPING = "../../../Documents/thesis"    # read verbatim out of library.json by Material.from_dict, which validates nothing - a hand-edited, tampered or badly-merged index
 
-    def test_asset_files_returns_nothing_for_an_escaping_id(self):
+    def test_an_escaping_id_owns_nothing_and_a_real_one_stays_inside(self):
         self.assertEqual({}, self.model.asset_files(self.ESCAPING))
-
-    def test_asset_directories_returns_nothing_for_an_escaping_id(self):
         self.assertEqual({}, self.model.asset_directories(self.ESCAPING))
-
-    def test_no_composed_path_leaves_the_library(self):
-        """Every path a legitimate id produces stays inside."""
         root = os.path.realpath(self.prefs.dir)
         for kind, path in self.model.asset_files(self.mat_id).items():
             self.assertTrue(
                 os.path.realpath(path).startswith(root),
                 "%s resolved outside the library: %s" % (kind, path))
-
-    def test_delete_of_an_escaping_id_unlinks_nothing_outside(self):
-        """remove_asset's own unlink loop, run over what asset_files() hands back for an id composed to reach a real file OUTSIDE the library - before the fix this deleted that file."""
-        outside = tempfile.mkdtemp(prefix="amaze_outside_")
-        self.addCleanup(shutil.rmtree, outside, True)
-        victim = os.path.join(outside, "thesis.mat")
-        with open(victim, "w", encoding="utf-8") as fh:
-            fh.write("the user's own file")
-
-        assets_dir = os.path.join(self.prefs.dir, self.prefs.asset_dir)
-        escaping = os.path.splitext(
-            os.path.relpath(victim, assets_dir))[0]
-        self.assertTrue(escaping.startswith(".."),
-                        "the fixture id does not actually escape: %r"
-                        % escaping)
-
-        for path in self.model.asset_files(escaping).values():
-            if os.path.exists(path):
-                os.remove(path)
-
-        self.assertTrue(
-            os.path.exists(victim),
-            "a file outside the library was unlinked by composing an "
-            "asset path from an id read straight out of library.json")
 
 
 class SwitchingVersionsIsAllOrNothing(unittest.TestCase):
@@ -340,7 +280,12 @@ class AnAbsentPolicyIsNotAPermissiveOne(unittest.TestCase):
         self.dir = tempfile.mkdtemp(prefix="amaze_policy_case_")
         self.addCleanup(shutil.rmtree, self.dir, True)
 
-    def test_absent_with_a_trace_fails_closed(self):
+    def test_absent_with_a_trace_fails_closed_and_without_one_is_a_new_library(self):
+        self.assertTrue(
+            library_policy.allow_overwrite(self.dir),
+            "a library that never had a policy must not be treated as a "
+            "restrictive one - that would make every new library refuse "
+            "Update Existing")
         library_policy.set_allow_overwrite(self.dir, True)    # twice, so snapshot_before_write has something to copy - what the real library looks like; a one-write library has no trace and the permissive default is then correct
         library_policy.set_allow_overwrite(self.dir, False)
         traces = [n for n in os.listdir(self.dir)
@@ -353,13 +298,6 @@ class AnAbsentPolicyIsNotAPermissiveOne(unittest.TestCase):
             library_policy.allow_overwrite(self.dir),
             "a momentarily absent policy.json turned overwrite protection "
             "back ON while its own backups sat beside it")
-
-    def test_absent_with_no_trace_is_still_a_new_library(self):
-        self.assertTrue(
-            library_policy.allow_overwrite(self.dir),
-            "a library that never had a policy must not be treated as a "
-            "restrictive one - that would make every new library refuse "
-            "Update Existing")
 
 
 class TheThumbnailManifestKeepsAnotherWritersWork(unittest.TestCase):

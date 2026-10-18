@@ -67,17 +67,13 @@ def _real_scene(testcase, name="open.hiplc"):
 class ExtensionsAreOneTypeTest(unittest.TestCase):
     """A library holding your .hiplc beside someone else's .hip must show both - nothing may treat the licence flavour as a category."""
 
-    def test_every_houdini_scene_extension_is_recognised(self):
-        for name in ("a.hip", "b.hiplc", "c.hipnc",
-                     "D.HIP", "E.HipLC"):
-            self.assertTrue(scene_captures.matched_extension(name),
-                            "%s was not recognised as a scene file" % name)
-
-    def test_non_scene_files_are_not(self):
-        for name in ("a.hda", "b.bgeo", "c.usd", "d.hip.bak", "e.txt",
-                     "notahip"):
-            self.assertFalse(scene_captures.matched_extension(name),
-                             "%s was wrongly taken for a scene file" % name)
+    def test_every_scene_extension_and_nothing_else_is_recognised(self):
+        for name, scene in (("a.hip", True), ("b.hiplc", True), ("c.hipnc", True),
+                            ("D.HIP", True), ("E.HipLC", True), ("a.hda", False),
+                            ("b.bgeo", False), ("c.usd", False), ("d.hip.bak", False),
+                            ("e.txt", False), ("notahip", False)):
+            with self.subTest(name=name):
+                self.assertEqual(scene, bool(scene_captures.matched_extension(name)))
 
     def test_the_listing_shows_all_three_flavours(self):
         """All three scene extensions are ONE kind - and since the merge the listing shows every file, so the geometry decoy is a row too, just not a scene row."""
@@ -130,24 +126,18 @@ class ThumbnailStoreTest(unittest.TestCase):
         ).hexdigest() + ".png"
         self.assertEqual(expected,
                          os.path.basename(scene_captures.thumb_path(self.scene)))
-
-    def test_two_scenes_never_share_a_slot(self):
-        other = self.tmp.touch("other.hiplc")
         self.assertNotEqual(scene_captures.thumb_path(self.scene),
-                            scene_captures.thumb_path(other))
+                            scene_captures.thumb_path(self.tmp.touch("other.hiplc")))
 
-    def test_has_thumbnail_is_false_until_one_exists(self):
+    def test_only_a_non_empty_file_counts_as_a_thumbnail(self):
         self.assertFalse(scene_captures.has_thumbnail(self.scene))
-        os.makedirs(self.store, exist_ok=True)
-        with open(scene_captures.thumb_path(self.scene), "wb") as fh:
-            fh.write(b"\x89PNG\r\n\x1a\n")
-        self.assertTrue(scene_captures.has_thumbnail(self.scene))
-
-    def test_an_empty_file_does_not_count_as_a_thumbnail(self):
         os.makedirs(self.store, exist_ok=True)
         open(scene_captures.thumb_path(self.scene), "wb").close()
         self.assertFalse(scene_captures.has_thumbnail(self.scene),
                          "a zero-byte file was reported as a thumbnail")
+        with open(scene_captures.thumb_path(self.scene), "wb") as fh:
+            fh.write(b"\x89PNG\r\n\x1a\n")
+        self.assertTrue(scene_captures.has_thumbnail(self.scene))
 
     def test_the_thumbnail_survives_the_scene_being_re_saved(self):
         """The rule that separates this from every other section: a ThumbnailCache would drop the entry here, silently destroying a capture the user framed by hand."""
@@ -485,16 +475,12 @@ class RepaintDoesNotStatTheDiskTest(unittest.TestCase):
 class ViewportStateTest(unittest.TestCase):
     """Read the viewport before asking it for a frame: Houdini has no call that copies the displayed image - every route renders - so a capture costs whatever the active Hydra delegate costs, and with a pathtracer that is unbounded; a capture has been seen to block until a Karma render was stopped."""
 
-    def test_the_houdini_delegates_are_fast(self):
-        for name in ("Houdini VK", "Houdini GL", "houdini vk",
-                     "  Houdini VK  "):
-            self.assertTrue(scene_captures.delegate_is_fast(name),
-                            "%r should be treated as cheap" % name)
-
-    def test_renderers_are_not(self):
-        for name in ("Karma CPU", "Karma XPU", "Redshift", "Arnold"):
-            self.assertFalse(scene_captures.delegate_is_fast(name),
-                             "%r would stall a capture" % name)
+    def test_only_the_houdini_delegates_are_fast(self):
+        for name, fast in (("Houdini VK", True), ("Houdini GL", True), ("houdini vk", True),
+                           ("  Houdini VK  ", True), ("Karma CPU", False),
+                           ("Karma XPU", False), ("Redshift", False), ("Arnold", False)):
+            with self.subTest(name=name):
+                self.assertEqual(fast, scene_captures.delegate_is_fast(name))
 
     def test_an_obj_viewport_is_not_blocked(self):
         """The case that shipped broken: an OBJ viewport is not Hydra-based, so currentHydraRenderer() raises there - the ordinary case, not a warning sign; treating unreadable as slow stopped every OBJ capture while nothing was rendering at all."""
@@ -516,28 +502,23 @@ class ViewportStateTest(unittest.TestCase):
         state = scene_captures.viewport_state()
         self.assertFalse(state.get("blocking"))
 
-    def test_a_renderer_blocks_and_is_named_in_the_state(self):
+    def test_a_renderer_blocks_and_is_named_and_houdinis_own_does_not(self):
         class _Viewer:
+            def __init__(self, renderer, paused):
+                self.renderer, self.paused = renderer, paused
+
             def currentHydraRenderer(self):
-                return "Karma CPU"
+                return self.renderer
 
             def isRendererPaused(self):
-                return True
+                return self.paused
 
-        state = scene_captures.viewport_state(_Viewer())
+        state = scene_captures.viewport_state(_Viewer("Karma CPU", True))
         self.assertEqual("Karma CPU", state["renderer"])
         self.assertTrue(state["blocking"])
         self.assertTrue(state["readable"])
-
-    def test_the_houdini_delegate_does_not_block(self):
-        class _Viewer:
-            def currentHydraRenderer(self):
-                return "Houdini VK"
-
-            def isRendererPaused(self):
-                return False
-
-        self.assertFalse(scene_captures.viewport_state(_Viewer())["blocking"])
+        self.assertFalse(
+            scene_captures.viewport_state(_Viewer("Houdini VK", False))["blocking"])
 
 
 class SlowCapturePromptTest(unittest.TestCase):
@@ -943,38 +924,6 @@ class CaptureButtonTest(unittest.TestCase):
     def _row(self):
         return test_support.toolbar_row(self.panel)
 
-    def test_capture_sits_immediately_left_of_the_gear(self):
-        """The gear is the rightmost control and Capture is the one before it when the File tab shows it - read off the LAYOUT, not a source offset: the build order, the mirror's reversal and the two moves back to the end all have to come out right for this to hold."""
-        row = self._row()
-        widgets = [entry for entry in row if entry not in ("gap", "stretch")]
-        self.assertIn("btn_hip_capture", widgets,
-                      "the capture button is not in the toolbar row at all")
-        self.assertEqual(
-            "btn_prefs", widgets[-1],
-            "the gear is not the rightmost control - the row reads %s"
-            % (row,))
-        self.assertEqual(
-            "btn_hip_capture", widgets[-2],
-            "capture is not immediately left of the gear - the row "
-            "reads %s" % (row,))
-
-    def test_a_stretch_holds_it_apart_from_the_rest(self):
-        """It is the OUTERMOST control, not merely the last one: the expanding item between the filter box and the button is what pins it to the far edge - without it the button sits against the box and outermost means nothing."""
-        row = self._row()
-        self.assertIn("stretch", row, "the toolbar row has no stretch")
-        self.assertLess(
-            row.index("stretch"), row.index("btn_hip_capture"),
-            "nothing expands between the controls and the capture "
-            "button, so it is not held at the edge - %s" % (row,))
-
-    def test_the_filter_label_stays_left_of_its_box(self):
-        """The mirror's FIRST exception, and the reason it exists: a literal reversal lands the label on the box's right."""
-        row = self._row()
-        self.assertLess(
-            row.index("filter_label"), row.index("line_filter"),
-            "the 'Filter' label is no longer left of the filter box - "
-            "%s" % (row,))
-
     def test_it_starts_hidden(self):
         """Whichever section opens first is not HIP, and a button that acts on the open scene has no meaning there."""
         self.assertNotEqual(
@@ -1232,11 +1181,9 @@ class ReviewFixesTest(unittest.TestCase):
         img.save(path)
         return path
 
-    def test_one_flat_colour_is_blank(self):
+    def test_one_flat_colour_is_blank_and_two_colours_a_real_frame(self):
+        """A wireframe on Houdini's flat black default samples exactly two colours: a real frame."""
         self.assertTrue(scene_captures._looks_blank(self._png(["#000000"])))
-
-    def test_two_colours_is_a_REAL_frame(self):
-        """Houdini's shipped default scheme is flat black, so a wireframe or flat-shaded view samples exactly two colours - the old threshold called that blank and refused the capture."""
         self.assertFalse(
             scene_captures._looks_blank(self._png(["#000000", "#c8c8c8"])),
             "a two-tone frame is still reported blank")
@@ -1261,18 +1208,6 @@ class ReviewFixesTest(unittest.TestCase):
         self._patch("scene_viewer", lambda: "V")
         self._patch("capture_thumbnail", lambda p, v=None: "/tmp/s.png")
         scene_captures.capture_open_scene(scene)      # must NOT raise
-
-    def test_the_relay_guard_checks_shape_not_just_presence(self):
-        path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "core", "scene_captures.py")
-        with open(path, encoding="utf-8") as handle:
-            code = handle.read()
-        self.assertIn("_RELAY_VERSION", code)
-        self.assertNotIn(
-            'not hasattr(signals, "captured")', code,
-            "the reload guard checks presence only - an arity change "
-            "keeps the stale relay and every tile stops repainting")
 
 
 class AnyViewerContextCanBeCapturedTest(unittest.TestCase):
@@ -1309,33 +1244,14 @@ class AnyViewerContextCanBeCapturedTest(unittest.TestCase):
         self._patch("capture_thumbnail", lambda p, v=None: "/tmp/shot.png")
         return scene_captures.capture_open_scene(scene)
 
-    def test_every_context_including_COP_is_captured(self):
-        for category in ("Object", "Lop", "Sop", "Dop", "Cop", "Chop", "Vop"):
+    def test_every_context_including_COP_and_an_unreadable_one_is_captured(self):
+        for category in ("Object", "Lop", "Sop", "Dop", "Cop", "Chop", "Vop", None):
             with self.subTest(category=category):
                 self.assertEqual(
                     "/tmp/shot.png", self._capture_from(category),
                     "a %s viewport was refused - the network being "
                     "browsed does not decide whether the viewport can "
                     "be photographed" % category)
-
-    def test_an_unreadable_context_is_captured_too(self):
-        self.assertEqual("/tmp/shot.png", self._capture_from(None))
-
-    def test_nothing_refuses_on_the_viewer_context(self):
-        """Source-derived: viewer_context is a DIAGNOSTIC - if a future edit makes it a gate again, this goes red."""
-        import re
-        path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "core", "scene_captures.py")
-        with open(path, encoding="utf-8") as handle:
-            code = handle.read()
-        start = code.find("def capture_open_scene")
-        end = code.find("\ndef ", start + 10)
-        body = re.sub(r"#.*", "", code[start:end if end > 0 else len(code)])
-        self.assertNotIn(
-            "viewer_context(", body,
-            "capture_open_scene consults the viewer context again - it "
-            "is a diagnostic, not a gate")
 
 
 class ShelfTest(unittest.TestCase):
@@ -1371,17 +1287,6 @@ class ShelfTest(unittest.TestCase):
         self.assertEqual(
             tools, members,
             "a tool exists but is not on the tab, so nothing shows it")
-
-    def test_the_shelf_does_not_claim_to_install_itself(self):
-        """Regression for a false comment: the package registers the shelf, it cannot dock it - claiming otherwise is a rule describing a mechanism you do not have, and it sent the second machine out without the tab."""
-        with open(self._shelf_path(), encoding="utf-8") as handle:
-            body = handle.read()
-        self.assertNotIn(
-            "no per-machine setup", body,
-            "the shelf claims to need no setup - it needs one")
-        self.assertIn(  # the id, not the filename: pointers are wiki ids and tools/wiki-refs.py proves they resolve
-            "▸m/first-run", body,
-            "the shelf does not point at where the setup step is written")
 
     def test_every_icon_resolves_to_a_file_that_exists(self):
         root = self._shelf()

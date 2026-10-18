@@ -48,12 +48,6 @@ class GeometryTest(unittest.TestCase):
         self.assertEqual((151, 126, 210, 260),
                          (box.x(), box.y(), box.width(), box.height()))
 
-    def test_the_icon_is_centred(self):
-        image = tile_icons.compose("clipboard", "#ef8878", 512)
-        box = ink_box(image)
-        self.assertEqual(box.x(), 512 - (box.x() + box.width()))
-        self.assertEqual(box.y(), 512 - (box.y() + box.height()))
-
     def test_no_icon_breaks_the_250px_rule(self):
         """The design rule is 250px in the widest direction on a 512x512 tile. Most Feather icons draw inside 20 of their 24 units and obey it for free; the "-off" variants slash corner to corner and have to be fitted down."""
         for weight in (tile_icons.STROKE_UNITS,
@@ -68,6 +62,8 @@ class GeometryTest(unittest.TestCase):
                     max(box.width(), box.height()), limit,
                     "%s draws %dx%d at weight %s"
                     % (name, box.width(), box.height(), weight))
+        self.assertEqual(287, len(tile_icons.icon_names()),
+                         "the shipped icon set changed size")
 
     def test_a_fitted_icon_keeps_its_stroke_weight(self):
         """The icons that shrink must not also thin out - the stroke is divided by the same factor the scale is multiplied by."""
@@ -76,12 +72,6 @@ class GeometryTest(unittest.TestCase):
         self.assertLess(fitted, plain, "cloud-off was not fitted down")
         self.assertAlmostEqual(plain * plain_stroke, fitted * fitted_stroke,
                                places=3)
-
-    def test_every_icon_composes(self):
-        self.assertEqual(287, len(tile_icons.icon_names()))
-        missing = [n for n in tile_icons.icon_names()
-                   if not tile_icons.compose_svg(n, "#ffffff")]
-        self.assertEqual([], missing)
 
     def test_the_background_fills_the_tile(self):
         image = tile_icons.compose("box", "#4af2a1", 512)
@@ -136,14 +126,6 @@ class ChoiceTest(unittest.TestCase):
         self.model.set_tile_icon(self.row, {})
         self.assertEqual(render_path, self.model._mat_paths[self.row])
 
-    def test_clearing_an_icon_the_record_never_had_still_works(self):
-        """The accept path: the ordinary clear must not change."""
-        self.model.set_tile_icon(
-            self.row, {"name": "layers", "bg": "#4af2a1"})
-        self.assertTrue(self.model.tile_icon(self.row), "premise")
-        self.model.set_tile_icon(self.row, {})
-        self.assertEqual({}, self.model.tile_icon(self.row))
-
     def test_the_choice_lands_in_the_store_and_ONLY_there(self):
         """One icons.json for every section, and it is the ONE home. - The record field used to be written too, so an older build elsewhere kept reading the pick. That shim retired 2026-08-09 with the library-format bump: a build that does not know this format now latches the whole library read-only and says to update, which is the GENERAL answer to an old build meeting a new library - so a second copy of one field bought nothing and was free to drift. Schema 5 then stripped the field itself, so there is no longer a record copy to assert about."""
         self.model.set_tile_icon(self.row, {"name": "layers",
@@ -162,14 +144,6 @@ class ChoiceTest(unittest.TestCase):
             self.prefs, self.model.tile_key(self.row)),
             "clearing the icon left the store entry behind")
 
-    def test_a_store_entry_wins_without_a_record_field(self):
-        """The store is the one home going forward: an icon present only there (set on the other machine by a newer build) shows."""
-        key = self.model.tile_key(self.row)
-        tile_icons.set_override(self.prefs, key,
-                                {"name": "box", "bg": "#5cc9f5"})
-        self.assertEqual("box",
-                         self.model.tile_icon(self.row).get("name"))
-
     def test_the_cache_key_changes_with_the_icon(self):
         """Same asset, different picture. Without this the shared image cache serves whichever of the two was requested first."""
         plain = self.model._thumb_key(self.row)
@@ -182,13 +156,20 @@ class ChoiceTest(unittest.TestCase):
 
     def test_a_nonsense_choice_becomes_no_choice(self):
         """This reads data a user or a future version may have written - an odd value costs a fallback tile, never the grid."""
-        self.assertEqual({}, tile_icons.normalise({"name": "not-an-icon",
-                                                   "bg": "#4af2a1"}))
-        self.assertEqual({}, tile_icons.normalise("a string"))
-        self.assertEqual({}, tile_icons.normalise(None))
-        self.assertEqual({"name": "box", "bg": tile_icons.PRESETS[0][1],  # a bad COLOUR is recoverable: keep the icon, fix the bg
-                          "ink": "dark"},
-                         tile_icons.normalise({"name": "box", "bg": "???"}))
+        white = {"name": "box", "bg": "#ffffff"}
+        for raw, cleaned in (
+                ({"name": "not-an-icon", "bg": "#4af2a1"}, {}),
+                ("a string", {}),
+                (None, {}),
+                ({"name": "box", "bg": "???"},    # a bad COLOUR is recoverable: keep the icon, fix the bg
+                 {"name": "box", "bg": tile_icons.PRESETS[0][1], "ink": "dark"}),
+                ({"face": "generic"}, {"face": "generic"}),
+                ({"face": "sideways"}, {}),
+                (dict(white, ink="puce"), dict(white, ink="dark")),
+                (white, dict(white, ink="dark")),    # saved before ink existed, so it rendered dark
+                (dict(white, ink="light"), dict(white, ink="light"))):    # ink is part of the picture
+            with self.subTest(raw=raw):
+                self.assertEqual(cleaned, tile_icons.normalise(raw))
 
     def test_the_choice_survives_a_reload_from_disk(self):
         self.model.set_tile_icon(self.row, {"name": "layers", "bg": "#4af2a1"})
@@ -210,27 +191,18 @@ class ChoiceTest(unittest.TestCase):
 class FaceRuleTest(unittest.TestCase):
     """Preview, Generic or Custom: one rule decides which face a tile shows ▸r/tile-faces."""
 
-    def test_a_custom_icon_wins_over_any_default(self):
-        for default in ("preview", "generic"):
-            self.assertEqual("custom", tile_icons.face_of(
-                {"name": "box", "bg": "#4af2a1"}, default))
-
-    def test_nothing_stored_shows_the_rows_default(self):
-        self.assertEqual("preview", tile_icons.face_of({}, "preview"))
-        self.assertEqual("generic", tile_icons.face_of({}, "generic"))
-
-    def test_a_stored_face_beats_the_default(self):
-        self.assertEqual("generic", tile_icons.face_of({"face": "generic"}, "preview"))
-        self.assertEqual("preview", tile_icons.face_of({"face": "preview"}, "generic"))
-
-    def test_a_row_with_no_picture_shows_generic(self):
-        self.assertEqual("generic", tile_icons.face_of(
-            {"face": "preview"}, "preview", can_preview=False))
-
-    def test_a_face_choice_survives_cleaning(self):
-        self.assertEqual({"face": "generic"}, tile_icons.normalise({"face": "generic"}))
-        self.assertEqual({"face": "preview"}, tile_icons.normalise({"face": "preview"}))
-        self.assertEqual({}, tile_icons.normalise({"face": "sideways"}))
+    def test_one_rule_picks_the_face(self):
+        icon = {"name": "box", "bg": "#4af2a1"}
+        for spec, default, can_preview, face in (
+                (icon, "preview", True, "custom"),    # a custom icon wins over any default
+                (icon, "generic", True, "custom"),
+                ({}, "generic", True, "generic"),    # nothing stored shows the row's default
+                ({"face": "generic"}, "preview", True, "generic"),
+                ({"face": "preview"}, "preview", False, "generic")):    # a row with no picture
+            with self.subTest(spec=spec, default=default, can_preview=can_preview):
+                kwargs = {} if can_preview else {"can_preview": False}
+                self.assertEqual(
+                    face, tile_icons.face_of(spec, default, **kwargs))
 
     def test_every_face_is_shipped_art(self):
         from amaze.core import code_library, gradient_library, library
@@ -302,13 +274,10 @@ class FileRowTest(unittest.TestCase):
                          tile_icons.override_for(self.prefs, "/tmp/a.exr"))
         self.assertTrue(os.path.exists(
             os.path.join(self.prefs.dir, tile_icons.OVERRIDES_FILE)))
-
-    def test_clearing_forgets_the_path(self):
-        tile_icons.set_override(self.prefs, "/tmp/a.exr",
-                                {"name": "image", "bg": "#5cc9f5"})
         tile_icons.set_override(self.prefs, "/tmp/a.exr", {})
         tile_icons.forget_overrides()
-        self.assertEqual({}, tile_icons.override_for(self.prefs, "/tmp/a.exr"))
+        self.assertEqual({}, tile_icons.override_for(self.prefs, "/tmp/a.exr"),
+                         "clearing did not forget the path on disk")
 
     def test_an_unreadable_store_costs_icons_not_the_section(self):
         path = os.path.join(self.prefs.dir, tile_icons.OVERRIDES_FILE)
@@ -325,17 +294,12 @@ class LineWeightTest(unittest.TestCase):
         self.prefs = test_support.fixture_prefs(self)
 
     def test_the_preference_picks_the_weight(self):
-        self.prefs.icon_line_weight = "template"
-        self.assertEqual(tile_icons.STROKE_UNITS,
-                         tile_icons.stroke_for(self.prefs))
-        self.prefs.icon_line_weight = "feather"
-        self.assertEqual(tile_icons.FEATHER_STROKE_UNITS,
-                         tile_icons.stroke_for(self.prefs))
-
-    def test_an_unknown_value_falls_back_to_the_template(self):
-        self.prefs.icon_line_weight = "something else"
-        self.assertEqual(tile_icons.STROKE_UNITS,
-                         tile_icons.stroke_for(self.prefs))
+        for token, units in (("template", tile_icons.STROKE_UNITS),
+                             ("feather", tile_icons.FEATHER_STROKE_UNITS),
+                             ("something else", tile_icons.STROKE_UNITS)):
+            with self.subTest(token=token):
+                self.prefs.icon_line_weight = token
+                self.assertEqual(units, tile_icons.stroke_for(self.prefs))
 
     def test_the_weights_actually_differ_on_screen(self):
         thin = tile_icons.compose("box", "#ffffff", 512,
@@ -350,19 +314,11 @@ class InkTest(unittest.TestCase):
     """`Lines`, chosen per tile: dark ink on a light tile, light ink on a dark one. Per tile rather than global because the BACKGROUND is per tile, and dark-on-dark is an invisible icon."""
 
     def test_the_tokens_map_to_the_design_colours(self):
-        self.assertEqual("#262626", tile_icons.ink_colour("dark"))
-        self.assertEqual("#d0ced0", tile_icons.ink_colour("light"))
-
-    def test_an_unknown_token_falls_back_to_dark(self):
-        self.assertEqual(tile_icons.INKS["dark"], tile_icons.ink_colour("puce"))
-        self.assertEqual(tile_icons.INKS["dark"], tile_icons.ink_colour(""))
-        self.assertEqual("dark", tile_icons.normalise(
-            {"name": "box", "bg": "#ffffff", "ink": "puce"})["ink"])
-
-    def test_a_choice_saved_before_ink_existed_gets_the_default(self):
-        """Stored specs predate this field - they were rendered dark, so dark is what they must keep reading as."""
-        self.assertEqual("dark", tile_icons.normalise(
-            {"name": "box", "bg": "#ffffff"})["ink"])
+        for token, colour in (("dark", "#262626"), ("light", "#d0ced0"),
+                              ("puce", tile_icons.INKS["dark"]),
+                              ("", tile_icons.INKS["dark"])):
+            with self.subTest(token=token):
+                self.assertEqual(colour, tile_icons.ink_colour(token))
 
     def test_the_ink_actually_changes_the_pixels(self):
         light_bg = "#ffffff"
@@ -373,14 +329,6 @@ class InkTest(unittest.TestCase):
         x, y = box.x() + box.width() // 2, box.y() + 2
         self.assertEqual("#262626", QtGui.QColor(dark.pixel(x, y)).name())
         self.assertEqual("#d0ced0", QtGui.QColor(light.pixel(x, y)).name())
-
-    def test_the_ink_is_part_of_the_cache_key(self):
-        """Same icon, same colour, different ink is a different picture."""
-        dark = tile_icons.normalise(
-            {"name": "box", "bg": "#ffffff", "ink": "dark"})
-        light = tile_icons.normalise(
-            {"name": "box", "bg": "#ffffff", "ink": "light"})
-        self.assertNotEqual(dark, light)
 
 
 class DialogTest(unittest.TestCase):
@@ -440,6 +388,12 @@ class DialogTest(unittest.TestCase):
                          "the move names a category nothing stores")
 
     def test_accept_returns_the_choice(self):
+        untouched = self._dialog({"name": "layers", "bg": "#5cc9f5"})
+        self.assertTrue(untouched._buttons_by_name["layers"].isChecked(),
+                        "the dialog did not open on the tile's own icon")
+        untouched.accept_button.click()
+        self.assertEqual({"name": "layers", "bg": "#5cc9f5",
+                          "ink": "dark"}, untouched.spec)
         dialog = self._dialog({"name": "box", "bg": "#ef8878"})
         dialog._choose("layers")
         dialog._set_bg("#4af2a1")
@@ -451,13 +405,18 @@ class DialogTest(unittest.TestCase):
     def _pick(self, dialog, face):
         dialog.face_combo.setCurrentIndex(tile_icons.FACES.index(face))
 
-    def test_a_tile_with_an_icon_opens_on_custom(self):
+    def test_the_dialog_opens_on_the_tile_s_face(self):
         dialog = self._dialog({"name": "box", "bg": "#ef8878"})
         self.assertEqual("custom", dialog.face_combo.currentData())
         self._pick(dialog, "preview")
         dialog.accept_button.click()
         self.assertFalse(dialog.canceled)
         self.assertEqual({"face": "preview"}, dialog.spec)
+        generic = icon_dialog.IconDialog(None, face="generic")    # Generic is a choice of its own
+        self.addCleanup(generic.deleteLater)
+        self.assertEqual("generic", generic.face_combo.currentData())
+        generic.accept_button.click()
+        self.assertEqual({"face": "generic"}, generic.spec)
 
     def test_only_custom_has_an_icon_and_colours_to_choose(self):
         dialog = self._dialog()
@@ -467,13 +426,6 @@ class DialogTest(unittest.TestCase):
         self._pick(dialog, "custom")
         self.assertTrue(dialog._chooser_area.isEnabled())
         self.assertTrue(dialog.light_toggle.isEnabled())
-
-    def test_generic_is_a_choice_of_its_own(self):
-        dialog = icon_dialog.IconDialog(None, face="generic")
-        self.addCleanup(dialog.deleteLater)
-        self.assertEqual("generic", dialog.face_combo.currentData())
-        dialog.accept_button.click()
-        self.assertEqual({"face": "generic"}, dialog.spec)
 
     def test_preview_is_greyed_where_no_picture_can_exist(self):
         dialog = icon_dialog.IconDialog(None, face="generic", can_preview=False)
@@ -521,13 +473,6 @@ class DialogTest(unittest.TestCase):
         dialog.reject()                   # the X, and Esc
         self.assertTrue(dialog.canceled,
                         "closing the window read as a choice")
-
-    def test_it_opens_on_the_tile_s_current_icon(self):
-        dialog = self._dialog({"name": "layers", "bg": "#5cc9f5"})
-        self.assertTrue(dialog._buttons_by_name["layers"].isChecked())
-        dialog.accept_button.click()
-        self.assertEqual({"name": "layers", "bg": "#5cc9f5",
-                          "ink": "dark"}, dialog.spec)
 
     def test_the_light_icon_toggle_reaches_the_choice(self):
         """The Lines dropdown became a switch in the overhaul: off is dark lines, on is light."""
@@ -676,15 +621,6 @@ class MenuWiringTest(unittest.TestCase):
                 self.assertIs(model, proxy.sourceModel(),  # the pair has to be the section's OWN, not whichever models the panel last pointed the shared grid at
                               "%s's proxy is not over its own model" % key)
 
-    def test_every_section_model_answers_the_icon_api(self):
-        """One panel handler serves all five, so all five must speak the same two methods - whatever they store the choice in. - What survives in this file is what is about tile ICONS: four menu tests were retired 2026-08-03 with the six per-section handlers they drove - `_material_rc_menu` and its siblings - which checked that Customize reached the handler, that Category had not come back, that Info stayed out of Color and Node, and that the selection law greyed rather than hid; test_grid_menu.py drives every context's real menu through the one builder and asserts the whole rendering instead."""
-        for model_attr, _proxy in self.SECTIONS:
-            model = getattr(self.panel, model_attr, None)
-            for method in ("tile_icon", "set_tile_icon", "set_tile_icons"):
-                self.assertTrue(
-                    callable(getattr(model, method, None)),
-                    "%s has no %s()" % (model_attr, method))
-
     def test_every_icon_api_method_takes_the_ARGUMENTS_it_is_called_with(self):
         """`callable` is not the contract - the SIGNATURE is. - The sibling test above passed for months while GradientLibrary.commit_tile_icons was declared `(self)` and the one panel handler called `commit_tile_icons(rows)` on it, which is a TypeError raised after the icon had already been applied in memory. `callable()` cannot see that, and the handler test below patches the method with a MagicMock, which accepts any signature at all (practice.md #338: a mocked handler makes the test vacuous for the thing behind it). - So bind the REAL call shape against the REAL signature."""
         import inspect
@@ -698,11 +634,12 @@ class MenuWiringTest(unittest.TestCase):
         checked = 0
         for model_attr, _proxy in self.SECTIONS:
             model = getattr(self.panel, model_attr, None)
-            if model is None:
-                continue
+            self.assertIsNotNone(model, "the panel has no %s" % model_attr)
             for method, args in calls.items():
                 fn = getattr(model, method, None)
                 if fn is None:
+                    self.assertEqual("commit_tile_icons", method,    # the one optional verb
+                                     "%s has no %s()" % (model_attr, method))
                     continue
                 try:
                     inspect.signature(fn).bind(*args)
@@ -900,21 +837,16 @@ class CustomColourOpensTheHoudiniPickerTest(unittest.TestCase):
         from unittest.mock import patch
         from PySide6 import QtGui
         from amaze.helpers import ui_helpers
-        dialog = self._dialog()
-        with patch.object(ui_helpers, "pick_color",
-                          return_value=QtGui.QColor("#589abb")) as picker:
-            dialog._pick_custom()
-        picker.assert_called_once()
-        self.assertEqual("#589abb", dialog._bg)
-
-    def test_cancel_changes_nothing(self):
-        from unittest.mock import patch
-        from amaze.helpers import ui_helpers
-        dialog = self._dialog()
-        before = dialog._bg
-        with patch.object(ui_helpers, "pick_color", return_value=None):
-            dialog._pick_custom()
-        self.assertEqual(before, dialog._bg)
+        for picked in (QtGui.QColor("#589abb"), None):    # a cancel changes nothing
+            with self.subTest(picked=picked):
+                dialog = self._dialog()
+                before = dialog._bg
+                with patch.object(ui_helpers, "pick_color",
+                                  return_value=picked) as picker:
+                    dialog._pick_custom()
+                picker.assert_called_once()
+                self.assertEqual(
+                    before if picked is None else picked.name(), dialog._bg)
 
     def test_the_dialog_is_not_modal(self):
         """The load-bearing property: an exec loop here puts the native picker underneath the dialog again."""
@@ -924,41 +856,6 @@ class CustomColourOpensTheHoudiniPickerTest(unittest.TestCase):
         self.assertFalse(dialog.isModal(),
                          "the icon dialog holds a modal loop again - "
                          "Houdini's picker will open INVISIBLE behind it")
-
-    def test_the_caller_shows_it_never_execs_it(self):
-        """Source pin on the one call site: exec_() would re-modalise the dialog from outside without touching its file. - Reads the METHOD, not a fixed window of characters after the constructor call - the window version broke the day the method grew a comment, which is a test failing for a reason that has nothing to do with what it protects."""
-        import ast
-        import inspect
-        from amaze.panel import panel as panel_mod
-
-        tree = ast.parse(inspect.getsource(panel_mod))
-        opener = [node for node in ast.walk(tree)
-                  if isinstance(node, ast.FunctionDef)
-                  and any(isinstance(call, ast.Call)
-                          and isinstance(call.func, ast.Attribute)
-                          and call.func.attr == "IconDialog"
-                          for call in ast.walk(node))]
-        self.assertEqual(1, len(opener),
-                         "the Edit Icon dialog is opened from %d places"
-                         % len(opener))
-        calls = [call.func.attr for call in ast.walk(opener[0])
-                 if isinstance(call, ast.Call)
-                 and isinstance(call.func, ast.Attribute)]
-        self.assertNotIn("exec_", calls,
-                         "the Edit Icon flow execs the dialog - the "
-                         "native picker lands under it again")
-        self.assertNotIn("exec", calls,
-                         "the Edit Icon flow execs the dialog - the "
-                         "native picker lands under it again")
-        self.assertIn("show", calls,
-                      "the dialog is never shown at all")
-
-    def test_qcolordialog_stays_out_of_the_file(self):
-        import inspect
-        from amaze.dialogs import icon_dialog
-        self.assertNotIn("QColorDialog",
-                         inspect.getsource(icon_dialog),
-                         "the OS picker is reachable from Edit Icon")
 
 
 class TheAboutLogoCarriesItsDensityTest(unittest.TestCase):

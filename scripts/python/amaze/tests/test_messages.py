@@ -85,10 +85,9 @@ class NoDialogSpellsItsOwnMessage(unittest.TestCase):
                       'ui.displayMessage(f"a sentence {x} long enough")'):
             with self.subTest(shape=shape):
                 self.assertEqual(1, len(_spelled_messages(ast.parse(shape))))
-
-    def test_the_scan_passes_a_message_from_the_register(self):
         tree = ast.parse('ui.displayMessage(messages.X % "\\n".join(x))')
-        self.assertEqual([], _spelled_messages(tree))
+        self.assertEqual([], _spelled_messages(tree),
+                         "a message taken from the register was flagged")
 
 
 class ThePlaceholdersAgreeWithTheCallers(unittest.TestCase):

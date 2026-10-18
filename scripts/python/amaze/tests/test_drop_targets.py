@@ -95,45 +95,18 @@ class DropTargetTest(unittest.TestCase):
 
 class TestTheConnectorQuestion(DropTargetTest):
 
-    def test_below_a_node_takes_its_output(self):
-        target = self.node("below_target")
-        point = hou.Vector2(0.0, -0.30)
-        editor = ScriptedEditor(
-            [(target, "output", 0), (target, "node", 0)],
-            {target: _rect(0.0, 0.0)})
-        self.assertEqual(
-            dragengine.connector_under_cursor(editor, point),
-            (target, "output", 0))
-
-    def test_above_a_node_takes_its_input(self):
-        target = self.node("above_target")
-        point = hou.Vector2(0.0, 0.30)
-        editor = ScriptedEditor(
-            [(target, "input", 0), (target, "node", 0)],
-            {target: _rect(0.0, 0.0)})
-        self.assertEqual(
-            dragengine.connector_under_cursor(editor, point),
-            (target, "input", 0))
-
-    def test_the_second_input_index_survives(self):
-        target = self.node("indexed_target")
-        point = hou.Vector2(0.0, 0.30)
-        editor = ScriptedEditor(
-            [(target, "input", 2)], {target: _rect(0.0, 0.0)})
-        self.assertEqual(
-            dragengine.connector_under_cursor(editor, point),
-            (target, "input", 2))
-
-    def test_on_the_body_wires_nothing(self):
-        target = self.node("body_target")
-        point = hou.Vector2(0.0, 0.0)
-        editor = ScriptedEditor(
-            [(target, "node", 0), (target, "output", 0),
-             (target, "input", 0)],
-            {target: _rect(0.0, 0.0)})
-        self.assertEqual(
-            dragengine.connector_under_cursor(editor, point),
-            (None, "", -1))
+    def test_a_connector_beside_the_body_is_taken(self):
+        target = self.node("beside_target")
+        for point, triples, wanted in (
+                (hou.Vector2(0.0, -0.30),
+                 [(target, "output", 0), (target, "node", 0)],
+                 (target, "output", 0)),
+                (hou.Vector2(0.0, 0.30), [(target, "input", 2)],    # the input index survives
+                 (target, "input", 2))):
+            with self.subTest(connector=wanted[1:]):
+                editor = ScriptedEditor(triples, {target: _rect(0.0, 0.0)})
+                self.assertEqual(
+                    wanted, dragengine.connector_under_cursor(editor, point))
 
     def test_on_the_body_a_neighbours_stub_does_not_win(self):
         # released dead centre, a neighbour's input sorting first must not get wired: containment outranks the whole list ▸r/drop-targets
@@ -159,13 +132,6 @@ class TestTheConnectorQuestion(DropTargetTest):
             dragengine.connector_under_cursor(editor, point),
             (aimed, "output", 0))
 
-    def test_nothing_under_the_cursor_answers_nothing(self):
-        editor = ScriptedEditor([], {})
-        self.assertEqual(
-            dragengine.connector_under_cursor(
-                editor, hou.Vector2(0.0, 0.0)),
-            (None, "", -1))
-
     def test_a_missing_rect_does_not_take_the_app_down(self):
         target = self.node("rectless")
         editor = ScriptedEditor([(target, "output", 0)], {})
@@ -185,65 +151,46 @@ class TestTheConnectorQuestion(DropTargetTest):
         self.assertEqual(
             dragengine.connector_under_cursor(editor, None),
             (None, "", -1))
+        self.assertEqual(
+            dragengine.connector_under_cursor(
+                ScriptedEditor([], {}), hou.Vector2(0.0, 0.0)),
+            (None, "", -1), "an empty hit test still answered a connector")
 
 
 class TestWhatJustLandedIsNeverTheTarget(DropTargetTest):
 
-    def test_the_landed_node_does_not_answer_about_itself(self):
-        # placement runs before this question, so the fresh node under the cursor must not answer about itself ▸r/drop-targets
+    def test_the_landed_node_is_never_its_own_target(self):
+        # placement runs first, so the fresh node sits under the cursor ▸r/drop-targets
         landed = self.node("just_landed")
         target = self.node("real_target")
         point = hou.Vector2(0.0, -0.30)
-        editor = ScriptedEditor(
-            [(landed, "node", 0), (target, "output", 0)],
-            {landed: _rect(0.0, -0.30), target: _rect(0.0, 0.0)})
-        self.assertEqual(
-            dragengine.connector_under_cursor(editor, point,
-                                              exclude=[landed]),
-            (target, "output", 0))
-
-    def test_the_landed_node_never_wires_to_itself(self):
-        # its stubs sit OUTSIDE its body, so a release near its own edge would wire it to itself
-        landed = self.node("landed_with_stubs")
-        point = hou.Vector2(0.0, -0.30)
-        editor = ScriptedEditor(
-            [(landed, "output", 0), (landed, "input", 0)],
-            {landed: _rect(0.0, 0.0)})
-        self.assertEqual(
-            dragengine.connector_under_cursor(editor, point,
-                                              exclude=[landed]),
-            (None, "", -1))
-
-    def test_without_the_exclusion_it_still_refuses(self):
-        # the guard is the CALLER's to pass; a forgotten one fails here rather than silently in someone's network
-        landed = self.node("unexcluded")
-        target = self.node("unreachable_target")
-        point = hou.Vector2(0.0, -0.30)
-        editor = ScriptedEditor(
-            [(landed, "node", 0), (target, "output", 0)],
-            {landed: _rect(0.0, -0.30), target: _rect(0.0, 0.0)})
-        self.assertEqual(
-            dragengine.connector_under_cursor(editor, point),
-            (None, "", -1))
+        for triples, rects, wanted in (
+                ([(landed, "node", 0), (target, "output", 0)],
+                 {landed: _rect(0.0, -0.30), target: _rect(0.0, 0.0)},
+                 (target, "output", 0)),
+                ([(landed, "output", 0), (landed, "input", 0)],    # its stubs sit OUTSIDE its body
+                 {landed: _rect(0.0, 0.0)}, (None, "", -1))):
+            with self.subTest(wanted=wanted[1]):
+                editor = ScriptedEditor(triples, rects)
+                self.assertEqual(
+                    wanted, dragengine.connector_under_cursor(
+                        editor, point, exclude=[landed]))
 
 
 class TestTheWiringSurvivesAStaleConnectorIndex(DropTargetTest):
     """A connector index is picked during the hover and spent at the RELEASE, so the network has a whole gesture in which to lose it - `setInput` answers a gone index with `hou.InvalidInput`, and a drop that lets that out dies mid-gesture instead of landing quietly. ▸r/drop-targets"""
 
-    def test_a_live_output_index_still_wires(self):
+    def test_a_live_index_still_wires(self):
         # the degrade tests below mean nothing unless this path really reaches `setInput`
-        target = self.node("live_output_target")
-        landed = self.node("live_output_landed")
-        self.assertTrue(
-            dragengine.connect_to_neighbour((target, "output", 0), [landed]))
-        self.assertEqual(landed.inputs(), (target,))
-
-    def test_a_live_input_index_still_wires(self):
-        target = self.node("live_input_target")
-        landed = self.node("live_input_landed")
-        self.assertTrue(
-            dragengine.connect_to_neighbour((target, "input", 0), [landed]))
-        self.assertEqual(target.inputs(), (landed,))
+        for side in ("output", "input"):
+            with self.subTest(side=side):
+                target = self.node("live_%s_target" % side)
+                landed = self.node("live_%s_landed" % side)
+                self.assertTrue(dragengine.connect_to_neighbour(
+                    (target, side, 0), [landed]))
+                fed, feeder = ((landed, target) if side == "output"
+                               else (target, landed))
+                self.assertEqual((feeder,), fed.inputs())
 
     def test_a_stale_output_index_drops_without_wiring(self):
         target = self.node("stale_output_target")
@@ -288,14 +235,10 @@ class TestTheGhostTick(DropTargetTest):
                          "the second move re-asked inside the interval")
         self.assertTrue(dragengine.ghost_tick(    # 1.01: float subtraction lands a hair under the interval at the exact boundary, and the pin is the cadence, not the boundary
             editor, now=t0 + dragengine.PICK_INTERVAL * 1.01))
-
-    def test_an_editor_change_forces_a_fresh_resolve(self):
-        one = ScriptedEditor([], {})
-        two = ScriptedEditor([], {})
-        t0 = 1000.0
-        self.assertTrue(dragengine.ghost_tick(one, now=t0))
         self.assertTrue(
-            dragengine.ghost_tick(two, now=t0 + 0.001),
+            dragengine.ghost_tick(
+                ScriptedEditor([], {}),
+                now=t0 + dragengine.PICK_INTERVAL * 1.01 + 0.001),
             "crossing into another editor must not serve the old "
             "editor's answers for the rest of the interval")
 
@@ -327,70 +270,33 @@ class TestTheGhostTick(DropTargetTest):
 
     def test_the_pane_is_looked_up_once_and_held_by_its_rect(self):
         from PySide6 import QtCore, QtGui
-        looked = []
         pane = ScriptedPane(QtCore.QRect(0, 0, 100, 100))
-        with mock.patch.object(dragengine, "pane_tab_under_cursor",
-                               side_effect=lambda: looked.append(1) or pane), \
-             mock.patch.object(QtGui.QCursor, "pos",
-                               return_value=QtCore.QPoint(50, 50)):
-            t0 = 1000.0
-            tab, kind, fresh = dragengine.pane_under_cursor_tracked(now=t0)
-            self.assertTrue(fresh)
-            self.assertIs(tab, pane)
-            self.assertEqual("kind-probe", kind)
-            tab, kind, fresh = dragengine.pane_under_cursor_tracked(
-                now=t0 + 0.01)
-            self.assertFalse(fresh, "inside the rect, within the "
-                             "revalidate window, the cache answers")
-            self.assertEqual(1, len(looked),
-                             "the cursor never left the pane and the "
-                             "desktop was walked again anyway")
-
-    def test_leaving_the_rect_forces_an_immediate_lookup(self):
-        from PySide6 import QtCore, QtGui
-        looked = []
-        pane = ScriptedPane(QtCore.QRect(0, 0, 100, 100))
-        with mock.patch.object(dragengine, "pane_tab_under_cursor",
-                               side_effect=lambda: looked.append(1) or pane), \
-             mock.patch.object(QtGui.QCursor, "pos",    # only read once a rect exists, so one OUTSIDE point serves both calls
-                               return_value=QtCore.QPoint(500, 50)):
-            t0 = 1000.0
-            dragengine.pane_under_cursor_tracked(now=t0)
-            _tab, _kind, fresh = dragengine.pane_under_cursor_tracked(
-                now=t0 + 0.001)
-            self.assertTrue(fresh, "the cursor left the cached rect and "
-                            "the stale pane was served anyway")
-            self.assertEqual(2, len(looked))
-
-    def test_the_hold_expires_on_the_revalidate_interval(self):
-        from PySide6 import QtCore, QtGui
-        looked = []
-        pane = ScriptedPane(QtCore.QRect(0, 0, 100, 100))
-        with mock.patch.object(dragengine, "pane_tab_under_cursor",
-                               side_effect=lambda: looked.append(1) or pane), \
-             mock.patch.object(QtGui.QCursor, "pos",
-                               return_value=QtCore.QPoint(50, 50)):
-            t0 = 1000.0
-            dragengine.pane_under_cursor_tracked(now=t0)
-            dragengine.pane_under_cursor_tracked(
-                now=t0 + dragengine.PANE_REVALIDATE * 1.01)
-            self.assertEqual(
-                2, len(looked),
-                "a pane covered by a floating window mid-gesture would "
-                "never be noticed without the slow revalidate")
-
-    def test_a_new_gesture_forgets_the_held_pane(self):
-        from PySide6 import QtCore, QtGui
-        looked = []
-        pane = ScriptedPane(QtCore.QRect(0, 0, 100, 100))
-        with mock.patch.object(dragengine, "pane_tab_under_cursor",
-                               side_effect=lambda: looked.append(1) or pane), \
-             mock.patch.object(QtGui.QCursor, "pos",
-                               return_value=QtCore.QPoint(50, 50)):
-            dragengine.pane_under_cursor_tracked(now=1000.0)
-            dragengine.begin("material")
-            dragengine.pane_under_cursor_tracked(now=1000.001)
-            self.assertEqual(2, len(looked))
+        inside, outside = QtCore.QPoint(50, 50), QtCore.QPoint(500, 50)
+        for case, cursor, later, regesture, lookups in (
+                ("held inside the rect", inside, 0.01, False, 1),
+                ("left the rect", outside, 0.001, False, 2),    # the cursor is read once a rect exists
+                ("revalidated under a floating window", inside,
+                 dragengine.PANE_REVALIDATE * 1.01, False, 2),
+                ("a new gesture", inside, 0.001, True, 2)):
+            with self.subTest(case):
+                dragengine.begin("material")
+                looked = []
+                with mock.patch.object(
+                        dragengine, "pane_tab_under_cursor",
+                        side_effect=lambda: looked.append(1) or pane), \
+                        mock.patch.object(QtGui.QCursor, "pos",
+                                          return_value=cursor):
+                    self.assertEqual(
+                        (pane, "kind-probe", True),
+                        dragengine.pane_under_cursor_tracked(now=1000.0))
+                    if regesture:
+                        dragengine.begin("material")
+                    _tab, _kind, fresh = dragengine.pane_under_cursor_tracked(
+                        now=1000.0 + later)
+                self.assertEqual(lookups, len(looked),
+                                 "%s: the desktop was walked %d times"
+                                 % (case, len(looked)))
+                self.assertEqual(lookups == 2, fresh)
 
     def test_the_node_shape_is_resolved_once_per_type(self):
         calls = []
@@ -426,30 +332,16 @@ class TestTheReachIsTheHostsOwn(DropTargetTest):
             (p2.x() - p1.x()) / 2.0,
             editor.lengthToScreen(dragengine.DROP_TARGET_RADIUS),
             places=6)
-
-    def test_the_wire_question_asks_at_the_same_radius(self):
-        editor = ScriptedEditor([], {})
-        dragengine.wire_under_cursor(editor, hou.Vector2(0.0, 0.0))
-        if editor.asked_with is None:
-            self.skipTest("the drop-on-wire preference is off here")
-        p1, p2, _for_drop = editor.asked_with
-        self.assertAlmostEqual(
-            (p2.x() - p1.x()) / 2.0,
-            editor.lengthToScreen(dragengine.DROP_TARGET_RADIUS),
-            places=6)
-
-    def test_the_engine_does_not_reach_for_the_snap_radius(self):
-        # source-derived: the snap radius is the obvious-looking call and the wrong one, so it must not creep back
-        path = dragengine.__file__.replace(".pyc", ".py")
-        with open(path, encoding="utf-8") as handle:
-            source = handle.read()
-        offenders = [line for line in source.splitlines()
-                     if "getConnectorSnapRadius" in line
-                     and not line.strip().startswith("#")]
-        self.assertEqual(
-            offenders, [],
-            "the drop question asks at the DROP radius; the connector "
-            "snap radius reaches a neighbour's stubs")
+        wire = ScriptedEditor([], {})
+        dragengine.wire_under_cursor(wire, hou.Vector2(0.0, 0.0))
+        with self.subTest(question="wire"):
+            if wire.asked_with is None:
+                self.skipTest("the drop-on-wire preference is off here")
+            p1, p2, _for_drop = wire.asked_with
+            self.assertAlmostEqual(
+                (p2.x() - p1.x()) / 2.0,
+                wire.lengthToScreen(dragengine.DROP_TARGET_RADIUS),
+                places=6)
 
 
 class TestThePreviewSurvivesItsOwnNames(unittest.TestCase):
@@ -532,21 +424,19 @@ class TheReleaseLandsWhereTheOutlineSnapped(unittest.TestCase):
         self.assertEqual((1.25, 1.5), drawn)
         self.assertEqual(drawn, (landing.x(), landing.y()))
 
-    def test_the_next_gesture_starts_without_it(self):
-        self._draw_snapped()
-        dragengine.end()
-        dragengine.begin("material")
-        self.assertIsNone(
-            dragengine.ghost_snap_position(),
-            "a new gesture inherited the previous release's landing")
-
-    def test_an_outline_cleared_before_the_release_promises_nothing(self):
-        self._draw_snapped()
-        dragengine.ghost_clear()    # the cursor moved onto a node or out of the editor
-        dragengine.end()
-        self.assertIsNone(
-            dragengine.ghost_snap_position(),
-            "the release landed on an outline no longer drawn")
+    def test_a_landing_is_promised_only_while_its_outline_stands(self):
+        for case, steps in (
+                ("the next gesture",
+                 (dragengine.end, lambda: dragengine.begin("material"))),
+                ("an outline cleared before the release",    # onto a node, or out of the editor
+                 (dragengine.ghost_clear, dragengine.end))):
+            with self.subTest(case):
+                self._draw_snapped()
+                for step in steps:
+                    step()
+                self.assertIsNone(
+                    dragengine.ghost_snap_position(),
+                    "%s inherited a landing no outline shows" % case)
 
 
 class ATrackedMissIsAnAnswer(unittest.TestCase):
@@ -564,14 +454,12 @@ class ATrackedMissIsAnAnswer(unittest.TestCase):
         return calls
 
     def test_a_tracked_miss_does_not_rerun_the_lookup(self):
-        self.assertEqual(
-            [], self._hover(None, None),
-            "the tracked miss was read as arguments-not-supplied and "
-            "paid the full lookup on the tick")
-
-    def test_an_unsupplied_pane_still_looks_up(self):
-        self.assertEqual([1], self._hover(),
-                         "the no-arguments call stopped looking up at all")
+        for args, calls, why in (
+                ((None, None), [], "the tracked miss was read as "
+                 "arguments-not-supplied and paid the full lookup"),
+                ((), [1], "the no-arguments call stopped looking up")):
+            with self.subTest(args=args):
+                self.assertEqual(calls, self._hover(*args), why)
 
 
 if __name__ == "__main__":

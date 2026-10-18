@@ -167,15 +167,13 @@ class DeletingTheLastOfACategoryStandsTheSidebarOnAll(unittest.TestCase):
 class MoveCategoryTest(unittest.TestCase):
     """One row-move on the shared model, with All immovable."""
 
-    def test_a_move_down_lands_after_its_target(self):
-        model = _categories(self, ["_All", "a", "b", "c"])
-        self.assertTrue(model.move_category(1, 3))
-        self.assertEqual(["_All", "b", "c", "a"], model._categories)
-
-    def test_a_move_up_lands_on_its_target(self):
-        model = _categories(self, ["_All", "a", "b", "c"])
-        self.assertTrue(model.move_category(3, 1))
-        self.assertEqual(["_All", "c", "a", "b"], model._categories)
+    def test_a_move_down_lands_after_its_target_and_up_lands_on_it(self):
+        for source, target, order in ((1, 3, ["_All", "b", "c", "a"]),
+                                      (3, 1, ["_All", "c", "a", "b"])):
+            with self.subTest(source=source, target=target):
+                model = _categories(self, ["_All", "a", "b", "c"])
+                self.assertTrue(model.move_category(source, target))
+                self.assertEqual(order, model._categories)
 
     def test_the_move_is_bracketed_by_the_move_signals(self):
         """beginMoveRows/endMoveRows, not a reset and not silence. ▸r/press-gestures"""
@@ -227,6 +225,7 @@ class OrderSnapshotTest(unittest.TestCase):
         model = _categories(self, ["_All", "a", "b", "c"])
         held = model._categories
         snap = model.order_snapshot()
+        self.assertIsNot(snap, model._categories, "the snapshot is the live list")
         model.move_category(1, 3)
         model.move_category(2, 1)
         seen = []
@@ -237,11 +236,6 @@ class OrderSnapshotTest(unittest.TestCase):
         self.assertIs(held, model._categories, "restore rebound the list")
         self.assertEqual(["about", "done"], seen,
                          "a row-set replacement without its reset pair")
-
-    def test_the_snapshot_is_a_copy_not_the_live_list(self):
-        model = _categories(self, ["_All", "a"])
-        snap = model.order_snapshot()
-        self.assertIsNot(snap, model._categories)
 
 
 class AllPinnedByTheDatabaseTest(unittest.TestCase):
@@ -265,25 +259,16 @@ class AllPinnedByTheDatabaseTest(unittest.TestCase):
         self.addCleanup(test_support.reset_database_singletons)
         return database.DatabaseConnector(filename).load(prefs.dir)
 
-    def test_a_stray_all_moves_to_the_front_of_the_primary(self):
-        """library.json is no longer exempt from the normalize."""
-        prefs = test_support.fixture_prefs(self)
-        self._rewrite(prefs, "library.json", ["Wood", "_All", "Metal"])
-        data = self._load(prefs, "library.json")
-        self.assertEqual(["_All", "Wood", "Metal"], data["categories"])
-
-    def test_a_stray_all_moves_to_the_front_of_a_secondary(self):
-        prefs = test_support.fixture_prefs(self)
-        self._rewrite(prefs, "cops.json", ["X", "_All", "Y"])
-        data = self._load(prefs, "cops.json")
-        self.assertEqual(["_All", "X", "Y"], data["categories"])
-
-    def test_a_plain_all_is_still_rewritten(self):
-        """A pre-convention plain "All" becomes the marker, never a second row."""
-        prefs = test_support.fixture_prefs(self)
-        self._rewrite(prefs, "cops.json", ["All", "X"])
-        data = self._load(prefs, "cops.json")
-        self.assertEqual(["_All", "X"], data["categories"])
+    def test_all_is_moved_first_in_every_database_and_a_plain_all_rewritten(self):
+        """library.json is not exempt; a pre-convention plain "All" becomes the marker."""
+        for filename, stored, loaded in (
+                ("library.json", ["Wood", "_All", "Metal"], ["_All", "Wood", "Metal"]),
+                ("cops.json", ["X", "_All", "Y"], ["_All", "X", "Y"]),
+                ("cops.json", ["All", "X"], ["_All", "X"])):
+            with self.subTest(filename=filename, stored=stored):
+                prefs = test_support.fixture_prefs(self)
+                self._rewrite(prefs, filename, stored)
+                self.assertEqual(loaded, self._load(prefs, filename)["categories"])
 
 
 class SidebarShowsStoredOrderTest(unittest.TestCase):
@@ -296,19 +281,16 @@ class SidebarShowsStoredOrderTest(unittest.TestCase):
         proxy.hide_empty = False
         return model, proxy
 
-    def test_the_proxy_presents_the_stored_order(self):
-        entries = ["_All", "b", "2", "a"]
-        model, proxy = self._proxy(entries)
-        shown = [proxy.index(r, 0).data(model.CatSortRole)
-                 for r in range(proxy.rowCount())]
-        self.assertEqual(entries, shown)
+    def test_the_proxy_presents_the_stored_order_and_follows_a_move(self):
+        model, proxy = self._proxy(["_All", "b", "2", "a"])
 
-    def test_the_proxy_follows_a_move(self):
-        model, proxy = self._proxy(["_All", "a", "b", "c"])
+        def shown():
+            return [proxy.index(r, 0).data(model.CatSortRole)
+                    for r in range(proxy.rowCount())]
+
+        self.assertEqual(["_All", "b", "2", "a"], shown())
         model.move_category(1, 3)
-        shown = [proxy.index(r, 0).data(model.CatSortRole)
-                 for r in range(proxy.rowCount())]
-        self.assertEqual(["_All", "b", "c", "a"], shown)
+        self.assertEqual(["_All", "2", "a", "b"], shown())
 
 
 class PanelWiresNoSidebarSortTest(unittest.TestCase):

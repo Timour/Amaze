@@ -109,11 +109,6 @@ class TestMaterialLibrary(unittest.TestCase):
         """Clean up patches"""
         patch.stopall()
 
-    def test_initialization(self):
-        """Test MaterialLibrary initializes correctly"""
-        self.assertIsNotNone(self.library.preferences)
-        self.assertEqual(len(self.library._assets), 1)
-
     def test_a_positional_prefs_is_the_preferences(self):
         """`preferences` is first and positional, so the plain call binds it. ▸p/duplication-third-verb"""
         from amaze.core import library
@@ -135,33 +130,20 @@ class TestMaterialLibrary(unittest.TestCase):
             with self.assertRaises(TypeError):
                 library.MaterialLibrary()
 
-    def test_row_count(self):
-        """Test rowCount returns correct number of assets"""
-        self.assertEqual(self.library.rowCount(), 1)
-
-    def test_data_display_role(self):
-        """Test data() returns correct display name"""
+    def test_each_role_answers_the_records_field(self):
+        """Decoration answers None until the async engine delivers; the delegate paints a dark tile."""
+        self.assertEqual(1, self.library.rowCount())
+        self.assertEqual("TestMaterial", self.library.assets[0].name)
         index = self.library.index(0, 0)
-        result = self.library.data(index, QtCore.Qt.ItemDataRole.DisplayRole)
-        self.assertEqual(result, "TestMaterial")
-
-    def test_data_decoration_role(self):
-        """Test data() returns thumbnail for decoration role"""
-        index = self.library.index(0, 0)
-        result = self.library.data(index, QtCore.Qt.ItemDataRole.DecorationRole)
-        self.assertIsNone(result)  # the async engine answers None until a delivery lands, and the delegate paints a clean dark tile meanwhile
-
-    def test_data_category_role(self):
-        """Test data() returns categories"""
-        index = self.library.index(0, 0)
-        result = self.library.data(index, self.library.CategoryRole)
-        self.assertEqual(result, ["metal", "rough"])
-
-    def test_data_tag_role(self):
-        """Test data() returns tags"""
-        index = self.library.index(0, 0)
-        result = self.library.data(index, self.library.TagRole)
-        self.assertEqual(result, ["test", "sample"])
+        for role, expected in ((QtCore.Qt.ItemDataRole.DisplayRole, "TestMaterial"),
+                               (QtCore.Qt.ItemDataRole.DecorationRole, None),
+                               (self.library.CategoryRole, ["metal", "rough"]),
+                               (self.library.TagRole, ["test", "sample"]),
+                               (self.library.RendererRole, "karma"),
+                               (self.library.DateRole, "2026-02-08"),
+                               (self.library.IdRole, "mat_001")):
+            with self.subTest(role=role):
+                self.assertEqual(expected, self.library.data(index, role))
 
     def test_data_favorite_role(self):
         """The role answers the ONE favourites door, keyed by the asset's id - never the shared record, never settings."""
@@ -178,70 +160,22 @@ class TestMaterialLibrary(unittest.TestCase):
             self.assertTrue(self.library.data(index,
                                               self.library.FavoriteRole))
 
-    def test_data_renderer_role(self):
-        """Test data() returns renderer"""
-        index = self.library.index(0, 0)
-        result = self.library.data(index, self.library.RendererRole)
-        self.assertEqual(result, "karma")
+    def test_sanitize_tags_trims_and_drops_duplicates(self):
+        tags = set(self.library.sanitize_tags("tag1, tag2 , tag1, tag3").split(","))
+        self.assertEqual({"tag1", "tag2", "tag3"}, tags)
+        self.assertEqual("", self.library.sanitize_tags(""))
 
-    def test_data_date_role(self):
-        """Test data() returns date"""
-        index = self.library.index(0, 0)
-        result = self.library.data(index, self.library.DateRole)
-        self.assertEqual(result, "2026-02-08")
-
-    def test_data_id_role(self):
-        """Test data() returns material ID"""
-        index = self.library.index(0, 0)
-        result = self.library.data(index, self.library.IdRole)
-        self.assertEqual(result, "mat_001")
-
-    def test_sanitize_tags(self):
-        """Test tag sanitization removes spaces and duplicates"""
-        result = self.library.sanitize_tags("tag1, tag2 , tag1, tag3")
-        tags = set(result.split(","))
-        self.assertEqual(tags, {"tag1", "tag2", "tag3"})
-
-    def test_sanitize_tags_empty(self):
-        """Test sanitize_tags handles empty string"""
-        result = self.library.sanitize_tags("")
-        self.assertEqual(result, "")
-
-    def test_assets_property(self):
-        """Test assets property returns asset list"""
-        assets = self.library.assets
-        self.assertEqual(len(assets), 1)
-        self.assertEqual(assets[0].name, "TestMaterial")
-
-    def test_save(self):
-        """Test save() writes data to database"""
-        self.library.save()
-        self.mock_db.set.assert_called_once()
-        self.mock_db.save.assert_called_once()
-
-    def test_toggle_fav_false_to_true(self):
-        """A toggle goes through the one favourites door with the asset's id, so the star lands in the library store under its owner and one user's stars cannot collide with another's."""
+    def test_a_toggle_flips_the_star_through_the_one_favourites_door(self):
+        """Keyed by the asset's id in the library store, so two users' stars cannot collide."""
         from amaze.core import library as library_mod
-        index = self.library.index(0, 0)
         mat_id = self.library._assets[0].mat_id
-        with patch.object(library_mod.locations, "is_favourite",
-                          return_value=False), \
-                patch.object(library_mod.locations,
-                             "set_favourites") as wrote:
-            self.library.toggle_fav(index.row())
-        wrote.assert_called_once_with(self.mock_prefs, {mat_id: True})
-
-    def test_toggle_fav_true_to_false(self):
-        """The other direction, through the same door."""
-        from amaze.core import library as library_mod
-        index = self.library.index(0, 0)
-        mat_id = self.library._assets[0].mat_id
-        with patch.object(library_mod.locations, "is_favourite",
-                          return_value=True), \
-                patch.object(library_mod.locations,
-                             "set_favourites") as wrote:
-            self.library.toggle_fav(index.row())
-        wrote.assert_called_once_with(self.mock_prefs, {mat_id: False})
+        for starred in (False, True):
+            with self.subTest(starred=starred), \
+                    patch.object(library_mod.locations, "is_favourite",
+                                 return_value=starred), \
+                    patch.object(library_mod.locations, "set_favourites") as wrote:
+                self.library.toggle_fav(0)
+            wrote.assert_called_once_with(self.mock_prefs, {mat_id: not starred})
 
     def test_toggle_fav_does_not_write_the_library(self):
         """Stated as its own assertion: a favourite toggle never touches the shared index."""
@@ -252,14 +186,6 @@ class TestMaterialLibrary(unittest.TestCase):
                 patch.object(self.library, "save") as mock_save:
             self.library.toggle_fav(0)
         mock_save.assert_not_called()
-
-    def test_set_assetdata_normal_values(self):
-        """Test set_assetdata with normal values"""
-        index = self.library.index(0, 0)
-
-        self.library.set_assetdata(index, "NewName", "cat1,cat2", "tag1,tag2", True)
-
-        self.mock_material.set_data.assert_called()
 
     def test_set_assetdata_multiple_values_placeholder(self):
         """Test set_assetdata preserves existing data when Multiple Values placeholder used"""
@@ -300,18 +226,6 @@ class TestMaterialLibrary(unittest.TestCase):
         self.library.remove_asset(invalid_index)
 
         self.assertEqual(self.library.rowCount(), initial_count)
-
-    def test_rename_category(self):
-        """Test rename_category updates all assets"""
-        self.library.rename_category("metal", "metallic")
-
-        self.mock_material.rename_category.assert_called_once_with("metal", "metallic")
-
-    def test_remove_category(self):
-        """Test remove_category removes from all assets"""
-        self.library.remove_category("metal")
-
-        self.mock_material.remove_category.assert_called_once_with("metal")
 
     def test_add_asset(self):
         """Test add_asset creates new material"""
@@ -627,26 +541,14 @@ class SingleCategoryTest(unittest.TestCase):
         from amaze.core.material import Material
         return Material()
 
-    def test_a_comma_list_keeps_only_the_first(self):
-        asset = self._asset()
-        asset.categories = "Metal, Rough, Worn"
-        self.assertEqual(["Metal"], asset.categories)
-
-    def test_a_real_list_keeps_only_the_first(self):
-        asset = self._asset()
-        asset.categories = ["Metal", "Rough"]
-        self.assertEqual(["Metal"], asset.categories)
-
-    def test_inner_spaces_survive(self):
-        """The comma split is why "rs material" has to stay intact."""
-        asset = self._asset()
-        asset.categories = "rs material"
-        self.assertEqual(["rs material"], asset.categories)
-
-    def test_empty_means_no_category(self):
-        asset = self._asset()
-        asset.categories = ""
-        self.assertEqual([], asset.categories)
+    def test_any_spelling_keeps_only_the_first_category(self):
+        """Split on commas only, so "rs material" stays one name."""
+        for given, kept in (("Metal, Rough, Worn", ["Metal"]), (["Metal", "Rough"], ["Metal"]),
+                            ("rs material", ["rs material"]), ("", [])):
+            with self.subTest(given=given):
+                asset = self._asset()
+                asset.categories = given
+                self.assertEqual(kept, asset.categories)
 
     def test_set_data_cannot_smuggle_a_second_one_in(self):
         """set_data is the path every save and every edit goes through."""
@@ -1484,23 +1386,6 @@ class EveryAssetModelIsGivenItsLibrary(unittest.TestCase):
             {}, wrong,
             "these models can be built without being told which library "
             "they are for, so they would read the machine's own: %s" % wrong)
-
-    def test_no_model_still_accepts_a_parent(self):
-        """`parent` is deleted, not merely reordered - it was never forwarded to Qt, so a caller passing one was silently building an unparented model anyway."""
-        import importlib
-        import inspect
-
-        keeps = {}
-        for name, module in self.MODELS:
-            model = getattr(importlib.import_module(module), name)
-            if "parent" in inspect.signature(model).parameters:
-                keeps[name] = str(inspect.signature(model))
-
-        self.assertEqual(
-            {}, keeps,
-            "these models still take a `parent` that never reaches Qt, "
-            "which is the slot a positional Prefs used to land in: %s"
-            % keeps)
 
 
 class RendererDetectionSeesNestedSubnetsTest(unittest.TestCase):

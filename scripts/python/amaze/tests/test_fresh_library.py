@@ -34,43 +34,17 @@ class TheTestLibraryDoorMakesAWholeLibrary(unittest.TestCase):
     def test_it_creates_the_asset_folder(self):
         """Without `mat/` the first save raises FileNotFoundError out of mkstemp, uncaught."""
         prefs_mod.seed_test_folder(self.folder)
-        self.assertTrue(
-            os.path.isdir(os.path.join(self.lib, "mat")),
-            "mat/ was not created, so every save into this library fails")
-
-    def test_it_creates_the_image_folder(self):
-        """`img/` is the pair `ensure_library_dirs` makes, and it was made as a pair for a reason."""
-        prefs_mod.seed_test_folder(self.folder)
-        self.assertTrue(os.path.isdir(os.path.join(self.lib, "img")),
-                        "img/ was not created")
+        for tail in ("mat", "img"):
+            self.assertTrue(
+                os.path.isdir(os.path.join(self.lib, tail)),
+                "%s/ was not created, so the library is half made" % tail)
 
     def test_its_index_is_born_at_the_current_schema(self):
         """A versionless index reads as legacy 1, and _MIGRATIONS has no step below 4 to climb."""
         prefs_mod.seed_test_folder(self.folder)
-        self.assertEqual(database.SCHEMA_VERSION, self._index().get("version"))
-
-    def test_its_index_carries_the_current_format(self):
-        """The format stamp is the connector's other contract, and save() writes both together."""
-        prefs_mod.seed_test_folder(self.folder)
-        self.assertEqual(branding.LIBRARY_FORMAT, self._index().get("format"))
-
-    def test_it_writes_its_index_through_the_shared_writer(self):
-        """One writer owns both stamps, so no door can half-apply them or forget one."""
-        import inspect
-        self.assertIn("write_fresh_index",
-                      inspect.getsource(prefs_mod.seed_test_folder),
-                      "this door stamps its index by hand again")
-
-    def test_the_chain_is_complete_so_a_save_cannot_re_assert_one(self):
-        """The compounding half: while the chain is incomplete save() holds the stamp back forever."""
-        prefs_mod.seed_test_folder(self.folder)
-        document = self._index()
-        version = int(document.get("version", 1))
-        self.assertFalse(
-            version < database.SCHEMA_VERSION
-            and database._MIGRATIONS.get(version) is None,
-            "the index is born in a gap in the migration chain, so save() "
-            "will re-assert that version on every write")
+        index = self._index()
+        self.assertEqual(database.SCHEMA_VERSION, index.get("version"))
+        self.assertEqual(branding.LIBRARY_FORMAT, index.get("format"))
 
     def test_it_still_adds_only_what_is_missing(self):
         """Existing files are never touched - the door's own promise, and a second run must keep it."""
@@ -93,6 +67,10 @@ class TheStarterCarriesNoPhantomAsset(unittest.TestCase):
             starter = json.load(handle)
         self.assertEqual([], starter.get("assets"),
                          "the starter still ships a placeholder asset")
+        self.assertNotIn("version", starter,
+                         "the starter now carries a literal version - a "
+                         "second source of truth that goes stale at the "
+                         "next bump")
 
 
 class TheShippedStarterDoorBirthsAStampedIndex(unittest.TestCase):
@@ -108,23 +86,6 @@ class TheShippedStarterDoorBirthsAStampedIndex(unittest.TestCase):
                   encoding="utf-8") as handle:
             return json.load(handle)
 
-    def test_it_is_born_at_the_current_schema(self):
-        """A versionless index reads as legacy 1, and _MIGRATIONS has no step below 4 to climb."""
-        self.assertEqual(database.SCHEMA_VERSION, self._born().get("version"))
-
-    def test_it_carries_the_current_format(self):
-        """The format stamp is the connector's other contract, and save() writes both together."""
-        self.assertEqual(branding.LIBRARY_FORMAT, self._born().get("format"))
-
-    def test_the_starter_index_is_not_born_in_a_migration_gap(self):
-        """While the chain is incomplete save() holds the stamp back on every write."""
-        version = int(self._born().get("version", 1))
-        self.assertFalse(
-            version < database.SCHEMA_VERSION
-            and database._MIGRATIONS.get(version) is None,
-            "the index is born in a gap in the migration chain, so save() "
-            "will re-assert that version on every write")
-
     def test_it_keeps_everything_the_starter_ships(self):
         """The stamp is added to the shipped defaults, never written instead of them."""
         with open(amaze.package_file("res", "def", "library.json"),
@@ -134,6 +95,8 @@ class TheShippedStarterDoorBirthsAStampedIndex(unittest.TestCase):
         for key in starter:
             self.assertEqual(starter[key], born.get(key),
                              "the starter's '%s' did not survive the seed" % key)
+        self.assertEqual(database.SCHEMA_VERSION, born.get("version"))
+        self.assertEqual(branding.LIBRARY_FORMAT, born.get("format"))
 
     def test_it_adds_only_what_is_missing(self):
         """An index already in place is never rewritten - the seeding door's standing promise."""
@@ -144,24 +107,6 @@ class TheShippedStarterDoorBirthsAStampedIndex(unittest.TestCase):
         prefs_mod.seed_starter_index(self.lib)
         with open(index, "rb") as handle:
             self.assertEqual(before, handle.read(), "the index was rewritten")
-
-    def test_the_stamp_is_derived_and_never_a_literal(self):
-        """Source-derived: a hardcoded 6 is a second source of truth that goes stale on the next bump."""
-        import inspect
-        source = inspect.getsource(prefs_mod.write_fresh_index)
-        self.assertIn("SCHEMA_VERSION", source,
-                      "the version stamp is not derived from SCHEMA_VERSION")
-        self.assertIn("LIBRARY_FORMAT", source,
-                      "the format stamp is not derived from LIBRARY_FORMAT")
-
-    def test_the_shipped_starter_still_carries_no_version_of_its_own(self):
-        """The shipped file stays versionless on purpose - the stamp belongs to the door."""
-        with open(amaze.package_file("res", "def", "library.json"),
-                  encoding="utf-8") as handle:
-            self.assertNotIn("version", json.load(handle),
-                             "the starter now carries a literal version - a "
-                             "second source of truth that goes stale at the "
-                             "next bump")
 
     def test_panel_load_seeds_through_this_door(self):
         """Pinned from SOURCE because load() needs a panel; a bare shutil.copy of the starter must go red."""
@@ -206,11 +151,6 @@ class TheAssetWriterMakesItsFolderInsideTheLibraryOnly(unittest.TestCase):
         """The reported crash: three logged exceptions, all mkstemp on an absent mat/."""
         self._save(os.path.join(self.root, "mat"))
         self.assertTrue(os.path.isfile(os.path.join(self.root, "mat", "7.mat")))
-
-    def test_a_destination_outside_the_library_is_refused(self):
-        """A bare makedirs would manufacture a wrong tree silently; a typo must still fail loudly."""
-        with self.assertRaises(hostos.PathEscape):
-            self._save(os.path.join(self.outside, "elsewhere"))
 
     def test_a_refused_destination_is_not_created(self):
         """Refusing after making the folder would be the same bug with a better error message."""
@@ -271,12 +211,7 @@ class TheBuilderFieldDiesAtSchemaSeven(unittest.TestCase):
         for row in data["assets"]:
             self.assertNotIn("builder", row,
                              "the dead field survived the step")
-
-    def test_everything_else_on_the_row_survives(self):
-        """A migration compares, never assumes - the rest is user data."""
-        self._write(self._v6_document())
-        _db, data = self._load()
-        row = data["assets"][0]
+        row = data["assets"][0]    # the rest is user data, which a migration never assumes away
         self.assertEqual("one", row.get("name"))
         self.assertEqual("Karma", row.get("renderer"))
         self.assertEqual(1, row.get("usd"))

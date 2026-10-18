@@ -66,22 +66,19 @@ class UpgradeToolCase(unittest.TestCase):
 
 class TheReportTouchesNothing(UpgradeToolCase):
 
-    def test_a_waiting_upgrade_is_reported_and_nothing_moves(self):
-        self._library(version=7)
-        before = self._bytes()
-        code, out = self._run(self.tool.report, self.dir)
-        self.assertEqual(0, code)
-        self.assertIn("will climb", out)
-        self.assertEqual(before, self._bytes(),
-                         "the report changed the file it reported on")
-
-    def test_a_current_library_says_so_in_words(self):
-        database = self.tool._connector()
-        self._library(version=database.SCHEMA_VERSION)
-        code, out = self._run(self.tool.report, self.dir)
-        self.assertEqual(0, code)
-        self.assertIn("up to date", out)
-        self.assertIn("nothing to do", out)
+    def test_the_report_says_what_waits_and_nothing_moves(self):
+        current = self.tool._connector().SCHEMA_VERSION
+        for version, words in ((7, ("will climb",)),
+                               (current, ("up to date", "nothing to do"))):
+            with self.subTest(version=version):
+                self._library(version=version)
+                before = self._bytes()
+                code, out = self._run(self.tool.report, self.dir)
+                self.assertEqual(0, code)
+                for word in words:
+                    self.assertIn(word, out)
+                self.assertEqual(before, self._bytes(),
+                                 "the report changed the file it reported on")
 
     def test_an_unparseable_database_is_a_refusal_not_a_crash(self):
         with open(os.path.join(self.dir, "library.json"), "w",
@@ -134,6 +131,8 @@ class TheWriteIsProvenAndBackedUp(UpgradeToolCase):
         self.assertEqual(2, len(now["assets"]),
                          "the real run duplicated the id-less row - the phases "
                          "are sharing connector state again")
+        self.assertTrue(all(row.get("id") for row in now["assets"]),
+                        "the id-less row was not repaired")
         self.assertNotIn("All", now["categories"][1:],
                          "the legacy category rode back in on a merge")
         backups = self._backups()
@@ -148,18 +147,6 @@ class TheWriteIsProvenAndBackedUp(UpgradeToolCase):
         self.assertEqual(0, self.tool.write(self.dir))
         self.assertEqual(0, self.tool.write(self.dir))
         self.assertEqual(1, len(self._backups()))
-
-    def test_a_minted_id_is_proven_by_shape_not_bytes(self):
-        self._library(version=7, assets=[
-            {"name": "orphan", "categories": []},
-            {"id": "ok1", "name": "named", "categories": []}])
-        self.assertEqual(
-            0, self.tool.write(self.dir),
-            "a fresh uuid can never equal the rehearsal's, so a "
-            "byte-compare here means the mint case always fails")
-        rows = self._doc()["assets"]
-        self.assertTrue(rows[0].get("id"),
-                        "the id-less row was not repaired")
 
     def test_a_phase_starts_python_not_a_whole_houdini(self):
         """A fresh hython costs 15s or more a phase; the plain Python beside it, under one."""
@@ -195,19 +182,22 @@ class TheWriteIsProvenAndBackedUp(UpgradeToolCase):
 
 class EveryRefusalWritesNothing(UpgradeToolCase):
 
-    def test_a_chain_gap_refuses_and_leaves_no_backup(self):
-        self._library(version=2)
-        before = self._bytes()
-        self.assertEqual(2, self.tool.write(self.dir))
-        self.assertEqual(before, self._bytes())
-        self.assertEqual([], self._backups(),
-                         "a refusal left a backup directory behind")
-
-    def test_a_document_newer_than_the_build_is_never_touched(self):
-        self._library(version=99)
-        before = self._bytes()
-        self.assertEqual(2, self.tool.write(self.dir))
-        self.assertEqual(before, self._bytes())
+    def test_a_preflight_refusal_writes_nothing_and_leaves_no_backup(self):
+        root = self.dir
+        for why, version, name, extra in (
+                ("chain gap", 2, "library.json", None),
+                ("newer than the build", 99, "library.json", None),
+                ("stranded legacy rows", 4, "gradients.json",
+                 {"gradients": [{"id": "g1", "name": "dawn"}]})):
+            with self.subTest(why):
+                self.dir = tempfile.mkdtemp(dir=root)
+                self._library(version=version, name=name, extra=extra,
+                              assets=[] if extra else None)
+                before = self._bytes(name)
+                self.assertEqual(2, self.tool.write(self.dir))
+                self.assertEqual(before, self._bytes(name))
+                self.assertEqual([], self._backups(),
+                                 "a refusal left a backup directory behind")
 
     def test_a_lossy_rehearsal_refuses_before_the_backup(self):
         self._library(version=7)
@@ -218,14 +208,6 @@ class EveryRefusalWritesNothing(UpgradeToolCase):
         before = self._bytes()
         self.assertEqual(2, self.tool.write(self.dir))
         self.assertEqual(before, self._bytes())
-        self.assertEqual([], self._backups())
-
-    def test_stranded_legacy_rows_refuse_the_write_untouched(self):
-        self._library(version=4, assets=[], name="gradients.json",
-                      extra={"gradients": [{"id": "g1", "name": "dawn"}]})
-        before = self._bytes("gradients.json")
-        self.assertEqual(2, self.tool.write(self.dir))
-        self.assertEqual(before, self._bytes("gradients.json"))
         self.assertEqual([], self._backups())
 
 

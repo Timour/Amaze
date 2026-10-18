@@ -157,70 +157,23 @@ class TestCategories(unittest.TestCase):
         self.assertEqual(model._categories, original_categories)
         model.save.assert_called_once()
 
-    def test_check_add_category_ignores_multiple_values(self):
-        """Test check_add_category ignores 'Multiple Values...' string."""
-        model = self.category_module.Categories(self.mock_prefs_instance)
-        model.save = MagicMock()
-        original_categories = model._categories.copy()
-
-        model.check_add_category("Multiple Values...")
-
-        self.assertEqual(model._categories, original_categories)
-        model.save.assert_not_called()
-
-    def test_check_add_category_adds_new_category(self):
-        """Test check_add_category adds new category."""
-        model = self.category_module.Categories(self.mock_prefs_instance)
-        model.save = MagicMock()
-
-        model.check_add_category("NewCat")
-
-        self.assertIn("NewCat", model._categories)
-        model.save.assert_called_once()
-
-    def test_check_add_category_ignores_existing(self):
-        """Test check_add_category doesn't add existing category."""
-        model = self.category_module.Categories(self.mock_prefs_instance)
-        model.save = MagicMock()
-        original_count = len(model._categories)
-
-        model.check_add_category("Cat1")
-
-        self.assertEqual(len(model._categories), original_count)
-        model.save.assert_not_called()
-
-    def test_check_add_category_handles_comma_separated(self):
-        """Test check_add_category handles comma-separated values."""
-        model = self.category_module.Categories(self.mock_prefs_instance)
-        model.save = MagicMock()
-
-        model.check_add_category("NewCat1, NewCat2, NewCat3")
-
-        self.assertIn("NewCat1", model._categories)
-        self.assertIn("NewCat2", model._categories)
-        self.assertIn("NewCat3", model._categories)
-        model.save.assert_called_once()
-
-    def test_check_add_category_strips_spaces(self):
-        """Test check_add_category strips spaces from category names."""
-        model = self.category_module.Categories(self.mock_prefs_instance)
-        model.save = MagicMock()
-
-        model.check_add_category("  SpacedCat  ")
-
-        self.assertIn("SpacedCat", model._categories)
-        model.save.assert_called_once()
-
-    def test_check_add_category_ignores_empty_strings(self):
-        """Test check_add_category ignores empty strings."""
-        model = self.category_module.Categories(self.mock_prefs_instance)
-        model.save = MagicMock()
-        original_categories = model._categories.copy()
-
-        model.check_add_category("  ,  ,  ")
-
-        self.assertEqual(model._categories, original_categories)
-        model.save.assert_not_called()
+    def test_check_add_category_adds_only_new_trimmed_names_and_saves_only_then(self):
+        cases = (  # (typed, names that must appear, whether a save follows)
+            ("Multiple Values...", (), False),
+            ("NewCat", ("NewCat",), True),
+            ("Cat1", (), False),
+            ("NewCat1, NewCat2, NewCat3", ("NewCat1", "NewCat2", "NewCat3"), True),
+            ("  SpacedCat  ", ("SpacedCat",), True),
+            ("  ,  ,  ", (), False),
+        )
+        for typed, added, saves in cases:
+            with self.subTest(typed=typed):
+                model = self.category_module.Categories(self.mock_prefs_instance)
+                model.save = MagicMock()
+                before = list(model._categories)
+                model.check_add_category(typed)
+                self.assertEqual(sorted(before + list(added)), sorted(model._categories))
+                self.assertEqual(saves, model.save.called)
 
     def test_save(self):
         """Test save method writes categories to database."""

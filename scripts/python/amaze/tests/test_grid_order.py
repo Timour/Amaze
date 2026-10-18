@@ -81,20 +81,12 @@ class ANewRowLandsInOrder(_Case):
             "source put it, which is what reads as 'the grid did not "
             "refresh' with the tile sitting at the bottom of 548")
 
-    def test_it_holds_for_a_row_that_sorts_first(self):
-        source, proxy = self.build(["beta", "gamma"])
-        source.append("alpha")
-        self.settle()
-        self.assertEqual(["alpha", "beta", "gamma"], self.shown(proxy))
-
-    def test_it_holds_for_several_saves_in_one_turn(self):
-        """A multi-save inserts a row at a time."""
-        source, proxy = self.build(["delta"])
-        for name in ("charlie", "alpha", "bravo"):
+        for name in ("charlie", "able", "baker"):    # a multi-save inserts a row at a time
             source.append(name)
         self.settle()
-        self.assertEqual(["alpha", "bravo", "charlie", "delta"],
-                         self.shown(proxy))
+        self.assertEqual(
+            ["able", "alpha", "baker", "beta", "charlie", "delta", "gamma"],
+            self.shown(proxy), "several saves in one turn landed out of order")
 
     def test_a_filtered_grid_still_lands_it_in_order(self):
         """The two routes must not fight: a row arriving while a filter is on is still ordered AND still filtered, and the filter has to genuinely narrow or this proves nothing."""
@@ -123,12 +115,9 @@ class AFilterChangeReordersWhatComesBack(_Case):
             ["alpha", "bravo"], self.shown(proxy),
             "the surviving rows are in source order, which is what "
             "'pick a category and go back to All' looked like")
-
-    def test_REMOVING_a_filter_puts_them_all_back_in_order(self):
-        source, proxy = self.build(["zulu", "bravo", "alpha"])
-        proxy.setFilter(QtCore.Qt.ItemDataRole.DisplayRole, "a")
         proxy.removeFilter(QtCore.Qt.ItemDataRole.DisplayRole)
-        self.assertEqual(["alpha", "bravo", "zulu"], self.shown(proxy))
+        self.assertEqual(["alpha", "bravo", "zulu"], self.shown(proxy),
+                         "removing the filter put the rows back unordered")
 
 
 class TheResortIsCoalesced(_Case):
@@ -275,14 +264,6 @@ class AChangedRowIsRETESTED(_Case):
             "the row is still in the grid with its star off - the "
             "filter says favourites and the grid shows one that is not")
 
-    def test_favouriting_brings_a_row_IN(self):
-        source, proxy = self.build_flagged(["alpha", "beta"], ["alpha"])
-        source.toggle(1)
-        self.settle()
-        self.assertEqual(["alpha", "beta"], self.shown(proxy),
-                         "a newly starred row did not appear in the "
-                         "favourites grid")
-
     def test_the_row_that_arrives_lands_IN_ORDER(self):
         """Same rule as an insert: a row coming back into view lands in order, not at the end."""
         source, proxy = self.build_flagged(
@@ -291,34 +272,6 @@ class AChangedRowIsRETESTED(_Case):
         source.toggle(2)
         self.settle()
         self.assertEqual(["alpha", "beta", "gamma"], self.shown(proxy))
-
-    def test_a_THUMBNAIL_arriving_costs_no_refilter(self):
-        """Every tile's picture lands as a `dataChanged`, 548 of them on a library load, and none of them may cost a re-filter."""
-        source, proxy = self.build_flagged(["alpha", "beta"], ["alpha"])
-        calls = []
-        proxy.invalidateFilter = lambda: calls.append(1)
-
-        for row in range(2):
-            source.thumbnail_arrived(row)
-        self.settle()
-
-        self.assertEqual([], calls,
-                         "a thumbnail arriving re-filtered the whole "
-                         "grid, %d times" % len(calls))
-
-    def test_a_burst_of_toggles_costs_ONE_refilter(self):
-        source, proxy = self.build_flagged(
-            ["alpha", "beta", "gamma"], [])
-        calls = []
-        real = proxy.invalidateFilter
-        proxy.invalidateFilter = lambda: (calls.append(1), real())[1]
-
-        for row in range(3):
-            source.toggle(row)
-        self.settle()
-
-        self.assertEqual(1, len(calls),
-                         "%d re-filters for one burst of changes" % len(calls))
 
 
 class TheCoalescerDoesNotWAKEItself(_Case):
@@ -346,26 +299,28 @@ class TheCoalescerDoesNotWAKEItself(_Case):
             lambda *a: counts.__setitem__("layout", counts["layout"] + 1))
         return counts
 
-    def test_rows_coming_IN_do_not_schedule_a_second_pass(self):
-        source, proxy = self.build_flagged(
-            ["alpha", "bravo", "charlie"], [])
-        counts = self._counting(proxy)
+    def test_rows_coming_IN_or_going_OUT_cost_one_pass(self):
+        names = ["alpha", "bravo", "charlie"]
+        for flagged, shown in (([], names), (names, [])):
+            with self.subTest(arriving=not flagged):
+                source, proxy = self.build_flagged(names, flagged)
+                counts = self._counting(proxy)
 
-        for row in range(3):
-            source.toggle(row)          # three rows arrive at once
-        self.settle()
-        self.settle()                   # a second turn, for any echo
+                for row in range(3):
+                    source.toggle(row)          # three rows move at once
+                self.settle()
+                self.settle()                   # a second turn, for any echo
 
-        self.assertEqual(["alpha", "bravo", "charlie"], self.shown(proxy),
-                         "the rows did not arrive, so this measures "
-                         "nothing")
-        self.assertEqual(
-            1, counts["filter"],
-            "%d re-filters for one burst" % counts["filter"])
-        self.assertEqual(
-            1, counts["sort"],
-            "%d sorts for one burst - the pass woke itself up through "
-            "its own rowsInserted" % counts["sort"])
+                self.assertEqual(shown, self.shown(proxy),
+                                 "the rows did not move, so this measures "
+                                 "nothing")
+                self.assertEqual(
+                    1, counts["filter"],
+                    "%d re-filters for one burst" % counts["filter"])
+                self.assertEqual(
+                    1, counts["sort"],
+                    "%d sorts for one burst - the pass woke itself up "
+                    "through its own rowsInserted" % counts["sort"])
 
     def test_an_insert_and_a_data_change_MERGE_into_one_pass(self):
         """The queued-pass branch: an insert schedules a pass that only re-sorts, and a toggle in the same turn has to make that SAME pass re-filter too."""
@@ -382,18 +337,6 @@ class TheCoalescerDoesNotWAKEItself(_Case):
         self.assertEqual(1, counts["filter"],
                          "%d re-filters" % counts["filter"])
 
-    def test_rows_going_OUT_cost_one_pass_too(self):
-        source, proxy = self.build_flagged(
-            ["alpha", "bravo", "charlie"], ["alpha", "bravo", "charlie"])
-        counts = self._counting(proxy)
-        for row in range(3):
-            source.toggle(row)
-        self.settle()
-        self.settle()
-        self.assertEqual([], self.shown(proxy))
-        self.assertEqual(1, counts["sort"],
-                         "%d sorts" % counts["sort"])
-
 
 class ACOLOURChangeIsNotAReFilter(_Case):
     """A sidebar colour pick emits its role over EVERY row - that is how the tiles repaint - and no grid proxy filters or sorts on a colour."""
@@ -408,30 +351,23 @@ class ACOLOURChangeIsNotAReFilter(_Case):
         return source, proxy
 
     def test_a_role_nothing_FILTERS_on_costs_no_pass(self):
-        source, proxy = self.build_flagged(["alpha", "bravo"], ["alpha"])
-        calls = []
-        proxy.invalidateFilter = lambda: calls.append(1)
+        for emitted, emit in (
+                ("colour pick", lambda s: s.colour_changed()),    # one role over every row
+                ("thumbnail", lambda s: [s.thumbnail_arrived(r)    # 548 per library load
+                                         for r in range(2)])):
+            with self.subTest(emitted=emitted):
+                source, proxy = self.build_flagged(["alpha", "bravo"],
+                                                   ["alpha"])
+                calls = []
+                proxy.invalidateFilter = lambda: calls.append(1)
 
-        source.colour_changed()          # CategoryColorRole over all rows
-        self.settle()
+                emit(source)
+                self.settle()
 
-        self.assertEqual(
-            [], calls,
-            "a colour pick re-filtered the whole grid %d time(s)"
-            % len(calls))
-
-    def test_a_role_it_DOES_filter_on_still_costs_one(self):
-        """The other half: precision, not a blanket refusal."""
-        source, proxy = self.build_flagged(["alpha", "bravo"], ["alpha"])
-        calls = []
-        real = proxy.invalidateFilter
-        proxy.invalidateFilter = lambda: (calls.append(1), real())[1]
-
-        source.toggle(1)
-        self.settle()
-
-        self.assertEqual(1, len(calls),
-                         "the favourite change was ignored too")
+                self.assertEqual(
+                    [], calls,
+                    "a %s re-filtered the whole grid %d time(s)"
+                    % (emitted, len(calls)))
 
     def test_the_SORT_role_still_counts(self):
         """A rename changes where a row sorts, so it must re-pass even though no filter reads it."""
@@ -525,29 +461,20 @@ class PaintOnlyRolesCostNoPass(unittest.TestCase):
         for proxy in self._proxies():
             with self.subTest(proxy=type(proxy).__name__):
                 model = proxy.sourceModel()
-                self.assertFalse(
-                    proxy._matters([model.CategoryColorRole]),
-                    "a colour pick re-filters the whole section")
-                self.assertFalse(
-                    proxy._matters([model.NotesRole]),
-                    "a comment badge re-filters the whole section")
-
-    def test_the_roles_the_filter_READS_still_matter(self):
-        """A role the filter READS still has to matter - a role it reads going quiet is a filter that lies."""
-        for proxy in self._proxies():
-            with self.subTest(proxy=type(proxy).__name__):
-                model = proxy.sourceModel()
                 if hasattr(proxy, "setFilter"):
-                    proxy.setFilter(model.FavoriteRole, True)   # the family proxy watches exactly its ACTIVE filters, so arm this one the way the section does
-                self.assertTrue(
-                    proxy._matters([model.FavoriteRole]),
-                    "un-favouriting with Favourites-only on would "
-                    "leave the row in the grid, star off")
-                self.assertTrue(
-                    proxy._matters(
-                        [QtCore.Qt.ItemDataRole.DisplayRole]))
-                self.assertTrue(proxy._matters([]),
-                                "empty means everything changed")
+                    proxy.setFilter(model.FavoriteRole, True)   # arm it as the section does: it watches ACTIVE filters
+                for roles, matters, why in (
+                        ([model.CategoryColorRole], False,
+                         "a colour pick re-filters the whole section"),
+                        ([model.NotesRole], False,
+                         "a comment badge re-filters the whole section"),
+                        ([model.FavoriteRole], True,
+                         "un-favouriting with Favourites-only on would "
+                         "leave the row in the grid, star off"),
+                        ([QtCore.Qt.ItemDataRole.DisplayRole], True,
+                         "a role the filter reads went quiet"),
+                        ([], True, "empty means everything changed")):
+                    self.assertEqual(matters, proxy._matters(roles), why)
 
 
 class _Counted(QtCore.QAbstractListModel):
@@ -590,18 +517,18 @@ class AFilterPassFetchesEachRoleOnce(unittest.TestCase):
         proxy.invalidateFilter()
         return source.fetched, proxy.rowCount()
 
-    def test_a_row_that_passes_reads_every_role_once(self):
-        fetched, shown = self._pass("a")
-        self.assertEqual(3, shown, "premise: every row passes every filter")
-        self.assertEqual({0: 3, 257: 3, 258: 3, 259: 3, 260: 3}, fetched,
-                         "a pass read some role more than once per row")
-
-    def test_a_row_failing_the_name_reads_nothing_else(self):
-        fetched, shown = self._pass("zz")
-        self.assertEqual(0, shown, "premise: no row matches the name")
-        self.assertEqual({0: 3}, fetched,
-                         "rows failing the cheapest test still read the "
-                         "roles behind it")
+    def test_a_pass_reads_each_role_once_and_stops_at_a_failure(self):
+        for name_filter, rows, reads in (
+                ("a", 3, {0: 3, 257: 3, 258: 3, 259: 3, 260: 3}),
+                ("zz", 0, {0: 3})):    # failing the cheapest test reads nothing behind it
+            with self.subTest(name_filter=name_filter):
+                fetched, shown = self._pass(name_filter)
+                self.assertEqual(rows, shown,
+                                 "premise: the name filter did not narrow "
+                                 "as set up")
+                self.assertEqual(reads, fetched,
+                                 "a pass read a role twice per row, or "
+                                 "past the first test the row failed")
 
 
 class AnUnchangedFilterCostsNoPass(unittest.TestCase):
@@ -615,32 +542,24 @@ class AnUnchangedFilterCostsNoPass(unittest.TestCase):
         again(proxy)
         return len(passes)
 
-    def test_the_asset_proxy(self):
+    def test_no_grid_proxy_refilters_for_an_unchanged_value(self):
+        from amaze.core import gradient_library, texture_library
         role = QtCore.Qt.ItemDataRole.DisplayRole
-        for value in ("al", True):
-            with self.subTest(value=value):
-                self.assertEqual(0, self._passes(
-                    multifilterproxy_model.MultiFilterProxyModel(),
-                    lambda p: p.setFilter(role, value),
-                    lambda p: p.setFilter(role, value)))
-
-    def test_the_file_proxy(self):
-        from amaze.core import texture_library
-        for name, value in (("set_name_filter", "al"),
-                            ("set_favorites_only", True),
-                            ("set_kind_filter", "image")):
-            with self.subTest(setter=name):
-                self.assertEqual(0, self._passes(
-                    texture_library.TextureFilterProxyModel(),
-                    lambda p: getattr(p, name)(value),
-                    lambda p: getattr(p, name)(value)))
-
-    def test_the_colour_proxy(self):
-        from amaze.core import gradient_library
-        self.assertEqual(0, self._passes(
-            gradient_library.GradientFilterProxyModel(),
-            lambda p: p.set_size_filter((2, 2)),
-            lambda p: p.set_size_filter((2, 2))))
+        cases = [("asset %r" % (value,),
+                  multifilterproxy_model.MultiFilterProxyModel,
+                  lambda p, value=value: p.setFilter(role, value))
+                 for value in ("al", True)]
+        cases += [("file %s" % name, texture_library.TextureFilterProxyModel,
+                   lambda p, name=name, value=value: getattr(p, name)(value))
+                  for name, value in (("set_name_filter", "al"),
+                                      ("set_favorites_only", True),
+                                      ("set_kind_filter", "image"))]
+        cases.append(("colour set_size_filter",
+                      gradient_library.GradientFilterProxyModel,
+                      lambda p: p.set_size_filter((2, 2))))
+        for label, proxy_class, setter in cases:
+            with self.subTest(label):
+                self.assertEqual(0, self._passes(proxy_class(), setter, setter))
 
 
 class AFilterChangeIsOnePass(unittest.TestCase):

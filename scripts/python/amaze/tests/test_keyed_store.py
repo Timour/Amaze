@@ -85,13 +85,6 @@ class OneFileIsOneTable(StoreCase):
             "through one is invisible through the other - the reader is "
             "serving a table it loaded before the write")
 
-    def test_the_two_spellings_resolve_to_one_instance(self):
-        """The mechanism under the behaviour above, asserted directly so a failure says which broke."""
-        self.assertIs(
-            self.store(),
-            keyed_store.open_store(notes.SPEC, self._other_spelling()),
-            "one file resolved to two Store objects")
-
 
 class TestModeKeepsItsLocationsToItself(StoreCase):
     """A test library gets its OWN locations, in both directions - the settings copy is a migration SEED."""
@@ -311,22 +304,16 @@ class ReleasingONELibrarysTablesActuallyDropsThem(StoreCase):
     """Releasing ONE library's tables drops them - both sides compare through the same canonical key."""
 
     def test_the_named_librarys_tables_are_dropped(self):
-        """THE PRODUCT'S OWN SPELLING - `prefs.dir` carries a trailing slash and `dirname` never does."""
-        self.store().set("material:1", self.page())
-        self.assertTrue(keyed_store._open, "premise: a table is cached")
-        keyed_store.release(_Prefs(self.dir + os.sep))
-        self.assertFalse(
-            keyed_store._open,
-            "release named a library and dropped nothing - the previous "
-            "library's tables stay resident with their state, their "
-            "unreadable entries and their disk fingerprint")
-
-    def test_the_separatorless_spelling_matches_too(self):
-        """Both spellings name one library; the store must not care which the caller holds."""
-        self.store().set("material:1", self.page())
-        keyed_store.release(_Prefs(self.dir))
-        self.assertFalse(keyed_store._open,
-                         "the bare-path spelling matched nothing")
+        """Either spelling drops them: `prefs.dir` carries a trailing slash, `dirname` none."""
+        for spelling in (self.dir + os.sep, self.dir):
+            with self.subTest(spelling=spelling):
+                self.store().set("material:1", self.page())
+                self.assertTrue(keyed_store._open, "premise: a table is cached")
+                keyed_store.release(_Prefs(spelling))
+                self.assertFalse(
+                    keyed_store._open,
+                    "release named a library and dropped nothing - its "
+                    "tables stay resident with their state and fingerprint")
 
     def test_another_librarys_tables_are_KEPT(self):
         """The accept path: release names ONE library, and dropping every table is the same outage inverted."""
@@ -642,20 +629,15 @@ class ADocumentCanBeFlatAndItsFalsyValuesReal(StoreCase):
 class AReadHandsOutACopy(StoreCase):
     """A read hands out a COPY - the live cache lets a caller mutate the table without writing. ▸p/store-guards"""
 
-    def test_mutating_a_get_does_not_reach_the_store(self):
+    def test_mutating_a_read_does_not_reach_the_store(self):
         store = self.store()
         store.set("material:1", self.page("real"))
-        page = store.get("material:1")
-        page["items"].append({"t": "text", "text": "smuggled"})
+        store.get("material:1")["items"].append({"t": "text", "text": "smuggled"})
         self.assertEqual(1, len(store.get("material:1")["items"]),
-                         "a caller mutated the store through a read")
-
-    def test_mutating_all_does_not_reach_the_store(self):
-        store = self.store()
-        store.set("material:1", self.page())
-        table = store.all()
-        table["material:2"] = self.page("smuggled")
-        self.assertFalse(store.has("material:2"))
+                         "a caller mutated the store through get()")
+        store.all()["material:2"] = self.page("smuggled")
+        self.assertFalse(store.has("material:2"),
+                         "a caller mutated the store through all()")
 
     def test_has_is_the_paint_paths_question_and_reads_no_disk(self):
         store = self.store()
@@ -1360,28 +1342,20 @@ class EveryDoorSpeaksThePortableSpelling(StoreCase):
 class ARecordCarriesFieldsItDoesNotKnow(StoreCase):
     """Adapters keep foreign FIELDS inside entries they accept - the same reason one level down."""
 
-    def test_locations_normalise_keeps_unknown_fields(self):
-        record = locations.normalise({
-            "registered": True, "name": "Seam",
-            "pinned_by": "future-build"})
-        self.assertEqual("Seam", record.get("name"))
-        self.assertEqual(
-            "future-build", record.get("pinned_by"),
-            "an older build's write drops the field a newer one added")
-
-    def test_notes_normalise_keeps_unknown_fields(self):
-        page = notes.normalise({
-            "items": [{"t": "text", "text": "hello"}],
-            "pinned": True})
-        self.assertEqual(1, len(page.get("items") or ()))
-        self.assertTrue(page.get("pinned"),
-                        "the page-level field a newer build added died")
-
-    def test_tile_icons_normalise_keeps_unknown_fields(self):
-        record = tile_icons.normalise({
-            "name": tile_icons.icon_names()[0], "bg": "#333333",
-            "badge": "future"})
-        self.assertEqual("future", record.get("badge"))
+    def test_every_adapter_keeps_the_fields_it_does_not_know(self):
+        cases = (
+            (locations.normalise, {"registered": True, "name": "Seam",
+                                   "pinned_by": "future-build"}, "pinned_by"),
+            (notes.normalise, {"items": [{"t": "text", "text": "hello"}],
+                               "pinned": True}, "pinned"),
+            (tile_icons.normalise, {"name": tile_icons.icon_names()[0],
+                                    "bg": "#333333", "badge": "future"}, "badge"),
+        )
+        for normalise, entry, foreign in cases:
+            with self.subTest(adapter=normalise.__module__):
+                self.assertEqual(
+                    entry[foreign], normalise(entry).get(foreign),
+                    "an older build's write drops the field a newer one added")
 
 
 class ADENIEDWriteSpeaksONLYWhereTheFailureIsInvisible(unittest.TestCase):
@@ -1963,18 +1937,13 @@ class ALocationIsAnIdAndItsPathIsAProperty(unittest.TestCase):
 class OnlyAUidShapedOwnerCountsAsATagTest(unittest.TestCase):
     """A pipe is legal in a POSIX path, so an untagged path carrying one must not read as somebody's row - only the 32-hex uuid4 shape is an owner."""
 
-    def test_a_pipe_in_an_untagged_path_stays_untagged(self):
-        self.assertEqual(
-            ("", "/plates/wei|rd"),
-            keyed_store.untagged_key(locations.SPEC, "/plates/wei|rd"))
-
-    def test_a_tagged_pipe_path_splits_at_the_tag(self):
+    def test_only_a_uid_before_the_pipe_is_a_tag(self):
         from amaze.tests import test_support
         uid = test_support.FIXTURE_USER
-        self.assertEqual(
-            (uid, "/plates/wei|rd"),
-            keyed_store.untagged_key(
-                locations.SPEC, uid + "|/plates/wei|rd"))
+        for key, owner in (("/plates/wei|rd", ""), (uid + "|/plates/wei|rd", uid)):
+            with self.subTest(key=key):
+                self.assertEqual((owner, "/plates/wei|rd"),
+                                 keyed_store.untagged_key(locations.SPEC, key))
 
 
 class ALocationPathComparesByOneRule(unittest.TestCase):

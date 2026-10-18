@@ -37,28 +37,16 @@ def _svg(testcase):
 
 class ADevicePixmapIsRoundedAndStamped(unittest.TestCase):
 
-    def test_a_whole_ratio_gives_side_times_ratio_device_pixels(self):
-        pixmap = ui_helpers.device_pixmap(_svg(self), 18, 2.0)
-        self.assertEqual(36, pixmap.width())
-        self.assertEqual(2.0, pixmap.devicePixelRatio())
-
-    def test_a_fractional_ratio_ROUNDS_it_does_not_truncate(self):
-        """QPixmap truncates a float, so 13 x 1.5 = 19.5 would rasterise at 19 and the mark would go soft against a sharp thumbnail."""
-        pixmap = ui_helpers.device_pixmap(_svg(self), 13, 1.5)
-        self.assertEqual(20, pixmap.width())
-
-    def test_a_half_point_side_rounds_up_too(self):
-        pixmap = ui_helpers.device_pixmap(_svg(self), 17.5, 1.0)
-        self.assertEqual(18, pixmap.width())
-
-    def test_a_tiny_side_never_rasterises_to_nothing(self):
-        """A 0-wide QPixmap is NULL, which paints as no icon at all."""
-        pixmap = ui_helpers.device_pixmap(_svg(self), 1, 0.25)
-        self.assertFalse(pixmap.isNull())
-        self.assertEqual(1, pixmap.width())
-
-    def test_the_logical_size_is_what_the_layout_sees(self):
-        pixmap = ui_helpers.device_pixmap(_svg(self), 18, 2.0)
+    def test_the_device_width_is_side_times_ratio_rounded_never_zero(self):
+        """QPixmap truncates a float (19.5 rasterises at 19) and a 0-wide pixmap paints nothing."""
+        svg = _svg(self)
+        for side, ratio, device in ((18, 2.0, 36), (13, 1.5, 20), (17.5, 1.0, 18), (1, 0.25, 1)):
+            with self.subTest(side=side, ratio=ratio):
+                pixmap = ui_helpers.device_pixmap(svg, side, ratio)
+                self.assertFalse(pixmap.isNull())
+                self.assertEqual(device, pixmap.width())
+                self.assertEqual(ratio, pixmap.devicePixelRatio())
+        pixmap = ui_helpers.device_pixmap(svg, 18, 2.0)
         self.assertEqual(18, pixmap.size().width() / pixmap.devicePixelRatio())
 
 

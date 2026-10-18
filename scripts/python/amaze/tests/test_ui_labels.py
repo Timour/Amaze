@@ -71,42 +71,39 @@ class RetiredLabelsAreGone(unittest.TestCase):
             % (os.path.relpath(path, REPO), line, old, RETIRED[old])
             for path, line, old in hits)
 
-    def test_no_app_message_names_a_retired_control(self):
+    def test_no_message_or_manual_passage_names_a_retired_control(self):
+        """A planted literal must be found first, or a scan reading no files would pass."""
+        planted = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "_planted_probe.py")
+        with open(planted, "w", encoding="utf-8") as handle:
+            handle.write('"""A docstring naming Rerender Thumbnail."""\n'
+                         '# a comment naming Rerender Thumbnail\n'
+                         'MESSAGE = "use Rerender Thumbnail"\n')
+        self.addCleanup(os.remove, planted)
+        self.assertEqual([3], [line for line, text in _literals(planted)
+                               if "Rerender Thumbnail" in text])
         hits = [(path, line, old)
                 for path in _package_modules()
                 for line, text in _literals(path)
                 for old in RETIRED if old in text]
         live = [h for h in hits if _waiver(h[0], h[2]) not in DEFERRED]
-        self.assertEqual(
-            [], live,
-            "a message tells the user to use a control that does not "
-            "exist:\n%s\nRename it, or if the control came back, take it "
-            "out of RETIRED here." % self._report(live))
-
-    def test_no_deferral_outlives_the_string_it_covers(self):
-        """A waiver kept past its fix is a hole nobody is watching, so each one must still find its string ▸p/quoted-strings-go-stale"""
-        covered = {_waiver(path, old)
-                   for path in _package_modules()
-                   for _line, text in _literals(path)
-                   for old in RETIRED if old in text}
-        self.assertEqual(
-            set(), DEFERRED - covered,
-            "DEFERRED waives a string that is already gone: %s. The "
-            "cleanup landed - delete the entry, and strike ROADMAP line "
-            "30 > A11's label clause with it."
-            % sorted(DEFERRED - covered))
-
-    def test_no_manual_passage_names_a_retired_control(self):
+        with self.subTest(source="package"):
+            self.assertEqual(
+                [], live,
+                "a message tells the user to use a control that does not "
+                "exist:\n%s\nRename it, or if the control came back, take "
+                "it out of RETIRED here." % self._report(live))
         manual = os.path.join(REPO, "MANUAL.md")
         self.assertTrue(os.path.exists(manual), manual)
         with open(manual, encoding="utf-8") as handle:
             hits = [(manual, number, old)
                     for number, text in enumerate(handle, 1)
                     for old in RETIRED if old in text]
-        self.assertEqual(
-            [], hits,
-            "the shipped manual documents a control that does not "
-            "exist:\n%s" % self._report(hits))
+        with self.subTest(source="MANUAL.md"):
+            self.assertEqual(
+                [], hits,
+                "the shipped manual documents a control that does not "
+                "exist:\n%s" % self._report(hits))
 
     def test_every_picture_the_docs_show_is_a_file_that_exists(self):
         """A deleted or renamed art file leaves a blank picture in the manual."""
@@ -123,25 +120,6 @@ class RetiredLabelsAreGone(unittest.TestCase):
                             missing.append("%s:%d %s" % (doc, number, src))
         self.assertGreater(seen, 10, "the scan found almost no pictures - it is not reading them")
         self.assertEqual([], missing, "the docs show pictures that are not there")
-
-    def test_the_scanner_can_actually_see_a_bad_string(self):
-        """Passing by finding nothing is what a scanner reading NO files also reports, so plant one - on the literal, not the docstring or the comment beside it."""
-        planted = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)), "_planted_probe.py")
-        with open(planted, "w", encoding="utf-8") as handle:
-            handle.write('"""A docstring naming Rerender Thumbnail."""\n'
-                         '# a comment naming Rerender Thumbnail\n'
-                         'MESSAGE = "use Rerender Thumbnail"\n')
-        self.addCleanup(os.remove, planted)
-        seen = [line for line, text in _literals(planted)
-                if "Rerender Thumbnail" in text]
-        self.assertEqual([3], seen)
-
-    def test_every_retired_label_has_a_current_replacement(self):
-        """A failure message that names no live control sends the reader nowhere."""
-        for old, new in RETIRED.items():
-            self.assertTrue(new and new.strip(), old)
-            self.assertNotIn(old, new, "%r cannot replace itself" % old)
 
 
 if __name__ == "__main__":

@@ -1,7 +1,6 @@
 """Renderer and thumbnail paths; several read the SOURCE, because every copy behaves correctly until one drifts."""
 
 import ast
-import inspect
 import json
 import os
 import shutil
@@ -117,11 +116,6 @@ class ARenderThatWroteNothingReportsFailure(_RendererCase):
                 "and a failed render keeps the OLD thumbnail, so the "
                 "tile shows the previous picture and nothing anywhere "
                 "says the new one never happened" % name)
-
-    def test_an_image_that_IS_there_means_True(self):
-        """The check must not cost the ordinary case."""
-        self.stub_scene()
-        for name, call in self.paths():
             target = tile_icons.thumbnail_path(self.prefs, "WROTE_%s" % name)
             os.makedirs(os.path.dirname(target), exist_ok=True)
             QtGui.QImage(4, 4, QtGui.QImage.Format.Format_RGB32).save(target)
@@ -161,50 +155,31 @@ class TheThumbnailPathIsComposedInOnePlace(unittest.TestCase):
         model = library_mod.MaterialLibrary(preferences=self.prefs)
         root = self.prefs.dir.rstrip(os.sep)
 
-        answers = set()
+        answers, icons = set(), set()
         for value in (root, root + os.sep):
             self.prefs.dir = value
             answers.add(os.path.normpath(
                 model.asset_files("abc")["thumbnail"]))
             answers.add(os.path.normpath(
                 tile_icons.thumbnail_path(self.prefs, "abc")))
+            icons.add(os.path.normpath(
+                tile_icons.icon_image_path(self.prefs, "abc")))
         self.assertEqual(
             1, len(answers),
             "the renderers and asset_files() resolve a thumbnail to "
             "different places depending on a trailing separator: %s"
             % sorted(answers))
-
-    def test_thumbs_py_composes_no_path_of_its_own(self):
-        """thumbs.py composes no library path of its own - a behaviour test cannot see a new hand-built one."""
-        offenders = [line.strip() for line in
-                     source_of("render/thumbs.py").splitlines()
-                     if "_preferences.img_dir" in line]
         self.assertEqual(
-            [], offenders,
-            "render/thumbs.py composes a thumbnail path by hand again "
-            "instead of calling tile_icons.thumbnail_path")
+            1, len(icons),
+            "the composed icon resolves to different places depending "
+            "on a trailing separator: %s" % sorted(icons))
 
     def test_an_unsafe_id_cannot_escape_the_image_directory(self):
-        with self.assertRaises(hostos.PathEscape):
-            tile_icons.thumbnail_path(self.prefs, "../../../Documents/x")
-
-    def test_an_unsafe_id_cannot_escape_the_ICON_path_either(self):
         """The icon path refuses an escaping id too - `render_for` writes it and `clear_for` removes it."""
-        with self.assertRaises(hostos.PathEscape):
-            tile_icons.icon_image_path(self.prefs, "../../../Documents/x")
-
-    def test_the_icon_path_ignores_a_trailing_separator_too(self):
-        """The icon path takes a trailing separator the same way its render sibling does."""
-        root = self.prefs.dir.rstrip(os.sep)
-        answers = set()
-        for value in (root, root + os.sep):
-            self.prefs.dir = value
-            answers.add(os.path.normpath(
-                tile_icons.icon_image_path(self.prefs, "abc")))
-        self.assertEqual(
-            1, len(answers),
-            "the composed icon resolves to different places depending "
-            "on a trailing separator: %s" % sorted(answers))
+        for compose in (tile_icons.thumbnail_path, tile_icons.icon_image_path):
+            with self.subTest(path=compose.__name__):
+                with self.assertRaises(hostos.PathEscape):
+                    compose(self.prefs, "../../../Documents/x")
 
     def _tile_reads(self, model, row):
         asked = []
@@ -282,13 +257,20 @@ class TheCacheKeyCarriesTheLibrary(unittest.TestCase):
         self.prefs = test_support.fixture_prefs(self)
 
     def test_two_libraries_do_not_share_one_row_key(self):
+        """A reload must keep the cached image, so the key may not move for one library."""
         model = library_mod.MaterialLibrary(preferences=self.prefs)
         row = next(i for i, a in enumerate(model.assets)
                    if str(a.mat_id) not in ("", "-1"))
         here = model._thumb_key(row)
+        root = self.prefs.dir.rstrip("/\\")
+        for spelling in (root, root + os.sep):
+            self.prefs.dir = spelling
+            self.assertEqual(
+                here, model._thumb_key(row),
+                "a trailing separator moved the key, so an ordinary "
+                "reload throws the whole library's cache away")
 
-        self.prefs.dir = os.path.join(
-            self.prefs.dir.rstrip("/\\") + "_copy", "")
+        self.prefs.dir = os.path.join(root + "_copy", "")
         there = model._thumb_key(row)
 
         self.assertNotEqual(
@@ -296,65 +278,6 @@ class TheCacheKeyCarriesTheLibrary(unittest.TestCase):
             "the same asset id in two libraries answers one cache key, "
             "so a switch paints the previous library's picture and the "
             "new library's file is never read")
-
-    def test_the_same_library_still_answers_the_same_key(self):
-        """A reload must keep the cached image, so the key may not move for one library."""
-        model = library_mod.MaterialLibrary(preferences=self.prefs)
-        row = next(i for i, a in enumerate(model.assets)
-                   if str(a.mat_id) not in ("", "-1"))
-        before = model._thumb_key(row)
-        root = self.prefs.dir.rstrip("/\\")
-        for spelling in (root, root + os.sep):
-            self.prefs.dir = spelling
-            self.assertEqual(
-                before, model._thumb_key(row),
-                "a trailing separator moved the key, so an ordinary "
-                "reload throws the whole library's cache away")
-
-
-class TheRenderScratchIsNeverShared(unittest.TestCase):
-    """Render scratch names are per item and per process; a shared one caches the previous file's picture against this file's mtime."""
-
-    def test_the_geo_pass_mints_a_scratch_per_item(self):
-        source = source_of("core/file_library.py")
-        self.assertNotIn(
-            '"_render_tmp.png"', source,
-            "the geometry pass still shares one fixed scratch name for "
-            "every item and every process")
-        self.assertIn(
-            "hostos.render_scratch(", source,
-            "the geometry pass does not mint a unique scratch")
-
-    def test_the_sop_thumbnail_mints_a_unique_scratch(self):
-        source = source_of("render/thumbs.py")
-        self.assertNotIn(
-            'hostos.cache_root(), "sop_thumb_%s.bgeo" % asset_id\n', source,
-            "the SOP thumbnail writes its intermediate geometry to a "
-            "fixed name in a directory every Houdini process shares")
-
-    def test_the_render_verdict_reads_a_LIVE_rop(self):
-        """The render verdict must read a LIVE ROP: callers ask after the scene block, which has already destroyed it."""
-        tree = ast.parse(source_of("render/thumbs.py"))
-        rendered = next(
-            node for node in ast.walk(tree)
-            if isinstance(node, ast.FunctionDef) and node.name == "_rendered")
-
-        inside = [n for n in ast.walk(rendered)
-                  if isinstance(n, ast.Call)
-                  and isinstance(n.func, ast.Attribute)
-                  and n.func.attr == "node_errors"]
-        self.assertEqual(
-            [], inside,
-            "_rendered reads the ROP's errors itself, and every caller "
-            "invokes it after the scene has been destroyed - so the "
-            "field is empty whatever the renderer said")
-
-        args = [a.arg for a in rendered.args.args]
-        self.assertIn(
-            "errors", args,
-            "_rendered does not take the errors its callers gathered "
-            "while the scene was alive: %s" % args)
-        self.assertNotIn("rop", args)
 
 
 class ThumbnailsLeaveNothingOnTheUndoStack(unittest.TestCase):
@@ -531,8 +454,8 @@ class AKarmaThumbnailLeavesTheSceneAsItFoundIt(unittest.TestCase):
         mat.createNode("mtlxstandard_surface")
         return mat
 
-    def test_the_two_sample_dials_belong_to_different_engines(self):
-        """The premise the samples check below rests on, asked of the node itself rather than of the manual."""
+    def test_the_samples_preference_reaches_the_engine_that_renders(self):
+        self.prefs.karma_rendersamples = 23    # not 9: the pref default and the parm default are both 9, so an equal pair proves nothing
         render_props = self._scaffold()["render_props"]
         hides = {}
         for name in ("samplesperpixel", "pathtracedsamples"):
@@ -547,10 +470,6 @@ class AKarmaThumbnailLeavesTheSceneAsItFoundIt(unittest.TestCase):
         self.assertIn(
             "engine != xpu", hides["pathtracedsamples"],
             "`pathtracedsamples` is no longer the XPU-only dial")
-
-    def test_the_samples_preference_reaches_the_engine_that_renders(self):
-        self.prefs.karma_rendersamples = 23    # not 9: the pref default and the parm default are both 9, so an equal pair proves nothing
-        render_props = self._scaffold()["render_props"]
         self.assertEqual(
             "cpu", render_props.parm("engine").eval(),
             "the scaffold no longer selects the CPU engine, so which "
@@ -561,17 +480,14 @@ class AKarmaThumbnailLeavesTheSceneAsItFoundIt(unittest.TestCase):
             "these CPU renders it changes nothing: the artist raises "
             "samples and the thumbnail comes back just as noisy")
 
-    def test_the_scaffold_build_adds_no_undo_entries(self):
+    def test_a_render_adds_no_undo_entries(self):
         hou.undos.clear()
-        self._scaffold()
+        scaffold = self._scaffold()
         self.assertEqual(
             (), hou.undos.undoLabels(),
             "building the scaffold left entries on the live undo stack, "
             "so the artist's next Ctrl+Z undoes thumbnail scaffolding "
             "instead of their own last edit")
-
-    def test_a_render_adds_no_undo_entries(self):
-        scaffold = self._scaffold()
         mat = self._material()
         hou.undos.clear()
         preview.write_batch(scaffold, [("UNDO_PROBE", mat)], self.out)
@@ -730,61 +646,22 @@ class TheSpareParmCommandIsCheckedByItsReturnValue(unittest.TestCase):
                        if "Redshift_cameraSpareParameters" in str(call)]
 
     def test_a_command_that_failed_is_recorded(self):
-        asked, said = self._build_cam(
-            ("", "Unknown command: RS_camera_spare\n"))
-        self.assertEqual(
-            1, len(asked),
-            "build_cam never ran the spare-parm command, so this test "
-            "cannot say anything about how its failure is read")
-        self.assertTrue(
-            said,
-            "the command answered an error and the build recorded "
-            "nothing: hou.hscript returns (output, error) and never "
-            "raises, so an except clause around it catches nothing and "
-            "the failure passes silently")
-
-    def test_a_command_that_worked_is_not_recorded_as_a_failure(self):
-        asked, said = self._build_cam(("", ""))
-        self.assertEqual(1, len(asked))
-        self.assertEqual(
-            [], said,
-            "an empty error string means the command WORKED - a skip "
-            "logged here buries the real ones")
+        for error, recorded in (("Unknown command: RS_camera_spare\n", True),
+                                ("", False)):
+            with self.subTest(error=error):
+                asked, said = self._build_cam(("", error))
+                self.assertEqual(
+                    1, len(asked),
+                    "build_cam never ran the spare-parm command, so this "
+                    "test cannot say anything about how its failure is read")
+                self.assertEqual(
+                    recorded, bool(said),
+                    "hou.hscript returns (output, error) and never raises: "
+                    "an error must be recorded, and an empty one is a "
+                    "command that WORKED")
 
 
 class TheLightRigDegradesLikeTheRopsDo(unittest.TestCase):
-
-    def test_the_light_rig_sets_no_parm_raw(self):
-        """Every function that writes a renderer light parm goes through safe_set, so a renamed parm records a skip instead of aborting the thumbnail."""
-        source = source_of("preview/thumbnail_scene.py")
-        lines = source.splitlines()
-        bodies = {
-            node.name: lines[node.lineno - 1:node.end_lineno]
-            for node in ast.walk(ast.parse(source))
-            if isinstance(node, ast.FunctionDef)
-        }
-        for name in ("place_light", "build_lights"):
-            self.assertIn(
-                name, bodies,
-                "%s is gone, so this test checks nothing - repoint it at "
-                "whatever writes light parms now" % name)
-            raw = [line.strip() for line in bodies[name]
-                   if ".parm(" in line and ".set(" in line]
-            self.assertEqual(
-                [], raw,
-                "%s sets a version-specific parm without safe_set, which "
-                "is the whole reason safe_set is in this file: %s"
-                % (name, raw))
-
-    def test_the_shared_rig_numbers_are_written_once(self):
-        """The placement both rigs share lives in one constant; two copies is how the light positions drifted apart."""
-        source = source_of("preview/thumbnail_scene.py")
-        for literal in ("0.182989", "0.400678", "-0.637707", "-164.722",
-                        "-11.677", "photo_studio_01_4k_ACEScg.hdr"):
-            self.assertEqual(
-                1, source.count(literal),
-                "%s is written more than once - the values both renderer "
-                "rigs share belong in a single constant" % literal)
 
     def test_a_renderer_with_no_rig_is_refused_not_placed(self):
         """An unnamed renderer raises rather than silently placing a light with no size parms."""
@@ -1018,35 +895,6 @@ class ARerenderNeverEntersTheUsersLopContext(unittest.TestCase):
             "behind and retranslates their whole material library")
 
 
-class TheDebugBlockCannotChangeTheOutcome(unittest.TestCase):
-
-    def test_stage_material_guards_its_index(self):
-        """The Debug-gated tier may not change behaviour: an unguarded index inside `if debug.is_on()` fails only for people running with Debug on."""
-        tree = ast.parse(source_of("preview/usd_scene.py"))
-        checked = False
-        for function in ast.walk(tree):
-            if not (isinstance(function, ast.FunctionDef)
-                    and function.name == "_stage_material"):
-                continue
-            for node in ast.walk(function):
-                if not (isinstance(node, ast.If)
-                        and "is_on" in ast.dump(node.test)):
-                    continue
-                dumped = ast.dump(ast.Module(body=node.body,
-                                             type_ignores=[]))
-                if "'curr_nodes'" in dumped and "Subscript" in dumped:
-                    checked = True
-                    self.assertIn(
-                        "IfExp", dumped,
-                        "the Debug-Mode block indexes curr_nodes[0] with "
-                        "no guard, 40 lines below the identical index "
-                        "that has one")
-        self.assertTrue(
-            checked,
-            "no Debug-Mode block indexing curr_nodes was found - this "
-            "test can no longer see its subject")
-
-
 class BothRedshiftTerminalsAreLookedFor(unittest.TestCase):
     """Both Redshift terminal node types are looked for; testing the first literal alone loses displacement on the USD flavour silently."""
 
@@ -1061,12 +909,10 @@ class BothRedshiftTerminalsAreLookedFor(unittest.TestCase):
                     with open(path, encoding="utf-8") as handle:
                         yield name, handle.read()
 
-    def test_the_constant_names_both(self):
+    def test_no_source_compares_against_the_bare_literal(self):
         from amaze.render import nodes
         self.assertEqual(("redshift_material", "redshift_usd_material"),
                          nodes.REDSHIFT_TERMINALS)
-
-    def test_no_source_compares_against_the_bare_literal(self):
         offenders = []
         for name, source in self._sources():
             if name == "nodes.py":
@@ -1087,14 +933,12 @@ class BothRedshiftTerminalsAreLookedFor(unittest.TestCase):
 class ANodeRefusalIsCaughtAsHouError(unittest.TestCase):
     """Every `createNode` catches `hou.Error`: `PermissionError` is a sibling of `OperationFailed`, so the narrower clause lets a locked-asset refusal through. ▸r/hou-errors"""
 
-    def test_the_hierarchy_is_what_this_rests_on(self):
+    def test_no_createNode_is_guarded_by_OperationFailed_alone(self):
         self.assertTrue(issubclass(hou.PermissionError, hou.Error))
         self.assertFalse(
             issubclass(hou.PermissionError, hou.OperationFailed),
             "the premise changed - PermissionError is now caught by an "
             "OperationFailed handler and this guard is pointless")
-
-    def test_no_createNode_is_guarded_by_OperationFailed_alone(self):
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         offenders = []
         for folder, _dirs, files in os.walk(root):

@@ -67,26 +67,14 @@ class TheTwoTerminalsDoNotSpellTheirInputsAlike(unittest.TestCase):
 
     SENTINEL = object()
 
-    def test_the_usd_terminals_bump_spelling_is_found(self):
-        """The polarity that was red before the table existed."""
-        self.assertIs(
-            self.SENTINEL,
-            material.terminal_input({"BumpMap": self.SENTINEL}, "bump"))
-
-    def test_the_classic_terminals_bump_spelling_is_found(self):
-        self.assertIs(
-            self.SENTINEL,
-            material.terminal_input({"Bump Map": self.SENTINEL}, "bump"))
-
-    def test_displacement_is_one_spelling_on_both(self):
-        self.assertIs(
-            self.SENTINEL,
-            material.terminal_input(
-                {"Displacement": self.SENTINEL}, "displacement"))
-
-    def test_a_role_with_nothing_wired_answers_none(self):
-        self.assertIsNone(
-            material.terminal_input({"Surface": self.SENTINEL}, "bump"))
+    def test_each_terminals_spelling_is_found_and_nothing_wired_is_none(self):
+        """The USD bump spelling was red before the table existed."""
+        for inputs, role in (({"BumpMap": self.SENTINEL}, "bump"),
+                             ({"Bump Map": self.SENTINEL}, "bump"),
+                             ({"Displacement": self.SENTINEL}, "displacement")):
+            with self.subTest(inputs=list(inputs), role=role):
+                self.assertIs(self.SENTINEL, material.terminal_input(inputs, role))
+        self.assertIsNone(material.terminal_input({"Surface": self.SENTINEL}, "bump"))
 
     def test_a_role_the_table_does_not_name_is_a_programming_error(self):
         """Silence here would be a lookup that never fires - the bug."""
@@ -185,17 +173,14 @@ class OneLookupFindsTheTerminalAndTheShader(unittest.TestCase):
         self.addCleanup(builder.destroy)
         return builder
 
-    def test_the_classic_terminal_is_found(self):
-        parent = hou.node("/mat") or hou.node("/").createNode("mat")
-        builder = self._container(parent, "redshift_vopnet")
-        self.assertEqual("redshift_material",
-                         material.redshift_terminal(builder).type().name())
-
-    def test_the_usd_terminal_is_found(self):
+    def test_both_terminal_forms_are_found(self):
+        classic = self._container(hou.node("/mat") or hou.node("/").createNode("mat"),
+                                  "redshift_vopnet")
         lib = self._container(hou.node("/stage"), "materiallibrary")
-        builder = self._container(lib, "rs_usd_material_builder")
-        self.assertEqual("redshift_usd_material",
-                         material.redshift_terminal(builder).type().name())
+        usd = self._container(lib, "rs_usd_material_builder")
+        for builder, terminal in ((classic, "redshift_material"), (usd, "redshift_usd_material")):
+            with self.subTest(terminal=terminal):
+                self.assertEqual(terminal, material.redshift_terminal(builder).type().name())
 
     def test_the_stock_shader_is_found_and_no_terminal_is_taken_for_it(self):
         parent = hou.node("/mat") or hou.node("/").createNode("mat")

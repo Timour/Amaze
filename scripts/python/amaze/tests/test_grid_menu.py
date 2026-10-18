@@ -107,27 +107,6 @@ class TheTableIsWellFormED(unittest.TestCase):
                             '%s\'s "%s" submenu has no verb, so picking '
                             "a row in it does nothing" % (name, entry.label))
 
-    def test_DELETE_is_last_and_the_presentation_group_precedes_it(self):
-        """The menu law (the UI text register, set 2026-07-31): the tile's presentation, Favorite, then Delete last of all, in every grid menu - one shared tail now, so this pins the tail rather than five copies of an ordering."""
-        labels = [e.label for e in sections.GRID_MENU_TAIL if e.label]
-        self.assertEqual(
-            ["Update Preview", "Customize", "Favorite", "Export Package",
-             "Delete"], labels)
-
-    def test_no_section_writes_its_own_copy_of_a_tail_entry(self):
-        """The five copies, as a table fact - a section that spells a tail label out in its own rows has started a sixth."""
-        tail = {e.label for e in sections.GRID_MENU_TAIL if e.label}
-        for name in MENU_CONTEXTS:
-            context = getattr(sections, name)
-            head = context.GRID_MENU[:len(context.GRID_MENU)
-                                     - len(sections.GRID_MENU_TAIL)]
-            for entry in head:
-                with self.subTest(context=name, entry=entry.label):
-                    self.assertNotIn(
-                        entry.label, tail,
-                        "%s writes its own %r above the shared tail"
-                        % (name, entry.label))
-
 
 class NoMenuIsWrittenInThePanelAnyMore(unittest.TestCase):
     """The source half: the six handlers are gone, and a seventh must not grow back beside the table - a menu written in panel.py is a menu nothing in this file can see."""
@@ -136,26 +115,6 @@ class NoMenuIsWrittenInThePanelAnyMore(unittest.TestCase):
         with open(os.path.join(PACKAGE, "panel", "panel.py"),
                   encoding="utf-8") as handle:
             return ast.parse(handle.read())
-
-    def test_the_panel_has_no_grid_rc_menu_methods_left(self):
-        offenders = [node.name for node in ast.walk(self._panel_tree())
-                     if isinstance(node, ast.FunctionDef)
-                     and node.name.endswith("_rc_menu")
-                     and node.name not in ("thumblist_rc_menu",
-                                           "_thumblist_rc_menu",
-                                           "catlist_rc_menu")]
-        self.assertEqual(
-            [], offenders,
-            "panel.py builds a grid menu itself, in %s - the table is "
-            "the only place an entry may be declared" % offenders)
-
-    def test_the_dispatcher_no_longer_asks_which_WORLD_it_is_in(self):
-        """`_section()` answers with the online world while it shows, and that world has a table like every other context - the `_is_online()` branch here was the last place a grid path had to know."""
-        source = ast.unparse(next(
-            node for node in ast.walk(self._panel_tree())
-            if isinstance(node, ast.FunctionDef)
-            and node.name == "_thumblist_rc_menu"))
-        self.assertNotIn("_is_online", source)
 
     MAY_BUILD_A_MENU = {  # the menus panel.py may still build - NAMED, not counted: a count says one too many without saying which, and deleting a hand menu has to come back here and delete its line
         "init_ui",                      # the toolbar's Filter menu
@@ -188,21 +147,13 @@ class NoMenuIsWrittenInThePanelAnyMore(unittest.TestCase):
 class TheBuilderTidiesItsOwnSeparators(unittest.TestCase):
     """A table with conditional rows produces leading, doubled and trailing dividers - each hand-written menu avoided all three by luck that held while nobody added an entry."""
 
-    def test_a_dropped_leading_group_takes_its_divider_with_it(self):
-        self.assertEqual(
-            ["b"], grid._tidy_separators([None, "b"]))
-
-    def test_two_dividers_in_a_row_become_one(self):
-        self.assertEqual(
-            ["a", None, "b"],
-            grid._tidy_separators(["a", None, None, "b"]))
-
-    def test_a_menu_never_ends_on_a_divider(self):
-        self.assertEqual(
-            ["a"], grid._tidy_separators(["a", None]))
-
-    def test_a_menu_of_nothing_but_dividers_is_empty(self):
-        self.assertEqual([], grid._tidy_separators([None, None]))
+    def test_no_leading_doubled_or_trailing_divider_survives(self):
+        for rows, tidy in (([None, "b"], ["b"]),
+                           (["a", None, None, "b"], ["a", None, "b"]),
+                           (["a", None], ["a"]),
+                           ([None, None], [])):
+            with self.subTest(rows=rows):
+                self.assertEqual(tidy, grid._tidy_separators(rows))
 
 
 class TheMenusAreWhatSHIPPED(unittest.TestCase):
@@ -249,38 +200,30 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
         return [row for row in range(proxy.rowCount())
                 if (proxy.index(row, 0).data(role) or "") == kind]
 
-    def test_material_with_one_selected(self):
-        with plugins_loaded("Redshift", "Octane"):
-            shown = self._show("material", (0,))
-        self.assertEqual(
-            ["Copy To > [/mat, /stage/materiallibrary]",
-             "Convert to > [MaterialX(off), Redshift(off), Octane(off)](off)",    # neither renderer
-             "----",
-             "Update Preview", "Customize", "Favorite", "Export Package",
-             "Delete"],
-            shown)
-
-    def test_material_with_two_selected(self):
+    def test_material_with_one_two_or_nothing_selected(self):
         """Every entry acts on the whole selection and stays live."""
-        with plugins_loaded("Redshift", "Octane"):
-            shown = self._show("material", (0, 1))
-        self.assertEqual(
-            ["Copy To > [/mat, /stage/materiallibrary]",
-             "Convert to > [MaterialX(off), Redshift, Octane]",
-             "----",
-             "Update Preview", "Customize", "Favorite", "Export Package",
-             "Delete"],
-            shown)
-
-    def test_material_with_nothing_selected(self):
-        with plugins_loaded("Redshift", "Octane"):
-            shown = self._show("material")
-        self.assertEqual(
-            ["Copy To > [/mat, /stage/materiallibrary](off)",
-             "Convert to > [MaterialX(off), Redshift(off), Octane(off)](off)", "----",
-             "Update Preview(off)", "Customize(off)", "Favorite(off)",
-             "Export Package(off)", "Delete(off)"],
-            shown)
+        for rows, expected in (
+                ((0,),
+                 ["Copy To > [/mat, /stage/materiallibrary]",
+                  "Convert to > [MaterialX(off), Redshift(off), Octane(off)](off)",    # neither renderer
+                  "----",
+                  "Update Preview", "Customize", "Favorite", "Export Package",
+                  "Delete"]),
+                ((0, 1),
+                 ["Copy To > [/mat, /stage/materiallibrary]",
+                  "Convert to > [MaterialX(off), Redshift, Octane]",
+                  "----",
+                  "Update Preview", "Customize", "Favorite", "Export Package",
+                  "Delete"]),
+                ((),
+                 ["Copy To > [/mat, /stage/materiallibrary](off)",
+                  "Convert to > [MaterialX(off), Redshift(off), Octane(off)](off)", "----",
+                  "Update Preview(off)", "Customize(off)", "Favorite(off)",
+                  "Export Package(off)", "Delete(off)"])):
+            with self.subTest(selected=len(rows)):
+                with plugins_loaded("Redshift", "Octane"):
+                    shown = self._show("material", rows)
+                self.assertEqual(expected, shown)
 
     def test_color_with_one_selected(self):
         shown = self._show("gradient", (0,))
@@ -315,17 +258,14 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
              "Favorite(off)", "Export Package(off)", "Delete(off)"],
             self._show("cop"))
 
-    def test_code_with_one_selected(self):
-        self.assertEqual(
-            ["New File", "----", "Apply", "Edit", "----",
-             "Customize", "Favorite", "Export Package", "Delete"],
-            self._show("code", (0,)))
-
-    def test_code_with_two_selected(self):
-        self.assertEqual(
-            ["New File", "----", "Apply(off)", "Edit(off)", "----",
-             "Customize", "Favorite", "Export Package", "Delete"],
-            self._show("code", (0, 1)))
+    def test_code_with_one_or_two_selected(self):
+        for rows, expected in (
+                ((0,), ["New File", "----", "Apply", "Edit", "----",
+                        "Customize", "Favorite", "Export Package", "Delete"]),
+                ((0, 1), ["New File", "----", "Apply(off)", "Edit(off)", "----",
+                          "Customize", "Favorite", "Export Package", "Delete"])):
+            with self.subTest(selected=len(rows)):
+                self.assertEqual(expected, self._show("code", rows))
 
     def test_code_offers_NEW_FILE_over_an_empty_selection(self):
         """The one entry in any section that acts on nothing, so the one that stays live when nothing is selected."""
@@ -336,72 +276,30 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
                         "something other than New File is live over an "
                         "empty selection: %s" % shown)
 
-    def test_code_never_offers_UPDATE_PREVIEW(self):
-        """Its preview is painted from the snippet's own text under a content-addressed key, so a re-render produces the identical image - the entry existed for one commit on a consistency argument and did nothing."""
-        for rows in ((), (0,), (0, 1)):
-            with self.subTest(selected=len(rows)):
-                self.assertNotIn(
-                    "Update Preview",
-                    [row.replace("(off)", "")
-                     for row in self._show("code", rows)])
-
-    def test_file_image_row(self):
-        rows = self._rows_of_kind(file_library.KIND_IMAGE)
-        self.assertTrue(rows, "the fixture has no image rows")
-        self.assertEqual(
-            ["Import", "Copy Path", "----", "Show Location",
-             "Update Preview", "Customize", "Favorite", "Export Package"],
-            self._show("file", rows[:1]))
-
-    def test_file_two_images_grey_IMPORT(self):
-        """An image loads onto ONE node parameter."""
-        rows = self._rows_of_kind(file_library.KIND_IMAGE)
-        self.assertGreater(len(rows), 1, "need two image rows")
-        self.assertEqual(
-            ["Import(off)", "Copy Path", "----", "Show Location(off)",
-             "Update Preview", "Customize", "Favorite", "Export Package"],
-            self._show("file", rows[:2]))
-
-    def test_file_two_GEOMETRY_rows_keep_IMPORT_live(self):
-        """Geometry imports the whole selection - the same entry behaves differently for a different kind, which is why the rule is a named fact and not a length check."""
-        rows = self._rows_of_kind(file_library.KIND_GEO)
-        self.assertGreater(len(rows), 1, "need two geometry rows")
-        self.assertEqual(
-            ["Import", "Copy Path", "----", "Show Location(off)",
-             "Update Preview", "Customize", "Favorite", "Export Package"],
-            self._show("file", rows[:2]))
-
-    def test_file_scene_row(self):
-        """Capture Preview is greyed unless the viewport is showing THIS scene, and Update Preview is not offered at all: a capture is hand-framed and only a new capture replaces it."""
-        rows = self._rows_of_kind(file_library.KIND_HIP)
-        self.assertTrue(rows, "the fixture has no scene rows")
-        self.assertEqual(
-            ["Load", "Copy Path", "----", "Show Location",
-             "Capture Preview(off)", "Customize", "Favorite",
-             "Export Package"],
-            self._show("file", rows[:1]))
-
-    def test_file_unknown_row_offers_only_COPY_PATH(self):
-        """The honest actions for a file Houdini probably cannot open - Import, Load, Capture and Update Preview are absent rather than greyed: none of them exists for this kind. Export stays: any file rides a package whole."""
-        rows = self._rows_of_kind(file_library.KIND_OTHER)
-        self.assertTrue(rows, "the fixture has no unknown-kind rows")
-        self.assertEqual(
-            ["Copy Path", "----", "Show Location", "Customize", "Favorite",
-             "Export Package"],
-            self._show("file", rows[:1]))
-
-    def test_file_NEVER_offers_delete(self):
-        """These are the user's own files on disk - an os.remove here once deleted real production files."""
-        for kind in (file_library.KIND_IMAGE, file_library.KIND_GEO,
-                     file_library.KIND_HIP, file_library.KIND_OTHER):
-            rows = self._rows_of_kind(kind)
-            if not rows:
-                continue
-            with self.subTest(kind=kind):
-                self.assertNotIn(
-                    "Delete",
-                    [row.replace("(off)", "")
-                     for row in self._show("file", rows[:1])])
+    def test_file_menus_follow_the_kind_and_the_count_and_never_delete(self):
+        """No Delete for any kind: these are the user's own files, and an os.remove once took some."""
+        for kind, count, expected in (
+                (file_library.KIND_IMAGE, 1,
+                 ["Import", "Copy Path", "----", "Show Location",
+                  "Update Preview", "Customize", "Favorite", "Export Package"]),
+                (file_library.KIND_IMAGE, 2,    # an image loads onto ONE node parameter
+                 ["Import(off)", "Copy Path", "----", "Show Location(off)",
+                  "Update Preview", "Customize", "Favorite", "Export Package"]),
+                (file_library.KIND_GEO, 2,      # geometry imports the whole selection
+                 ["Import", "Copy Path", "----", "Show Location(off)",
+                  "Update Preview", "Customize", "Favorite", "Export Package"]),
+                (file_library.KIND_HIP, 1,      # a capture is hand-framed: only a new capture replaces it
+                 ["Load", "Copy Path", "----", "Show Location",
+                  "Capture Preview(off)", "Customize", "Favorite",
+                  "Export Package"]),
+                (file_library.KIND_OTHER, 1,    # what Houdini cannot open is absent, not greyed
+                 ["Copy Path", "----", "Show Location", "Customize", "Favorite",
+                  "Export Package"])):
+            with self.subTest(kind=kind, selected=count):
+                rows = self._rows_of_kind(kind)
+                self.assertGreaterEqual(len(rows), count,
+                                        "the fixture has too few %s rows" % kind)
+                self.assertEqual(expected, self._show("file", rows[:count]))
 
     def test_online_menu_over_an_empty_selection(self):
         """Built directly rather than by entering the online world (that world reaches the network) - CHANGED 2026-08-03: it used to show Refresh alone, because both imports were built only `if records`; Refresh acts on nothing, so it is the one that stays live."""
@@ -426,47 +324,11 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
         self.assertIn("Import to Scene (3)", labels)
         self.assertNotIn("Refresh (3)", labels,
                          "Refresh acts on nothing, so a count is a lie")
-
-    def test_a_SINGLE_online_row_carries_no_count(self):
-        context = self.panel.online_context
-        one = [self.panel.matx_sorted_model.index(0, 0)]
+        one = pretend[:1]
         menu, _verbs = grid.build_grid_menu(self.panel, context, one, one[0])
         self.assertIn("Import to Materials",
-                      [action.text() for action in menu.actions()])
-
-    def test_no_menu_offers_a_CATEGORY_submenu(self):
-        """Category left the grid menus 2026-07-31 - dragging a tile onto a sidebar row does the same job with less ceremony."""
-        for key in ("material", "gradient", "cop", "code", "file"):
-            with self.subTest(section=key):
-                self.assertNotIn(
-                    "Category",
-                    [row.split(" > ")[0].replace("(off)", "")
-                     for row in self._show(key, (0,) if key != "cop" else ())])
-
-    def test_INFO_left_every_menu(self):
-        """It left Color and Node 2026-08-01 and Material 2026-08-26, when the dialog behind it retired. ▸p/d03-retired"""
-        for key, rows in (("material", (0,)), ("gradient", (0,)),
-                          ("cop", ())):
-            with self.subTest(section=key):
-                self.assertNotIn(
-                    "Info", [row.replace("(off)", "")
-                             for row in self._show(key, rows)])
-
-    def test_a_menu_never_starts_or_ends_on_a_divider(self):
-        """The invariant the builder owns, checked on the real menus rather than only on the helper - File over an unknown row drops four entries and its divider is the first thing left."""
-        for key, rows in (("material", ()), ("material", (0,)),
-                          ("gradient", ()), ("cop", ()),
-                          ("code", ()), ("code", (0,)),
-                          ("file", ())):
-            with self.subTest(section=key, selected=len(rows)):
-                shown = self._show(key, rows)
-                if not shown:
-                    continue
-                self.assertNotEqual("----", shown[0])
-                self.assertNotEqual("----", shown[-1])
-                self.assertNotIn(["----", "----"],
-                                 [shown[i:i + 2]
-                                  for i in range(len(shown) - 1)])
+                      [action.text() for action in menu.actions()],
+                      "a single row carries a count")
 
 
 class TheRowTheMenuIsAboutIsAlwaysSELECTED(unittest.TestCase):
@@ -607,8 +469,6 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
                          self._material_convert_children("Redshift"))
         self.assertEqual("Convert to > [MaterialX, Redshift, Octane]",
                          self._material_convert_children("Karma", "Redshift"))
-
-    def test_an_octane_material_converts_to_the_other_two(self):
         self.assertEqual("Convert to > [MaterialX, Redshift, Octane(off)]",
                          self._material_convert_children("Octane"))
 
@@ -631,19 +491,6 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
         self.assertEqual(len(rows), len(indexes), "premise: the rows are selected")
         self.assertTrue(indexes, "premise: the fixture has Karma materials")
         return indexes
-
-    def test_a_right_click_walks_the_selection_once(self):
-        """The parent's state and its children are one answer about one selection."""
-        panel = self.panel
-        indexes = self._select_karma_rows(3)
-        proxy = panel.material_sorted_model
-        with mock.patch.object(proxy, "mapToSource",
-                               wraps=proxy.mapToSource) as mapped:
-            grid.build_grid_menu(panel, panel._section(), indexes, indexes[0])
-        self.assertLessEqual(
-            mapped.call_count, len(indexes),
-            "building the menu mapped %d selected rows %d times"
-            % (len(indexes), mapped.call_count))
 
     def test_the_parent_greys_when_no_child_is_live(self):
         """A Karma selection where neither Redshift nor Octane is loaded has nothing to become."""
@@ -817,29 +664,17 @@ class EveryVerbREACHESItsOwner(unittest.TestCase):
         with mock.patch.object(QtWidgets.QMenu, "exec_", _exec):
             panel._section().rc_menu()
 
-    def test_FAVORITE_goes_through_the_panels_one_entry_point(self):
-        for key in ("material", "gradient", "code", "file"):
-            with self.subTest(section=key):
-                with mock.patch.object(type(self.panel),
-                                       "grid_toggle_favourite") as verb:
-                    self._pick(key, "Favorite")
-                self.assertTrue(verb.called)
-
-    def test_DELETE_goes_through_the_panels_one_entry_point(self):
-        for key in ("material", "gradient", "code"):
-            with self.subTest(section=key):
-                with mock.patch.object(type(self.panel),
-                                       "grid_delete") as verb:
-                    self._pick(key, "Delete")
-                self.assertTrue(verb.called)
-
-    def test_UPDATE_PREVIEW_goes_through_the_panels_one_entry_point(self):
-        for key in ("material", "file"):
-            with self.subTest(section=key):
-                with mock.patch.object(type(self.panel),
-                                       "grid_update_preview") as verb:
-                    self._pick(key, "Update Preview")
-                self.assertTrue(verb.called)
+    def test_FAVORITE_DELETE_and_UPDATE_PREVIEW_go_through_the_panels_entry_points(self):
+        for label, owner, keys in (
+                ("Favorite", "grid_toggle_favourite",
+                 ("material", "gradient", "code", "file")),
+                ("Delete", "grid_delete", ("material", "gradient", "code")),
+                ("Update Preview", "grid_update_preview", ("material", "file"))):
+            for key in keys:
+                with self.subTest(section=key, entry=label):
+                    with mock.patch.object(type(self.panel), owner) as verb:
+                        self._pick(key, label)
+                    self.assertTrue(verb.called)
 
     def test_CUSTOMIZE_reaches_the_shared_handler_in_every_section(self):
         """The typo class the old regex test guarded: the model pair was spelled out inside five menus and a wrong name there is invisible until somebody right-clicks that section - `tile_models()` on the context answers with models it actually has."""

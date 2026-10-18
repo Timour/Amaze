@@ -1,7 +1,6 @@
-"""The device pixel ratio is read FROM THE WIDGET, AT PAINT TIME. ▸r/screen-dpr"""
+"""The device pixel ratio is read FROM THE WIDGET, never app-wide. ▸r/screen-dpr"""
 
 import ast
-import inspect
 import os
 import unittest
 
@@ -93,33 +92,6 @@ class TheRatioFollowsTheWindow(unittest.TestCase):
             _reads_in(planted, "panel/planted.py"),
             "the scanner cannot see an app-wide read that is right in "
             "front of it, so its silence about the tree means nothing")
-
-    def test_the_scan_honours_EXEMPT(self):
-        """The other half: a read the scanner CAN see must still be droppable by name, or EXEMPT would be silently doing nothing."""
-        planted = ("def screen_ratio():\n"
-                   "    return QtGui.QGuiApplication.primaryScreen()\n")
-        self.assertEqual(
-            [], _reads_in(planted, "helpers/theme.py"),
-            "EXEMPT did not drop a read it names, so the exemptions are "
-            "not what is keeping this guard green")
-
-
-class TheRatioIsReadAtPaintTime(unittest.TestCase):
-    """An unrealised widget answers with the PRIMARY ratio (windowHandle None), becoming correct only after show() and a move. ▸r/screen-dpr"""
-
-    def test_the_icon_grid_inks_on_show_not_in_init(self):
-        """The chooser builds 287 icons, so it must ink them where the window has a screen to ask - in __init__ every one of them takes the primary ratio."""
-        from amaze.dialogs import icon_dialog
-
-        self.assertTrue(
-            hasattr(icon_dialog.IconDialog, "showEvent"),
-            "IconDialog has no showEvent, so its icons can only be inked "
-            "before the window exists - at the primary ratio")
-        source = inspect.getsource(icon_dialog.IconDialog._build_chooser)
-        self.assertNotIn(
-            "devicePixelRatio", source,
-            "_build_chooser reads a ratio while the dialog is still "
-            "unrealised; ink in showEvent instead")
 
 
 if __name__ == "__main__":

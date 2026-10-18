@@ -4,7 +4,6 @@ import json
 import os
 import shutil
 import sys
-import tempfile
 import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -187,9 +186,6 @@ class TheArchiveIsEachVersionsDurableThumbnail(_Case):
             os.path.exists(folder),
             "a versions folder appeared for an asset that has no "
             "versions")
-
-    def test_a_missing_base_png_records_nothing(self):
-        base, _folder = self._png_paths()
         versions.create_version(self.prefs, self.mat_id)
         # The fixture asset ships a render; the case under test is the asset that has none.
         if os.path.exists(base):
@@ -242,14 +238,11 @@ class TheBaseFilesFollowTheLibrarysExtensions(_Case):
                                stem + kind), "rb") as fh:
             return fh.read()
 
-    def test_the_payload_and_its_render_are_archived(self):
-        self.assertEqual(1, versions.create_version(self.prefs, self.mat_id))
-        self.assertEqual(self._base_bytes(), self._archived(".mat"))
-        self.assertEqual(b"RENDER-AS-JPEG", self._archived(".png"))
-
     def test_a_switch_writes_the_payload_under_its_own_extension(self):
         original = self._base_bytes()
-        versions.create_version(self.prefs, self.mat_id)
+        self.assertEqual(1, versions.create_version(self.prefs, self.mat_id))
+        self.assertEqual(original, self._archived(".mat"))
+        self.assertEqual(b"RENDER-AS-JPEG", self._archived(".png"))
         self._rewrite_base(b"EDITED-STATE")
         versions.create_version(self.prefs, self.mat_id)
         self.assertTrue(versions.switch_active(self.prefs, self.mat_id, 1))
@@ -260,11 +253,9 @@ class TheBaseFilesFollowTheLibrarysExtensions(_Case):
 
 class StoreTest(_Case):
 
-    def test_no_versions_is_the_ordinary_state(self):
+    def test_create_archives_the_base_and_becomes_active(self):
         self.assertEqual(0, versions.version_count(self.prefs, self.mat_id))
         self.assertEqual([], versions.list_versions(self.prefs, self.mat_id))
-
-    def test_create_archives_the_base_and_becomes_active(self):
         n = versions.create_version(self.prefs, self.mat_id)
         self.assertEqual(1, n)
         self.assertEqual(1, versions.active_version(self.prefs, self.mat_id))
@@ -330,12 +321,6 @@ class StoreTest(_Case):
                          "a create wrote blind over an unreadable ledger")
         self.assertFalse(versions.switch_active(self.prefs, self.mat_id, 1))
 
-    def test_the_author_rides_from_prefs_when_chosen(self):
-        self.prefs.library_user ="Chosen"
-        versions.create_version(self.prefs, self.mat_id)
-        self.assertEqual("Chosen", versions.list_versions(
-            self.prefs, self.mat_id)[0]["author"])
-
     def test_no_user_mints_one_on_a_colour_name_never_harvested(self):
         """A library with nobody in it mints its first user once per LIBRARY from the colour pool and signs with that name - never the OS user, never the machine name - and resolves it ONCE, not per save."""
         import getpass
@@ -366,6 +351,8 @@ class VersionFilesCarryTheirWriterTest(_Case):
         self.prefs.library_user ="Crimson"
         versions.create_version(self.prefs, self.mat_id)
         row = versions.list_versions(self.prefs, self.mat_id)[0]
+        self.assertEqual("Crimson", row.get("author"),
+                         "the author did not ride from prefs")
         self.assertEqual("Crimson-1", row.get("file"))
         folder = versions.versions_dir(self.prefs, self.mat_id)
         self.assertTrue(
@@ -535,10 +522,6 @@ class TheWholeLoopThroughTheModelTest(unittest.TestCase):
             self.model.index(row, 0), self.model.VersionsRole),
             "the badge role disagrees with the store")
 
-    def test_switching_back_restores_and_does_not_trip_the_guard(self):
-        self.test_parameter_only_update_creates_versions()
-        row = self._karma_row()
-        mat = self.model.assets[row]
         base = self.model.asset_files(mat.mat_id)["mat"]
         with open(base, "rb") as fh:
             edited = fh.read()
@@ -549,7 +532,6 @@ class TheWholeLoopThroughTheModelTest(unittest.TestCase):
                                 "switching to Version 1 left the edited "
                                 "bytes on the base")
 
-        # THE GUARD MUST READ OUR OWN SWITCH AS OURS - without the baseline refresh inside switch_version the next update reads the switch as another session's write and refuses.
         known = self.model._content_state.get(str(mat.mat_id))
         current = self.model._content_stat(mat.mat_id)
         self.assertEqual(known, current,
@@ -606,11 +588,8 @@ class DeletingAUser(unittest.TestCase):
             locations.SPEC, key)[0] for key in records}
         self.assertNotIn(anna, owners,
                          "the deleted user's registered folder survived")
-
-    def test_delete_answers_False_for_a_stranger(self):
-        from amaze.core import users
-        users.create(self.prefs, "Anna")
-        self.assertFalse(users.delete(self.prefs, "f" * 32))
+        self.assertFalse(users.delete(self.prefs, "f" * 32),
+                         "deleting a stranger answered success")
 
     def test_deleting_yourself_clears_this_machines_pointer(self):
         from amaze.core import users

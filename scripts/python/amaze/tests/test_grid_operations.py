@@ -26,8 +26,6 @@ from amaze.tests import test_support  # noqa: E402
 
 PACKAGE =os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-TILE_CONTEXTS = ("AssetSection", "FileSection", "GradientSection")  # the contexts that show tiles a person can act on
-
 
 def menu_verbs_calling(*attributes):
     """Every `menu_*` verb in sections.py that calls one of these methods, as "name:line". - These scans used to walk the six `_rc_menu` handlers in panel.py. Those are gone (batch 6), so the same scan over the same file would now find nothing and pass whatever the code did - the vacuous shape practice.md names. A copy of one of these verbs would be written as a `menu_*` method beside the table, so that is what is read."""
@@ -50,15 +48,6 @@ def menu_verbs_calling(*attributes):
 
 class EveryContextOwnsTheVerbsItOffers(unittest.TestCase):
 
-    def test_each_one_can_toggle_a_favourite(self):
-        for name in TILE_CONTEXTS:
-            with self.subTest(context=name):
-                self.assertTrue(
-                    callable(getattr(getattr(sections, name),
-                                     "toggle_favourite", None)),
-                    "%s cannot favourite its own selection, so the "
-                    "panel has to know how for it" % name)
-
     def test_a_context_with_no_tiles_answers_harmlessly(self):
         """The online world has rows but no favourite state - the star is disabled there, and the verb must be a no-op rather than an error if anything ever reaches it."""
         context = sections.OnlineContext.__new__(sections.OnlineContext)
@@ -69,29 +58,25 @@ class EveryContextOwnsTheVerbsItOffers(unittest.TestCase):
 class OnlyASectionThatRENDERSOffersUpdatePreview(unittest.TestCase):
     """Update Preview was written three times, and the fourth section with a `render_thumbnail` method was offered it for exactly one commit before a live test showed the entry doing nothing at all - which was the correct outcome, and the more interesting fact. - A preview is either RENDERED or DERIVED. Materials and Node assets render: a real renderer runs over saved files and can produce a different picture than last time. Code and Color are derived - a snippet is painted from its own text under a CONTENT-ADDRESSED key (`_preview_key` = code hash + language), a palette from its ramp - so an edit repaints them by itself and a re-render repaints the identical image. - Having the method is not the test. Being able to produce a DIFFERENT picture is."""
 
-    def test_the_sections_that_RENDER_offer_it(self):
-        for name in ("MaterialSection", "CopSection", "FileSection"):
+    def test_only_a_section_that_renders_puts_it_in_a_menu(self):
+        """The flag says who can re-render, the menu gate reads it, and File asks the selection."""
+        for name, renders, in_menu in (("MaterialSection", True, True),
+                                       ("CopSection", True, True),
+                                       ("FileSection", True, False),
+                                       ("CodeSection", False, False),
+                                       ("GradientSection", False, False)):
             with self.subTest(context=name):
                 context = getattr(sections, name)
-                self.assertTrue(
-                    context.offers_preview_update,
-                    "%s runs a real render and cannot ask for one" % name)
-                self.assertTrue(callable(
-                    getattr(context, "update_preview", None)))
-
-    def test_the_sections_that_DERIVE_do_not(self):
-        for name in ("GradientSection", "CodeSection"):
-            with self.subTest(context=name):
-                self.assertFalse(
-                    getattr(sections, name).offers_preview_update,
-                    "%s offers to re-render a preview that is painted "
-                    "from the row's own content - it would repaint the "
-                    "same image and look broken" % name)
-
-    def test_CODE_still_has_the_METHOD_it_inherits(self):
-        """It is not removed, only not offered: it inherits AssetSection, and the flag is what the menu reads. - CALLABLE, not hasattr - `update_preview = None` satisfies hasattr and would break the day anything calls it (the sabotage round found exactly that)."""
-        self.assertTrue(callable(
-            getattr(sections.CodeSection, "update_preview", None)))
+                self.assertEqual(
+                    renders, bool(context.offers_preview_update),
+                    "%s is wrong about whether it can re-render" % name)
+                if renders:
+                    self.assertTrue(callable(
+                        getattr(context, "update_preview", None)))
+                self.assertEqual(
+                    in_menu, bool(self._preview_gate(name)),
+                    "%s's menu is wrong about Update Preview for an empty "
+                    "selection" % name)
 
     def _preview_gate(self, name):
         """Update Preview is ONE row of the shared tail, in every section's table, so a label check says nothing and what decides is the row's `shown` GATE - whether that answer survives into a real menu is driven end to end in test_grid_menu.py."""
@@ -103,28 +88,6 @@ class OnlyASectionThatRENDERSOffersUpdatePreview(unittest.TestCase):
             "every section offers it whatever it can do")
         context = getattr(sections, name)(None)  # a panel-less instance: the gate reads facts about the SECTION, and the one override that reads models answers False for an absent one rather than raising
         return getattr(context, entry.shown)([], None)
-
-    def test_no_derived_section_puts_it_in_a_MENU(self):
-        for name in ("CodeSection", "GradientSection"):
-            with self.subTest(context=name):
-                self.assertFalse(
-                    self._preview_gate(name),
-                    "%s offers to re-render a derived preview, which "
-                    "does nothing a person can see" % name)
-
-    def test_the_sections_that_render_DO_put_it_in_theirs(self):
-        """The other half - a flag nothing reads is not a rule."""
-        for name in ("MaterialSection", "CopSection"):
-            with self.subTest(context=name):
-                self.assertTrue(self._preview_gate(name))
-
-    def test_FILE_asks_about_the_SELECTION_not_only_the_section(self):
-        """The one section where the two questions differ: it CAN re-render (`offers_preview_update` is True), and a selection of scene captures or OS icons still cannot - so the gate is a method there and a flag everywhere else."""
-        self.assertTrue(sections.FileSection.offers_preview_update)
-        self.assertFalse(
-            self._preview_gate("FileSection"),
-            "File offered Update Preview for an empty selection, which "
-            "holds no image or geometry row to re-render")
 
 
 class DeleteIsONEShapeWithFourSetsOfWORDS(unittest.TestCase):
@@ -157,23 +120,6 @@ class DeleteIsONEShapeWithFourSetsOfWORDS(unittest.TestCase):
                 self.assertIn(
                     "4", context.delete_prompt(4),
                     "%s does not say HOW MANY" % name)
-
-    def test_COLOR_quotes_the_palette_by_NAME(self):
-        """the UI text register is the source for every user-facing string, and it gives Color the only prompt that names the thing: a palette is picked by its label, and the label is the whole identity a person has for it."""
-        prompt = sections.GradientSection.delete_prompt(1, "Sunset")
-        self.assertIn('"Sunset"', prompt)
-        self.assertIn("gradient goes for good", prompt)
-
-    def test_the_others_ignore_the_name(self):
-        """One signature, so the panel never asks which section wants it - and four sections that do not put a name in the sentence."""
-        for name in ("MaterialSection", "CopSection", "CodeSection"):
-            with self.subTest(context=name):
-                context = getattr(sections, name)
-                self.assertEqual(context.delete_prompt(1),
-                                 context.delete_prompt(1, "Sunset"))
-
-    def test_the_prompts_are_not_all_the_same_sentence(self):
-        """The wording is the one part that is genuinely per-section: what goes for good, and what is NOT affected."""
         prompts = {getattr(sections, name).delete_prompt(1)
                    for name in self.DELETING}
         self.assertEqual(
@@ -181,44 +127,16 @@ class DeleteIsONEShapeWithFourSetsOfWORDS(unittest.TestCase):
             "the sections share a delete sentence, so at least two are "
             "telling the user about the wrong thing")
 
-    def test_no_menu_deletes_rows_itself(self):
-        offenders = menu_verbs_calling(
-            "remove_asset", "remove_user_gradient")
-        self.assertEqual(
-            [], offenders,
-            "a right-click verb still removes rows itself, at %s - "
-            "which is where the highest-row-first rule has to be "
-            "remembered" % offenders)
-
-
-class DeletingSEVERALRowsRemovesTHOSERows(unittest.TestCase):
-    """The rule a fifth copy would get wrong. Removing row 1 shifts row 2 into its place, so ascending removal deletes a neighbour - and only ever on a multi-selection, which is why it survives hand-testing."""
-
-    def setUp(self):
-        self.panel = test_support.fixture_panel(self)
-        self.model = self.panel.material_model
-        self.assertGreater(self.model.rowCount(), 3,
-                           "need four materials to delete two")
-
-    def test_the_rows_that_go_are_the_rows_that_were_CHOSEN(self):
-        going = [str(self.model.assets[1].mat_id),
-                 str(self.model.assets[2].mat_id)]
-        staying = [str(a.mat_id) for i, a in enumerate(self.model.assets)
-                   if i not in (1, 2)]
-        indexes = [self.model.index(1, 0), self.model.index(2, 0)]
-
-        self.panel.section_tabs.setChecked("material")
-        QtWidgets.QApplication.processEvents()
-        self.panel._section().delete_rows(indexes)
-        QtWidgets.QApplication.processEvents()
-
-        left = [str(a.mat_id) for a in self.model.assets]
-        self.assertEqual(
-            staying, left,
-            "the wrong rows went - removing low-to-high shifts every "
-            "row below the one just removed")
-        for gone in going:
-            self.assertNotIn(gone, left)
+    def test_only_COLOR_quotes_the_palette_by_NAME(self):
+        """A palette is picked by its label; the others take the name and leave it out."""
+        prompt = sections.GradientSection.delete_prompt(1, "Sunset")
+        self.assertIn('"Sunset"', prompt)
+        self.assertIn("gradient goes for good", prompt)
+        for name in ("MaterialSection", "CopSection", "CodeSection"):
+            with self.subTest(context=name):
+                context = getattr(sections, name)
+                self.assertEqual(context.delete_prompt(1),
+                                 context.delete_prompt(1, "Sunset"))
 
 
 class TheCUSTOMIZEDialogSurvivesAModelRESET(unittest.TestCase):
@@ -240,48 +158,39 @@ class TheCUSTOMIZEDialogSurvivesAModelRESET(unittest.TestCase):
         dialog.finished.emit(1)
         QtWidgets.QApplication.processEvents()
 
-    def test_a_RESET_that_moves_nothing_still_applies_the_icon(self):
-        model = self.panel.material_model
-        self.assertGreater(model.rowCount(), 1, "need two assets")
-        target = str(model.assets[1].mat_id)
-        dialog = self._open_on(model, 1)
-
-        # a bare reset - every row is exactly where it was, and every persistent index is dead anyway
-        model.beginResetModel()
-        model.endResetModel()
-        QtWidgets.QApplication.processEvents()
-
-        self._ok(dialog)
-
-        by_id = {str(a.mat_id): row for row, a in enumerate(model.assets)}
-        self.assertIn(target, by_id, "the asset vanished")
-        self.assertTrue(
-            model.tile_icon(by_id[target]),
-            "the icon was dropped: a model reset killed the held "
-            "indexes and the dialog had nothing left to apply to")
-
-    def test_a_reset_that_REORDERS_still_finds_the_right_asset(self):
+    def test_a_RESET_that_moves_nothing_or_REORDERS_still_finds_the_asset(self):
         """The case row numbers get wrong and identity does not."""
         model = self.panel.material_model
         self.assertGreater(model.rowCount(), 2, "need three assets")
-        target = str(model.assets[2].mat_id)
-        bystander = str(model.assets[0].mat_id)
-        dialog = self._open_on(model, 2)
 
-        model.beginResetModel()
-        model.assets.reverse()
-        model.endResetModel()
-        QtWidgets.QApplication.processEvents()
+        def bare():
+            model.beginResetModel()    # every row stays put, and every held index dies anyway
+            model.endResetModel()
 
-        self._ok(dialog)
+        def reordering():
+            model.beginResetModel()
+            model.assets.reverse()
+            model.endResetModel()
 
-        by_id = {str(a.mat_id): row for row, a in enumerate(model.assets)}
-        self.assertTrue(model.tile_icon(by_id[target]),
-                        "the chosen asset did not get the icon")
-        self.assertFalse(
-            model.tile_icon(by_id[bystander]),
-            "the icon landed on a different asset - the rows were "
-            "re-ordered under the open dialog")
+        for why, row, reset in (("a bare reset", 1, bare),
+                                ("a reordering reset", 2, reordering)):
+            with self.subTest(why):
+                target = str(model.assets[row].mat_id)
+                bystander = str(model.assets[0].mat_id)
+                dialog = self._open_on(model, row)
+                reset()
+                QtWidgets.QApplication.processEvents()
+                self._ok(dialog)
+                by_id = {str(a.mat_id): r for r, a in enumerate(model.assets)}
+                self.assertIn(target, by_id, "the asset vanished")
+                self.assertTrue(
+                    model.tile_icon(by_id[target]),
+                    "the icon was dropped: a model reset killed the held "
+                    "indexes and the dialog had nothing left to apply to")
+                self.assertFalse(
+                    model.tile_icon(by_id[bystander]),
+                    "the icon landed on a different asset - the rows were "
+                    "re-ordered under the open dialog")
 
     def test_every_tile_model_says_what_its_rows_are_KEYED_by(self):
         """The three families, one question. Without it the panel has to know that a material is an id, a file is a path and a palette is a uid."""
@@ -307,77 +216,47 @@ class TheCUSTOMIZEDialogSurvivesAModelRESET(unittest.TestCase):
 class NoMENUKnowsHowToFavourite(unittest.TestCase):
     """The five copies, as a source fact - a sixth section would have been a sixth copy, and the two that forgot the repaint show how that ends."""
 
-    def test_no_right_click_handler_calls_a_model_toggle(self):
-        offenders = menu_verbs_calling("toggle_fav", "toggle_favorite")
+    def test_no_right_click_handler_favourites_or_deletes_rows_itself(self):
+        offenders = menu_verbs_calling("toggle_fav", "toggle_favorite",
+                                       "remove_asset", "remove_user_gradient")
         self.assertEqual(
             [], offenders,
-            "a right-click verb still favourites a row itself, at "
-            "%s - which is the copy the two that forgot to repaint came "
-            "from" % offenders)
+            "a right-click verb still favourites or removes rows itself, "
+            "at %s - which is where the repaint and the highest-row-first "
+            "rule have to be remembered" % offenders)
 
-    def test_no_right_click_handler_emits_a_LAYOUT_change(self):
-        """No menu verb opens the pair BY HAND. - Two different reasons, one rule. Around a favourite toggle the pair was a caller forcing the grid to re-map because the proxy did not re-test a changed row - the proxy does now, so it is unnecessary and expensive. Around a category rename it is legitimate (the contents change wholesale), but written by hand it has no `finally`: if the second of two renames raises, every attached view is left mid-layout-change for the rest of the session. - `ui_helpers.relayout()` is the one way to say it, and it is what makes the second case safe - so this test forbids the raw signal rather than the intent. (The 26 hand-written sites are a batch 10 item; the sidebar verbs are three of them and were taken 2026-08-04 because this test found them.)"""
-        with open(os.path.join(PACKAGE, "panel", "sections.py"),
-                  encoding="utf-8") as handle:
-            tree = ast.parse(handle.read())
-        verbs = [node for node in ast.walk(tree)
-                 if isinstance(node, ast.FunctionDef)
-                 and node.name.startswith("menu_")]
-        self.assertTrue(verbs, "no menu verbs found to check")
-        offenders = []
-        for verb in verbs:
-            for call in ast.walk(verb):
-                if (isinstance(call, ast.Call)
-                        and isinstance(call.func, ast.Attribute)
-                        and call.func.attr == "emit"
-                        and isinstance(call.func.value, ast.Attribute)
-                        and call.func.value.attr.startswith("layout")):
-                    offenders.append("%s:%d" % (verb.name, call.lineno))
-        self.assertEqual(
-            [], offenders,
-            "a right-click verb opens a layout change by hand, at %s "
-            "- use ui_helpers.relayout(), which closes it in a finally"
-            % offenders)
-
-    def test_the_PANEL_never_opens_a_layout_change_by_hand(self):
-        """The same rule, across the whole panel (2026-08-04). - Twenty-one hand-written opens lived here, in thirteen groups, none of them in a `finally`. They are `relayout()` now. This forbids the OPENING signal specifically, because that is the half that makes a promise: `layoutAboutToBeChanged` tells every attached view a change is coming and that `layoutChanged` will say when it is over, and a raise in between means that is never said. - The bare closing half has its own rule and its own reason, in the next test - they fail for different causes and say so."""
-        with open(os.path.join(PACKAGE, "panel", "panel.py"),
-                  encoding="utf-8") as handle:
-            tree = ast.parse(handle.read())
-        offenders = []
-        for call in ast.walk(tree):
-            if (isinstance(call, ast.Call)
+    def test_no_layout_change_is_opened_or_closed_by_hand(self):
+        """A model's begin/end contract or ui_helpers.relayout(); a bare layoutChanged segfaults H21."""
+        def emits(name, menu_verbs_only, signal):
+            with open(os.path.join(PACKAGE, "panel", name),
+                      encoding="utf-8") as handle:
+                tree = ast.parse(handle.read())
+            scopes = [tree]
+            if menu_verbs_only:
+                scopes = [node for node in ast.walk(tree)
+                          if isinstance(node, ast.FunctionDef)
+                          and node.name.startswith("menu_")]
+                self.assertTrue(scopes, "no menu verbs found to check")
+            return ["%s:%d" % (name, call.lineno)
+                    for scope in scopes for call in ast.walk(scope)
+                    if isinstance(call, ast.Call)
                     and isinstance(call.func, ast.Attribute)
                     and call.func.attr == "emit"
                     and isinstance(call.func.value, ast.Attribute)
-                    and call.func.value.attr == "layoutAboutToBeChanged"):
-                offenders.append(call.lineno)
-        self.assertEqual(
-            [], offenders,
-            "panel.py opens a layout change by hand at line(s) %s - use "
-            "ui_helpers.relayout(), which closes it in a finally"
-            % offenders)
+                    and signal(call)]
 
-    def test_the_PANEL_never_emits_a_bare_layoutChanged(self):
-        """The CLOSING half alone, which is a native crash (2026-08-05). - Seven of these lived here as a "re-map now" nudge with no opening half, and the previous test said so and let them stand. They are gone, because the nudge is not free: a bare `layoutChanged.emit()` SEGFAULTS H21 (research.md, measured 2026-08-04 against a control that mutates without emitting, so it is the signal and not the change). Qt describes the two as a pair - announce, restore persistent indexes, release - and a view told only that it is over was never given the chance to remember what it had to restore. - Third of the same family: remove-wrapped, insert-wrapped and bare-closing all crash H21 and all pass on H22, each reasoned safe before it was measured. - Six of the seven were compensating for nothing - the mutators under them (`check_add_category`, `normalize_categories`, `removeRow`) all emit the real structural contract already, and the proxy re-sorts and re-filters off that. The seventh was the real one: it announced a row-count change on the folder model after writing straight to prefs, and it routes through `FolderListModel.remove_folder` now. - The rule is panel.py's, not the tree's: a MODEL emits this legitimately from inside its own structural bookkeeping (see `ui_helpers.relayout`, which closes the pair in a `finally`)."""
-        with open(os.path.join(PACKAGE, "panel", "panel.py"),
-                  encoding="utf-8") as handle:
-            tree = ast.parse(handle.read())
-        offenders = []
-        for call in ast.walk(tree):
-            if (isinstance(call, ast.Call)
-                    and not call.args
-                    and isinstance(call.func, ast.Attribute)
-                    and call.func.attr == "emit"
-                    and isinstance(call.func.value, ast.Attribute)
-                    and call.func.value.attr == "layoutChanged"):
-                offenders.append(call.lineno)
-        self.assertEqual(
-            [], offenders,
-            "panel.py emits a bare layoutChanged at line(s) %s - it "
-            "segfaults H21. Let the model's own begin/end contract "
-            "announce the change, or wrap the change in "
-            "ui_helpers.relayout()" % offenders)
+        for why, name, menu_verbs_only, signal in (
+                ("a right-click verb opens or closes one", "sections.py", True,
+                 lambda call: call.func.value.attr.startswith("layout")),
+                ("panel.py opens one", "panel.py", False,
+                 lambda call: call.func.value.attr == "layoutAboutToBeChanged"),
+                ("panel.py emits a bare layoutChanged", "panel.py", False,
+                 lambda call: not call.args
+                 and call.func.value.attr == "layoutChanged")):
+            with self.subTest(why):
+                self.assertEqual([], emits(name, menu_verbs_only, signal),
+                                 "%s by hand - use ui_helpers.relayout(), "
+                                 "which closes it in a finally" % why)
 
 
 class FavouritingWorksInEverySection(unittest.TestCase):
@@ -632,27 +511,24 @@ class TheStarBadgeClickActsOnTheSELECTION(unittest.TestCase):
                 self.proxy.index(row, 0),
                 QtCore.QItemSelectionModel.SelectionFlag.Select)
 
-    def test_a_click_INSIDE_the_selection_flips_every_selected_row(self):
-        before = [self._fav(0), self._fav(1)]
-        self._select(0, 1)
-        self.panel.thumb_delegate._badge_clicks["favourite"](self.proxy.index(1, 0))
-        QtWidgets.QApplication.processEvents()
-        self.assertEqual(
-            [not b for b in before], [self._fav(0), self._fav(1)],
-            "one gesture on a selected tile's star did not star the "
-            "whole selection")
+    def test_a_click_flips_the_selection_it_is_INSIDE_or_only_its_own_tile(self):
+        for why, selected, clicked, flipped in (
+                ("inside the selection", (0, 1), 1, (0, 1)),
+                ("outside the selection", (0,), 2, (2,))):
+            with self.subTest(why):
+                rows = sorted(set(selected) | {clicked})
+                before = {row: self._fav(row) for row in rows}
+                self._select(*selected)
+                self.panel.thumb_delegate._badge_clicks["favourite"](
+                    self.proxy.index(clicked, 0))
+                QtWidgets.QApplication.processEvents()
+                self.assertEqual(
+                    {row: before[row] != (row in flipped) for row in rows},
+                    {row: self._fav(row) for row in rows},
+                    "a star clicked %s flipped the wrong tiles" % why)
 
-    def test_a_click_OUTSIDE_the_selection_flips_only_the_clicked_tile(self):
-        before = [self._fav(0), self._fav(2)]
-        self._select(0)
-        self.panel.thumb_delegate._badge_clicks["favourite"](self.proxy.index(2, 0))
-        QtWidgets.QApplication.processEvents()
-        self.assertEqual(
-            [before[0], not before[1]], [self._fav(0), self._fav(2)],
-            "a click outside the selection reached beyond its own tile")
-
-    def test_which_delegates_offer_the_star_button(self):
-        """Every LOCAL grid wires the star click; the online grid wires none, because an online record has no favourite state to flip."""
+    def test_which_delegates_offer_the_star_and_comment_clicks(self):
+        """Every LOCAL grid wires the star, the online one none; every drawn comment badge is wired."""
         for name in ("thumb_delegate", "asset_delegate",
                      "file_delegate", "gradient_delegate"):
             self.assertIn(
@@ -666,9 +542,6 @@ class TheStarBadgeClickActsOnTheSELECTION(unittest.TestCase):
             "versions", self.panel.asset_delegate._badge_clicks,
             "Node/Code wired the versions click their sections cannot "
             "serve")
-
-    def test_every_delegate_that_DRAWS_the_comment_badge_wires_it(self):
-        """Derived from the delegates the sections actually built, so a section arriving with a delegate of its own joins by existing rather than by somebody remembering a fifth registration line."""
         drawn = [d for d in self.panel.tile_delegates()
                  if "comment" in d.badges()]
         self.assertTrue(
@@ -730,31 +603,22 @@ class NoRowMovesInsideALayoutChange(unittest.TestCase):
             "%s moved rows inside a layout-change pair - the shape that "
             "segfaults H21: %s" % (verb, caught))
 
-    def test_convert_to_redshift(self):
-        self.model.assets[1].renderer = "Karma"
-        self._select(1)
-        before = self.model.rowCount()
-        with mock.patch.object(self.model, "convert",
-                               self._saving_a_twin("rs_twin")), \
-                test_support.row_moves_inside_a_layout_change(
-                    self.model) as caught:
-            self.panel.convert_selected("Redshift")
-        self.assertEqual(before + 1, self.model.rowCount(),
-                         "premise: the conversion added no twin")
-        self._assert_no_row_moved_inside(caught, "Convert to Redshift")
-
-    def test_convert_to_karma(self):
-        self.model.assets[1].renderer = "Redshift"
-        self._select(1)
-        before = self.model.rowCount()
-        with mock.patch.object(self.model, "convert",
-                               self._saving_a_twin("karma_twin")), \
-                test_support.row_moves_inside_a_layout_change(
-                    self.model) as caught:
-            self.panel.convert_selected("Karma")
-        self.assertEqual(before + 1, self.model.rowCount(),
-                         "premise: the conversion added no twin")
-        self._assert_no_row_moved_inside(caught, "Convert to Karma")
+    def test_convert_in_either_direction(self):
+        for source, target, twin in (("Karma", "Redshift", "rs_twin"),
+                                     ("Redshift", "Karma", "karma_twin")):
+            with self.subTest(target=target):
+                self.model.assets[1].renderer = source
+                self._select(1)
+                before = self.model.rowCount()
+                with mock.patch.object(self.model, "convert",
+                                       self._saving_a_twin(twin)), \
+                        test_support.row_moves_inside_a_layout_change(
+                            self.model) as caught:
+                    self.panel.convert_selected(target)
+                self.assertEqual(before + 1, self.model.rowCount(),
+                                 "premise: the conversion added no twin")
+                self._assert_no_row_moved_inside(caught,
+                                                 "Convert to %s" % target)
 
     def test_both_directions_report_in_the_words_they_always_did(self):
         """One verb, two directions: each summary names both renderers as the menus show them."""

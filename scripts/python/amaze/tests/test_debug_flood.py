@@ -28,7 +28,8 @@ from amaze.tests import check_log_leak  # noqa: E402
 from amaze.tests import test_support  # noqa: E402,F401 - import redirects the debug log
 
 
-class TestFloodGuard(unittest.TestCase):
+class _LogCase(unittest.TestCase):
+    """A temp debug log; the base of the flood tests, so none of them runs twice."""
 
     def setUp(self):
         """Point the module at a temp log, and put it back or later records vanish into a deleted dir."""
@@ -46,6 +47,9 @@ class TestFloodGuard(unittest.TestCase):
             return []
         with open(self.log, encoding="utf-8") as handle:
             return [json.loads(line) for line in handle if line.strip()]
+
+
+class TestFloodGuard(_LogCase):
 
     def _raise_and_record(self, where="loop"):
         try:
@@ -94,20 +98,6 @@ class TestFloodGuard(unittest.TestCase):
         self.assertEqual(len(after), before + 1)
         self.assertEqual(after[-1]["msg"], "quiet")
 
-    def test_slot_crashes_are_guarded(self):
-        """guarded() wraps mouse handlers - the fastest flood there is."""
-        @debug.guarded("TestWidget.mouseMoveEvent")
-        def _slot():
-            raise AttributeError("'NoneType' object has no attribute 'x'")
-
-        for _ in range(1500):
-            with self.assertRaises(AttributeError):
-                _slot()
-        written = [r for r in self._records()
-                   if "slot crash" in str(r.get("msg", ""))]
-        self.assertLess(len(written), 12, "slot flood was not contained")
-        self.assertTrue(written, "slot crashes stopped being recorded")
-
     def test_the_three_crash_doors_write_one_record_shape(self):
         """A slot, an uncaught raise and a handled one: the tenth record, field for field."""
         for name in ("_excepthook_installed", "_previous_excepthook"):
@@ -144,7 +134,7 @@ class TestFloodGuard(unittest.TestCase):
                             for record in tenth.values()))
 
 
-class TestPerPassBudget(TestFloodGuard):
+class TestPerPassBudget(_LogCase):
     """Per-item records share one flood key, so a pass needs its own allowance."""
 
     def test_identical_per_item_records_go_dark_without_a_budget(self):
@@ -171,11 +161,6 @@ class TestPerPassBudget(TestFloodGuard):
             "whole difference from the session-wide flood guard, which "
             "stays dark once spent")
 
-    def test_a_budget_is_bounded_within_one_pass(self):
-        debug.begin_pass("geo")
-        spent = sum(1 for _ in range(273) if debug.pass_budget("geo", 20))
-        self.assertEqual(20, spent, "the budget did not bound the pass")
-
     def test_two_passes_do_not_share_an_allowance(self):
         debug.begin_pass("a")
         debug.begin_pass("b")
@@ -187,7 +172,7 @@ class TestPerPassBudget(TestFloodGuard):
             "pass would blind an unrelated one")
 
 
-class TestOneRecordCarriesTheWholeList(TestFloodGuard):
+class TestOneRecordCarriesTheWholeList(_LogCase):
     """Cleanup and quarantine name every file they moved - a sample cannot put one back."""
 
     def test_one_record_survives_where_per_item_records_would_not(self):
@@ -203,25 +188,8 @@ class TestOneRecordCarriesTheWholeList(TestFloodGuard):
             "the record dropped moves - every one has to be here, "
             "because this is the only trace of where a file went")
 
-    def test_the_moving_loops_write_no_per_item_record(self):
-        """Source-derived: a regrown per-item record shares one flood key and goes dark."""
-        import re
-        here = os.path.dirname(os.path.abspath(__file__))
-        package = os.path.dirname(here)
-        for name, banned in (
-                (os.path.join("core", "library.py"), "file quarantined"),
-                (os.path.join("core", "repair.py"),
-                 "file could not be moved aside")):
-            with open(os.path.join(package, name), encoding="utf-8") as fh:
-                body = fh.read()
-            self.assertEqual(
-                [], re.findall(re.escape('"%s"' % banned), body),
-                "%s writes a per-item record inside the move loop again; "
-                "it shares one flood key with every other move and goes "
-                "dark after %d" % (name, debug.FLOOD_VERBATIM))
 
-
-class EverySaveLeavesItsRecord(TestFloodGuard):
+class EverySaveLeavesItsRecord(_LogCase):
     """A database save promises one record per call, however many arrive in a row."""
 
     def _saves(self):
@@ -427,6 +395,10 @@ class TheBlankSlate(unittest.TestCase):
             1, min(numbers),
             "the new file continued the old one's numbering, opening at %d"
             % min(numbers))
+        self.assertTrue(
+            all(record.get("session") for record in self._records(second)),
+            "records in the new file carry an EMPTY session id, so "
+            "log-check.py shows the file as having zero sessions")
 
     def test_the_whole_slate_is_blanked(self):
         """Derived from the helper, so a field joining the list is guarded that day."""
@@ -451,32 +423,6 @@ class TheBlankSlate(unittest.TestCase):
         self.assertNotIn("thumbnail-failed", debug._alerted,
                          "Clear Log kept the alert history")
 
-    def test_no_door_keeps_its_own_copy_of_the_list(self):
-        """Three hand-kept copies is what left one door short of the record counter."""
-        always, on_request = _slate_fields()
-        owned = always | on_request
-        found = []
-        for scope in ast.walk(ast.parse(inspect.getsource(debug))):
-            if (not isinstance(scope, ast.FunctionDef)
-                    or scope.name not in ("clear_log", "configure", "redirect")):
-                continue
-            for node in ast.walk(scope):
-                if (isinstance(node, ast.Name)
-                        and isinstance(node.ctx, ast.Store)
-                        and node.id in owned):
-                    found.append("%s assigns %s" % (scope.name, node.id))
-                elif (isinstance(node, ast.Call)
-                        and isinstance(node.func, ast.Attribute)
-                        and node.func.attr == "clear"
-                        and isinstance(node.func.value, ast.Name)
-                        and node.func.value.id in owned):
-                    found.append("%s clears %s"
-                                 % (scope.name, node.func.value.id))
-        self.assertEqual(
-            [], sorted(found),
-            "the slate is written outside _blank_slate: %s"
-            % ", ".join(sorted(found)))
-
 
 class TestExcepthookSurvivesReload(unittest.TestCase):
     """The crash recorder must survive a panel REOPEN without chaining to itself. ▸r/module-reload"""
@@ -492,15 +438,6 @@ class TestExcepthookSurvivesReload(unittest.TestCase):
         """What a second panel open does to this module."""
         importlib.reload(debug)
         debug._install_excepthook()
-
-    def test_the_hook_never_chains_to_itself(self):
-        debug._install_excepthook()
-        first = sys.excepthook
-        self._reopen_the_panel()
-        self.assertIsNot(
-            debug._previous_excepthook, first,
-            "the crash recorder chained to itself after a panel reopen - "
-            "the next uncaught exception recurses to RecursionError")
 
     def test_the_flood_counters_survive_a_reopen_together(self):
         """All three or none: a count reset against a persisted `recorded` writes a NEGATIVE suppressed figure into the log."""

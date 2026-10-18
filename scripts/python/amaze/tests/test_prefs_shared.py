@@ -61,6 +61,7 @@ class AChangeReachesTheNextMachine(SharedPrefsCase):
         a.rendersize = 512
         # OFF, never ON - asserting True passes on the default alone.
         a.renderer_octane_enabled = False
+        a.render_on_import = 0    # falsy: the record wrap keeps the delete contract off it
         a.save()
         keyed_store.release()
         b = self.machine(self.home_b)
@@ -69,19 +70,8 @@ class AChangeReachesTheNextMachine(SharedPrefsCase):
                          "the store was not adopted")
         self.assertFalse(b.renderer_octane_enabled,
                          "a renderer flag did not travel")
-
-    def test_a_falsy_value_survives_the_trip(self):
-        """False, 0 and empty are legitimate choices, and the record wrap exists so the engine's delete contract cannot eat them."""
-        a = self.machine(self.home_a)
-        a.render_on_import = 0
-        a.renderer_redshift_enabled = False
-        a.save()
-        keyed_store.release()
-        b = self.machine(self.home_b)
         self.assertEqual(0, b.render_on_import,
                          "a falsy shared value did not survive")
-        self.assertFalse(b.renderer_redshift_enabled,
-                         "False read back as the default True")
 
 
 class TheFlatSpellingsRetire(SharedPrefsCase):

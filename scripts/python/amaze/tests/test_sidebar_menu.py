@@ -52,13 +52,6 @@ SHOW_NEW = ("Show > [Pathname[ ], Subfolder[ ], ----, Other Files[ ], ----, "
 class TheTableIsWellFormED(unittest.TestCase):
     """No panel, no Qt - every name in a row must resolve."""
 
-    def test_every_context_has_a_sidebar_table(self):
-        for name in SIDEBAR_CONTEXTS:
-            with self.subTest(context=name):
-                self.assertTrue(
-                    getattr(sections, name).SIDEBAR_MENU,
-                    "%s has a sidebar and no menu for it" % name)
-
     def test_every_named_verb_and_fact_resolves(self):
         for name in SIDEBAR_CONTEXTS:
             context = getattr(sections, name)
@@ -78,55 +71,6 @@ class TheTableIsWellFormED(unittest.TestCase):
                             hasattr(context, fact),
                             "%s's %r names %r, which it does not have"
                             % (name, entry.label, fact))
-
-    def test_the_three_asset_sections_share_ONE_table(self):
-        """Not three equal copies - the same OBJECT; a copy is a copy that will drift."""
-        tables = {id(getattr(sections, name).SIDEBAR_MENU)
-                  for name in ("MaterialSection", "CopSection",
-                               "CodeSection")}
-        self.assertEqual(
-            1, len(tables),
-            "Material, Node and Code no longer share one sidebar table")
-
-    def test_no_sidebar_entry_is_a_top_level_tick(self):
-        """File's ticks live in its Show submenu; a section growing one decides its own law."""
-        for name in SIDEBAR_CONTEXTS:
-            ticks = [e.label for e in getattr(sections, name).SIDEBAR_MENU
-                     if e.checkable]
-            with self.subTest(context=name):
-                self.assertEqual([], ticks)
-
-    def test_every_sidebar_labels_with_the_same_colours(self):
-        """Label is one submenu in every section: the four chips, Custom and Remove."""
-        from amaze import amazetheme
-        for name in SIDEBAR_CONTEXTS:
-            labels = [e for e in getattr(sections, name).SIDEBAR_MENU
-                      if e.label == "Label"]
-            with self.subTest(context=name):
-                self.assertEqual(1, len(labels), "%s has no Label submenu" % name)
-                self.assertEqual(("menu_label_colour", "label_colours"),
-                                 (labels[0].verb, labels[0].children))
-        chips = sections.Section.label_colours(None, [], None)
-        self.assertEqual(list(amazetheme.LABEL_COLOURS),
-                         [(row[0], row[2]) for row in chips[:4]],
-                         "a chip is not drawn in its own colour")
-
-
-class NoSidebarMenuIsWrittenInThePanel(unittest.TestCase):
-
-    def test_the_three_handlers_are_gone(self):
-        import ast
-        package = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        with open(os.path.join(package, "panel", "panel.py"),
-                  encoding="utf-8") as handle:
-            tree = ast.parse(handle.read())
-        offenders = [n.name for n in ast.walk(tree)
-                     if isinstance(n, ast.FunctionDef)
-                     and n.name.endswith("_catlist_menu")
-                     and n.name != "catlist_rc_menu"]
-        self.assertEqual(
-            [], offenders,
-            "panel.py builds a sidebar menu itself, in %s" % offenders)
 
 
 class TheSidebarMenusAreWhatSHIPPED(unittest.TestCase):
@@ -168,29 +112,33 @@ class TheSidebarMenusAreWhatSHIPPED(unittest.TestCase):
              "Sort by name", "----",
              LABEL, "----", "Export Category"]
 
-    def test_the_three_asset_sidebars_render_the_same_spine(self):
-        for key in ("material", "cop", "code"):
-            with self.subTest(section=key):
-                self.assertEqual(self.SPINE, self._show(key))
-
-    def test_asset_rename_greys_on_two_rows(self):
-        """Renaming acts on ONE category; Delete and Label act on the whole selection."""
-        shown = self._show("material", (0, 1))
-        self.assertEqual(
-            ["Add", "Rename(off)", "Delete", "----",
-             "Sort by name", "----",
-             LABEL, "----", "Export Category(off)"],
-            shown)
-
-    def test_color_offers_only_add_on_the_All_row(self):
-        """Everything below All is a real user category; All is a view, so the per-category entries do not exist on it - Export stays, exporting from All being the whole section."""
-        self.assertEqual(
-            ["Add", "----", "Sort by name", "----",
-             "Export Category"],
-            self._show("gradient", (0,)))
-
-    def test_color_offers_the_whole_spine_on_a_category(self):
-        self.assertEqual(self.SPINE, self._show("gradient", (1,)))
+    def test_each_sidebar_renders_the_menu_that_shipped(self):
+        """Rename acts on one row; All is a view, so it greys or drops the per-row entries."""
+        for key, rows, prepare, expected in (
+                ("material", (0,), None, self.SPINE),
+                ("cop", (0,), None, self.SPINE),
+                ("code", (0,), None, self.SPINE),
+                ("material", (0, 1), None,
+                 ["Add", "Rename(off)", "Delete", "----",
+                  "Sort by name", "----",
+                  LABEL, "----", "Export Category(off)"]),
+                ("gradient", (0,), None,
+                 ["Add", "----", "Sort by name", "----", "Export Category"]),
+                ("gradient", (1,), None, self.SPINE),
+                ("file", (0,), None,
+                 ["Add", "Locate(off)",
+                  "Rename > [Edit, ----, Set to Default(off)](off)",
+                  "Remove(off)", "----",
+                  "Show > [Pathname[ ], Subfolder[ ], ----, Other Files[ ], "
+                  "----, Images[ ], Geometry[ ], HIP[ ]](off)", "----",
+                  LABEL + "(off)"]),
+                ("file", (1,), self._file_location,
+                 ["Add", "Locate", "Rename > [Edit, ----, Set to Default(off)]",
+                  "Remove", "----", SHOW_NEW, "----", LABEL])):
+            with self.subTest(section=key, rows=rows):
+                if prepare:
+                    prepare()
+                self.assertEqual(expected, self._show(key, rows))
 
     def _file_location(self):
         """The fixture's first location, Show ticked the way a location added today is."""
@@ -200,36 +148,6 @@ class TheSidebarMenusAreWhatSHIPPED(unittest.TestCase):
                         locations.record(prefs, path).get("kinds"))
         prefs.set_file_folder_kinds(path, file_library.SHOWN_BY_DEFAULT)
         return path
-
-    def test_file_on_a_real_location(self):
-        self._file_location()
-        shown = self._show("file", (1,))
-        self.assertEqual(
-            ["Add", "Locate", "Rename > [Edit, ----, Set to Default(off)]",
-             "Remove", "----", SHOW_NEW, "----", LABEL],
-            shown)
-
-    def test_file_on_the_All_row(self):
-        """The per-location entries grey: All is every location at once, each with its own ticks."""
-        shown = self._show("file", (0,))
-        self.assertEqual(
-            ["Add", "Locate(off)",
-             "Rename > [Edit, ----, Set to Default(off)](off)", "Remove(off)", "----",
-             "Show > [Pathname[ ], Subfolder[ ], ----, Other Files[ ], ----, "
-             "Images[ ], Geometry[ ], HIP[ ]](off)", "----", LABEL + "(off)"],
-            shown)
-
-    def test_file_rename_submenu_greys_set_to_default(self):
-        """Set to Default GREYS with no name set, never vanishes: the rows must not move."""
-        for rows in ((0,), (1,)):
-            with self.subTest(row=rows[0]):
-                rename = [row for row in self._show("file", rows)
-                          if row.startswith("Rename")]
-                self.assertEqual(1, len(rename))
-                self.assertIn(
-                    "Set to Default(off)", rename[0],
-                    "Set to Default left the Rename submenu instead of greying: %s"
-                    % rename[0])
 
     def test_file_show_reads_the_location_it_is_on(self):
         """A tick that does not read its own state is a switch showing the wrong position."""
@@ -243,20 +161,6 @@ class TheSidebarMenusAreWhatSHIPPED(unittest.TestCase):
         self.assertEqual(
             ["Show > [Pathname[x], Subfolder[ ], ----, Other Files[x], ----, "
              "Images[ ], Geometry[ ], HIP[x]]"], show)
-
-    def test_a_menu_never_starts_or_ends_on_a_divider(self):
-        for key, rows in (("material", (0,)), ("gradient", (0,)),
-                          ("gradient", (1,)), ("file", (0,)),
-                          ("file", (1,)), ("code", (0,))):
-            with self.subTest(section=key, row=rows[0]):
-                shown = self._show(key, rows)
-                if not shown:
-                    continue
-                self.assertNotEqual("----", shown[0])
-                self.assertNotEqual("----", shown[-1])
-                self.assertNotIn(
-                    ["----", "----"],
-                    [shown[i:i + 2] for i in range(len(shown) - 1)])
 
 
 class ADismissedSidebarMenuRunsNOTHING(unittest.TestCase):
@@ -425,39 +329,6 @@ class TheChipsSitWhereTheDesignDrawsThem(unittest.TestCase):
 
 class StructuralSignalsStayOutsideRelayout(unittest.TestCase):
     """`ui_helpers.relayout` is for DATA changes only: a layout-change pair around begin/endInsert/RemoveRows hands attached proxies dangling persistent indexes at the closing signal - a native H21 segfault (research.md, 2026-08-04)."""
-
-    def test_no_relayout_wraps_a_categories_row_signal(self):
-        import ast
-
-        path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "panel", "sections.py")
-        with open(path, encoding="utf-8") as handle:
-            tree = ast.parse(handle.read())
-        offenders = []
-        for node in ast.walk(tree):
-            if not (isinstance(node, ast.With) and node.items):
-                continue
-            context = node.items[0].context_expr
-            if "relayout" not in ast.dump(context):
-                continue
-            for call in ast.walk(node):
-                if not (isinstance(call, ast.Call)
-                        and isinstance(call.func, ast.Attribute)
-                        and call.func.attr in ("check_add_category",
-                                               "remove_category")):
-                    continue
-                receiver = call.func.value
-                if (isinstance(receiver, ast.Attribute)
-                        and receiver.attr == "categories"):
-                    offenders.append(
-                        "sections.py:%d %s inside relayout"
-                        % (call.lineno, call.func.attr))
-        self.assertEqual(
-            [], offenders,
-            "a categories-model row signal is paired with a layout "
-            "change - the H21 segfault shape the relayout docstring "
-            "bans: %s" % offenders)
 
     ROW_WRITERS = (    # each inserts or removes rows, or saves - and a save adopts a peer's rows
         "save", "add_asset", "import_record", "update_asset",

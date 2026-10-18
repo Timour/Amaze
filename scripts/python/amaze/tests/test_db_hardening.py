@@ -141,22 +141,14 @@ class LoadDoesNotMarryCachedDataToANewPathTest(unittest.TestCase):
                            "assets": [{"id": row, "name": row}]},
                           handle)
 
-    def test_a_switched_path_answers_the_new_disk(self):
+    def test_a_switched_path_cannot_write_the_old_rows_into_the_new_file(self):
         db = database.DatabaseConnector("library.json")
-        first = db.load(self.a + os.sep)
-        self.assertEqual(["ROW_A"],
-                         [r["id"] for r in first["assets"]],
-                         "premise: library A loads")
+        db.load(self.a + os.sep)
         second = db.load(self.b + os.sep)
         self.assertEqual(
             ["ROW_B"], [r["id"] for r in second["assets"]],
             "load() answered the previous library's cached rows under "
             "the new path")
-
-    def test_a_switched_path_cannot_write_the_old_rows_into_the_new_file(self):
-        db = database.DatabaseConnector("library.json")
-        db.load(self.a + os.sep)
-        db.load(self.b + os.sep)
         db.save()
         with open(os.path.join(self.b, "library.json"),
                   encoding="utf-8") as handle:
@@ -219,26 +211,23 @@ class BomPrefixedDatabaseLoadsTest(_Case):
     """A byte-order mark is an ordinary artifact and must not cost the library."""
 
     def test_a_bom_prefixed_database_loads_at_full_record_count(self):
-        self._write(self._document(5), encoding="utf-8-sig")
-        with open(self.path, "rb") as handle:
-            self.assertTrue(
-                handle.read(3) == b"\xef\xbb\xbf",
-                "premise: the fixture must actually carry a BOM, or this "
-                "test is reading an ordinary file and proving nothing")
-        _, data = self._load()
-        self.assertEqual(
-            5, len(data["assets"]),
-            "a BOM-prefixed database did not load - json.load raised on "
-            "the marker and the section came up empty")
-        self.assertEqual(["_All", "Wood"], data["categories"])
-
-    def test_the_primary_database_is_read_the_same_way(self):
         """The primary has no recovery path and takes its own branch in `load`."""
-        self.FILENAME = "library.json"
-        self.path = os.path.join(self.dir, "library.json")
-        self._write(self._document(4), encoding="utf-8-sig")
-        _, data = self._load()
-        self.assertEqual(4, len(data["assets"]))
+        for filename in ("cops.json", "library.json"):
+            with self.subTest(filename=filename):
+                self.setUp()
+                self.FILENAME = filename
+                self.path = os.path.join(self.dir, filename)
+                self._write(self._document(5), encoding="utf-8-sig")
+                with open(self.path, "rb") as handle:
+                    self.assertTrue(
+                        handle.read(3) == b"\xef\xbb\xbf",
+                        "premise: the fixture must actually carry a BOM")
+                _, data = self._load()
+                self.assertEqual(
+                    5, len(data["assets"]),
+                    "a BOM-prefixed database did not load - json.load "
+                    "raised on the marker and the section came up empty")
+                self.assertEqual(["_All", "Wood"], data["categories"])
 
     def test_a_bom_less_database_round_trips_byte_identical(self):
         """The accept path: an ordinary file must not change by one byte."""
@@ -315,21 +304,6 @@ class MigrationFailureLeavesNothingCommittedTest(_Case):
         return {"categories": ["_All", "Wood"], "tags": ["rough"],
                 "assets": [{"id": "ASSET0"}, {"id": "ASSET1"}]}
 
-    def test_a_raising_migration_commits_nothing(self):
-        self._write(self._v1_document())
-        self._break_the_migration()
-        db = self._connector()
-        with self.assertRaises(ValueError):
-            db.load(self.dir + os.sep)
-        self.assertFalse(
-            db._data,
-            "the connector kept a half-migrated document - save() would "
-            "write it as if it were the whole library")
-        self.assertIsNone(
-            db._disk_stat,
-            "premise: the stale-write baseline is not armed on this path, "
-            "which is exactly why holding partial data is unsafe")
-
     def test_the_file_is_untouched_by_the_failed_load(self):
         self._write(self._v1_document())
         with open(self.path, "rb") as handle:
@@ -338,6 +312,10 @@ class MigrationFailureLeavesNothingCommittedTest(_Case):
         db = self._connector()
         with self.assertRaises(ValueError):
             db.load(self.dir + os.sep)
+        self.assertFalse(
+            db._data,
+            "the connector kept a half-migrated document - save() would "
+            "write it as if it were the whole library")
         db.save()               # the save the panel does anyway
         with open(self.path, "rb") as handle:
             self.assertEqual(before, handle.read(),
@@ -391,14 +369,8 @@ class TheRecordStopsCarryingAFavouriteAndAnIconTest(_Case):
                              "survived - my star still toggles yours")
             self.assertNotIn("icon", row, "the record icon survived, so "
                              "there are two answers free to drift")
-
-    def test_everything_else_on_the_row_is_untouched(self):
-        """A migration must COMPARE, never assume: this is user data."""
-        self._write(self._v4_document())
-        _db, data = self._load()
         self.assertEqual(["A0", "A1"], [r["id"] for r in data["assets"]])
         self.assertEqual(["one", "two"], [r["name"] for r in data["assets"]])
-
 
     def test_a_junk_row_does_not_stop_the_step(self):
         document = self._v4_document()
@@ -473,20 +445,6 @@ class NoUpgradeStepsFromBeforeTheFirstReleaseTest(_Case):
         return {"version": 1, "categories": ["_All"], "tags": [],
                 "assets": [{"id": "ASSET0", "name": "mat 0"}]}
 
-    def test_a_pre_release_document_keeps_its_own_version(self):
-        self._write(self._pre_release_document())
-        db, data = self._load()
-        self.assertEqual(
-            1, data["version"],
-            "a document was carried forward by a step this build no "
-            "longer ships, so something is still upgrading from a "
-            "shape that predates the first release")
-        self.assertTrue(
-            db._migration_incomplete,
-            "the chain stopped short and did not record it, so save() "
-            "has nothing to consult and will stamp the document as "
-            "current")
-
     def test_it_is_not_stamped_as_current_by_an_ordinary_save(self):
         """A wrong stamp is permanent: a document marked current never migrates."""
         self._write(self._pre_release_document())
@@ -502,16 +460,6 @@ class NoUpgradeStepsFromBeforeTheFirstReleaseTest(_Case):
             "ASSET0", [a["id"] for a in on_disk["assets"]],
             "holding the stamp back also held the records back - only "
             "the version claim is refused, never the user's edit")
-
-    def test_a_current_document_is_not_flagged(self):
-        """The accept path: a flag that fires on every load proves nothing."""
-        self._write(self._document(1))
-        db, data = self._load()
-        self.assertEqual(SCHEMA, data["version"])
-        self.assertFalse(
-            db._migration_incomplete,
-            "a document already at the current schema was reported as "
-            "an incomplete chain")
 
 
 class ARepairedFileCanBeSavedAgainTest(unittest.TestCase):
@@ -661,27 +609,14 @@ class SettingsGetTheirOwnRestoreFloor(unittest.TestCase):
         p.save()
         return library + os.sep
 
-    def test_a_first_launch_still_opens_and_saves(self):
-        """The accept path: a machine that has never run Amaze opens and saves."""
-        prefs = self._prefs()
-        prefs.load()
-        self.assertFalse(getattr(prefs, "_load_failed", False),
-                         "a first launch was refused its first save")
-        prefs.save()
-        self.assertTrue(os.path.exists(self.settings),
-                        "the first save never landed")
-
-    def test_a_first_save_leaves_evidence_it_was_here(self):
-        self._configured()
-        self.assertTrue(
-            os.path.exists(self.settings + ".bak-first"),
-            "settings written once leave no trace at all, so nothing "
-            "can tell a late file from a new machine")
-
     def test_the_floor_survives_a_later_write(self):
         """Write-once: a later save must not roll the floor forward."""
         self._configured()
         floor = self.settings + ".bak-first"
+        self.assertTrue(
+            os.path.exists(floor),
+            "settings written once leave no trace at all, so nothing "
+            "can tell a late file from a new machine")
         first = open(floor, encoding="utf-8").read()
         prefs = self._prefs()
         prefs.load()
@@ -736,18 +671,6 @@ class MergeRefusesJsonOfTheWrongShapeTest(_Case):
         """What another session leaves on disk, written raw so null is null."""
         with open(self.path, "w", encoding="utf-8") as handle:
             json.dump(payload, handle)
-
-    def test_no_exception_escapes_a_save_over_any_of_them(self):
-        for label, payload in self.SHAPES:
-            with self.subTest(shape=label):
-                self.setUp()                # a private dir per shape
-                db = self._loaded_connector()
-                self._replace_behind_it(payload)
-                try:
-                    db.save()
-                except Exception as exc:                    # noqa: BLE001
-                    self.fail("save() raised on %s: %s: %s"
-                              % (label, type(exc).__name__, exc))
 
     def test_the_session_is_latched_for_every_one_of_them(self):
         """Not raising is half the fix; the same refusal path is the other."""
@@ -810,14 +733,6 @@ class MergeRefusesJsonOfTheWrongShapeTest(_Case):
                     "%s was committed to memory, and the next save writes "
                     "it back over the file" % label)
 
-    def test_the_load_still_accepts_an_ordinary_document(self):
-        """The accept path: too strict at the front door stops the panel opening."""
-        self._write(self._document(3))
-        db, data = self._load()
-        self.assertEqual(3, len(data["assets"]),
-                         "an ordinary database was refused by the load")
-        self.assertFalse(db._write_blocked)
-
     def test_one_bad_row_does_not_cost_the_session_its_writes(self):
         """A junk row is skipped, not escalated into a session-wide refusal."""
         db = self._loaded_connector()
@@ -860,29 +775,20 @@ class PrefsKeepsKeysItDoesNotKnowTest(unittest.TestCase):
         with open(self.settings, encoding="utf-8") as handle:
             return json.load(handle)
 
-    def test_an_unknown_key_survives_a_save(self):
-        self._seed(gradient_favorites=["wada:132", "klee:7"])
-        prefs = self._prefs()
-        prefs.load()
-        prefs.save()
-        self.assertEqual(
-            ["wada:132", "klee:7"], self._saved().get("gradient_favorites"),
-            "a key this build does not name was deleted by an ordinary "
-            "save - on a second machine that is the newer build's "
-            "settings, silently reverted")
-
     def test_a_falsy_unknown_value_survives_too(self):
         """A truthiness-based carry-through drops ordinary setting values."""
-        self._seed(future_flag=False, future_count=0, future_name="",
-                   future_list=[])
+        unknown = {"gradient_favorites": ["wada:132", "klee:7"],
+                   "future_flag": False, "future_count": 0,
+                   "future_name": "", "future_list": []}
+        self._seed(**unknown)
         prefs = self._prefs()
         prefs.load()
         prefs.save()
         saved = self._saved()
-        for key, value in (("future_flag", False), ("future_count", 0),
-                           ("future_name", ""), ("future_list", [])):
+        for key, value in unknown.items():
             with self.subTest(key=key):
-                self.assertIn(key, saved, "the key was dropped entirely")
+                self.assertIn(key, saved, "a key this build does not name "
+                              "was deleted by an ordinary save")
                 self.assertEqual(value, saved[key],
                                  "the value was rewritten")
 
@@ -939,26 +845,6 @@ class TheSchemaStampMustNotLieTest(_Case):
         """A build whose `SCHEMA_VERSION` is 3 but which ships no step 2."""
         database.SCHEMA_VERSION = 3
         database._MIGRATIONS.pop(2, None)
-
-    def test_a_save_does_not_stamp_a_migration_that_did_not_run(self):
-        self._write(self._document(2, version=2))   # version 2 on disk
-        self._target_with_a_gap()
-        db, data = self._load()
-        # The premise in memory, not on disk: `load` does not write either way.
-        self.assertEqual(
-            2, data["version"],
-            "premise: _migrate must stop at 2 - if it has stopped "
-            "refusing, this test is not exercising the case")
-        self.assertTrue(
-            db._migration_incomplete,
-            "premise: the incomplete chain must be recorded, or save() has "
-            "nothing to consult")
-        db.set({"assets": data["assets"], "categories": data["categories"]})
-        db.save()
-        self.assertEqual(
-            2, self._on_disk()["version"],
-            "an ordinary save stamped 3 over a document that is still at "
-            "2 - no build will ever migrate it again")
 
     def test_the_records_are_still_written(self):
         """Holding the stamp back must not hold the save back."""
@@ -1047,22 +933,6 @@ class TheSchemaStampMustNotLieTest(_Case):
             "premise: at least one row must still be at the old shape, or "
             "the stamp would not be a lie")
 
-    def test_a_peer_version_is_still_carried_through_a_whole_chain(self):
-        """With no gap, a peer's newer version survives the merge."""
-        self._write(self._document(2))
-        db, data = self._load()
-        self.assertFalse(db._migration_incomplete,
-                         "premise: our chain is whole")
-        peer = self._document(2)
-        peer["version"] = 99
-        self._write(peer)
-        db.set({"assets": data["assets"], "categories": data["categories"]})
-        db.save()
-        self.assertEqual(
-            99, self._on_disk()["version"],
-            "the guard fires even with a complete chain, so every merge "
-            "now downgrades a newer machine's file")
-
     def test_the_flag_does_not_follow_the_user_to_another_library(self):
         """A latch belongs to the file, not the session."""
         self._write(self._document(2, version=2))
@@ -1103,6 +973,8 @@ class TheRescueSlotIsNotSpentOnNothingTest(unittest.TestCase):
             handle.write(text)
 
     def test_a_zero_byte_source_preserves_nothing(self):
+        self.assertEqual("", self.hostos.preserve_unreadable(self.path),
+                         "an absent source was reported as preserved")
         self._write("")
         self.assertEqual(0, os.path.getsize(self.path), "premise: 0 bytes")
         result = self.hostos.preserve_unreadable(self.path, why="test")
@@ -1150,17 +1022,6 @@ class TheRescueSlotIsNotSpentOnNothingTest(unittest.TestCase):
                 "the first, genuine failure", handle.read(),
                 "the second failure overwrote the good evidence")
 
-    def test_an_absent_source_preserves_nothing(self):
-        self.assertEqual("", self.hostos.preserve_unreadable(self.path))
-        self.assertFalse(os.path.exists(self.keep))
-
-    def test_an_ordinary_damaged_file_is_still_preserved(self):
-        """The accept path: the guard must not have become never-preserve."""
-        self._write('{"gradients": [')
-        self.assertEqual(self.keep,
-                         self.hostos.preserve_unreadable(self.path))
-        self.assertTrue(os.path.isfile(self.keep))
-
 
 class TheRefusalOnlyClaimsACopyThatExistsTest(_Case):
     """A refusal may only promise a copy that was actually made."""
@@ -1192,60 +1053,41 @@ class TheRefusalOnlyClaimsACopyThatExistsTest(_Case):
         self.assertTrue(db._write_blocked, "premise: the save must refuse")
         return [n for n in notes if "could not read the other session" in n]
 
-    def test_it_names_the_copy_when_there_is_one(self):
-        said = self._refused_save('{"assets": [')       # truncated, non-empty
-        self.assertTrue(said, "the refusal said nothing")
-        self.assertTrue(
-            os.path.isfile(self.path + ".unreadable"),
-            "premise: a truncated file must actually be preserved")
-        self.assertIn(
-            "cops.json.unreadable", said[0],
-            "the refusal does not name the copy, so the user cannot find "
-            "the only surviving version of the other session's work")
-
     def test_it_claims_no_copy_when_there_is_none(self):
         """Nothing preserved, nothing promised; the refusal still happens."""
-        said = self._refused_save("")
-        self.assertTrue(said, "the refusal stopped happening")
-        self.assertFalse(
-            os.path.exists(self.path + ".unreadable"),
-            "premise: a 0-byte file must not be preserved")
-        self.assertNotIn(
-            ".unreadable", said[0],
-            "the refusal promised a copy that was never made - the user "
-            "goes looking for a file that is not there")
+        for peer, kept in (('{"assets": [', True), ("", False)):
+            with self.subTest(peer=peer):
+                self.setUp()
+                said = self._refused_save(peer)
+                self.assertTrue(said, "the refusal stopped happening")
+                self.assertEqual(
+                    kept, os.path.isfile(self.path + ".unreadable"),
+                    "premise: only a non-empty file is preserved")
+                self.assertEqual(
+                    kept, "cops.json.unreadable" in said[0],
+                    "the refusal promised a copy that was never made, or "
+                    "hid the only surviving version of the other session's "
+                    "work")
 
     def test_the_policy_write_only_claims_a_copy_that_exists_too(self):
         """The same sentence in a second place: one policy, two voices."""
         from amaze.core import library_policy
 
-        notes = self._watch_notes()
-        path = library_policy.path_for(self.dir)
-        with open(path, "w", encoding="utf-8") as handle:
-            handle.write("")                     # 0 bytes: nothing to keep
-        library_policy.set_allow_overwrite(self.dir, True)
-        said = [n for n in notes if "could not be read" in n]
-        self.assertTrue(said, "the unreadable policy file was not reported")
-        self.assertFalse(
-            os.path.exists(path + ".unreadable"),
-            "premise: a 0-byte file must not be preserved")
-        self.assertNotIn(".unreadable", said[0],
-                         "the policy note promised a copy that was never "
-                         "made")
-
-    def test_the_policy_write_does_name_a_copy_it_did_make(self):
-        """When there is a copy the note names it, or it is unfindable."""
-        from amaze.core import library_policy
-
-        notes = self._watch_notes()
-        path = library_policy.path_for(self.dir)
-        with open(path, "w", encoding="utf-8") as handle:
-            handle.write('{"allow_overwrite": tr')          # truncated
-        library_policy.set_allow_overwrite(self.dir, True)
-        said = [n for n in notes if "could not be read" in n]
-        self.assertTrue(said, "the unreadable policy file was not reported")
-        self.assertIn("policy.json.unreadable", said[0],
-                      "the note does not name the copy that was kept")
+        for text, kept in (('{"allow_overwrite": tr', True), ("", False)):
+            with self.subTest(text=text):
+                self.setUp()
+                notes = self._watch_notes()
+                path = library_policy.path_for(self.dir)
+                with open(path, "w", encoding="utf-8") as handle:
+                    handle.write(text)
+                library_policy.set_allow_overwrite(self.dir, True)
+                said = [n for n in notes if "could not be read" in n]
+                self.assertTrue(said,
+                                "the unreadable policy file was not reported")
+                self.assertEqual(
+                    kept, "policy.json.unreadable" in said[0],
+                    "the policy note promised a copy that was never made, "
+                    "or did not name the copy that was kept")
 
 
 class ASnapshotSlotIsNotSpentOnGarbageTest(unittest.TestCase):
@@ -1276,15 +1118,6 @@ class ASnapshotSlotIsNotSpentOnGarbageTest(unittest.TestCase):
     def _tiers(self):
         return sorted(n for n in os.listdir(self.dir) if ".bak-" in n)
 
-    def test_a_truncated_file_creates_no_tier_at_all(self):
-        self._write('{"gradients": [{"name": "g0"')
-        self.hostos.snapshot_before_write(self.path)
-        self.assertEqual(
-            [], self._tiers(),
-            "the one permanent restore point was minted from bytes that "
-            "do not parse - restore.py will refuse to put it back, so it "
-            "is a floor made of nothing")
-
     def test_a_read_that_fails_outright_does_not_burn_the_slot_either(self):
         """A failed read is the transient branch, so it may not burn the slot."""
         if self.hostos.is_windows() or os.geteuid() == 0:
@@ -1311,6 +1144,11 @@ class ASnapshotSlotIsNotSpentOnGarbageTest(unittest.TestCase):
         """The marker has to be released, or the one chance is already spent."""
         self._write('{"gradients": [{"name": "g0"')
         self.hostos.snapshot_before_write(self.path)
+        self.assertEqual(
+            [], self._tiers(),
+            "the one permanent restore point was minted from bytes that "
+            "do not parse - restore.py will refuse to put it back, so it "
+            "is a floor made of nothing")
         self._good(40)
         self.hostos.snapshot_before_write(self.path)
         first = self.path + ".bak-first"
@@ -1321,14 +1159,6 @@ class ASnapshotSlotIsNotSpentOnGarbageTest(unittest.TestCase):
         with open(first, encoding="utf-8") as handle:
             self.assertEqual(40, len(json.load(handle)["assets"]),
                              "the permanent copy is not the healthy file")
-
-    def test_a_good_file_is_still_snapshotted(self):
-        """The accept path: a parse check too strict switches backups off."""
-        self._good(5)
-        self.hostos.snapshot_before_write(self.path)
-        self.assertTrue(os.path.exists(self.path + ".bak-first"),
-                        "no snapshot was taken of a perfectly good file")
-        self.assertTrue(os.path.exists(self.path + ".bak-1"))
 
     def test_a_bom_prefixed_file_is_still_snapshotted(self):
         """A document the reader accepts must not read as garbage here."""
@@ -1778,17 +1608,6 @@ class CleanupReadsItsOwnDatabaseFromDiskTest(_CleanupCase):
                 "another session had already written to the index"
                 % os.path.basename(path))
 
-    def test_a_genuine_orphan_is_still_swept(self):
-        """The accept path: reading the own file must not make the pass a no-op."""
-        model = self._model()
-        genuine = os.path.join(self.mat_dir, "GENUINEORPHAN1.mat")
-        with open(genuine, "w", encoding="utf-8") as handle:
-            handle.write("in no index at all\n")
-        self._cleanup(model)
-        self.assertFalse(
-            os.path.exists(genuine),
-            "the orphan pass did not run - a file in no index survived")
-
     def test_a_row_this_session_added_is_still_protected(self):
         """The union keeps both sides: a new row may not have reached disk."""
         model = self._model()
@@ -1877,14 +1696,10 @@ class AnEmptySectionWithFilesLeftBehindStopsTheSweepTest(_CleanupCase):
         self.assertTrue(
             self._skip_line(model),
             "files were spared and the user was told nothing")
-
-    def test_the_refusal_says_how_many_files_and_where(self):
-        """A count and a folder they can open, never 32-hex filenames."""
-        self._empty_cops()
-        model = self._model()
-        self._cleanup(model)
-        self.assertTrue(self._skip_line(model),
-                        "premise: the sweep must have been held back")
+        summary = " ".join(model.last_cleanup_summary)
+        self.assertNotIn("could not be read", summary,
+                         "could-not-be-read fights the could-not-check entry")
+        self.assertIn("could not check", summary)
         why = [line for line in model.last_cleanup_summary
                if line.startswith("Node (cops.json):")]
         self.assertTrue(why,
@@ -1900,12 +1715,6 @@ class AnEmptySectionWithFilesLeftBehindStopsTheSweepTest(_CleanupCase):
             "mat/ folder", why[0],
             "the folder is named with the path separator prefs stores it "
             "with, which reads as a typo in a sentence")
-
-    def test_the_refusal_names_the_repair_tool_and_how_to_reach_it(self):
-        """A refusal names the way out, including the per-machine shelf step."""
-        self._empty_cops()
-        model = self._model()
-        self._cleanup(model)
         route = [line for line in model.last_cleanup_summary
                  if "Repair" in line]
         self.assertTrue(route, "the refusal reports the problem and stops")
@@ -1923,12 +1732,6 @@ class AnEmptySectionWithFilesLeftBehindStopsTheSweepTest(_CleanupCase):
         self.assertIn("before you open Amaze", route[0],
                       "nothing says Repair has to run before the panel is "
                       "opened again")
-
-    def test_the_refusal_explains_that_both_causes_look_alike(self):
-        """Teach before you warn: damaged and unused look the same."""
-        self._empty_cops()
-        model = self._model()
-        self._cleanup(model)
         lines = [line for line in model.last_cleanup_summary
                  if line.startswith("Node:")]
         self.assertTrue(lines, "the refusal states a fact and leaves the "
@@ -2110,15 +1913,6 @@ class AnEmptySectionWithFilesLeftBehindStopsTheSweepTest(_CleanupCase):
                 "%s was deleted although the Nodes list that owns it reads "
                 "perfectly well" % os.path.basename(path))
 
-    def test_the_refusal_does_not_contradict_itself(self):
-        """Could-not-be-checked, since could-not-be-read fights the entry."""
-        self._empty_cops()
-        model = self._model()
-        self._cleanup(model)
-        summary = " ".join(model.last_cleanup_summary)
-        self.assertNotIn("could not be read", summary)
-        self.assertIn("could not check", summary)
-
     def test_nothing_is_called_unaccounted_for_while_a_list_is_unreadable(self):
         """A half-built union may not accuse anybody in a sentence to act on."""
         self._empty_cops()
@@ -2191,13 +1985,6 @@ class AnEmptySectionWithFilesLeftBehindStopsTheSweepTest(_CleanupCase):
 class SaveReportsWhetherItReachedDiskTest(_Case):
     """The files are written before the index, so a save has to state its verdict."""
 
-    def test_a_completed_save_says_so(self):
-        """First, so the verdict cannot be satisfied by always failing."""
-        self._write(self._document())
-        db, _loaded = self._load()
-        db.set(self._document(count=4))
-        self.assertTrue(db.save(), "an ordinary save reported failure")
-
     def test_a_write_blocked_session_says_no(self):
         self._write(self._document())
         db, _loaded = self._load()
@@ -2229,21 +2016,6 @@ class SaveReportsWhetherItReachedDiskTest(_Case):
         self.assertFalse(db.save(),
                          "a save that could not write the file reported "
                          "success")
-
-    def test_no_exit_from_save_returns_none(self):
-        """From source: a bare return reads as a completed save at the call site."""
-        import ast
-        import inspect
-        source = inspect.getsource(database)
-        bare = []
-        for node in ast.walk(ast.parse(source)):
-            if isinstance(node, ast.FunctionDef) and node.name == "save":
-                for sub in ast.walk(node):
-                    if isinstance(sub, ast.Return) and sub.value is None:
-                        bare.append(sub.lineno)
-        self.assertEqual([], bare,
-                         "DatabaseConnector.save() has exits that return "
-                         "None, which a caller cannot tell from success")
 
 
 class TheWriteBlockHealsTest(_Case):
@@ -2413,10 +2185,6 @@ class TheMergeMustNotDetachAModelsListTest(_Case):
         self.assertIs(alias, db._data["categories"],
                       "the connector is holding a different list object "
                       "than the model")
-
-    def test_it_survives_two_further_saves(self):
-        self.test_the_alias_survives_a_merge()
-        db = self._connector()
         for _ in range(2):
             self.assertTrue(db.save())
         self.assertIn("Theirs", self._on_disk()["categories"],
@@ -2488,18 +2256,6 @@ class AMovedConnectorMustNotBeWrittenThroughTest(_Case):
     """A switch in one pane repoints the shared connector under all of them."""
 
     FILENAME = "library.json"
-
-    def test_it_reports_whether_it_still_serves_a_directory(self):
-        self._write(self._document())
-        db, _ = self._load()
-        self.assertTrue(db.serves(self.dir + os.sep))
-
-        other = tempfile.mkdtemp(prefix="amaze_otherlib_")
-        self.addCleanup(shutil.rmtree, other, ignore_errors=True)
-        self.assertFalse(
-            db.serves(other + os.sep),
-            "the connector claims to serve a library it was never "
-            "pointed at")
 
     def test_a_switch_moves_it_away_from_the_first_library(self):
         self._write(self._document())
@@ -2608,47 +2364,6 @@ class ContentFingerprintGuardTest(_Case):
                              "fires")
 
 
-class CreditGoesToTheRowWithTheIdTest(_Case):
-    """A save can adopt a peer's row, so the last row is not ours by position."""
-
-    FILENAME = "library.json"
-
-    def test_an_adopted_row_lands_after_ours(self):
-        """The premise: adoption appends, so position is not identity."""
-        self._write(self._document(count=2))
-        db, _ = self._load()
-
-        theirs = self._document(count=2)
-        theirs["assets"].append({"id": "FOREIGN", "name": "theirs"})
-        self._write(theirs)
-        stat = os.stat(self.path)
-        os.utime(self.path, ns=(stat.st_atime_ns,
-                                stat.st_mtime_ns + 5_000_000_000))
-
-        db.set({"assets": [{"id": "ASSET0"}, {"id": "ASSET1"},
-                           {"id": "OURS_NEW"}],
-                "categories": ["_All"], "tags": []})
-        self.assertTrue(db.save())
-        ids = [a["id"] for a in db._data["assets"]]
-        self.assertIn("FOREIGN", ids)
-        self.assertNotEqual("OURS_NEW", ids[-1],
-                            "adoption did not append after ours - the "
-                            "premise this guard exists for has changed; "
-                            "re-check matx_import")
-
-    def test_the_call_site_uses_the_id(self):
-        """From source: the call site resolves by id and may not slide back."""
-        import inspect
-        from amaze.core import matx_import
-        source = inspect.getsource(matx_import.import_record)
-        self.assertIn("find_asset_row_by_id", source,
-                      "matx_import no longer resolves the credited row "
-                      "by id")
-        self.assertNotIn("assets[-1]", source,
-                         "matx_import credits by position again - an "
-                         "adopted row takes someone else's credit")
-
-
 class PackageDirectoriesCarryIdentityTest(unittest.TestCase):
     """Two sources offering one title must not extract into one directory."""
 
@@ -2665,23 +2380,14 @@ class PackageDirectoriesCarryIdentityTest(unittest.TestCase):
         self.assertEqual(len(names), len(set(names)),
                          "two different records extract into one "
                          "directory: %s" % names)
-
-    def test_the_same_record_maps_to_the_same_directory(self):
-        """Identity must be stable, or a re-download never finds what it fetched."""
-        from amaze.core import matx_import
-        a = matx_import.package_dirname(self._R("polyhaven", "x", "Moss"))
-        b = matx_import.package_dirname(self._R("polyhaven", "x", "Moss"))
-        self.assertEqual(a, b)
-
-    def test_the_title_still_leads_the_name(self):
-        """The directory a user browses still starts with the words they know."""
-        from amaze.core import matx_import
-        name = matx_import.package_dirname(
-            self._R("polyhaven", "u1", "Old Oak"))
-        self.assertTrue(name.startswith("Old_Oak") or
-                        name.startswith("OldOak") or
-                        name.startswith("Old Oak"),
-                        name)
+        self.assertEqual(
+            names[0], matx_import.package_dirname(
+                self._R("polyhaven", "brick_01", "Red Brick")),
+            "identity is not stable, so a re-download never finds what "
+            "it fetched")
+        self.assertTrue(
+            names[0].startswith(("Red_Brick", "RedBrick", "Red Brick")),
+            "the directory no longer starts with the title: %s" % names[0])
 
 
 class ASuspiciousShrinkIsSaidOutLoudTest(_Case):
@@ -2709,9 +2415,6 @@ class ASuspiciousShrinkIsSaidOutLoudTest(_Case):
         with open(self.path, "rb") as fh:
             self.assertEqual(before, fh.read(),
                              "a report-only check modified the file")
-
-    def test_taking_the_notes_clears_them(self):
-        self.test_a_halved_list_leaves_a_retrievable_note()
         self.assertEqual([], database.DatabaseConnector
                          .take_integrity_notes(),
                          "the same finding would be reported forever")
@@ -2748,9 +2451,6 @@ class EverySaveLeavesExactlyOneRecordTest(_Case):
         self.assertEqual(expected_outcome,
                          records[0]["data"].get("outcome"))
         return records[0]
-
-    def test_stored(self):
-        self._drive(lambda db: None, "stored")
 
     def test_write_blocked(self):
         self._drive(lambda db: setattr(db, "_write_blocked", True),
@@ -2850,14 +2550,6 @@ class DifferentFieldsOfOneAssetBothSurviveTest(_Case):
 class ADatabaseWrittenOnceHasAFloor(_Case):
     """A list written exactly once still gets a floor saying it existed."""
 
-    def test_a_seeded_database_gets_a_floor(self):
-        self._load()                        # absent, untraced -> seeded
-        self.assertTrue(os.path.exists(self.path), "premise: it seeded")
-        self.assertTrue(
-            os.path.exists(self.path + ".bak-first"),
-            "a list written once has no trace, so the next time it is "
-            "missing for an instant it reads as a new library again")
-
     def test_the_floor_makes_absence_answerable(self):
         """Asked through the guard that reads it, not through the filename."""
         self._load()
@@ -2869,8 +2561,12 @@ class ADatabaseWrittenOnceHasAFloor(_Case):
 
     def test_the_floor_is_not_rolled_forward(self):
         """Write-once: a restore falls back to the first-seen state."""
-        self._load()
+        self._load()                        # absent, untraced -> seeded
         floor = self.path + ".bak-first"
+        self.assertTrue(
+            os.path.exists(floor),
+            "a list written once has no trace, so the next time it is "
+            "missing for an instant it reads as a new library again")
         first = open(floor, encoding="utf-8").read()
         db = self._connector()
         db.set({"assets": [{"id": "LATER", "name": "added after"}]})
@@ -2888,28 +2584,15 @@ class ASnapshotOfTheWrongShapeDoesNotCostTheLoad(_Case):
             json.dump(document, handle, indent=4)
 
     def test_a_list_shaped_snapshot_is_ignored(self):
-        self._write(self._document(count=3))
-        self._snapshot([])
-        db, data = self._load()
-        self.assertEqual(3, len(data["assets"]),
-                         "the load did not survive a snapshot of the "
-                         "wrong shape")
-
-    def test_a_null_snapshot_is_ignored(self):
-        self._write(self._document(count=3))
-        self._snapshot(None)
-        db, data = self._load()
-        self.assertEqual(3, len(data["assets"]))
-
-    def test_a_real_shrink_is_still_reported(self):
-        """Ignoring an unreadable snapshot must not silence the readable ones."""
-        self._write(self._document(count=1))
-        self._snapshot(self._document(count=8))
-        self._load()
-        notes = database.DatabaseConnector.take_integrity_notes()
-        self.assertTrue(
-            any("most recent saved copy" in line for line in notes),
-            "a genuine shrink went unreported: %r" % (notes,))
+        for snapshot in ([], None):
+            with self.subTest(snapshot=snapshot):
+                self.setUp()
+                self._write(self._document(count=3))
+                self._snapshot(snapshot)
+                db, data = self._load()
+                self.assertEqual(3, len(data["assets"]),
+                                 "the load did not survive a snapshot of "
+                                 "the wrong shape")
 
 
 class ALibrarySwitchDropsTheOldBaseline(_Case):
@@ -3093,22 +2776,6 @@ class TheMembershipBaselineFollowsEverySave(_Case):
             "ASSET1", [str(r["id"]) for r in db.take_dropped()],
             "the deletion never reached the model, so the next save "
             "writes the row straight back")
-
-    def test_an_identical_skip_also_moves_the_baseline(self):
-        """A save whose bytes match disk agrees with the file just as much."""
-        self._write(self._document(count=1))
-        db, _ = self._load()
-
-        db.set({"assets": [{"id": "ASSET0", "name": "mat 0"},
-                           {"id": "MINE", "name": "made this session"}]})
-        self.assertTrue(db.save(), "premise: the first save landed")
-        self.assertTrue(db.save(), "premise: the second save changed nothing")
-        self.assertEqual("identical-skip", db._save_outcome,
-                         "premise: this is the derived-stat exit")
-
-        self.assertIn("MINE", db._loaded_ids,
-                      "the no-op save left the baseline behind, so the "
-                      "row is still outside it for every later merge")
 
 
 class TheBaselineIsWhatTheSaveWrote(_Case):

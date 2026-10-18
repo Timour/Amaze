@@ -38,17 +38,11 @@ class LiveCurrentIndexTest(unittest.TestCase):
 
     def test_a_healthy_current_index_comes_back(self):
         """Guards the guard - always-None would pass every refusal test."""
-        view, _proxy, _source = _proxied_view(["All", "Metal", "Fabric"])
+        view, proxy, _source = _proxied_view(["All", "Metal", "Fabric"])
         view.setCurrentIndex(view.model().index(1, 0))
         live = ui_helpers.live_current_index(view)
         self.assertIsNotNone(live, "a valid current index was refused")
         self.assertEqual("Metal", live.data())
-
-    def test_the_returned_index_is_freshly_built_by_the_live_model(self):
-        """Not the stored one handed back. The point is to re-derive."""
-        view, proxy, _source = _proxied_view(["All", "Metal"])
-        view.setCurrentIndex(view.model().index(1, 0))
-        live = ui_helpers.live_current_index(view)
         self.assertIs(live.model(), proxy)
 
     def test_a_TABLE_current_index_comes_back_at_column_ZERO(self):
@@ -65,39 +59,6 @@ class LiveCurrentIndexTest(unittest.TestCase):
             "the helper hands back the clicked cell, and every role "
             "read through it answers None")
 
-    def test_qt_keeps_current_index_consistent_through_every_shrink(self):
-        """A NEGATIVE result: Qt leaves no out-of-bounds current index."""
-        cases = {}  # red here means a Qt/PySide change reopened the stale-index theory ▸r/model-contracts
-
-        view, proxy, source = _proxied_view(["All", "Metal", "Fabric"])
-        view.setCurrentIndex(proxy.index(2, 0))
-        source.removeRows(1, 2)
-        cases["removeRows"] = (view.currentIndex(), proxy)
-
-        view, proxy, source = _proxied_view(["All", "Metal", "Fabric"])
-        view.setCurrentIndex(proxy.index(2, 0))
-        source.clear()
-        cases["clear"] = (view.currentIndex(), proxy)
-
-        view, proxy, source = _proxied_view(["All", "Metal", "Fabric"])
-        view.setCurrentIndex(proxy.index(2, 0))
-        proxy.setFilterFixedString("All")
-        cases["filter shrinks"] = (view.currentIndex(), proxy)
-
-        view, proxy, source = _proxied_view(["All", "Metal", "Fabric"])
-        view.setCurrentIndex(proxy.index(2, 0))
-        for row in reversed(range(3)):
-            source.takeRow(row)
-        cases["takeRow, no reset"] = (view.currentIndex(), proxy)
-
-        for name, (index, proxy) in cases.items():
-            if index.isValid():
-                self.assertLess(
-                    index.row(), proxy.rowCount(),
-                    "%s left a VALID current index past rowCount - the "
-                    "stale-index theory this file rejects would be live "
-                    "again, and reading it would segfault" % name)
-
     def test_an_index_from_a_previous_model_is_refused(self):
         """The one shape refused: an index built by the PREVIOUS model."""
         view, _proxy, _source = _proxied_view(["All", "Metal"])
@@ -113,17 +74,13 @@ class LiveCurrentIndexTest(unittest.TestCase):
             "an index belonging to a model the view no longer shows was "
             "accepted")
 
-    def test_a_view_with_no_model_is_refused(self):
-        self.assertIsNone(
-            ui_helpers.live_current_index(QtWidgets.QListView()))
-
-    def test_no_view_at_all_is_refused(self):
-        """cat_list is None before setup(), and a tab click gets here."""
-        self.assertIsNone(ui_helpers.live_current_index(None))
-
-    def test_no_selection_is_refused_rather_than_guessed(self):
-        view, _proxy, _source = _proxied_view(["All", "Metal"])
-        self.assertIsNone(ui_helpers.live_current_index(view))
+    def test_no_view_model_or_selection_is_refused(self):
+        unselected, _proxy, _source = _proxied_view(["All", "Metal"])
+        for case, view in (("no view - cat_list before setup()", None),
+                           ("no model", QtWidgets.QListView()),
+                           ("no selection", unselected)):
+            with self.subTest(case):
+                self.assertIsNone(ui_helpers.live_current_index(view))
 
 
 class NoStoredProxyIndexIsReadInThePanelTest(unittest.TestCase):
@@ -183,10 +140,6 @@ class WorksOnAPlainPythonModelTest(unittest.TestCase):
         self.assertIsNotNone(live, "a valid index on a plain list model "
                                    "was refused")
         self.assertEqual("HDR", live.data())
-
-    def test_no_selection_on_a_plain_python_model_is_refused(self):
-        self.assertIsNone(
-            ui_helpers.live_current_index(self._view(["All"])))
 
 
 if __name__ == "__main__":

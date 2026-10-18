@@ -46,11 +46,12 @@ class ASnippetRunsInThisHoudini(unittest.TestCase):
         self.assertIsNone(hou.node("/obj/snippet_probe2"))
 
     def test_an_error_answers_its_last_line(self):
-        self.assertEqual("ZeroDivisionError: division by zero",
-                         code_library.run_python("probe", "1 / 0"))
-
-    def test_a_syntax_error_names_its_line(self):
-        self.assertTrue(code_library.run_python("probe", "x = (\n").startswith("line "))
+        for code, answer in (("1 / 0", "ZeroDivisionError: division by zero"),
+                             ("x = (\n", "line ")):
+            with self.subTest(code=code):
+                problem = code_library.run_python("probe", code)
+                self.assertTrue(problem.startswith(answer), problem)
+                self.assertNotIn("\n", problem, "more than the last line came back")
 
 
 SHELF_KEYS = {    # hom.zip ▸ tool_script.txt; `bbox` is "may not be present" ▸r/shelf-kwargs
@@ -91,27 +92,19 @@ class AShelfScriptGetsItsKwargs(unittest.TestCase):
             kwargs = code_library.shelf_kwargs("probe")
         return {k for k in ("shiftclick", "ctrlclick", "altclick", "cmdclick") if kwargs[k]}
 
-    def test_ctrl_is_ctrl_on_windows_and_linux(self):
+    def test_each_modifier_reaches_its_shelf_flag(self):
         keys = QtCore.Qt.KeyboardModifier
-        for platform in ("win32", "linux"):
-            self.assertEqual({"ctrlclick"}, self._flags(keys.ControlModifier, platform))
-            self.assertEqual(set(), self._flags(keys.MetaModifier, platform),
-                             "the Windows key is neither Ctrl nor Command")
-
-    def test_a_mac_reads_command_and_control_whichever_way_qt_maps_them(self):
-        keys = QtCore.Qt.KeyboardModifier
-        self.assertEqual({"cmdclick"}, self._flags(keys.ControlModifier, "darwin"))
-        self.assertEqual({"ctrlclick"}, self._flags(keys.MetaModifier, "darwin"))
-        self.assertEqual({"ctrlclick"},
-                         self._flags(keys.ControlModifier, "darwin", swapped=False))
-        self.assertEqual({"cmdclick"},
-                         self._flags(keys.MetaModifier, "darwin", swapped=False))
-
-    def test_shift_and_alt_everywhere(self):
-        keys = QtCore.Qt.KeyboardModifier
-        for platform in ("win32", "linux", "darwin"):
-            self.assertEqual({"shiftclick", "altclick"},
-                             self._flags(keys.ShiftModifier | keys.AltModifier, platform))
+        for held, platform, swapped, flags in (
+                (keys.ControlModifier, "win32", True, {"ctrlclick"}),
+                (keys.MetaModifier, "win32", True, set()),    # the Windows key
+                (keys.ControlModifier, "darwin", True, {"cmdclick"}),
+                (keys.MetaModifier, "darwin", True, {"ctrlclick"}),
+                (keys.ControlModifier, "darwin", False, {"ctrlclick"}),
+                (keys.MetaModifier, "darwin", False, {"cmdclick"}),
+                (keys.ShiftModifier | keys.AltModifier, "darwin", True,
+                 {"shiftclick", "altclick"})):
+            with self.subTest(held=held, platform=platform, swapped=swapped):
+                self.assertEqual(flags, self._flags(held, platform, swapped))
 
 
 class OnlyAPythonSnippetCanRun(unittest.TestCase):
@@ -120,13 +113,12 @@ class OnlyAPythonSnippetCanRun(unittest.TestCase):
     def _badge(self, name):
         return next(b for b in delegates.BADGES if b.name == name)
 
-    def test_python_runs_and_vex_does_not(self):
-        self.assertTrue(self._badge("execute").shows("Python"))
-        self.assertFalse(self._badge("execute").shows("VEX"))
-
-    def test_every_snippet_has_the_pencil(self):
-        for language in ("Python", "VEX", "OpenCL", "Code"):
-            self.assertTrue(self._badge("edit").shows(language))
+    def test_run_is_for_python_and_the_pencil_for_every_snippet(self):
+        for name, language, shown in (("execute", "Python", True),
+                                      ("execute", "VEX", False),
+                                      ("edit", "VEX", True)):
+            with self.subTest(badge=name, language=language):
+                self.assertEqual(shown, self._badge(name).shows(language))
 
 
 class TheCodeTextIsHalfStrength(unittest.TestCase):

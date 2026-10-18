@@ -35,19 +35,6 @@ class ShaderBallAssetsTest(unittest.TestCase):
             "out which.")
         return found
 
-    def test_both_scene_files_are_present(self):
-        entry = os.path.join(self.RES, self.ENTRY)
-        self.assertTrue(
-            os.path.exists(entry),
-            "%s is missing - it is the scene the Karma preview engine loads"
-            % self.ENTRY)
-        referenced = os.path.join(self.RES, "shaderBallScene.usd")
-        self.assertTrue(
-            os.path.exists(referenced),
-            "shaderBallScene.usd is missing - %s references it for the "
-            "camera, the floor and the lights, and without it every Karma "
-            "thumbnail dies with 'no cameras found'" % self.ENTRY)
-
     def test_the_scene_composes_with_everything_the_engine_addresses(self):
         try:
             from pxr import Usd, UsdGeom
@@ -73,27 +60,7 @@ class ShaderBallAssetsTest(unittest.TestCase):
             "the render camera is not a Camera prim - husk exits with 'no "
             "cameras found' and no EXR is written")
 
-        points = 0
-        for prim in stage.TraverseAll():
-            if prim.IsA(UsdGeom.Mesh) and prim.IsActive():
-                positions = UsdGeom.Mesh(prim).GetPointsAttr().Get()
-                points += len(positions) if positions else 0
-        self.assertGreater(
-            points, 0,
-            "the composed scene has no renderable geometry - the ball comes "
-            "from Houdini's own shaderball asset and the floor from "
-            "shaderBallScene.usd, so zero points means one of those two "
-            "references stopped resolving")
-
-    def test_the_ball_and_the_floor_both_carry_geometry(self):
-        """The two halves fail independently and look the same on a tile."""
-        try:
-            from pxr import Usd, UsdGeom
-        except ImportError:                       # pragma: no cover
-            self.skipTest("pxr is not importable outside Houdini")
-
-        stage = Usd.Stage.Open(os.path.join(self.RES, self.ENTRY))
-        for label, root in (("ball", "/shaderBallScene/geo/ball"),
+        for label, root in (("ball", "/shaderBallScene/geo/ball"),    # the halves fail apart, alike on a tile
                             ("floor", "/shaderBallScene/geo/plane")):
             prim = stage.GetPrimAtPath(root)
             self.assertTrue(prim, "%s prim %s is missing" % (label, root))

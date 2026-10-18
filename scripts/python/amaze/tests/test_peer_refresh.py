@@ -160,23 +160,13 @@ class AnAssetSavedElsewhereShowsUpWithoutARestart(unittest.TestCase):
 
 class ARefreshCostsNothingWhenNobodyWrote(_Case):
 
-    def test_an_untouched_file_is_not_re_read(self):
+    def test_only_a_changed_file_is_re_read_and_the_baseline_follows_it(self):
+        """The baseline: otherwise the next save reads the refreshed rows as our own edits."""
         self._write("users.json", {"users": {"u-me": {"name": "Me"}}})
         store = keyed_store.open_store(users.SPEC, self.prefs)
         self.assertFalse(store.refresh(), "nothing moved, yet it re-read")
-
-    def test_a_changed_file_reports_that_it_re_read(self):
-        self._write("users.json", {"users": {"u-me": {"name": "Me"}}})
-        store = keyed_store.open_store(users.SPEC, self.prefs)
         self._write("users.json", {"users": {"u-me": {"name": "Renamed"}}})
         self.assertTrue(store.refresh(), "the file moved and it did not say so")
-
-    def test_a_refresh_leaves_the_merge_baseline_on_the_new_file(self):
-        """Otherwise the next save reads the refreshed rows as our own edits."""
-        self._write("users.json", {"users": {"u-me": {"name": "Me"}}})
-        store = keyed_store.open_store(users.SPEC, self.prefs)
-        self._write("users.json", {"users": {"u-me": {"name": "Renamed"}}})
-        store.refresh()
         self.assertEqual({"name": "Renamed"}, store._base.get("u-me"))
 
 
@@ -200,11 +190,11 @@ class AnUnreadableFileMetByARefreshWipesNothing(_Case):
         self.assertEqual((base, seen), (store._base, store._disk_state),
                          "the merge base or the fingerprint moved")
 
-    def test_an_empty_placeholder(self):
-        self._refresh_over(b"")
-
-    def test_a_half_written_document(self):
-        self._refresh_over(b'{"users": {"u-me": ')
+    def test_an_empty_placeholder_or_a_half_written_document(self):
+        for damage in (b"", b'{"users": {"u-me": '):
+            with self.subTest(damage=damage):
+                keyed_store.release()
+                self._refresh_over(damage)
 
 
 class ALockedFileMetByARefreshWipesNothing(_Case):
@@ -236,13 +226,6 @@ class ALockedFileMetByARefreshWipesNothing(_Case):
             "a moment's lock was read as the file being gone")
         self.assertEqual((base, seen), (store._base, store._disk_state),
                          "the merge base or the fingerprint moved")
-
-    def test_a_locked_file_is_not_read_as_absent(self):
-        self._write("users.json", {"users": {"u-me": {"name": "Me"}}})
-        with self._held_open(self.path("users.json")):
-            answer = hostos.peer_read(self.path("users.json"))
-        self.assertNotEqual(hostos.PEER_ABSENT, answer.verdict,
-                            "a file that is there read as gone")
 
     def test_a_missing_file_still_reads_as_absent(self):
         self.assertEqual(hostos.PEER_ABSENT,

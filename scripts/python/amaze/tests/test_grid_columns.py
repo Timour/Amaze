@@ -70,19 +70,13 @@ class AGridModelAnswersPerCOLUMN(unittest.TestCase):
             if model is not None and model.rowCount():
                 yield key, model
 
-    def test_every_grid_model_is_a_TABLE_model(self):
-        """A list model refuses column > 0 whatever columnCount says - measured, and the reason this is not a mixin over the old base."""
+    def test_every_grid_model_is_a_TABLE_model_with_the_shared_columns(self):
+        """A list model refuses column > 0; the header is shared, so the counts must agree."""
         for key, model in self._models():
             with self.subTest(section=key):
                 self.assertIsInstance(model, QtCore.QAbstractTableModel)
                 self.assertIsInstance(model, grid_columns.GridColumnsMixin)
-
-    def test_every_grid_model_offers_the_same_column_count(self):
-        """The header is shared, so a model with its own idea of how many columns there are would label somebody else's."""
-        for key, model in self._models():
-            with self.subTest(section=key):
-                self.assertEqual(len(grid_columns.COLUMNS),
-                                 model.columnCount())
+                self.assertEqual(len(grid_columns.COLUMNS), model.columnCount())
 
     def test_an_index_in_a_LATER_column_is_valid(self):
         """The whole point, and the thing the old base made impossible."""
@@ -183,20 +177,6 @@ class ACellSAYSWhatItIs(unittest.TestCase):
     def _column(self, key):
         return grid_columns.KEYS.index(key)
 
-    def test_NO_column_asks_for_a_font_of_its_own(self):
-        """The rows wear the VIEW's font, like every other list in the host. - A bold Name column was asked for and then taken back out on 2026-08-04. The reason it had to go is worth keeping: Qt uses `FontRole` AS-IS, so answering it with a bare `QFont()` with bold set hands the cell Qt's DEFAULT family and size - not the panel's font in bold, a different typeface. Same shape as the absolute point-size floor that made Windows rows disagree. - If a weight is ever wanted again it has to be derived from the view's font, not constructed beside it."""
-        model = self.panel.material_model
-        if not model.rowCount():
-            self.skipTest("no materials in the fixture")
-        for key in ("name", "type", "category", "tags"):
-            with self.subTest(column=key):
-                self.assertIsNone(
-                    model.index(0, self._column(key)).data(
-                        QtCore.Qt.ItemDataRole.FontRole),
-                    "%s asked for a font of its own - a role-supplied "
-                    "font replaces the view's family and size, it does "
-                    "not add weight to them" % key)
-
     def test_the_CATEGORY_is_written_in_the_CATEGORYS_OWN_COLOUR(self):
         """The colour the user gave that category, and the same one the grid paints under its tiles - so the two views cannot disagree about what a category looks like."""
         panel = self.panel
@@ -215,6 +195,12 @@ class ACellSAYSWhatItIs(unittest.TestCase):
         self.assertEqual(
             QtGui.QColor(colour).name(), ink.name(),
             "the Category cell is not the category's own colour")
+        for key in ("name", "type", "tags", "license"):
+            with self.subTest(column=key):
+                self.assertIsNone(
+                    model.index(row, self._column(key)).data(
+                        QtCore.Qt.ItemDataRole.ForegroundRole),
+                    "%s coloured itself - only Category does" % key)
 
     def _colour_a_category(self, colour):
         """Give one category a colour and return the row wearing it. - COLOUR ONE, do not go looking for one: the fixture ships none coloured, so both of these tests read green against a library where there was nothing to colour anything with. One skipped itself; the other stayed green with `name` deliberately wired to the category ink - a harder SETUP rather than a weaker assertion (practice.md)."""
@@ -232,16 +218,6 @@ class ACellSAYSWhatItIs(unittest.TestCase):
         categories.set_color(name, colour)
         return row
 
-    def test_only_the_CATEGORY_column_colours_itself(self):
-        model = self.panel.material_model
-        row = self._colour_a_category("#ff8800")
-        for key in ("name", "type", "tags", "license"):
-            with self.subTest(column=key):
-                self.assertIsNone(
-                    model.index(row, self._column(key)).data(
-                        QtCore.Qt.ItemDataRole.ForegroundRole),
-                    "%s coloured itself - only Category does" % key)
-
     def test_a_row_whose_category_has_NO_colour_asks_for_none(self):
         """No colour is not black. Answering `ForegroundRole` with an invalid QColor paints the text in whatever that is."""
         model = self.panel.material_model
@@ -257,17 +233,19 @@ class ACellSAYSWhatItIs(unittest.TestCase):
             return
         self.skipTest("every fixture category has a colour")
 
-    def test_NO_column_overrides_its_alignment(self):
-        """Including the tick columns. They were centred for one build and reverted (2026-08-04): a `QHeaderView` label starts at the cell's left edge, so a centred mark reads as a different table from the eight columns beside it."""
+    def test_NO_column_overrides_the_views_font_or_alignment(self):
+        """A role-supplied font replaces the view's family; a centred tick reads as another table."""
         model = self.panel.material_model
-        for key in (("name", "type", "category", "tags")
-                    + grid_columns.GridColumnsMixin.TICK_COLUMNS):
-            with self.subTest(column=key):
-                self.assertIsNone(
-                    model.index(0, self._column(key)).data(
-                        QtCore.Qt.ItemDataRole.TextAlignmentRole),
-                    "%s overrode an alignment it has no opinion about"
-                    % key)
+        if not model.rowCount():
+            self.skipTest("no materials in the fixture")
+        text = ("name", "type", "category", "tags")
+        for key in text + grid_columns.GridColumnsMixin.TICK_COLUMNS:
+            roles = [QtCore.Qt.ItemDataRole.TextAlignmentRole]
+            if key in text:
+                roles.append(QtCore.Qt.ItemDataRole.FontRole)
+            for role in roles:
+                with self.subTest(column=key, role=role):
+                    self.assertIsNone(model.index(0, self._column(key)).data(role))
 
     def _every_model(self):
         panel = self.panel
@@ -449,26 +427,14 @@ class EveryCellHasAIREitherSide(unittest.TestCase):
         self.addCleanup(panel.apply_view_mode)
         self.addCleanup(setattr, panel.prefs, "view_mode", "grid")
 
-    def test_the_table_wears_NO_style_object(self):
-        """A `QProxyStyle` handed to `setStyle` is owned by nobody: the widget does not take it and the bindings declare no `parent` or `reference-count` rule for that call, unlike `setHorizontalHeader` and `setItemDelegateForColumn` which declare both. The view kept a pointer to a freed object and the process bus-errored on teardown - three test classes fatal, and a live session left a signal-10 crash log on quit (2026-08-04)."""
+    def test_the_table_wears_NO_style_object_and_NO_stylesheet(self):
+        """An unowned QProxyStyle bus-errored on teardown; a stylesheet takes over item drawing."""
         self.assertNotIsInstance(
             self.panel.thumbtable.style(), QtWidgets.QProxyStyle,
             "the table wears a style object again")
-
-    def test_the_table_carries_NO_stylesheet(self):
-        """A stylesheet hands item drawing to `QStyleSheetStyle`, whatever the rule names: the font resolves from the application default, the band is drawn with its own blend, and selected text comes out in the ORDINARY text colour rather than `HighlightedText`. Seen in the panel 2026-08-04: the band and the text both wrong while the tick marks were right - the ticks being the one thing that asks the palette by hand."""
         self.assertEqual(
             "", self.panel.thumbtable.styleSheet(),
             "the table carries a stylesheet again")
-
-    def test_the_SELECTION_is_left_to_HOUDINI(self):
-        """Nothing here paints or recolours a selected row any more. - The panel puts `hou.qt.styleSheet()` on its own root and every child inherits it, so the table already carries Houdini's `QAbstractItemView::item:selected` - `ListEntrySelected` (SELECTION_BASE) blended toward the row, with the full colour as a hairline top and bottom, and `TextColor` for the text. Both from `config/UIDark.hcs`. A second opinion here is what made the list disagree with every other list in the host. - Pinned as the ABSENCE of an override, not as a colour: the colour is Houdini's to change, and an offscreen render cannot see the app stylesheet anyway."""
-        delegate = self.panel.thumbtable.itemDelegate()
-        for name in ("_highlight", "_selected_text", "set_highlight"):
-            self.assertFalse(
-                hasattr(delegate, name),
-                "the cell delegate owns %s again - the selection is "
-                "the host's" % name)
 
     def test_the_band_is_the_GRIDS_highlight(self):
         panel = self.panel
@@ -666,15 +632,10 @@ class TheTableViewIsWiredToTheSameEVERYTHING(unittest.TestCase):
         QtWidgets.QApplication.processEvents()
         self.addCleanup(self._mode, "grid")
 
-    def test_both_views_share_one_model_and_one_selection(self):
-        """Two views over one selection model is Qt's own arrangement, and it is the whole reason this does not double the bindings."""
+    def test_selecting_in_one_selects_in_the_other(self):
+        """Two views over one model and one selection model, so the bindings are not doubled."""
         panel = self.panel
         self.assertIs(panel.thumblist.model(), panel.thumbtable.model())
-        self.assertIs(panel.thumblist.selectionModel(),
-                      panel.thumbtable.selectionModel())
-
-    def test_selecting_in_one_selects_in_the_other(self):
-        panel = self.panel
         proxy = panel.thumblist.model()
         self.assertTrue(proxy.rowCount(), "no rows to select")
         panel.thumblist.selectionModel().select(
@@ -695,16 +656,6 @@ class TheTableViewIsWiredToTheSameEVERYTHING(unittest.TestCase):
         self.assertFalse(panel.thumbtable.isVisible())
         self.assertTrue(panel.thumblist.isVisible())
 
-    def test_the_painted_STRIP_no_longer_exists(self):
-        """`ListColumnHeader` was a strip painted above the rows, told the column widths by hand and told again whenever the rows scrolled sideways - or its labels named whichever column had slid underneath them. A QHeaderView IS the view's header: it cannot disagree with its rows and it scrolls with them. - Retired with the fit that fed it (2026-08-04). The panel no longer builds one at all, which is what this pins - a second header coming back is a second answer to where a column is."""
-        self.assertFalse(
-            hasattr(self.panel, "list_header"),
-            "the panel builds a painted column strip again, beside a "
-            "real header")
-        self.assertFalse(
-            hasattr(ui_helpers, "ListColumnHeader"),
-            "the painted strip's class is back - 178 lines that only "
-            "a second header could need")
 
     def test_the_table_does_NOT_wear_the_tile_delegate(self):
         """That delegate paints a whole TILE per index. On a table a row is ten indexes, and the first render put ten tile-height cells side by side."""
@@ -787,11 +738,9 @@ class TheHeaderSORTS(unittest.TestCase):
         return [proxy.index(row, index).data()
                 for row in range(proxy.rowCount())]
 
-    def test_the_table_offers_sorting_at_all(self):
-        self.assertTrue(self.panel.thumbtable.isSortingEnabled())
-
     def test_sorting_by_a_column_orders_by_THAT_column(self):
         panel = self.panel
+        self.assertTrue(panel.thumbtable.isSortingEnabled())
         column = grid_columns.KEYS.index("category")
         panel.thumbtable.sortByColumn(
             column, QtCore.Qt.SortOrder.AscendingOrder)

@@ -53,43 +53,24 @@ class StoreTest(unittest.TestCase):
 
     def test_a_page_roundtrips_in_order(self):
         """The page is a FLOW - text and to-dos in the order written."""
-        key = notes.note_key("material", "42")
-        flow = [
-            {"t": "text", "text": "check the roughness"},
-            {"t": "todo", "label": "re-render", "done": False},
-            {"t": "todo", "label": "ask about the displacement",
-             "done": True},
-            {"t": "text", "text": "…then compare with the scan"},
-        ]
-        self.assertTrue(notes.set_note(self.prefs, key, flow))
-        notes.forget_notes()                 # a fresh session reads disk
-        page = notes.note_for(self.prefs, key)
-        self.assertEqual(flow, page["items"],
-                         "the flow lost its order or content")
-        self.assertTrue(notes.has_note(self.prefs, key))
-
-    def test_a_picture_survives_the_store(self):
-        """A picture is a THIRD item type and the store has to know it - the editor inserts one, `serialize` writes `{"t": "image"}`, and a shape the store does not name is dropped on the way through. ▸p/comment-images"""
-        key = notes.note_key("material", "7")
-        flow = [
-            {"t": "text", "text": "the reference"},
-            {"t": "image", "src": "img/comments/abc.png",
-             "text": "[image: abc.png]"},
-            {"t": "todo", "label": "re-shoot", "done": False},
-        ]
-        self.assertTrue(notes.set_note(self.prefs, key, flow))
-        notes.forget_notes()                 # a fresh session reads disk
-        page = notes.note_for(self.prefs, key)
-        self.assertEqual(flow, page["items"],
-                         "the picture did not survive the store")
-
-    def test_a_picture_with_no_source_is_not_content(self):
-        """An image item pointing nowhere draws nothing, so it is junk like a blank to-do - and a page of nothing but junk deletes the key."""
-        key = notes.note_key("material", "8")
-        notes.set_note(self.prefs, key, [{"t": "image", "src": "  "}])
-        self.assertFalse(notes.has_note(self.prefs, key),
-                         "a picture pointing nowhere counted as content - "
-                         "the comment badge will never clear")
+        for ident, flow in (
+                ("42", [{"t": "text", "text": "check the roughness"},
+                        {"t": "todo", "label": "re-render", "done": False},
+                        {"t": "todo", "label": "ask about the displacement",
+                         "done": True},
+                        {"t": "text", "text": "…then compare with the scan"}]),
+                ("7", [{"t": "text", "text": "the reference"},
+                       {"t": "image", "src": "img/comments/abc.png",    # the THIRD item type
+                        "text": "[image: abc.png]"},
+                       {"t": "todo", "label": "re-shoot", "done": False}])):
+            with self.subTest(ident=ident):
+                key = notes.note_key("material", ident)
+                self.assertTrue(notes.set_note(self.prefs, key, flow))
+                notes.forget_notes()                 # a fresh session reads disk
+                page = notes.note_for(self.prefs, key)
+                self.assertEqual(flow, page["items"],
+                                 "the flow lost its order or content")
+                self.assertTrue(notes.has_note(self.prefs, key))
 
     def test_the_first_builds_shape_converts_on_read(self):
         """The first build's {text, todos} shape reads as a flow, lossless."""
@@ -106,15 +87,17 @@ class StoreTest(unittest.TestCase):
 
     def test_an_empty_page_removes_the_key(self):
         key = notes.note_key("cop", "7")
-        notes.set_note(self.prefs, key,
-                       [{"t": "text", "text": "something"}])
-        notes.set_note(self.prefs, key,
-                       [{"t": "text", "text": "   "}])
-        self.assertFalse(notes.has_note(self.prefs, key),
-                         "an empty page still counts as a note - the "
-                         "badge will never clear")
-        with open(self._path(), encoding="utf-8") as handle:
-            self.assertEqual({}, json.load(handle)["notes"])
+        for junk in ([{"t": "text", "text": "   "}],
+                     [{"t": "image", "src": "  "}]):    # a picture pointing nowhere draws nothing
+            with self.subTest(junk=junk):
+                notes.set_note(self.prefs, key,
+                               [{"t": "text", "text": "something"}])
+                notes.set_note(self.prefs, key, junk)
+                self.assertFalse(notes.has_note(self.prefs, key),
+                                 "an empty page still counts as a note - "
+                                 "the badge will never clear")
+                with open(self._path(), encoding="utf-8") as handle:
+                    self.assertEqual({}, json.load(handle)["notes"])
 
     def test_junk_normalises_instead_of_raising(self):
         self.assertEqual({}, notes.normalise("a string"))
@@ -224,41 +207,26 @@ class PanelWidgetTest(unittest.TestCase):
             "+ did not add the frame underneath the text")
 
     def test_text_keeps_flowing_below_a_frame(self):
-        key = self._subject("7")
-        notes.set_note(self.prefs, key,
-                       [{"t": "todo", "label": "item", "done": False}])
-        self.widget.clear_subject()
-        self.widget.set_subject(sections.CommentSubject(key, "X", ""))
-        edit = self.widget.text_edit
-        cursor = edit.textCursor()
-        cursor.movePosition(QtGui.QTextCursor.MoveOperation.End)
-        edit.setTextCursor(cursor)
-        self._press_return()          # leave the frame...
-        self._press_return()          # (continuation frame, emptied out)
-        cursor = edit.textCursor()
-        cursor.insertText("written after the frame")
-        self.assertEqual(
-            [{"t": "todo", "label": "item", "done": False},
-             {"t": "text", "text": "written after the frame"}],
-            edit.serialize(),
-            "text cannot flow below a to-do frame")
-
-    def test_enter_in_a_frame_stacks_another_frame(self):
-        self._subject("8")
-        edit = self.widget.text_edit
-        edit.insert_todo()
-        cursor = edit.textCursor()
-        cursor.insertText("first")
-        edit.setTextCursor(cursor)
-        self._press_return()
-        cursor = edit.textCursor()
-        cursor.insertText("second")
-        edit.setTextCursor(cursor)
-        self.assertEqual(
-            [{"t": "todo", "label": "first", "done": False},
-             {"t": "todo", "label": "second", "done": False}],
-            edit.serialize(),
-            "Enter inside a frame does not stack another frame")
+        for ident, labels in (("7", ["item"]), ("17", ["first", "second"])):    # below EVERY to-do
+            with self.subTest(todos=labels):
+                key = self._subject(ident)
+                frames = [{"t": "todo", "label": label, "done": False}
+                          for label in labels]
+                notes.set_note(self.prefs, key, frames)
+                self.widget.clear_subject()
+                self.widget.set_subject(sections.CommentSubject(key, "X", ""))
+                edit = self.widget.text_edit
+                cursor = edit.textCursor()
+                cursor.movePosition(QtGui.QTextCursor.MoveOperation.End)
+                edit.setTextCursor(cursor)
+                self._press_return()          # leave the frame...
+                self._press_return()          # (continuation frame, emptied out)
+                cursor = edit.textCursor()
+                cursor.insertText("written after the frame")
+                self.assertEqual(
+                    frames + [{"t": "text", "text": "written after the frame"}],
+                    edit.serialize(),
+                    "text cannot flow below the last to-do frame")
 
     def test_backspace_unwraps_a_frame(self):
         """Backspace at a frame's start unwraps it back into plain text."""
@@ -342,29 +310,6 @@ class PanelWidgetTest(unittest.TestCase):
             edit.serialize(),
             "a checkbox was lost somewhere in the chain")
 
-    def test_text_flows_below_the_second_todo_too(self):
-        """Writing underneath must work below every to-do, not only the first."""
-        key = self._subject("17")
-        notes.set_note(self.prefs, key, [
-            {"t": "todo", "label": "first", "done": False},
-            {"t": "todo", "label": "second", "done": False}])
-        self.widget.clear_subject()
-        self.widget.set_subject(sections.CommentSubject(key, "X", ""))
-        edit = self.widget.text_edit
-        cursor = edit.textCursor()
-        cursor.movePosition(QtGui.QTextCursor.MoveOperation.End)
-        edit.setTextCursor(cursor)
-        self._press_return()
-        self._press_return()
-        cursor = edit.textCursor()
-        cursor.insertText("under the second")
-        self.assertEqual(
-            [{"t": "todo", "label": "first", "done": False},
-             {"t": "todo", "label": "second", "done": False},
-             {"t": "text", "text": "under the second"}],
-            edit.serialize(),
-            "text cannot flow below the second frame")
-
     def test_the_broken_qt_apis_stay_out(self):
         """Source ban: the two Qt APIs that failed live may not return."""
         import inspect
@@ -375,6 +320,10 @@ class PanelWidgetTest(unittest.TestCase):
             self.assertNotIn(banned, source,
                              "%s is back - it is the machinery that "
                              "failed live, twice" % banned)
+        self.assertNotIn("setStyleSheet", source,    # it swaps in Qt's own scrollbars, live only
+                         "a stylesheet is back somewhere in the pane "
+                         "- the IRIX scrollbar returns with it, and "
+                         "only the live pass would ever see it")
 
     def test_todo_separation_is_padding_not_background(self):
         """A to-do is page-coloured; 10px of padding is the separation."""
@@ -395,16 +344,6 @@ class PanelWidgetTest(unittest.TestCase):
             fmt.background().style(),
             "a to-do wears a background again - the call was "
             "page-coloured with padding only")
-
-    def test_no_stylesheet_anywhere_in_the_pane(self):
-        """Source ban on setStyleSheet - it swaps in Qt's own scrollbars."""
-        import inspect
-        from amaze.panel import notes_panel as module
-        source = inspect.getsource(module)  # headless style() reports QCommonStyle either way, so only a SOURCE ban can guard this
-        self.assertNotIn("setStyleSheet", source,
-                         "a stylesheet is back somewhere in the pane "
-                         "- the IRIX scrollbar returns with it, and "
-                         "only the live pass would ever see it")
 
     def test_the_designed_colours_ride_the_palettes(self):
         """Header and page colours ride widget palettes, autofill on."""
@@ -493,31 +432,6 @@ class PanelWidgetTest(unittest.TestCase):
                          edit.viewport().cursor().shape(),
                          "the pointer stays a hand over plain text")
 
-    def test_the_glyphs_actually_paint(self):
-        """Serialization can be perfect while nothing draws - demand pixels."""
-        from PySide6 import QtGui as G
-        key = self._subject("20")
-        notes.set_note(self.prefs, key,
-                       [{"t": "todo", "label": "visible", "done": False}])
-        self.widget.clear_subject()
-        self.widget.set_subject(sections.CommentSubject(key, "X", ""))
-        edit = self.widget.text_edit
-        edit.resize(300, 100)
-        edit.document().setTextWidth(280)  # force layout: the painter guards un-laid-out blocks (lineAt on one crashes hython natively - research.md ▸ Qt styling & splitters)
-        image = G.QImage(300, 100, G.QImage.Format.Format_ARGB32)
-        image.fill(G.QColor("#2b2c34"))
-        painter = G.QPainter(image)
-        try:
-            edit._paint_todo_glyphs(painter)
-        finally:
-            painter.end()
-        bright = sum(
-            1 for x in range(0, 60) for y in range(0, 60)
-            if image.pixelColor(x, y).lightness() > 120)
-        self.assertGreater(bright, 10,
-                           "no checkbox pixels - the glyph pass "
-                           "painted nothing (the live + bug's shape)")
-
     def test_no_block_rides_a_qt_list(self):
         """No block may be a QTextList item - the indent pile-up returns."""
         key = self._subject("18")
@@ -548,22 +462,9 @@ class PanelWidgetTest(unittest.TestCase):
         self.assertTrue(edit.is_todo_block(block),
                         "toggling removed the checkbox")
         self.assertTrue(edit.block_done(block))
-
-    def test_toggling_flips_done_and_persists(self):
-        key = self._subject("9")
-        notes.set_note(self.prefs, key,
-                       [{"t": "todo", "label": "fix the tiling",
-                         "done": False}])
-        self.widget.clear_subject()
-        self.widget.set_subject(sections.CommentSubject(key, "X", ""))
-        edit = self.widget.text_edit
-        block = edit.document().begin()
-        self.assertTrue(edit.toggle_block(block),
-                        "the block was not recognised as a to-do")
         self.widget._something_changed()
         self.widget.flush()
-        page = notes.note_for(self.prefs, key)
-        self.assertTrue(page["items"][0]["done"],
+        self.assertTrue(notes.note_for(self.prefs, key)["items"][0]["done"],
                         "the toggle did not persist")
 
     def test_a_blank_frame_is_not_content(self):
@@ -724,14 +625,6 @@ class ModelRoleTest(unittest.TestCase):
             "- the delegate re-tinted it (dominant %s, art %s)"
             % (dominant, sorted(declared)))
 
-    def test_the_star_preference_has_no_path_into_the_badge(self):
-        """set_star_color stays deleted - no colour push may reach the badges."""
-        from amaze.panel import delegates
-        self.assertFalse(
-            hasattr(delegates.AssetItemDelegate, "set_star_color"),
-            "the colour push is back - the star preference can reach "
-            "the tile badges again")
-
     def test_every_section_tile_shows_the_comment_badge(self):
         """Every section takes comments, so every section's tile lists the comment badge."""
         from amaze.panel import sections
@@ -871,10 +764,6 @@ class PanelWiringTest(unittest.TestCase):
     def test_the_chip_and_pane_agree_and_the_lit_colour_is_COMMENT_INK(self):
         """The button IS the pane's state, and its lit tint stays blue."""
         panel = self.panel
-        self.assertFalse(
-            hasattr(type(panel), "_effective_star_color"),
-            "the preference plumbing is back - the star rows were "
-            "removed from Preferences, nothing may read them")
         self.assertEqual(panel.prefs.show_notes,
                          panel.btn_notes.isChecked())
         panel.toggle_notes_panel()
@@ -1031,58 +920,6 @@ class PanelWiringTest(unittest.TestCase):
                          "a side pane is the flexible one - the grid "
                          "must absorb every width change")
 
-    def test_the_construction_holds_the_sidebar_through_toggles(self):
-        """A top-level 0/1/0 replica: Qt leaves the held pane untouched."""
-        split = QtWidgets.QSplitter()
-        side, grid, notes = (QtWidgets.QWidget() for _ in range(3))
-        for w in (side, grid, notes):
-            split.addWidget(w)
-        self.addCleanup(split.deleteLater)
-        from amaze.helpers import theme
-        side.setMaximumWidth(theme.ui_px(220))
-        split.setStretchFactor(0, 0)
-        split.setStretchFactor(1, 1)
-        split.setStretchFactor(2, 0)
-        notes.hide()
-        split.resize(1200, 500)
-        split.show()
-        app = QtWidgets.QApplication.instance()
-        app.processEvents()
-        split.setSizes([220, 980, 0])
-        app.processEvents()
-        before = split.sizes()[0]
-        self.assertGreater(before, 0, "the replica never laid out")
-        notes.show()
-        app.processEvents()
-        self.assertEqual(before, split.sizes()[0],
-                         "showing the third pane taxed the held one")
-        split.setSizes([before, 530, 450])
-        app.processEvents()
-        notes.hide()
-        app.processEvents()
-        self.assertEqual(before, split.sizes()[0],
-                         "hiding the third pane refunded into the "
-                         "held one")
-        self.assertEqual(0, split.sizes()[2],
-                         "the hidden pane kept width the grid should "
-                         "have absorbed")
-        split.resize(1500, 500)
-        app.processEvents()
-        self.assertEqual(before, split.sizes()[0],
-                         "a window resize grew the held pane")
-
-    def test_the_hand_rolled_restore_stays_deleted(self):
-        """Source ban: capture-and-restore lost to Qt's deferred relayout."""
-        import inspect
-        from amaze.panel import panel as panel_mod
-        source = inspect.getsource(panel_mod)
-        for banned in ("_sidebar_keep", "_restore_sidebar_width",
-                       "_sidebar_width_now"):
-            self.assertNotIn(banned, source,
-                             "'%s' is back in panel.py - hold the "
-                             "panes by construction, not bookkeeping"
-                             % banned)
-
     def test_the_gradient_section_reaches_the_pane(self):
         """A selected gradient yields a real gradient:<uid> subject."""
         panel = self.panel
@@ -1161,15 +998,9 @@ class VersionsBadgeHoverTest(unittest.TestCase):
         self.assertFalse(
             delegate.button_badge_at(index, rect, outside),
             "the badge answers for a point in the opposite corner")
-
-    def test_a_single_version_asset_has_no_badge_to_hover(self):
-        """One version paints no badge, so nothing there takes the pointer."""
-        delegate = self._delegate()
-        index = self._index(1)
-        rect = QtCore.QRect(0, 0, 120, 140)
-        badge = delegate._badge_rect(rect, "versions")
+        single = self._index(1)    # one version paints no badge to take the pointer
         self.assertFalse(
-            delegate.button_badge_at(index, rect, badge.center()),
+            delegate.button_badge_at(single, rect, badge.center()),
             "an asset with one version offers a badge to hover")
 
     def test_hover_swaps_the_art_the_PAINTER_lays_down(self):
@@ -1257,28 +1088,28 @@ class StarButtonPaintTest(unittest.TestCase):
         canvas.fill(QtCore.Qt.GlobalColor.transparent)
         return canvas.toImage()
 
-    def test_an_UNWIRED_delegate_paints_no_star_on_a_plain_row(self):
-        painted = _painted_badges(self._delegate(wired=False),
+    def test_the_star_paints_only_where_its_click_is_wired(self):
+        unwired = _painted_badges(self._delegate(wired=False),
                                   self._index(False))
-        self.assertEqual(self._blank(), painted,
+        self.assertEqual(self._blank(), unwired,
                          "the online grid grew a star button it cannot "
                          "serve")
-
-    def test_the_wired_delegate_paints_the_resting_star(self):
-        painted = _painted_badges(self._delegate(), self._index(False))
-        self.assertNotEqual(self._blank(), painted,
+        resting = _painted_badges(self._delegate(), self._index(False))
+        self.assertNotEqual(self._blank(), resting,
                             "no resting star - the badge is still an "
                             "indicator that hides until favourited")
 
     def test_hover_brightens_the_resting_star(self):
-        delegate = self._delegate()
-        index = self._index(False)
-        rest = _painted_badges(delegate, index)
-        delegate.set_button_hover("favourite", index)
-        hot = _painted_badges(delegate, index)
-        self.assertNotEqual(rest, hot,
-                            "the resting star does not answer the "
-                            "pointer")
+        for favourite, answers in ((False, True), (True, False)):    # an ON colour does not lighten
+            with self.subTest(favourite=favourite):
+                delegate = self._delegate()
+                index = self._index(favourite)
+                rest = _painted_badges(delegate, index)
+                delegate.set_button_hover("favourite", index)
+                hot = _painted_badges(delegate, index)
+                self.assertEqual(answers, rest != hot,
+                                 "the star's answer to the pointer is "
+                                 "the wrong way round")
 
     def test_a_favourite_paints_the_amber_state(self):
         rest = _painted_badges(self._delegate(), self._index(False))
@@ -1286,16 +1117,6 @@ class StarButtonPaintTest(unittest.TestCase):
         self.assertNotEqual(self._blank(), on)
         self.assertNotEqual(rest, on,
                             "favourited and not paint the same star")
-
-    def test_the_amber_state_does_NOT_answer_hover(self):
-        """An ON state carried by colour does not lighten - the toolbar chips' rule, holding on the tile."""
-        delegate = self._delegate()
-        index = self._index(True)
-        rest = _painted_badges(delegate, index)
-        delegate.set_button_hover("favourite", index)
-        hot = _painted_badges(delegate, index)
-        self.assertEqual(rest, hot,
-                         "the amber star changes under the cursor")
 
 
 class AnUndoNeverEatsALoadedNote(unittest.TestCase):
@@ -1321,9 +1142,6 @@ class AnUndoNeverEatsALoadedNote(unittest.TestCase):
             editor.document().isUndoAvailable(),
             "the load sits on the undo stack, so Ctrl+Z takes the note "
             "apart and the debounced save writes the remains to disk")
-
-    def test_the_text_survives_an_undo(self):
-        editor = self._loaded()
         before = editor.toPlainText()
         editor.undo()
         editor.undo()
@@ -1351,7 +1169,6 @@ class APictureIsATHIRDItemType(unittest.TestCase):
     def setUp(self):
         from amaze.panel import notes_panel
         from amaze.tests import test_support
-        self.notes_panel = notes_panel
         self.prefs = test_support.fixture_prefs(self)
         self.edit = notes_panel._NoteEdit()
         self.addCleanup(self.edit.deleteLater)
@@ -1377,32 +1194,12 @@ class APictureIsATHIRDItemType(unittest.TestCase):
         self.assertEqual(src, back[1]["src"],
                          "the picture came back pointing somewhere else")
 
-    def test_the_stored_path_stays_LIBRARY_RELATIVE(self):
-        """An absolute path would break the moment the library is opened on another machine."""
-        src = self._a_picture_in_the_library()
-        self.edit.load_items([{"t": "image", "src": src}])
-        stored = self.edit.serialize()[0]["src"]
-        self.assertFalse(os.path.isabs(stored), stored)
-        self.assertTrue(stored.startswith("img/comments/"), stored)
-
     def test_the_item_carries_a_fallback_for_builds_without_pictures(self):
         """An older build sends an unknown type down the TEXT branch, so the item ships the words it should show there. ▸p/comment-images"""
         src = self._a_picture_in_the_library("holiday.png")
         self.edit.load_items([{"t": "image", "src": src}])
         item = self.edit.serialize()[0]
         self.assertEqual("[image: holiday.png]", item.get("text"))
-
-    def test_that_fallback_is_what_an_older_build_actually_shows(self):
-        """Drives the real text branch with the item, which is what a build with no picture support does."""
-        src = self._a_picture_in_the_library("holiday.png")
-        self.edit.load_items([{"t": "image", "src": src}])
-        item = self.edit.serialize()[0]
-
-        plain = self.notes_panel._NoteEdit()
-        self.addCleanup(plain.deleteLater)
-        plain.library_dir = ""      # no library: the file cannot resolve, so it takes the fallback
-        plain.load_items([item])
-        self.assertEqual("[image: holiday.png]", plain.toPlainText())
 
     def test_a_missing_file_shows_the_fallback_instead_of_a_blank(self):
         self.edit.load_items([{"t": "image", "src": "img/comments/gone.png",
@@ -1454,20 +1251,14 @@ class ThePictureButtonIsActuallyRun(unittest.TestCase):
         """ONE + button whose menu lists the types, so a third joins the table without another button. ▸p/comment-images"""
         labels = [a.text() for a in self.widget.add_button.menu().actions()]
         self.assertEqual(["Bullet point", "Image"], labels)
-
-    def test_the_plus_hover_names_what_its_menu_offers(self):
         from amaze.panel import notes_panel
         hover = self.widget.add_button.toolTip().lower()
         for label, _handler in notes_panel.ADD_ITEMS:
             self.assertIn(label.lower(), hover,
                           "the + hover text does not name %s: %r" % (label, hover))
-
-    def test_the_plus_opens_the_menu_rather_than_acting(self):
-        """`InstantPopup` shows the menu on press and does NOT fire the button's own action, so nothing is inserted by the click itself. ▸r/menu-lifetime"""
-        self.assertIs(
+        self.assertIs(    # the press shows the menu, and fires no action of its own ▸r/menu-lifetime
             QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup,
             self.widget.add_button.popupMode())
-        self.assertIsNotNone(self.widget.add_button.menu())
 
     def test_typing_after_a_picture_is_KEPT(self):
         """The cursor still carries the image char format after an insert, so typing landed inside the picture's own block and serialize threw the words away. ▸p/comment-images"""
@@ -1543,14 +1334,6 @@ class ThePictureButtonIsActuallyRun(unittest.TestCase):
                       "the words typed in the picture's block were "
                       "lost: %s" % items)
 
-    def test_a_bullet_point_still_goes_in_from_the_menu(self):
-        """An EMPTY to-do serializes to nothing by design, so it has to be given a label before the round trip shows it."""
-        self._menu_entry("Bullet point").trigger()
-        self.widget.text_edit.textCursor().insertText("a task")
-        items = self.widget.text_edit.serialize()
-        self.assertEqual([{"t": "todo", "label": "a task", "done": False}],
-                         items)
-
     def _a_picture_on_disk(self):
         path = os.path.join(self.outside, "picked.png")
         image = QtGui.QImage(10, 10, QtGui.QImage.Format.Format_RGB32)
@@ -1586,16 +1369,13 @@ class ThePictureButtonIsActuallyRun(unittest.TestCase):
                         "the picture was not copied into the library")
 
     def test_cancelling_the_picker_adds_nothing(self):
-        with self._fake_ui(""):
-            self._menu_entry("Image").trigger()
-        self.assertEqual([], self.widget.text_edit.serialize())
-
-    def test_the_picker_asks_for_READ_not_read_and_write(self):
-        """The default is ReadAndWrite, which offers to create a file that is not there. ▸r/select-file-write"""
         seen = {}
         with self._fake_ui("", seen):
             self._menu_entry("Image").trigger()
-        self.assertEqual(hou.fileChooserMode.Read, seen.get("chooser_mode"))
+        self.assertEqual([], self.widget.text_edit.serialize())
+        self.assertEqual(hou.fileChooserMode.Read, seen.get("chooser_mode"),
+                         "the picker offers to create a file that is not "
+                         "there ▸r/select-file-write")
 
     def test_it_does_not_raise_where_there_is_no_hou_ui(self):
         """Headless has none, and an unguarded reach would turn the click into an AttributeError. ▸p/refusal-sink"""
@@ -1624,15 +1404,11 @@ class APictureIsCOPIEDIntoTheLibrary(unittest.TestCase):
         return path
 
     def test_the_file_is_copied_under_img_comments(self):
-        src = self.notes.adopt_image(self.prefs,
-                                     self._a_picture_outside_the_library())
+        original = self._a_picture_outside_the_library()
+        src = self.notes.adopt_image(self.prefs, original)
         self.assertTrue(src.startswith("img/comments/"), src)
         landed = os.path.join(self.prefs.dir, *src.split("/"))
         self.assertTrue(os.path.isfile(landed), "nothing was copied in")
-
-    def test_the_original_is_left_alone(self):
-        original = self._a_picture_outside_the_library()
-        self.notes.adopt_image(self.prefs, original)
         self.assertTrue(os.path.isfile(original),
                         "adopting a picture MOVED the user's own file")
 

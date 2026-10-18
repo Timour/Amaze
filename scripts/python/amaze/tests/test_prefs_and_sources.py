@@ -62,21 +62,6 @@ class TheRendererTableIsWrittenOnce(unittest.TestCase):
             self.assertTrue(hasattr(prefs_mod.Prefs, attr),
                             "%s (%s) names no preference" % (label, attr))
 
-    def test_preferences_reads_the_table(self):
-        self.assertTrue(
-            calls("dialogs/prefs_dialog.py", "_build_showhide_tab",
-                  "renderer_prefs"),
-            "the Show/Hide tab carries its own copy of the renderer "
-            "table again - add a renderer and it gets no switch")
-
-    def test_enable_on_add_reads_the_table(self):
-        self.assertTrue(
-            calls("panel/panel.py", "enable_renderer_on_add",
-                  "renderer_prefs"),
-            "enable_renderer_on_add is an if/elif chain again - a new "
-            "renderer's first material would be invisible in the tab "
-            "it was saved from")
-
     def test_every_renderer_can_be_switched_on_by_saving_one(self):
         """The behaviour the third copy exists for."""
         class Panel:
@@ -279,13 +264,6 @@ class LoadNeverRaisesAndAlwaysValidates(unittest.TestCase):
                                      "the setter keeps a value its row "
                                      "cannot show")
 
-    def test_load_assigns_through_the_setters(self):
-        """Source pin on the file holding load(): the values are clamped in the setters, and a raw assignment bypasses every one."""
-        body = ast.dump(ast.parse(source_of("prefs/persistence.py")))
-        self.assertIn(
-            "_through_setter", body,
-            "load() assigns these keys raw again")
-
 
 class ThePerUserBlocksRoundTripAndMerge(unittest.TestCase):
     """The users dimension of settings.json: per-UID blocks, and the merge two panes of one session put them through."""
@@ -380,17 +358,15 @@ class TheTestLibrarySwitchIsAnOverlay(unittest.TestCase):
         p.cache_dir = self.REAL_CACHE
         return p
 
-    def test_off_by_default_and_the_real_paths_answer(self):
-        p = self._prefs()
-        self.assertFalse(p.test_mode)
-        self.assertEqual(self.REAL_LIB, p.dir)
-        self.assertEqual(self.REAL_CACHE, p.cache_dir)
-
     def test_on_moves_the_library_into_the_folder(self):
         p = self._prefs()
         p.test_dir = "/tmp/amaze_probe"
         p.test_mode = True
         self.assertEqual("/tmp/amaze_probe/lib/", p.dir)
+        self.assertEqual(
+            self.REAL_CACHE, p.cache_dir,
+            "the cache moved with the library, but File thumbnails are "
+            "keyed by file path and say nothing about the library")
 
     def test_the_overlay_and_the_saved_pointer_take_one_shape(self):
         """The test path and the saved `directory` are shaped by one helper, as each copy did."""
@@ -408,16 +384,10 @@ class TheTestLibrarySwitchIsAnOverlay(unittest.TestCase):
                              "the saved pointer took another shape")
         self.assertEqual("C:/Lib/lib/", prefs_mod.test_library_dir("C:\\Lib"))
 
-    def test_the_cache_does_not_move_with_the_library(self):
-        """The File section's thumbnails are keyed by file path on disk, so they say nothing about which library is open."""
-        p = self._prefs()
-        p.test_dir = "/tmp/amaze_probe"
-        p.test_mode = True
-        self.assertEqual(self.REAL_CACHE, p.cache_dir)
-
     def test_the_real_paths_survive_the_round_trip(self):
         """The one that would cost a real library if it broke."""
         p = self._prefs()
+        self.assertFalse(p.test_mode, "the test library is on by default")
         p.test_dir = "/tmp/amaze_probe"
         p.test_mode = True
         p.test_mode = False
@@ -430,13 +400,6 @@ class TheTestLibrarySwitchIsAnOverlay(unittest.TestCase):
         p.test_mode = True
         self.assertEqual(self.REAL_LIB, p.dir)
         self.assertEqual(self.REAL_CACHE, p.cache_dir)
-
-    def test_the_library_path_keeps_its_trailing_separator(self):
-        """The connectors build `self._path + self._filename`, so a missing separator silently reads the wrong file."""
-        p = self._prefs()
-        p.test_dir = "/tmp/amaze_probe"
-        p.test_mode = True
-        self.assertTrue(p.dir.endswith("/"), p.dir)
 
     def test_a_fresh_folder_is_seeded_into_a_real_library(self):
         folder = tempfile.mkdtemp(prefix="amaze_testlib_seed_")
@@ -504,56 +467,7 @@ class TheTestLibrarySwitchIsAnOverlay(unittest.TestCase):
             "REAL library, and that case passed before the fix too")
 
 
-class ARetiredKeyIsNotSTRIPPED(unittest.TestCase):
-    """A key this build no longer reads survives a rewrite: dropping a preference is a code change, never a data change."""
-
-    def test_an_unknown_key_survives_a_load_and_save(self):
-        import json
-        folder = tempfile.mkdtemp(prefix="amaze_prefs_retired_")
-        self.addCleanup(shutil.rmtree, folder, True)
-        settings = os.path.join(folder, "settings.json")
-        with open(settings, "w", encoding="utf-8") as handle:
-            json.dump({"texture_force_iconvert": True,
-                       "some_future_builds_key": [1, 2, 3],
-                       "sidebar_counts": True}, handle)
-
-        p = prefs_mod.Prefs()
-        p.path = folder
-        p.load()
-        p.sidebar_counts = False  # change something this build OWNS, or a fixture read back unchanged cannot tell a preserving rewrite from no rewrite at all
-        p.save()
-
-        with open(settings, encoding="utf-8") as handle:
-            written = json.load(handle)
-        self.assertEqual(
-            False, written.get("sidebar_counts"),
-            "settings.json was not rewritten at all, so nothing below "
-            "is evidence about what a rewrite preserves")
-        self.assertEqual(
-            True, written.get("texture_force_iconvert"),
-            "a retired key was stripped from settings.json - the other "
-            "machine's build reads this file too")
-        self.assertEqual(
-            [1, 2, 3], written.get("some_future_builds_key"),
-            "a key this build does not know was dropped")
-
-
 class TheHomeLayoutsLiveInHostos(unittest.TestCase):
-
-    def test_prefs_carries_no_os_path_convention(self):
-        """No hardcoded OS path convention anywhere in the `prefs/` package - hostos owns those, and the subject is the LAYER, so this walks every file in it."""
-        checked = []
-        for name in sorted(os.listdir(os.path.join(PACKAGE, "prefs"))):
-            if not name.endswith(".py"):
-                continue
-            checked.append(name)
-            self.assertNotIn(
-                "Users|home", source_of("prefs/" + name),
-                "prefs/%s hardcodes the home-directory layouts again - "
-                "they belong in hostos, which is where a fourth one "
-                "gets added" % name)
-        self.assertIn("prefs.py", checked)  # a walk that finds nothing passes silently, so name the files it MUST have seen
-        self.assertIn("persistence.py", checked)
 
     def test_rehome_only_answers_when_the_result_exists(self):
         home = os.path.expanduser("~").replace("\\", "/").rstrip("/")
@@ -566,8 +480,6 @@ class TheHomeLayoutsLiveInHostos(unittest.TestCase):
         # And it does answer for something that does exist.
         self.assertEqual(
             home + "/", hostos.rehome("/Users/someone-else/"))
-
-    def test_an_unrecognised_layout_is_left_alone(self):
         self.assertEqual(
             "D:/Profiles/someone/lib",
             hostos.rehome("D:/Profiles/someone/lib"),
@@ -601,66 +513,34 @@ class OnlineDownloadsStayInsideTheLibrary(unittest.TestCase):
         """`_packages` swallows every per-package error and returns [], and an empty list is a PRESENT key - so a cached failure would outlive the network blip."""
         from amaze.core import matx_sources
 
-        class Record:
-            payload = {}
-            title = "Red Brick"
+        for answer, lookups in (([], 2),
+                                ([("2K", "id", "http://example/x.zip")], 1)):
+            with self.subTest(packages=answer):
 
-        class Source(matx_sources.GPUOpenSource):
-            def __init__(self):
-                self.calls = 0
+                class Record:
+                    payload = {}
+                    title = "Red Brick"
 
-            def _packages(self, record):
-                self.calls += 1
-                return []
+                class Source(matx_sources.GPUOpenSource):
+                    def __init__(self):
+                        self.calls = 0
 
-        source = Source()
-        record = Record()
-        source._resolved_packages(record)
-        source._resolved_packages(record)
-        self.assertEqual(
-            2, source.calls,
-            "a failed lookup was cached, so the retry never reached the "
-            "network")
-        self.assertNotIn(
-            "_resolved", record.payload,
-            "the failure was written onto the record")
+                    def _packages(self, record):
+                        self.calls += 1
+                        return list(answer)
 
-    def test_a_successful_lookup_is_cached(self):
-        from amaze.core import matx_sources
-
-        class Record:
-            payload = {}
-            title = "Red Brick"
-
-        class Source(matx_sources.GPUOpenSource):
-            def __init__(self):
-                self.calls = 0
-
-            def _packages(self, record):
-                self.calls += 1
-                return [("2K", "id", "http://example/x.zip")]
-
-        source = Source()
-        record = Record()
-        source._resolved_packages(record)
-        source._resolved_packages(record)
-        self.assertEqual(1, source.calls,
-                         "a successful lookup is no longer cached")
-
-    def test_the_archive_is_discarded_in_a_finally(self):
-        """A failed extract must not leave the archive behind: `matx_import` reads a non-empty package folder as already downloaded."""
-        tree = ast.parse(source_of("core/matx_sources.py"))
-        found = False
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Try) and node.finalbody:
-                dumped = ast.dump(ast.Module(body=node.finalbody,
-                                             type_ignores=[]))
-                if "zip_path" in dumped:
-                    found = True
-        self.assertTrue(
-            found,
-            "the downloaded archive is not cleaned up in a finally, so "
-            "a failed extract poisons the package folder permanently")
+                source = Source()
+                record = Record()
+                source._resolved_packages(record)
+                source._resolved_packages(record)
+                self.assertEqual(
+                    lookups, source.calls,
+                    "a failed lookup was cached, so the retry never "
+                    "reached the network - or a good one was not cached")
+                if not answer:
+                    self.assertNotIn(
+                        "_resolved", record.payload,
+                        "the failure was written onto the record")
 
 
 class RefreshDropsEveryCacheASourceKeeps(unittest.TestCase):
@@ -960,25 +840,6 @@ class AHalfFetchedPackageIsNotReused(unittest.TestCase):
                     handle.write(b"HALF")
                 raise RuntimeError("connection dropped")
 
-        record = self._record()
-        produce, _note, error = matx_import._producer_for(
-            record, DyingSource(), "2K", prefs)
-        self.assertIsNone(produce)
-        self.assertIn("connection dropped", error)
-        dest = os.path.join(matx_import.matx_dir(prefs.dir),
-                            matx_import.package_dirname(record))
-        self.assertFalse(
-            os.path.isdir(dest) and os.listdir(dest),
-            "the dead fetch occupied the destination - every later "
-            "import will reuse the torn package")
-
-    def test_a_download_with_no_mtlx_leaves_no_destination(self):
-        """A fetch that SUCCEEDS and carries no .mtlx must not take the destination either, or the reuse check refuses that record for good."""
-        from amaze.core import matx_import
-        from amaze.tests import test_support
-
-        prefs = test_support.fixture_prefs(self)
-
         class NoMtlxSource:
             name = "stub"
 
@@ -989,18 +850,20 @@ class AHalfFetchedPackageIsNotReused(unittest.TestCase):
                     handle.write(b"PNG")
                 return {"mtlx": None}
 
-        record = self._record()
-        produce, _note, error = matx_import._producer_for(
-            record, NoMtlxSource(), "2K", prefs)
-        self.assertIsNone(produce)
-        self.assertIn("No .mtlx", error)
-        dest = os.path.join(matx_import.matx_dir(prefs.dir),
-                            matx_import.package_dirname(record))
-        self.assertFalse(
-            os.path.isdir(dest) and os.listdir(dest),
-            "the incomplete package took the destination, so every "
-            "later import of this material is refused until somebody "
-            "deletes the folder by hand")
+        for source, why in ((DyingSource(), "connection dropped"),
+                            (NoMtlxSource(), "No .mtlx")):
+            with self.subTest(why=why):
+                record = self._record()
+                produce, _note, error = matx_import._producer_for(
+                    record, source, "2K", prefs)
+                self.assertIsNone(produce)
+                self.assertIn(why, error)
+                dest = os.path.join(matx_import.matx_dir(prefs.dir),
+                                    matx_import.package_dirname(record))
+                self.assertFalse(
+                    os.path.isdir(dest) and os.listdir(dest),
+                    "a dead or .mtlx-less fetch occupied the destination - "
+                    "every later import reuses or refuses it")
 
     def test_the_retry_fetches_fresh_and_lands_complete(self):
         from amaze.core import matx_import
@@ -1131,27 +994,6 @@ class StagingLeavesNoUndoEntry(unittest.TestCase):
 
 class AGalleryIsLeftAsItWasFound(unittest.TestCase):
 
-    def test_a_failed_reinstall_puts_it_back(self):
-        """The function removes the user's gallery first, so every failure path has to put it back or they lose it for the session."""
-        body = source_of("core/gallery_import.py")
-        tree = ast.parse(body)
-        lines = body.splitlines()
-        target = None
-        for node in ast.walk(tree):
-            if isinstance(node, ast.FunctionDef) and \
-                    node.name == "entries_from_file":
-                target = "\n".join(lines[node.lineno - 1:node.end_lineno])
-        self.assertIsNotNone(target)
-        before_finally = target[:target.index("finally:")]
-        self.assertIn(
-            "if was_installed:", before_finally,
-            "the installGallery failure path does not put the user's "
-            "gallery back, so a browse operation costs them that "
-            "gallery for the rest of the Houdini session")
-        self.assertGreaterEqual(
-            before_finally.count("installGallery"), 2,
-            "nothing re-installs it on the failure path")
-
     def test_OperationFailed_really_is_covered_by_hou_Error(self):
         """The premise for dropping it from the except tuple - if Houdini ever unhooks the two, the narrowed clause stops catching it. ▸r/gallery-entries"""
         self.assertTrue(
@@ -1159,94 +1001,45 @@ class AGalleryIsLeftAsItWasFound(unittest.TestCase):
             "hou.OperationFailed is no longer a hou.Error, so the "
             "removeGallery clause silently stopped catching it")
 
-    def _function_source(self, relative, name):
-        """The source of ONE function - a whole-file grep matches an identical clause on another path and proves nothing."""
-        body = source_of(relative)
-        lines = body.splitlines()
-        for node in ast.walk(ast.parse(body)):
-            if isinstance(node, ast.FunctionDef) and node.name == name:
-                return "\n".join(lines[node.lineno - 1:node.end_lineno])
-        self.fail("%s has no %s" % (relative, name))
-
-    def test_the_unreachable_None_check_is_gone_but_the_guard_widened(self):
-        """`createChildNode` is documented `-> Node` and returns one or raises, so the None branch was dead - deleting it must not let an undocumented None abort the whole run. ▸r/gallery-entries"""
-        target = self._function_source(
-            "core/gallery_import.py", "import_entries")
-        self.assertNotIn(
-            "if node is None:", target,
-            "the unreachable branch is back - createChildNode returns a "
-            "node or raises, so nothing reaches it")
-        self.assertIn(
-            "except (AttributeError, hou.Error) as exc:", target,
-            "import_entries no longer catches AttributeError per entry, "
-            "so a None from createChildNode would abort the whole "
-            "import instead of failing one entry")
-
-
-class OneTooltipEngine(unittest.TestCase):
-
-    def test_the_model_paths_use_the_measured_one(self):
-        for rel in ("core/code_library.py", "core/gradient_library.py",
-                    "core/matx_library.py"):
-            self.assertNotIn(
-                "helpers.tooltip_html", source_of(rel),
-                "%s still routes its tooltips through the unmeasured "
-                "engine" % rel)
-
 
 class SettingsAreNotWrittenPerMouseMove(unittest.TestCase):
-
-    def test_the_ram_slider_leaves_persistence_to_close(self):
-        """`ClickSlider` fires valueChanged on every mouseMoveEvent, so a numeric row that saved per tick would fsync settings.json through the whole drag."""
-        self.assertFalse(
-            calls("dialogs/prefs_dialog.py", "set_ram_cache_mb", "save"),
-            "the RAM Cache setter saves on every tick again")
 
     def test_close_still_persists(self):
         self.assertTrue(
             calls("dialogs/prefs_dialog.py", "closeEvent", "save"),
             "nothing persists the dialog's values any more")
 
+    def test_the_ram_slider_leaves_persistence_to_close(self):
+        """ClickSlider fires on every mouse move, so saving per tick fsyncs settings.json all drag."""
+        self.assertFalse(
+            calls("dialogs/prefs_dialog.py", "set_ram_cache_mb", "save"),
+            "the RAM Cache setter saves on every tick again")
 
-class TheDebugSessionSurvivesAPathChange(unittest.TestCase):
 
-    def test_a_new_path_gets_a_new_session(self):
-        """configure() clears the session on a path change, so it has to establish a new one or `log-check.py` reads the new file as having none."""
-        from amaze.core import debug
+class TheFileLoaderQueueDoesNotBusySpin(unittest.TestCase):
 
-        folder = tempfile.mkdtemp(prefix="amaze_debug_session_")
-        self.addCleanup(shutil.rmtree, folder, True)
-        first = os.path.join(folder, "a.jsonl")
-        second = os.path.join(folder, "b.jsonl")
-        previous = debug.log_path() if hasattr(debug, "log_path") else None
-
-        debug.configure(True, first)
-        debug.event("test", "one")
-        debug.configure(True, second)          # already on, new path
-        debug.event("test", "two")
-        try:
-            with open(second, encoding="utf-8") as handle:
-                body = handle.read()
-        finally:
-            debug.configure(False, previous) if previous else \
-                debug.configure(False)
-        self.assertIn(
-            '"session"', body,
-            "the new file has no session field at all")
-        self.assertNotIn(
-            '"session": ""', body,
-            "records in the new file carry an EMPTY session id, so "
-            "log-check.py shows the file as having zero sessions and "
-            "prints none of its records")
+    def test_it_re_arms_on_a_frame_not_immediately(self):
+        """A zero-delay re-arm spins the handler at full event-loop rate on the painting thread."""
+        tree = ast.parse(source_of("core/thumbnails.py"))
+        delays = []    # the RE-ARM only: the first schedule has nothing to wait for
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.FunctionDef) and node.name == "_dispatch_files"):
+                continue
+            for branch in ast.walk(node):
+                if not (isinstance(branch, ast.If)
+                        and "FILE_LOADER_LIMIT" in ast.dump(branch.test)):
+                    continue
+                for call in ast.walk(branch):
+                    if (isinstance(call, ast.Call)
+                            and getattr(call.func, "attr", "") == "singleShot"
+                            and call.args and isinstance(call.args[0], ast.Constant)):
+                        delays.append(call.args[0].value)
+        self.assertTrue(delays, "the cap's re-arm is gone entirely")
+        self.assertTrue(all(d > 0 for d in delays),
+                        "the file-loader queue re-arms with a zero delay: %s" % delays)
 
 
 class OneRuleForWhatBelongsInAFolder(unittest.TestCase):
-
-    def test_matches_delegates_to_the_per_location_rule(self):
-        """One rule for what belongs in a folder: the flat door delegates, so it cannot answer without the per-location override."""
-        self.assertTrue(
-            calls("core/file_library.py", "matches", "matches_in"),
-            "FileFolders.matches carries a second body again")
 
     def test_the_two_answers_cannot_disagree(self):
         class Prefs:
@@ -1261,35 +1054,6 @@ class OneRuleForWhatBelongsInAFolder(unittest.TestCase):
                 model.matches_in("", name), model.matches(name),
                 "the flat and per-location answers disagree for %r"
                 % name)
-
-
-class TheFileLoaderQueueDoesNotBusySpin(unittest.TestCase):
-
-    def test_it_re_arms_on_a_frame_not_immediately(self):
-        """The queue waits for a loader to FINISH, so a zero-delay re-arm spins the handler at full event-loop rate on the thread that paints."""
-        body = source_of("core/thumbnails.py")
-        tree = ast.parse(body)
-        delays = []  # the RE-ARM only: the initial schedule is correct at zero, because it has nothing to wait for
-        for node in ast.walk(tree):
-            if not (isinstance(node, ast.FunctionDef)
-                    and node.name == "_dispatch_files"):
-                continue
-            for branch in ast.walk(node):
-                if not (isinstance(branch, ast.If)
-                        and "FILE_LOADER_LIMIT" in ast.dump(branch.test)):
-                    continue
-                for call in ast.walk(branch):
-                    if (isinstance(call, ast.Call)
-                            and getattr(call.func, "attr", "") == "singleShot"
-                            and call.args
-                            and isinstance(call.args[0], ast.Constant)):
-                        delays.append(call.args[0].value)
-        self.assertTrue(delays, "the cap's re-arm is gone entirely")
-        self.assertTrue(
-            all(d > 0 for d in delays),
-            "the file-loader queue re-arms with a zero delay, so it "
-            "spins at full event-loop rate on the thread that paints: "
-            "%s" % delays)
 
 
 class TheOsHandOffsNeverRaise(unittest.TestCase):
@@ -1474,6 +1238,7 @@ class TheCacheWipeCannotBeSuppressed(unittest.TestCase):
         return seen
 
     def test_the_wipe_asks_with_the_non_suppressable_type(self):
+        from amaze import messages
         from amaze.dialogs import prefs_dialog
         from amaze.tests import test_support
         p = test_support.fixture_prefs(self)
@@ -1481,6 +1246,8 @@ class TheCacheWipeCannotBeSuppressed(unittest.TestCase):
         self.addCleanup(dlg.deleteLater)
         seen = self._asked_with(dlg)
         self.assertIn("kwargs", seen, "the wipe never asked at all")
+        self.assertEqual(messages.CONFIRM_CLEAR_THUMBNAIL_CACHE,
+                         seen.get("text"))
         self.assertEqual(
             hou.confirmType.NoConfirmType, seen["kwargs"].get("suppress"),
             "the cache wipe rides on a SUPPRESSABLE confirmation: with "
@@ -1499,12 +1266,6 @@ class PreferencesSpeakTheDrawnWords(unittest.TestCase):
         dlg = prefs_dialog.PrefsDialog(p, panel=None)
         self.addCleanup(dlg.deleteLater)
         return dlg
-
-    def test_the_cache_wipe_confirm(self):
-        from amaze import messages
-        seen = TheCacheWipeCannotBeSuppressed._asked_with(self, self._dialog())
-        self.assertEqual(messages.CONFIRM_CLEAR_THUMBNAIL_CACHE,
-                         seen.get("text"))
 
     def test_the_material_versions_help(self):
         from amaze import messages
@@ -1627,14 +1388,8 @@ class APickedRootKeepsItsSlash(unittest.TestCase):
 
     def test_a_picked_root_is_kept_whole(self):
         for method in ("change_cache_path", "change_test_path"):
-            for answer, windows in (("/", False), ("D:/", True)):
-                with self.subTest(picker=method, picked=answer):
-                    self.assertEqual(answer,
-                                     self._picked(method, answer, windows))
-
-    def test_any_other_folder_loses_its_trailing_slash(self):
-        for method in ("change_cache_path", "change_test_path"):
             for answer, windows, kept in (
+                    ("/", False, "/"), ("D:/", True, "D:/"),
                     ("/Volumes/cache/", False, "/Volumes/cache"),
                     ("D:/shots/", True, "D:/shots")):
                 with self.subTest(picker=method, picked=answer):

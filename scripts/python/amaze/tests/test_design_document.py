@@ -49,8 +49,9 @@ class NoSecondHomeForAColour(unittest.TestCase):
         offenders = []
         for relative in DRAWS_CHROME:
             path = os.path.join(_ROOT, relative)
-            if not os.path.exists(path):
-                continue
+            self.assertTrue(os.path.exists(path),
+                            "%s is listed as a chrome file and does not exist"
+                            % relative)
             for number, hit, line in _literal_hexes(path):
                 if any(needle in line
                        for needle, _why in ALLOWED.get(relative, ())):
@@ -72,17 +73,8 @@ class NoSecondHomeForAColour(unittest.TestCase):
             "the scanner finds no hex even in the design document, so "
             "it cannot fail when one is added elsewhere")
 
-    def test_every_scanned_file_is_really_there(self):
-        """A path that no longer resolves is skipped silently, so the list would rot into a scan of nothing."""
-        for relative in DRAWS_CHROME:
-            with self.subTest(file=relative):
-                self.assertTrue(
-                    os.path.exists(os.path.join(_ROOT, relative)),
-                    "%s is listed as a chrome file and does not exist"
-                    % relative)
 
-
-SIZERS = ("setFixedWidth", "setMinimumWidth", "setMaximumWidth",
+SIZERS =("setFixedWidth", "setMinimumWidth", "setMaximumWidth",
           "setFixedSize", "setMinimumSize", "setBaseSize")
 
 GEOMETRY = ("resize", "setGeometry")
@@ -175,43 +167,23 @@ class NoDialogSetsItsOwnWidth(unittest.TestCase):
     def test_the_geometry_scan_can_see_one(self):
         """The scanner that found nothing must be shown a real one."""
         import tempfile
-        with tempfile.TemporaryDirectory() as folder:
-            path = os.path.join(folder, "d.py")
-            with open(path, "w", encoding="utf-8") as handle:
-                handle.write("class D:\n"
-                             "    def f(self):\n"
-                             "        self.resize(self.width(), 10)\n")
-            self.assertEqual(
-                [(3, "resize", "width")], self._geometry_from_itself(path),
-                "the scanner cannot see a self-reading resize even in a "
-                "sample written to contain one")
-
-    def test_the_geometry_scan_allows_the_document_and_the_hint(self):
-        """`icon_dialog` opens at D02_FORM_WIDTH, and a height from sizeHint is the layout's own answer - neither may be flagged."""
-        import tempfile
-        with tempfile.TemporaryDirectory() as folder:
-            path = os.path.join(folder, "d.py")
-            with open(path, "w", encoding="utf-8") as handle:
-                handle.write("class D:\n"
-                             "    def f(self):\n"
-                             "        self.resize(theme.ui_px(A.W),\n"
-                             "                    self.sizeHint().height())\n")
-            self.assertEqual([], self._geometry_from_itself(path))
-
-    def test_the_scan_can_see_a_self_sizing_call(self):
-        """A scanner that matches nothing passes forever."""
-        tree = ast.parse("class D:\n"
-                         "    def f(self):\n"
-                         "        self.setFixedWidth(350)\n")
-        hits = [n for n in ast.walk(tree)
-                if isinstance(n, ast.Call)
-                and isinstance(n.func, ast.Attribute)
-                and n.func.attr in SIZERS
-                and isinstance(n.func.value, ast.Name)
-                and n.func.value.id == "self"]
-        self.assertEqual(1, len(hits),
-                         "the scanner cannot see a self-sizing call even "
-                         "in a sample written to contain one")
+        for scan, body, found in (
+                (self._geometry_from_itself,
+                 "        self.resize(self.width(), 10)\n",
+                 [(3, "resize", "width")]),
+                (self._geometry_from_itself,    # a document width and a layout hint pass
+                 "        self.resize(theme.ui_px(A.W),\n"
+                 "                    self.sizeHint().height())\n", []),
+                (self._self_sizing_calls,
+                 "        self.setFixedWidth(350)\n", [(3, "setFixedWidth")])):
+            with self.subTest(body=body.strip()):
+                with tempfile.TemporaryDirectory() as folder:
+                    path = os.path.join(folder, "d.py")
+                    with open(path, "w", encoding="utf-8") as handle:
+                        handle.write("class D:\n    def f(self):\n" + body)
+                    self.assertEqual(
+                        found, scan(path),
+                        "the scanner misreads a sample written to test it")
 
     def test_every_dialog_width_is_a_named_constant(self):
         """A FORM_WIDTH assigned a bare number is a second home for a size, however few characters it is."""

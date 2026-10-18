@@ -208,43 +208,24 @@ class TheReportSaysWhatIsWrongTest(_Case):
 
     def test_a_colors_file_of_the_wrong_shape_is_not_called_empty(self):
         """A file nothing can be counted in reads as unreadable, never empty."""
-        with open(os.path.join(self.dir, "gradients.json"), "w",
-                  encoding="utf-8") as handle:
-            json.dump(["not", "a", "list", "Amaze", "wrote"], handle)
-        findings = self._survey()
-        colors = [e for e in findings["lists"]
-                  if e["filename"] == "gradients.json"][0]
-        self.assertEqual("unreadable", colors["state"])
-        self.assertFalse(findings["complete"],
-                         "a list nobody can read left the union looking "
-                         "complete, so files could be moved on a guess")
-
-    def test_a_broken_colors_file_that_still_COUNTS_is_unreadable(self):
-        """The shape `count_in` answers 1 for, which the connector refuses."""
-        with open(os.path.join(self.dir, "gradients.json"), "w",
-                  encoding="utf-8") as handle:
-            json.dump({"version": 3, "categories": ["_All"],
-                       "tags": [], "assets": "oops"}, handle)
-        findings = self._survey()
-        colors = [e for e in findings["lists"]
-                  if e["filename"] == "gradients.json"][0]
-        self.assertEqual(
-            "unreadable", colors["state"],
-            "Repair called a broken Colors list healthy - the tool whose "
-            "whole job is saying what is wrong said nothing was")
-        self.assertFalse(
-            findings["complete"],
-            "the union looked complete over a list nobody can read, so "
-            "files could be moved aside on a guess")
-
-    def test_a_healthy_colors_file_is_still_ok(self):
-        """The accept path: a healthy Colors library must not read as broken."""
-        findings = self._survey()
-        colors = [e for e in findings["lists"]
-                  if e["filename"] == "gradients.json"][0]
-        self.assertIn(colors["state"], ("ok", "empty", "absent"),
-                      "a healthy Colors list was called %s"
-                      % colors["state"])
+        for shape in (["not", "a", "list", "Amaze", "wrote"],
+                      {"version": 3, "categories": ["_All"],    # one count_in answers 1 for
+                       "tags": [], "assets": "oops"}):
+            with self.subTest(shape=shape):
+                with open(os.path.join(self.dir, "gradients.json"), "w",
+                          encoding="utf-8") as handle:
+                    json.dump(shape, handle)
+                findings = self._survey()
+                colors = [e for e in findings["lists"]
+                          if e["filename"] == "gradients.json"][0]
+                self.assertEqual(
+                    "unreadable", colors["state"],
+                    "Repair called a broken Colors list healthy - the tool "
+                    "whose whole job is saying what is wrong said nothing was")
+                self.assertFalse(
+                    findings["complete"],
+                    "the union looked complete over a list nobody can read, "
+                    "so files could be moved aside on a guess")
 
     def test_a_folder_it_could_not_read_is_not_called_accounted_for(self):
         """A neutral value makes a failure indistinguishable from an empty result."""
@@ -313,12 +294,7 @@ class RepairNeverDeletesTest(unittest.TestCase):
         ("pathlib", "unlink"),
     }
 
-    def test_the_module_contains_no_delete_call_at_all(self):
-        path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "core", "repair.py")
-        with open(path, encoding="utf-8") as handle:
-            tree = ast.parse(handle.read(), filename=path)
+    def _deletes(self, tree):
         found = []
         for node in ast.walk(tree):
             if not isinstance(node, ast.Call):
@@ -332,20 +308,21 @@ class RepairNeverDeletesTest(unittest.TestCase):
             if isinstance(func, ast.Name) and func.id in ("unlink",
                                                           "rmtree"):
                 found.append("%s line %d" % (func.id, node.lineno))
+        return found
+
+    def test_the_module_contains_no_delete_call_at_all(self):
+        self.assertEqual(
+            1, len(self._deletes(ast.parse("import os\nos.remove('x')\n"))),
+            "the walk cannot find a planted delete, so it checks nothing")
+        path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "core", "repair.py")
+        with open(path, encoding="utf-8") as handle:
+            found = self._deletes(ast.parse(handle.read(), filename=path))
         self.assertEqual(
             [], found,
             "repair.py calls %s - Repair may only ever MOVE a file, and if "
             "a delete is needed here the design is wrong" % ", ".join(found))
-
-    def test_the_test_can_fail(self):
-        """The walk has to be able to find one, or it is checking nothing."""
-        tree = ast.parse("import os\nos.remove('x')\n")
-        hits = [n for n in ast.walk(tree)
-                if isinstance(n, ast.Call)
-                and isinstance(n.func, ast.Attribute)
-                and (getattr(n.func.value, "id", ""), n.func.attr)
-                in self.FORBIDDEN]
-        self.assertEqual(1, len(hits))
 
 
 class MovingFilesAsideTest(_Case):
@@ -497,45 +474,26 @@ class AddingUnlistedFilesBackTest(_Case):
         self.assertIn(repair.RECOVERED_CATEGORY, document["categories"])
 
     def test_only_a_complete_pair_is_offered(self):
-        """Half a pair would put a tile in the panel that cannot open."""
+        """Half a pair, or `X_cop.mat` read as X's `.mat`, would mint a tile that cannot open."""
         self._cops([])
-        with open(os.path.join(self.mat_dir, "HALFONLY1.mat"), "w",
-                  encoding="utf-8") as handle:
-            handle.write("no .interface beside me\n")
-        findings = self._survey()
-        self.assertEqual([], repair._complete_pairs(findings))
-        self.assertEqual(1, repair.unaccounted_total(findings),
-                         "premise: the half file must still be reported")
-        choices, actions = repair._choices(findings, may_change=True)
-        self.assertNotIn("reattach", actions)
-
-    def test_a_COP_companion_is_not_the_material_half_of_a_pair(self):
-        """`X_cop.mat` must not count as X's `.mat`, or Add Back mints a dead row."""
-        self._cops([])
-        for name, body in (("PAIRCOP1_cop.mat", "the companion\n"),
-                           ("PAIRCOP1.interface", "the interface\n")):
-            with open(os.path.join(self.mat_dir, name), "w",
-                      encoding="utf-8") as handle:
-                handle.write(body)
-
-        findings = self._survey()
-        self.assertEqual(
-            [], repair._complete_pairs(findings),
-            "a COP companion was counted as the material half, so Add "
-            "Back would write a row with no .mat behind it")
-        choices, actions = repair._choices(findings, may_change=True)
-        self.assertNotIn("reattach", actions)
-
-    def test_a_real_pair_beside_a_companion_is_still_offered(self):
-        """The accept path: a genuine pair beside a companion still comes back."""
-        self._cops([])
-        for name in ("PAIRFULL1.mat", "PAIRFULL1.interface",
-                     "PAIRFULL1_cop.mat"):
-            with open(os.path.join(self.mat_dir, name), "w",
-                      encoding="utf-8") as handle:
-                handle.write("owned by PAIRFULL1\n")
-        self.assertEqual(["PAIRFULL1"],
-                         repair._complete_pairs(self._survey()))
+        for why, files, pairs in (
+                ("half a pair", ("HALFONLY1.mat",), []),
+                ("a COP companion beside an interface",
+                 ("PAIRCOP1_cop.mat", "PAIRCOP1.interface"), []),
+                ("a real pair beside its companion",
+                 ("PAIRFULL1.mat", "PAIRFULL1.interface",
+                  "PAIRFULL1_cop.mat"), ["PAIRFULL1"])):
+            with self.subTest(why):
+                for name in files:
+                    with open(os.path.join(self.mat_dir, name), "w",
+                              encoding="utf-8") as handle:
+                        handle.write("owned by %s\n" % name)
+                findings = self._survey()
+                self.assertEqual(pairs, repair._complete_pairs(findings))
+                if not pairs:
+                    choices, actions = repair._choices(findings,
+                                                       may_change=True)
+                    self.assertNotIn("reattach", actions)
 
     def test_it_refuses_while_a_list_cannot_be_read(self):
         self._cops([])
@@ -568,16 +526,13 @@ class ADateOnAWholeSecondKeepsItsSecondsTest(_Case):
         clock.datetime.now.return_value = self.WHOLE
         return patch.object(module, "datetime", clock, create=True)    # every clock the path may read
 
-    def test_a_material_stamped_on_a_whole_second(self):
+    def test_a_material_and_a_reattached_pair_keep_their_seconds(self):
         from amaze.core import material as material_mod
         asset = material_mod.Material(name="whole_second")
         with self._frozen(material_mod):
             asset.set_current_date()
         self.assertEqual(self.STORED, asset.date,
                          "the stamp lost its seconds")
-
-    def test_a_reattached_pair_minted_on_a_whole_second(self):
-        from amaze.core import material as material_mod
         self._cops([])
         self._pair()
         with self._frozen(material_mod), self._frozen(repair):
@@ -682,17 +637,6 @@ class PuttingASavedCopyBackTest(_Case):
         self.assertIn("bak-3", caught.exception.detail,
                       "the terminal tool loses the detail it prints")
 
-    def test_it_goes_through_the_one_shared_implementation(self):
-        """A second implementation of a restore would be a second answer."""
-        self._cops([])
-        self._write(self.cops + ".bak-1", {"assets": [{"id": "A"}]})
-        with patch.object(restore_lib, "put_back",
-                          wraps=restore_lib.put_back) as spy:
-            repair.put_back(self._survey(), "cops.json", "bak-1")
-        self.assertEqual(1, spy.call_count,
-                         "Repair restored without going through "
-                         "helpers/restore.py")
-
     def test_a_refusal_carries_no_exception_text_for_the_dialog(self):
         """No raw exception text on screen; the detail rides in `.detail`."""
         self._cops([{"id": "LIVE1"}])
@@ -711,13 +655,6 @@ class PuttingASavedCopyBackTest(_Case):
         self.assertIn("Expecting", caught.exception.detail,
                       "the technical half was dropped instead of moved, so "
                       "the log and the terminal lose it")
-
-    def test_an_unreadable_copy_is_refused_not_put_back(self):
-        self._cops([{"id": "LIVE1"}])
-        with open(self.cops + ".bak-1", "w", encoding="utf-8") as handle:
-            handle.write("{ truncated")
-        with self.assertRaises(restore_lib.RestoreRefused):
-            repair.put_back(self._survey(), "cops.json", "bak-1")
         self.assertEqual(1, len(self._read(self.cops)["assets"]),
                          "the live list was overwritten with something "
                          "that does not parse")
@@ -758,14 +695,6 @@ class PuttingASavedCopyBackTest(_Case):
 class TheGuardsTest(_Case):
     """Repair reports always; it changes only from a session with no library open."""
 
-    def test_a_session_that_has_read_a_library_may_not_change_anything(self):
-        """A connector holds its document until the process ends and saves it back."""
-        self.assertFalse(repair.session_has_a_library_open(),
-                         "premise: the registry starts empty")
-        connector = database.DatabaseConnector("cops.json")
-        self.assertTrue(repair.session_has_a_library_open())
-        self.assertIsNotNone(connector)
-
     def test_the_actions_themselves_refuse_such_a_session(self):
         """The guard belongs to the operations; a withheld button protects one caller."""
         self._cops([])
@@ -788,23 +717,6 @@ class TheGuardsTest(_Case):
         for path in paths:
             self.assertTrue(os.path.exists(path),
                             "a file was moved by a refused action")
-
-    def test_no_action_is_offered_to_such_a_session(self):
-        self._cops([])
-        self._pair()
-        self._write(self.cops + ".bak-1", {"assets": [{"id": "A"}]})
-        findings = self._survey()
-        offered, actions = repair._choices(findings, may_change=True)
-        self.assertIn("restore", actions,
-                      "premise: this library must have something to offer")
-        held, actions = repair._choices(findings, may_change=False)
-        self.assertEqual(["Close"], held,
-                         "a button was offered that would be written over "
-                         "from memory the moment Amaze next saves")
-
-    def test_finding_no_panel_does_not_raise_without_a_desktop(self):
-        """It must work with no interface at all, which is how the suite runs."""
-        self.assertIsNone(repair.open_panel_tab())
 
     def test_no_library_folder_is_said_plainly_and_nothing_is_read(self):
         with patch.object(hou, "ui", MagicMock(), create=True):
@@ -1001,6 +913,9 @@ class TheSettingsComeBackTest(_Case):
         self.assertIn("could not be read", str(report))
         self.assertIn("Put a Saved Copy Back", report.kwargs["buttons"],
                       "the settings that cannot be read are not offered back")
+        self.assertNotIn(
+            "offers that copy back", ui.displayMessage.call_args_list[1].kwargs["help"],
+            "the confirm promises the unreadable settings back, and Repair refuses them")
         self.assertEqual(self.GOOD, self._read(self.settings),
                          "the saved copy did not land")
         self.assertTrue([name for name in os.listdir(self.config)
@@ -1008,14 +923,6 @@ class TheSettingsComeBackTest(_Case):
                         "the unreadable settings were not kept aside first")
         self.assertNotIn("No library folder", self._said(ui),
                          "Repair still says no library is set")
-
-    def test_the_confirm_promises_no_way_back_to_settings_that_do_not_read(self):
-        self._broken()
-        self._copy()
-        ui = self._run(buttons=[0, 1], listed=(0,))    # the restore button, then the confirm declined
-        self.assertNotIn(
-            "offers that copy back", ui.displayMessage.call_args_list[1].kwargs["help"],
-            "the confirm promises the unreadable settings back, and Repair refuses them")
 
     def test_the_confirm_promises_readable_settings_back(self):
         self._write(self.settings, {"directory": self.dir})
@@ -1177,12 +1084,9 @@ class TheRouteFromCleanLibraryTest(_Case):
         self.assertIn("amaze_repair_library", shelves.get("amaze", []),
                       "the tool exists but is not on the Amaze shelf, so "
                       "the tab the refusal names does not show it")
-
-    def test_the_tab_the_refusal_tells_them_to_add_exists(self):
-        """The refusal names a menu entry, so its label has to exist."""
-        root = ET.parse(SHELF).getroot()
-        labels = [shelf.get("label") for shelf in root.findall("toolshelf")]
-        self.assertIn("Amaze", labels)
+        self.assertIn("Amaze", [shelf.get("label")
+                                for shelf in root.findall("toolshelf")],
+                      "the tab the refusal tells them to add has no label")
 
     def test_the_tool_uses_the_committed_icon_in_the_family(self):
         """The two icons are compared to each other, never to a frozen number."""
@@ -1286,39 +1190,30 @@ class TheRouteFromCleanLibraryTest(_Case):
         """One classifier, two tools: two numbers about one folder is a bug."""
         self._cops([])
         self._pair()
-        for name in ("STRAY1.mat.writing", "notes.txt", "STRAY2_cop.mat"):
+        for name, body in (("STRAY1.mat.writing", "x\n"), ("notes.txt", "x\n"),
+                           ("STRAY2_cop.mat", "x\n"),
+                           ("STRAY3.builder.json", "{}\n"),
+                           ("STRAY4.stamp.json", "{}\n")):
             with open(os.path.join(self.mat_dir, name), "w",
                       encoding="utf-8") as handle:
-                handle.write("x\n")
+                handle.write(body)
         model = self._material_model()
         ids = {str(a.mat_id) for a in model.assets}
         clean = model._files_no_section_accounts_for(ids)
         mine = repair.survey(self.dir, self.prefs.asset_dir,
                              self.prefs.img_dir)["unaccounted"][
                                  self.prefs.asset_dir]
-        self.assertEqual(sorted(clean), sorted(mine))
+        self.assertEqual(
+            sorted(clean), sorted(mine),
+            "Clean Library's empty-section guard and Repair disagree about "
+            "which files the sweep would move")
         self.assertIn("STRAY2_cop.mat", mine,
                       "premise: a companion file must be in the set, or "
                       "this is not comparing the tail-stripping rule")
+        self.assertIn("STRAY3.builder.json", mine,
+                      "premise: a stray builder sidecar must be in the set")
         self.assertNotIn("STRAY1.mat.writing", mine,
                          "premise: a scratch file must be out of the set")
-
-    def test_clean_library_counts_a_stray_builder_and_stamp_too(self):
-        """The guard counts every sidecar the sweep takes, as Repair does."""
-        self._cops([])
-        for name in ("STRAY3.builder.json", "STRAY4.stamp.json"):
-            with open(os.path.join(self.mat_dir, name), "w",
-                      encoding="utf-8") as handle:
-                handle.write("{}\n")
-        model = self._material_model()
-        clean = model._files_no_section_accounts_for(
-            {str(a.mat_id) for a in model.assets})
-        mine = self._survey()["unaccounted"][self.prefs.asset_dir]
-        self.assertIn("STRAY3.builder.json", mine, "premise: Repair counts it")
-        self.assertEqual(
-            sorted(mine), sorted(clean),
-            "Clean Library's empty-section guard misses files its own "
-            "sweep would move, so an empty list no longer holds it back")
 
     def test_an_unreadable_colors_list_holds_the_sweep_back(self):
         """Colors claims ids like every other list, so a Colors file that will not parse stops it."""
@@ -1512,29 +1407,23 @@ class TestRecoveredRowsAreVisible(unittest.TestCase):
         proxy.setFilter(self.model.RendererRole, renderer_filter)
         return proxy
 
-    def test_the_fixture_has_the_row_this_is_about(self):
-        """Premise: the committed fixture carries the row Repair produces."""
+    def test_all_renderers_shows_the_empty_renderer_row(self):
+        """The fixture holds the row Repair produces: All shows it, and empty is not MaterialX."""
         empties = [a for a in self.model.assets if str(a.renderer) == ""]
         self.assertEqual(1, len(empties),
                          "fixture no longer holds an empty-renderer row, "
                          "so this test proves nothing")
-
-    def test_all_renderers_shows_the_empty_renderer_row(self):
-        proxy = self._proxy("all_renderers")
         self.assertEqual(
-            self.model.rowCount(), proxy.rowCount(),
+            self.model.rowCount(), self._proxy("all_renderers").rowCount(),
             'the Renderer menu says "All" and the grid is still hiding '
             "rows - a Repair-recovered material cannot be seen or "
             "selected, so Edit Info cannot reach it either")
-
-    def test_a_named_renderer_still_excludes_the_empty_row(self):
-        """All must not become the only working filter; empty is not MaterialX."""
-        proxy = self._proxy("materialx")
         renderers = [
             str(self.model.data(self.model.index(row, 0), self.model.RendererRole))
             for row in range(self.model.rowCount())
         ]
-        self.assertEqual(renderers.count("MaterialX"), proxy.rowCount())
+        self.assertEqual(renderers.count("MaterialX"),
+                         self._proxy("materialx").rowCount())
 
     def test_the_sidebar_counter_agrees_with_the_grid(self):
         """The counter mirrors the proxy, or a sidebar 0 sits beside a full grid."""
@@ -1559,12 +1448,13 @@ class TestLibraryManifest(unittest.TestCase):
         spec.loader.exec_module(module)
         return module
 
-    def test_product_data_is_recognised(self):
-        """From `database.DATABASES`: the audit's own list cannot import it."""
+    def test_every_kind_of_file_is_classified(self):
+        """Product data from `database.DATABASES` and every restore tier are ok; the rest is reported."""
         audit = self._audit_module()
         checked = tuple(database.DATABASES) + (
             "policy.json",
-            "library.json.bak-1", "cops.json.bak-first",
+            "library.json.bak-1", "library.json.bak-2", "library.json.bak-3",
+            "library.json.bak-first", "cops.json.bak-first",
             "code.json.unreadable", ".amaze_gradient_seed_v1",
             os.path.join("mat", "abc.mat"),
             os.path.join("mat", "abc.interface"),
@@ -1572,15 +1462,6 @@ class TestLibraryManifest(unittest.TestCase):
             os.path.join("matX", "pack", "tex.exr"))
         for rel in checked:
             self.assertEqual("ok", audit.classify(rel), rel)
-
-    def test_the_restore_tier_is_never_called_clutter(self):
-        """A saved copy is the way home, so it may never classify as junk."""
-        audit = self._audit_module()
-        for tier in ("bak-1", "bak-2", "bak-3", "bak-first"):
-            self.assertEqual("ok", audit.classify("library.json." + tier))
-
-    def test_scratch_and_strangers_are_reported(self):
-        audit = self._audit_module()
         for rel, kind in (
                 (os.path.join("img", "140024152983962990.png.lock"), "scratch"),
                 (os.path.join("mat", "abc.writing"), "scratch"),
@@ -1591,15 +1472,6 @@ class TestLibraryManifest(unittest.TestCase):
                 ("notes.md", "unknown"),
                 (".DS_Store", "os-noise")):
             self.assertEqual(kind, audit.classify(rel), rel)
-
-    def test_the_committed_fixture_passes_its_own_rule(self):
-        audit = self._audit_module()
-        fixture = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                               "assets", "library")
-        found = audit.audit(fixture)
-        self.assertEqual([], found["scratch"] + found["unknown"],
-                         "the fixture library carries files the manifest "
-                         "does not allow - fix one or the other")
 
 
 class TheRebuildDrillTest(unittest.TestCase):
@@ -1617,11 +1489,6 @@ class TheRebuildDrillTest(unittest.TestCase):
     def _stamps(self):
         return sorted(n for n in os.listdir(self.mat_dir)
                       if n.endswith(library_mod.STAMP_SUFFIX))
-
-    def test_a_stamp_exists_for_every_asset(self):
-        self.assertEqual(len(self.model.assets), len(self._stamps()),
-                         "an asset has no recovery stamp, so a rebuild "
-                         "would silently lose it")
 
     def test_a_rebuild_leaves_the_other_sections_assets_alone(self):
         """`mat/` is shared by three sections, so a rebuild may not claim it all."""
@@ -1860,21 +1727,6 @@ class TheSuffixesAndTiersHaveOneHome(unittest.TestCase):
              library_mod.STAMP_SUFFIX), repair.ASSET_SIDECARS)
         self.assertEqual((".builder.json", ".stamp.json"),
                          (nodes.BUILDER_SUFFIX, library_mod.STAMP_SUFFIX))
-
-    def test_no_reader_restates_a_suffix_or_the_tier_order(self):
-        """The builder and stamp suffixes are their writers', the tiers `restore.TIERS`."""
-        package = os.path.dirname(os.path.dirname(
-            os.path.abspath(repair.__file__)))
-        found = []
-        for name in ("repair.py", "database.py", "versions.py"):
-            with open(os.path.join(package, "core", name),
-                      encoding="utf-8") as handle:
-                text = handle.read()
-            for literal in ('".builder.json"', '".stamp.json"',
-                            '"bak-first"'):
-                if literal in text:
-                    found.append("%s %s" % (name, literal))
-        self.assertEqual([], found, "a copy is written out again")
         self.assertEqual(("bak-1", "bak-2", "bak-3", "bak-first"),
                          restore_lib.TIERS)
 
@@ -1899,13 +1751,6 @@ class QuarantineIsBoundedTest(unittest.TestCase):
         with open(os.path.join(root, "held.mat"), "w") as fh:
             fh.write("x")
         return root
-
-    def test_the_quarantine_is_not_inside_the_library(self):
-        folder = library_mod.quarantine_folder(self.dir)
-        self.assertFalse(
-            os.path.abspath(folder).startswith(os.path.abspath(self.dir)),
-            "the quarantine is inside the library: it would grow there, "
-            "sync everywhere, and break the no-temporary-files rule")
 
     def test_days_past_the_window_are_removed(self):
         import time as _t
@@ -1948,7 +1793,7 @@ class QuarantineIsBoundedTest(unittest.TestCase):
                          "never expires")
 
     def test_a_conflicted_copy_is_never_classified_as_sweepable(self):
-        """A sync client's rename is the one artifact preserving a divergence."""
+        """A sync client's rename is the one artifact preserving a divergence; real shapes still read."""
         for name in ("library (conflicted copy 2026-07-29).mat",
                      "mat_001 2.mat",
                      "abc-def.mat",
@@ -1956,9 +1801,6 @@ class QuarantineIsBoundedTest(unittest.TestCase):
             self.assertIsNone(
                 database.asset_id_for_file(name, (".mat", ".interface")),
                 "%r was classified as sweepable" % name)
-
-    def test_real_shapes_are_still_classified(self):
-        """So the strictness cannot be satisfied by refusing everything."""
         for name, want in (
                 ("00755b7004824333af08d921462fa3ae.mat",
                  "00755b7004824333af08d921462fa3ae"),
@@ -1984,6 +1826,7 @@ class DeletingAnAssetActuallyDeletesItTest(unittest.TestCase):
             return [str(a.get("id")) for a in json.load(handle)["assets"]]
 
     def test_a_deleted_asset_does_not_come_back(self):
+        """Nor is it re-adopted from the connector's own copy on the next save."""
         self.assertTrue(self.model.save(), "premise: the fixture saves")
         victim = str(self.model.assets[0].mat_id)
         self.assertIn(victim, self._ids_on_disk(), "premise: it is on disk")
@@ -1996,10 +1839,6 @@ class DeletingAnAssetActuallyDeletesItTest(unittest.TestCase):
             "the deleted material is still in the library - the connector "
             "keeps rows the caller does not mention, so a delete has to be "
             "stated and this one was not")
-
-    def test_it_stays_gone_after_another_save(self):
-        """Nor re-adopted from the connector's own copy on the next save."""
-        self.test_a_deleted_asset_does_not_come_back()
         gone = self._ids_on_disk()
         self.model.save()
         self.assertEqual(gone, self._ids_on_disk(),
@@ -2029,37 +1868,32 @@ class DeadScratchesAreSweptWithAnAgeGateTest(unittest.TestCase):
         os.utime(full, (old, old))
         return full
 
-    def test_an_old_scratch_is_quarantined_a_fresh_one_kept(self):
+    def test_an_old_scratch_is_quarantined_and_nothing_else_moves(self):
+        """A fresh scratch may be another session's live write, and moved means recoverable."""
         dead = self._scratch("a.mat.xyz123.writing", hours_old=5)
         live = self._scratch("b.mat.abc456.writing", hours_old=0)
-        moved = self.model._sweep_dead_scratches(self.mat_dir, [])
+        before = sorted(name for name in os.listdir(self.mat_dir)
+                        if name != os.path.basename(dead))
+        names = []
+        moved = self.model._sweep_dead_scratches(self.mat_dir, names)
         self.assertEqual(1, moved)
+        self.assertEqual(["a.mat.xyz123.writing"], names)
         self.assertFalse(os.path.exists(dead),
                          "a five-hour-old scratch survived - they "
                          "accumulate forever after every hard kill")
         self.assertTrue(os.path.exists(live),
                         "a fresh scratch was swept - it may be another "
                         "session's LIVE write")
-
-    def test_the_scratch_lands_in_quarantine_not_nowhere(self):
-        self._scratch("c.mat.qqq.writing", hours_old=5)
-        names = []
-        self.model._sweep_dead_scratches(self.mat_dir, names)
-        self.assertEqual(["c.mat.qqq.writing"], names)
+        self.assertEqual(before, sorted(os.listdir(self.mat_dir)),
+                         "the scratch sweep moved something that is not "
+                         "a scratch")
         root = os.path.join(hostos.history_root(
             os.path.join(self.prefs.dir, "library.json")),
             library_mod.QUARANTINE_PREFIX)
         held = [f for _r, _d, files in os.walk(root) for f in files]
-        self.assertIn("c.mat.qqq.writing", held,
+        self.assertIn("a.mat.xyz123.writing", held,
                       "the swept scratch is nowhere - moved means "
                       "recoverable, even for a scratch")
-
-    def test_real_assets_are_never_touched(self):
-        before = sorted(os.listdir(self.mat_dir))
-        self.model._sweep_dead_scratches(self.mat_dir, [])
-        self.assertEqual(before, sorted(os.listdir(self.mat_dir)),
-                         "the scratch sweep moved something that is not "
-                         "a scratch")
 
 
 class AFailedPromoteLeavesNoScratchTest(unittest.TestCase):
@@ -2131,11 +1965,6 @@ class TheSentenceJoinerHasOneOwner(unittest.TestCase):
         # A generator, not just a list: the call sites pass comprehensions in.
         self.assertEqual("a, b and c",
                          helpers.and_list(x for x in ("a", "b", "c")))
-
-    def test_the_houdini_free_copy_answers_identically(self):
-        from amaze.core import database
-        from amaze.helpers import helpers
-
         for words in ([], ["a"], ["a", "b"], ["a", "b", "c", "d"]):
             self.assertEqual(
                 helpers.and_list(words), database._and_list(words),

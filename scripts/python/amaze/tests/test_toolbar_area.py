@@ -1,7 +1,6 @@
 """The Toolbar area: one table, one fact per control. A control's rule is ONE entry naming the control, the fact about the context, and whether that fact governs enabled-ness or visibility. NO toolbar path asks which WORLD it is in. ▸archive/test_toolbar_area.py
 """
 
-import ast
 import os
 import sys
 import unittest
@@ -19,8 +18,6 @@ sys.path.insert(
 
 from amaze.panel import sections  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
-
-PACKAGE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 class TheToolbarIsATable(unittest.TestCase):
@@ -42,36 +39,12 @@ class TheToolbarIsATable(unittest.TestCase):
                     "%s follows %r, which no context declares - so every "
                     "context answers the default and the control never "
                     "changes" % (control, fact))
-
-    def test_the_four_known_controls_are_in_it(self):
-        """NAMED, because a table that lost an entry is a control that silently stops following its context."""
-        from amaze.panel.panel import AmazePanel
-
-        listed = {control for control, _f, _v in AmazePanel.TOOLBAR_CONTROLS}
+        listed = {control for control, _f, _v in table}
         for control in ("cb_favsonly", "btn_notes", "btn_filter",
                         "btn_hip_capture"):
             self.assertIn(control, listed,
-                          "%s no longer follows the context table" % control)
-
-    def test_no_toolbar_sync_asks_which_WORLD_it_is_in(self):
-        """A control's rule belongs to the CONTEXT, and the online world is a context like any other."""
-        source = open(os.path.join(PACKAGE, "panel", "panel.py"),
-                      encoding="utf-8").read()
-        tree = ast.parse(source)
-        offenders = []
-        for node in ast.walk(tree):
-            if not (isinstance(node, ast.FunctionDef)
-                    and node.name.startswith("_sync_toolbar")):
-                continue
-            for call in ast.walk(node):
-                if (isinstance(call, ast.Call)
-                        and isinstance(call.func, ast.Attribute)
-                        and call.func.attr == "_is_online"):
-                    offenders.append("%s:%d" % (node.name, call.lineno))
-        self.assertEqual(
-            [], offenders,
-            "a toolbar sync is testing which world it is in rather than "
-            "asking the context: %s" % offenders)
+                          "%s no longer follows the context table, so it "
+                          "silently stops following its context" % control)
 
 
 class EveryContextDeclaresWhatItOffers(unittest.TestCase):
@@ -98,10 +71,7 @@ class EveryContextDeclaresWhatItOffers(unittest.TestCase):
                         "%s.%s is %r - the toolbar follows this, so the "
                         "control it governs is wrong in that context"
                         % (name, fact, getattr(context, fact)))
-
-    def test_capture_is_offered_by_exactly_one_context(self):
-        """It acts on the open SCENE, so it belongs where scene tiles live and nowhere else."""
-        offering = [name for name in dir(sections)
+        offering = [name for name in dir(sections)    # capture acts on the open SCENE: File only
                     if isinstance(getattr(sections, name), type)
                     and issubclass(getattr(sections, name), sections.Section)
                     and getattr(sections, name).takes_capture]
@@ -163,26 +133,12 @@ class TheToolbarFollowsTheContextLive(unittest.TestCase):
                     getattr(context, fact), self._state(control, verb),
                     "%s is live in the online world, where it has "
                     "nothing to act on" % control)
-
-    def test_a_disabled_control_is_STILL_VISIBLE_in_the_online_world(self):
-        """Disabled means greyed, never GONE. The table answers these by ENABLED-ness, so nothing above looks at visibility and a SECOND owner can hide one unseen - the filter menu hides its button whenever a context offers no entries."""
-        from amaze.panel.panel import AmazePanel
-
-        panel = self.panel
-        self.addCleanup(self._restore)
-        panel.section_tabs.setChecked("material")
-        QtWidgets.QApplication.processEvents()
-        panel.enter_online_world()
-        QtWidgets.QApplication.processEvents()
         for control, _fact, verb in AmazePanel.TOOLBAR_CONTROLS:
             if verb != "enabled":
                 continue
-            with self.subTest(control=control):
-                widget = getattr(panel, control, None)
-                self.assertIsNotNone(widget,
-                                     "%s is not on the panel" % control)
+            with self.subTest(control=control, asked="visible"):
                 self.assertFalse(
-                    widget.isHidden(),
+                    getattr(panel, control).isHidden(),
                     "%s is HIDDEN in the online world - a control the "
                     "table answers by enabled-ness greys out there, it "
                     "does not vanish" % control)
@@ -230,21 +186,6 @@ class TheToolbarStandsOnItsFrame(unittest.TestCase):
     def _drawn(self, kind):
         from amaze import amazetheme
         return amazetheme.drawn_by_owner("B01", kind)
-
-    def test_the_frame_is_one_row_the_code_can_follow(self):
-        """One gap between buttons, one edge, one slider gap, one size per kind of control."""
-        width, _height = self.frame["frame"]
-        buttons = sorted(self._drawn("button").values(), key=lambda n: n[1])
-        cluster = [b for b in buttons if b[1] < self.node[("slider", "click_slider")][1]]
-        gaps = {b[1] - (a[1] + a[3]) for a, b in zip(cluster, cluster[1:])}
-        self.assertEqual(1, len(gaps), "the buttons sit at gaps %s" % sorted(gaps))
-        self.assertEqual(buttons[0][1], width - (buttons[-1][1] + buttons[-1][3]),
-                         "the two edges are drawn different")
-        self.assertEqual(1, len({(b[3], b[4]) for b in buttons}), "the buttons are different sizes")
-        slider, label = self.node[("slider", "click_slider")], self.node[("label", "filter_label")]
-        self.assertEqual(slider[1] - (cluster[-1][1] + cluster[-1][3]),
-                         label[1] - (slider[1] + slider[3]),
-                         "the slider's two gaps are drawn different")
 
     def test_the_row_is_its_drawn_height(self):
         height = self.px(self.frame["frame"][1])

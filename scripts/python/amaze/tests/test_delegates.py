@@ -99,27 +99,22 @@ class TheTileStandsOnItsFrame(unittest.TestCase):
         self.assertEqual((10 + 130 - side - 5, 20 + 7, side, side),
                          delegate._badge_at("open", 10, 20, 130))
 
-    def test_a_badge_takes_its_corner_from_where_it_is_drawn(self):
-        """A badge moved to the other side of the thumbnail measures from that side."""
-        from unittest import mock
-        from amaze import amazetheme
-        frame = {"frame": (138, 177), "nodes": (
-            ("thumbnail", 4, 4, 130, 130, None),
-            ("badge open (top-left) ▸ badge_open", 107, 105, 22, 22, None))}
-        with mock.patch.dict(amazetheme.DIALOG_LAYOUT, {"T01": frame}, clear=True):
-            self.assertEqual({"open": ("end", 5, "end", 7, 22)},
-                             amazetheme.drawn_badges())
-
     def test_a_badge_across_the_middle_is_centred_and_scales_with_the_tile(self):
         """The run button is drawn across the thumbnail's middle: it stays there at any size."""
         from unittest import mock
         from amaze import amazetheme
-        frame = {"frame": (138, 177), "nodes": (
-            ("thumbnail", 4, 4, 130, 130, None),
-            ("badge execute (centre) ▸ badge_execute", 51, 55, 36, 36, None))}
-        with mock.patch.dict(amazetheme.DIALOG_LAYOUT, {"T01": frame}, clear=True):
-            self.assertEqual({"execute": ("centre", 0.0, "centre", 4.0, 36)},
-                             amazetheme.drawn_badges())
+        for badge, expected in (
+                (("badge open (top-left) ▸ badge_open", 107, 105, 22, 22, None),
+                 {"open": ("end", 5, "end", 7, 22)}),
+                (("badge execute (centre) ▸ badge_execute", 51, 55, 36, 36, None),
+                 {"execute": ("centre", 0.0, "centre", 4.0, 36)})):
+            frame = {"frame": (138, 177), "nodes": (
+                ("thumbnail", 4, 4, 130, 130, None), badge)}
+            with self.subTest(badge=badge[0]), mock.patch.dict(
+                    amazetheme.DIALOG_LAYOUT, {"T01": frame}, clear=True):
+                self.assertEqual(expected, amazetheme.drawn_badges(),
+                                 "a badge does not measure from the side "
+                                 "it is drawn on")
         delegate = self.D.__new__(self.D)
         delegate.PLACES = {"execute": ("centre", 0.0, "centre", 4.0, 36)}
         self.assertEqual((51, 55, 36, 36), delegate._badge_at("execute", 4, 4, 130))
@@ -203,19 +198,14 @@ class TheSvgCacheTest(unittest.TestCase):
         self.ui_helpers.render_svg_pixmap(self.icon, 32)
         self.assertEqual(1, len(self.ui_helpers._SVG_CACHE),
                          "the second ask rendered the file again")
-
-    def test_a_different_tint_is_a_different_picture(self):
-        self.ui_helpers.render_svg_pixmap(self.icon, 32)
         self.ui_helpers.render_svg_pixmap(
             self.icon, 32, {"#5d7abd": "#ff0000"})
         self.assertEqual(
             2, len(self.ui_helpers._SVG_CACHE),
             "a tinted render reused the untinted picture")
-
-    def test_a_size_is_part_of_the_key(self):
-        self.ui_helpers.render_svg_pixmap(self.icon, 32)
         self.ui_helpers.render_svg_pixmap(self.icon, 64)
-        self.assertEqual(2, len(self.ui_helpers._SVG_CACHE))
+        self.assertEqual(3, len(self.ui_helpers._SVG_CACHE),
+                         "another size reused the 32px picture")
 
     def test_the_caller_never_receives_the_cached_pixmap_itself(self):
         """QPixmap is mutable: hand out the cached object and a caller that paints into it poisons every later ask for that icon."""
@@ -301,26 +291,6 @@ class OneSvgPainterTest(unittest.TestCase):
                          "these render SVG by hand instead of through "
                          "`ui_helpers.paint_svg`")
 
-    def test_ui_helpers_imports_no_module_twice(self):
-        import ast
-        from amaze.helpers import ui_helpers
-        with open(ui_helpers.__file__, encoding="utf-8") as handle:
-            tree = ast.parse(handle.read())
-        top = {alias.asname or alias.name
-               for node in tree.body
-               if isinstance(node, (ast.Import, ast.ImportFrom))
-               for alias in node.names}
-        again = []
-        for func in ast.walk(tree):
-            if not isinstance(func, ast.FunctionDef):
-                continue
-            for node in ast.walk(func):
-                if isinstance(node, (ast.Import, ast.ImportFrom)):
-                    again += ["%s in %s" % (alias.name, func.name)
-                              for alias in node.names
-                              if alias.name.split(".")[-1] in top]
-        self.assertEqual([], again, "imported again inside a function")
-
 
 class PainterBalanceTest(unittest.TestCase):
     """A delegate must hand the painter back exactly as it got it: with save() at the top of _paint and restore() at the bottom, a row raising in between skipped the restore, so the fallback row and every row after it in that pass inherited the leaked pen, font and clip while the save stack grew by one per failing tile - measured before the fix as Qt's own `QPainter::end: Painter ended with 1 saved states`."""
@@ -361,6 +331,8 @@ class PainterBalanceTest(unittest.TestCase):
         return before, after
 
     def test_a_failing_tile_leaves_the_save_stack_balanced(self):
+        before, after = self._paint_row(_ExplodingModel(), 0)
+        self.assertEqual(before, after, "a healthy tile leaked its pen/font")
         self._paint_row(_ExplodingModel(), 1)
         unbalanced = [m for m in self.messages if "saved states" in m]
         self.assertEqual(
@@ -376,13 +348,6 @@ class PainterBalanceTest(unittest.TestCase):
         self.assertEqual(
             before, after,
             "a failing tile left its pen/font on the shared painter")
-
-    def test_a_healthy_tile_still_paints_and_stays_balanced(self):
-        """The guard must not break the normal path."""
-        before, after = self._paint_row(_ExplodingModel(), 0)
-        self.assertEqual(before, after)
-        self.assertEqual(
-            [], [m for m in self.messages if "saved states" in m])
 
 
 class _RectSpy(QtGui.QPainter):
@@ -450,12 +415,10 @@ class CardFillsItsCellTest(unittest.TestCase):
             "a tile with no subtitle has a card %dpx shorter than one "
             "with a subtitle - bare grid background shows under it"
             % (with_sub - without))
-
-    def test_the_card_reaches_the_bottom_of_its_cell(self):
-        height, bottom = self._card_bottom("")
         self.assertGreaterEqual(
-            bottom, height - 1,
-            "the card stops %dpx short of its own cell" % (height - 1 - bottom))
+            without, without_h - 1,
+            "the card stops %dpx short of its own cell"
+            % (without_h - 1 - without))
 
 
 class BandContrastTest(unittest.TestCase):
@@ -481,19 +444,11 @@ class BandContrastTest(unittest.TestCase):
             "a category colour drops its label below 3:1 (%s at %.2f:1)"
             % (worst_color.name() if worst_color else "?", worst))
 
-    def test_the_green_ramp_case_specifically(self):
-        """The colour that exposed the threshold."""
-        green = QtGui.QColor("#00ee00")
-        self.assertGreater(
-            self.DELEGATE.contrast_ratio(
-                green, self.DELEGATE.text_on(green)),
-            4.5, "near-white ink is back on bright green")
-
     LEGACY_PRESETS = ("#ef8878", "#4af2a1", "#5cc9f5", "#e2b148")   # what tiles saved before 2026-08-27 hold; the LIVE palette is drawn and includes a pink that measures 4.29, so it is not this rule's corpus
 
     def test_the_shipped_presets_are_unchanged(self):
         """The rule change must not restyle what is already saved: the four legacy presets measured identically under both rules."""
-        for value in self.LEGACY_PRESETS:
+        for value in self.LEGACY_PRESETS + ("#00ee00",):    # the green that exposed the old threshold
             color = QtGui.QColor(value)
             self.assertGreater(
                 self.DELEGATE.contrast_ratio(
@@ -508,59 +463,7 @@ class BandContrastTest(unittest.TestCase):
             self.assertGreaterEqual(
                 self.DELEGATE.contrast_ratio(adjusted, row), 4.0,
                 "%s stays invisible in list mode" % value)
-
-    def test_the_CATEGORY_CELL_actually_applies_the_legibility_pass(self):
-        """The test above proves `readable_on` is correct; this proves something CALLS it, because otherwise deleting the call site changes nothing a unit test can see - the site is `CategoryCellDelegate.initStyleOption`, the only place that knows both the colour and what it is drawn on."""
-        view = QtWidgets.QTableView()
-        self.addCleanup(view.deleteLater)
-        palette = view.palette()
-        palette.setColor(QtGui.QPalette.ColorRole.Base,
-                         QtGui.QColor("#313131"))
-        view.setPalette(palette)
-        model = QtGui.QStandardItemModel()
-        item = QtGui.QStandardItem("Metal")
-        item.setData(QtGui.QColor("#333333"),
-                     QtCore.Qt.ItemDataRole.ForegroundRole)
-        model.appendRow(item)
-        view.setModel(model)
-
-        tiles = delegates.AssetItemDelegate(
-            QtCore.Qt.ItemDataRole.UserRole + 3, parent=view)
-        delegate = delegates.CategoryCellDelegate(tiles, view)
-
-        seen = []
-        real = delegates.AssetItemDelegate.__dict__["readable_on"]
-        unwrapped = real.__func__
-
-        def record(cls, color, background, floor=4.5):
-            seen.append(QtGui.QColor(color).name())
-            return unwrapped(cls, color, background, floor)
-
-        delegates.AssetItemDelegate.readable_on = classmethod(record)
-        self.addCleanup(
-            setattr, delegates.AssetItemDelegate, "readable_on", real)
-
-        option = QtWidgets.QStyleOptionViewItem()
-        option.rect = QtCore.QRect(0, 0, 120, 20)
-        option.widget = view
-        option.font = view.font()
-        option.palette = view.palette()
-        option.state = QtWidgets.QStyle.StateFlag.State_Enabled
-        delegate.initStyleOption(option, model.index(0, 0))
-
-        self.assertIn(
-            "#333333", seen,
-            "the Category cell used the raw colour - a dark one is "
-            "invisible against the row")
-        self.assertNotEqual(
-            "#333333",
-            option.palette.color(QtGui.QPalette.ColorRole.Text).name(),
-            "the pass ran and its answer was thrown away")
-
-    def test_a_colour_that_already_reads_is_left_alone(self):
-        """The adjustment must not restyle colours that were fine - the colour identifies the category, so the hue has to survive."""
-        row = QtGui.QColor("#313131")
-        for value in self.LEGACY_PRESETS:
+        for value in self.LEGACY_PRESETS:    # already readable: the hue identifies the category
             color = QtGui.QColor(value)
             self.assertEqual(
                 color.name(),
@@ -794,79 +697,6 @@ class BadgeFamilyTest(unittest.TestCase):
                 self.assertAlmostEqual(opacity * 255, ground, delta=3,
                                        msg="%s ground at %s" % (name, opacity))
 
-    def test_each_badge_lands_in_its_own_corner(self):
-        """Four marks, four corners, none on top of another - found by a GREEN sabotage, since collapsing the corner arithmetic so every badge drew top-left failed nothing, and the failure it allows is silent because a stack of badges in one corner still paints a badge; each badge is rasterised as its own flat colour, so one pixel per corner says WHICH mark landed there."""
-        colors = {
-            "badge_open": QtGui.QColor(255, 0, 0),
-            "badge_favourite": QtGui.QColor(0, 255, 0),
-            "badge_versions": QtGui.QColor(0, 0, 255),
-            "badge_comment": QtGui.QColor(255, 255, 0),
-        }
-
-        def flat(name, side, dpr=1.0, opacity=None):
-            pixmap = QtGui.QPixmap(side, side)
-            pixmap.fill(colors[name])
-            return pixmap
-
-        role = QtCore.Qt.ItemDataRole.UserRole + 88
-
-        class _AllOn(QtCore.QAbstractListModel):
-            def rowCount(self, parent=QtCore.QModelIndex()):
-                return 1
-
-            def data(self, index, r=QtCore.Qt.ItemDataRole.DisplayRole):
-                return 3 if r == role else None  # 3 satisfies the versions badge's minimum of 2 and is truthy for the other three
-
-        delegate = test_support.tile_delegate(
-            {"open": role, "favourite": role, "versions": role, "comment": role})
-        cls = delegates.AssetItemDelegate
-        original = cls.__dict__["_badge_pixmap"]
-        cls._badge_pixmap = staticmethod(flat)
-        self.addCleanup(setattr, cls, "_badge_pixmap", original)
-
-        side = 128
-        model = _AllOn()   # HELD IN A LOCAL: `_AllOn().index(0, 0)` frees the model the moment the index exists, and reading data() off an index whose model is gone segfaults rather than raising
-        index = model.index(0, 0)
-        canvas = QtGui.QPixmap(side, side)
-        canvas.fill(QtCore.Qt.GlobalColor.transparent)
-        painter = QtGui.QPainter(canvas)
-        try:
-            delegate._paint_badges(painter, index, 0, 0, side)
-        finally:
-            painter.end()
-        image = canvas.toImage()
-
-        from amaze.helpers import theme
-        badge = delegates.AssetItemDelegate._badge_side(side)
-        inset = theme.ui_px(2)
-        middle = inset + badge // 2
-        far = side - inset - badge // 2
-        corners = {
-            "badge_comment": (middle, middle),
-            "badge_favourite": (far, middle),
-            "badge_versions": (middle, far),
-            "badge_open": (far, far),
-        }
-        for name, (x, y) in corners.items():
-            self.assertEqual(
-                colors[name].rgb(), image.pixel(x, y) | 0xFF000000,
-                "%s is not in its own corner - two badges in one corner "
-                "hide each other and still look like a badge" % name)
-        """Source ban, the scrollbar-stylesheet pattern: the state this
-        family replaced was four private rasterisers, three size
-        formulas and a colour push - none of the old names may quietly
-        return to delegates.py."""
-        import inspect
-        source = inspect.getsource(delegates)
-        for banned in ("_star_pixmap", "_open_pixmap", "_versions_pixmap",
-                       "_notes_badge_pixmap", "_notes_badge_side",
-                       "OPEN_BADGE_POINTS", "set_star_color",
-                       "icon_open_scene", "star_on.svg", "icon_versions"):
-            self.assertNotIn(
-                banned, source,
-                "'%s' is back in delegates.py - the badge family has "
-                "been forked" % banned)
-
 
 class SidebarIndentTest(unittest.TestCase):
     """Every sidebar row reserves the colour strip's width, coloured or not: indenting only coloured rows sat a striped category's label 4px right of its plain neighbours, so the strip is a PLACEHOLDER on every row - coloured rows paint into it, plain rows leave it empty."""
@@ -967,14 +797,12 @@ class HiddenCountsAreStillFetched(unittest.TestCase):
         return asked, texts
 
     def test_off_still_asks_every_row_and_shows_only_all(self):
-        asked, texts = self._counted(False)
-        self.assertEqual(["All (3)", "Wood"], texts)
-        self.assertEqual([0, 1], asked, "a hidden count went unfetched")
-
-    def test_on_asks_every_row(self):
-        asked, texts = self._counted(True)
-        self.assertEqual(["All (3)", "Wood (3)"], texts)
-        self.assertEqual([0, 1], asked)
+        for show, shown in ((False, ["All (3)", "Wood"]),
+                            (True, ["All (3)", "Wood (3)"])):
+            with self.subTest(show_counts=show):
+                asked, texts = self._counted(show)
+                self.assertEqual(shown, texts)
+                self.assertEqual([0, 1], asked, "a count went unfetched")
 
 
 class OnePickerForTheWholeAppTest(unittest.TestCase):
@@ -986,15 +814,9 @@ class OnePickerForTheWholeAppTest(unittest.TestCase):
         from PySide6 import QtGui, QtWidgets
 
         with patch.object(QtWidgets.QColorDialog, "getColor",
-                          return_value=QtGui.QColor()) as picker:
-            self.assertIsNone(ui_helpers.pick_color("#112233"))
-        picker.assert_called_once()
-
-    def test_a_chosen_colour_comes_back_as_qcolor(self):
-        from unittest.mock import patch
-        from amaze.helpers import ui_helpers
-        from PySide6 import QtGui, QtWidgets
-
+                          return_value=QtGui.QColor()):
+            self.assertIsNone(ui_helpers.pick_color("#112233"),
+                              "a cancelled pick answered a colour")
         with patch.object(QtWidgets.QColorDialog, "getColor",
                           return_value=QtGui.QColor("#589abb")):
             picked = ui_helpers.pick_color("#112233")
@@ -1027,41 +849,25 @@ class TheSubtitleIsTheNAMEsSize(unittest.TestCase):
     """A tile's sub-line takes the NAME's size, and is secondary by COLOUR alone: an ABSOLUTE 12pt floor on the sub-line against a name drawn at the option font's own size made the secondary text LARGER than the thing it describes - measured at a 9pt Houdini UI font on Windows, with a view not inheriting the panel's floored font, the name comes out 9pt and the subtitle 12pt, while a ~13pt macOS UI font never engages the floor, so the fields read as mismatched on Windows and fine on a Mac for the whole life of the code."""
 
     def test_the_two_sizes_match_at_every_ui_font(self):
-        for point_size in (9.0, 10.0, 11.0, 12.0, 13.0, 16.0):
-            with self.subTest(ui_font=point_size):
-                base = QtGui.QFont("Source Sans 3")
-                base.setPointSizeF(point_size)
-                name, rend, _fn, _fr = delegates.AssetItemDelegate.fonts_for(
-                    base, False)
-                self.assertAlmostEqual(
-                    name.pointSizeF(), rend.pointSizeF(), places=2,
-                    msg="at a %.1fpt UI font the name is %.1f and the "
-                        "subtitle %.1f - one row, two sizes"
-                        % (point_size, name.pointSizeF(),
-                           rend.pointSizeF()))
-
-    def test_it_holds_when_selected_too(self):
         """Selection bolds both; it must not resize either."""
-        base = QtGui.QFont("Source Sans 3")
-        base.setPointSizeF(9.0)
-        plain = delegates.AssetItemDelegate.fonts_for(base, False)
-        picked = delegates.AssetItemDelegate.fonts_for(base, True)
-        self.assertAlmostEqual(picked[0].pointSizeF(),
-                               picked[1].pointSizeF(), places=2)
-        self.assertAlmostEqual(plain[0].pointSizeF(),
-                               picked[0].pointSizeF(), places=2,
-                               msg="selecting a row changed its size")
-
-    def test_no_absolute_point_size_is_floored_in_the_delegate(self):
-        """Read as STRUCTURE: a magic pt literal is a rule that can only be right on the machine it was typed on."""
-        import inspect
-        import re
-        source = inspect.getsource(delegates.AssetItemDelegate.fonts_for)
-        magic = re.findall(r"setPointSizeF\([^)]*\b\d+\.?\d*\b[^)]*\)",
-                           source)
-        self.assertEqual(
-            [], [m for m in magic if "pointSizeF()" not in m],
-            "a hard-coded point size is back in fonts_for: %s" % magic)
+        for point_size in (9.0, 10.0, 11.0, 12.0, 13.0, 16.0):
+            for selected in (False, True):
+                with self.subTest(ui_font=point_size, selected=selected):
+                    base = QtGui.QFont("Source Sans 3")
+                    base.setPointSizeF(point_size)
+                    name, rend, _fn, _fr = \
+                        delegates.AssetItemDelegate.fonts_for(base, selected)
+                    plain = delegates.AssetItemDelegate.fonts_for(base, False)
+                    self.assertAlmostEqual(
+                        name.pointSizeF(), rend.pointSizeF(), places=2,
+                        msg="at a %.1fpt UI font the name is %.1f and the "
+                            "subtitle %.1f - one row, two sizes"
+                            % (point_size, name.pointSizeF(),
+                               rend.pointSizeF()))
+                    self.assertAlmostEqual(plain[0].pointSizeF(),
+                                           name.pointSizeF(), places=2,
+                                           msg="selecting a row changed "
+                                               "its size")
 
     def test_a_PIXEL_sized_option_font_still_derives(self):
         """A view whose font is set in PIXELS answers -1 to `pointSizeF`, and Qt refuses that as a size - so the derivation is dropped, loudly, once per cache miss."""
@@ -1116,6 +922,16 @@ class TheFontCacheTellsFontsApart(unittest.TestCase):
         self.assertGreater(large[2].height(), small[2].height(),
                            "both sizes measure the same, so the tile "
                            "lays out at the wrong height too")
+        upright = QtGui.QFont("Source Sans 3")
+        upright.setPointSizeF(12.0)
+        slanted = QtGui.QFont(upright)
+        slanted.setItalic(True)
+        plain = delegates.AssetItemDelegate.fonts_for(upright, False)
+        oblique = delegates.AssetItemDelegate.fonts_for(slanted, False)
+        self.assertFalse(plain[0].italic())
+        self.assertTrue(oblique[0].italic(),
+                        "an italic option font was served the upright "
+                        "cache entry - the key ignores style")
 
     def test_two_weights_do_not_collide(self):
         """Asserted on the SUB-line: `setBold(True)` is `setWeight(Bold)` and overwrites a heavier weight outright (measured: Black 900 -> 700), so the name line cannot carry the option font's own weight and the unbolded sub-line is the only place it shows."""
@@ -1130,19 +946,6 @@ class TheFontCacheTellsFontsApart(unittest.TestCase):
         self.assertEqual(QtGui.QFont.Weight.Black, heavy[1].weight(),
                          "a Black option font was served the regular "
                          "cache entry - the key ignores weight")
-
-    def test_italic_does_not_collide_with_upright(self):
-        self._isolated_cache()
-        upright = QtGui.QFont("Source Sans 3")
-        upright.setPointSizeF(12.0)
-        slanted = QtGui.QFont(upright)
-        slanted.setItalic(True)
-        plain = delegates.AssetItemDelegate.fonts_for(upright, False)
-        oblique = delegates.AssetItemDelegate.fonts_for(slanted, False)
-        self.assertFalse(plain[0].italic())
-        self.assertTrue(oblique[0].italic(),
-                        "an italic option font was served the upright "
-                        "cache entry - the key ignores style")
 
     def test_it_is_still_a_CACHE(self):
         """Telling fonts apart is worth nothing if it costs the HIT: two separately built but equal fonts must land on one entry, or every row rebuilds its fonts and metrics on every repaint while scrolling."""

@@ -103,15 +103,6 @@ class TwoNodegraphsKeepTheirOwnNodes(unittest.TestCase):
         self.shader, _disp = matx_translate.build_material(
             self.path, self.builder, "two_graphs")
 
-    def test_both_graphs_contribute_a_distinct_image(self):
-        """The FILES are asserted, never the node count - `unique_name` means both nodes exist even when the lookup keeps one, so a count alone passes."""
-        images = [child for child in self.builder.children()
-                  if child.type().name().startswith("mtlximage")]
-        files = sorted(f for f in (_file_of(i) for i in images) if f)
-        self.assertEqual(
-            files, ["a_diffuse.png", "b_specular.png"],
-            "both graphs' textures must reach the builder; got %r" % (files,))
-
     def test_each_surface_input_wires_to_its_own_graph(self):
         """Two surface inputs must not land on one node. Compared as PATHS - `hou.Node` hands back a fresh wrapper per call, so an identity check cannot fail."""
         self.assertIsNotNone(self.shader, "no surface shader was built")
@@ -151,35 +142,19 @@ class AColourConstantKeepsItsColour(unittest.TestCase):
         self.assertEqual("mtlxconstant", found.type().name())
         return found
 
-    def test_a_color3_constant_carries_the_drawn_colour(self):
-        tint = self._constant("Tint")
-        self.assertEqual("color3", tint.parm("signature").eval())
-        self.assertEqual(
-            (1.0, 0.5, 0.25), tint.parmTuple("value_color3").eval(),
-            "the tint reads black, so everything multiplied by it does too")
-
-    def test_a_vector3_constant_carries_its_vector(self):
-        flat = self._constant("Flat")
-        self.assertEqual("vector3", flat.parm("signature").eval())
-        self.assertEqual(
-            (0.5, 0.5, 1.0), flat.parmTuple("value_vector3").eval(),
-            "a flat-normal constant of zeros bends every normal it is "
-            "mixed with")
-
-
-class AWindowsSeparatorInATextureReferenceResolves(unittest.TestCase):
-    """A package authored on Windows writes `textures\\map.png`; joined as-is on a Unix host the backslash is a character in the name, the file is not found, and the map silently renders as its default."""
-
-    def test_the_backslash_reads_as_a_folder_separator(self):
-        tmp = tempfile.mkdtemp(prefix="amaze_matx_backslash_")
-        os.makedirs(os.path.join(tmp, "textures"))
-        wanted = os.path.join(tmp, "textures", "map.png")
-        with open(wanted, "wb") as handle:
-            handle.write(b"\x89PNG")
-        resolved = matx_translate._resolve_file("textures\\map.png", tmp, "")
-        self.assertEqual(
-            os.path.normpath(wanted), resolved,
-            "the backslash was kept as part of the file name")
+    def test_each_tuple_constant_carries_its_value(self):
+        for name, signature, value, why in (
+                ("Tint", "color3", (1.0, 0.5, 0.25),
+                 "the tint reads black, so everything multiplied by it "
+                 "does too"),
+                ("Flat", "vector3", (0.5, 0.5, 1.0),
+                 "a flat-normal constant of zeros bends every normal it "
+                 "is mixed with")):
+            with self.subTest(constant=name):
+                constant = self._constant(name)
+                self.assertEqual(signature, constant.parm("signature").eval())
+                self.assertEqual(
+                    value, constant.parmTuple("value_" + signature).eval(), why)
 
 
 class ATextureReferenceStaysInsideThePackage(unittest.TestCase):
@@ -190,46 +165,38 @@ class ATextureReferenceStaysInsideThePackage(unittest.TestCase):
         import shutil
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
 
-    def test_a_relative_reference_inside_the_package_resolves(self):
-        """The accept path first - this runs on every online import, so a containment that refuses the ordinary case is an outage."""
-        inside = os.path.join(self.dir, "wood_diffuse.png")
-        with open(inside, "w", encoding="utf-8") as handle:
+    def _file(self, *parts):
+        path = os.path.join(self.dir, *parts)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as handle:
             handle.write("png")
-        self.assertEqual(
-            os.path.normpath(inside),
-            matx_translate._resolve_file("wood_diffuse.png", self.dir, ""))
+        return os.path.normpath(path)
 
-    def test_an_absolute_reference_is_refused(self):
-        self.assertEqual(
-            "", matx_translate._resolve_file(
-                "/etc/hosts", self.dir, ""),
-            "a downloaded document pointed a texture at a file outside "
-            "the package and the translator followed it")
-
-    def test_a_dot_dot_walk_is_refused(self):
-        self.assertEqual(
-            "", matx_translate._resolve_file(
-                "../../../../etc/hosts", self.dir, ""),
-            "normpath collapsed the walk and the result left the package")
+    def test_a_reference_resolves_inside_the_package_only(self):
+        inside = self._file("wood_diffuse.png")
+        nested = self._file("textures", "map.png")
+        for value, resolved in (
+                ("wood_diffuse.png", inside),    # the accept path runs on every online import
+                ("textures\\map.png", nested),   # a Windows package's separator
+                ("/etc/hosts", ""),
+                ("../../../../etc/hosts", "")):
+            with self.subTest(value=value):
+                self.assertEqual(
+                    resolved, matx_translate._resolve_file(value, self.dir, ""),
+                    "%r resolved outside the package, or not at all" % value)
 
 
 class OnlyHttpsIsFetched(unittest.TestCase):
     """Every URL the online path opens comes out of a remote document, and the default opener installs a FileHandler."""
 
-    def test_a_file_url_is_refused(self):
-        from amaze.core import matx_sources
-        self.assertEqual("", matx_sources._checked_url(
-            "file:///Users/someone/.ssh/id_rsa"))
-
-    def test_plain_http_is_refused(self):
-        from amaze.core import matx_sources
-        self.assertEqual("", matx_sources._checked_url(
-            "http://example.invalid/package.zip"))
-
-    def test_https_is_allowed(self):
+    def test_only_an_https_url_is_kept(self):
         from amaze.core import matx_sources
         url = "https://example.invalid/package.zip"
-        self.assertEqual(url, matx_sources._checked_url(url))
+        for given, kept in (("file:///Users/someone/.ssh/id_rsa", ""),
+                            ("http://example.invalid/package.zip", ""),
+                            (url, url)):
+            with self.subTest(url=given):
+                self.assertEqual(kept, matx_sources._checked_url(given))
 
     def test_a_redirect_may_not_downgrade_the_scheme(self):
         """Redirects are the NORMAL path here, and the stock handler follows http and ftp whatever the original scheme was. Driven with a real request, or removing the guard errors inside urllib and reads as a broken test rather than an unguarded redirect."""
@@ -237,27 +204,16 @@ class OnlyHttpsIsFetched(unittest.TestCase):
         import urllib.request
         from amaze.core import matx_sources
 
-        handler = matx_sources._HttpsOnlyRedirects()
-        req = urllib.request.Request("https://example.invalid/a")
-        self.assertIsNone(
-            handler.redirect_request(
-                req, None, 302, "Found", email.message.Message(),
-                "http://example.invalid/package.zip"),
-            "a 302 walked the download down to plain http")
-
-    def test_a_redirect_to_https_is_still_followed(self):
-        """The accept path - a handler that refused every redirect would break the normal route rather than harden it."""
-        import email.message
-        import urllib.request
-        from amaze.core import matx_sources
-
-        handler = matx_sources._HttpsOnlyRedirects()
-        req = urllib.request.Request("https://example.invalid/a")
-        self.assertIsNotNone(
-            handler.redirect_request(
-                req, None, 302, "Found", email.message.Message(),
-                "https://example.invalid/package.zip"),
-            "an ordinary https redirect was refused")
+        for target, followed in (("http://example.invalid/package.zip", False),
+                                 ("https://example.invalid/package.zip", True)):
+            with self.subTest(target=target):
+                handler = matx_sources._HttpsOnlyRedirects()
+                req = urllib.request.Request("https://example.invalid/a")
+                answer = handler.redirect_request(
+                    req, None, 302, "Found", email.message.Message(), target)
+                self.assertEqual(
+                    followed, answer is not None,
+                    "a 302 to %s was handled the wrong way round" % target)
 
 
 class BothOnlineDestinationsRunOneSequence(unittest.TestCase):

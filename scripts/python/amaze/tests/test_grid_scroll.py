@@ -67,14 +67,7 @@ class TheWheelIsONEEngineForBothViews(unittest.TestCase):
                 self.assertEqual(
                     round(40 * self.SPEED), bar.value(),
                     "a pixel delta is not the user's speed applied to it")
-
-    def test_a_CLASSIC_NOTCH_is_the_notch_size_not_Qts_own_step(self):
-        """A mouse with no pixel data reports 120-unit notches only - a trackpad never reaches this branch, so it is the path that goes untested on a laptop."""
-        for name in self.VIEWS:
-            with self.subTest(view=name):
-                view = self._view(name)
-                bar = view.verticalScrollBar()
-                bar.setValue(0)
+                bar.setValue(0)    # a mouse with no pixel data: 120-unit notches only
                 view.wheelEvent(self._wheel(angle=(0, -120)))
                 self.assertEqual(
                     round(self.NOTCH * self.SPEED), bar.value(),
@@ -87,6 +80,9 @@ class TheWheelIsONEEngineForBothViews(unittest.TestCase):
                 view = self._view(name)
                 vertical = view.verticalScrollBar()
                 horizontal = view.horizontalScrollBar()
+                if name == "DragDropTableView":    # or the axis case below is never reached
+                    self.assertTrue(horizontal.maximum(),
+                                    "the table fixture has no horizontal range")
                 vertical.setValue(0)
                 horizontal.setValue(0)
                 view.wheelEvent(self._wheel(pixel=(-40, 0)))
@@ -98,14 +94,6 @@ class TheWheelIsONEEngineForBothViews(unittest.TestCase):
                         round(40 * self.SPEED), horizontal.value(),
                         "a sideways gesture did not move the sideways "
                         "bar by the user's speed")
-
-    def test_the_TABLE_really_does_have_a_sideways_range(self):
-        """Anti-vacuity for the test above: its horizontal assertion is conditional, so something must prove the condition is met on at least one view, or the axis case passes by never being reached."""
-        view = self._view("DragDropTableView")
-        self.assertTrue(
-            view.horizontalScrollBar().maximum(),
-            "the table fixture has no horizontal range, so the "
-            "sideways assertion never ran anywhere")
 
 
 class SelectingNeverScrollsTheGridTest(unittest.TestCase):

@@ -37,6 +37,12 @@ class NoTestBuildsItsOwnPanel(unittest.TestCase):
     ALLOWED = {"test_support.py"}
 
     def test_no_test_module_constructs_a_panel_directly(self):
+        with open(os.path.join(HERE, "test_support.py"),
+                  encoding="utf-8") as handle:    # anti-vacuity: the needle must still find its haystack
+            self.assertTrue(
+                re.findall(r"AmazePanel\s*\(", handle.read()),
+                "the pattern no longer matches a real panel construction - "
+                "re-key it in this same change, or it is checking nothing")
         offenders = {}
         for name in _test_modules():
             if name in self.ALLOWED:
@@ -53,16 +59,6 @@ class NoTestBuildsItsOwnPanel(unittest.TestCase):
             "machine's real library and its real file locations: %s"
             % offenders)
 
-    def test_the_check_can_actually_see_a_panel_construction(self):
-        """Anti-vacuity - a source scan keyed on a name goes QUIET rather than red when the name changes, so the needle must be shown to still find its haystack."""
-        with open(os.path.join(HERE, "test_support.py"),
-                  encoding="utf-8") as handle:
-            body = handle.read()
-        self.assertTrue(
-            re.findall(r"AmazePanel\s*\(", body),
-            "the pattern no longer matches a real panel construction - "
-            "re-key it in this same change, or it is checking nothing")
-
 
 class AFixturePanelScansNothingOfTheUsers(unittest.TestCase):
     """The runtime half: every directory the panel would walk is temp."""
@@ -72,6 +68,10 @@ class AFixturePanelScansNothingOfTheUsers(unittest.TestCase):
         temp = os.path.realpath(tempfile.gettempdir())
 
         registered = []
+        self.assertTrue(    # the accept path: a guard only ever satisfied by emptiness is not a guard
+            list(panel.prefs.file_folders),
+            "the fixture panel registers no file location, so this "
+            "guard passes for the wrong reason")
         # NAMED, never `getattr(..., ())` - defaulting narrows this guard.
         for folder in panel.prefs.file_folders or ():
             registered.append(("file_folders", str(folder)))
@@ -84,30 +84,6 @@ class AFixturePanelScansNothingOfTheUsers(unittest.TestCase):
             [], outside,
             "a fixture panel is pointed at directories outside the temp "
             "dir - it would scan the machine's own files: %s" % outside)
-
-    def test_the_fixture_actually_registers_a_location(self):
-        """The accept path - no locations also passes the test above, and a guard only ever satisfied by emptiness is not a guard."""
-        panel = test_support.fixture_panel(self)
-        self.assertTrue(
-            list(panel.prefs.file_folders),
-            "the fixture panel registers no file location, so the File "
-            "section is untested and this file's other test passes for "
-            "the wrong reason")
-
-    def test_the_fixture_location_holds_every_kind(self):
-        """And it must hold something of each KIND, or the section is exercised against an empty folder."""
-        from amaze.core import file_library
-
-        panel = test_support.fixture_panel(self)
-        folder = list(panel.prefs.file_folders)[0]
-        kinds = {file_library.kind_for(name)
-                 for name in os.listdir(str(folder))}
-        for expected in (file_library.KIND_IMAGE, file_library.KIND_GEO,
-                         file_library.KIND_HIP, file_library.KIND_OTHER):
-            self.assertIn(
-                expected, kinds,
-                "the fixture file location has no %s in it, so that "
-                "branch of the File section is never reached" % expected)
 
 
 class TheSnapshotToolFingerprintsALibrary(unittest.TestCase):

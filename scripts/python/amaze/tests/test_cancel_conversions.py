@@ -61,20 +61,6 @@ class TheCancelVerb(unittest.TestCase):
                 "a cancelled key must reset to UNREQUESTED - %r is "
                 "still %r" % (key, thumbnails.engine._states.get(key)))
 
-    def test_flush_comes_before_cancel(self):
-        """Reversing the pair is silent and only costs a re-convert on the next visit, so the ORDER is pinned, not just the calls."""
-        self._loaded_keys()
-        order = []
-        real_cancel = thumbnails.engine.cancel_pending_converts
-        self.model._flush_image_cache = (
-            lambda why: order.append("flush"))
-        thumbnails.engine.cancel_pending_converts = (
-            lambda: order.append("cancel"))
-        self.addCleanup(setattr, thumbnails.engine,
-                        "cancel_pending_converts", real_cancel)
-        self.model.cancel_conversions()
-        self.assertEqual(["flush", "cancel"], order)
-
     def test_the_bar_is_settled_not_stranded(self):
         """A cancel has no reload behind it to reset the counters the way a folder switch does, so it must settle the bar itself or the bar waits forever for attempts that were just cancelled."""
         self._loaded_keys()

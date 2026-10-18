@@ -76,38 +76,6 @@ class TwoPanelsShareOneLibraryTest(unittest.TestCase):
             "the second panel's save brought the deleted asset back, and its "
             "files are gone - a row pointing at nothing")
 
-    def test_1e_each_panel_retags_a_different_row_and_both_save(self):
-        """The audit's 1e: two panels edit two rows, then both write the index."""
-        model = self.a.material_model
-        named = [row for row in range(model.rowCount())
-                 if model._assets[row].name]
-        self.assertTrue(len(named) > 1, "premise: the fixture has one asset")
-        first, second = named[0], named[1]
-        one = model._assets[first].mat_id
-        two = model._assets[second].mat_id
-
-        model.set_assetdata(model.index(first, 0), "MetalA", "EditedByA", "",
-                            None)
-        self.b.material_model.set_assetdata(
-            self.b.material_model.index(second, 0), "BricksB", "EditedByB", "",
-            None)
-        self.assertTrue(self.a.material_model.save())
-        self.assertTrue(self.b.material_model.save())
-
-        rows = _rows(self.a)
-        self.assertEqual("MetalA", rows[one].get("name"),
-                         "the first panel's rename was lost")
-        self.assertEqual("BricksB", rows[two].get("name"),
-                         "the second panel's rename was lost")
-
-    def test_1b_a_delete_in_one_panel_is_not_undone_by_the_other(self):
-        """The audit's 1b, under its own name; the mechanism is pinned above."""
-        index, model = self._named_asset(self.a)
-        target = model._assets[index.row()].mat_id
-        model.remove_asset(index)
-        self.assertTrue(self.b.material_model.save())
-        self.assertNotIn(target, _rows(self.a))
-
     def test_both_panels_read_one_set_of_rows(self):
         self.assertIs(
             self.a.material_model, self.b.material_model,

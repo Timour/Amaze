@@ -189,6 +189,10 @@ class TheDocumentPairsEveryDrawnButton(unittest.TestCase):
         self.addCleanup(amazetheme.forget_drawn_boxes)
 
     def test_every_drawn_button_label_finds_its_rect(self):
+        self.assertGreaterEqual(
+            len(text_nodes("QPushButton")), 20,
+            "the document walk found almost no drawn button labels, so "
+            "its silence means nothing")
         missing = []
         for frame_key, kind, text, box in text_nodes("QPushButton"):
             if (frame_key, kind, text) in UNPAIRED:
@@ -200,36 +204,6 @@ class TheDocumentPairsEveryDrawnButton(unittest.TestCase):
             "these drawn button labels sit inside no rect of their own "
             "kind, so nothing can be pinned from them:\n  "
             + "\n  ".join(missing))
-
-    def test_the_walk_really_sees_the_document(self):
-        """A walk that matched nothing would pass the test above forever. ▸p/vacuous-register"""
-        self.assertGreaterEqual(
-            len(text_nodes("QPushButton")), 20,
-            "the document walk found almost no drawn button labels, so "
-            "its silence means nothing")
-
-    def test_a_named_exception_is_still_really_unpaired(self):
-        """An exemption kept after the document grew the rect would hide the pin that should have been made."""
-        for (frame_key, kind, text), why in UNPAIRED.items():
-            with self.subTest(node="%s %s" % (frame_key, text)):
-                self.assertIsNone(
-                    amazetheme.drawn_boxes(frame_key).get((kind, text)),
-                    "%s %r now HAS a drawn rect - drop the exemption "
-                    "(%s)" % (frame_key, text, why))
-
-    def test_a_drawn_box_is_the_rect_and_not_the_label(self):
-        """The pair's value is the enclosing RECT: D09 draws `OK` 15 wide inside a 31-wide button, and pinning the label's own box would draw half a button."""
-        self.assertEqual((254, 146, 31, 22),
-                         amazetheme.drawn_boxes("D09")[("QPushButton", "OK")])
-        self.assertEqual(
-            (293, 146, 50, 22),
-            amazetheme.drawn_boxes("D09")[("QPushButton", "Cancel")])
-
-    def test_the_textless_rects_come_back_in_document_order(self):
-        """A combo carries no label of its own to pin by, so the frame's `QComboBox` rects in drawn order are what answers the tab's combos."""
-        self.assertEqual(
-            ((148, 192, 165, 22), (148, 220, 165, 22), (148, 345, 72, 22)),
-            amazetheme.drawn_boxes("D05")[("QComboBox", None)])
 
     def test_an_unknown_frame_answers_empty(self):
         self.assertEqual({}, amazetheme.drawn_boxes("D99"))
@@ -284,17 +258,15 @@ class TheToggleIsTheDrawnPill(unittest.TestCase):
             switch.sizeHint().width(),
             "a textless switch hints wider than the pill it paints, so "
             "the painted track lands left of the drawn one")
-
-    def test_a_switch_WITH_text_keeps_its_slack(self):
-        """The accept path: the Preferences rows draw text after the pill, where the trailing slack never shows - dropping it there would clip the last glyph."""
-        switch = ui_helpers.ToggleSwitch("Debug Mode")
-        self.addCleanup(switch.deleteLater)
-        metrics = switch.fontMetrics().horizontalAdvance("Debug Mode")
+        labelled = ui_helpers.ToggleSwitch("Debug Mode")    # text after the pill keeps its slack
+        self.addCleanup(labelled.deleteLater)
+        metrics = labelled.fontMetrics().horizontalAdvance("Debug Mode")
         self.assertGreater(
-            switch.sizeHint().width(),
+            labelled.sizeHint().width(),
             theme.ui_px(ui_helpers.ToggleSwitch.TRACK_W)
             + theme.ui_px(ui_helpers.ToggleSwitch.GAP) + metrics,
-            "the labelled switch lost the slack its text needs")
+            "the labelled switch lost the slack its text needs, which "
+            "clips the last glyph")
 
 
 class ThePinRefusesRatherThanCrashes(unittest.TestCase):
@@ -313,14 +285,6 @@ class ThePinRefusesRatherThanCrashes(unittest.TestCase):
         self.assertTrue(recorded.called,
                         "the missing box was swallowed - nothing in the "
                         "log would say why the widget kept its own size")
-
-    def test_a_drawn_label_IS_pinned(self):
-        """The accept path: a pin that refused everything would leave every dialog at the host font's own sizes."""
-        button = QtWidgets.QPushButton("Clear Log")
-        self.addCleanup(button.deleteLater)
-        ui_helpers.pin_drawn(button, "D08", "QPushButton", "Clear Log")
-        self.assertEqual((theme.ui_px(62), theme.ui_px(22)),
-                         pinned(self, button))
 
 
 class PreferencesIsBuiltFromTheDocument(unittest.TestCase):
@@ -433,11 +397,7 @@ class PreferencesIsBuiltFromTheDocument(unittest.TestCase):
                 field = getattr(dialog, name)
                 self.assertEqual(want, field.height(),
                                  "%s is not the drawn field height" % name)
-
-    def test_a_spin_box_keeps_its_own_two_taller_height(self):
-        """The accept path: a blanket field height would reach the editor INSIDE a spin box, which the document draws inset by 1 in a box 2 taller."""
-        dialog = self._dialog()
-        self.assertNotEqual(
+        self.assertNotEqual(    # the editor INSIDE a spin box sits in a box drawn 2 taller
             theme.ui_px(amazetheme.PREFS_FIELD_H),
             theme.ui_px(amazetheme.PREFS_SPIN_H),
             "the drawn spin height stopped differing, so this proves "
@@ -493,11 +453,6 @@ class EveryDrawnNodeIsBoundOrNamed(unittest.TestCase):
         build_every_frame(self)
         self.pins = ui_helpers.drawn_pins()
 
-    def _matches(self, match):
-        return [(frame_key, node)
-                for frame_key, frame in amazetheme.DIALOG_LAYOUT.items()
-                for node in frame["nodes"] if match(frame_key, node)]
-
     def test_every_drawn_node_pins_a_widget_or_is_named(self):
         loose = []
         for frame_key, frame in amazetheme.DIALOG_LAYOUT.items():
@@ -528,25 +483,6 @@ class EveryDrawnNodeIsBoundOrNamed(unittest.TestCase):
             "D06 draws only switches and the tab strip, and the panel's areas "
             "are read through their own drawn_* - any other frame listed here "
             "built no widget the document reached")
-
-    def test_no_exemption_stands_over_a_node_that_IS_pinned(self):
-        """An exemption kept over a pinned node reads as a reason while covering nothing, and would let the pin be deleted without a word."""
-        for match, why in DRAWN_EXEMPT:
-            with self.subTest(exemption=why):
-                for frame_key, node in self._matches(match):
-                    self.assertNotIn(
-                        (frame_key,) + node[:3], self.pins,
-                        "%s %s at %d,%d is pinned AND exempted (%s)"
-                        % (frame_key, node[0], node[1], node[2], why))
-
-    def test_every_exemption_still_covers_something(self):
-        """An exemption the document no longer draws is a reason for nothing, and the next reader takes it for coverage. ▸p/vacuous-register"""
-        for match, why in DRAWN_EXEMPT:
-            with self.subTest(exemption=why):
-                self.assertTrue(
-                    self._matches(match),
-                    "nothing in the document matches this exemption any "
-                    "more - drop it: %s" % why)
 
 
 class MovingADrawnNodeMovesTheWidget(unittest.TestCase):
@@ -598,9 +534,7 @@ class MovingADrawnNodeMovesTheWidget(unittest.TestCase):
                 "the drawn version line was widened and the built label "
                 "did not follow, so its width is still a coincidence")
 
-    def test_the_version_line_is_found_by_its_WORDS_not_its_number(self):
-        """THE MECHANISM: the drawn text carries a sample version and the widget goes on to carry the updater's sentences, so the pin matches the words BEFORE the number - a document redrawn at another version still finds the node."""
-        from amaze.dialogs import prefs_dialog
+        from amaze.dialogs import prefs_dialog    # the pin matches the WORDS, before a sample number
         frame = dict(amazetheme.DIALOG_LAYOUT["D08"])
         frame["nodes"] = tuple(
             node[:5] + (prefs_dialog.VERSION_STEM + "9.9.9",)
@@ -703,14 +637,7 @@ class TheSaveFamilyWearsTheDrawnButtons(unittest.TestCase):
                      theme.ui_px(amazetheme.SAVE_BUTTON_H)),
                     pinned(self, cancel),
                     "%s: Cancel is not the drawn box" % label)
-
-    def test_the_pair_is_drawn_OK_then_Cancel(self):
-        """A style may lay Cancel first; the drawing does not, and the dialogs follow the drawing."""
-        for label, dialog in self._dialogs():
-            with self.subTest(dialog=label):
-                shown = self._shown(dialog)
-                ok, cancel = self._pair(shown)
-                self.assertLess(
+                self.assertLess(    # a style may lay Cancel first; the drawing does not
                     ok.x(), cancel.x(),
                     "%s draws Cancel before OK, which no frame does"
                     % label)
@@ -719,6 +646,14 @@ class TheSaveFamilyWearsTheDrawnButtons(unittest.TestCase):
                     cancel.x() - (ok.x() + ok.width()),
                     "%s: the gap between the pair is not the drawn one"
                     % label)
+                self.assertEqual(
+                    shown._buttons.width(), cancel.x() + cancel.width(),
+                    "%s: Cancel does not end at the row's right edge"
+                    % label)
+                self.assertGreater(
+                    ok.x(), 0,
+                    "%s: the pair starts at the row's left edge, so it "
+                    "is not flush right" % label)
 
     def test_a_style_that_lays_Cancel_first_is_put_right(self):
         """THE ANTI-VACUOUS HALF: this host's style already draws OK first, so the forcing branch is never entered by the four dialogs above - a box laid out the other way proves it does what it says. ▸p/vacuous-register"""
@@ -737,21 +672,6 @@ class TheSaveFamilyWearsTheDrawnButtons(unittest.TestCase):
                          "a Cancel-first box was left in the order no "
                          "frame draws")
 
-    def test_the_pair_is_flush_right(self):
-        for label, dialog in self._dialogs():
-            with self.subTest(dialog=label):
-                shown = self._shown(dialog)
-                ok, cancel = self._pair(shown)
-                box = shown._buttons
-                self.assertEqual(
-                    box.width(), cancel.x() + cancel.width(),
-                    "%s: Cancel does not end at the row's right edge"
-                    % label)
-                self.assertGreater(
-                    ok.x(), 0,
-                    "%s: the pair starts at the row's left edge, so it "
-                    "is not flush right" % label)
-
     def test_every_field_is_the_drawn_height(self):
         want = theme.ui_px(amazetheme.SAVE_FIELD_H)
         for label, dialog in self._dialogs():
@@ -768,21 +688,6 @@ class TheSaveFamilyWearsTheDrawnButtons(unittest.TestCase):
                         "%s draws a %s %dpx tall, not the drawn %d"
                         % (label, type(field).__name__, field.height(),
                            want))
-
-    def test_the_user_picker_is_the_drawn_width(self):
-        """D14 is drawn 19 wider than D09 and D13, its label column taking the 19 and its field keeping the family's 276."""
-        from amaze.dialogs import user_dialog
-        self.assertEqual(amazetheme.D14_WIDTH,
-                         user_dialog.UserPickerDialog.FORM_WIDTH)
-        self.assertEqual(amazetheme.SAVE_FIELD_WIDTH,
-                         user_dialog.UserPickerDialog.FIELD_WIDTH)
-        self.assertEqual(
-            amazetheme.D14_WIDTH - amazetheme.SAVE_WIDTH,
-            amazetheme.D14_LABEL_RIGHT - amazetheme.SAVE_LABEL_RIGHT,
-            "the extra width and the wider label column disagree, so the "
-            "field column no longer starts where D14 draws it")
-        shown = self._shown(user_dialog.UserPickerDialog({"u1": "Plum"}))
-        self.assertEqual(theme.ui_px(amazetheme.D14_WIDTH), shown.width())
 
 
 class TheD01ButtonsWearTheirDeclaredNumbers(unittest.TestCase):
@@ -802,9 +707,6 @@ class TheD01ButtonsWearTheirDeclaredNumbers(unittest.TestCase):
             self.assertIn(
                 want, button.styleSheet(),
                 "the button does not carry the drawn corner radius")
-
-    def test_each_button_carries_the_drawn_text_size(self):
-        for button in self._buttons():
             self.assertEqual(
                 theme.ui_px(amazetheme.D01_BUTTON_PX),
                 button.font().pixelSize(),

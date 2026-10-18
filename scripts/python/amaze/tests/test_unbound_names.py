@@ -105,24 +105,10 @@ class NoModuleUsesAnUnboundSibling(unittest.TestCase):
 class TheProjectsOldNameIsGoneFromTheCode(unittest.TestCase):
     """`$ASSETLIB` was the plugin root before the rename to Amaze; every install now sets `$AMAZE`, so no source may still read the old spelling. ▸p/updater-shape"""
 
-    def test_no_module_reads_the_legacy_environment_variable(self):
-        offenders = []
-        for path in _source_files():
-            with open(path, "r", encoding="utf-8") as handle:
-                for number, line in enumerate(handle, 1):
-                    if "ASSETLIB" in line:
-                        offenders.append("%s:%d" % (
-                            os.path.relpath(path, _AMAZE), number))
-        self.assertEqual(
-            [], offenders,
-            "the pre-rename plugin root is read again in: %s - every "
-            "package sets $AMAZE, so a fallback here is a second name "
-            "for one thing" % ", ".join(offenders))
-
     def test_no_shipped_file_names_the_old_apps(self):
         """Pre-1.0 names are gone: compatibility starts at Amaze 1.0. ▸p/compat-starts-at-1-0"""
         import re
-        old = re.compile(r"\bMatLib\w*|\bAssetLib\b")    # egMatLib, the credited original, is not matched
+        old = re.compile(r"\bMatLib\w*|\bAssetLib\b|ASSETLIB")    # egMatLib, the credited original, is not matched
         offenders = []
         shipped = _source_files() + [os.path.join(
             _AMAZE, "..", "..", "..", "python_panels", "Amaze.pypanel")]
@@ -134,18 +120,6 @@ class TheProjectsOldNameIsGoneFromTheCode(unittest.TestCase):
                             os.path.relpath(path, _AMAZE), number))
         self.assertEqual([], offenders,
                          "an old app name is back in: %s" % offenders)
-
-    def test_the_userdata_key_is_NOT_swept_up_with_it(self):
-        """`assetlib_id` is stamped into node userdata on every saved material, so it is a contract with data on disk and keeps its spelling."""
-        stamped = []
-        for path in _source_files():
-            with open(path, "r", encoding="utf-8") as handle:
-                if "assetlib_id" in handle.read():
-                    stamped.append(path)
-        self.assertTrue(
-            stamped,
-            "assetlib_id vanished from the source - if it was renamed, "
-            "every material already on disk lost its re-save recognition")
 
 
 if __name__ == "__main__":

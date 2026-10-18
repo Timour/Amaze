@@ -46,6 +46,9 @@ class TheseFilesNeverSpellTheHostDialogTest(unittest.TestCase):
     """Red when a new raw reach is written into either file. ▸p/refusal-sink"""
 
     def test_no_guarded_file_reaches_the_host_dialogs_directly(self):
+        self.assertTrue(raw_reaches("core/repair.py"),    # ▸p/vacuous-register
+                        "the reader finds no reach even in the repair tool, "
+                        "so its empty answers below mean nothing")
         for relpath in GUARDED:
             with self.subTest(relpath):
                 raw = raw_reaches(relpath)
@@ -54,14 +57,6 @@ class TheseFilesNeverSpellTheHostDialogTest(unittest.TestCase):
                     "%s reaches the host dialogs without the getattr guard "
                     "at %s" % (relpath,
                                ", ".join("%d:%s" % one for one in raw)))
-
-    def test_the_reader_finds_a_reach_when_there_is_one(self):
-        """A reader that answered empty to everything would pass the test above with the mechanism deleted. ▸p/vacuous-register"""
-        found = raw_reaches("core/repair.py")
-        self.assertTrue(found,
-                        "the reader found no reach in the repair shelf tool, "
-                        "which is full of them - so an empty answer above "
-                        "means nothing")
 
 
 class TheGuardedPanelRefusesHeadlessTest(unittest.TestCase):
@@ -72,36 +67,20 @@ class TheGuardedPanelRefusesHeadlessTest(unittest.TestCase):
                          "this host HAS a ui, so nothing here is tested")
         self.panel = test_support.fixture_panel(self)
 
-    def test_cleanup_db_says_no_library_without_a_screen(self):
-        self.panel.material_model = None
-        try:
-            self.panel.cleanup_db()
-        except AttributeError as crash:
-            self.fail("the refusal reached the host dialog and became a "
-                      "crash: %s" % crash)
-
-    def test_open_usdlib_folder_says_no_library_without_a_screen(self):
-        self.panel.material_model = None
-        try:
-            self.panel.open_usdlib_folder()
-        except AttributeError as crash:
-            self.fail("the refusal reached the host dialog and became a "
-                      "crash: %s" % crash)
-
-    def test_the_active_network_is_none_when_no_screen_can_be_asked(self):
-        """None is the answer this method already documents for having no editor to read."""
-        try:
-            answer = self.panel._active_network_pwd()
-        except AttributeError as crash:
-            self.fail("reading the active network became a crash: %s" % crash)
-        self.assertIsNone(answer)
-
-    def test_locating_a_folder_stops_before_the_picker(self):
-        """With no row selected the refusal fires before the folders model is read, so None is a fair stand-in for it."""
-        try:
-            self.panel._locate_folder_user(None)
-        except AttributeError as crash:
-            self.fail("the folder picker became a crash: %s" % crash)
+    def test_every_guarded_door_refuses_instead_of_crashing(self):
+        """No library, no editor, no selected folder: each returns early. No network reads None."""
+        panel = self.panel
+        doors = (("cleanup_db", lambda: panel.cleanup_db()),
+                 ("open_usdlib_folder", lambda: panel.open_usdlib_folder()),
+                 ("_active_network_pwd", lambda: self.assertIsNone(panel._active_network_pwd())),
+                 ("_locate_folder_user", lambda: panel._locate_folder_user(None)))
+        panel.material_model = None
+        for name, call in doors:
+            with self.subTest(door=name):
+                try:
+                    call()
+                except AttributeError as crash:
+                    self.fail("%s reached the host dialog and crashed: %s" % (name, crash))
 
 
 class TheGuardStillOpensTheDialogTest(unittest.TestCase):
@@ -242,21 +221,17 @@ class TheCursorLookupRefusesHeadlessTest(unittest.TestCase):
         self.assertFalse(hasattr(hou, "ui"),
                          "this host HAS a ui, so nothing here is tested")
 
-    def test_the_pane_tab_under_the_cursor_is_none_without_a_screen(self):
-        """None is what all five callers already read as `no tab under the cursor`."""
-        try:
-            answer = dragengine.pane_tab_under_cursor()
-        except AttributeError as crash:
-            self.fail("the cursor lookup became a crash: %s" % crash)
-        self.assertIsNone(answer)
-
-    def test_the_release_target_is_none_without_a_screen(self):
-        """The release pick reads the lookup through `_scene_viewer_under_cursor`, which catches nothing on the way back up."""
-        try:
-            answer = dragengine.viewport_release_target(None)
-        except AttributeError as crash:
-            self.fail("the release pick became a crash: %s" % crash)
-        self.assertIsNone(answer)
+    def test_the_lookup_and_the_release_target_are_none_without_a_screen(self):
+        """None is what all five callers read as no tab; the release pick catches nothing itself."""
+        for name, call in (("pane_tab_under_cursor", dragengine.pane_tab_under_cursor),
+                           ("viewport_release_target",
+                            lambda: dragengine.viewport_release_target(None))):
+            with self.subTest(door=name):
+                try:
+                    answer = call()
+                except AttributeError as crash:
+                    self.fail("%s became a crash: %s" % (name, crash))
+                self.assertIsNone(answer)
 
 
 class TheCursorLookupStillReadsTheScreenTest(unittest.TestCase):
@@ -577,18 +552,15 @@ class EveryDialogKnowsWhichWindowOpenedIt(unittest.TestCase):
                     found.append((relative, node.lineno, name, parented))
         return found
 
-    def test_the_scan_actually_finds_the_dialogs(self):
-        """A scan that matches nothing would pass forever. ▸p/vacuous-register"""
+    def test_no_dialog_is_built_without_a_parent(self):
         found = self._constructions()
-        self.assertGreaterEqual(
+        self.assertGreaterEqual(    # ▸p/vacuous-register
             len(found), 8,
             "the dialog scan found %d construction sites - it has stopped "
             "matching, so its silence means nothing" % len(found))
-
-    def test_no_dialog_is_built_without_a_parent(self):
         offenders = [
             "%s:%d %s" % (path, line, name)
-            for path, line, name, parented in self._constructions()
+            for path, line, name, parented in found
             if not parented and (path, name) not in self.EXEMPT
         ]
         self.assertEqual(
@@ -632,7 +604,7 @@ class TheSaveDialogIsTheOneSaveEngine(unittest.TestCase):
         self.addCleanup(dialog.deleteLater)
         return dialog
 
-    def test_the_name_row_is_built_when_no_name_is_given(self):
+    def test_the_name_row_is_built_empty_or_prefilled(self):
         dialog = self._dialog()
         self.assertIsNotNone(
             dialog.line_name,
@@ -640,8 +612,6 @@ class TheSaveDialogIsTheOneSaveEngine(unittest.TestCase):
             "through a different form than its siblings")
         self.assertEqual("", dialog.line_name.text())
         self.assertTrue(dialog.line_name.isEnabled())
-
-    def test_the_name_row_is_prefilled_when_one_is_given(self):
         self.assertEqual("rocks1", self._dialog(name="rocks1").line_name.text())
 
     def test_a_multi_selection_greys_the_name_row_instead(self):
@@ -655,21 +625,14 @@ class TheSaveDialogIsTheOneSaveEngine(unittest.TestCase):
             "the Name field is live for a multi-selection, where one "
             "name cannot serve several assets")
 
-    def test_a_greyed_name_is_never_harvested(self):
-        dialog = self._dialog(name="", name_enabled=False)
-        dialog.line_name.setText("typed anyway")
-        dialog._on_accept()
-        self.assertEqual(
-            "", dialog.name,
-            "a disabled field's text reached the save, which would "
-            "rename every material of a multi-selection to one string")
-
-    def test_a_live_name_IS_harvested(self):
-        """The accept path: a harvest that answered "" always would leave every single save named after its node whatever the user typed."""
-        dialog = self._dialog(name="rocks1")
-        dialog.line_name.setText("renamed")
-        dialog._on_accept()
-        self.assertEqual("renamed", dialog.name)
+    def test_only_a_live_name_is_harvested(self):
+        """A greyed field's text would rename a whole multi-selection to one string."""
+        for enabled, typed, harvested in ((False, "typed anyway", ""), (True, "renamed", "renamed")):
+            with self.subTest(enabled=enabled):
+                dialog = self._dialog(name="" if not enabled else "rocks1", name_enabled=enabled)
+                dialog.line_name.setText(typed)
+                dialog._on_accept()
+                self.assertEqual(harvested, dialog.name)
 
     def test_the_category_is_picked_never_typed(self):
         """A plain dropdown everywhere, like the Language combo: the sidebar's Add mints categories."""

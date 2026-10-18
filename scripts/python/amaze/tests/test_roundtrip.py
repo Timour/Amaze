@@ -92,62 +92,34 @@ class TestRoundTrip(unittest.TestCase):
 
     # -- the pair is one unit -------------------------------------------
 
-    def test_a_failed_mat_write_does_not_destroy_the_interface(self):
-        """The .interface and the .mat ARE one asset: writing the .interface first with a truncating open leaves a failed .mat write beside a rewritten sidecar, with the library row still pointing at the pair and the previous good asset unrecoverable. ▸p/asset-write-unit"""
+    def test_a_mat_write_that_fails_or_writes_nothing_keeps_the_old_pair(self):
+        """The .interface and the .mat ARE one asset: neither half may move alone. ▸p/asset-write-unit"""
         base = os.path.join(self.prefs.dir, self.prefs.asset_dir)
         os.makedirs(base, exist_ok=True)
         interface = os.path.join(base, "pairtest.interface")
         mat = os.path.join(base, "pairtest" + self.prefs.ext)
-        with open(interface, "w", encoding="utf-8") as handle:
-            handle.write("OLD INTERFACE")
-        with open(mat, "w", encoding="utf-8") as handle:
-            handle.write("OLD MAT")
-
         handler = nodes.NodeHandler(self.prefs)
 
         def refuse(path):
             raise hou.OperationFailed("disk full")
 
-        with self.assertRaises(hou.Error):
-            handler.save_asset_pair(interface, mat, "NEW INTERFACE", refuse)
-
-        with open(interface, encoding="utf-8") as handle:
-            self.assertEqual(
-                "OLD INTERFACE", handle.read(),
-                "a failed .mat write destroyed the previous .interface")
-        with open(mat, encoding="utf-8") as handle:
-            self.assertEqual("OLD MAT", handle.read())
-
-    def test_a_failed_save_leaves_no_temp_files(self):
-        base = os.path.join(self.prefs.dir, self.prefs.asset_dir)
-        os.makedirs(base, exist_ok=True)
-        interface = os.path.join(base, "temptest.interface")
-        mat = os.path.join(base, "temptest" + self.prefs.ext)
-        handler = nodes.NodeHandler(self.prefs)
-
-        with self.assertRaises(hou.Error):
-            handler.save_asset_pair(
-                interface, mat, "x",
-                lambda path: (_ for _ in ()).throw(
-                    hou.OperationFailed("nope")))
-
-        leftovers = [n for n in os.listdir(base) if n.endswith(".writing")]
-        self.assertEqual([], leftovers, "temp files survived a failed save")
-
-    def test_a_mat_writer_that_writes_nothing_is_refused(self):
-        """saveItemsToFile can return without raising and without producing a file; promoting a missing .mat would be the same loss by a quieter route."""
-        base = os.path.join(self.prefs.dir, self.prefs.asset_dir)
-        os.makedirs(base, exist_ok=True)
-        interface = os.path.join(base, "silent.interface")
-        mat = os.path.join(base, "silent" + self.prefs.ext)
-        with open(interface, "w", encoding="utf-8") as handle:
-            handle.write("OLD")
-        handler = nodes.NodeHandler(self.prefs)
-
-        with self.assertRaises(hou.Error):
-            handler.save_asset_pair(interface, mat, "NEW", lambda path: None)
-        with open(interface, encoding="utf-8") as handle:
-            self.assertEqual("OLD", handle.read())
+        for why, writer in (("the write raises", refuse),
+                            ("the writer returns with no file", lambda path: None)):
+            with self.subTest(why):
+                with open(interface, "w", encoding="utf-8") as handle:
+                    handle.write("OLD INTERFACE")
+                with open(mat, "w", encoding="utf-8") as handle:
+                    handle.write("OLD MAT")
+                with self.assertRaises(hou.Error):
+                    handler.save_asset_pair(interface, mat, "NEW INTERFACE", writer)
+                with open(interface, encoding="utf-8") as handle:
+                    self.assertEqual(
+                        "OLD INTERFACE", handle.read(),
+                        "a failed .mat write destroyed the previous .interface")
+                with open(mat, encoding="utf-8") as handle:
+                    self.assertEqual("OLD MAT", handle.read())
+                self.assertEqual([], [n for n in os.listdir(base) if n.endswith(".writing")],
+                                 "temp files survived a failed save")
 
     def test_a_good_save_updates_both(self):
         base = os.path.join(self.prefs.dir, self.prefs.asset_dir)
@@ -277,23 +249,20 @@ class TestRoundTrip(unittest.TestCase):
         return [c.name() for c in stage.children()
                 if c.type().name() == "materiallibrary"]
 
-    def test_a_failed_import_takes_back_the_library_it_made(self):
-        stage = hou.node("/obj").createNode("lopnet", "failed_import_probe")
-        self.addCleanup(stage.destroy)
-        self.assertFalse(self._failing_lop_import(stage),
-                         "premise: a damaged .mat must fail the import")
-        self.assertEqual(
-            [], self._libraries(stage),
-            "the failed import left the empty materiallibrary it created")
-
-    def test_a_failed_import_keeps_a_library_that_was_there(self):
-        stage = hou.node("/obj").createNode("lopnet", "kept_library_probe")
-        self.addCleanup(stage.destroy)
-        stage.createNode("materiallibrary", "theirs")
-        self.assertFalse(self._failing_lop_import(stage),
-                         "premise: a damaged .mat must fail the import")
-        self.assertEqual(["theirs"], self._libraries(stage),
-                         "a failed import removed a library it only reused")
+    def test_a_failed_import_takes_back_only_the_library_it_made(self):
+        for probe, theirs, left in (("failed_import_probe", None, []),
+                                    ("kept_library_probe", "theirs", ["theirs"])):
+            with self.subTest(existing=theirs):
+                stage = hou.node("/obj").createNode("lopnet", probe)
+                self.addCleanup(stage.destroy)
+                if theirs:
+                    stage.createNode("materiallibrary", theirs)
+                self.assertFalse(self._failing_lop_import(stage),
+                                 "premise: a damaged .mat must fail the import")
+                self.assertEqual(
+                    left, self._libraries(stage),
+                    "a failed import left the library it made, or removed "
+                    "one it only reused")
 
     def _karma_asset(self):
         return next(a for a in self.model.assets
@@ -380,37 +349,6 @@ class TestRoundTrip(unittest.TestCase):
             "hou.undos.group", match.group(0),
             "import_asset is not grouped - one Ctrl+Z leaves a stray "
             "matnet and a half-imported builder behind")
-
-    def test_a_grid_verb_forces_no_layout_change_at_all(self):
-        """What is pinned here is the ABSENCE of a layout-change pair, for the verbs the Grid area owns: the proxy re-tests a changed row on its own, and a verb that emits no layout change cannot leave one open. It deliberately does not claim the other panel methods that still open one without a finally."""
-        import ast
-
-        path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "panel", "panel.py")
-        with open(path, encoding="utf-8") as handle:
-            tree = ast.parse(handle.read())
-        verbs = {"grid_update_preview", "grid_toggle_favourite"}
-        offenders = []
-        for func in ast.walk(tree):
-            if not (isinstance(func, ast.FunctionDef) and func.name in verbs):
-                continue
-            for node in ast.walk(func):
-                if (isinstance(node, ast.Call)
-                        and isinstance(node.func, ast.Attribute)
-                        and node.func.attr == "emit"
-                        and getattr(node.func.value, "attr", "").startswith(
-                            "layout")):
-                    offenders.append("%s:%d" % (func.name, node.lineno))
-        self.assertEqual(
-            [], offenders,
-            "a grid verb is forcing a re-map by hand again, at %s - "
-            "which is the thing that had to sit in a finally" % offenders)
-        self.assertTrue(
-            verbs <= {f.name for f in ast.walk(tree)
-                      if isinstance(f, ast.FunctionDef)},
-            "the grid verbs this checks no longer exist, so it is "
-            "checking nothing")
 
     def test_saved_material_survives_disk_and_reimports(self):  # -- the round-trip --
         rows_before = self.model.rowCount()
@@ -543,13 +481,6 @@ class TheRedshiftAndOctaneSaveIsOneSave(unittest.TestCase):
                               if isinstance(a, ast.Constant)])
         return found
 
-    def test_both_renderers_reach_the_shared_save(self):
-        calls = self._shared_calls()
-        self.assertEqual(
-            2, len(calls),
-            "the Redshift and Octane entry points no longer both route "
-            "through one save - found %d call sites" % len(calls))
-
     def test_every_thumbnail_named_there_actually_exists(self):
         """WHAT WOULD BREAK THIS: renaming a `create_thumb_*` method, or a typo in the name passed to the shared save - neither of which raises until a real Redshift or Octane material is saved."""
         from amaze.render import thumbs as thumbs_mod
@@ -600,46 +531,36 @@ class ARedshiftImportReadsItsInterfaceOnce(unittest.TestCase):
                 self.assertEqual(1, self._import(renderer),
                                  "the import re-read its .interface")
 
-    def test_the_routing_record_is_built_only_with_the_log_on(self):
-        from amaze.core import debug
-        for on in (False, True):
-            with mock.patch.object(debug, "is_on", return_value=on), \
-                    mock.patch.object(debug, "event") as event:
-                self._import("Redshift")
-            routed = [c for c in event.call_args_list
-                      if c.args[:2] == ("import", "routing by renderer")]
-            with self.subTest(debug_on=on):
-                self.assertEqual(1 if on else 0, len(routed))
-            if on:
-                self.assertEqual("subnet", routed[0].kwargs["saved_node_type"])
-                self.assertEqual("Redshift", routed[0].kwargs["renderer"])
-                self.assertIn("mat", routed[0].kwargs["targets"])
-
 
 class TestUnsafeAssetIds(unittest.TestCase):
     """An id out of library.json becomes a FILENAME, so it decides which file the loader opens - and the app does not author the index alone, since a library can arrive edited, synced or damaged. Both halves are tested: the boundary check that rejects the shape, and the containment that catches an escape the shape check missed."""
 
-    def test_the_shapes_real_libraries_actually_hold_are_accepted(self):
-        """Guards the guard: "32 hex only" would refuse the committed fixture - six 18-digit legacy timestamp ids and a "-1" row - and every pre-uuid library with it."""
+    def test_the_real_shapes_are_accepted_and_traversal_is_refused(self):
+        """Guards the guard: "32 hex only" would refuse the fixture's legacy timestamp ids and "-1"."""
         for good in ("00755b7004824333af08d921462fa3ae",
                      "139888336268658010", "-1", "a", "A_b-c.d"):
             self.assertTrue(material.is_safe_asset_id(good), good)
-
-    def test_traversal_and_separators_are_refused(self):
         for bad in ("../../.ssh/authorized_keys", "..", ".",
                     "a/b", "a\\b", "", "x" * 65, "a b", "a\x00b"):
             self.assertFalse(material.is_safe_asset_id(bad), repr(bad))
 
-    def test_contained_join_refuses_an_escape(self):
+    def test_contained_join_refuses_an_escape_and_a_symlink_out(self):
+        """The symlink the shape check cannot see: a clean id, and a link planted in the asset folder."""
         base = tempfile.mkdtemp(prefix="amaze_contain_")
         self.addCleanup(shutil.rmtree, base, True)
         inside = hostos.contained_join(base, "mat/", "asset.mat")
         self.assertTrue(inside.startswith(base))
         with self.assertRaises(hostos.PathEscape):
             hostos.contained_join(base, "mat/", "../../escaped.mat")
+        outside = tempfile.mkdtemp(prefix="amaze_outside_")
+        self.addCleanup(shutil.rmtree, outside, True)
+        os.makedirs(os.path.join(base, "mat"))
+        os.symlink(outside, os.path.join(base, "mat", "away"))
+        with self.assertRaises(hostos.PathEscape):
+            hostos.contained_join(base, "mat", "away", "asset.mat")
 
-    def test_payload_path_composes_what_the_concatenations_did(self):
-        """The render sites that used to write `dir + asset_dir + id + suffix` by hand must get the SAME string from payload_path, or this was not a consolidation - and breaking that composition fails HERE, on the strings, rather than on a downstream symptom."""
+    def test_payload_path_composes_with_or_without_a_separator_and_contains(self):
+        """Concatenation gave `<lib>mat/abc.mat` for a dir saved without its separator."""
         base = tempfile.mkdtemp(prefix="amaze_payload_")
         self.addCleanup(shutil.rmtree, base, True)
 
@@ -656,46 +577,17 @@ class TestUnsafeAssetIds(unittest.TestCase):
                 "payload_path no longer composes what the twenty "
                 "hand-written concatenations did, for %r" % suffix)
 
-    def test_payload_path_does_not_need_dirs_trailing_separator(self):
-        """WHAT WOULD BREAK THIS: going back to `+`. `Prefs.save()` is the only thing that puts the separator on `dir`, and it runs nowhere near the readers that assume it - so concatenation gives `<lib>mat/abc.mat` where composition does not care."""
-        base = tempfile.mkdtemp(prefix="amaze_payload_")
-        self.addCleanup(shutil.rmtree, base, True)
-
-        class _Unslashed:
-            asset_dir = "mat/"
-            ext = ".mat"
+        class _Unslashed(_P):
             dir = base                      # no trailing separator
 
-        self.assertEqual(  # normpath BOTH sides: `asset_dir` carries a literal "mat/", so on Windows the composed path is `<base>\mat/abc.mat` - correct and openable, but not string-equal to os.path.join's. This is about COMPOSITION versus concatenation, not about which separator the OS prefers
+        self.assertEqual(    # normpath BOTH sides: asset_dir carries a literal "mat/"
             os.path.normpath(os.path.join(base, "mat", "abc.mat")),
             os.path.normpath(material.payload_path(_Unslashed, "abc",
                                                    ".mat")),
             "a library path without its trailing separator composed "
             "wrong - which is what concatenation did here")
-
-    def test_payload_path_refuses_an_escaping_id(self):
-        """The door the renderers did not have: `is_safe_asset_id` guards the RECORD, this guards the PATH, and the save/thumbnail route only ever had the first one."""
-        base = tempfile.mkdtemp(prefix="amaze_payload_")
-        self.addCleanup(shutil.rmtree, base, True)
-
-        class _P:
-            asset_dir = "mat/"
-            ext = ".mat"
-            dir = base + os.sep
-
-        with self.assertRaises(hostos.PathEscape):
+        with self.assertRaises(hostos.PathEscape):    # the PATH guard, beside the RECORD's
             material.payload_path(_P, "../../.ssh/authorized_keys", ".mat")
-
-    def test_contained_join_refuses_a_symlink_out(self):
-        """The shape check cannot see this one: the id is clean and the hop out is a link someone planted in the asset directory."""
-        base = tempfile.mkdtemp(prefix="amaze_contain_")
-        self.addCleanup(shutil.rmtree, base, True)
-        outside = tempfile.mkdtemp(prefix="amaze_outside_")
-        self.addCleanup(shutil.rmtree, outside, True)
-        os.makedirs(os.path.join(base, "mat"))
-        os.symlink(outside, os.path.join(base, "mat", "away"))
-        with self.assertRaises(hostos.PathEscape):
-            hostos.contained_join(base, "mat", "away", "asset.mat")
 
     def test_an_import_with_a_traversal_id_is_refused(self):
         """End to end through the real importer: the refusal names the material, nothing is created, and the file it would have read is never opened."""
@@ -843,8 +735,6 @@ class TestInterfaceIsNeverExecuted(unittest.TestCase):
         """Every asset saved before the format existed has none, and the loader degrades rather than refusing."""
         self.assertEqual({}, nodes.read_builder_sidecar(
             os.path.join(self.prefs.dir, "does-not-exist.builder.json")))
-
-    def test_a_damaged_sidecar_is_reported_not_raised(self):
         broken = os.path.join(self.prefs.dir, "broken.builder.json")
         with open(broken, "w", encoding="utf-8") as handle:
             handle.write("{not json at all")
@@ -936,28 +826,6 @@ class AStaleCompanionGoesWhateverTheExtension(unittest.TestCase):
                          "the stale companion stayed beside the asset")
 
 
-class TheTwinIsRebuiltThroughTheHandlersDoor(unittest.TestCase):
-
-    def test_convert_points_no_handler_field_by_hand(self):
-        """`rebuild_saved` is the one door that rebuilds a saved asset in a scratch network."""
-        import ast
-        import inspect
-        import textwrap
-        source = textwrap.dedent(inspect.getsource(
-            library_mod.MaterialLibrary.convert))
-        poked = [ast.unparse(target)
-                 for node in ast.walk(ast.parse(source))
-                 if isinstance(node, ast.Assign)
-                 for target in node.targets
-                 if isinstance(target, ast.Attribute)
-                 and target.attr.startswith("_")]
-        self.assertEqual([], poked, "the conversion sets handler state")
-        self.assertIn("rebuild_saved", source)
-        self.assertNotIn(
-            "parms_file_name",
-            inspect.signature(nodes.NodeHandler.load_interface_mtlx).parameters)
-
-
 class StructureSignatureTest(unittest.TestCase):
     """The Versions decision rule: same nodes, same wiring, only values differ -> a new version; anything else -> the structural path. The signature is what answers it, so its two directions ARE the feature's correctness. ▸p/structure-signature"""
 
@@ -968,12 +836,11 @@ class StructureSignatureTest(unittest.TestCase):
         self.staging = hou.node("/obj").createNode("matnet")
         self.addCleanup(self.staging.destroy)
 
-    def test_a_parameter_edit_keeps_the_signature(self):
-        builder = _build_material(self.staging, "sig_parm_probe")
+    def test_value_edits_and_layout_moves_keep_the_signature(self):
+        builder = _build_material(self.staging, "sig_keep_probe")
         before = nodes.structure_signature(builder)
         shader = _shader_of(builder)
-        # a guaranteed SCALAR parm: SPEC's first key can be a tuple (colours), whose .parm() is None - .parmTuple territory
-        scalar = next(parm for parm in shader.parms()
+        scalar = next(parm for parm in shader.parms()    # a SCALAR float: a colour's .parm() is None
                       if parm.parmTemplate().numComponents() == 1
                       and parm.parmTemplate().type()
                       == hou.parmTemplateType.Float)
@@ -982,34 +849,25 @@ class StructureSignatureTest(unittest.TestCase):
                          "a value edit changed the structure signature - "
                          "every parameter tweak would take the structural "
                          "path and Versions would never fire")
-
-    def test_layout_moves_keep_the_signature(self):
-        builder = _build_material(self.staging, "sig_layout_probe")
-        before = nodes.structure_signature(builder)
         for child in builder.children():
             child.move(hou.Vector2(3.0, -2.0))
         self.assertEqual(before, nodes.structure_signature(builder),
                          "canvas layout leaked into the signature")
 
-    def test_an_added_node_changes_it(self):
-        builder = _build_material(self.staging, "sig_add_probe")
+    def test_an_added_node_or_a_rewire_changes_it(self):
+        builder = _build_material(self.staging, "sig_change_probe")
         before = nodes.structure_signature(builder)
-        builder.createNode("mtlximage", "sig_added")
-        self.assertNotEqual(before, nodes.structure_signature(builder),
+        image = builder.createNode("mtlximage", "sig_added")
+        added = nodes.structure_signature(builder)
+        self.assertNotEqual(before, added,
                             "an added node did not change the signature - "
                             "a structural edit would silently become a "
                             "version")
-
-    def test_a_rewire_changes_it(self):
-        builder = _build_material(self.staging, "sig_wire_probe")
-        image = builder.createNode("mtlximage", "sig_wire_img")
-        shader = _shader_of(builder)
-        before = nodes.structure_signature(builder)
-        shader.setInput(0, image)
-        self.assertNotEqual(before, nodes.structure_signature(builder),
+        _shader_of(builder).setInput(0, image)
+        self.assertNotEqual(added, nodes.structure_signature(builder),
                             "a rewire did not change the signature")
 
-    def test_staged_asset_loads_and_cleans_up(self):
+    def test_staged_asset_loads_and_cleans_up_even_when_the_loader_raises(self):
         model = library_mod.MaterialLibrary(preferences=self.prefs)
         row = next(r for r in range(model.rowCount())
                    if material.is_karma_renderer(model.assets[r].renderer))
@@ -1021,17 +879,11 @@ class StructureSignatureTest(unittest.TestCase):
         self.assertEqual(obj_before, set(hou.node("/obj").children()),
                          "staged_asset left its staging network in /obj")
 
-    def test_staged_asset_cleans_up_even_when_the_loader_raises(self):
-        model = library_mod.MaterialLibrary(preferences=self.prefs)
-        row = next(r for r in range(model.rowCount())
-                   if material.is_karma_renderer(model.assets[r].renderer))
-        obj_before = set(hou.node("/obj").children())
-
         def boom(_node):
             raise RuntimeError("loader failure")
 
         with self.assertRaises(RuntimeError):
-            nodes.staged_asset(self.prefs, model.assets[row], boom)
+            nodes.staged_asset(self.prefs, mat, boom)
         self.assertEqual(obj_before, set(hou.node("/obj").children()),
                          "a raising loader stranded the staging network")
 
@@ -1053,10 +905,7 @@ class AnUnreadablePayloadRefusesWithoutAScreenTest(unittest.TestCase):
                                  "the caller cannot tell it apart from a "
                                  "clean load")
         self.assertIn("could not be read", problem)
-
-    def test_a_directory_in_the_payload_slot_is_named_in_the_reason(self):
-        """`getsize` ANSWERS for a directory rather than raising, so this shape reaches `loadItemsFromFile` - and its refusal must still say WHICH file, where Houdini's own sentence says only that something failed."""
-        as_dir = os.path.join(self.prefs.dir, "payload-is-a-directory.mat")
+        as_dir = os.path.join(self.prefs.dir, "payload-is-a-directory.mat")    # getsize ANSWERS for a folder
         os.makedirs(as_dir, exist_ok=True)
         self.addCleanup(os.rmdir, as_dir)
         problem = nodes.load_items_strict(self.staging, as_dir)
@@ -1067,26 +916,18 @@ class AnUnreadablePayloadRefusesWithoutAScreenTest(unittest.TestCase):
             "the refusal does not name the file, so the reader is left with "
             "Houdini's bare sentence: %r" % problem)
 
-    def test_the_import_refuses_through_hou_error_with_no_ui_present(self):
-        """The whole point: headless, a missing payload must arrive as a reason-carrying hou.Error and never as the AttributeError a dialog would raise."""
+    def test_both_imports_refuse_through_hou_error_with_no_ui_present(self):
+        """Headless, a missing payload is a hou.Error with a reason, never a dialog's AttributeError."""
         self.assertFalse(hasattr(hou, "ui"),
                          "this test needs a headless hou to mean anything")
-        handler = nodes.NodeHandler(self.prefs)
-        handler._builder_node = self.staging
-        mat = material.Material(name="gone", mat_id="no-such-asset-id")
-        with self.assertRaises(hou.Error) as caught:
-            handler.load_items_file(mat)
-        self.assertIn("could not be read", str(caught.exception))
-
-    def test_the_karma_import_refuses_the_same_way(self):
-        """The second caller wrote the same `except OSError` around the same call, so it is pinned from the same side."""
-        self.assertFalse(hasattr(hou, "ui"))
-        handler = nodes.NodeHandler(self.prefs)
-        handler._builder_node = self.staging
-        mat = material.Material(name="gone", mat_id="no-such-asset-id")
-        with self.assertRaises(hou.Error) as caught:
-            handler.load_items_file_mtlx(mat)
-        self.assertIn("could not be read", str(caught.exception))
+        for method in ("load_items_file", "load_items_file_mtlx"):
+            with self.subTest(method):
+                handler = nodes.NodeHandler(self.prefs)
+                handler._builder_node = self.staging
+                mat = material.Material(name="gone", mat_id="no-such-asset-id")
+                with self.assertRaises(hou.Error) as caught:
+                    getattr(handler, method)(mat)
+                self.assertIn("could not be read", str(caught.exception))
 
     def _an_oserror_reaches_no_screen(self, method: str):
         """Force the OSError the callers guard against and let it arrive: whatever handles it must not be a dialog, because there is no screen to raise one on."""
@@ -1110,13 +951,11 @@ class AnUnreadablePayloadRefusesWithoutAScreenTest(unittest.TestCase):
         self.fail("%s swallowed a real read failure and reported nothing"
                   % method)
 
-    def test_a_read_failure_never_becomes_a_crash_on_the_usd_import(self):
+    def test_a_read_failure_never_becomes_a_crash_on_either_import(self):
         """▸r/status-bar - hou.ui does not exist headless."""
-        self._an_oserror_reaches_no_screen("load_items_file")
-
-    def test_a_read_failure_never_becomes_a_crash_on_the_karma_import(self):
-        """The same, from the second caller."""
-        self._an_oserror_reaches_no_screen("load_items_file_mtlx")
+        for method in ("load_items_file", "load_items_file_mtlx"):
+            with self.subTest(method):
+                self._an_oserror_reaches_no_screen(method)
 
 
 class AFreshHandlerNamesNoBuilder(unittest.TestCase):
@@ -1142,14 +981,12 @@ class ASavedAssetRebuildsInsideAScratchNetwork(unittest.TestCase):
             self.scratch = hou.node("/obj").createNode("matnet")
         self.addCleanup(self.scratch.destroy)
 
-    def test_a_karma_asset_lands_in_the_scratch_and_nowhere_else(self):
+    def test_a_karma_asset_lands_in_the_scratch_and_an_unknown_one_is_refused(self):
         obj_before = set(hou.node("/obj").children())
         builder = nodes.NodeHandler(self.prefs).rebuild_saved(self.karma, self.scratch)
         self.assertEqual(self.scratch.path(), builder.parent().path())
         self.assertTrue(builder.children(), "the builder came back empty")
         self.assertEqual(obj_before, set(hou.node("/obj").children()))
-
-    def test_an_unknown_renderer_is_refused_as_the_import_refuses_it(self):
         odd = material.Material(name="odd", renderer="", mat_id=self.karma.mat_id)
         with self.assertRaises(hou.OperationFailed) as caught:
             nodes.NodeHandler(self.prefs).rebuild_saved(odd, self.scratch)

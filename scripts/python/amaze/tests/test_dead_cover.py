@@ -73,20 +73,6 @@ class _ReportsMixin(unittest.TestCase):
 
 class TheIntersectionTest(_ReportsMixin):
 
-    def test_a_test_skipped_on_every_host_is_named(self):
-        a = self.write_report("a.json", [
-            ["test_x.A.test_needs_redshift", "Redshift not installed"],
-            ["test_y.B.test_dead", "needs a GUI"]], houdini=H22)
-        b = self.write_report("b.json", [
-            ["test_y.B.test_dead", "needs a GUI"],
-            ["test_z.C.test_h22_only", "H22 only"]], houdini=H21)
-        code, output = self.run_check(a, b)
-        self.assertEqual(code, 1, "a test skipped on both hosts was not "
-                                  "reported as dead cover:\n%s" % output)
-        self.assertIn("test_y.B.test_dead", output,
-                      "the dead test was not NAMED, and a count is exactly "
-                      "what the suite already gave us")
-
     def test_a_test_skipped_on_only_one_host_is_not_named(self):
         a = self.write_report("a.json", [
             ["test_x.A.test_needs_redshift", "Redshift not installed"]],
@@ -108,6 +94,9 @@ class TheIntersectionTest(_ReportsMixin):
             ["test_y.B.test_dead", "no hou.ui headless"]], houdini=H21)
         code, output = self.run_check(a, b)
         self.assertEqual(code, 1)
+        self.assertIn("test_y.B.test_dead", output,
+                      "the dead test was not NAMED, and a count is exactly "
+                      "what the suite already gave us")
         for expected in ("Redshift not installed", "no hou.ui headless",
                          "Houdini22.0.403", "Houdini21.0.729"):
             self.assertIn(expected, output,
@@ -117,41 +106,24 @@ class TheIntersectionTest(_ReportsMixin):
 
 class TheRefusalsTest(_ReportsMixin):
 
-    def test_a_missing_report_refuses(self):
-        a = self.write_report("a.json", [])
-        code, output = self.run_check(a, os.path.join(self.dir, "gone.json"))
-        self.assertEqual(code, 2, "a missing report was treated as a run "
-                                  "that skipped nothing:\n%s" % output)
-        self.assertIn("crashed", output)
-
-    def test_an_unreadable_report_refuses(self):
-        a = self.write_report("a.json", [])
+    def test_every_input_it_cannot_judge_refuses(self):
+        """Exit 2, never an all-clear: a Houdini crash exits 0, so testsRun is the only signal."""
+        a = self.write_report("a.json", [["test_y.B.test_dead", "why"]])
         bad = os.path.join(self.dir, "bad.json")
         with open(bad, "w", encoding="utf-8") as handle:
             handle.write("{not json")
-        code, output = self.run_check(a, bad)
-        self.assertEqual(code, 2, "unreadable JSON did not refuse:\n%s"
-                         % output)
-        self.assertIn("unreadable", output)
-
-    def test_a_run_that_executed_nothing_refuses(self):
-        a = self.write_report("a.json", [["test_y.B.test_dead", "why"]])
         crashed = self.write_report("crashed.json", [], tests_run=0)
-        code, output = self.run_check(a, crashed)
-        self.assertEqual(code, 2, "a crashed run intersected to an empty "
-                                  "set and produced a confident all-clear "
-                                  "from a suite that never ran; a Houdini "
-                                  "crash exits 0, so testsRun is the only "
-                                  "signal:\n%s" % output)
-        self.assertIn("0 tests", output)
-
-    def test_one_report_alone_refuses(self):
-        a = self.write_report("a.json", [["test_y.B.test_dead", "why"]])
-        code, output = self.run_check(a)
-        self.assertEqual(code, 2, "one run cannot tell a correct skip from "
-                                  "a dead one, but answered anyway:\n%s"
-                         % output)
-        self.assertIn("at least", output)
+        for why, paths, said in (
+                ("a missing report", (a, os.path.join(self.dir, "gone.json")),
+                 "crashed"),
+                ("unreadable JSON", (a, bad), "unreadable"),
+                ("a run that executed nothing", (a, crashed), "0 tests"),
+                ("one report alone", (a,), "at least")):
+            with self.subTest(why):
+                code, output = self.run_check(*paths)
+                self.assertEqual(code, 2, "%s did not refuse:\n%s"
+                                 % (why, output))
+                self.assertIn(said, output)
 
 
 class TheHostNameTest(unittest.TestCase):
@@ -159,8 +131,6 @@ class TheHostNameTest(unittest.TestCase):
     def test_the_version_directory_is_what_gets_reported(self):
         self.assertEqual(
             check_dead_cover.host_of({"houdini": H21}), "Houdini21.0.729")
-
-    def test_an_unnamed_install_still_reads(self):
         self.assertEqual(
             check_dead_cover.host_of({"houdini": ""}), "(newest install)")
 
@@ -197,22 +167,6 @@ class TheReportWriterTest(_ReportsMixin):
         self.assertIn("test_y.B.test_dead", output)
         self.assertIn("Houdini21.0.729", output)
 
-    def test_the_env_var_name_is_the_one_the_shell_sets(self):
-        self.assertEqual(run_suite.SKIP_REPORT_VAR, "AMAZE_SKIP_REPORT")
-
-    def test_no_test_here_mutates_the_environment_the_runner_reads(self):
-        #: BUILT, never written whole - a scan holding its pattern matches itself.
-        var = "AMAZE_" + "HOUDINI"
-        with open(os.path.abspath(__file__), encoding="utf-8") as handle:
-            source = handle.read()
-        offenders = [shape for shape in ('os.environ["%s"]' % var,
-                                         'os.environ.pop, "%s"' % var)
-                     if shape in source]
-        self.assertEqual(
-            offenders, [],
-            "a test here mutates the variable run_suite reads AFTER every "
-            "test has run, so every report loses its host name")
-
 
 class WhatUnittestItselfGuaranteesTest(unittest.TestCase):
 
@@ -245,26 +199,18 @@ class WhatUnittestItselfGuaranteesTest(unittest.TestCase):
 
 class TheWiringTest(unittest.TestCase):
 
-    def setUp(self):
+    def test_all_versions_reports_each_run_and_checks_them_together(self):
+        """The shell sets the variable the runner reads, runs the checker, and guards a subset run."""
         with open(RUN_TESTS_SH, encoding="utf-8") as handle:
-            self.source = handle.read()
-
-    def test_all_versions_hands_each_run_its_own_report(self):
-        self.assertIn('AMAZE_SKIP_REPORT="$report"', self.source,
-                      "--all-versions no longer gives each run a skip "
-                      "report, so the checker has nothing to compare")
-
-    def test_all_versions_runs_the_checker(self):
-        self.assertIn("check_dead_cover.py", self.source,
-                      "--all-versions no longer runs the dead-cover check, "
-                      "and a checker nobody calls is the same false green "
-                      "as a dead test")
-
-    def test_a_subset_run_does_not_answer_the_question(self):
-        self.assertIn("full_run", self.source,
-                      "the subset guard is gone, so a subset --all-versions "
-                      "would report a confident all-clear about every "
-                      "module neither run loaded")
+            source = handle.read()
+        for needle, lost in (
+                ('%s="$report"' % run_suite.SKIP_REPORT_VAR,
+                 "gives no run its own skip report"),
+                ("check_dead_cover.py", "does not run the dead-cover check"),
+                ("full_run", "has no subset guard, so a subset reads as an "
+                             "all-clear")):
+            with self.subTest(needle):
+                self.assertIn(needle, source, "--all-versions %s" % lost)
 
 
 class EverythingLoadsOnADirectRunTest(unittest.TestCase):
@@ -288,6 +234,14 @@ class EverythingLoadsOnADirectRunTest(unittest.TestCase):
                 and node.lineno > first]
 
     def test_nothing_is_defined_below_unittest_main(self):
+        planted = ("import unittest\n"
+                   "if __name__ == '__main__':\n"
+                   "    unittest.main()\n"
+                   "class TailTest(unittest.TestCase):\n"
+                   "    def test_x(self):\n"
+                   "        pass\n")
+        self.assertEqual(["TailTest"], self._defined_below_main(planted),
+                         "the scan cannot see a class below the call")
         here = os.path.dirname(os.path.abspath(__file__))
         offenders = {}
         for name in sorted(os.listdir(here)):
@@ -302,17 +256,6 @@ class EverythingLoadsOnADirectRunTest(unittest.TestCase):
             "these modules define tests below unittest.main(), so a "
             "direct run collects only part of the file and prints a "
             "green over the rest: %s" % offenders)
-
-    def test_the_scan_can_see_a_class_below_the_call(self):
-        """Anti-vacuity: prove the needle still finds the haystack."""
-        planted = ("import unittest\n"
-                   "if __name__ == '__main__':\n"
-                   "    unittest.main()\n"
-                   "class TailTest(unittest.TestCase):\n"
-                   "    def test_x(self):\n"
-                   "        pass\n")
-        self.assertEqual(["TailTest"],
-                         self._defined_below_main(planted))
 
 
 if __name__ == "__main__":

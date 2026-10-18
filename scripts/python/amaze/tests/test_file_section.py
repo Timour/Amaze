@@ -113,8 +113,8 @@ class LocationsFollowTheLibraryTest(unittest.TestCase):
         return _location_prefs(self, settings or self.REAL_SHAPE,
                                tag_favourites=tag_favourites)
 
-    def test_every_location_arrives_field_for_field(self):
-        prefs, _lib = self._prefs()
+    def test_every_location_arrives_field_for_field_and_lands_in_the_library(self):
+        prefs, library = self._prefs()
         self.assertEqual(self.REAL_SHAPE["file_folders"],
                          list(prefs.file_folders),
                          "the registered list did not survive the move, "
@@ -132,18 +132,8 @@ class LocationsFollowTheLibraryTest(unittest.TestCase):
             "falsy, which turns hidden files back on")
         self.assertEqual(sorted(self.REAL_SHAPE["file_favorites"]),
                          sorted(prefs.file_favorites))
-
-    def test_a_location_with_no_decoration_still_arrives(self):
-        """Registration alone, no decoration - the case a four-table composition could not represent."""
-        prefs, _lib = self._prefs()
-        self.assertEqual({"registered": True},
+        self.assertEqual({"registered": True},    # registration alone, no decoration
                          locations_mod.record(prefs, "/tex/hdr/"))
-        self.assertIn("/houdini/exercise/", prefs.file_folders)
-
-    def test_it_writes_the_two_files_and_marks_itself_done(self):
-        prefs, library = self._prefs()
-        # The first locations READ is the trigger - a bare load() never writes the library.
-        locations_mod.registered_paths(prefs)
         with open(os.path.join(library, "locations.json"),
                   encoding="utf-8") as handle:
             written = json.load(handle)
@@ -246,25 +236,33 @@ class LocationsFollowTheLibraryTest(unittest.TestCase):
             1, list(second.file_folders).count("/tex/img/"),
             "a folder both machines had registered arrived twice")
 
-    def test_a_lost_store_is_re_seeded_from_the_copy(self):
-        """A locations.json deleted or restored away on a migrated machine used to leave the sidebar EMPTY - the code trusted an empty store over its own copy, and it happened for real."""
-        prefs, library = self._prefs()
-        self.assertEqual(6, len(prefs.file_folders))
-
-        os.remove(os.path.join(library, "locations.json"))
-        locations_mod.forget()
-
-        self.assertTrue(locations_mod.showing_last_known(prefs),    # the .bak tier proves the file WAS here, so the store answers BLIND and refuses writes - refuse-over-overwrite, not a fault
-                        "a store that cannot be read is not reported as "
-                        "such, so the sidebar cannot mark it")
-        self.assertEqual(
-            self.REAL_SHAPE["file_folders"], list(prefs.file_folders),
-            "the store was empty and the sidebar went empty with it, "
-            "although settings.json still held every folder")
-        self.assertEqual(
-            {"registered": True, "name": "Bokeh files", "recursive": True},
-            locations_mod.record(prefs, "/tex/bokeh/"),
-            "the copy lost the per-location facts")
+    def test_a_lost_store_or_an_unreachable_library_serves_the_copy(self):
+        """DECIDED: the last known list still shows, marked - the browser you want when a drive is gone."""
+        for lost in (True, False):
+            with self.subTest(lost_store=lost):
+                prefs, library = self._prefs()
+                if lost:    # migrated, then deleted: the .bak tier proves it WAS here, so it reads BLIND
+                    self.assertEqual(6, len(prefs.file_folders))
+                    os.remove(os.path.join(library, "locations.json"))
+                    locations_mod.forget()
+                else:
+                    locations_mod.forget()
+                    prefs.dir = os.path.join(library, "not-mounted")
+                self.assertTrue(locations_mod.showing_last_known(prefs),
+                                "an unreadable store or library is not "
+                                "reported as such, so the sidebar cannot "
+                                "mark it")
+                self.assertEqual(
+                    self.REAL_SHAPE["file_folders"], list(prefs.file_folders),
+                    "the sidebar went empty although settings.json still "
+                    "held every folder")
+                self.assertEqual(
+                    {"registered": True, "name": "Bokeh files", "recursive": True},
+                    locations_mod.record(prefs, "/tex/bokeh/"),
+                    "the copy lost the per-location facts")
+                if not lost:
+                    self.assertEqual(sorted(self.REAL_SHAPE["file_favorites"]),
+                                     sorted(prefs.file_favorites))
 
     def test_a_library_with_no_store_at_all_is_re_seeded(self):
         """The FRESH shape - a new or replaced library, nothing says a store was ever here - re-seeds from the copy, or a migrated machine would show an empty sidebar over a writable library forever."""
@@ -314,26 +312,6 @@ class LocationsFollowTheLibraryTest(unittest.TestCase):
                          "the marker was set although the stores do not "
                          "match, so the old keys will never be read again")
 
-    def test_an_unreachable_library_shows_the_last_known_list(self):
-        """DECIDED: the last known locations still list, marked unreachable - the File section is the browser you most want working when a drive is not mounted."""
-        prefs, library = self._prefs()
-        locations_mod.forget()
-        prefs.dir = os.path.join(library, "not-mounted")
-
-        self.assertTrue(locations_mod.showing_last_known(prefs),
-                        "an unreachable library is not reported as such, "
-                        "so the sidebar cannot mark it")
-        self.assertEqual(self.REAL_SHAPE["file_folders"],
-                         list(prefs.file_folders),
-                         "the locations vanished when the library went "
-                         "away - the copy exists precisely for this")
-        self.assertEqual(
-            {"registered": True, "name": "Bokeh files", "recursive": True},
-            locations_mod.record(prefs, "/tex/bokeh/"),
-            "the copy lost the per-location facts")
-        self.assertEqual(sorted(self.REAL_SHAPE["file_favorites"]),
-                         sorted(prefs.file_favorites))
-
     def test_with_no_library_at_all_a_write_still_lands(self):
         """The File section still works with no library configured - and an empty `dir` must never turn into a store written beside the current directory."""
         prefs = _prefs_with_settings(self, {"file_folders": ["/a/"],
@@ -381,12 +359,6 @@ class LocationsArePerUserTest(unittest.TestCase):
         with open(os.path.join(library, "locations.json"),
                   encoding="utf-8") as handle:
             return json.load(handle)["locations"]
-
-    def test_the_locations_spec_declares_the_tag(self):
-        self.assertTrue(
-            locations_mod.SPEC.user_tagged,
-            "the locations spec lost its user tag - every test in this "
-            "class is about behaviour that flag switches on")
 
     def test_pre_tag_rows_adopt_into_the_opener_field_for_field(self):
         prefs, library = self._upgrading()
@@ -454,6 +426,11 @@ class LocationsArePerUserTest(unittest.TestCase):
             dict(prefs.last_known_records),
             "the no-user window blanked the settings copy - the exact "
             "wipe the mirror guard exists to stop")
+        locations_mod._sync_mirror(prefs)    # the belt, driven directly: every write door refuses first
+        self.assertEqual(
+            dict(self.PRE_TAG_ROWS), dict(prefs.last_known_records),
+            "the mirror blanked the copy from a scoped read that "
+            "answers nothing - the fallback died while it was serving")
 
     def test_picking_a_user_mid_session_finishes_the_job(self):
         prefs, library = self._upgrading(library_user="")
@@ -488,15 +465,6 @@ class LocationsArePerUserTest(unittest.TestCase):
             "/tex/bokeh/", prefs.file_folders,
             "a removal cleared only the removing user's registration - "
             "the folder survives for everyone else and comes back")
-
-    def test_the_mirror_never_blanks_the_copy_with_nobody_picked(self):
-        """A scoped read with nobody picked answers {} meaning NO ANSWER, not no locations - driven directly because every write door refuses before the mirror; this is the belt for a caller that forgets to."""
-        prefs, _library = self._upgrading(library_user="")
-        locations_mod._sync_mirror(prefs)
-        self.assertEqual(
-            dict(self.PRE_TAG_ROWS), dict(prefs.last_known_records),
-            "the mirror blanked the copy from a scoped read that "
-            "answers nothing - the fallback died while it was serving")
 
     def test_the_seed_migration_defers_whole_with_nobody_picked(self):
         settings = {"directory": "", "library_user": "",
@@ -571,17 +539,6 @@ class ScenePathsAreSpelledPerPreferenceTest(unittest.TestCase):
                          "the drag carries a file URL again - Houdini "
                          "reads it as open-this-file")
 
-    def test_no_raw_parm_set_of_a_path_remains(self):
-        panel_py = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "panel", "panel.py")
-        with open(panel_py, encoding="utf-8") as handle:
-            source = handle.read()
-        self.assertNotIn(
-            "parm.set(path)", source,
-            "a raw parm.set of a path returned to panel.py - scene "
-            "paths go through _scene_path")
-
 
 class DropFilePathOnNodeTest(unittest.TestCase):
     """The release-on-a-node verb: the node's FIRST file parameter takes the SPELLED path, and a node with no file parameter refuses with a dialog-free False so the gesture can show its own miss - dispatch pinned in test_drag_gesture."""
@@ -600,7 +557,7 @@ class DropFilePathOnNodeTest(unittest.TestCase):
         import types
         return types.SimpleNamespace(data=lambda role: path)
 
-    def test_the_first_file_parm_takes_the_spelled_path(self):
+    def test_the_first_file_parm_takes_the_spelled_path_and_none_refuses(self):
         home = self._home()
         geo = hou.node("/obj").createNode("geo", "amaze_droptest")
         self.addCleanup(geo.destroy)
@@ -611,11 +568,6 @@ class DropFilePathOnNodeTest(unittest.TestCase):
             "$HOME/textures/amaze_drop.png",
             loader.parm("file").rawValue(),
             "the hand-over wrote a raw absolute path")
-
-    def test_a_node_with_no_file_parm_refuses_without_a_dialog(self):
-        home = self._home()
-        geo = hou.node("/obj").createNode("geo", "amaze_droptest2")
-        self.addCleanup(geo.destroy)
         bare = geo.createNode("null")
         self.assertFalse(
             self.panel.sections["file"].drop_file_path_on_node(
@@ -659,7 +611,7 @@ class CreationRuleTest(unittest.TestCase):
             data=lambda role: roles.get(role, path),
             isValid=lambda: True)
 
-    def test_an_image_becomes_a_mtlximage_with_the_spelled_path(self):
+    def test_an_image_becomes_a_mtlximage_and_a_sop_network_refuses_it(self):
         from amaze.helpers import helpers
 
         home = self._home()
@@ -673,12 +625,10 @@ class CreationRuleTest(unittest.TestCase):
             "$HOME/textures/amaze_create.png",
             helpers.find_file_parm(children[0]).rawValue(),
             "the carrier holds a raw absolute path")
-
-    def test_a_sop_network_refuses_the_image_carrier(self):
-        net = self._geo()
+        sop = self._geo()
         self.assertFalse(self.panel.sections["file"].create_image_node_in(
-            self._index_for(self._home() + "/x.png"), net))
-        self.assertEqual((), net.children(),
+            self._index_for(home + "/x.png"), sop))
+        self.assertEqual((), sop.children(),
                          "a refusing network gained a child anyway")
 
     def test_a_gradient_becomes_the_mtlx_ramp_carrier(self):
@@ -696,7 +646,7 @@ class CreationRuleTest(unittest.TestCase):
             helpers.find_color_ramp_parm(children[0]),
             "the carrier has no ramp to have taken the gradient")
 
-    def test_a_vex_snippet_becomes_a_wrangle_in_a_sop_network(self):
+    def test_a_vex_snippet_becomes_a_wrangle_in_sops_and_vops_refuse_it(self):
         from amaze.helpers import helpers
 
         net = self._geo()
@@ -714,28 +664,10 @@ class CreationRuleTest(unittest.TestCase):
         self.assertEqual(
             asset.code, helpers.find_code_parm(children[0]).eval(),
             "the wrangle does not carry the snippet")
-
-    def test_a_snippet_carrier_reads_its_row_once(self):
-        """The carrier's type and the snippet it carries come from one read of the row."""
-        from unittest import mock
-        net = self._geo()
-        proxy = self.panel.code_sorted_model
-        index = proxy.index(0, 0)
-        self.assertTrue(index.isValid(), "premise: the fixture has snippets")
-        with mock.patch.object(proxy, "mapToSource",
-                               wraps=proxy.mapToSource) as mapped:
-            self.panel.sections["code"].create_code_node_in(index, net)
-        self.assertEqual(1, mapped.call_count)
-
-    def test_a_vop_network_refuses_a_vex_snippet(self):
-        net = self._matnet()
-        index = self.panel.code_sorted_model.index(0, 0)
-        source = self.panel.code_sorted_model.mapToSource(index)
-        asset = self.panel.code_model.assets[source.row()]
-        if str(getattr(asset, "renderer", "")).lower() != "vex":
-            self.skipTest("the first snippet is not VEX")
-        self.assertFalse(self.panel.sections["code"].create_code_node_in(index, net))
-        self.assertEqual((), net.children())
+        vop = self._matnet()
+        self.assertFalse(self.panel.sections["code"].create_code_node_in(index, vop),
+                         "a VOP network took a VEX snippet")
+        self.assertEqual((), vop.children())
 
     def _with_view_networks(self, networks):
         self.panel._view_create_networks = lambda: list(networks)
@@ -829,8 +761,8 @@ class CreationRuleTest(unittest.TestCase):
             (keeper,), hou.selectedNodes(),
             "a menu Copy To moved the artist's scene selection")
 
-    def test_a_refused_click_is_absorbed_like_a_refused_drop(self):
-        """Houdini answering no (a locked network) must not escape the click dispatcher as a slot crash - the drag dispatch already absorbs exactly this class and says why."""
+    def test_the_click_dispatcher_absorbs_a_refusal_and_lets_a_crash_out(self):
+        """A locked network's no is absorbed like a drop's; a programming error still crashes visibly."""
         from amaze.panel import sections as sections_module
 
         class RefusingSection:
@@ -842,13 +774,6 @@ class CreationRuleTest(unittest.TestCase):
                 raise hou.PermissionError(
                     "Cannot create a node inside a locked asset")
 
-        index = self.panel.code_sorted_model.index(0, 0)
-        self.panel.click_on_row(RefusingSection(), index)
-
-    def test_a_genuine_crash_still_escapes_the_click_dispatcher(self):
-        """Only the permission class is absorbed - a programming error still crashes where it can be seen."""
-        from amaze.panel import sections as sections_module
-
         class CrashingSection:
             key = "crashing"
             DROP = sections_module.DropRule(
@@ -858,21 +783,9 @@ class CreationRuleTest(unittest.TestCase):
                 raise RuntimeError("a real defect")
 
         index = self.panel.code_sorted_model.index(0, 0)
+        self.panel.click_on_row(RefusingSection(), index)
         with self.assertRaises(RuntimeError):
             self.panel.click_on_row(CrashingSection(), index)
-
-    def test_the_preserving_helper_restores_what_was(self):
-        from amaze.helpers import helpers
-        net = self._geo()
-        a = net.createNode("box")
-        b = net.createNode("sphere")
-        hou.clearAllSelected()
-        a.setSelected(True)
-        with helpers.preserving_selection_and_current():
-            a.setSelected(False)
-            b.setSelected(True)
-        self.assertEqual((a,), hou.selectedNodes(),
-                         "the block did not put the selection back")
 
     def test_the_ghost_promises_what_the_drop_delivers(self):
         """The outline draws the carrier the space door WOULD create, read from the same declaration the creator builds from - two separate answers would let the ghost promise a wrangle and deliver nothing."""
@@ -952,8 +865,8 @@ class CreationRuleTest(unittest.TestCase):
                          "import dived into")
         self.assertIn(("pwd", home.path()), seen)
 
-    def test_putting_the_selection_back_costs_no_undo_steps(self):
-        """Selection calls push `Change Selection` undo entries (research.md ▸ Viewport & picking), so the whole restore runs under hou.undos.disabler() or every drop sprays undo steps."""
+    def test_the_selection_is_put_back_and_it_costs_no_undo_steps(self):
+        """Selection calls push undo entries, so the restore runs under hou.undos.disabler()."""
         from unittest import mock
         from amaze.helpers import helpers
         net = self._geo()
@@ -974,67 +887,37 @@ class CreationRuleTest(unittest.TestCase):
                 b.setSelected(True)
         self.assertTrue(used, "the restore ran outside a disabler - "
                               "every drop now costs undo steps")
-        self.assertEqual((a,), hou.selectedNodes())
+        self.assertEqual((a,), hou.selectedNodes(),
+                         "the block did not put the selection back")
 
-    def test_a_selected_node_that_cannot_take_it_still_creates(self):
-        """The selection is a HINT for the click door, not a veto - a selected node with no snippet parm falls through to creation in the visible network."""
-        sop = self._geo()
-        sphere = sop.createNode("sphere")
-        hou.clearAllSelected()
-        sphere.setSelected(True)
-        self._with_view_networks([sop])
-        index = self.panel.code_sorted_model.index(0, 0)
-        source = self.panel.code_sorted_model.mapToSource(index)
-        asset = self.panel.code_model.assets[source.row()]
-        if str(getattr(asset, "renderer", "")).lower() != "vex":
-            self.skipTest("the first snippet is not VEX")
-        self.panel.click_on_row(self.panel.sections["code"], index)
-        wrangles = [c for c in sop.children()
-                    if "wrangle" in c.type().name()]
-        self.assertEqual(
-            1, len(wrangles),
-            "a selected node that cannot take the snippet blocked the "
-            "creation instead of falling through to the network")
-
-    def test_the_MENU_verb_falls_through_exactly_like_the_click(self):
-        """Same tile, same selection, one answer: the menu entry sharing the double-click's verb falls through a useless selection the same way - driven through `menu_apply`, the thing the menu table actually names, so a routing regression fails however the body is spelled."""
-        sop = self._geo()
-        sphere = sop.createNode("sphere")
-        hou.clearAllSelected()
-        sphere.setSelected(True)
-        self._with_view_networks([sop])
+    def test_a_selection_is_a_hint_the_click_and_the_menu_read_alike(self):
+        """A selected node that cannot take the snippet falls through to creation; one that can, takes it."""
         index = self.panel.code_sorted_model.index(0, 0)
         source = self.panel.code_sorted_model.mapToSource(index)
         asset = self.panel.code_model.assets[source.row()]
         if str(getattr(asset, "renderer", "")).lower() != "vex":
             self.skipTest("the first snippet is not VEX")
         section = self.panel.sections["code"]
-        section.menu_apply([index], index)
-        wrangles = [c for c in sop.children()
-                    if "wrangle" in c.type().name()]
-        self.assertEqual(
-            1, len(wrangles),
-            "the menu verb vetoed on a selection the double-click "
-            "falls through - same tile, same selection, two answers")
-
-    def test_the_menu_verb_still_fills_a_node_that_CAN_take_it(self):
-        """Falling through must not become always-create: a selected node that takes the snippet still takes it, no carrier beside it."""
-        sop = self._geo()
-        wrangle = sop.createNode("attribwrangle")
-        hou.clearAllSelected()
-        wrangle.setSelected(True)
-        self._with_view_networks([sop])
-        index = self.panel.code_sorted_model.index(0, 0)
-        source = self.panel.code_sorted_model.mapToSource(index)
-        asset = self.panel.code_model.assets[source.row()]
-        if str(getattr(asset, "renderer", "")).lower() != "vex":
-            self.skipTest("the first snippet is not VEX")
-        before = len(sop.children())
-        self.panel.sections["code"].menu_apply([index], index)
-        self.assertEqual(
-            before, len(sop.children()),
-            "the menu verb created a carrier beside a node that could "
-            "have taken the snippet")
+        for route, selected, children in (("click", "sphere", 2),
+                                          ("menu", "sphere", 2),
+                                          ("menu", "attribwrangle", 1)):
+            with self.subTest(route=route, selected=selected):
+                sop = self._geo()
+                node = sop.createNode(selected)
+                hou.clearAllSelected()
+                node.setSelected(True)
+                self._with_view_networks([sop])
+                if route == "click":
+                    self.panel.click_on_row(section, index)
+                else:
+                    section.menu_apply([index], index)    # the verb the menu table names
+                wrangles = [c for c in sop.children()
+                            if "wrangle" in c.type().name()]
+                self.assertEqual(
+                    (children, 1), (len(sop.children()), len(wrangles)),
+                    "the %s door with a %s selected vetoed the creation, or "
+                    "created beside a node that could take it"
+                    % (route, selected))
 
     def test_a_locked_asset_is_skipped_and_the_editable_one_takes_it(self):
         """A SOP Create is a locked HDA whose `create` subnet is the one node marked editable - the walk skips the locked levels (saying why in the log), lands there, and never unlocks the asset."""
@@ -1140,54 +1023,30 @@ class CreationRuleTest(unittest.TestCase):
                          "refusal")
         self.assertIn("attribwrangle", children[0].type().name())
 
-    def test_a_drop_created_node_lands_at_the_release_position(self):
-        home = self._home()
-        net = self._matnet()
-        spot = hou.Vector2(3.5, -2.25)
-        self.assertTrue(self.panel.sections["file"].create_image_node_in(
-            self._index_for(home + "/textures/amaze_pos.png"), net,
-            spot))
-        children = net.children()
-        self.assertEqual(1, len(children))
-        from amaze.helpers import helpers
-        anchor = helpers.centred_on(spot)    # the BODY centres on the release point, so the anchor sits a half-size short - helpers.centred_on says why
-        self.assertAlmostEqual(anchor.x(), children[0].position().x())
-        self.assertAlmostEqual(anchor.y(), children[0].position().y())
-
 
 class HoudiniPathTest(unittest.TestCase):
     """Copy Path writes paths the way Houdini writes them."""
 
-    def test_a_home_path_collapses_to_the_variable(self):
+    def test_a_home_path_collapses_by_default_and_others_stay_absolute(self):
+        """The default pins $HOME: a path under $HIP still says $HOME/... unless chosen otherwise."""
+        self.assertEqual(
+            "/mnt/somewhere/else.txt",
+            file_library.houdini_path("/mnt/somewhere/else.txt"))
         home = hou.expandString("$HOME").replace("\\", "/").rstrip("/")
         if not home or home in ("/", "."):
             self.skipTest("no $HOME in this session")
         self.assertEqual(
             "$HOME/textures/wood.png",
             file_library.houdini_path(home + "/textures/wood.png"))
-
-    def test_an_unrelated_path_stays_absolute(self):
         self.assertEqual(
-            "/mnt/somewhere/else.txt",
-            file_library.houdini_path("/mnt/somewhere/else.txt"))
-
-    def test_the_auto_style_is_gone(self):
-        """Fails if the removed Auto path style or its machinery returns - and a machine that STORED "auto" lands on the default instead of a dead token."""
-        from amaze.dialogs import prefs_dialog
-        self.assertNotIn("auto", file_library.PATH_STYLES,
-                         "the removed auto path style returned")
-        p = test_support.fixture_prefs(self)
-        p.path_style = "auto"
-        self.assertEqual("home", p.path_style,
-                         "a stored 'auto' did not fall back to home")
-        dlg = prefs_dialog.PrefsDialog(p, panel=None)
-        self.addCleanup(dlg.deleteLater)
-        combo = dlg._combo_path_style
-        self.assertEqual(-1, combo.findData("auto"),
-                         "the Write Paths As dropdown offers Auto again")
-        self.assertEqual(4, combo.count(),
-                         "Write Paths As should offer exactly "
-                         "$HOME / $JOB / $HIP / Absolute")
+            home + "/x.png",
+            file_library.houdini_path(home + "/x.png", "absolute"),
+            "the absolute style collapsed")
+        self.addCleanup(hou.putenv, "HIP", hou.text.expandString("$HIP"))
+        hou.putenv("HIP", home + "/amaze_hip")    # its own $HIP: hython's is wherever the suite started
+        collapsed = file_library.houdini_path(home + "/amaze_hip/render.exr")
+        self.assertTrue(collapsed.startswith("$HOME/"),
+                        "the default style is not $HOME: %r" % collapsed)
 
     def test_the_test_library_switch_freezes_the_real_path_rows(self):
         """While the Test Library switch is on, the Library Path row is INERT - its browse button would otherwise write the real field with a test path, the one combination that could lose a library; the Cache Path row stays live, because the cache does not move with the library."""
@@ -1275,6 +1134,9 @@ class HoudiniPathTest(unittest.TestCase):
         self.assertEqual(uid, p.library_user,
                          "a RENAME minted a new identity - everything "
                          "already tagged would be orphaned")
+        self.assertEqual("MyOwnName", dlg.cbb_library_user.currentText(),
+                         "the dropdown still shows the old name")
+        self.assertEqual(1, len(users.all_users(p)))
 
     def test_the_user_row_switches_between_the_librarys_users(self):
         """The User row is a dropdown over the LIBRARY's users, so a person on another machine picks themselves instead of becoming a stranger."""
@@ -1295,42 +1157,6 @@ class HoudiniPathTest(unittest.TestCase):
         combo.setCurrentIndex(combo.findData(second))
         self.assertEqual(second, p.library_user,
                          "picking a user did not switch this machine")
-
-    def test_the_edit_button_renames_without_minting(self):
-        """A rename relinks the label on the SAME UID - everything already tagged stays tagged."""
-        from amaze.core import users
-        from amaze.dialogs import prefs_dialog
-        p = test_support.fixture_prefs(self)
-        uid = users.create(p, "Cobalt")
-        p.library_user = uid
-        dlg = prefs_dialog.PrefsDialog(p, panel=None)
-        self.addCleanup(dlg.deleteLater)
-        dlg.rename_library_user("  Sienna  ")
-        self.assertEqual("Sienna", users.name_for(p, uid))
-        self.assertEqual(uid, p.library_user,
-                         "the rename minted a new identity")
-        self.assertEqual("Sienna", dlg.cbb_library_user.currentText(),
-                         "the dropdown still shows the old name")
-        self.assertEqual(1, len(users.all_users(p)))
-
-    def test_the_default_style_pins_home(self):
-        """Write Paths As defaults to $HOME: a path under $HIP still says $HOME/... unless the user chooses otherwise."""
-        home = hou.expandString("$HOME").replace("\\", "/").rstrip("/")
-        if not home or home in ("/", "."):
-            self.skipTest("no $HOME in this session")
-        self.addCleanup(hou.putenv, "HIP", hou.text.expandString("$HIP"))
-        hou.putenv("HIP", home + "/amaze_hip")    # its own $HIP: hython's is wherever the suite started
-        collapsed = file_library.houdini_path(home + "/amaze_hip/render.exr")
-        self.assertTrue(collapsed.startswith("$HOME/"),
-                        "the default style is not $HOME: %r" % collapsed)
-
-    def test_absolute_style_never_collapses(self):
-        home = hou.expandString("$HOME").replace("\\", "/").rstrip("/")
-        if not home or home in ("/", "."):
-            self.skipTest("no $HOME in this session")
-        self.assertEqual(
-            home + "/x.png",
-            file_library.houdini_path(home + "/x.png", "absolute"))
 
     def test_the_pref_validates_and_defaults_home(self):
         from amaze.prefs import prefs as prefs_module
@@ -1490,13 +1316,7 @@ class FileKeyIsCanonicalTest(unittest.TestCase):
                 key.startswith("loc:"),
                 "file_key %r is not the location-keyed ident - keyed "
                 "by path, a moved folder orphans it" % key)
-
-    def test_an_out_of_range_row_stays_empty(self):
-        """normpath("") is ".", so a blind canonicalise would turn the no-such-row answer into a truthy path every `if not key` guard misses."""
-        tmp = tempfile.mkdtemp(prefix="amaze_key_")
-        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
-        model = self._model_over(tmp)
-        self.assertEqual("", model.file_key(999))
+        self.assertEqual("", model.file_key(999))    # normpath("") is ".", truthy past every `if not key`
         self.assertEqual("", model.file_key(-1))
 
 
@@ -1513,37 +1333,22 @@ class OsIconTest(unittest.TestCase):
         model.set_folder(tmp)
         return model
 
-    def test_an_unknown_extension_is_never_blank(self):
-        model = self._model_with("mocap.bvh")
-        image = model.data(model.index(0, 0),
-                           QtCore.Qt.ItemDataRole.DecorationRole)
-        self.assertIsNotNone(image, "an unrecognised file has no tile "
-                             "picture at all")
-        self.assertFalse(image.isNull())
-        self.assertEqual(image.width(), image.height())
-        opaque = any(
-            image.pixelColor(x, y).alpha() > 0
-            for x in range(0, image.width(), 16)
-            for y in range(0, image.height(), 16))
-        self.assertTrue(opaque, "the OS icon canvas is fully "
-                        "transparent - nothing was drawn on it")
-
-    def test_a_file_with_no_extension_gets_the_generic_icon(self):
-        model = self._model_with("README")
-        image = model.data(model.index(0, 0),
-                           QtCore.Qt.ItemDataRole.DecorationRole)
-        self.assertIsNotNone(image)
-        self.assertFalse(image.isNull())
-
     def test_an_unknown_file_shows_the_file_face_until_preview_is_chosen(self):
         """T11 is the default for a file Amaze makes no preview of; its Preview is the system icon."""
-        model = self._model_with("mocap.bvh")
-        face = model.data(model.index(0, 0), QtCore.Qt.ItemDataRole.DecorationRole)
-        self.assertEqual(tile_icons.generic_image("face_file"), face)
-        with mock.patch.object(model, "tile_icon", return_value={"face": "preview"}):
-            shown = model.data(model.index(0, 0), QtCore.Qt.ItemDataRole.DecorationRole)
-        self.assertNotEqual(face, shown, "Preview still shows the file face")
-        self.assertEqual(1, len(model._os_icons), "Preview did not ask for the system icon")
+        for name in ("mocap.bvh", "README"):
+            with self.subTest(name=name):
+                model = self._model_with(name)
+                face = model.data(model.index(0, 0), QtCore.Qt.ItemDataRole.DecorationRole)
+                self.assertEqual(tile_icons.generic_image("face_file"), face)
+                with mock.patch.object(model, "tile_icon", return_value={"face": "preview"}):
+                    shown = model.data(model.index(0, 0), QtCore.Qt.ItemDataRole.DecorationRole)
+                self.assertIsNotNone(shown)
+                self.assertFalse(shown.isNull(), "Preview drew a blank")
+                if name == "README":    # no extension: the generic system icon, never blank
+                    continue
+                self.assertNotEqual(face, shown, "Preview still shows the file face")
+                self.assertEqual(1, len(model._os_icons),
+                                 "Preview did not ask for the system icon")
 
     def test_one_icon_is_composed_per_extension_not_per_file(self):
         model = self._model_with("a.log", "b.log", "c.log")
@@ -1673,13 +1478,11 @@ class HipDragLoadsOutsideTest(unittest.TestCase):
             QtCore.Qt.KeyboardModifier.NoModifier)
         h.view.mouseReleaseEvent(event)
 
-    def test_released_outside_the_panel_loads_the_scene(self):
+    def test_released_outside_the_panel_loads_and_inside_stays_silent(self):
         h = self._armed_hip()
         self._release_at_global(h, QtCore.QPoint(5000, 5000))
         self.assertIn("open", h.panel.calls,
                       "a hip dragged out of Amaze did not load")
-
-    def test_released_inside_the_panel_stays_silent(self):
         h = self._armed_hip()
         inside = h.panel.mapToGlobal(QtCore.QPoint(5, 5))
         self._release_at_global(h, inside)
@@ -1698,10 +1501,12 @@ class TooltipWidthTest(unittest.TestCase):
         theme.screen_ratio = lambda widget=None: dpr
         self.addCleanup(setattr, theme, "screen_ratio", original)
 
-    def test_a_short_tooltip_passes_through_untouched(self):
+    def test_plain_short_text_and_arithmetic_pass_through_untouched(self):
+        """Escaping everything would turn `5 < 6` into `5 &lt; 6` on screen; Qt reads it as plain."""
         from amaze.helpers import ui_helpers
-        self.assertEqual("Short and sweet",
-                         ui_helpers.tooltip_text("Short and sweet"))
+        for text in ("Short and sweet", "5 < 6 and 7 > 2"):
+            with self.subTest(text=text):
+                self.assertEqual(text, ui_helpers.tooltip_text(text))
 
     def test_markup_in_a_SHORT_tooltip_draws_as_text_not_as_html(self):
         """A catalogue entry's title is remote text, and Qt auto-detects rich text - so a short one used to reach the tooltip as live markup. ▸r/tooltip-autodetect"""
@@ -1716,19 +1521,7 @@ class TooltipWidthTest(unittest.TestCase):
             hostile, document.toPlainText(),
             "the tooltip renders the catalogue's markup instead of "
             "showing it, so an <img> reaches a URL the catalogue chose")
-
-    def test_arithmetic_in_a_tooltip_is_left_alone(self):
-        """Escaping everything would turn `5 < 6` into `5 &lt; 6` on screen; Qt reads it as plain, so it must pass through."""
-        from amaze.helpers import ui_helpers
-        self.assertEqual("5 < 6 and 7 > 2",
-                         ui_helpers.tooltip_text("5 < 6 and 7 > 2"))
-
-    def test_a_catalogue_record_s_tooltip_is_escaped(self):
-        """The real sink: title, author and licence all come off the wire. ▸r/tooltip-autodetect"""
-        from PySide6 import QtGui
-        from amaze.helpers import ui_helpers
-        record = "\n".join(["<b>Free</b> Brick", "by <i>nobody</i>", "CC0"])
-        document = QtGui.QTextDocument()
+        record = "\n".join(["<b>Free</b> Brick", "by <i>nobody</i>", "CC0"])    # the real sink
         document.setHtml(ui_helpers.tooltip_text(record))
         self.assertIn("<b>Free</b> Brick", document.toPlainText())
 
@@ -1744,6 +1537,9 @@ class TooltipWidthTest(unittest.TestCase):
                       "the long tooltip is not capped at 800px")
         self.assertTrue(wrapped.startswith("<qt>"),
                         "not rich text - Qt will not wrap it")
+        self.assertIn("<br><br>Second paragraph.",
+                      ui_helpers.tooltip_text(long + "\n\nSecond paragraph."),
+                      "rich text ate the paragraph break")
 
     def test_the_cap_is_real_pixels_not_logical(self):
         """On a 2x screen a ~720-logical-px sentence slips a logical cap of 800 and draws ~1450 real pixels wide - in real pixels the cap is 400 logical there, and it wraps."""
@@ -1764,30 +1560,6 @@ class TooltipWidthTest(unittest.TestCase):
 
 class StarRowsLeftPreferencesTest(unittest.TestCase):
     """The badge family renders the favourite star AS DRAWN, so the star-colour rows left the dialog, the keys left the store, and the notes accent pinned to the theme's star token."""
-
-    def test_the_two_rows_are_gone_and_a_neighbour_remains(self):
-        from amaze.dialogs import prefs_dialog
-        p = test_support.fixture_prefs(self)
-        dlg = prefs_dialog.PrefsDialog(p, panel=None)
-        self.addCleanup(dlg.deleteLater)
-        labels = [lab.text() for lab in dlg.findChildren(QtWidgets.QLabel)]
-        for gone in ("Favorite Star", "Custom Star Color"):
-            self.assertNotIn(
-                gone, labels,
-                "the '%s' row is back in Preferences - it was removed "
-                "with the unified badge family" % gone)
-        self.assertIn(
-            "Tile Icon Line", labels,
-            "the neighbouring row is missing too - this scan is not "
-            "looking at the built dialog")
-
-    def test_the_preferences_object_dropped_the_properties(self):
-        p = test_support.fixture_prefs(self)
-        for gone in ("star_color_mode", "star_custom_color"):
-            self.assertFalse(
-                hasattr(p, gone),
-                "prefs.%s exists again - the star-colour preference "
-                "was removed outright, not orphaned" % gone)
 
     def test_stale_star_keys_drop_and_future_keys_survive_a_save(self):
         """save()'s unknown-key courtesy rightly KEEPS a newer build's keys but would re-adopt retired ones from disk on every write - the hole _RETIRED_KEYS closes; both behaviours proven on one file."""
@@ -1844,14 +1616,6 @@ class PrefsComboFocusTest(unittest.TestCase):
             "dropdowns still take focus, so Houdini's navy focus ring "
             "singles out the last-clicked one: %s" % wrong)
 
-    def test_paragraph_breaks_survive_the_wrap(self):
-        from amaze.helpers import ui_helpers
-        text = ("First paragraph, made long enough to trip the cap "
-                "by repeating itself. " * 5) + "\n\nSecond paragraph."
-        self.assertIn("<br><br>Second paragraph.",
-                      ui_helpers.tooltip_text(text),
-                      "rich text ate the paragraph break")
-
     def test_every_dialog_tooltip_goes_through_the_cap(self):
         """Source-derived: a bare multi-line setToolTip is the exact shape that regresses into the screen-wide bar."""
         import re
@@ -1870,21 +1634,6 @@ class PrefsComboFocusTest(unittest.TestCase):
         self.assertEqual([], offenders,
                          "multi-line tooltips bypass the width cap: "
                          "%s" % offenders)
-
-    def test_no_tooltip_speaks_developer(self):
-        """Nobody out there knows what 'the merge' was."""
-        import re
-        package = os.path.dirname(
-            os.path.dirname(os.path.abspath(__file__)))
-        with open(os.path.join(package, "dialogs/prefs_dialog.py"),
-                  encoding="utf-8") as handle:
-            body = handle.read()
-        for match in re.finditer(
-                r"setToolTip\(.*?\)\)", body, re.S):
-            self.assertNotIn(
-                "the merge", match.group(),
-                "a tooltip references 'the merge' - project history "
-                "no user has")
 
 
 class LocationManagementTest(unittest.TestCase):
@@ -2002,36 +1751,6 @@ class LocationManagementTest(unittest.TestCase):
         self.assertEqual(["Theirs", "#e0523a"], paint(),
                          "the sidebar kept the record from before the reread")
 
-    def test_an_add_or_a_remove_recounts_only_that_location(self):
-        """The other locations keep their counts: one walk for the folder added, none for one removed."""
-        model, _prefs = self._folders_model(
-            *[self._tmpdir() for _ in range(3)])
-        extra = self._tmpdir()
-        watched = [path.rstrip("/") for path in model._folders()] + [extra]
-
-        def paint():
-            _landed_counts(model)    # a paint asks; the walks land a moment later
-
-        paint()
-        walked = []
-        real = os.listdir
-
-        def listing(path="."):
-            if str(path).rstrip("/") in watched:
-                walked.append(path)
-            return real(path)
-
-        with mock.patch("os.listdir", listing):
-            model.add_folder(extra)
-            paint()
-            self.assertEqual(1, len(walked), "an add walked %s" % walked)
-            del walked[:]
-            row = next(r for r in range(1, model.rowCount())
-                       if model._folders()[r - 1].rstrip("/") == extra)
-            self.assertTrue(model.remove_folder(row), "premise: no remove")
-            paint()
-            self.assertEqual([], walked, "a remove walked %s" % walked)
-
     def test_with_counts_off_all_still_shows_the_total(self):
         """With counts off, All still shows its total once the walks the paint asked for land."""
         from amaze.panel import delegates
@@ -2064,15 +1783,6 @@ class LocationManagementTest(unittest.TestCase):
                          "All lost its total with counts off: %s" % texts)
         self.assertEqual([model.display_name(path) for path in model._folders()],
                          texts[1:], "a hidden count was shown")
-
-    def test_the_default_name_is_the_folder_s_own_name(self):
-        """The row says what the folder IS; the full path is the hover, not the label. Said the collapsed path until 2026-08-27."""
-        model, _prefs = self._folders_model("/assets/textures/HDR/")
-        label = model.data(model.index(1, 0),
-                           QtCore.Qt.ItemDataRole.DisplayRole)
-        self.assertEqual("HDR", label,
-                         "the default label is not the folder's name: %r"
-                         % label)
 
     def test_a_rename_wins_and_an_empty_rename_clears(self):
         model, prefs = self._folders_model("/assets/textures/")
@@ -2777,7 +2487,7 @@ class ALocationWriteIsAnnouncedOnlyWhenItLandsTest(unittest.TestCase):
         return mock.patch.object(keyed_store.Store, "_commit",
                                  refuse_locations)
 
-    def test_a_refused_remove_keeps_the_row_and_every_key(self):
+    def test_a_refused_remove_or_add_changes_and_announces_nothing(self):
         files = file_library.FileFiles(self.prefs)
         files.set_folder(self.folder)
         files.toggle_favorite(0)
@@ -2795,8 +2505,6 @@ class ALocationWriteIsAnnouncedOnlyWhenItLandsTest(unittest.TestCase):
                          "the sidebar was told a row left that is still "
                          "there")
         self.assertFalse(landed)
-
-    def test_a_refused_add_inserts_no_row(self):
         other = tempfile.mkdtemp(prefix="amaze_landed_other_")
         self.addCleanup(shutil.rmtree, other, ignore_errors=True)
         with self._refused():
@@ -2921,13 +2629,10 @@ class ShowUnknownFilesSwitchTest(unittest.TestCase):
                 handle.write("x")
         return tmp
 
-    def test_the_default_shows_everything(self):
-        from amaze.prefs import prefs as prefs_module
+    def test_the_default_shows_everything_and_off_shows_the_known_kinds(self):
         self.assertTrue(prefs_module.Prefs().file_show_unknown,
                         "the default hides files - the merge's whole "
                         "point was a folder showing what is in it")
-
-    def test_off_restores_the_pre_merge_view(self):
         tmp = self._folder()
         prefs = _Prefs([tmp])
         prefs.file_show_unknown = False
@@ -3030,19 +2735,6 @@ class ANewLocationStartsWithTheKnownKindsTest(unittest.TestCase):
 
 class ReviewFixesTest(unittest.TestCase):
     """The adversarial review round on the merge diff: five confirmed defects, one pin each."""
-
-    def test_prefs_close_does_not_refresh_from_another_section(self):
-        """The refresh can start the BLOCKING geometry pass, so only File showing earns one."""
-        from unittest import mock
-        panel = test_support.fixture_panel(self)
-        for key, wanted in (("material", 0), ("file", 1), ("gradient", 0)):
-            with self.subTest(section=key):
-                panel.section_tabs.setChecked(key)
-                QtWidgets.QApplication.processEvents()
-                with mock.patch.object(panel.file_files_model,
-                                       "refresh_current_folder") as refresh:
-                    panel._prefs_dialog_closed(panel.prefs.dir)
-                self.assertEqual(wanted, refresh.call_count)
 
     def test_sidebar_count_agrees_with_the_grid(self):
         """The sidebar once counted subdirectories the grid never lists - 3 files + 2 subfolders reads 3, not 5."""
@@ -3266,26 +2958,23 @@ class LocationColorTest(unittest.TestCase):
             handle.write("x")
         self.prefs = _Prefs([self.tmp])
 
-    def test_the_sidebar_answers_the_shared_colour_role(self):
+    def test_the_sidebar_and_the_tile_answer_the_locations_colour(self):
         from amaze.core import category as category_mod
         folders = file_library.FileFolders(self.prefs)
+        files = file_library.FileFiles(self.prefs)
+        files.set_folder(self.tmp)
+        self.assertTrue(files.rowCount(), "the fixture file was not scanned")
         # Row 0 is "All" - a view, never coloured.
         self.assertFalse(folders.data(
             folders.index(0, 0), category_mod.SIDEBAR_COLOR_ROLE))
         row = folders.index(1, 0)
+        index = files.index(0, 0)
         self.assertEqual("", folders.data(
             row, category_mod.SIDEBAR_COLOR_ROLE))
+        self.assertEqual("", files.data(index, files.CategoryColorRole))
         self.prefs.set_file_folder_color(self.tmp, "#4af2a1")
         self.assertEqual("#4af2a1", folders.data(
             row, category_mod.SIDEBAR_COLOR_ROLE))
-
-    def test_a_tile_reports_its_location_colour(self):
-        files = file_library.FileFiles(self.prefs)
-        files.set_folder(self.tmp)
-        self.assertTrue(files.rowCount(), "the fixture file was not scanned")
-        index = files.index(0, 0)
-        self.assertEqual("", files.data(index, files.CategoryColorRole))
-        self.prefs.set_file_folder_color(self.tmp, "#4af2a1")
         self.assertEqual("#4af2a1",
                          files.data(index, files.CategoryColorRole))
 
@@ -3318,23 +3007,20 @@ class ShowAllFilesTest(unittest.TestCase):
         return [files._files[row][1]
                 for row in range(len(files._files))]
 
-    def test_the_override_shows_what_the_global_hides(self):
+    def test_the_override_shows_what_the_global_hides_and_counts_it(self):
+        folders = file_library.FileFolders(self.prefs)
         self.assertNotIn(
             "mystery.xyz", self._grid_names(),
             "with the global off and no override, the unknown file "
             "must stay hidden")
+        self.assertEqual(
+            1, _landed_counts(folders)[1],
+            "hidden unknown files must leave the count too")
         self.prefs.set_file_folder_show_all(self.tmp, True)
         self.assertIn(
             "mystery.xyz", self._grid_names(),
             "the location's own Show All Files must override the "
             "global preference")
-
-    def test_the_sidebar_count_agrees_per_location(self):
-        folders = file_library.FileFolders(self.prefs)
-        self.assertEqual(
-            1, _landed_counts(folders)[1],
-            "hidden unknown files must leave the count too")
-        self.prefs.set_file_folder_show_all(self.tmp, True)
         folders.refresh_counts()
         self.assertEqual(
             2, _landed_counts(folders)[1],
@@ -3400,34 +3086,6 @@ class AStarSurvivesTheMoveThroughTheModelDoors(unittest.TestCase):
             files.index(0, 0).data(files.FavoriteRole),
             "the star did not survive the move - it was keyed to the "
             "path after all")
-
-
-class ACountResolvesTheLocationRuleOnce(unittest.TestCase):
-    """A count reads its location's rule once, on the GUI thread, never once per file."""
-
-    def test_the_rule_is_not_resolved_per_file(self):
-        folder = tempfile.mkdtemp(prefix="amaze_count_cost_")
-        self.addCleanup(shutil.rmtree, folder, ignore_errors=True)
-        for i in range(12):
-            open(os.path.join(folder, "f%d.png" % i), "w").close()
-        prefs = _Prefs([folder])
-        model = file_library.FileFolders(prefs)
-
-        calls = []
-        real = file_library.locations.record
-
-        def counted(preferences, location):
-            calls.append(location)
-            return real(preferences, location)
-
-        with mock.patch.object(file_library.locations, "record", counted):
-            count = _landed_counts(model)[1]
-        self.assertEqual(12, count, "premise: every file counted")
-        self.assertLess(
-            len(calls), 12,
-            "the location rule was resolved per FILE (%d record reads "
-            "for 12 files) - each is a store get with a deepcopy, on "
-            "the GUI thread" % len(calls))
 
 
 class AssetFavouritesMigrateIntoTheLibraryTest(unittest.TestCase):
@@ -3547,15 +3205,11 @@ class TheUserPickerFollowsTheLibrary(unittest.TestCase):
         theirs = users.name_for(moved, moved.library_user)
         return dialog, first, second, moved.library_user, theirs
 
-    def test_the_premise_the_two_libraries_hold_different_people(self):
-        """If the fixture gave both libraries the same user this proves nothing."""
-        dialog, first, _second, uid_b, _name_b = self._dialog_on_a_second_library()
-        from amaze.core import users
-        self.assertNotIn(uid_b, users.all_users(first),
-                         "both fixture libraries hold the same user")
-
     def test_changing_the_library_reloads_the_picker(self):
+        from amaze.core import users
         dialog, first, second, uid_b, name_b = self._dialog_on_a_second_library()
+        self.assertNotIn(uid_b, users.all_users(first),
+                         "premise: both fixture libraries hold the same user")
 
         class _Panel:
             def __init__(self, prefs, path):

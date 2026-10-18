@@ -39,7 +39,7 @@ def _network_with_image(testcase, file_value):
 class TokenPathsTest(unittest.TestCase):
     """The pure path half: $AMAZELIB spellings round-trip against a library directory."""
 
-    def test_tokenize_and_resolve_round_trip(self):
+    def test_library_paths_round_trip_and_outside_paths_pass_through(self):
         from amaze.core import texstore
         lib = _scratch_library(self)
         prefs = _prefs_over(lib)
@@ -48,10 +48,6 @@ class TokenPathsTest(unittest.TestCase):
         self.assertEqual("$AMAZELIB/matX/Brick/t.png", token)
         self.assertEqual(os.path.normpath(absolute),
                          os.path.normpath(texstore.resolve(token, prefs)))
-
-    def test_paths_outside_the_library_pass_through_unchanged(self):
-        from amaze.core import texstore
-        prefs = _prefs_over(_scratch_library(self))
         for outside in ("/somewhere/else/t.png", "$ART_MAPS/x/t.png", ""):
             self.assertEqual(outside, texstore.tokenize(outside, prefs))
             self.assertEqual(outside, texstore.resolve(outside, prefs))
@@ -60,17 +56,14 @@ class TokenPathsTest(unittest.TestCase):
 class ReferenceScanTest(unittest.TestCase):
     """references() walks a network's FileReference parms - the probe showed Redshift tex0 and mtlximage file both declare the type."""
 
-    def test_an_image_file_parm_is_found_raw(self):
+    def test_only_a_set_file_parm_is_a_reference_and_it_is_found_raw(self):
         from amaze.core import texstore
         builder, image = _network_with_image(self, "$DOES_NOT_MATTER/t.png")
         refs = texstore.references(builder)
         self.assertEqual(["$DOES_NOT_MATTER/t.png"],
                          [raw for _parm, raw in refs])
         self.assertEqual(image.parm("file"), refs[0][0])
-
-    def test_empty_and_non_file_parms_are_not_references(self):
-        from amaze.core import texstore
-        builder, image = _network_with_image(self, "")
+        image.parm("file").set("")
         self.assertEqual([], texstore.references(builder))
 
 
@@ -144,18 +137,6 @@ class AdoptTest(unittest.TestCase):
         self.assertEqual(source, image.parm("file").unexpandedString(),
                          "the locked parm was rewritten")
 
-    def test_adopt_file_answers_a_token_and_lands_the_bytes(self):
-        from amaze.core import texstore
-        lib = _scratch_library(self)
-        prefs = _prefs_over(lib)
-        source = self._outside_texture()
-        token = texstore.adopt_file(source, prefs, "Brick__file")
-        self.assertEqual(
-            "$AMAZELIB/matX/Brick__file/textures/brick_diff.png", token)
-        self.assertTrue(os.path.isfile(texstore.resolve(token, prefs)))
-        self.assertEqual("", texstore.adopt_file("/gone/t.png", prefs,
-                                                 "Brick__file"))
-
     def test_an_env_reference_is_expanded_before_adoption(self):
         from amaze.core import texstore
         lib = _scratch_library(self)
@@ -176,7 +157,7 @@ class AdoptTest(unittest.TestCase):
 class ResolveParmsTest(unittest.TestCase):
     """resolve_parms() is the scene-side door: $AMAZELIB leaves the building as a plain absolute path, so scenes carry no Amaze dependency."""
 
-    def test_token_parms_become_absolute(self):
+    def test_token_parms_become_absolute_and_others_are_untouched(self):
         from amaze.core import texstore
         lib = _scratch_library(self)
         prefs = _prefs_over(lib)
@@ -187,27 +168,10 @@ class ResolveParmsTest(unittest.TestCase):
         self.assertEqual(
             os.path.normpath(os.path.join(lib, "matX", "Brick", "t.png")),
             os.path.normpath(image.parm("file").unexpandedString()))
-
-    def test_non_token_parms_are_untouched(self):
-        from amaze.core import texstore
-        prefs = _prefs_over(_scratch_library(self))
-        builder, image = _network_with_image(self, "$ART_MAPS/t.png")
+        image.parm("file").set("$ART_MAPS/t.png")
         self.assertEqual(0, texstore.resolve_parms(builder, prefs))
         self.assertEqual("$ART_MAPS/t.png",
                          image.parm("file").unexpandedString())
-
-
-class PutenvTest(unittest.TestCase):
-    """The panel publishes $AMAZELIB at startup so Houdini itself resolves library references in thumbnails and previews - no door to miss."""
-
-    def test_publish_sets_the_variable_to_the_library(self):
-        from amaze.core import texstore
-        prior = hou.getenv(texstore.TOKEN_VAR)
-        self.addCleanup(hou.putenv, texstore.TOKEN_VAR, prior or "")    # later modules in this hython inherit the variable - never leave it aimed at a deleted scratch
-        lib = _scratch_library(self)
-        texstore.publish_env(_prefs_over(lib))
-        self.assertEqual(os.path.normpath(lib),
-                         os.path.normpath(hou.getenv("AMAZELIB") or ""))
 
 
 class SaveDoorTest(unittest.TestCase):

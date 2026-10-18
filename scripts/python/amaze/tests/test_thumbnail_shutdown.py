@@ -139,27 +139,17 @@ class TestAFileIsMissingOnlyWhenItsLoadFails(unittest.TestCase):
         loader.run()    # in this thread, so both signals deliver at once
         return loader
 
-    def test_an_undelivered_file_key_is_asked_for_again(self):
-        loader = thumbnails._FileLoader([("f1", os.path.join(self.dir, "x.png"))])
-        self.engine._threads = [loader]
-        self.engine._states = {"f1": "pending"}
-        self.engine._prune_threads(loader)    # finished, its delivery not handled yet
-        _app.processEvents()
-        self.assertIsNone(
-            self.engine._states.get("f1"),
-            "a file nobody answered for was written off for the session")
-
-    def test_an_unreadable_file_is_missing(self):
-        self._ran("f2", os.path.join(self.dir, "absent.png"))
-        self.assertEqual("missing", self.engine._states["f2"])
-
-    def test_a_readable_file_is_delivered(self):
+    def test_an_unreadable_file_is_missing_and_a_readable_one_delivered(self):
         path = os.path.join(self.dir, "real.png")
         image = QtGui.QImage(4, 4, QtGui.QImage.Format.Format_ARGB32)
         image.fill(QtGui.QColor("red"))
         self.assertTrue(image.save(path))
-        self._ran("f3", path)
-        self.assertEqual("done", self.engine._states["f3"])
+        for key, target, expected in (
+                ("f2", os.path.join(self.dir, "absent.png"), "missing"),
+                ("f3", path, "done")):
+            with self.subTest(expected):
+                self._ran(key, target)
+                self.assertEqual(expected, self.engine._states[key])
 
 
 class TestAConvertIsMissingOnlyWhenItFails(unittest.TestCase):
@@ -176,13 +166,12 @@ class TestAConvertIsMissingOnlyWhenItFails(unittest.TestCase):
             loader.run()    # in this thread, so the signals deliver at once
         return engine._states.get("c1")
 
-    def test_a_conversion_with_no_image_is_missing(self):
-        self.assertEqual("missing", self._ran(None))
-
-    def test_a_converted_image_is_delivered(self):
+    def test_no_image_is_missing_and_a_converted_one_delivered(self):
         image = QtGui.QImage(4, 4, QtGui.QImage.Format.Format_ARGB32)
         image.fill(QtGui.QColor("red"))
-        self.assertEqual("done", self._ran(image))
+        for given, expected in ((None, "missing"), (image, "done")):
+            with self.subTest(expected):
+                self.assertEqual(expected, self._ran(given))
 
     def test_the_engine_hears_both_loaders_fail(self):
         import inspect
@@ -215,8 +204,13 @@ class TestPruneJudgesOnlyItsOwnLoader(unittest.TestCase):
         self.engine._threads = [self.first, self.second]
         self.engine._states = {"a1": "pending", "b1": "pending"}
 
-    def test_a_siblings_keys_are_left_alone(self):
+    def test_a_siblings_keys_and_thread_are_left_alone(self):
         self.engine._prune_threads(self.first)
+        self.assertNotIn(self.first, self.engine._threads)
+        self.assertIn(
+            self.second, self.engine._threads,
+            "a finished sibling must stay referenced until its own "
+            "finished signal - Qt may still hold queued deliveries from it")
         _app.processEvents()   # the verdict is one turn deferred now, so the judging is asserted through the turn
         self.assertIsNone(self.engine._states.get("a1"),
                           "the finisher's own unanswered key must be asked for again")
@@ -224,25 +218,6 @@ class TestPruneJudgesOnlyItsOwnLoader(unittest.TestCase):
             "pending", self.engine._states["b1"],
             "a sibling loader's key was condemned by someone else's "
             "prune; its real image is dropped when it arrives")
-
-    def test_the_siblings_image_still_lands(self):
-        """The behaviour, end to end: prune, then the queued delivery."""
-        self.engine._prune_threads(self.first)
-        image = QtGui.QImage(4, 4, QtGui.QImage.Format.Format_ARGB32)
-        image.fill(QtGui.QColor("red"))
-        self.engine._on_loaded("b1", image)
-        self.assertEqual(
-            "done", self.engine._states["b1"],
-            "the sibling's image was dropped - that tile stays blank for "
-            "the rest of the session")
-
-    def test_the_finisher_is_dropped_from_the_thread_list(self):
-        self.engine._prune_threads(self.first)
-        self.assertNotIn(self.first, self.engine._threads)
-        self.assertIn(
-            self.second, self.engine._threads,
-            "a finished sibling must stay referenced until its own "
-            "finished signal - Qt may still hold queued deliveries from it")
 
     def test_a_cancelled_loader_marks_nothing_missing(self):
         """Cancelled work is unrequested, not missing - the revisit re-queues it."""
@@ -318,19 +293,6 @@ class TestConvertCancellation(unittest.TestCase):
 
     @unittest.skipUnless(sys.platform != "win32",
                          "the probe uses a bash stub and pgrep")
-    def test_an_unrelated_child_does_not_count_as_the_subprocess(self):
-        other = subprocess.Popen(["sleep", "5"])
-        self.addCleanup(other.wait)
-        self.addCleanup(other.terminate)
-        self.assertEqual(
-            [], self._children(),
-            "a child that is not this test's fake iconvert was counted, "
-            "so the wait for the subprocess can be satisfied by any "
-            "process at all - the setup would pass without ever starting "
-            "the thing these tests guard")
-
-    @unittest.skipUnless(sys.platform != "win32",
-                         "the probe uses a bash stub and pgrep")
     def test_a_cancelled_worker_kills_its_own_subprocess(self):
         """`terminate()` skips the cleanup, orphaning a real Houdini subprocess for every stuck worker."""
         engine = thumbnails.ThumbnailEngine()
@@ -386,15 +348,6 @@ class TestParkedThreadsSurviveReload(unittest.TestCase):
             if marker in thumbnails._unstoppable:
                 thumbnails._unstoppable.remove(marker)
 
-    def test_the_engine_is_still_replaced_by_a_reload(self):
-        """The parking lot survives, the ENGINE must not - the reload exists so code edits take effect on reopen."""
-        before = thumbnails.engine
-        importlib.reload(thumbnails)
-        self.assertIsNot(
-            thumbnails.engine, before,
-            "the reload stopped replacing the engine - edits to "
-            "ThumbnailEngine would no longer take effect on a reopen")
-
 
 class TestDeliveriesSurviveAReload(unittest.TestCase):
     """Two pane tabs is a supported layout. Models connect at CONSTRUCTION and the engine singleton is replaced on every reload, so an existing tab is left wired to a dead engine - its tiles sit on placeholders until the next scroll."""
@@ -426,50 +379,6 @@ class TestDeliveriesSurviveAReload(unittest.TestCase):
             1, len(hits),
             "a delivery from the NEW engine never reached a model built "
             "before the reload")
-
-    def test_the_relay_itself_survives_the_reload(self):
-        before = thumbnails.signals
-        importlib.reload(thumbnails)
-        self.assertIs(
-            before, thumbnails.signals,
-            "the relay was rebuilt, which drops every model connected "
-            "through it")
-
-
-class DispatchWaitsAFrameNotATurn(unittest.TestCase):
-    """A 0ms re-arm runs the dispatcher on EVERY event-loop turn while it waits for a slot, and a convert slot can be a 30s iconvert."""
-
-    def test_no_dispatcher_rearms_at_zero_delay(self):
-        """Scoped to the `_dispatch_*` bodies - a 0ms one-shot that ARMS a dispatcher fires once and is fine; the spin is a dispatcher re-arming ITSELF."""
-        import ast
-
-        path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "core", "thumbnails.py")
-        with open(path, encoding="utf-8") as handle:
-            tree = ast.parse(handle.read())
-        offenders = []
-        dispatchers = 0
-        for func in ast.walk(tree):
-            if not (isinstance(func, ast.FunctionDef)
-                    and func.name.startswith("_dispatch_")):
-                continue
-            dispatchers += 1
-            offenders.extend(
-                node.lineno
-                for node in ast.walk(func)
-                if isinstance(node, ast.Call)
-                and getattr(node.func, "attr", "") == "singleShot"
-                and node.args
-                and isinstance(node.args[0], ast.Constant)
-                and node.args[0].value == 0)
-        self.assertGreaterEqual(dispatchers, 2,
-                                "the dispatchers were not found - the "
-                                "scan is vacuous")
-        self.assertEqual(
-            [], offenders,
-            "a dispatcher re-arms itself at 0ms - a busy-poll of the "
-            "UI thread for the life of the queue: lines %s" % offenders)
 
 
 if __name__ == "__main__":

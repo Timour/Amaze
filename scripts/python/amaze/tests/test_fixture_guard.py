@@ -62,47 +62,33 @@ class GuardCase(unittest.TestCase):
 
 class TheGuardCatchesWhatEarlierVersionsPassed(GuardCase):
 
-    def test_the_real_shape(self):
-        self.assertLeaks(b"  author builduser@buildbox.local\n")
+    def test_every_shape_an_earlier_version_passed_is_caught(self):
+        """Each row once passed the guard; each is now caught, then redacted clean."""
+        for why, payload, account, host in (
+                ("the real shape", b"  author builduser@buildbox.local\n",
+                 "builduser", "BuildBox"),
+                ("iconvert's bare TIFF HostComputer",
+                 b"hostname\x00buildbox.local\x00\n", "builduser", "BuildBox"),
+                ("a length floor skipped short names",
+                 b"  author ab@buildbox\n", "ab", "buildbox"),
+                ("an account prefixing the stand-in",
+                 b"  author amaz@buildbox\n", "amaz", "buildbox"),
+                ("an empty alternation matched everywhere",
+                 b"author ab@xy.local and some.dotted.text\n", "ab", "xy")):
+            with self.subTest(why):
+                self.assertLeaks(payload, account=account, host=host)
 
-    def test_a_bare_host_name_with_no_stamp_around_it(self):
-        """`iconvert` writes the host into TIFF `HostComputer` as a bare value, so a pattern keyed on `user@host` alone never sees it."""
-        self.assertLeaks(b"hostname\x00buildbox.local\x00\n")
-
-    def test_a_two_character_account(self):
-        """A length floor is how the first version skipped short names."""
-        self.assertLeaks(b"  author ab@buildbox\n", account="ab",
-                         host="buildbox")
-
-    def test_an_account_that_prefixes_the_stand_in(self):
-        """`amaz` truncated to `amaz` is a redaction that changes nothing, and a prefix test then reads it as already neutral."""
-        self.assertLeaks(b"  author amaz@buildbox\n", account="amaz",
-                         host="buildbox")
-
-    def test_two_short_names_do_not_build_an_empty_alternation(self):
-        """An empty alternation matches at every offset - it once rewrote 24 unrelated spans and reported them as identities."""
-        self.assertLeaks(b"author ab@xy.local and some.dotted.text\n",
-                         account="ab", host="xy")
-
-    def test_the_per_user_temp_directory(self):
-        """macOS per-user temp is an account-specific token, and pointing a scene's JOB and POSE at it swapped one machine-local path for another the guard could not see. The token here is INVENTED to the real shape - a lifted one would itself be the leak this file exists to catch."""
+    def test_a_machine_local_path_is_a_finding(self):
+        """A per-user temp folder and a Windows home, slashed either way. ▸r/launching-shell-decides"""
         self.pin("builduser", "BuildBox")
-        path = self.write(b"set -g HIP = '/var/folders/zz/"
-                          b"zyxw9vut8srq7pon6mlk0000gn/T/x'\n")
-        self.assertTrue(gen.complaints(path),
-                        "the per-user temp token passed the guard")
-
-    def test_a_forward_slashed_windows_home(self):
-        """Houdini's own session values spell a Windows home with FORWARD slashes (research.md ▸ r/launching-shell-decides), and on Windows the home pattern is the only guard a neutral %USERNAME% leaves standing."""
-        self.pin("builduser", "BuildBox")
-        for payload in (b"set -g HIP = 'C:/Users/somebody/houdini22.0/x'\n",
+        for payload in (b"set -g HIP = '/var/folders/zz/"    # invented, as a lifted token is a leak
+                        b"zyxw9vut8srq7pon6mlk0000gn/T/x'\n",
+                        b"set -g HIP = 'C:/Users/somebody/houdini22.0/x'\n",
                         b"c:\\users\\somebody\\Documents\\x\n"):
             with self.subTest(payload=payload):
-                path = self.write(payload)
                 self.assertTrue(
-                    gen.complaints(path),
-                    "a Windows home spelled the way Houdini writes it "
-                    "passed the guard: %r" % payload)
+                    gen.complaints(self.write(payload)),
+                    "a machine-local path passed the guard: %r" % payload)
 
     def test_an_opaque_format_is_a_finding_not_a_pass(self):
         """A byte scan cannot see inside a compressed payload, so silence there is unproven rather than clean."""
@@ -125,33 +111,25 @@ class TheGuardCatchesWhatEarlierVersionsPassed(GuardCase):
 
 class TheGuardDoesNotCryWolf(GuardCase):
 
-    def test_a_substring_of_an_ordinary_word(self):
-        """Without a word boundary a three-letter account rewrites `timeline` and `optimize`, length-preserving and invisible."""
-        self.assertInnocent(b"timeshift optimize timeline chan time\n",
-                            account="tim", host="buildbox")
-
-    def test_an_already_redacted_stamp(self):
-        self.assertInnocent(b"  author amaze-@amaze----------\n")
-
-    def test_placeholder_home_paths(self):
-        self.assertInnocent(b"/Users/someone /Users/someone-else "
-                            b"/home/projects\n")
-
-    def test_ordinary_fixture_bytes(self):
-        self.assertInnocent(b"cube geometry, nothing personal\n")
+    def test_innocent_bytes_are_left_alone(self):
+        """A short account inside a word, a redacted stamp, and placeholder home paths."""
+        for payload, account, host in (
+                (b"timeshift optimize timeline chan time\n", "tim", "buildbox"),
+                (b"  author amaze-@amaze----------\n", "builduser", "BuildBox"),
+                (b"/Users/someone /Users/someone-else /home/projects\n",
+                 "builduser", "BuildBox")):
+            with self.subTest(payload=payload):
+                self.assertInnocent(payload, account=account, host=host)
 
 
 class TheStandInKeepsTheLengthAndChangesTheValue(unittest.TestCase):
 
-    def test_the_length_never_moves(self):
-        """A shorter stand-in shifts every following byte and Houdini refuses the file outright. ▸r/author-stamp"""
+    def test_the_length_never_moves_and_a_stand_in_is_stable(self):
+        """Same length, or Houdini refuses the file; a stand-in maps to itself. ▸r/author-stamp"""
         for size in range(1, 41):
             with self.subTest(size=size):
                 value = b"n" * size
                 self.assertEqual(size, len(gen.stand_in(value)))
-
-    def test_no_input_survives_as_its_own_stand_in(self):
-        """Except the stand-ins themselves, which must be stable so a redacted file is recognised as redacted rather than rewritten again."""
         for value in (b"builduser", b"buildbox.local", b"amaz", b"ab"):
             with self.subTest(value=value):
                 replacement = gen.stand_in(value)

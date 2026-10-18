@@ -46,20 +46,15 @@ class ConnectorResetDetachesNothingTest(unittest.TestCase):
             "the case it was written for")
         return db
 
-    def test_the_registry_is_still_the_module_global_after_a_reset(self):
-        """Catches the rebind on the spot - its symptom is otherwise silent, since the tests keep passing and simply stop testing what they say."""
-        self._latched()
+    def test_a_reset_connector_does_not_come_back_after_a_reload(self):
+        """THE ONE THAT GOES RED - a reload happens on every panel open and re-reads the global, so a reset that emptied a detached copy lets the latched connector walk straight back in."""
+        latched = self._latched()
         test_support.reset_database_singletons()
         self.assertIs(
             database.DatabaseConnector._instances, database._INSTANCES,
             "the reset handed the class a private dictionary - every "
             "reload-survival mechanism reads database._INSTANCES, so "
             "nothing it drops is actually gone")
-
-    def test_a_reset_connector_does_not_come_back_after_a_reload(self):
-        """THE ONE THAT GOES RED - a reload happens on every panel open and re-reads the global, so a reset that emptied a detached copy lets the latched connector walk straight back in."""
-        latched = self._latched()
-        test_support.reset_database_singletons()
         importlib.reload(database)
         self.addCleanup(test_support.reset_database_singletons)
         fresh = database.DatabaseConnector("cops.json")

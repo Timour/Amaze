@@ -61,30 +61,22 @@ class NoControlSpellsItsOwnHoverText(unittest.TestCase):
     """A tooltip written at the control is a second home for words the design owns."""
 
     def test_no_hover_literal_survives_at_a_call_site(self):
+        """The scan reads both arms of a conditional and leaves a computed string alone."""
+        for source, expected in (
+                ('w.setToolTip(ui_helpers.tooltip_text(\n'
+                 '    "on" if live else "off"))\n', ["on", "off"]),
+                ('ui_helpers.tooltip_text("\\n".join(bits))\n', [])):
+            with self.subTest(planted=source):
+                call = next(n for n in ast.walk(ast.parse(source))
+                            if isinstance(n, ast.Call)
+                            and isinstance(n.func, ast.Attribute)
+                            and n.func.attr == "tooltip_text")
+                self.assertEqual(expected, _spelled_out(call.args[0]))
         offenders = _offenders()
         self.assertEqual(
             [], offenders,
             "a control spells its own hover text instead of taking one "
             "from tooltips.py:\n  " + "\n  ".join(offenders))
-
-    def test_the_scan_can_see_a_literal(self):
-        """A scanner matching nothing passes forever; both readings of a conditional count."""
-        tree = ast.parse('w.setToolTip(ui_helpers.tooltip_text(\n'
-                         '    "on" if live else "off"))\n')
-        call = next(n for n in ast.walk(tree)
-                    if isinstance(n, ast.Call)
-                    and isinstance(n.func, ast.Attribute)
-                    and n.func.attr == "tooltip_text")
-        self.assertEqual(["on", "off"], _spelled_out(call.args[0]))
-
-    def test_a_computed_string_is_left_alone(self):
-        """A separator inside a computed string is not a hover text."""
-        tree = ast.parse('ui_helpers.tooltip_text("\\n".join(bits))\n')
-        call = next(n for n in ast.walk(tree)
-                    if isinstance(n, ast.Call)
-                    and isinstance(n.func, ast.Attribute)
-                    and n.func.attr == "tooltip_text")
-        self.assertEqual([], _spelled_out(call.args[0]))
 
 
 class TheHoverTextsAreReadable(unittest.TestCase):
@@ -98,7 +90,7 @@ class TheHoverTextsAreReadable(unittest.TestCase):
                             name + " is not a hover text: %r" % (text,))
 
     def test_every_hover_text_the_code_names_exists(self):
-        """A push of `tooltips.py` alone runs this module, so a renamed hover text fails here."""
+        """A hover text renamed in `tooltips.py` but not where the code names it fails here."""
         missing = []
         for path in _sources():
             with open(path, encoding="utf-8") as handle:

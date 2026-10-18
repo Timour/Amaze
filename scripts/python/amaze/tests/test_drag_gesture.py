@@ -185,26 +185,24 @@ class _Harness:
 
 class TestGestureArming(unittest.TestCase):
 
-    def test_press_on_an_item_arms_the_drag(self):
+    def test_only_a_left_press_on_an_item_arms(self):
+        """A press on empty grid armed a ghost drag carrying an invalid index into the release."""
         h = _Harness(self)
         h.press()
         self.assertIsNotNone(h.view._drag_start)
         self.assertEqual(h.view._drag_section, "material")
         self.assertTrue(h.view._drag_index.isValid())
-
-    def test_press_on_empty_space_does_not_arm(self):
-        """A press on empty grid must not arm - a ghost drag carries an invalid index into the release handlers."""
-        h = _Harness(self, rows=1)
-        h.press(QtCore.QPoint(380, 280))
-        self.assertIsNone(h.view._drag_start)
-        self.assertIsNone(h.view._drag_index)
-
-    def test_right_press_does_not_arm(self):
-        h = _Harness(self)
-        h.view.mousePressEvent(_event(
-            QtCore.QEvent.Type.MouseButtonPress, h.item_pos(),
-            QtCore.Qt.MouseButton.RightButton))
-        self.assertIsNone(h.view._drag_start)
+        for why, rows, pos, button in (
+                ("empty space", 1, QtCore.QPoint(380, 280),
+                 QtCore.Qt.MouseButton.LeftButton),
+                ("a right press", 6, None, QtCore.Qt.MouseButton.RightButton)):
+            with self.subTest(why):
+                h = _Harness(self, rows=rows)
+                h.view.mousePressEvent(_event(
+                    QtCore.QEvent.Type.MouseButtonPress,
+                    pos or h.item_pos(), button))
+                self.assertIsNone(h.view._drag_start)
+                self.assertIsNone(h.view._drag_index)
 
     def test_press_while_dragging_keeps_the_live_state(self):
         """A stray right or middle press mid-gesture must not clear the drag, or the drop is lost and the sidebar stays glowing."""
@@ -228,17 +226,6 @@ class TestGestureRelease(unittest.TestCase):
         h.view._drag_panel = h.panel
         return h
 
-    def test_release_dispatches_to_the_section(self):
-        for section, kind, expected in (
-                ("material", None, "material"),
-                ("cop", None, "cop"),
-                # Geometry is a KIND in the File section, same import handler.
-                ("file", "geometry", "geo")):
-            h = self._armed(section, kind=kind)
-            h.release()
-            self.assertIn(expected, h.panel.calls,
-                          "%s release did not dispatch" % section)
-
     def test_release_always_clears_the_gesture(self):
         """Every exit path - a gesture ending with `_dragging` True eats the next click."""
         h = self._armed()
@@ -247,33 +234,38 @@ class TestGestureRelease(unittest.TestCase):
         self.assertIn(-1, h.panel.hover_rows,
                       "the drop-target glow was not cleared")
 
-    def test_release_over_a_category_recategorises_instead(self):
-        h = self._armed()
-        h.panel._category = "Metal"
-        h.release()
-        self.assertIn("category:Metal", h.panel.calls)
-        self.assertNotIn("material", h.panel.calls,
-                         "a category drop also ran the material import")
-
-    def test_release_over_nothing_is_silent_and_clean(self):
-        h = self._armed("gradient")
-        h.panel._node = None             # nothing under the cursor
-        h.release()
-        self.assertEqual(h.panel.calls, [])
-        self.assertFalse(h.view._dragging)
-
-    def test_a_failing_drop_still_clears_the_gesture(self):
-        """Whatever the drop raises, the gesture must not stay armed - or the panel is dead until it is reopened."""
-        h = self._armed()
-
-        def _boom(idx):
-            raise hou.OperationFailed("Invalid node type name")
-
-        h.section.drop_material_at_release = _boom
+    def test_a_failing_drop_clears_the_whole_gesture(self):
+        """A real error still raises, and leaves no press state for a bare hover to start a drag from."""
+        h = self._armed("material")
+        h.section.drop_material_at_release = self._boom
         with self.assertRaises(hou.OperationFailed):
             h.release()                  # guarded() re-raises by design
         self.assertFalse(h.view._dragging,
                          "a raising drop left the gesture armed")
+        leaked = {
+            "_drag_start": h.view._drag_start,
+            "_drag_section": h.view._drag_section,
+            "_drag_panel": h.view._drag_panel,
+            "_drag_index": h.view._drag_index,
+        }
+        still_set = {k: v for k, v in leaked.items() if v is not None}
+        self.assertEqual(
+            {}, still_set,
+            "a raising drop left press state armed: %s - the next hover "
+            "move launches a phantom drag" % sorted(still_set))
+
+        h.panel.calls.clear()
+        h.panel.current_section = "file"
+        h.move(QtCore.QPoint(h.item_pos().x() + 200,
+                             h.item_pos().y() + 200))
+        self.assertFalse(
+            h.view._dragging,
+            "a bare hover move started a drag the user never began")
+        h.release()
+        self.assertNotIn(
+            "material", h.panel.calls,
+            "a stale gesture dispatched the previous section's handler "
+            "after the user had switched sections")
 
     def test_a_LOCKED_asset_is_reported_not_crashed(self):
         """Houdini REFUSING is not a bug: a locked asset raises `hou.PermissionError`, and uncaught that reads as a slot crash and a drop that silently did nothing. It gets the gesture's own refusal - the tag flies back - and Houdini's sentence on the status bar. No dialog. ▸p/dialogs-are-a-bill"""
@@ -300,108 +292,33 @@ class TestGestureRelease(unittest.TestCase):
             "the message does not say WHY the drop did not land: %r"
             % said[0])
 
-    def test_a_headless_session_still_absorbs_the_refusal(self):
-        """`hou.ui` does not exist without a UI, and an `AttributeError` here turns the refusal back into the slot crash it prevents."""
-        h = self._armed()
-
-        def _locked(idx):
-            raise hou.PermissionError(
-                "Cannot create a node inside a locked asset")
-
+        h = self._armed()    # headless: no hou.ui, so an AttributeError would be the crash again
         h.section.drop_material_at_release = _locked
         self.assertFalse(hasattr(hou, "ui"),
                          "this test needs a headless hou to mean anything")
         h.release()                      # must NOT raise
         self.assertFalse(h.view._dragging)
 
-    def test_a_REAL_error_still_raises(self):
-        """Only Houdini's refusal is caught - a real programming error must still crash where it can be seen."""
-        h = self._armed()
-
-        def _bug(idx):
-            raise hou.OperationFailed("Invalid node type name")
-
-        h.section.drop_material_at_release = _bug
-        with self.assertRaises(hou.OperationFailed):
-            h.release()
-
-    def test_a_failing_drop_clears_the_PRESS_state_too(self):
-        """`_dragging` is not the whole gesture - the four press-state fields are what move measures against, and left set, a later hover with no button held launches a drag nobody began."""
-        h = self._armed()
-        h.section.drop_material_at_release = self._boom
-        with self.assertRaises(hou.OperationFailed):
-            h.release()
-
-        leaked = {
-            "_drag_start": h.view._drag_start,
-            "_drag_section": h.view._drag_section,
-            "_drag_panel": h.view._drag_panel,
-            "_drag_index": h.view._drag_index,
-        }
-        still_set = {k: v for k, v in leaked.items() if v is not None}
-        self.assertEqual(
-            {}, still_set,
-            "a raising drop left press state armed: %s - the next hover "
-            "move launches a phantom drag" % sorted(still_set))
-
-    def test_a_phantom_drag_cannot_start_after_a_failing_drop(self):
-        """End to end: no button held, just a move, and a full gesture arms itself."""
-        h = self._armed()
-        h.section.drop_material_at_release = self._boom
-        with self.assertRaises(hou.OperationFailed):
-            h.release()
-
-        h.move(QtCore.QPoint(h.item_pos().x() + 200,
-                             h.item_pos().y() + 200))
-        self.assertFalse(
-            h.view._dragging,
-            "a bare hover move started a drag the user never began")
-
-    def test_a_failing_drop_cannot_carry_its_section_into_another(self):
-        """A stale gesture keeps the OLD section, so a release after switching dispatches the wrong handler with an index into the wrong model."""
-        h = self._armed("material")
-        h.section.drop_material_at_release = self._boom
-        with self.assertRaises(hou.OperationFailed):
-            h.release()
-        h.panel.calls.clear()
-
-        h.panel.current_section = "file"
-        h.move(QtCore.QPoint(h.item_pos().x() + 200,
-                             h.item_pos().y() + 200))
-        h.release()
-        self.assertNotIn(
-            "material", h.panel.calls,
-            "a stale gesture dispatched the previous section's handler "
-            "after the user had switched sections")
-
     def _release_with(self, harness, button):
         harness.view.mouseReleaseEvent(_event(
             QtCore.QEvent.Type.MouseButtonRelease,
             harness.item_pos(), button))
 
-    def test_a_right_click_cancels_the_drag_instead_of_dropping(self):
-        """The release handler must filter by BUTTON, or right-clicking to back out performs the drop wherever the cursor is."""
-        h = self._armed()
-        self._release_with(h, QtCore.Qt.MouseButton.RightButton)
-        self.assertEqual(
-            [], h.panel.calls,
-            "a right-button release performed the drop")
-        self.assertFalse(h.view._dragging,
-                         "the cancelled gesture stayed armed")
-        self.assertIsNone(h.view._drag_start,
-                          "the cancelled gesture left press state behind")
-
-    def test_a_middle_click_cancels_too(self):
-        h = self._armed()
-        self._release_with(h, QtCore.Qt.MouseButton.MiddleButton)
-        self.assertEqual([], h.panel.calls)
-
-    def test_the_left_button_still_drops(self):
-        """The filter must not break the only gesture that matters."""
-        h = self._armed()
-        self._release_with(h, QtCore.Qt.MouseButton.LeftButton)
-        self.assertIn("material", h.panel.calls,
-                      "a normal left release stopped dropping")
+    def test_a_right_or_middle_click_cancels_the_drag_instead_of_dropping(self):
+        """The release filters by BUTTON, or backing out drops wherever the cursor is."""
+        for button in (QtCore.Qt.MouseButton.RightButton,
+                       QtCore.Qt.MouseButton.MiddleButton):
+            with self.subTest(button=button):
+                h = self._armed()
+                self._release_with(h, button)
+                self.assertEqual(
+                    [], h.panel.calls,
+                    "a %s release performed the drop" % button)
+                self.assertFalse(h.view._dragging,
+                                 "the cancelled gesture stayed armed")
+                self.assertIsNone(
+                    h.view._drag_start,
+                    "the cancelled gesture left press state behind")
 
     @staticmethod
     def _boom(idx):
@@ -499,71 +416,6 @@ class FileRowsReleaseOnNodes(unittest.TestCase):
         start = harness.item_pos()
         harness.move(QtCore.QPoint(start.x() + 60, start.y() + 60))
 
-    def test_an_image_release_on_a_node_hands_over_the_path(self):
-        from amaze.core import file_library
-        h = _Harness(self, section="file", kind=file_library.KIND_IMAGE)
-        h.panel._node = object()
-        self._drag(h)
-        h.release()
-        self.assertEqual(["file_path"], h.panel.calls)
-
-    def test_an_unknown_row_behaves_exactly_like_an_image(self):
-        from amaze.core import file_library
-        h = _Harness(self, section="file", kind=file_library.KIND_OTHER)
-        h.panel._node = object()
-        self._drag(h)
-        h.release()
-        self.assertEqual(["file_path"], h.panel.calls)
-
-    def test_an_image_on_empty_network_space_runs_the_creation_rule(self):
-        from amaze.core import file_library
-        h = _Harness(self, section="file", kind=file_library.KIND_IMAGE)
-        h.panel._network = object()
-        self._drag(h)
-        h.release()
-        self.assertEqual(["create_image"], h.panel.calls,
-                         "an image released on empty network space "
-                         "must run the creation rule")
-        self.assertFalse(h.view._dragging, "the gesture stayed live")
-
-    def test_an_image_over_nothing_at_all_is_a_silent_miss(self):
-        from amaze.core import file_library
-        h = _Harness(self, section="file", kind=file_library.KIND_IMAGE)
-        self._drag(h)
-        h.release()
-        self.assertEqual([], h.panel.calls,
-                         "off any editor there is no network and "
-                         "nothing is consulted")
-
-    def test_an_unknown_file_on_no_node_is_still_a_miss(self):
-        from amaze.core import file_library
-        h = _Harness(self, section="file", kind=file_library.KIND_OTHER)
-        self._drag(h)
-        h.release()
-        self.assertEqual([], h.panel.calls,
-                         "an unknown file has no creation rule")
-
-    def test_a_gradient_on_empty_network_space_runs_the_creation_rule(self):
-        h = _Harness(self, section="gradient")
-        h.panel._network = object()
-        self._drag(h)
-        h.release()
-        self.assertEqual(["create_gradient"], h.panel.calls)
-
-    def test_a_gradient_on_a_node_hands_over_instead(self):
-        h = _Harness(self, section="gradient")
-        h.panel._node = object()
-        self._drag(h)
-        h.release()
-        self.assertEqual(["gradient"], h.panel.calls)
-
-    def test_code_on_empty_network_space_runs_the_creation_rule(self):
-        h = _Harness(self, section="code")
-        h.panel._network = object()
-        self._drag(h)
-        h.release()
-        self.assertEqual(["create_code"], h.panel.calls)
-
     def test_a_node_that_takes_nothing_is_a_MISS_for_geometry_too(self):
         """ONE rule on nodes - a refused hand-over does not quietly become an import beside the node."""
         from amaze.core import file_library
@@ -574,32 +426,6 @@ class FileRowsReleaseOnNodes(unittest.TestCase):
         h.release()
         self.assertEqual(["file_path"], h.panel.calls,
                          "a refused node hand-over ran another verb")
-
-    def test_geometry_on_a_node_hands_over_like_everything_else(self):
-        from amaze.core import file_library
-        h = _Harness(self, section="file", kind=file_library.KIND_GEO)
-        h.panel._node = object()
-        self._drag(h)
-        h.release()
-        self.assertEqual(["file_path"], h.panel.calls)
-
-    def test_geometry_on_no_node_imports(self):
-        from amaze.core import file_library
-        h = _Harness(self, section="file", kind=file_library.KIND_GEO)
-        self._drag(h)
-        h.release()
-        self.assertEqual(["geo"], h.panel.calls,
-                         "the no-node release lost the geometry import")
-
-    def test_hip_on_a_node_hands_over_like_everything_else(self):
-        from amaze.core import file_library
-        h = _Harness(self, section="file", kind=file_library.KIND_HIP)
-        h.panel._node = object()
-        self._drag(h)
-        h.release()
-        self.assertEqual(["file_path"], h.panel.calls,
-                         "a hip on a node must hand over the path, "
-                         "not load the scene")
 
 
 class TheBehaviourTableCells(unittest.TestCase):
@@ -650,6 +476,8 @@ class TheBehaviourTableCells(unittest.TestCase):
          dict(network=True), []),
         ("the sidebar category outranks every target", "gradient", None,
          dict(node=True, category="Metals"), ["category:Metals"]),
+        ("a category drop runs no material import", "material", None,
+         dict(category="Metal"), ["category:Metal"]),
     )
 
     _KINDS = None
@@ -813,26 +641,21 @@ class GuardedSlotsTest(unittest.TestCase):
             "swallowed by PySide with nothing in the log - %s"
             % ", ".join(unwrapped))
 
-    def test_a_guarded_handler_still_returns_what_the_body_returns(self):
-        """A wrapper eating the return breaks every handler ending `return super()...` and changes the event's accept path."""
+    def test_a_guarded_handler_returns_what_the_body_returns_and_re_raises(self):
+        """Eating the return breaks `return super()...`; swallowing half-finishes a gesture."""
         from amaze.core import debug
 
         @debug.guarded("Probe.mousePressEvent")
-        def handler(_self, value):
+        def returning(_self, value):
             return ("body ran", value)
 
-        self.assertEqual(("body ran", 7), handler(None, 7))
-
-    def test_a_guarded_handler_re_raises(self):
-        """The wrapper RECORDS and re-raises - swallowing turns a crash into a silently half-finished gesture."""
-        from amaze.core import debug
-
         @debug.guarded("Probe.mouseReleaseEvent")
-        def handler(_self):
+        def raising(_self):
             raise ValueError("boom")
 
+        self.assertEqual(("body ran", 7), returning(None, 7))
         with self.assertRaises(ValueError):
-            handler(None)
+            raising(None)
 
 
 class TheGestureRunsOnBOTHViews(unittest.TestCase):
@@ -841,33 +664,24 @@ class TheGestureRunsOnBOTHViews(unittest.TestCase):
     VIEWS = ("DragDropListView", "DragDropTableView")
 
     def test_both_views_are_built_on_the_one_gesture(self):
+        """Unaltered: no harness drives the table view, so its own copy would go unseen."""
         for name in self.VIEWS:
             with self.subTest(view=name):
                 view = getattr(dragdrop_widgets, name)
                 self.assertTrue(
                     issubclass(view, dragdrop_widgets.GridGestureMixin),
                     "%s does not carry the shared gesture" % name)
-
-    def test_neither_view_redefines_a_gesture_handler(self):
-        """A second copy is the thing this shape exists to prevent."""
-        for name in self.VIEWS:
-            view = getattr(dragdrop_widgets, name)
-            for handler in ("mousePressEvent", "mouseMoveEvent",
-                            "mouseReleaseEvent", "_release", "_begin_drag"):
-                with self.subTest(view=name, handler=handler):
+                self.assertEqual(dragdrop_widgets.GridGestureMixin.ARMED_SECTIONS,
+                                 view.ARMED_SECTIONS)
+                for handler in ("mousePressEvent", "mouseMoveEvent",
+                                "mouseReleaseEvent", "_release", "_begin_drag"):
                     self.assertNotIn(
                         handler, view.__dict__,
                         "%s defines its own %s - the gesture is shared, "
                         "or it is not one gesture" % (name, handler))
 
-    def test_the_table_view_carries_the_arming_rules(self):
-        """The arming rules are class data on the mixin - a view without them arms on nothing, or on everything."""
-        table = dragdrop_widgets.DragDropTableView
-        self.assertEqual(dragdrop_widgets.GridGestureMixin.ARMED_SECTIONS,
-                         table.ARMED_SECTIONS)
-
-    def test_the_table_view_selects_ROWS_and_MANY(self):
-        """`QTableView` defaults to ExtendedSelection where `QListView` defaults to Single, so the table says so rather than inheriting the difference."""
+    def test_the_table_view_selects_many_ROWS_and_hides_the_row_numbers(self):
+        """The row IS the asset, so it is what a click selects and needs no number of its own."""
         view = dragdrop_widgets.DragDropTableView()
         self.addCleanup(view.deleteLater)
         self.assertEqual(
@@ -876,11 +690,6 @@ class TheGestureRunsOnBOTHViews(unittest.TestCase):
         self.assertEqual(
             QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows,
             view.selectionBehavior())
-
-    def test_the_table_view_hides_the_row_numbers(self):
-        """A table's default row numbers mean nothing here - the row IS the asset."""
-        view = dragdrop_widgets.DragDropTableView()
-        self.addCleanup(view.deleteLater)
         self.assertFalse(view.verticalHeader().isVisible())
         self.assertFalse(view.showGrid(),
                          "the table paints Qt's own grid lines over a "

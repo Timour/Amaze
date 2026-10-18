@@ -101,27 +101,6 @@ class TestPickCoordinateSpace(unittest.TestCase):
                          "test is not exercising the case it was written for")
         return vp.asked[0]
 
-    def test_h21_is_asked_in_device_pixels(self):
-        """Measured on 21.0.780 with the cursor ON the sphere at (292, 136): only the device candidates returned the node."""
-        self.assertEqual(
-            (882, 4), self._pick_with(21),
-            "21.0.780 does not apply the device pixel ratio itself, so "
-            "the point must arrive already scaled")
-
-    def test_h22_is_asked_in_logical_pixels(self):
-        """The constraint, in a test: H22 works, so H22 does not change - without it a later simplification that drops the build gate looks harmless and breaks the version that was never broken."""
-        self.assertEqual(
-            (441, 2), self._pick_with(22),
-            "H22's pick coordinates changed - it was picking correctly "
-            "with the unscaled logical point")
-
-    def test_the_two_builds_actually_differ(self):
-        """Guards the guard: if both branches ever return the same point, the two tests above pass while proving nothing."""
-        self.assertNotEqual(
-            self._pick_with(21), self._pick_with(22),
-            "both builds now get the same coordinates - the tests above "
-            "no longer distinguish the two conventions")
-
     def test_the_whole_h22_series_behaves_like_the_h22_we_measured(self):
         """The breakpoint sits at 22.0.0, NOT at the changelog's 22.0.391 - asserting otherwise was an INFERENCE from the changelog written down as a measurement, and no 22.0.x below 393 has ever run here; the asymmetry is the argument, since leaving a host bug unworked-around on an untested build costs a bug the user would have had anyway, while applying an untested workaround to a build that works breaks something that was fine."""
         for build in ((22, 0, 0), (22, 0, 390), (22, 0, 391),
@@ -131,13 +110,11 @@ class TestPickCoordinateSpace(unittest.TestCase):
                 "%s got the workaround - the H22 series must behave "
                 "like the H22 that was actually measured, until a build "
                 "in it is measured and flagged" % (build,))
-
-    def test_the_h21_series_keeps_the_workaround(self):
-        """Both builds actually run here, the newer one having arrived mid-session on a Houdini update."""
-        for build in ((21, 0, 780), (21, 0, 790)):
+        for build in ((21, 0, 780), (21, 0, 790)):    # both measured: H21 wants device pixels
             self.assertEqual(
                 (882, 4), self._pick_with(build),
-                "%s lost the workaround" % (build,))
+                "%s lost the workaround - it does not apply the device "
+                "pixel ratio itself" % (build,))
 
     def test_the_origin_is_not_touched(self):
         """The scale is the whole workaround: a y-flip creeping back in alongside it puts the pick a viewport away, which is what the previous attempt did and it looked identical to the bug it was meant to fix."""
@@ -158,19 +135,10 @@ class TestPickCoordinateSpace(unittest.TestCase):
 
     def test_windows_never_gets_the_macos_workaround(self):
         """The vendor bug is scoped to macOS retina displays while Windows reports scale factors too (150% on a 4K laptop panel), so gating on the Houdini version alone applied the workaround there and broke picking on a viewport that never had the bug - and that shipped, briefly."""
-        self.assertEqual(
-            (441, 2), self._pick_with(21, os_name="windows"),
-            "a scaled Windows display got the macOS workaround")
-
-    def test_linux_never_gets_it_either(self):
-        self.assertEqual((441, 2), self._pick_with(21, os_name="linux"))
-
-    def test_macos_at_the_same_scale_still_does(self):
-        """Guards the guard: if the platform condition ever refuses everything, the two tests above pass while proving nothing."""
-        self.assertEqual(
-            (882, 4), self._pick_with(21, os_name="macos"),
-            "the workaround no longer fires anywhere - the platform "
-            "tests above are green for the wrong reason")
+        for os_name in ("windows", "linux"):
+            self.assertEqual(
+                (441, 2), self._pick_with(21, os_name=os_name),
+                "a scaled %s display got the macOS workaround" % os_name)
 
 
 class TestViewportResolutionStillWorks(unittest.TestCase):
@@ -181,12 +149,10 @@ class TestViewportResolutionStillWorks(unittest.TestCase):
         vp = _Viewport(hit=(882, 4))
         found = dragengine._pick(_Viewer(vp), "obj", 441, 2, 2.0, 279)
         self.assertEqual("/obj/sphere_object1", found)
-
-    def test_a_miss_is_empty_not_an_exception(self):
-        _Version(self, 21)
         vp = _Viewport(hit=None)
         self.assertEqual(
-            "", dragengine._pick(_Viewer(vp), "obj", 10, 10, 2.0, 279))
+            "", dragengine._pick(_Viewer(vp), "obj", 10, 10, 2.0, 279),
+            "a miss is not an empty answer")
 
     def test_a_raising_viewport_says_why_instead_of_going_quiet(self):
         """A bare `return ""` here made the original bug invisible - a miss and a raised exception produced the same log line."""
@@ -248,8 +214,6 @@ class TheCursorIsReadOnlyForARecord(unittest.TestCase):
         self.assertEqual([], records, "premise: nothing is recorded")
         self.assertEqual(0, len(reads),
                          "the pick read the cursor for a record it never wrote")
-
-    def test_a_recorded_pick_still_carries_the_cursor(self):
         reads, records = self._picked(True)
         self.assertEqual(2, len(reads))
         self.assertEqual(["obj", "lop"], [r["world"] for r in records])

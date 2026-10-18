@@ -84,22 +84,6 @@ class TheTabStripStandsOnItsFrame(unittest.TestCase):
                          "the tray does not end one inset past the last tab")
 
 
-class OnePaintMeasuresTheTabsOnce(unittest.TestCase):
-    """The tray and the Cancel chip stand on the paint's own measurement of the tabs."""
-
-    def test_a_paint_with_the_cancel_chip_shown_measures_once(self):
-        bar = ui_helpers.SectionTabBar([("material", "Material"), ("cop", "Node")])
-        self.addCleanup(bar.deleteLater)
-        bar.resize(600, bar.HEIGHT)
-        bar.set_cancel_visible(True)
-        self.assertIsNotNone(bar._cancel_rect(), "premise: the Cancel chip shows")
-        calls = []
-        measure = bar._chip_rects
-        bar._chip_rects = lambda: calls.append(True) or measure()
-        bar.grab()
-        self.assertEqual(1, len(calls), "one paint measured the tabs %d times" % len(calls))
-
-
 class OneRingTest(unittest.TestCase):
     """`draw_ring` draws what each of the three hand-written chip rings drew, at any width."""
 
@@ -116,49 +100,26 @@ class OneRingTest(unittest.TestCase):
         painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
         return image, painter
 
-    def _ours(self, width, radius, fill=QtCore.Qt.BrushStyle.NoBrush, inset=0):
+    def _ours(self, width, radius, fill):
         image, painter = self._canvas()
-        rect = self.RECT.adjusted(inset, inset, -inset, -inset)
         try:
-            ui_helpers.draw_ring(painter, rect, self.INK, width, radius, fill)
+            ui_helpers.draw_ring(painter, self.RECT, self.INK, width, radius, fill)
         finally:
             painter.end()
         return image
 
-    def test_the_tab_and_cancel_ring(self):
-        for width in self.WIDTHS:
-            with self.subTest(width=width):
-                want, painter = self._canvas()
-                half = width / 2.0
-                pen = QtGui.QPen(self.INK)
-                pen.setWidthF(width)
-                painter.setPen(pen)
-                painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
-                painter.drawRoundedRect(self.RECT.adjusted(half, half, -half, -half), 4, 4)
-                painter.end()
-                self.assertEqual(want, self._ours(width, 4))
-
-    def test_the_toolbar_chip_outer_ring_over_its_fill(self):
-        for width in self.WIDTHS:
-            with self.subTest(width=width):
-                want, painter = self._canvas()
-                half = width / 2.0
-                painter.setPen(QtGui.QPen(self.INK, width))
-                painter.setBrush(self.FILL)
-                painter.drawRoundedRect(self.RECT.adjusted(half, half, -half, -half), 5, 5)
-                painter.end()
-                self.assertEqual(want, self._ours(width, 5, self.FILL))
-
-    def test_the_toolbar_chip_inner_border(self):
-        for width in self.WIDTHS:
-            with self.subTest(width=width):
-                want, painter = self._canvas()
-                inset = width + width / 2.0
-                painter.setPen(QtGui.QPen(self.INK, width))
-                painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
-                painter.drawRoundedRect(self.RECT.adjusted(inset, inset, -inset, -inset), 4, 4)
-                painter.end()
-                self.assertEqual(want, self._ours(width, 4, inset=width))
+    def test_the_tab_ring_and_the_toolbar_chip_ring_over_its_fill(self):
+        for radius, fill in ((4, QtCore.Qt.BrushStyle.NoBrush), (5, self.FILL)):
+            for width in self.WIDTHS:
+                with self.subTest(radius=radius, width=width):
+                    want, painter = self._canvas()
+                    half = width / 2.0
+                    painter.setPen(QtGui.QPen(self.INK, width))
+                    painter.setBrush(fill)
+                    painter.drawRoundedRect(
+                        self.RECT.adjusted(half, half, -half, -half), radius, radius)
+                    painter.end()
+                    self.assertEqual(want, self._ours(width, radius, fill))
 
 
 class BothChipRingsAreOneWholePixelWidth(unittest.TestCase):

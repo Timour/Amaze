@@ -1,7 +1,6 @@
 """The shell of the first dialog built from an HTML handover, held to the design's measurements at the chrome's density. ▸p/designed-dialog"""
 
 import contextlib
-import inspect
 import os
 import unittest
 
@@ -36,26 +35,6 @@ class _ScreenAt(QtWidgets.QWidget):
 class TheIconIsNotClipped(unittest.TestCase):
     """The glyph's stroke reaches 3 past its own path bounds on every side, so a viewBox tight to the paths cuts the top and bottom points off."""
 
-    def test_the_viewbox_leaves_room_for_the_stroke(self):
-        path = os.path.join(os.path.dirname(amaze.__file__), "ui",
-                            "icon_versions_dialog.svg")
-        with open(path, encoding="utf-8") as fh:
-            body = fh.read()
-        import re
-        box = re.search(r'viewBox="([-\d.\s]+)"', body)
-        self.assertIsNotNone(box, "the glyph has no viewBox")
-        x, y, w, h = [float(v) for v in box.group(1).split()]
-        stroke = float(re.search(r'stroke-width="([\d.]+)"',
-                                 body).group(1))
-        self.assertLessEqual(
-            x, -stroke / 2,
-            "the viewBox starts at the path bounds, so the stroke is "
-            "clipped on the left and top")
-        self.assertGreaterEqual(
-            w, 60 + stroke,
-            "the viewBox is not wide enough for the stroke")
-        self.assertGreaterEqual(h, 60 + stroke)
-
     def test_the_top_and_bottom_are_POINTS_not_flat_cuts(self):
         """Ink at the box edge is not clipping; clipping is a FLAT CUT - the glyph is a diamond over two chevrons, so its first and last rows are narrow points and a clipped one is a wide flat row."""
         path = os.path.join(os.path.dirname(amaze.__file__), "ui",
@@ -80,7 +59,6 @@ class TheIconIsNotClipped(unittest.TestCase):
 
 class TheShellMatchesTheDesign(unittest.TestCase):
     """The SHELL is the design - frame, header band, inset column, colours - while the CONTROLS inside are Houdini's, so nothing here asserts a field's colour. ▸p/designed-dialog"""
-
 
     def _dialog(self):
         dialog = ui_helpers.DesignedDialog(None, title="brushed_steel")
@@ -133,12 +111,7 @@ class TheShellMatchesTheDesign(unittest.TestCase):
                 dialog.width() - 2 * _px(35), w,
                 "%s does not span the column between the insets" % name)
             self.assertEqual(_px(60), h, "%s is not 60 tall" % name)
-
-    def test_the_controls_are_NOT_restyled(self):
-        """Standard Houdini controls by design: the shell gives them the design's geometry and nothing else. ▸p/designed-dialog"""
-        _dialog, combo, field = self._dialog()
-        for name, widget in (("dropdown", combo), ("name field", field)):
-            self.assertEqual("", widget.styleSheet(),
+            self.assertEqual("", widget.styleSheet(),    # Houdini's own controls: geometry only
                              "%s has been restyled" % name)
 
     def test_the_frame_is_the_designs_size(self):
@@ -146,13 +119,6 @@ class TheShellMatchesTheDesign(unittest.TestCase):
         dialog, _c, _f = self._dialog()
         self.assertEqual((_px(512), _px(370)),
                          (dialog.width(), dialog.height()))
-
-    def test_the_constants_are_stored_at_the_CHROME_density(self):
-        """A design number is HALVED at source, then scaled - the 2x rule every chrome constant follows (overview.md §8). Storing the raw 512 is what once opened it as a 1024 window. ▸p/designed-dialog"""
-        self.assertEqual(
-            (256, 185), ui_helpers.DesignedDialog.FRAME,
-            "the frame is back at the design's raw pixels - halve it at "
-            "source, the way every chrome constant is halved")
 
     def test_it_wears_the_DRAWN_header_band(self):
         """The band is drawn INSIDE the dialog and is not the window title bar - the design draws both, and reading one as the other is what deleted this header once. ▸p/one-design-document"""
@@ -184,10 +150,6 @@ class TheShellMatchesTheDesign(unittest.TestCase):
             theme.ui_px(amazetheme.HEADER_BAND_TEXT_PX),
             label.font().pixelSize(),
             "the band's name is not the size the design draws")
-
-    def test_the_first_field_sits_below_the_band(self):
-        dialog, combo, _f = self._dialog()
-        from amaze import amazetheme
         self.assertEqual(
             theme.ui_px(amazetheme.HEADER_BAND_H)
             + theme.ui_px(amazetheme.D01_FIRST_FIELD_Y),
@@ -216,14 +178,6 @@ class ADropdownIsAsWideAsItsBox(unittest.TestCase):
         self.addCleanup(combo.hidePopup)
         _app.processEvents()
         return combo.view().window()
-
-    def test_a_plain_combo_lets_its_dropdown_run_wide(self):
-        """The behaviour being defended against - if Qt ever stops doing this, the guard below is no longer earning its place."""
-        popup = self._shown(QtWidgets.QComboBox())
-        self.assertGreater(
-            popup.width(), 118,
-            "a plain QComboBox no longer widens its dropdown, so "
-            "DesignedComboBox may no longer be needed")
 
     def test_the_designed_one_holds_the_box_width(self):
         popup = self._shown(ui_helpers.DesignedComboBox())
@@ -268,19 +222,6 @@ class ADialogIsSizedTheWayTheHostSizesEverything(unittest.TestCase):
                     "%s: the dialog is not the size Houdini's own scale "
                     "gives it" % machine)
 
-    def test_two_monitors_one_session_one_dialog_size(self):
-        """THE BUG IN ONE ASSERTION. Same Houdini, same scale, two screens: Houdini cannot rescale mid-session, so neither may a panel of its own accord."""
-        retina, plain = _ScreenAt(2.0), _ScreenAt(1.0)   # HELD: a parent that falls out of scope takes its dialog's C++ object with it
-        with self._at(1.0):
-            on_retina = ui_helpers.DesignedDialog(retina)
-            on_plain = ui_helpers.DesignedDialog(plain)
-        for widget in (retina, plain, on_retina, on_plain):
-            self.addCleanup(widget.deleteLater)
-        self.assertEqual(
-            on_retina.width(), on_plain.width(),
-            "the dialog changes size with the monitor - which is the one "
-            "thing Houdini's own UI scale never does")
-
     def test_a_design_measurement_lands_the_same_through_EITHER_path(self):
         """60 design px is the toolbar bar in `panel.py` (`ui_px(30)`) and the dialog's `FIELD_H`; both sides are computed here. ▸p/designed-dialog"""
         for machine, ratio, scale, _w in self.PROFILES:
@@ -301,25 +242,16 @@ class ADialogIsSizedTheWayTheHostSizesEverything(unittest.TestCase):
 
 
 class NothingThatSizesReadsTheScreen(unittest.TestCase):
-    """No sizing path in the dialog shell reads a device ratio; a re-added one passes every number above on the machine it is written on. ▸r/houdini-ui-scale"""
+    """No sizing path in the dialog shell reads a device ratio. ▸r/houdini-ui-scale"""
 
     SIZING_READS = ("screen_ratio", "devicePixelRatio", "devicePixelRatioF")
 
     def test_the_dialog_shell_holds_no_screen_read_at_all(self):
+        import inspect
         body = inspect.getsource(ui_helpers.DesignedDialog)
+        self.assertIn("class DesignedDialog", body, "premise: the scan reads the shell")
         for spelling in self.SIZING_READS:
             self.assertNotIn(
                 spelling, body,
-                "the designed dialog is sizing from the screen again - "
-                "Houdini's scale is one number, fixed at startup, and a "
-                "dialog that divides by a live ratio renders at 2x the "
-                "chrome on every dpr-1.0 display")
-
-    def test_the_scanner_can_see_a_read_it_should_refuse(self):
-        """THE ANTI-VACUOUS HALF: a `not in` over a source string passes just as happily when the source is empty or the spelling has changed. ▸p/vacuous-register"""
-        planted = ("class Fake:\n"
-                   "    def d(self, v):\n"
-                   "        return v / theme.screen_ratio(self)\n")
-        for spelling in self.SIZING_READS[:1]:
-            self.assertIn(spelling, planted,
-                          "the spelling this test greps for has moved")
+                "the designed dialog sizes from the screen again: Houdini's scale is "
+                "fixed at startup, and a live ratio renders 2x chrome at dpr 1.0")

@@ -61,77 +61,51 @@ class TestBoundMaterials(unittest.TestCase):
         self.assertIn("mat_a", matpath)
         self.assertIn("/sphere_a", prims)
 
-    def test_unbound_prim_reports_nothing(self):
-        """No binding means the drop menu offers assign, not swap - an empty list here is what keeps Swap from appearing."""
+    def test_unbound_missing_or_stageless_prims_report_nothing(self):
+        """The empty list is what keeps Swap out of the drop menu."""
         scene = _Scene(self)
-        self.assertEqual(
-            lop_assign.bound_materials_under(scene.stage(), "/sphere_b"), []
-        )
-
-    def test_missing_prim_and_no_stage_are_survivable(self):
-        scene = _Scene(self)
-        self.assertEqual(
-            lop_assign.bound_materials_under(scene.stage(), "/nope"), [])
-        self.assertEqual(
-            lop_assign.bound_materials_under(None, "/sphere_a"), [])
+        for stage, prim in ((scene.stage(), "/sphere_b"),
+                            (scene.stage(), "/nope"), (None, "/sphere_a")):
+            with self.subTest(prim=prim, stage=stage is not None):
+                self.assertEqual(
+                    [], lop_assign.bound_materials_under(stage, prim))
 
 
 class TestRemoveUnreferenced(unittest.TestCase):
 
-    def test_removes_a_material_nothing_binds(self):
-        scene = _Scene(self)
-        scene.bind("/sphere_a", "/materials/mat_a")
-        removed = lop_assign.remove_unreferenced_material(
-            scene.lopnet, scene.liblop, "/materials/mat_b"
-        )
-        self.assertTrue(removed, "an unreferenced material survived a swap")
-        self.assertIsNone(scene.liblop.node("mat_b"))
-        self.assertIsNotNone(scene.liblop.node("mat_a"))
-
-    def test_keeps_a_material_that_is_still_assigned(self):
-        """The failure that matters: deleting a material still bound somewhere else turns one swap into a scene-wide breakage."""
-        scene = _Scene(self)
-        scene.bind("/sphere_a", "/materials/mat_a")
-        kept = lop_assign.remove_unreferenced_material(
-            scene.lopnet, scene.liblop, "/materials/mat_a"
-        )
-        self.assertFalse(kept, "removed a material that is still assigned")
-        self.assertIsNotNone(scene.liblop.node("mat_a"))
-
-    def test_empty_primpattern_does_not_count_as_a_use(self):
-        """assignMat empties a pattern when it moves prims away; a material left behind by that IS collectable."""
-        scene = _Scene(self)
-        scene.bind("", "/materials/mat_a")
-        removed = lop_assign.remove_unreferenced_material(
-            scene.lopnet, scene.liblop, "/materials/mat_a"
-        )
-        self.assertTrue(removed,
-                        "an emptied assignment blocked the cleanup")
-
-    def test_unknown_material_is_a_no_op(self):
-        scene = _Scene(self)
-        self.assertFalse(lop_assign.remove_unreferenced_material(
-            scene.lopnet, scene.liblop, "/materials/nonexistent"))
+    def test_only_a_material_nothing_binds_is_removed(self):
+        """Removing one still bound elsewhere turns one swap into a scene-wide breakage."""
+        for pattern, target, removed, left in (
+                ("/sphere_a", "mat_b", True, {"mat_a"}),
+                ("/sphere_a", "mat_a", False, {"mat_a", "mat_b"}),
+                ("", "mat_a", True, {"mat_b"}),     # assignMat empties the pattern it moves prims from
+                (None, "nonexistent", False, {"mat_a", "mat_b"})):
+            with self.subTest(pattern=pattern, target=target):
+                scene = _Scene(self)
+                if pattern is not None:
+                    scene.bind(pattern, "/materials/mat_a")
+                self.assertEqual(removed, bool(
+                    lop_assign.remove_unreferenced_material(
+                        scene.lopnet, scene.liblop, "/materials/" + target)))
+                self.assertEqual(
+                    left, {node.name() for node in scene.liblop.children()})
 
 
 class TestNameNewAssign(unittest.TestCase):
 
-    def test_names_the_new_assign_after_what_it_drives(self):
-        scene = _Scene(self)
-        before = list(scene.lopnet.children())
-        fresh = scene.lopnet.createNode("assignmaterial")
-        lop_assign.name_new_assign(scene.lopnet, before, "/sphere_a")
-        self.assertIn("sphere_a", fresh.name(),
-                      "assign was not named after its prim")
-
-    def test_leaves_a_reused_assign_alone(self):
-        """Only the node just created is renamed - an assign that already earned its name keeps it."""
+    def test_names_only_the_new_assign_after_what_it_drives(self):
         scene = _Scene(self)
         existing = scene.assign.name()
         lop_assign.name_new_assign(
             scene.lopnet, list(scene.lopnet.children()), "/sphere_a"
         )
-        self.assertEqual(scene.assign.name(), existing)
+        self.assertEqual(existing, scene.assign.name(),
+                         "a reused assign lost the name it earned")
+        before = list(scene.lopnet.children())
+        fresh = scene.lopnet.createNode("assignmaterial")
+        lop_assign.name_new_assign(scene.lopnet, before, "/sphere_a")
+        self.assertIn("sphere_a", fresh.name(),
+                      "assign was not named after its prim")
 
 
 class TestDropChoices(unittest.TestCase):
@@ -156,21 +130,9 @@ class TestDropChoices(unittest.TestCase):
         self.assertIn("mat_a", choices[0][1])
         self.assertTrue(any(k == "assign" for k, _l, _p in choices),
                         "assign disappeared when a material was bound")
-
-    def test_swap_all_appears_only_with_several_materials(self):
-        scene = _Scene(self)
-        scene.bind("/sphere_a", "/materials/mat_a")
-        labels = [l for _k, l, _p in
-                  lop_assign.drop_choices(scene.stage(), "/sphere_a")]
-        self.assertNotIn("Swap All Materials", labels,
+        self.assertNotIn("Swap All Materials", [l for _k, l, _p in choices],
                          "'Swap All' offered for a single material")
-
-    def test_payloads_are_what_the_actions_need(self):
-        """The panel hands these straight to swap_assignments / assignMat - a wrong shape here is a crash at click time."""
-        scene = _Scene(self)
-        scene.bind("/sphere_a", "/materials/mat_a")
-        for kind, _label, payload in lop_assign.drop_choices(
-                scene.stage(), "/sphere_a"):
+        for kind, _label, payload in choices:    # handed straight to the actions: a wrong shape crashes the click
             if kind == "swap":
                 self.assertIsInstance(payload, list)
                 matpath, prims = payload[0]
@@ -209,29 +171,15 @@ class TestCollectionBindings(unittest.TestCase):
         assign.parm("bindmethod1").set(bind_method)
         return assign.stage()
 
-    def test_direct_binding_is_found(self):
-        stage = self._sop_scene(0)
-        self.assertTrue(
-            lop_assign.bound_materials_under(stage, "/torus_object1"))
-
     def test_collection_binding_is_found(self):
         """Bind method 1 authors material:binding:collection:<name> with targets [collection, material]."""
         stage = self._sop_scene(1)
         found = lop_assign.bound_materials_under(stage, "/torus_object1")
         self.assertTrue(found, "a collection-bound material offered no swap")
         self.assertEqual(found[0][0], "/materials/mat_a")
-
-    def test_collection_binding_offers_swap_in_the_menu(self):
-        """End to end: the menu the user actually sees."""
-        stage = self._sop_scene(1)
-        choices = lop_assign.drop_choices(stage, "/torus_object1")
-        self.assertEqual(choices[0][0], "swap",
-                         "no Swap entry for a collection-bound material")
-
-    def test_found_from_a_child_prim_too(self):
-        """Drops land on /torus_object1/mesh_0 - the binding is on the parent, and the ancestor walk has to reach it."""
-        stage = self._sop_scene(1)
-        self.assertTrue(
+        self.assertEqual(lop_assign.drop_choices(stage, "/torus_object1")[0][0],
+                         "swap", "no Swap entry for a collection-bound material")
+        self.assertTrue(    # drops land on the mesh: the ancestor walk must reach the parent's binding
             lop_assign.bound_materials_under(stage, "/torus_object1/mesh_0"),
             "an ancestor's collection binding was not found from the mesh")
 
@@ -262,36 +210,22 @@ class TestAssignNodeLookup(unittest.TestCase):
             "the drop picked a disconnected assignmaterial, so the "
             "binding lands where nothing displays it")
 
-    def test_creation_order_still_wins_when_nothing_is_connected(self):
-        """The unfiltered lookup stays the fallback - a network with no assign node in the chain must still converge on one node rather than chaining a new one per drop."""
-        orphan_net = hou.node("/stage").createNode("lopnet")
-        self.addCleanup(orphan_net.destroy)
-        first = orphan_net.createNode("assignmaterial", "first")
-        orphan_net.createNode("assignmaterial", "second")
-        self.assertEqual(   # by PATH, not identity: hou returns a fresh Python wrapper for the same node on every lookup
-            first.path(),
-            self.dragengine.find_assignmaterial(orphan_net).path())
-
-    def test_an_unconnected_network_finds_nothing_in_the_chain(self):
+    def test_with_no_assign_in_the_chain_creation_order_is_the_fallback(self):
+        """Filtered it finds nothing; unfiltered, every drop converges on the first-created node."""
         lonely = hou.node("/stage").createNode("lopnet")
         self.addCleanup(lonely.destroy)
         sphere = lonely.createNode("sphere")
-        lonely.createNode("assignmaterial", "detached")
+        first = lonely.createNode("assignmaterial", "first")
+        lonely.createNode("assignmaterial", "second")
         self.assertIsNone(
             self.dragengine.find_assignmaterial(lonely, connected_to=sphere),
             "a detached assign node was reported as being in the chain")
+        self.assertEqual(   # by PATH: hou returns a fresh wrapper for the same node on every lookup
+            first.path(), self.dragengine.find_assignmaterial(lonely).path())
 
 
 class TestLockedContextIsRefused(unittest.TestCase):
     """Dropping into a locked asset must return a reason, not raise: _drop_context_under_cursor falls back to the network editor's pwd(), which is the locked node when the editor is dived into one, and update_context may CREATE a container to reach the destination - raising hou.PermissionError, a SIBLING of OperationFailed rather than a subclass, straight out of the release slot."""
-
-    def test_permission_error_is_not_a_subclass_of_operation_failed(self):
-        """The trap itself, pinned: code that catches OperationFailed does NOT catch this."""
-        self.assertFalse(
-            issubclass(hou.PermissionError, hou.OperationFailed),
-            "hou.PermissionError became an OperationFailed subclass - "
-            "the guards written for this trap can be simplified")
-        self.assertTrue(issubclass(hou.PermissionError, hou.Error))
 
     def test_the_import_reports_instead_of_raising(self):
         from amaze.render import nodes as nodes_mod

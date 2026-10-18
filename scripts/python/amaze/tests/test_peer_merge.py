@@ -75,30 +75,10 @@ class APeerFieldEditSurvivesOurSave(_Case):
                          "the other machine's snippet text was overwritten")
         self.assertEqual("renamed here", row.get("name"),
                          "our own rename did not land")
-
-    def test_a_peer_edit_to_renderer_is_not_destroyed(self):
-        self._write(self._document())
-        db = self._loaded()
-        self._peer_writes(renderer="Redshift")
-
-        db.set({"assets": [dict(db._data["assets"][0], name="renamed here")],
-                "categories": ["_All"], "tags": []})
-        self.assertTrue(db.save())
-
-        self.assertEqual("Redshift", self._row().get("renderer"),
-                         "the other machine's renderer was overwritten")
-
-    def test_a_field_we_never_touched_takes_the_peer_value(self):
-        """Neither side is editing `date`; theirs is simply newer."""
-        self._write(self._document())
-        db = self._loaded()
-        self._peer_writes(date="2026-08-31 12:00:00")
-
-        db.set({"assets": [dict(db._data["assets"][0], name="renamed here")],
-                "categories": ["_All"], "tags": []})
-        self.assertTrue(db.save())
-
-        self.assertEqual("2026-08-31 12:00:00", self._row().get("date"))
+        self.assertIn(("ASSET0", "code", "int i = 42;"),
+                      db.take_adopted_fields(),
+                      "nothing told the model which field changed, so the "
+                      "next ordinary save writes the old value back")
 
 
 class TheAuditsNamedScenarios(_Case):
@@ -185,35 +165,25 @@ class TheAuditsNamedScenarios(_Case):
 class APeerFieldRemovalIsHonoured(_Case):
     """The same rule the category list follows: gone from disk, in our base, untouched by us, is THEIR removal."""
 
-    def test_a_field_the_other_machine_dropped_does_not_come_back(self):
-        self._write(self._document(description="theirs to remove"))
-        db = self._loaded()
-
-        theirs = self._on_disk()
-        theirs["assets"][0].pop("description")
-        self._write(theirs)
-
-        db.set({"assets": [dict(db._data["assets"][0], name="renamed here")],
-                "categories": ["_All"], "tags": []})
-        self.assertTrue(db.save())
-
-        self.assertNotIn(
-            "description", self._row(),
-            "they removed the field and our save wrote it straight back")
-
-    def test_a_field_we_changed_survives_their_removal(self):
-        self._write(self._document(description="as loaded"))
-        db = self._loaded()
-        theirs = self._on_disk()
-        theirs["assets"][0].pop("description")
-        self._write(theirs)
-
-        row = dict(db._data["assets"][0], description="ours now")
-        db.set({"assets": [row], "categories": ["_All"], "tags": []})
-        self.assertTrue(db.save())
-
-        self.assertEqual("ours now", self._row().get("description"),
-                         "our edit lost to their removal")
+    def test_their_removal_stands_unless_we_changed_the_field(self):
+        absent = object()
+        for why, ours, expected in (
+                ("they removed it and our save wrote it back",
+                 {"name": "renamed here"}, absent),
+                ("our edit lost to their removal",
+                 {"description": "ours now"}, "ours now")):
+            with self.subTest(why):
+                test_support.reset_database_singletons()
+                self._write(self._document(description="as loaded"))
+                db = self._loaded()
+                theirs = self._on_disk()
+                theirs["assets"][0].pop("description")
+                self._write(theirs)
+                db.set({"assets": [dict(db._data["assets"][0], **ours)],
+                        "categories": ["_All"], "tags": []})
+                self.assertTrue(db.save())
+                self.assertEqual(expected,
+                                 self._row().get("description", absent), why)
 
 
 class ACategoryColourIsJudgedAgainstWhatWeLoaded(_Case):
@@ -237,40 +207,39 @@ class ACategoryColourIsJudgedAgainstWhatWeLoaded(_Case):
         db.set({"assets": [dict(db._data["assets"][0], name="renamed here")]})
         self.assertTrue(db.save())
 
-    def test_their_recolour_is_adopted(self):
-        self._write(self._coloured({"Wood": "#111111"}))
-        db = self._loaded()
-        self._their_colours({"Wood": "#222222"})
-
-        self._our_unrelated_save(db)
-
-        self.assertEqual("#222222", self._colours_on_disk().get("Wood"),
-                         "our save wrote the old colour back over theirs")
-        self.assertEqual("#222222", db._data["category_colors"].get("Wood"),
-                         "their colour reached disk but not this session")
-
-    def test_their_uncolour_is_adopted(self):
-        self._write(self._coloured({"Wood": "#111111", "Metal": "#333333"}))
-        db = self._loaded()
-        self._their_colours({"Metal": "#333333"})
-
-        self._our_unrelated_save(db)
-
-        self.assertNotIn("Wood", self._colours_on_disk(),
-                         "they cleared the colour and our save put it back")
-        self.assertEqual("#333333", self._colours_on_disk().get("Metal"))
-
-    def test_our_recolour_survives_their_unrelated_save(self):
-        self._write(self._coloured({"Wood": "#111111"}))
-        db = self._loaded()
-        db.set({"category_colors": {"Wood": "#444444"}})
-        self._peer_writes(name="renamed by them")
-
-        self.assertTrue(db.save())
-
-        self.assertEqual("#444444", self._colours_on_disk().get("Wood"),
-                         "our own recolour lost to a save that never "
-                         "touched the colour")
+    def test_a_colour_follows_whichever_side_moved_it(self):
+        """Theirs is adopted where we left a name alone; ours stands where they did."""
+        absent = object()
+        for why, base, ours, theirs, expected in (
+                ("their recolour", {"Wood": "#111111"}, None,
+                 {"Wood": "#222222"}, {"Wood": "#222222"}),
+                ("their uncolour", {"Wood": "#111111", "Metal": "#333333"},
+                 None, {"Metal": "#333333"}, {"Wood": absent, "Metal": "#333333"}),
+                ("our recolour", {"Wood": "#111111"}, {"Wood": "#444444"},
+                 None, {"Wood": "#444444"}),
+                ("our uncolour", {"Wood": "#111111"}, {}, None,
+                 {"Wood": absent})):
+            with self.subTest(why):
+                test_support.reset_database_singletons()
+                self._write(self._coloured(base))
+                db = self._loaded()
+                if ours is not None:
+                    db.set({"category_colors": ours})
+                if theirs is None:
+                    self._peer_writes(name="renamed by them")
+                else:
+                    self._their_colours(theirs)
+                if ours is None:
+                    self._our_unrelated_save(db)
+                else:
+                    self.assertTrue(db.save())
+                for name, colour in expected.items():
+                    self.assertEqual(colour,
+                                     self._colours_on_disk().get(name, absent),
+                                     "%s: %s is wrong on disk" % (why, name))
+                    self.assertEqual(colour,
+                                     db._data["category_colors"].get(name, absent),
+                                     "%s: %s is wrong in this session" % (why, name))
 
     def test_both_recolouring_one_name_keeps_ours_and_says_so(self):
         self._write(self._coloured({"Wood": "#111111"}))
@@ -287,17 +256,6 @@ class ACategoryColourIsJudgedAgainstWhatWeLoaded(_Case):
             ("#444444", 1), (self._colours_on_disk().get("Wood"), len(alerts)),
             "both machines recoloured Wood: ours must stand AND the user "
             "must be told the other colour was discarded")
-
-    def test_our_uncolour_survives_their_unrelated_save(self):
-        self._write(self._coloured({"Wood": "#111111"}))
-        db = self._loaded()
-        db.set({"category_colors": {}})
-        self._peer_writes(name="renamed by them")
-
-        self.assertTrue(db.save())
-
-        self.assertNotIn("Wood", self._colours_on_disk(),
-                         "a colour we cleared came back from their copy")
 
 
 class ARealConflictIsTOLD(_Case):
@@ -323,24 +281,6 @@ class ARealConflictIsTOLD(_Case):
             alerts,
             "the other machine's edit was discarded and only a debug line "
             "said so - the user was never told")
-
-
-class AnAdoptedFieldReachesTheCaller(_Case):
-    """H6: adopted values were kept as whole rows nobody read field-wise."""
-
-    def test_the_connector_names_the_field_it_adopted(self):
-        self._write(self._document())
-        db = self._loaded()
-        self._peer_writes(code="int i = 42;")
-
-        db.set({"assets": [dict(db._data["assets"][0], name="renamed here")],
-                "categories": ["_All"], "tags": []})
-        self.assertTrue(db.save())
-
-        adopted = db.take_adopted_fields()
-        self.assertIn(("ASSET0", "code", "int i = 42;"), adopted,
-                      "nothing told the model which field changed, so the "
-                      "next ordinary save writes the old value back")
 
 
 class AnAdoptedFieldReachesTheModel(unittest.TestCase):
@@ -399,24 +339,7 @@ class ASidebarSaveDoesNotStrandWhatItMerged(unittest.TestCase):
         self.assertTrue(self.model.save(),
                         "premise: the asset save was refused")
 
-    def test_a_peer_deletion_stays_deleted(self):
-        self.assertTrue(self.model.save(), "premise: the first save failed")
-        document = self._disk()
-        victim = str(document["assets"][2]["id"])
-        document["assets"] = [row for row in document["assets"]
-                              if str(row.get("id")) != victim]
-        self._write(document)
-
-        self._sidebar_save_then_asset_save()
-
-        self.assertNotIn(
-            victim, [str(row.get("id")) for row in self._disk()["assets"]],
-            "the peer's deletion was written back: the sidebar save merged "
-            "it, and the asset save rebuilt the list from a model that "
-            "still held the row")
-        self.assertNotIn(victim, [str(a.mat_id) for a in self.model.assets])
-
-    def test_a_deletion_elsewhere_leaves_the_grid_with_no_asset_save(self):
+    def test_a_peer_deletion_leaves_the_grid_and_stays_deleted(self):
         self.assertTrue(self.model.save(), "premise: the first save failed")
         document = self._disk()
         victim = str(document["assets"][2]["id"])
@@ -426,11 +349,17 @@ class ASidebarSaveDoesNotStrandWhatItMerged(unittest.TestCase):
 
         self.assertTrue(self.panel.category_model.save(),
                         "premise: the sidebar save was refused")
-
         self.assertNotIn(
             victim, [str(a.mat_id) for a in self.model.assets],
             "the sidebar's save took in the deletion, but the grid keeps "
             "the row until the next asset save or refresh")
+        self.assertTrue(self.model.save(),
+                        "premise: the asset save was refused")
+        self.assertNotIn(
+            victim, [str(row.get("id")) for row in self._disk()["assets"]],
+            "the peer's deletion was written back: the sidebar save merged "
+            "it, and the asset save rebuilt the list from a model that "
+            "still held the row")
 
     def test_a_peer_rename_is_not_written_back(self):
         self.assertTrue(self.model.save(), "premise: the first save failed")
@@ -489,17 +418,16 @@ class TheSidebarHearsWhatASaveMerged(unittest.TestCase):
             "the save merged the categories, but the sidebar's views were "
             "never told, so they still count the old rows")
 
-    def test_a_category_added_elsewhere_merged_by_a_sidebar_save(self):
-        self._merged_by(self.sidebar.save,
-                        lambda cats: cats.append("From Elsewhere"))
-
-    def test_a_category_added_elsewhere_merged_by_an_asset_save(self):
-        self._merged_by(self.panel.material_model.save,
-                        lambda cats: cats.append("From Elsewhere"))
-
-    def test_a_category_removed_elsewhere_merged_by_an_asset_save(self):
-        self._merged_by(self.panel.material_model.save,
-                        lambda cats: cats.remove("usds"))
+    def test_a_category_merged_by_either_save_reaches_the_views(self):
+        for why, save, change in (
+                ("added, by a sidebar save", self.sidebar.save,
+                 lambda cats: cats.append("From Elsewhere")),
+                ("added, by an asset save", self.panel.material_model.save,
+                 lambda cats: cats.append("Also Elsewhere")),
+                ("removed, by an asset save", self.panel.material_model.save,
+                 lambda cats: cats.remove("usds"))):
+            with self.subTest(why):
+                self._merged_by(save, change)
 
 
 class AColourTakenInIsPainted(unittest.TestCase):

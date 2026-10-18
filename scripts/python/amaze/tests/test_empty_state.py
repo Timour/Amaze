@@ -75,6 +75,13 @@ class TheDeclarationsAreWellFormed(unittest.TestCase):
                    for c in sections.SECTION_INDEX.values()]
         for table in tables:
             for blank, words in table.items():
+                self.assertLessEqual(words[0].count("%s"), 1, blank)
+                self.assertLessEqual(words[1].count("%s"), 1, blank)
+                self.assertEqual(
+                    bool(words[2]), bool(words[3]),
+                    "%s declares label %r against verb %r - a button that "
+                    "does nothing, or a verb never offered"
+                    % (blank, words[2], words[3]))
                 verb = words[3]
                 if not verb:
                     continue
@@ -84,26 +91,6 @@ class TheDeclarationsAreWellFormed(unittest.TestCase):
                     "its button would be hidden with no error"
                     % (blank, verb))
 
-    def test_a_button_label_and_a_verb_arrive_together(self):
-        """One without the other is a button that does nothing, or a working verb the user is never offered."""
-        tables = [empty_state.SHARED]
-        tables += [getattr(c, "EMPTY", {})
-                   for c in sections.SECTION_INDEX.values()]
-        for table in tables:
-            for blank, words in table.items():
-                self.assertEqual(
-                    bool(words[2]), bool(words[3]),
-                    "%s declares label %r against verb %r"
-                    % (blank, words[2], words[3]))
-
-    def test_no_headline_carries_more_than_one_placeholder(self):
-        for table in [empty_state.SHARED] + [
-                getattr(c, "EMPTY", {})
-                for c in sections.SECTION_INDEX.values()]:
-            for blank, words in table.items():
-                self.assertLessEqual(words[0].count("%s"), 1, blank)
-                self.assertLessEqual(words[1].count("%s"), 1, blank)
-
 
 class TheQuotedStringCannotRunAway(unittest.TestCase):
 
@@ -111,8 +98,6 @@ class TheQuotedStringCannotRunAway(unittest.TestCase):
         out = empty_state._elide("x" * 200)
         self.assertLessEqual(len(out), empty_state.MAX_QUOTED)
         self.assertTrue(out.endswith("…"))
-
-    def test_a_short_search_is_left_alone(self):
         self.assertEqual("metal", empty_state._elide("  metal  "))
 
 
@@ -121,17 +106,14 @@ class TheEngineSaysWhichBlank(unittest.TestCase):
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
 
-    def test_a_library_with_rows_in_it_says_nothing(self):
-        view = grid.visible_view(self.panel)
-        if view.model() is None or not view.model().rowCount():
-            self.skipTest("the fixture library has no rows to show")
-        self.assertEqual((None, ""), empty_state.verdict(self.panel))
-
     def test_a_search_that_matches_nothing_is_not_an_empty_library(self):
         """THE ONE THE ORIGINAL SKIPPED ITSELF ON - its premise was a `skipTest`, so a filter that failed to bite reported success, and it is an ASSERT here."""
         view = grid.visible_view(self.panel)
         if view.model() is None or not view.model().rowCount():
             self.skipTest("the fixture library has no rows to filter")
+        self.assertEqual((None, ""), empty_state.verdict(self.panel),
+                         "a library with rows in it asked for a blank")
+        before = view.model().rowCount()
         self.panel.line_filter.setText("zzzz-no-such-asset")
         self.panel.filter_thumb_view()
         self.assertEqual(0, view.model().rowCount(),
@@ -144,26 +126,7 @@ class TheEngineSaysWhichBlank(unittest.TestCase):
                          "gone")
         self.assertIn("zzzz", detail)
 
-
-class TheClearButtonActuallyRefilters(unittest.TestCase):
-    """DEFECT 3 - every reverted test hand-called `filter_thumb_view()` after clearing, the second push the real button never made, so all passed against a broken verb (devlog 480)."""
-
-    def setUp(self):
-        self.panel = test_support.fixture_panel(self)
-
-    def test_clearing_through_the_verb_alone_restores_the_rows(self):
-        view = grid.visible_view(self.panel)
-        if view.model() is None or not view.model().rowCount():
-            self.skipTest("the fixture library has no rows to filter")
-        before = view.model().rowCount()
-
-        self.panel.line_filter.setText("zzzz-no-such-asset")
-        self.panel.filter_thumb_view()
-        self.assertEqual(0, view.model().rowCount(), "premise: filtered")
-
-        # NOTHING ELSE IS CALLED. That is the whole test.
-        self.panel.clear_filter_box()
-
+        self.panel.clear_filter_box()    # NOTHING ELSE: the real button makes no second push
         self.assertEqual("", self.panel.line_filter.text())
         self.assertEqual(before, view.model().rowCount(),
                          "the box is empty and the grid is still "
@@ -197,6 +160,7 @@ class TheFavouritesBlankIsItsOwnBlank(unittest.TestCase):
 
     def test_no_favourites_at_all_is_its_own_blank(self):
         self._unstar_everything()
+        before = self.proxy.rowCount()
         self._favourites_only(True)
         self.addCleanup(self._favourites_only, False)
         self.assertEqual(0, self.proxy.rowCount(),
@@ -207,6 +171,13 @@ class TheFavouritesBlankIsItsOwnBlank(unittest.TestCase):
             empty_state.NO_FAVOURITES, blank,
             "an unstarred library behind the favourites star read as "
             "an empty category, quoting an empty name")
+
+        self.panel.clear_favourites_filter()    # NOTHING ELSE is called: the button's own verb
+        QtWidgets.QApplication.processEvents()
+        self.assertFalse(self.panel.cb_favsonly.isChecked())
+        self.assertEqual(before, self.proxy.rowCount(),
+                         "the star is off and the grid is still "
+                         "filtered - the verb did not refilter")
 
     def test_a_search_still_outranks_the_favourites_blank(self):
         self._unstar_everything()
@@ -253,21 +224,6 @@ class TheFavouritesBlankIsItsOwnBlank(unittest.TestCase):
                          "the loop flipped through stale proxy rows"
                          % left)
 
-    def test_the_show_all_verb_alone_restores_the_rows(self):
-        self._unstar_everything()
-        before = self.proxy.rowCount()
-        self._favourites_only(True)
-        self.assertEqual(0, self.proxy.rowCount(), "premise: emptied")
-
-        # NOTHING ELSE IS CALLED. That is the whole test.
-        self.panel.clear_favourites_filter()
-        QtWidgets.QApplication.processEvents()
-
-        self.assertFalse(self.panel.cb_favsonly.isChecked())
-        self.assertEqual(before, self.proxy.rowCount(),
-                         "the star is off and the grid is still "
-                         "filtered - the verb did not refilter")
-
 
 class TheButtonCanBeClicked(unittest.TestCase):
     """DEFECT 2 - a re-set `WA_TransparentForMouseEvents` is caught only by the FIRST of these three, `childAt` and a directly-sent event both bypassing the parent's transparency, so each guards a different failure. ▸r/transparent-for-mouse (devlog 480)"""
@@ -286,28 +242,18 @@ class TheButtonCanBeClicked(unittest.TestCase):
                 "%s refuses mouse events, so nothing inside it can be "
                 "clicked" % (widget.objectName() or type(widget).__name__))
 
-    def test_the_button_is_what_a_click_at_its_centre_finds(self):
-        """A HIT TEST, not a signal emission."""
         self.page.say(self.panel, empty_state.NO_MATCH, "brick")
         self.page.resize(500, 400)
         self.page.layout().activate()
         button = self.page.button()
         self.assertTrue(button.isVisibleTo(self.page),
                         "premise: this blank offers a button")
-
-        centre = button.geometry().center()
+        centre = button.geometry().center()    # a HIT TEST, not a signal emission
         self.assertIs(button, self.page.childAt(centre),
                       "a click in the middle of the button lands on "
                       "something else")
 
-    def test_pressing_and_releasing_it_runs_the_verb(self):
-        """Real QMouseEvents through the device-carrying overload (the short one is deprecated in Qt 6 and prints per run), so nothing about delivery is assumed. ▸r/transparent-for-mouse"""
-        self.page.say(self.panel, empty_state.NO_MATCH, "brick")
-        self.page.resize(500, 400)
-        self.page.layout().activate()
-        button = self.page.button()
-
-        fired = []
+        fired = []    # real QMouseEvents, device-carrying overload ▸r/transparent-for-mouse
         button.clicked.connect(lambda *_: fired.append(True))
         middle = QtCore.QPointF(button.rect().center())
         pointer = QtGui.QPointingDevice.primaryPointingDevice()
@@ -353,8 +299,6 @@ class TheTextWraps(unittest.TestCase):
                 self.assertGreaterEqual(
                     label.height(), label.heightForWidth(label.width()),
                     "the sentence is shorter than its wrapped text needs")
-
-    def test_the_label_is_told_to_wrap(self):
         self.assertTrue(self.page._text.wordWrap())
         self.assertTrue(self.page._head.wordWrap())
 
@@ -369,22 +313,16 @@ class OnlyOneFaceIsUp(unittest.TestCase):
 
     def test_the_blank_hides_both_views(self):
         empty_state.page(self.panel)
-        grid.apply_grid_face(self.panel, True)
-        self.assertEqual(["blank"], self._shown())
-
-    def test_clearing_the_blank_restores_the_view_mode(self):
-        empty_state.page(self.panel)
         self.panel._table_mode = False
         grid.apply_grid_face(self.panel, True)
-        grid.apply_grid_face(self.panel, False)
-        self.assertEqual(["list"], self._shown())
-
-    def test_a_view_mode_change_does_not_dismiss_a_blank(self):
-        """`show_table` runs on a view-mode switch and must not be the thing that decides a blank is over - only the model is."""
-        empty_state.page(self.panel)
-        grid.apply_grid_face(self.panel, True)
-        grid.show_table(self.panel, True)
         self.assertEqual(["blank"], self._shown())
+        grid.apply_grid_face(self.panel, False)
+        self.assertEqual(["list"], self._shown(),
+                         "clearing the blank did not restore the view mode")
+        grid.apply_grid_face(self.panel, True)
+        grid.show_table(self.panel, True)    # a view-mode switch: only the model ends a blank
+        self.assertEqual(["blank"], self._shown(),
+                         "a view-mode change dismissed the blank")
 
 
 class TheQuoteRidesTheFirstRunBlankOnly(unittest.TestCase):
@@ -410,9 +348,6 @@ class TheQuoteRidesTheFirstRunBlankOnly(unittest.TestCase):
             self.assertEqual(("", ""),
                              empty_state.quote_for(panel, blank),
                              "%s drew a quotation" % blank)
-
-    def test_the_page_clears_it_between_blanks(self):
-        panel = test_support.fixture_panel(self)
         page = empty_state.page(panel)
         page.say(panel, empty_state.NOTHING_YET, "")
         page.say(panel, empty_state.NO_MATCH, "brick")
@@ -593,10 +528,6 @@ class AnEmptyLocationIsThePlainGrid(unittest.TestCase):
         self.assertEqual(1, len(faces(self.panel)),
                          "not exactly one grid view is up: %s" % faces(self.panel))
 
-    def test_an_empty_location_shows_the_grid_and_no_words(self):
-        self._stand(self.folders.row_of(self._register_empty()))
-        self._assert_plain_grid()
-
     def test_all_over_locations_that_hold_nothing_shows_the_grid(self):
         self._register_empty()
         self._drop_fixture()
@@ -606,6 +537,7 @@ class AnEmptyLocationIsThePlainGrid(unittest.TestCase):
     def test_the_favourites_star_over_an_empty_location_shows_the_grid(self):
         """An empty location has nothing a star could hide, so its grid stays up."""
         self._stand(self.folders.row_of(self._register_empty()))
+        self._assert_plain_grid()
         self.panel.cb_favsonly.setChecked(True)
         self.addCleanup(self.panel.cb_favsonly.setChecked, False)
         QtWidgets.QApplication.processEvents()
@@ -648,8 +580,6 @@ class TheUnreachableBlankPointsAtSomethingReal(unittest.TestCase):
         self.assertEqual("", empty_state.unreadable_folder(self.panel),
                          "a folder that is not in the sidebar at all "
                          "was still blamed for the empty grid")
-
-    def test_a_registered_one_is(self):
         folders = self.panel.file_folders_model
         registered = folders._folders()
         if not registered:

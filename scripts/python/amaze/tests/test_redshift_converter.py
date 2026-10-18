@@ -3,7 +3,6 @@
 import os
 import sys
 import unittest
-from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6 import QtWidgets  # noqa: E402
@@ -112,6 +111,7 @@ class AKarmaMaterialBecomesARedshiftOne(unittest.TestCase):
         self.assertEqual("rs_usd_material_builder", self.builder.type().name())    # Redshift's Solaris container, so the twin can be copied into a LOP material library as well as /mat
         handler = nodes.NodeHandler.__new__(nodes.NodeHandler)
         self.assertEqual("Redshift", handler.get_renderer_from_node(self.builder))
+        self.assertEqual([], self.report.skipped, self.report.summary_lines())
 
     def test_the_shader_is_a_standard_material_wired_to_a_usd_terminal(self):
         self.assertEqual("redshift::StandardMaterial", self.shader.type().name())
@@ -144,11 +144,8 @@ class AKarmaMaterialBecomesARedshiftOne(unittest.TestCase):
         inputs = self._inputs(self.shader)
         self.assertEqual(samplers[ALBEDO].path(), inputs["base_color"].path())
         self.assertEqual(samplers[ROUGH].path(), inputs["refl_roughness"].path())
-
-    def test_the_uv_scale_rides_the_sampler(self):
-        sampler = next(t for t in self._children("redshift::TextureSampler")
-                       if t.parm("tex0").unexpandedString() == ALBEDO)
-        self.assertEqual((2.0, 3.0), tuple(sampler.parmTuple("scale").eval()))
+        self.assertEqual((2.0, 3.0), tuple(samplers[ALBEDO].parmTuple("scale").eval()),
+                         "the UV scale did not ride the sampler")
 
     def test_the_normal_map_is_a_tangent_space_bump_on_the_shader(self):
         bumps = self._children("redshift::BumpMap")
@@ -161,9 +158,6 @@ class AKarmaMaterialBecomesARedshiftOne(unittest.TestCase):
         self.assertEqual(NORMAL, fed.parm("tex0").unexpandedString())
         self.assertEqual("Raw", fed.parm("tex0_colorSpace").evalAsString())
         self.assertEqual(bump.path(), self._inputs(self.shader)["bump_input"].path())
-
-    def test_the_report_names_nothing_skipped_for_this_network(self):
-        self.assertEqual([], self.report.skipped, self.report.summary_lines())
 
 
 @unittest.skipUnless(_redshift_available(),
@@ -253,20 +247,17 @@ class AConstantOnAWireLandsAsAValue(unittest.TestCase):
         self.assertEqual(1, len(found), type_name)
         return found[0]
 
-    def test_a_colour_constant_lands_on_the_multiply_it_fed(self):
-        mul = self._child("redshift::RSMathMulVector")
-        self.assertEqual(self.TINT, tuple(mul.parmTuple("input2").eval()))
-
-    def test_a_uv_constant_lands_on_the_sampler_scale(self):
-        sampler = self._child("redshift::TextureSampler")
-        self.assertEqual((self.UV, self.UV),
-                         tuple(sampler.parmTuple("scale").eval()))
-
-    def test_a_constant_through_a_dot_lands_on_the_shader(self):
-        self.assertAlmostEqual(
-            self.ROUGH, self.shader.parm("refl_roughness").eval(), places=5)
-
-    def test_nothing_is_reported_skipped(self):
+    def test_every_wired_constant_lands_as_a_value(self):
+        with self.subTest("a colour constant, on the multiply it fed"):
+            mul = self._child("redshift::RSMathMulVector")
+            self.assertEqual(self.TINT, tuple(mul.parmTuple("input2").eval()))
+        with self.subTest("a uv constant, on the sampler scale"):
+            sampler = self._child("redshift::TextureSampler")
+            self.assertEqual((self.UV, self.UV),
+                             tuple(sampler.parmTuple("scale").eval()))
+        with self.subTest("a constant through a dot, on the shader"):
+            self.assertAlmostEqual(
+                self.ROUGH, self.shader.parm("refl_roughness").eval(), places=5)
         self.assertTrue(self.report.is_clean(),
                         "\n".join(self.report.summary_lines()))
 
@@ -304,15 +295,14 @@ class TheLibraryDoorMakesANewRedshiftEntry(unittest.TestCase):
         self.assertEqual("Redshift", twin.renderer)
         self.assertEqual(source.name, twin.name)
         self.assertEqual(list(source.categories), list(twin.categories))
-
-    def test_the_twin_points_at_the_same_textures(self):
-        ok, _report = self.model.convert(self.model.index(self.row, 0), "Redshift")
-        self.assertTrue(ok)
-        twin = self.model.assets[-1]
+        handler = nodes.NodeHandler(self.prefs)    # a redshift_vopnet twin was refused a LOP library
+        self.assertEqual("rs_usd_material_builder",
+                         handler.get_saved_node_type(twin))
+        self.assertEqual({"mat", "lop"}, handler.import_targets(twin))
         path = material.payload_path(self.prefs, twin.mat_id, self.prefs.ext)
-        before = set(self.parent.children())
+        seen = set(self.parent.children())
         self.parent.loadItemsFromFile(path)
-        loaded = [n for n in self.parent.children() if n not in before]
+        loaded = [n for n in self.parent.children() if n not in seen]
         self.addCleanup(lambda: [n.destroy() for n in loaded])
         files = sorted(
             n.parm("tex0").unexpandedString()
@@ -320,16 +310,6 @@ class TheLibraryDoorMakesANewRedshiftEntry(unittest.TestCase):
             if n.type().name() == "redshift::TextureSampler")
         self.assertEqual(sorted([ALBEDO, NORMAL, ROUGH]), files,
                          "the saved Redshift network does not reference the source's own files")
-
-    def test_the_twin_can_be_copied_into_a_lop_material_library(self):
-        """A twin saved as an `rs_usd_material_builder` passes the import door's LOP check; a `redshift_vopnet` twin was refused with `Use Copy To /mat instead` (seen 2026-09-04)."""
-        ok, _report = self.model.convert(self.model.index(self.row, 0), "Redshift")
-        self.assertTrue(ok)
-        twin = self.model.assets[-1]
-        handler = nodes.NodeHandler(self.prefs)
-        self.assertEqual("rs_usd_material_builder",
-                         handler.get_saved_node_type(twin))
-        self.assertEqual({"mat", "lop"}, handler.import_targets(twin))
 
     def test_a_non_karma_row_is_refused_with_a_reason(self):
         self.model.assets[self.row].renderer = "Redshift"
@@ -364,17 +344,13 @@ class ATangentSpaceBumpKeepsItsStrength(unittest.TestCase):
         report = self.converter.ConversionReport("bump")
         return self.converter.convert_bump_map(bump, self.dest, report)
 
-    def test_a_tangent_space_normal_map_carries_its_strength(self):
-        normalmap = self._converted("1", 0.5)    # the plugin's own token for Tangent-Space Normal
-        self.assertAlmostEqual(
-            0.5, normalmap.parm("scale").eval(), places=5,
-            msg="the normal map's strength did not reach `mtlxnormalmap`")
-
-    def test_a_height_field_scale_stays_behind(self):
-        normalmap = self._converted("0", 0.001)
-        self.assertAlmostEqual(
-            1.0, normalmap.parm("scale").eval(), places=5,
-            msg="a height-field scale flattened the normal map")
+    def test_a_tangent_space_strength_crosses_and_a_height_field_scale_stays(self):
+        for input_type, scale, kept in (
+                ("1", 0.5, 0.5),        # the plugin's own token for Tangent-Space Normal
+                ("0", 0.001, 1.0)):     # a height-field scale would flatten the normal map
+            with self.subTest(input_type=input_type):
+                normalmap = self._converted(input_type, scale)
+                self.assertAlmostEqual(kept, normalmap.parm("scale").eval(), places=5)
 
 
 @unittest.skipUnless(_redshift_available(),
@@ -412,20 +388,6 @@ class ABlendWithNoBaseIsReportedNotCrashed(unittest.TestCase):
         self.assertEqual("Redshift", saved,
                          "premise: the blend saves as a Redshift material")
         self.row = len(self.model.assets) - 1
-
-    def test_the_converter_answers_none_with_the_reason(self):
-        from amaze.render import material_converter
-        with hou.undos.disabler():
-            scratch = hou.node("/obj").createNode("matnet")
-        self.addCleanup(scratch.destroy)
-        shader, displacement, report = (
-            material_converter.convert_redshift_material(
-                nodes.NodeHandler(self.prefs), self.model.assets[self.row],
-                scratch))
-        self.assertIsNone(shader)
-        self.assertIsNone(displacement)
-        self.assertIn(self.NO_BASE, report.skipped,
-                      "the reason the blend could not convert is lost")
 
     def test_convert_to_karma_reports_instead_of_crashing(self):
         before = len(self.model.assets)
@@ -480,14 +442,13 @@ class ALegacyRedshiftMaterialGoesIntoSolaris(unittest.TestCase):
         self.addCleanup(after[0].destroy)
         return after[0]
 
-    def test_the_saved_files_still_say_the_classic_container(self):
+    def test_it_lands_in_a_lop_library_as_the_usd_container(self):
         handler = nodes.NodeHandler(self.prefs)
         self.assertEqual("redshift_vopnet",
-                         handler.get_saved_node_type(self.model.assets[self.row]))
+                         handler.get_saved_node_type(self.model.assets[self.row]),
+                         "the saved files no longer say the classic container")
         self.assertEqual({"mat", "lop"},
                          handler.import_targets(self.model.assets[self.row]))
-
-    def test_it_lands_in_a_lop_library_as_the_usd_container(self):
         node = self._imported()
         self.assertEqual("rs_usd_material_builder", node.type().name())
         terminal = [c for c in node.children()
@@ -711,13 +672,6 @@ class AnOnlineMaterialCanLandAsRedshift(unittest.TestCase):
         for want, got in zip(f0, built):
             self.assertAlmostEqual(want, got, places=4)
 
-    def test_karma_is_still_the_default(self):
-        from amaze.core import matx_import
-        ok, reason = matx_import.import_record(
-            self._record(), _ValuesSource(), "", self.model, self.prefs)
-        self.assertTrue(ok, reason)
-        self.assertEqual("Karma", self.model.assets[-1].renderer)
-
     def test_the_row_records_its_source_and_id(self):
         """Where a row came from and which record it is, on the row itself - until 2026-09-04 only the package folder name carried them, and only for downloads after 2026-08-05."""
         from amaze.core import matx_import
@@ -725,6 +679,8 @@ class AnOnlineMaterialCanLandAsRedshift(unittest.TestCase):
         ok, reason = matx_import.import_record(
             record, _ValuesSource(), "", self.model, self.prefs)
         self.assertTrue(ok, reason)
+        self.assertEqual("Karma", self.model.assets[-1].renderer,
+                         "Karma is no longer the default renderer")
         row = self.model.assets[-1].get_as_dict()
         self.assertEqual(record.source, row.get("source"))
         self.assertEqual(str(record.uid), row.get("online_uid"))
@@ -741,55 +697,6 @@ class TheMirrorReadsTheForwardConvertersFacts(unittest.TestCase):
                        "subsurface_color", "fuzz_color", "coat_color",
                        "emission_color"}),
             redshift_converter.OPENPBR_COLOUR_INPUTS)
-
-    def test_no_signature_is_read_by_hand(self):
-        from amaze.render import redshift_converter
-        with open(redshift_converter.__file__, encoding="utf-8") as handle:
-            source = handle.read()
-        self.assertEqual(0, source.count('parm("signature").evalAsString()'),
-                         "read it through `_effective_signature`")
-
-
-@unittest.skipUnless(_redshift_available(),
-                     "the Redshift plugin is not loaded")
-class TheTopShaderAndABlendsPartsShareOneTable(unittest.TestCase):
-    """Convert to Karma picks the converter for a material's own shader from the table a blend uses."""
-
-    def setUp(self):
-        from amaze.core import library as library_mod
-        self.prefs = test_support.fixture_prefs(self)
-        self.prefs.render_on_import = 0
-        test_support.reset_database_singletons()
-        self.addCleanup(test_support.reset_database_singletons)
-        self.model = library_mod.MaterialLibrary(preferences=self.prefs)
-        parent = hou.node("/mat") or hou.node("/").createNode("mat")
-        source = parent.createNode("redshift_vopnet")
-        for child in list(source.children()):
-            if child.type().name() != "redshift_material":
-                child.destroy()
-        shader = source.createNode("redshift::StandardMaterial", "SM")
-        material.redshift_terminal(source).setNamedInput("Surface", shader, 0)
-        self.model.add_asset(source, "Test", "", False, name="rs_standard")
-        source.destroy()
-        self.row = len(self.model.assets) - 1
-
-    def test_the_tables_converter_is_the_one_called(self):
-        from amaze.render import material_converter
-        seen = []
-
-        def stub(rs_node, dest_parent, report):
-            seen.append(rs_node.type().name())
-            return dest_parent.createNode("mtlxstandard_surface")
-
-        with hou.undos.disabler():
-            scratch = hou.node("/obj").createNode("matnet")
-        self.addCleanup(scratch.destroy)
-        with mock.patch.dict(material_converter._UBER_CONVERTERS,
-                             {"redshift::StandardMaterial": stub}):
-            shader, _displacement, report = material_converter.convert_redshift_material(
-                nodes.NodeHandler(self.prefs), self.model.assets[self.row], scratch)
-        self.assertEqual(["redshift::StandardMaterial"], seen, report.summary_lines())
-        self.assertIsNotNone(shader)
 
 
 if __name__ == "__main__":

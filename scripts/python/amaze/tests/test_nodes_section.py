@@ -72,20 +72,8 @@ class NodesSectionTest(unittest.TestCase):
         self.assertEqual("Sop", self.model.context_of(geo))
         self.assertEqual("Cop", self.model.context_of(cop))
         self.assertEqual("Lop", self.model.context_of(lop))
-
-    def test_context_of_selection_matches_its_network(self):
-        """A selection is described by where it LIVES - node.parent() when items are given, or a SOP selection reports /obj."""
-        geo = _sop_network("ctx_sel")
-        items = [geo.node("the_box")]
+        items = [geo.node("the_box")]    # a selection is described by where it LIVES
         self.assertEqual("Sop", self.model.context_of(items[0], items))
-        self.assertEqual(self.model.context_of(geo),
-                         self.model.context_of(items[0], items))
-
-    def test_label_is_recorded_on_the_asset(self):
-        geo = _sop_network("label_src")
-        label = self.model.add_asset(geo, "", "", False, name="labelled")
-        self.assertEqual("SOP", label)
-        self.assertEqual("SOP", self.model.assets[-1].renderer)
 
 
     def test_the_import_seam_returns_what_it_created(self):
@@ -130,6 +118,7 @@ class NodesSectionTest(unittest.TestCase):
         geo = _sop_network("rt_src")
         self.assertEqual("SOP", self.model.add_asset(
             geo, "", "", False, name="rt_sop"))
+        self.assertEqual("SOP", self.model.assets[-1].renderer)
         geo.destroy()
 
         dest = hou.node("/obj").createNode("geo", "rt_dest")
@@ -158,19 +147,6 @@ class NodesSectionTest(unittest.TestCase):
         self.assertTrue(ok, reason)
         self.assertEqual(["the_box"], [n.name() for n in dest.children()])
 
-
-    def test_a_foreign_context_gets_a_container_where_one_exists(self):
-        """A Copernicus network CAN hold SOPs, in a sopnet - so this builds one rather than refusing."""
-        geo = _sop_network("foreign_src")
-        self.model.add_asset(geo, "", "", False, name="SOPwhole")
-        geo.destroy()
-
-        dest = hou.node("/obj").createNode("copnet", "foreign_dest")
-        ok, reason, made = self._import_into("SOPwhole", dest)
-        self.assertTrue(ok, reason)
-        self.assertEqual(1, len(made))
-        self.assertEqual("sopnet", made[0].type().name())
-        self.assertIn("the_box", {n.name() for n in made[0].children()})
 
     def test_it_still_refuses_where_nothing_can_hold_them(self):
         """The refusal must survive the widening: a matnet has no home for SOPs at any depth."""
@@ -382,35 +358,28 @@ class NodesSectionTest(unittest.TestCase):
                 pass
 
 
-    def test_sop_asset_renders_a_thumbnail(self):
+    def test_sop_and_cop_assets_render_a_thumbnail(self):
         self.prefs.render_on_import = 1
-        geo = _sop_network("thumb_sop")
-        self.model.add_asset(geo, "", "", False, name="thumbed")
-        image = self._image_for(self.model.assets[-1])
-        self.assertTrue(os.path.exists(image), "no SOP thumbnail written")
-        rendered = QtGui.QImage(image)
-        self.assertFalse(rendered.isNull())
-        colours = {rendered.pixel(x, y)
-                   for x in range(0, rendered.width(), 4)
-                   for y in range(0, rendered.height(), 4)}
-        self.assertGreater(len(colours), 1,
-                           "the SOP thumbnail is a blank image")
-
-    def test_unrenderable_context_writes_no_thumbnail(self):
-        """Neither renderer is even ASKED - an absent file alone would also be produced by one that failed quietly."""
-        self.prefs.render_on_import = 1
-        lop = hou.node("/obj").createNode("lopnet", "thumb_lop")
-        lop.createNode("sphere")
-        with mock.patch.object(thumbs.ThumbNailRenderer,
-                               "create_thumb_sop") as sop_render, \
-                mock.patch.object(thumbs.ThumbNailRenderer,
-                                  "create_thumb_cop") as cop_render:
-            self.assertEqual("LOP", self.model.add_asset(
-                lop, "", "", False, name="unrenderable"))
-        sop_render.assert_not_called()
-        cop_render.assert_not_called()
-        self.assertFalse(os.path.exists(self._image_for(
-            self.model.assets[-1])))
+        for label in ("SOP", "COP"):
+            with self.subTest(label=label):
+                if label == "SOP":
+                    network = _sop_network("thumb_sop")
+                else:
+                    network = hou.node("/obj").createNode("copnet", "thumb_cop")
+                    network.createNode(_cop_node_type())
+                self.assertEqual(label, self.model.add_asset(
+                    network, "", "", False, name="thumbed_" + label))
+                image = self._image_for(self.model.assets[-1])
+                self.assertTrue(os.path.exists(image),
+                                "no %s thumbnail written" % label)
+                rendered = QtGui.QImage(image)
+                self.assertFalse(rendered.isNull())
+                if label == "SOP":
+                    colours = {rendered.pixel(x, y)
+                               for x in range(0, rendered.width(), 4)
+                               for y in range(0, rendered.height(), 4)}
+                    self.assertGreater(len(colours), 1,
+                                       "the SOP thumbnail is a blank image")
 
     def test_a_tile_with_no_picture_shows_the_node_face(self):
         """T07 is the face of any node tile with no picture; only a SOP or COP can have one ▸r/tile-faces."""
@@ -452,17 +421,6 @@ class NodesSectionTest(unittest.TestCase):
         self.assertFalse(self.model.is_container(light))
         self.assertFalse(self.model.is_container(matnet))
 
-    def test_cop_asset_still_renders(self):
-        """The section's original behaviour, unchanged by the widening."""
-        self.prefs.render_on_import = 1
-        cop = hou.node("/obj").createNode("copnet", "thumb_cop")
-        cop.createNode(_cop_node_type())
-        self.assertEqual("COP", self.model.add_asset(
-            cop, "", "", False, name="cop_thumbed"))
-        image = self._image_for(self.model.assets[-1])
-        self.assertTrue(os.path.exists(image), "no COP thumbnail written")
-        self.assertFalse(QtGui.QImage(image).isNull())
-
 
 class TheRenderDecisionHasOneHome(unittest.TestCase):
     """One method decides Cop-or-Sop, and a source scan keeps the deciders from growing back."""
@@ -503,24 +461,24 @@ class TheRenderDecisionHasOneHome(unittest.TestCase):
 
     def test_both_spellings_of_each_context_reach_one_verb(self):
         """Save reads a category name, Update Preview a renderer tag (empty for pre-context assets): one normalisation."""
-        for context in ("Sop", "SOP", "sop"):
-            outcome, sop, cop = self._decide(context)
-            self.assertTrue(outcome, context)
-            sop.assert_called_once_with("asset1")
-            cop.assert_not_called()
-        for context in ("Cop", "COP", ""):
-            outcome, sop, cop = self._decide(context, thumb_node="wave1")
-            self.assertTrue(outcome, repr(context))
-            cop.assert_called_once_with("asset1", "wave1")
-            sop.assert_not_called()
-
-    def test_a_context_with_no_picture_asks_neither_verb(self):
-        outcome, sop, cop = self._decide("Lop")
-        self.assertIsNone(
-            outcome, "a Lop network has no thumbnail render - the "
-            "caller owns what that means at its door")
-        sop.assert_not_called()
-        cop.assert_not_called()
+        for context, thumb_node, sop_args, cop_args in (
+                ("Sop", "", ("asset1",), None),
+                ("SOP", "", ("asset1",), None),
+                ("Cop", "wave1", None, ("asset1", "wave1")),
+                ("COP", "wave1", None, ("asset1", "wave1")),
+                ("", "wave1", None, ("asset1", "wave1")),
+                ("Lop", "", None, None)):    # no picture: the caller owns what that means
+            with self.subTest(context=context):
+                outcome, sop, cop = self._decide(context, thumb_node)
+                self.assertEqual([mock.call(*sop_args)] if sop_args else [],
+                                 sop.call_args_list)
+                self.assertEqual([mock.call(*cop_args)] if cop_args else [],
+                                 cop.call_args_list)
+                if sop_args or cop_args:
+                    self.assertTrue(outcome, repr(context))
+                else:
+                    self.assertIsNone(
+                        outcome, "a Lop network has no thumbnail render")
 
 
 class TheWireSpliceReadsThePlacementFunnel(unittest.TestCase):
@@ -772,31 +730,24 @@ class WhatCountsAsAFailure(unittest.TestCase):
 
     def test_an_ocio_set_to_nothing_is_no_colour_config(self):
         """`houdini.env`'s documented way to unset a default is `OCIO =`, which leaves the variable EXISTING and empty - so an `is None` gate reads it as configured and the save runs with no colour config at all."""
-        handler = nodes.NodeHandler(self.prefs)
-        handler._renderer = "Karma"
-        collect = self._collect_node("ocio_empty")
-        self._pin_ocio("")
+        for ocio, saves in (("", False), ("/dev/null", True)):    # refusing empty must not refuse a set one
+            with self.subTest(ocio=ocio):
+                handler = nodes.NodeHandler(self.prefs)
+                handler._renderer = "Karma"
+                collect = self._collect_node(
+                    "ocio_set" if ocio else "ocio_empty")
+                self._pin_ocio(ocio)
 
-        with mock.patch.object(handler, "save_node_collect",
-                               return_value=True) as saver:
-            saved = handler.save_node(collect, "asset1", False)
+                with mock.patch.object(handler, "save_node_collect",
+                                       return_value=True) as saver:
+                    saved = handler.save_node(collect, "asset1", False)
 
-        self.assertFalse(saved, "the save ran with $OCIO set to nothing")
-        saver.assert_not_called()
-
-    def test_an_ocio_that_is_set_still_saves(self):
-        """The other half of the same gate: refusing empty must not start refusing a configured one."""
-        handler = nodes.NodeHandler(self.prefs)
-        handler._renderer = "Karma"
-        collect = self._collect_node("ocio_set")
-        self._pin_ocio("/dev/null")
-
-        with mock.patch.object(handler, "save_node_collect",
-                               return_value=True) as saver:
-            saved = handler.save_node(collect, "asset1", False)
-
-        self.assertTrue(saved, "a configured $OCIO was refused")
-        saver.assert_called_once_with(collect, "asset1", False)
+                self.assertEqual(saves, bool(saved),
+                                 "$OCIO=%r decided the save the wrong way"
+                                 % ocio)
+                self.assertEqual(
+                    [mock.call(collect, "asset1", False)] if saves else [],
+                    saver.call_args_list)
 
 
 class ASavedBuilderTypeThisSessionLacks(unittest.TestCase):

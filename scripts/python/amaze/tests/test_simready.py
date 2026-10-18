@@ -157,19 +157,14 @@ class SimReadyListingTest(unittest.TestCase):
                          "a split archive's parts must run .z01 first, the .zip last")
         self.assertEqual("Materials/Stone/Volga_Blue.usda", volga.payload["member"])
 
-    def test_no_range_is_counted_from_the_end(self):
-        """GitHub's release host answers 501 to a suffix range. ▸r/simready-release"""
-        from amaze.core import matx_sources
-        release = _release(self)
-        matx_sources.SimReadySource().list_materials(limit=100)
-        self.assertTrue(release.calls, "premise: the listing read nothing")
-        self.assertEqual([], [c for c in release.calls if c[1].startswith("bytes=-")])
-
     def test_a_listing_reads_two_ranges_an_archive_and_a_relisting_none(self):
+        """None counted from the end: GitHub's release host answers 501. ▸r/simready-release"""
         from amaze.core import matx_sources
         release = _release(self)
         source = matx_sources.SimReadySource()
         source.list_materials(limit=100)
+        self.assertTrue(release.calls, "premise: the listing read nothing")
+        self.assertEqual([], [c for c in release.calls if c[1].startswith("bytes=-")])
         self.assertLessEqual(len(release.calls), 2 * 3,
                              "the tail and the directory, per archive: %s" % release.calls)
         release.calls.clear()
@@ -218,33 +213,22 @@ class SimReadyListingTest(unittest.TestCase):
 class SplitArchiveTest(unittest.TestCase):
     """`.z01` + `.zip` read as one zip, a member across the split included. ▸r/simready-release"""
 
-    def test_every_member_reads_back_whole(self):
-        from amaze.core import matx_sources
-        blob, (first, last) = _stone_parts()
-        release = _Release({"Stone.z01": first, "Stone.zip": last})
-        release.patched(self)
-        bundle, remote = matx_sources.open_remote_zip(
-            [(BASE + "Stone.z01", len(first)), (BASE + "Stone.zip", len(last))])
-        with zipfile.ZipFile(io.BytesIO(blob)) as original:
-            names = [n for n in original.namelist() if not n.endswith("/")]
-            self.assertTrue(any(i.compress_size == BIG for i in original.infolist()))
-            for name in names:
-                self.assertEqual(original.read(name),
-                                 matx_sources.read_member(bundle, remote, name),
-                                 "%s did not survive the split" % name)
-
-    def test_a_split_at_a_member_boundary_passes_the_overlap_guard(self):
-        """3.12+ zipfile checks entry ends against offsets it took before the parts were aimed."""
+    def test_every_member_reads_back_whole_wherever_the_split_lands(self):
+        """At a boundary: 3.12+ zipfile checks entry ends against offsets taken before aiming."""
         from amaze.core import matx_sources
         blob = _archive("Stone", ["Volga_Blue", "Ardesia_Grigia_Polished"])
-        first, last = _split(blob, _after_big(blob))
-        _Release({"Stone.z01": first, "Stone.zip": last}).patched(self)
-        bundle, remote = matx_sources.open_remote_zip(
-            [(BASE + "Stone.z01", len(first)), (BASE + "Stone.zip", len(last))])
-        with zipfile.ZipFile(io.BytesIO(blob)) as original:
-            for name in [n for n in original.namelist() if not n.endswith("/")]:
-                self.assertEqual(original.read(name),
-                                 matx_sources.read_member(bundle, remote, name), name)
+        for where, at in (("inside a member", _inside_big(blob, "Stone")),
+                          ("at a member boundary", _after_big(blob))):
+            with self.subTest(where):
+                first, last = _split(blob, at)
+                _Release({"Stone.z01": first, "Stone.zip": last}).patched(self)
+                bundle, remote = matx_sources.open_remote_zip(
+                    [(BASE + "Stone.z01", len(first)), (BASE + "Stone.zip", len(last))])
+                with zipfile.ZipFile(io.BytesIO(blob)) as original:
+                    for name in [n for n in original.namelist() if not n.endswith("/")]:
+                        self.assertEqual(original.read(name),
+                                         matx_sources.read_member(bundle, remote, name),
+                                         "%s did not survive the split" % name)
 
     def test_a_directory_outside_the_last_part_is_refused(self):
         from amaze.core import matx_sources
@@ -280,8 +264,8 @@ class SimReadyFetchTest(unittest.TestCase):
         return sorted(os.path.relpath(os.path.join(root, f), dest).replace(os.sep, "/")
                       for root, _dirs, files in os.walk(dest) for f in files)
 
-    def test_the_package_lands_as_released(self):
-        _record, dest, got, _seen, _release_ = self._fetch("Stone/Volga_Blue")
+    def test_the_package_lands_as_released_and_progress_runs_forward(self):
+        _record, dest, got, seen, _release_ = self._fetch("Stone/Volga_Blue")
         self.assertEqual(
             ["Materials/Stone/Volga_Blue.mtlx", "Materials/Stone/Volga_Blue.usda",
              "Materials/Stone/textures/Volga_Blue_diffuse.jpg",
@@ -290,9 +274,6 @@ class SimReadyFetchTest(unittest.TestCase):
              "open_pbr_uber_base_class.usda"], self._files(dest))
         self.assertEqual(os.path.join(dest, "Materials", "Stone", "Volga_Blue.mtlx"),
                          got["mtlx"])
-
-    def test_progress_runs_forward_to_the_end(self):
-        _record, _dest, _got, seen, _release_ = self._fetch("Stone/Volga_Blue")
         self.assertGreater(len(seen), 2, "premise: the big texture streams in chunks")
         self.assertEqual(sorted(seen), seen, "the bar stepped backwards")
         self.assertEqual(1.0, seen[-1])
@@ -305,14 +286,11 @@ class SimReadyFetchTest(unittest.TestCase):
         self.assertEqual(150, shares[-1], "the last byte must land on the members done")
         self.assertLessEqual(max(shares), 150, "the bar ran into the next member's share")
 
-    def test_each_texture_is_one_request(self):
-        _record, _dest, _got, _seen, release = self._fetch("Skin/Skin_Dark")
+    def test_each_texture_is_one_request_and_the_labels_become_tags(self):
+        record, _dest, _got, _seen, release = self._fetch("Skin/Skin_Dark")
         skin = [c for c in release.calls if c[0] == "Skin.zip"]
         self.assertLessEqual(len(skin), 2 + 2 + 3,
                              "tail, directory, two documents and three textures: %s" % skin)
-
-    def test_the_materials_labels_become_its_tags(self):
-        record, _dest, _got, _seen, _release_ = self._fetch("Skin/Skin_Dark")
         self.assertEqual(["skin", "human", "body", "organic", "character", "dark"],
                          record.tags)
 
@@ -378,14 +356,11 @@ class NestedDocumentRepairTest(unittest.TestCase):
         with open(document, encoding="utf-8") as handle:
             return re.search(r'value="([^"]+)"', handle.read()).group(1)
 
-    def test_a_working_reference_is_left_alone(self):
+    def test_a_working_reference_is_left_alone_and_a_repair_is_relative(self):
         from amaze.core import matx_sources
         package, document = self._package("a.jpg", "textures/a.jpg")
         self.assertEqual([], matx_sources.repair_mtlx_references(document, package))
         self.assertEqual("textures/a.jpg", self._value(document))
-
-    def test_a_repair_is_written_relative_to_the_document(self):
-        from amaze.core import matx_sources
         package, document = self._package("a.png", "textures/a.jpg")
         matx_sources.repair_mtlx_references(document, package)
         self.assertEqual("textures/a.png", self._value(document),
@@ -449,7 +424,7 @@ class MaterialSpecTest(unittest.TestCase):
         self.assertEqual("convert_specular_color", doc.getNode(
             "open_pbr_surface").getInput("specular_color").getNodeName())
 
-    def test_a_flipped_normal_map_flips_only_its_green(self):
+    def test_a_flipped_normal_map_flips_only_its_green_and_an_srgb_map_says_so(self):
         spec = self._spec("Stone", "Volga_Blue")
         self.assertEqual((False, True, False), spec["normals"]["geometry_normal"]["flip"])
         doc = self._document(spec)
@@ -457,19 +432,16 @@ class MaterialSpecTest(unittest.TestCase):
                          .getInput("in2").getValueString())
         self.assertEqual("0, 1, 0", doc.getNode("unflip_geometry_normal")
                          .getInput("in2").getValueString())
-
-    def test_a_coat_normal_map_lands_on_the_coat(self):
-        normals = self._spec("Stone", "Volga_Blue_Deep_Pollished")["normals"]
-        self.assertIn("geometry_coat_normal", normals)
-        self.assertTrue(normals["geometry_coat_normal"]["flip"][1])
-
-    def test_an_srgb_map_says_so(self):
-        doc = self._document(self._spec("Stone", "Volga_Blue"))
         self.assertEqual("srgb_texture", doc.getNode("tiledimage_base_color")
                          .getInput("file").getAttribute("colorspace"))
         self.assertEqual("", doc.getNode("tiledimage_specular_roughness")
                          .getInput("file").getAttribute("colorspace"),
                          "a data map carries no colour space; the translator reads it Raw")
+
+    def test_a_coat_normal_map_lands_on_the_coat(self):
+        normals = self._spec("Stone", "Volga_Blue_Deep_Pollished")["normals"]
+        self.assertIn("geometry_coat_normal", normals)
+        self.assertTrue(normals["geometry_coat_normal"]["flip"][1])
 
     def test_a_values_only_glass_is_its_constants(self):
         spec = self._spec("Glass", "Glass_Clear")
@@ -554,16 +526,13 @@ class TranslatedVopsTest(unittest.TestCase):
         fed = surface.input(surface.inputNames().index("specular_color"))
         self.assertEqual(convert.path(), fed.path() if fed else None)
 
-    def test_the_green_flip_is_built(self):
+    def test_the_green_flip_is_built_on_an_openpbr_surface(self):
         vops = self._built("Stone", "Volga_Blue")
         self.assertEqual((1.0, -1.0, 1.0),
                          tuple(vops["flip_geometry_normal"].parmTuple("in2_vector3").eval()))
         self.assertEqual("srgb_texture",
                          vops["tiledimage_base_color"].parm("filecolorspace").eval())
-
-    def test_karma_gets_an_openpbr_surface(self):
-        types = {vop.type().name().split("::")[0]
-                 for vop in self._built("Stone", "Volga_Blue").values()}
+        types = {vop.type().name().split("::")[0] for vop in vops.values()}
         self.assertIn("mtlxopen_pbr_surface", types)
         self.assertNotIn("mtlxstandard_surface", types)
 

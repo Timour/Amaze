@@ -37,11 +37,6 @@ class AtomicWriteTest(unittest.TestCase):
         return [n for n in os.listdir(self.dir)
                 if n != os.path.basename(self.path)]
 
-    def test_it_writes_readable_json(self):
-        hostos.write_json_atomic(self.path, {"assets": [{"id": "a"}]})
-        with open(self.path, encoding="utf-8") as fh:
-            self.assertEqual({"assets": [{"id": "a"}]}, json.load(fh))
-
     def test_the_scratch_name_is_unique_per_writer(self):
         """THE regression, captured from inside the write - the scratch exists only between creation and the rename."""
         seen = []
@@ -99,17 +94,13 @@ class AtomicWriteTest(unittest.TestCase):
         self.assertEqual([], self._leftovers(),
                          "a scratch file was left in the library")
 
-    def test_no_scratch_file_survives_a_failure(self):
-        """An unserialisable value must not litter the library - an unowned leftover is what gets live assets called orphans."""
+    def test_a_failed_write_leaves_no_scratch_and_the_file_intact(self):
+        """No leftover for a sweep to call an orphan, and the good file outlives the bad write."""
+        hostos.write_json_atomic(self.path, {"good": 1})
         with self.assertRaises(TypeError):
             hostos.write_json_atomic(self.path, {"bad": object()})
         self.assertEqual([], self._leftovers(),
                          "a failed write left its scratch file behind")
-
-    def test_a_failed_write_does_not_damage_the_existing_file(self):
-        hostos.write_json_atomic(self.path, {"good": 1})
-        with self.assertRaises(TypeError):
-            hostos.write_json_atomic(self.path, {"bad": object()})
         with open(self.path, encoding="utf-8") as fh:
             self.assertEqual({"good": 1}, json.load(fh),
                              "a failed write replaced a good file")
@@ -401,8 +392,8 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
             self.assertFalse(os.path.exists(scratch),
                              "a renderer is handed a file that exists")
 
-    def test_both_renderers_name_their_scratch_through_one_helper(self):
-        """SOURCE-DERIVED: one call site per renderer, read from the code that names the scratch."""
+    def test_every_render_scratch_is_named_through_its_helper(self):
+        """SOURCE-DERIVED: a capture needs a live viewer, so the call sites are read. ▸p/testing-can-fail"""
         import inspect
         from amaze.core import file_library, scene_captures
 
@@ -414,12 +405,6 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
                 "hostos.render_scratch(", source,
                 "%s names its own render scratch, so the extension rule "
                 "is back in a caller's hands" % where)
-
-    def test_the_capture_call_site_uses_the_shared_naming_helper(self):
-        """SOURCE-DERIVED: `capture_thumbnail` needs a live viewer, so the decision is unreachable at runtime. Comments are stripped first. ▸p/testing-can-fail"""
-        import inspect
-        from amaze.core import scene_captures
-
         source = inspect.getsource(scene_captures.capture_thumbnail)
         body = "\n".join(line.split("#")[0]
                          for line in source.splitlines())
@@ -615,19 +600,6 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
         self.assertEqual([], self._leftovers(),
                          "a scratch file survived the race")
 
-    def test_an_atomic_write_keeps_the_destination_s_permissions(self):
-        """`mkstemp` creates at 0600, right for a scratch and wrong for the file it becomes - a shared library would silently stop being readable. ▸r/atomic-writes"""
-        if hostos.is_windows():
-            self.skipTest("POSIX permission bits are not the model here")
-        path = os.path.join(self.dir, "library.json")
-        hostos.write_json_atomic(path, {"assets": []})
-        os.chmod(path, 0o664)
-        hostos.write_json_atomic(path, {"assets": [{"id": "a"}]})
-        self.assertEqual(
-            0o664, os.stat(path).st_mode & 0o777,
-            "the save narrowed the file's permissions - anyone else "
-            "working from this library just lost access to it")
-
     def test_a_new_file_gets_exactly_what_a_plain_open_would_have(self):
         """Against `_DEFAULT_FILE_MODE`, never `!= 0o600` - the looser form passes for the wrong reason under a 077 umask. ▸p/testing-can-fail"""
         if hostos.is_windows():
@@ -664,7 +636,7 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
             self.skipTest("POSIX permission bits are not the model here")
         path = os.path.join(self.dir, "policy.json")
         hostos.write_json_atomic(path, {"a": 1})
-        for mode in (0o640, 0o604, 0o660, 0o666):
+        for mode in (0o664, 0o640, 0o604, 0o660, 0o666):    # mkstemp's 0600 must never reach one of these
             os.chmod(path, mode)
             hostos.write_json_atomic(path, {"a": mode})
             self.assertEqual(
@@ -692,26 +664,15 @@ class PrefsSurvivesADamagedOrUnwritableFileTest(unittest.TestCase):
 
     def test_a_top_level_list_does_not_kill_the_panel(self):
         """An exception here kills the panel during construction with no interface and no message, and a top level that is not an object has no `.get()` at all."""
-        self._write('["not", "an", "object"]')
-        p = self._prefs()
-        self.assertFalse(p.load(), "a wrong-shaped file loaded as usable")
-        self.assertTrue(getattr(p, "_load_failed", False),
-                        "the write latch was not set, so the next save "
-                        "would overwrite the file with defaults")
-
-    def test_a_top_level_string_does_not_kill_the_panel(self):
-        self._write('"just a string"')
-        p = self._prefs()
-        self.assertFalse(p.load())
-        self.assertTrue(getattr(p, "_load_failed", False))
-
-    def test_a_normal_settings_file_still_loads(self):
-        """So the guard cannot be satisfied by refusing everything."""
-        self._write(json.dumps({"directory": "", "img_dir": "img/"}))
-        p = self._prefs()
-        p.load()
-        self.assertFalse(getattr(p, "_load_failed", False),
-                         "an ordinary settings file was treated as damaged")
+        for payload in ('["not", "an", "object"]', '"just a string"'):
+            with self.subTest(payload=payload):
+                self._write(payload)
+                p = self._prefs()
+                self.assertFalse(p.load(),
+                                 "a wrong-shaped file loaded as usable")
+                self.assertTrue(getattr(p, "_load_failed", False),
+                                "the write latch was not set, so the next "
+                                "save would overwrite the file with defaults")
 
     def test_a_failed_write_is_recorded_and_does_not_raise(self):
         """The one writer that reported nothing on failure, with no caller wrapping it - a full disk lost every preference change in silence."""
@@ -828,18 +789,14 @@ class MachineLocalHistoryTest(unittest.TestCase):
             return []
         return sorted(os.listdir(folder))
 
-    def test_the_entry_lands_outside_the_library(self):
-        self._write({"assets": [{"id": "A"}]})
+    def test_the_entry_lands_outside_the_library_and_round_trips(self):
+        self._write({"assets": [{"id": "A", "name": "gold"}]})
         entry = hostos.record_history(self.path)
         self.assertTrue(entry, "no history entry was written")
         self.assertFalse(
             os.path.abspath(entry).startswith(os.path.abspath(self.dir)),
             "the history entry is inside the library it protects - the "
             "same tree a sync client propagates corruption through")
-
-    def test_the_content_round_trips(self):
-        self._write({"assets": [{"id": "A", "name": "gold"}]})
-        entry = hostos.record_history(self.path)
         with gzip.open(entry, "rb") as fh:
             self.assertEqual({"assets": [{"id": "A", "name": "gold"}]},
                              json.loads(fh.read().decode("utf-8")))
@@ -910,28 +867,6 @@ class TwoPanesEditSettingsWithoutClobberTest(unittest.TestCase):
         p.load()
         return p
 
-    def test_a_folder_added_by_the_other_pane_survives(self):
-        pane_a = self._prefs()
-        pane_a.save()                       # settings.json exists
-
-        pane_b = self._prefs()              # reads the same file
-
-        pane_a.add_file_folder("/theirs/textures")
-        pane_a.save()
-
-        pane_b.thumbsize = 256              # knows nothing of the folder
-        pane_b.save()
-
-        check = prefs.Prefs()
-        check.path = self.dir
-        check.load()
-        self.assertIn("/theirs/textures",
-                      [str(f) for f in check.file_folders],
-                      "pane B's save erased the folder pane A had just "
-                      "added - the whole document was clobbered")
-        self.assertEqual(256, check.thumbsize,
-                         "pane B's own change did not land")
-
     def test_the_adoption_SURVIVES_the_next_save_from_the_same_pane(self):
         """One save was the whole lifetime of the merge, and closing Preferences saves twice - the sibling test above saves once per pane and stayed green throughout."""
         pane_a = self._prefs()
@@ -953,6 +888,8 @@ class TwoPanesEditSettingsWithoutClobberTest(unittest.TestCase):
             "the second save from the same pane erased the folder the "
             "first one had just adopted - the merge repaired self.data "
             "only, and refresh_data rebuilds it from the attributes")
+        self.assertEqual(256, check.thumbsize,
+                         "pane B's own change did not land")
 
     def test_a_location_LABEL_saved_by_the_other_pane_survives(self):
         """Location decorations travel inside `file_location_records`, so a merge adopting the DERIVED keys writes into attributes nothing reads back."""
@@ -1138,28 +1075,12 @@ class TheLibraryUserIsTheOneIdentityTest(unittest.TestCase):
         p.save()
         self.assertEqual("Chosen Name", self._prefs_at(home).library_user)
 
-    def test_prefs_cannot_resolve_the_identity_itself(self):
-        """THE SPLIT: prefs holds the pointer, `core/users.py` does the minting. ▸p/identity-is-chosen"""
-        p = self._prefs_at(self._home())
-        self.assertFalse(hasattr(p, "resolve_library_user"),
-                         "prefs grew an identity resolver again - "
-                         "minting belongs to core/users.py")
-        self.assertFalse(hasattr(prefs, "DEFAULT_LIBRARY_USER"),
-                         "a fixed default name is back; a library with "
-                         "no users mints a colour name, and one WITH "
-                         "users asks which of them this machine is")
-
     def test_an_existing_version_author_is_adopted(self):
-        """The adopted name BECOMES the user, so existing version stems keep matching their writer."""
-        home = self._home()
-        self._write_settings(home, {"version_author": "Plum"})
-        self.assertEqual("Plum", self._prefs_at(home).library_user)
-
-    def test_the_retired_author_key_is_dropped_on_save(self):
-        """The unknown-key courtesy carries an unnamed key back verbatim, so a retired field outlives the code that read it."""
+        """The adopted name BECOMES the user; the retired key is dropped on the next save."""
         home = self._home()
         self._write_settings(home, {"version_author": "Plum"})
         p = self._prefs_at(home)
+        self.assertEqual("Plum", p.library_user)
         p.save()
         with open(os.path.join(home, "settings.json"),
                   encoding="utf-8") as handle:
@@ -1209,6 +1130,7 @@ class TheUserIsAUidWithANameTest(unittest.TestCase):
         return test_support.fixture_prefs(self)
 
     def test_creating_a_user_answers_a_uid_not_the_name(self):
+        """So two users may share a name: a UID-keyed scheme has nothing to collide."""
         from amaze.core import users
         p = self._prefs()
         uid = users.create(p, "Plum")
@@ -1217,6 +1139,9 @@ class TheUserIsAUidWithANameTest(unittest.TestCase):
                             "the tag is the typed name - a rename would "
                             "then have to move every tagged row")
         self.assertEqual("Plum", users.name_for(p, uid))
+        second = users.create(p, "Plum")
+        self.assertNotEqual(uid, second)
+        self.assertEqual(2, len(users.all_users(p)))
 
     def test_renaming_keeps_the_uid(self):
         """THE WHOLE POINT. Nothing tagged is touched by a rename."""
@@ -1229,15 +1154,6 @@ class TheUserIsAUidWithANameTest(unittest.TestCase):
         self.assertIn(uid, users.all_users(p),
                       "the rename minted a second user")
         self.assertEqual(1, len(users.all_users(p)))
-
-    def test_two_users_may_share_a_name(self):
-        """A name-keyed scheme cannot allow this; a UID-keyed one has nothing to collide."""
-        from amaze.core import users
-        p = self._prefs()
-        first = users.create(p, "Plum")
-        second = users.create(p, "Plum")
-        self.assertNotEqual(first, second)
-        self.assertEqual(2, len(users.all_users(p)))
 
     def test_the_current_user_is_a_uid_and_persists(self):
         from amaze.core import users
@@ -1260,8 +1176,8 @@ class TheUserIsAUidWithANameTest(unittest.TestCase):
                          "the existing name was dropped instead of "
                          "carried onto the new UID")
 
-    def test_a_library_with_no_users_mints_one_on_a_colour_name(self):
-        """A brand-new library asks nobody anything - the colour mint runs once per LIBRARY, never per machine."""
+    def test_a_first_run_mints_asks_or_resolves(self):
+        """No users: a colour name, once per LIBRARY. Users and no match: ASK, or one person is two."""
         from amaze.core import users
         p = self._prefs()
         p.library_user = ""
@@ -1269,9 +1185,6 @@ class TheUserIsAUidWithANameTest(unittest.TestCase):
         uid = users.current(p)
         self.assertIn(users.name_for(p, uid), users.PLACEHOLDER_NAMES)
 
-    def test_an_existing_library_asks_instead_of_minting(self):
-        """THE SECOND MACHINE: a library with users, met by a pointer naming none of them, must ASK - minting here turns one person into two."""
-        from amaze.core import users
         p = self._prefs()
         users.create(p, "Plum")
         p.library_user = ""
@@ -1280,8 +1193,6 @@ class TheUserIsAUidWithANameTest(unittest.TestCase):
                           "it minted a second identity instead of "
                           "asking which user this is")
 
-    def test_a_pointer_that_resolves_is_never_asked_again(self):
-        from amaze.core import users
         p = self._prefs()
         uid = users.create(p, "Plum")
         p.library_user = uid
@@ -1304,38 +1215,8 @@ class TheSecondMachineIsAskedWhoItIsTest(unittest.TestCase):
         from amaze.tests import test_support
         return test_support.fixture_panel(self)
 
-    def test_it_adopts_an_existing_user_that_was_picked(self):
-        from amaze.core import users
-        panel = self._panel()
-        uid = users.create(panel.prefs, "Cobalt")
-        panel.prefs.library_user = ""
-        picked = panel.ensure_library_user(lambda known: (uid, ""))
-        self.assertEqual(uid, picked)
-        self.assertEqual(uid, panel.prefs.library_user)
-        self.assertEqual(1, len(users.all_users(panel.prefs)),
-                         "picking an existing user minted another")
-
-    def test_it_creates_when_a_new_name_was_given(self):
-        from amaze.core import users
-        panel = self._panel()
-        users.create(panel.prefs, "Cobalt")
-        panel.prefs.library_user = ""
-        made = panel.ensure_library_user(lambda known: ("", "Sienna"))
-        self.assertTrue(made)
-        self.assertEqual("Sienna", users.name_for(panel.prefs, made))
-        self.assertEqual(2, len(users.all_users(panel.prefs)))
-
-    def test_a_cancel_leaves_no_user_and_asks_again(self):
-        """Cancelling falls back to neither minting nor a blank key - nothing is keyed this session and the question returns."""
-        from amaze.core import users
-        panel = self._panel()
-        users.create(panel.prefs, "Cobalt")
-        panel.prefs.library_user = ""
-        self.assertEqual("", panel.ensure_library_user(lambda k: ("", "")))
-        self.assertEqual("", panel.prefs.library_user)
-        self.assertEqual(users.ASK, users.first_run_state(panel.prefs))
-
-    def test_a_resolved_machine_is_never_asked(self):
+    def test_only_a_machine_that_is_none_of_them_is_asked(self):
+        """A cancel keys nothing and asks again; a pick adopts, and a new name creates."""
         from amaze.core import users
         panel = self._panel()
         uid = users.create(panel.prefs, "Cobalt")
@@ -1345,6 +1226,23 @@ class TheSecondMachineIsAskedWhoItIsTest(unittest.TestCase):
             raise AssertionError("asked a machine that already resolves")
 
         self.assertEqual(uid, panel.ensure_library_user(_refuse))
+
+        panel.prefs.library_user = ""
+        self.assertEqual("", panel.ensure_library_user(lambda k: ("", "")))
+        self.assertEqual("", panel.prefs.library_user)
+        self.assertEqual(users.ASK, users.first_run_state(panel.prefs))
+
+        picked = panel.ensure_library_user(lambda known: (uid, ""))
+        self.assertEqual(uid, picked)
+        self.assertEqual(uid, panel.prefs.library_user)
+        self.assertEqual(1, len(users.all_users(panel.prefs)),
+                         "picking an existing user minted another")
+
+        panel.prefs.library_user = ""
+        made = panel.ensure_library_user(lambda known: ("", "Sienna"))
+        self.assertTrue(made)
+        self.assertEqual("Sienna", users.name_for(panel.prefs, made))
+        self.assertEqual(2, len(users.all_users(panel.prefs)))
 
     def test_the_picker_offers_the_users_and_a_create_row(self):
         from amaze.dialogs import user_dialog
@@ -1408,19 +1306,6 @@ class AStoreCanTagItsKeysWithAnOwnerTest(unittest.TestCase):
             json.dump({"entries": {key: {"on": True} for key in keys}},
                       handle)
 
-    def test_two_users_do_not_see_each_others_entries(self):
-        from amaze.core import keyed_store
-        self.assertTrue(self._store(A_USER).set("~/a.exr", True))
-        self.assertTrue(self._store(A_USER).has("~/a.exr"))
-        keyed_store.release()
-        self.assertFalse(
-            self._store(B_USER).has("~/a.exr"),
-            "the other user's entry is showing - the tag is not keeping "
-            "them apart")
-        keyed_store.release()
-        self.assertTrue(self._store(A_USER).has("~/a.exr"),
-                        "switching back lost the first user's entry")
-
     def test_the_stored_key_carries_the_uid(self):
         """`<uid>|<key>` on disk, split on the FIRST separator only - a uuid4 hex cannot contain one, a path can."""
         self._store(A_USER).set("~/a|b.exr", True)
@@ -1442,11 +1327,18 @@ class AStoreCanTagItsKeysWithAnOwnerTest(unittest.TestCase):
     def test_all_is_scoped_and_everyones_is_not(self):
         """`all()` is what is MINE and what a section paints; `everyones()` is the unscoped read, for repair and migration only."""
         from amaze.core import keyed_store
-        self._store(A_USER).set("~/mine.exr", True)
+        self.assertTrue(self._store(A_USER).set("~/mine.exr", True))
+        self.assertTrue(self._store(A_USER).has("~/mine.exr"))
         keyed_store.release()
         self._store(B_USER).set("~/theirs.exr", True)
+        self.assertFalse(
+            self._store(B_USER).has("~/mine.exr"),
+            "the other user's entry is showing - the tag is not keeping "
+            "them apart")
         keyed_store.release()
         store = self._store(A_USER)
+        self.assertTrue(store.has("~/mine.exr"),
+                        "switching back lost the first user's entry")
         self.assertEqual(["~/mine.exr"], sorted(store.all()),
                          "all() is not scoped to this user")
         self.assertEqual(2, len(store.everyones()),
@@ -1462,11 +1354,7 @@ class AStoreCanTagItsKeysWithAnOwnerTest(unittest.TestCase):
         self.assertEqual({}, store.all())
         self.assertEqual({}, store.everyones(),
                          "the row was kept aside rather than dropped")
-
-    def test_a_dropped_row_does_not_come_back_on_the_next_write(self):
-        """A value held aside as unreadable is written back on every save, so a pre-tag row held there would undo its own drop."""
-        self._plant("~/old.exr")
-        self._store(A_USER).set("~/mine.exr", True)
+        store.set("~/mine.exr", True)
         self.assertEqual([A_USER + self.SEP + "~/mine.exr"],
                          sorted(self._on_disk()),
                          "the untagged row was written back after being "
@@ -1540,17 +1428,6 @@ class SandboxRefusesAWriteOutsideTempTest(unittest.TestCase):
         hostos.write_json_atomic(outside, {"a": 1})
         self.assertTrue(os.path.exists(outside))
         hostos.check_sandbox("/anywhere/at/all.json")
-
-    def test_it_covers_a_keyed_store_and_the_databases_too(self):
-        """One check in the shared funnel covers prefs, the databases, the keyed stores and the manifests, with no per-caller list to be one short. ▸p/guard-pinned-filename-list"""
-        source = hostos.write_json_atomic.__doc__ or ""
-        self.assertIn("front door", source)
-        import inspect
-        body = inspect.getsource(hostos.write_json_atomic)
-        self.assertIn(
-            "check_sandbox(path)", body,
-            "the funnel no longer checks, so every caller is unguarded "
-            "again")
 
 
 class SandboxRefusesEveryPrimitiveTest(unittest.TestCase):

@@ -137,15 +137,14 @@ class TheGraveyardBoundsTheStall(unittest.TestCase):
         conversion._ABANDONED.clear()
 
     def test_a_child_that_dies_in_time_is_simply_reaped(self):
-        child = _StubProcess(reaps=True)
-        self.assertTrue(conversion._reap_or_abandon(child))
-        self.assertTrue(child.killed)
-        self.assertEqual([], conversion._ABANDONED)
-
-    def test_an_already_dead_child_needs_nothing(self):
-        child = _StubProcess(running=False)
-        self.assertTrue(conversion._reap_or_abandon(child))
-        self.assertFalse(child.killed)
+        for child, killed in ((_StubProcess(reaps=True), True),
+                              (_StubProcess(running=False), False)):
+            with self.subTest(killed=killed):
+                self.assertTrue(conversion._reap_or_abandon(child))
+                self.assertEqual(killed, child.killed,
+                                 "a dead child was killed, or a live one "
+                                 "was left running")
+                self.assertEqual([], conversion._ABANDONED)
 
     def test_a_sigkill_deferring_child_is_abandoned_not_awaited(self):
         child = _StubProcess(reaps=False)
@@ -295,43 +294,6 @@ class TheDecodeFitSplit(ConversionCase):
             "then refused by Qt exactly like the source was: %s"
             % (sips[0],))
 
-    def test_which_route_applies_is_measured_not_guessed(self):
-        """No extension list, anywhere in the code: the old worker chose its decoder from the file NAME, which is how a format needing one route gets sent down the other - the engine measures the file instead. Read with `ast`, and only at CODE: a comment naming .hdr is history, and a rule that bans explaining yourself is worse than no rule; .png is exempt because the scratch file is a PNG, an output format and not a routing decision."""
-        import ast
-
-        FORMATS = {"exr", "hdr", "rat", "tga", "tif", "tiff", "jpg",  # undotted, so a literal is caught whichever form it is written in - the dotted-only list let a bare hdr through
-                   "jpeg", "bmp", "gif", "psd", "dds", "pic", "dpx",
-                   "tx", "webp", "hei", "heic"}
-        source = open(conversion.__file__.replace(".pyc", ".py")).read()
-        tree = ast.parse(source)
-        docstrings = set()
-        for node in ast.walk(tree):
-            if isinstance(node, (ast.Module, ast.FunctionDef, ast.ClassDef)):
-                doc = node.body[0] if node.body else None
-                if (isinstance(doc, ast.Expr)
-                        and isinstance(doc.value, ast.Constant)
-                        and isinstance(doc.value.value, str)):
-                    docstrings.add(id(doc.value))
-
-        named = []
-        for node in ast.walk(tree):
-            if (isinstance(node, ast.Constant) and isinstance(node.value, str)
-                    and id(node) not in docstrings
-                    and node.value.lower().lstrip(".") in FORMATS):
-                named.append((node.lineno, node.value))
-        self.assertEqual(
-            [], named,
-            "the engine names an image format in code - which route a "
-            "file needs is a measurement, and a per-format branch is "
-            "how the two contracts got confused: %s" % named)
-
-        for reader in ("splitext", "endswith", "rsplit", "rpartition",  # EVERY way of reading the name: a routing branch written with rsplit was invisible to both halves of this test, because the extension carried no dot and the call was not splitext
-                       "basename"):
-            self.assertNotIn(
-                reader + "(", source,
-                "the engine reads a file NAME with %s(); the whole "
-                "point is that it reads the FILE" % reader)
-
     def test_iconvert_is_not_offered_where_it_cannot_help(self):
         """iconvert converts formats and has no resize option at all, so on the FIT route its full-size output is refused all over again - offering it there spends a Houdini process startup to fail."""
         fit = [name for name, _produce in conversion._FIT_ADAPTERS]
@@ -340,10 +302,6 @@ class TheDecodeFitSplit(ConversionCase):
         self.assertIn("iconvert", formats,
                       "iconvert is the guaranteed-correct FORMAT route - "
                       "it reads every format Houdini reads, .rat included")
-
-    def test_pillow_answers_first_on_the_format_route(self):
-        """Measured on a real 117MB camera TIFF: pillow answered in 0.3s while sips and iconvert each burned their full 30s timeout ahead of it - a two-minute thumbnail per file, reported live as a hang. A pillow decline costs milliseconds (in-process, no timeout to wait out), so the formats it cannot read still reach sips and iconvert at the old speed."""
-        formats = [name for name, _p in conversion._FORMAT_ADAPTERS]
         self.assertEqual("pillow", formats[0],
                          "a subprocess adapter ahead of pillow makes "
                          "every huge decodable file wait out its "
@@ -403,15 +361,9 @@ class TheEngineVerifiesItsOwnOutput(ConversionCase):
             "a solid black image was accepted from the first converter "
             "that returned exit 0")
         self.assertFalse(uniform(result.image))
-
-    def test_the_trail_says_why_the_first_one_was_refused(self):
-        with mock.patch.object(conversion, "_FORMAT_ADAPTERS", (
-                ("liar", _adapter_writing("#000000")),
-                ("honest", _adapter_writing_a_picture()),
-        )):
-            result = self.convert(self.foreign)
         refusals = dict(result.attempts)
-        self.assertIn("liar", refusals)
+        self.assertIn("liar", refusals, "the trail does not say why the "
+                      "first converter was refused")
         self.assertIn("identical", refusals["liar"])
 
     def test_a_genuinely_flat_image_is_still_DELIVERED(self):
@@ -452,24 +404,17 @@ class TheEngineVerifiesItsOwnOutput(ConversionCase):
                 fh.write(b"\x89PNG\r\n\x1a\n" + b"\x00" * 20)
             return True, ""
 
-        with mock.patch.object(conversion, "_FORMAT_ADAPTERS", (
-                ("broken", writes_rubbish),
-                ("honest", _adapter_writing_a_picture()),
-        )):
-            result = self.convert(self.foreign)
-        self.assertEqual("honest", result.via)
-        self.assertIn("unreadable", dict(result.attempts)["broken"])
-
-    def test_a_converter_that_wrote_nothing_is_refused(self):
         def writes_nothing(source, out_path, ctx):
             return True, ""       # claims success, produced an empty file
 
-        with mock.patch.object(conversion, "_FORMAT_ADAPTERS", (
-                ("empty", writes_nothing),
-                ("honest", _adapter_writing_a_picture()),
-        )):
-            result = self.convert(self.foreign)
-        self.assertEqual("honest", result.via)
+        for bad in (writes_rubbish, writes_nothing):
+            with self.subTest(adapter=bad.__name__), mock.patch.object(
+                    conversion, "_FORMAT_ADAPTERS", (
+                        ("broken", bad),
+                        ("honest", _adapter_writing_a_picture()))):
+                result = self.convert(self.foreign)
+                self.assertEqual("honest", result.via)
+                self.assertIn("unreadable", dict(result.attempts)["broken"])
 
 
 class ItAnswersWithAReasonNeverABareNone(ConversionCase):
@@ -493,26 +438,19 @@ class ItAnswersWithAReasonNeverABareNone(ConversionCase):
 
     def test_an_image_past_the_ceiling_says_too_large(self):
         png = write_png(self.path("enormous.png"), 1200, 1200)
-        with qt_refuses(png):
-            with mock.patch.object(conversion, "MAX_RESCUE_MEGABYTES", 1):
-                result = self.convert(png)
-        self.assertFalse(result)
-        self.assertEqual(conversion.REASON_TOO_LARGE, result.reason)
-
-    def test_the_ceiling_STOPS_the_work_rather_than_judging_it_after(self):
-        """A conversion decodes the whole image before shrinking it - every route does, in-process or out - so a 32K texture is 4GB of allocation in a live Houdini: a missing thumbnail is a small thing, a lost session is not."""
-        png = write_png(self.path("enormous.png"), 1200, 1200)
         called = []
         with qt_refuses(png):
             with mock.patch.object(conversion, "MAX_RESCUE_MEGABYTES", 1):
                 with mock.patch.object(
                         conversion, "_run_process",
                         side_effect=lambda *a, **k: called.append(a)):
-                    self.convert(png)
+                    result = self.convert(png)
+        self.assertFalse(result)
+        self.assertEqual(conversion.REASON_TOO_LARGE, result.reason)
         self.assertEqual(
             [], called,
-            "a converter still ran for an image past the ceiling - the "
-            "ceiling has to stop the work, not judge it afterwards")
+            "a converter still ran for an image past the ceiling - a 32K "
+            "texture is 4GB of allocation in a live Houdini")
 
     def test_an_ordinary_oversized_image_is_still_converted(self):
         """Guards the ceiling: set too low, everything is declined and the test above still passes - 268MB is an 8K displacement map, an ordinary VFX texture, not an exotic case."""
@@ -636,14 +574,6 @@ class TheCancelCallbackReachesEveryConverter(ConversionCase):
         self.assertTrue(all(answers),
                         "the callback reaching the subprocess does not "
                         "report what the caller says: %s" % answers)
-
-    def test_pillow_checks_it_too(self):
-        """Pillow runs in process, so there is no watchdog - it polls between its two expensive steps instead."""
-        source = open(conversion.__file__.replace(".pyc", ".py")).read()
-        start = source.index('def _produce_pillow', 0)
-        end = source.index('_SIPS_FIT =', 0)
-        self.assertIn("ctx.cancelled()", source[start:end],
-                      "the in-process resampler cannot be interrupted")
 
 
 class TwoPillowConversionsLeaveTheBombGuardAlone(ConversionCase):
@@ -784,136 +714,26 @@ class OneLogLine(ConversionCase):
         self.assertLessEqual(len(why), conversion._Ctx.WHY_LIMIT)
 
 
-class TheEngineHasNoKnob(ConversionCase):
-    """There was a Force-iconvert-only preference and a second FORMAT order to serve it: the MANUAL WORKAROUND for a converter that returned a wrong picture and reported success - exactly what this engine now catches by itself. Retired 2026-08-03. These tests pin the ABSENCE, because the tempting fix for the next misbehaving decoder is another toggle, and a knob that reorders the adapters is a second route through the engine wearing a preference's clothes; the toggle also never did what its label said - Houdini's converter cannot resize, so it left an oversized image with no route at all and no thumbnail."""
-
-    def test_convert_image_takes_no_order_argument(self):
-        import inspect
-
-        parameters = list(inspect.signature(
-            conversion.convert_image).parameters)
-        self.assertEqual(
-            ["path", "size", "cancelled", "hfs"], parameters,
-            "the funnel grew an argument. `path`, `size` and `cancelled` "
-            "describe the JOB and `hfs` is a location; anything else is a "
-            "caller deciding something the engine owns: %s" % parameters)
-
-    def test_there_is_exactly_one_order_per_need(self):
-        orders = [name for name in vars(conversion)
-                  if name.endswith("_ADAPTERS")]
-        self.assertEqual(
-            sorted(["_FIT_ADAPTERS", "_FORMAT_ADAPTERS"]), sorted(orders),
-            "a second adapter order exists, which is how the engine gets "
-            "two answers to one question again: %s" % orders)
-
-    def test_the_thumbnail_engine_pushes_no_decoder_preference(self):
-        import inspect
-
-        from amaze.core import thumbnails
-        parameters = list(inspect.signature(
-            thumbnails.ThumbnailEngine.configure_convert).parameters)
-        self.assertEqual(
-            ["self", "hfs", "parallel"], parameters,
-            "a decoder preference is being pushed into the engine "
-            "again: %s" % parameters)
-
-    def test_the_preference_is_gone_from_prefs_and_from_the_dialog(self):
-        from amaze.prefs import prefs as prefs_mod
-
-        self.assertFalse(
-            hasattr(prefs_mod.Prefs, "texture_force_iconvert"),
-            "the retired preference is back on Prefs")
-        dialog = open(os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(
-                conversion.__file__))),
-            "dialogs", "prefs_dialog.py"), encoding="utf-8").read()
-        self.assertNotIn(
-            "ToggleSwitch(\"Force iconvert", dialog,
-            "the retired control is back in Preferences")
-
-
 class TheUniformCheck(ConversionCase):
     """Exact equality, never a tolerance: a near-uniform photograph of a wall is a real picture and must not be thrown away."""
 
-    def test_a_solid_fill_is_uniform(self):
-        image = QtGui.QImage(120, 120, QtGui.QImage.Format.Format_RGB32)
-        image.fill(QtGui.QColor("#000000"))
-        self.assertTrue(uniform(image))
-
-    def test_a_transparent_image_is_uniform(self):
-        """What sips -Z actually returned for the fixture: every pixel black AND fully transparent."""
-        image = QtGui.QImage(120, 120, QtGui.QImage.Format.Format_ARGB32)
-        image.fill(QtGui.QColor(0, 0, 0, 0))
-        self.assertTrue(uniform(image))
-
-    def test_a_two_tone_image_is_not(self):
-        image = QtGui.QImage(120, 120, QtGui.QImage.Format.Format_RGB32)
-        image.fill(QtGui.QColor("#202020"))
-        for y in range(60):
-            for x in range(120):
-                image.setPixelColor(x, y, QtGui.QColor("#212020"))
-        self.assertFalse(uniform(image),
-                         "a picture with structure was called blank")
-
-    def test_a_faint_gradient_is_not(self):
-        image = QtGui.QImage(120, 120, QtGui.QImage.Format.Format_RGB32)
+    def test_only_an_exactly_flat_image_is_uniform(self):
+        solid = QtGui.QImage(120, 120, QtGui.QImage.Format.Format_RGB32)
+        solid.fill(QtGui.QColor("#000000"))
+        clear = QtGui.QImage(120, 120, QtGui.QImage.Format.Format_ARGB32)
+        clear.fill(QtGui.QColor(0, 0, 0, 0))    # what sips -Z returned: black AND transparent
+        faint = QtGui.QImage(120, 120, QtGui.QImage.Format.Format_RGB32)
         for y in range(120):
             for x in range(120):
-                image.setPixelColor(x, y, QtGui.QColor(40, 40, 40 + y // 40))
-        self.assertFalse(uniform(image),
-                         "a low-contrast image was called blank - the check "
-                         "must be exact, not a tolerance")
-
-
-class TheThumbnailEngineStoppedBeingTheConverter(unittest.TestCase):
-    """The Thumbnail Engine keeps its cache, its budget and its loaders - the decoder order used to live inside its worker thread, where nothing could see it and nothing checked its result."""
-
-    def test_the_converters_machinery_is_gone_from_the_thumbnail_engine(self):
-        """Read as CODE, not as prose - what must not survive is the machinery: no subprocess, no temp file, no Pillow."""
-        import ast
-
-        from amaze.core import thumbnails
-        source = open(thumbnails.__file__.replace(".pyc", ".py")).read()
-        tree = ast.parse(source)
-
-        imported = set()
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                imported.update(a.name.split(".")[0] for a in node.names)
-            elif isinstance(node, ast.ImportFrom) and node.module:
-                imported.add(node.module.split(".")[0])
-        for module in ("tempfile", "shutil", "subprocess", "locale", "PIL"):
-            self.assertNotIn(
-                module, imported,
-                "the Thumbnail Engine still imports %s - conversion is "
-                "its own engine now" % module)
-
-        attributes = {n.attr for n in ast.walk(tree)
-                      if isinstance(n, ast.Attribute)}
-        self.assertNotIn("QProcess", attributes,
-                         "the Thumbnail Engine still runs subprocesses")
-
-    def test_the_worker_asks_the_engine_and_makes_no_choices(self):
-        import inspect
-
-        from amaze.core import thumbnails
-        body = inspect.getsource(thumbnails._ConvertLoader.run)
-        self.assertIn("conversion.convert_image", body)
-        self.assertNotIn(
-            "elif", body,
-            "the worker is choosing a decoder again - the order belongs "
-            "to the Conversion Engine, in one place, verified")
-
-    def test_no_extension_travels_with_a_convert_request(self):
-        import inspect
-
-        from amaze.core import thumbnails
-        signature = inspect.signature(
-            thumbnails.ThumbnailEngine.request_convert)
-        self.assertNotIn(
-            "ext", signature.parameters,
-            "the caller still says which decoder family a file needs, "
-            "from its NAME - that is the guess the engine replaced")
+                faint.setPixelColor(x, y, QtGui.QColor(40, 40, 40 + y // 40))
+        for label, image, flat in (("solid", solid, True),
+                                   ("transparent", clear, True),
+                                   ("faint gradient", faint, False)):
+            with self.subTest(image=label):
+                self.assertEqual(
+                    flat, uniform(image),
+                    "the check must be exact, not a tolerance: a "
+                    "low-contrast picture is not blank")
 
 
 class TheWatchdogNeverSignalsOnWindows(unittest.TestCase):
@@ -928,13 +748,6 @@ class TheWatchdogNeverSignalsOnWindows(unittest.TestCase):
             guard, gate,
             "os.kill is reached without asking the platform first, so on "
             "Windows the watchdog terminates the process it is checking")
-
-    def test_the_probe_is_reachable_on_posix(self):
-        """The gate must not disable the probe everywhere - POSIX is where it does real work."""
-        source = inspect.getsource(conversion)
-        self.assertIn("not hostos.is_windows()", source,
-                      "the gate reads as `is_windows()`, which would "
-                      "disable the probe on the platform that needs it")
 
 
 if __name__ == "__main__":

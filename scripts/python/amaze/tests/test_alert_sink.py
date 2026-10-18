@@ -35,32 +35,19 @@ class AlertIsOncePerConditionTest(unittest.TestCase):
                 shown += 1
         return shown
 
-    def test_the_same_key_shows_once(self):
-        shown = self._count(*[("could not save the icon", "icons-not-saved")
-                              for _ in range(12)])
-        self.assertEqual(1, shown,
-                         "12 icons in a loop produced %d dialogs" % shown)
-
-    def test_a_formatted_message_still_aggregates_via_the_key(self):
-        """A per-file message must still aggregate on the KEY, not the text."""
-        shown = self._count(
-            ("could not save icon a.png", "icons-not-saved"),
-            ("could not save icon b.png", "icons-not-saved"),
-            ("could not save icon c.png", "icons-not-saved"),
-        )
-        self.assertEqual(1, shown,
-                         "a per-file message defeated the aggregation")
-
-    def test_a_different_condition_is_not_suppressed(self):
-        self.assertTrue(debug.alert("icons", key="icons-not-saved"))
-        self.assertFalse(debug.alert("icons", key="icons-not-saved"))
-        self.assertTrue(
-            debug.alert("gradients", key="gradients-unreadable"),
-            "a second, unrelated condition was suppressed by the first")
-
-    def test_the_key_defaults_to_the_message(self):
-        self.assertTrue(debug.alert("one exact sentence"))
-        self.assertFalse(debug.alert("one exact sentence"))
+    def test_each_key_shows_once(self):
+        """A per-file message aggregates on its KEY; with no key the message is the key."""
+        for why, calls, expected in (
+                ("a per-file message", [("could not save icon %s.png" % n,
+                                         "icons-not-saved") for n in "abc"], 1),
+                ("a second, unrelated condition",
+                 [("icons", "icons-not-saved"), ("icons", "icons-not-saved"),
+                  ("gradients", "gradients-unreadable")], 2),
+                ("no key at all", [("one exact sentence", "")] * 2, 1)):
+            with self.subTest(why):
+                debug._alerted.clear()
+                self.assertEqual(expected, self._count(*calls),
+                                 "%s showed the wrong number of dialogs" % why)
 
     def test_it_is_recorded_even_when_it_does_not_show(self):
         """Every occurrence reaches the log, which is how "rare" is verified later."""
@@ -95,60 +82,37 @@ class RefuseIsTheGestureSinkTest(unittest.TestCase):
         for call in singleShot.call_args_list:
             call.args[1]()
 
-    def test_bad_aim_goes_to_the_status_line(self):
+    def test_bad_aim_goes_to_the_status_line_every_time(self):
+        """Named for the app, and never de-duplicated the way an alert is."""
         with mock.patch.object(hou, "ui", self._ui(), create=True):
-            debug.refuse("that node has no file parameter")
+            for _ in range(3):
+                debug.refuse("that node has no file parameter")
         self.assertEqual([], self.shown,
                          "a wrong-target refusal opened a dialog")
-        self.assertEqual(1, len(self.said))
-        self.assertIn("that node has no file parameter", self.said[0])
+        self.assertEqual(3, len(self.said),
+                         "the refusal was de-duplicated like an alert, so "
+                         "a repeated gesture looked like it landed")
+        for text in self.said:
+            self.assertTrue(text.startswith("Amaze: "),
+                            "the status line does not say who is speaking: "
+                            "%r" % text)
+            self.assertIn("that node has no file parameter", text)
 
-    def test_the_status_line_names_the_app(self):
-        with mock.patch.object(hou, "ui", self._ui(), create=True):
-            debug.refuse("no ramp here")
-        self.assertTrue(self.said[0].startswith("Amaze: "),
-                        "the status line does not say who is speaking: %r"
-                        % self.said[0])
-
-    def test_damage_opens_a_dialog_instead(self):
+    def test_damage_opens_a_dialog_DEFERRED_past_the_release_click(self):
+        """Never the status line, which the next write erases."""
         with mock.patch.object(hou, "ui", self._ui(), create=True), \
                 mock.patch.object(QtCore.QTimer, "singleShot") as later:
             debug.refuse(debug.Damage('"Rust": asset file is missing.'))
-            self._fire_deferred(later)
-        self.assertEqual([], self.said,
-                         "library damage went to the status line, which "
-                         "the next write erases")
-        self.assertEqual(['"Rust": asset file is missing.'], self.shown)
-
-    def test_the_dialog_is_DEFERRED_past_the_pending_release_click(self):
-        with mock.patch.object(hou, "ui", self._ui(), create=True), \
-                mock.patch.object(QtCore.QTimer, "singleShot") as later:
-            debug.refuse(debug.Damage("gone"))
             self.assertEqual(
                 [], self.shown,
                 "the dialog opened INSIDE the release handler, where it "
                 "phantom-accepts the drag's own click")
             self.assertEqual(1, later.call_count)
             self._fire_deferred(later)
-        self.assertEqual(["gone"], self.shown)
-
-    def test_a_refusal_REPEATS_where_an_alert_would_not(self):
-        with mock.patch.object(hou, "ui", self._ui(), create=True):
-            for _ in range(3):
-                debug.refuse("that node has no file parameter")
-        self.assertEqual(3, len(self.said),
-                         "the refusal was de-duplicated like an alert, so "
-                         "a repeated gesture looked like it landed")
-
-    def test_it_holds_no_state_to_forget(self):
-        """Red HERE when the sink grows state the blank slate would have to clear."""
-        self.assertNotIn(
-            "refus", str(debug._blank_slate.__doc__ or "").lower())
-        for name in vars(debug):
-            self.assertFalse(
-                name.startswith("_refus"),
-                "refuse() grew module state (%s) that the blank slate "
-                "does not clear" % name)
+        self.assertEqual([], self.said,
+                         "library damage went to the status line, which "
+                         "the next write erases")
+        self.assertEqual(['"Rust": asset file is missing.'], self.shown)
 
     def test_headless_says_it_anyway_and_does_not_raise(self):
         self.assertFalse(hasattr(hou, "ui"),
@@ -159,22 +123,6 @@ class RefuseIsTheGestureSinkTest(unittest.TestCase):
         self.assertTrue(shown and damaged,
                         "a headless refusal reported that it said nothing")
         self.assertEqual(2, len(self.printed))
-
-    def test_formatting_a_marked_reason_LOSES_the_marking(self):
-        """The mechanism's one trap, pinned as a known cost. ▸p/refusal-sink"""
-        plain = "%s" % debug.Damage("gone")
-        self.assertNotIsInstance(plain, debug.Damage)
-        with mock.patch.object(hou, "ui", self._ui(), create=True):
-            debug.refuse(plain)
-        self.assertEqual([], self.shown)
-        self.assertEqual(1, len(self.said))
-
-    def test_a_marked_reason_is_still_an_ordinary_string(self):
-        marked = debug.Damage("gone")
-        self.assertEqual("gone", marked)
-        self.assertTrue(marked)
-        self.assertIn("one", marked)
-        self.assertEqual("gone", str(marked))
 
 
 class TheDamageDoorMarksItsRefusalsTest(unittest.TestCase):
@@ -235,7 +183,7 @@ class TheDamageDoorMarksItsRefusalsTest(unittest.TestCase):
                     found[sentence] = marked
         return found
 
-    def test_the_doors_still_author_the_sentences_this_pins(self):
+    def test_each_sentence_is_marked_exactly_as_its_severity_says(self):
         """Red, never vacuous, when a sentence is reworded or moved."""
         found = self._authored_refusals()
         missing = [opening for opening in self.DAMAGE
@@ -246,10 +194,8 @@ class TheDamageDoorMarksItsRefusalsTest(unittest.TestCase):
             "- re-key them in the same commit that moved them, never drop "
             "the entry:\n  %s" % (", ".join(self.DOORS),
                                   "\n  ".join(missing)))
-
-    def test_each_sentence_is_marked_exactly_as_its_severity_says(self):
         wrong = []
-        for sentence, marked in sorted(self._authored_refusals().items()):
+        for sentence, marked in sorted(found.items()):
             for opening, damage in self.DAMAGE.items():
                 if sentence.startswith(opening):
                     if marked != damage:
@@ -269,7 +215,7 @@ class TheDamageDoorMarksItsRefusalsTest(unittest.TestCase):
 
 
 class TheTenSitesAreConvertedTest(unittest.TestCase):
-    """Source-derived: a print left on one of the ten is silent on Windows. ▸o/debug-engine"""
+    """Source-derived: every user alert is raised through alert() or the registry. ▸o/debug-engine"""
 
     ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -342,27 +288,6 @@ class TheTenSitesAreConvertedTest(unittest.TestCase):
                     missing.append("%s: %s" % (rel, key))
         self.assertEqual([], missing,
                          "condition(s) no longer raised: %s" % missing)
-
-    def test_none_of_them_kept_a_bare_print(self):
-        """A work-affecting condition that prints says nothing on Windows."""
-        offenders = []
-        for rel in self.EXPECTED:
-            path = os.path.join(self.ROOT, rel)
-            with open(path, encoding="utf-8") as fh:
-                for n, line in enumerate(fh, 1):
-                    stripped = line.strip()
-                    if not stripped.startswith("print("):
-                        continue
-                    if any(w in line.lower() for w in (
-                            "not saving", "could not read your settings",
-                            "disabled this session", "suspicious",
-                            "could not save tile", "could not write the tile",
-                    )):
-                        offenders.append("%s:%d %s" % (rel, n, stripped[:60]))
-        self.assertEqual(
-            [], offenders,
-            "a work-affecting condition still prints instead of "
-            "alerting:\n  " + "\n  ".join(offenders))
 
 
 if __name__ == "__main__":

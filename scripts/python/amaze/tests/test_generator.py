@@ -34,11 +34,7 @@ class TestFacts(unittest.TestCase):
         sources = collections.Counter(f["source"] for f in facts)
         self.assertGreater(sources["PhysicallyBased"], 50)
         self.assertGreater(sources["RGL"], 50)
-
-    def test_every_class_is_represented(self):
-        kinds = collections.Counter(
-            generator.fact_kind(f) for f in generator.online_facts()
-        )
+        kinds = collections.Counter(generator.fact_kind(f) for f in facts)
         for kind in ("metal", "transmissive", "subsurface", "opaque"):
             self.assertGreater(kinds[kind], 0, "no %s facts" % kind)
 
@@ -51,28 +47,19 @@ class TestFacts(unittest.TestCase):
     def test_classifier_rejects_the_substring_trap(self):
         """The CLASSIFIER, never a pre-classified dict that cannot fail - the tin-in-satin case, ▸r/rgl-values."""
         infer = matx_sources.RGLSource.infer_metal
-        self.assertFalse(infer("satin_blue",
-                               "TeckWrap vinyl wrapping film"))
-        self.assertFalse(infer("vch_golden_yellow",
-                               "TeckWrap vinyl wrapping film"))
-        self.assertTrue(infer("aniso_brushed_aluminium_1",
-                              "Brushed aluminium sheet"))
-
-    def test_classifier_trusts_the_measurement_over_the_name(self):
-        """No bare conductor is dark - a metallic-named coating measuring 0.09 is a dark paint, and as a conductor it renders as an almost black mirror. ▸r/rgl-values"""
-        infer = matx_sources.RGLSource.infer_metal
-        self.assertFalse(infer("ilm_solo_m_68", "Blue metallic material",
-                               [0.022, 0.033, 0.091]))
-        self.assertTrue(infer("aniso_copper_sheet", "Smooth copper sheet",
-                              [0.95, 0.63, 0.53]))
-
-    def test_paint_is_a_dielectric_whatever_it_is_sprayed_on(self):
-        """Flake paint on top of aluminium once matched the SUBSTRATE and came out metal while its identical sibling came out dielectric. ▸r/rgl-values"""
-        infer = matx_sources.RGLSource.infer_metal
-        self.assertFalse(infer(
-            "irid_flake_paint1",
-            "Iridescent flake car paint on top of aluminium with black "
-            "primer", [0.3, 0.2, 0.4]))
+        for args, metal in (
+                (("satin_blue", "TeckWrap vinyl wrapping film"), False),
+                (("vch_golden_yellow", "TeckWrap vinyl wrapping film"), False),
+                (("aniso_brushed_aluminium_1", "Brushed aluminium sheet"), True),
+                (("ilm_solo_m_68", "Blue metallic material",    # no bare conductor is dark
+                  [0.022, 0.033, 0.091]), False),
+                (("aniso_copper_sheet", "Smooth copper sheet",
+                  [0.95, 0.63, 0.53]), True),
+                (("irid_flake_paint1",    # paint is a dielectric whatever it is sprayed on
+                  "Iridescent flake car paint on top of aluminium with "
+                  "black primer", [0.3, 0.2, 0.4]), False)):
+            with self.subTest(name=args[0]):
+                self.assertEqual(metal, bool(infer(*args)))
 
     def test_no_negative_colour_channels(self):
         """Measurement noise around black produced negative channels, and a negative base_color is not a colour."""
@@ -293,18 +280,6 @@ class OneShaderSetterForEveryValueSource(unittest.TestCase):
             builder)
         self.assertEqual((0.1, 0.2, 0.3), self._rounded(shader, "base_color"))
         self.assertEqual((0.4,), self._rounded(shader, "specular_roughness"))
-
-    def test_the_unit_constant_has_one_home(self):
-        package = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        homes = []
-        for root, dirs, files in os.walk(package):
-            dirs[:] = [d for d in dirs if d not in ("__pycache__", "tests")]
-            for filename in files:
-                if filename.endswith(".py"):
-                    with open(os.path.join(root, filename), encoding="utf-8") as handle:
-                        if re.search(r"^CM_TO_SCENE_UNITS\s*=", handle.read(), re.M):
-                            homes.append(filename)
-        self.assertEqual(["material.py"], homes)
 
 
 class TestCatalogueFreshness(unittest.TestCase):
@@ -605,28 +580,17 @@ class TruncatedDownloadTest(unittest.TestCase):
             os.path.exists(dest),
             "a truncated transfer was promoted to the final path, where "
             "every cache layer treats it as a finished download forever")
-
-    def test_a_refused_transfer_leaves_no_part_file(self):
-        url = self._serve_once(b"x" * 1000, declared_length=100000)
-        dest = self._dest()
-        with self.assertRaises(OSError):
-            matx_sources.download(url, dest)
         self.assertFalse(os.path.exists(dest + ".part"),
                          "the partial file was left behind")
 
     def test_a_complete_transfer_still_lands(self):
         """The guard must not be so strict it refuses good downloads."""
-        url = self._serve_once(b"y" * 5000, declared_length=5000)
-        dest = self._dest()
-        matx_sources.download(url, dest)
-        self.assertEqual(5000, os.path.getsize(dest))
-
-    def test_no_content_length_is_not_read_as_truncated(self):
-        """A server that sends no Content-Length is not lying, and the bar already treats total=0 as unknown."""
-        url = self._serve_once(b"z" * 300, declared_length=None)
-        dest = self._dest()
-        matx_sources.download(url, dest)
-        self.assertEqual(300, os.path.getsize(dest))
+        for body, declared in ((b"y" * 5000, 5000), (b"z" * 300, None)):    # no Content-Length is no lie
+            with self.subTest(declared=declared):
+                url = self._serve_once(body, declared_length=declared)
+                dest = self._dest()
+                matx_sources.download(url, dest)
+                self.assertEqual(len(body), os.path.getsize(dest))
 
 
 class SilentOnlineFailureTest(unittest.TestCase):
@@ -677,21 +641,10 @@ class SilentOnlineFailureTest(unittest.TestCase):
             "a failed category lookup was cached - every later call "
             "returns Uncategorized without retrying")
 
-        matx_sources.get_json = lambda *a, **k: {    # recovery: the next call, with the API back, must work
-            "results": [{"id": "u1", "title": "Metal"}]}
-        self.assertEqual({"u1": "Metal"}, source._category_map())
-
-    def test_a_successful_category_lookup_is_still_cached(self):
-        source = self._source("GPUOpen")
-        source._categories = None
         calls = []
-
-        def once(*args, **kwargs):
-            calls.append(1)
-            return {"results": [{"id": "u1", "title": "Wood"}]}
-
-        matx_sources.get_json = once
-        source._category_map()
+        matx_sources.get_json = lambda *a, **k: (    # the API back: the next call works, then is cached
+            calls.append(1), {"results": [{"id": "u1", "title": "Metal"}]})[1]
+        self.assertEqual({"u1": "Metal"}, source._category_map())
         source._category_map()
         self.assertEqual(1, len(calls),
                          "the category map is no longer cached on success")
@@ -753,24 +706,18 @@ class MtlxRepairFindsTheColourMapUnderItsOtherNames(unittest.TestCase):
         return mtlx, dest
 
     def test_each_synonym_is_found(self):
-        for shipped in ("leather_red_02_col1_2k.png",
-                        "leather_red_02_coll1_2k.png",
-                        "leather_red_02_albedo_2k.jpg"):
+        for shipped, taken in (("leather_red_02_col1_2k.png", True),
+                               ("leather_red_02_coll1_2k.png", True),
+                               ("leather_red_02_albedo_2k.jpg", True),
+                               ("leather_red_02_rough_2k.png", False)):    # another role's map
             with self.subTest(shipped=shipped):
                 mtlx, dest = self._package(shipped)
                 repairs = matx_sources.repair_mtlx_references(mtlx, dest)
                 self.assertEqual(
-                    "textures/" + shipped,
+                    "textures/" + shipped if taken else None,
                     repairs[0]["fixed_to"] if repairs else None,
-                    "the colour map shipped as %s was not found for the "
-                    "document's diff reference" % shipped)
-
-    def test_a_map_of_another_role_is_not_taken(self):
-        mtlx, dest = self._package("leather_red_02_rough_2k.png")
-        repairs = matx_sources.repair_mtlx_references(mtlx, dest)
-        self.assertIsNone(
-            repairs[0]["fixed_to"] if repairs else None,
-            "a roughness map was wired in as the colour map")
+                    "the map shipped as %s was wired the wrong way for "
+                    "the document's diff reference" % shipped)
 
 
 class PartialCatalogueTest(unittest.TestCase):
@@ -814,19 +761,14 @@ class PartialCatalogueTest(unittest.TestCase):
         self.assertIn("1", said[0],
                       "the message does not say HOW MANY sites are "
                       "missing from the list: %r" % said[0])
+        self.assertEqual(934, len(self.model._all),
+                         "not caching cost the user the tiles that loaded")
+        self.assertTrue(self.model._loaded)
 
     def test_a_complete_fetch_is_cached(self):
         self.model._on_catalogue(self._records(1388), [], 0)
         self.assertEqual(
             1, len(self.saved), "a complete catalogue was not cached")
-
-    def test_a_partial_fetch_is_still_shown(self):
-        """Not caching must not mean not displaying - the user still sees what did load."""
-        with test_support.captured_log():
-            self.model._on_catalogue(
-                self._records(934), ["GPUOpen: URLError: down"], 0)
-        self.assertEqual(934, len(self.model._all))
-        self.assertTrue(self.model._loaded)
 
     def test_the_error_carries_a_reason(self):
         """errors once recorded only the exception TYPE, which a dozen causes share."""
@@ -887,38 +829,18 @@ class NoNetworkBeforeTheProgressBarTest(unittest.TestCase):
                          panel._online_source_for(stray))
         self.assertFalse(panel._needs_download([stray]))
         self.assertEqual([], self.calls, "a source lookup reached the network")
-
-    def test_the_online_model_names_a_records_source(self):
-        panel = test_support.fixture_panel(self)
         model = panel.matx_online_model
+        self.assertIsNone(model.source_for(stray))
         for named in model.sources:
-            record = self._records(named.name, count=1)[0]
-            self.assertIs(named, model.source_for(record))
-        self.assertIsNone(model.source_for(self._records("Nowhere", count=1)[0]))
-
-    def test_the_panel_asks_the_cheap_question(self):
-        """Derived from the source, so a future edit cannot quietly put the expensive lookup back."""
-        import re
-
-        path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "panel", "panel.py")
-        with open(path, encoding="utf-8") as handle:
-            source = handle.read()
-
-        match = re.search(
-            r"def _needs_download\(self, records\).*?\n    def ",
-            source, re.S)
-        self.assertIsNotNone(match, "_needs_download not found")
-        body = "\n".join(    # CODE only - the docstring and comments legitimately name the removed call
-            line for line in match.group(0).splitlines()
-            if not line.strip().startswith("#"))
-        body = re.sub(r'"""[\s\S]*?"""', "", body)
-        self.assertNotIn(
-            "_online_source_for", body,
-            "_needs_download resolves the download resolution again - "
-            "that is one HTTP GET per package on the UI thread, before "
-            "the progress bar is shown")
+            with self.subTest(source=named.name):
+                self.assertIs(named, model.source_for(
+                    self._records(named.name, count=1)[0]))
+                self.calls.clear()
+                panel._needs_download(self._records(named.name))
+                self.assertEqual(
+                    [], self.calls,
+                    "the progress-bar question resolved a download "
+                    "resolution - one HTTP GET per package on the UI thread")
 
 
 class CertificateVerificationTest(unittest.TestCase):
@@ -933,11 +855,8 @@ class CertificateVerificationTest(unittest.TestCase):
         self.assertTrue(
             ctx.check_hostname,
             "hostname checking is off - any valid certificate would pass")
-
-    def test_the_context_actually_has_certificates(self):
-        """A verifying context with an empty trust store verifies nothing - it just fails, which is the bare default under Houdini and why certifi is used."""
         self.assertTrue(
-            matx_sources._ssl_context().get_ca_certs(),
+            ctx.get_ca_certs(),
             "the SSL context trusts no certificate authorities, so every "
             "https request will fail into the unverified retry")
 

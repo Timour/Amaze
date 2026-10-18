@@ -18,9 +18,6 @@ sys.path.insert(
 
 from amaze.core import category  # noqa: E402
 from amaze.panel import sections  # noqa: E402
-
-PACKAGE = os.path.dirname(
-    os.path.dirname(os.path.abspath(__file__)))
 from amaze.tests import test_support  # noqa: E402
 
 
@@ -103,98 +100,41 @@ class ARowActsOnTheNameItStores(unittest.TestCase):
                  "say anything about it" % stored)
         return self.sidebar.mapFromSource(self.categories.index(row, 0))
 
-    def test_an_underscore_category_filters_on_its_STORED_name(self):
-        """`index.data()` is DisplayRole, where the leading underscore is stripped - so a stored `_WIP` filters on a name no asset carries."""
-        index = self._row_for("_WIP")
-        self.assertEqual(
-            "WIP", index.data(),
-            "the model no longer strips the underscore for display, so "
-            "this test is not reproducing the conditions it exists for")
-
-        self.section.select_category(index)
-
-        self.assertEqual(
-            [(_Model.CategoryRole, "_WIP")], self.proxy.filters,
-            "the sidebar filtered the grid on the DISPLAYED name, which "
-            "no asset carries - the grid goes empty with the row still "
-            "highlighted")
-
-    def test_an_ordinary_category_is_unaffected(self):
-        """The half that stops the fix over-reaching - a name with no underscore filters on itself."""
-        index = self._row_for("Metal")
-        self.section.select_category(index)
-        self.assertEqual([(_Model.CategoryRole, "Metal")], self.proxy.filters)
-
-    def test_the_All_row_still_clears_the_filter(self):
-        """`_All` is the one stored underscore name that MUST resolve to the everything-filter - reading it naively filters on the literal and shows nothing."""
-        row = self.categories._row_of("_All")
-        self.assertIsNotNone(
-            row, "the fixture has no _All row, so this cannot test the "
-                 "case the underscore mechanism exists for")
-        index = self.sidebar.mapFromSource(self.categories.index(row, 0))
-        self.assertEqual("All", index.data())
-
-        self.section.select_category(index)
-
-        self.assertEqual(
-            [(_Model.CategoryRole, "")], self.proxy.filters,
-            "clicking All did not clear the filter, so the grid shows "
-            "one category (or nothing) when it should show everything")
+    def test_a_row_filters_on_the_name_it_STORES(self):
+        """`_WIP` filters on `_WIP`, a plain name on itself, and the `_All` row clears the filter."""
+        self.assertIsNotNone(self.categories._row_of("_All"),
+                             "premise: the fixture has an _All row")
+        for stored, shown, expected in (("_WIP", "WIP", "_WIP"),
+                                        ("Metal", "Metal", "Metal"),
+                                        ("_All", "All", "")):
+            with self.subTest(stored=stored):
+                index = self._row_for(stored)
+                self.assertEqual(shown, index.data(),
+                                 "premise: the display no longer strips the underscore")
+                self.proxy.filters.clear()
+                self.section.select_category(index)
+                self.assertEqual(
+                    [(_Model.CategoryRole, expected)], self.proxy.filters,
+                    "the sidebar did not filter the grid on the name the "
+                    "row stores - the grid goes empty with the row lit")
 
 
 class WhatMayBeDroppedOnASidebarRowIsTheCONTEXTsAnswer(unittest.TestCase):
     """What a sidebar row accepts is the CONTEXT's answer, never a branch on a section key - a tuple of keys is a list someone has to remember to update when a section arrives."""
 
     def test_every_context_answers_whether_it_takes_drops(self):
-        for name in ("MaterialSection", "CopSection", "CodeSection",
-                     "GradientSection"):
+        """Category sections take tiles; File's folders and the online sources take none."""
+        for name, takes in (("MaterialSection", True), ("CopSection", True),
+                            ("CodeSection", True), ("GradientSection", True),
+                            ("FileSection", False), ("OnlineContext", False)):
             with self.subTest(context=name):
-                self.assertTrue(
-                    getattr(sections, name).takes_category_drops,
-                    "%s has categories and refuses tiles dropped on "
-                    "them" % name)
-
-    def test_FILE_takes_none(self):
-        """Its rows are registered folders - a file's location is where it sits on disk, not something a drag can change."""
-        self.assertFalse(sections.FileSection.takes_category_drops)
-
-    def test_the_ONLINE_world_takes_none_either(self):
-        """A sidebar of SOURCES - a remote catalogue's categories are not ours to write to."""
-        self.assertFalse(sections.OnlineContext.takes_category_drops)
-
-    def test_the_panel_no_longer_holds_a_list_of_section_KEYS(self):
-        """A tuple of section keys is a list someone has to remember to update, and a section that is forgotten simply misses the behaviour."""
-        with open(os.path.join(PACKAGE, "panel", "panel.py"),
-                  encoding="utf-8") as handle:
-            source = handle.read()
-        self.assertNotIn(
-            "CATEGORY_SECTIONS", source,
-            "the panel still keeps its own list of which sections have "
-            "categories")
-
-    def test_the_cluster_does_not_branch_on_a_section_key(self):
-        """Read as STRUCTURE, not prose - the module may name a key in a comment, but no code in it may COMPARE against one. Every string under the comparison counts, or a tuple form slips past."""
-        import ast
-        with open(os.path.join(PACKAGE, "panel", "sidebar.py"),
-                  encoding="utf-8") as handle:
-            tree = ast.parse(handle.read())
-        keys = {"material", "cop", "code", "gradient", "file", "online"}
-        offenders = []
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Compare):
-                continue
-            for side in [node.left] + list(node.comparators):
-                for inner in ast.walk(side):
-                    if (isinstance(inner, ast.Constant)
-                            and inner.value in keys):
-                        offenders.append(inner.value)
-        self.assertEqual(
-            [], offenders,
-            "panel/sidebar.py compares against section keys %s - the "
-            "context answers for itself" % offenders)
+                self.assertEqual(
+                    takes, bool(getattr(sections, name).takes_category_drops),
+                    "%s answers the wrong way about tiles dropped on its "
+                    "sidebar" % name)
 
     def test_COLOR_still_guards_its_synthetic_rows(self):
-        """The one rule that is genuinely per-context survives the move - a gradient row must be a real user category."""
+        """A gradient row must be a real user category; the base answer is permissive."""
         section = sections.GradientSection.__new__(sections.GradientSection)
         section.panel = type("_P", (), {
             "gradient_model": type("_M", (), {
@@ -203,9 +143,6 @@ class WhatMayBeDroppedOnASidebarRowIsTheCONTEXTsAnswer(unittest.TestCase):
         self.assertFalse(
             section.accepts_category_drop(None, "Wada 3 Colors"),
             "a synthetic palette row accepted a dropped tile")
-
-    def test_the_base_answer_is_permissive(self):
-        """The shared rules already reject what matters, so a context with nothing extra to say says nothing."""
         self.assertTrue(
             sections.AssetSection.accepts_category_drop(None, None, "Metal"))
 

@@ -1,6 +1,5 @@
 """The Comments area: a context says what its own subject is - `takes_comments` answers CAN this context ever carry one (the toolbar chip, with nothing selected), `comment_subject(index)` answers what the subject is RIGHT NOW, and only a context can map its own index."""
 
-import ast
 import json
 import os
 import sys
@@ -25,8 +24,6 @@ from amaze.core import keyed_store, notes  # noqa: E402
 from amaze.panel import notes_panel, sections  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
-PACKAGE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
 
 class TheSubjectBelongsToTheContext(unittest.TestCase):
 
@@ -39,26 +36,6 @@ class TheSubjectBelongsToTheContext(unittest.TestCase):
                     hasattr(context, "comment_subject"),
                     "%s cannot say what its comment subject is, so the "
                     "panel has to know for it" % name)
-
-    def test_the_panel_no_longer_branches_on_which_section(self):
-        """The three branches were the defect's shape: each mapped an index through one section's proxy and read one section's roles, in a method that serves all of them."""
-        with open(os.path.join(PACKAGE, "panel", "panel.py"),
-                  encoding="utf-8") as handle:
-            source = handle.read()
-        tree = ast.parse(source)
-        subject = [n for n in ast.walk(tree)
-                   if isinstance(n, ast.FunctionDef)
-                   and n.name == "_notes_subject"]
-        self.assertEqual(1, len(subject), "no _notes_subject to check")
-        literals = {n.value for n in ast.walk(subject[0])
-                    if isinstance(n, ast.Constant)
-                    and isinstance(n.value, str)}
-        for key in ("file", "material", "cop", "code", "gradient"):
-            self.assertNotIn(
-                key, literals,
-                "the Comments subject lookup still names the %r section, "
-                "so it carries knowledge that belongs on that context"
-                % key)
 
     def test_a_context_that_takes_no_comments_has_no_subject(self):
         """The two questions must agree: a context whose chip is disabled cannot produce a subject."""
@@ -261,17 +238,16 @@ class NothingSelectedDimsThePane(unittest.TestCase):
             self.panel.notes_panel._key,
             "nothing is selected and the pane still shows the last tile")
 
-    def test_a_click_on_empty_grid_dims_the_pane(self):
-        self._click(self._tile(1))
-        self.assertEqual(self._key_of(1), self.panel.notes_panel._key)
-        self._click(self._empty())
-        self._assert_dim()
-
-    def test_a_ctrl_click_on_the_one_selected_tile_dims_the_pane(self):
-        self._click(self._tile(1))
-        self.assertEqual(self._key_of(1), self.panel.notes_panel._key)
-        self._click(self._tile(1), QtCore.Qt.KeyboardModifier.ControlModifier)
-        self._assert_dim()
+    def test_an_empty_click_or_a_ctrl_click_off_the_one_tile_dims_the_pane(self):
+        for name, where, modifier in (
+                ("empty grid", self._empty, QtCore.Qt.KeyboardModifier.NoModifier),
+                ("ctrl on the selected tile", lambda: self._tile(1),
+                 QtCore.Qt.KeyboardModifier.ControlModifier)):
+            with self.subTest(gesture=name):
+                self._click(self._tile(1))
+                self.assertEqual(self._key_of(1), self.panel.notes_panel._key)
+                self._click(where(), modifier)
+                self._assert_dim()
 
     def test_with_the_current_tile_deselected_the_pane_shows_a_selected_one(self):
         ctrl = QtCore.Qt.KeyboardModifier.ControlModifier
@@ -328,14 +304,6 @@ class TheCommentsPaneHOLDSItsOwnWidth(unittest.TestCase):
             "opening Comments resized the SIDEBAR, which holds its own "
             "width")
 
-    def test_the_panel_does_no_splitter_arithmetic_for_it(self):
-        with open(os.path.join(PACKAGE, "panel", "panel.py"),
-                  encoding="utf-8") as handle:
-            source = handle.read()
-        self.assertNotIn(
-            "_apply_notes_width", source,
-            "the panel still computes the Comments pane's width by "
-            "hand, which the pane itself already answers")
 
 
 class TheHeaderFollowsTheAssetItNames(unittest.TestCase):

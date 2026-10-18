@@ -1,4 +1,4 @@
-"""The Search box: one label, an empty field, in every tab - the label reads Search, the box shows NO placeholder anywhere, and the box's tooltip is where :tag gets taught. These tests drive the real tab switch, so a section that starts writing its own text again turns them red."""
+"""The toolbar's Filter menu, one engine for every section, and what typing in Search costs."""
 
 import contextlib
 import json
@@ -22,51 +22,6 @@ from amaze.panel import sections  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 from amaze.core import file_library, texture_library  # noqa: E402 - AFTER test_support, which redirects config_root and the cache; a module resolving a path at import time would reach the user's own files
 from amaze.prefs import prefs as prefs_module  # noqa: E402
-
-
-class SearchBoxTest(unittest.TestCase):
-    """Driven on a constructed panel, tab by tab."""
-
-    @classmethod
-    def setUpClass(cls):
-        cls.panel = test_support.fixture_panel(
-            test_support.class_scope(cls))
-
-    def _placeholder_for(self, key):
-        self.panel._on_tab_toggled(key, True)
-        self.assertEqual(key, self.panel.current_section,
-                         "the tab switch to %r did not take" % key)
-        return self.panel.line_filter.placeholderText()
-
-    def test_the_label_reads_search(self):
-        """The box searches, so the label says Search - Filter was the old word."""
-        self.assertEqual(
-            "Search", self.panel.filter_label.text(),
-            "the toolbar label next to the box changed")
-
-    def test_the_box_stays_empty_in_every_section(self):
-        """No placeholder text in any tab - the empty box IS the design."""
-        for key, label in sections.all_sections():
-            self.assertEqual(
-                "", self._placeholder_for(key),
-                "the %s section writes a placeholder into the "
-                "Search box again" % label)
-
-    def test_the_online_browser_stays_empty_too(self):
-        """Online mode is a VIEW MODE over Materials with its own placeholder history - it follows the same rule."""
-        self._placeholder_for("material")
-        self.panel.open_online_source("PhysicallyBased")
-        try:
-            self.assertTrue(self.panel._is_online(),
-                            "the panel did not enter online mode, so "
-                            "this test is not exercising it")
-            online = self.panel.line_filter.placeholderText()
-        finally:
-            self.panel.leave_online_world()  # the real leave path - exit_online_materials is the mode exit alone and would leave the grid online
-        self.assertEqual(
-            "", online,
-            "the online browser writes a placeholder into the "
-            "Search box again (%r)" % online)
 
 
 class FilterMenuEngineTest(unittest.TestCase):
@@ -93,9 +48,17 @@ class FilterMenuEngineTest(unittest.TestCase):
             "code": ["All", "VEX", "OpenCL", "Python", "Code"],
             "file": ["All", "Images", "Geometry", "Hip"],
         }
+        values = {"gradient": ("5+ colors", (5, None)),    # values of two TYPES: the panel interprets neither
+                  "code": ("OpenCL", "OpenCL")}
         for key, labels in expected.items():
             self.assertEqual(labels, self._labels_for(key),
                              "the %s section's Filter menu changed" % key)
+            if key in values:
+                label, value = values[key]
+                self.assertEqual(
+                    value, self.panel.filter_values[label],
+                    "the %s menu no longer carries its value through the "
+                    "panel untouched" % key)
         material = self._labels_for("material")
         self.assertEqual("All", material[0],
                          "Materials lost its everything-entry")
@@ -115,18 +78,6 @@ class FilterMenuEngineTest(unittest.TestCase):
                          "%d action groups alive after six rebuilds" % len(groups))
         self.assertEqual(labels, [act.text() for act in groups[0].actions()],
                          "the group holds actions the menu no longer shows")
-
-    def test_the_panel_never_interprets_a_value(self):
-        """The engine's whole claim: two sections filter on values of different TYPES (a renderer string, a (low, high) palette-size pair), so a panel that understood either one could not serve both."""
-        self._labels_for("gradient")
-        self.assertEqual(
-            (5, None), self.panel.filter_values["5+ colors"],
-            "the Colors menu no longer carries its range through the "
-            "panel untouched")
-        self._labels_for("code")
-        self.assertEqual(
-            "OpenCL", self.panel.filter_values["OpenCL"],
-            "the Code menu's value changed shape")
 
     def test_a_pick_narrows_the_grid_and_all_puts_it_back(self):
         """Driven through the real menu action, in the section whose rows the fixture can count: one language in, everything out."""
@@ -160,8 +111,8 @@ class FilterMenuEngineTest(unittest.TestCase):
             total, self.panel.code_sorted_model.rowCount(),
             "All does not put every snippet back")
 
-    def test_all_stores_no_filter_at_all(self):
-        """All REMOVES the filter rather than storing an accept-everything value - a material with no renderer (Repair mints those) has no other way to be seen."""
+    def test_all_stores_no_filter_and_the_sidebar_counts_survive_it(self):
+        """A renderless row is seen only unfiltered; a label `All` once zeroed every sidebar count."""
         self._labels_for("material")
         self.panel.filter_actions["All"].setChecked(True)
         self.panel.apply_section_filter()
@@ -170,6 +121,17 @@ class FilterMenuEngineTest(unittest.TestCase):
             self.panel.material_model.RendererRole, stored,
             "All still stores a filter - every row pays an "
             "index.data() on every pass to reach the same yes")
+        if not self.panel.material_model.rowCount():
+            self.skipTest("fixture library has no materials")
+        self.assertTrue(
+            self.panel.category_model.showing_all_renderers(),
+            "All does not read as all to the category model, so the "
+            "sidebar hides categories the grid is showing")
+        self.assertEqual(
+            self.panel.category_model.rowCount(),
+            self.panel.category_sorted_model.rowCount(),
+            "the sidebar is hiding categories while the grid shows "
+            "every material")
 
     def test_each_section_remembers_its_own_choice(self):
         """One shared key would mean picking Redshift in Materials and finding Nodes narrowed to nothing."""
@@ -316,23 +278,6 @@ class FilterMenuEngineTest(unittest.TestCase):
             "All does not put every file back - including the .txt, "
             "which has no kind of its own to be found under")
 
-    def test_the_sidebar_counts_survive_all(self):
-        """The panel once handed the category model the LABEL `All`, which Categories lowercases and substring-matches - no renderer matched, every count read 0, and Hide Empty Categories emptied the sidebar."""
-        self._labels_for("material")
-        if not self.panel.material_model.rowCount():
-            self.skipTest("fixture library has no materials")
-        self.panel.filter_actions["All"].setChecked(True)
-        self.panel.apply_section_filter()
-        self.assertTrue(
-            self.panel.category_model.showing_all_renderers(),
-            "All does not read as all to the category model, so the "
-            "sidebar hides categories the grid is showing")
-        self.assertEqual(
-            self.panel.category_model.rowCount(),
-            self.panel.category_sorted_model.rowCount(),
-            "the sidebar is hiding categories while the grid shows "
-            "every material")
-
 
 class RememberedFilterSettingsTest(unittest.TestCase):
     """The settings file, a contract with data already on disk: one key per section, where there was one renderer for Materials alone."""
@@ -348,15 +293,12 @@ class RememberedFilterSettingsTest(unittest.TestCase):
         p.load()
         return p
 
-    def test_an_old_settings_file_keeps_its_renderer(self):
-        """An upgrade must open on the renderer the user left it on, not silently back at All."""
+    def test_an_old_settings_file_keeps_its_renderer_unless_the_new_key_is_there(self):
+        """Both keys present means the file was written since the upgrade - the new one is the truth."""
         p = self._prefs({"last_renderer": "Redshift"})
         self.assertEqual(
             "Redshift", p.section_filter("material"),
             "the remembered renderer was dropped on upgrade")
-
-    def test_the_old_key_does_not_override_the_new_one(self):
-        """Both keys present means the file was written since the upgrade - the new one is the truth."""
         p = self._prefs({"last_renderer": "Redshift",
                          "section_filters": {"material": "Karma",
                                              "code": "VEX"}})
@@ -364,14 +306,11 @@ class RememberedFilterSettingsTest(unittest.TestCase):
                          "the retired key overrode the live one")
         self.assertEqual("VEX", p.section_filter("code"))
 
-    def test_a_section_with_no_memory_answers_empty(self):
+    def test_what_is_set_is_what_is_saved(self):
         p = self._prefs({})
         self.assertEqual("", p.section_filter("gradient"),
                          "an unvisited section claims a filter it was "
                          "never given")
-
-    def test_what_is_set_is_what_is_saved(self):
-        p = self._prefs({})
         p.set_section_filter("cop", "LOP")
         p.save()
         again = prefs_module.Prefs()

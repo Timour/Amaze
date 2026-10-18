@@ -55,18 +55,15 @@ class ASelectionIsOneHuskPerRenderer(unittest.TestCase):
                 model.render_thumbnails(rows)
         return batches
 
-    def test_ten_materials_are_one_batch(self):
-        model = self._model(["MaterialX"] * 10)
-        self.assertEqual([("Karma", 10)], self._batches(model, list(range(10))))
-
-    def test_karma_and_octane_are_a_batch_each(self):
-        model = self._model(["MaterialX", "Octane", "MaterialX", "Octane"])
-        self.assertEqual([("Karma", 2), ("Octane", 2)],
-                         self._batches(model, [0, 1, 2, 3]))
-
-    def test_a_single_render_is_a_batch_of_one(self):
+    def test_a_selection_is_one_batch_per_renderer_and_one_render_a_batch_of_one(self):
         """render_thumbnail takes the same path: no second way to render one material."""
-        self.assertEqual([("Karma", 1)], self._batches(self._model(["MaterialX"]), [0]))
+        for renderers, batches in ((["MaterialX"] * 10, [("Karma", 10)]),
+                                   (["MaterialX", "Octane", "MaterialX", "Octane"],
+                                    [("Karma", 2), ("Octane", 2)]),
+                                   (["MaterialX"], [("Karma", 1)])):
+            with self.subTest(renderers=renderers):
+                model = self._model(renderers)
+                self.assertEqual(batches, self._batches(model, list(range(len(renderers)))))
 
 
 class TheBatchWritesOneStage(unittest.TestCase):

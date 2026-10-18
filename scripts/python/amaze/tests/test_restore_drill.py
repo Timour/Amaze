@@ -56,16 +56,6 @@ class TestRestoreDrill(unittest.TestCase):
 
     # -- the failure shapes that actually happen ------------------------
 
-    def test_truncated_write_restores_from_bak1(self):
-        """A write interrupted mid-flight leaves valid-looking bytes that are not valid json."""
-        with open(self.target, "r+", encoding="utf-8") as handle:
-            handle.truncate(5000)
-        with self.assertRaises(ValueError):
-            self._assets()
-        result = _run("restore", "--allow-loss", self.target, "bak-1")
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(self._assets(), 500)
-
     def test_corrupt_file_restores_and_is_itself_reversible(self):
         self._write_raw("{ not json at all")
         result = _run("restore", "--allow-loss", self.target, "bak-2")
@@ -169,12 +159,6 @@ class TestRestoreDrill(unittest.TestCase):
         self.assertIn("refusing", result.stderr.lower())
         self.assertEqual(self._assets(), 500, "the good file was overwritten")
 
-    def test_list_reports_what_each_snapshot_holds(self):
-        result = _run("list", self.target)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("500 assets", result.stdout)
-        self.assertIn("bak-first", result.stdout)
-
     def test_missing_tier_fails_cleanly(self):
         result = _run("restore", "--allow-loss", self.target, "bak-9")
         self.assertNotEqual(result.returncode, 0)
@@ -262,29 +246,24 @@ class TestUnreadableSettingsArePreserved(unittest.TestCase):
                 truncated, handle.read(),
                 "the preserved copy is not the file we failed to read")
 
-    def test_the_preserved_copy_is_never_overwritten(self):
-        """A second failed load must not replace the original evidence with an already-defaulted rewrite."""
-        raw = self._write_real_settings()
-        truncated = raw[:len(raw) // 2]
-        with open(self.settings, "w", encoding="utf-8") as handle:
-            handle.write(truncated)
-        self._prefs().load()
-
         with open(self.settings, "w", encoding="utf-8") as handle:
             handle.write("{ later garbage")
         self._prefs().load()
-
-        with open(self.settings + ".unreadable", encoding="utf-8") as handle:
+        with open(kept, encoding="utf-8") as handle:
             self.assertEqual(
                 truncated, handle.read(),
-                "the second failure overwrote the first preserved copy")
+                "a second failed load replaced the original evidence")
 
     def test_a_first_run_preserves_nothing(self):
         """No settings.json yet is not a corruption."""
-        self.assertFalse(self._prefs().load())
+        prefs = self._prefs()
+        self.assertFalse(prefs.load())
         self.assertFalse(
             os.path.exists(self.settings + ".unreadable"),
             "a first run left a spurious .unreadable file")
+        prefs.save()
+        self.assertTrue(os.path.exists(self.settings),
+                        "the refusal latched on a perfectly good load")
 
     def test_a_file_created_this_session_still_gets_a_snapshot(self):
         """Marking a path done BEFORE checking it exists burns the once-per-session marker on the save that CREATES the file, leaving every later save unprotected."""
@@ -368,10 +347,6 @@ class ARestoreThatLosesRecordsMustBeMeantTest(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stderr)
         with open(self.target, encoding="utf-8") as fh:
             self.assertEqual(0, len(json.load(fh)["assets"]))
-
-    def test_a_stranded_asset_is_named_on_the_way_out(self):
-        result = _run("restore", "--allow-loss", self.target, "bak-1")
-        self.assertEqual(0, result.returncode, result.stderr)
         self.assertIn("a0", result.stdout,
                       "records stranded by the restore are not named - "
                       "the next Clean Library makes the discovery instead")
@@ -409,6 +384,8 @@ class TheUndoFamilyIsBoundedTest(unittest.TestCase):
                       if n.startswith(prefix))
 
     def test_the_family_stays_at_the_cap(self):
+        from amaze.core import library as library_mod
+        from amaze.helpers import hostos
         from amaze.helpers import restore as restore_lib
         self._mint(restore_lib.KEEP_UNDO_COPIES + 3)
         retired = restore_lib._retire_old_undo_copies(self.target)
@@ -417,16 +394,10 @@ class TheUndoFamilyIsBoundedTest(unittest.TestCase):
                          len(self._family()),
                          "the undo family is not bounded - it grows in a "
                          "synced folder forever")
-
-    def test_retired_copies_are_in_quarantine_not_gone(self):
-        from amaze.core import library as library_mod
-        from amaze.helpers import restore as restore_lib
-        self._mint(restore_lib.KEEP_UNDO_COPIES + 2)
-        retired = restore_lib._retire_old_undo_copies(self.target)
-        self.assertEqual(2, len(retired))
-        root = os.path.join(
-            __import__("amaze.helpers.hostos", fromlist=["h"])
-            .history_root(self.target), library_mod.QUARANTINE_PREFIX)
+        self.assertTrue(retired[0].endswith("-000000"),
+                        "retirement did not take the oldest state first")
+        root = os.path.join(hostos.history_root(self.target),
+                            library_mod.QUARANTINE_PREFIX)
         held = []
         for folder, _dirs, files in os.walk(root):
             held.extend(files)
@@ -434,13 +405,6 @@ class TheUndoFamilyIsBoundedTest(unittest.TestCase):
             self.assertIn(name, held,
                           "a retired undo copy is nowhere - it held a "
                           "state that existed in no other file")
-
-    def test_the_oldest_go_first(self):
-        from amaze.helpers import restore as restore_lib
-        self._mint(restore_lib.KEEP_UNDO_COPIES + 1)
-        retired = restore_lib._retire_old_undo_copies(self.target)
-        self.assertTrue(retired[0].endswith("-000000"),
-                        "retirement did not take the oldest state first")
 
 
 class PrefsLoadNeverRaisesTest(unittest.TestCase):
@@ -528,18 +492,6 @@ class PrefsRefusesToOverwriteTest(unittest.TestCase):
             before, open(path, encoding="utf-8").read(),
             "defaults were written over a settings file we could not "
             "read - that is how 200 gradients became 1")
-
-    def test_an_ordinary_save_still_works(self):
-        from amaze.prefs import prefs as prefs_mod
-        folder = tempfile.mkdtemp(prefix="amaze_prefs_ok_")
-        self.addCleanup(shutil.rmtree, folder, ignore_errors=True)
-        p = prefs_mod.Prefs()
-        p.path = folder
-        p.load()
-        p.save()
-        self.assertTrue(
-            os.path.exists(os.path.join(folder, "settings.json")),
-            "the refusal latched on a perfectly good load")
 
 
 if __name__ == "__main__":

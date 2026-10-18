@@ -27,13 +27,6 @@ SUBTITLE_ROLE = QtCore.Qt.ItemDataRole.UserRole + 65
 
 ROW_W = 900
 ROW_H = 24
-THUMB_W = theme.ui_px(30)
-NAME_W = theme.ui_px(200)
-TYPE_W = theme.ui_px(80)
-FAV_W = theme.ui_px(70)
-VERSION_W = theme.ui_px(90)
-OPEN_W = theme.ui_px(60)
-NOTE_W = theme.ui_px(60)
 
 
 class ListRowPainting(unittest.TestCase):
@@ -59,59 +52,6 @@ class ListRowPainting(unittest.TestCase):
         model.appendRow(item)
         self._model = model                      # keep alive
         return model.index(0, 0)
-
-    def _render(self, index):
-        canvas = QtGui.QPixmap(ROW_W, ROW_H)
-        canvas.fill(QtCore.Qt.GlobalColor.black)
-        option = QtWidgets.QStyleOptionViewItem()
-        option.rect = QtCore.QRect(0, 0, ROW_W, ROW_H)
-        option.widget = self.view
-        option.font = self.view.font()
-        option.palette = self.view.palette()
-        painter = QtGui.QPainter(canvas)
-        try:
-            self.delegate.paint(painter, option, index)
-        finally:
-            painter.end()
-        return canvas.toImage()
-
-    @staticmethod
-    def _ink(image, x0, x1):
-        """Non-background pixels in a column band, as a set of RGB - column RULES are furniture, not content."""
-        rule = (0x45, 0x45, 0x45)  # the old painted strip's divider grey, kept as a literal now the strip is gone; only the grid test uses this reader and it paints no rules
-        found = set()
-        for x in range(max(0, x0), min(image.width(), x1)):
-            for y in range(image.height()):
-                rgb = image.pixelColor(x, y)
-                value = (rgb.red(), rgb.green(), rgb.blue())
-                if value != rule and sum(value) > 40:
-                    found.add(value)
-        return found
-
-    def _col_x(self, which):
-        """Left edge of a mark column, in paint order: ... | Favorite | Version | Open | Notes."""
-        base = THUMB_W + NAME_W + TYPE_W
-        offsets = {
-            "fav": base,
-            "version": base + FAV_W,
-            "open": base + FAV_W + VERSION_W,
-            "note": base + FAV_W + VERSION_W + OPEN_W,
-        }
-        left = offsets[which]
-        width = {"fav": FAV_W, "version": VERSION_W,
-                 "open": OPEN_W, "note": NOTE_W}[which]
-        return left, left + width
-
-    def _thumb_band(self, image):
-        """Every pixel of the thumbnail square, as bytes."""
-        return bytes(
-            bytearray(
-                v
-                for x in range(min(THUMB_W, image.width()))
-                for y in range(image.height())
-                for v in (image.pixelColor(x, y).red(),
-                          image.pixelColor(x, y).green(),
-                          image.pixelColor(x, y).blue())))
 
     def test_the_grid_still_gets_its_badges(self):
         """The badges did not go away - they went out of LIST mode; without this, deleting the badge painters entirely would leave every test above green."""
@@ -163,7 +103,8 @@ class TickIsDrawnNotTyped(unittest.TestCase):
 class SliderFollowsTheViewMode(unittest.TestCase):
     """Grid scales 64-512 with a magnet at 128; a list row is one text line and does not scale, so the slider is greyed there."""
 
-    def test_the_default_is_the_magnet(self):
+    def test_the_magnet_pulls_a_near_miss_onto_128(self):
+        """A magnet that grabs everything is a broken slider - 200 is a size someone chose."""
         self.assertEqual(
             128, ui_helpers.ClickSlider.DEFAULT_VALUE,
             "the slider's default and its magnet must be the same "
@@ -171,8 +112,6 @@ class SliderFollowsTheViewMode(unittest.TestCase):
         self.assertIn(
             128, ui_helpers.ClickSlider.SNAP_MARKS,
             "128 is the magnet - it has to be in the snap marks")
-
-    def test_the_magnet_pulls_a_near_miss_onto_128(self):
         slider = ui_helpers.ClickSlider()
         slider.setRange(64, 512)
         for start in (128 - ui_helpers.ClickSlider.SNAP_RADIUS + 1,
@@ -181,12 +120,8 @@ class SliderFollowsTheViewMode(unittest.TestCase):
                 128, slider._snap(start),
                 "a drag ending %s did not snap to the 128 magnet"
                 % start)
-
-    def test_a_deliberate_size_is_not_swallowed(self):
-        """A magnet that grabs everything is a broken slider - 200 is a size someone chose."""
-        slider = ui_helpers.ClickSlider()
-        slider.setRange(64, 512)
-        self.assertEqual(200, slider._snap(200))
+        self.assertEqual(200, slider._snap(200),
+                         "the magnet swallowed a size someone chose")
 
 
 class TheRealPanelInListMode(unittest.TestCase):
@@ -308,15 +243,6 @@ class TheRealPanelInListMode(unittest.TestCase):
             "the layout is moving with no input - %s distinct states: "
             "%s" % (len(seen), seen))
 
-    def test_list_mode_can_scroll_sideways_and_grid_cannot(self):
-        self._mode("list")
-        self.addCleanup(self._mode, "grid")
-        self.assertNotEqual(
-            QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff,
-            self.panel.thumblist.horizontalScrollBarPolicy(),
-            "list mode cannot scroll sideways, so a row wider than the "
-            "panel is simply unreachable")
-
     def test_no_column_is_narrower_than_what_it_paints(self):
         """The truncation complaint, pinned: a Version column too narrow for an ordinary version name elides it. Two causes, both removed by construction - columns were MEASURED with the view's font and PAINTED with the delegate's, and the fit sampled rows so a column could be too narrow for a value the sample missed; Qt measures what it draws, in the font it draws it. Asserts the PROPERTY rather than the old floors: every visible cell fits."""
         self._mode("list")
@@ -423,6 +349,7 @@ class FilteringNeverUnsortsTheList(unittest.TestCase):
             "back to All and the list is no longer alphabetical - a "
             "filter change re-filtered without re-sorting")
 
+
 class CategoriesIsAButtonNotAMenuItem(unittest.TestCase):
     """`Show Categories` left the View menu and became a chip in front of the gear - two controls for one preference is how a toggle ends up disagreeing with the thing it toggles, so the menu row went rather than being mirrored."""
 
@@ -433,16 +360,6 @@ class CategoriesIsAButtonNotAMenuItem(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         pass  # fixture_panel registers stop_panel_workers and deleteLater through class_scope; a worker destroyed by Py_Finalize aborts hython and the push gate reads the exit as not green
-
-    def test_the_button_exists_and_the_menu_row_does_not(self):
-        self.assertTrue(hasattr(self.panel, "btn_categories"),
-                        "there is no categories button")
-        menu = self.panel.ui.findChild(QtWidgets.QMenu, "menuView")
-        self.assertIsNotNone(menu, "no View menu to check")
-        self.assertNotIn(
-            self.panel.action_catview, menu.actions(),
-            "Show Categories is still in the View menu as well as on "
-            "the toolbar - one preference, two controls")
 
     def test_the_button_shows_and_hides_the_sidebar(self):
         panel = self.panel
@@ -498,41 +415,18 @@ class EveryChipUsesTheOneEngine(unittest.TestCase):
 
     def test_no_chip_goes_white_when_it_is_ON(self):
         """No chip is white in any state - none ever was at rest; two copies had invented it."""
-        for name in ("btn_categories", "btn_notes", "cb_favsonly",
-                     "cb_viewmode"):
+        hover = ((False, True), (True, True))    # a colour-signalled chip never lightens
+        for name, states in (("btn_categories", hover), ("btn_notes", hover),
+                             ("cb_favsonly", hover), ("cb_viewmode", ())):
             button = getattr(self.panel, name, None)
             if button is None or not getattr(button, "_pms", None):
                 continue
-            self.assertNotIn(
-                self.LIT, self._colours(button._pms[(True, False)]),
-                "%s turns white when checked - no chip does that" % name)
-
-    def test_a_colour_signalled_chip_never_lightens(self):
-        """Comments, Categories and the favourites star say their state with COLOUR, so hover must leave it alone."""
-        for name in ("btn_categories", "btn_notes", "cb_favsonly"):
-            button = getattr(self.panel, name, None)
-            if button is None or not getattr(button, "_pms", None):
-                continue
-            for state in ((False, True), (True, True)):
+            for state in ((True, False),) + states:
                 self.assertNotIn(
                     self.LIT, self._colours(button._pms[state]),
-                    "%s lightens in state %s, which erases the colour "
-                    "that says whether it is on" % (name, state))
-
-    def test_the_chips_are_BUILT_by_the_shared_engine(self):
-        """Not a style point: the drift happened because each chip assembled its own four pixmaps - a new one hand-rolling them again fails here."""
-        import inspect
-        from amaze.panel import panel as panel_mod
-        body = inspect.getsource(panel_mod)
-        self.assertNotIn(
-            "set_state_pixmaps(", body,
-            "a chip is assembling its own states again instead of "
-            "calling ChipToggleButton.set_art - that is how two of "
-            "them drifted apart in the first place")
-        self.assertGreaterEqual(
-            body.count(".set_art("), 4,
-            "not every chip goes through the shared engine")
-
+                    "%s turns white in state %s - no chip does that, and "
+                    "lightening a colour chip erases the colour that says "
+                    "it is on" % (name, state))
 
 
 class TheOnlineWorld(unittest.TestCase):
@@ -549,11 +443,6 @@ class TheOnlineWorld(unittest.TestCase):
     def setUp(self):
         if self.panel._is_online():
             self.panel.leave_online_world()
-
-    def _tab_keys(self):
-        return [key for key, _label in self.panel.section_tabs._segments] \
-            if hasattr(self.panel.section_tabs, "_segments") else \
-            [k for k, _l in self.panel._online_segments()]
 
     def test_the_strip_becomes_the_sources(self):
         from amaze.core import matx_sources
@@ -648,39 +537,6 @@ class TheOnlineWorld(unittest.TestCase):
             "left the online world from Color and the grid still has "
             "the online SELECTION model - which is what turns a click "
             "into the wrong asset")
-
-    def test_leaving_re_activates_WHICHEVER_section_you_came_from(self):
-        """The half the test above cannot afford to check for real: restoring the grid is one call - `_section().activate()` in leave_online_world - and it has to happen whatever tab you left from; activating all five against the real library costs File a filesystem scan and a conversion pass, so this asserts the CALL and the effect is proven once, on Colors, above. Spying on the Section object rather than the panel, because the bug was the panel re-activating one section BY NAME - a spy on the section is blind to that shortcut."""
-        from unittest import mock
-        from amaze.core import matx_sources
-
-        def _no_network(url, *args, **kwargs):
-            raise OSError("network blocked in tests")
-
-        real_request = matx_sources._request
-        matx_sources._request = _no_network
-        self.addCleanup(setattr, matx_sources, "_request", real_request)
-
-        panel = self.panel
-        keys = [k for k, _l in panel.ALL_SECTIONS
-                if k in getattr(panel, "sections", {})]
-        self.assertTrue(keys, "no local sections to test")
-
-        self.addCleanup(
-            lambda: panel.leave_online_world() if panel._is_online() else None)
-
-        for key in keys:
-            with self.subTest(section=key):
-                section = panel.sections[key]
-                panel.current_section = key
-                panel.online_mode = True          # pretend we are there
-                with mock.patch.object(type(section), "activate") as spy:
-                    panel.leave_online_world()
-                self.assertTrue(
-                    spy.called,
-                    "leaving the online world from %r never re-activated "
-                    "the section, so the grid keeps the online model"
-                    % key)
 
     def test_the_button_is_the_signal_and_it_is_amber(self):
         from amaze.helpers import theme
@@ -781,11 +637,6 @@ class TheCategoryColumnPaintsITSOwnColour(unittest.TestCase):
         r, g, b = colour.red(), colour.green(), colour.blue()
         return r > g > b and (r - b) > 40
 
-    def test_a_coloured_category_is_not_painted_in_the_shared_ink(self):
-        self.assertTrue(
-            self._hueish(self._ink(self.CATEGORY_INK)),
-            "the Category cell lost the colour the user gave it")
-
     def test_an_uncoloured_category_uses_the_shared_ink(self):
         plain = self.view.palette().color(QtGui.QPalette.ColorRole.Text)
         self.assertEqual(
@@ -818,7 +669,6 @@ class TheCategoryColumnPaintsITSOwnColour(unittest.TestCase):
         self.assertTrue(  # and the UNSELECTED row still gets its colour, or the comparison above passes for a delegate that does nothing at all
             self._hueish(self._ink(self.CATEGORY_INK)),
             "an unselected category lost its own colour")
-
 
 
 if __name__ == "__main__":

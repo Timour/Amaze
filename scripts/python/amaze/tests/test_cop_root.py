@@ -338,16 +338,12 @@ class OneWalkFindsAndRewritesCopReferences(unittest.TestCase):
         self.image.parm("file").set(self.OLD)
         self.handler = nodes.NodeHandler.__new__(nodes.NodeHandler)
 
-    def test_the_walk_reaches_the_nested_parm_and_nothing_without_a_path(self):
+    def test_the_walk_collects_the_nested_parm_and_rewrites_that_same_parm(self):
         found = [(parm.path(), raw) for parm, raw in nodes.op_path_parms((self.matnet,))]
         self.assertEqual([(self.image.parm("file").path(), self.OLD)], found)
-
-    def test_the_reference_is_collected_with_its_network(self):
         refs = self.handler._collect_cop_refs((self.matnet,))
         self.assertEqual([(self.image.parm("file").path(), self.copnet.path())],
                          [(parm.path(), container.path()) for parm, _cop, container in refs])
-
-    def test_the_same_parm_is_rewritten(self):
         self.handler.rewrite_cop_refs((self.matnet,), {self.OLD: self.NEW})
         self.assertEqual(self.NEW, self.image.parm("file").unexpandedString())
 

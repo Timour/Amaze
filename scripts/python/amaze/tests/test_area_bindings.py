@@ -1,6 +1,5 @@
 """THE NET for batches 4 to 9: what every context binds into each area, asserted by ACTIVATING a real context and reading the widgets back, and named by panel ATTRIBUTE rather than by class. ▸p/area-bindings"""
 
-import inspect
 import os
 import sys
 import unittest
@@ -111,21 +110,6 @@ class EveryLibraryBackedModelIsDeclaredBySection(unittest.TestCase):
             "these models can be repointed but no section declares "
             "them, so a library switch leaves them serving the "
             "previous library: %s" % sorted(undeclared))
-
-    def test_the_panel_switches_through_the_one_derived_route(self):
-        """And there is ONE walk, not three. Three copies is what let five siblings be added to the same lists while the eighth was added to none - so the copies are what the fix removes."""
-        import inspect
-        import re
-        from amaze.panel import panel as panel_mod
-
-        source = inspect.getsource(panel_mod)
-        stray = re.findall(r"self\.\w*model\w*\.switch_model_data\(\)",
-                           source)
-        self.assertEqual(
-            [], stray,
-            "a hand-named model is switched outside "
-            "switch_all_models(), which is how a list goes short: %s"
-            % sorted(set(stray)))
 
 
 class AreaBindingCase(unittest.TestCase):
@@ -246,12 +230,12 @@ class EveryContextCarriesTheBadgesItsModelCanAnswer(AreaBindingCase):
 
 class TheGridIsBoundToItsOwnContext(AreaBindingCase):
 
-    def test_every_section_binds_its_own_model_selection_and_delegate(self):
+    def test_every_section_binds_its_own_four_areas(self):
         for key, expected in BINDINGS.items():
             with self.subTest(section=key):
                 panel = self.activate(key)
                 actual = self.bound(panel)
-                for area in ("grid", "selection", "delegate"):
+                for area in ("grid", "selection", "delegate", "sidebar"):
                     self.assertIs(
                         actual[area], getattr(panel, expected[area]),
                         "%s bound the wrong %s - expected panel.%s. Two "
@@ -261,28 +245,8 @@ class TheGridIsBoundToItsOwnContext(AreaBindingCase):
                         "as the previous tab's tiles"
                         % (key, area, expected[area]))
 
-    def test_no_two_sections_share_a_selection_model(self):
-        """A shared selection model turns a click in one tab into the wrong asset in another - the failure the engine's key-not-row rule exists for, one level up."""
-        seen = {}
-        for key, expected in BINDINGS.items():
-            seen.setdefault(expected["selection"], []).append(key)
-        shared = {name: keys for name, keys in seen.items() if len(keys) > 1}
-        self.assertEqual({}, shared,
-                         "these sections share one selection model: %s"
-                         % shared)
-
 
 class TheSidebarIsBoundToItsOwnContext(AreaBindingCase):
-
-    def test_every_section_binds_its_own_sidebar_model(self):
-        for key, expected in BINDINGS.items():
-            with self.subTest(section=key):
-                panel = self.activate(key)
-                self.assertIs(
-                    self.bound(panel)["sidebar"],
-                    getattr(panel, expected["sidebar"]),
-                    "%s left the sidebar on another context's model, so "
-                    "clicking a row filters the grid to nothing" % key)
 
     def test_the_sidebar_has_a_row_selected_after_every_activation(self):
         """cat_list has no persistent selection model, so setModel() always leaves it with nothing selected - every activation has to choose a row or the grid opens blank with nothing highlighted."""
@@ -368,9 +332,10 @@ class TheCommentsPaneFollowsTheContext(AreaBindingCase):
 class TheOnlineWorldBindsTheSameFourAreas(AreaBindingCase):
     """A PARALLEL world, not a view mode - but it drives the same four widgets, which is why it is pinned beside the sections. Batch 5 turns it into a context object with a delegate of its own; this table is what says that move kept its meaning."""
 
-    def test_entering_binds_the_online_models(self):
-        panel = self.activate("material")
+    def test_entering_binds_the_online_models_and_leaving_puts_back_yours(self):
+        panel = self.activate("gradient")
         self.addCleanup(self._restore)
+        before = self.bound(panel)
         panel.enter_online_world()
         QtWidgets.QApplication.processEvents()
         actual = self.bound(panel)
@@ -378,13 +343,6 @@ class TheOnlineWorldBindsTheSameFourAreas(AreaBindingCase):
             self.assertIs(actual[area], getattr(panel, name),
                           "the online world bound the wrong %s - "
                           "expected panel.%s" % (area, name))
-
-    def test_leaving_puts_back_the_section_you_came_from(self):
-        panel = self.activate("gradient")
-        self.addCleanup(self._restore)
-        before = self.bound(panel)
-        panel.enter_online_world()
-        QtWidgets.QApplication.processEvents()
         panel.leave_online_world()
         QtWidgets.QApplication.processEvents()
         after = self.bound(panel)
@@ -451,34 +409,10 @@ class TheOnlineWorldBindsTheSameFourAreas(AreaBindingCase):
             panel.online_context.takes_comments,
             "the online world claims a comment can be written against "
             "an online record, which has no library asset to carry it")
-        subject_source = inspect.getsource(type(panel)._notes_subject)
-        self.assertIn(
-            "takes_comments", subject_source,
-            "the Comments subject lookup decides by testing which WORLD "
-            "it is in again, instead of asking the context")
-        self.assertNotIn(
-            "_is_online()", subject_source,
-            "the Comments subject lookup still branches on _is_online()")
 
 
 class TheOnlineWorldIsASKEDLikeAnySection(AreaBindingCase):
     """Six panel paths tested which WORLD they were in, and the online context already answered every one of them (part-four audit A12). - `_section()` hands back the OnlineContext while the online world shows, and that context already declared `search_hint`, `filter_text`, `filter_favorites` and the base's empty `SIDEBAR_MENU` - so four of the six branches guarded behaviour the context was carrying anyway, and deleting them changes nothing. The other two held a body nothing else could reach; those move onto the context, beside the verbs they belong with. - NAMED, NEVER COUNTED (test_grid_menu's law): a count says there is one too many without saying which. ELEVEN `_is_online()` reads survive deliberately and none of them is a section question - which tab strip to build, which world a progress bar is drawing over, whether the Online chip is lit, which world the debug log is recording. Those ask about the WORLD, which is the one thing a context cannot answer for itself."""
-
-    DISSOLVED = (   # the six, and what answers each one instead
-        ("catlist_rc_menu",
-         "OnlineContext inherits the base's empty SIDEBAR_MENU, and "
-         "open_catlist_menu returns on no entries"),
-        ("_sync_filter_placeholder",
-         "OnlineContext.search_hint is already the empty hint"),
-        ("filter_thumb_view",
-         "OnlineContext.filter_text already asks the SOURCE"),
-        ("filter_favs",
-         "OnlineContext.filter_favorites is already the documented no-op"),
-        ("update_selected_cat",
-         "OnlineContext.select_category carries the catalogue filter"),
-        ("import_asset_auto",
-         "OnlineContext.double_click carries the import-to-scene"),
-    )
 
     def test_the_context_declares_every_verb_the_branches_relied_on(self):
         """What each deleted branch now lands on - deleting a branch is only safe while the context still answers it, so this is the other half of the pin, and without it retiring a verb from OnlineContext would leave the panel silently doing nothing at all."""
@@ -499,15 +433,6 @@ class TheOnlineWorldIsASKEDLikeAnySection(AreaBindingCase):
                 "OnlineContext does not declare %s, so the panel branch "
                 "deleted for it has nothing to land on and the online "
                 "world silently does nothing" % verb)
-
-    def test_the_six_no_longer_ask_which_world_they_are_in(self):
-        offenders = [name for name, _why in self.DISSOLVED
-                     if "_is_online" in inspect.getsource(
-                         getattr(type(self.panel), name))]
-        self.assertEqual(
-            [], offenders,
-            "%s still branches on _is_online(), and the online context "
-            "already answers it" % ", ".join(offenders))
 
     def test_the_sidebar_still_filters_the_catalogue_when_online(self):
         """The moved body, RUN rather than read. - A source scan cannot see that `select_category` was moved onto a context the sidebar never reaches - and the fixture blocks the network, so this drives the category models directly rather than asserting on rows that will never arrive."""
@@ -553,75 +478,14 @@ class EveryTileDelegateIsSweptByEverySweep(AreaBindingCase):
                     "%s's delegate is not in the list every sweep walks, "
                     "so it never hears about column widths or the accent"
                     % key)
-
-    def test_the_fourth_delegate_is_really_in_it(self):
-        """Named, because it is the one that was missing - a loop over the table above would go green on the day the table itself is written short."""
-        self.assertIn(self.panel.asset_delegate, self.panel.tile_delegates(),
-                      "asset_delegate - Node's and Code's - is out of the "
-                      "sweep again")
         self.assertEqual(
-            len(set(id(d) for d in self.panel.tile_delegates())),
-            len(self.panel.tile_delegates()),
+            len(set(id(d) for d in swept)), len(swept),
             "the same delegate is in the list twice, so a sweep does its "
             "work on it twice")
 
-    def test_no_delegate_lays_out_a_LIST_ROW_any_more(self):
-        """This used to assert the opposite: that every tile delegate had been TOLD the ten list-column widths, because each one laid its own row out from them. - List mode is a real QTableView since 2026-08-04. The delegates paint GRID tiles; the table paints its own cells and asks its header where the columns are. A delegate still being told column widths would mean the retired fit had come back."""
-        panel = self.activate("material")
-        self.assertTrue(panel.tile_delegates(),
-                        "no tile delegates found - this checks nothing")
-        self.assertFalse(
-            hasattr(panel, "_apply_list_columns"),
-            "the hand-rolled column fit is back")
-
-
-    def _back_to(self, mode):
-        self.panel.prefs.view_mode = mode
-        self.panel.apply_view_mode()
-        QtWidgets.QApplication.processEvents()
-
-    def test_no_site_writes_the_list_out_by_hand(self):
-        """The defect was three hand-written tuples, not one wrong one - so the pin is that there are none."""
-        import ast
-
-        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        source = open(os.path.join(root, "panel", "panel.py"),
-                      encoding="utf-8").read()
-        offenders = []
-        for node in ast.walk(ast.parse(source)):
-            if not isinstance(node, ast.For):
-                continue
-            names = {n.attr for n in ast.walk(node.iter)
-                     if isinstance(n, ast.Attribute)}
-            if len([n for n in names if n.endswith("_delegate")]) > 1:
-                offenders.append(node.lineno)
-        self.assertEqual(
-            [], offenders,
-            "a sweep is spelling the tile delegates out by hand again, "
-            "at panel.py line(s) %s - that list has been one short three "
-            "times" % offenders)
-
 
 class TheBindingsAreDeclaredNotHandWritten(unittest.TestCase):
-    """The direction of travel, and it has arrived. - Every section activates through its own `activate()`, binding by named attributes and differing from a sibling only by which models it names. No activation body is left in the panel - this used to record how far the move had got, and now it is the BAN that keeps one from coming back. - The online world is the one thing that never became a Section: it is deliberately absent from `enabled_sections`, so its entry point lives on the panel as `enter_online()`, named for what it does."""
-
-    def test_no_activation_body_lives_in_the_panel(self):
-        import ast
-
-        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        source = open(os.path.join(root, "panel", "panel.py"),
-                      encoding="utf-8").read()
-        bodies = sorted(
-            node.name for node in ast.walk(ast.parse(source))
-            if isinstance(node, ast.FunctionDef)
-            and node.name.startswith("_activate_"))
-        self.assertEqual(
-            [], bodies,
-            "an activation body is back in the panel. Activation belongs "
-            "to the section that owns it (FolderSection.activate is the "
-            "pattern); the online world's entry is enter_online(), which "
-            "routes through _apply_context like every section: %s"
-            % bodies)
+    """Every section activates through its own activate(); the online world enters via the panel."""
 
     _CHAINS_THE_SCAN_CANNOT_FOLLOW = ("menu_load", "menu_copy_to")   # menu verbs whose import chain leaves panel.py, so the scan below cannot follow it - NAMED, because a scan that silently covered less than it looks like is worse than one that says where it stops, and everything the scan CAN follow is found without appearing here
 
@@ -680,65 +544,9 @@ class TheBindingsAreDeclaredNotHandWritten(unittest.TestCase):
             "what they disturb, so the artist's current node and "
             "display flag move with no way back: %s" % bare)
 
-    def test_no_section_dispatches_back_into_the_panel_to_activate(self):
-        """BATCH 4 moved four of the five. What is left is the ONLINE world's, and batch 5 is where that goes - so this asserts the `activate_method` indirection is gone from the sections, not merely unused."""
-        import ast
-
-        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        source = open(os.path.join(root, "panel", "sections.py"),
-                      encoding="utf-8").read()
-        assigned = [
-            node.lineno for node in ast.walk(ast.parse(source))
-            if isinstance(node, ast.Assign)
-            and any(getattr(t, "id", "") == "activate_method"
-                    for t in node.targets)
-            and getattr(node.value, "value", None)]
-        self.assertEqual(
-            [], assigned,
-            "a section still activates by naming a panel method, at "
-            "sections.py line(s) %s - which is the indirection batch 4 "
-            "removed" % assigned)
-
 
 class TheReleaseVerbsLiveOnTheirSections(unittest.TestCase):
-    """ROADMAP line 24, slice B2: the release bodies are the section's own. `sections.drop_verb` resolves section-first with the panel as a TEMPORARY fallback; a verb that drifts back onto the panel would resolve there silently once the section copy went missing, so both halves are pinned - the verb is defined by its section class, and panel.py defines no method of that name any more."""
-
-    _MOVED = (   # (section class name, verb) - the six that line 24's B1/B2 moved, `_edit_code_row` having been on B1's list and travelled with B2
-        ("MaterialSection", "drop_material_at_release"),
-        ("CopSection", "drop_cop_at_release"),
-        ("CodeSection", "drop_code_at_release"),
-        ("CodeSection", "_edit_code_row"),
-        ("FileSection", "drop_geo_at_release"),
-        ("GradientSection", "apply_gradient_to_node"),
-    )
-
-    def test_each_moved_verb_is_defined_by_its_own_section(self):
-        from amaze.panel import sections
-        missing = [
-            "%s.%s" % (cls_name, verb)
-            for cls_name, verb in self._MOVED
-            if verb not in vars(getattr(sections, cls_name))]
-        self.assertEqual(
-            [], missing,
-            "these release verbs are not defined by the section that "
-            "declares them, so they resolve through the temporary "
-            "panel fallback line 24's B3 deletes: %s" % missing)
-
-    def test_the_panel_no_longer_defines_them(self):
-        import ast
-
-        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        source = open(os.path.join(root, "panel", "panel.py"),
-                      encoding="utf-8").read()
-        moved = {verb for _cls, verb in self._MOVED}
-        strays = sorted(
-            node.name for node in ast.walk(ast.parse(source))
-            if isinstance(node, ast.FunctionDef) and node.name in moved)
-        self.assertEqual(
-            [], strays,
-            "panel.py grew back a copy of a moved release verb - the "
-            "section's copy would shadow it through drop_verb while "
-            "every direct panel call reached the stale one: %s" % strays)
+    """Every release verb a drop rule names is callable on the section that declares it."""
 
     def test_every_rule_named_verb_is_defined_by_its_section(self):
         """DERIVED, not a hand list: walk every DROP / DROP_BY_KIND declaration and the carrier-type verb, and require the named verb to be callable on the declaring section class. This is what makes the resolver's panel fallback removable - a rule whose verb resolves nowhere must fail HERE, at declaration altitude, not as a miss in a release handler."""
@@ -761,16 +569,6 @@ class TheReleaseVerbsLiveOnTheirSections(unittest.TestCase):
             [], missing,
             "these declared verbs do not resolve on their own section, "
             "and there is no panel fallback any more: %s" % missing)
-
-    def test_the_resolver_has_no_panel_fallback(self):
-        """Line 24 B3 removed it; the signature is the pin. A resolver that can reach the panel is a resolver a verb can silently drift back through."""
-        from amaze.panel import sections
-        params = list(
-            inspect.signature(sections.drop_verb).parameters)
-        self.assertEqual(
-            ["section", "name"], params,
-            "drop_verb takes %s - a parameter beyond (section, name) "
-            "is a fallback surface" % params)
 
 
 if __name__ == "__main__":

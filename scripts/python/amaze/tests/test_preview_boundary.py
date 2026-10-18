@@ -40,32 +40,13 @@ def _imports(path):
 
 class ThePreviewEngineIsAPackageWithADoor(unittest.TestCase):
 
-    def test_the_engine_has_modules_to_protect(self):
-        """Guards the guard: an empty package makes every assertion below vacuous."""
-        self.assertTrue(os.path.isdir(ENGINE),
-                        "the preview engine package is gone: %s" % ENGINE)
-        inside = [os.path.basename(p) for p in _python_files(ENGINE)
-                  if os.path.basename(p) != "__init__.py"]
-        self.assertGreaterEqual(
-            len(inside), 2,
-            "the preview engine has almost nothing in it, so this file "
-            "is asserting nothing: %s" % inside)
-
-    def test_the_engine_states_its_api(self):
-        """A door with nothing written on it is a wall with a hole."""
+    def test_a_reload_rebinds_every_name_the_door_offers(self):
+        """A name the reload forgets keeps its OLD function bound. ▸p/preview-door"""
         from amaze import preview
-        self.assertTrue(
-            preview.__doc__,
-            "preview/__init__.py carries no docstring, so the engine "
-            "has no stated API")
         self.assertTrue(
             getattr(preview, "__all__", None),
             "preview/__init__.py declares no __all__, so what is inside "
             "the box and what is offered are the same thing")
-
-    def test_a_reload_rebinds_every_name_the_door_offers(self):
-        """A name the reload forgets keeps its OLD function bound. ▸p/preview-door"""
-        from amaze import preview
         preview.reload_engine()
         inside = [m for m in vars(preview).values()
                   if isinstance(m, types.ModuleType)

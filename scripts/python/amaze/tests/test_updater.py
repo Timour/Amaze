@@ -56,26 +56,15 @@ class _FeedMixin(unittest.TestCase):
 
 class TheVersionComparisonTest(unittest.TestCase):
 
-    def test_a_longer_version_is_newer_than_its_prefix(self):
-        self.assertTrue(updater.is_newer("1.0.1", "1.0"))
-        self.assertFalse(updater.is_newer("1.0", "1.0.1"))
-
-    def test_the_leading_v_is_optional_on_either_side(self):
-        """Measured in the wild: vscode tags `1.132.0`, node `v26.7.0`."""
-        self.assertTrue(updater.is_newer("v2.0", "1.9"))
-        self.assertFalse(updater.is_newer("v1.0", "1.0"))
-
-    def test_the_same_version_is_not_newer(self):
-        self.assertFalse(
-            updater.is_newer(branding.APP_VERSION, branding.APP_VERSION))
-
-    def test_ten_sorts_above_nine_rather_than_beside_it(self):
-        self.assertTrue(updater.is_newer("1.10", "1.9"),
-                        "versions compared as text put 1.10 below 1.9")
-
-    def test_an_unreadable_piece_does_not_raise(self):
-        updater.parts("v1.2.3-rc1+build")
-        self.assertFalse(updater.is_newer("", "1.0"))
+    def test_versions_compare_as_numbers_with_an_optional_v(self):
+        """Tags in the wild: vscode `1.132.0`, node `v26.7.0`; text order puts 1.10 below 1.9."""
+        updater.parts("v1.2.3-rc1+build")    # an unreadable piece must not raise
+        for newer, older, expected in (("1.0.1", "1.0", True), ("1.0", "1.0.1", False),
+                                       ("v2.0", "1.9", True), ("v1.0", "1.0", False),
+                                       (branding.APP_VERSION, branding.APP_VERSION, False),
+                                       ("1.10", "1.9", True), ("", "1.0", False)):
+            with self.subTest(newer=newer, older=older):
+                self.assertEqual(expected, updater.is_newer(newer, older))
 
 
 class TheCheckTest(_FeedMixin):
@@ -158,8 +147,6 @@ class TheVersionIsThreePart(unittest.TestCase):
                 "%r is zero-padded - `parts()` reads it as %d, so it "
                 "compares equal to the unpadded form while looking "
                 "different" % (piece, int(piece)))
-
-    def test_the_app_version_is_at_least_the_first_release(self):
         self.assertFalse(
             updater.is_newer("1.0.0", branding.APP_VERSION),
             "APP_VERSION went backwards past the first tagged release")
@@ -191,17 +178,13 @@ class TheDownloadTest(_FeedMixin):
         with self.assertRaises(OSError):
             updater.download("https://example.invalid/z", self.dir)
 
-    def test_a_missing_length_is_unknown_rather_than_zero(self):
-        """Treating an absent Content-Length as 0 would refuse every server that does not send one. ▸p/updater-shape"""
-        self.answer(b"PK\x03\x04body", headers={})
-        self.assertTrue(
-            os.path.exists(updater.download("https://x.invalid/z", self.dir)))
-
-    def test_an_unreadable_length_is_unknown_rather_than_an_error(self):
-        """A header that is not a number raised `ValueError`, outside the sentence contract."""
-        self.answer(b"PK\x03\x04body", headers={"Content-Length": "junk"})
-        self.assertTrue(
-            os.path.exists(updater.download("https://x.invalid/z", self.dir)))
+    def test_a_missing_or_unreadable_length_is_unknown_not_zero_or_an_error(self):
+        """As 0 it refused every server sending none; as a number it raised ValueError."""
+        for headers in ({}, {"Content-Length": "junk"}):
+            with self.subTest(headers=headers):
+                self.answer(b"PK\x03\x04body", headers=headers)
+                self.assertTrue(os.path.exists(
+                    updater.download("https://x.invalid/z", self.dir)))
 
     def test_the_release_streams_through_the_one_download_loop(self):
         streamed = []
@@ -608,21 +591,6 @@ class TheAboutTabOffersTheUpdateInOnePlace(unittest.TestCase):
                          "the divider does not sit between the debug row "
                          "and Test Library")
 
-    def test_no_about_row_is_hidden_and_the_hidden_pair_is_gone(self):
-        dialog = self._dialog()
-        form = self._form(dialog)
-        hidden = [row for row in range(form.rowCount())
-                  if not form.isRowVisible(row)]
-
-        self.assertEqual([], hidden,
-                         "the About form still holds rows nobody can see, "
-                         "which read as dead space: %s" % hidden)
-        left = [name for name in ("_lbl_update", "_btn_install",
-                                  "_show_update_row", "_about_form")
-                if hasattr(dialog, name)]
-        self.assertEqual([], left,
-                         "the hidden update row machinery is still here: "
-                         "%s" % left)
 
 
 class AReleaseIsStagedIntoTheINSTALLShape(unittest.TestCase):

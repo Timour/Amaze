@@ -89,27 +89,17 @@ class TheTileNamesAnOctaneShader(unittest.TestCase):
                    "".join("type = %s\n" % name for name in types))
         return self.handler.get_shader_type_label(asset)
 
-    def test_a_standard_surface_reads_as_one(self):
-        self.assertEqual("Standard Surface", self._label("Octane", OCTANE_SHADER))
-
-    def test_a_mix_is_named_before_the_materials_it_mixes(self):
-        self.assertEqual("Mix", self._label(
-            "Octane", OCTANE_SHADER, "octane::NT_MAT_MIX", OCTANE_SHADER))
-
-    def test_a_layered_material_is_not_named_after_one_of_its_layers(self):
-        """`NT_MAT_DIFFUSE` is a prefix of the layer type, so the order decides it."""
-        self.assertEqual("Layered", self._label(
-            "Octane", "octane::NT_MAT_DIFFUSE_LAYER", "octane::NT_MAT_LAYER"))
-
-    def test_an_octane_builder_holding_materialx_says_so(self):
-        self.assertEqual("MaterialX", self._label(
-            "Octane", "mtlximage", "mtlxstandard_surface"))
-
-    def test_redshift_keeps_its_own_table(self):
-        self.assertEqual("PBR", self._label("Redshift", "redshift::OpenPBRMaterial"))
-
-    def test_an_octane_type_means_nothing_on_redshift(self):
-        self.assertEqual("", self._label("Redshift", OCTANE_SHADER))
+    def test_the_label_follows_the_type_lines_and_the_renderers_table(self):
+        for renderer, types, label in (
+                ("Octane", (OCTANE_SHADER,), "Standard Surface"),
+                ("Octane", (OCTANE_SHADER, "octane::NT_MAT_MIX", OCTANE_SHADER), "Mix"),
+                ("Octane", ("octane::NT_MAT_DIFFUSE_LAYER", "octane::NT_MAT_LAYER"),
+                 "Layered"),    # NT_MAT_DIFFUSE is a prefix of the layer type: the order decides
+                ("Octane", ("mtlximage", "mtlxstandard_surface"), "MaterialX"),
+                ("Redshift", ("redshift::OpenPBRMaterial",), "PBR"),
+                ("Redshift", (OCTANE_SHADER,), "")):
+            with self.subTest(renderer=renderer, label=label):
+                self.assertEqual(label, self._label(renderer, *types))
 
     def test_the_library_reads_the_label_for_octane(self):
         asset = material.Material(name="label_probe", renderer="Octane",
@@ -122,14 +112,12 @@ class TheTileNamesAnOctaneShader(unittest.TestCase):
 class TheOctaneSamplesSetting(unittest.TestCase):
     """Its own dial, like Karma's: Octane's path tracing counts samples on its own scale."""
 
-    def test_it_is_a_shared_setting_with_its_default(self):
+    def test_it_is_a_shared_setting_with_its_default_clamped_to_its_row(self):
         self.assertEqual(
             ("octane_rendersamples", "_octane_rendersamples", 256),
             persistence.SHARED_KEYS.get("octane_rendersamples"))
-        self.assertEqual(256, prefs_mod.Prefs().octane_rendersamples)
-
-    def test_it_clamps_to_its_row(self):
         p = prefs_mod.Prefs()
+        self.assertEqual(256, p.octane_rendersamples)
         low, high = prefs_mod.OCTANE_SAMPLES_RANGE
         p.octane_rendersamples = high + 500
         self.assertEqual(high, p.octane_rendersamples)
@@ -140,11 +128,9 @@ class TheOctaneSamplesSetting(unittest.TestCase):
 class TheOctaneCheckFollowsTheHost(unittest.TestCase):
     """Both polarities, so a green cannot mean `always True`."""
 
-    def test_it_agrees_with_the_type_registry(self):
+    def test_it_agrees_with_the_type_registry_and_reads_an_empty_one_as_absent(self):
         self.assertEqual(_octane_available(),
                          material_converter._octane_type_available())
-
-    def test_no_category_holding_the_type_reads_as_absent(self):
         with mock.patch.object(hou, "nodeTypeCategories", lambda: {}):
             self.assertFalse(material_converter._octane_type_available())
 
@@ -160,20 +146,18 @@ class OctanesOwnBuilderIsAnOctaneMaterial(unittest.TestCase):
     def _renderer(self, node):
         return nodes.NodeHandler(None).get_renderer_from_node(node)
 
-    def test_the_builder_reads_as_octane(self):
+    def test_the_marker_decides_and_materialx_inside_does_not(self):
+        """The other polarity: a MaterialX subnet stays Karma, a markless one stays refused."""
         self.assertEqual("Octane", self._renderer(self.builder))
-
-    def test_a_builder_holding_materialx_still_reads_as_octane(self):
         image = self.builder.createNode("mtlximage")
         _shader(self.builder).setNamedInput("baseColor", image, 0)
         self.assertEqual("Octane", self._renderer(self.builder))
-
-    def test_a_subnet_without_the_marker_is_not_octane(self):
-        """The other polarity: a MaterialX subnet stays Karma, a markless one stays refused."""
-        self.builder.destroyUserData(nodes.OCTANE_BUILDER_MARK)
-        self.assertEqual("", self._renderer(self.builder))
-        self.builder.createNode("mtlxstandard_surface")
-        self.assertEqual("Karma", self._renderer(self.builder))
+        bare = _octane_builder(hou.node("/mat"))
+        self.addCleanup(bare.destroy)
+        bare.destroyUserData(nodes.OCTANE_BUILDER_MARK)
+        self.assertEqual("", self._renderer(bare))
+        bare.createNode("mtlxstandard_surface")
+        self.assertEqual("Karma", self._renderer(bare))
 
 
 @unittest.skipUnless(_octane_available(), "the Octane plugin is not loaded")
@@ -218,6 +202,7 @@ class OctanesOwnBuilderRoundTrips(unittest.TestCase):
         source = _octane_builder(self.mat)
         _shader(source).parmTuple("baseColor").set(RED)
         asset = self._saved(source)
+        self.assertEqual("Octane:Standard Surface", self.model.renderer_label(asset))
         self.assertEqual("subnet", nodes.NodeHandler(
             self.prefs).get_saved_node_type(asset))
         imported = self._imported(asset)
@@ -249,10 +234,6 @@ class OctanesOwnBuilderRoundTrips(unittest.TestCase):
                    if prim.GetTypeName() == "Material"
                    for o in UsdShade.Material(prim).GetOutputs()]
         self.assertIn("outputs:Octane:surface", outputs)
-
-    def test_its_tile_names_the_shader(self):
-        asset = self._saved(_octane_builder(self.mat))
-        self.assertEqual("Octane:Standard Surface", self.model.renderer_label(asset))
 
     def test_the_classic_container_keeps_its_shape(self):
         """`octane_vopnet` still saves its contents and rebuilds by type in /mat."""
@@ -312,49 +293,44 @@ class TheOctaneThumbnailIsTheMaterialXStage(unittest.TestCase):
             except hou.ObjectWasDeleted:
                 pass
 
-    def test_octane_renders_it_through_its_delegate(self):
-        self.assertTrue(self.settings.type().name().startswith("otoy::Octane"))
-        self.assertEqual("HdOctaneRendererPlugin",
-                         self.scaffold["rop"].parm("renderer").evalAsString())
-
-    def test_it_path_traces_under_the_stages_own_lights(self):
-        self.assertEqual("NT_KERN_PATHTRACING",
-                         self.settings.parm("xn__octaneglobalParmKernel_wcbg").evalAsString())
-        self.assertEqual("Dome Light", _menu_label(
-            self.settings.parm("xn__octaneglobalParmEnvironment_1kbg")))
-
-    def test_the_samples_setting_caps_path_tracing(self):
-        cap = preview.usd_scene.OCTANE_PATH_TRACING_CAP
-        self.assertIn("pathtracing",
-                      self.settings.parmTemplateGroup().containingFolder(cap).name(),
-                      "the cap written is another kernel's")
-        self.assertEqual(77, self.settings.parm(cap).eval())
-
-    def test_it_writes_an_acescg_picture_the_size_of_the_tile(self):
-        self.assertEqual("ACEScg", self.settings.parm(
-            "xn__octaneglobalociocolorspace_fjbg").evalAsString())
-        self.assertEqual((self.prefs.rendersize,) * 2,
-                         tuple(self.settings.parmTuple("resolution").eval()))
+    def test_the_stage_carries_octanes_settings(self):
+        settings = self.settings
+        with self.subTest("rendered through Octane's own delegate"):
+            self.assertTrue(settings.type().name().startswith("otoy::Octane"))
+            self.assertEqual("HdOctaneRendererPlugin",
+                             self.scaffold["rop"].parm("renderer").evalAsString())
+        with self.subTest("path traced under the stage's own lights"):
+            self.assertEqual("NT_KERN_PATHTRACING",
+                             settings.parm("xn__octaneglobalParmKernel_wcbg").evalAsString())
+            self.assertEqual("Dome Light", _menu_label(
+                settings.parm("xn__octaneglobalParmEnvironment_1kbg")))
+        with self.subTest("the samples setting caps path tracing"):
+            cap = preview.usd_scene.OCTANE_PATH_TRACING_CAP
+            self.assertIn("pathtracing",
+                          settings.parmTemplateGroup().containingFolder(cap).name(),
+                          "the cap written is another kernel's")
+            self.assertEqual(77, settings.parm(cap).eval())
+        with self.subTest("an ACEScg picture the size of the tile"):
+            self.assertEqual("ACEScg", settings.parm(
+                "xn__octaneglobalociocolorspace_fjbg").evalAsString())
+            self.assertEqual((self.prefs.rendersize,) * 2,
+                             tuple(settings.parmTuple("resolution").eval()))
+        with self.subTest("a floor picture Octane reads"):    # no `.rat`: the floor rendered black from one
+            image = next(c for c in self.scaffold["lib1"].children()
+                         if c.type().name() == "mtlxtiledimage")
+            self.assertTrue(image.parm("file").unexpandedString().endswith(".exr"))
+        with self.subTest("no depth of field, its lights scaled"):    # ▸r/octane-thumbnail
+            stage = self._stage_above_the_floor(self.scaffold)
+            camera = stage.GetPrimAtPath(preview.usd_scene.RENDER_CAMERA)
+            self.assertEqual(0.0, camera.GetAttribute("fStop").Get())
+            right = stage.GetPrimAtPath("/shaderBallScene/lights/Right")
+            self.assertAlmostEqual(math.pi * preview.usd_scene.OCTANE_LIGHT_SCALE,
+                                   right.GetAttribute("inputs:intensity").Get(), places=4)
 
     def _stage_above_the_floor(self, scaffold):
         upstream = scaffold["lib1"].inputs()[0]
         upstream.cook(force=True)
         return upstream.stage()
-
-    def test_octane_sees_no_depth_of_field_and_its_lights_scaled(self):
-        """Octane honours the camera's f-stop, which Karma's settings turn off ▸r/octane-thumbnail."""
-        stage = self._stage_above_the_floor(self.scaffold)
-        camera = stage.GetPrimAtPath(preview.usd_scene.RENDER_CAMERA)
-        self.assertEqual(0.0, camera.GetAttribute("fStop").Get())
-        right = stage.GetPrimAtPath("/shaderBallScene/lights/Right")
-        self.assertAlmostEqual(math.pi * preview.usd_scene.OCTANE_LIGHT_SCALE,
-                               right.GetAttribute("inputs:intensity").Get(), places=4)
-
-    def test_its_floor_is_a_picture_octane_reads(self):
-        """Octane reads no `.rat`: the floor rendered black from one."""
-        image = next(c for c in self.scaffold["lib1"].children()
-                     if c.type().name() == "mtlxtiledimage")
-        self.assertTrue(image.parm("file").unexpandedString().endswith(".exr"))
 
     def test_karmas_stage_is_left_as_it_was(self):
         """The other polarity: the edit and the EXR floor are Octane's alone."""

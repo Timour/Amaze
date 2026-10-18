@@ -111,6 +111,10 @@ class PackageExportTest(unittest.TestCase):
             entry = json.loads(bundle.read(packages.MANIFEST))["entries"][0]
         self.assertEqual(asset.get_as_dict(), entry["record"])
         self.assertEqual("gradient", entry["section"])
+        debris = [name for name in os.listdir(os.path.dirname(out))
+                  if name != os.path.basename(out)]
+        self.assertEqual([], debris,
+                         "the writer left scratch beside the package")
 
     def test_a_plain_file_rides_with_its_kind_and_bytes(self):
         from amaze.core import packages
@@ -152,17 +156,6 @@ class PackageExportTest(unittest.TestCase):
             self.assertEqual({b"one", b"two"},
                              {bundle.read(a) for a in arcs})
 
-    def test_no_scratch_residue_survives_the_write(self):
-        from amaze.core import packages
-        model = self.panel.gradient_model
-        item = packages.collect_asset(model, model.assets[0].mat_id)
-        out = _out_path(self)
-        packages.write_package(out, [item])
-        debris = [name for name in os.listdir(os.path.dirname(out))
-                  if name != os.path.basename(out)]
-        self.assertEqual([], debris,
-                         "the writer left scratch beside the package")
-
 
 class PackageReaderTest(unittest.TestCase):
     """The reading half batch 2 builds on: the manifest comes back verbatim, and a NEWER format is refused by name."""
@@ -177,30 +170,18 @@ class PackageReaderTest(unittest.TestCase):
             bundle.writestr(packages.MANIFEST, json.dumps(manifest))
         return path
 
-    def test_the_manifest_reads_back(self):
-        from amaze.core import packages
-        path = self._package({"format": packages.FORMAT, "entries": []})
-        self.assertEqual([], packages.read_manifest(path)["entries"])
-
-    def test_a_newer_format_is_refused_naming_both_numbers(self):
+    def test_a_package_this_build_cannot_read_is_refused(self):
         from amaze.core import packages
         path = self._package({"format": packages.FORMAT + 1, "entries": []})
         with self.assertRaises(packages.PackageError) as caught:
             packages.read_manifest(path)
         self.assertIn(str(packages.FORMAT + 1), str(caught.exception))
         self.assertIn(str(packages.FORMAT), str(caught.exception))
-
-    def test_a_zip_with_no_manifest_is_refused(self):
-        from amaze.core import packages
-        folder = tempfile.mkdtemp(prefix="amaze_pkg_bad_")
-        self.addCleanup(
-            __import__("shutil").rmtree, folder, ignore_errors=True)
-        path = os.path.join(folder, "bad.amazepkg")
-        with zipfile.ZipFile(path, "w") as bundle:
+        bare = os.path.join(os.path.dirname(path), "bad.amazepkg")    # no manifest at all
+        with zipfile.ZipFile(bare, "w") as bundle:
             bundle.writestr("stray.txt", "x")
-        from amaze.core import packages as pkg
-        with self.assertRaises(pkg.PackageError):
-            pkg.read_manifest(path)
+        with self.assertRaises(packages.PackageError):
+            packages.read_manifest(bare)
 
     def test_verify_names_a_missing_member(self):
         from amaze.core import packages
@@ -220,21 +201,23 @@ class ExportMenuTest(unittest.TestCase):
     def setUpClass(cls):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
 
-    def test_every_asset_section_offers_the_grid_export(self):
+    def test_every_menu_offers_its_package_verbs(self):
         from amaze.panel import sections
         for cls_ in sections.SECTION_CLASSES:
-            labels = [entry.label for entry in cls_.GRID_MENU]
-            self.assertIn("Export Package", labels,
-                          "%s offers no package export" % cls_.key)
-
-    def test_asset_sidebars_offer_the_category_export(self):
-        from amaze.panel import sections
-        for cls_ in sections.SECTION_CLASSES:
-            if not issubclass(cls_, sections.AssetSection):
-                continue
-            labels = [entry.label for entry in cls_.SIDEBAR_MENU]
-            self.assertIn("Export Category", labels,
-                          "%s sidebar offers no category export" % cls_.key)
+            with self.subTest(section=cls_.key):
+                self.assertIn("Export Package",
+                              [entry.label for entry in cls_.GRID_MENU],
+                              "%s offers no package export" % cls_.key)
+                if issubclass(cls_, sections.AssetSection):
+                    self.assertIn(
+                        "Export Category",
+                        [entry.label for entry in cls_.SIDEBAR_MENU],
+                        "%s sidebar offers no category export" % cls_.key)
+        restore = [e for e in sections.OnlineContext.GRID_MENU
+                   if e.label == "Restore"]
+        self.assertTrue(restore, "the online grid offers no Restore")
+        self.assertEqual("selection_is_amaze_packages", restore[0].shown,
+                         "Restore must hide for material sources")
 
     def test_the_grid_act_door_writes_the_selection(self):
         from amaze.core import packages
@@ -325,13 +308,6 @@ class PackageImportTest(unittest.TestCase):
         self.assertIn(
             "Import", self.panel.gradient_categories_model._categories,
             "the Import category never reached the sidebar model")
-
-    def test_a_fresh_import_twice_makes_two_copies(self):
-        model = self.panel.gradient_model
-        out = _out_path(self)
-        self._gradient_package(out)
-        before = model.rowCount()
-        self.panel.import_package_file(out)
         self.panel.import_package_file(out)
         self.assertEqual(before + 2, model.rowCount(),
                          "a fresh import deduplicated - that is restore "
@@ -517,21 +493,7 @@ class PackageImportTest(unittest.TestCase):
                             "the %s payload never landed" % kind)
             self.assertEqual(_bytes(source), _bytes(target),
                              "the %s payload does not byte-match" % kind)
-
-    def test_an_imported_material_tile_paints(self):
-        """The new row joins the model the way a saved one does: thumbnail maps and content baseline."""
-        from amaze.core import packages
-        model = self.panel.material_model
-        asset = next(a for a in model.assets
-                     if any(os.path.exists(p)
-                            for p in model.asset_files(a.mat_id).values()))
-        out = _out_path(self)
-        packages.write_package(
-            out, [packages.collect_asset(model, asset.mat_id)])
-        self.panel.import_package_file(out)
-        row = model.rowCount() - 1
-        newborn = str(model.assets[row].mat_id)
-
+        row = model.rowCount() - 1    # it joins the model the way a saved row does
         self.assertEqual(
             model.rowCount(), len(model._mat_paths),
             "the imported row has no thumbnail path, so every paint of its "
@@ -539,7 +501,7 @@ class PackageImportTest(unittest.TestCase):
         model.data(model.index(row, 0),
                    QtCore.Qt.ItemDataRole.DecorationRole)    # must not raise
         self.assertIsNotNone(
-            model._content_state.get(newborn),
+            model._content_state.get(str(newborn.mat_id)),
             "no content baseline was recorded, so a later Update Existing "
             "cannot tell another machine's rewrite of these files")
 
@@ -571,7 +533,7 @@ class ARefusedImportIsTakenBackWhole(unittest.TestCase):
     def _ids(self):
         return [str(a.mat_id) for a in self.model.assets]
 
-    def test_the_row_leaves_the_grid(self):
+    def test_a_refused_import_is_not_written_by_the_next_save(self):
         out = self._package_of_a_material()
         before = self._ids()
         self.assertEqual(1, self._import_refused(out)["refused"])
@@ -579,11 +541,6 @@ class ARefusedImportIsTakenBackWhole(unittest.TestCase):
                          "a refused import stayed in the grid")
         self.assertEqual(self.model.rowCount(), len(self.model._mat_paths),
                          "the take-back left the thumbnail maps out of step")
-
-    def test_a_refused_import_is_not_written_by_the_next_save(self):
-        out = self._package_of_a_material()
-        before = self._ids()
-        self.assertEqual(1, self._import_refused(out)["refused"])
 
         self.assertTrue(self.model.save(), "premise: the next save failed")
 
@@ -925,54 +882,40 @@ class AmazeSourceTest(unittest.TestCase):
         self.assertEqual({"amazepkg"}, {r.kind for r in records})
         self.assertEqual(6, len({r.uid for r in records}),
                          "tile uids collide across packages")
-
-    def test_palette_records_carry_their_colours(self):
-        source = self._two_package_folder()
-        record = source.list_materials(limit=100)[0]
         self.assertEqual(["#101010", "#f0f0f0"],
-                         record.payload.get("colors"),
+                         records[0].payload.get("colors"),
                          "the swatch cannot be drawn client-side")
-        self.assertTrue(record.payload.get("entry"),
+        self.assertTrue(records[0].payload.get("entry"),
                         "the manifest entry does not ride the record, "
                         "so importing needs a second manifest read")
 
     def test_material_records_name_their_thumbnail_member(self):
-        entry = {"type": "asset", "section": "material", "id": "f" * 32,
-                 "record": {"id": "f" * 32, "name": "Brick",
-                            "categories": ["Import"]},
-                 "note": {},
-                 "files": {"mat": "assets/material/x/x.mat",
-                           "thumbnail": "assets/material/x/x.png"}}
-        pkg = _manifest_zip(self, [entry],
-                            members={"assets/material/x/x.mat": b"payload",
-                                     "assets/material/x/x.png": b"png"})
-        url = self.URL + "defaults/m.amazepkg"
-        source = _canned_amaze_source(
-            [("defaults", "m.amazepkg", url)], {url: pkg})
-        record = source.list_materials(limit=10)[0]
-        self.assertEqual("assets/material/x/x.png",
-                         record.payload.get("thumb_member"))
-
-    def test_a_chosen_tile_icon_outranks_thumbnail_and_swatch(self):
-        entry = {"type": "asset", "section": "gradient", "id": "a" * 32,
-                 "record": {"id": "a" * 32, "name": "Customized",
-                            "categories": ["X"],
-                            "colors": [{"hex": "#101010"}]},
-                 "note": {},
-                 "files": {"thumbnail": "assets/gradient/a/a.png",
-                           "tile_icon": "assets/gradient/a/a_icon.png"}}
-        pkg = _manifest_zip(self, [entry],
-                            members={"assets/gradient/a/a.png": b"p",
-                                     "assets/gradient/a/a_icon.png": b"i"})
-        url = self.URL + "defaults/c.amazepkg"
-        source = _canned_amaze_source(
-            [("defaults", "c.amazepkg", url)], {url: pkg})
-        record = source.list_materials(limit=10)[0]
-        self.assertEqual(
-            "assets/gradient/a/a_icon.png",
-            record.payload.get("thumb_member"),
-            "the chosen icon must outrank the thumbnail online, the "
-            "way every local section ranks it")
+        for name, entry, wanted in (
+                ("m", {"type": "asset", "section": "material", "id": "f" * 32,
+                       "record": {"id": "f" * 32, "name": "Brick",
+                                  "categories": ["Import"]},
+                       "note": {},
+                       "files": {"mat": "assets/material/x/x.mat",
+                                 "thumbnail": "assets/material/x/x.png"}},
+                 "assets/material/x/x.png"),
+                ("c", {"type": "asset", "section": "gradient", "id": "a" * 32,    # a chosen icon outranks both
+                       "record": {"id": "a" * 32, "name": "Customized",
+                                  "categories": ["X"],
+                                  "colors": [{"hex": "#101010"}]},
+                       "note": {},
+                       "files": {"thumbnail": "assets/gradient/a/a.png",
+                                 "tile_icon": "assets/gradient/a/a_icon.png"}},
+                 "assets/gradient/a/a_icon.png")):
+            with self.subTest(section=entry["section"]):
+                pkg = _manifest_zip(self, [entry], members={
+                    arc: b"x" for arc in entry["files"].values()})
+                url = self.URL + "defaults/%s.amazepkg" % name
+                source = _canned_amaze_source(
+                    [("defaults", "%s.amazepkg" % name, url)], {url: pkg})
+                record = source.list_materials(limit=10)[0]
+                self.assertEqual(wanted, record.payload.get("thumb_member"),
+                                 "the tile's picture is not the member every "
+                                 "local section would rank first")
 
     def test_search_filters_by_title(self):
         source = self._two_package_folder()
@@ -1537,15 +1480,6 @@ class OnlinePackageImportTest(unittest.TestCase):
         self.assertEqual(before, material_model.rowCount(),
                          "the refused tile still changed the library")
 
-    def test_the_online_menu_offers_restore_on_packages_only(self):
-        from amaze.panel import sections
-        labels = [e.label for e in sections.OnlineContext.GRID_MENU]
-        self.assertIn("Restore", labels)
-        entry = [e for e in sections.OnlineContext.GRID_MENU
-                 if e.label == "Restore"][0]
-        self.assertEqual("selection_is_amaze_packages", entry.shown,
-                         "Restore must hide for material sources")
-
 
 class TexturePackingTest(unittest.TestCase):
     """Format 2: an asset's adopted textures travel in the package - packed from the row's token inventory, landed at the same tokens in the receiving library, and a token that escapes the library is refused."""
@@ -1618,50 +1552,31 @@ class TexturePackingTest(unittest.TestCase):
     def test_a_token_escaping_the_library_is_refused(self):
         from amaze.core import packages
         model = self.panel.material_model
-        entry = {"type": "asset", "section": "material", "id": "d" * 32,
-                 "record": {"id": "d" * 32, "name": "Escape",
-                            "categories": ["X"],
-                            "textures": ["$AMAZELIB/../outside.png"]},
-                 "note": {}, "files": {},
-                 "textures": {"$AMAZELIB/../outside.png":
-                              "assets/material/d/textures/0_outside.png"}}
-        pkg = _manifest_zip(
-            self, [entry],
-            members={"assets/material/d/textures/0_outside.png": b"evil"})
-        before = model.rowCount()
-        summary = packages.import_package(
-            self.panel._package_models(), self.panel.prefs, pkg)
-        self.assertEqual(1, summary["refused"], summary)
-        self.assertEqual(before, model.rowCount(),
-                         "the escaping entry still landed a row")
-        outside = os.path.normpath(os.path.join(
-            str(model.preferences.dir), os.pardir, "outside.png"))
-        self.assertFalse(os.path.exists(outside),
-                         "a token walked out of the library")
-
-    def test_a_token_outside_the_store_is_refused(self):
-        from amaze.core import packages
-        model = self.panel.material_model
-        entry = {"type": "asset", "section": "material", "id": "c" * 32,
-                 "record": {"id": "c" * 32, "name": "Control",
-                            "categories": ["X"]},
-                 "note": {}, "files": {},
-                 "textures": {"$AMAZELIB/policy.json":
-                              "assets/material/c/textures/0_policy.json"}}
-        pkg = _manifest_zip(
-            self, [entry],
-            members={"assets/material/c/textures/0_policy.json": b"{}"})
-        before = model.rowCount()
-        summary = packages.import_package(
-            self.panel._package_models(), self.panel.prefs, pkg)
-        self.assertEqual(1, summary["refused"],
-                         "a token aimed at the library's own control "
-                         "files must refuse - contained is not enough, "
-                         "it must land under matX/")
-        self.assertEqual(before, model.rowCount())
-        self.assertFalse(os.path.exists(os.path.join(
-            str(model.preferences.dir), "policy.json")),
-            "a package minted a policy file for the library")
+        root = str(model.preferences.dir)
+        for ident, token, listed, landed in (
+                ("d", "$AMAZELIB/../outside.png", True,
+                 os.path.normpath(os.path.join(root, os.pardir, "outside.png"))),
+                ("c", "$AMAZELIB/policy.json", False,    # contained is not enough: it must land under matX/
+                 os.path.join(root, "policy.json"))):
+            with self.subTest(token=token):
+                member = "assets/material/%s/textures/0_%s" % (
+                    ident, os.path.basename(token))
+                record = {"id": ident * 32, "name": "Escape",
+                          "categories": ["X"]}
+                if listed:
+                    record["textures"] = [token]
+                entry = {"type": "asset", "section": "material",
+                         "id": ident * 32, "record": record, "note": {},
+                         "files": {}, "textures": {token: member}}
+                pkg = _manifest_zip(self, [entry], members={member: b"evil"})
+                before = model.rowCount()
+                summary = packages.import_package(
+                    self.panel._package_models(), self.panel.prefs, pkg)
+                self.assertEqual(1, summary["refused"], summary)
+                self.assertEqual(before, model.rowCount(),
+                                 "the escaping entry still landed a row")
+                self.assertFalse(os.path.exists(landed),
+                                 "a package token wrote %s" % landed)
 
 
 class OnlineKindFilterTest(unittest.TestCase):
