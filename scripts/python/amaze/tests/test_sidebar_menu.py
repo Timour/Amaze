@@ -385,6 +385,44 @@ class EachSubmenuRowWritesWhatItSays(unittest.TestCase):
         self.assertEqual(folder, folders.display_name(path))
 
 
+class TheChipsSitWhereTheDesignDrawsThem(unittest.TestCase):
+    """A chip submenu paints each chip at `amazetheme.MENU_CHIP` inside its row."""
+
+    def setUp(self):
+        self.panel = test_support.fixture_panel(self)
+
+    def test_each_chip_fills_its_box_and_nothing_around_it(self):
+        from amaze import amazetheme
+        from amaze.helpers import theme
+        from amaze.panel import grid
+        self.panel.section_tabs.setChecked("material")
+        QtWidgets.QApplication.processEvents()
+        section = self.panel._section()
+        index = self.panel.cat_list.model().index(1, 0)
+        menu, _verbs = grid.build_menu(self.panel, section, section.SIDEBAR_MENU, [index], index)
+        self.addCleanup(menu.deleteLater)
+        chips = next(a.menu() for a in menu.actions() if a.text() == "Label")
+        chips.ensurePolished()
+        chips.resize(chips.sizeHint())
+        image = chips.grab().toImage()
+        dpr = image.devicePixelRatio() or 1.0
+        x, y, w, h = (theme.ui_px(n) for n in amazetheme.MENU_CHIP)
+        for (_name, colour), action in zip(amazetheme.LABEL_COLOURS, chips.actions()):
+            row = chips.actionGeometry(action)
+            middle = int((row.x() + x + w / 2) * dpr)
+            top, bottom = int((row.y() + y) * dpr), int((row.y() + y + h) * dpr) - 1
+
+            def at(px, py):
+                return image.pixelColor(px, py).name()
+
+            with self.subTest(chip=colour):
+                self.assertFalse(action.icon().isNull(), "the row lost its icon column")
+                self.assertEqual([colour, colour], [at(middle, top), at(middle, bottom)],
+                                 "the chip does not fill its drawn box")
+                self.assertNotEqual(colour, at(middle, top - 1), "the chip starts above its box")
+                self.assertNotEqual(colour, at(middle, bottom + 1), "the chip runs below its box")
+
+
 class StructuralSignalsStayOutsideRelayout(unittest.TestCase):
     """`ui_helpers.relayout` is for DATA changes only: a layout-change pair around begin/endInsert/RemoveRows hands attached proxies dangling persistent indexes at the closing signal - a native H21 segfault (research.md, 2026-08-04)."""
 

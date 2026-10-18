@@ -75,6 +75,8 @@ PREFS_DIVIDER_H = 1
 PREFS_DIVIDER_ABOVE = 8  # inside the divider's own row box
 PREFS_DIVIDER_BELOW = 6  # so a divider costs ROW_GAP + ABOVE + H + BELOW + ROW_GAP = 27
 
+MENU_CHIP = (4, 3, 16, 16)     # ▸ the chip submenus (C02b, C09c): x, y, w, h of a chip in its row
+
 LABEL_COLOURS = (              # ▸ the sidebar's Label submenu (C09c): its four chips
     ("Red", "#e0693e"),
     ("Yellow", "#f6ca6d"),

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
+from amaze import amazetheme
 from amaze.core import debug, grid_columns
 from amaze.helpers import theme, ui_helpers
 from amaze.panel import delegates
@@ -32,12 +33,28 @@ def _enabled(context, entry, indexes, current):
     return _resolve(context, entry.needs, indexes, current, False)
 
 
-def _swatch_icon(colour: str):
-    """A solid colour chip for a submenu row - Color's Copy Color menu doubles as a palette preview."""
-    side = theme.ui_px(14)
-    pixmap = QtGui.QPixmap(side, side)
-    pixmap.fill(QtGui.QColor(colour))
+def _chip_room():
+    """A clear icon the size of a chip: the row keeps its icon column, and the chip is painted over it."""
+    pixmap = QtGui.QPixmap(*(theme.ui_px(n) for n in amazetheme.MENU_CHIP[2:]))
+    pixmap.fill(QtCore.Qt.GlobalColor.transparent)
     return QtGui.QIcon(pixmap)
+
+
+class _ChipMenu(QtWidgets.QMenu):
+    """A submenu whose rows show colour chips, at the box `amazetheme.MENU_CHIP` gives inside each row."""
+
+    def __init__(self, title, parent):
+        super().__init__(title, parent)
+        self.chips = {}    # action -> colour
+
+    def paintEvent(self, event):
+        super().paintEvent(event)
+        x, y, w, h = (theme.ui_px(n) for n in amazetheme.MENU_CHIP)
+        painter = QtGui.QPainter(self)
+        for action, colour in self.chips.items():
+            row = self.actionGeometry(action)
+            painter.fillRect(row.x() + x, row.y() + y, w, h, QtGui.QColor(colour))
+        painter.end()
 
 
 def _tidy_separators(rows):
@@ -76,9 +93,13 @@ def build_menu(panel, context, entries, indexes, current):
             label += " (%d)" % len(indexes)
         enabled = _enabled(context, entry, indexes, current)
         if entry.children:
-            submenu = menu.addMenu(label)
-            submenu.menuAction().setEnabled(enabled)    # the PARENT carries the enabled state - an openable submenu with nothing to pick reads as broken
             children = getattr(context, entry.children)(indexes, current)
+            if any(child and child[2] for child in children):    # colour chips: the menu paints them
+                submenu = _ChipMenu(label, menu)
+                menu.addMenu(submenu)
+            else:
+                submenu = menu.addMenu(label)
+            submenu.menuAction().setEnabled(enabled)    # the PARENT carries the enabled state - an openable submenu with nothing to pick reads as broken
             for child in children:    # (label, payload, colour, live[, checked]); None is a divider
                 if child is None:
                     submenu.addSeparator()
@@ -86,8 +107,8 @@ def build_menu(panel, context, entries, indexes, current):
                 child_label, payload, colour, live = child[:4]
                 checked = child[4] if len(child) > 4 else None
                 if colour:
-                    action = submenu.addAction(
-                        _swatch_icon(colour), child_label)
+                    action = submenu.addAction(_chip_room(), child_label)
+                    submenu.chips[action] = colour
                 else:
                     action = submenu.addAction(child_label)
                 action.setEnabled(bool(live))    # greys when it has nothing to act on, as at the top
