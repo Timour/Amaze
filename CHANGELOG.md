@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.8.0
+
+- Preferences ▸ About ▸ Add-On beta versions: when on, Check for Updates on the Add-On tab installs the newest beta of each add-on instead of its release; when off, it installs the release again.
+- The Test Library folder sits beside its switch in Preferences ▸ About.
+
 ## 1.7.0
 
 - Preferences ▸ Add-On, a new tab between Look and About, lists the nodes of each installed add-on with a picture, version, author and short description. Each has a switch that turns it off or on from the next Houdini start.
