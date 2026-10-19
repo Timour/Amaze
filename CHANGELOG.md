@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.7.0
+
+- Preferences ▸ Add-On, a new tab between Look and About, lists the nodes of each installed add-on with a picture, version, author and short description. Each has a switch that turns it off or on from the next Houdini start.
+- Check for Updates on the Add-On tab finds new add-ons and newer versions in the Amaze store, and Update installs them.
+- The `Amaze.json` template loads Amaze's add-ons with one `package_path` line, written out in full; copy the new template from the README.
+
 ## 1.6.3
 
 - The `Amaze.json` template lists the folder Amaze's add-ons will install into, and uses `hpath` in place of the retired `path` key; copy the new template from the README.
