@@ -15,7 +15,9 @@ KIND = "houdini-package"
 ROOT = "addons"    #: the add-ons' folder, in Amaze's install and in the package store alike
 FOLDERS = ("shapes",)    #: the folders Amaze.json puts on Houdini's path; any other is refused
 REQUIRED = ("name", "folder", "version", "author", "houdini", "houdini_min", "changelog")
-NODE_KEYS = ("label", "type", "file", "icon", "description", "needs")
+NODE_KEYS = ("label", "type", "file", "addon_icon", "short_description", "description")
+SHOWN = ("addon_icon", "short_description")    #: what a group's row shows; its nodes must agree
+PICTURES = (".svg", ".png")    #: what the Add-On tab draws; a node's Houdini icon stays in its .hda
 _VERSION = re.compile(r"\d+\.\d+\.\d+$")
 _MAJOR_MINOR = re.compile(r"\d+\.\d+$")
 
@@ -48,11 +50,10 @@ def problems(manifest) -> list:
 
 
 def _node_problems(nodes, files) -> list:
-    """What is wrong with the node list, against the package's own files and node types."""
+    """What is wrong with the node list, against the package's own files, and its groups."""
     if not isinstance(nodes, list) or not nodes:
         return ["no nodes"]
     found = []
-    types = {str(node.get("type")) for node in nodes if isinstance(node, dict)}
     for node in nodes:
         missing = [key for key in NODE_KEYS if not isinstance(node, dict) or key not in node]
         if missing:
@@ -60,12 +61,47 @@ def _node_problems(nodes, files) -> list:
             continue
         label = node["label"]
         found += ["%s: %s %r is not in files" % (label, key, node[key])
-                  for key in ("file", "icon") if node[key] not in files]
-        if not isinstance(node["description"], str):
-            found.append("%s: description is not text" % label)
-        needs = node["needs"] if isinstance(node["needs"], list) else [node["needs"]]
-        found += ["%s needs %s, which the package lacks" % (label, need)
-                  for need in needs if need not in types]
+                  for key in ("file", "addon_icon") if node[key] not in files]
+        if not str(node["addon_icon"]).lower().endswith(PICTURES):
+            found.append("%s: addon_icon %r is not an .svg or .png" % (label, node["addon_icon"]))
+        found += ["%s: %s is not text" % (label, key) for key in ("short_description", "description")
+                  if not isinstance(node[key], str)]
+        if not isinstance(node.get("group", ""), str):
+            found.append("%s: group is not text" % label)
+    return found + _group_problems(nodes)
+
+
+def _group(node) -> str:
+    """The group `node` is in, or "" when it is in none and is a row of its own."""
+    group = node.get("group") if isinstance(node, dict) else ""
+    return group.strip() if isinstance(group, str) else ""
+
+
+def _group_problems(nodes) -> list:
+    """A group is one row showing one icon and one short description, so its nodes must agree."""
+    first, found = {}, []
+    for node in nodes:
+        if not _group(node):
+            continue
+        shown = tuple(node.get(key) for key in SHOWN)
+        label, seen = first.setdefault(_group(node), (node.get("label"), shown))
+        differ = [key for key, mine, theirs in zip(SHOWN, shown, seen) if mine != theirs]
+        if differ:
+            found.append("%s and %s share group %r but differ in %s"
+                         % (label, node.get("label"), _group(node), " and ".join(differ)))
+    return found
+
+
+def rows(manifest) -> list:
+    """The Add-On tab's rows in package order: a group is listed once under its name, others alone."""
+    found, index = [], {}
+    for node in manifest["nodes"]:
+        key = ("group", _group(node)) if _group(node) else ("node", node["type"])
+        if key not in index:
+            index[key] = len(found)
+            found.append(dict({k: node[k] for k in SHOWN},
+                              name=_group(node) or node["label"], nodes=[]))
+        found[index[key]]["nodes"].append(node)
     return found
 
 

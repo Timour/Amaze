@@ -1107,9 +1107,10 @@ core/notes.py             the notes store (notes.json, per-asset pages)
 core/packages.py          the .amazepkg container (library packages are
                           format 2): export collectors, guarded writer,
                           refusing reader
-core/addons.py            add-on packages (format 3, a Houdini package):
-                          the one writer, the reader, the installer into
-                          $AMAZE/addons/<folder>, the updater's carry
+core/addons.py            add-on packages (format 4, a Houdini package):
+                          the one writer, the reader, the Add-On tab's
+                          rows, the installer into $AMAZE/addons/<folder>,
+                          the updater's carry
 core/texstore.py          the texture store: $AMAZELIB tokens, the
                           FileReference scan, save-time adoption and
                           the scene-side resolve

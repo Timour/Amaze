@@ -26,10 +26,13 @@ def _write(path, text):
         handle.write(text)
 
 
-def _node(label, kind, icon="icons/one.svg", needs=()):
-    return {"label": label, "type": "Sop/example::%s::0.1" % kind,
-            "file": "otls/example_%s.hda" % kind, "icon": icon,
-            "description": "", "needs": list(needs)}
+def _node(label, kind, icon="icons/one.svg", group=None, short="Does one thing."):
+    node = {"label": label, "type": "Sop/example::%s::0.1" % kind,
+            "file": "otls/example_%s.hda" % kind, "addon_icon": icon,
+            "short_description": short, "description": ""}
+    if group is not None:
+        node["group"] = group
+    return node
 
 
 class _Workspace(unittest.TestCase):
@@ -71,8 +74,49 @@ class TheWriterTest(_Workspace):
 
     def test_two_nodes_may_share_one_icon(self):
         files = {"otls/example_one.hda": "1", "otls/example_two.hda": "2", "icons/one.svg": "s"}
-        nodes = [_node("One", "one"), _node("Two", "two", needs=["Sop/example::one::0.1"])]
+        nodes = [_node("One", "one", group="Pair"), _node("Two", "two", group="Pair")]
         self.assertEqual(2, len(addons.read(self.package(files, nodes=nodes))["nodes"]))
+
+    def test_nodes_sharing_a_group_are_one_row_in_package_order(self):
+        files = {"otls/example_%s.hda" % k: k for k in ("one", "two", "three")}
+        files["icons/one.svg"] = "s"
+        nodes = [_node("Three", "three"), _node("One", "one", group="Pair"),
+                 _node("Two", "two", group="Pair")]
+        rows = addons.rows(addons.read(self.package(files, nodes=nodes)))
+        self.assertEqual([("Three", ["Three"]), ("Pair", ["One", "Two"])],
+                         [(row["name"], [n["label"] for n in row["nodes"]]) for row in rows])
+        self.assertEqual(("icons/one.svg", "Does one thing."),
+                         (rows[1]["addon_icon"], rows[1]["short_description"]))
+
+    def test_an_add_on_icon_must_be_a_picture_the_tab_draws(self):
+        files = {"otls/example_one.hda": "1", "icons/one.svg": "s", "icons/one.tif": "t"}
+        with self.assertRaises(packages.PackageError) as caught:
+            self.package(files, nodes=[_node("One", "one", icon="icons/one.tif")])
+        self.assertIn("One: addon_icon 'icons/one.tif' is not an .svg or .png",
+                      str(caught.exception))
+
+    def test_a_group_whose_nodes_disagree_is_refused(self):
+        files = {"otls/example_one.hda": "1", "otls/example_two.hda": "2", "icons/one.svg": "s"}
+        nodes = [_node("One", "one", group="Pair"),
+                 _node("Two", "two", group="Pair", short="Does another.")]
+        with self.assertRaises(packages.PackageError) as caught:
+            self.package(files, nodes=nodes)
+        self.assertIn("One and Two share group 'Pair' but differ in short_description",
+                      str(caught.exception))
+
+    def test_a_node_in_no_group_is_its_own_row_even_under_a_groups_name(self):
+        files = {"otls/example_%s.hda" % k: k for k in ("one", "two", "three")}
+        files["icons/one.svg"] = "s"
+        nodes = [_node("Pair", "one", group=""), _node("Two", "two", group="Pair"),
+                 _node("Three", "three")]
+        rows = addons.rows(addons.read(self.package(files, nodes=nodes)))
+        self.assertEqual([("Pair", ["Pair"]), ("Pair", ["Two"]), ("Three", ["Three"])],
+                         [(row["name"], [n["label"] for n in row["nodes"]]) for row in rows])
+
+    def test_a_group_that_is_not_text_is_refused(self):
+        with self.assertRaises(packages.PackageError) as caught:
+            self.package(nodes=[_node("One", "one", group=5)])
+        self.assertIn("One: group is not text", str(caught.exception))
 
     def test_a_member_passed_twice_is_written_once(self):
         _write(os.path.join(self.root, "otls", "example_one.hda"), "1")
@@ -95,11 +139,6 @@ class TheWriterTest(_Workspace):
         with self.assertRaises(packages.PackageError) as caught:
             self.package({"../outside.hda": "x", "otls/example_one.hda": "1", "icons/one.svg": "s"})
         self.assertIn("'../outside.hda' is not a plain relative path", str(caught.exception))
-
-    def test_a_need_outside_the_package_is_refused(self):
-        with self.assertRaises(packages.PackageError) as caught:
-            self.package(nodes=[_node("One", "one", needs=["Cop/elsewhere::x::0.1"])])
-        self.assertIn("One needs Cop/elsewhere::x::0.1", str(caught.exception))
 
     def test_a_listed_file_missing_from_root_is_refused(self):
         _write(os.path.join(self.root, "icons", "one.svg"), "s")
@@ -129,6 +168,16 @@ class TheReaderTest(_Workspace):
         with self.assertRaises(packages.PackageError) as caught:
             addons.read(copy)
         self.assertIn("member otls/stowaway.hda is not listed", str(caught.exception))
+
+    def test_a_package_in_the_old_shape_is_refused(self):
+        path = self.package()
+        manifest = addons.read(path)
+        for node in manifest["nodes"]:
+            node["icon"] = node.pop("addon_icon")
+            del node["short_description"]
+        with self.assertRaises(packages.PackageError) as caught:
+            addons.read(self._rewritten(path, manifest))
+        self.assertIn("a node lacks addon_icon, short_description", str(caught.exception))
 
     def test_a_newer_format_is_refused(self):
         path = self.package()

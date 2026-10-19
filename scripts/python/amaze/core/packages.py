@@ -8,7 +8,7 @@ from amaze import branding
 from amaze.core import debug, notes, texstore
 from amaze.helpers import hostos
 
-FORMAT = 3    # the newest this build reads; 3 adds the add-on kind, core/addons.py
+FORMAT = 4    # the newest this build reads; 4: add-on rows (groups, Add-On tab icons), core/addons.py
 ASSETS_FORMAT = 2    # what a package of library assets is written as, so an older Amaze still reads it
 SUFFIX = ".amazepkg"
 MANIFEST = "package.json"
