@@ -220,11 +220,11 @@ class GateFixture(unittest.TestCase):
     def _env(self, mode, **extra):
         """Never inherits a real bypass variable, or the pushing repository, from the calling suite."""
         env = dict(os.environ)
+        env.update(self.git_env)    # a copy of the environment too, so the stripping comes after it
         for name in ("AMAZE_SYNC_NO_VERIFY", "AMAZE_SKIP_TESTS",
                      "AMAZE_SCRATCH_INSTALL", "AMAZE_HOUDINI", "AMAZE_SKIP_REPORT",
                      "GIT_DIR", "GIT_WORK_TREE"):    # a worktree's pre-push sets GIT_DIR ▸r/git-hook-surface
             env.pop(name, None)
-        env.update(self.git_env)
         env.update({
             "AMAZE": self.install,
             "HFS": self.hfs,
@@ -595,14 +595,6 @@ class PrePushSelectionTest(GateFixture):
                          % " ".join("'%s'" % root for root in roots))
         return roots
 
-    def assertEveryHoudini(self, result, roots):
-        self.assertEqual(result.returncode, 0, self.both(result))
-        self.assertIn("running the suite on every Houdini (a new minor or major version)",
-                      result.stdout, self.both(result))
-        self.assertEqual(["green on " + root for root in roots],
-                         [" ".join(call.split()) for call in self.suite_calls()],
-                         "the whole suite did not run once on each Houdini")
-
     def test_a_push_runs_only_the_tests_its_change_reaches(self):
         self._mapped()
         self._change("return 1", "return 2")
@@ -631,26 +623,29 @@ class PrePushSelectionTest(GateFixture):
         self.assertEqual([], self.suite_calls())
         self.assertIn(PUSH_END, result.stdout)
 
-    def test_a_new_minor_version_runs_the_whole_suite_on_every_houdini(self):
-        roots = self._houdinis("Houdini21", "Houdini22")
-        self._mapped()
-        self._change('"1.0.0"', '"1.1.0"', BRANDING)
-        self.assertEveryHoudini(self.push("green"), roots)
-
-    def test_a_new_major_version_runs_the_whole_suite_on_every_houdini(self):
-        roots = self._houdinis("Houdini21", "Houdini22")
-        self._mapped()
-        self._change('"1.0.0"', '"2.0.0"', BRANDING)
-        self.assertEveryHoudini(self.push("green"), roots)
-
-    def test_a_test_skipped_on_every_houdini_refuses_a_new_version(self):
+    def test_a_new_minor_version_runs_the_whole_suite_on_one_houdini(self):
+        """An older major installed beside it is not run: only the newest is tested."""
         self._houdinis("Houdini21", "Houdini22")
         self._mapped()
         self._change('"1.0.0"', '"1.1.0"', BRANDING)
-        result = self.push("green", FAKE_SKIPPED='[["%s", "needs a GPU"]]' % SIZE)
-        self.assertEqual(result.returncode, 1, self.both(result))
-        self.assertIn("PUSH REFUSED", result.stderr)
-        self.assertIn("DEAD COVER", result.stderr)
+        self.assertWhole(self.push("green"), "a new minor or major version")
+
+    def test_a_new_major_version_runs_the_whole_suite_on_one_houdini(self):
+        self._houdinis("Houdini21", "Houdini22")
+        self._mapped()
+        self._change('"1.0.0"', '"2.0.0"', BRANDING)
+        self.assertWhole(self.push("green"), "a new minor or major version")
+
+    def test_a_run_by_hand_on_every_houdini_refuses_a_test_skipped_on_all(self):
+        """The push no longer runs every Houdini; `run-tests.sh --all-versions` keeps the check."""
+        self._houdinis("Houdini21", "Houdini22")
+        self._mapped()
+        script = os.path.join(self.repo, "tools", "run-tests.sh")
+        result = subprocess.run(
+            ["bash", script, "--all-versions"], capture_output=True, text=True, cwd=self.tmp,
+            env=self._env("green", FAKE_SKIPPED='[["%s", "needs a GPU"]]' % SIZE))
+        self.assertNotEqual(result.returncode, 0, self.both(result))
+        self.assertIn("DEAD COVER", result.stdout + result.stderr)
 
     def test_a_whole_run_for_any_other_reason_tests_one_houdini(self):
         self._houdinis("Houdini21", "Houdini22")
