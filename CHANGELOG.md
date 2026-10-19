@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.3
+
+- The `Amaze.json` template lists the folder Amaze's add-ons will install into, and uses `hpath` in place of the retired `path` key; copy the new template from the README.
+- An Octane material's thumbnail no longer comes out black when it is saved or re-rendered.
+
 ## 1.6.2
 
 - A renderer switched off in Preferences ▸ Show/Hide is gone from the Filter menu, Convert to, Import to Materials and Import to Scene, and its Samples row leaves the Render tab.
