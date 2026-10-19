@@ -22,12 +22,18 @@ PROGRESS = "ALF_PROGRESS"
 DONE = "AMAZE_FRAME_DONE"
 EXCLUDE = "HOUDINI_DSO_EXCLUDE_PATTERN"
 
+POSTLOAD = '''from pxr import UsdShade
+UsdShade.MaterialBindingAPI(stage.GetPrimAtPath(%(ball)r)).Bind(
+    UsdShade.Material(stage.GetPrimAtPath(%(first)r)), UsdShade.Tokens.weakerThanDescendants)
+'''
+
 PREFRAME = '''from pxr import UsdShade
 import hou
 _prims = %(prims)r
-_mat = UsdShade.Material(stage.GetPrimAtPath(_prims[int(hou.frame()) - 1]))
-UsdShade.MaterialBindingAPI(stage.GetPrimAtPath(%(ball)r)).Bind(
-    _mat, UsdShade.Tokens.weakerThanDescendants)
+if int(hou.frame()) > 1:    # frame 1's is bound at load: edited here, Octane renders it empty
+    _mat = UsdShade.Material(stage.GetPrimAtPath(_prims[int(hou.frame()) - 1]))
+    UsdShade.MaterialBindingAPI(stage.GetPrimAtPath(%(ball)r)).Bind(
+        _mat, UsdShade.Tokens.weakerThanDescendants)
 '''
 
 POSTFRAME = '''import os
@@ -83,13 +89,15 @@ class HuskJob(QtCore.QObject):
         return os.path.join(self.job_dir, "f%d.exr" % frame)
 
     def command(self) -> list:
-        """husk's arguments: the frames, both scripts, progress lines, the stage."""
+        """husk's arguments: the frames, its three scripts, progress lines, the stage."""
+        postld = os.path.join(self.job_dir, "postload.py")
         prefr = os.path.join(self.job_dir, "preframe.py")
         postfr = os.path.join(self.job_dir, "postframe.py")
         cmd = [os.path.join(hou.getenv("HFS"), "bin", "husk"), "-V", "1a",
                "-R", DELEGATES[self.renderer],
                "--purpose", "geometry,render", "--complexity", "veryhigh",    # the ROP's own
                "-f", "1", "-n", str(len(self.frames)),
+               "--postload-script", _script_arg(postld),
                "--preframe-script", _script_arg(prefr),
                "--postframe-script", _script_arg(postfr),
                "-o", os.path.join(self.job_dir, "frame.$F4.exr")]
@@ -107,6 +115,8 @@ class HuskJob(QtCore.QObject):
         return env
 
     def _write_scripts(self) -> None:
+        with open(os.path.join(self.job_dir, "postload.py"), "w") as fh:
+            fh.write(POSTLOAD % {"first": self.batch["prims"][0], "ball": self.batch["ball"]})
         with open(os.path.join(self.job_dir, "preframe.py"), "w") as fh:
             fh.write(PREFRAME % {"prims": self.batch["prims"], "ball": self.batch["ball"]})
         with open(os.path.join(self.job_dir, "postframe.py"), "w") as fh:

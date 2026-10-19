@@ -120,6 +120,7 @@ class TheCommandAndItsEnvironment(unittest.TestCase):
         self.assertEqual(["-f", "1", "-n", "3"], cmd[cmd.index("-f"):cmd.index("-f") + 4])
         self.assertIn("1a", cmd[cmd.index("-V") + 1])    # `a` prints ALF_PROGRESS
         self.assertTrue(cmd[cmd.index("-o") + 1].endswith("frame.$F4.exr"))
+        self.assertIn("--postload-script", cmd)
         self.assertIn("--preframe-script", cmd)
         self.assertIn("--postframe-script", cmd)
         self.assertEqual("/x/__render__.usd", cmd[-1])
@@ -134,21 +135,43 @@ class TheCommandAndItsEnvironment(unittest.TestCase):
 
 class ThePreFrameScriptBindsFrameNsMaterial(unittest.TestCase):
 
-    def test_frame_two_binds_the_second_material(self):
-        from pxr import Sdf, Usd, UsdGeom, UsdShade
+    PRIMS = ["/materials/a", "/materials/b"]
+
+    def _run(self, template, frame):
+        """`template` run on a ball and two materials at `frame`; (stage, the ball's mesh)."""
+        from pxr import Usd, UsdGeom, UsdShade
         stage = Usd.Stage.CreateInMemory()
         UsdGeom.Xform.Define(stage, "/ball")
         mesh = UsdGeom.Mesh.Define(stage, "/ball/mesh")
-        prims = ["/materials/a", "/materials/b"]
-        for path in prims:
+        for path in self.PRIMS:
             UsdShade.Material.Define(stage, path)
-        script = husk_job.PREFRAME % {"prims": prims, "ball": "/ball"}
+        script = template % {"prims": self.PRIMS, "first": self.PRIMS[0], "ball": "/ball"}
         self.addCleanup(hou.setFrame, hou.frame())
-        hou.setFrame(2)
-        exec(compile(script, "preframe", "exec"), {"stage": stage})
-        bound = UsdShade.MaterialBindingAPI(mesh.GetPrim()).ComputeBoundMaterial()[0]
-        self.assertEqual(Sdf.Path("/materials/b"), bound.GetPath(),
+        hou.setFrame(frame)
+        exec(compile(script, "script", "exec"), {"stage": stage})
+        return stage, mesh
+
+    def _bound(self, mesh):
+        from pxr import UsdShade
+        return UsdShade.MaterialBindingAPI(mesh.GetPrim()).ComputeBoundMaterial()[0].GetPath()
+
+    def test_frame_two_binds_the_second_material(self):
+        from pxr import Sdf
+        _stage, mesh = self._run(husk_job.PREFRAME, 2)
+        self.assertEqual(Sdf.Path("/materials/b"), self._bound(mesh),
                          "frame 2 did not render the second material")
+
+    def test_the_first_material_is_bound_at_load(self):
+        from pxr import Sdf
+        _stage, mesh = self._run(husk_job.POSTLOAD, 1)
+        self.assertEqual(Sdf.Path("/materials/a"), self._bound(mesh),
+                         "frame 1 has no material when it renders")
+
+    def test_frame_one_leaves_the_stage_as_loaded(self):
+        """An edit before frame 1 leaves Octane's first frame empty ▸r/husk-startup."""
+        stage, _mesh = self._run(husk_job.PREFRAME, 1)
+        self.assertNotIn("material:binding", stage.GetRootLayer().ExportToString(),
+                         "frame 1's pre-frame script edited the stage")
 
 
 class OneHuskRendersEachMaterial(unittest.TestCase):
@@ -176,7 +199,7 @@ class OneHuskRendersEachMaterial(unittest.TestCase):
     def test_two_octane_materials_are_two_pictures(self):
         items = [("RED_OCT", _octane(self, RED)), ("GREEN_OCT", _octane(self, GREEN))]
         self.assertEqual(["red", "green"], self._render("Octane", items),
-                         "Octane kept the first material for the second frame")
+                         "one Octane husk did not give each frame its own material")
 
 
 class TheBackgroundQueue(unittest.TestCase):
