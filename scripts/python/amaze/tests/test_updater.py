@@ -582,7 +582,7 @@ class TheAboutTabOffersTheUpdateInOnePlace(unittest.TestCase):
             "above Test Library" % len(dividers))
         rows = [form.getWidgetPosition(widget)[0] for widget in (
             dialog._lbl_version, dialog._btn_update.parentWidget(),
-            dialog._cbx_debug.parentWidget(), dialog._cbx_test_mode)]
+            dialog._cbx_debug.parentWidget(), dialog._cbx_test_mode.parentWidget())]
         self.assertNotIn(-1, rows, "a row was not found on the form")
         self.assertEqual(sorted(rows), rows,
                          "the rows do not run version, buttons, debug, "

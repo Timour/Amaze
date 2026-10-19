@@ -706,7 +706,6 @@ class PrefsDialog(base_dialog.AssetDialog):
         self._cbx_test_mode.setToolTip(ui_helpers.tooltip_text(
             tooltips.PREFS_TEST_LIBRARY))
         self._cbx_test_mode.toggled.connect(self.set_test_mode)
-        form.addRow(self._label(""), self._cbx_test_mode)
 
         self.line_test_dir = QtWidgets.QLineEdit(self._prefs.test_dir)
         self.line_test_dir.setReadOnly(True)
@@ -715,8 +714,22 @@ class PrefsDialog(base_dialog.AssetDialog):
         self._browse_test = QtWidgets.QPushButton("...")
         self._browse_test.setFixedWidth(theme.ui_px(amazetheme.PREFS_BROWSE_W))
         self._browse_test.clicked.connect(self.change_test_path)
-        form.addRow(self._label("Test Folder"),
-                    self._path_row(self.line_test_dir, self._browse_test))
+        test_row = QtWidgets.QWidget()   # the switch and its folder on ONE row, as P06 draws them
+        row = QtWidgets.QHBoxLayout(test_row)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.addWidget(self._cbx_test_mode)
+        row.addStretch(1)
+        row.addWidget(self.line_test_dir)
+        row.addWidget(self._browse_test)
+        form.addRow(self._label(""), test_row)
+        self._path_rows.append(test_row)
+
+        self._cbx_addon_betas = ui_helpers.ToggleSwitch("Add-On beta versions")
+        self._cbx_addon_betas.setChecked(self._prefs.addon_betas)
+        self._cbx_addon_betas.setToolTip(ui_helpers.tooltip_text(
+            tooltips.PREFS_ADDON_BETAS))
+        self._cbx_addon_betas.toggled.connect(self.set_addon_betas)
+        form.addRow(self._label(""), self._cbx_addon_betas)
 
         inner.addLayout(form)
         outer.addWidget(_content_holder(inner),
@@ -873,14 +886,14 @@ class PrefsDialog(base_dialog.AssetDialog):
             QtCore.QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
         found = []
         try:
-            store = addons.store_versions()
+            store = addons.store_versions(self._prefs.addon_betas)
         except (OSError, ValueError) as exc:
             sentence = messages.ADDONS_STORE_UNREACHABLE % exc
         else:
             root = updater.install_root()
             have = {m["name"]: m["version"] for _f, m in (addons.installed_all(root) if root else [])}
             found = [(name, version, url) for name, (version, url) in sorted(store.items())
-                     if name not in have or updater.is_newer(version, have[name])]
+                     if addons.wanted(have.get(name), version)]
             sentence = (messages.ADDONS_AVAILABLE % ", ".join("%s %s" % f[:2] for f in found)
                         if found else messages.ADDONS_UP_TO_DATE)
         self._addons_found = found
@@ -1156,6 +1169,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         ("_cbx_step_size", "step_size"),
         ("_combo_icon_weight", "icon_line_weight"),
         ("_cbx_debug", "debug_mode"),
+        ("_cbx_addon_betas", "addon_betas"),
     )
 
     def _shown_values(self):
@@ -1290,6 +1304,12 @@ class PrefsDialog(base_dialog.AssetDialog):
         debug.configure(checked)
         if checked:
             debug.prefs_snapshot(self._prefs)
+
+    def set_addon_betas(self, checked: bool) -> None:
+        """Pick the kind Check for Updates installs; what a check found was the other kind's."""
+        self._prefs.addon_betas = checked
+        self._addons_found = []
+        self._set_addons_button(False)
 
     def reveal_debug_log(self) -> None:
         """Open the log FILE itself; an empty log opens its folder instead."""

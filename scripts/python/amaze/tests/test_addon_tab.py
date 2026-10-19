@@ -42,6 +42,7 @@ class _Tab(unittest.TestCase):
     """Preferences over an Amaze root holding `NODES` as one add-on, when there are any."""
 
     NODES = ()
+    VERSION = "1.2.3"
 
     def setUp(self):
         self.dir = tempfile.mkdtemp(prefix="amaze_addon_tab_")
@@ -64,7 +65,7 @@ class _Tab(unittest.TestCase):
             os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, "w", encoding="utf-8") as handle:
                 handle.write(SVG if member.endswith(".svg") else member)
-        fields = {"name": "Example", "folder": "example", "version": "1.2.3",
+        fields = {"name": "Example", "folder": "example", "version": self.VERSION,
                   "author": "Test Author", "houdini": "22.0.466", "houdini_min": "22.0",
                   "changelog": "- A change.", "nodes": list(self.NODES)}
         store = os.path.join(self.dir, "store")
@@ -124,7 +125,7 @@ class TheRowsAreThePackagesOwnTest(_Tab):
     def test_a_check_offers_what_is_newer_and_update_installs_it(self):
         store = {"Example": ("1.3.0", URL % ("Example", "1.3.0")),
                  "Other": ("0.1.0", URL % ("Other", "0.1.0"))}
-        with mock.patch.object(addons, "store_versions", lambda: store):
+        with mock.patch.object(addons, "store_versions", lambda betas=False: store):
             self.dialog.check_addons()
         self.assertEqual("Update", self.dialog._btn_addons.text())
         self.assertEqual(messages.ADDONS_AVAILABLE % "Example 1.3.0, Other 0.1.0", self.line())
@@ -138,18 +139,52 @@ class TheRowsAreThePackagesOwnTest(_Tab):
 
     def test_nothing_newer_says_every_add_on_is_up_to_date(self):
         with mock.patch.object(addons, "store_versions",
-                               lambda: {"Example": ("1.2.3", URL % ("Example", "1.2.3"))}):
+                               lambda betas=False: {"Example": ("1.2.3", URL % ("Example", "1.2.3"))}):
             self.dialog.check_addons()
         self.assertEqual(messages.ADDONS_UP_TO_DATE, self.line())
         self.assertEqual("Check for Updates", self.dialog._btn_addons.text())
 
+    def test_the_beta_switch_installs_the_newest_beta_even_below_the_release(self):
+        asked = []
+
+        def store(betas=False):
+            asked.append(betas)
+            return {"Example": ("1.2.0-beta", URL % ("Example", "1.2.0-beta"))}
+
+        self.dialog._cbx_addon_betas.setChecked(True)
+        with mock.patch.object(addons, "store_versions", store):
+            self.dialog.check_addons()
+        self.assertEqual([True], asked)
+        self.assertEqual(messages.ADDONS_AVAILABLE % "Example 1.2.0-beta", self.line())
+
+    def test_turning_the_beta_switch_drops_what_the_last_check_found(self):
+        with mock.patch.object(addons, "store_versions",
+                               lambda betas=False: {"Example": ("1.3.0", URL % ("Example", "1.3.0"))}):
+            self.dialog.check_addons()
+        self.assertEqual("Update", self.dialog._btn_addons.text())
+        self.dialog._cbx_addon_betas.setChecked(True)
+        self.assertEqual("Check for Updates", self.dialog._btn_addons.text())
+
     def test_an_unreachable_store_is_said_in_the_line(self):
-        def offline():
+        def offline(betas=False):
             raise OSError("offline")
 
         with mock.patch.object(addons, "store_versions", offline):
             self.dialog.check_addons()
         self.assertEqual(messages.ADDONS_STORE_UNREACHABLE % "offline", self.line())
+
+
+class ABetaInstalledTest(_Tab):
+
+    NODES = (_node("Gamma", "gamma", "pictures/gamma.svg", "Does a third."),)
+    VERSION = "1.2.4-beta"
+
+    def test_its_row_reads_its_beta_and_switched_off_the_release_goes_back(self):
+        self.assertEqual("version 1.2.4-beta", self.dialog.addon_rows[0]["add-on version"].text())
+        with mock.patch.object(addons, "store_versions",
+                               lambda betas=False: {"Example": ("1.2.3", URL % ("Example", "1.2.3"))}):
+            self.dialog.check_addons()
+        self.assertEqual(messages.ADDONS_AVAILABLE % "Example 1.2.3", self.line())
 
 
 class NoAddOnInstalledTest(_Tab):

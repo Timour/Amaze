@@ -137,6 +137,7 @@ USER_KEYS = {  # one user's view state on THIS machine, under `users.<uid>`; sto
     "file_show_unknown":
         ("file_show_unknown", "_file_show_unknown", True),
     "debug_mode": ("debug_mode", "_debug_mode", False),
+    "addon_betas": ("addon_betas", "_addon_betas", False),
 }  # five more per-user keys ride beside every walk of this table, each with a nuance a uniform walk cannot carry
 
 USER_RETIRED = tuple(USER_KEYS) + (  # the per-user spellings that leave the flat document once a user exists to carry them; the three File copies mirror per-user state and ride here too

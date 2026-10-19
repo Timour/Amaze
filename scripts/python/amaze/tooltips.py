@@ -87,6 +87,8 @@ PREFS_TEST_LIBRARY = 'Try things out on a throwaway library instead of your real
 
 PREFS_TEST_FOLDER = 'The folder that holds the test library.'
 
+PREFS_ADDON_BETAS = 'Which version of each add-on Check for Updates on the Add-On tab installs: the newest beta when on, the newest release when off.'
+
 CUSTOMIZE_TILE_NAME = 'Rename this tile. The name drives the grid, the sidebar count, and every search.'   # ▸ Customize dialog (D02)
 
 CUSTOMIZE_CATEGORY = 'Move to this category. Applies to every selected tile.'

@@ -18,9 +18,10 @@ NODE_KEYS = ("label", "type", "file", "addon_icon", "short_description", "descri
 SHOWN = ("addon_icon", "short_description")    #: what a group's row shows; its nodes must agree
 PICTURES = (".svg", ".png")    #: what the Add-On tab draws; a node's Houdini icon stays in its .hda
 OFF = "off"    #: a switched-off row's files wait here, where Houdini does not look
+BETA = "-beta"    #: a beta's version ends in it, `1.2.4-beta`, and may sit beside the release `1.2.4`
 _FOLDER = re.compile(r"[a-z0-9_]+$")
-_STORE_NAME = re.compile(r"(?P<name>.+)-(?P<version>\d+\.\d+\.\d+)\.amazepkg$")
-_VERSION = re.compile(r"\d+\.\d+\.\d+$")
+_STORE_NAME = re.compile(r"(?P<name>.+)-(?P<version>\d+\.\d+\.\d+(?:-beta)?)\.amazepkg$")
+_VERSION = re.compile(r"\d+\.\d+\.\d+(?:-beta)?$")
 _MAJOR_MINOR = re.compile(r"\d+\.\d+$")
 
 
@@ -38,7 +39,7 @@ def problems(manifest) -> list:
     found = [] if manifest.get("kind") == KIND else ["not an add-on package"]
     found += ["no %s" % key for key in REQUIRED if not str(manifest.get(key) or "").strip()]
     if manifest.get("version") and not _VERSION.match(str(manifest["version"])):
-        found.append("version %r is not X.Y.Z" % manifest["version"])
+        found.append("version %r is not X.Y.Z or X.Y.Z-beta" % manifest["version"])
     if manifest.get("houdini_min") and not _MAJOR_MINOR.match(str(manifest["houdini_min"])):
         found.append("houdini_min %r is not MAJOR.MINOR" % manifest["houdini_min"])
     if manifest.get("folder") and not _FOLDER.match(str(manifest["folder"])):
@@ -246,8 +247,26 @@ def carry(old_root: str, new_root: str) -> bool:
     return True
 
 
-def store_versions() -> dict:
-    """{add-on name: (version, url)}: each add-on's newest `addons/<name>-X.Y.Z.amazepkg` in the store."""
+def is_beta(version) -> bool:
+    """Whether `version` is a beta's, `X.Y.Z-beta`."""
+    return str(version).endswith(BETA)
+
+
+def number(version) -> tuple:
+    """`version`'s X.Y.Z as integers, for ordering versions of one kind."""
+    text = str(version)
+    return tuple(int(part) for part in (text[:-len(BETA)] if is_beta(text) else text).split("."))
+
+
+def wanted(installed, offer: str) -> bool:
+    """Whether Update installs `offer` over `installed`: always across kinds, else only newer."""
+    if not installed or is_beta(installed) != is_beta(offer):
+        return True
+    return number(offer) > number(installed)
+
+
+def store_versions(betas: bool = False) -> dict:
+    """{add-on name: (version, url)}: each add-on's newest release in the store, or newest beta."""
     from amaze.core import matx_sources
     newest = {}
     for node in matx_sources.get_json(matx_sources.AmazeSource.TREE_URL).get("tree", ()):
@@ -256,10 +275,11 @@ def store_versions() -> dict:
         found = _STORE_NAME.match(parts[-1])
         if node.get("type") != "blob" or len(parts) != 2 or parts[0] != ROOT or not found:
             continue
-        version = tuple(int(part) for part in found["version"].split("."))
-        if found["name"] not in newest or version > newest[found["name"]][0]:
-            newest[found["name"]] = (version, matx_sources.AmazeSource.RAW_BASE + path)
-    return {name: (".".join(map(str, version)), url) for name, (version, url) in newest.items()}
+        name, version = found["name"], found["version"]
+        if is_beta(version) == betas and (
+                name not in newest or number(version) > number(newest[name][0])):
+            newest[name] = (version, matx_sources.AmazeSource.RAW_BASE + path)
+    return newest
 
 
 def fetch_and_install(url: str, amaze_root: str, running=None) -> dict:

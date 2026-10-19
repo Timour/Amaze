@@ -141,6 +141,7 @@ class Prefs(_Persistence):
         self._scroll_speed = 0.75  # wheel factor for the grid/list, settled by live tuning and shown as a percent in Preferences
         self._step_size = True  # the toolbar size slider rests only on its marks
         self._debug_mode = False
+        self._addon_betas = False  # Check for Updates on the Add-On tab takes each add-on's newest beta
         self._users_blocks: dict = {}  # uid -> the keys that are one user's on THIS machine
 
     def get_dir_from_user(self) -> bool:
@@ -599,6 +600,15 @@ class Prefs(_Persistence):
     @debug_mode.setter
     def debug_mode(self, val: bool) -> None:
         self._debug_mode = bool(val)
+
+    @property
+    def addon_betas(self) -> bool:
+        """Which kind of add-on version the Add-On tab installs: the newest beta, or the release."""
+        return self._addon_betas
+
+    @addon_betas.setter
+    def addon_betas(self, val: bool) -> None:
+        self._addon_betas = bool(val)
 
     @property
     def matx_parallel_downloads(self) -> int:

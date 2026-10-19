@@ -127,6 +127,14 @@ class TheWriterTest(_Workspace):
         with zipfile.ZipFile(path) as bundle:
             self.assertEqual(1, bundle.namelist().count("icons/one.svg"))
 
+    def test_a_beta_is_its_version_marked_and_no_other_mark_is_taken(self):
+        path = self.package(version="1.2.4-beta")
+        self.assertEqual("Example-1.2.4-beta.amazepkg", os.path.basename(path))
+        self.assertEqual("1.2.4-beta", addons.read(path)["version"])
+        for version in ("1.2.4-beta2", "1.2.4-alpha", "1.2.4beta", "1.2.4-BETA"):
+            with self.subTest(version=version), self.assertRaises(packages.PackageError):
+                self.package(version=version)
+
     def test_every_problem_is_named_at_once(self):
         node = _node("One", "one")
         del node["description"]
@@ -291,6 +299,32 @@ class TheStoreTest(_ThreeRows):
         raw = matx_sources.AmazeSource.RAW_BASE
         self.assertEqual({"Example": ("1.10.0", raw + "addons/Example-1.10.0.amazepkg"),
                           "Other-Tool": ("0.1.0", raw + "addons/Other-Tool-0.1.0.amazepkg")}, found)
+
+    def test_releases_and_betas_are_listed_apart_never_both(self):
+        tree = [{"type": "blob", "path": "addons/Example-1.2.4.amazepkg"},
+                {"type": "blob", "path": "addons/Example-1.2.4-beta.amazepkg"},
+                {"type": "blob", "path": "addons/Example-1.2.7-beta.amazepkg"},
+                {"type": "blob", "path": "addons/Example-1.10.0-beta.amazepkg"},
+                {"type": "blob", "path": "addons/Other-0.1.0.amazepkg"}]
+        with mock.patch.object(matx_sources, "get_json", lambda url: {"tree": tree}):
+            releases, betas = addons.store_versions(), addons.store_versions(betas=True)
+        raw = matx_sources.AmazeSource.RAW_BASE
+        self.assertEqual({"Example": ("1.2.4", raw + "addons/Example-1.2.4.amazepkg"),
+                          "Other": ("0.1.0", raw + "addons/Other-0.1.0.amazepkg")}, releases)
+        self.assertEqual({"Example": ("1.10.0-beta",
+                                      raw + "addons/Example-1.10.0-beta.amazepkg")}, betas)
+
+    def test_update_crosses_kinds_whatever_the_number_and_within_one_only_goes_up(self):
+        for installed, offer, expected in ((None, "1.0.0", True),
+                                           ("1.2.5-beta", "1.2.4", True),
+                                           ("1.2.7", "1.2.5-beta", True),
+                                           ("1.2.4", "1.2.4", False),
+                                           ("1.2.4", "1.10.0", True),
+                                           ("1.10.0", "1.2.4", False),
+                                           ("1.2.4-beta", "1.2.7-beta", True),
+                                           ("1.2.7-beta", "1.2.7-beta", False)):
+            with self.subTest(installed=installed, offer=offer):
+                self.assertEqual(expected, addons.wanted(installed, offer))
 
     def test_an_update_from_the_store_keeps_an_off_row_off(self):
         pair, _three = addons.rows(addons.install(self.three_rows(), self.amaze,
