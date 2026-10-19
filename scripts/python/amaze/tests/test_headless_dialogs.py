@@ -750,7 +750,7 @@ class TheSaveFamilyIsTheDrawnWidth(unittest.TestCase):
         self.assertFalse(
             hasattr(prefs_dialog.PrefsDialog, "HEADER_BAND")
             and prefs_dialog.PrefsDialog.HEADER_BAND,
-            "Preferences declares a header band, which no D04-D08 "
+            "Preferences declares a header band, which no P01-P06 "
             "frame draws")
 
     def test_the_code_dialog_band_names_the_SNIPPET(self):

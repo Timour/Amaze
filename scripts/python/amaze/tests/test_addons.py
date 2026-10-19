@@ -8,12 +8,13 @@ import tempfile
 import types
 import unittest
 import zipfile
+from unittest import mock
 
 sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze.core import addons, packages, updater          # noqa: E402
+from amaze.core import addons, matx_sources, packages, updater          # noqa: E402
 from amaze.tests import test_support                      # noqa: E402,F401
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
@@ -47,7 +48,7 @@ class _Workspace(unittest.TestCase):
         os.makedirs(self.amaze)
 
     def fields(self, version="1.2.3", nodes=None, **extra):
-        made = {"name": "Example", "folder": "shapes", "version": version,
+        made = {"name": "Example", "folder": "example", "version": version,
                 "author": "Test Author", "houdini": "22.0.466", "houdini_min": "22.0",
                 "changelog": "- A change.", "nodes": nodes or [_node("One", "one")]}
         made.update(extra)
@@ -130,8 +131,9 @@ class TheWriterTest(_Workspace):
         node = _node("One", "one")
         del node["description"]
         with self.assertRaises(packages.PackageError) as caught:
-            self.package(version="1.2", nodes=[node], folder="elsewhere")
-        for named in ("version '1.2' is not X.Y.Z", "no add-on folder 'elsewhere'",
+            self.package(version="1.2", nodes=[node], folder="../elsewhere")
+        for named in ("version '1.2' is not X.Y.Z",
+                      "folder '../elsewhere' is not a plain lowercase name",
                       "lacks description"):
             self.assertIn(named, str(caught.exception))
 
@@ -196,12 +198,17 @@ class TheReaderTest(_Workspace):
 class TheInstallerTest(_Workspace):
 
     def _folder(self):
-        return os.path.join(self.amaze, addons.ROOT, "shapes")
+        return os.path.join(self.amaze, addons.ROOT, "example")
 
     def test_an_install_lands_as_its_folder_with_its_manifest(self):
         addons.install(self.package(), self.amaze, running=(22, 0, 466))
         self.assertTrue(os.path.isfile(os.path.join(self._folder(), "otls", "example_one.hda")))
-        self.assertEqual("1.2.3", addons.installed(self.amaze, "shapes")["version"])
+        self.assertEqual("1.2.3", addons.installed(self.amaze, "example")["version"])
+
+    def test_an_install_writes_the_package_file_houdini_loads_it_by(self):
+        addons.install(self.package(folder="any_tool"), self.amaze, running=(22, 0, 466))
+        with open(addons.package_file(self.amaze, "any_tool"), encoding="utf-8") as handle:
+            self.assertEqual({"hpath": ["$HOUDINI_PACKAGE_PATH/any_tool"]}, json.load(handle))
 
     def test_an_update_replaces_the_folder_whole(self):
         old = {"otls/example_one.hda": "1", "icons/one.svg": "s", "scripts/python/old.py": "x"}
@@ -210,14 +217,14 @@ class TheInstallerTest(_Workspace):
         addons.install(self.package(version="1.3.0"), self.amaze, running=(22, 0, 466))
         self.assertFalse(os.path.exists(os.path.join(self._folder(), "scripts", "python", "old.py")),
                          "a file the new version dropped stayed behind")
-        self.assertEqual("1.3.0", addons.installed(self.amaze, "shapes")["version"])
+        self.assertEqual("1.3.0", addons.installed(self.amaze, "example")["version"])
 
     def test_an_older_houdini_is_refused_and_nothing_changes(self):
         addons.install(self.package(), self.amaze, running=(22, 0, 466))
         with self.assertRaises(packages.PackageError) as caught:
             addons.install(self.package(version="2.0.0"), self.amaze, running=(21, 0, 729))
         self.assertIn("needs Houdini 22.0 or newer", str(caught.exception))
-        self.assertEqual("1.2.3", addons.installed(self.amaze, "shapes")["version"])
+        self.assertEqual("1.2.3", addons.installed(self.amaze, "example")["version"])
 
     def test_a_damaged_member_leaves_the_old_version_in_place(self):
         addons.install(self.package(), self.amaze, running=(22, 0, 466))
@@ -233,32 +240,100 @@ class TheInstallerTest(_Workspace):
             handle.write(b"X")
         with self.assertRaises(packages.PackageError):
             addons.install(stored, self.amaze, running=(22, 0, 466))
-        self.assertEqual("1.2.3", addons.installed(self.amaze, "shapes")["version"])
+        self.assertEqual("1.2.3", addons.installed(self.amaze, "example")["version"])
         self.assertFalse(os.path.exists(self._folder() + ".installing"))
+
+
+class _ThreeRows(_Workspace):
+    """An add-on of three nodes, two of them one group: rows Pair (One, Two) and Three."""
+
+    FILES = {"otls/example_one.hda": "1", "otls/example_two.hda": "2",
+             "otls/example_three.hda": "3", "icons/one.svg": "s"}
+
+    def three_rows(self, version="1.2.3"):
+        nodes = [_node("One", "one", group="Pair"), _node("Two", "two", group="Pair"),
+                 _node("Three", "three")]
+        return self.package(dict(self.FILES), version=version, nodes=nodes)
+
+    def hda(self, kind, off=False):
+        return os.path.join(self.amaze, addons.ROOT, "example", *(["off"] if off else []),
+                            "otls", "example_%s.hda" % kind)
+
+
+class TheSwitchTest(_ThreeRows):
+
+    def test_off_moves_a_groups_files_out_of_houdinis_reach_and_on_brings_them_back(self):
+        pair, three = addons.rows(addons.install(self.three_rows(), self.amaze, running=(22, 0, 466)))
+        addons.set_on(self.amaze, "example", pair, False)
+        self.assertEqual((False, True), (addons.is_on(self.amaze, "example", pair),
+                                         addons.is_on(self.amaze, "example", three)))
+        self.assertEqual([True, True, False, False],
+                         [os.path.isfile(self.hda("one", off=True)),
+                          os.path.isfile(self.hda("two", off=True)),
+                          os.path.isfile(self.hda("one")), os.path.isfile(self.hda("two"))])
+        addons.set_on(self.amaze, "example", pair, True)
+        self.assertTrue(addons.is_on(self.amaze, "example", pair))
+        self.assertTrue(os.path.isfile(self.hda("one")) and os.path.isfile(self.hda("two")))
+
+
+class TheStoreTest(_ThreeRows):
+
+    def test_the_newest_version_of_each_add_on_is_found(self):
+        tree = [{"type": "blob", "path": "addons/Example-1.2.3.amazepkg"},
+                {"type": "blob", "path": "addons/Example-1.10.0.amazepkg"},
+                {"type": "blob", "path": "addons/Other-Tool-0.1.0.amazepkg"},
+                {"type": "blob", "path": "packages/materials/Example-9.0.0.amazepkg"},
+                {"type": "blob", "path": "addons/deeper/Example-9.0.0.amazepkg"},
+                {"type": "blob", "path": "addons/Example.amazepkg"},
+                {"type": "tree", "path": "addons/Example-9.0.0.amazepkg"}]
+        with mock.patch.object(matx_sources, "get_json", lambda url: {"tree": tree}):
+            found = addons.store_versions()
+        raw = matx_sources.AmazeSource.RAW_BASE
+        self.assertEqual({"Example": ("1.10.0", raw + "addons/Example-1.10.0.amazepkg"),
+                          "Other-Tool": ("0.1.0", raw + "addons/Other-Tool-0.1.0.amazepkg")}, found)
+
+    def test_an_update_from_the_store_keeps_an_off_row_off(self):
+        pair, _three = addons.rows(addons.install(self.three_rows(), self.amaze,
+                                                  running=(22, 0, 466)))
+        addons.set_on(self.amaze, "example", pair, False)
+        newer = self.three_rows(version="1.3.0")
+
+        def download(url, dest, on_bytes=None):
+            shutil.copy(newer, dest)
+            return dest
+
+        with mock.patch.object(matx_sources, "download", download):
+            addons.fetch_and_install("https://example.invalid/addons/Example-1.3.0.amazepkg",
+                                     self.amaze, running=(22, 0, 466))
+        self.assertEqual("1.3.0", addons.installed(self.amaze, "example")["version"])
+        self.assertTrue(os.path.isfile(self.hda("one", off=True)), "the update turned Pair back on")
+        self.assertTrue(os.path.isfile(self.hda("three")), "the update turned Three off")
 
 
 class AnAmazeUpdateKeepsItsAddOnsTest(_Workspace):
 
     def test_the_updater_carries_the_add_ons_into_the_new_install(self):
         _write(os.path.join(self.amaze, "scripts", "old.txt"), "the version being replaced")
-        _write(os.path.join(self.amaze, addons.ROOT, "shapes", packages.MANIFEST), "{}")
+        _write(os.path.join(self.amaze, addons.ROOT, "example", packages.MANIFEST), "{}")
         staged = os.path.join(self.dir, "staged")
         _write(os.path.join(staged, "scripts", "new.txt"), "the release")
         updater.apply_update(staged, self.amaze)
         self.assertTrue(os.path.isfile(os.path.join(self.amaze, "scripts", "new.txt")))
         self.assertTrue(os.path.isfile(os.path.join(
-            self.amaze, addons.ROOT, "shapes", packages.MANIFEST)),
+            self.amaze, addons.ROOT, "example", packages.MANIFEST)),
             "the update deleted the installed add-ons with the old install")
 
 
 class ThePackageTemplateTest(unittest.TestCase):
 
-    def test_the_template_puts_every_add_on_folder_on_the_path(self):
+    def test_the_template_reads_every_add_on_from_amazes_add_on_folder(self):
         with open(os.path.join(REPO, "Amaze.json"), encoding="utf-8") as handle:
             template = json.load(handle)
         self.assertNotIn("path", template, "`path` is deprecated for `hpath`")
-        wanted = ["$AMAZE"] + ["$AMAZE/%s/%s" % (addons.ROOT, f) for f in addons.FOLDERS]
-        self.assertEqual(wanted, template["hpath"])
+        self.assertEqual(["$AMAZE"], template["hpath"])
+        amaze = template["env"][0]["AMAZE"]
+        self.assertEqual(amaze + "/" + addons.ROOT, template["package_path"],
+                         "package_path cannot use $AMAZE, so it repeats the folder in full")
 
     def test_the_readme_shows_the_template_as_it_is(self):
         with open(os.path.join(REPO, "Amaze.json"), encoding="utf-8") as handle:

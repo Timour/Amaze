@@ -224,7 +224,7 @@ def pin_drawn(widget, frame_key: str, kind: str, text: str,
 
 def pin_drawn_stem(widget, frame_key: str, kind: str, stem: str,
                    height: bool = True) -> None:
-    """Pin from the ONE drawn node whose text OPENS with `stem` - D08 draws the version line with a version number in it, and the widget goes on to carry whatever the updater answers, so the words before the sample are all that identifies the node. Nothing, or more than one, pins nothing and records it."""
+    """Pin from the ONE drawn node whose text OPENS with `stem` - P06 draws the version line with a version number in it, and the widget goes on to carry whatever the updater answers, so the words before the sample are all that identifies the node. Nothing, or more than one, pins nothing and records it."""
     found = [box for (drawn_kind, text), box
              in amazetheme.drawn_boxes(frame_key).items()
              if drawn_kind == kind and text and text.startswith(stem)]

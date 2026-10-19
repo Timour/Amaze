@@ -55,7 +55,7 @@ D11_HALF_GAP = 18        # between the two form halves
 D11_STACK_GAP = 12       # fields to the editor
 D11_BUTTON_GAP = 8       # editor to the OK/Cancel row
 
-PREFS_FORM_WIDTH = 490   # ▸ D04-D08 Preferences: the drawn frame less Qt's 8 for a tab widget ▸r/tabwidget-adds-eight
+PREFS_FORM_WIDTH = 490   # ▸ P01-P06 Preferences: the drawn frame less Qt's 8 for a tab widget ▸r/tabwidget-adds-eight
 PREFS_INSET = 20         # content to the frame edge, both sides: rows span 20..470
 PREFS_DIALOG_MARGIN = 12  # the tabbed window's own margin, outside the tab strip
 PREFS_PAGE_MARGIN = 8    # each tab page's margin, inside it: 12 + 8 is the drawn 20
@@ -72,6 +72,10 @@ PREFS_BUTTON_GAP = 8     # between two controls sharing one row, and a spin box 
 PREFS_BROWSE_W = 28      # the `...` button that opens a file dialog
 PREFS_DIVIDER_INK = "#434343"   # the 1px group divider; groups carry no title, like Houdini's own parameter panes
 PREFS_DIVIDER_H = 1
+P05_ROW_PITCH = 101    # ▸ P05: a following row's divider to the next one's, as drawn (139, 240, 341)
+P05_LIST_TO_BUTTON = 10    # ▸ P05: the list's bottom to the button's top, as drawn (738 to 748)
+P05_DIM_INK = "#7d7d7d"    # ▸ P05: the version and author lines under each picture
+P05_TEXT_INK = "#a6a6a6"   # ▸ P05: each row's short description
 PREFS_DIVIDER_ABOVE = 8  # inside the divider's own row box
 PREFS_DIVIDER_BELOW = 6  # so a divider costs ROW_GAP + ABOVE + H + BELOW + ROW_GAP = 27
 
@@ -270,7 +274,7 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
             ("QPushButton ▸ text", 274, 579, 34, 15, "Accept"),
         ),
     },
-    "D04": {   # Preferences - Library
+    "P01": {   # Preferences - Library
         "frame": (498, 451),
         "nodes": (
             ("QTabBar", 12, 12, 466, 22, None),
@@ -279,7 +283,8 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
             ("QTabBar::tab ▸ Render", 91, 16, 36, 15, "Render"),
             ("QTabBar::tab ▸ Show/Hide", 155, 16, 56, 15, "Show/Hide"),
             ("QTabBar::tab ▸ Look", 239, 16, 25, 15, "Look"),
-            ("QTabBar::tab ▸ About", 292, 16, 31, 15, "About"),
+            ("QTabBar::tab ▸ Add-On", 292, 16, 39, 15, "Add-On"),
+            ("QTabBar::tab ▸ About", 359, 16, 31, 15, "About"),
             ("QLineEdit", 148, 42, 292, 22, None),
             ("QPushButton", 442, 42, 28, 22, None),
             ("QLabel", 79, 46, 61, 15, "Library Path"),
@@ -313,7 +318,7 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
             ("QPushButton ▸ text", 156, 281, 95, 15, "Delete Local Cache"),
         ),
     },
-    "D05": {   # Preferences - Render
+    "P02": {   # Preferences - Render
         "frame": (498, 451),
         "nodes": (
             ("QTabBar", 12, 12, 466, 22, None),
@@ -322,7 +327,8 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
             ("QTabBar::tab ▸ Render", 91, 16, 36, 15, "Render"),
             ("QTabBar::tab ▸ Show/Hide", 155, 16, 56, 15, "Show/Hide"),
             ("QTabBar::tab ▸ Look", 239, 16, 25, 15, "Look"),
-            ("QTabBar::tab ▸ About", 292, 16, 31, 15, "About"),
+            ("QTabBar::tab ▸ Add-On", 292, 16, 39, 15, "Add-On"),
+            ("QTabBar::tab ▸ About", 359, 16, 31, 15, "About"),
             ("QSpinBox", 148, 42, 64, 24, None),
             ("QLineEdit", 149, 43, 62, 22, None),
             ("ClickSlider", 220, 43, 250, 22, None),
@@ -380,7 +386,7 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
             ("QLineEdit ▸ text", 154, 378, 6, 15, "8"),
         ),
     },
-    "D06": {   # Preferences - Show/Hide
+    "P03": {   # Preferences - Show/Hide
         "frame": (498, 451),
         "nodes": (
             ("QTabBar", 12, 12, 466, 22, None),
@@ -389,7 +395,8 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
             ("QTabBar::tab ▸ Render", 91, 16, 36, 15, "Render"),
             ("QTabBar::tab ▸ Show/Hide", 155, 16, 56, 15, "Show/Hide"),
             ("QTabBar::tab ▸ Look", 239, 16, 25, 15, "Look"),
-            ("QTabBar::tab ▸ About", 292, 16, 31, 15, "About"),
+            ("QTabBar::tab ▸ Add-On", 292, 16, 39, 15, "Add-On"),
+            ("QTabBar::tab ▸ About", 359, 16, 31, 15, "About"),
             ("ToggleSwitch", 148, 44, 23, 15, None),
             ("ToggleSwitch ▸ text", 179,44, 47, 15, "MaterialX"),
             ("ToggleSwitch", 148, 69, 23, 15, None),
@@ -409,7 +416,7 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
             ("ToggleSwitch ▸ text", 179,240, 18, 15, "File"),
         ),
     },
-    "D07": {   # Preferences - Look
+    "P04": {   # Preferences - Look
         "frame": (498, 451),
         "nodes": (
             ("QTabBar", 12, 12, 466, 22, None),
@@ -418,7 +425,8 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
             ("QTabBar::tab ▸ Render", 91, 16, 36, 15, "Render"),
             ("QTabBar::tab ▸ Show/Hide", 155, 16, 56, 15, "Show/Hide"),
             ("QTabBar::tab ▸ Look", 239, 16, 25, 15, "Look"),
-            ("QTabBar::tab ▸ About", 292, 16, 31, 15, "About"),
+            ("QTabBar::tab ▸ Add-On", 292, 16, 39, 15, "Add-On"),
+            ("QTabBar::tab ▸ About", 359, 16, 31, 15, "About"),
             ("ToggleSwitch", 148, 44, 23, 15, None),
             ("ToggleSwitch ▸ text", 179,44, 137, 15, "Show Counts on Categories"),
             ("ToggleSwitch", 148, 69, 23, 15, None),
@@ -439,16 +447,48 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
             ("QLineEdit ▸ text", 154, 178, 12, 15, "75"),
         ),
     },
-    "D08": {   # Preferences - About
+    "P05": {   # Preferences - Add-On: drawn 784 tall in FIGMA ONLY; the app opens at PREFS_FRAME
+        "frame": (498, 784),
+        "nodes": (
+            ("QTabBar", 12, 12, 466, 22, None),
+            ("QTabBar::tab ▸ Add-On (selected)", 278, 12, 67, 22, None),
+            ("QTabBar::tab ▸ Library", 26, 16, 36, 15, "Library"),
+            ("QTabBar::tab ▸ Render", 84, 16, 36, 15, "Render"),
+            ("QTabBar::tab ▸ Show/Hide", 155, 16, 56, 15, "Show/Hide"),
+            ("QTabBar::tab ▸ Look", 239, 16, 25, 15, "Look"),
+            ("QTabBar::tab ▸ Add-On", 292, 16, 39, 15, "Add-On"),
+            ("QTabBar::tab ▸ About", 359, 16, 31, 15, "About"),
+            ("QTextBrowser", 20, 38, 450, 700, None),
+            ("QScrollBar", 454, 38, 16, 700, None),
+            ("add-on picture", 20, 38, 54, 54, None),
+            ("ToggleSwitch", 118, 57, 23, 15, None),
+            ("ToggleSwitch ▸ text", 149, 57, 79, 15, None),
+            ("add-on version", 20, 94, 54, 15, None),
+            ("add-on author", 20, 109, 87, 15, None),
+            ("add-on short description", 284, 38, 165, 94, None),
+            ("QWidget ▸ group divider", 20, 139, 434, 1, None),
+            ("add-on picture", 20, 147, 54, 54, None),
+            ("ToggleSwitch", 118, 167, 23, 15, None),
+            ("ToggleSwitch ▸ text", 149, 167, 103, 15, None),
+            ("add-on version", 20, 203, 54, 15, None),
+            ("add-on author", 20, 218, 87, 15, None),
+            ("add-on short description", 284, 147, 165, 86, None),
+            ("QPushButton", 118, 748, 108, 22, None),
+            ("QPushButton ▸ text", 126, 752, 92, 15, "Check for Updates"),
+            ("QLabel", 239, 752, 231, 15, None),
+        ),
+    },
+    "P06": {   # Preferences - About
         "frame": (498, 451),
         "nodes": (
             ("QTabBar", 12, 12, 466, 22, None),
-            ("QTabBar::tab ▸ About (selected)", 278, 12, 59, 22, None),
+            ("QTabBar::tab ▸ About (selected)", 345, 12, 59, 22, None),
             ("QTabBar::tab ▸ Library", 26, 16, 36, 15, "Library"),
             ("QTabBar::tab ▸ Render", 91, 16, 36, 15, "Render"),
             ("QTabBar::tab ▸ Show/Hide", 155, 16, 56, 15, "Show/Hide"),
             ("QTabBar::tab ▸ Look", 239, 16, 25, 15, "Look"),
-            ("QTabBar::tab ▸ About", 292, 16, 31, 15, "About"),
+            ("QTabBar::tab ▸ Add-On", 292, 16, 39, 15, "Add-On"),
+            ("QTabBar::tab ▸ About", 359, 16, 31, 15, "About"),
             ("QTextBrowser", 20, 42, 450, 227, None),
             ("QScrollBar", 454, 42, 16, 227, None),
             ("QLabel", 148, 274, 322, 15, "Amaze version 1.0.31"),
@@ -768,7 +808,7 @@ D02_FORM_WIDTH, D02_FRAME_H = DIALOG_LAYOUT["D02"]["frame"]    # the OPENING siz
 SAVE_WIDTH = DIALOG_LAYOUT["D09"]["frame"][0]    # D09 and D13 alike, whatever their labels
 D14_WIDTH = DIALOG_LAYOUT["D14"]["frame"][0]
 D11_FORM_WIDTH = DIALOG_LAYOUT["D11"]["frame"][0]    # a FLOOR: D11 resizes around its editor
-PREFS_FRAME = DIALOG_LAYOUT["D04"]["frame"]    # every Preferences tab, D04-D08
+PREFS_FRAME = DIALOG_LAYOUT["P01"]["frame"]    # every Preferences tab, P01-P06
 
 _NODE_MARK = " ▸ "       # what separates a node's kind from the note after it
 _TEXT_SUFFIX = _NODE_MARK + "text"
@@ -800,7 +840,7 @@ def drawn_boxes(frame_key: str) -> dict:
                    and box[0] + box[2] >= x + w
                    and box[1] + box[3] >= y + h]
         if holding:
-            repeats.setdefault((plain, text), []).append(   # SMALLEST of the rects around THIS node: D05 draws `256` in three rows, so a repeated label must answer one box per drawing of it and always the same one
+            repeats.setdefault((plain, text), []).append(   # SMALLEST of the rects around THIS node: P02 draws `256` in three rows, so a repeated label must answer one box per drawing of it and always the same one
                 min(holding, key=lambda box: box[2] * box[3]))
             boxes.setdefault((plain, text), repeats[(plain, text)][0])
     _DRAWN_BOXES[frame_key] = boxes
@@ -810,7 +850,7 @@ def drawn_boxes(frame_key: str) -> dict:
 
 
 def drawn_repeats(frame_key: str, kind: str, text) -> tuple:
-    """Every box a call site may pin from for `(kind, text)`, in DRAWN order: one per `<kind> ▸ <text>` node, since a frame may draw a label twice - D04 draws the `...` browse button at two places - or, for `text=None`, every plain `<kind>` rect down the frame. `drawn_boxes` answers the first of them."""
+    """Every box a call site may pin from for `(kind, text)`, in DRAWN order: one per `<kind> ▸ <text>` node, since a frame may draw a label twice - P01 draws the `...` browse button at two places - or, for `text=None`, every plain `<kind>` rect down the frame. `drawn_boxes` answers the first of them."""
     boxes = drawn_boxes(frame_key)
     if text is None:
         return tuple(sorted(boxes.get((kind, None), ()),

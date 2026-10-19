@@ -41,18 +41,19 @@ Developed and tested on Houdini 22.0, macOS (Apple Silicon). Linux and Windows a
 ## Installation
 
 1. Copy (or clone) this repository to a folder of your choice, e.g. `/path/to/Amaze`.
-2. Copy the `Amaze.json` template from the repository root into `$HOUDINI_USER_PREF_DIR/packages/` and point `AMAZE` at the folder from step 1:
+2. Copy the `Amaze.json` template from the repository root into `$HOUDINI_USER_PREF_DIR/packages/` and write the folder from step 1 in both places:
 
 ```json
 {
     "env": [
         { "AMAZE": "/path/to/Amaze" }
     ],
-    "hpath": [ "$AMAZE", "$AMAZE/addons/shapes" ]
+    "hpath": [ "$AMAZE" ],
+    "package_path": "/path/to/Amaze/addons"
 }
 ```
 
-   The second entry is the folder Amaze installs the Shapes add-on into; Houdini skips it until Shapes is there.
+   `package_path` is the same folder with `/addons` on the end, written out in full: Houdini does not expand `$AMAZE` there. Amaze installs its add-ons into that folder.
 
 3. Launch Houdini and add an **Amaze** pane tab.
 4. Open Preferences (the gear) and choose a library folder — this is where saved assets are stored. Keep it outside the plugin folder.

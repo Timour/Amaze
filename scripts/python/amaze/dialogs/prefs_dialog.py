@@ -27,7 +27,7 @@ from amaze.prefs import prefs as prefs_mod
 
 LINK_COLOR = amazetheme.LINK_COLOR   # About-tab links ▸p/one-design-document
 
-PREFS_FRAMES = ("D04", "D05", "D06", "D07", "D08")   # the drawn frame per tab, in the order the tabs are added ▸p/one-design-document
+PREFS_FRAMES = ("P01", "P02", "P03", "P04", "P05", "P06")   # the drawn frame per tab, in the order the tabs are added ▸p/one-design-document
 
 VERSION_STEM = branding.APP_NAME + " version "   # what the drawn version line opens with; the number after it is a sample, and the widget goes on to carry the updater's answers
 
@@ -116,6 +116,27 @@ def _content_holder(inner) -> QtWidgets.QWidget:
     return holder
 
 
+ADDON_ROW = ("add-on picture", "ToggleSwitch", "add-on version", "add-on author",
+             "add-on short description")
+
+
+def _p05(kind: str) -> list:
+    """The Add-On frame's drawn boxes of one kind, (x, y, w, h), in drawn order."""
+    return [node[1:5] for node in amazetheme.DIALOG_LAYOUT["P05"]["nodes"] if node[0] == kind]
+
+
+def addon_row_boxes(index: int) -> dict:
+    """Row `index`'s boxes in the list, design px: the first row as drawn, later ones as the second."""
+    left, top = _p05("QTextBrowser")[0][:2]
+    shift = max(index - 1, 0) * amazetheme.P05_ROW_PITCH
+    boxes = {}
+    for kind in ADDON_ROW + (("QWidget ▸ group divider",) if index else ()):
+        drawn = _p05(kind)
+        x, y, w, h = drawn[min(index, len(drawn) - 1)]
+        boxes[kind] = (x - left, y - top + shift, w, h)
+    return boxes
+
+
 class PrefsDialog(base_dialog.AssetDialog):
     """Preferences on the house shell - live-apply, so no OK/Cancel and the inherited `canceled` is never read; resizable, tabs as the content."""
 
@@ -140,6 +161,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         tabs.addTab(self._build_render_tab(), "Render")
         tabs.addTab(self._build_showhide_tab(), "Show/Hide")
         tabs.addTab(self._build_look_tab(), "Look")
+        tabs.addTab(self._build_addon_tab(), "Add-On")
         tabs.addTab(self._build_about_tab(), "About")
         self._tabs = tabs
 
@@ -346,7 +368,7 @@ class PrefsDialog(base_dialog.AssetDialog):
             tooltips.PREFS_DELETE_LOCAL_CACHE))
         form.addRow(self._label(""), clear_cache_btn)
 
-        self._tab_built["D04"] = {
+        self._tab_built["P01"] = {
             "QLineEdit": (self.line_workdir, self.line_cache),
             "QComboBox": (self.cbb_library_user,),
         }
@@ -460,7 +482,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         spins = ((self.line_rendersize,)
                  + tuple(self._samples_spins[r.key] for r in renderers.RENDER_TAB)
                  + (self.spin_ram_cache, self.spin_parallel, self.spin_matx_parallel))
-        self._tab_built["D05"] = {
+        self._tab_built["P02"] = {
             "QComboBox": (self._combo_geo_shading, self._combo_geo_bg,
                           self.cbb_matx_res),
             "QSpinBox": spins,
@@ -550,7 +572,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         form.addRow(self._label("Scroll Speed (%)"),
             self._field_slider_row(self.spin_scroll_speed, *percent),
         )
-        self._tab_built["D07"] = {
+        self._tab_built["P04"] = {
             "QComboBox": (self._combo_path_style, self._combo_icon_weight),
             "QSpinBox": (self.spin_scroll_speed,),
             "ClickSlider": (self._sliders[self.spin_scroll_speed],),
@@ -641,7 +663,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         self._btn_report.setToolTip(ui_helpers.tooltip_text(
             tooltips.PREFS_REPORT_A_BUG))
         self._btn_report.clicked.connect(self.report_bug)
-        ask_row = QtWidgets.QWidget()   # the two live side by side, from D08
+        ask_row = QtWidgets.QWidget()   # the two live side by side, from P06
         ask = QtWidgets.QHBoxLayout(ask_row)
         ask.setContentsMargins(0, 0, 0, 0)
         ask.setSpacing(theme.ui_px(amazetheme.PREFS_BUTTON_GAP))
@@ -699,17 +721,205 @@ class PrefsDialog(base_dialog.AssetDialog):
         inner.addLayout(form)
         outer.addWidget(_content_holder(inner),
                         alignment=QtCore.Qt.AlignmentFlag.AlignLeft)
-        self._tab_built["D08"] = {
+        self._tab_built["P06"] = {
             "QTextBrowser": (browser,),
             "QLineEdit": (self.line_test_dir,),
         }
         return page
 
+    def _build_addon_tab(self) -> QtWidgets.QWidget:
+        """The installed add-ons as their packages list them, and one button: check, then update."""
+        page = QtWidgets.QWidget()
+        outer = QtWidgets.QVBoxLayout(page)
+        _m = theme.ui_px(amazetheme.PREFS_PAGE_MARGIN)
+        outer.setContentsMargins(_m, _m, _m, _m)
+        inner = QtWidgets.QVBoxLayout()
+        inner.setSpacing(theme.ui_px(amazetheme.P05_LIST_TO_BUTTON))
+        self._addon_list = QtWidgets.QScrollArea()
+        self._addon_list.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        self._addon_list.setHorizontalScrollBarPolicy(
+            QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        inner.addWidget(self._addon_list, 1)
+        self._btn_addons = QtWidgets.QPushButton()
+        self._btn_addons.clicked.connect(self._press_addons)
+        self._lbl_addons = QtWidgets.QLabel()
+        self._lbl_addons.setWordWrap(True)
+        bottom = QtWidgets.QWidget()
+        row = QtWidgets.QHBoxLayout(bottom)
+        row.setContentsMargins(
+            theme.ui_px(_p05("QPushButton")[0][0] - _p05("QTextBrowser")[0][0]), 0, 0, 0)
+        row.addWidget(self._btn_addons)
+        row.addWidget(self._lbl_addons, 1)
+        inner.addWidget(bottom)
+        self._path_rows.append(bottom)
+        outer.addWidget(_content_holder(inner),
+                        alignment=QtCore.Qt.AlignmentFlag.AlignLeft)
+        self._addons_found = []
+        self._set_addons_button(False)
+        self.fill_addon_rows()
+        return page
+
+    def fill_addon_rows(self) -> None:
+        """A row per group of every installed add-on, from its package alone; a line when none is."""
+        from amaze.core import addons, updater
+        root = updater.install_root()
+        rows = [(folder, manifest, group)
+                for folder, manifest in (addons.installed_all(root) if root else [])
+                for group in addons.rows(manifest)]
+        holder = QtWidgets.QWidget()
+        width = theme.ui_px(_p05("QTextBrowser")[0][2])
+        self.addon_rows = []
+        if not rows:
+            blank = QtWidgets.QLabel(messages.ADDONS_NONE, holder)
+            blank.setWordWrap(True)
+            blank.setFixedWidth(width)
+            blank.adjustSize()
+        for index, (folder, manifest, group) in enumerate(rows):
+            self.addon_rows.append(self._addon_row(holder, index, root, folder, manifest, group))
+        holder.setFixedSize(width, max(child.geometry().bottom() + 1
+                                       for child in holder.findChildren(QtWidgets.QWidget)))
+        self._addon_list.setWidget(holder)
+
+    def _addon_row(self, holder, index, root, folder, manifest, group) -> dict:
+        """Row `index`, placed from the drawn rows; answers its widgets by drawn kind."""
+        from amaze.core import addons
+        box = {kind: tuple(theme.ui_px(v) for v in rect)
+               for kind, rect in addon_row_boxes(index).items()}
+        picture = QtWidgets.QLabel(holder)
+        picture.setPixmap(self._addon_picture(
+            os.path.join(root, addons.ROOT, folder, *group["addon_icon"].split("/")), holder))
+        picture.move(*box["add-on picture"][:2])
+        picture.adjustSize()
+        built = {"add-on picture": picture}
+        for kind, text, ink in (
+                ("add-on version", messages.ADDON_VERSION % manifest["version"], amazetheme.P05_DIM_INK),
+                ("add-on author", messages.ADDON_AUTHOR % manifest["author"], amazetheme.P05_DIM_INK),
+                ("add-on short description", group["short_description"], amazetheme.P05_TEXT_INK)):
+            label = QtWidgets.QLabel(text, holder)
+            label.setStyleSheet("color: %s;" % ink)
+            if kind == "add-on short description":
+                label.setWordWrap(True)
+                label.setAlignment(QtCore.Qt.AlignmentFlag.AlignTop | QtCore.Qt.AlignmentFlag.AlignLeft)
+                label.setToolTip("\n\n".join(n["description"] for n in group["nodes"] if n["description"]))
+                label.setGeometry(*box[kind])
+            else:
+                label.move(*box[kind][:2])
+                label.adjustSize()
+            built[kind] = label
+        switch = ui_helpers.ToggleSwitch(group["name"], holder)
+        switch.setChecked(addons.is_on(root, folder, group))
+        switch.setToolTip(ui_helpers.tooltip_text(tooltips.PREFS_ADDON_SWITCH))
+        switch.toggled.connect(
+            lambda on, f=folder, g=group, s=switch: self.turn_addon(root, f, g, s, on))
+        switch.move(*box["ToggleSwitch"][:2])
+        switch.adjustSize()
+        built["ToggleSwitch"] = switch
+        if index:
+            divider = QtWidgets.QWidget(holder)
+            divider.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
+            divider.setStyleSheet("background-color: %s;" % amazetheme.PREFS_DIVIDER_INK)
+            divider.setGeometry(*box["QWidget ▸ group divider"])
+            built["QWidget ▸ group divider"] = divider
+        picture.lower()
+        return built
+
+    def _addon_picture(self, path: str, widget) -> QtGui.QPixmap:
+        """The package's own picture: an SVG fills the drawn slot, a PNG shows at half its pixels."""
+        ratio = theme.screen_ratio(widget)
+        if path.lower().endswith(".svg"):
+            return ui_helpers.device_pixmap(path, theme.ui_px(_p05("add-on picture")[0][2]), ratio)
+        image = QtGui.QPixmap(path)
+        if image.isNull():
+            return image
+        size = QtCore.QSize(int(round(theme.ui_px(image.width() / 2) * ratio)),
+                            int(round(theme.ui_px(image.height() / 2) * ratio)))
+        image = image.scaled(size, QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+                             QtCore.Qt.TransformationMode.SmoothTransformation)
+        image.setDevicePixelRatio(ratio)
+        return image
+
+    def turn_addon(self, root: str, folder: str, group, switch, on: bool) -> None:
+        """Move a group in or out of Houdini's reach and say a restart is due; on failure, undo the switch."""
+        from amaze.core import addons, packages
+        try:
+            addons.set_on(root, folder, group, on)
+        except packages.PackageError as exc:
+            _show_quietly(switch, not on)
+            self._lbl_addons.setText(str(exc))
+            return
+        self._lbl_addons.setText(messages.ADDONS_TURNED % (group["name"], "on" if on else "off"))
+
+    def _set_addons_button(self, offer: bool) -> None:
+        """Check for Updates, or Update once a check found something; one drawn box for both."""
+        self._btn_addons.setText("Update" if offer else "Check for Updates")
+        ui_helpers.pin_drawn(self._btn_addons, "P05", "QPushButton", "Check for Updates")
+        self._btn_addons.setToolTip(ui_helpers.tooltip_text(
+            tooltips.PREFS_ADDONS_UPDATE if offer else tooltips.PREFS_ADDONS_CHECK))
+
+    def _press_addons(self) -> None:
+        """Check, then update: the press that installs is never the press that looked."""
+        if self._addons_found:
+            self.install_addons()
+        else:
+            self.check_addons()
+
+    @debug.guarded("prefs.check_addons")
+    def check_addons(self) -> None:
+        """Ask the store, on request only, and say the answer in the line beside the button."""
+        from amaze.core import addons, updater
+        self._btn_addons.setEnabled(False)
+        self._btn_addons.setText("Checking...")
+        QtWidgets.QApplication.processEvents(
+            QtCore.QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
+        found = []
+        try:
+            store = addons.store_versions()
+        except (OSError, ValueError) as exc:
+            sentence = messages.ADDONS_STORE_UNREACHABLE % exc
+        else:
+            root = updater.install_root()
+            have = {m["name"]: m["version"] for _f, m in (addons.installed_all(root) if root else [])}
+            found = [(name, version, url) for name, (version, url) in sorted(store.items())
+                     if name not in have or updater.is_newer(version, have[name])]
+            sentence = (messages.ADDONS_AVAILABLE % ", ".join("%s %s" % f[:2] for f in found)
+                        if found else messages.ADDONS_UP_TO_DATE)
+        self._addons_found = found
+        self._btn_addons.setEnabled(True)
+        self._set_addons_button(bool(found))
+        self._lbl_addons.setText(sentence)
+
+    @debug.guarded("prefs.install_addons")
+    def install_addons(self) -> None:
+        """Install what the last check found, with no popup: the line says what happened."""
+        from amaze.core import addons, packages, updater
+        root = updater.install_root()
+        if not root:
+            self._lbl_addons.setText(messages.ADDONS_LOCATION_UNKNOWN)
+            return
+        self._btn_addons.setEnabled(False)
+        self._btn_addons.setText("Installing...")
+        QtWidgets.QApplication.processEvents(
+            QtCore.QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
+        done = []
+        try:
+            for name, version, url in self._addons_found:
+                addons.fetch_and_install(url, root)
+                done.append("%s %s" % (name, version))
+        except (packages.PackageError, OSError) as exc:
+            sentence = str(exc)
+        else:
+            sentence = messages.ADDONS_INSTALLED % ", ".join(done)
+        self._addons_found = []
+        self._btn_addons.setEnabled(True)
+        self._set_addons_button(False)
+        self._lbl_addons.setText(sentence)
+        self.fill_addon_rows()
+
     def _pin_pages_to_document(self) -> None:
         """Take every widget on every tab from the frame drawn for that tab, so a node resized in Figma resizes the widget. The editor INSIDE a spin box is left alone - the document draws that box 2 taller and insets its editor by 1. ▸p/one-design-document"""
         for index, frame_key in enumerate(PREFS_FRAMES):
             page = self._tabs.widget(index)
-            drawn_again: dict = {}    # D04 draws `...` twice, so the second browse button takes the second box
+            drawn_again: dict = {}    # P01 draws `...` twice, so the second browse button takes the second box
             for button in page.findChildren(QtWidgets.QPushButton):
                 label = button.text()
                 nth = drawn_again.get(label, 0)
@@ -718,13 +928,15 @@ class PrefsDialog(base_dialog.AssetDialog):
                                      label, nth=nth)
             for kind, widgets in self._tab_built.get(frame_key, {}).items():
                 ui_helpers.pin_drawn_series(widgets, frame_key, kind)
-        ui_helpers.pin_drawn_stem(self._lbl_version, "D08", "QLabel",
+        ui_helpers.pin_drawn_stem(self._lbl_version, "P06", "QLabel",
                                   VERSION_STEM, height=False)
+        ui_helpers.pin_drawn(self._addon_list, "P05", "QTextBrowser", None, height=False)
+        ui_helpers.pin_drawn(self._lbl_addons, "P05", "QLabel", None, height=False)
         for row in self._path_rows:
             self._space_pinned_row(row)
 
     def _space_pinned_row(self, row) -> None:
-        """Give the row the DRAWN gap between each pair, so every widget lands on its drawn x. The frame draws them uneven - D04's cache row leaves 4 then 2 - and one shared spacing puts each widget near its box instead of on it."""
+        """Give the row the DRAWN gap between each pair, so every widget lands on its drawn x. The frame draws them uneven - P01's cache row leaves 4 then 2 - and one shared spacing puts each widget near its box instead of on it."""
         layout = row.layout()
         items = [layout.itemAt(i) for i in range(layout.count())]
         plan = []
@@ -1015,7 +1227,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         self._btn_update.setText(
             "Install Update" if offer else "Check for Updates")
         ui_helpers.pin_drawn(   # ONE drawn box for both readings: the word moves, the geometry does not
-            self._btn_update, "D08", "QPushButton", "Check for Updates")
+            self._btn_update, "P06", "QPushButton", "Check for Updates")
         self._btn_update.setToolTip(ui_helpers.tooltip_text(
             tooltips.PREFS_INSTALL_UPDATE
             if offer else

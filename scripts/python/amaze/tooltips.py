@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 
-PREFS_LIBRARY_PATH = 'Where your library is saved.'   # ▸ Preferences - Library tab (D04)
+PREFS_LIBRARY_PATH = 'Where your library is saved.'   # ▸ Preferences - Library tab (P01)
 
 PREFS_CLEAN_UP_LIBRARY = "Move files that nothing in your library uses into Amaze's holding folder for 30 days, and remove File locations whose folder is gone. You will be asked to confirm."
 
@@ -25,7 +25,7 @@ PREFS_DEFAULT_CACHE = 'Move the preview cache back to its default location. Noth
 
 PREFS_DELETE_LOCAL_CACHE = 'Delete the preview copies. They rebuild as you browse; your library is not touched.'
 
-PREFS_RENDER_SIZE = 'Thumbnail size in pixels. Bigger looks sharper but takes longer to render.'   # ▸ Preferences - Render tab (D05)
+PREFS_RENDER_SIZE = 'Thumbnail size in pixels. Bigger looks sharper but takes longer to render.'   # ▸ Preferences - Render tab (P02)
 
 PREFS_SAMPLES_REDSHIFT = 'Render quality for Redshift thumbnails.'
 
@@ -47,11 +47,11 @@ PREFS_DOWNLOAD_RESOLUTION = 'The texture size to download. If that size is not a
 
 PREFS_PARALLEL_DOWNLOADS = 'How many previews download at the same time. More is faster because these wait on network delay, not your bandwidth.'
 
-PREFS_RENDERER_SWITCH = 'Which renderers Amaze offers. Hide the ones you do not use.'   # ▸ Preferences - Show/Hide tab (D06)
+PREFS_RENDERER_SWITCH = 'Which renderers Amaze offers. Hide the ones you do not use.'   # ▸ Preferences - Show/Hide tab (P03)
 
 PREFS_SECTION_SWITCH = 'Which sections the panel shows. Hiding a section keeps everything in it; its tab is just hidden.'
 
-PREFS_SIDEBAR_COUNTS = 'Show how many items each category has.'   # ▸ Preferences - Look tab (D07)
+PREFS_SIDEBAR_COUNTS = 'Show how many items each category has.'   # ▸ Preferences - Look tab (P04)
 
 PREFS_HIDE_EMPTY_CATEGORIES = 'Hide categories that have no items. They come back when you add items.'
 
@@ -63,7 +63,13 @@ PREFS_TILE_ICON_LINE = 'Line weight of the tile icons: thin or regular.'
 
 PREFS_SCROLL_SPEED = 'How fast the grid scrolls. 100 is the default.'
 
-PREFS_INSTALL_UPDATE = 'Download and install the new release. Your library and settings are not affected; Houdini must be restarted afterwards.'   # ▸ Preferences - About tab (D08)
+PREFS_ADDON_SWITCH = 'On or off from the next Houdini start. Off keeps Houdini from loading these nodes; a scene that uses them keeps their values and shows them incomplete until they are on again.'   # ▸ Preferences - Add-On tab (P05)
+
+PREFS_ADDONS_CHECK = 'Look in the Amaze store for new add-ons and newer versions. Nothing is downloaded or changed.'
+
+PREFS_ADDONS_UPDATE = 'Download and install what the check found. Houdini must be restarted afterwards.'
+
+PREFS_INSTALL_UPDATE = 'Download and install the new release. Your library and settings are not affected; Houdini must be restarted afterwards.'   # ▸ Preferences - About tab (P06)
 
 PREFS_CHECK_FOR_UPDATES = 'Check if a newer Amaze is available. Nothing is downloaded or changed.'
 

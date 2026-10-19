@@ -1109,8 +1109,10 @@ core/packages.py          the .amazepkg container (library packages are
                           refusing reader
 core/addons.py            add-on packages (format 4, a Houdini package):
                           the one writer, the reader, the Add-On tab's
-                          rows, the installer into $AMAZE/addons/<folder>,
-                          the updater's carry
+                          rows, the store's newest versions, the installer
+                          into $AMAZE/addons/<folder> with the package file
+                          Amaze.json's package_path reads, the on/off
+                          switch (off/ is not loaded), the updater's carry
 core/texstore.py          the texture store: $AMAZELIB tokens, the
                           FileReference scan, save-time adoption and
                           the scene-side resolve

@@ -2,5 +2,6 @@
     "env": [
         { "AMAZE": "/path/to/Amaze" }
     ],
-    "hpath": [ "$AMAZE", "$AMAZE/addons/shapes" ]
+    "hpath": [ "$AMAZE" ],
+    "package_path": "/path/to/Amaze/addons"
 }

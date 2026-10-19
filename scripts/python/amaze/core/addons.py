@@ -13,11 +13,13 @@ from amaze.helpers import hostos
 
 KIND = "houdini-package"
 ROOT = "addons"    #: the add-ons' folder, in Amaze's install and in the package store alike
-FOLDERS = ("shapes",)    #: the folders Amaze.json puts on Houdini's path; any other is refused
 REQUIRED = ("name", "folder", "version", "author", "houdini", "houdini_min", "changelog")
 NODE_KEYS = ("label", "type", "file", "addon_icon", "short_description", "description")
 SHOWN = ("addon_icon", "short_description")    #: what a group's row shows; its nodes must agree
 PICTURES = (".svg", ".png")    #: what the Add-On tab draws; a node's Houdini icon stays in its .hda
+OFF = "off"    #: a switched-off row's files wait here, where Houdini does not look
+_FOLDER = re.compile(r"[a-z0-9_]+$")
+_STORE_NAME = re.compile(r"(?P<name>.+)-(?P<version>\d+\.\d+\.\d+)\.amazepkg$")
 _VERSION = re.compile(r"\d+\.\d+\.\d+$")
 _MAJOR_MINOR = re.compile(r"\d+\.\d+$")
 
@@ -39,8 +41,8 @@ def problems(manifest) -> list:
         found.append("version %r is not X.Y.Z" % manifest["version"])
     if manifest.get("houdini_min") and not _MAJOR_MINOR.match(str(manifest["houdini_min"])):
         found.append("houdini_min %r is not MAJOR.MINOR" % manifest["houdini_min"])
-    if manifest.get("folder") not in FOLDERS:
-        found.append("Amaze has no add-on folder %r" % manifest.get("folder"))
+    if manifest.get("folder") and not _FOLDER.match(str(manifest["folder"])):
+        found.append("folder %r is not a plain lowercase name" % manifest["folder"])
     files = manifest.get("files")
     if not isinstance(files, list) or not files:
         return found + ["no files"]
@@ -155,7 +157,7 @@ def read(path: str) -> dict:
 
 
 def install(path: str, amaze_root: str, running=None) -> dict:
-    """Install `path` as `<amaze_root>/addons/<folder>`, replacing that folder whole; answers it."""
+    """Install `path` as `<amaze_root>/addons/<folder>`, whole, with its package file; answers it."""
     from amaze.helpers import hostver
     try:
         bundle = zipfile.ZipFile(path)
@@ -183,7 +185,18 @@ def install(path: str, amaze_root: str, running=None) -> dict:
             shutil.rmtree(staging, ignore_errors=True)
             raise packages.PackageError("%s did not install: %s" % (manifest["name"], exc)) from None
     _swap(staging, target)
+    try:
+        hostos.write_json_atomic(package_file(amaze_root, manifest["folder"]),
+                                 {"hpath": ["$HOUDINI_PACKAGE_PATH/" + manifest["folder"]]})
+    except OSError as exc:
+        raise packages.PackageError("%s is installed, but Houdini will not load it: %s"
+                                    % (manifest["name"], exc)) from None
     return manifest
+
+
+def package_file(amaze_root: str, folder: str) -> str:
+    """The Houdini package file beside an add-on's folder, which the template's package_path reads."""
+    return os.path.join(amaze_root, ROOT, folder + ".json")
 
 
 def _swap(staging: str, target: str) -> None:
@@ -213,6 +226,17 @@ def installed(amaze_root: str, folder: str):
     return manifest if isinstance(manifest, dict) else None
 
 
+def installed_all(amaze_root: str) -> list:
+    """(folder, manifest) for every add-on installed under `<amaze_root>/addons/` that reads whole."""
+    try:
+        folders = sorted(os.listdir(os.path.join(amaze_root, ROOT)))
+    except OSError:
+        return []
+    found = [(folder, installed(amaze_root, folder)) for folder in folders if _FOLDER.match(folder)]
+    found = [(folder, manifest) for folder, manifest in found if manifest and not problems(manifest)]
+    return sorted(found, key=lambda pair: str(pair[1]["name"]).lower())
+
+
 def carry(old_root: str, new_root: str) -> bool:
     """Move the installed add-ons out of an install being replaced into its replacement."""
     source, dest = os.path.join(old_root, ROOT), os.path.join(new_root, ROOT)
@@ -220,3 +244,71 @@ def carry(old_root: str, new_root: str) -> bool:
         return False
     shutil.move(source, dest)
     return True
+
+
+def store_versions() -> dict:
+    """{add-on name: (version, url)}: each add-on's newest `addons/<name>-X.Y.Z.amazepkg` in the store."""
+    from amaze.core import matx_sources
+    newest = {}
+    for node in matx_sources.get_json(matx_sources.AmazeSource.TREE_URL).get("tree", ()):
+        path = str(node.get("path") or "")
+        parts = path.split("/")
+        found = _STORE_NAME.match(parts[-1])
+        if node.get("type") != "blob" or len(parts) != 2 or parts[0] != ROOT or not found:
+            continue
+        version = tuple(int(part) for part in found["version"].split("."))
+        if found["name"] not in newest or version > newest[found["name"]][0]:
+            newest[found["name"]] = (version, matx_sources.AmazeSource.RAW_BASE + path)
+    return {name: (".".join(map(str, version)), url) for name, (version, url) in newest.items()}
+
+
+def fetch_and_install(url: str, amaze_root: str, running=None) -> dict:
+    """Download one store package and install it; a row that was off stays off. Answers its manifest."""
+    import tempfile
+    from amaze.core import matx_sources
+    scratch = tempfile.mkdtemp(prefix="amaze_addon_")
+    try:
+        path = matx_sources.download(url, os.path.join(scratch, url.rsplit("/", 1)[-1]))
+        was_off = _off_types(amaze_root, read(path)["folder"])
+        manifest = install(path, amaze_root, running)
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+    for row in rows(manifest):
+        if was_off & {node["type"] for node in row["nodes"]}:
+            set_on(amaze_root, manifest["folder"], row, False)
+    return manifest
+
+
+def _place(amaze_root: str, folder: str, node, on: bool) -> str:
+    """Where `node`'s file sits when its row is on, or off in `off/`, out of Houdini's reach."""
+    parts = node["file"].split("/")
+    return os.path.join(amaze_root, ROOT, folder, *([] if on else [OFF]) + parts)
+
+
+def _off_types(amaze_root: str, folder: str) -> set:
+    """The node types of the installed `folder` whose files sit in `off/`."""
+    manifest = installed(amaze_root, folder) or {}
+    return {node.get("type") for node in manifest.get("nodes") or ()
+            if isinstance(node, dict) and isinstance(node.get("file"), str)
+            and os.path.isfile(_place(amaze_root, folder, node, False))}
+
+
+def is_on(amaze_root: str, folder: str, row) -> bool:
+    """Whether Houdini loads `row` at its next start: off once every one of its files is in `off/`."""
+    return not all(os.path.isfile(_place(amaze_root, folder, node, False)) for node in row["nodes"])
+
+
+def set_on(amaze_root: str, folder: str, row, on: bool) -> None:
+    """Move the row's node files into place, or into `off/`; Houdini follows at its next start."""
+    for node in row["nodes"]:
+        source, dest = (_place(amaze_root, folder, node, not on),
+                        _place(amaze_root, folder, node, on))
+        if not os.path.isfile(source):
+            continue
+        hostos.check_sandbox(dest)
+        try:
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            os.replace(source, dest)
+        except OSError as exc:
+            raise packages.PackageError("%s could not be turned %s: %s" % (
+                row["name"], "on" if on else "off", exc)) from None

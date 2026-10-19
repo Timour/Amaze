@@ -194,6 +194,24 @@ UPDATE_INSTALLED = 'Amaze %s is installed. Restart Houdini to use it.'
 
 UPDATE_FAILED_UNEXPECTED = 'The update could not be installed (%s).'
 
+ADDONS_NONE = 'No add-ons are installed. Check for Updates finds them in the Amaze store.'
+
+ADDONS_UP_TO_DATE = 'Every add-on is up to date.'
+
+ADDONS_AVAILABLE = 'Available: %s.'
+
+ADDONS_INSTALLED = 'Installed. Restart Houdini to load %s.'
+
+ADDONS_TURNED = 'Restart Houdini to turn %s %s.'
+
+ADDONS_STORE_UNREACHABLE = 'The Amaze store could not be reached (%s).'
+
+ADDONS_LOCATION_UNKNOWN = 'Amaze cannot tell where it is installed, so it cannot install add-ons. Check that $AMAZE points at the install.'
+
+ADDON_VERSION = 'version %s'
+
+ADDON_AUTHOR = 'author: %s'
+
 
 
 TITLE_AMAZE = 'Amaze'

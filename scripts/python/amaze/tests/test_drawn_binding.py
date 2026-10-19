@@ -18,32 +18,33 @@ from amaze.tests import test_support  # noqa: E402
 
 TEXT_SUFFIX = " ▸ text"
 
-PREFS_FRAMES = ("D04", "D05", "D06", "D07", "D08")
+PREFS_FRAMES = ("P01", "P02", "P03", "P04", "P05", "P06")
 
 PINNED_BUTTONS = {    # every text button Preferences takes from the document, written out here so a lost pin fails rather than quietly widening to the host font
-    "D04": ("Clean Up Library", "Reload Library", "Open Library Folder",
+    "P01": ("Clean Up Library", "Reload Library", "Open Library Folder",
             "Rename", "Delete", "Default", "Delete Local Cache"),
-    "D08": ("Check for Updates", "Report a Bug...", "Open Log",
+    "P05": ("Check for Updates",),
+    "P06": ("Check for Updates", "Report a Bug...", "Open Log",
             "Save Log...", "Clear Log"),
 }
 
 PREFS_COMBOS = {    # (frame, attribute, drawn width) - the combos each tab builds, in creation order
-    "D04": (("cbb_library_user", 196),),
-    "D05": (("_combo_geo_shading", 165), ("_combo_geo_bg", 165),
+    "P01": (("cbb_library_user", 196),),
+    "P02": (("_combo_geo_shading", 165), ("_combo_geo_bg", 165),
             ("cbb_matx_res", 72)),
-    "D07": (("_combo_path_style", 105), ("_combo_icon_weight", 145)),
+    "P04": (("_combo_path_style", 105), ("_combo_icon_weight", 145)),
 }
 
 UNPAIRED = {}    # a drawn `▸ text` node with no rect of its own kind around it; every one must be named, because the ordinary reading of a missing pair is a document edit that lost the rect
 
-LABEL_RIGHT = {    # where a form label's drawn box ENDS - the label column's right edge, per frame. A QLabel ending anywhere else is a FIELD-side label and has to be pinned, which is what the D08 version line was not
+LABEL_RIGHT = {    # where a form label's drawn box ENDS - the label column's right edge, per frame. A QLabel ending anywhere else is a FIELD-side label and has to be pinned, which is what the P06 version line was not
     "D02": (63,),               # the drawn field column less `D02_LABEL_GAP`
     "D11": (63, 378),           # two halves, each less `D11_LABEL_GAP`
-    "D04": (amazetheme.PREFS_LABEL_RIGHT,),
-    "D05": (amazetheme.PREFS_LABEL_RIGHT,),
-    "D06": (amazetheme.PREFS_LABEL_RIGHT,),
-    "D07": (amazetheme.PREFS_LABEL_RIGHT,),
-    "D08": (amazetheme.PREFS_LABEL_RIGHT,),
+    "P01": (amazetheme.PREFS_LABEL_RIGHT,),
+    "P02": (amazetheme.PREFS_LABEL_RIGHT,),
+    "P03": (amazetheme.PREFS_LABEL_RIGHT,),
+    "P04": (amazetheme.PREFS_LABEL_RIGHT,),
+    "P06": (amazetheme.PREFS_LABEL_RIGHT,),
     "D09": (amazetheme.SAVE_LABEL_RIGHT,),
     "D13": (amazetheme.SAVE_LABEL_RIGHT,),
     "D14": (amazetheme.D14_LABEL_RIGHT,),
@@ -85,6 +86,9 @@ DRAWN_EXEMPT = (    # (does this node need no pin, why) - EVERY drawn node off t
      "labels, and nothing in the app places a tab"),
     (lambda f, n: n[0] == "QScrollBar",
      "Qt's own, shown and hidden by the view it belongs to"),
+    (lambda f, n: f == "P05" and n[0].startswith("add-on "),
+     "an add-on's row, built per installed add-on from its package: "
+     "test_addon_tab holds each row on the drawn ones"),
     (lambda f, n: n[0] == "header band",
      "a painted strip the frame's full width, `HEADER_BAND_H` tall"),
     (lambda f, n: n[0] == "QLabel" and inside(n, band_box(f)),
@@ -277,7 +281,7 @@ class ThePinRefusesRatherThanCrashes(unittest.TestCase):
         self.addCleanup(button.deleteLater)
         before = button.maximumWidth()
         with mock.patch.object(debug, "event") as recorded:
-            ui_helpers.pin_drawn(button, "D04", "QPushButton",
+            ui_helpers.pin_drawn(button, "P01", "QPushButton",
                                  "Not A Drawn Label")
         self.assertEqual(before, button.maximumWidth(),
                          "a label the document does not draw still pinned "
@@ -371,7 +375,7 @@ class PreferencesIsBuiltFromTheDocument(unittest.TestCase):
             first, pinned(self, dialog._btn_update),
             "the button resized when its label changed, so the offer "
             "reading is a size the document never drew")
-        box = amazetheme.drawn_boxes("D08")[
+        box = amazetheme.drawn_boxes("P06")[
             ("QPushButton", "Check for Updates")]
         self.assertEqual((theme.ui_px(box[2]), theme.ui_px(box[3])), first)
 
@@ -443,7 +447,7 @@ class PreferencesIsBuiltFromTheDocument(unittest.TestCase):
 
 
 class EveryDrawnNodeIsBoundOrNamed(unittest.TestCase):
-    """THE COMPLETENESS PIN: every node in `DIALOG_LAYOUT` either pins a live widget through the binding, or stands on `DRAWN_EXEMPT` with its reason. Anything else is an element the design draws and the app does not read - which is what the D08 version line was until this walk named it. ▸p/one-design-document"""
+    """THE COMPLETENESS PIN: every node in `DIALOG_LAYOUT` either pins a live widget through the binding, or stands on `DRAWN_EXEMPT` with its reason. Anything else is an element the design draws and the app does not read - which is what the P06 version line was until this walk named it. ▸p/one-design-document"""
 
     def setUp(self):
         amazetheme.forget_drawn_boxes()
@@ -477,10 +481,10 @@ class EveryDrawnNodeIsBoundOrNamed(unittest.TestCase):
             "the frames built almost no pins, so the completeness walk's "
             "silence means nothing")
         self.assertEqual(
-            {"D06", "T01", "T05", "L01", "B01", "S01", "G01", "N01", "N01B"},
+            {"P03", "T01", "T05", "L01", "B01", "S01", "G01", "N01", "N01B"},
             set(amazetheme.DIALOG_LAYOUT)
             - {frame_key for frame_key, _kind, _x, _y in self.pins},
-            "D06 draws only switches and the tab strip, and the panel's areas "
+            "P03 draws only switches and the tab strip, and the panel's areas "
             "are read through their own drawn_* - any other frame listed here "
             "built no widget the document reached")
 
@@ -504,8 +508,8 @@ class MovingADrawnNodeMovesTheWidget(unittest.TestCase):
     def test_a_wider_drawn_button_builds_a_wider_button(self):
         from amaze.dialogs import prefs_dialog
         prefs = test_support.fixture_prefs(self)
-        frame = self._widened("D04", "QPushButton", (148, 70), 5)
-        with mock.patch.dict(amazetheme.DIALOG_LAYOUT, {"D04": frame}):
+        frame = self._widened("P01", "QPushButton", (148, 70), 5)
+        with mock.patch.dict(amazetheme.DIALOG_LAYOUT, {"P01": frame}):
             amazetheme.forget_drawn_boxes()
             dialog = prefs_dialog.PrefsDialog(prefs, panel=None)
             self.addCleanup(dialog.deleteLater)
@@ -524,9 +528,9 @@ class MovingADrawnNodeMovesTheWidget(unittest.TestCase):
         return dialog
 
     def test_a_wider_drawn_LABEL_builds_a_wider_label(self):
-        """A label, not a button: the D08 version line had no stated width at all, and its 322 was whatever the row happened to leave it."""
-        frame = self._widened("D08", "QLabel", (148, 274), 5)
-        with mock.patch.dict(amazetheme.DIALOG_LAYOUT, {"D08": frame}):
+        """A label, not a button: the P06 version line had no stated width at all, and its 322 was whatever the row happened to leave it."""
+        frame = self._widened("P06", "QLabel", (148, 274), 5)
+        with mock.patch.dict(amazetheme.DIALOG_LAYOUT, {"P06": frame}):
             amazetheme.forget_drawn_boxes()
             dialog = self._prefs_dialog()
             self.assertEqual(
@@ -535,12 +539,12 @@ class MovingADrawnNodeMovesTheWidget(unittest.TestCase):
                 "did not follow, so its width is still a coincidence")
 
         from amaze.dialogs import prefs_dialog    # the pin matches the WORDS, before a sample number
-        frame = dict(amazetheme.DIALOG_LAYOUT["D08"])
+        frame = dict(amazetheme.DIALOG_LAYOUT["P06"])
         frame["nodes"] = tuple(
             node[:5] + (prefs_dialog.VERSION_STEM + "9.9.9",)
             if node[:3] == ("QLabel", 148, 274) else node
             for node in frame["nodes"])
-        with mock.patch.dict(amazetheme.DIALOG_LAYOUT, {"D08": frame}):
+        with mock.patch.dict(amazetheme.DIALOG_LAYOUT, {"P06": frame}):
             amazetheme.forget_drawn_boxes()
             dialog = self._prefs_dialog()
             self.assertEqual(
