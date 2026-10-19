@@ -297,5 +297,19 @@ def apply_update(staged: str, install: str) -> None:
         shutil.rmtree(install, ignore_errors=True)    # a half-copied install is not one to leave in place
         os.rename(aside, install)    # PUT IT BACK - the window between the two renames is the only moment this is not whole
         raise
+    if not _carry_addons(aside, install):
+        debug.event("updater", "update applied", install=install, old_kept=aside)
+        return
     shutil.rmtree(aside, ignore_errors=True)    # only once the new one is IN PLACE, so the rollback above is still reachable until here
     debug.event("updater", "update applied", install=install)
+
+
+def _carry_addons(old: str, new: str) -> bool:
+    """Move the installed add-ons into the new install; False, logged, leaves the old one standing."""
+    from amaze.core import addons
+    try:
+        addons.carry(old, new)
+    except OSError as exc:
+        debug.event("updater", "add-ons not carried", error=str(exc), kept=old)
+        return False
+    return True

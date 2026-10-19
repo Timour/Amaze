@@ -68,7 +68,7 @@ class PackageExportTest(unittest.TestCase):
         self.assertEqual(1, wrote)
         with zipfile.ZipFile(out) as bundle:
             manifest = json.loads(bundle.read(packages.MANIFEST))
-            self.assertEqual(packages.FORMAT, manifest["format"])
+            self.assertEqual(packages.ASSETS_FORMAT, manifest["format"])
             entry = manifest["entries"][0]
             self.assertEqual("asset", entry["type"])
             self.assertEqual("material", entry["section"])

@@ -1104,8 +1104,12 @@ core/users.py             WHO uses this library - a uuid4 UID per
                           user owns is tagged with the UID, so a rename
                           relinks the label and moves nothing
 core/notes.py             the notes store (notes.json, per-asset pages)
-core/packages.py          the .amazepkg container (format 2): export
-                          collectors, guarded writer, refusing reader
+core/packages.py          the .amazepkg container (library packages are
+                          format 2): export collectors, guarded writer,
+                          refusing reader
+core/addons.py            add-on packages (format 3, a Houdini package):
+                          the one writer, the reader, the installer into
+                          $AMAZE/addons/<folder>, the updater's carry
 core/texstore.py          the texture store: $AMAZELIB tokens, the
                           FileReference scan, save-time adoption and
                           the scene-side resolve

@@ -175,6 +175,12 @@ def houdini_version():
         return ()
 
 
+def houdini_at_least(major_minor, running=None) -> bool:
+    """Whether `running` (default: this Houdini) is at least `major_minor`; True when unknown."""
+    running = houdini_version() if running is None else tuple(running)
+    return not running or tuple(running[:2]) >= tuple(major_minor)
+
+
 def obj_pick_wants_device_pixels(device_scale):
     """Whether GeometryViewport.queryNodeAtPixel wants DEVICE pixels - the affected builds do not apply the device pixel ratio themselves, so they want the point already multiplied by it, same bottom-left GL origin either way; see OBJ_PICK_DEVICE_PIXELS for the evidence and explain_pick() for a machine's resolution."""
     return OBJ_PICK_DEVICE_PIXELS.resolve(Env(scale=device_scale))

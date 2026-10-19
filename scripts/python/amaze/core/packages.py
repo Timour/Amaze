@@ -8,7 +8,8 @@ from amaze import branding
 from amaze.core import debug, notes, texstore
 from amaze.helpers import hostos
 
-FORMAT = 2    # 2: entries may carry {token: arc} textures - a format-1 build must refuse rather than import silently bare
+FORMAT = 3    # the newest this build reads; 3 adds the add-on kind, core/addons.py
+ASSETS_FORMAT = 2    # what a package of library assets is written as, so an older Amaze still reads it
 SUFFIX = ".amazepkg"
 MANIFEST = "package.json"
 DERIVED = ("stamp",)    # regenerated from the record on every save, so packing one ships an instantly-stale copy
@@ -90,7 +91,7 @@ def write_package(out_path: str, items) -> int:
             raise PackageError("unknown entry type %r"
                                % entry.get("type"))
         entries.append(entry)
-    manifest = {"format": FORMAT, "app": branding.APP_VERSION,
+    manifest = {"format": ASSETS_FORMAT, "app": branding.APP_VERSION,
                 "entries": entries}
     with hostos.scratch_beside(out_path) as scratch:
         with zipfile.ZipFile(scratch, "w",
@@ -142,6 +143,9 @@ def import_package(models, prefs, path: str, restore: bool = False) -> dict:
         raise PackageError("cannot read %s: %s" % (path, exc)) from None
     with bundle:    # ONE open serves manifest, verify and import - four sequential central-directory reads were felt on network folders, and verifying one open while importing from another gave a sync client a swap window
         manifest = manifest_from(bundle, path)
+        if manifest.get("kind"):
+            raise PackageError("%s is an add-on, not library assets"
+                               % os.path.basename(path))
         problems = _verify(bundle, manifest)
         if problems:
             raise PackageError("%s is not whole: %s"
