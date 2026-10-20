@@ -18,7 +18,7 @@ from amaze.tests import test_support  # noqa: E402
 
 TEXT_SUFFIX = " ▸ text"
 
-PREFS_FRAMES = ("P01", "P02", "P03", "P04", "P05", "P06")
+PREFS_FRAMES = ("P01", "P02", "P03a", "P03b", "P04", "P05", "P06")
 
 PINNED_BUTTONS = {    # every text button Preferences takes from the document, written out here so a lost pin fails rather than quietly widening to the host font
     "P01": ("Clean Up Library", "Reload Library", "Open Library Folder",
@@ -42,7 +42,8 @@ LABEL_RIGHT = {    # where a form label's drawn box ENDS - the label column's ri
     "D11": (63, 378),           # two halves, each less `D11_LABEL_GAP`
     "P01": (amazetheme.PREFS_LABEL_RIGHT,),
     "P02": (amazetheme.PREFS_LABEL_RIGHT,),
-    "P03": (amazetheme.PREFS_LABEL_RIGHT,),
+    "P03a": (amazetheme.PREFS_LABEL_RIGHT,),
+    "P03b": (amazetheme.PREFS_LABEL_RIGHT,),
     "P04": (amazetheme.PREFS_LABEL_RIGHT,),
     "P06": (amazetheme.PREFS_LABEL_RIGHT,),
     "D09": (amazetheme.SAVE_LABEL_RIGHT,),
@@ -323,12 +324,10 @@ class PreferencesIsBuiltFromTheDocument(unittest.TestCase):
         dialog.show()
         self.addCleanup(dialog.hide)
         QtWidgets.QApplication.processEvents()
-        tabs = self._pages(dialog)
         checked, wrong = 0, []
-        for index, frame_key in enumerate(PREFS_FRAMES):
-            tabs.setCurrentIndex(index)
+        for frame_key in PREFS_FRAMES:
+            page = dialog.show_frame(frame_key)
             QtWidgets.QApplication.processEvents()
-            page = tabs.widget(index)
             for widget in page.findChildren(QtWidgets.QWidget):
                 box = getattr(widget, "drawn_box", None)
                 if box is None or not widget.isVisibleTo(page):
@@ -347,9 +346,8 @@ class PreferencesIsBuiltFromTheDocument(unittest.TestCase):
 
     def test_every_named_button_is_the_drawn_size(self):
         dialog = self._dialog()
-        tabs = self._pages(dialog)
-        for index, frame_key in enumerate(PREFS_FRAMES):
-            page = tabs.widget(index)
+        for frame_key in PREFS_FRAMES:
+            page = dialog.frame_page(frame_key)
             found = {b.text(): b
                      for b in page.findChildren(QtWidgets.QPushButton)}
             for label in PINNED_BUTTONS.get(frame_key, ()):
@@ -421,6 +419,60 @@ class PreferencesIsBuiltFromTheDocument(unittest.TestCase):
             (dialog.width(), dialog.height()),
             "Preferences opens at a size the document does not draw")
 
+    def test_every_page_is_one_drawn_frame(self):
+        from amaze.dialogs import prefs_dialog
+        dialog = self._dialog()
+        self.assertEqual(PREFS_FRAMES, prefs_dialog.PREFS_FRAMES)
+        self.assertEqual(
+            len(PREFS_FRAMES), len(dialog._steps_to_pages()),
+            "Preferences builds a different number of pages than it has "
+            "drawn frames, so the pins land on the wrong pages")
+
+    def test_show_hide_is_the_two_drawn_sub_tabs(self):
+        """P03a and P03b: a Renderer and a Sections sub-tab, each holding its own switches."""
+        dialog = self._dialog()
+        dialog.show()
+        self.addCleanup(dialog.hide)
+        QtWidgets.QApplication.processEvents()
+        tabs = self._pages(dialog)
+        names = [tabs.tabText(index) for index in range(tabs.count())]
+        sub_tabs = tabs.widget(names.index("Show/Hide")).findChild(
+            QtWidgets.QTabWidget)
+        self.assertIsNotNone(sub_tabs, "Show/Hide holds no sub-tabs")
+        bar = amazetheme.PREFS_SUBTAB_BAR
+        for frame_key in ("P03a", "P03b"):
+            nodes = amazetheme.DIALOG_LAYOUT[frame_key]["nodes"]
+            self.assertIn(("QTabBar",) + bar + (None,), nodes,
+                          "%s draws the sub-tab strip somewhere else" % frame_key)
+            drawn = [node[5] for node in sorted(nodes, key=lambda n: n[1])
+                     if node[0].startswith("QTabBar::tab") and node[5]
+                     and inside(node, bar)]
+            self.assertEqual(
+                drawn, [sub_tabs.tabText(i) for i in range(sub_tabs.count())],
+                "the sub-tabs are not the ones %s draws" % frame_key)
+        for frame_key, boxes in (("P03a", dialog._renderer_boxes),
+                                 ("P03b", dialog._section_boxes)):
+            with self.subTest(frame=frame_key):
+                page = dialog.show_frame(frame_key)
+                QtWidgets.QApplication.processEvents()
+                built = sorted(page.findChildren(ui_helpers.ToggleSwitch),
+                               key=lambda b: b.mapTo(page, b.rect().topLeft()).y())
+                drawn = [node[5] for node in sorted(
+                    amazetheme.DIALOG_LAYOUT[frame_key]["nodes"],
+                    key=lambda n: n[2]) if node[0] == "ToggleSwitch" + TEXT_SUFFIX]
+                self.assertEqual(drawn, [box.text() for box in built],
+                                 "%s's switches are not the drawn ones" % frame_key)
+                self.assertEqual(set(boxes.values()), set(built))
+        strip, main = sub_tabs.tabBar(), tabs.tabBar()
+        at = strip.mapTo(dialog, strip.rect().topLeft())
+        main_at = main.mapTo(dialog, main.rect().topLeft())
+        main_x, main_y, _w, main_h = amazetheme.PREFS_TAB_BAR
+        self.assertEqual(theme.ui_px(bar[0] - main_x), at.x() - main_at.x(),
+                         "the sub-tab strip does not start under the main strip")
+        self.assertEqual(theme.ui_px(bar[1] - main_y - main_h),
+                         at.y() - main_at.y() - main.height(),
+                         "the sub-tab strip is not the drawn gap below the main strip")
+
     def test_every_page_fits_inside_the_drawn_frame(self):
         """The drawn frame is the contract, so a page that wants more is a CLIP - reported here with its arithmetic rather than absorbed by growing the window."""
         dialog = self._dialog()
@@ -430,13 +482,13 @@ class PreferencesIsBuiltFromTheDocument(unittest.TestCase):
         chrome = 2 * theme.ui_px(amazetheme.PREFS_DIALOG_MARGIN) + bar
         budget = theme.ui_px(amazetheme.PREFS_FRAME[1]) - chrome
         over = []
-        for index, frame_key in enumerate(PREFS_FRAMES):
+        for index in range(tabs.count()):
             wants = tabs.widget(index).sizeHint().height()
             if wants > budget:
                 over.append(
-                    "%s %s wants %d, budget %d (frame %d - margins %d - "
+                    "%s wants %d, budget %d (frame %d - margins %d - "
                     "tab bar %d), over by %d"
-                    % (frame_key, tabs.tabText(index), wants, budget,
+                    % (tabs.tabText(index), wants, budget,
                        theme.ui_px(amazetheme.PREFS_FRAME[1]),
                        2 * theme.ui_px(amazetheme.PREFS_DIALOG_MARGIN),
                        bar, wants - budget))
@@ -481,10 +533,11 @@ class EveryDrawnNodeIsBoundOrNamed(unittest.TestCase):
             "the frames built almost no pins, so the completeness walk's "
             "silence means nothing")
         self.assertEqual(
-            {"P03", "T01", "T05", "L01", "B01", "S01", "G01", "N01", "N01B"},
+            {"P03a", "P03b", "T01", "T05", "L01", "B01", "S01", "G01", "N01",
+             "N01B"},
             set(amazetheme.DIALOG_LAYOUT)
             - {frame_key for frame_key, _kind, _x, _y in self.pins},
-            "P03 draws only switches and the tab strip, and the panel's areas "
+            "P03a and P03b draw only switches and tab strips, and the panel's areas "
             "are read through their own drawn_* - any other frame listed here "
             "built no widget the document reached")
 

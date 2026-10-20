@@ -225,7 +225,7 @@ class TheNamedFrameSizesAreTheDrawnFrames(unittest.TestCase):
                 (("D09", "D13"), "SAVE_WIDTH", amazetheme.SAVE_WIDTH),
                 (("D14",), "D14_WIDTH", amazetheme.D14_WIDTH),
                 (("D11",), "D11_FORM_WIDTH", amazetheme.D11_FORM_WIDTH),
-                (("P01", "P02", "P03", "P04", "P06"), "PREFS_FRAME",
+                (("P01", "P02", "P03a", "P03b", "P04", "P06"), "PREFS_FRAME",
                  amazetheme.PREFS_FRAME)):
             for frame in frames:
                 drawn = layout[frame]["frame"]

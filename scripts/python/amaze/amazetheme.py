@@ -61,6 +61,7 @@ PREFS_DIALOG_MARGIN = 12  # the tabbed window's own margin, outside the tab stri
 PREFS_PAGE_MARGIN = 8    # each tab page's margin, inside it: 12 + 8 is the drawn 20
 PREFS_CONTENT_WIDTH = 450  # the drawn content column, spanned by every row and divider: 20..470. PINNED, because the page is handed more than this - Qt makes the window 8 wider than the tab widget needs and then lets the page use all of it ▸r/tabwidget-adds-eight
 PREFS_TAB_BAR = (12, 12, 466, 22)   # x, y, w, h - the strip above every page
+PREFS_SUBTAB_BAR = (12, 44, 129, 22)   # x, y, w, h - Show/Hide's Renderer and Sections strip
 PREFS_LABEL_RIGHT = 140  # a form label is RIGHT-aligned and ends here
 PREFS_LABEL_COL = 120    # the label column itself, from the inset to LABEL_RIGHT
 PREFS_LABEL_GAP = 8      # a label to its field: FIELD_X less LABEL_RIGHT
@@ -386,7 +387,7 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
             ("QLineEdit ▸ text", 154, 378, 6, 15, "8"),
         ),
     },
-    "P03": {   # Preferences - Show/Hide
+    "P03a": {   # Preferences - Show/Hide ▸ Renderer
         "frame": (498, 451),
         "nodes": (
             ("QTabBar", 12, 12, 466, 22, None),
@@ -397,23 +398,43 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
             ("QTabBar::tab ▸ Look", 239, 16, 25, 15, "Look"),
             ("QTabBar::tab ▸ Add-On", 292, 16, 39, 15, "Add-On"),
             ("QTabBar::tab ▸ About", 359, 16, 31, 15, "About"),
-            ("ToggleSwitch", 148, 44, 23, 15, None),
-            ("ToggleSwitch ▸ text", 179,44, 47, 15, "MaterialX"),
-            ("ToggleSwitch", 148, 69, 23, 15, None),
-            ("ToggleSwitch ▸ text", 179,69, 41, 15, "Redshift"),
-            ("ToggleSwitch", 148, 94, 23, 15, None),
-            ("ToggleSwitch ▸ text", 179,94, 36, 15, "Octane"),
-            ("QWidget ▸ group divider", 20, 125, 450, 1, None),
-            ("ToggleSwitch", 148, 140, 23, 15, None),
-            ("ToggleSwitch ▸ text", 179,140, 41, 15, "Material"),
-            ("ToggleSwitch", 148, 165, 23, 15, None),
-            ("ToggleSwitch ▸ text", 179,165, 28, 15, "Color"),
-            ("ToggleSwitch", 148, 190, 23, 15, None),
-            ("ToggleSwitch ▸ text", 179,190, 27, 15, "Node"),
-            ("ToggleSwitch", 148, 215, 23, 15, None),
-            ("ToggleSwitch ▸ text", 179,215, 26, 15, "Code"),
-            ("ToggleSwitch", 148, 240, 23, 15, None),
-            ("ToggleSwitch ▸ text", 179,240, 18, 15, "File"),
+            ("QTabBar", 12, 44, 129, 22, None),
+            ("QTabBar::tab ▸ Renderer (selected)", 12, 44, 71, 22, None),
+            ("QTabBar::tab ▸ Renderer", 26, 48, 46, 15, "Renderer"),
+            ("QTabBar::tab ▸ Sections", 91, 48, 43, 15, "Sections"),
+            ("ToggleSwitch", 148, 76, 23, 15, None),
+            ("ToggleSwitch ▸ text", 179, 76, 47, 15, "MaterialX"),
+            ("ToggleSwitch", 148, 101, 23, 15, None),
+            ("ToggleSwitch ▸ text", 179, 101, 41, 15, "Redshift"),
+            ("ToggleSwitch", 148, 126, 23, 15, None),
+            ("ToggleSwitch ▸ text", 179, 126, 36, 15, "Octane"),
+        ),
+    },
+    "P03b": {   # Preferences - Show/Hide ▸ Sections
+        "frame": (498, 451),
+        "nodes": (
+            ("QTabBar", 12, 12, 466, 22, None),
+            ("QTabBar::tab ▸ Show/Hide (selected)", 141, 12, 84, 22, None),
+            ("QTabBar::tab ▸ Library", 26, 16, 36, 15, "Library"),
+            ("QTabBar::tab ▸ Render", 91, 16, 36, 15, "Render"),
+            ("QTabBar::tab ▸ Show/Hide", 155, 16, 56, 15, "Show/Hide"),
+            ("QTabBar::tab ▸ Look", 239, 16, 25, 15, "Look"),
+            ("QTabBar::tab ▸ Add-On", 292, 16, 39, 15, "Add-On"),
+            ("QTabBar::tab ▸ About", 359, 16, 31, 15, "About"),
+            ("QTabBar", 12, 44, 129, 22, None),
+            ("QTabBar::tab ▸ Sections (selected)", 81, 44, 60, 22, None),
+            ("QTabBar::tab ▸ Renderer", 26, 48, 46, 15, "Renderer"),
+            ("QTabBar::tab ▸ Sections", 91, 48, 43, 15, "Sections"),
+            ("ToggleSwitch", 148, 76, 23, 15, None),
+            ("ToggleSwitch ▸ text", 179, 76, 41, 15, "Material"),
+            ("ToggleSwitch", 148, 101, 23, 15, None),
+            ("ToggleSwitch ▸ text", 179, 101, 28, 15, "Color"),
+            ("ToggleSwitch", 148, 126, 23, 15, None),
+            ("ToggleSwitch ▸ text", 179, 126, 27, 15, "Node"),
+            ("ToggleSwitch", 148, 151, 23, 15, None),
+            ("ToggleSwitch ▸ text", 179, 151, 26, 15, "Code"),
+            ("ToggleSwitch", 148, 176, 23, 15, None),
+            ("ToggleSwitch ▸ text", 179, 176, 18, 15, "File"),
         ),
     },
     "P04": {   # Preferences - Look

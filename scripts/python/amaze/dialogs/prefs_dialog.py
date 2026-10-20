@@ -27,7 +27,7 @@ from amaze.prefs import prefs as prefs_mod
 
 LINK_COLOR = amazetheme.LINK_COLOR   # About-tab links ▸p/one-design-document
 
-PREFS_FRAMES = ("P01", "P02", "P03", "P04", "P05", "P06")   # the drawn frame per tab, in the order the tabs are added ▸p/one-design-document
+PREFS_FRAMES = ("P01", "P02", "P03a", "P03b", "P04", "P05", "P06")   # the drawn frame per page, in tab order; a sub-tab is a page ▸p/one-design-document
 
 VERSION_STEM = branding.APP_NAME + " version "   # what the drawn version line opens with; the number after it is a sample, and the widget goes on to carry the updater's answers
 
@@ -164,6 +164,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         tabs.addTab(self._build_addon_tab(), "Add-On")
         tabs.addTab(self._build_about_tab(), "About")
         self._tabs = tabs
+        self._page_steps = dict(zip(PREFS_FRAMES, self._steps_to_pages()))
 
         self.set_content(tabs)
         self.finish(ok_cancel=False,   # a tabbed window keeps its air - the house margin is for compact forms
@@ -189,6 +190,31 @@ class PrefsDialog(base_dialog.AssetDialog):
                         alignment=QtCore.Qt.AlignmentFlag.AlignLeft)
         outer.addStretch()
         return page, form
+
+    def _steps_to_pages(self) -> list:
+        """Every page as the clicks that show it - its tab, then its sub-tab - in tab order."""
+        steps = []
+        for index in range(self._tabs.count()):
+            sub_tabs = self._tabs.widget(index).findChild(
+                QtWidgets.QTabWidget, "",
+                QtCore.Qt.FindChildOption.FindDirectChildrenOnly)
+            if sub_tabs is None:
+                steps.append(((self._tabs, index),))
+                continue
+            steps.extend(((self._tabs, index), (sub_tabs, sub))
+                         for sub in range(sub_tabs.count()))
+        return steps
+
+    def frame_page(self, frame_key: str) -> QtWidgets.QWidget:
+        """The page drawn as `frame_key`."""
+        tab_widget, index = self._page_steps[frame_key][-1]
+        return tab_widget.widget(index)
+
+    def show_frame(self, frame_key: str) -> QtWidgets.QWidget:
+        """Bring the page drawn as `frame_key` to the front: its tab, then its sub-tab."""
+        for tab_widget, index in self._page_steps[frame_key]:
+            tab_widget.setCurrentIndex(index)
+        return self.frame_page(frame_key)
 
     def _reload_library_users(self) -> None:
         """Fill the picker and select the current user, signals held so the refill cannot switch user."""
@@ -491,8 +517,22 @@ class PrefsDialog(base_dialog.AssetDialog):
         return page
 
     def _build_showhide_tab(self) -> QtWidgets.QWidget:
-        page, form = self._tab_page()
+        """Two sub-tabs, drawn as P03a and P03b: the renderer switches, then the section switches."""
+        holder = QtWidgets.QWidget()
+        column = QtWidgets.QVBoxLayout(holder)
+        bar_x, bar_y = amazetheme.PREFS_SUBTAB_BAR[:2]
+        tab_x, tab_y, _tab_w, tab_h = amazetheme.PREFS_TAB_BAR
+        column.setContentsMargins(theme.ui_px(bar_x - tab_x),
+                                  theme.ui_px(bar_y - tab_y - tab_h), 0, 0)
+        sub_tabs = QtWidgets.QTabWidget()
+        sub_tabs.setDocumentMode(True)
+        sub_tabs.addTab(self._build_renderer_page(), "Renderer")
+        sub_tabs.addTab(self._build_sections_page(), "Sections")
+        column.addWidget(sub_tabs)
+        return holder
 
+    def _build_renderer_page(self) -> QtWidgets.QWidget:
+        page, form = self._tab_page()
         self._renderer_boxes = {}
         for renderer in renderers.ALL:
             box = ui_helpers.ToggleSwitch(renderer.label)
@@ -503,8 +543,10 @@ class PrefsDialog(base_dialog.AssetDialog):
                 lambda checked, attr=renderer.switch: self._offer_renderer(attr, checked))
             self._renderer_boxes[renderer.switch] = box
             form.addRow(self._label(""), box)
+        return page
 
-        self._add_divider(form)
+    def _build_sections_page(self) -> QtWidgets.QWidget:
+        page, form = self._tab_page()
         self._section_boxes = {}
         for key, label in sections_module.all_sections():   # from the sections THEMSELVES; a hardcoded copy never learned about "hip", so that tab had no switch and was deleted by toggling any other
             box = ui_helpers.ToggleSwitch(label)
@@ -930,8 +972,8 @@ class PrefsDialog(base_dialog.AssetDialog):
 
     def _pin_pages_to_document(self) -> None:
         """Take every widget on every tab from the frame drawn for that tab, so a node resized in Figma resizes the widget. The editor INSIDE a spin box is left alone - the document draws that box 2 taller and insets its editor by 1. ▸p/one-design-document"""
-        for index, frame_key in enumerate(PREFS_FRAMES):
-            page = self._tabs.widget(index)
+        for frame_key in PREFS_FRAMES:
+            page = self.frame_page(frame_key)
             drawn_again: dict = {}    # P01 draws `...` twice, so the second browse button takes the second box
             for button in page.findChildren(QtWidgets.QPushButton):
                 label = button.text()
