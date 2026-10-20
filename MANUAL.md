@@ -1,11 +1,11 @@
 # Amaze — Manual
 
-Amaze is an asset library that lives in a Houdini pane tab: materials,
-colour palettes, node setups, code snippets and the files on your
-disk, in one place. Every asset can be dragged to where it is used —
-onto a viewport object, a network, or a parameter field.
+Amaze is an asset library in a Houdini pane tab. It holds materials,
+colour palettes, node setups, code snippets and files on disk. Assets
+are dragged straight onto viewport objects, networks and parameter
+fields.
 
-Installation is in the [README](README.md).
+Installation is described in the [README](README.md).
 
 - [First run](#first-run)
 - [The panel at a glance](#the-panel-at-a-glance)
@@ -17,6 +17,7 @@ Installation is in the [README](README.md).
 - [Code](#code)
 - [File](#file)
 - [Packages](#packages)
+- [Add-ons](#add-ons)
 - [Tile icons](#tile-icons)
 - [Category colors](#category-colors)
 - [Comments](#comments)
@@ -30,31 +31,30 @@ Installation is in the [README](README.md).
 ## First run
 <!-- {#m/first-run} -->
 
-Add the pane tab with the **+** at the right of any pane tab strip:
-**New Pane Tab Type ▸ Amaze**.
+**New Pane Tab Type ▸ Amaze**, on the **+** menu at the right of a pane
+tab strip, adds the Amaze panel.
 
-Add the shelf tab with the **+** at the right of the shelf tab strip:
-**Shelves ▸ Amaze**. Houdini stores this per machine and per Houdini
-build, so repeat it after an upgrade.
+**Shelves ▸ Amaze**, on the **+** menu at the right of the shelf tab
+strip, adds the Amaze shelf. Houdini stores shelf tabs per machine and
+per Houdini build, so the shelf is added again after an upgrade.
 
-Set the library folder before anything else: **Preferences ▸ Library ▸
-Library Path**, the `...` button. This is where your saved assets are
-kept. Keep it outside the plugin folder, which updates replace. A
-cloud-synced folder is supported.
+**Preferences ▸ Library ▸ Library Path** sets the library folder, where
+saved assets are kept. The library belongs outside the plugin folder,
+which updates replace. Cloud-synced folders are supported.
 
-In that folder Amaze keeps a list of your assets in JSON, and one
-Houdini node archive per asset (`.mat` and `.interface`). Both are
-standard Houdini files and open in Houdini directly.
+The library holds a list of the assets in JSON and one Houdini node
+archive per asset (`.mat` and `.interface`). Both are standard Houdini
+files.
 
-The **Amaze shelf** carries five tools:
+The **Amaze shelf** has five tools:
 
-| tool | what it does |
+| tool | function |
 |---|---|
 | **Amaze** | Opens the panel. |
-| **Capture** | Takes a preview of the open scene. |
-| **Updates** | Checks the release page for a newer version and installs it when you confirm. |
-| **Repair** | Recovers a damaged library. See [Housekeeping](#housekeeping-and-troubleshooting). |
-| **Reload** | Installs any new asset file from the packages on the Houdini path and reloads every loaded asset definition, without a restart. |
+| **Capture** | Captures a preview of the open scene. |
+| **Repair** | Repairs a damaged library. See [Housekeeping](#housekeeping-and-troubleshooting). |
+| **Updates** | Checks for a newer Amaze and installs it after confirmation. |
+| **Reload** | Installs new asset files from the packages on the Houdini path and reloads all loaded asset definitions without a restart. |
 
 <img src="docs/images/shelf_tools.png" width="420">
 
@@ -64,499 +64,470 @@ The **Amaze shelf** carries five tools:
 
 <img src="docs/images/material_grid.png" width="820">
 
-The **section tabs** run along the top: Material, Color, Node, Code,
-File. Each section keeps its own category, view mode and scroll
-position. Sections can be hidden in Preferences ▸ Show/Hide.
+The **section tabs** at the top switch between Material, Color, Node,
+Code and File. Each section keeps its own category, view mode and scroll
+position. Preferences ▸ Show/Hide ▸ Sections sets which sections are
+shown.
 
-The **toolbar** runs along the top of the panel. Left to right:
+The **toolbar**, from left to right:
 
 | | | |
 |:--:|---|---|
 | <img src="scripts/python/amaze/ui/icon_categories.svg" width="20"> | **Show Categories** | Shows and hides the sidebar. |
-| <img src="scripts/python/amaze/ui/icon_renderer.svg" width="20"> | **Import/Generate** | Gallery Import (.gal), Package Import (.amazepkg), Generate Material. |
-| <img src="scripts/python/amaze/ui/icon_view.svg" width="20"> | **Filter** | Filters the grid. In Material, by renderer: All, MaterialX, Redshift, Octane. |
-| <img src="scripts/python/amaze/ui/icon_online.svg" width="20"> | **Online** | Switches to the online sources and back. |
+| <img src="scripts/python/amaze/ui/icon_renderer.svg" width="20"> | **Import/Generate** | Gallery Import (.gal), Package Import (.amazepkg) and Generate Material. |
+| <img src="scripts/python/amaze/ui/icon_view.svg" width="20"> | **Filter** | Filters the grid. In Material, by renderer: All, MaterialX, Redshift or Octane. |
+| <img src="scripts/python/amaze/ui/icon_online.svg" width="20"> | **Online** | Switches between the library and the online sources. |
 | <img src="scripts/python/amaze/ui/icon_comments.svg" width="20"> | **Comments** | Opens and closes the [Comments pane](#comments). Purple while the pane is open. |
-| <img src="scripts/python/amaze/ui/grid.svg" width="20"> <img src="scripts/python/amaze/ui/list.svg" width="20"> | **Grid / List** | Two views of the same assets. |
-| <img src="scripts/python/amaze/ui/favourite_on.svg" width="20"> | **Favorites** | Shows favorited assets only. |
-| <img src="scripts/python/amaze/ui/Icon-slider.svg" width="20"> | **Size slider** | Thumbnail size, 64–512 px. Scales list rows too. |
-| <img src="scripts/python/amaze/ui/icon_search.svg" width="20"> | **Search** | Searches names and tags in the current section. A leading colon searches tags: `:metal` finds everything tagged metal. |
-| <img src="scripts/python/amaze/ui/icon_screenshot.svg" width="20"> | **Capture** | Takes a preview of the open scene. File section only. |
+| <img src="scripts/python/amaze/ui/grid.svg" width="20"> <img src="scripts/python/amaze/ui/list.svg" width="20"> | **Grid / List** | Switches between grid view and list view. |
+| <img src="scripts/python/amaze/ui/favourite_on.svg" width="20"> | **Favorites** | Shows favorites only. |
+| <img src="scripts/python/amaze/ui/Icon-slider.svg" width="20"> | **Size slider** | Sets the thumbnail size, 64–512 px, and the row height in list view. |
+| <img src="scripts/python/amaze/ui/icon_search.svg" width="20"> | **Search** | Searches names and tags in the current section. A leading colon searches tags only: `:metal` finds everything tagged metal. |
+| <img src="scripts/python/amaze/ui/icon_screenshot.svg" width="20"> | **Capture** | Captures a preview of the open scene. File section only. |
 | <img src="scripts/python/amaze/ui/icon_library.svg" width="20"> | **Preferences** | Opens [Preferences](#preferences). |
 
-**Import/Generate**	and **Filter** menu. 
+The **Import/Generate** and **Filter** menus:
 
 <img src="docs/images/menu_import_generate.png" width="230">
 <img src="docs/images/menu_filter.png" width="180">
 
-**Favorites** filters the grid down to what you have marked as favorites.
+**Favorites** shows only the assets marked as favorites.
 
 <img src="docs/images/favorites_filter.png" width="820">
 
-**List mode** shows the same assets as rows.
+**List view** shows the assets as rows.
 
 <img src="docs/images/material_list.png" width="820">
 
-**Name** and **Type** are always there. **Category**, **Favorite**,
+**Name** and **Type** are always shown. **Category**, **Favorite**,
 **Version**, **Open**, **Comments**, **Tags**, **License**, **Date** and
-**ID** appear where the section has them. Favorite, Open and Comments
-draw as ticks, and Category takes the [category colour](#category-colors).
-Click a column heading to sort by it; drag the edge of a heading to set
-its width.
+**ID** are shown where the section has them. Favorite, Open and Comments
+are shown as ticks, and Category takes the
+[category colour](#category-colors). Clicking a column heading sorts by
+that column, and dragging the edge of a heading sets its width.
 
 The **sidebar** holds categories (Material, Node, Code), registered
-folders (File) or palette groups (Color). Right-click to add, rename or
-delete a category, or to give it a [colour](#category-colors); File's
-folders have a menu of [their own](#locations). **Sort
-by name** puts the categories in alphabetical order once, with All on
-top; drag them where you like afterwards, and sort again whenever.
-Per-category counts and hiding empty categories are in
-Preferences ▸ Look.
+folders (File) or palette groups (Color). Its right-click menu adds,
+renames, deletes and [colours](#category-colors) categories; File's
+folders have a menu of [their own](#locations). **Sort by name** sorts
+the categories alphabetically, with All at the top. Preferences ▸ Look
+sets the category counts and hides empty categories.
 
-The sidebar keeps the order you give it. Press and hold a row for about
-half a second and it picks up — drag it where you want, let go to keep
-the new order, or press Esc to put it back. **All** stays at the top,
-and a new category appears at the bottom until you move it. This works
-in every section, File's registered folders included. Category order
-travels with the library; folder order stays with each machine.
+Sidebar rows are reordered by dragging. A press of about half a second
+picks a row up, releasing it sets the new order, and Esc cancels the
+move. **All** stays at the top, and new categories are added at the
+bottom. Category order is stored in the library; folder order is stored
+per machine.
 
-Both side panes — the sidebar and the Comments pane — keep the width
-you drag them to, across sessions. The grid takes up the slack.
+The sidebar and the Comments pane keep their width between sessions.
 
-A tile can carry up to four **badges**, one per corner, each a glyph on
-a dark backdrop:
+A tile has up to four **badges**, one per corner:
 
 | | | |
 |:--:|---|---|
-| <img src="scripts/python/amaze/ui/badge_open.svg" width="100"> | top-left | the scene you currently have open (File) |
-| <img src="scripts/python/amaze/ui/badge_favourite.svg" width="100"> | top-right | the favorite button — on every tile: an outline heart when not a favorite, coloured under the pointer, a filled pink heart when favorited. Click to toggle; with several tiles selected, clicking a selected tile's heart toggles them all |
-| <img src="scripts/python/amaze/ui/badge_versions.svg" width="100"> | lower-left | has more than one [version](#versions) — click it to browse them |
-| <img src="scripts/python/amaze/ui/badge_comment.svg" width="100"> | lower-right | the comments button — on every tile: filled when the asset has [comments](#comments), an outline when it has none. Click to open or close the Comments pane, as the toolbar's Comments button does |
+| <img src="scripts/python/amaze/ui/badge_open.svg" width="100"> | top-left | The scene that is open in Houdini (File). |
+| <img src="scripts/python/amaze/ui/badge_favourite.svg" width="100"> | top-right | Favorite: an outline heart, filled pink on a favorite. A click toggles it; on a selected tile, it toggles every selected tile. |
+| <img src="scripts/python/amaze/ui/badge_versions.svg" width="100"> | lower-left | [Versions](#versions). Opens the version list. |
+| <img src="scripts/python/amaze/ui/badge_comment.svg" width="100"> | lower-right | Comments: filled when the asset has [comments](#comments). Opens and closes the Comments pane. |
 
 ---
 
 ## Material
 
-Houdini-native material networks with rendered shaderball thumbnails:
-Redshift (classic and USD builders), Karma/MaterialX, Octane (the Octane
-Material Builder, classic and Solaris).
+Stores material networks with a rendered preview. Supported renderers
+are Redshift, Karma (MaterialX) and Octane.
 
 ### Saving
 
-Right-click a material node in the network editor ▸ **Save to
-Amaze**. Name it, give it a category and tags. Amaze builds a scene
-around the node, renders a shaderball and files it away.
+**Save to Amaze**, on the right-click menu of a material node in the
+network editor, opens the save dialog. The dialog sets the name,
+category and tags, and **Section** sets the section the material is
+saved to. Amaze renders a preview and adds the material to the library.
 
-**Save to Amaze** is the same entry on every node. The save dialog's
-**Section** row says where the save goes — Material, Color, Node or
-Code — and starts on the one that fits the node. Change it to save
-somewhere else, for example a material into Node.
+A material that is already in the library is saved as a new version or
+as a new material.
 
-Saving a node Amaze recognises — from the ID stamp a previous save left
-on it, or a unique name match — offers **Save Version / Save New /
-Cancel**. Multi-selections always save as new.
+Previews use the display and view transform of the Scene Viewer and
+require `$OCIO`.
 
-> Thumbnails need `$OCIO` set and an open Scene Viewer, whose display
-> and view transform they use. Renders can be switched off entirely in
-> Preferences ▸ Render.
+### Preview rendering
 
-Karma and Octane thumbnails render in the background, and Houdini can
-be used while they render. **Update Preview** on several materials
-renders them in one pass. The thin bar above the grid shows how far the
-render has got, and each tile updates as its picture is finished.
-**Cancel**, at the right end of the tab row, stops the render: finished
-thumbnails are kept, and the rest keep their previous picture. Redshift
-thumbnails render inside Houdini, which waits for them.
+Karma and Octane previews render in the background. A progress bar
+above the grid follows the render, and each tile updates when its
+preview is done. Redshift previews render in the foreground.
+
+**Update Preview** renders the selected materials again. **Cancel**, at
+the right end of the tab row, stops the render.
 
 ### Versions
 
-Saving over a material you already have creates a version.
-
-Tiles with more than one version carry the
+Saving over a material keeps the previous one as a version. A tile with
+versions shows the
 <img src="scripts/python/amaze/ui/badge_versions.svg" width="14">
-badge in their lower-left corner. Click it to open the versions
-window, titled with the asset's name: pick a version to make it
-active, or rename the selected one.
+badge in its lower-left corner. The badge opens the version list, where
+a version is made current or renamed.
 
 <img src="docs/images/dialog_versions.png" width="380">
 
-Turn the behaviour off in Preferences ▸ Library ▸ **Material
-Versions**.
+**Material Versions** in Preferences ▸ Library turns versions on and
+off.
 
-### Load Assets
+### Loading
 
-- **Double-click** imports into the context you are working in.
-- **Copy To ▸ /mat** and **Copy To ▸ /stage/materiallibrary** name the
-  destination explicitly. The second lands inside a material library
-  under `/stage`. A Redshift or Octane material saved in its renderer's
-  classic container is rebuilt into that renderer's Solaris container on
-  the way in; the saved material is not changed.
-- **Drag it** — see [Drag and drop](#drag-and-drop).
+- **Double-click** loads the material into the current network.
+- **Copy To ▸ /mat** and **Copy To ▸ /stage/materiallibrary** load it
+  into that location.
+- **Dragging** the tile onto an object assigns the material; dragging it
+  into a network loads it there. See [Drag and drop](#drag-and-drop).
 
-### Organising
+### Tile menu
 
-Right-click a tile: **Copy To**, **Convert to**, **Update Preview**,
-**Customize**, **Favorite**, **Export Package** and **Delete**. Name, Category and Tags are edited in
-[Customize](#tile-icons); Date, ID and License are columns in
-[list mode](#the-panel-at-a-glance).
+**Copy To**, **Convert to**, **Update Preview**, **Customize**,
+**Favorite**, **Export Package** and **Delete**.
 
 <img src="docs/images/menu_material_tile.png" width="200">
 <img src="docs/images/menu_copy_to.png" width="230">
 
-Assets can also be dragged onto a sidebar category to file them there.
+[Customize](#tile-icons) sets the name, category and tags. Dragging a
+tile onto a category in the sidebar moves it to that category.
 
-### Convert to
+### Converting
 
-Right-click a material ▸ **Convert to** ▸ **MaterialX**, **Redshift** or
-**Octane**, each with the icon the Filter menu shows for that renderer.
-The renderer the material already uses is greyed, and so is
-any conversion whose renderer is not loaded in this Houdini, the
-material's own included. The conversion rebuilds the network for the
-other renderer as a new entry next to the original, under the same name,
-on the same texture files, and reports what it could not translate.
-Every conversion passes through MaterialX, so Redshift to Octane is
-Redshift to MaterialX and then MaterialX to Octane. A material becomes
-Octane in Octane's own material builder, which renders MaterialX itself;
-the nodes Octane's builder does not take are wired through, rebuilt or
-named in the report. Shaders with no equivalent are named in the report.
+**Convert to ▸ MaterialX**, **Redshift** or **Octane** builds a copy of
+the material for that renderer next to the original, with the same name
+and textures. Anything that cannot be converted is listed in a report.
+
+All conversions go through MaterialX. Redshift to Octane, for example,
+converts Redshift to MaterialX and then MaterialX to Octane. Octane
+materials are built in Octane's own material builder.
 
 ---
 
 ## Online materials
 
 The <img src="scripts/python/amaze/ui/icon_online.svg" width="16">
-**Online** button in the toolbar switches to the online sources. Press
-it again to return to your own library. The sources appear as a tab
-strip where the section tabs were.
+**Online** button switches the panel to the online material sources,
+shown as tabs in place of the section tabs. A second press returns to
+the library.
 
 <img src="docs/images/online_browser.png" width="820">
 
-| Source | What it is | Licence |
+| Source | Content | Licence |
 |---|---|---|
-| **PolyHaven** | Photoscanned PBR materials, with textures | CC0 |
-| **GPUOpen** | AMD's MaterialX library, with textures | MIT Public Domain |
-| **SimReady** | NVIDIA's OpenPBR materials, with textures. No previews | MIT-0 |
-| **PhysicallyBased** | 86 measured reference values: real copper, real water, real skin. No textures | CC0 1.0 |
+| **PolyHaven** | Photoscanned PBR materials with textures | CC0 |
+| **GPUOpen** | AMD's MaterialX library with textures | MIT Public Domain |
+| **SimReady** | NVIDIA's OpenPBR materials with textures | MIT-0 |
+| **PhysicallyBased** | 86 measured reference materials, such as copper, water and skin | CC0 1.0 |
 | **RGL (EPFL)** | 62 laboratory-measured materials from the Realistic Graphics Lab | CC0 1.0 |
-| **Amaze** | The official [packages](#packages), ready to import or restore | per package |
+| **Amaze** | The official [packages](#packages), for import or restore | per package |
 
+The right-click menu acts on one material or a selection:
 
-Right-click a material, or a multi-selection. Both Import submenus show
-each renderer with its Filter menu icon:
+- **Import to Materials ▸ MaterialX**, **Redshift** or **Octane**
+  downloads the material, builds it for that renderer and saves it to
+  the library, with a preview when renders are on. A renderer is
+  available when its plugin is loaded.
+- **Import to Scene ▸ MaterialX**, **Redshift** or **Octane** builds the
+  material in the current material library, or in `/mat`.
+- **Restore**, on Amaze packages, restores the entries the package
+  carries.
+- **Refresh** reloads the source.
 
-- **Import to Materials ▸ MaterialX**, **▸ Redshift** or **▸ Octane**
-  downloads it, builds the material for that renderer and saves it into
-  your library, with a thumbnail if renders are on. A renderer is greyed
-  when its plugin is not loaded.
-- **Import to Scene ▸ MaterialX**, **▸ Redshift** or **▸ Octane** builds
-  it into the material library you are working in, or `/mat`, and writes
-  nothing to your library.
-- **Restore** appears on Amaze packages and puts back the entries a
-  package carries.
-- **Refresh** re-reads the source now.
+**Double-click** imports a material into the scene.
 
-**Double-click imports to the scene**, as it does everywhere else.
-
-Every import records its source, author, link and licence. None of
-these sources requires attribution.
+Every import records its source, author, link and licence.
 
 ### Gallery Import (.gal)
 
 **Import/Generate ▸ Gallery Import (.gal)** reads a Houdini gallery
-file, the Material Palette's own included, and turns every material
-preset in it into a library material. Thumbnails are not rendered
-during a bulk import; select the new materials afterwards and use
-**Update Preview**.
+file, including the Material Palette's own, and adds every material
+preset in it to the library. **Update Preview** renders their previews.
 
 ---
 
 ## Generate Material
 
-For building test materials quickly.
+**Import/Generate ▸ Generate Material** builds a test material in the
+current material library.
 
-**Import/Generate ▸ Generate Material** builds one material into the
-material library you are working in.
+Generation starts from one of 148 measured materials, 86 PhysicallyBased
+reference values and 62 RGL measurements, and varies it within its
+physical class:
 
-Amaze ships 148 measured materials — 86 PhysicallyBased reference
-constants and 62 RGL measurements. Generation starts from one of them
-and stays inside its physical class:
-
-- **Metals** keep their spectrum. A metal's colour is its reflectance,
-  so copper stays copper: it drifts a few percent, or blends toward
-  another measured metal the way an alloy sits between two elements,
-  and takes its finish from a measured metal surface.
-- **Glass and liquids** keep their measured IOR exactly.
+- **Metals** keep their measured reflectance. The colour drifts by a few
+  percent or blends toward another measured metal, and the finish comes
+  from a measured metal surface.
+- **Glass and liquids** keep their measured IOR.
 - **Skin, marble and milk** keep their measured scattering distance.
 - **Opaque dielectrics** take a free hue, with roughness from the
   measurement.
 
-Clearcoat, sheen and emission are not in the measurements, so their
-rates come from a corpus of 287 authored materials: about a third carry
-a clearcoat, almost none emit.
+Clearcoat, sheen and emission follow the rates of a set of 287 authored
+materials: about a third have a clearcoat, and very few emit.
 
-Every generated material writes its lineage into the **node comment** —
-which measurement it came from, and what was varied. Generated
-materials are scene nodes. Keeping one means saving it with **Save to
-Amaze**, like any material you built by hand.
+The **node comment** of a generated material records the measurement it
+started from and what was varied. Generated materials are scene nodes,
+added to the library with **Save to Amaze**.
 
 ---
 
 ## Color
 
-Comes pre-filled with colour-theory palettes — Sanzo Wada's *A Dictionary of Color Combinations*, Paul Klee, Josef Albers, Johannes Itten. Delete any you do not want.
+Stores colour palettes. A new library includes palettes from Sanzo
+Wada's *A Dictionary of Color Combinations*, Paul Klee, Josef Albers and
+Johannes Itten.
 
 <img src="docs/images/color_grid.png" width="820">
 
-Right-click a tile:
+The right-click menu:
 
-- **Apply** pushes the palette onto a selected node's ramp parameter.
-  Where the selected node has no ramp parameter, Amaze creates the ramp
-  node instead, as double-clicking the tile does.
-- **Apply as ▸** does the same and sets the ramp's interpolation:
-  Constant, Linear, CatmullRom, MonotoneCubic, Bezier, BSpline or
-  Hermite.
-- **Copy Color ▸** lists the swatches by name and hex code, each with
-  its colour. Picking one copies the hex to the clipboard.
+- **Apply** applies the palette to the selected node's ramp parameter. On
+  a node with no ramp parameter, it creates a ramp node, as a
+  double-click on the tile does.
+- **Apply as ▸** applies the palette with an interpolation: Constant,
+  Linear, CatmullRom, MonotoneCubic, Bezier, BSpline or Hermite.
+- **Copy Color ▸** lists the swatches by name and hex code, and copies
+  the chosen hex code to the clipboard.
 - **Customize**, **Favorite**, **Export Package** and **Delete**.
 
 <img src="docs/images/menu_color_tile.png" width="200">
 <img src="docs/images/menu_apply_as.png" width="200">
 <img src="docs/images/menu_copy_color.png" width="260">
 
-To save your own: right-click a node with a colour ramp ▸ **Save to
-Amaze**, with **Section** set to Color.
+**Save to Amaze** on a node with a colour ramp, with **Section** set to
+Color, saves the ramp as a palette.
 
 ---
 
 ## Node
 
-Save node setups — a whole network, a selection, or a single node — and
-load them back. Works in any context Amaze supports: SOP, Copernicus,
-LOP, DOP, TOP, CHOP, object level and material networks. Each asset
-records which context it came from, shown on its tile.
+Stores node setups: a whole network, a selection or a single node.
+Supported contexts are SOP, Copernicus, LOP, DOP, TOP, CHOP, object level
+and material networks. Each asset records its context, shown on its
+tile.
 
 <img src="docs/images/node_grid.png" width="820">
 
-Right-click a network container — a `geo`, a `copnet`, a `lopnet`, a
-subnet — ▸ **Save to Amaze** with **Section** set to Node to keep its
-whole interior, or right-click the nodes themselves to save just
-those. With several nodes selected the selection is saved.
+**Save to Amaze**, with **Section** set to Node, saves the contents of a
+network container (a `geo`, `copnet`, `lopnet` or `subnet`) or the
+selected nodes.
 
-Double-click, drag a tile, or right-click ▸ **Load** to bring the nodes
-back. They land in the network you release over, or in a fresh
-container of the right type.
+**Double-click**, a drag, or **Load** on the right-click menu loads the
+nodes into the network under the pointer, or into a new container of
+the right type.
 
 <img src="docs/images/menu_node_tile.png" width="200">
 
-**Assets load only into a matching context.** A SOP asset dropped on a Copernicus
-network is refused with a message, and nothing is created.
+Assets load only into networks of their own context.
 
-Thumbnails follow the context: a Copernicus asset shows its own output
-image, a SOP asset shows its geometry, and everything else shows the
-node icon.
+Previews follow the context: a Copernicus asset shows its output image,
+a SOP asset shows its geometry, and other contexts show the node icon.
 
 ---
 
 ## Code
 
 A snippet library for VEX, OpenCL and Python, with syntax-highlighted
-previews on the tiles. A set of **examples** is seeded into a new
-library to start from; deleting one does not bring it back.
+previews on the tiles. A new library includes a set of **examples**.
 
 <img src="docs/images/code_grid.png" width="820">
 
-Right-click a tile:
+The right-click menu:
 
-- **New File** opens the editor on a blank snippet.
-- **Apply** pushes the snippet into the selected node's code parameter.
-- **Edit** opens it in the editor, with Name, Language, Category and
-  Tags above the code.
+- **New File** opens the editor on a new snippet.
+- **Apply** writes the snippet into the selected node's code parameter.
+- **Edit** opens the snippet in the editor, with Name, Language,
+  Category and Tags above the code.
 - **Customize**, **Favorite**, **Export Package** and **Delete**.
 
 <img src="docs/images/menu_code_tile.png" width="200">
 <img src="docs/images/dialog_edit_snippet.png" width="480">
 
-Double-click or drag a snippet onto a node to apply it. To save one:
-right-click any node with a code parameter ▸ **Save to Amaze**. The
-**Language** row is read from the node and can be changed; it is
-greyed for every other section.
+**Double-click**, or a drag onto a node, applies the snippet. **Save to
+Amaze** on a node with a code parameter saves its code as a snippet;
+**Language** is read from the node and can be changed.
 
-A Python snippet's tile has a green run button in the middle. It hands
-the snippet the same `kwargs` a shelf tool's script receives on a shelf
-click, and everything the snippet changes is one step in
-**Edit ▸ Undo**. If it stops on an error, Houdini's status bar names
-the snippet and the error. Every snippet's tile has a pencil in the
-lower left that opens the editor, like **Edit**.
+A Python snippet's tile has a green run button. It runs the snippet with
+the same `kwargs` a shelf tool receives, as one step in **Edit ▸ Undo**.
+Errors show in Houdini's status bar with the snippet's name. The pencil
+in the lower-left corner of a snippet's tile opens the editor.
 
 ---
 
 ## File
 
-Browse folders on disk.
+Browses folders on disk.
 
 <img src="docs/images/file_grid.png" width="820">
 
-- **Images** (PNG, JPG, EXR, HDR, TGA, RAT, …) get cached thumbnails.
-  **Double-click** or **Load to Node** pushes the file onto a selected
-  node's image parameter; drag one onto any parameter field like a
-  file from Finder or Explorer. Formats Qt cannot read are converted in
-  the background — the number of parallel conversions is in
-  Preferences ▸ Render. While the conversion bar is showing, a
-  **Cancel** button sits at the right end of the tab row and stops the
-  batch; thumbnails already made are kept, and revisiting the folder
-  simply picks up where it left off.
-- **Geometry** (`.bgeo`, `.obj`, `.fbx`, `.abc`, `.usd`, …) gets
-  viewport-rendered thumbnails, wire over shaded. **Double-click** or
-  drag into a network to import in context; the import puts your
-  current node and display flag back where they were. A recursive scan
-  of a big library can queue many first-time renders — the pass is
-  interruptible with Esc and resumes later.
-- **Scenes** (`.hip`, `.hiplc`, `.hipnc`) **open on double-click**,
-  with Houdini's own save prompt in charge of unsaved changes. Drag one
-  out of the panel and release anywhere outside it to open it the same
-  way. The scene currently open carries a tick on its tile. Scene
-  thumbnails are **captures**: open the scene from Amaze, frame the
-  viewport, then right-click ▸ **Capture Preview**, or press the
+- **Images** (PNG, JPG, EXR, HDR, TGA, RAT and more) get cached
+  thumbnails. **Double-click** or **Load to Node** sets the file on the
+  selected node's image parameter, and a drag sets it on any parameter
+  field. Formats Qt cannot read are converted in the background, and
+  Preferences ▸ Render sets how many convert at once. **Cancel**, at the
+  right end of the tab row, stops the conversion and keeps the
+  thumbnails already made.
+- **Geometry** (.bgeo, .obj, .fbx, .abc, .usd and more) gets
+  viewport-rendered thumbnails, wireframe over shaded. **Double-click**,
+  or a drag into a network, imports it in context and keeps the current
+  node and display flag. Esc interrupts a long first scan, which
+  resumes later.
+- **Scenes** (.hip, .hiplc, .hipnc) open on **double-click**, with
+  Houdini's own prompt for unsaved changes. A scene dragged out of the
+  panel and released also opens. The open scene has a tick on its tile.
+  Scene thumbnails are captures: **Capture Preview** on the right-click
+  menu, or the
   <img src="scripts/python/amaze/ui/icon_screenshot.svg" width="14">
-  button in the toolbar.
-- **Everything else** shows its system icon and has one action,
-  **Copy Path**, which puts the path on the clipboard the way Houdini
-  writes paths — see **Write Paths As** below. A location lists these
-  files when its **Show ▸ Other Files** is ticked.
+  **Capture** button, takes one from the viewport.
+- **Other files** show their system icon. **Copy Path** copies the path
+  to the clipboard, written as set in [Write Paths As](#write-paths-as).
+  A location lists these files when **Show ▸ Other Files** is on.
 
-Right-click a row for **Load**, **Copy Path**, **Show Location**,
-**Capture Preview**, **Customize**, **Favorite** and **Export
-Package**. There is no **Delete**: these are your files on disk.
+The right-click menu: **Load**, **Copy Path**, **Show Location**,
+**Capture Preview**, **Customize**, **Favorite** and **Export Package**.
 
 <img src="docs/images/menu_file_tile.png" width="210">
 
 ### Locations
 
-Right-click the sidebar:
+The sidebar's right-click menu:
 
-- **Add** registers a folder. Nothing is scanned or copied until you
-  open it.
-- **Locate** re-points a folder that moved on disk. Favorites, its name
-  and its settings follow.
-- **Rename ▸ Edit** gives it your own name. **Set to Default** goes back
-  to the folder's own name.
-- **Remove** unregisters it and forgets its name, colour and Show
-  settings, its favorites, comments and tile icons, and its cached
-  thumbnails. Re-adding the folder starts from scratch. Captures are
-  kept, since nothing can render them again.
+- **Add** registers a folder.
+- **Locate** points a registered folder at its new place on disk and
+  keeps its favorites, name and settings.
+- **Rename ▸ Edit** sets a display name. **Set to Default** restores the
+  folder's own name.
+- **Remove** unregisters the folder and clears its name, colour, Show
+  settings, favorites, comments, tile icons and cached thumbnails.
+  Captures are kept.
+- **Show ▸** sets what the location lists:
+  - **Pathname** shows the full path as the name, written as set in
+    **Write Paths As**.
+  - **Subfolder** includes the folders inside it.
+  - **Other Files**, **Images**, **Geometry** and **HIP** set the kinds
+    of file listed. **Other Files** covers everything except images,
+    geometry and scenes.
+- **Label ▸** colours the location, as on a
+  [category](#category-colors).
 
-  Removing a folder removes it for everyone who uses the library, so it
-  does not come back from the other computer. Where Amaze was open
-  there at the time, close and reopen it to see the removal.
-- **Show ▸** sets what the location lists, one tick per entry:
-  - **Pathname** names it by its full path, written as **Write Paths
-    As** writes paths.
-  - **Subfolder** lists the folders inside it as well.
-  - **Other Files**, **Images**, **Geometry** and **HIP** are the kinds
-    of file it lists, in any combination. **Other Files** is everything
-    that is not an image, geometry or a scene.
+A new location lists Images, Geometry and HIP, without subfolders.
 
-  A new location lists Images, Geometry and HIP, without its
-  subfolders.
-- **Label ▸** colours it, as on a [category](#category-colors).
+A removed folder is removed for everyone who uses the library. An Amaze
+that is running on another computer shows the removal after a restart.
 
 ### Write Paths As
 
-Preferences ▸ Look ▸ **Write Paths As** controls how Amaze writes
-paths — Copy Path, and a location named by its path with **Show ▸
-Pathname**: **$HOME** (the default),
-**$JOB**, **$HIP**, or **Absolute**. A variable applies when the
-path lives under it; otherwise the path stays absolute.
+Preferences ▸ Look ▸ **Write Paths As** sets how Copy Path and **Show ▸
+Pathname** write paths: **$HOME** (the default), **$JOB**, **$HIP** or
+**Absolute**. A variable is used when the path is under it; other paths
+are written in full.
 
 ---
 
 ## Packages
 
-A **package** is a single `.amazepkg` file carrying assets out of your
-library: their files, thumbnails, categories, tags and comments. It is
-how a set of assets moves to another machine, another library, or
-another person.
+A **package** is a single `.amazepkg` file that carries assets with their
+files, previews, categories, tags and comments. Packages move assets
+between machines, libraries and people.
 
-**Making one.** Select any number of tiles, right-click ▸ **Export
-Package**, and choose where to write it. This is on every section's
-tile menu. To take a whole category at once, right-click it in the
-sidebar ▸ **Export Category**.
+**Export Package**, on the right-click menu of every section, writes the
+selected assets to a package. **Export Category**, on the sidebar's
+right-click menu, writes a whole category.
 
-**Bringing one in.** **Import/Generate ▸ Package Import (.amazepkg)**
-reads a package into your library. Every asset arrives with a new
-identity and is filed under a category called **Import**, so importing
-the same package twice gives you two copies rather than overwriting
-what you have. Files in a package land in an **Import** folder inside
-the library, which appears as a location in the File sidebar with every
-kind of file ticked in its **Show ▸**.
+**Import/Generate ▸ Package Import (.amazepkg)** adds a package to the
+library. Imported assets get new identities and are filed under the
+**Import** category, so a package imported twice gives two copies. The
+package's files go into an **Import** folder in the library, which the
+File sidebar lists as a location with every kind of file shown.
 
-**Restoring instead.** The **Amaze** source in the
-[online browser](#online-materials) carries the official packages.
-Right-click one ▸ **Restore** and its entries go back under their
-original identities, matching what is already there rather than adding
-beside it. This is the way to restore a default palette or
-material you deleted.
+**Restore**, on the right-click menu of a package in the **Amaze** source
+of the [online browser](#online-materials), puts its entries back under
+their original identities and replaces the existing ones. It restores
+default palettes and materials.
+
+---
+
+## Add-ons
+
+An **add-on** is a set of Houdini nodes that Amaze installs from the
+Amaze store and keeps up to date, such as Shapes. Each add-on is
+installed in its own folder inside Amaze's.
+
+**Preferences ▸ Add-On** lists the nodes of the installed add-ons, each
+row with a picture, the version and author, a switch and a short
+description. Nodes that belong together share a row and a switch.
+
+The switch takes effect at the next start of Houdini, and the line next
+to the button says so after each change. Switched off, the row's nodes
+are left out when Houdini starts; scenes that use them keep their values
+and show the nodes as incomplete until they are switched on again.
+
+**Check for Updates** lists new add-ons and newer versions from the store
+in the line next to it, and turns into **Update**, which installs them.
+They load at the next start of Houdini. Rows that are off stay off.
+
+**Preferences ▸ About ▸ Add-On beta versions** sets which version Check
+for Updates installs: the newest beta of each add-on when on, the newest
+release when off.
+
+Houdini loads add-ons through the `package_path` line in `Amaze.json`,
+described in the [README](README.md)'s installation steps.
 
 ---
 
 ## Tile icons
 
-Right-click any tile ▸ **Customize**.
+**Customize**, on every tile's right-click menu, opens the Customize
+dialog.
 
 <img src="docs/images/dialog_customize.png" width="460">
 
 The **Icon** menu sets what the tile shows:
 
-- **Preview** — the tile's own picture: a material's or a node
+- **Preview**: the tile's own picture. That is a material's or a node
   network's render, a snippet's code, a palette's swatches, a scene's
-  capture, or a file's preview.
-- **Generic** — the section's own icon.
-- **Custom** — one of 287 Feather icons on a background colour: four
-  presets, or the colour chip beside **Custom Color** for any other.
-  **Light Icon** draws the symbol light instead of dark.
+  capture or a file's preview.
+- **Generic**: the section's icon.
+- **Custom**: one of 287 Feather icons on a background colour, from four
+  presets or any colour through the chip next to **Custom Color**.
+  **Light Icon** draws the symbol light.
 
-Preview is the default wherever Amaze makes a picture, and a tile with
-no picture yet shows its Generic icon. A node network outside SOP and
-COP has nothing to render, so it defaults to Generic and Preview is
-greyed. A file Amaze makes no preview of defaults to Generic; its
-Preview is the system's icon for that file type. The preview square
-shows the finished tile.
+Preview is the default where Amaze makes a picture, and a tile shows its
+Generic icon until its picture exists. Node networks outside SOP and COP
+default to Generic, with Preview greyed. Files without a preview default
+to Generic, and their Preview is the system icon for the file type. The
+preview square shows the finished tile.
 
-The dialog also carries the asset's **Name**, **Category** and
-**Tags**. On a multi-selection, Category moves every selected tile and
-Tags adds to what each tile already has. **Apply** commits and stays
-open; **Accept** commits and closes. Closing the window any other way
-changes nothing.
+The dialog also sets the asset's **Name**, **Category** and **Tags**. On
+a multi-selection, Category moves every selected tile and Tags adds to
+each tile's tags. **Apply** saves and keeps the dialog open; **Accept**
+saves and closes it.
 
-- Applies to the whole selection, so twelve LOP setups take one icon in
-  one go.
-- A custom icon is stored beside the render, so **Preview** shows the
-  render again.
-- Your choice is stored with the library and travels with it.
+- Changes apply to the whole selection.
+- A custom icon is stored next to the render, and **Preview** brings the
+  render back.
+- Tile icons are stored in the library.
 
-The line weight is in Preferences ▸ Look ▸ **Tile Icon Line**.
+Preferences ▸ Look ▸ **Tile Icon Line** sets the line weight.
 
 ---
 
 ## Category colors
 
-Right-click a category in the sidebar ▸ **Label** and pick **Red**,
-**Yellow**, **Blue** or **Green**, or **Custom** for any other colour.
-Every tile in that category paints the strip under its thumbnail — the
-one carrying the name and type — in that colour, and the category's own
-sidebar row gets a matching bar down its left edge.
+**Label**, on a category's right-click menu in the sidebar, colours the
+category **Red**, **Yellow**, **Blue** or **Green**, or any colour
+through **Custom**. Every tile in the category shows the colour in the
+strip under its thumbnail, and the category's sidebar row gets a
+matching bar on its left edge. In [list view](#the-panel-at-a-glance),
+the Category column takes the colour. **Label ▸ Remove** removes it.
 
-In [list mode](#the-panel-at-a-glance) the Category column takes the
-same colour. **Label ▸ Remove** puts the normal dark strip back.
+The name and type text switches between dark and light to stay
+readable. A renamed category keeps its colour; a deleted category takes
+its colour with it.
 
-The name and type text flips between dark and light automatically, so
-any colour stays readable. Renaming a category carries its colour
-across; deleting one takes the colour with it.
+An asset has one category. Tags place an asset in several groups at
+once.
 
-Categories are one per asset. Use tags where something belongs in
-several places at once.
-
-**Export Category** on the same menu writes the whole category out as a
+**Export Category**, on the same menu, writes the whole category to a
 [package](#packages).
 
 ---
@@ -565,224 +536,213 @@ several places at once.
 
 The <img src="scripts/python/amaze/ui/icon_comments.svg" width="16">
 **Comments** button in the toolbar, between Online and Grid/List, opens
-and closes the **Comments pane**: a page docked beside the grid, one
-page per asset. The button is purple while the pane is open.
+and closes the **Comments pane**, a page per asset docked next to the
+grid. The button is purple while the pane is open.
 
 <img src="docs/images/comments_pane.png" width="820">
 
-The page is one flowing document. Select a tile and write. Click **+**
-for what you can add at your cursor:
+The page is one document per asset. The **+** button inserts at the
+cursor:
 
-- **Bullet point** — a framed line you type into, and keep writing
-  above or below it.
-- **Image** — pick a picture and it is copied into your library, so it
-  travels with the library rather than pointing at wherever you found
-  it. It is scaled to the width of the pane, and typing continues on
-  the line below.
+- **Bullet point**: a framed line for a to-do.
+- **Image**: a picture, copied into the library and scaled to the width
+  of the pane.
 
-Enter inside a to-do adds another; Enter on an empty one returns to
-plain text; clicking a to-do's marker checks it off and strikes it
-through. Emptying a to-do's text removes it. Everything saves as you
-type.
+In a to-do, Enter adds another to-do, and Enter on an empty to-do
+returns to plain text. A click on a to-do's marker checks it off. A
+to-do with no text is removed. Changes are saved as they are typed.
 
-To take a to-do apart, backspace at the start of its line: the frame
-becomes ordinary text and the next backspace eats the words. Deleting
-across the line above or below a to-do simply joins the lines — the
-frame keeps its marker.
+Backspace at the start of a to-do turns it into plain text. Deleting
+across the line above or below a to-do joins the lines, and the to-do
+keeps its marker.
 
-Comments are stored **in the library**, so they travel across machines.
-Every tile carries the
+Comments are stored in the library and shared across machines. The
 <img src="scripts/python/amaze/ui/badge_comment.svg" width="14"> badge in
-its lower-right corner, filled when the asset has comments and an
-outline when it has none. Clicking it opens or closes this pane, as the
-toolbar button does.
+the lower-right corner of every tile is filled when the asset has
+comments, and a click on it opens and closes the pane.
 
-Every section takes comments — materials, palettes, nodes, snippets and
-File rows alike.
+Every section takes comments: materials, palettes, nodes, snippets and
+files.
 
 ---
 
 ## Drag and drop
 
-Amaze manages the whole drag gesture itself, so a drag behaves the same
-in every section and every destination.
+Dragging works the same way in every section and onto every
+destination.
 
 **Materials**
 
-- Onto an **OBJ viewport** object — assigns the material to it.
-- Onto a **Solaris (LOP) viewport** object — a menu appears:
-  - **Swap ‹material›** — replaces a material already bound to that
-    prim. The old one is removed from the library node if nothing else
-    references it.
-  - **Set as Material on ‹prim›** — one entry per ancestor prim, so you
-    can bind to the mesh or to the whole geo.
-- Onto a **`materiallibrary` LOP** in the network editor — imports into
-  it, wired and registered.
-- Onto the **network editor** — imports the material there.
+- Onto an **OBJ viewport** object: assigns the material.
+- Onto a **Solaris (LOP) viewport** object: opens a menu.
+  - **Swap ‹material›** replaces a material already bound to that prim,
+    and removes the old one from the library node when nothing else
+    uses it.
+  - **Set as Material on ‹prim›** binds the material to that prim or to
+    one of its parents.
+- Onto a **materiallibrary LOP** in the network editor: imports the
+  material into it, wired and registered.
+- Onto the **network editor**: imports the material there.
 
-While you drag over a viewport, the prim under the cursor highlights
-using Houdini's own scene-graph highlight. A drop that lands nowhere
-useful shows a miss indicator
+During a drag over a viewport, the prim under the pointer is highlighted
+with Houdini's scene graph highlight. A drop on an invalid target shows
+a miss indicator
 <img src="scripts/python/amaze/ui/icon_drop_miss.svg" width="14">.
 
-**Everything else**
+**Other assets**
 
-- **Images and unknown files** onto a parameter field — like a file
-  from the OS file browser.
-- **Geometry** into a network or viewport — imports in context at the
-  release point.
-- **Scenes** released anywhere outside the panel — opens the scene,
-  same as double-click.
-- **Code** onto a node — fills its snippet parameter.
-- **Any asset** onto a sidebar category — files it there.
+- **Images and other files** onto a parameter field: set the file, as a
+  file from the OS file browser does.
+- **Geometry** into a network or viewport: imports it in context at the
+  drop point.
+- **Scenes** released outside the panel: opens the scene, as a
+  double-click does.
+- **Code** onto a node: writes the snippet into the node's code
+  parameter.
+- **Any asset** onto a sidebar category: files it in that category.
 
 ---
 
 ## Preferences
 
 The <img src="scripts/python/amaze/ui/icon_library.svg" width="16">
-gear button opens it. It is a floating window, not a modal, so it can
-stay open while you work. Five tabs.
+gear button opens Preferences, a floating window that stays open next to
+the scene. It has six tabs.
 
 ### Library
 
 <img src="docs/images/prefs_library.png" width="440">
 
-**Library Path** and the `...` button beside it choose the library.
-**Clean Up Library**, **Reload Library** and **Open Library Folder**
-act on it. **Material Versions** turns
-[versions](#versions) on and off.
+**Library Path** and its `...` button set the library folder. **Clean Up
+Library**, **Reload Library** and **Open Library Folder** act on the
+library. **Material Versions** turns [versions](#versions) on and off.
 
-**User** is who you are in this library. Favorites, File folders and
-the versions you save are kept per user, so picking yourself on another
-computer gives you the same things back. The dropdown switches users,
-**Rename** changes the name, **Create a new user...** adds one and
-switches to them, and **Delete** removes a user with their favorites
-and registered folders everywhere the library syncs. It asks first, and
-a machine still signed in as that user is asked who they are next time
-it opens.
+**User** is the user name in this library. Favorites, File folders and
+saved versions belong to the user, so the same user on another computer
+sees the same items. The menu switches users, **Rename** renames the
+current user, **Create a new user...** adds a user and switches to it,
+and **Delete** removes a user with their favorites and registered
+folders on every computer that uses the library, after a confirmation.
+A computer still signed in as that user asks for a user the next time
+Amaze opens.
 
-**Cache Path** and **Delete Local Cache** govern the thumbnail cache on
+**Cache Path** and **Delete Local Cache** manage the thumbnail cache on
 this machine.
 
 ### Render
 
 <img src="docs/images/prefs_render.png" width="440">
 
-**RenderSize**, **Samples (Redshift)**, **Samples (Karma)** and
-**Samples (Octane)**, **RAM Cache (MB)**, **Geometry Shading**,
-**Geometry Background** and
-**Render Thumbs on Import**. Below the divider, **Conversion Threads**
-for texture conversion, then **Download Resolution** and **Parallel
-Downloads** for the online sources.
+**RenderSize**, **Samples (Redshift)**, **Samples (Karma)**, **Samples
+(Octane)**, **RAM Cache (MB)**, **Geometry Shading**, **Geometry
+Background** and **Render Thumbs on Import**. Below the divider:
+**Conversion Threads** for texture conversion, and **Download
+Resolution** and **Parallel Downloads** for the online sources.
 
 ### Show/Hide
 
 <img src="docs/images/prefs_showhide.png" width="440">
 
-Which renderers Amaze offers, and which sections appear at all. A
-renderer switched off is gone from the [Filter](#the-panel-at-a-glance)
-menu, Convert to, Import to Materials and Import to Scene, and its
-Samples row leaves the Render tab.
+Two sub-tabs set which renderers and sections Amaze shows.
+
+- **Renderer** has a switch for each renderer. A renderer that is
+  switched off is removed from the [Filter](#the-panel-at-a-glance)
+  menu, Convert to, Import to Materials and Import to Scene, and its
+  Samples row is removed from the Render tab.
+- **Sections** has a switch for each section. A section that is
+  switched off has no tab in the panel.
 
 ### Look
 
 <img src="docs/images/prefs_look.png" width="440">
 
 **Show Counts on Categories**, **Hide Empty Categories**, **Step Size**
-(the size slider moves from mark to mark, every 64 px), **Write Paths
-As**, **Tile Icon Line** (Thin, or Feather's own Regular) and **Scroll
-Speed (%)**.
+(the size slider moves in steps of 64 px), **Write Paths As**, **Tile
+Icon Line** (Thin, or Feather's Regular) and **Scroll Speed (%)**.
+
+### Add-On
+
+The installed add-ons, a switch for each row, and **Check for Updates**
+for the Amaze store. See [Add-ons](#add-ons).
 
 ### About
 
 <img src="docs/images/prefs_about.png" width="440">
 
-Credits and licences. The version line above the buttons says what you
-are running and carries every update answer. **Check for Updates** asks
-the release page whether a newer Amaze exists; where there is one, the
-same button becomes **Install Update** and puts it in place. **Report a Bug...** opens the Amaze bug
-page in your browser with your Amaze, Houdini and OS versions already
-filled in; nothing is sent until you press Submit there.
+Credits and licences. The version line shows the running version and
+the answer to each update check. **Check for Updates** checks for a
+newer Amaze; when there is one, the button changes to **Install
+Update**, which installs it. **Report a Bug...** opens the Amaze bug page
+in the browser with the Amaze, Houdini and OS versions filled in; the
+report is sent with **Submit** on that page.
 
-Then the debug controls — **Debug Mode**, **Open Log**, **Save Log...**
-and **Clear Log** — and **Test Library**, which points Amaze at a
-throwaway library in the folder named below it. Your real Library Path,
-Cache Path and registered folders come back when you switch it off.
+**Debug Mode**, **Open Log**, **Save Log...** and **Clear Log** control
+the debug log. **Test Library** switches Amaze to a test library in the
+folder next to it; switched off, Amaze returns to the real Library Path,
+Cache Path and registered folders. **Add-On beta versions** sets which
+version of each add-on Check for Updates on the Add-On tab installs: the
+newest beta when on, the newest release when off.
 
-> **Where settings are kept.** The render settings and renderer
-> choices, conversion and download throughput, and how paths are
-> written are stored **with the library** and shared by everyone who
-> opens it: change the thumbnail samples on one computer and the other
-> answers the same. What is yours on this machine — view mode, icon
-> sizes, panel widths, which tabs show — is stored where the OS keeps
-> preferences (`~/Library/Preferences/Amaze` on macOS,
-> `%APPDATA%\Amaze` on Windows, `$XDG_CONFIG_HOME/Amaze` on Linux),
-> which updates and reinstalls leave alone. Where the library is
-> unreachable, Amaze works on the last values it saw.
+> **Where settings are stored.** Render settings, renderer choices,
+> conversion and download settings, and Write Paths As are stored in the
+> library and shared by everyone who opens it. Settings for this machine,
+> such as view mode, icon sizes, panel widths and visible tabs, are
+> stored in the OS preferences folder (`~/Library/Preferences/Amaze` on
+> macOS, `%APPDATA%\Amaze` on Windows, `$XDG_CONFIG_HOME/Amaze` on
+> Linux), which updates and reinstalls leave in place. When the library
+> is unreachable, Amaze uses the last values it read.
 
 ---
 
 ## Housekeeping and troubleshooting
 
 **Clean Up Library** (Preferences ▸ Library) scans the library in one
-pass: entries whose files are missing, uncategorized assets to rescue,
-category names to normalise, registered folders that no longer exist,
-favorites pointing at missing files. It reports in one summary and
-renders nothing.
+pass for entries with missing files, uncategorized assets, category
+names to normalise, registered folders that no longer exist and
+favorites that point at missing files, and reports the result in one
+summary.
 
-An entry whose files are missing is reported and kept — a file mid-sync
-looks the same as a file that is gone, and deleting the entry would
-take its tags, comments and favourites with it. Remove it yourself with
-**Delete** once you know. Files that no list claims move into Amaze's
-holding folder on this computer, outside your library, are named in the
-summary, and stay there for 30 days. Folders on a drive that is not
-mounted are left alone.
+Entries with missing files are reported and kept, since a file that is
+still syncing looks the same as a deleted one; **Delete** removes them.
+Files that no asset list uses are moved to Amaze's holding folder on
+this computer, outside the library, named in the summary and kept for
+30 days. Folders on drives that are not mounted are skipped.
 
-**Repair** is the shelf tool to reach for when Clean Up Library
-refuses, or when the panel will not open. It reads your library, says
-what is wrong, and offers two remedies: rebuilding the list from the
-recovery copy stored beside each asset, or putting back one of the
-snapshots. When the settings file that names your library,
-`settings.json`, will not read or is missing, Repair lists the dated
-copies kept beside it and puts one back. Its strongest action is
-moving files into a dated folder inside your library.
+**Repair**, on the Amaze shelf, repairs a library when Clean Up Library
+refuses or the panel does not open. It reads the library, reports the
+problems and offers two fixes: rebuilding the asset list from the
+recovery copy stored with each asset, or restoring a snapshot. When
+`settings.json`, the settings file that names the library, is unreadable
+or missing, Repair lists its dated copies and restores one. Its
+strongest action moves files into a dated folder inside the library.
 
-It lives on the shelf rather than in the panel because a running panel
-writes the list as you work, and would overwrite a repair made from
-inside it seconds later. From the shelf, nothing holds your library.
+Every write takes a snapshot of the asset list first, with rolling
+backups and a first-run copy, and writes from a second Houdini session
+are merged.
 
-Every write snapshots the list first — rolling backups plus a first-run
-copy — and a concurrent write from a second Houdini session is merged.
+**Material Versions** (Preferences ▸ Library) is stored in the library,
+and every computer that uses the library shares it.
 
-**Overwrite can be switched off for a whole library**, in Preferences ▸
-Library. Unlike the rest of Preferences this setting travels with the
-library, so two computers pointed at one library agree about it. With
-it off, saving over an existing material is refused and the Save dialog
-stops offering Overwrite.
+**Debug Mode** (Preferences ▸ About) records a session log. **Save
+Log...** writes a copy to attach to a bug report.
 
-That covers the **list** of your assets. An asset's own files are a
-separate matter: choosing **Overwrite** when you save over an existing
-material replaces them, and the last save wins.
+**A material renders black.** The usual causes are a texture that failed
+to download, or a material library node whose material list no longer
+includes the material. The log names both.
 
-**When something looks wrong**, turn on **Debug Mode** (Preferences ▸
-About) and reproduce it. The log records what the app did, and
-**Save Log...** writes a copy to attach to a bug report.
-
-**A material renders black.** Usually a texture that failed to
-download, or a material library node whose material list no longer
-covers the material. The log names both cases.
-
-**Changed a Python file.** Houdini caches modules per session, so quit
-and relaunch. Reopening the panel loads the cached modules.
+**A changed Python file** loads after a restart of Houdini, which caches
+modules per session.
 
 ---
 
 ## Credits and licence
 
-Amaze uses code from [egMatLib](https://github.com/eglaubauf/egMatLib)  for its preview engine for material thumbnails. Thank you.
+Amaze uses code from [egMatLib](https://github.com/eglaubauf/egMatLib)
+for its material preview engine. Thank you.
 
-Colour palette sources: Sanzo Wada (public domain, via dblodorn/sanzo-wada), Paul Klee, Josef Albers, Johannes Itten (interpretive palettes from public-domain works).
+Colour palette sources: Sanzo Wada (public domain, via
+dblodorn/sanzo-wada), Paul Klee, Josef Albers and Johannes Itten
+(interpretive palettes from public-domain works).
 
 Tile icons are [Feather](https://feathericons.com) by Cole Bemis (MIT).
 
@@ -790,7 +750,7 @@ Online material sources: [Poly Haven](https://polyhaven.com/) (CC0),
 [AMD GPUOpen](https://matlib.gpuopen.com/) (MIT Public Domain),
 [NVIDIA PhysicalAI-SimReady-Materials](https://github.com/NVIDIA-Omniverse/PhysicalAI-SimReady-Materials) (MIT-0),
 [Physically Based](https://physicallybased.info/) by Anton Palmqvist
-(CC0 1.0), and [EPFL RGL](https://rgl.epfl.ch/materials) measured
-materials (CC0 1.0). Colour palettes come from public-domain works.
+(CC0 1.0) and [EPFL RGL](https://rgl.epfl.ch/materials) measured
+materials (CC0 1.0).
 
-Amaze is **GPLv3** — see [LICENSE](LICENSE).
+Amaze is **GPLv3**. See [LICENSE](LICENSE).
