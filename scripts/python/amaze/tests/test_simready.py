@@ -12,7 +12,7 @@ import zipfile
 from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-from PySide6 import QtWidgets  # noqa: E402
+from PySide6 import QtCore, QtWidgets  # noqa: E402
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
@@ -208,6 +208,69 @@ class SimReadyListingTest(unittest.TestCase):
         self.assertEqual(4, len(source.list_materials(limit=100)))
         self.assertEqual({"Glass.zip"}, {name for name, _r in release.calls},
                          "the archives that did read were read again")
+
+
+class SimReadyRemembersTest(unittest.TestCase):
+    """A session's first refresh re-reads only the archives the release changed."""
+
+    def _listed(self):
+        from amaze.core import matx_sources
+        return matx_sources.SimReadySource().list_materials(limit=100)
+
+    def test_a_new_session_reads_no_archive_its_last_listing_read(self):
+        from amaze.core import matx_sources
+        release = _release(self)
+        before = self._listed()
+        release.calls.clear()
+        source = matx_sources.SimReadySource()    # the next Houdini session
+        source.remember(before)
+        after = source.list_materials(limit=100)
+        self.assertEqual([], release.calls, "an unchanged archive was read again")
+        self.assertEqual([r.to_dict() for r in before], [r.to_dict() for r in after])
+
+    def test_an_archive_whose_size_changed_is_read_again(self):
+        from amaze.core import matx_sources
+        release = _release(self)
+        before = self._listed()
+        member = next(iter(_textures("Skin", "Skin_Dark")))
+        release.objects["Skin.zip"] = _archive("Skin", ["Skin_Dark"], drop=(member,))
+        release.answer = _Release(release.objects).answer    # same url, new size
+        release.calls.clear()
+        source = matx_sources.SimReadySource()
+        source.remember(before)
+        after = source.list_materials(limit=100)
+        self.assertEqual({"Skin.zip"}, {name for name, _range in release.calls})
+        self.assertEqual(sorted(r.uid for r in before), sorted(r.uid for r in after))
+
+    def test_the_refresh_menu_reuses_nothing(self):
+        """Refresh is the user asking to look, so the worker is handed no last listing."""
+        from amaze.core import matx_library
+        handed = []
+        model = matx_library.MatxOnlineLibrary()
+        self.addCleanup(model.shutdown)
+        listed = self._listed_offline()
+        model._load_cache = lambda: list(listed)    # the session's first open reads the disk
+
+        class Worker(QtCore.QObject):
+            done = QtCore.Signal(object, object, int)
+            finished = QtCore.Signal()
+
+            def __init__(self, _sources, _generation, previous=()):
+                super().__init__()
+                handed.append(list(previous))
+
+            def start(self):
+                self.finished.emit()
+
+        with mock.patch.object(matx_library, "_CatalogueWorker", Worker):
+            model.reload()
+            model.reload(force=True)
+        self.assertEqual([len(listed), 0], [len(h) for h in handed],
+                         "the first open hands its disk listing on, Refresh hands none")
+
+    def _listed_offline(self):
+        _release(self)
+        return self._listed()
 
 
 class SplitArchiveTest(unittest.TestCase):

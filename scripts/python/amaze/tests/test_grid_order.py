@@ -13,27 +13,28 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze.core import multifilterproxy_model  # noqa: E402
+from amaze.core import grid_engine, multifilterproxy_model  # noqa: E402
 from amaze.tests import test_support  # noqa: E402,F401
 
 
-class _Rows(QtCore.QAbstractListModel):
-    """A source that appends the way the library does when an asset is saved: a per-row insert at the END of source order."""
+class _Rows(grid_engine.GridEngine, QtCore.QAbstractTableModel):
+    """A grid model that appends as a save does: one row at a time, at the END."""
 
     NameRole = QtCore.Qt.ItemDataRole.UserRole
+    COLUMN_ROLES = {"name": QtCore.Qt.ItemDataRole.DisplayRole}
+    GRID_ROWS = ("_names",)
 
     def __init__(self, names=()):
         super().__init__()
         self._names = list(names)
+        self.order_rows()
 
     def rowCount(self, parent=QtCore.QModelIndex()):
         return 0 if parent.isValid() else len(self._names)
 
-    def data(self, index, role=QtCore.Qt.ItemDataRole.DisplayRole):
-        if not index.isValid():
-            return None
+    def row_data(self, row, role):
         if role in (QtCore.Qt.ItemDataRole.DisplayRole, self.NameRole):
-            return self._names[index.row()]
+            return self._names[row]
         return None
 
     def append(self, name):
@@ -146,54 +147,43 @@ class TheResortIsCoalesced(_Case):
     def test_a_burst_of_inserts_costs_ONE_sort(self):
         source, proxy = self.build(["zulu"])
         sorts = []
-        real = proxy.sort
-
-        def counted(column, order=QtCore.Qt.SortOrder.AscendingOrder):
-            sorts.append(column)
-            return real(column, order)
-
-        proxy.sort = counted
-        for n in range(25):          # a multi-save arrives a row at a time; a 548-asset load is one batch insert
+        source.layoutChanged.connect(lambda *a: sorts.append(1))    # the model's one sort signal
+        for n in range(25):          # a multi-save arrives a row at a time
             source.append("row%02d" % n)
         self.settle()
         self.assertEqual(
             1, len(sorts),
-            "25 rows arriving in one turn cost %d sorts - that is the "
-            "quadratic load setDynamicSortFilter(False) exists to "
-            "avoid" % len(sorts))
+            "25 rows arriving in one turn cost %d sorts - one per row is "
+            "quadratic" % len(sorts))
 
-    def test_it_does_not_sort_before_a_column_is_established(self):
-        """`sortColumn() == -1` means nothing has established an order yet, and sorting then would impose one nobody asked for."""
+    def test_a_model_is_in_name_order_before_anything_asks(self):
+        """Every grid opens on Name, A to Z, so a model starts there; no proxy has to ask."""
         source = _Rows(["b", "a"])
         proxy = multifilterproxy_model.MultiFilterProxyModel()
         proxy.setSourceModel(source)
-        proxy.setDynamicSortFilter(False)
-        sorts = []
-        proxy.sort = lambda *a, **k: sorts.append(a)
-        source.append("c")
-        self.settle()
-        self.assertEqual([], sorts,
-                         "it sorted a proxy that has no sort column")
+        self.assertEqual(["a", "b"], self.shown(proxy))
+        self.assertEqual(-1, proxy.sortColumn(), "the proxy sorted itself")
 
 
-class _Flagged(QtCore.QAbstractListModel):
-    """A source with a filterable FLAG per row - a favourite - that can be toggled after the fact, emitting `dataChanged` for the role it changed and nothing else."""
+class _Flagged(grid_engine.GridEngine, QtCore.QAbstractTableModel):
+    """A grid model with a favourite FLAG per row, toggled after the fact."""
 
     FlagRole = QtCore.Qt.ItemDataRole.UserRole + 2     # 258, FavoriteRole
     ColourRole = QtCore.Qt.ItemDataRole.UserRole + 8   # 264, a colour
+    COLUMN_ROLES = {"name": QtCore.Qt.ItemDataRole.DisplayRole}
+    GRID_ROWS = ("_names",)
 
     def __init__(self, names, flagged=()):
         super().__init__()
         self._names = list(names)
         self._flags = {name: name in flagged for name in names}
+        self.order_rows()
 
     def rowCount(self, parent=QtCore.QModelIndex()):
         return 0 if parent.isValid() else len(self._names)
 
-    def data(self, index, role=QtCore.Qt.ItemDataRole.DisplayRole):
-        if not index.isValid():
-            return None
-        name = self._names[index.row()]
+    def row_data(self, row, role):
+        name = self._names[row]
         if role in (QtCore.Qt.ItemDataRole.DisplayRole, 0):
             return name
         if role == self.FlagRole:
@@ -268,8 +258,8 @@ class AChangedRowIsRETESTED(_Case):
         """Same rule as an insert: a row coming back into view lands in order, not at the end."""
         source, proxy = self.build_flagged(
             ["gamma", "alpha", "beta"], ["gamma"])
-        source.toggle(1)
-        source.toggle(2)
+        source.toggle(source._names.index("alpha"))    # by name: the model keeps its own order
+        source.toggle(source._names.index("beta"))
         self.settle()
         self.assertEqual(["alpha", "beta", "gamma"], self.shown(proxy))
 
@@ -287,16 +277,14 @@ class TheCoalescerDoesNotWAKEItself(_Case):
         proxy.setFilter(_Flagged.FlagRole, True)
         return source, proxy
 
-    def _counting(self, proxy):
-        counts = {"sort": 0, "filter": 0, "layout": 0}   # counting `invalidateFilter` alone cannot see a second pass; `sort` and `layoutChanged` are what bite
-        real_sort, real_filter = proxy.sort, proxy.invalidateFilter
-        proxy.sort = lambda c, o=QtCore.Qt.SortOrder.AscendingOrder: (
-            counts.__setitem__("sort", counts["sort"] + 1), real_sort(c, o))[1]
+    def _counting(self, source, proxy):
+        counts = {"sort": 0, "filter": 0}    # the proxy's passes, and the model's sorts
+        real_filter = proxy.invalidateFilter
         proxy.invalidateFilter = lambda: (
             counts.__setitem__("filter", counts["filter"] + 1),
             real_filter())[1]
-        proxy.layoutChanged.connect(
-            lambda *a: counts.__setitem__("layout", counts["layout"] + 1))
+        source.layoutChanged.connect(
+            lambda *a: counts.__setitem__("sort", counts["sort"] + 1))
         return counts
 
     def test_rows_coming_IN_or_going_OUT_cost_one_pass(self):
@@ -304,7 +292,7 @@ class TheCoalescerDoesNotWAKEItself(_Case):
         for flagged, shown in (([], names), (names, [])):
             with self.subTest(arriving=not flagged):
                 source, proxy = self.build_flagged(names, flagged)
-                counts = self._counting(proxy)
+                counts = self._counting(source, proxy)
 
                 for row in range(3):
                     source.toggle(row)          # three rows move at once
@@ -318,14 +306,13 @@ class TheCoalescerDoesNotWAKEItself(_Case):
                     1, counts["filter"],
                     "%d re-filters for one burst" % counts["filter"])
                 self.assertEqual(
-                    1, counts["sort"],
-                    "%d sorts for one burst - the pass woke itself up "
-                    "through its own rowsInserted" % counts["sort"])
+                    0, counts["sort"],
+                    "%d sorts for a star the order does not read" % counts["sort"])
 
     def test_an_insert_and_a_data_change_MERGE_into_one_pass(self):
-        """The queued-pass branch: an insert schedules a pass that only re-sorts, and a toggle in the same turn has to make that SAME pass re-filter too."""
+        """An insert costs the model one sort and a star in the same turn one re-filter."""
         source, proxy = self.build_flagged(["bravo"], ["bravo"])
-        counts = self._counting(proxy)
+        counts = self._counting(source, proxy)
 
         source.append_flagged("alpha", True)   # insert: sort only
         source.toggle(0)                       # bravo un-starred: filter
@@ -374,7 +361,7 @@ class ACOLOURChangeIsNotAReFilter(_Case):
         source, proxy = self.build_flagged(
             ["zulu", "bravo"], ["zulu", "bravo"])
         self.assertEqual(["bravo", "zulu"], self.shown(proxy))
-        source.rename(0, "alpha")
+        source.rename(source._names.index("zulu"), "alpha")
         self.settle()
         self.assertEqual(
             ["alpha", "bravo"], self.shown(proxy),

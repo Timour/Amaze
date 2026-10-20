@@ -188,8 +188,8 @@ class CodeLibrary(library.AssetLibrary):
         self._saved_rows_changed([asset])
         return True
 
-    def data(self, index, role=0):
-        """Hover tooltip: the snippet's own COMMENT, which is where its description went when the Description field retired ▸p/d03-retired. Everything else falls through to the material machinery."""
+    def row_data(self, row, role):
+        """The tooltip is the snippet's own comment ▸p/d03-retired; the rest is the base's."""
         if role == QtCore.Qt.ItemDataRole.ToolTipRole:
             from amaze.core import notes
             from amaze.helpers import ui_helpers
@@ -197,12 +197,12 @@ class CodeLibrary(library.AssetLibrary):
             page = notes.note_for(
                 self.preferences,
                 notes.note_key(self.NOTES_SECTION,
-                               str(self._assets[index.row()].mat_id)))
-            said = "\n".join(item.get("text", "")    # TEXT blocks only: a to-do or a picture is not a description of the snippet
+                               str(self._assets[row].mat_id)))
+            said = "\n".join(item.get("text", "")    # TEXT blocks only, never a to-do or a picture
                              for item in page.get("items", [])
                              if item.get("t") == "text").strip()
-            return ui_helpers.tooltip_text(said) if said else None  # no name - it is already on the tile - and word-wrapped in a max-width box
-        return super().data(index, role)
+            return ui_helpers.tooltip_text(said) if said else None  # no name: the tile shows it
+        return super().row_data(row, role)
 
     def seed_starter_snippets(self, category_model) -> None:
         """Seed an "Examples" category of snippets into this library, ONCE. Guarded by a versioned marker file in the library dir so deleting a seeded snippet doesn't bring it back, and existing user snippets are left alone. Best-effort: any failure (missing/broken def file, no library dir) is printed and swallowed so it can never block panel startup."""
@@ -278,11 +278,11 @@ class CodeLibrary(library.AssetLibrary):
         """Content-addressed: the code text + language, so an edit mints a new key (and the old preview ages out of the shared LRU)."""
         return ("code", asset.mat_id, hash(asset.code), asset.renderer)
 
-    def _decoration_image(self, index: QtCore.QModelIndex):
-        """The tile image: a chosen tile icon when the row has one, else the painted code preview - taken from the shared thumbnail engine, painted and deposited on a miss."""
-        asset = self._assets[index.row()]
-        if tile_icons.face_for(self, index.row()) != "preview":    # no thumbnail FILE to swap here
-            return self._missing_thumb_image(index.row())
+    def _decoration_image(self, row: int):
+        """The tile image: a chosen icon, else the painted code preview, painted on a miss."""
+        asset = self._assets[row]
+        if tile_icons.face_for(self, row) != "preview":    # no thumbnail FILE to swap here
+            return self._missing_thumb_image(row)
         key = self._preview_key(asset)
         image = thumbnails.engine.peek(key)
         if image is not None:

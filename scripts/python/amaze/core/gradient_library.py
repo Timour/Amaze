@@ -247,7 +247,7 @@ class GradientLibrary(library.AssetLibrary):
                      category_name, self.sanitize_tags(tags or ""),
                      False, "")
         mat._extra = {"colors": colors, "ramp": ramp_data}
-        self._append_record(mat, row=0)    # the TOP: Colors shows source order, newest where the eye is
+        self._append_record(mat)
         if not self.save():  # nothing reached disk, so nothing stays on screen
             self._take_back_refused_append(mat)
             debug.alert(
@@ -316,9 +316,8 @@ class GradientLibrary(library.AssetLibrary):
         return ("grad", self._is_banded(colors, ramp), hexes, bases,
                 stops, icon_key, THUMB_SIZE)
 
-    def _decoration_image(self, index: QtCore.QModelIndex):
-        """The painted swatch (or chosen icon) over the engine's PAINT path - this section has no thumbnail files, so the base's file loader never applies."""
-        row = index.row()
+    def _decoration_image(self, row: int):
+        """The painted swatch (or chosen icon); Colors has no thumbnail files to load."""
         key = self._swatch_key(row)
         image = thumbnails.engine.peek(key)
         if image is not None:
@@ -372,17 +371,12 @@ class GradientLibrary(library.AssetLibrary):
             thumbnails.engine.discard(self._swatch_key(row))
             self.row_changed(row, [QtCore.Qt.ItemDataRole.DecorationRole])
 
-    def data(self, index, role: int = 0):
-        if index.column() > 0:  # later columns are the table's, not the row's; column 0 falls through so grid mode cannot tell
-            return self.column_data(index, role)
-        row = index.row()
-        if not 0 <= row < len(self._assets):
-            return None
+    def row_data(self, row, role):
         asset = self._assets[row]
         if role == QtCore.Qt.ItemDataRole.DisplayRole:
             return asset.name or "Gradient"
         if role in (self.RendererLabelRole, self.RendererRole):
-            return "Gradient"  # uniformly the KIND of thing; which set or size an entry belongs to is Category-column information
+            return "Gradient"  # the KIND of thing; its set or size is the Category column's
         if role == QtCore.Qt.ItemDataRole.ToolTipRole:
             from amaze.helpers import ui_helpers
             names = ", ".join(
@@ -391,7 +385,7 @@ class GradientLibrary(library.AssetLibrary):
         if role == self.CategoryLabelRole:
             cats = asset.categories
             return cats[0] if cats else "Uncategorized"
-        return super().data(index, role)
+        return super().row_data(row, role)
 
 
 class GradientFilterProxyModel(multifilterproxy_model.MultiFilterProxyModel):

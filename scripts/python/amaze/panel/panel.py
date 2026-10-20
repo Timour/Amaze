@@ -13,7 +13,7 @@ from PySide6 import QtWidgets, QtGui, QtCore
 import hou
 
 import amaze
-from amaze.core import grid_columns
+from amaze.core import grid_columns, grid_engine
 from amaze.panel import (dragdrop_widgets, empty_state, grid, notes_panel,
                          sections, sidebar)
 from amaze.core import debug, keyed_store, locations
@@ -85,7 +85,8 @@ _reload(nodes)
 _reload(husk_job)    # before thumbs, which submits to its queue
 _reload_loaded("amaze.render.thumbs")
 _reload(tile_icons)    # before gradient_library and the Node Info dialog, which read its facts
-_reload(grid_columns)    # BEFORE library and its siblings: they mix in GridColumnsMixin, so a stale one has the models answering old columns while the header answers new
+_reload(grid_columns)    # BEFORE the engine, which reads its column order
+_reload(grid_engine)    # BEFORE library and its siblings, which mix it in
 _reload(library)
 _reload(category)
 _reload_loaded("amaze.core.repair")
@@ -271,15 +272,16 @@ class AmazePanel(QtWidgets.QWidget):
         name = "btn_menu_" + "".join(c for c in menu.title().lower() if c.isalnum())
         return ui_helpers.IconMenuButton(menu, icon_path, name=name)    # stable: B01 and the snapshots key on it
 
-    def _grid_proxy(self, proxy, model, sort: bool = False) -> tuple:
+    def _grid_proxy(self, proxy, model) -> tuple:
         """`proxy` set up over `model` the one way grid proxies are, and its selection model."""
         proxy.setSourceModel(model)
-        proxy.setSortCaseSensitivity(QtCore.Qt.CaseSensitivity.CaseInsensitive)
         proxy.setFilterCaseSensitivity(QtCore.Qt.CaseSensitivity.CaseInsensitive)
-        if sort:
-            proxy.sort(0)
-        proxy.setDynamicSortFilter(False)    # the base class re-sorts and re-filters ▸r/proxy-invariant
+        proxy.setDynamicSortFilter(False)    # the base class re-filters ▸r/proxy-invariant
+        proxy.layoutChanged.connect(self._follow_sort_arrow)    # another panel may sort the model
         return proxy, QtCore.QItemSelectionModel(proxy, self)
+
+    def _follow_sort_arrow(self, *_args) -> None:
+        grid.sync_sort_indicator(self)
 
     def _sidebar_proxy(self, model):
         """A sidebar proxy over `model`: never sorted, as the stored order is the sidebar's."""
@@ -294,8 +296,7 @@ class AmazePanel(QtWidgets.QWidget):
 
         self.category_sorted_model = self._sidebar_proxy(self.category_model)
         self.material_sorted_model, self.material_selection_model = self._grid_proxy(
-            multifilterproxy_model.MultiFilterProxyModel(self), self.material_model,
-            sort=True)
+            multifilterproxy_model.MultiFilterProxyModel(self), self.material_model)
         self.thumb_delegate = AssetItemDelegate(
             self.material_model.RendererLabelRole,
             self.thumblist,
@@ -363,12 +364,10 @@ class AmazePanel(QtWidgets.QWidget):
 
         self.cop_category_sorted_model = self._sidebar_proxy(self.cop_category_model)
         self.cop_sorted_model, self.cop_selection_model = self._grid_proxy(
-            multifilterproxy_model.MultiFilterProxyModel(self), self.cop_model,
-            sort=True)
+            multifilterproxy_model.MultiFilterProxyModel(self), self.cop_model)
         self.code_category_sorted_model = self._sidebar_proxy(self.code_category_model)
         self.code_sorted_model, self.code_selection_model = self._grid_proxy(
-            multifilterproxy_model.MultiFilterProxyModel(self), self.code_model,
-            sort=True)
+            multifilterproxy_model.MultiFilterProxyModel(self), self.code_model)
         self._seed_curated_content()    # seeds the snippets AND the palettes once per library, through one door a library switch also takes, so a virgin library seeds whichever way it arrives
 
         for _model in (self.material_model, self.cop_model, self.code_model):    # multi-category was removed, so every asset collapses to its first category; idempotent, so this one-time migration no-ops on every subsequent launch

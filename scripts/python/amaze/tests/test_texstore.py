@@ -205,13 +205,14 @@ class SaveDoorTest(unittest.TestCase):
         source = self._outside_texture()
         builder, image = self._saveable_builder("Adopted_Fabric", source)
         before = model.rowCount()
+        held = test_support.asset_ids(model)
         renderer = model.add_asset(builder, "Fabrics", "", False)
         self.assertTrue(renderer, "premise: the save went through")
         self.assertEqual(before + 1, model.rowCount())
         self.assertEqual(source, image.parm("file").unexpandedString(),
                          "the SCENE node was rewritten - adoption must "
                          "happen on the staged copy only")
-        row = model.assets[-1]
+        row, = test_support.arrived(model, held)
         tokens = (row.get_as_dict().get("textures") or [])
         self.assertEqual(1, len(tokens), "the row carries no inventory")
         self.assertTrue(tokens[0].startswith("$AMAZELIB/matX/"), tokens)
@@ -235,8 +236,9 @@ class SaveDoorTest(unittest.TestCase):
         prefs = model.preferences
         source = self._outside_texture("resolved_diff.png")
         builder, _image = self._saveable_builder("Resolved_Fabric", source)
+        held = test_support.asset_ids(model)
         self.assertTrue(model.add_asset(builder, "Fabrics", "", False))
-        row = model.assets[-1]
+        row, = test_support.arrived(model, held)
         handler = nodes_mod.NodeHandler(prefs)
         ok, reason, created = handler.import_asset_to_scene(row, "/mat")
         self.assertTrue(ok, reason)

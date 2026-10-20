@@ -301,7 +301,7 @@ class ThumbnailCache:
 
 
 class TextureFilterProxyModel(grid_proxy.GridProxyModel):
-    """Filename text filter + favorites-only toggle + kind filter for the File section - deliberately not MultiFilterProxyModel, whose hardcoded Material role numbers would collide with this model's unrelated numbering; what the two DO share (the Grid area's shown-and-ordered invariant) is the base class."""
+    """File's filters: name text, favourites, kind - its own role numbers, not the assets'."""
 
     def __init__(self, parent: QtCore.QObject | None = None) -> None:
         super().__init__(parent)
@@ -322,9 +322,8 @@ class TextureFilterProxyModel(grid_proxy.GridProxyModel):
         self.refilter()
 
     def watched_roles(self):
-        """Exactly what filterAcceptsRow reads - favourite, kind, the display name - plus the sort role, so a role emitted over every row (a sidebar colour, a comment badge) does not buy a whole re-filter through the blacklist fallback."""
-        watched = {QtCore.Qt.ItemDataRole.DisplayRole, self.sortRole(),
-                   self.sort_column_role()}    # the sort COLUMN's role too: a later column orders on a UserRole this set would otherwise drop
+        """Exactly what filterAcceptsRow reads: the display name, favourite and kind."""
+        watched = {QtCore.Qt.ItemDataRole.DisplayRole}
         model = self.sourceModel()
         for name in ("FavoriteRole", "KindRole"):
             role = getattr(model, name, None)

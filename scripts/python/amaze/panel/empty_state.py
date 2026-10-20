@@ -238,6 +238,8 @@ def track(panel) -> None:
     panel._empty_refresh = lambda *_: refresh(panel)
     watched = (model.rowsInserted, model.rowsRemoved,
                model.modelReset, model.layoutChanged)
+    if hasattr(model, "refiltered"):    # a search that hides nothing still changes the words
+        watched += (model.refiltered,)
     for signal in watched:
         signal.connect(panel._empty_refresh)
     panel._empty_watch = watched

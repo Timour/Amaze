@@ -188,9 +188,11 @@ class OctanesOwnBuilderRoundTrips(unittest.TestCase):
                     pass
 
     def _saved(self, node):
+        held = test_support.asset_ids(self.model)
         renderer = self.model.add_asset(node, "OctaneProbe", "", False)
         self.assertEqual("Octane", renderer, "the save did not take it as Octane")
-        return self.model.assets[-1]
+        saved, = test_support.arrived(self.model, held)
+        return saved
 
     def _imported(self, asset, target="mat", context=None):
         ok, reason, created = nodes.NodeHandler(self.prefs).import_asset_to_scene(

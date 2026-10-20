@@ -14,7 +14,7 @@ def split_search(text) -> tuple:
 
 
 class MultiFilterProxyModel(grid_proxy.GridProxyModel):
-    """The FILTERS - which roles this proxy matches on and how; what is shown and in what ORDER is the base class's. ▸r/filter-role-numbers"""
+    """The FILTERS - which roles this proxy matches on, and how. ▸r/filter-role-numbers"""
 
     def __init__(self, parent: QtCore.QObject | None = None) -> None:
         super().__init__(parent)
@@ -22,8 +22,8 @@ class MultiFilterProxyModel(grid_proxy.GridProxyModel):
         self._folded = {}  # role -> the lowered spelling of a STRING filter, folded ONCE at set time - filterAcceptsRow ran .lower() per row per keystroke; the favourites role compares raw and stays out
 
     def watched_roles(self):
-        """Exactly what this proxy reads: the roles it filters on now, plus the ones it orders by."""
-        return set(self._filters) | {self.sortRole(), self.sort_column_role()}    # the sort COLUMN's role too: sorting by Favorite orders on FavoriteRole, and watching DisplayRole alone left a starred row sitting in its old place
+        """What this proxy reads: the roles it filters on now, and the name."""
+        return set(self._filters) | {QtCore.Qt.ItemDataRole.DisplayRole}
 
     def setFilter(self, filter_role, filter_value):
         """Filter on one role; an empty string clears it. ▸r/filter-role-numbers"""

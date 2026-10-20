@@ -43,9 +43,11 @@ class CategoryColorTest(unittest.TestCase):
     def _an_asset(self, cat: str) -> int:
         lop = hou.node("/obj").createNode("lopnet", "cc_src")
         lop.createNode("sphere")
+        held = test_support.asset_ids(self.model)
         self.model.add_asset(lop, cat, "", False, name="Coloured")
         lop.destroy()
-        return len(self.model.assets) - 1
+        saved, = test_support.arrived(self.model, held)
+        return self.model.find_asset_row_by_id(saved.mat_id)
 
     def test_an_uncoloured_or_uncategorised_tile_has_no_colour(self):
         self.assertEqual("", self.model.category_color(self.row),

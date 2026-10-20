@@ -12,7 +12,7 @@ import hashlib
 from PySide6 import QtCore, QtGui
 
 from amaze.core import debug, matx_sources, renderers, thumbnails
-from amaze.core import grid_columns
+from amaze.core import grid_engine
 
 PREVIEW_DIR_NAME = "matx_previews"    # a NAME only - where it lives resolves per call in preview_cache(), like CATALOGUE_NAME below
 
@@ -57,14 +57,20 @@ class _CatalogueWorker(QtCore.QThread):
 
     done = QtCore.Signal(object, object, int)   # (records, errors, generation)
 
-    def __init__(self, sources, generation):
+    def __init__(self, sources, generation, previous=()):
         super().__init__()
         self._sources = list(sources)
         self._generation = generation
+        self._previous = list(previous)    # the last full listing, which a source may reuse
 
     def run(self):
         records, errors = [], []
         for src in self._sources:
+            try:
+                src.remember([r for r in self._previous if r.source == src.name])
+            except Exception as exc:                    # noqa: BLE001
+                debug.event("online", "last listing not reused - reading "    # costs time only
+                            "it all", source=src.name, error=str(exc))
             try:
                 found = src.list_materials(limit=CATALOGUE_CAP)
                 if len(found) >= CATALOGUE_CAP:
@@ -118,7 +124,7 @@ class _PreviewWorker(QtCore.QThread):
                 self.attempted.emit()    # drives the bar - must fire even on failure, or a timed-out preview stalls it short of 100%
 
 
-class MatxOnlineLibrary(grid_columns.GridColumnsMixin,
+class MatxOnlineLibrary(grid_engine.GridEngine,
                        QtCore.QAbstractTableModel):
     """Rows = materials available online, from one source at a time."""
 
@@ -126,6 +132,7 @@ class MatxOnlineLibrary(grid_columns.GridColumnsMixin,
         "name": QtCore.Qt.ItemDataRole.DisplayRole,
         "type": "RendererLabelRole",
     }
+    GRID_ROWS = ("_records",)
 
     IdRole = QtCore.Qt.ItemDataRole.UserRole            # 256 - same role NUMBERS as MaterialLibrary, the shared delegate and proxy must line up; held equal by test_role_numbers
     CategoryRole = QtCore.Qt.ItemDataRole.UserRole + 1  # 257
@@ -233,10 +240,13 @@ class MatxOnlineLibrary(grid_columns.GridColumnsMixin,
                     total=len(self._all))
         self.beginResetModel()
         self._records = rows
-        self._key_rows = {
-            self._preview_key(r): i for i, r in enumerate(rows)
-        }
+        self.order_rows()    # in the grid's order before any view sees them; maps the keys
         self.endResetModel()    # no eager queueing after this - data() asks for what it paints
+
+    def rows_reordered(self) -> None:
+        self._key_rows = {
+            self._preview_key(r): i for i, r in enumerate(self._records)
+        }
 
     def reload(self, force=False):
         """Show the catalogue fast: in memory → re-filter; else the DISK cache instantly with a background network refresh - only a cache miss waits on the fetch."""
@@ -255,7 +265,8 @@ class MatxOnlineLibrary(grid_columns.GridColumnsMixin,
             return
         self._loading = True
         self._generation += 1
-        worker = _CatalogueWorker(self._sources, self._generation)
+        worker = _CatalogueWorker(    # Refresh is the user asking to LOOK, so it reuses nothing
+            self._sources, self._generation, () if force else self._all)
         worker.done.connect(self._on_catalogue)
         worker.finished.connect(lambda w=worker: self._retire(w))
         self._workers.append(worker)
@@ -525,12 +536,8 @@ class MatxOnlineLibrary(grid_columns.GridColumnsMixin,
             return self._records[row]
         return None
 
-    def data(self, index, role=0):
-        if index.column() > 0:    # LATER COLUMNS are the table's (QTableView migration step 1); column 0 falls through unchanged, so grid mode cannot tell
-            return self.column_data(index, role)
-        if not index.isValid() or index.row() >= len(self._records):
-            return None
-        rec = self._records[index.row()]
+    def row_data(self, row, role):
+        rec = self._records[row]
 
         if role == QtCore.Qt.ItemDataRole.DisplayRole:
             return rec.title

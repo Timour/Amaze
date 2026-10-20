@@ -365,6 +365,9 @@ class MatxSource:
     def list_materials(self, search="", offset=0, limit=60) -> list:
         raise NotImplementedError
 
+    def remember(self, records) -> None:
+        """Before a refresh: this source's records from the last full listing, to reuse."""
+
     def resolutions(self, record) -> list:
         return []
 
@@ -1313,7 +1316,18 @@ class SimReadySource(MatxSource):
         self.refresh()
 
     def refresh(self):
-        self._names = {}    # archive urls -> [(category, name)], kept on success only
+        self._names = {}    # archive parts ((url, size), ...) -> [(folder, name)], kept on success
+
+    def remember(self, records) -> None:
+        """An archive whose parts are unchanged lists what it listed last time. ▸r/simready-release"""
+        names = {}
+        for record in records:
+            payload = record.payload if isinstance(record.payload, dict) else {}
+            parts = tuple(tuple(part) for part in payload.get("parts") or ())
+            folder, _, name = str(record.uid).partition("/")
+            if parts and name:
+                names.setdefault(parts, []).append((folder, name))
+        self._names.update(names)
 
     def page_url(self, record) -> str:
         return self.HOME    # no per-material page
@@ -1339,7 +1353,7 @@ class SimReadySource(MatxSource):
         """(category, name, parts) for every material of the latest release."""
         rows, failed = [], []
         for category, parts in sorted(self._archives(get_json(self.RELEASE)).items()):
-            key = tuple(url for url, _size in parts)
+            key = tuple(parts)    # url AND size: a re-uploaded part keeps its url
             names = self._names.get(key)
             if names is None:
                 try:

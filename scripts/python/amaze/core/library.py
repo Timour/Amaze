@@ -10,7 +10,7 @@ from PySide6 import QtCore, QtGui
 import hou
 
 from amaze.core import debug
-from amaze.core import grid_columns
+from amaze.core import grid_engine
 from amaze.core import locations
 from amaze.core import material, database, renderers, thumbnails, tile_icons
 from amaze.core import versions
@@ -121,7 +121,7 @@ def asset_files_for(preferences, mat_id: str) -> dict:
     }
 
 
-class AssetLibrary(grid_columns.GridColumnsMixin,
+class AssetLibrary(grid_engine.GridEngine,
                    QtCore.QAbstractTableModel):
     """The SHARED asset model - records, categories, tags, tile icons, saves, deletes, thumbnail plumbing and the connector's guards - that every library-backed section runs on. Nothing renderer-shaped lives here; that is `MaterialLibrary`. overview.md ▸ Models & storage carries the map."""
 
@@ -137,6 +137,7 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         "date": "DateRole",
         "id": "IdRole",    # the two read-only rows the Material Info dialog used to carry, now list-mode columns ▸p/d03-retired
     }
+    GRID_ROWS = ("_assets", "_mat_paths", "_row_keys")
     TILE_FACE = ""      # the section's generic face, `ui/<TILE_FACE>.svg` from its T frame ▸r/tile-faces
     NOTES_SECTION = "" # this model's notes-store key prefix - notes.note_key(NOTES_SECTION, id); every subclass names its own
 
@@ -173,6 +174,7 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         self._thumb_rows = {}  # engine deliveries arrive BY KEY; this maps them back to the row to repaint, and is rebuilt with the asset list
         thumbnails.signals.ready.connect(self._on_thumb_key_ready)  # through the RELAY, not the engine: the engine singleton is replaced on every module reload and would leave this model wired to a dead one
         self.rebuild_thumbs()
+        self.order_rows()    # in the grid's order before any view has the rows
         self.adopt_retired_text_into_notes()
 
     RETIRED_TEXT_FIELDS = ("about", "description")    #: record fields whose text is a COMMENT now, because the dialog that showed each one is gone ▸p/d03-retired
@@ -246,6 +248,7 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
             self._remember_content_state()  # a reload is a fresh read of the library, content included
             self._drop_content_label_caches()
             self.rebuild_thumbs()
+            self.order_rows()
         finally:  # not a trailing call: a raising load must not leave the model stuck mid-reset, which freezes every view on it
             self.endResetModel()
 
@@ -262,6 +265,9 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
                            for row, spec in enumerate(specs)]
         self._row_keys = [self._thumb_key(row, spec)
                           for row, spec in enumerate(specs)]    # row -> its key, the map read backwards
+        self.rows_reordered()
+
+    def rows_reordered(self) -> None:
         self._thumb_rows = {key: row for row, key in enumerate(self._row_keys)}
 
     def _add_thumb_paths(self, row: int, base_changed: bool = True):
@@ -505,9 +511,8 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
             self._add_thumb_paths(row, base_changed=False)
         return made
 
-    def _decoration_image(self, index: QtCore.QModelIndex):
-        """The tile thumbnail for a row - the engine's FILE loader over the library's own PNG. Overridden by the Code section, which has no PNGs and paints a preview via the engine's PAINT path."""
-        row = index.row()
+    def _decoration_image(self, row: int):
+        """A row's tile picture, the library's own PNG through the thumbnail engine."""
         if tile_icons.face_for(self, row) == "generic":
             return tile_icons.chosen_image(self, row)
         key = self._thumb_key(row)
@@ -557,37 +562,34 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
     def _drop_content_label_caches(self, mat_id=None) -> None:
         """Evict whatever per-id labels a subclass derives from asset CONTENT - called by the shared reload and version-switch paths, which cannot know what a subclass caches. The base derives none."""
 
-    def data(
-        self, index: QtCore.QModelIndex | QtCore.QPersistentModelIndex, role: int = 0
-    ) -> Any:
-        if index.column() > 0:  # later columns are the TABLE's, not the row's; column 0 falls through unchanged, so grid mode cannot tell
-            return self.column_data(index, role)
+    def row_data(self, row: int, role: int) -> Any:
+        asset = self._assets[row]
         if role == QtCore.Qt.ItemDataRole.DisplayRole:
-            return self._assets[index.row()].name
+            return asset.name
 
         if role == self.RendererLabelRole:
-            return self.renderer_label(self._assets[index.row()])
+            return self.renderer_label(asset)
 
         if role == QtCore.Qt.ItemDataRole.DecorationRole:
-            return self._decoration_image(index)  # the RAW stored image, never rescaled per paint - the delegate scales and caches to the actual tile size; a cache miss queues a background load and the dark tile paints until delivery
+            return self._decoration_image(row)  # the RAW stored image; the delegate scales it
 
         if role == self.CategoryRole:
-            return self._assets[index.row()].categories
+            return asset.categories
         if role == self.CategoryColorRole:
-            return self.category_color(index.row())
+            return self.category_color(row)
 
         if role == self.TagRole:
-            return self._assets[index.row()].tags
+            return asset.tags
 
         if role == self.LicenceRole:
-            return str(self._assets[index.row()].license or "")
+            return str(asset.license or "")
 
         if role == self.FavoriteRole:
-            return locations.is_favourite(  # THE USER'S, in the library store, keyed by asset id and tagged with the owner - never the record, whose field schema 5 stripped
-                self.preferences, self._assets[index.row()].mat_id)
+            return locations.is_favourite(  # the USER'S star, in the library store, never the record
+                self.preferences, asset.mat_id)
 
         if role == self.VersionsRole:
-            mat_id = str(self._assets[index.row()].mat_id)
+            mat_id = str(asset.mat_id)
             cached = self._version_count_cache.get(mat_id)
             if cached is None:
                 cached = versions.version_count(self.preferences, mat_id)
@@ -595,7 +597,7 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
             return cached
 
         if role == self.ActiveVersionRole:
-            mat_id = str(self._assets[index.row()].mat_id)
+            mat_id = str(asset.mat_id)
             cached = self._active_version_cache.get(mat_id)
             if cached is None:
                 cached = versions.active_version_name(
@@ -604,20 +606,20 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
             return cached
 
         if role == self.RendererRole:
-            return str(self._assets[index.row()].renderer)
+            return str(asset.renderer)
 
         if role == self.DateRole:
-            return str(self._assets[index.row()].date)
+            return str(asset.date)
 
         if role == self.IdRole:
-            return str(self._assets[index.row()].mat_id)
+            return str(asset.mat_id)
 
         if role == self.NotesRole:
             from amaze.core import notes
             return notes.has_note(
                 self.preferences,
-                notes.note_key(self.NOTES_SECTION,
-                               self._assets[index.row()].mat_id))
+                notes.note_key(self.NOTES_SECTION, asset.mat_id))
+        return None
 
     def save(self) -> bool:
         """Write the index to disk as json. True ONLY when it reached the file - honour that answer, because add_asset writes the payload files before this runs and a caller that cannot tell a refused save from a completed one reports success for an asset the library does not list."""
@@ -684,21 +686,19 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
             asset.__dict__.update(fresh.__dict__)
             self.row_changed(row)    # the whole row: an adopted field can reach any column
 
-    def _append_record(self, record, row: int | None = None) -> int:
-        """Add a new record at `row`, the end by default, with its signals, maps and content baseline."""
-        row = len(self._assets) if row is None else row
+    def _append_record(self, record) -> int:
+        """Add a new record, sorted into place at once; answers the row it holds NOW."""
+        row = len(self._assets)
         self.beginInsertRows(QtCore.QModelIndex(), row, row)
         try:
-            self._assets.insert(row, record)
+            self._assets.append(record)
         finally:
             self.endInsertRows()
-        if row == len(self._assets) - 1:
-            self._add_thumb_paths(row)
-        else:
-            self.rebuild_thumbs()    # every row below it moved down one
+        self._add_thumb_paths(row)
+        moved = self.resort()    # now, so no caller holds a row that is about to move
         self._content_state[str(record.mat_id)] = self._content_stat(
             record.mat_id)
-        return row
+        return moved.get(row, row) if moved else row
 
     def _take_back_refused_append(self, record) -> None:
         """Take a refused new record back out of the model and the save's document, by identity."""
@@ -744,6 +744,7 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         finally:
             self.endInsertRows()
         self.rebuild_thumbs()
+        self.resort()    # now: the save that adopted them may still hold its own rows
 
     def _drop_rows(self, rows: list) -> None:
         """Remove rows another session deleted, with the row signals a view needs. Nothing on disk is touched - the deleting session already unlinked the files."""
@@ -936,6 +937,7 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
             finally:
                 self.endInsertRows()
         self.rebuild_thumbs()
+        self.resort()
         try:
             connector = database.DatabaseConnector(self.DB_FILENAME)
             for _row, asset in going:

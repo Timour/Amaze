@@ -160,13 +160,15 @@ class TheChosenSectionIsWhereTheSaveLands(unittest.TestCase):
     def test_a_material_saved_to_node_comes_back_in_a_material_library(self):
         node = _material(self, "door_to_node")
         before = self.panel.cop_model.rowCount()
+        held = test_support.asset_ids(self.panel.cop_model)
         with _choosing("cop"):
             self.panel._save_new([node], "material", node)
         self.assertEqual(before + 1, self.panel.cop_model.rowCount(),
                          "the save did not land in Node")
-        asset = self.panel.cop_model._assets[-1]
+        asset, = test_support.arrived(self.panel.cop_model, held)
         self.assertEqual("VOP", asset.renderer)
-        index = self.panel.cop_model.index(before, 0)
+        index = self.panel.cop_model.index(
+            self.panel.cop_model.find_asset_row_by_id(asset.mat_id), 0)
         ok, reason, created = self.panel.cop_model.import_asset_to_scene(
             index, context_node=hou.node("/stage"))
         for made in created:
@@ -179,10 +181,11 @@ class TheChosenSectionIsWhereTheSaveLands(unittest.TestCase):
     def test_a_wrangle_saved_as_code_keeps_the_chosen_language(self):
         wrangle = _wrangle(self)
         before = self.panel.code_model.rowCount()
+        held = test_support.asset_ids(self.panel.code_model)
         with _choosing("code", language="Python"):
             self.panel._save_new([wrangle], "code", wrangle)
         self.assertEqual(before + 1, self.panel.code_model.rowCount())
-        snippet = self.panel.code_model._assets[-1]
+        snippet, = test_support.arrived(self.panel.code_model, held)
         self.assertEqual("Python", snippet.renderer)    # a snippet's language rides the renderer field
         self.assertIn("@Cd = 1;", snippet.code)
 
@@ -281,8 +284,10 @@ class AnUnderscoredCategoryKeepsItsStoredName(unittest.TestCase):
             return 1
 
         wrangle = _wrangle(self)
+        held = test_support.asset_ids(self.panel.code_model)
         with mock.patch.object(save_dialog.SaveDialog, "exec", fake_exec):
             self.panel._save_new([wrangle], "code", wrangle)
+        seen["saved"], = test_support.arrived(self.panel.code_model, held)
         return seen
 
     def _assert_filed_under_the_stored_name(self, asset):
@@ -297,8 +302,7 @@ class AnUnderscoredCategoryKeepsItsStoredName(unittest.TestCase):
         self.assertIn("WIP", seen["labels"])
         self.assertNotIn("_WIP", seen["labels"],
                          "the list shows the stored spelling")
-        self._assert_filed_under_the_stored_name(
-            self.panel.code_model.assets[-1])
+        self._assert_filed_under_the_stored_name(seen["saved"])
 
     def test_standing_on_WIP_pre_selects_it(self):
         self.assertTrue(self.panel._stand_on_category("WIP"),
@@ -306,8 +310,7 @@ class AnUnderscoredCategoryKeepsItsStoredName(unittest.TestCase):
         seen = self._save()
         self.assertEqual("WIP", seen["shown"],
                          "standing on WIP opened the save on another row")
-        self._assert_filed_under_the_stored_name(
-            self.panel.code_model.assets[-1])
+        self._assert_filed_under_the_stored_name(seen["saved"])
 
     def test_editing_a_WIP_snippet_leaves_it_there(self):
         code = self.panel.code_model

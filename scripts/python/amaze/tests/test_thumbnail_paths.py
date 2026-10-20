@@ -185,7 +185,7 @@ class TheThumbnailPathIsComposedInOnePlace(unittest.TestCase):
         asked = []
         with mock.patch.object(thumbnails.engine, "request_file",
                                lambda key, path: asked.append(path)):
-            model._decoration_image(model.index(row, 0))
+            model._decoration_image(row)
         return asked
 
     def test_the_tile_reads_the_file_the_renderers_write(self):

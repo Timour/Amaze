@@ -116,9 +116,11 @@ class NodesSectionTest(unittest.TestCase):
 
     def test_sop_network_returns_intact(self):
         geo = _sop_network("rt_src")
+        held = test_support.asset_ids(self.model)
         self.assertEqual("SOP", self.model.add_asset(
             geo, "", "", False, name="rt_sop"))
-        self.assertEqual("SOP", self.model.assets[-1].renderer)
+        saved, = test_support.arrived(self.model, held)
+        self.assertEqual("SOP", saved.renderer)
         geo.destroy()
 
         dest = hou.node("/obj").createNode("geo", "rt_dest")
@@ -367,9 +369,11 @@ class NodesSectionTest(unittest.TestCase):
                 else:
                     network = hou.node("/obj").createNode("copnet", "thumb_cop")
                     network.createNode(_cop_node_type())
+                held = test_support.asset_ids(self.model)
                 self.assertEqual(label, self.model.add_asset(
                     network, "", "", False, name="thumbed_" + label))
-                image = self._image_for(self.model.assets[-1])
+                saved, = test_support.arrived(self.model, held)
+                image = self._image_for(saved)
                 self.assertTrue(os.path.exists(image),
                                 "no %s thumbnail written" % label)
                 rendered = QtGui.QImage(image)

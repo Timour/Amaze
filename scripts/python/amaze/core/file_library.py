@@ -8,7 +8,7 @@ import stat
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from amaze.core import debug, folders, geo_library, scene_captures
-from amaze.core import grid_columns
+from amaze.core import grid_engine
 from amaze.core import keyed_store, locations
 from amaze.core import texture_library, thumbnails, tile_icons
 from amaze.helpers import hostos
@@ -220,7 +220,7 @@ class FileFolders(folders.FolderListModel):
         keyed_store.relocate(self.preferences, old_path, new_path)
 
 
-class FileFiles(grid_columns.GridColumnsMixin,
+class FileFiles(grid_engine.GridEngine,
                QtCore.QAbstractTableModel):
     """All files inside the selected folder (or every registered folder in All mode), each behaving as its kind."""
 
@@ -231,6 +231,7 @@ class FileFiles(grid_columns.GridColumnsMixin,
         "open": "OpenSceneRole",
         "comments": "NotesRole",
     }
+    GRID_ROWS = ("_files", "_kinds", "_row_specs")
 
     FormatRole = QtCore.Qt.ItemDataRole.UserRole + 1
     PathRole = QtCore.Qt.ItemDataRole.UserRole + 2
@@ -296,6 +297,12 @@ class FileFiles(grid_columns.GridColumnsMixin,
 
     def rowCount(self, parent=None) -> int:
         return len(self._files)
+
+    def rows_reordered(self) -> None:
+        self._key_rows = {}    # engine key -> its rows, read off each row's spec
+        for row, spec in enumerate(self._row_specs):
+            if spec[0] is not None:
+                self._key_rows.setdefault(spec[0], []).append(row)
 
     def set_folder(self, path: str) -> None:
         self._all_folders_mode = False
@@ -441,6 +448,9 @@ class FileFiles(grid_columns.GridColumnsMixin,
             else:
                 self._row_specs.append(
                     (None, "os-icon", os.path.join(dirpath, name)))
+        moved = self.order_rows()    # in the grid's order before any view sees them
+        if moved:
+            geo_misses = [(moved[row], full) for row, full in geo_misses]
         self.endResetModel()
 
         self._progress_done = 0
@@ -878,14 +888,7 @@ class FileFiles(grid_columns.GridColumnsMixin,
             return thumbnails.engine.request_file(key, cached_png)
         return None
 
-    def data(self, index, role: int = 0):
-        if index.column() > 0:  # LATER COLUMNS are the table's, not the row's (QTableView migration step 1); column 0 falls through unchanged, so grid mode cannot tell any of this happened
-            return self.column_data(index, role)
-        if not index.isValid():
-            return None
-        row = index.row()
-        if not 0 <= row < len(self._files):  # isValid() does not mean in-range: an index outlives a shrink
-            return None
+    def row_data(self, row, role):
         folder, name = self._files[row]
         kind = self._kinds[row]
         if role == QtCore.Qt.ItemDataRole.DisplayRole:

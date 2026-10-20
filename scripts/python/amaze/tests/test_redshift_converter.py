@@ -282,15 +282,22 @@ class TheLibraryDoorMakesANewRedshiftEntry(unittest.TestCase):
         self.parent = hou.node("/mat") or hou.node("/").createNode("mat")
         self.source = _karma_material(self.parent, "karma_saved")
         self.addCleanup(self.source.destroy)
+        held = test_support.asset_ids(self.model)
         self.assertEqual("Karma", self.model.add_asset(self.source, "Probe", "", False))
-        self.row = len(self.model.assets) - 1
+        self.source_id = str(test_support.arrived(self.model, held)[0].mat_id)
+
+    @property
+    def row(self):
+        return self.model.find_asset_row_by_id(self.source_id)    # rows sort; the id holds
 
     def test_a_redshift_twin_is_added_beside_the_karma_source(self):
         before = len(self.model.assets)
+        held = test_support.asset_ids(self.model)
         ok, report = self.model.convert(self.model.index(self.row, 0), "Redshift")
         self.assertTrue(ok, report.summary_lines())
         self.assertEqual(before + 1, len(self.model.assets), "no new entry was added")
-        source, twin = self.model.assets[self.row], self.model.assets[-1]
+        source = self.model.assets[self.row]
+        twin, = test_support.arrived(self.model, held)
         self.assertEqual("Karma", source.renderer, "the source was changed")
         self.assertEqual("Redshift", twin.renderer)
         self.assertEqual(source.name, twin.name)
@@ -382,12 +389,14 @@ class ABlendWithNoBaseIsReportedNotCrashed(unittest.TestCase):
                     if c.type().name() == "redshift_material"][0]
         blend = source.createNode("redshift::MaterialBlender", "blend")
         terminal.setNamedInput("Surface", blend, 0)
+        held = test_support.asset_ids(self.model)
         saved = self.model.add_asset(source, "Test", "", False,
                                      name="rs_blend")
         source.destroy()
         self.assertEqual("Redshift", saved,
                          "premise: the blend saves as a Redshift material")
-        self.row = len(self.model.assets) - 1
+        self.row = self.model.find_asset_row_by_id(
+            test_support.arrived(self.model, held)[0].mat_id)
 
     def test_convert_to_karma_reports_instead_of_crashing(self):
         before = len(self.model.assets)
@@ -423,8 +432,10 @@ class ALegacyRedshiftMaterialGoesIntoSolaris(unittest.TestCase):
         bump = legacy.createNode("redshift::BumpMap", "bump")
         classic.setNamedInput("Surface", shader, 0)
         classic.setNamedInput("Bump Map", bump, 0)
+        held = test_support.asset_ids(cls.model)
         cls.model.add_asset(legacy, "Test", "", False, name="legacy_rs")
-        cls.row = len(cls.model.assets) - 1
+        cls.row = cls.model.find_asset_row_by_id(
+            test_support.arrived(cls.model, held)[0].mat_id)
         legacy.destroy()
 
     def _imported(self):
@@ -486,8 +497,10 @@ class AFirstEditionTwinGoesIntoSolaris(unittest.TestCase):
         disp = legacy.createNode("redshift::Displacement", "disp")
         usd.setNamedInput("Surface", shader, 0)
         usd.setNamedInput("Displacement", disp, 0)
+        held = test_support.asset_ids(self.model)
         self.model.add_asset(legacy, "Test", "", False, name="first_twin")
-        self.row = len(self.model.assets) - 1
+        self.row = self.model.find_asset_row_by_id(
+            test_support.arrived(self.model, held)[0].mat_id)
         legacy.destroy()
 
     def test_one_usd_terminal_fed_and_feeding_the_suboutput(self):
@@ -624,12 +637,13 @@ class AnOnlineMaterialCanLandAsRedshift(unittest.TestCase):
     def test_the_registered_entry_is_redshift(self):
         from amaze.core import matx_import
         before = len(self.model.assets)
+        held = test_support.asset_ids(self.model)
         ok, reason = matx_import.import_record(
             self._record(), _ValuesSource(), "", self.model, self.prefs,
             renderer="Redshift")
         self.assertTrue(ok, reason)
         self.assertEqual(before + 1, len(self.model.assets))
-        twin = self.model.assets[-1]
+        twin, = test_support.arrived(self.model, held)
         self.assertEqual("Redshift", twin.renderer)
         path = material.payload_path(self.prefs, twin.mat_id, self.prefs.ext)
         parent = hou.node("/mat") or hou.node("/").createNode("mat")
@@ -651,10 +665,11 @@ class AnOnlineMaterialCanLandAsRedshift(unittest.TestCase):
             category="Metal", kind="values", licence="CC0 1.0",
             payload={"values": {"color": [1.0, 0.8, 0.4], "roughness": 0.2,
                                 "complexIor": [0.18, 3.42, 0.42, 2.35, 1.37, 1.77]}})
+        held = test_support.asset_ids(self.model)
         ok, reason = matx_import.import_record(
             gold, _ValuesSource(), "", self.model, self.prefs, renderer="Redshift")
         self.assertTrue(ok, reason)
-        twin = self.model.assets[-1]
+        twin, = test_support.arrived(self.model, held)
         self.assertEqual("Redshift", twin.renderer)
         path = material.payload_path(self.prefs, twin.mat_id, self.prefs.ext)
         parent = hou.node("/mat") or hou.node("/").createNode("mat")
@@ -676,12 +691,14 @@ class AnOnlineMaterialCanLandAsRedshift(unittest.TestCase):
         """Where a row came from and which record it is, on the row itself - until 2026-09-04 only the package folder name carried them, and only for downloads after 2026-08-05."""
         from amaze.core import matx_import
         record = self._record()
+        held = test_support.asset_ids(self.model)
         ok, reason = matx_import.import_record(
             record, _ValuesSource(), "", self.model, self.prefs)
         self.assertTrue(ok, reason)
-        self.assertEqual("Karma", self.model.assets[-1].renderer,
+        landed, = test_support.arrived(self.model, held)
+        self.assertEqual("Karma", landed.renderer,
                          "Karma is no longer the default renderer")
-        row = self.model.assets[-1].get_as_dict()
+        row = landed.get_as_dict()
         self.assertEqual(record.source, row.get("source"))
         self.assertEqual(str(record.uid), row.get("online_uid"))
         self.assertNotIn("uid", row, "`uid` is the pre-connector id spelling, which a package import strips")

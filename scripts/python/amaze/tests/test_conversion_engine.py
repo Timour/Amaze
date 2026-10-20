@@ -166,8 +166,13 @@ class TheLibraryDoorRefusesFirst(unittest.TestCase):
         self.model = library_mod.MaterialLibrary(preferences=self.prefs)
         source = _textured(hou.node("/mat"))
         self.addCleanup(source.destroy)
+        held = test_support.asset_ids(self.model)
         self.assertEqual("Karma", self.model.add_asset(source, "Probe", "", False))
-        self.row = len(self.model.assets) - 1
+        self.source_id = str(test_support.arrived(self.model, held)[0].mat_id)
+
+    @property
+    def row(self):
+        return self.model.find_asset_row_by_id(self.source_id)    # rows sort; the id holds
 
     def _convert(self, target):
         before = len(self.model.assets)
@@ -310,12 +315,18 @@ class TheOctaneTwinLivesInTheLibrary(unittest.TestCase):
         self.before = {n.path() for n in self.mat.children()}
         self.addCleanup(self._clear_mat)
         source = _textured(self.mat, "brick_source")
+        held = test_support.asset_ids(self.model)
         self.assertEqual("Karma", self.model.add_asset(source, "Probe", "", False,
                                                        name="Brick Wall"))
-        self.row = len(self.model.assets) - 1
+        self.source_id = str(test_support.arrived(self.model, held)[0].mat_id)
+        held = test_support.asset_ids(self.model)
         ok, report = self.model.convert(self.model.index(self.row, 0), "Octane")
         self.assertTrue(ok, report.summary_lines())
-        self.twin = self.model.assets[-1]
+        self.twin, = test_support.arrived(self.model, held)
+
+    @property
+    def row(self):
+        return self.model.find_asset_row_by_id(self.source_id)    # the twin sorted in beside it
 
     def _clear_mat(self):
         for child in self.mat.children():
@@ -602,11 +613,15 @@ class AnOctaneTwinIsMaterialXInTheLibrary(unittest.TestCase):
         net, shader = _octane_net(mat, name="octane_twin_source")
         self.addCleanup(net.destroy)
         shader.parmTuple("baseColor").set(BASE)
+        held = test_support.asset_ids(model)
         self.assertEqual("Octane", model.add_asset(net, "Probe", "", False, name="Octane Red"))
-        ok, report = model.convert(model.index(len(model.assets) - 1, 0), "Karma")
+        source, = test_support.arrived(model, held)
+        held = test_support.asset_ids(model)
+        ok, report = model.convert(
+            model.index(model.find_asset_row_by_id(source.mat_id), 0), "Karma")
         self.assertTrue(ok, report.summary_lines())
-        self.assertEqual(("Karma", "Octane Red"),
-                         (model.assets[-1].renderer, model.assets[-1].name))
+        twin, = test_support.arrived(model, held)
+        self.assertEqual(("Karma", "Octane Red"), (twin.renderer, twin.name))
 
 
 if __name__ == "__main__":

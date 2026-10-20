@@ -593,9 +593,10 @@ class ModelRoleTest(unittest.TestCase):
         lop = hou.node("/obj").createNode("lopnet", "notes_src")
         self.addCleanup(lop.destroy)
         lop.createNode("sphere")
+        held = test_support.asset_ids(model)
         model.add_asset(lop, "", "", False, name="NoteMe")
-        row = len(model.assets) - 1
-        index = model.index(row, 0)
+        saved, = test_support.arrived(model, held)
+        index = model.index(model.find_asset_row_by_id(saved.mat_id), 0)
         self.assertFalse(model.data(index, model.NotesRole))
         asset_id = model.data(index, model.IdRole)
         notes.set_note(prefs,
@@ -714,9 +715,11 @@ class GradientNotesTest(unittest.TestCase):
                          "full uuid4 hex")
 
     def test_a_gradient_note_roundtrips_and_badges(self):
-        uid = self.model.tile_key(0)
+        row = next(r for r in range(self.model.rowCount())    # some seeded palettes carry a note
+                   if not self.model.data(self.model.index(r, 0), self.model.NotesRole))
+        uid = self.model.tile_key(row)
         key = notes.note_key("gradient", uid)
-        index = self.model.index(0, 0)
+        index = self.model.index(row, 0)
         self.assertFalse(self.model.data(index, self.model.NotesRole))
         notes.set_note(self.prefs, key,
                        [{"t": "todo", "label": "swap the third band",

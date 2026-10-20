@@ -16,7 +16,7 @@ sys.path.insert(
         os.path.dirname(os.path.abspath(__file__)))))
 
 from amaze import amazetheme  # noqa: E402
-from amaze.core import grid_columns  # noqa: E402
+from amaze.core import grid_columns, grid_engine  # noqa: E402
 from amaze.panel import delegates, grid  # noqa: E402
 from amaze.helpers import theme, ui_helpers  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
@@ -75,7 +75,7 @@ class AGridModelAnswersPerCOLUMN(unittest.TestCase):
         for key, model in self._models():
             with self.subTest(section=key):
                 self.assertIsInstance(model, QtCore.QAbstractTableModel)
-                self.assertIsInstance(model, grid_columns.GridColumnsMixin)
+                self.assertIsInstance(model, grid_engine.GridEngine)
                 self.assertEqual(len(grid_columns.COLUMNS), model.columnCount())
 
     def test_an_index_in_a_LATER_column_is_valid(self):
@@ -239,7 +239,7 @@ class ACellSAYSWhatItIs(unittest.TestCase):
         if not model.rowCount():
             self.skipTest("no materials in the fixture")
         text = ("name", "type", "category", "tags")
-        for key in text + grid_columns.GridColumnsMixin.TICK_COLUMNS:
+        for key in text + grid_engine.GridEngine.TICK_COLUMNS:
             roles = [QtCore.Qt.ItemDataRole.TextAlignmentRole]
             if key in text:
                 roles.append(QtCore.Qt.ItemDataRole.FontRole)
@@ -350,7 +350,7 @@ class ATickColumnIsAsWideAsTheTICK(unittest.TestCase):
             key for column, key in enumerate(grid_columns.KEYS)
             if isinstance(table.itemDelegateForColumn(column),
                           delegates.TickCellDelegate)}
-        missing = set(grid_columns.GridColumnsMixin.TICK_COLUMNS) - bound
+        missing = set(grid_engine.GridEngine.TICK_COLUMNS) - bound
         self.assertFalse(
             missing,
             "%s is listed as a tick but nothing draws one"
@@ -766,7 +766,7 @@ class TheHeaderSORTS(unittest.TestCase):
                          "the second click did not reverse the order")
 
     def test_a_chosen_column_survives_a_FILTER_change(self):
-        """`setDynamicSortFilter(False)` turns off the re-sort after a filter change - GridProxyModel puts it back, reading `sortColumn()`. If it read 0 instead, a user's chosen column would snap back to name on the next keystroke."""
+        """A filter keystroke must not snap the user's chosen column back to Name."""
         panel = self.panel
         column = grid_columns.KEYS.index("category")
         panel.thumbtable.sortByColumn(
@@ -776,8 +776,11 @@ class TheHeaderSORTS(unittest.TestCase):
         QtWidgets.QApplication.processEvents()
         self.addCleanup(panel._section().filter_text, "")
         self.assertEqual(
-            column, panel.thumbtable.model().sortColumn(),
+            column, panel.thumbtable.model().sourceModel().sort_column(),
             "the filter change reset the sort column")
+        self.assertEqual(
+            column, panel.thumbtable.horizontalHeader().sortIndicatorSection(),
+            "the arrow left the sorted column")
 
 
 class TheSelectionSpeaksInROWS(unittest.TestCase):

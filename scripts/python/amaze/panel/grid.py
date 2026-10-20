@@ -5,7 +5,7 @@ from __future__ import annotations
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from amaze import amazetheme
-from amaze.core import debug, grid_columns
+from amaze.core import debug, grid_columns, grid_engine
 from amaze.helpers import theme, ui_helpers
 from amaze.panel import delegates
 
@@ -306,7 +306,7 @@ def bind_table_cell_delegates(panel, tile_delegate) -> None:
         "comments": ("_notes_role", tile_delegate.NOTE_MARK_COLOR),
     }
     ticks = ((key,) + sources[key]
-             for key in grid_columns.GridColumnsMixin.TICK_COLUMNS)
+             for key in grid_engine.GridEngine.TICK_COLUMNS)
     category_cell = delegates.CategoryCellDelegate(tile_delegate, table)
     installed.append(category_cell)
     table.setItemDelegateForColumn(keys.index("category"), category_cell)
@@ -372,21 +372,14 @@ def sync_table_columns(panel) -> None:
 
 
 def sync_sort_indicator(panel) -> None:
-    """Point the arrow at the order the bound proxy is actually in - one header serves every section and `setModel` re-applies no sorting, so without this it names a column the rows are not in. Call it on a BIND, not on a view-mode switch: it can re-sort, and a model signal is how the empty state learns rows arrived. ▸r/one-header-many-proxies"""
+    """Point the one header's arrow at the order the bound MODEL keeps. ▸r/one-header-many-proxies"""
     table = getattr(panel, "thumbtable", None)
     proxy = table.model() if table is not None else None
-    if proxy is None:
+    model = proxy.sourceModel() if proxy is not None else None
+    if not isinstance(model, grid_engine.GridEngine):
         return
-    header = table.horizontalHeader()
-    name = grid_columns.KEYS.index("name")
-    column, order = proxy.sortColumn(), proxy.sortOrder()
-    if column < 0:
-        order = QtCore.Qt.SortOrder.AscendingOrder
-        table.sortByColumn(name, order)    # never sorted at all (File and Colors): the arrow claimed Name over rows in source order, and a first click there would have flipped straight to descending
-        column = name
-    elif column == 0:
-        column = name    # column 0 is the hidden picture column and answers the same display name, so the arrow belongs on Name; setting it re-sorts to an identical order ONCE and then converges
-    header.setSortIndicator(column, order)
+    table.horizontalHeader().setSortIndicator(    # an unchanged arrow emits nothing
+        model.sort_column(), model.sort_order())
 
 
 def style_table_header(panel) -> None:
@@ -400,7 +393,7 @@ def style_table_header(panel) -> None:
     header.setSortIndicator(
         grid_columns.KEYS.index("name"),
         QtCore.Qt.SortOrder.AscendingOrder)    # the indicator starts on section 0, the HIDDEN picture column - point it at Name so the arrow is drawn somewhere
-    panel.thumbtable.setSortingEnabled(True)    # a user's chosen column survives filter changes and inserts: GridProxyModel re-sorts by sortColumn()
+    panel.thumbtable.setSortingEnabled(True)    # a click sorts the MODEL, through the proxy
     header.setSectionsClickable(True)    # explicitly: a REPLACEMENT header is not clickable and setSortingEnabled does not repair it - without this the arrow shows and every click is swallowed ▸r/replacement-header-clickable
     header.setDefaultAlignment(
         QtCore.Qt.AlignmentFlag.AlignLeft

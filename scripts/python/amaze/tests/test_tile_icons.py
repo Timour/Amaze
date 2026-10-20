@@ -102,8 +102,10 @@ class ChoiceTest(unittest.TestCase):
     def _an_asset(self) -> int:
         lop = hou.node("/obj").createNode("lopnet", "icon_src")
         lop.createNode("sphere")
+        held = test_support.asset_ids(self.model)
         self.model.add_asset(lop, "", "", False, name="IconMe")
-        return len(self.model.assets) - 1
+        saved, = test_support.arrived(self.model, held)
+        return self.model.find_asset_row_by_id(saved.mat_id)
 
     def test_setting_an_icon_swaps_the_tile_path(self):
         before = self.model._mat_paths[self.row]
@@ -228,8 +230,10 @@ class FaceChoiceTest(unittest.TestCase):
     def _asset(self, container: str) -> int:
         network = hou.node("/obj").createNode(container, "face_src")
         network.createNode("sphere")
+        held = test_support.asset_ids(self.model)
         self.model.add_asset(network, "", "", False, name="FaceMe")
-        return len(self.model.assets) - 1
+        saved, = test_support.arrived(self.model, held)
+        return self.model.find_asset_row_by_id(saved.mat_id)
 
     def _shown(self, row):
         return self.model.data(self.model.index(row, 0),
@@ -889,6 +893,7 @@ class TileNameTest(unittest.TestCase):
         model = library_mod.MaterialLibrary(preferences=prefs_obj)
         if not model.rowCount():
             self.skipTest("fixture library has no rows")
+        renamed = model.assets[0].mat_id    # by id: a reload sorts the new name into place
         self.assertTrue(model.set_tile_name(0, "Renamed by test"))
         self.assertEqual("Renamed by test", model.tile_name(0))
         self.assertFalse(model.set_tile_name(0, "   "),
@@ -897,7 +902,8 @@ class TileNameTest(unittest.TestCase):
                          "an unchanged name must be a no-op")
         test_support.reset_database_singletons()
         again = library_mod.MaterialLibrary(preferences=prefs_obj)
-        self.assertEqual("Renamed by test", again.tile_name(0),
+        self.assertEqual("Renamed by test",
+                         again.tile_name(again.find_asset_row_by_id(renamed)),
                          "the rename did not reach disk")
 
     def test_the_dialog_field_obeys_the_selection_law(self):

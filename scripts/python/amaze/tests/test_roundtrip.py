@@ -142,8 +142,9 @@ class TestRoundTrip(unittest.TestCase):
         texture = builder.createNode("mtlximage")
         shader.setInput(1, texture)
 
+        held = test_support.asset_ids(self.model)
         self.model.add_asset(shader, "Bare", "", False)
-        asset = self.model.assets[-1]
+        asset, = test_support.arrived(self.model, held)
 
         handler = nodes.NodeHandler(self.prefs)
         ok, reason, _created = handler.import_asset_to_scene(asset, target="mat")
@@ -189,8 +190,9 @@ class TestRoundTrip(unittest.TestCase):
         source.setGenericFlag(hou.nodeFlag.Material, True)
 
         before = {n.path() for n in mat_ctx.children()}
+        held = test_support.asset_ids(self.model)
         self.model.add_asset(source, "RedshiftProbe", "", False)
-        asset = self.model.assets[-1]
+        asset, = test_support.arrived(self.model, held)
         self.assertEqual(
             "Redshift", asset.renderer,
             "this test needs a Redshift asset to mean anything")
@@ -353,10 +355,11 @@ class TestRoundTrip(unittest.TestCase):
     def test_saved_material_survives_disk_and_reimports(self):  # -- the round-trip --
         rows_before = self.model.rowCount()
         builder = _build_material(self.staging, "roundtrip_mat")
+        held = test_support.asset_ids(self.model)
         self.model.add_asset(builder, "RoundTrip", "roundtrip,test", False)
 
-        self.assertEqual(self.model.rowCount(), rows_before + 1)  # registered exactly once, and stamped for later re-saves
-        mat_id = str(self.model.assets[-1].mat_id)
+        self.assertEqual(self.model.rowCount(), rows_before + 1)  # registered once, stamped for re-saves
+        mat_id = str(test_support.arrived(self.model, held)[0].mat_id)
         self.assertEqual(builder.userData("assetlib_id"), mat_id)
 
         base = os.path.join(self.prefs.dir, self.prefs.asset_dir, mat_id)  # both halves of the archive exist and are non-empty
@@ -398,8 +401,10 @@ class TestRoundTrip(unittest.TestCase):
     def test_reimport_is_repeatable(self):
         """Importing the same asset twice must yield two independent working nodes - not a collision or a half-wired copy."""
         builder = _build_material(self.staging, "twice_mat")
+        held = test_support.asset_ids(self.model)
         self.model.add_asset(builder, "RoundTrip", "", False)
-        row = self.model.rowCount() - 1
+        row = self.model.find_asset_row_by_id(
+            test_support.arrived(self.model, held)[0].mat_id)
         for _ in range(2):
             ok, reason, _created = self.model.import_asset_to_scene(
                 self.model.index(row, 0), target="mat"
@@ -444,9 +449,10 @@ class TestRoundTrip(unittest.TestCase):
     def test_missing_mat_file_import_fails_cleanly(self):
         """An index row whose .mat is gone - the phantom this suite exists to prevent - must refuse to import with a REASON, not a traceback, and leave no debris in /mat."""
         builder = _build_material(self.staging, "vanishing_mat")
+        held = test_support.asset_ids(self.model)
         self.model.add_asset(builder, "RoundTrip", "", False)
-        row = self.model.rowCount() - 1
-        mat_id = str(self.model.assets[row].mat_id)
+        mat_id = str(test_support.arrived(self.model, held)[0].mat_id)
+        row = self.model.find_asset_row_by_id(mat_id)
         os.remove(os.path.join(self.prefs.dir, self.prefs.asset_dir,
                                mat_id + self.prefs.ext))
         try:

@@ -206,6 +206,16 @@ class _RecordedLog:
                 if needle.lower() in m.lower()]
 
 
+def asset_ids(model) -> set:
+    """Every asset id `model` holds now - taken before an action that adds rows."""
+    return {str(asset.mat_id) for asset in model.assets}
+
+
+def arrived(model, before) -> list:
+    """The assets added since `before`, in row order: a new row sorts in. ▸p/grid-engine"""
+    return [asset for asset in model.assets if str(asset.mat_id) not in before]
+
+
 @contextlib.contextmanager
 def captured_log():
     """Capture what `debug` RECORDS inside the block, not what it prints - Debug Mode on for the duration, its own throwaway file, mode and the shared log restored even on exception. ▸p/harness-isolation"""

@@ -291,10 +291,11 @@ class PackageImportTest(unittest.TestCase):
         out = _out_path(self)
         original = self._gradient_package(out)
         before = model.rowCount()
+        held = test_support.asset_ids(model)
         summary = self.panel.import_package_file(out)
         self.assertEqual(1, summary["imported"])
         self.assertEqual(before + 1, model.rowCount())
-        newborn = model.assets[-1]
+        newborn, = test_support.arrived(model, held)
         self.assertNotEqual(str(original.mat_id), str(newborn.mat_id),
                             "a fresh import kept the package's id")
         cats = newborn.categories
@@ -330,9 +331,11 @@ class PackageImportTest(unittest.TestCase):
         record.pop("curated", None)    # a USER asset: fixture palettes are born tagged since the seeder stamps, and a tagged record would union by the tag instead of the id this test pins
         item = dict(item, record=record)
         packages.write_package(with_new_id, [item])
+        held = test_support.asset_ids(model)
         summary = self.panel.import_package_file(with_new_id, restore=True)
         self.assertEqual(1, summary["imported"])
-        self.assertEqual("f" * 32, str(model.assets[-1].mat_id),
+        self.assertEqual(["f" * 32],
+                         [str(a.mat_id) for a in test_support.arrived(model, held)],
                          "restore minted a fresh id instead of adopting "
                          "the package's own")
 
@@ -481,9 +484,10 @@ class PackageImportTest(unittest.TestCase):
         packages.write_package(
             out, [packages.collect_asset(model, asset.mat_id)])
         before = model.rowCount()
+        held = test_support.asset_ids(model)
         self.panel.import_package_file(out)
         self.assertEqual(before + 1, model.rowCount())
-        newborn = model.assets[-1]
+        newborn, = test_support.arrived(model, held)
         sources = {k: p for k, p in
                    model.asset_files(asset.mat_id).items()
                    if k not in packages.DERIVED and os.path.exists(p)}
@@ -493,7 +497,7 @@ class PackageImportTest(unittest.TestCase):
                             "the %s payload never landed" % kind)
             self.assertEqual(_bytes(source), _bytes(target),
                              "the %s payload does not byte-match" % kind)
-        row = model.rowCount() - 1    # it joins the model the way a saved row does
+        row = model.find_asset_row_by_id(newborn.mat_id)    # joined the way a saved row does
         self.assertEqual(
             model.rowCount(), len(model._mat_paths),
             "the imported row has no thumbnail path, so every paint of its "
@@ -637,7 +641,7 @@ class AFiveAssetImportSavesOnce(unittest.TestCase):
             items.append(item)
         noted = _out_path(self, "noted.amazepkg")
         packages.write_package(noted, items)
-        before = self.model.rowCount()
+        held = test_support.asset_ids(self.model)
         writes = []
         real = hostos.write_json_atomic
 
@@ -654,9 +658,9 @@ class AFiveAssetImportSavesOnce(unittest.TestCase):
                          % (notes.SPEC.filename, len(writes)))
         pages = [notes.note_for(self.panel.prefs,
                                 notes.note_key("material", a.mat_id))
-                 for a in self.model.assets[before:]]
+                 for a in test_support.arrived(self.model, held)]
         self.assertEqual(["page %d" % n for n in range(5)],
-                         [page["items"][0]["text"] for page in pages])
+                         sorted(page["items"][0]["text"] for page in pages))
 
 
 class _Cats:
@@ -682,10 +686,11 @@ class CuratedKeysTest(unittest.TestCase):
         p = self._fresh_prefs(".amaze_gradient_seed_v1")
         model = gradient_library.GradientLibrary(p)
         before = model.rowCount()
+        held = test_support.asset_ids(model)
         model.seed_curated_palettes(_Cats())
         self.assertGreater(model.rowCount(), before,
                            "premise: the seed never ran")
-        fresh = model._assets[before:]
+        fresh = test_support.arrived(model, held)
         untagged = [a.name for a in fresh if not a._extra.get("curated")]
         self.assertEqual([], untagged[:5],
                          "seeded palettes carry no curated tag")
@@ -699,10 +704,11 @@ class CuratedKeysTest(unittest.TestCase):
         p = self._fresh_prefs(".amaze_code_starter_v1")
         model = code_library.CodeLibrary(p)
         before = model.rowCount()
+        held = test_support.asset_ids(model)
         model.seed_starter_snippets(_Cats())
         self.assertGreater(model.rowCount(), before,
                            "premise: the seed never ran")
-        fresh = model._assets[before:]
+        fresh = test_support.arrived(model, held)
         untagged = [a.name for a in fresh
                     if not str(a._extra.get("curated", ""))
                     .startswith("starter/")]
@@ -731,6 +737,7 @@ class CuratedKeysTest(unittest.TestCase):
             model.endRemoveRows()
         self.assertTrue(model.save(), "premise: the delete never landed")
         before = model.rowCount()
+        held = test_support.asset_ids(model)
         summary = packages.import_package({"gradient": model}, p, out,
                                           restore=True)
         self.assertEqual(1, summary["imported"],
@@ -738,7 +745,7 @@ class CuratedKeysTest(unittest.TestCase):
         self.assertEqual(len(wada) - 1, summary["skipped"],
                          "palettes still present were re-imported")
         self.assertEqual(before + 1, model.rowCount())
-        returned = model._assets[-1]
+        returned, = test_support.arrived(model, held)
         self.assertEqual(gone_tag, returned._extra.get("curated"))
         self.assertEqual(gone_cat, returned.categories,
                          "the restored palette lost its own category")
@@ -1277,13 +1284,14 @@ class OnlinePackageImportTest(unittest.TestCase):
         self.assertEqual(3, len(records), "premise: three tiles listed")
         chosen = records[1]
         before = model.rowCount()
+        held = test_support.asset_ids(model)
         with mock.patch.object(self.panel.matx_online_model, "_sources",
                                [source]):    # the REAL _online_source_for runs - mocking it once hid a door that refused every amazepkg record over resolutions
             ok, reason = self.panel.import_online_material(chosen)
         self.assertTrue(ok, reason)
         self.assertEqual(before + 1, model.rowCount(),
                          "one selected tile did not import as one asset")
-        newborn = model.assets[-1]
+        newborn, = test_support.arrived(model, held)
         self.assertEqual(chosen.title, newborn.name)
         cats = newborn.categories
         self.assertEqual(
@@ -1504,9 +1512,11 @@ class TexturePackingTest(unittest.TestCase):
         image = builder.createNode("mtlximage")
         image.parm("file").set(source)
         model = self.panel.material_model
+        held = test_support.asset_ids(model)
         self.assertTrue(model.add_asset(builder, "Fabrics", "", False),
                         "premise: the save went through")
-        return model, model.assets[-1]
+        saved, = test_support.arrived(model, held)
+        return model, saved
 
     def test_export_packs_the_texture_inventory(self):
         from amaze.core import packages
@@ -1538,10 +1548,11 @@ class TexturePackingTest(unittest.TestCase):
             model.preferences)
         os.remove(adopted)    # the package must be the only source, as in a foreign library - same-library resolve would green this vacuously
         before = model.rowCount()
+        held = test_support.asset_ids(model)
         summary = self.panel.import_package_file(out)
         self.assertEqual(1, summary["imported"], summary)
         self.assertEqual(before + 1, model.rowCount())
-        newborn = model.assets[-1]
+        newborn, = test_support.arrived(model, held)
         tokens = newborn.get_as_dict().get("textures") or []
         self.assertEqual(1, len(tokens),
                          "the imported row lost its inventory")
@@ -1610,7 +1621,7 @@ class OnlineKindFilterTest(unittest.TestCase):
         model.set_kind_filter("gradient")
         self.assertEqual(["T1"], [r.title for r in model._records])
         model.set_kind_filter("material")
-        self.assertEqual(["T4", "Brick"],
+        self.assertEqual(["Brick", "T4"],    # in the grid's order, name A to Z
                          [r.title for r in model._records],
                          "a non-Amaze source tile IS a material and "
                          "must survive the Materials filter")

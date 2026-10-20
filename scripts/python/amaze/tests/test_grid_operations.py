@@ -906,9 +906,11 @@ class CustomizeOffersTheOwningSectionsCategories(unittest.TestCase):
         lop = hou.node("/obj").createNode("lopnet", name)
         self.addCleanup(lop.destroy)
         lop.createNode("sphere")
+        held = test_support.asset_ids(self.model)
         self.assertTrue(self.model.add_asset(lop, category, "", False,
                                              name=name))
-        return len(self.model.assets) - 1
+        saved, = test_support.arrived(self.model, held)
+        return self.model.find_asset_row_by_id(saved.mat_id)
 
     def _customize(self, rows):
         proxy = self.panel.cop_sorted_model

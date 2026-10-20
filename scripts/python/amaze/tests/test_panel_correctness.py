@@ -22,7 +22,7 @@ sys.path.insert(
         os.path.dirname(os.path.abspath(__file__)))))
 
 from amaze.core import file_library, folders, geo_library  # noqa: E402
-from amaze.core import grid_columns  # noqa: E402
+from amaze.core import grid_columns, grid_engine  # noqa: E402
 from amaze.core import keyed_store, locations, notes, tile_icons  # noqa: E402
 from amaze.dialogs import save_dialog  # noqa: E402
 from amaze.prefs import prefs as prefs_mod  # noqa: E402
@@ -600,7 +600,7 @@ class EveryColumnIsCoveredByTheTablesHangingOffIt(unittest.TestCase):
             "these columns have no default width, so they take Qt's: "
             "%s" % sorted(missing))
         self.assertLessEqual(
-            set(grid_columns.GridColumnsMixin.TICK_COLUMNS),
+            set(grid_engine.GridEngine.TICK_COLUMNS),
             set(grid_columns.KEYS),
             "a tick column names a column that does not exist")
         keys = set(grid_columns.KEYS)
