@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.8.1
+
+- Preferences ▸ Show/Hide has two sub-tabs: Renderer holds the renderer switches, Sections the section switches.
+
 ## 1.8.0
 
 - Preferences ▸ About ▸ Add-On beta versions: when on, Check for Updates on the Add-On tab installs the newest beta of each add-on instead of its release; when off, it installs the release again.
