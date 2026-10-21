@@ -39,7 +39,7 @@ PREFS_GEOMETRY_SHADING = 'How geometry thumbnails are drawn: shaded, wireframe, 
 
 PREFS_GEOMETRY_BACKGROUND = 'The background behind geometry thumbnails.'
 
-PREFS_RENDER_ON_IMPORT = 'Render thumbnails as soon as you import materials. Turn off to render them later with Update Preview.'
+PREFS_RENDER_ON_IMPORT = 'Render thumbnails as soon as you import materials. Turn off to render them later with Update Render.'
 
 PREFS_CONVERSION_THREADS = 'How many textures (EXR/HDR) are turned into thumbnails at the same time.'
 
@@ -97,7 +97,7 @@ CUSTOMIZE_TAGS_ONE_TILE = 'Tags for this tile, separated by commas.'
 
 CUSTOMIZE_TAGS_MANY_TILES = 'Tags to add to every selected tile, separated by commas. Each tile keeps the tags it already has.'
 
-CUSTOMIZE_ICON = 'What the tile shows: its own picture, its section\'s icon, or an icon you choose.'
+CUSTOMIZE_ICON = 'What the tile shows: its render, its capture, its section\'s icon, or an icon you choose.'
 
 CUSTOMIZE_LIGHT_ICON = 'Draw the icon lines light for a dark background.'
 
@@ -121,7 +121,7 @@ PANEL_PREFERENCES = 'Open preferences.'
 
 PANEL_CATEGORIES = 'Show the category sidebar.'
 
-PANEL_CAPTURE = 'Capture a preview from the scene view pane.'
+PANEL_CAPTURE = 'Capture the Scene View as the selected tile\'s picture.'
 
 PANEL_VIEW_MODE = 'Switch between the thumbnail grid and the detail list.'
 

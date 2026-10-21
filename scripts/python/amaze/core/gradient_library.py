@@ -283,8 +283,8 @@ class GradientLibrary(library.AssetLibrary):
         return 0
 
     def _tile_icon_landed(self, row: int, spec, stored: bool) -> bool:
-        """No PNG is written for a palette - the paint path composes its icon - so only the tile repaints."""
-        self.row_changed(row, [QtCore.Qt.ItemDataRole.DecorationRole])
+        """No PNG is written for a palette; the row is re-pointed, as a Capture face reads a file."""
+        self._add_thumb_paths(row, base_changed=False)    # also repaints the tile
         return stored
 
     def rerender_tile_icons(self) -> int:
@@ -317,7 +317,9 @@ class GradientLibrary(library.AssetLibrary):
                 stops, icon_key, THUMB_SIZE)
 
     def _decoration_image(self, row: int):
-        """The painted swatch (or chosen icon); Colors has no thumbnail files to load."""
+        """The painted swatch, its capture, or its chosen icon."""
+        if tile_icons.face_for(self, row) == "capture":
+            return super()._decoration_image(row)    # the capture PNG, through the shared loader
         key = self._swatch_key(row)
         image = thumbnails.engine.peek(key)
         if image is not None:

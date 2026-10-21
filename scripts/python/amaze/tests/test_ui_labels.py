@@ -15,8 +15,9 @@ PACKAGE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(PACKAGE)))
 
 RETIRED = {    # retired label -> what the app calls it now, which the failure message quotes; three near-misses are deliberately absent ▸p/quoted-strings-go-stale
-    "Rerender Thumbnail": "Update Preview",
-    "Render Thumbnail": "Update Preview",
+    "Rerender Thumbnail": "Update Render",
+    "Render Thumbnail": "Update Render",
+    "Update Preview": "Update Render",    # 1.9.0: a render beside a capture
     "Delete Entry": "Delete",
     "Edit Info": "Info",
     "Toggle Favorite": "Favorite",

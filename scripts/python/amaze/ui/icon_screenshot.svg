@@ -1,29 +1,9 @@
-<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<svg
-   viewBox="8.07 8.07 30.86 30.86"
-   version="1.1"
-   xml:space="preserve"
-   xmlns="http://www.w3.org/2000/svg"
-   xmlns:svg="http://www.w3.org/2000/svg"><!-- HIP capture icon (solid picture glyph: framed photo, sun and
-       slope cut as negative space), redrawn 2026-08-21. The body is a
-       load-time tint target: #5d7abd, the same target the Library gear
-       uses, so IconMenuButton tints this identically. No punch-out
-       colour any more - the glyph's interior is negative space, and
-       state feedback is the button's own chip.
-
-       BARE ARTWORK ONLY, matching icon_library.svg. IconMenuButton
-       produces hover and pressed itself (grey chip + tint swap), so an
-       icon asset here carries one state, no ids and no hidden
-       elements.
-
-       The viewBox stays TIGHTENED to the artwork rather than the
-       design canvas, so it renders the same optical size as its
-       neighbours in the same 30px button. Measured, not eyeballed -
-       see the ink-extent test. --><g
-     style="fill:#5d7abd;fill-opacity:1;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"
-     transform="matrix(1.3887797,0,0,1.3888826,6.8352256,6.8339863)"><path
-       style="stroke:none;stroke-width:2.66679"
-       d="m 5.0001919,2.9995439 c -1.108,0 -2.0013186,0.8934511 -2.0013186,2.0014511 V 19.00077 c 0,0.98928 0.7128078,1.806559 1.6538311,1.9703 L 16.300065,9.3205991 a 1.4286163,1.4286163 0 0 1 2.02222,0 l 2.678004,2.6789849 V 5.000995 c 0,-1.108 -0.893318,-2.0014511 -2.001318,-2.0014511 z M 7.6834218,5.3670192 A 2.3160746,2.3160746 0 0 1 10.000875,7.6851721 2.3160746,2.3160746 0 0 1 7.6834218,10.000729 2.3160746,2.3160746 0 0 1 5.3685808,7.6851721 2.3160746,2.3160746 0 0 1 7.6834218,5.3670192 Z M 17.311175,12.352629 8.6657922,20.999625 H 18.998971 c 1.108,0 2.001318,-0.890855 2.001318,-1.998855 v -2.956749 z" /><g
-       style="opacity:1"><path
-         style="baseline-shift:baseline;display:inline;overflow:visible;vector-effect:none;stroke:none;stroke-linecap:butt;stroke-linejoin:miter;enable-background:accumulate;stop-color:#000000;stop-opacity:1"
-         d="M 21,15 16,10" /></g></g></svg>
+<svg width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg"><!-- Capture icon (four corner brackets), exported 2026-10-21 from the
+     B01 toolbar frame's `icon ▸ btn_hip_capture ▸ icon_screenshot.svg`
+     at the 18px icon size the toolbar draws. The body is the load-time
+     tint target #5d7abd, matched in either case, the same target the
+     Library gear uses. BARE ARTWORK ONLY: IconMenuButton produces hover
+     and pressed itself, so this carries one state, no ids and no hidden
+     elements. -->
+<path d="M2.7002 10.7998C3.25233 10.7999 3.70009 11.2477 3.7002 11.7998V13.8994C3.7002 14.1203 3.87967 14.2998 4.10059 14.2998H6.2002C6.75233 14.2999 7.20009 14.7477 7.2002 15.2998C7.2002 15.852 6.75239 16.2997 6.2002 16.2998H4.10059C2.7751 16.2998 1.7002 15.2249 1.7002 13.8994V11.7998C1.7003 11.2476 2.14798 10.7998 2.7002 10.7998ZM15.2998 10.7998C15.852 10.7998 16.2997 11.2476 16.2998 11.7998V13.8994C16.2998 15.2249 15.2249 16.2998 13.8994 16.2998H11.7998C11.2476 16.2997 10.7998 15.852 10.7998 15.2998C10.7999 14.7477 11.2477 14.2999 11.7998 14.2998H13.8994C14.1203 14.2998 14.2998 14.1203 14.2998 13.8994V11.7998C14.2999 11.2477 14.7477 10.7999 15.2998 10.7998ZM6.2002 1.7002C6.75239 1.7003 7.2002 2.14798 7.2002 2.7002C7.20009 3.25233 6.75233 3.70009 6.2002 3.7002H4.10059C3.87967 3.7002 3.7002 3.87967 3.7002 4.10059V6.2002C3.70009 6.75233 3.25233 7.20009 2.7002 7.2002C2.14798 7.2002 1.7003 6.75239 1.7002 6.2002V4.10059C1.7002 2.7751 2.7751 1.7002 4.10059 1.7002H6.2002ZM13.8994 1.7002C15.2249 1.7002 16.2998 2.7751 16.2998 4.10059V6.2002C16.2997 6.75239 15.852 7.2002 15.2998 7.2002C14.7477 7.20009 14.2999 6.75233 14.2998 6.2002V4.10059C14.2998 3.87967 14.1203 3.7002 13.8994 3.7002H11.7998C11.2477 3.70009 10.7999 3.25233 10.7998 2.7002C10.7998 2.14798 11.2476 1.7003 11.7998 1.7002H13.8994Z" fill="#5D7ABD"/>
+</svg>

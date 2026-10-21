@@ -75,16 +75,16 @@ class OnlyASectionThatRENDERSOffersUpdatePreview(unittest.TestCase):
                         getattr(context, "update_preview", None)))
                 self.assertEqual(
                     in_menu, bool(self._preview_gate(name)),
-                    "%s's menu is wrong about Update Preview for an empty "
+                    "%s's menu is wrong about Update Render for an empty "
                     "selection" % name)
 
     def _preview_gate(self, name):
         """Update Preview is ONE row of the shared tail, in every section's table, so a label check says nothing and what decides is the row's `shown` GATE - whether that answer survives into a real menu is driven end to end in test_grid_menu.py."""
         entry = next(e for e in sections.GRID_MENU_TAIL
-                     if e.label == "Update Preview")
+                     if e.label == "Update Render")
         self.assertTrue(
             entry.shown,
-            "Update Preview is unconditional in the shared tail, so "
+            "Update Render is unconditional in the shared tail, so "
             "every section offers it whatever it can do")
         context = getattr(sections, name)(None)  # a panel-less instance: the gate reads facts about the SECTION, and the one override that reads models answers False for an absent one rather than raising
         return getattr(context, entry.shown)([], None)

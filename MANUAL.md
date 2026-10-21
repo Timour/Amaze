@@ -51,7 +51,7 @@ The **Amaze shelf** has five tools:
 | tool | function |
 |---|---|
 | **Amaze** | Opens the panel. |
-| **Capture** | Captures a preview of the open scene. |
+| **Capture** | Captures the Scene View as the open scene's picture. |
 | **Repair** | Repairs a damaged library. See [Housekeeping](#housekeeping-and-troubleshooting). |
 | **Updates** | Checks for a newer Amaze and installs it after confirmation. |
 | **Reload** | Installs new asset files from the packages on the Houdini path and reloads all loaded asset definitions without a restart. |
@@ -82,7 +82,7 @@ The **toolbar**, from left to right:
 | <img src="scripts/python/amaze/ui/favourite_on.svg" width="20"> | **Favorites** | Shows favorites only. |
 | <img src="scripts/python/amaze/ui/Icon-slider.svg" width="20"> | **Size slider** | Sets the thumbnail size, 64–512 px, and the row height in list view. |
 | <img src="scripts/python/amaze/ui/icon_search.svg" width="20"> | **Search** | Searches names and tags in the current section. A leading colon searches tags only: `:metal` finds everything tagged metal. |
-| <img src="scripts/python/amaze/ui/icon_screenshot.svg" width="20"> | **Capture** | Captures a preview of the open scene. File section only. |
+| <img src="scripts/python/amaze/ui/icon_screenshot.svg" width="20"> | **Capture** | Captures the Scene View as the selected tile's picture. In the File section with no tile selected, captures it as the open scene's picture. |
 | <img src="scripts/python/amaze/ui/icon_library.svg" width="20"> | **Preferences** | Opens [Preferences](#preferences). |
 
 The **Import/Generate** and **Filter** menus:
@@ -155,7 +155,7 @@ Karma and Octane previews render in the background. A progress bar
 above the grid follows the render, and each tile updates when its
 preview is done. Redshift previews render in the foreground.
 
-**Update Preview** renders the selected materials again. **Cancel**, at
+**Update Render** renders the selected materials again. **Cancel**, at
 the right end of the tab row, stops the render.
 
 ### Versions
@@ -181,8 +181,8 @@ off.
 
 ### Tile menu
 
-**Copy To**, **Convert to**, **Update Preview**, **Customize**,
-**Favorite**, **Export Package** and **Delete**.
+**Copy To**, **Convert to**, **Update Render**, **Capture**,
+**Customize**, **Favorite**, **Export Package** and **Delete**.
 
 <img src="docs/images/menu_material_tile.png" width="200">
 <img src="docs/images/menu_copy_to.png" width="230">
@@ -240,7 +240,7 @@ Every import records its source, author, link and licence.
 
 **Import/Generate ▸ Gallery Import (.gal)** reads a Houdini gallery
 file, including the Material Palette's own, and adds every material
-preset in it to the library. **Update Preview** renders their previews.
+preset in it to the library. **Update Render** renders their previews.
 
 ---
 
@@ -287,7 +287,8 @@ The right-click menu:
   Linear, CatmullRom, MonotoneCubic, Bezier, BSpline or Hermite.
 - **Copy Color ▸** lists the swatches by name and hex code, and copies
   the chosen hex code to the clipboard.
-- **Customize**, **Favorite**, **Export Package** and **Delete**.
+- **Capture**, **Customize**, **Favorite**, **Export Package** and
+  **Delete**.
 
 <img src="docs/images/menu_color_tile.png" width="200">
 <img src="docs/images/menu_apply_as.png" width="200">
@@ -337,7 +338,8 @@ The right-click menu:
 - **Apply** writes the snippet into the selected node's code parameter.
 - **Edit** opens the snippet in the editor, with Name, Language,
   Category and Tags above the code.
-- **Customize**, **Favorite**, **Export Package** and **Delete**.
+- **Capture**, **Customize**, **Favorite**, **Export Package** and
+  **Delete**.
 
 <img src="docs/images/menu_code_tile.png" width="200">
 <img src="docs/images/dialog_edit_snippet.png" width="480">
@@ -374,16 +376,16 @@ Browses folders on disk.
 - **Scenes** (.hip, .hiplc, .hipnc) open on **double-click**, with
   Houdini's own prompt for unsaved changes. A scene dragged out of the
   panel and released also opens. The open scene has a tick on its tile.
-  Scene thumbnails are captures: **Capture Preview** on the right-click
-  menu, or the
-  <img src="scripts/python/amaze/ui/icon_screenshot.svg" width="14">
-  **Capture** button, takes one from the viewport.
+  A scene's picture is a capture: **Capture** on the right-click menu, or
+  the <img src="scripts/python/amaze/ui/icon_screenshot.svg" width="14">
+  **Capture** button, takes one from the Scene View while that scene is
+  open.
 - **Other files** show their system icon. **Copy Path** copies the path
   to the clipboard, written as set in [Write Paths As](#write-paths-as).
   A location lists these files when **Show ▸ Other Files** is on.
 
 The right-click menu: **Load**, **Copy Path**, **Show Location**,
-**Capture Preview**, **Customize**, **Favorite** and **Export Package**.
+**Capture**, **Customize**, **Favorite** and **Export Package**.
 
 <img src="docs/images/menu_file_tile.png" width="210">
 
@@ -483,19 +485,25 @@ dialog.
 
 The **Icon** menu sets what the tile shows:
 
-- **Preview**: the tile's own picture. That is a material's or a node
-  network's render, a snippet's code, a palette's swatches, a scene's
-  capture or a file's preview.
+- **Render**: the tile's own picture. That is a material's or a node
+  network's render, a snippet's code, a palette's swatches or a file's
+  preview.
+- **Capture**: a picture of the Scene View, taken with **Capture** on the
+  tile's right-click menu or the toolbar. Greyed for a tile without one.
 - **Generic**: the section's icon.
 - **Custom**: one of 287 Feather icons on a background colour, from four
   presets or any colour through the chip next to **Custom Color**.
   **Light Icon** draws the symbol light.
 
-Preview is the default where Amaze makes a picture, and a tile shows its
-Generic icon until its picture exists. Node networks outside SOP and COP
-default to Generic, with Preview greyed. Files without a preview default
-to Generic, and their Preview is the system icon for the file type. The
-preview square shows the finished tile.
+Render is the default where Amaze makes a picture, and a tile shows its
+Generic icon until its picture exists. Scenes default to Capture. Node
+networks outside SOP and COP default to Generic, with Render greyed.
+Files without a preview default to Generic, and their Render is the
+system icon for the file type. Taking a capture switches the tile to
+Capture. The preview square shows the finished tile.
+
+Captures are stored in the library's `captures` folder, so every computer
+using the library shows them.
 
 The dialog also sets the asset's **Name**, **Category** and **Tags**. On
 a multi-selection, Category moves every selected tile and Tags adds to
@@ -503,8 +511,8 @@ each tile's tags. **Apply** saves and keeps the dialog open; **Accept**
 saves and closes it.
 
 - Changes apply to the whole selection.
-- A custom icon is stored next to the render, and **Preview** brings the
-  render back.
+- A custom icon is stored next to the render, a capture in the
+  `captures` folder, and **Render** brings the render back.
 - Tile icons are stored in the library.
 
 Preferences ▸ Look ▸ **Tile Icon Line** sets the line weight.
@@ -628,6 +636,12 @@ Amaze opens.
 
 **Cache Path** and **Delete Local Cache** manage the thumbnail cache on
 this machine.
+
+**Library version** is the library's own version. Version 2 keeps
+scene captures in the library. On a computer that still has scene
+captures from an older Amaze, opening the library asks to move them:
+**Update Library** moves them into the library's `captures` folder, and
+**Later** asks again the next time Amaze opens.
 
 ### Render
 

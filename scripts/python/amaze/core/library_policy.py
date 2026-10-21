@@ -10,6 +10,9 @@ POLICY_VERSION = 1
 
 FILENAME = "policy.json"
 
+LIBRARY_VERSION = 2    # the library's own, on the Library tab; 2: captures live in it
+VERSION_KEY = "library_version"    # older Amaze ignores it and keeps it when it saves
+
 DEFAULTS = {
     "allow_overwrite": True,
 }
@@ -88,6 +91,24 @@ def allow_overwrite(library_dir: str) -> bool:
 def set_allow_overwrite(library_dir: str, allowed: bool) -> bool:
     """Persist the setting into the LIBRARY. True if it was written."""
     return _write(library_dir, {"allow_overwrite": bool(allowed)})
+
+
+def library_version(library_dir: str) -> int:
+    """The library's version, 1 for one from before versions were kept or one unreadable."""
+    try:
+        with open(path_for(library_dir), encoding="utf-8-sig") as handle:
+            loaded = json.load(handle)
+    except (OSError, ValueError):
+        return 1
+    value = loaded.get(VERSION_KEY) if isinstance(loaded, dict) else None
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        return 1
+    return value
+
+
+def set_library_version(library_dir: str, version: int) -> bool:
+    """Record the library's version in its policy. True if it was written."""
+    return _write(library_dir, {VERSION_KEY: int(version)})
 
 
 def _write(library_dir: str, changes: dict) -> bool:

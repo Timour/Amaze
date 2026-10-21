@@ -19,7 +19,7 @@ from amaze.panel import (dragdrop_widgets, empty_state, grid, notes_panel,
 from amaze.core import debug, keyed_store, locations
 from amaze.core import versions
 from amaze.core import notes
-from amaze.core import scene_captures
+from amaze.core import captures, scene_captures
 from amaze.core import (
     folders,
     material,
@@ -87,6 +87,7 @@ _reload_loaded("amaze.render.thumbs")
 _reload(tile_icons)    # before gradient_library and the Node Info dialog, which read its facts
 _reload(grid_columns)    # BEFORE the engine, which reads its column order
 _reload(grid_engine)    # BEFORE library and its siblings, which mix it in
+_reload(captures)    # before library, file_library and scene_captures, which read it
 _reload(library)
 _reload(category)
 _reload_loaded("amaze.core.repair")
@@ -307,6 +308,7 @@ class AmazePanel(QtWidgets.QWidget):
             active_version_role=self.material_model.ActiveVersionRole,
             date_role=self.material_model.DateRole,
             id_role=self.material_model.IdRole,
+            crop_role=self.material_model.CropRole,
             tile_badges=sections.MaterialSection.tile_badges,
             tile_model=library.MaterialLibrary,
             on_badge=self._badge_verb,
@@ -319,6 +321,7 @@ class AmazePanel(QtWidgets.QWidget):
             category_color_role=self.material_model.CategoryColorRole,
             date_role=self.material_model.DateRole,
             id_role=self.material_model.IdRole,
+            crop_role=self.material_model.CropRole,
             on_badge=self._badge_verb,
         )
         self.asset_delegate = AssetItemDelegate(    # Node and Code get their OWN delegate, without the version roles. `grid.sync_table_columns` decides a column exists from the active delegate's roles, so borrowing thumb_delegate painted a "Version" column reading "none" on every row, floored at the width of "Version 99". Latent and worse: editorEvent and _sync_versions_hover run against that delegate too, and _open_versions_dialog maps through the MATERIAL proxy and indexes material_model.assets - so a Node or Code asset with a versions ledger would open an unrelated MATERIAL. overview.md §2 and ListColumnHeader.COLUMNS both say Version is materials-only and Open is File-only; this is what delivers it
@@ -357,6 +360,7 @@ class AmazePanel(QtWidgets.QWidget):
             self.thumblist,
             category_role=self.gradient_model.CategoryLabelRole,
             category_color_role=self.gradient_model.CategoryColorRole,
+            crop_role=self.gradient_model.CropRole,
             tile_badges=sections.GradientSection.tile_badges,
             tile_model=gradient_library.GradientLibrary,
             on_badge=self._badge_verb,
@@ -368,6 +372,7 @@ class AmazePanel(QtWidgets.QWidget):
         self.code_category_sorted_model = self._sidebar_proxy(self.code_category_model)
         self.code_sorted_model, self.code_selection_model = self._grid_proxy(
             multifilterproxy_model.MultiFilterProxyModel(self), self.code_model)
+        self._update_library()
         self._seed_curated_content()    # seeds the snippets AND the palettes once per library, through one door a library switch also takes, so a virgin library seeds whichever way it arrives
 
         for _model in (self.material_model, self.cop_model, self.code_model):    # multi-category was removed, so every asset collapses to its first category; idempotent, so this one-time migration no-ops on every subsequent launch
@@ -520,10 +525,49 @@ class AmazePanel(QtWidgets.QWidget):
                 m.switch_model_data()
             model_registry.rebind(self.prefs, self.material_model)    # the shared set now serves another tree, so it is re-filed under it - left under the old key, the next panel opened there is handed this library's rows
             self.click_slider.setValue(grid.active_thumbsize(self))
+        self._update_library()
         self._seed_curated_content()    # a switch can land on a library nobody has opened before, and a virgin library gets its curated content however it arrives - the same door construction takes, marker-guarded, so an already-seeded library costs two stat calls
         section = self._section()
         if section is not None:
             section.library_switched()
+
+    def _update_library(self) -> None:
+        """The library to this Amaze's version; this computer's old captures move in when asked."""
+        from amaze.core import library_policy
+        try:
+            library_dir = str(self.prefs.dir or "")
+            if not library_dir or not locations.ready(self.prefs):
+                return    # no file keys yet: a capture moved now would miss its tile
+            waiting = captures.machine_capture_count()
+            if waiting and not self._ask_library_update(library_dir, waiting):
+                return    # Later: nothing moves, the version stays, the next start asks again
+            if waiting:
+                captures.adopt_machine_captures(self.prefs)
+            if library_policy.library_version(library_dir) < library_policy.LIBRARY_VERSION:
+                library_policy.set_library_version(library_dir, library_policy.LIBRARY_VERSION)
+        except Exception as exc:                          # noqa: BLE001 - never blocks the panel
+            debug.exception("library update", exc)
+
+    def _ask_library_update(self, library_dir: str, waiting: int) -> bool:
+        """Update Library or Later; True to update. Headless, nothing is asked and nothing moves."""
+        from amaze.core import library_policy
+        ui = getattr(hou, "ui", None)
+        if ui is None:
+            return False
+        target = library_policy.LIBRARY_VERSION
+        if library_policy.library_version(library_dir) < target:
+            question = messages.LIBRARY_UPDATE_CONFIRM % target
+        else:
+            question = messages.LIBRARY_CAPTURES_MOVE_CONFIRM    # another computer updated it
+        choice = ui.displayMessage(
+            question,
+            help=messages.HELP_LIBRARY_UPDATE % (waiting, "" if waiting == 1 else "s"),
+            buttons=messages.BUTTONS_UPDATE_LIBRARY,
+            default_choice=0, close_choice=1,
+            title=messages.TITLE_AMAZE)
+        debug.event("capture", "library update answered", update=(choice == 0),
+                    waiting=waiting)
+        return choice == 0
 
     def _seed_curated_content(self) -> None:
         """Seed the shipped starters once per library - the Code section's Examples snippets and the Colors section's palette sets - through ONE door for construction and the library switch. getattr, not attribute reads: the libraryless shape leaves model attributes None or absent"""
@@ -861,16 +905,15 @@ class AmazePanel(QtWidgets.QWidget):
                 self._on_categories_button)
             self.toolbar_layout.addWidget(self.btn_categories)
             self.toolbar_layout.addSpacing(theme.ui_px(self._TOOLBAR["gap"]))
-            self.btn_hip_capture = ui_helpers.IconMenuButton(    # HIP only: it acts on the open scene
+            self.btn_hip_capture = ui_helpers.IconMenuButton(    # every section: onto the selected tile
                 None,
                 self._ui_icon_path("icon_screenshot.svg"),
-                on_click=self.capture_open_scene_thumbnail,
+                on_click=self.capture_from_toolbar,
                 fallback_label="Capture",
                 name="btn_hip_capture",
             )
             self.btn_hip_capture.setToolTip(ui_helpers.tooltip_text(
                 tooltips.PANEL_CAPTURE))
-            self.btn_hip_capture.setVisible(False)
             self.toolbar_layout.addWidget(self.btn_hip_capture)
         self.filter_action_group = None    # the Filter menu is NOT built here: its entries belong to whichever section is showing and no section exists yet at this point in construction. build_filter_menu fills it, and runs again on every section change
         self.filter_actions = {}
@@ -1478,9 +1521,33 @@ class AmazePanel(QtWidgets.QWidget):
         self.cat_list.setCurrentIndex(view_model.index(row, 0))
         self._locate_folder_user(model)
 
-    def capture_open_scene_thumbnail(self) -> None:
-        """Toolbar button: capture the scene currently OPEN, not the grid selection - the capture photographs the viewport, so the only scene it can honestly be filed against is the one the viewport is showing."""
-        self._capture_and_report()    # "" = whatever is open, and no gate of its own: the refusal wording lives one layer down so this button, the tile menu and the shelf tool cannot drift apart
+    def capture_from_toolbar(self) -> None:
+        """Toolbar Capture: the one selected tile; in File with nothing selected, the open scene."""
+        context = self._section()
+        indexes = context.grid_selection() if context is not None else []
+        if len(indexes) == 1 and getattr(context, "takes_capture", False):
+            self.capture_onto_tile(context, indexes[0])
+        elif not indexes and getattr(context, "key", "") == "file":
+            self._capture_and_report()    # "" = the scene the viewport is showing
+        else:
+            self._report_capture_refused(messages.CAPTURE_SELECT_ONE_TILE)
+
+    def capture_onto_tile(self, context, proxy_index) -> None:
+        """The Scene View as one tile's picture, the tile then showing it. Never automatic ▸r/tile-captures"""
+        model, proxy = context.tile_models()
+        if model is None or proxy_index is None or not proxy_index.isValid():
+            return
+        source = proxy.mapToSource(proxy_index) if proxy is not None else proxy_index
+        row = source.row()
+        scene = self._hip_path_for(proxy_index) if getattr(context, "key", "") == "file" else ""
+        if scene:
+            captured = self._capture_and_report(scene)    # a scene only while it is the one open
+        else:
+            captured = self._run_capture(
+                lambda: scene_captures.capture_tile(model.capture_path(row), model.tile_key(row)),
+                model.tile_key(row))
+        if captured:
+            self._apply_icon_spec(model, [row], {"face": "capture"})
 
     def _hip_path_for(self, index):
         """The scene path behind a File-grid index, or '' - also '' for a row that is not a scene, so every hip-only path stays inert on other kinds."""
@@ -1491,23 +1558,25 @@ class AmazePanel(QtWidgets.QWidget):
             return ""
         return index.data(self.file_files_model.PathRole) or ""
 
-    def _capture_and_report(self, target: str = "") -> None:
-        """Run the shared capture and SAY WHY if it refuses - both entry points end here, and an empty target means whatever scene is open."""
-        try:
-            scene_captures.capture_open_scene(target)    # every check lives one layer down, so the tile menu, the toolbar button and the shelf tool cannot grow three wordings of the same refusal
-        except scene_captures.CaptureRefused as exc:    # a capture that silently does nothing teaches the user the feature is broken
-            debug.event("hip", "capture refused", file=target,
-                        reason=str(exc))
-            ui = getattr(hou, "ui", None)
-            if ui is not None:
-                ui.displayMessage(str(exc))
+    def _capture_and_report(self, target: str = "") -> bool:
+        """The open scene onto its File tile; "" means whatever is open. Answers whether it landed."""
+        return self._run_capture(
+            lambda: scene_captures.capture_open_scene(self.prefs, target), target)
 
-    def capture_hip_thumbnail(self, index, path: str = "") -> None:
-        """Capture the current scene view as this scene's thumbnail - ONLY ever from the right-click menu, and there must never be an automatic version."""
-        target = path or self._hip_path_for(index)    # why never automatic: the capture runs a flipbook, a flipbook forces the scene to COOK, and cooking an arbitrary scene is work of unknown size - measured 2026-07-29, an auto-capture 1.2s after opening a cloth-sim scene blocked 22 SECONDS on one file and on the next filled 86GB of RAM and crashed Houdini. No delay fixes it; the user pressing the button when the scene looks right is the judgement
-        if not target:
-            return
-        self._capture_and_report(target)    # and NO refresh after it: scene_captures announces a landed capture and every live model repaints itself. Doing it again discarded the cached image, emitted dataChanged a second time, and hid which layer owns the refresh
+    def _run_capture(self, capture, label: str) -> bool:
+        """Run one capture and SAY WHY it refused: a silent refusal reads as a broken feature."""
+        try:
+            capture()
+        except scene_captures.CaptureRefused as exc:
+            debug.event("hip", "capture refused", file=label, reason=str(exc))
+            self._report_capture_refused(str(exc))
+            return False
+        return True
+
+    def _report_capture_refused(self, text: str) -> None:
+        ui = getattr(hou, "ui", None)
+        if ui is not None:
+            ui.displayMessage(text)
 
     def _raw_category_name(self, index) -> str:
         """The STORED name behind a sidebar row, not the displayed one - every action on a category must key off this, or it acts on a name nothing has."""
@@ -2120,7 +2189,7 @@ class AmazePanel(QtWidgets.QWidget):
         ("cb_favsonly", "takes_favourites", "enabled"),
         ("btn_notes", "takes_comments", "enabled"),
         ("btn_filter", "takes_filter_menu", "enabled"),
-        ("btn_hip_capture", "takes_capture", "shown"),
+        ("btn_hip_capture", "takes_capture", "enabled"),
     )
 
     def _sync_toolbar(self, context) -> None:
@@ -2601,6 +2670,7 @@ class AmazePanel(QtWidgets.QWidget):
             shared = {model.tile_category(row) for row in rows}
             tile_category = shared.pop() if len(shared) == 1 else ""    # mixed: the dialog opens blank
         faces = {"preview": model.preview_image(rows[0]),    # what the preview square shows per face
+                 "capture": model.capture_image(rows[0]),
                  "generic": tile_icons.generic_image(model.tile_face_art(rows[0]))}
         dialog = icon_dialog.IconDialog(
             model.tile_icon(rows[0]),
@@ -2614,6 +2684,7 @@ class AmazePanel(QtWidgets.QWidget):
             face=tile_icons.face_for(model, rows[0]),
             faces=faces,
             can_preview=any(model.can_preview(row) for row in rows),
+            can_capture=any(model.has_capture(row) for row in rows),
         )
         self._icon_dialog = dialog
 

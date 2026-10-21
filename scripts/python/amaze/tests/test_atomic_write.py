@@ -405,19 +405,19 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
                 "hostos.render_scratch(", source,
                 "%s names its own render scratch, so the extension rule "
                 "is back in a caller's hands" % where)
-        source = inspect.getsource(scene_captures.capture_thumbnail)
+        source = inspect.getsource(scene_captures.capture_viewport)
         body = "\n".join(line.split("#")[0]
                          for line in source.splitlines())
         assigns = [line.strip() for line in body.splitlines()
                    if line.strip().startswith("scratch =")]
         self.assertEqual(
             1, len(assigns),
-            "capture_thumbnail no longer has exactly one scratch name - "
+            "capture_viewport no longer has exactly one scratch name - "
             "this test cannot say which one Houdini is handed (%r)" % assigns)
         called = assigns[0].split("=", 1)[1].strip()
         self.assertTrue(
             called.startswith("_capture_scratch("),
-            "capture_thumbnail builds its own scratch name instead of "
+            "capture_viewport builds its own scratch name instead of "
             "going through the helper, so the unique-name rule and the "
             "extension rule are both back in play here (%r)" % called)
 

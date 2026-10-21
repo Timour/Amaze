@@ -1319,6 +1319,22 @@ class FileKeyIsCanonicalTest(unittest.TestCase):
         self.assertEqual("", model.file_key(999))    # normpath("") is ".", truthy past every `if not key`
         self.assertEqual("", model.file_key(-1))
 
+    def test_a_capture_taken_by_path_lands_on_the_tile(self):
+        """The shelf names a scene by its path, the menu by its row: both reach one capture file."""
+        from amaze.core import captures
+        tmp = tempfile.mkdtemp(prefix="amaze_key_")
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        scene = os.path.join(tmp, "shot.hiplc")
+        with open(scene, "w") as handle:
+            handle.write("x")
+        model = self._model_over(tmp)
+        row = model.row_for_path(scene)
+        self.assertGreaterEqual(row, 0, "the scene is not listed")
+        key = captures.file_key(model.preferences, scene)
+        self.assertTrue(key.startswith("loc:"), "the capture is keyed by path: %r" % key)
+        self.assertEqual(model.tile_key(row), key)
+        self.assertEqual(model.capture_path(row), captures.file_path(model.preferences, key))
+
 
 class OsIconTest(unittest.TestCase):
     """A file Amaze does not recognise still gets a picture: the OS's own icon on a transparent tile-sized canvas, never scaled past 2x its native size (the recorded probe's caveat)."""
@@ -1878,16 +1894,17 @@ class LocationManagementTest(unittest.TestCase):
             f.write("{corrupt")
         self.addCleanup(shutil.rmtree, bad_dir, ignore_errors=True)
 
-        from amaze.core import scene_captures    # a capture store with content that must survive
-        capture_dir = scene_captures.thumb_dir()
+        prefs = _Prefs([])
+        from amaze.core import captures    # a capture store with content that must survive
+        capture_dir = captures.folder(prefs)
+        os.makedirs(capture_dir, exist_ok=True)
         marker = os.path.join(capture_dir, "sweep_canary.png")
         with open(marker, "wb") as handle:
             handle.write(b"capture")
-        self.addCleanup(lambda: os.path.exists(marker)
-                        and os.remove(marker))
+        self.addCleanup(shutil.rmtree, prefs.dir, ignore_errors=True)
 
         removed = file_library.sweep_folder_cache(
-            _Prefs([]), doomed_dir, [kept_dir])
+            prefs, doomed_dir, [kept_dir])
         self.assertEqual(1, removed)
         self.assertFalse(os.path.exists(doomed_png),
                          "the removed folder's thumbnail survived")

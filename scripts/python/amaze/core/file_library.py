@@ -7,7 +7,7 @@ import stat
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from amaze.core import debug, folders, geo_library, scene_captures
+from amaze.core import captures, debug, folders, geo_library, scene_captures
 from amaze.core import grid_engine
 from amaze.core import keyed_store, locations
 from amaze.core import texture_library, thumbnails, tile_icons
@@ -267,11 +267,10 @@ class FileFiles(grid_engine.GridEngine,
         self._progress_total = 0
         self._os_icons: dict = {}
         self._colour_cache: dict = {}  # folder -> the owning location's colour band; THE PAINT PATH - the uncached shape deep-copied a location record per tile per frame and keyed on the row's own directory, painting recursive subfolder rows bandless; cleared on rescan and by colours_changed()
-        self._capture_seen: dict = {}  # does this scene have a capture, filled lazily on first paint and kept: the alternative is a stat per visible scene row per FRAME - cheap on a warm local disk, not on a sleeping external volume, which a registered File location is exactly where one turns up (research.md - Volume mounts on macOS); same shape as folders.py `_counts`
         thumbnails.signals.ready.connect(self._on_thumb_key_ready)  # through the RELAY, not the engine: the singleton is replaced on every module reload, which would leave this model wired to a dead one (thumbnails._EngineSignals)
         thumbnails.signals.convert_attempted.connect(
             self._on_convert_attempted)
-        scene_captures.signals.captured.connect(self._on_capture_landed)  # a capture from anywhere - the tile menu, the shelf tool - repaints this model's row for that scene
+        captures.signals.landed.connect(self._on_capture_landed)    # from any panel or the shelf
 
     def _get_image_cache(self):
         """The texture pipeline's cache, exact same prefix and keys - every thumbnail generated before the merge is still a hit. Keyed on the cache GENERATION as well as the size: `ThumbnailCache.__init__` resolves the root once and then holds its disk state, so changing the cache location left every cache built beforehand writing to the old root; `set_cache_override` bumps the counter, and scene_captures has always keyed on it."""
@@ -378,7 +377,6 @@ class FileFiles(grid_engine.GridEngine,
         self._pending_writes = {}
         self._progress_keys = set()
         self._colour_cache = {}
-        self._capture_seen = {}  # a rescan is the moment the disk is authoritative again, so the remembered stats go with the rows they described
         geo_misses = []
 
         entries = []
@@ -442,9 +440,7 @@ class FileFiles(grid_engine.GridEngine,
                     self._row_specs.append((key, "render", full))
                     geo_misses.append((row, full))
             elif kind == KIND_HIP:
-                key = ("hip", full, scene_captures.thumb_dir())
-                self._key_rows.setdefault(key, []).append(row)
-                self._row_specs.append((key, "capture", full))
+                self._row_specs.append((None, "none", full))    # no render: its picture is a capture
             else:
                 self._row_specs.append(
                     (None, "os-icon", os.path.join(dirpath, name)))
@@ -637,21 +633,40 @@ class FileFiles(grid_engine.GridEngine,
             except OSError:
                 pass
 
-    def _capture_png(self, hip_path: str) -> str:
-        """This scene's capture PNG, or an empty path if it has none. The stat is remembered per scene (`_capture_seen`): a repaint must not ask the filesystem a question this process already answered - `_on_capture_landed` forgets the one path a capture just changed, a rescan forgets the lot, so the only way to a stale answer is deleting a PNG from under a running panel, re-read on the next folder visit."""
-        seen = self._capture_seen.get(hip_path)
-        if seen is None:
-            seen = (scene_captures.thumb_path(hip_path)
-                    if scene_captures.has_thumbnail(hip_path) else "")
-            self._capture_seen[hip_path] = seen
-        return seen
+    def capture_path(self, row: int) -> str:
+        """Where this row's capture lives in the library; "" for a row that does not exist."""
+        key = self.file_key(row) if 0 <= row < len(self._files) else ""
+        return captures.file_path(self.preferences, key) if key else ""
 
-    def _on_capture_landed(self, hip_path) -> None:
-        path = str(hip_path or "")
-        self._capture_seen.pop(path, None)  # forget BEFORE the repaint: refresh_row paints, and painting is what re-asks
-        row = self.row_for_path(path)
-        if row >= 0:
-            self.refresh_row(row)
+    def has_capture(self, row: int) -> bool:
+        return captures.exists(self.capture_path(row))
+
+    def capture_image(self, row: int):
+        """The row's capture, read now for the Customize preview; None where there is none."""
+        path = self.capture_path(row)
+        image = QtGui.QImage(path) if captures.exists(path) else QtGui.QImage()
+        return None if image.isNull() else image
+
+    def _capture_tile_image(self, row: int):
+        """The tile's capture through the engine, its row registered for the delivery."""
+        path = self.capture_path(row)
+        key = ("capture", path)
+        rows = self._key_rows.setdefault(key, [])
+        if row not in rows:
+            rows.append(row)
+        image = thumbnails.engine.request_file(key, path) if path else None
+        if image is not None:
+            return image
+        if not path or thumbnails.engine.is_missing(key):
+            return tile_icons.generic_image(self.tile_face_art(row))    # not captured yet
+        return None
+
+    def _on_capture_landed(self, key) -> None:
+        """A capture landed for `key`: drop the old picture and repaint the rows showing that file."""
+        thumbnails.engine.discard(("capture", captures.file_path(self.preferences, str(key))))
+        for row in range(len(self._files)):
+            if self.file_key(row) == str(key):
+                self.row_changed(row, [QtCore.Qt.ItemDataRole.DecorationRole])
 
     def refresh_row(self, row: int) -> None:
         """Repaint one row after its capture was replaced - drops the engine's copy first or the old image keeps being served."""
@@ -844,12 +859,15 @@ class FileFiles(grid_engine.GridEngine,
         return "icon_hip" if self._kind(row) == KIND_HIP else "face_file"
 
     def can_preview(self, row: int) -> bool:
-        """Every file has one: a capture, a render, the image, or the system's icon for its type."""
-        return True
+        """Every file but a scene has one: a render, the image, or the system's icon for its type."""
+        return self._kind(row) != KIND_HIP
 
     def default_face(self, row: int) -> str:
-        """Generic for a file Amaze makes no preview of - its preview is only the system's icon."""
-        return "generic" if self._kind(row) == KIND_OTHER else "preview"
+        """Capture for a scene, Generic for a file Amaze makes no picture of, else Render."""
+        kind = self._kind(row)
+        if kind == KIND_HIP:
+            return "capture"
+        return "generic" if kind == KIND_OTHER else "preview"
 
     def preview_image(self, row: int):
         """The row's own picture as far as it has landed: the tile's Preview, and Customize's."""
@@ -858,17 +876,10 @@ class FileFiles(grid_engine.GridEngine,
         key, source, payload = self._row_specs[row]
         if source == "os-icon":
             return self._os_icon_image(payload)
-        if source == "missing":
-            return tile_icons.generic_image(self.tile_face_art(row))    # nothing could read it: T11
+        if source in ("missing", "none"):
+            return tile_icons.generic_image(self.tile_face_art(row))    # unreadable, or a scene
         if source == "file":
             return thumbnails.engine.request_file(key, payload)
-        if source == "capture":
-            png = self._capture_png(payload)
-            if png:
-                image = thumbnails.engine.request_file(key, png)
-                if image is not None:
-                    return image
-            return tile_icons.generic_image(self.tile_face_art(row))    # no capture yet: T08
         image = thumbnails.engine.peek(key)    # convert/render rows: what has landed so far
         if image is not None:
             return image
@@ -894,7 +905,10 @@ class FileFiles(grid_engine.GridEngine,
         if role == QtCore.Qt.ItemDataRole.DisplayRole:
             return name
         if role == QtCore.Qt.ItemDataRole.DecorationRole:
-            if tile_icons.face_for(self, row) != "preview":
+            face = tile_icons.face_for(self, row)
+            if face == "capture":
+                return self._capture_tile_image(row)
+            if face != "preview":
                 return tile_icons.chosen_image(self, row)
             return self.preview_image(row)
         if role == self.FormatRole:
@@ -920,7 +934,7 @@ class FileFiles(grid_engine.GridEngine,
         if role == self.KindRole:
             return kind
         if role == self.CropRole:
-            return kind == KIND_HIP
+            return tile_icons.face_for(self, row) == "capture"    # viewport-shaped: it fills the tile
         if role == self.NotesRole:
             from amaze.core import notes
             return notes.has_note(

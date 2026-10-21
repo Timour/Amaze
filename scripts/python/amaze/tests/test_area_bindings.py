@@ -297,16 +297,14 @@ class TheToolbarFollowsTheContext(AreaBindingCase):
             "conversions outstanding, which means it inherited it from "
             "the section before rather than raising it for its own work")
 
-    def test_capture_is_offered_on_the_File_tab_and_nowhere_else(self):
+    def test_capture_is_offered_on_every_tab(self):
         """NAMED, not looked up with a fallback. The first version of this asked for `btn_capture`, got None and SKIPPED - a pin that can skip is not a pin, and it would have skipped just as quietly on the day a batch renamed the real one."""
         button = self.panel.btn_hip_capture
         for key in BINDINGS:
             with self.subTest(section=key):
-                panel = self.activate(key)
-                self.assertEqual(
-                    key == "file", not button.isHidden(),
-                    "Capture is %s on the %s tab"
-                    % ("hidden" if key == "file" else "showing", key))
+                self.activate(key)
+                self.assertFalse(button.isHidden(), "Capture is hidden on the %s tab" % key)
+                self.assertTrue(button.isEnabled(), "Capture is greyed on the %s tab" % key)
 
 
 class TheCommentsPaneFollowsTheContext(AreaBindingCase):
@@ -395,16 +393,18 @@ class TheOnlineWorldBindsTheSameFourAreas(AreaBindingCase):
         """Entering used to call its own activation directly and skip everything `_on_tab_toggled` does afterwards - so the Capture button kept the state the section you left had given it, and the Comments pane went on pointing at the local asset."""
         panel = self.activate("file")
         self.addCleanup(self._restore)
-        self.assertFalse(panel.btn_hip_capture.isHidden(),
-                         "Capture should be offered on the File tab, so "
-                         "this test is not set up to prove anything")
+        self.assertTrue(panel.btn_hip_capture.isEnabled(),
+                        "Capture should be offered on the File tab, so "
+                        "this test is not set up to prove anything")
 
         panel.enter_online_world()
         QtWidgets.QApplication.processEvents()
-        self.assertTrue(
-            panel.btn_hip_capture.isHidden(),
-            "Capture is still live in the online world, where there is "
-            "no scene tile to capture onto")
+        self.assertFalse(
+            panel.btn_hip_capture.isEnabled(),
+            "Capture is still live in the online world, where no tile "
+            "is in the library to keep one")
+        self.assertFalse(panel.btn_hip_capture.isHidden(),
+                         "Capture left the toolbar online; it greys there")
         self.assertFalse(   # NOT `assertIsNone(panel._notes_subject())`: the fixture blocks the network, so the online grid has no rows, nothing is selected, and the lookup returns None before it ever reaches the question - that assertion was green with the whole mechanism removed, and these two are what it was trying to say
             panel.online_context.takes_comments,
             "the online world claims a comment can be written against "

@@ -43,8 +43,9 @@ MenuEntry = collections.namedtuple(
 SEPARATOR = MenuEntry("")  # the empty label is what makes it a divider
 
 GRID_MENU_TAIL = (
-    MenuEntry("Update Preview", verb="menu_update_preview",
+    MenuEntry("Update Render", verb="menu_update_preview",
               shown="menu_offers_preview"),
+    MenuEntry("Capture", verb="menu_capture", needs="menu_capture_enabled"),
     MenuEntry("Customize", verb="menu_customize"),
     MenuEntry("Favorite", verb="menu_favourite"),
     MenuEntry("Export Package", verb="menu_export_package"),
@@ -62,7 +63,7 @@ class Section:
     takes_favourites = True  # online rows answer False, so the star empties it
     takes_filter_menu = True  # the entries describe the LOCAL section under it
     kind_filter_menu = False  # the online world answers True: the eye offers All/Materials/Colors/Nodes/Code there
-    takes_capture = False    # Capture acts on the open SCENE
+    takes_capture = True    # Capture puts the Scene View on a tile ▸r/tile-captures
 
     empty_noun = "items"  # what the shared empty-state blanks call these
     EMPTY: dict = {}      # `nothing-yet`: (headline, sentence, button, verb)
@@ -314,6 +315,13 @@ class Section:
             return
         self.panel.edit_tile_icon(model, proxy, indexes,
                                   categories=self.save_categories()[0])    # THIS section's list
+
+    def menu_capture_enabled(self, indexes, current) -> bool:
+        """One tile at a time: a capture is one picture."""
+        return len(indexes) == 1
+
+    def menu_capture(self, indexes, current, payload=None) -> None:
+        self.panel.capture_onto_tile(self, current)
 
     def menu_favourite(self, indexes, current, payload=None) -> None:
         self.panel.grid_toggle_favourite(indexes)
@@ -1226,10 +1234,15 @@ class FolderSection(Section):
         return len(indexes) == 1 or kinds == {file_library.KIND_GEO}
 
     def menu_capture_enabled(self, indexes, current) -> bool:
-        """Only the scene the VIEWPORT is showing can be captured, since the capture photographs the viewport and capturing while another scene is open files that picture under the wrong name - silently, and the result looks perfectly plausible. The SAME test the shared path makes and no more: an extra requirement here that Amaze opened the scene greys the tile out for a scene opened through File > Open, a recent-files entry or a crash recovery while the toolbar still offers it."""
-        path = self._path_of(current)
-        return (len(indexes) == 1 and bool(path)
-                and path == scene_captures.current_scene_path())
+        """One tile; a scene only while it is the one open, however it was opened."""
+        if len(indexes) != 1:
+            return False
+        files = self._p(self.files_attr)
+        if files is None or current is None or \
+                current.data(files.KindRole) != file_library.KIND_HIP:
+            return True
+        path = self._path_of(current)    # another scene open would file the picture under this one
+        return bool(path) and path == scene_captures.current_scene_path()
 
     def menu_import(self, indexes, current, payload=None) -> None:
         files = self._p(self.files_attr)
@@ -1256,9 +1269,6 @@ class FolderSection(Section):
             hostos.reveal_path(path)
         except Exception as exc:                         # noqa: BLE001
             debug.event("file", "reveal failed", error=str(exc))
-
-    def menu_capture(self, indexes, current, payload=None) -> None:
-        self.panel.capture_hip_thumbnail(current)
 
     def toggle_favourite(self, indexes) -> None:
         files, rows = self._files_and_rows(indexes)    # the model resolves each row to its path key
@@ -1342,8 +1352,6 @@ class FileSection(FolderSection):
         MenuEntry("Copy Path", verb="menu_copy_path"),
         SEPARATOR,
         MenuEntry("Show Location", verb="menu_reveal", needs="one"),
-        MenuEntry("Capture Preview", verb="menu_capture",
-                  needs="menu_capture_enabled", shown="selection_has_scene"),
     ) + GRID_MENU_TAIL
 
     _PATH_ONLY = DropRule(on_node="drop_file_path_on_node",    # per row KIND: every kind hands its path to the node under the cursor and what differs is the NO-NODE door, the un-kinded "" row behaving like unknown
@@ -1586,7 +1594,6 @@ class FileSection(FolderSection):
     delegate_attr = "file_delegate"
     tile_badges = ("open", "favourite", "comment")
     sidebar_attr = "file_folders_model"
-    takes_capture = True  # the only context with scene tiles to capture onto
     colour_pref_setter = "set_file_folder_color"
     folders_attr = "file_folders_model"
     files_attr = "file_files_model"
@@ -1718,6 +1725,7 @@ class OnlineContext(Section):
     takes_comments = False    # the three the online world does not offer, declared here rather than as _is_online() branches in the panel, and the toolbar reads them
     takes_favourites = False
     takes_filter_menu = False
+    takes_capture = False    # an online tile is not in the library: nowhere to keep a capture
     kind_filter_menu = True
 
 

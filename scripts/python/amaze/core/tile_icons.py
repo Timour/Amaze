@@ -33,7 +33,8 @@ def ink_colour(token: str) -> str:
     return INKS.get(str(token or "").strip().lower(), INKS[DEFAULT_INK])
 
 
-FACES = ("preview", "generic", "custom")    # the Icon menu's three, in its order ▸r/tile-faces
+FACES = ("preview", "capture", "generic", "custom")    # the Icon menu, in its order ▸r/tile-faces
+PLAIN_FACES = ("preview", "capture", "generic")    # stored as {"face": ...}: no icon to compose
 
 
 def is_custom(spec) -> bool:
@@ -42,7 +43,7 @@ def is_custom(spec) -> bool:
 
 
 def face_of(spec, default: str = "preview", can_preview: bool = True) -> str:
-    """The face a stored choice shows: "custom", "preview" or "generic", the row's default if unset."""
+    """The face a stored choice shows, one of FACES; the row's default when nothing is stored."""
     if is_custom(spec):
         return "custom"
     face = (spec or {}).get("face") or default
@@ -268,7 +269,7 @@ def normalise(spec) -> dict:
     name = str(spec.get("name", "") or "").strip()
     background = str(spec.get("bg", "") or "").strip()
     if not name or name not in icon_names():
-        if spec.get("face") in ("preview", "generic"):    # a face choice: no icon to clean
+        if spec.get("face") in PLAIN_FACES:    # a face choice: no icon to clean
             return {k: v for k, v in spec.items() if k not in ("name", "bg", "ink")}
         return {}
     if not is_valid_colour(background):

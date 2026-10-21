@@ -27,7 +27,8 @@ class IconDialog(base_dialog.AssetDialog):
                  parent=None, tile_name=None,
                  tile_name_enabled: bool = True, tile_tags=None,
                  categories=None, tile_category="",
-                 face=None, faces=None, can_preview=True) -> None:
+                 face=None, faces=None, can_preview=True,
+                 can_capture=False) -> None:
         super().__init__(tile_name if tile_name and tile_name_enabled
                          else amazetheme.TITLE_TILE_ICON,    # the WINDOW TITLE is the asset's own name, as drawn - a multi-selection has none, so it keeps the generic one
                          fixed_size=False, parent=parent)
@@ -38,8 +39,9 @@ class IconDialog(base_dialog.AssetDialog):
         self._tile_category = tile_category or ""
         self._face = face if face in tile_icons.FACES else tile_icons.face_of(
             tile_icons.normalise(current))    # what the tile shows now
-        self._faces = dict(faces or {})    # {"preview": image, "generic": image} for the preview square
+        self._faces = dict(faces or {})    # {face: image} for the preview square
         self._can_preview = bool(can_preview)
+        self._can_capture = bool(can_capture)
         self.new_tile_name = None
         self.new_tags = None
         self.new_category = None    # NOT greyed on a multi-selection: moving a whole selection to one category is the point of it
@@ -210,7 +212,7 @@ class IconDialog(base_dialog.AssetDialog):
             row.addStretch(1)
             return row, toggle
 
-        face_row = QtWidgets.QHBoxLayout()    # the Icon menu: Preview, Generic or Custom ▸r/tile-faces
+        face_row = QtWidgets.QHBoxLayout()    # the Icon menu: Render, Capture, Generic, Custom
         face_row.setSpacing(theme.ui_px(amazetheme.D02_LABEL_GAP))
         face_label = QtWidgets.QLabel(amazetheme.LABEL_ICON)
         ui_helpers.pin_drawn(face_label, self.FRAME_KEY, "QLabel", amazetheme.LABEL_ICON,
@@ -221,7 +223,9 @@ class IconDialog(base_dialog.AssetDialog):
         self.face_combo.setToolTip(ui_helpers.tooltip_text(tooltips.CUSTOMIZE_ICON))
         for face, label in zip(tile_icons.FACES, amazetheme.FACE_LABELS):
             self.face_combo.addItem(label, face)
-        self.face_combo.model().item(0).setEnabled(self._can_preview)    # no picture: no Preview
+        offered = {"preview": self._can_preview, "capture": self._can_capture}    # none: greyed
+        for position, face in enumerate(tile_icons.FACES):
+            self.face_combo.model().item(position).setEnabled(offered.get(face, True))
         self.face_combo.setCurrentIndex(tile_icons.FACES.index(self._face))
         face_row.addWidget(self.face_combo)
         face_row.addStretch(1)

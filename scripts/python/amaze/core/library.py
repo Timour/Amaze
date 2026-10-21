@@ -9,6 +9,7 @@ from PySide6 import QtCore, QtGui
 
 import hou
 
+from amaze.core import captures
 from amaze.core import debug
 from amaze.core import grid_engine
 from amaze.core import locations
@@ -97,6 +98,7 @@ quarantine_folder = quarantine.quarantine_folder
 prune_quarantine = quarantine.prune_quarantine
 quarantine_size = quarantine.quarantine_size
 quarantine_file = quarantine.quarantine_file
+quarantine_as = quarantine.quarantine_as
 
 
 def asset_files_for(preferences, mat_id: str) -> dict:
@@ -118,6 +120,7 @@ def asset_files_for(preferences, mat_id: str) -> dict:
         "cop": owned("_cop" + preferences.ext),
         "thumbnail": tile_icons.thumbnail_path(preferences, mat_id),
         "tile_icon": tile_icons.icon_image_path(preferences, mat_id),
+        "capture": captures.asset_path(preferences, mat_id),
     }
 
 
@@ -154,6 +157,8 @@ class AssetLibrary(grid_engine.GridEngine,
     NotesRole = QtCore.Qt.ItemDataRole.UserRole + 10  # 266, read by the one tile delegate - whether this asset carries a note, answered live from the notes store
     ActiveVersionRole = QtCore.Qt.ItemDataRole.UserRole + 11  # 267 - the ACTIVE version's name, "" when there are none; list mode has room to say which one you are looking at
 
+    CropRole = QtCore.Qt.ItemDataRole.UserRole + 12  # 268 - a capture is viewport-shaped, so it fills the tile
+
     DB_FILENAME = ""  # which json file in the library dir backs this model; every subclass names its own, and "" breaks loudly rather than binding a nameless model to somebody's database
 
     def __init__(self, preferences: prefs.Prefs) -> None:
@@ -173,6 +178,7 @@ class AssetLibrary(grid_engine.GridEngine,
 
         self._thumb_rows = {}  # engine deliveries arrive BY KEY; this maps them back to the row to repaint, and is rebuilt with the asset list
         thumbnails.signals.ready.connect(self._on_thumb_key_ready)  # through the RELAY, not the engine: the engine singleton is replaced on every module reload and would leave this model wired to a dead one
+        captures.signals.landed.connect(self._on_capture_landed)    # from any panel or the shelf
         self.rebuild_thumbs()
         self.order_rows()    # in the grid's order before any view has the rows
         self.adopt_retired_text_into_notes()
@@ -223,12 +229,39 @@ class AssetLibrary(grid_engine.GridEngine,
         return material.Material.from_dict(row)
 
     def _tile_image_path(self, row: int, spec=None) -> str:
-        """The file a row's tile loads: its chosen icon, else its render; "" for an unsafe id."""
+        """The file a row's tile loads: its capture or chosen icon, else its render; "" if unsafe."""
         if spec is None:
             spec = self.tile_icon(row)
+        if (spec or {}).get("face") == "capture":
+            return self.capture_path(row)
         return tile_icons.tile_read_path(
             self.preferences, str(self._assets[row].mat_id),
             tile_icons.is_custom(spec))
+
+    def capture_path(self, row: int) -> str:
+        """Where this row's capture lives; "" for a row that does not exist or an unsafe id."""
+        if not 0 <= row < len(self._assets):
+            return ""
+        mat_id = str(self._assets[row].mat_id)
+        if not material.is_safe_asset_id(mat_id):
+            return ""
+        return captures.asset_path(self.preferences, mat_id)
+
+    def has_capture(self, row: int) -> bool:
+        return captures.exists(self.capture_path(row))
+
+    def capture_image(self, row: int):
+        """The row's capture, read now for the Customize preview; None where there is none."""
+        path = self.capture_path(row)
+        image = QtGui.QImage(path) if captures.exists(path) else QtGui.QImage()
+        return None if image.isNull() else image
+
+    def _on_capture_landed(self, key) -> None:
+        """A capture landed for `key`: re-point and repaint that tile, dropping the old picture."""
+        for row in range(self.rowCount()):
+            if self.tile_key(row) == str(key):
+                self._add_thumb_paths(row, base_changed=False)
+                return
 
     def switch_model_data(self):
         """Point this model at whatever library Preferences now names. No worker teardown is needed: engine deliveries are keyed by material id, so an in-flight load cannot misroute."""
@@ -322,6 +355,9 @@ class AssetLibrary(grid_engine.GridEngine,
         home = hostos.canonical_path_key(str(self.preferences.dir or ""))
         if spec is None:
             spec = self.tile_icon(row)
+        if (spec or {}).get("face") == "capture":
+            return (home, self.DB_FILENAME, self._assets[row].mat_id,
+                    "capture", "", "", 0)
         if not tile_icons.is_custom(spec):
             return (home, self.DB_FILENAME, self._assets[row].mat_id,
                     "", "", "", 0)
@@ -583,6 +619,9 @@ class AssetLibrary(grid_engine.GridEngine,
 
         if role == self.LicenceRole:
             return str(asset.license or "")
+
+        if role == self.CropRole:
+            return tile_icons.face_for(self, row) == "capture"
 
         if role == self.FavoriteRole:
             return locations.is_favourite(  # the USER'S star, in the library store, never the record
@@ -1129,7 +1168,7 @@ class AssetLibrary(grid_engine.GridEngine,
         if missing_thumbs:
             summary.append(  # only quote a label that EXISTS - grep the package before naming a control here ▸p/quoted-strings-go-stale
                 "No thumbnail image yet for %s - select %s in Amaze and use "
-                "Update Preview when convenient, since a render takes "
+                "Update Render when convenient, since a render takes "
                 "time." % (_count(missing_thumbs, "material"),
                            "it" if missing_thumbs == 1 else "them"))
 

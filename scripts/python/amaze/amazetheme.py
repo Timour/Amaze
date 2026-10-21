@@ -155,7 +155,7 @@ LABEL_CHANGE_NAME = "Change Name"       # ▸ field labels and placeholders
 LABEL_TAGS = "Tags"
 LABEL_CATEGORY = "Category"
 LABEL_ICON = "Icon"                 # the D02 menu choosing the tile's face
-FACE_LABELS = ("Preview", "Generic", "Custom")    # its items, in `tile_icons.FACES` order
+FACE_LABELS = ("Render", "Capture", "Generic", "Custom")    # its items, in `tile_icons.FACES` order
 LABEL_LIGHT_ICON = "Light Icon"     # the D02 toggle that replaced the Lines dropdown: OFF = dark lines, ON = light
 LABEL_NAME = "Name"
 PLACEHOLDER_SEARCH_ICONS = "Search"     # D02 drew the count in it; it does not any more
@@ -317,6 +317,8 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
             ("QPushButton ▸ text", 426, 253, 37, 15, "Default"),
             ("QPushButton", 148, 277, 110, 22, None),
             ("QPushButton ▸ text", 156, 281, 95, 15, "Delete Local Cache"),
+            ("QWidget ▸ group divider", 20, 311, 450, 1, None),
+            ("QLabel", 148, 324, 322, 15, "Library version 2"),
         ),
     },
     "P02": {   # Preferences - Render
@@ -724,6 +726,7 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
             ("label ▸ filter_label", 422, 0, 40, 30, None),
             ("text ▸ filter_label", 424, 7, 35, 15, "Search"),
             ("field ▸ line_filter", 474, 5, 200, 20, None),
+            ("button ▸ btn_hip_capture", 1458, 3, 24, 24, None),
             ("button ▸ btn_prefs", 1484, 3, 24, 24, None),
             ("icon ▸ btn_categories ▸ icon_categories.svg", 6, 7, 16, 16, None),
             ("icon ▸ btn_menu_view ▸ icon_renderer.svg", 31, 6, 18, 18, None),
@@ -733,6 +736,7 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
             ("icon ▸ cb_viewmode ▸ list.svg", 136, 7, 16, 16, None),
             ("icon ▸ cb_favsonly ▸ favourite_on.svg", 162, 7, 15, 15, None),
             ("icon ▸ line_filter ▸ icon_search.svg", 478, 8, 13, 13, None),
+            ("icon ▸ btn_hip_capture ▸ icon_screenshot.svg", 1461, 6, 18, 18, None),
             ("icon ▸ btn_prefs ▸ icon_library.svg", 1487, 6, 18, 18, None),
         ),
     },

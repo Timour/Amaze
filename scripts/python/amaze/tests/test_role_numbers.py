@@ -34,6 +34,7 @@ FAMILY_ROLES = {
     "VersionsRole": _USER + 9,        # 265
     "NotesRole": _USER + 10,          # 266  delegate: notes badge
     "ActiveVersionRole": _USER + 11,  # 267
+    "CropRole": _USER + 12,           # 268  delegate: a capture fills the tile
 }
 
 FAMILY_MODELS = (

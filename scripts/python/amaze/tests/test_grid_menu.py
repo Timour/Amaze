@@ -207,19 +207,19 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
                  ["Copy To > [/mat, /stage/materiallibrary]",
                   "Convert to > [MaterialX(off), Redshift(off), Octane(off)](off)",    # neither renderer
                   "----",
-                  "Update Preview", "Customize", "Favorite", "Export Package",
-                  "Delete"]),
+                  "Update Render", "Capture", "Customize", "Favorite",
+                  "Export Package", "Delete"]),
                 ((0, 1),
                  ["Copy To > [/mat, /stage/materiallibrary]",
                   "Convert to > [MaterialX(off), Redshift, Octane]",
                   "----",
-                  "Update Preview", "Customize", "Favorite", "Export Package",
-                  "Delete"]),
+                  "Update Render", "Capture(off)", "Customize", "Favorite",    # one capture, one tile
+                  "Export Package", "Delete"]),
                 ((),
                  ["Copy To > [/mat, /stage/materiallibrary](off)",
                   "Convert to > [MaterialX(off), Redshift(off), Octane(off)](off)", "----",
-                  "Update Preview(off)", "Customize(off)", "Favorite(off)",
-                  "Export Package(off)", "Delete(off)"])):
+                  "Update Render(off)", "Capture(off)", "Customize(off)",
+                  "Favorite(off)", "Export Package(off)", "Delete(off)"])):
             with self.subTest(selected=len(rows)):
                 with plugins_loaded("Redshift", "Octane"):
                     shown = self._show("material", rows)
@@ -231,7 +231,8 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
             ["Apply",
              "Apply as > [Constant, Linear, CatmullRom, MonotoneCubic, "
              "Bezier, BSpline, Hermite]",
-             "----", "Customize", "Favorite", "Export Package", "Delete"],
+             "----", "Capture", "Customize", "Favorite", "Export Package",
+             "Delete"],
             [row for row in shown if not row.startswith("Copy Color")])
         swatches = [row for row in shown if row.startswith("Copy Color")]
         self.assertEqual(1, len(swatches))
@@ -242,7 +243,7 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
         """The per-entry actions grey; Customize, Favorite and Delete act on the whole selection like every section."""
         shown = self._show("gradient", (0, 1))
         self.assertEqual(
-            ["Apply(off)", "----", "Customize", "Favorite",
+            ["Apply(off)", "----", "Capture(off)", "Customize", "Favorite",
              "Export Package", "Delete"],
             [row for row in shown
              if not row.startswith(("Apply as", "Copy Color"))])
@@ -254,16 +255,18 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
     def test_node_keeps_its_shape(self):
         """The fixture has no Node assets, so this is the empty case - exactly the one that used to produce no menu at all."""
         self.assertEqual(
-            ["Load(off)", "----", "Update Preview(off)", "Customize(off)",
-             "Favorite(off)", "Export Package(off)", "Delete(off)"],
+            ["Load(off)", "----", "Update Render(off)", "Capture(off)",
+             "Customize(off)", "Favorite(off)", "Export Package(off)",
+             "Delete(off)"],
             self._show("cop"))
 
     def test_code_with_one_or_two_selected(self):
         for rows, expected in (
-                ((0,), ["New File", "----", "Apply", "Edit", "----",
+                ((0,), ["New File", "----", "Apply", "Edit", "----", "Capture",
                         "Customize", "Favorite", "Export Package", "Delete"]),
                 ((0, 1), ["New File", "----", "Apply(off)", "Edit(off)", "----",
-                          "Customize", "Favorite", "Export Package", "Delete"])):
+                          "Capture(off)", "Customize", "Favorite", "Export Package",
+                          "Delete"])):
             with self.subTest(selected=len(rows)):
                 self.assertEqual(expected, self._show("code", rows))
 
@@ -281,20 +284,23 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
         for kind, count, expected in (
                 (file_library.KIND_IMAGE, 1,
                  ["Import", "Copy Path", "----", "Show Location",
-                  "Update Preview", "Customize", "Favorite", "Export Package"]),
+                  "Update Render", "Capture", "Customize", "Favorite",
+                  "Export Package"]),
                 (file_library.KIND_IMAGE, 2,    # an image loads onto ONE node parameter
                  ["Import(off)", "Copy Path", "----", "Show Location(off)",
-                  "Update Preview", "Customize", "Favorite", "Export Package"]),
+                  "Update Render", "Capture(off)", "Customize", "Favorite",
+                  "Export Package"]),
                 (file_library.KIND_GEO, 2,      # geometry imports the whole selection
                  ["Import", "Copy Path", "----", "Show Location(off)",
-                  "Update Preview", "Customize", "Favorite", "Export Package"]),
-                (file_library.KIND_HIP, 1,      # a capture is hand-framed: only a new capture replaces it
+                  "Update Render", "Capture(off)", "Customize", "Favorite",
+                  "Export Package"]),
+                (file_library.KIND_HIP, 1,      # a scene captures only while it is the open one
                  ["Load", "Copy Path", "----", "Show Location",
-                  "Capture Preview(off)", "Customize", "Favorite",
+                  "Capture(off)", "Customize", "Favorite",
                   "Export Package"]),
                 (file_library.KIND_OTHER, 1,    # what Houdini cannot open is absent, not greyed
-                 ["Copy Path", "----", "Show Location", "Customize", "Favorite",
-                  "Export Package"])):
+                 ["Copy Path", "----", "Show Location", "Capture", "Customize",
+                  "Favorite", "Export Package"])):
             with self.subTest(kind=kind, selected=count):
                 rows = self._rows_of_kind(kind)
                 self.assertGreaterEqual(len(rows), count,
@@ -686,7 +692,7 @@ class EveryVerbREACHESItsOwner(unittest.TestCase):
                 ("Favorite", "grid_toggle_favourite",
                  ("material", "gradient", "code", "file")),
                 ("Delete", "grid_delete", ("material", "gradient", "code")),
-                ("Update Preview", "grid_update_preview", ("material", "file"))):
+                ("Update Render", "grid_update_preview", ("material", "file"))):
             for key in keys:
                 with self.subTest(section=key, entry=label):
                     with mock.patch.object(type(self.panel), owner) as verb:

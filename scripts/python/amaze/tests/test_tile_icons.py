@@ -431,11 +431,44 @@ class DialogTest(unittest.TestCase):
         self.assertTrue(dialog._chooser_area.isEnabled())
         self.assertTrue(dialog.light_toggle.isEnabled())
 
+    def _item(self, dialog, face):
+        return dialog.face_combo.model().item(tile_icons.FACES.index(face))
+
     def test_preview_is_greyed_where_no_picture_can_exist(self):
-        dialog = icon_dialog.IconDialog(None, face="generic", can_preview=False)
+        dialog = icon_dialog.IconDialog(None, face="generic", can_preview=False, can_capture=True)
         self.addCleanup(dialog.deleteLater)
-        self.assertFalse(dialog.face_combo.model().item(0).isEnabled())
-        self.assertTrue(dialog.face_combo.model().item(1).isEnabled())
+        self.assertFalse(self._item(dialog, "preview").isEnabled())
+        for face in ("capture", "generic", "custom"):
+            self.assertTrue(self._item(dialog, face).isEnabled(), "%s greyed with Preview" % face)
+
+    def test_capture_is_greyed_until_the_tile_has_one(self):
+        for can_capture in (False, True):
+            with self.subTest(can_capture=can_capture):
+                dialog = icon_dialog.IconDialog(None, face="generic", can_capture=can_capture)
+                self.addCleanup(dialog.deleteLater)
+                self.assertEqual(can_capture, self._item(dialog, "capture").isEnabled())
+                self.assertTrue(self._item(dialog, "preview").isEnabled(),
+                                "a missing capture greyed Preview as well")
+
+    def test_the_icon_menu_reads_render_capture_generic_custom(self):
+        """The stored names stay: a library written by an older Amaze keeps its choices."""
+        dialog = icon_dialog.IconDialog(None)
+        self.addCleanup(dialog.deleteLater)
+        combo = dialog.face_combo
+        self.assertEqual(["Render", "Capture", "Generic", "Custom"],
+                         [combo.itemText(i) for i in range(combo.count())])
+        self.assertEqual(["preview", "capture", "generic", "custom"],
+                         [combo.itemData(i) for i in range(combo.count())])
+
+    def test_the_preview_square_shows_the_capture(self):
+        image = QtGui.QImage(64, 64, QtGui.QImage.Format.Format_RGB32)
+        image.fill(QtGui.QColor("#f59f00"))
+        dialog = icon_dialog.IconDialog(None, face="capture", faces={"capture": image},
+                                        can_capture=True)
+        self.addCleanup(dialog.deleteLater)
+        shown = dialog.preview.pixmap().toImage()
+        self.assertEqual("#f59f00", shown.pixelColor(shown.width() // 2,
+                                                     shown.height() // 2).name())
 
     def test_the_preview_square_shows_the_chosen_face(self):
         """Preview shows the tile's own picture, Generic the section's face, Custom the composed icon."""

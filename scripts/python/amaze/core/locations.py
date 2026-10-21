@@ -105,6 +105,11 @@ def _awaiting_user(preferences) -> bool:
         return True
 
 
+def ready(preferences) -> bool:
+    """Whether file idents can be read now - the gate for a per-file store keyed on them."""
+    return _ready(preferences)
+
+
 def _ready(preferences) -> bool:
     """Is the library's own answer the one to use? Present, writable, not awaiting a user, migrated, and the untagged rows adopted - the migration is attempted HERE as well as at load because `dir` can be set long after settings were read, and the copy stays the truth until it has landed."""
     if not library_present(preferences):

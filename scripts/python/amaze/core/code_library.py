@@ -281,7 +281,10 @@ class CodeLibrary(library.AssetLibrary):
     def _decoration_image(self, row: int):
         """The tile image: a chosen icon, else the painted code preview, painted on a miss."""
         asset = self._assets[row]
-        if tile_icons.face_for(self, row) != "preview":    # no thumbnail FILE to swap here
+        face = tile_icons.face_for(self, row)
+        if face == "capture":
+            return super()._decoration_image(row)    # the capture PNG, through the shared loader
+        if face != "preview":    # no thumbnail FILE to swap here
             return self._missing_thumb_image(row)
         key = self._preview_key(asset)
         image = thumbnails.engine.peek(key)

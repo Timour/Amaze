@@ -19,7 +19,6 @@ sys.path.insert(
         os.path.dirname(os.path.abspath(__file__)))))
 
 from amaze.core import database  # noqa: E402
-from amaze.core import scene_captures  # noqa: E402
 from amaze.core import library as library_mod  # noqa: E402
 from amaze.core import library_policy  # noqa: E402
 from amaze.core import texture_library  # noqa: E402
@@ -417,48 +416,6 @@ class TheThumbnailManifestKeepsAnotherWritersWork(unittest.TestCase):
             "the folder's stored path ends in a separator")
         self.assertIn(hostos.canonical_path_key(live), cache._manifest,
                       "reconcile dropped a live file's thumbnail")
-
-
-class TheCaptureManifestSurvivesACrashMidWrite(unittest.TestCase):
-
-    def setUp(self):
-        self.store = tempfile.mkdtemp(prefix="amaze_hip_case_")
-        self.addCleanup(shutil.rmtree, self.store, True)
-        real = scene_captures.thumb_dir
-        self.addCleanup(setattr, scene_captures, "thumb_dir", real)
-        scene_captures.thumb_dir = lambda: self.store
-
-    def test_a_crash_mid_write_does_not_truncate_the_manifest(self):
-        for n in range(20):
-            scene_captures._record_manifest("/scenes/%d.hip" % n, "%d.png" % n)
-        path = scene_captures._manifest_path()
-        with open(path, encoding="utf-8") as fh:
-            before = len(json.load(fh))
-        self.assertEqual(20, before)
-
-        real_dump = json.dump
-
-        def dies_partway(data, handle, **kw):
-            handle.write('{"/scenes/0.hip": {"thumb')
-            raise KeyboardInterrupt("crash mid-write")
-
-        json.dump = dies_partway
-        self.addCleanup(setattr, json, "dump", real_dump)
-        try:
-            scene_captures._record_manifest("/scenes/new.hip", "new.png")
-        except KeyboardInterrupt:
-            pass
-        finally:
-            json.dump = real_dump
-
-        with open(path, encoding="utf-8") as fh:
-            after = json.load(fh)
-        self.assertEqual(
-            before, len(after),
-            "the manifest was written in place, so a crash part way "
-            "through truncated it - the next capture reads that as "
-            "unreadable and replaces every scene-to-thumbnail mapping "
-            "with its own one entry")
 
 
 class TheUndoCopyBoundHoldsWithoutHoudini(unittest.TestCase):

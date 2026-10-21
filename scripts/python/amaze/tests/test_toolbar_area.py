@@ -52,11 +52,11 @@ class EveryContextDeclaresWhatItOffers(unittest.TestCase):
     #: Context class -> what it must answer for each fact.
     EXPECTED = {
         "MaterialSection": {"takes_comments": True, "takes_favourites": True,
-                            "takes_filter_menu": True, "takes_capture": False},
+                            "takes_filter_menu": True, "takes_capture": True},
         "FileSection": {"takes_comments": True, "takes_favourites": True,
                         "takes_filter_menu": True, "takes_capture": True},
         "GradientSection": {"takes_comments": True, "takes_favourites": True,
-                            "takes_filter_menu": True, "takes_capture": False},
+                            "takes_filter_menu": True, "takes_capture": True},
         "OnlineContext": {"takes_comments": False, "takes_favourites": False,
                           "takes_filter_menu": False, "takes_capture": False},
     }
@@ -71,12 +71,12 @@ class EveryContextDeclaresWhatItOffers(unittest.TestCase):
                         "%s.%s is %r - the toolbar follows this, so the "
                         "control it governs is wrong in that context"
                         % (name, fact, getattr(context, fact)))
-        offering = [name for name in dir(sections)    # capture acts on the open SCENE: File only
-                    if isinstance(getattr(sections, name), type)
-                    and issubclass(getattr(sections, name), sections.Section)
-                    and getattr(sections, name).takes_capture]
-        self.assertEqual(["FileSection"], offering,
-                         "Capture is offered by %s" % offering)
+        declining = [name for name in dir(sections)    # any library tile takes a capture
+                     if isinstance(getattr(sections, name), type)
+                     and issubclass(getattr(sections, name), sections.Section)
+                     and not getattr(sections, name).takes_capture]
+        self.assertEqual(["OnlineContext"], declining,
+                         "Capture is withheld by %s" % declining)
 
 
 class TheToolbarFollowsTheContextLive(unittest.TestCase):

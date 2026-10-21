@@ -801,6 +801,15 @@ def _canned_amaze_source(tree, bundles):
     return Source()
 
 
+def _bytes_or_none(path):
+    """A file's bytes, or None where there is no file."""
+    try:
+        with open(path, "rb") as handle:
+            return handle.read()
+    except OSError:
+        return None
+
+
 def _manifest_zip(testcase, entries, members=None,
                   name="pkg.amazepkg", fmt=None) -> str:
     """A local package from raw manifest entries plus optional {arcname: bytes} members; `fmt` overrides the manifest format number."""
@@ -1581,12 +1590,13 @@ class TexturePackingTest(unittest.TestCase):
                          "files": {}, "textures": {token: member}}
                 pkg = _manifest_zip(self, [entry], members={member: b"evil"})
                 before = model.rowCount()
+                was = _bytes_or_none(landed)    # policy.json exists: the panel keeps the library version in it
                 summary = packages.import_package(
                     self.panel._package_models(), self.panel.prefs, pkg)
                 self.assertEqual(1, summary["refused"], summary)
                 self.assertEqual(before, model.rowCount(),
                                  "the escaping entry still landed a row")
-                self.assertFalse(os.path.exists(landed),
+                self.assertEqual(was, _bytes_or_none(landed),
                                  "a package token wrote %s" % landed)
 
 

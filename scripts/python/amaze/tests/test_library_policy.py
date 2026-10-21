@@ -69,6 +69,54 @@ class PolicyFileTest(unittest.TestCase):
             self.assertEqual(42, json.load(handle)["some_future_setting"])
 
 
+class LibraryVersionTest(unittest.TestCase):
+    """The library's own version, kept in its policy so every computer reads the same."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp(prefix="amaze_policy_")
+        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
+        self.path = library_policy.path_for(self.dir)
+
+    def test_a_library_from_before_versions_is_1(self):
+        self.assertEqual(1, library_policy.library_version(self.dir))
+
+    def test_it_round_trips(self):
+        self.assertTrue(library_policy.set_library_version(self.dir, 2))
+        self.assertEqual(2, library_policy.library_version(self.dir))
+        with open(self.path, encoding="utf-8") as handle:
+            self.assertEqual(2, json.load(handle)[library_policy.VERSION_KEY])
+
+    def test_it_and_the_other_settings_keep_each_other(self):
+        """Merged writes: older Amaze, which knows no version, keeps it when it saves."""
+        library_policy.set_allow_overwrite(self.dir, False)
+        library_policy.set_library_version(self.dir, 2)
+        self.assertFalse(library_policy.allow_overwrite(self.dir))
+        library_policy.set_allow_overwrite(self.dir, True)
+        self.assertEqual(2, library_policy.library_version(self.dir))
+
+    def test_anything_but_a_whole_number_reads_as_1(self):
+        for value in ("x", "2", 0, -1, 2.5, True, None):
+            with self.subTest(value=value):
+                with open(self.path, "w", encoding="utf-8") as handle:
+                    json.dump({library_policy.VERSION_KEY: value}, handle)
+                self.assertEqual(1, library_policy.library_version(self.dir))
+
+    def test_an_unreadable_policy_reads_as_1(self):
+        with open(self.path, "w", encoding="utf-8") as handle:
+            handle.write("{ not json")
+        self.assertEqual(1, library_policy.library_version(self.dir))
+
+    def test_the_library_tab_shows_it(self):
+        from amaze.dialogs import prefs_dialog
+        prefs = test_support.fixture_prefs(self)
+        dialog = prefs_dialog.PrefsDialog(prefs, panel=None)
+        self.addCleanup(dialog.deleteLater)
+        self.assertEqual("Library version 1", dialog._lbl_library_version.text())
+        library_policy.set_library_version(prefs.dir, 2)
+        dialog._sync_test_mode_rows()
+        self.assertEqual("Library version 2", dialog._lbl_library_version.text())
+
+
 class NoLibraryMeansNoPolicyFileTest(unittest.TestCase):
     """With no library open, nothing reads or writes a policy.json in the working folder."""
 

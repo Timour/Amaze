@@ -69,9 +69,12 @@ def quarantine_size(library_dir: str) -> tuple:
 
 def quarantine_file(library_dir: str, path: str) -> str:
     """Moves one file into today's quarantine. `os.replace` first, atomic where it works - but a rename cannot cross volumes and the library may be on a drive of its own, so the fallback copies then unlinks: a torn copy lands on the QUARANTINE side and the source survives. Answers the new path, or `""`, and the caller must then treat the file as still present."""
-    folder = quarantine_folder(library_dir)
-    relative = os.path.relpath(path, library_dir)
-    target = os.path.join(folder, relative)
+    return quarantine_as(library_dir, path, os.path.relpath(path, library_dir))
+
+
+def quarantine_as(library_dir: str, path: str, relative: str) -> str:
+    """`quarantine_file` filed under `relative`, which a file from outside the library needs."""
+    target = os.path.join(quarantine_folder(library_dir), relative)
     hostos.check_sandbox(target)
     try:
         os.makedirs(os.path.dirname(target), exist_ok=True)

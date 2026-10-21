@@ -30,6 +30,7 @@ LINK_COLOR = amazetheme.LINK_COLOR   # About-tab links ▸p/one-design-document
 PREFS_FRAMES = ("P01", "P02", "P03a", "P03b", "P04", "P05", "P06")   # the drawn frame per page, in tab order; a sub-tab is a page ▸p/one-design-document
 
 VERSION_STEM = branding.APP_NAME + " version "   # what the drawn version line opens with; the number after it is a sample, and the widget goes on to carry the updater's answers
+LIBRARY_VERSION_STEM = "Library version "   # P01's drawn line opens with it; its number is a sample
 
 _logo_cache = None   # rendered once and reused as a QTextDocument resource, so the About page can reference it as an img src
 
@@ -394,6 +395,10 @@ class PrefsDialog(base_dialog.AssetDialog):
             tooltips.PREFS_DELETE_LOCAL_CACHE))
         form.addRow(self._label(""), clear_cache_btn)
 
+        self._add_divider(form)
+        self._lbl_library_version = QtWidgets.QLabel()    # filled by _sync_test_mode_rows
+        form.addRow(self._label(""), self._lbl_library_version)
+
         self._tab_built["P01"] = {
             "QLineEdit": (self.line_workdir, self.line_cache),
             "QComboBox": (self.cbb_library_user,),
@@ -408,6 +413,16 @@ class PrefsDialog(base_dialog.AssetDialog):
         for widget in getattr(self, "_real_path_widgets", ()):
             widget.setEnabled(not on)
         self.line_workdir.setText(self._prefs.dir)
+        label = getattr(self, "_lbl_library_version", None)
+        if label is not None:
+            label.setText(self._library_version_line())
+
+    def _library_version_line(self) -> str:
+        """`Library version 2` for the library the dialog points at; "" with none."""
+        library_dir = str(self._prefs.dir or "")
+        if not library_dir or not os.path.isdir(library_dir):
+            return ""
+        return LIBRARY_VERSION_STEM + str(library_policy.library_version(library_dir))
 
     def _build_render_tab(self) -> QtWidgets.QWidget:
         page, form = self._tab_page()
@@ -985,6 +1000,8 @@ class PrefsDialog(base_dialog.AssetDialog):
                 ui_helpers.pin_drawn_series(widgets, frame_key, kind)
         ui_helpers.pin_drawn_stem(self._lbl_version, "P06", "QLabel",
                                   VERSION_STEM, height=False)
+        ui_helpers.pin_drawn_stem(self._lbl_library_version, "P01", "QLabel",
+                                  LIBRARY_VERSION_STEM, height=False)
         ui_helpers.pin_drawn(self._addon_list, "P05", "QTextBrowser", None, height=False)
         ui_helpers.pin_drawn(self._lbl_addons, "P05", "QLabel", None, height=False)
         for row in self._path_rows:

@@ -114,9 +114,9 @@ PACKAGE_IMPORT_SUMMARY = 'Imported %d asset(s) and %d file(s) into the Import ca
 
 MATERIAL_PRESETS_FOUND = 'No material presets were found in: %s'
 
-IMPORT_MATERIAL_PRESETS_FROM = 'Import %d material presets from:\n%s\n\n%s\n\nNote: Thumbnails are not generated during import. After importing, select the new materials and use Update Preview.'
+IMPORT_MATERIAL_PRESETS_FROM = 'Import %d material presets from:\n%s\n\n%s\n\nNote: Thumbnails are not generated during import. After importing, select the new materials and use Update Render.'
 
-GALLERY_IMPORT_FINISHED_IMPORTED_SKIPPED = 'Gallery import complete.\n\nImported: %d\nSkipped: %d\nFailed: %d\n\nTo generate previews, select the new materials and use Update Preview.'
+GALLERY_IMPORT_FINISHED_IMPORTED_SKIPPED = 'Gallery import complete.\n\nImported: %d\nSkipped: %d\nFailed: %d\n\nTo render them, select the new materials and use Update Render.'
 
 NO_LIBRARY_OPEN = 'Open a library first.'
 
@@ -127,6 +127,12 @@ AMAZE_COULD_NOT = '%d of %d items could not be imported:\n\n%s'
 SCENE_BUILD_PARTIAL_FAILURE = '%d of %d items could not be built:\n\n%s'
 
 TILE_ICON_SAVE_FAILED = '%d tile icon%s could not be saved. Verify that the library folder is writable.'
+
+CAPTURE_SELECT_ONE_TILE = 'Select one tile to capture onto.'
+
+LIBRARY_UPDATE_CONFIRM = 'Update this library to version %d?'
+
+LIBRARY_CAPTURES_MOVE_CONFIRM = "Move this computer's scene captures into the library?"
 
 NO_LIBRARY_CONFIGURED_2 = 'Configure a library first. Open Preferences and select one under Library Path.'
 
@@ -243,10 +249,14 @@ BUTTONS_TURN_ON = ('Turn On', 'Cancel')
 
 BUTTONS_INSTALL_UPDATE = ('Install Update', 'Later')
 
+BUTTONS_UPDATE_LIBRARY = ('Update Library', 'Later')
+
 
 HELP_CLEAN_LIBRARY = "Files that nothing in your library uses move into Amaze's holding folder on this computer, outside your library, where they are kept for 30 days. Materials and saved networks whose files are missing stay, and the summary names them.\n\nFile locations whose folder is gone are removed, with their labels, colors, comments, favorites and icons. Favorites of missing files are removed too. This part cannot be undone. Locations and favorites on a drive that is not connected stay."
 
 HELP_MATERIAL_VERSIONS = 'This applies to everyone who opens this library, on every machine, because it is stored with the library rather than in your preferences.\n\nWith it on, saving over an existing material keeps the previous version instead of replacing it.'
+
+HELP_LIBRARY_UPDATE = "Scene captures are kept in the library, so every computer using it shows them. Amaze moves the %d capture%s on this computer into the library's captures folder. The originals go to Amaze's holding folder for 30 days."
 
 
 SNIPPET_HAS_NO_CODE = 'There is no code to save.'
@@ -255,7 +265,7 @@ SNIPPET_RUN_FAILED = '"%s" stopped: %s'
 
 CONFIRM_CLEAR_THUMBNAIL_CACHE = 'This deletes all cached image and geometry thumbnails from disk. They will regenerate as you browse.'
 
-NO_SCENE_VIEWER_FOR_THUMBNAIL = "Amaze renders thumbnails with a Scene Viewer's color settings, and no Scene Viewer is open. Open one, then use Update Preview."
+NO_SCENE_VIEWER_FOR_THUMBNAIL = "Amaze renders thumbnails with a Scene Viewer's color settings, and no Scene Viewer is open. Open one, then use Update Render."
 
 LOG_NOT_SAVED_UNEXPECTED = 'The log could not be saved. Unexpected error: %s'
 

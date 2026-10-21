@@ -12,16 +12,19 @@
 # The panel's button and this tool run the SAME function; every check
 # and every refusal message lives there, so the two cannot drift.
 try:
-    from amaze.core import hip_library
+    from amaze.core import scene_captures
+    from amaze.prefs import prefs as prefs_module
 except ImportError as exc:
     hou.ui.displayMessage(
         "Amaze is not importable from this session (%s).\n\n"
         "Check that $AMAZE points at the install and that Houdini was "
         "restarted after it changed." % exc)
 else:
+    preferences = prefs_module.Prefs()
+    preferences.load()
     try:
-        hip_library.capture_open_scene()
-    except hip_library.CaptureRefused as exc:
+        scene_captures.capture_open_scene(preferences)
+    except scene_captures.CaptureRefused as exc:
         hou.ui.displayMessage(str(exc))
     else:
         # basename() answers "untitled.hip" for an unsaved scene, never "".

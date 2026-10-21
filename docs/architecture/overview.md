@@ -36,7 +36,7 @@ panel how to drive the shared widgets. Data is read/written through
 | Term | What it is | In code |
 |---|---|---|
 | **Panel** | The whole window. One class, built once. | `panel/panel.py` → `AmazePanel` |
-| **Toolbar** | Top strip, mirrored left: Categories, View + Filter menus, Online, Comments, Grid/List toggle, Favourites star, size slider, Filter box, then Capture (File tab only) and the Preferences gear at the far right. Categories and Online were promoted out of the View menu (2026-08-01): a control that toggles state is a button, not a menu row, and having both is how a toggle ends up disagreeing with the thing it toggles. Every chip's four state pixmaps come from `ChipToggleButton.set_art` — art as drawn at rest, hover lightens, and a chip whose ON state is carried by COLOUR (star amber, Online amber) does not lighten at all. Disabled chips paint at 50%. | built in `init_ui()`, states in `ui_helpers.ChipToggleButton.set_art` |
+| **Toolbar** | Top strip, mirrored left: Categories, View + Filter menus, Online, Comments, Grid/List toggle, Favourites star, size slider, Filter box, then Capture (every section, greyed online) and the Preferences gear at the far right. Categories and Online were promoted out of the View menu (2026-08-01): a control that toggles state is a button, not a menu row, and having both is how a toggle ends up disagreeing with the thing it toggles. Every chip's four state pixmaps come from `ChipToggleButton.set_art` — art as drawn at rest, hover lightens, and a chip whose ON state is carried by COLOUR (star amber, Online amber) does not lighten at all. Disabled chips paint at 50%. | built in `init_ui()`, states in `ui_helpers.ChipToggleButton.set_art` |
 | **Section Tab Strip** | The Material/Color/Node/Code/File tab bar (singular since the 2026-07-31 merge; stored keys keep their historical names). Carries the **Cancel chip** at its right end: shown exactly while the conversion bar shows — `panel.set_conversion_bar_visible` is the bar's ONE visibility door and moves both — it stops a background thumbnail render while one runs (`husk_job.jobs`, which owns the bar meanwhile), otherwise the File section's image batch (flush first, then cancel). | `ui_helpers.SectionTabBar` |
 | **Sidebar** | Left list: categories (asset sections + Color) or folders (File). Rows sit in the STORED order — the name sort retired 2026-08-14 — with "All" pinned to row 0 by the database, and the ORDER IS THE USER'S: hold a row for the platform's press-hold time (`QApplication.startDragTime`) and it grabs — live moves under the mouse, one write on release, Esc restores. One controller (`sidebar.SidebarReorder`) speaks the Section contract (`reorders_sidebar` + four verbs), so every section works the same and Online simply answers no. Whether a dragged tile may be DROPPED on a row is the context's answer — `Section.takes_category_drops` and `accepts_category_drop` — not a list of section keys held by the panel (`CATEGORY_SECTIONS`, retired 2026-08-04). | the `cat_list` widget, `panel/sidebar.py` |
 | **Grid** | The main thumbnail area. GRID scales 64-512 with a magnet at 128; LIST is a table fixed at its smallest size (the slider greys out) whose row is as wide as its COLUMNS need, scrolling sideways rather than squeezing or dropping any. LIST mode is a real `QTableView` over a real `QAbstractTableModel` (the migration completed 2026-08-04); the painted header strip, `ListColumnHeader`, `ListColumns` and the delegate's list-painting branch are all retired. **The grid selection speaks in ROWS** (2026-08-06): a SelectRows selection answers one index per CELL - ten per row, hidden thumb column included - so every reader collapses to one index per row at column 0 through `grid_columns.selected_rows`, and the current, double-click and drag indexes are normalised to column 0 the same way (`live_current_index`, the panel's double-click entry, the drag press). The table carries the same context-menu and double-click wiring as the list view. The column ORDER lives once, in `core/grid_columns.COLUMNS`; every grid model answers it, and sorts its own rows, through the **Grid Engine** (§4i). WIDTHS are fixed defaults the user can DRAG (`panel.COLUMN_DEFAULT_WIDTH`, derived from the real library), with the last column taking the slack — nothing is measured at runtime. Tile badges are grid-only: at list size a badge is 12px and its art rasterises to a dark smudge, so those four facts are columns there instead. | the `thumblist` and `thumbtable` widgets, `panel/grid.py`, `panel/delegates.py` |
@@ -99,8 +99,8 @@ Plus one *view mode*, not a section:
   carries a KIND and keeps its pre-merge section's behaviour: images
   convert in the background (`('tex', path, size)` engine keys),
   geometry renders in the blocking ESC-interruptable pass
-  (`('geo', path, cache_dir)`), scene rows serve viewport CAPTURES
-  from `scene_captures`'s durable store, and unknown files draw their OS
+  (`('geo', path, cache_dir)`), scene rows show their CAPTURE from the
+  library's `captures` folder (`core/captures.py`), and unknown files draw their OS
   icon. Per-location recursion, custom names and the remove-time cache
   sweep live on `FileFolders`.
 
@@ -123,7 +123,7 @@ Plus one *view mode*, not a section:
 | `select_category(index)` | a **Sidebar** row is clicked |
 | `comment_subject(index)` | the **Comments** pane re-points — a `sections.CommentSubject` for that row, or None |
 | `toggle_favourite(indexes)` | Favorite, on the **Grid** selection |
-| `update_preview(indexes)` | Update Preview — offered only where `offers_preview_update` is True, i.e. where a preview is RENDERED rather than derived from the row's own content |
+| `update_preview(indexes)` | Update Render — offered only where `offers_preview_update` is True, i.e. where a preview is RENDERED rather than derived from the row's own content |
 | `delete_rows(indexes)` | Delete, highest row first — offered only where `deletes_rows` is True (File has no Delete: its rows are files on disk) |
 | `delete_prompt(count, name)` | what deleting costs, in this section's words — the wording lives in the UI text register |
 | `sidebar_key(index)` | what a **Sidebar** row is keyed by — a category name in three sections, a registered folder PATH in File |
@@ -192,7 +192,7 @@ QMenu. A row carries its label (from the UI text register), the NAME of
 the Section method that performs it, the fact deciding whether it EXISTS
 (`shown`), what it needs to be LIVE (`needs`), and optionally the method
 building a submenu's children. Names, not callables. The last four rows
-are `GRID_MENU_TAIL` — Update Preview, Customize, Favorite, Delete —
+are `GRID_MENU_TAIL` — Update Render, Capture, Customize, Favorite, Delete —
 shared by every context and gated on facts it already declares, so
 adding a section adds no copy of them. Dispatch is a dict keyed by
 QAction, never `==` against an action that may be None.
@@ -296,10 +296,11 @@ image.
   machines (Material, Node; an online import's preview becomes its
   library thumbnail). A thumbnail for content the library only POINTS
   AT (the File section's folders) is a regenerable local artifact — it
-  goes in the OS-Integration Engine's per-OS cache, never synced —
-  except scene CAPTURES, which are hand-framed and therefore durable
-  (config_root, not the cache). Color/Code paint in RAM and store
-  nothing.
+  goes in the OS-Integration Engine's per-OS cache, never synced. A
+  CAPTURE, any tile's, is hand-framed and cannot be regenerated, so it
+  lives in the library too: `<library>/captures` (`core/captures.py`).
+  Color/Code paint their pictures in RAM; a capture is the one picture
+  they store.
 
 ### 4b. The **Conversion Engine** {#o/conversion}
 
@@ -1153,7 +1154,8 @@ prefs/prefs.py            Prefs - what a setting IS (the property pairs)
 prefs/persistence.py      how it is STORED - save/load/merge/migrate,
                           mixed into Prefs, plus the portable paths
 core/folders.py           FolderListModel (shared Folder-archetype base)
-core/scene_captures.py       scene capture store + open-scene state
+core/scene_captures.py    photographs the Scene View + open-scene state
+core/captures.py          the capture store: <library>/captures, any tile
 core/repair.py            REPAIR: what is wrong with this library and
                           what is safe to do - Clean Library's opposite
                           number, and the only module that opens a

@@ -20,7 +20,7 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze.core import scene_captures, thumbnails, tile_icons  # noqa: E402
+from amaze.core import captures, thumbnails, tile_icons  # noqa: E402
 from amaze.core import library as library_mod  # noqa: E402
 from amaze.core import texture_library  # noqa: E402
 from amaze.helpers import hostos  # noqa: E402
@@ -807,63 +807,30 @@ class UpdatePreviewWritesTheManifestOnce(unittest.TestCase):
                              "a one-shot invalidate no longer reaches disk")
 
 
-class TheCaptureDirectoryIsResolvedOncePerPaint(unittest.TestCase):
+class ACapturePathCostsNoDisk(unittest.TestCase):
+    """A File tile asks for its capture's path on every paint: a hash and a join, nothing more."""
 
-    def test_repeated_lookups_stop_running_the_migration(self):
-        """The cache-path migration runs once, not per DecorationRole read - the delegate asks on every paint."""
-        store = tempfile.mkdtemp(prefix="amaze_capdir_case_")
-        self.addCleanup(shutil.rmtree, store, True)
-        hostos.set_cache_override(store)
-        self.addCleanup(hostos.set_cache_override, "")
-        scene_captures.forget_thumb_dir()
-        self.addCleanup(scene_captures.forget_thumb_dir)
+    @staticmethod
+    def _prefs(folder):
+        return type("Prefs", (), {"dir": folder})()
 
-        calls = {"n": 0}
-        real_isdir = os.path.isdir
+    def test_twenty_lookups_touch_no_disk(self):
+        touched = []
+        record = lambda *a, **k: touched.append(a)    # noqa: E731
+        with mock.patch.object(os, "stat", side_effect=record), \
+                mock.patch.object(os, "lstat", side_effect=record), \
+                mock.patch.object(os, "makedirs", side_effect=record):
+            for n in range(20):
+                captures.file_path(self._prefs("/libraries/one"), "loc:abc/s%d.hip" % n)
+        self.assertEqual([], touched, "working out a capture's path asked the disk")
 
-        def counting(path):
-            calls["n"] += 1
-            return real_isdir(path)
-
-        scene_captures.thumb_path("/scenes/warm.hip")        # first resolve
-        os.path.isdir = counting
-        self.addCleanup(setattr, os.path, "isdir", real_isdir)
-        try:
-            for _ in range(20):
-                scene_captures.thumb_path("/scenes/a.hip")
-        finally:
-            os.path.isdir = real_isdir
-
-        self.assertEqual(
-            0, calls["n"],
-            "20 paints re-ran the capture directory's migration checks "
-            "(%d isdir calls) - it is a once-per-session job"
-            % calls["n"])
-
-    def test_a_moved_cache_root_is_still_noticed(self):
-        """The memo may not outlive the roots it derives from, or one test's cache directory is handed to the next."""
-        first = tempfile.mkdtemp(prefix="amaze_capdir_a_")
-        second = tempfile.mkdtemp(prefix="amaze_capdir_b_")
-        self.addCleanup(shutil.rmtree, first, True)
-        self.addCleanup(shutil.rmtree, second, True)
-        self.addCleanup(hostos.set_cache_override, "")
-        self.addCleanup(scene_captures.forget_thumb_dir)
-
-        real_config = hostos.config_root
-        self.addCleanup(setattr, hostos, "config_root", real_config)
-
-        hostos.config_root = lambda: first
-        hostos.set_cache_override(first)
-        one = scene_captures.thumb_dir()
-
-        hostos.config_root = lambda: second
-        hostos.set_cache_override(second)
-        two = scene_captures.thumb_dir()
-
-        self.assertNotEqual(
-            one, two,
-            "thumb_dir kept the previous root after both roots moved")
-        self.assertTrue(two.startswith(second), two)
+    def test_the_path_follows_the_library(self):
+        """Captures live in the library, so two libraries never share one."""
+        one = captures.file_path(self._prefs("/libraries/one"), "loc:abc/a.hip")
+        two = captures.file_path(self._prefs("/libraries/two"), "loc:abc/a.hip")
+        self.assertEqual(os.path.join("/libraries/one", "captures"), os.path.dirname(one))
+        self.assertEqual(os.path.basename(one), os.path.basename(two))
+        self.assertNotEqual(one, two)
 
 
 class ARerenderNeverEntersTheUsersLopContext(unittest.TestCase):
