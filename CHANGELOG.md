@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.10.0
+
+- Amaze updates a library to version 2 the first time it opens it, without asking. 1.9.0 asked first: its dialog could come up black, with the pane waiting behind it until it was closed, and Later left the library on version 1.
+- A library that a newer Amaze has updated does not open. Amaze offers to update itself instead.
+- When a newer Amaze would also update the library, Check for Updates turns Install Update red, and the version line names the library version it updates to. Install Update, and the Updates tool on the shelf, then ask to Continue or Cancel.
+- Preferences ▸ Library shows the library's new version as soon as an update finishes, also while the window is open.
+
 ## 1.9.0
 
 - Any tile can show a capture, a picture of the Scene View. Capture on a tile's right-click menu takes one, and so does the Capture button, which the toolbar now shows in every section. A scene can be captured while it is the open scene.
