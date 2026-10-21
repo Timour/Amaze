@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.9.0
+
+- Any tile can show a capture, a picture of the Scene View. Capture on a tile's right-click menu takes one, and so does the Capture button, which the toolbar now shows in every section. A scene can be captured while it is the open scene.
+- Customize ▸ Icon lists Render, Capture, Generic and Custom. Render was called Preview.
+- Update Preview on the right-click menus is called Update Render.
+- The Capture button has a new icon.
+- Captures are stored in the library's `captures` folder, so every computer using the library shows them.
+- Libraries have a version of their own, on Preferences ▸ Library. Amaze 1.9.0 updates a library to version 2: on a computer with scene captures from an older Amaze, it asks before moving them into the library, and the originals go to Amaze's holding folder for 30 days.
+- Show ▸ Pathname shows a renamed folder's path.
+- The Capture tool on the Amaze shelf works again.
+
 ## 1.8.2
 
 - Online source tabs open their lists faster; SimReady's, the longest, opens about thirty times faster.
