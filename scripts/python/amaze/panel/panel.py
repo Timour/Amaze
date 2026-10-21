@@ -173,6 +173,9 @@ class AmazePanel(QtWidgets.QWidget):
         texstore.publish_env(self.prefs)    # $AMAZELIB, so thumbnails and previews resolve store references natively
         if loaded:
             self.init_ui()
+            if self._library_too_new():
+                self._open_libraryless()
+                return
             try:
                 self.load()
                 self.setup()
@@ -495,6 +498,8 @@ class AmazePanel(QtWidgets.QWidget):
         """User Sets library via Menu Option so we have to reroute"""
         if self.prefs.get_dir_from_user():
             self.prefs.load()
+            if self._library_too_new():
+                return
             self.load()
             if not self.material_model:
                 self.setup()
@@ -513,6 +518,8 @@ class AmazePanel(QtWidgets.QWidget):
 
     def switch_all_models(self) -> None:
         """Re-point every library-backed model at `prefs.dir` - THE ONE ROUTE ONTO ANOTHER LIBRARY and the only route that re-points models at all, because a model a switch skips goes on serving the previous library with every save refused"""
+        if self._library_too_new():
+            return    # the models stay on the library they serve
         pane = getattr(self, "notes_panel", None)
         if pane is not None:
             pane.clear_subject()    # a pending edit goes to its own library; the switch selects nothing
@@ -532,42 +539,65 @@ class AmazePanel(QtWidgets.QWidget):
             section.library_switched()
 
     def _update_library(self) -> None:
-        """The library to this Amaze's version; this computer's old captures move in when asked."""
+        """The library to this Amaze's version before any tile paints; nothing asks first."""
         from amaze.core import library_policy
         try:
             library_dir = str(self.prefs.dir or "")
             if not library_dir or not locations.ready(self.prefs):
                 return    # no file keys yet: a capture moved now would miss its tile
-            waiting = captures.machine_capture_count()
-            if waiting and not self._ask_library_update(library_dir, waiting):
-                return    # Later: nothing moves, the version stays, the next start asks again
-            if waiting:
+            if captures.machine_capture_count():    # no question: installing this Amaze was the choice
                 captures.adopt_machine_captures(self.prefs)
             if library_policy.library_version(library_dir) < library_policy.LIBRARY_VERSION:
                 library_policy.set_library_version(library_dir, library_policy.LIBRARY_VERSION)
+                self._refresh_open_prefs()
         except Exception as exc:                          # noqa: BLE001 - never blocks the panel
             debug.exception("library update", exc)
 
-    def _ask_library_update(self, library_dir: str, waiting: int) -> bool:
-        """Update Library or Later; True to update. Headless, nothing is asked and nothing moves."""
+    def _refresh_open_prefs(self) -> None:
+        """An open Preferences window shows the library's new version."""
+        dialog = getattr(self, "_prefs_dialog", None)
+        if dialog is None:
+            return
+        try:
+            dialog.refresh_library_version()
+        except RuntimeError:    # closed and deleted
+            self._prefs_dialog = None
+
+    def _library_too_new(self) -> bool:
+        """A library a newer Amaze updated is not opened; the update is offered once Qt is idle."""
         from amaze.core import library_policy
+        library_dir = str(self.prefs.dir or "")
+        found = library_policy.library_version(library_dir) if library_dir else 0
+        if found <= library_policy.LIBRARY_VERSION:
+            return False
+        debug.event("session", "library is newer than this Amaze - not opened",
+                    found=found, known=library_policy.LIBRARY_VERSION)
+        timer = getattr(self, "_update_offer_timer", None)
+        if timer is None:    # owned, so it dies with the panel ▸r/model-parent
+            timer = self._update_offer_timer = QtCore.QTimer(self)
+            timer.setSingleShot(True)
+            timer.setInterval(0)    # a modal inside onCreateInterface draws black
+            timer.timeout.connect(self._offer_amaze_update)
+        timer.start()
+        return True
+
+    def _offer_amaze_update(self) -> None:
+        """Update Amaze or Cancel, for the library left closed; headless, nothing is asked."""
+        from amaze.core import library_policy, updater
         ui = getattr(hou, "ui", None)
         if ui is None:
-            return False
-        target = library_policy.LIBRARY_VERSION
-        if library_policy.library_version(library_dir) < target:
-            question = messages.LIBRARY_UPDATE_CONFIRM % target
-        else:
-            question = messages.LIBRARY_CAPTURES_MOVE_CONFIRM    # another computer updated it
-        choice = ui.displayMessage(
-            question,
-            help=messages.HELP_LIBRARY_UPDATE % (waiting, "" if waiting == 1 else "s"),
-            buttons=messages.BUTTONS_UPDATE_LIBRARY,
-            default_choice=0, close_choice=1,
-            title=messages.TITLE_AMAZE)
-        debug.event("capture", "library update answered", update=(choice == 0),
-                    waiting=waiting)
-        return choice == 0
+            return
+        library_dir = str(self.prefs.dir or "")
+        if ui.displayMessage(
+                messages.LIBRARY_NEEDS_NEWER_AMAZE % library_policy.library_version(library_dir),
+                buttons=messages.BUTTONS_UPDATE_AMAZE, default_choice=0, close_choice=1,
+                severity=hou.severityType.Warning, title=messages.TITLE_AMAZE) != 0:
+            return
+        found = updater.check()
+        if not found:
+            ui.displayMessage(found.sentence, title=messages.TITLE_AMAZE)
+        elif updater.confirmed(found, library_dir):
+            updater.install_and_say(found)
 
     def _seed_curated_content(self) -> None:
         """Seed the shipped starters once per library - the Code section's Examples snippets and the Colors section's palette sets - through ONE door for construction and the library switch. getattr, not attribute reads: the libraryless shape leaves model attributes None or absent"""

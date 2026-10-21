@@ -73,6 +73,7 @@ PREFS_BUTTON_GAP = 8     # between two controls sharing one row, and a spin box 
 PREFS_BROWSE_W = 28      # the `...` button that opens a file dialog
 PREFS_DIVIDER_INK = "#434343"   # the 1px group divider; groups carry no title, like Houdini's own parameter panes
 PREFS_DIVIDER_H = 1
+UPDATE_WARNING_FILL = "#e0523a"    # ▸ P06: Install Update when the update also updates the library
 P05_ROW_PITCH = 101    # ▸ P05: a following row's divider to the next one's, as drawn (139, 240, 341)
 P05_LIST_TO_BUTTON = 10    # ▸ P05: the list's bottom to the button's top, as drawn (738 to 748)
 P05_DIM_INK = "#7d7d7d"    # ▸ P05: the version and author lines under each picture
@@ -514,7 +515,7 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
             ("QTabBar::tab ▸ About", 359, 16, 31, 15, "About"),
             ("QTextBrowser", 20, 42, 450, 227, None),
             ("QScrollBar", 454, 42, 16, 227, None),
-            ("QLabel", 148, 274, 322, 15, "Amaze version 1.0.31"),
+            ("QLabel", 148, 274, 322, 15, "Amaze v x.x.x is available. The library will be updated to v x"),
             ("QPushButton", 148, 295, 108, 22, None),
             ("QPushButton", 264, 295, 90, 22, None),
             ("QPushButton ▸ text", 156, 299, 92, 15, "Check for Updates"),

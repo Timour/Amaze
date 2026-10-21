@@ -1643,7 +1643,74 @@ class MachineCapturesAreAdoptedTest(unittest.TestCase):
 
 
 class LibraryUpdateTest(unittest.TestCase):
-    """Opening a library brings it to this Amaze's version; old captures move only when asked."""
+    """Opening a library brings it to this Amaze's version at once; nothing asks, nothing skips."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
+
+    def setUp(self):
+        import types
+        from unittest import mock
+        from amaze.core import library_policy
+        self.policy = library_policy
+        self.dir = self.panel.prefs.dir
+        library_policy.set_library_version(self.dir, 1)    # a library from before 1.9
+        self.moved, self.asked = [], []
+        self._patch(captures, "adopt_machine_captures",
+                    lambda preferences: self.moved.append(preferences) or 0)
+        ui = types.SimpleNamespace(displayMessage=lambda *a, **k: self.asked.append(a) or 0)
+        patcher = mock.patch.object(hou, "ui", ui, create=True)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _patch(self, owner, name, value):
+        original = getattr(owner, name)
+        setattr(owner, name, value)
+        self.addCleanup(setattr, owner, name, original)
+
+    def test_this_computers_captures_move_without_a_question(self):
+        """1.9.0 offered Later, which left the library open but not updated."""
+        self._patch(captures, "machine_capture_count", lambda: 3)
+        self.panel._update_library()
+        self.assertEqual(1, len(self.moved), "the captures were not moved")
+        self.assertEqual(2, self.policy.library_version(self.dir))
+        self.assertEqual([], self.asked, "the update asked first")
+
+    def test_with_nothing_to_move_only_the_version_changes(self):
+        self._patch(captures, "machine_capture_count", lambda: 0)
+        self.panel._update_library()
+        self.assertEqual([], self.moved)
+        self.assertEqual(2, self.policy.library_version(self.dir))
+
+    def test_an_updated_library_still_takes_this_computers_captures(self):
+        """Another computer updated it first; this computer's own captures are still outside."""
+        self.policy.set_library_version(self.dir, 2)
+        self._patch(captures, "machine_capture_count", lambda: 2)
+        self.panel._update_library()
+        self.assertEqual(1, len(self.moved), "an updated library left this computer's behind")
+
+    def test_a_panel_is_updated_before_it_is_shown(self):
+        """No tile may paint from a library this Amaze has not updated."""
+        self._patch(captures, "machine_capture_count", lambda: 3)
+        test_support.reopened_panel(self)
+        self.assertEqual(1, len(self.moved), "the panel was built over an old library")
+        self.assertEqual(2, self.policy.library_version(self.dir))
+        self.assertEqual([], self.asked, "building the panel asked a question")
+
+    def test_an_open_preferences_window_shows_the_new_version(self):
+        """Reload Library runs the update under an open Preferences, which kept saying 1."""
+        self._patch(captures, "machine_capture_count", lambda: 0)
+        self.panel.show_prefs()
+        dialog = self.panel._prefs_dialog
+        self.addCleanup(dialog.close)
+        self.assertEqual("Library version 1", dialog._lbl_library_version.text())
+        self.panel._update_library()
+        self.assertEqual("Library version 2", dialog._lbl_library_version.text())
+
+
+class NewerLibraryTest(unittest.TestCase):
+    """A library a newer Amaze updated stays closed, and the update that opens it is offered."""
 
     @classmethod
     def setUpClass(cls):
@@ -1653,64 +1720,59 @@ class LibraryUpdateTest(unittest.TestCase):
         from amaze.core import library_policy
         self.policy = library_policy
         self.dir = self.panel.prefs.dir
-        library_policy.set_library_version(self.dir, 1)    # a library from before 1.9
-        self.moved, self.asked = [], []
-        self._patch(captures, "adopt_machine_captures",
-                    lambda preferences: self.moved.append(preferences) or 0)
+        self.newer = library_policy.LIBRARY_VERSION + 1
+        before = library_policy.library_version(self.dir)
+        library_policy.set_library_version(self.dir, self.newer)
+        self.addCleanup(library_policy.set_library_version, self.dir, before)
 
-    def _patch(self, owner, name, value):
-        original = getattr(owner, name)
-        setattr(owner, name, value)
-        self.addCleanup(setattr, owner, name, original)
-
-    def _answer(self, choice):
-        """The dialog, answered with button `choice`: 0 Update Library, 1 Later."""
+    def _answering(self, choice):
         import types
         from unittest import mock
-
-        def display(text, **kwargs):
-            self.asked.append((text, kwargs))
-            return choice
-
-        patcher = mock.patch.object(hou, "ui", types.SimpleNamespace(displayMessage=display),
-                                    create=True)
+        asked = []
+        ui = types.SimpleNamespace(
+            displayMessage=lambda text, **kwargs: asked.append((text, kwargs)) or choice)
+        patcher = mock.patch.object(hou, "ui", ui, create=True)
         patcher.start()
         self.addCleanup(patcher.stop)
+        return asked
 
-    def test_this_computers_captures_move_when_asked(self):
-        self._patch(captures, "machine_capture_count", lambda: 3)
-        self._answer(0)
-        self.panel._update_library()
-        self.assertEqual(1, len(self.moved), "the captures were not moved")
-        self.assertEqual(2, self.policy.library_version(self.dir))
-        text, kwargs = self.asked[0]
-        self.assertEqual("Update this library to version 2?", text)
-        self.assertIn("the 3 captures on this computer", kwargs["help"])
-        self.assertEqual(("Update Library", "Later"), tuple(kwargs["buttons"]))
+    def _idle(self, asked):
+        for _ in range(20):
+            QtWidgets.QApplication.processEvents()
+            if asked:
+                break
 
-    def test_later_moves_nothing_and_keeps_the_version(self):
-        self._patch(captures, "machine_capture_count", lambda: 1)
-        self._answer(1)
-        self.panel._update_library()
-        self.assertEqual([], self.moved, "Later moved the captures")
-        self.assertEqual(1, self.policy.library_version(self.dir))
-        self.assertIn("the 1 capture on this computer", self.asked[0][1]["help"])
+    def test_a_panel_opened_on_it_stays_without_a_library(self):
+        asked = self._answering(1)
+        panel = test_support.reopened_panel(self)
+        self.assertIsNone(panel.material_model, "the newer library was opened")
+        self.assertEqual([], asked, "asked inside onCreateInterface, where a modal draws black")
+        self._idle(asked)
+        text, kwargs = asked[0]
+        self.assertEqual("This library is version %d, which needs a newer Amaze. "
+                         "Update Amaze to open it." % self.newer, text)
+        self.assertEqual(("Update Amaze", "Cancel"), tuple(kwargs["buttons"]))
 
-    def test_with_nothing_to_move_it_updates_without_asking(self):
-        self._patch(captures, "machine_capture_count", lambda: 0)
-        self._answer(0)
-        self.panel._update_library()
-        self.assertEqual([], self.asked, "a dialog asked about nothing")
-        self.assertEqual(2, self.policy.library_version(self.dir))
+    def test_a_switch_onto_it_leaves_the_models_where_they_are(self):
+        from unittest import mock
+        asked = self._answering(1)
+        with mock.patch.object(type(self.panel.material_model), "switch_model_data") as switched:
+            self.panel.switch_all_models()
+        switched.assert_not_called()
+        self._idle(asked)
+        self.assertEqual(1, len(asked), "the update was not offered")
 
-    def test_an_updated_library_asks_only_about_this_computer(self):
-        from amaze import messages
-        self.policy.set_library_version(self.dir, 2)
-        self._patch(captures, "machine_capture_count", lambda: 2)
-        self._answer(0)
-        self.panel._update_library()
-        self.assertEqual(messages.LIBRARY_CAPTURES_MOVE_CONFIRM, self.asked[0][0])
-        self.assertEqual(1, len(self.moved))
+    def test_update_amaze_installs_the_newest_release(self):
+        from unittest import mock
+        from amaze.core import updater
+        asked = self._answering(0)
+        found = updater.Update(updater.NEWER, version="9.9", url="https://example.invalid/r.zip",
+                               sentence="newer", library_version=self.newer)
+        with mock.patch.object(updater, "check", return_value=found), \
+                mock.patch.object(updater, "install_and_say") as install:
+            self.panel._offer_amaze_update()
+        install.assert_called_once_with(found)
+        self.assertEqual(1, len(asked), "a release reading this library asked Continue too")
 
 
 class AssetCaptureTest(unittest.TestCase):

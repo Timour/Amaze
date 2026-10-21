@@ -29,7 +29,7 @@ LINK_COLOR = amazetheme.LINK_COLOR   # About-tab links ▸p/one-design-document
 
 PREFS_FRAMES = ("P01", "P02", "P03a", "P03b", "P04", "P05", "P06")   # the drawn frame per page, in tab order; a sub-tab is a page ▸p/one-design-document
 
-VERSION_STEM = branding.APP_NAME + " version "   # what the drawn version line opens with; the number after it is a sample, and the widget goes on to carry the updater's answers
+VERSION_STEM = branding.APP_NAME + " v"   # what the drawn version line opens with; the number after it is a sample, and the widget goes on to carry the updater's answers
 LIBRARY_VERSION_STEM = "Library version "   # P01's drawn line opens with it; its number is a sample
 
 _logo_cache = None   # rendered once and reused as a QTextDocument resource, so the About page can reference it as an img src
@@ -413,6 +413,10 @@ class PrefsDialog(base_dialog.AssetDialog):
         for widget in getattr(self, "_real_path_widgets", ()):
             widget.setEnabled(not on)
         self.line_workdir.setText(self._prefs.dir)
+        self.refresh_library_version()
+
+    def refresh_library_version(self) -> None:
+        """Re-read the library's version: an update can land while this window is open."""
         label = getattr(self, "_lbl_library_version", None)
         if label is not None:
             label.setText(self._library_version_line())
@@ -1305,6 +1309,15 @@ class PrefsDialog(base_dialog.AssetDialog):
             tooltips.PREFS_INSTALL_UPDATE
             if offer else
             tooltips.PREFS_CHECK_FOR_UPDATES))
+        warn = offer and self._update_reaches_library()    # ▸ P06 draws it red
+        self._btn_update.setStyleSheet(
+            "QPushButton { background-color: %s; }" % amazetheme.UPDATE_WARNING_FILL
+            if warn else "")
+
+    def _update_reaches_library(self) -> bool:
+        """The update the last check found also updates this library."""
+        from amaze.core import updater
+        return updater.updates_library(self._last_update, self._prefs.dir)
 
     def _press_update(self) -> None:
         """Check, then install: the button only reaches the install once a check has found one, so the press that downloads is never the press that looked."""
@@ -1328,14 +1341,16 @@ class PrefsDialog(base_dialog.AssetDialog):
             self._btn_update.setEnabled(True)
             self._set_update_button(   # offered only when the release NAMED a file; one with no archive is offered nowhere rather than offered and then failing
                 self._installable() is not None)
-        self._lbl_version.setText(self._last_update.sentence)
+        self._lbl_version.setText(updater.offer_line(self._last_update, self._prefs.dir))
 
     def install_update(self) -> None:
-        """Fetch the release the last check found, with NO confirmation and no popup - the version line IS the outcome. Only the install folder is replaced, and `updater.apply_update` DELETES the one it replaces."""
+        """Fetch the release the last check found; Continue or Cancel first if it updates the library."""
         from amaze.core import updater
 
         result = self._installable()
         if result is None:
+            return
+        if not updater.confirmed(result, self._prefs.dir):    # the shelf tool asks the same
             return
 
         self._btn_update.setEnabled(False)

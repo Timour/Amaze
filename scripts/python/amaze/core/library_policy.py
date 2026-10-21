@@ -11,6 +11,7 @@ POLICY_VERSION = 1
 FILENAME = "policy.json"
 
 LIBRARY_VERSION = 2    # the library's own, on the Library tab; 2: captures live in it
+LIBRARY_VERSION_SINCE = "1.9.0"    # the first Amaze that reads it; Check for Updates quotes it
 VERSION_KEY = "library_version"    # older Amaze ignores it and keeps it when it saves
 
 DEFAULTS = {

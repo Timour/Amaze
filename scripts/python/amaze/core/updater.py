@@ -3,6 +3,7 @@
 import hashlib
 import json
 import os
+import re
 import shutil
 import urllib.error
 import urllib.request
@@ -12,6 +13,7 @@ from amaze.core import debug
 
 RELEASES_URL = "https://api.github.com/repos/Timour/Amaze/releases/latest"    # unauthenticated, rate-limited per IP; no timeout or user-agent constants belong beside it ▸p/updater-shape
 NEW_ISSUE_URL = "https://github.com/Timour/Amaze/issues/new"    # the repo URLs live HERE; pre-fillable with `?body=` ▸r/github-issue-url
+LIBRARY_POLICY_URL = "https://raw.githubusercontent.com/Timour/Amaze/%s/scripts/python/amaze/core/library_policy.py"    # a release's own code
 
 UP_TO_DATE = "up-to-date"    # the verdicts `check` can answer with
 NEWER = "newer"
@@ -23,13 +25,15 @@ class Update:
     """One verdict, with everything a caller needs to act or explain."""
 
     def __init__(self, verdict, version="", url="", sentence="",
-                 digest="", size=0):
+                 digest="", size=0, library_version=0, library_since=""):
         self.verdict = verdict
         self.version = version
         self.url = url
         self.sentence = sentence
         self.digest = digest    # `sha256:<hex>` when an UPLOADED asset was chosen; "" for the generated zipball, which GitHub publishes no digest for ▸r/release-digest
         self.size = size        # the asset's declared byte count, 0 when unknown
+        self.library_version = library_version    # what the release updates libraries to; 0 unread
+        self.library_since = library_since or version    # the first Amaze that reads that version
 
     def __bool__(self):
         return self.verdict == NEWER
@@ -95,9 +99,79 @@ def check(current: str = "") -> Update:
     if not is_newer(tag, current):
         return Update(UP_TO_DATE, version=tag, sentence=(
             "You are running %s, which is the newest release." % current))
+    library_version, library_since = release_library(tag)
     return Update(NEWER, version=tag, url=url, digest=digest, size=size,
+                  library_version=library_version, library_since=library_since,
                   sentence=(
         "Amaze %s is available. You are running %s." % (tag, current)))
+
+
+def release_library(tag: str) -> tuple:
+    """The library version release `tag` updates to, and the first Amaze reading it; 0 unread."""
+    try:
+        with _open(LIBRARY_POLICY_URL % tag) as response:
+            text = response.read().decode("utf-8", "replace")
+    except Exception as exc:                                  # noqa: BLE001
+        debug.event("updater", "release library version unread", tag=tag, error=str(exc))
+        return 0, ""
+    version = re.search(r"^LIBRARY_VERSION\s*=\s*(\d+)", text, re.MULTILINE)
+    since = re.search(r"^LIBRARY_VERSION_SINCE\s*=\s*[\"']([^\"']+)[\"']", text, re.MULTILINE)
+    return (int(version.group(1)) if version else 1), (since.group(1) if since else "")
+
+
+def updates_library(found, library_dir: str) -> bool:
+    """Installing `found` updates the library at `library_dir`: the red Install Update."""
+    from amaze.core import library_policy
+    wanted = int(getattr(found, "library_version", 0) or 0)
+    return (bool(found) and bool(library_dir)
+            and wanted > library_policy.library_version(library_dir))
+
+
+def install_and_say(found) -> bool:
+    """Install `found` and say in a message how it went; True once it is installed."""
+    import hou
+    from amaze import messages
+    try:
+        install(found)
+    except OSError as exc:
+        hou.ui.displayMessage(str(exc), title=messages.TITLE_AMAZE)    # already a finished sentence
+        return False
+    except Exception as exc:                                  # noqa: BLE001
+        debug.exception("update install", exc)
+        hou.ui.displayMessage(messages.UPDATE_FAILED_UNEXPECTED % exc, title=messages.TITLE_AMAZE)
+        return False
+    hou.ui.displayMessage(messages.UPDATE_INSTALLED % found.version, title=messages.TITLE_AMAZE)
+    return True
+
+
+def configured_library() -> str:
+    """The library the settings name; "" when unread, since no setting may stop an update."""
+    try:
+        from amaze.core import repair
+        return repair.configured_library()
+    except Exception as exc:                                  # noqa: BLE001
+        debug.event("updater", "library unread", error=str(exc))
+        return ""
+
+
+def offer_line(found, library_dir: str) -> str:
+    """The check's answer in one line, worded as P06 draws it when the library is updated too."""
+    from amaze import messages
+    if updates_library(found, library_dir):
+        return messages.UPDATE_LIBRARY_AVAILABLE % (found.version, found.library_version)
+    return found.sentence
+
+
+def confirmed(found, library_dir: str) -> bool:
+    """Continue or Cancel, asked only when installing `found` updates the library."""
+    if not updates_library(found, library_dir):
+        return True
+    import hou
+    from amaze import messages
+    return hou.ui.displayMessage(
+        messages.LIBRARY_UPDATE_WARNING % found.library_since,
+        buttons=messages.BUTTONS_CONTINUE, default_choice=1, close_choice=1,
+        severity=hou.severityType.Warning, title=messages.TITLE_AMAZE) == 0
 
 
 def _unreachable_sentence(exc) -> str:

@@ -96,25 +96,17 @@ else:
     from amaze import messages
 
     found = updater.check()
+    library = updater.configured_library()
     if not found:
         # up-to-date, no release, or unreachable - the sentence is the
         # whole answer and there is nothing to offer.
         hou.ui.displayMessage(found.sentence, title=messages.TITLE_AMAZE)
     elif hou.ui.displayMessage(
-            messages.UPDATE_OFFER % found.sentence,
+            messages.UPDATE_OFFER % updater.offer_line(found, library),
             buttons=messages.BUTTONS_INSTALL_UPDATE,
-            close_choice=1, title=messages.TITLE_AMAZE) == 0:
-        try:
-            updater.install(found)
-        except OSError as exc:
-            hou.ui.displayMessage(str(exc), title=messages.TITLE_AMAZE)   # the updater raises with a FINISHED sentence, shown as-is
-        except Exception as exc:
-            hou.ui.displayMessage(messages.UPDATE_FAILED_UNEXPECTED % exc,
-                                  title=messages.TITLE_AMAZE)
-        else:
-            hou.ui.displayMessage(
-                messages.UPDATE_INSTALLED % found.version,
-                title=messages.TITLE_AMAZE)]]></script>
+            close_choice=1, title=messages.TITLE_AMAZE) == 0 \
+            and updater.confirmed(found, library):    # Continue or Cancel, as on the About tab
+        updater.install_and_say(found)]]></script>
   </tool>
 
   <tool name="amaze_reload" label="Reload"

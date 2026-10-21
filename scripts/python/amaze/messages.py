@@ -130,10 +130,6 @@ TILE_ICON_SAVE_FAILED = '%d tile icon%s could not be saved. Verify that the libr
 
 CAPTURE_SELECT_ONE_TILE = 'Select one tile to capture onto.'
 
-LIBRARY_UPDATE_CONFIRM = 'Update this library to version %d?'
-
-LIBRARY_CAPTURES_MOVE_CONFIRM = "Move this computer's scene captures into the library?"
-
 NO_LIBRARY_CONFIGURED_2 = 'Configure a library first. Open Preferences and select one under Library Path.'
 
 NO_NODE_TO_SAVE = 'To save, right-click the node or network you want to keep.'
@@ -196,6 +192,12 @@ INSTALL_LOCATION_UNKNOWN = 'Amaze cannot tell where it is installed, so it canno
 
 UPDATE_OFFER = '%s\n\nRestart Houdini after installing.'
 
+UPDATE_LIBRARY_AVAILABLE = 'Amaze v%s is available. The library will be updated to v%d.'
+
+LIBRARY_UPDATE_WARNING = 'Your library will be updated and not compatible with Amaze versions lower than %s.'
+
+LIBRARY_NEEDS_NEWER_AMAZE = 'This library is version %d, which needs a newer Amaze. Update Amaze to open it.'
+
 UPDATE_INSTALLED = 'Amaze %s is installed. Restart Houdini to use it.'
 
 UPDATE_FAILED_UNEXPECTED = 'The update could not be installed (%s).'
@@ -249,14 +251,14 @@ BUTTONS_TURN_ON = ('Turn On', 'Cancel')
 
 BUTTONS_INSTALL_UPDATE = ('Install Update', 'Later')
 
-BUTTONS_UPDATE_LIBRARY = ('Update Library', 'Later')
+BUTTONS_CONTINUE = ('Continue', 'Cancel')
+
+BUTTONS_UPDATE_AMAZE = ('Update Amaze', 'Cancel')
 
 
 HELP_CLEAN_LIBRARY = "Files that nothing in your library uses move into Amaze's holding folder on this computer, outside your library, where they are kept for 30 days. Materials and saved networks whose files are missing stay, and the summary names them.\n\nFile locations whose folder is gone are removed, with their labels, colors, comments, favorites and icons. Favorites of missing files are removed too. This part cannot be undone. Locations and favorites on a drive that is not connected stay."
 
 HELP_MATERIAL_VERSIONS = 'This applies to everyone who opens this library, on every machine, because it is stored with the library rather than in your preferences.\n\nWith it on, saving over an existing material keeps the previous version instead of replacing it.'
-
-HELP_LIBRARY_UPDATE = "Scene captures are kept in the library, so every computer using it shows them. Amaze moves the %d capture%s on this computer into the library's captures folder. The originals go to Amaze's holding folder for 30 days."
 
 
 SNIPPET_HAS_NO_CODE = 'There is no code to save.'

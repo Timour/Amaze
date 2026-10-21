@@ -53,6 +53,22 @@ class _FeedMixin(unittest.TestCase):
         self.addCleanup(setattr, matx_sources, "_request", real)
         return calls
 
+    def answer_each(self, by_url):
+        """Each URL its own answer: a payload, raw bytes, or an exception to raise."""
+        calls = []
+
+        def fake(url):
+            calls.append(url)
+            reply = by_url[url]
+            if isinstance(reply, Exception):
+                raise reply
+            return _Response(reply)
+
+        real = matx_sources._request
+        matx_sources._request = fake
+        self.addCleanup(setattr, matx_sources, "_request", real)
+        return calls
+
 
 class TheVersionComparisonTest(unittest.TestCase):
 
@@ -127,6 +143,56 @@ class TheCheckTest(_FeedMixin):
         self.assertEqual([updater.RELEASES_URL], calls,
                          "the check must cost exactly one call - the "
                          "unauthenticated limit is 60 an hour")
+
+
+class TheReleaseNamesItsLibraryVersion(_FeedMixin):
+    """A newer release says what it updates libraries to, read off its own code before installing."""
+
+    FEED = {"tag_name": "9.9", "assets": [], "zipball_url": "https://example.invalid/z"}
+
+    def test_a_newer_release_names_the_library_version_it_brings(self):
+        calls = self.answer_each({
+            updater.RELEASES_URL: self.FEED,
+            updater.LIBRARY_POLICY_URL % "9.9":
+                b'LIBRARY_VERSION = 3    # x\nLIBRARY_VERSION_SINCE = "9.8.0"\n'})
+        found = updater.check("1.0")
+        self.assertEqual((3, "9.8.0"), (found.library_version, found.library_since))
+        self.assertEqual(updater.RELEASES_URL, calls[0], "the API is still asked once, first")
+
+    def test_a_release_from_before_library_versions_brings_version_1(self):
+        self.answer_each({updater.RELEASES_URL: self.FEED,
+                          updater.LIBRARY_POLICY_URL % "9.9": b"POLICY_VERSION = 1\n"})
+        found = updater.check("1.0")
+        self.assertEqual((1, "9.9"), (found.library_version, found.library_since))
+
+    def test_an_unread_library_version_warns_of_nothing(self):
+        self.answer_each({updater.RELEASES_URL: self.FEED,
+                          updater.LIBRARY_POLICY_URL % "9.9": urllib.error.URLError("offline")})
+        found = updater.check("1.0")
+        self.assertTrue(found, "an unread library version withdrew the update")
+        self.assertEqual(0, found.library_version)
+        self.assertFalse(updater.updates_library(found, tempfile.gettempdir()))
+
+    def test_only_a_newer_library_version_updates_the_library(self):
+        from amaze.core import library_policy
+        library = tempfile.mkdtemp(prefix="amaze_libversion_")
+        self.addCleanup(shutil.rmtree, library, ignore_errors=True)
+        library_policy.set_library_version(library, 2)
+        for wanted, expected in ((3, True), (2, False), (1, False)):
+            found = updater.Update(updater.NEWER, version="9.9", library_version=wanted)
+            self.assertEqual(expected, updater.updates_library(found, library), wanted)
+        self.assertFalse(updater.updates_library(found, ""), "no library, nothing to update")
+
+    def test_older_amaze_reads_this_trees_library_version_where_it_looks(self):
+        """Released updaters fetch this path and these two lines; moving either blinds them."""
+        from amaze.core import library_policy
+        package = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        tree = os.path.dirname(os.path.dirname(os.path.dirname(package)))
+        path = updater.LIBRARY_POLICY_URL.split("%s/", 1)[1]
+        with open(os.path.join(tree, path), "rb") as handle:
+            self.answer_each({updater.LIBRARY_POLICY_URL % "9.9": handle.read()})
+        self.assertEqual((library_policy.LIBRARY_VERSION, library_policy.LIBRARY_VERSION_SINCE),
+                         updater.release_library("9.9"))
 
 
 class TheVersionIsThreePart(unittest.TestCase):
@@ -567,6 +633,63 @@ class TheAboutTabOffersTheUpdateInOnePlace(unittest.TestCase):
                          "the button offers an install after a check that "
                          "found nothing to install")
 
+    def _found(self, library_version):
+        return updater.Update(
+            updater.NEWER, version="9.9", url="https://example.invalid/r.zip",
+            sentence="Amaze 9.9 is available. You are running 1.0.",
+            library_version=library_version, library_since="9.8.0")
+
+    def _answering(self, choice):
+        """hou.ui with displayMessage answering `choice`; every question is kept."""
+        import hou
+        import types
+        from unittest import mock
+        asked = []
+        ui = types.SimpleNamespace(
+            displayMessage=lambda text, **kwargs: asked.append((text, kwargs)) or choice)
+        patcher = mock.patch.object(hou, "ui", ui, create=True)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return asked
+
+    def test_an_update_that_updates_the_library_turns_red_and_says_so(self):
+        """▸ P06: the drawn warning colour and line."""
+        from unittest.mock import patch
+        from amaze import amazetheme
+        dialog = self._dialog()
+        with patch.object(updater, "check", return_value=self._found(99)):
+            dialog._btn_update.click()
+        self.assertEqual("Install Update", dialog._btn_update.text())
+        self.assertIn(amazetheme.UPDATE_WARNING_FILL, dialog._btn_update.styleSheet())
+        self.assertEqual("Amaze v9.9 is available. The library will be updated to v99.",
+                         dialog._lbl_version.text())
+
+    def test_an_update_that_leaves_the_library_stays_the_usual_colour(self):
+        from unittest.mock import patch
+        dialog = self._dialog()
+        with patch.object(updater, "check", return_value=self._found(1)):
+            dialog._btn_update.click()
+        self.assertEqual("", dialog._btn_update.styleSheet())
+        self.assertEqual("Amaze 9.9 is available. You are running 1.0.",
+                         dialog._lbl_version.text())
+
+    def test_the_library_update_is_installed_only_after_continue(self):
+        from unittest.mock import patch
+        dialog = self._dialog()
+        found = self._found(99)
+        for choice, installs in ((1, 0), (0, 1)):
+            asked = self._answering(choice)
+            with patch.object(updater, "check", return_value=found), \
+                    patch.object(updater, "install") as install:
+                dialog._last_update = None
+                dialog._btn_update.click()
+                dialog._btn_update.click()
+            self.assertEqual(installs, install.call_count, "answer %d" % choice)
+            text, kwargs = asked[0]
+            self.assertEqual("Your library will be updated and not compatible with "
+                             "Amaze versions lower than 9.8.0.", text)
+            self.assertEqual(("Continue", "Cancel"), tuple(kwargs["buttons"]))
+
     def test_the_about_form_keeps_ONE_divider_above_test_library(self):
         from PySide6 import QtWidgets
 
@@ -591,6 +714,54 @@ class TheAboutTabOffersTheUpdateInOnePlace(unittest.TestCase):
                          "the divider does not sit between the debug row "
                          "and Test Library")
 
+
+class TheShelfToolAsksTheSameQuestion(unittest.TestCase):
+    """The Updates tool runs its own script from the shelf file, through the About tab's engine."""
+
+    def setUp(self):
+        import xml.etree.ElementTree as ET
+        from amaze.core import library_policy
+        tree = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.dirname(os.path.abspath(__file__))))))
+        root = ET.parse(os.path.join(tree, "toolbar", "Amaze.shelf")).getroot()
+        self.script = [t for t in root.findall("tool")
+                       if t.get("name") == "amaze_check_updates"][0].find("script").text
+        self.library = tempfile.mkdtemp(prefix="amaze_shelf_library_")
+        self.addCleanup(shutil.rmtree, self.library, ignore_errors=True)
+        library_policy.set_library_version(self.library, 1)
+
+    def _run(self, library_version, answers):
+        """Click the tool: each dialog answers the next of `answers`; what was asked and installed."""
+        import hou
+        import types
+        from unittest import mock
+        asked, replies = [], list(answers)
+        ui = types.SimpleNamespace(displayMessage=lambda text, **kwargs: (
+            asked.append(text), replies.pop(0) if replies else 0)[1])
+        found = updater.Update(updater.NEWER, version="9.9", url="https://example.invalid/r.zip",
+                               sentence="Amaze 9.9 is available. You are running 1.0.",
+                               library_version=library_version, library_since="9.8.0")
+        with mock.patch.object(hou, "ui", ui, create=True), \
+                mock.patch.object(updater, "check", return_value=found), \
+                mock.patch.object(updater, "configured_library", return_value=self.library), \
+                mock.patch.object(updater, "install") as install:
+            exec(compile(self.script, "Amaze.shelf:amaze_check_updates", "exec"), {})
+        return asked, install.call_count
+
+    def test_cancel_on_a_library_update_installs_nothing(self):
+        asked, installs = self._run(99, [0, 1])    # Install Update, then Cancel
+        self.assertEqual(0, installs)
+        self.assertIn("Amaze v9.9 is available. The library will be updated to v99.", asked[0])
+        self.assertEqual("Your library will be updated and not compatible with Amaze "
+                         "versions lower than 9.8.0.", asked[1])
+
+    def test_continue_on_a_library_update_installs(self):
+        self.assertEqual(1, self._run(99, [0, 0])[1])
+
+    def test_an_update_that_leaves_the_library_asks_nothing_more(self):
+        asked, installs = self._run(1, [0])
+        self.assertEqual(1, installs)
+        self.assertNotIn("not compatible", " ".join(asked), "a plain update asked Continue")
 
 
 class AReleaseIsStagedIntoTheINSTALLShape(unittest.TestCase):

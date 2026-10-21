@@ -646,10 +646,12 @@ Amaze opens.
 this machine.
 
 **Library version** is the library's own version. Version 2 keeps
-scene captures in the library. On a computer that still has scene
-captures from an older Amaze, opening the library asks to move them:
-**Update Library** moves them into the library's `captures` folder, and
-**Later** asks again the next time Amaze opens.
+scene captures in the library. When Amaze first opens a library from an
+older Amaze, it updates the library to its version and moves this
+computer's scene captures into the library's `captures` folder. The
+originals stay in Amaze's holding folder for 30 days. Amaze does not
+open a library that a newer Amaze has updated; it offers to update
+Amaze instead.
 
 ### Render
 
@@ -696,7 +698,11 @@ for the Amaze store. See [Add-ons](#add-ons).
 Credits and licences. The version line shows the running version and
 the answer to each update check. **Check for Updates** checks for a
 newer Amaze; when there is one, the button changes to **Install
-Update**, which installs it. **Report a Bug...** opens the Amaze bug page
+Update**, which installs it. When the newer Amaze also updates the
+library, **Install Update** is red, the version line names the library
+version it updates to, and installing asks to **Continue** or
+**Cancel** first. The **Updates** tool on the shelf asks the same.
+**Report a Bug...** opens the Amaze bug page
 in the browser with the Amaze, Houdini and OS versions filled in; the
 report is sent with **Submit** on that page.
 
