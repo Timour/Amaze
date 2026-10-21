@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.8.2
+
+- Online source tabs open their lists faster; SimReady's, the longest, opens about thirty times faster.
+- In every section, going back to All after a category, clearing a search and clicking a column heading are many times faster.
+- SimReady's list updates from NVIDIA's site in about a third of the time: only the archives that changed are read again.
+- Two Amaze panes on the same library share each section's sort order.
+- In List view, pointing at any cell of a row shows that row's tooltip.
+
 ## 1.8.1
 
 - Preferences ▸ Show/Hide has two sub-tabs: Renderer holds the renderer switches, Sections the section switches.
