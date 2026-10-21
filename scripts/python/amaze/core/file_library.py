@@ -193,12 +193,12 @@ class FileFolders(folders.FolderListModel):
         return bool(self._record(path).get("recursive"))
 
     def display_name(self, path: str) -> str:
-        """A rename wins; then the full path when Pathname is ticked; else the folder's own name."""
+        """The full path when Pathname is ticked, over any rename; then the rename; else the folder name."""
         record = self._record(path)
-        if record.get("name"):
-            return record["name"]
         if record.get("pathname"):    # written the way Write Paths As writes paths
             return houdini_path(path, getattr(self.preferences, "path_style", "home"))
+        if record.get("name"):
+            return record["name"]
         return os.path.basename(path.rstrip("/\\")) or path
 
     def remove_folder(self, row: int) -> bool:

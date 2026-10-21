@@ -2704,15 +2704,18 @@ class ShowTicksTest(unittest.TestCase):
                 self.assertEqual(expected, set(
                     file_library.location_kinds(self.prefs, self.tmp)))
 
-    def test_pathname_names_the_row_by_its_path_and_a_rename_wins(self):
+    def test_pathname_names_the_row_by_its_path_even_over_a_rename(self):
         self.prefs.path_style = "absolute"
         folders = file_library.FileFolders(self.prefs)
         folder = os.path.basename(self.tmp.rstrip("/\\"))
         self.assertEqual(folder, folders.display_name(self.tmp))
         self.prefs.set_file_folder_pathname(self.tmp, True)
-        self.assertEqual(file_library.houdini_path(self.tmp, "absolute"),
-                         folders.display_name(self.tmp))
+        path = file_library.houdini_path(self.tmp, "absolute")
+        self.assertEqual(path, folders.display_name(self.tmp))
         self.prefs.set_file_folder_name(self.tmp, "Textures")
+        self.assertEqual(path, folders.display_name(self.tmp),
+                         "a renamed folder kept its name with Pathname ticked")
+        self.prefs.set_file_folder_pathname(self.tmp, False)
         self.assertEqual("Textures", folders.display_name(self.tmp))
 
 

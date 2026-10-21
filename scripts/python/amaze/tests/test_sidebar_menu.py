@@ -274,6 +274,20 @@ class EachSubmenuRowWritesWhatItSays(unittest.TestCase):
         self.assertEqual(os.path.basename(path.rstrip("/\\")),
                          folders.display_name(path))
 
+    def test_pathname_shows_the_path_on_a_renamed_row(self):
+        """A row the user renamed shows its path once Show ▸ Pathname is ticked."""
+        context, path = self._on_row("file")
+        prefs = self.panel.prefs
+        self.addCleanup(prefs.set_file_folder_name, path, "")
+        self.addCleanup(prefs.set_file_folder_pathname, path, False)
+        prefs.set_file_folder_name(path, "Renamed Location")
+        row = self.panel.cat_list.model().index(1, 0)
+        self.assertEqual("Renamed Location", row.data())
+        self._choose("Show", "Pathname")
+        self.assertEqual(file_library.houdini_path(path, prefs.path_style),
+                         row.data(),
+                         "the renamed row kept its name with Pathname ticked")
+
     def test_rename_opens_on_the_folder_name_and_Set_to_Default_goes_back(self):
         context, path = self._on_row("file")
         asked = []
