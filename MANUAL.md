@@ -491,6 +491,8 @@ dialog.
 
 <img src="docs/images/dialog_customize.png" width="460">
 
+<img src="docs/images/menu_icon.png" width="206">
+
 The **Icon** menu sets what the tile shows:
 
 - **Render**: the tile's own picture. That is a material's or a node
@@ -666,6 +668,7 @@ Resolution** and **Parallel Downloads** for the online sources.
 ### Show/Hide
 
 <img src="docs/images/prefs_showhide.png" width="440">
+<img src="docs/images/prefs_showhide_sections.png" width="440">
 
 Two sub-tabs set which renderers and sections Amaze shows.
 
