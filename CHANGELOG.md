@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.10.1
+
+- The Reload tool on the Amaze shelf has its own icon.
+
 ## 1.10.0
 
 - Amaze updates a library to version 2 the first time it opens it, without asking. 1.9.0 asked first: its dialog could come up black, with the pane waiting behind it until it was closed, and Later left the library on version 1.
