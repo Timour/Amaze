@@ -56,7 +56,7 @@ The **Amaze shelf** has five tools:
 | **Updates** | Checks for a newer Amaze and installs it after confirmation. |
 | **Reload** | Installs new asset files from the packages on the Houdini path and reloads all loaded asset definitions without a restart. |
 
-<img src="docs/images/shelf_tools.png" width="420">
+<img src="docs/images/shelf_tools.png" width="244">
 
 ---
 
@@ -75,7 +75,7 @@ The **toolbar**, from left to right:
 |:--:|---|---|
 | <img src="scripts/python/amaze/ui/icon_categories.svg" width="20"> | **Show Categories** | Shows and hides the sidebar. |
 | <img src="scripts/python/amaze/ui/icon_renderer.svg" width="20"> | **Import/Generate** | Gallery Import (.gal), Package Import (.amazepkg) and Generate Material. |
-| <img src="scripts/python/amaze/ui/icon_view.svg" width="20"> | **Filter** | Filters the grid. In Material, by renderer: All, MaterialX, Redshift or Octane. |
+| <img src="scripts/python/amaze/ui/icon_view.svg" width="20"> | **Filter** | Filters the grid: Material by renderer, Color by the number of colors, Node by network type, Code by language and File by kind. |
 | <img src="scripts/python/amaze/ui/icon_online.svg" width="20"> | **Online** | Switches between the library and the online sources. |
 | <img src="scripts/python/amaze/ui/icon_comments.svg" width="20"> | **Comments** | Opens and closes the [Comments pane](#comments). Purple while the pane is open. |
 | <img src="scripts/python/amaze/ui/grid.svg" width="20"> <img src="scripts/python/amaze/ui/list.svg" width="20"> | **Grid / List** | Switches between grid view and list view. |
@@ -87,8 +87,15 @@ The **toolbar**, from left to right:
 
 The **Import/Generate** and **Filter** menus:
 
-<img src="docs/images/menu_import_generate.png" width="230">
-<img src="docs/images/menu_filter.png" width="180">
+<img src="docs/images/menu_import_generate.png" width="256">
+<img src="docs/images/menu_filter.png" width="200">
+
+The Filter menu in Color, Node, Code and File:
+
+<img src="docs/images/menu_filter_color.png" width="200">
+<img src="docs/images/menu_filter_node.png" width="200">
+<img src="docs/images/menu_filter_code.png" width="200">
+<img src="docs/images/menu_filter_file.png" width="200">
 
 **Favorites** shows only the assets marked as favorites.
 
@@ -186,6 +193,7 @@ off.
 
 <img src="docs/images/menu_material_tile.png" width="200">
 <img src="docs/images/menu_copy_to.png" width="230">
+<img src="docs/images/menu_convert_to.png" width="200">
 
 [Customize](#tile-icons) sets the name, category and tags. Dragging a
 tile onto a category in the sidebar moves it to that category.
@@ -678,6 +686,8 @@ Icon Line** (Thin, or Feather's Regular) and **Scroll Speed (%)**.
 
 The installed add-ons, a switch for each row, and **Check for Updates**
 for the Amaze store. See [Add-ons](#add-ons).
+
+<img src="docs/images/prefs_addon.png" width="440">
 
 ### About
 
