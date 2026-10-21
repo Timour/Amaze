@@ -110,7 +110,7 @@ else:
   </tool>
 
   <tool name="amaze_reload" label="Reload"
-        icon="$AMAZE/scripts/python/amaze/ui/icon_nodes.svg">
+        icon="$AMAZE/scripts/python/amaze/ui/icon_reload.svg">
     <helpText><![CDATA[Install any new asset file from the packages on the Houdini path and reload the loaded ones, without restarting Houdini.]]></helpText>
     <script scriptType="python"><![CDATA[import glob
 import os
