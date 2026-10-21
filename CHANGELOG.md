@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.10.2
+
+- The manual's slider picture is no longer part of the install; it sits with the manual's other pictures.
+
 ## 1.10.1
 
 - The Reload tool on the Amaze shelf has its own icon.
