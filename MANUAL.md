@@ -56,7 +56,7 @@ The **Amaze shelf** has five tools:
 | **Updates** | Checks for a newer Amaze and installs it after confirmation. |
 | **Reload** | Installs new asset files from the packages on the Houdini path and reloads all loaded asset definitions without a restart. |
 
-<img src="docs/images/shelf_tools.png" width="244">
+<img src="docs/images/shelf_tools.png" width="280">
 
 ---
 
