@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.10.6
+
+- The steps that ready, update and seed a library when it opens are kept apart from the pane; nothing changes in the app.
+
 ## 1.10.5
 
 - Checking for and installing add-ons is kept apart from the Add-On tab that shows it; nothing changes in the app.
