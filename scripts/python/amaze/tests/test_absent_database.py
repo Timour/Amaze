@@ -995,8 +995,7 @@ class UnmountedVolumesAreNotGoneTest(unittest.TestCase):
     """An unreachable volume is not a deleted folder - the pruner must not act on a blinking network."""
 
     def _check(self, path):
-        from amaze.panel.panel import AmazePanel  # an unmounted NAS share answers os.path.isdir exactly like a deleted folder (research.md ▸ Volume mounts on macOS)
-        return AmazePanel._volume_unreachable(path)
+        return hostos.volume_unreachable(path)  # an unmounted share answers isdir like a deleted folder
 
     @staticmethod
     def _absent_volume_path():

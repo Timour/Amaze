@@ -1898,35 +1898,11 @@ class AmazePanel(QtWidgets.QWidget):
         ) != 0:
             debug.event("cleanup", "cancelled at the confirm dialog")
             return
-        sections = []
-
-        rescued = self.material_model.cleanup_db(show_dialog=False)
-        if rescued:
-            self.category_model.check_add_category("Uncategorized")
-        normalized = self.category_model.normalize_categories()
-        if normalized:
-            debug.event("cleanup", "legacy category entries normalized",
-                        count=normalized)
-        mat_summary = list(
-            getattr(self.material_model, "last_cleanup_summary", [])
-        )
-        if mat_summary:
-            sections.append("Materials:\n- " + "\n- ".join(mat_summary))
-
-        if getattr(self, "cop_model", None):
-            cop_rescued = self.cop_model.cleanup_db(show_dialog=False)
-            if cop_rescued:
-                self.cop_category_model.check_add_category("Uncategorized")
-            self.cop_category_model.normalize_categories()
-            cop_summary = list(
-                getattr(self.cop_model, "last_cleanup_summary", [])
-            )
-            if cop_summary:
-                sections.append("Node assets:\n- " + "\n- ".join(cop_summary))
-
-        browser_lines = self._cleanup_browser_prefs()
-        if browser_lines:
-            sections.append("Folders and favorites:\n- " + "\n- ".join(browser_lines))
+        from amaze.actions import clean
+        sections = clean.clean_library(
+            self.prefs, self.material_model, self.category_model,
+            getattr(self, "cop_model", None), getattr(self, "cop_category_model", None),
+            self.file_folders_model)
 
         if sections:
             if ui is not None:
@@ -1934,70 +1910,6 @@ class AmazePanel(QtWidgets.QWidget):
                     messages.CLEANUP_SUMMARY % "\n\n".join(sections))
         else:
             debug.event("cleanup", "nothing to clean")    # no dialog - nothing changed, and the log keeps the record
-
-    @staticmethod
-    def _volume_unreachable(path: str) -> bool:
-        """The path's VOLUME is not mounted - unreachable, as opposed to the path being gone from a volume that is right here, which os.path.isdir cannot tell apart. A path under an absent /Volumes/<name> root, or on an absent Windows drive letter, is unreachable."""
-        if hostos.foreign_path(path):
-            return True    # the OTHER platform's spelling, from a shared library: this one cannot judge it - `abspath` grafts a POSIX root onto the current drive and calls the share mounted - and an unjudgeable pointer must read as unreachable, never as gone
-        path = os.path.abspath(path)
-        if hostos.is_windows():
-            drive = os.path.splitdrive(path)[0]
-            return bool(drive) and not os.path.exists(drive + os.sep)
-        if path.startswith("/Volumes/"):
-            parts = path.split("/")
-            root = "/".join(parts[:3])      # /Volumes/<name>
-            return not os.path.exists(root)
-        return False
-
-    def _cleanup_browser_prefs(self) -> list:
-        """The File section's cleanup: drops registered folder pointers whose directory no longer exists and favorites whose file is gone. Only pointers and prefs entries are touched - never anything on disk."""
-        lines = []
-
-        removed_folders = []
-        skipped_unmounted = 0
-        folders = list(self.prefs.file_folders)    # the LIVE file_* keys only: the dormant pre-merge texture_*/geometry_*/hip_* quartets are left alone, because they are what an older build on another machine still reads
-        for index in range(len(folders) - 1, -1, -1):    # highest row first, so removing one never shifts the row of another not yet examined
-            path = folders[index]
-            if os.path.isdir(path):
-                continue
-            if self._volume_unreachable(path):    # unreachable is not gone: an unmounted share answers isdir exactly like a deleted folder, and pruning on that deletes the user's folder list every time the network blinks
-                skipped_unmounted += 1
-                debug.event("cleanup", "folder pointer kept - its volume "
-                            "is not mounted", path=path)
-                continue
-            debug.event("cleanup", "folder pointer removed", path=path)
-            self.file_folders_model.remove_folder(index + 1)    # through the MODEL, never through prefs: remove_folder wraps the same prefs write in beginRemoveRows and drops the count cache with it. Row 0 is the synthetic "All" entry, hence +1
-            removed_folders.append(path)
-        if removed_folders:
-            lines.append(    # NAMES, not a count - a count is a sentence nobody can check
-                "These folders no longer exist, so their entries were "
-                "removed:\n  " + "\n  ".join(sorted(removed_folders)))
-        if skipped_unmounted:
-            lines.append(
-                "%d folder(s) on an unmounted drive were left alone - "
-                "they will be back when the drive is."
-                % skipped_unmounted)
-
-        removed_favs = []
-        for path, drop in (
-                [(p, self.prefs.remove_file_favorite)
-                 for p in list(self.prefs.file_favorites)]):
-            if os.path.exists(path):
-                continue
-            if self._volume_unreachable(path):
-                debug.event("cleanup", "favorite kept - its volume is "
-                            "not mounted", path=path)
-                continue
-            debug.event("cleanup", "missing-file favorite removed",
-                        path=path)
-            drop(path)
-            removed_favs.append(path)
-        if removed_favs:
-            lines.append(
-                "These favorites pointed at files that are gone, so they "
-                "were removed:\n  " + "\n  ".join(sorted(removed_favs)))
-        return lines
 
     def open_usdlib_folder(self) -> None:
         """Open the Library Folder in the System explorer"""

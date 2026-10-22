@@ -2570,7 +2570,8 @@ class CleanupPrunesThroughTheModelTest(unittest.TestCase):
         model.rowsRemoved.connect(
             lambda _parent, first, last: removed.append((first, last)))
         before = model.rowCount()
-        panel._cleanup_browser_prefs()
+        from amaze.actions import clean
+        clean.clean_folders_and_favorites(panel.prefs, panel.file_folders_model)
 
         self.assertEqual(
             2, len(removed),
@@ -2590,6 +2591,28 @@ class CleanupPrunesThroughTheModelTest(unittest.TestCase):
                 "aimed at a row the first one had already shifted")
 
 
+class CleanUpLibraryReachesTheFoldersTest(unittest.TestCase):
+    """Clean Up Library's one pass ends with the folder pointers, not only the asset lists."""
+
+    def test_a_dead_location_is_dropped_and_reported(self):
+        from amaze.actions import clean
+        panel = test_support.fixture_panel(self)
+        dead = tempfile.mkdtemp(prefix="amaze_dead_location_")
+        self.addCleanup(shutil.rmtree, dead, ignore_errors=True)
+        self.addCleanup(panel.prefs.remove_file_folder, dead)
+        panel.file_folders_model.add_folder(dead)
+        shutil.rmtree(dead)
+
+        sections = clean.clean_library(
+            panel.prefs, panel.material_model, panel.category_model,
+            panel.cop_model, panel.cop_category_model, panel.file_folders_model)
+
+        self.assertNotIn(hostos.canonical_path_key(dead), list(panel.prefs.file_folders),
+                         "Clean Up Library left a location whose folder is gone")
+        self.assertTrue([s for s in sections if s.startswith("Folders and favorites:")],
+                        "the report does not say which locations went")
+
+
 class CleanupPrunesOnlyFileFavouritesTest(unittest.TestCase):
     """The favourites store holds every section's stars; only a File one names a file to check."""
 
@@ -2605,7 +2628,8 @@ class CleanupPrunesOnlyFileFavouritesTest(unittest.TestCase):
         self.assertTrue(locations_mod.is_favourite(panel.prefs, dead),
                         "premise: the File star did not set")
 
-        lines = panel._cleanup_browser_prefs()
+        from amaze.actions import clean
+        lines = clean.clean_folders_and_favorites(panel.prefs, panel.file_folders_model)
 
         self.assertTrue(
             locations_mod.is_favourite(panel.prefs, mat_id),

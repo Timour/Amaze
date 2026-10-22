@@ -57,6 +57,21 @@ def foreign_path(path: str) -> bool:
     return windows_spelled
 
 
+def volume_unreachable(path: str) -> bool:
+    """The path's volume is not mounted, which `os.path.isdir` cannot tell from a deleted folder."""
+    if foreign_path(path):
+        return True    # the other platform's spelling cannot be judged here, so it is never gone
+    path = os.path.abspath(path)
+    if is_windows():
+        drive = os.path.splitdrive(path)[0]
+        return bool(drive) and not os.path.exists(drive + os.sep)
+    if path.startswith("/Volumes/"):
+        parts = path.split("/")
+        root = "/".join(parts[:3])      # /Volumes/<name>
+        return not os.path.exists(root)
+    return False
+
+
 def rehome(path: str) -> str:
     """A foreign absolute path re-pointed at THIS machine's home, or the path unchanged when the rewrite does not exist here."""
     clean = (path or "").replace("\\", "/")

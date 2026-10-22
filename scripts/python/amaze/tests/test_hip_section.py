@@ -2016,8 +2016,8 @@ class CleanupConfirmsBeforeDeletingTest(unittest.TestCase):
 
     def test_it_confirms_before_doing_any_work(self):
         body = self._body()
-        gate = body.find("buttons=")    # not `buttons=(` - the labels are a named constant now, not a tuple literal ▸p/messages-need-one-home
-        work = body.find("cleanup_db(show_dialog=False)")
+        gate = body.find("buttons=")    # the labels are a named constant ▸p/messages-need-one-home
+        work = body.find("clean.clean_library(")    # the work itself is actions/clean.py's
         self.assertGreater(gate, -1, "there is no confirm dialog")
         self.assertGreater(work, -1)
         self.assertLess(gate, work,
@@ -2025,8 +2025,9 @@ class CleanupConfirmsBeforeDeletingTest(unittest.TestCase):
 
     def test_the_gate_can_be_cancelled(self):
         body = self._body()
-        gate = body.find("buttons=")    # not `buttons=(` - the labels are a named constant now, not a tuple literal ▸p/messages-need-one-home
-        work = body.find("cleanup_db(show_dialog=False)")
+        gate = body.find("buttons=")    # the labels are a named constant ▸p/messages-need-one-home
+        work = body.find("clean.clean_library(")
+        self.assertGreater(work, gate, "the work is not found after the confirm dialog")
         self.assertIn("return", body[gate:work],
                       "the confirm dialog cannot actually stop it")
 

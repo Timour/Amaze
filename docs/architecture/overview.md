@@ -1148,6 +1148,10 @@ actions/addons.py         the add-on check and install the Add-On tab
                           runs: which store versions are newer, then
                           fetching and installing them, each answered
                           in one sentence
+actions/clean.py          Clean Up Library's work in one pass: each
+                          section's integrity pass, then dead folder
+                          pointers and File favorites; the panel asks
+                          before and shows the report after
 actions/library.py        the steps of opening a library that need no
                           panel: refusing one a newer Amaze updated,
                           readying its folder, updating it to this
