@@ -1139,6 +1139,10 @@ core/addons.py            add-on packages (format 4, a Houdini package):
                           into $AMAZE/addons/<folder> with the package file
                           Amaze.json's package_path reads, the on/off
                           switch (off/ is not loaded), the updater's carry
+actions/addons.py         the add-on check and install the Add-On tab
+                          runs: which store versions are newer, then
+                          fetching and installing them, each answered
+                          in one sentence
 core/texstore.py          the texture store: $AMAZELIB tokens, the
                           FileReference scan, save-time adoption and
                           the scene-side resolve

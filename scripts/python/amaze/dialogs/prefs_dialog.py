@@ -940,23 +940,12 @@ class PrefsDialog(base_dialog.AssetDialog):
     @debug.guarded("prefs.check_addons")
     def check_addons(self) -> None:
         """Ask the store, on request only, and say the answer in the line beside the button."""
-        from amaze.core import addons, updater
+        from amaze.actions import addons as addon_actions
         self._btn_addons.setEnabled(False)
         self._btn_addons.setText("Checking...")
         QtWidgets.QApplication.processEvents(
             QtCore.QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
-        found = []
-        try:
-            store = addons.store_versions(self._prefs.addon_betas)
-        except (OSError, ValueError) as exc:
-            sentence = messages.ADDONS_STORE_UNREACHABLE % exc
-        else:
-            root = updater.install_root()
-            have = {m["name"]: m["version"] for _f, m in (addons.installed_all(root) if root else [])}
-            found = [(name, version, url) for name, (version, url) in sorted(store.items())
-                     if addons.wanted(have.get(name), version)]
-            sentence = (messages.ADDONS_AVAILABLE % ", ".join("%s %s" % f[:2] for f in found)
-                        if found else messages.ADDONS_UP_TO_DATE)
+        found, sentence = addon_actions.check(self._prefs.addon_betas)
         self._addons_found = found
         self._btn_addons.setEnabled(True)
         self._set_addons_button(bool(found))
@@ -965,7 +954,8 @@ class PrefsDialog(base_dialog.AssetDialog):
     @debug.guarded("prefs.install_addons")
     def install_addons(self) -> None:
         """Install what the last check found, with no popup: the line says what happened."""
-        from amaze.core import addons, packages, updater
+        from amaze.actions import addons as addon_actions
+        from amaze.core import updater
         root = updater.install_root()
         if not root:
             self._lbl_addons.setText(messages.ADDONS_LOCATION_UNKNOWN)
@@ -974,15 +964,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         self._btn_addons.setText("Installing...")
         QtWidgets.QApplication.processEvents(
             QtCore.QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
-        done = []
-        try:
-            for name, version, url in self._addons_found:
-                addons.fetch_and_install(url, root)
-                done.append("%s %s" % (name, version))
-        except (packages.PackageError, OSError) as exc:
-            sentence = str(exc)
-        else:
-            sentence = messages.ADDONS_INSTALLED % ", ".join(done)
+        sentence = addon_actions.install(self._addons_found, root)
         self._addons_found = []
         self._btn_addons.setEnabled(True)
         self._set_addons_button(False)
