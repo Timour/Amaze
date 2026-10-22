@@ -10,7 +10,7 @@ import shutil
 import time
 
 from amaze import messages
-from amaze.core import debug, users
+from amaze.core import asset_files, debug, users
 from amaze.core.material import BUILDER_SUFFIX
 from amaze.helpers import hostos
 
@@ -146,9 +146,8 @@ def active_version_name(preferences, mat_id: str) -> str:
 
 
 def _base_paths(preferences, mat_id: str) -> dict:
-    """The asset's own files by archive suffix, named by `library.asset_files_for`."""
-    from amaze.core import library    # late: library imports this module
-    owned = library.asset_files_for(preferences, mat_id)
+    """The asset's own files by archive suffix, named by `asset_files.asset_files_for`."""
+    owned = asset_files.asset_files_for(preferences, mat_id)
     return {suffix: owned[kind] for kind, suffix in SOURCE_KINDS.items()
             if kind in owned}
 

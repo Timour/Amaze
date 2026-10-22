@@ -37,7 +37,7 @@ MODULE_LAYER = {    # one row per module in core/, helpers/ and the top level
     "core.notes": "library", "core.users": "library", "core.versions": "library",
     "core.captures": "library", "core.library_policy": "library",
     "core.library_prefs": "library", "core.tile_icons": "library", "core.texstore": "library",
-    "core.repair": "library",
+    "core.repair": "library", "core.asset_files": "library",
     "core.packages": "formats", "core.addons": "formats", "core.matx_sources": "formats",
     "core.matx_usd": "formats", "core.bsdf_reader": "formats", "core.conversion": "formats",
     "core.geo_library": "formats",

@@ -1183,6 +1183,9 @@ dialogs/repair_dialog.py  Repair's questions and answers - the shelf
 core/updater.py           is a newer Amaze released, and can this one
                           become it - asked only on request, never at
                           launch (shelf tool + the About tab button)
+core/asset_files.py       the files one asset owns, by kind - the one
+                          namer the library model and the version store
+                          both ask
 core/versions.py          the version store - the base files are always
                           the ACTIVE version's, each version also has an
                           archived copy, and versions.json is the ledger

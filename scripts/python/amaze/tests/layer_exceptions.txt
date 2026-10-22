@@ -25,7 +25,6 @@ core/matx_icon.py imports helpers/ui_helpers.py
 core/matx_library.py imports helpers/ui_helpers.py
 core/texstore.py uses hou
 core/tile_icons.py imports helpers/ui_helpers.py
-core/versions.py imports core/library.py
 prefs/persistence.py imports panel/sections.py
 prefs/prefs.py imports core/file_library.py
 prefs/prefs.py talks displayMessage x1, selectFile x1

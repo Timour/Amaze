@@ -9,6 +9,7 @@ from PySide6 import QtCore, QtGui
 
 import hou
 
+from amaze.core import asset_files
 from amaze.core import captures
 from amaze.core import debug
 from amaze.core import grid_engine
@@ -96,29 +97,6 @@ prune_quarantine = quarantine.prune_quarantine
 quarantine_size = quarantine.quarantine_size
 quarantine_file = quarantine.quarantine_file
 quarantine_as = quarantine.quarantine_as
-
-
-def asset_files_for(preferences, mat_id: str) -> dict:
-    """{kind: path} of every FILE `mat_id` owns; {} for an unsafe id, and PathEscape propagates."""
-    mat_id = str(mat_id)
-    if not material.is_safe_asset_id(mat_id):    # read verbatim from library.json: `../x` escapes
-        debug.event("library", "asset id cannot name a file - it owns "
-                    "no paths", mat_id=mat_id)
-        return {}
-
-    def owned(suffix):
-        return material.payload_path(preferences, mat_id, suffix)
-
-    return {
-        "mat": owned(preferences.ext),
-        "interface": owned(".interface"),
-        "builder": owned(material.BUILDER_SUFFIX),
-        "stamp": owned(material.STAMP_SUFFIX),
-        "cop": owned("_cop" + preferences.ext),
-        "thumbnail": tile_icons.thumbnail_path(preferences, mat_id),
-        "tile_icon": tile_icons.icon_image_path(preferences, mat_id),
-        "capture": captures.asset_path(preferences, mat_id),
-    }
 
 
 class AssetLibrary(grid_engine.GridEngine,
@@ -878,7 +856,7 @@ class AssetLibrary(grid_engine.GridEngine,
 
     def asset_files(self, mat_id: str) -> dict:
         """`asset_files_for` this library; a new per-asset file is added THERE and nowhere else."""
-        return asset_files_for(self.preferences, mat_id)
+        return asset_files.asset_files_for(self.preferences, mat_id)
 
     def _hold_pre_edit_files(self, mat_id: str) -> dict:
         """Copy the asset's CURRENT files aside for the version store: {archive suffix: held path}, per `versions.SOURCE_KINDS`. Read the source dict by KIND, never by filename suffix - `<id>_cop.mat` shares ".mat" with the material and `<id>_icon.png` shares ".png" with the render, so a suffix key lets whichever comes later overwrite the real payload. Kinds SOURCE_KINDS does not name are not versioned."""
