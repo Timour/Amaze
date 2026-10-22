@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.10.9
+
+- Repair's questions and messages are kept apart from its checks; nothing changes in the app.
+
 ## 1.10.8
 
 - Clean Up Library's work is kept apart from the pane that asks first and reports after; nothing changes in the app.
