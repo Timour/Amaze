@@ -288,17 +288,17 @@ class EverySwitchPublishesTheVariable(unittest.TestCase):
             "$AMAZELIB still names the previous library until Preferences "
             "closes, so a render reads that library's textures")
 
-    def _point_settings_at(self, library):
+    def _write_settings(self, **changes):
         settings = os.path.join(self.panel.prefs.path, "settings.json")
         with open(settings, encoding="utf-8") as handle:
             data = json.load(handle)
-        data["directory"] = library
+        data.update(changes)
         with open(settings, "w", encoding="utf-8") as handle:
             json.dump(data, handle)
 
     def test_reload_library(self):
         other = test_support.fresh_library(self)
-        self._point_settings_at(other)
+        self._write_settings(directory=other)
         self.panel.open()
         self._assert_published(other)
 
@@ -307,7 +307,7 @@ class EverySwitchPublishesTheVariable(unittest.TestCase):
 
         def picked():
             self.panel.prefs.dir = other
-            self._point_settings_at(other)    # the save the fixture panel switches off
+            self._write_settings(directory=other)    # the save the fixture panel switches off
             return True
 
         with mock.patch.object(self.panel.prefs, "get_dir_from_user", picked):
@@ -321,6 +321,7 @@ class EverySwitchPublishesTheVariable(unittest.TestCase):
         ok, what = prefs_mod.seed_test_folder(folder)
         self.assertTrue(ok, what)
         self.panel.prefs.test_dir = folder
+        self._write_settings(test_mode=True, test_dir=folder)    # the switch re-reads settings
         dialog = prefs_dialog.PrefsDialog(self.panel.prefs, panel=self.panel)
         self.addCleanup(dialog.deleteLater)
         dialog.set_test_mode(True)

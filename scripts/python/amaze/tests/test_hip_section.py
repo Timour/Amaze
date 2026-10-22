@@ -1757,7 +1757,7 @@ class NewerLibraryTest(unittest.TestCase):
         from unittest import mock
         asked = self._answering(1)
         with mock.patch.object(type(self.panel.material_model), "switch_model_data") as switched:
-            self.panel.switch_all_models()
+            self.panel.open_library()
         switched.assert_not_called()
         self._idle(asked)
         self.assertEqual(1, len(asked), "the update was not offered")

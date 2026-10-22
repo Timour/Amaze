@@ -241,6 +241,16 @@ showing the previous library's categories with the new library's
 counts (every row zero). A ninth model joins by declaring itself;
 `test_area_bindings` fails a repointable model no section names.
 
+**EVERY WAY ONTO A LIBRARY IS ONE SEQUENCE**, `panel.open_library()`:
+the newer-library refusal, `actions/library.py`'s `prepare`, the models
+built (`setup`) or switched (`switch_all_models`), `$AMAZELIB`, the
+version update, then the shipped starters. Opening the pane, Reload
+Library, Set Library, closing Preferences on another library and Test
+Library all call it, and `test_switch_rereads` pins the order for all
+five. What stays with the caller: Reload Library saves first, and
+opening the pane and closing Preferences apply the log and cache
+settings.
+
 **The Sidebar Menu** is the same table, same builder (2026-08-04):
 `Section.SIDEBAR_MENU`, rendered by the same `panel/grid.py` code that
 renders `GRID_MENU`. Material, Node and Code share ONE table object -

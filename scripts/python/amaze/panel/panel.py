@@ -175,15 +175,10 @@ class AmazePanel(QtWidgets.QWidget):
         debug.configure(self.prefs.debug_mode)    # configured before anything else runs: a crash during setup() is precisely the case a debug log has to survive
         debug.prefs_snapshot(self.prefs)
         hostos.set_cache_override(self.prefs.cache_dir)    # custom thumbnail-cache location, set before any cache is touched - everything downstream resolves hostos.cache_root()
-        texstore.publish_env(self.prefs)    # $AMAZELIB, so thumbnails and previews resolve store references natively
         if loaded:
             self.init_ui()
-            if self._library_too_new():
-                self._open_libraryless()
-                return
             try:
-                library_actions.prepare(self.prefs)
-                self.setup()
+                opened = self.open_library()
             except (ValueError, OSError) as broken:    # AN UNREADABLE INDEX GETS A DIALOG, NOT A TRACEBACK: this narrow catch absorbs exactly one situation - the primary index is on disk and will not parse - and offers the repair the shelf tool would run. Everything else still raises where it can be seen
                 index_path = os.path.join(self.prefs.dir or "",
                                           "library.json")
@@ -194,11 +189,12 @@ class AmazePanel(QtWidgets.QWidget):
                     index_bytes = b""
                 if (self.prefs.dir and os.path.isfile(index_path)
                         and not hostos.parses_as_json(index_bytes)):
-                    if not self._offer_index_repair(broken):
-                        self._open_libraryless()
-                        return
+                    opened = self._offer_index_repair(broken)
                 else:
                     raise
+            if not opened:
+                self._open_libraryless()
+                return
             debug.event(    # construction-complete tripwire, through the same engine as the session header: a log whose header exists but whose 'panel ready' is missing means logging died DURING construction - see debug.probe()
                 "session", "panel ready",
                 module_body_ms=round(    # module body = the import plus the 50-module reload chain that runs before construction can start; construction = what "session start -> panel ready" always measured
@@ -248,8 +244,7 @@ class AmazePanel(QtWidgets.QWidget):
                 title=messages.TITLE_AMAZE)
             return False
         try:
-            library_actions.prepare(self.prefs)
-            self.setup()
+            opened = self.open_library()
         except (ValueError, OSError) as still:
             debug.exception("index still unreadable after repair",
                             still)
@@ -257,6 +252,8 @@ class AmazePanel(QtWidgets.QWidget):
                 messages.INDEX_UNREADABLE_AFTER_REPAIR,
                 severity=hou.severityType.Warning,
                 title=messages.TITLE_AMAZE)
+            return False
+        if not opened:
             return False
         ui.setStatusMessage("Amaze: %s." % how)
         debug.event("session", "index repaired at open", how=how)
@@ -381,8 +378,6 @@ class AmazePanel(QtWidgets.QWidget):
         self.code_category_sorted_model = self._sidebar_proxy(self.code_category_model)
         self.code_sorted_model, self.code_selection_model = self._grid_proxy(
             multifilterproxy_model.MultiFilterProxyModel(self), self.code_model)
-        self._update_library()
-        self._seed_curated_content()    # seeds the snippets AND the palettes once per library, through one door a library switch also takes, so a virgin library seeds whichever way it arrives
 
         for _model in (self.material_model, self.cop_model, self.code_model):    # multi-category was removed, so every asset collapses to its first category; idempotent, so this one-time migration no-ops on every subsequent launch
             try:
@@ -446,8 +441,7 @@ class AmazePanel(QtWidgets.QWidget):
             return
         self.material_model.save()
         self.prefs.load()
-        library_actions.prepare(self.prefs)
-        self.switch_all_models()    # THE SAME WALK every other switch site uses, never a copy of it
+        self.open_library()
 
         debug.event("session", "library reloaded")
 
@@ -455,13 +449,21 @@ class AmazePanel(QtWidgets.QWidget):
         """User Sets library via Menu Option so we have to reroute"""
         if self.prefs.get_dir_from_user():
             self.prefs.load()
-            if self._library_too_new():
-                return
-            library_actions.prepare(self.prefs)
-            if not self.material_model:
-                self.setup()
+            self.open_library()
 
-            self.switch_all_models()    # EVERY library-backed model switches, not just the Materials pair
+    def open_library(self) -> bool:
+        """Every way onto a library, in one order; False when a newer Amaze's library stays closed."""
+        if self._library_too_new():
+            return False    # the models stay on the library they serve
+        library_actions.prepare(self.prefs)
+        if getattr(self, "material_model", None) is None:
+            self.setup()    # the libraryless shape has no models to switch
+        else:
+            self.switch_all_models()
+        texstore.publish_env(self.prefs)    # $AMAZELIB names the library the models now serve
+        self._update_library()    # before any tile paints
+        self._seed_curated_content()    # once per library, marker-guarded
+        return True
 
     def library_models(self) -> tuple:
         """EVERY library-backed model that exists right now, DERIVED from the sections the way `tile_delegates()` derives - each section declares its own in `library_model_attrs`, so a section arriving with a model of its own joins by existing"""
@@ -474,10 +476,7 @@ class AmazePanel(QtWidgets.QWidget):
         return tuple(found)
 
     def switch_all_models(self) -> None:
-        """Re-point every library-backed model at `prefs.dir` - THE ONE ROUTE ONTO ANOTHER LIBRARY and the only route that re-points models at all, because a model a switch skips goes on serving the previous library with every save refused"""
-        if self._library_too_new():
-            return    # the models stay on the library they serve
-        texstore.publish_env(self.prefs)    # $AMAZELIB moves with the models, so a render before Preferences closes reads the new library
+        """The models' step of `open_library`: every library-backed model re-pointed at `prefs.dir`."""
         pane = getattr(self, "notes_panel", None)
         if pane is not None:
             pane.clear_subject()    # a pending edit goes to its own library; the switch selects nothing
@@ -492,8 +491,6 @@ class AmazePanel(QtWidgets.QWidget):
             self.click_slider.setValue(grid.active_thumbsize(self))
         self._models_dir = self.prefs.dir    # so closing Preferences does not switch onto it a second time
         debug.event("session", "library switched", dir=self._models_dir)
-        self._update_library()
-        self._seed_curated_content()    # a switch can land on a library nobody has opened before, and a virgin library gets its curated content however it arrives - the same door construction takes, marker-guarded, so an already-seeded library costs two stat calls
         section = self._section()
         if section is not None:
             section.library_switched()
@@ -1727,7 +1724,7 @@ class AmazePanel(QtWidgets.QWidget):
         hostos.set_cache_override(self.prefs.cache_dir)
         switched = self.prefs.dir != self._models_dir
         if switched:    # only a library the models are not on yet earns their full re-read
-            self.switch_all_models()
+            self.open_library()
         accent = theme.accent(self.prefs.accent_color)
         self.click_slider.set_accent_color(accent)
         self.click_slider.stepped = self.prefs.step_size

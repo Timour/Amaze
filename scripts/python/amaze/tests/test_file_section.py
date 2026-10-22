@@ -3278,7 +3278,7 @@ class TheUserPickerFollowsTheLibrary(unittest.TestCase):
         import inspect
         from amaze.dialogs import prefs_dialog
 
-        SWAPS = {"set_library", "switch_all_models"}
+        SWAPS = {"set_library", "switch_all_models", "open_library"}
         tree = ast.parse(inspect.getsource(prefs_dialog))
         offenders = []
         door = set()

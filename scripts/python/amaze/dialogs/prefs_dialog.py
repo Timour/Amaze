@@ -1193,7 +1193,7 @@ class PrefsDialog(base_dialog.AssetDialog):
                     on=self._prefs.test_mode, folder=self._prefs.test_dir,
                     library=self._prefs.dir)
         if self._panel is not None:
-            self._panel.switch_all_models()   # NOT open(): that reloads the library already bound, so the connectors keep serving the previous one and every save is refused
+            self._panel.open_library()    # the one sequence every way onto a library takes
         self._sync_rows()
 
     _SHARED_ROWS = (    # (row attribute, the shared setting it shows); renderer switches ride beside

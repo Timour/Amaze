@@ -16,6 +16,15 @@ from amaze.tests import test_support
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 
+def _write_settings(panel, **changes):
+    path = os.path.join(panel.prefs.path, "settings.json")
+    with open(path, encoding="utf-8") as handle:
+        data = json.load(handle)
+    data.update(changes)
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump(data, handle)
+
+
 class SwitchRereadsCase(unittest.TestCase):
     """One panel for the class - the door under test is the panel's."""
 
@@ -258,14 +267,6 @@ class OneLibraryChangeIsOneSwitch(unittest.TestCase):
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
 
-    def _settings(self, **changes):
-        path = os.path.join(self.panel.prefs.path, "settings.json")
-        with open(path, encoding="utf-8") as handle:
-            data = json.load(handle)
-        data.update(changes)
-        with open(path, "w", encoding="utf-8") as handle:
-            json.dump(data, handle)
-
     def _switches_while_open(self, action):
         model = self.panel.material_model
         with mock.patch.object(model, "switch_model_data",
@@ -281,7 +282,7 @@ class OneLibraryChangeIsOneSwitch(unittest.TestCase):
 
         def picked():
             self.panel.prefs.dir = other
-            self._settings(directory=other)    # the save the fixture panel switches off
+            _write_settings(self.panel, directory=other)    # the save the fixture panel switches off
             return True
 
         def set_library(dialog):
@@ -297,7 +298,7 @@ class OneLibraryChangeIsOneSwitch(unittest.TestCase):
 
         def turn_on(dialog):
             self.panel.prefs.test_dir = folder
-            self._settings(test_mode=True, test_dir=folder)    # the save the fixture panel switches off
+            _write_settings(self.panel, test_mode=True, test_dir=folder)    # the save the fixture panel switches off
             dialog.set_test_mode(True)
 
         self.assertEqual(1, self._switches_while_open(turn_on),
@@ -306,7 +307,8 @@ class OneLibraryChangeIsOneSwitch(unittest.TestCase):
     def test_a_folder_changed_behind_preferences_is_switched_to_at_close(self):
         other = test_support.fresh_library(self)
         self.assertEqual(
-            1, self._switches_while_open(lambda dialog: self._settings(directory=other)),
+            1, self._switches_while_open(
+                lambda dialog: _write_settings(self.panel, directory=other)),
             "closing Preferences left the models on the previous library")
 
     def test_closing_with_nothing_changed_switches_nothing(self):
@@ -318,6 +320,79 @@ class OneLibraryChangeIsOneSwitch(unittest.TestCase):
             self.panel.switch_all_models()
         self.assertEqual(1, log.messages("session").count("library switched"),
                          "a switch left no line in the debug log to count it by")
+
+
+class EveryWayOntoALibraryTakesOneOrder(unittest.TestCase):
+    """Every way onto a library takes one order: refusal, prepare, models, publish, update, seed."""
+
+    ORDER = ["refusal", "prepare", "models", "publish", "update", "seed"]
+
+    def setUp(self):
+        from amaze.actions import library as library_actions
+        from amaze.core import texstore
+        from amaze.panel import panel as panel_mod
+        self.panel = test_support.fixture_panel(self)
+        self.order = []
+        for owner, name, step in (
+                (library_actions, "newer_version", "refusal"),
+                (library_actions, "prepare", "prepare"),
+                (panel_mod.AmazePanel, "setup", "models"),
+                (panel_mod.AmazePanel, "switch_all_models", "models"),
+                (texstore, "publish_env", "publish"),
+                (library_actions, "update", "update"),
+                (library_actions, "seed_starters", "seed")):
+            patcher = mock.patch.object(owner, name, self._spy(step, getattr(owner, name)))
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def _spy(self, step, real):
+        def recorded(*args, **kwargs):
+            self.order.append(step)
+            return real(*args, **kwargs)
+        return recorded
+
+    def _assert_order(self, door):
+        self.assertEqual(self.ORDER, self.order,
+                         "%s opened the library in another order" % door)
+
+    def test_opening_the_pane(self):
+        test_support.reopened_panel(self)
+        self._assert_order("opening the pane")
+
+    def test_reload_library(self):
+        self.panel.open()
+        self._assert_order("Reload Library")
+
+    def test_set_library(self):
+        other = test_support.fresh_library(self)
+
+        def picked():
+            self.panel.prefs.dir = other
+            _write_settings(self.panel, directory=other)    # the save the fixture panel switches off
+            return True
+
+        with mock.patch.object(self.panel.prefs, "get_dir_from_user", picked):
+            self.panel.set_library()
+        self._assert_order("Set Library")
+
+    def test_closing_preferences(self):
+        self.panel.show_prefs()
+        _write_settings(self.panel, directory=test_support.fresh_library(self))
+        del self.order[:]
+        self.panel._prefs_dialog.close()
+        QtWidgets.QApplication.processEvents()
+        self._assert_order("closing Preferences")
+
+    def test_test_library(self):
+        from amaze.dialogs import prefs_dialog
+        folder = test_support.scratch_dir("amaze_order_test_lib_")
+        self.addCleanup(shutil.rmtree, folder, True)
+        self.panel.prefs.test_dir = folder
+        dialog = prefs_dialog.PrefsDialog(self.panel.prefs, panel=self.panel)
+        self.addCleanup(dialog.deleteLater)
+        del self.order[:]
+        dialog.set_test_mode(True)
+        self._assert_order("Test Library")
 
 
 if __name__ == "__main__":
