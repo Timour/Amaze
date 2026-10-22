@@ -1212,6 +1212,10 @@ dialogs/                  save / preferences / about / code / gradient dialogs
 dialogs/user_dialog.py    WHICH user this machine is, asked once and
                           only when the library has people in it and
                           this machine is none of them
+dialogs/update_dialog.py  what an update asks and says - Continue or
+                          Cancel when it updates the library, then how
+                          the install went; the About tab, the shelf's
+                          Updates tool and the panel share it
 
 tests/test_support.py     fixture_panel() - the ONLY way a test builds a
                           panel: own settings, library, caches, network

@@ -1765,11 +1765,12 @@ class NewerLibraryTest(unittest.TestCase):
     def test_update_amaze_installs_the_newest_release(self):
         from unittest import mock
         from amaze.core import updater
+        from amaze.dialogs import update_dialog
         asked = self._answering(0)
         found = updater.Update(updater.NEWER, version="9.9", url="https://example.invalid/r.zip",
                                sentence="newer", library_version=self.newer)
         with mock.patch.object(updater, "check", return_value=found), \
-                mock.patch.object(updater, "install_and_say") as install:
+                mock.patch.object(update_dialog, "install_and_say") as install:
             self.panel._offer_amaze_update()
         install.assert_called_once_with(found)
         self.assertEqual(1, len(asked), "a release reading this library asked Continue too")

@@ -1346,11 +1346,12 @@ class PrefsDialog(base_dialog.AssetDialog):
     def install_update(self) -> None:
         """Fetch the release the last check found; Continue or Cancel first if it updates the library."""
         from amaze.core import updater
+        from amaze.dialogs import update_dialog
 
         result = self._installable()
         if result is None:
             return
-        if not updater.confirmed(result, self._prefs.dir):    # the shelf tool asks the same
+        if not update_dialog.confirmed(result, self._prefs.dir):    # the shelf tool asks the same
             return
 
         self._btn_update.setEnabled(False)

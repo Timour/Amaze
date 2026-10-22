@@ -36,7 +36,6 @@ core/repair.py talks displayMessage x22, selectFromList x2
 core/repair.py uses hou
 core/texstore.py uses hou
 core/tile_icons.py imports helpers/ui_helpers.py
-core/updater.py talks displayMessage x4
 core/versions.py imports core/library.py
 core/versions.py imports render/nodes.py
 prefs/persistence.py imports panel/sections.py

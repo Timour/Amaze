@@ -584,6 +584,7 @@ class AmazePanel(QtWidgets.QWidget):
     def _offer_amaze_update(self) -> None:
         """Update Amaze or Cancel, for the library left closed; headless, nothing is asked."""
         from amaze.core import library_policy, updater
+        from amaze.dialogs import update_dialog
         ui = getattr(hou, "ui", None)
         if ui is None:
             return
@@ -596,8 +597,8 @@ class AmazePanel(QtWidgets.QWidget):
         found = updater.check()
         if not found:
             ui.displayMessage(found.sentence, title=messages.TITLE_AMAZE)
-        elif updater.confirmed(found, library_dir):
-            updater.install_and_say(found)
+        elif update_dialog.confirmed(found, library_dir):
+            update_dialog.install_and_say(found)
 
     def _seed_curated_content(self) -> None:
         """Seed the shipped starters once per library - the Code section's Examples snippets and the Colors section's palette sets - through ONE door for construction and the library switch. getattr, not attribute reads: the libraryless shape leaves model attributes None or absent"""

@@ -127,23 +127,6 @@ def updates_library(found, library_dir: str) -> bool:
             and wanted > library_policy.library_version(library_dir))
 
 
-def install_and_say(found) -> bool:
-    """Install `found` and say in a message how it went; True once it is installed."""
-    import hou
-    from amaze import messages
-    try:
-        install(found)
-    except OSError as exc:
-        hou.ui.displayMessage(str(exc), title=messages.TITLE_AMAZE)    # already a finished sentence
-        return False
-    except Exception as exc:                                  # noqa: BLE001
-        debug.exception("update install", exc)
-        hou.ui.displayMessage(messages.UPDATE_FAILED_UNEXPECTED % exc, title=messages.TITLE_AMAZE)
-        return False
-    hou.ui.displayMessage(messages.UPDATE_INSTALLED % found.version, title=messages.TITLE_AMAZE)
-    return True
-
-
 def configured_library() -> str:
     """The library the settings name; "" when unread, since no setting may stop an update."""
     try:
@@ -160,18 +143,6 @@ def offer_line(found, library_dir: str) -> str:
     if updates_library(found, library_dir):
         return messages.UPDATE_LIBRARY_AVAILABLE % (found.version, found.library_version)
     return found.sentence
-
-
-def confirmed(found, library_dir: str) -> bool:
-    """Continue or Cancel, asked only when installing `found` updates the library."""
-    if not updates_library(found, library_dir):
-        return True
-    import hou
-    from amaze import messages
-    return hou.ui.displayMessage(
-        messages.LIBRARY_UPDATE_WARNING % found.library_since,
-        buttons=messages.BUTTONS_CONTINUE, default_choice=1, close_choice=1,
-        severity=hou.severityType.Warning, title=messages.TITLE_AMAZE) == 0
 
 
 def _unreachable_sentence(exc) -> str:

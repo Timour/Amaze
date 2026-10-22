@@ -87,6 +87,7 @@ else:
 # cannot say different things about the same answer.
 try:
     from amaze.core import updater
+    from amaze.dialogs import update_dialog
 except ImportError as exc:
     hou.ui.displayMessage(
         "Amaze is not importable from this session (%s).\n\n"
@@ -105,8 +106,8 @@ else:
             messages.UPDATE_OFFER % updater.offer_line(found, library),
             buttons=messages.BUTTONS_INSTALL_UPDATE,
             close_choice=1, title=messages.TITLE_AMAZE) == 0 \
-            and updater.confirmed(found, library):    # Continue or Cancel, as on the About tab
-        updater.install_and_say(found)]]></script>
+            and update_dialog.confirmed(found, library):    # Continue or Cancel, as on the About tab
+        update_dialog.install_and_say(found)]]></script>
   </tool>
 
   <tool name="amaze_reload" label="Reload"
