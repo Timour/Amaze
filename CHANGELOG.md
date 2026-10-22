@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.10.16
+
+- After changing the Library Path or turning Test Library on or off, a thumbnail rendered while Preferences is still open takes its textures from the new library.
+
 ## 1.10.15
 
 - A refused drag writes `Amaze: The action was canceled.` in Houdini's status bar, as information rather than a warning.
