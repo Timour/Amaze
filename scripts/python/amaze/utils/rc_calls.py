@@ -28,7 +28,7 @@ class HoudiniSpeaker:
             raise AttributeError("no hou.ui in this session")
         ui.setStatusMessage(
             "Amaze: %s" % text,
-            severity=hou.severityType.Warning,  # type: ignore
+            severity=hou.severityType.Message,  # type: ignore
         )
 
     @staticmethod

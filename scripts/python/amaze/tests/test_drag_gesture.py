@@ -526,18 +526,15 @@ class TheBehaviourTableCells(unittest.TestCase):
                 self.assertFalse(h.view._dragging,
                                  "the gesture stayed live after: " + name)
 
-    def test_every_miss_says_why_in_the_status_line(self):
-        """The red cross shows a drop failed; the status line says nothing there takes it."""
-        from amaze.panel import sections
+    def test_every_miss_says_so_in_the_status_line(self):
+        """The red cross shows a drop failed; the status line says it was canceled."""
         for name, section, kind, aim, expected in self.CELLS:
             with self.subTest(cell=name):
                 _h, said = self._released(section, kind, aim)
-                noun = sections.SECTION_INDEX[section].empty_noun
-                self.assertEqual([] if expected else [messages.DROP_TAKES_NOTHING % noun],
-                                 said, name)
+                self.assertEqual([] if expected else [messages.DROP_CANCELED], said, name)
 
 
-class TheResolversSayWhyTheyMissed(unittest.TestCase):
+class TheResolversSayTheyMissed(unittest.TestCase):
     """Material and node-asset releases find their own landing, so their misses send the line."""
 
     @classmethod
@@ -561,7 +558,7 @@ class TheResolversSayWhyTheyMissed(unittest.TestCase):
         for target in (None, ("lop", None, None), ("obj", None, None)):
             with self.subTest(target=target):
                 self.assertEqual(
-                    [messages.DROP_TAKES_NOTHING % "material"],
+                    [messages.DROP_CANCELED],
                     self._said(lambda: panel.sections["material"].drop_material_at_release(
                         index), target))
 
@@ -570,7 +567,7 @@ class TheResolversSayWhyTheyMissed(unittest.TestCase):
         rows = QtGui.QStandardItemModel()    # any valid row: the landing is asked before the row is read
         rows.appendRow(QtGui.QStandardItem("node asset"))
         index = rows.index(0, 0)
-        self.assertEqual([messages.DROP_TAKES_NOTHING % "node asset"],
+        self.assertEqual([messages.DROP_CANCELED],
                          self._said(lambda: panel.sections["cop"].drop_cop_at_release(index)))
 
 

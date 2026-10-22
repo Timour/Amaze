@@ -91,8 +91,8 @@ class Section:
         self.panel = panel
 
     def drop_takes_nothing(self) -> bool:
-        """A release nothing takes: the red cross shows it and the status line says why; False."""
-        debug.refuse(messages.DROP_TAKES_NOTHING % self.empty_noun)
+        """A release nothing takes: the red cross, and a status line saying it was canceled; False."""
+        debug.refuse(messages.DROP_CANCELED)
         return False
 
     def activate(self) -> None:

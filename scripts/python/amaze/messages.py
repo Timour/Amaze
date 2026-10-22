@@ -144,7 +144,7 @@ NODE_SAVE_FAILED = '"%s" could not be saved.'
 
 OBJECT_HAS_NO_MATERIAL_PARM = '"%s" does not have a material parameter. The material was imported to /mat but was not assigned.'
 
-DROP_TAKES_NOTHING = 'Nothing here takes a %s.'
+DROP_CANCELED = 'The action was canceled.'
 
 STOCK_LOP_HELPERS_UNAVAILABLE = "Could not load Houdini's material-assignment helpers. The material was not imported."
 

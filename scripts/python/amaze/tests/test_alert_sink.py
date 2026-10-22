@@ -101,6 +101,16 @@ class RefuseIsTheGestureSinkTest(unittest.TestCase):
                             "%r" % text)
             self.assertIn("that node has no file parameter", text)
 
+    def test_bad_aim_is_information_not_a_warning(self):
+        """Houdini prints `Warning:` before a Warning line; a missed drop is only information."""
+        severities = []
+        ui = types.SimpleNamespace(
+            setStatusMessage=lambda text, *a, **k: severities.append(k.get("severity")),
+            displayMessage=lambda text, *a, **k: None)
+        with mock.patch.object(hou, "ui", ui, create=True):
+            debug.refuse("The action was canceled.")
+        self.assertEqual([hou.severityType.Message], severities)
+
     def test_damage_opens_a_dialog_DEFERRED_past_the_release_click(self):
         """Never the status line, which the next write erases."""
         with mock.patch.object(hou, "ui", self._ui(), create=True), \
