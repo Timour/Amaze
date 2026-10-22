@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.10.4
+
+- The questions and messages around installing an update are kept apart from the code that installs it; nothing changes in the app.
+
 ## 1.10.3
 
 - The test suite checks that each part of Amaze uses only the parts below it; nothing changes in the app.
