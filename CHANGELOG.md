@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.10.18
+
+- Turning Test Library on or off now says when the library's list has not arrived yet, as opening the pane already did.
+
 ## 1.10.17
 
 - After changing the Library Path or turning Test Library on or off, closing Preferences no longer reads the library a second time.
