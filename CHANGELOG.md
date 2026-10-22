@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.10.10
+
+- Installing an add-on checks it against the running Houdini, which Update on the Add-On tab passes in; nothing changes in the app.
+
 ## 1.10.9
 
 - Repair's questions and messages are kept apart from its checks; nothing changes in the app.
