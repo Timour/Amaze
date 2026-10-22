@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.10.13
+
+- The list of the files an asset owns has one home, which the library and its versions both read; nothing changes in the app.
+
 ## 1.10.12
 
 - With developer reloading on, reopening the pane also reloads the code that opens a library; nothing changes in the app.
