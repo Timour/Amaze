@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.10.12
+
+- With developer reloading on, reopening the pane also reloads the code that opens a library; nothing changes in the app.
+
 ## 1.10.11
 
 - Repair's dialogs call its checks' helpers by their public names; nothing changes in the app.
