@@ -45,6 +45,7 @@ from amaze import messages
 from amaze import tooltips
 from amaze.prefs import prefs
 from amaze.helpers import bytecode, hostos, theme, ui_helpers
+from amaze.utils import rc_calls
 from amaze.core import database, renderers, tile_icons, users
 from amaze.render import husk_job, nodes
 
@@ -100,6 +101,7 @@ _reload(amazetheme)    # before theme and ui_helpers: their class bodies read th
 _reload(theme)    # before ui_helpers, whose class bodies read theme colours
 _reload(branding)    # FIRST of the ones below: everything reads its constants, and a stale branding produced 38 unhandled AttributeErrors live when APP_VERSION was added
 _reload(ui_helpers)
+_reload(rc_calls)    # after debug and messages: it hands the log the dialogs they word
 _reload_loaded("amaze.helpers.helpers")
 _reload(texture_library)
 _reload(gradient_library)
@@ -157,6 +159,7 @@ class AmazePanel(QtWidgets.QWidget):
         super(AmazePanel, self).__init__()
         self._construct_t0 = time.perf_counter()    # stamped before any work, so "panel ready" can report the two spans separately: everything the module body did before this point, and the construction itself
         self._first_show_logged = False
+        rc_calls.start()    # before the log writes anything, so its header knows the Houdini
         debug.install()    # arm the always-on crash recorder before anything else, so a failure during construction lands in the log even with Debug Mode off (see core/debug.py)
         try:
             self._build()

@@ -8,11 +8,6 @@ core/code_library.py uses hou
 core/cop_library.py imports render/nodes.py
 core/cop_library.py imports render/thumbs.py
 core/cop_library.py uses hou
-core/debug.py imports helpers/theme.py
-core/debug.py talks displayMessage x2, setStatusMessage x1
-core/debug.py uses PySide6.QtCore
-core/debug.py uses PySide6.QtGui
-core/debug.py uses hou
 core/dragengine.py imports core/cop_library.py
 core/file_library.py imports core/scene_captures.py
 core/file_library.py imports render/thumbs.py

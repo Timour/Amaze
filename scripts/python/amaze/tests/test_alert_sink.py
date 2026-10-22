@@ -66,9 +66,12 @@ class RefuseIsTheGestureSinkTest(unittest.TestCase):
     """`debug.refuse`: bad aim to the status line, damage to a dialog. ▸p/refusal-sink"""
 
     def setUp(self):
+        from amaze.utils import rc_calls
         self.said = []
         self.shown = []
         self.printed = []
+        self.addCleanup(debug.hand_over, debug._ui)
+        debug.hand_over(rc_calls.HoudiniSpeaker)    # what the pane and every shelf tool hand over
 
     def _ui(self):
         """Both calls, so a wrong branch is a wrong list and not an AttributeError reading as a crash."""
@@ -113,6 +116,17 @@ class RefuseIsTheGestureSinkTest(unittest.TestCase):
                          "library damage went to the status line, which "
                          "the next write erases")
         self.assertEqual(['"Rust": asset file is missing.'], self.shown)
+
+    def test_with_nothing_handed_over_the_log_only_prints(self):
+        """The log reaches Houdini only through what was handed over, never by itself."""
+        debug.hand_over(None)
+        with mock.patch.object(hou, "ui", self._ui(), create=True), \
+                mock.patch("builtins.print", self.printed.append):
+            debug.refuse("no ramp here")
+            debug.refuse(debug.Damage("gone"))
+        self.assertEqual(([], []), (self.said, self.shown),
+                         "the log spoke to Houdini with nothing handed over")
+        self.assertEqual(2, len(self.printed))
 
     def test_headless_says_it_anyway_and_does_not_raise(self):
         self.assertFalse(hasattr(hou, "ui"),
@@ -288,6 +302,34 @@ class TheTenSitesAreConvertedTest(unittest.TestCase):
                     missing.append("%s: %s" % (rel, key))
         self.assertEqual([], missing,
                          "condition(s) no longer raised: %s" % missing)
+
+
+class EveryWayInHandsTheLogItsSpeaker(unittest.TestCase):
+    """The log speaks through Houdini only once handed over, so every entry point does that first."""
+
+    REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
+        os.path.dirname(os.path.abspath(__file__))))))
+
+    def test_every_shelf_tool_that_imports_amaze_hands_it_over(self):
+        import xml.etree.ElementTree as ET
+        root = ET.parse(os.path.join(self.REPO, "toolbar", "Amaze.shelf")).getroot()
+        missing = [tool.get("name") for tool in root.findall("tool")
+                   if "from amaze" in tool.find("script").text
+                   and "rc_calls.start()" not in tool.find("script").text]
+        self.assertEqual([], missing, "these tools' alerts would print instead of showing")
+
+    def test_the_pane_hands_it_over_before_the_log_starts(self):
+        import inspect
+        from amaze.panel import panel
+        source = inspect.getsource(panel.AmazePanel.__init__)
+        self.assertIn("rc_calls.start()", source)
+        self.assertLess(source.index("rc_calls.start()"), source.index("debug.install()"),
+                        "the session header is written before the log knows the Houdini")
+
+    def test_save_to_amaze_hands_it_over(self):
+        import inspect
+        from amaze.utils import rc_calls
+        self.assertIn("start()", inspect.getsource(rc_calls.save))
 
 
 if __name__ == "__main__":

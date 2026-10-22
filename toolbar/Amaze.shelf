@@ -14,12 +14,14 @@
 try:
     from amaze.core import scene_captures
     from amaze.prefs import prefs as prefs_module
+    from amaze.utils import rc_calls
 except ImportError as exc:
     hou.ui.displayMessage(
         "Amaze is not importable from this session (%s).\n\n"
         "Check that $AMAZE points at the install and that Houdini was "
         "restarted after it changed." % exc)
 else:
+    rc_calls.start()
     preferences = prefs_module.Prefs()
     preferences.load()
     try:
@@ -69,12 +71,14 @@ else:
 # construct the panel - Repair exists for when the panel will not open.
 try:
     from amaze.core import repair
+    from amaze.utils import rc_calls
 except ImportError as exc:
     hou.ui.displayMessage(
         "Amaze is not importable from this session (%s).\n\n"
         "Check that $AMAZE points at the install and that Houdini was "
         "restarted after it changed." % exc)
 else:
+    rc_calls.start()
     repair.run()]]></script>
   </tool>
 
@@ -88,6 +92,7 @@ else:
 try:
     from amaze.core import updater
     from amaze.dialogs import update_dialog
+    from amaze.utils import rc_calls
 except ImportError as exc:
     hou.ui.displayMessage(
         "Amaze is not importable from this session (%s).\n\n"
@@ -96,6 +101,7 @@ except ImportError as exc:
 else:
     from amaze import messages
 
+    rc_calls.start()
     found = updater.check()
     library = updater.configured_library()
     if not found:
@@ -124,12 +130,14 @@ import hou
 # embedded viewer state.
 try:
     from amaze.helpers import hostos
+    from amaze.utils import rc_calls
 except ImportError as exc:
     hou.ui.displayMessage(
         "Amaze is not importable from this session (%s).\n\n"
         "Check that $AMAZE points at the install and that Houdini was "
         "restarted after it changed." % exc)
 else:
+    rc_calls.start()
     hfs = os.path.realpath(hou.getenv("HFS") or "")
     loaded = {hostos.comparable_path(p): p for p in hou.hda.loadedFiles()}    # one spelling per file
     new, again = [], []

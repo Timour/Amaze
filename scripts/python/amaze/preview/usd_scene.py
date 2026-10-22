@@ -1,4 +1,5 @@
 """The USD preview scene, Karma's and Octane's: one stage per batch, written for husk to render."""
+import datetime
 import os
 
 import hou
@@ -178,7 +179,7 @@ def _stage_material(lib, node, asset_id, prim_path: str) -> str:
         debug.event(
             "thumb", "karma material content",
             asset_id=str(asset_id),
-            textures=(debug.texture_snapshot(curr_nodes[0])
+            textures=(texture_snapshot(curr_nodes[0])
                       if curr_nodes else None),    # guarded: a diagnosis aid never changes the outcome
         )
     debug.event(
@@ -279,9 +280,97 @@ def exr_to_png(exr_path: str, png_path: str, ocio, asset_id: str = "") -> bool:
 
     if debug.is_on():
         debug.event("thumb", "karma thumbnail written",    # a black, empty or stale PNG look alike
-                    asset_id=str(asset_id), **debug.image_stats(png_path))
+                    asset_id=str(asset_id), **image_stats(png_path))
     if not os.path.exists(png_path) or os.path.getsize(png_path) == 0:
         debug.event("thumb", "karma produced no PNG",    # checked, never assumed: the old one stays
                     asset_id=str(asset_id), path=png_path)
         return False
     return True
+
+
+def image_stats(path: str) -> dict:
+    """A rendered image measured, so a black-looking tile reads as all black, transparent or content."""
+    info = {"path": path}
+    try:
+        info["exists"] = os.path.exists(path)
+        if not info["exists"]:
+            return info
+        info["bytes"] = os.path.getsize(path)
+        info["mtime_age_s"] = round(
+            datetime.datetime.now().timestamp() - os.path.getmtime(path), 1
+        )
+        from PySide6 import QtGui
+
+        image = QtGui.QImage(path)
+        if image.isNull():
+            info["unreadable"] = True
+            return info
+        info["size"] = "%dx%d" % (image.width(), image.height())
+        info["has_alpha"] = image.hasAlphaChannel()
+        step = max(1, min(image.width(), image.height()) // 32)
+        total = black = transparent = 0
+        lum_sum = 0.0
+        lum_max = 0.0
+        for y in range(0, image.height(), step):
+            for x in range(0, image.width(), step):
+                colour = image.pixelColor(x, y)
+                lum = (
+                    0.2126 * colour.redF()
+                    + 0.7152 * colour.greenF()
+                    + 0.0722 * colour.blueF()
+                )
+                lum_sum += lum
+                lum_max = max(lum_max, lum)
+                if lum < 0.004:
+                    black += 1
+                if colour.alphaF() < 0.004:
+                    transparent += 1
+                total += 1
+        if total:
+            info["mean_luminance"] = round(lum_sum / total, 4)
+            info["max_luminance"] = round(lum_max, 4)
+            info["percent_black"] = round(100.0 * black / total, 1)
+            info["percent_transparent"] = round(100.0 * transparent / total, 1)
+            info["verdict"] = (
+                "fully transparent" if transparent == total
+                else "all black" if black == total
+                else "mostly black" if black > total * 0.95
+                else "has content"
+            )
+    except Exception as exc:
+        info["stats_failed"] = str(exc)
+    return info
+
+
+def texture_snapshot(root) -> list:
+    """Every file reference under a network and whether it resolves; a missing one renders black."""
+    out = []
+    if root is None:
+        return out
+    try:
+        stack = [root]
+        while stack:
+            node = stack.pop()
+            if node.isNetwork():
+                stack.extend(node.children())
+            for parm in node.parms():
+                try:
+                    template = parm.parmTemplate()
+                    if not isinstance(template, hou.StringParmTemplate):
+                        continue
+                    if template.stringType() != hou.stringParmType.FileReference:
+                        continue
+                except Exception:
+                    continue
+                value = parm.eval()
+                if not value:
+                    continue
+                out.append({
+                    "node": node.name(),
+                    "parm": parm.name(),
+                    "path": value,
+                    "exists": os.path.exists(value),
+                })
+    except Exception as exc:
+        out.append({"snapshot_failed": str(exc)})
+    return out

@@ -624,9 +624,13 @@ Structured session logging, JSON Lines. **Two tiers:**
 - **API:** `install()` · `configure(on)` · `exception(where)` ·
   `event(cat, msg)` · `ledger(cat, msg)` (an `event` the flood guard
   never limits, one record per call: every database save) · `note(...)` ·
-  `timed(cat, msg)` · snapshots:
-  `image_stats()` · `texture_snapshot()` · `node_snapshot()` ·
-  `material_snapshot()`
+  `timed(cat, msg)` · `alert(msg)` · `refuse(reason)` · `hand_over(ui)` ·
+  snapshots: `node_snapshot()` · `material_snapshot()`
+- **The log imports neither `hou` nor Qt.** An alert's dialog, a
+  refusal's status line and the session header's Houdini facts go
+  through what `hand_over` was given: `utils/rc_calls.HoudiniSpeaker`,
+  handed over by `rc_calls.start()`, the first call of the pane, of every
+  shelf tool and of Save to Amaze. Until then alerts and refusals print.
 - **`$AMAZE_LOG_DIR` moves the whole log dir, read ONCE at import** so a
   process can be isolated before any module has logged anything. The
   test runner sets it: the crash tier writes with Debug Mode off, so a
@@ -655,7 +659,8 @@ Structured session logging, JSON Lines. **Two tiers:**
   marker silently.
 - **Two of the snapshots are CONSOLE TOOLS, not wired** (2026-08-05):
   `image_stats` and `texture_snapshot` are called from the thumbnail
-  path, `node_snapshot` and `material_snapshot` by hand from the
+  path and live beside it in `preview/usd_scene.py`, `node_snapshot` and
+  `material_snapshot` by hand from the
   Python shell during a diagnosis — they were written for the
   material/builder questions that keep coming back ("is it actually a
   Karma builder", "is the shader wired", "is the material wrong or
@@ -1204,7 +1209,8 @@ helpers/bytecode.py       Amaze's compiled files, always hash-checked:
 helpers/                  theme, ui widgets, vex syntax, generic helpers
 utils/rc_calls.py         the entry points Houdini itself calls (shelf
                           tools, OPmenu) - finds the open panel by its
-                          pane-tab label, historical names included
+                          pane-tab label, historical names included;
+                          `start()` hands the log its Houdini speaker
 branding.py               the app's DISPLAY name and tagline, once
 amazetheme.py             THE DESIGN, in one document: every colour,
                           size, placement and word the designs fix and

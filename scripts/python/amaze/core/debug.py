@@ -13,7 +13,6 @@ import time
 import traceback
 from contextlib import contextmanager
 
-from amaze import messages    # constants only, importing nothing itself - safe from the lowest module in the tree ▸p/messages-need-one-home
 from amaze.helpers import hostos
 
 DEFAULT_DIR = os.environ.get("AMAZE_LOG_DIR", "").strip() or hostos.log_root()
@@ -225,8 +224,7 @@ def export_log(dest_dir: str) -> str:
 def _houdini_version_tag() -> str:
     """The running Houdini version, filename-safe, or "unknown"."""
     try:
-        import hou
-        return str(hou.applicationVersionString()).replace(".", "-")
+        return str(_ui.houdini_version()).replace(".", "-")
     except Exception:                                    # noqa: BLE001
         return "unknown"
 
@@ -398,36 +396,7 @@ def _write_session_header() -> None:
         "amaze_env": os.environ.get("AMAZE", ""),
     }
     try:
-        import hou
-
-        info["houdini"] = hou.applicationVersionString()
-        info["product"] = hou.applicationName()
-        try:
-            info["ui_scale"] = float(hou.ui.globalScaleFactor())
-        except Exception:
-            pass
-        try:
-            from PySide6 import QtGui
-
-            screen = QtGui.QGuiApplication.primaryScreen()
-            if screen is not None:
-                info["device_pixel_ratio"] = float(screen.devicePixelRatio())
-        except Exception:
-            pass
-        try:
-            from amaze.helpers import theme
-
-            info["effective_ui_scale"] = float(theme.UI_SCALE)
-        except Exception:
-            pass
-        for label, type_name in (
-            ("redshift", "redshift_vopnet"),
-            ("octane", "octane_vopnet"),
-            ("mtlx", "mtlxstandard_surface"),
-        ):
-            info["has_" + label] = bool(
-                hou.vopNodeTypeCategory().nodeTypes().get(type_name)
-            )
+        _ui.describe(info)    # fills in what it can before anything fails
     except Exception as exc:
         info["houdini_probe_failed"] = str(exc)
     info["debug_mode"] = _enabled
@@ -494,6 +463,13 @@ def note(message: str, /, **data) -> None:
 
 
 _alerted: set = globals().get("_alerted", set())
+_ui = globals().get("_ui")    # what `hand_over` was given, kept across a reload
+
+
+def hand_over(ui) -> None:
+    """Who shows alerts and refusals and describes the host; until one is handed over, they print."""
+    global _ui
+    _ui = ui
 
 
 def alert(message: str, /, key: str = "", **data) -> bool:
@@ -507,17 +483,9 @@ def alert(message: str, /, key: str = "", **data) -> bool:
         return False
     _alerted.add(stable)
     try:
-        import hou
-        from PySide6 import QtCore
-
-        if not hasattr(hou, "ui"):
-            raise AttributeError("no hou.ui in this session")
-        QtCore.QTimer.singleShot(0, lambda: hou.ui.displayMessage(
-            message, severity=hou.severityType.Warning,  # type: ignore
-            title=messages.TITLE_AMAZE,
-        ))
+        _ui.dialog(message)
         return True
-    except Exception:                                    # noqa: BLE001
+    except Exception:                                    # noqa: BLE001 - none handed over, or no screen
         print("Amaze: " + message)
         return True
 
@@ -535,23 +503,12 @@ def refuse(reason: str, /, **data) -> bool:
         _write({"cat": "refuse", "msg": str(reason),
                 "data": dict(data, damage=damage)})
     try:
-        import hou
-        from PySide6 import QtCore
-
-        if not hasattr(hou, "ui"):
-            raise AttributeError("no hou.ui in this session")
         if damage:
-            QtCore.QTimer.singleShot(0, lambda: hou.ui.displayMessage(
-                str(reason), severity=hou.severityType.Warning,  # type: ignore
-                title=messages.TITLE_AMAZE,
-            ))
+            _ui.dialog(str(reason))
         else:
-            hou.ui.setStatusMessage(    # the bar is Houdini's, so it says who is speaking ▸r/status-bar
-                "Amaze: %s" % reason,
-                severity=hou.severityType.Warning,  # type: ignore
-            )
+            _ui.status(str(reason))
         return True
-    except Exception:                                    # noqa: BLE001
+    except Exception:                                    # noqa: BLE001 - none handed over, or no screen
         print("Amaze: " + str(reason))
         return True
 
@@ -590,60 +547,6 @@ def timed(category: str, message: str, /, **data):
         _write({"cat": category, "msg": message, "data": payload})
 
 
-def image_stats(path: str) -> dict:
-    """Measure a rendered image so a black-looking tile becomes a `verdict`: all black, fully transparent, or has content."""
-    info = {"path": path}
-    try:
-        info["exists"] = os.path.exists(path)
-        if not info["exists"]:
-            return info
-        info["bytes"] = os.path.getsize(path)
-        info["mtime_age_s"] = round(
-            datetime.datetime.now().timestamp() - os.path.getmtime(path), 1
-        )
-        from PySide6 import QtGui
-
-        image = QtGui.QImage(path)
-        if image.isNull():
-            info["unreadable"] = True
-            return info
-        info["size"] = "%dx%d" % (image.width(), image.height())
-        info["has_alpha"] = image.hasAlphaChannel()
-        step = max(1, min(image.width(), image.height()) // 32)
-        total = black = transparent = 0
-        lum_sum = 0.0
-        lum_max = 0.0
-        for y in range(0, image.height(), step):
-            for x in range(0, image.width(), step):
-                colour = image.pixelColor(x, y)
-                lum = (
-                    0.2126 * colour.redF()
-                    + 0.7152 * colour.greenF()
-                    + 0.0722 * colour.blueF()
-                )
-                lum_sum += lum
-                lum_max = max(lum_max, lum)
-                if lum < 0.004:
-                    black += 1
-                if colour.alphaF() < 0.004:
-                    transparent += 1
-                total += 1
-        if total:
-            info["mean_luminance"] = round(lum_sum / total, 4)
-            info["max_luminance"] = round(lum_max, 4)
-            info["percent_black"] = round(100.0 * black / total, 1)
-            info["percent_transparent"] = round(100.0 * transparent / total, 1)
-            info["verdict"] = (
-                "fully transparent" if transparent == total
-                else "all black" if black == total
-                else "mostly black" if black > total * 0.95
-                else "has content"
-            )
-    except Exception as exc:
-        info["stats_failed"] = str(exc)
-    return info
-
-
 def material_snapshot(shader, builder=None) -> dict:
     """A shading network's effective inputs and what drives each; pass `builder` to flag a promoted parm that DIFFERS."""
     if shader is None:
@@ -677,42 +580,6 @@ def material_snapshot(shader, builder=None) -> dict:
     except Exception as exc:
         info["snapshot_failed"] = str(exc)
     return info
-
-
-def texture_snapshot(root) -> list:
-    """Every file reference under a network and whether it resolves - a missing one renders black, silently."""
-    out = []
-    if root is None:
-        return out
-    try:
-        stack = [root]
-        while stack:
-            node = stack.pop()
-            if node.isNetwork():
-                stack.extend(node.children())
-            for parm in node.parms():
-                try:
-                    template = parm.parmTemplate()
-                    import hou
-
-                    if not isinstance(template, hou.StringParmTemplate):
-                        continue
-                    if template.stringType() != hou.stringParmType.FileReference:
-                        continue
-                except Exception:
-                    continue
-                value = parm.eval()
-                if not value:
-                    continue
-                out.append({
-                    "node": node.name(),
-                    "parm": parm.name(),
-                    "path": value,
-                    "exists": os.path.exists(value),
-                })
-    except Exception as exc:
-        out.append({"snapshot_failed": str(exc)})
-    return out
 
 
 def node_snapshot(node, depth: int = 1) -> dict:
