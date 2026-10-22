@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.10.15
+
+- A refused drag writes `Amaze: The action was canceled.` in Houdini's status bar, as information rather than a warning.
+
 ## 1.10.14
 
 - A drag that ends in the red cross says why in Houdini's status bar: `Nothing here takes a material`, or a node asset, snippet, file or palette.
