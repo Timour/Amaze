@@ -573,13 +573,13 @@ class ReloadChainTest(unittest.TestCase):
         for match in re.finditer(  # PARENTHESISED imports span lines: a pattern stopping at the first newline contributes NOTHING for them, and this test passes happily while those modules sit outside the chain
                 r"^from amaze[\w.]* import \(([^)]*)\)", source, re.M | re.S):
             for name in match.group(1).split(","):
-                name = name.strip()
+                name = name.split(" as ")[-1].strip()    # `x as y` binds y, the name the chain reloads
                 if name and name.isidentifier():
                     imported.add(name)
         for match in re.finditer(
                 r"^from amaze[\w.]* import ([^(\n]+)$", source, re.M):
             for name in match.group(1).split(","):
-                name = name.strip()
+                name = name.split(" as ")[-1].strip()
                 if name and name.isidentifier():
                     imported.add(name)
 

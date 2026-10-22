@@ -95,6 +95,7 @@ _reload(category)
 _reload_loaded("amaze.core.repair")
 _reload(folders)
 _reload(prefs)
+_reload(library_actions)    # after captures, database and prefs, which its steps call
 _reload(messages)      # the wording every dialog shows; reloaded like `branding`, so a reworded message reaches an already-open Houdini ▸p/messages-need-one-home
 _reload(tooltips)      # the same for every hover text, and before the dialogs, the delegates and the models that read its constants
 _reload(amazetheme)    # before theme and ui_helpers: their class bodies read the DESIGN's values at definition time, so a stale one draws yesterday's design ▸p/one-design-document
