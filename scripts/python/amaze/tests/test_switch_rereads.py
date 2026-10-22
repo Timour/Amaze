@@ -2,7 +2,9 @@
 
 import json
 import os
+import shutil
 import unittest
+from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")   # BEFORE the app exists ▸p/first-app-picks-the-platform
 from PySide6 import QtWidgets  # noqa: E402
@@ -248,6 +250,74 @@ class AnUnreadableNodeFileDoesNotStopTheSwitch(unittest.TestCase):
             log.matching("could not be read"),
             "the refusal never said the Node file could not be read: %s"
             % log.messages())
+
+
+class OneLibraryChangeIsOneSwitch(unittest.TestCase):
+    """A library chosen with Preferences open is switched to once; closing Preferences adds none."""
+
+    def setUp(self):
+        self.panel = test_support.fixture_panel(self)
+
+    def _settings(self, **changes):
+        path = os.path.join(self.panel.prefs.path, "settings.json")
+        with open(path, encoding="utf-8") as handle:
+            data = json.load(handle)
+        data.update(changes)
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(data, handle)
+
+    def _switches_while_open(self, action):
+        model = self.panel.material_model
+        with mock.patch.object(model, "switch_model_data",
+                               wraps=model.switch_model_data) as switch:
+            self.panel.show_prefs()
+            action(self.panel._prefs_dialog)
+            self.panel._prefs_dialog.close()
+            QtWidgets.QApplication.processEvents()
+        return switch.call_count
+
+    def test_set_library(self):
+        other = test_support.fresh_library(self)
+
+        def picked():
+            self.panel.prefs.dir = other
+            self._settings(directory=other)    # the save the fixture panel switches off
+            return True
+
+        def set_library(dialog):
+            with mock.patch.object(self.panel.prefs, "get_dir_from_user", picked):
+                dialog.change_library_path()
+
+        self.assertEqual(1, self._switches_while_open(set_library),
+                         "closing Preferences re-read every model a second time")
+
+    def test_test_library(self):
+        folder = test_support.scratch_dir("amaze_switch_test_lib_")
+        self.addCleanup(shutil.rmtree, folder, True)
+
+        def turn_on(dialog):
+            self.panel.prefs.test_dir = folder
+            self._settings(test_mode=True, test_dir=folder)    # the save the fixture panel switches off
+            dialog.set_test_mode(True)
+
+        self.assertEqual(1, self._switches_while_open(turn_on),
+                         "closing Preferences re-read every model a second time")
+
+    def test_a_folder_changed_behind_preferences_is_switched_to_at_close(self):
+        other = test_support.fresh_library(self)
+        self.assertEqual(
+            1, self._switches_while_open(lambda dialog: self._settings(directory=other)),
+            "closing Preferences left the models on the previous library")
+
+    def test_closing_with_nothing_changed_switches_nothing(self):
+        self.assertEqual(0, self._switches_while_open(lambda dialog: None),
+                         "closing Preferences switched with no library change")
+
+    def test_a_switch_is_written_to_the_debug_log(self):
+        with test_support.captured_log() as log:
+            self.panel.switch_all_models()
+        self.assertEqual(1, log.messages("session").count("library switched"),
+                         "a switch left no line in the debug log to count it by")
 
 
 if __name__ == "__main__":

@@ -302,6 +302,7 @@ class AmazePanel(QtWidgets.QWidget):
     def setup(self):
         for attr, model in model_registry.models_for(self.prefs).items():
             setattr(self, attr, model)    # SHARED with every other panel on this library; only the proxies, selections and delegates below are this panel's own
+        self._models_dir = self.prefs.dir    # the folder these models serve; closing Preferences compares against it
 
         self.category_sorted_model = self._sidebar_proxy(self.category_model)
         self.material_sorted_model, self.material_selection_model = self._grid_proxy(
@@ -489,6 +490,8 @@ class AmazePanel(QtWidgets.QWidget):
                 m.switch_model_data()
             model_registry.rebind(self.prefs, self.material_model)    # the shared set now serves another tree, so it is re-filed under it - left under the old key, the next panel opened there is handed this library's rows
             self.click_slider.setValue(grid.active_thumbsize(self))
+        self._models_dir = self.prefs.dir    # so closing Preferences does not switch onto it a second time
+        debug.event("session", "library switched", dir=self._models_dir)
         self._update_library()
         self._seed_curated_content()    # a switch can land on a library nobody has opened before, and a virgin library gets its curated content however it arrives - the same door construction takes, marker-guarded, so an already-seeded library costs two stat calls
         section = self._section()
@@ -1681,7 +1684,6 @@ class AmazePanel(QtWidgets.QWidget):
                 return
             except RuntimeError:
                 self._prefs_dialog = None
-        old_dir = self.prefs.dir
         dlg = prefs_dialog.PrefsDialog(
             self.prefs, panel=self,
             file_files_model=self.file_files_model,
@@ -1696,18 +1698,18 @@ class AmazePanel(QtWidgets.QWidget):
         self._prefs_dialog = dlg
         applied = {"done": False}    # `finished` fires on every close path (closeEvent calls done()) and `destroyed` is DeleteOnClose insurance, so this makes double delivery apply once
 
-        def _closed(*_a, od=old_dir):
+        def _closed(*_a):
             if applied["done"]:
                 return
             applied["done"] = True
-            self._prefs_dialog_closed(od)
+            self._prefs_dialog_closed()
 
         dlg.finished.connect(_closed)
         dlg.destroyed.connect(_closed)
         self.destroyed.connect(dlg.close)    # the dialog must not outlive the panel it applies to
         dlg.show()
 
-    def _prefs_dialog_closed(self, old_dir) -> None:
+    def _prefs_dialog_closed(self) -> None:
         """Apply everything Preferences changed, once the non-modal dialog reports it closed."""
         try:
             self.isVisible()    # a non-modal dialog can outlive its panel (the pane tab closed with Preferences open), so confirm the C++ side is still there before touching anything
@@ -1723,8 +1725,8 @@ class AmazePanel(QtWidgets.QWidget):
         self.prefs.load()
         debug.configure(self.prefs.debug_mode)
         hostos.set_cache_override(self.prefs.cache_dir)
-        switched = self.prefs.dir != old_dir
-        if switched:    # only another library earns the models' full re-read
+        switched = self.prefs.dir != self._models_dir
+        if switched:    # only a library the models are not on yet earns their full re-read
             self.switch_all_models()
         accent = theme.accent(self.prefs.accent_color)
         self.click_slider.set_accent_color(accent)

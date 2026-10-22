@@ -1036,7 +1036,7 @@ class LeavingOnlineLandsOnAShownSection(unittest.TestCase):
                                     if k != key]
         with open(settings, "w", encoding="utf-8") as handle:
             json.dump(data, handle)
-        self.panel._prefs_dialog_closed(self.panel.prefs.dir)
+        self.panel._prefs_dialog_closed()
         QtWidgets.QApplication.processEvents()
 
     def test_the_grid_shows_the_section_of_the_tab_it_lands_on(self):
@@ -1079,7 +1079,6 @@ class ClosingPreferencesRescansTheFileFolderOnce(unittest.TestCase):
         return scan.call_count
 
     def test_closing_onto_another_library_scans_its_location_once(self):
-        old = self.panel.prefs.dir
         theirs = test_support.fresh_files_folder(self)
         settings = os.path.join(self.panel.prefs.path, "settings.json")
         with open(settings, encoding="utf-8") as handle:
@@ -1089,7 +1088,7 @@ class ClosingPreferencesRescansTheFileFolderOnce(unittest.TestCase):
                     file_location_records={theirs: {"registered": True}})
         with open(settings, "w", encoding="utf-8") as handle:
             json.dump(data, handle)
-        scans = self._scans_while(lambda: self.panel._prefs_dialog_closed(old))
+        scans = self._scans_while(self.panel._prefs_dialog_closed)
         self.assertEqual(theirs, self.files._folder, "premise: File shows the new location")
         self.assertEqual(1, scans, "the new library's location was scanned %d times" % scans)
 
