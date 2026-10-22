@@ -61,7 +61,7 @@ class TheStarterCarriesNoPhantomAsset(unittest.TestCase):
     """The shipped starter held one blank record inherited from the fork, and every library made from it opened with a phantom asset that nothing removed and every save re-emitted."""
 
     def test_the_shipped_starter_seeds_no_assets(self):
-        """`panel.load()` claims a test pins this and names one that exists nowhere in the tree; this is the guard, under its own name."""
+        """The starter `prepare()` seeds holds no asset; a guard under its own name."""
         with open(amaze.package_file("res", "def", "library.json"),
                   encoding="utf-8") as handle:
             starter = json.load(handle)
@@ -74,7 +74,7 @@ class TheStarterCarriesNoPhantomAsset(unittest.TestCase):
 
 
 class TheShippedStarterDoorBirthsAStampedIndex(unittest.TestCase):
-    """`panel.load()`'s door: the shipped starter carries no `version` key, so it is stamped on the way in rather than copied verbatim. ▸p/library-creation-doors"""
+    """`prepare()`'s door: the starter has no `version`, so it is stamped on the way in."""
 
     def setUp(self):
         self.lib = tempfile.mkdtemp(prefix="amaze_fresh_starter_")
@@ -109,15 +109,15 @@ class TheShippedStarterDoorBirthsAStampedIndex(unittest.TestCase):
             self.assertEqual(before, handle.read(), "the index was rewritten")
 
     def test_panel_load_seeds_through_this_door(self):
-        """Pinned from SOURCE because load() needs a panel; a bare shutil.copy of the starter must go red."""
+        """Pinned from SOURCE: every opening seeds through prepare(); a bare shutil.copy goes red."""
         import inspect
-        from amaze.panel.panel import AmazePanel
-        source = inspect.getsource(AmazePanel.load)
+        from amaze.actions import library as library_actions
+        source = inspect.getsource(library_actions.prepare)
         self.assertIn("seed_starter_index", source,
-                      "panel.load() no longer seeds through the stamping "
+                      "prepare() no longer seeds through the stamping "
                       "door, so a fresh library is born unstamped again")
         self.assertNotIn("shutil.copy", source,
-                         "panel.load() copies the starter verbatim again - "
+                         "prepare() copies the starter verbatim again - "
                          "that copy is bug B")
 
 
@@ -238,6 +238,48 @@ class TheBuilderFieldDiesAtSchemaSeven(unittest.TestCase):
         self.assertNotIn(
             "builder", mat.get_as_dict(),
             "the record still emits `builder` - the next save undoes the step")
+
+
+class EveryWayIntoAnEmptyFolderReadiesIt(unittest.TestCase):
+    """Opening the pane, Reload Library and Set Library each give an empty folder a library."""
+
+    def setUp(self):
+        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+        from PySide6 import QtWidgets
+        self.app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+        self.panel = test_support.fixture_panel(self)
+        self.empty = test_support.posix_path(test_support.scratch_dir("amaze_empty_lib_")) + "/"
+        self.addCleanup(shutil.rmtree, self.empty, True)
+        settings = os.path.join(self.panel.prefs.path, "settings.json")
+        with open(settings, encoding="utf-8") as handle:
+            data = json.load(handle)
+        data["directory"] = self.empty    # what each door re-reads before it opens the folder
+        with open(settings, "w", encoding="utf-8") as handle:
+            json.dump(data, handle)
+
+    def _assert_ready(self):
+        for name in ("library.json", "img", "mat"):
+            self.assertTrue(os.path.exists(os.path.join(self.empty, name)),
+                            "the empty folder was opened without its %s" % name)
+
+    def test_a_pane_opened_on_it(self):
+        test_support.reopened_panel(self)
+        self._assert_ready()
+
+    def test_reload_library(self):
+        self.panel.open()
+        self._assert_ready()
+
+    def test_set_library(self):
+        from unittest import mock
+
+        def picked():
+            self.panel.prefs.dir = self.empty
+            return True
+
+        with mock.patch.object(self.panel.prefs, "get_dir_from_user", picked):
+            self.panel.set_library()
+        self._assert_ready()
 
 
 if __name__ == "__main__":

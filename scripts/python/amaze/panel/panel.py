@@ -13,6 +13,7 @@ from PySide6 import QtWidgets, QtGui, QtCore
 import hou
 
 import amaze
+from amaze.actions import library as library_actions
 from amaze.core import grid_columns, grid_engine
 from amaze.panel import (dragdrop_widgets, empty_state, grid, notes_panel,
                          sections, sidebar)
@@ -177,7 +178,7 @@ class AmazePanel(QtWidgets.QWidget):
                 self._open_libraryless()
                 return
             try:
-                self.load()
+                library_actions.prepare(self.prefs)
                 self.setup()
             except (ValueError, OSError) as broken:    # AN UNREADABLE INDEX GETS A DIALOG, NOT A TRACEBACK: this narrow catch absorbs exactly one situation - the primary index is on disk and will not parse - and offers the repair the shelf tool would run. Everything else still raises where it can be seen
                 index_path = os.path.join(self.prefs.dir or "",
@@ -243,7 +244,7 @@ class AmazePanel(QtWidgets.QWidget):
                 title=messages.TITLE_AMAZE)
             return False
         try:
-            self.load()
+            library_actions.prepare(self.prefs)
             self.setup()
         except (ValueError, OSError) as still:
             debug.exception("index still unreadable after repair",
@@ -440,59 +441,10 @@ class AmazePanel(QtWidgets.QWidget):
             return
         self.material_model.save()
         self.prefs.load()
-        self.load()
+        library_actions.prepare(self.prefs)
         self.switch_all_models()    # THE SAME WALK every other switch site uses, never a copy of it
 
         debug.event("session", "library reloaded")
-
-    @staticmethod
-    def starter_would_overwrite(lib_dir: str) -> list:
-        """The evidence that `lib_dir` has HELD a library, or [] - ONE function, so load() and the test that proves load() refuses ask exactly the same question rather than two copies of it"""
-        found = []
-        evidence = database.absent_but_known(lib_dir, "library.json")
-        if evidence:
-            found.append(evidence)
-        for name in ("mat", "img"):
-            folder = os.path.join(lib_dir, name)
-            if os.path.isdir(folder) and os.listdir(folder):
-                found.append(name + "/")
-        return found
-
-    def load(self) -> None:
-        """Load the currently in preferences specified library, copying necessary data to the target directory if not created yet"""
-        lib_dir = self.prefs.dir
-        if not lib_dir or lib_dir == "/" or not os.path.isdir(lib_dir):
-            debug.event("session", "no library directory set",    # no (or invalid) library directory set: the panel opens library-less and the Preferences Library tab sets one. The guard is load-bearing - copying the starter db against an empty dir once wrote to the filesystem root ("//library.json")
-                        dir=lib_dir)
-            return
-        new_folder = False
-        if not os.path.exists(self.prefs.dir + "/library.json"):
-            held = self.starter_would_overwrite(self.prefs.dir)    # ABSENT IS NOT EMPTY: every cause _refuse_absent exists for - a sync that has not finished arriving, a selective-sync hole, a network volume mid-mount - leaves a directory FULL of assets with a momentarily missing index, and seeding the starter over that turns a hiccup into a library whose next Clean reads every real file as unowned. It asks database.absent_but_known, deliberately the same question the loaders ask, so the two can never disagree
-            if held:
-                debug.event("session", "starter NOT seeded - the "
-                            "directory has held a library",
-                            dir=self.prefs.dir, evidence=held)
-                debug.alert(
-                    messages.STARTER_SEED_REFUSED_DIRECTORY_HELD_LIBRARY,
-                    key="starter-refused")
-                return
-            prefs.seed_starter_index(self.prefs.dir)    # the shipped starter carries no version key, so it is STAMPED on the way in rather than copied verbatim ▸p/library-creation-doors
-            new_folder = True
-        if self.ensure_library_dirs(self.prefs):
-            new_folder = True
-        if new_folder:
-            debug.event("session", "library created", dir=self.prefs.dir)
-
-    @staticmethod
-    def ensure_library_dirs(preferences) -> bool:
-        """Make sure `img/` and `mat/` both exist, ASKED PER FOLDER rather than guarded as a pair, and with `exist_ok=True` like every other folder-creating site in this package. True if either was created"""
-        made = False
-        for tail in (preferences.img_dir, preferences.asset_dir):
-            folder = os.path.join(preferences.dir, tail)
-            if not os.path.isdir(folder):
-                made = True
-            os.makedirs(folder, exist_ok=True)
-        return made
 
     def set_library(self) -> None:
         """User Sets library via Menu Option so we have to reroute"""
@@ -500,7 +452,7 @@ class AmazePanel(QtWidgets.QWidget):
             self.prefs.load()
             if self._library_too_new():
                 return
-            self.load()
+            library_actions.prepare(self.prefs)
             if not self.material_model:
                 self.setup()
 
@@ -540,15 +492,8 @@ class AmazePanel(QtWidgets.QWidget):
 
     def _update_library(self) -> None:
         """The library to this Amaze's version before any tile paints; nothing asks first."""
-        from amaze.core import library_policy
         try:
-            library_dir = str(self.prefs.dir or "")
-            if not library_dir or not locations.ready(self.prefs):
-                return    # no file keys yet: a capture moved now would miss its tile
-            if captures.machine_capture_count():    # no question: installing this Amaze was the choice
-                captures.adopt_machine_captures(self.prefs)
-            if library_policy.library_version(library_dir) < library_policy.LIBRARY_VERSION:
-                library_policy.set_library_version(library_dir, library_policy.LIBRARY_VERSION)
+            if library_actions.update(self.prefs):
                 self._refresh_open_prefs()
         except Exception as exc:                          # noqa: BLE001 - never blocks the panel
             debug.exception("library update", exc)
@@ -566,9 +511,8 @@ class AmazePanel(QtWidgets.QWidget):
     def _library_too_new(self) -> bool:
         """A library a newer Amaze updated is not opened; the update is offered once Qt is idle."""
         from amaze.core import library_policy
-        library_dir = str(self.prefs.dir or "")
-        found = library_policy.library_version(library_dir) if library_dir else 0
-        if found <= library_policy.LIBRARY_VERSION:
+        found = library_actions.newer_version(self.prefs)
+        if not found:
             return False
         debug.event("session", "library is newer than this Amaze - not opened",
                     found=found, known=library_policy.LIBRARY_VERSION)
@@ -601,14 +545,12 @@ class AmazePanel(QtWidgets.QWidget):
             update_dialog.install_and_say(found)
 
     def _seed_curated_content(self) -> None:
-        """Seed the shipped starters once per library - the Code section's Examples snippets and the Colors section's palette sets - through ONE door for construction and the library switch. getattr, not attribute reads: the libraryless shape leaves model attributes None or absent"""
-        code_model = getattr(self, "code_model", None)
-        if code_model is not None:
-            code_model.seed_starter_snippets(self.code_category_model)
+        """The shipped starters through one door for construction and a switch. ▸archive/actions/library.py"""
+        code_model = getattr(self, "code_model", None)    # the libraryless shape leaves models None
         gradient_model = getattr(self, "gradient_model", None)
-        if gradient_model is not None:
-            gradient_model.seed_curated_palettes(
-                self.gradient_categories_model)
+        library_actions.seed_starters(
+            code_model, self.code_category_model if code_model is not None else None,
+            gradient_model, self.gradient_categories_model if gradient_model is not None else None)
 
     def toggle_catview(self) -> None:
         """Show and Hide the Category View via Menu"""

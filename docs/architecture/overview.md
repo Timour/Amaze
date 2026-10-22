@@ -832,7 +832,7 @@ creation, deriving the number from `SCHEMA_VERSION` and
 `DatabaseConnector`'s absent-sibling seed, which stamps by going through
 `save()`, and `prefs.write_fresh_index`, which the other two both call —
 `prefs.seed_test_folder` for the Test Library, and
-`prefs.seed_starter_index` for `panel.load()`'s seed from
+`prefs.seed_starter_index` for `actions/library.py`'s `prepare` seed from
 `res/def/library.json`. **The shipped starter itself carries no
 `version` key on purpose**: a literal there would be a second source of
 truth that goes stale at the next bump, so the stamp belongs to the door
@@ -1143,6 +1143,10 @@ actions/addons.py         the add-on check and install the Add-On tab
                           runs: which store versions are newer, then
                           fetching and installing them, each answered
                           in one sentence
+actions/library.py        the steps of opening a library that need no
+                          panel: refusing one a newer Amaze updated,
+                          readying its folder, updating it to this
+                          Amaze's version, seeding the shipped starters
 core/texstore.py          the texture store: $AMAZELIB tokens, the
                           FileReference scan, save-time adoption and
                           the scene-side resolve

@@ -926,8 +926,8 @@ class TheLibraryFoldersAreEnsuredNotAssumed(unittest.TestCase):
             self.dir = directory
 
     def _ensure(self):
-        from amaze.panel.panel import AmazePanel
-        AmazePanel.ensure_library_dirs(self._Prefs(self.dir))
+        from amaze.actions import library as library_actions
+        library_actions.ensure_library_dirs(self._Prefs(self.dir))
 
     def _exists(self, name):
         return os.path.isdir(os.path.join(self.dir, name))
@@ -956,20 +956,20 @@ class StarterMustNotSeedOverALibraryTest(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
 
     def _decide(self):
-        """THE PANEL'S OWN decision function, never a private re-derivation of it."""
-        from amaze.panel.panel import AmazePanel  # the first version copied the logic here and sabotaging the panel left it green; driving full panel.load() needs a UI, calling its extracted decision does not
-        return not AmazePanel.starter_would_overwrite(self.dir)
+        """THE OPENING'S OWN decision function, never a private re-derivation of it."""
+        from amaze.actions import library as library_actions  # a copy here stayed green under sabotage
+        return not library_actions.starter_would_overwrite(self.dir)
 
     def test_load_actually_consults_the_decision(self):
-        """Source-derived: extracting the function is worthless if load() stops calling it."""
+        """Source-derived: extracting the function is worthless if prepare() stops calling it."""
         import inspect
-        from amaze.panel.panel import AmazePanel
-        source = inspect.getsource(AmazePanel.load)
+        from amaze.actions import library as library_actions
+        source = inspect.getsource(library_actions.prepare)
         self.assertIn("starter_would_overwrite", source,
-                      "panel.load() no longer consults the seed guard - "
+                      "prepare() no longer consults the seed guard - "
                       "the starter can overwrite a library again")
         self.assertIn("ensure_library_dirs", source,
-                      "panel.load() no longer calls the folder guard")
+                      "prepare() no longer calls the folder guard")
 
     def test_only_a_library_with_no_trace_and_no_files_is_seeded(self):
         """An empty mat/ is what the panel itself creates a moment later, not evidence of a library."""
