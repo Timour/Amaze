@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.10.7
+
+- The debug log no longer opens dialogs itself: the pane and each shelf tool give it Houdini's dialog and status line when they start; nothing changes in the app.
+
 ## 1.10.6
 
 - The steps that ready, update and seed a library when it opens are kept apart from the pane; nothing changes in the app.
