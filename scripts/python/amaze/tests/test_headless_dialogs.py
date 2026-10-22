@@ -46,7 +46,7 @@ class TheseFilesNeverSpellTheHostDialogTest(unittest.TestCase):
     """Red when a new raw reach is written into either file. ▸p/refusal-sink"""
 
     def test_no_guarded_file_reaches_the_host_dialogs_directly(self):
-        self.assertTrue(raw_reaches("core/repair.py"),    # ▸p/vacuous-register
+        self.assertTrue(raw_reaches("dialogs/repair_dialog.py"),    # ▸p/vacuous-register
                         "the reader finds no reach even in the repair tool, "
                         "so its empty answers below mean nothing")
         for relpath in GUARDED:

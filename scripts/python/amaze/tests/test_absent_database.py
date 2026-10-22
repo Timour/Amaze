@@ -21,7 +21,7 @@ from PySide6 import QtWidgets                             # noqa: E402
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
-from amaze.core import database, debug                    # noqa: E402
+from amaze.core import database, debug, material          # noqa: E402
 from amaze.core import gradient_library                   # noqa: E402
 from amaze.core import library as library_mod             # noqa: E402
 from amaze.helpers import hostos                          # noqa: E402
@@ -1067,7 +1067,7 @@ class AStampedAssetIsNotAnOrphanTest(unittest.TestCase):
         self.img_dir = os.path.join(self.prefs.dir, self.prefs.img_dir)
         os.makedirs(self.img_dir, exist_ok=True)
         self.files = {}  # a refused save leaves exactly this: the asset's files and its recovery stamp, and no row in any database
-        for suffix in (".mat", ".interface", library_mod.STAMP_SUFFIX):
+        for suffix in (".mat", ".interface", material.STAMP_SUFFIX):
             path = os.path.join(self.mat_dir, self.STAMPED + suffix)
             self.files[suffix] = path
         self._write_stamp({"id": self.STAMPED, "name": "Refused Save",
@@ -1088,7 +1088,7 @@ class AStampedAssetIsNotAnOrphanTest(unittest.TestCase):
 
     def _write_stamp(self, record):
         path = os.path.join(self.mat_dir,
-                            self.STAMPED + library_mod.STAMP_SUFFIX)
+                            self.STAMPED + material.STAMP_SUFFIX)
         with open(path, "w", encoding="utf-8") as handle:
             if isinstance(record, str):
                 handle.write(record)
@@ -1160,7 +1160,7 @@ class AStampedAssetIsNotAnOrphanTest(unittest.TestCase):
         """A lone stamp is the NORMAL shape for a whole section, not a leftover."""
         for suffix in (".mat", ".interface"):
             os.remove(self.files[suffix])  # a snippet owns no .mat - Code keeps its text inline (measured: 24 stamps, 7 .mat files, code.json claims all 17 of the difference), so requiring a payload strips protection from every snippet exactly when its own list is what went missing
-        stamp = self.files[library_mod.STAMP_SUFFIX]
+        stamp = self.files[material.STAMP_SUFFIX]
         self.assertTrue(os.path.exists(stamp), "premise: the stamp is there")
         self._cleanup()
         self.assertTrue(

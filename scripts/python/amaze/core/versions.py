@@ -11,8 +11,8 @@ import time
 
 from amaze import messages
 from amaze.core import debug, users
+from amaze.core.material import BUILDER_SUFFIX
 from amaze.helpers import hostos
-from amaze.render.nodes import BUILDER_SUFFIX
 
 _STEM_NUMBER = re.compile(r"(?:^|-)(\d+)$")    # a stem is `<writer>-<n>`, or bare `<n>` whenever `writer_tag` answers empty (no user picked, unreadable prefs, a name with nothing alphanumeric left) - the trailing number IS the version number either way
 

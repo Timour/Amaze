@@ -27,9 +27,6 @@ def _count(count: int, noun: str) -> str:
     return "%d %s" % (count, noun if count == 1 else noun + "s")
 
 
-STAMP_SUFFIX = ".stamp.json"  # a per-asset recovery stamp, WRITE-ONLY: only repair.py may open one, and test_a_stamp_is_never_read_in_normal_operation holds that from source. ▸p/recovery-stamp
-
-
 _STAMPED: dict = {}    # (library dir, asset id) -> repr of the record its stamp was last seen holding
 
 
@@ -65,7 +62,7 @@ class _StampWriter:
                 if not material.is_safe_asset_id(known[1]):
                     continue
                 path = material.payload_path(preferences, known[1],
-                                             STAMP_SUFFIX)
+                                             material.STAMP_SUFFIX)
                 payload = json.dumps(record, indent=1, sort_keys=True)
             except hostos.PathEscape:
                 continue
@@ -115,8 +112,8 @@ def asset_files_for(preferences, mat_id: str) -> dict:
     return {
         "mat": owned(preferences.ext),
         "interface": owned(".interface"),
-        "builder": owned(nodes.BUILDER_SUFFIX),
-        "stamp": owned(STAMP_SUFFIX),
+        "builder": owned(material.BUILDER_SUFFIX),
+        "stamp": owned(material.STAMP_SUFFIX),
         "cop": owned("_cop" + preferences.ext),
         "thumbnail": tile_icons.thumbnail_path(preferences, mat_id),
         "tile_icon": tile_icons.icon_image_path(preferences, mat_id),
@@ -1102,7 +1099,7 @@ class AssetLibrary(grid_engine.GridEngine,
 
     def cleanup_db(self, show_dialog: bool = True) -> int:
         """Clean Library: scan, report rows whose files are missing, quarantine files no section lists, rescue uncategorised rows. Never renders, never unlinks anything in the library - a file it takes is MOVED to the quarantine, which prune_quarantine empties after QUARANTINE_DAYS - and it holds the ownership sweep back on incomplete knowledge. Read ▸p/clean-library-sweep before changing any of it. Returns 1 if anything was rescued. The summary lines are left on self.last_cleanup_summary EITHER WAY; show_dialog=False only skips the dialog, so the panel can combine several libraries into one report."""
-        from amaze.helpers import helpers
+        from amaze.helpers import wording
         summary = []
 
         assets_dir = os.path.join(  # THE ASSET FOLDER MUST BE READABLE BEFORE ANY OF THIS - never delete on incomplete knowledge, and the FOLDER is knowledge as much as a sibling list is
@@ -1162,7 +1159,7 @@ class AssetLibrary(grid_engine.GridEngine,
                 "and use Delete."
                 % (_count(len(rows_to_remove), "material"),
                    "their" if len(rows_to_remove) > 1 else "its",
-                   helpers.and_list(names[:8]) + (
+                   wording.and_list(names[:8]) + (
                        " and %d more" % (len(names) - 8)
                        if len(names) > 8 else "")))
         if missing_thumbs:
@@ -1181,7 +1178,7 @@ class AssetLibrary(grid_engine.GridEngine,
                 "Nothing was deleted: Amaze could not check %s, so files "
                 "that belong to it look exactly like files nothing needs "
                 "any more."
-                % helpers.and_list([name for name, _why in unreadable])
+                % wording.and_list([name for name, _why in unreadable])
             )
             for name, why in unreadable:
                 summary.append("%s: %s." % (name, why))
@@ -1197,10 +1194,10 @@ class AssetLibrary(grid_engine.GridEngine,
                     "the list, and it is what Repair would use to bring "
                     "the section back. If you are not sure, run Repair and "
                     "look at it before you remove anything."
-                    % (helpers.and_list(sorted(
+                    % (wording.and_list(sorted(
                         "your %s list" % database.section_label(name)
                         for name in absent_traces)),
-                       helpers.and_list(sorted(absent_traces.values())))
+                       wording.and_list(sorted(absent_traces.values())))
                 )
             summary.append(self._the_repair_route())  # LAST, and once for every cause however many held the sweep back
             unreadable_abort = True
@@ -1262,7 +1259,7 @@ class AssetLibrary(grid_engine.GridEngine,
                 "Preferences to find the folder, and empty it yourself "
                 "once you are sure."
                 % (_count(lone_count, "leftover file"),
-                   helpers.and_list(shown) + (
+                   wording.and_list(shown) + (
                        " and %d more" % (lone_count - len(shown))
                        if lone_count > len(shown) else ""),
                    _count(held, "file"),
@@ -1280,7 +1277,7 @@ class AssetLibrary(grid_engine.GridEngine,
             summary.append(
                 "%s %s not listed in your library, but %s can still be "
                 "put back. Nothing was moved or deleted."
-                % (helpers.and_list(shown_kept[:8]) + (
+                % (wording.and_list(shown_kept[:8]) + (
                        " and %d more" % (len(spared) - 8)
                        if len(spared) > 8 else ""),
                    "is" if len(spared) == 1 else "are",
@@ -1330,10 +1327,10 @@ class AssetLibrary(grid_engine.GridEngine,
 
     def _what_an_empty_section_means(self, empty_sections: list) -> list:
         """ONE line for ALL the sections that list nothing, saying why Amaze will not decide on its own - the refusal above states the fact, and this states what the reader cannot know from it: that the two explanations look identical from here. One line rather than one each, or two empty sections produce two near-identical thirty-word sentences in one dialog."""
-        from amaze.helpers import helpers
+        from amaze.helpers import wording
         if not empty_sections:
             return []
-        sections = helpers.and_list(sorted(database.section_label(filename)
+        sections = wording.and_list(sorted(database.section_label(filename)
                                     for filename in empty_sections))
         return ["%s: a list that holds nothing looks the same whether "
                 "nothing was ever saved there or it failed to load this "

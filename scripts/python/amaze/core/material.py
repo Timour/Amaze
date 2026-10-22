@@ -67,6 +67,10 @@ def is_safe_asset_id(raw) -> bool:
     return bool(_SAFE_ASSET_ID.match(text))
 
 
+BUILDER_SUFFIX = ".builder.json"      # read, never exec'd ▸r/interface-contents
+STAMP_SUFFIX = ".stamp.json"    # a recovery stamp, write-only: only repair.py opens one ▸p/recovery-stamp
+
+
 def payload_path(preferences, asset_id, suffix: str) -> str:
     """THE ONE COMPOSITION of `mat/<id><suffix>` (suffix: `preferences.ext`, ".interface", ".builder.json", "_cop" + ext), with the containment check - `is_safe_asset_id` is the door at the record, this is the door at the path, and every caller shares the trailing-separator invariant through here."""
     from amaze.helpers import hostos

@@ -6,14 +6,6 @@ import re
 import hou
 
 
-def and_list(words) -> str:
-    """`a`, `a and b`, `a, b and c` - the user's punctuation, ONE owner for the hou-side of the codebase (`core/database.py` keeps its own and says why: it is deliberately Houdini-free)."""
-    words = list(words)
-    if len(words) <= 1:
-        return "".join(words)
-    return "%s and %s" % (", ".join(words[:-1]), words[-1])
-
-
 def node_pattern_match(pattern: str, name: str) -> bool:
     """Houdini node-pattern match (`*`, `mat_*`) for matnode-style parm values - hou.text.patternMatch, with the pre-hou.text fallback."""
     try:

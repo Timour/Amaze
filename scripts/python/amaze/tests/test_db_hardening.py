@@ -13,7 +13,7 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze.core import database
+from amaze.core import database, material
 from amaze.helpers import hostos                             # noqa: E402
 from amaze.tests import test_support                        # noqa: E402
 
@@ -1407,7 +1407,7 @@ class AOneRowSaveTouchesOneStamp(unittest.TestCase):
 
         def counting(file, *args, **kwargs):
             name = os.path.basename(str(file))
-            if self.library_mod.STAMP_SUFFIX in name:
+            if material.STAMP_SUFFIX in name:
                 opened.append(name.split(".")[0])
             return real(file, *args, **kwargs)
 
@@ -1417,7 +1417,7 @@ class AOneRowSaveTouchesOneStamp(unittest.TestCase):
 
     def _stamp_path(self, mat_id):
         return os.path.join(self.prefs.dir, self.prefs.asset_dir,
-                            str(mat_id) + self.library_mod.STAMP_SUFFIX)
+                            str(mat_id) + material.STAMP_SUFFIX)
 
     def _stamp(self, mat_id):
         with open(self._stamp_path(mat_id), encoding="utf-8") as handle:

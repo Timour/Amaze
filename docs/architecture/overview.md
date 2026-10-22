@@ -1176,7 +1176,10 @@ core/captures.py          the capture store: <library>/captures, any tile
 core/repair.py            REPAIR: what is wrong with this library and
                           what is safe to do - Clean Library's opposite
                           number, and the only module that opens a
-                          recovery stamp
+                          recovery stamp; no `hou`, no dialog
+dialogs/repair_dialog.py  Repair's questions and answers - the shelf
+                          tool's `run`, the buttons, each confirm and
+                          report; never needs the pane
 core/updater.py           is a newer Amaze released, and can this one
                           become it - asked only on request, never at
                           launch (shelf tool + the About tab button)
@@ -1205,6 +1208,8 @@ preview/thumbnail_scene.py   the room around them: lights, camera,
 preview/usd_scene.py      Karma's and Octane's, one USD stage: written
                           once per batch, a material prim each
 helpers/hostos.py         OS-INTEGRATION ENGINE (all platform branches)
+helpers/wording.py        `and_list`, a sentence's list of names; it
+                          imports nothing, so every layer shares one
 helpers/hostver.py        HOST-CAPABILITY ENGINE - every "does this
                           environment behave differently here?" question
 helpers/bytecode.py       Amaze's compiled files, always hash-checked:

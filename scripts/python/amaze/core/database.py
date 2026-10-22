@@ -10,7 +10,7 @@ from typing import Self
 
 from amaze import branding
 from amaze.core import debug
-from amaze.helpers import hostos, restore
+from amaze.helpers import hostos, restore, wording
 from amaze import messages
 
 
@@ -112,14 +112,6 @@ def absent_but_known(directory: str, filename: str) -> str:
     return hostos.existed_before(
         os.path.join(directory, filename), _EXISTED_MARKERS.get(filename, ())
     )
-
-
-def _and_list(names) -> str:
-    """Joins names into a sentence list; a deliberate local twin of `helpers.and_list`, kept because `helpers` imports `hou` at module level and this module must stay importable where Houdini cannot start."""
-    names = list(names)
-    if len(names) <= 1:
-        return names[0] if names else ""
-    return "%s and %s" % (", ".join(names[:-1]), names[-1])
 
 
 def absent_traces(directory: str, filename: str) -> list:
@@ -554,8 +546,8 @@ class DatabaseConnector:
             "  Expected at: %s\n"
             "  If you removed it on purpose, remove %s as well and the "
             "next launch starts a fresh one."
-            % (section_name(self._filename), _and_list(traces), full,
-               _and_list(traces)),
+            % (section_name(self._filename), wording.and_list(traces), full,
+               wording.and_list(traces)),
             file=full, evidence=", ".join(traces))
 
     def _normalize_all_category(self) -> None:

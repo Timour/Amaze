@@ -179,13 +179,12 @@ def activate_shader_inputs(builder) -> int:
 
 
 
-BUILDER_SUFFIX = ".builder.json"      # read, never exec'd ▸r/interface-contents
 BUILDER_FORMAT = 1
 
 
 def builder_sidecar_path(preferences, mat_id: str) -> str:
     """Where an asset's builder sidecar lives, contained."""
-    return material.payload_path(preferences, mat_id, BUILDER_SUFFIX)
+    return material.payload_path(preferences, mat_id, material.BUILDER_SUFFIX)
 
 
 def ensure_asset_folder(preferences, path: str) -> None:

@@ -24,9 +24,10 @@ _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 import hou                                                # noqa: E402
 
 from amaze import messages                                # noqa: E402
-from amaze.core import category, database, repair         # noqa: E402
+from amaze.core import category, database, material, repair  # noqa: E402
 from amaze.core import library as library_mod             # noqa: E402
 from amaze.core import multifilterproxy_model             # noqa: E402
+from amaze.dialogs import repair_dialog                   # noqa: E402
 from amaze.helpers import hostos                          # noqa: E402
 from amaze.helpers import restore as restore_lib          # noqa: E402
 from amaze.prefs import prefs as prefs_module             # noqa: E402
@@ -90,7 +91,7 @@ class TheReportSaysWhatIsWrongTest(_Case):
         self.assertIn("the list reads fine", text)
         self.assertIn("Every file in the library's own folders is "
                       "accounted for", text)
-        choices, actions = repair._choices(findings, may_change=True)
+        choices, actions = repair_dialog._choices(findings, may_change=True)
         self.assertEqual(["Close"], choices,
                          "Repair offered an action on a library with "
                          "nothing wrong - a button that changes nothing is "
@@ -140,7 +141,7 @@ class TheReportSaysWhatIsWrongTest(_Case):
                       "some of those files may be its", text,
                       "the report points at 'a list above' instead of "
                       "naming the section whose files may be at risk")
-        choices, actions = repair._choices(findings, may_change=True)
+        choices, actions = repair_dialog._choices(findings, may_change=True)
         self.assertNotIn("quarantine", actions,
                          "moving files aside was offered while a list "
                          "could not be read - the files may be its")
@@ -242,7 +243,7 @@ class TheReportSaysWhatIsWrongTest(_Case):
         self.assertNotIn("is accounted for by a section", text,
                          "Repair reported a folder it could not read as "
                          "accounted for")
-        choices, actions = repair._choices(findings, may_change=True)
+        choices, actions = repair_dialog._choices(findings, may_change=True)
         self.assertEqual(["Close"], choices,
                          "an action was offered while a whole folder was "
                          "unread")
@@ -260,7 +261,7 @@ class TheReportSaysWhatIsWrongTest(_Case):
         self.assertEqual(3, repair.unaccounted_total(findings),
                          "premise: one of the three files must be half a "
                          "pair")
-        choices, actions = repair._choices(findings, may_change=True)
+        choices, actions = repair_dialog._choices(findings, may_change=True)
         self.assertIn("Add 2 Files to a Section", choices)
         self.assertIn("Move 3 Files Aside", choices)
         text = "\n".join(repair.report_lines(findings))
@@ -491,7 +492,7 @@ class AddingUnlistedFilesBackTest(_Case):
                 findings = self._survey()
                 self.assertEqual(pairs, repair._complete_pairs(findings))
                 if not pairs:
-                    choices, actions = repair._choices(findings,
+                    choices, actions = repair_dialog._choices(findings,
                                                        may_change=True)
                     self.assertNotIn("reattach", actions)
 
@@ -720,7 +721,7 @@ class TheGuardsTest(_Case):
 
     def test_no_library_folder_is_said_plainly_and_nothing_is_read(self):
         with patch.object(hou, "ui", MagicMock(), create=True):
-            repair.run(preferences=_NoLibraryPrefs())
+            repair_dialog.run(preferences=_NoLibraryPrefs())
             said = " ".join(str(call) for call in hou.ui.displayMessage
                             .call_args_list)
         self.assertIn("no library folder", said.lower())    # case-insensitive: the WORDING is the design's to change, and only the sense is this test's ▸p/messages-need-one-home
@@ -732,7 +733,7 @@ class TheGuardsTest(_Case):
         prefs = _NoLibraryPrefs()
         prefs.dir = os.path.join(self.dir, "not-mounted") + os.sep
         with patch.object(hou, "ui", MagicMock(), create=True):
-            repair.run(preferences=prefs)
+            repair_dialog.run(preferences=prefs)
             # The arguments, not `str(call)`: a mock repr escapes every backslash.
             said = " ".join(
                 str(value)
@@ -762,7 +763,7 @@ class TheWholeFlowTest(_Case):
         ui.displayMessage.side_effect = list(buttons)
         ui.selectFromList.return_value = listed if listed is not None else ()
         with patch.object(hou, "ui", ui, create=True):
-            repair.run(preferences=self.prefs)
+            repair_dialog.run(preferences=self.prefs)
         return ui
 
     def test_the_report_is_one_dialog_and_close_changes_nothing(self):
@@ -779,7 +780,7 @@ class TheWholeFlowTest(_Case):
     def test_a_panel_that_is_open_stops_it_before_it_reads(self):
         self._cops([])
         tab = MagicMock()
-        with patch.object(repair, "open_panel_tab", return_value=tab):
+        with patch.object(repair_dialog, "open_panel_tab", return_value=tab):
             ui = self._run(buttons=[0])
         said = str(ui.displayMessage.call_args_list[0])
         self.assertIn("Amaze is open", said)
@@ -851,7 +852,7 @@ class TheWholeFlowTest(_Case):
         self._cops([])
         paths = self._pair()
         findings = self._survey()
-        choices, actions = repair._choices(findings, may_change=True)
+        choices, actions = repair_dialog._choices(findings, may_change=True)
         index = actions.index("quarantine")
         ui = self._run(buttons=[index, 0, 0])
         for path in paths:
@@ -896,7 +897,7 @@ class TheSettingsComeBackTest(_Case):
         ui.displayMessage.side_effect = list(buttons)
         ui.selectFromList.return_value = listed if listed is not None else ()
         with patch.object(hou, "ui", ui, create=True):
-            repair.run(preferences=prefs or _SettingsPrefs(self.config))
+            repair_dialog.run(preferences=prefs or _SettingsPrefs(self.config))
         return ui
 
     def _said(self, ui):
@@ -933,7 +934,7 @@ class TheSettingsComeBackTest(_Case):
         ui = MagicMock()
         ui.displayMessage.return_value = 1    # declined
         with patch.object(hou, "ui", ui, create=True):
-            repair._do_restore_settings(
+            repair_dialog._do_restore_settings(
                 findings, "bak-1", dict(findings["settings"]["snapshots"])["bak-1"])
         self.assertIn("offers that copy back",
                       ui.displayMessage.call_args.kwargs["help"])
@@ -1118,10 +1119,10 @@ class TheRouteFromCleanLibraryTest(_Case):
         tool = [t for t in root.findall("tool")
                 if t.get("name") == "amaze_repair_library"][0]
         script = tool.find("script").text
-        self.assertIn("from amaze.core import repair", script)
+        self.assertIn("from amaze.dialogs import repair_dialog", script)
         self.assertIn("except ImportError", script)
         self.assertIn("not importable from this session", script)
-        self.assertIn("repair.run()", script)
+        self.assertIn("repair_dialog.run()", script)
         # Strip the comments first: a substring test matches the sentence saying so.
         code = "\n".join(line for line in script.splitlines()
                          if not line.strip().startswith("#"))
@@ -1245,7 +1246,7 @@ class TheRouteFromCleanLibraryTest(_Case):
             {"keys": [0.0, 1.0], "values": [[1, 0, 0], [0, 0, 1]],
              "bases": ["Linear", "Linear"]})
         stamp = os.path.join(self.mat_dir, str(palettes.assets[0].mat_id)
-                             + library_mod.STAMP_SUFFIX)
+                             + material.STAMP_SUFFIX)
         self.assertTrue(os.path.exists(stamp),
                         "premise: a saved palette writes a recovery stamp")
         self.assertNotIn(os.path.basename(stamp),
@@ -1488,7 +1489,7 @@ class TheRebuildDrillTest(unittest.TestCase):
 
     def _stamps(self):
         return sorted(n for n in os.listdir(self.mat_dir)
-                      if n.endswith(library_mod.STAMP_SUFFIX))
+                      if n.endswith(material.STAMP_SUFFIX))
 
     def test_a_rebuild_leaves_the_other_sections_assets_alone(self):
         """`mat/` is shared by three sections, so a rebuild may not claim it all."""
@@ -1531,7 +1532,7 @@ class TheRebuildDrillTest(unittest.TestCase):
                                    {"values": [[0.1, 0.2, 0.3]], "keys": [0.0]})
         palette = str(next(a for a in palettes.assets
                            if a.name == "Dusk").mat_id)
-        self.assertIn(palette + library_mod.STAMP_SUFFIX, self._stamps(),
+        self.assertIn(palette + material.STAMP_SUFFIX, self._stamps(),
                       "premise: the palette's stamp is in the asset folder")
 
         rebuilt = repair.rebuild_from_stamps(self.prefs.dir,
@@ -1625,7 +1626,7 @@ class TheRebuildDrillTest(unittest.TestCase):
         self.assertEqual(len(stamps) - 1, len(rebuilt["assets"]),
                          "a corrupt stamp cost more than its own asset")
         self.assertEqual(
-            [victim[: -len(library_mod.STAMP_SUFFIX)]], rebuilt["damaged"],
+            [victim[: -len(material.STAMP_SUFFIX)]], rebuilt["damaged"],
             "the rebuild did not name the asset it could not recover")
 
     def test_a_stamp_is_never_read_in_normal_operation(self):
@@ -1721,12 +1722,11 @@ class TheRebuildDrillTest(unittest.TestCase):
 class TheSuffixesAndTiersHaveOneHome(unittest.TestCase):
 
     def test_the_sidecar_list_is_the_one_it_was(self):
-        from amaze.render import nodes
         self.assertEqual(
-            (".mat", ".interface", nodes.BUILDER_SUFFIX,
-             library_mod.STAMP_SUFFIX), repair.ASSET_SIDECARS)
+            (".mat", ".interface", material.BUILDER_SUFFIX,
+             material.STAMP_SUFFIX), repair.ASSET_SIDECARS)
         self.assertEqual((".builder.json", ".stamp.json"),
-                         (nodes.BUILDER_SUFFIX, library_mod.STAMP_SUFFIX))
+                         (material.BUILDER_SUFFIX, material.STAMP_SUFFIX))
         self.assertEqual(("bak-1", "bak-2", "bak-3", "bak-first"),
                          restore_lib.TIERS)
 
@@ -1953,25 +1953,20 @@ class TheSurveyReadsEachFileOnce(_Case):
 
 
 class TheSentenceJoinerHasOneOwner(unittest.TestCase):
-    """`helpers.and_list`, and `database.py`'s Houdini-free copy of it."""
+    """`wording.and_list`, which imports nothing, so no layer keeps a copy of its own."""
 
     def test_it_punctuates_the_way_a_sentence_does(self):
-        from amaze.helpers import helpers
+        from amaze.helpers import wording
 
-        self.assertEqual("", helpers.and_list([]))
-        self.assertEqual("a", helpers.and_list(["a"]))
-        self.assertEqual("a and b", helpers.and_list(["a", "b"]))
-        self.assertEqual("a, b and c", helpers.and_list(["a", "b", "c"]))
+        self.assertEqual("", wording.and_list([]))
+        self.assertEqual("a", wording.and_list(["a"]))
+        self.assertEqual("a and b", wording.and_list(["a", "b"]))
+        self.assertEqual("a, b and c", wording.and_list(["a", "b", "c"]))
         # A generator, not just a list: the call sites pass comprehensions in.
         self.assertEqual("a, b and c",
-                         helpers.and_list(x for x in ("a", "b", "c")))
-        for words in ([], ["a"], ["a", "b"], ["a", "b", "c", "d"]):
-            self.assertEqual(
-                helpers.and_list(words), database._and_list(words),
-                "the two owners disagree on %r - database.py keeps its "
-                "own copy because it must not import hou, which is a "
-                "reason to keep it in step, not a reason to forget it"
-                % (words,))
+                         wording.and_list(x for x in ("a", "b", "c")))
+        self.assertFalse(hasattr(database, "_and_list"),
+                         "database.py grew its own joiner again")
 
 
 if __name__ == "__main__":
