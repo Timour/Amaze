@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.10.5
+
+- Checking for and installing add-ons is kept apart from the Add-On tab that shows it; nothing changes in the app.
+
 ## 1.10.4
 
 - The questions and messages around installing an update are kept apart from the code that installs it; nothing changes in the app.
