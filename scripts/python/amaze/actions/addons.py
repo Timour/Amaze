@@ -2,6 +2,7 @@
 
 from amaze import messages
 from amaze.core import addons, packages, updater
+from amaze.helpers import hostver
 
 
 def check(betas: bool) -> tuple:
@@ -21,9 +22,10 @@ def check(betas: bool) -> tuple:
 def install(found, root: str) -> str:
     """Install what `check` found into the Amaze at `root`; the sentence saying what happened."""
     done = []
+    running = hostver.houdini_version()
     try:
         for name, version, url in found:
-            addons.fetch_and_install(url, root)
+            addons.fetch_and_install(url, root, running)
             done.append("%s %s" % (name, version))
     except (packages.PackageError, OSError) as exc:
         return str(exc)

@@ -158,8 +158,7 @@ def read(path: str) -> dict:
 
 
 def install(path: str, amaze_root: str, running=None) -> dict:
-    """Install `path` as `<amaze_root>/addons/<folder>`, whole, with its package file; answers it."""
-    from amaze.helpers import hostver
+    """Install `path` as `<amaze_root>/addons/<folder>`, whole; `running` is the caller's Houdini."""
     try:
         bundle = zipfile.ZipFile(path)
     except (OSError, zipfile.BadZipFile) as exc:
@@ -167,7 +166,7 @@ def install(path: str, amaze_root: str, running=None) -> dict:
     with bundle:
         manifest = _checked(bundle, path)
         needed = tuple(int(part) for part in manifest["houdini_min"].split("."))
-        if not hostver.houdini_at_least(needed, running):
+        if running and tuple(running[:2]) < needed:    # a Houdini not known is let through
             raise packages.PackageError("%s %s needs Houdini %s or newer" % (
                 manifest["name"], manifest["version"], manifest["houdini_min"]))
         target = os.path.join(amaze_root, ROOT, manifest["folder"])

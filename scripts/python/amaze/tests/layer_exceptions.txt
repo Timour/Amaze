@@ -1,7 +1,6 @@
 # The layer breaks that exist today. test_layers.py fails on any break not listed here,
 # and on any line here once its place is fixed, so the list only shrinks.
 # Written by test_layers.py --list; a line is added only when a break is accepted on purpose. ▸m/layer-plan
-core/addons.py imports helpers/hostver.py
 core/code_library.py imports helpers/helpers.py
 core/code_library.py imports helpers/ui_helpers.py
 core/code_library.py uses hou

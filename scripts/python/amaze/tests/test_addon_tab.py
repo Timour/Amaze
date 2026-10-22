@@ -137,6 +137,16 @@ class TheRowsAreThePackagesOwnTest(_Tab):
         self.assertEqual(messages.ADDONS_INSTALLED % "Example 1.3.0, Other 0.1.0", self.line())
         self.assertEqual("Check for Updates", self.dialog._btn_addons.text())
 
+    def test_update_holds_each_package_to_the_running_houdini(self):
+        from amaze.helpers import hostver
+        self.dialog._addons_found = [("Example", "1.3.0", URL % ("Example", "1.3.0"))]
+        seen = []
+        with mock.patch.object(addons, "fetch_and_install",
+                               lambda url, root, running=None: seen.append(running)):
+            self.dialog.install_addons()
+        self.assertEqual([hostver.houdini_version()], seen,
+                         "the install was not told which Houdini it must run in")
+
     def test_nothing_newer_says_every_add_on_is_up_to_date(self):
         with mock.patch.object(addons, "store_versions",
                                lambda betas=False: {"Example": ("1.2.3", URL % ("Example", "1.2.3"))}):
