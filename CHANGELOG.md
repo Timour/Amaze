@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.10.17
+
+- After changing the Library Path or turning Test Library on or off, closing Preferences no longer reads the library a second time.
+
 ## 1.10.16
 
 - After changing the Library Path or turning Test Library on or off, a thumbnail rendered while Preferences is still open takes its textures from the new library.
