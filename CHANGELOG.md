@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.10.8
+
+- Clean Up Library's work is kept apart from the pane that asks first and reports after; nothing changes in the app.
+
 ## 1.10.7
 
 - The debug log no longer opens dialogs itself: the pane and each shelf tool give it Houdini's dialog and status line when they start; nothing changes in the app.
