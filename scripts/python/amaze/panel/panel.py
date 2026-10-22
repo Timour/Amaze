@@ -476,6 +476,7 @@ class AmazePanel(QtWidgets.QWidget):
         """Re-point every library-backed model at `prefs.dir` - THE ONE ROUTE ONTO ANOTHER LIBRARY and the only route that re-points models at all, because a model a switch skips goes on serving the previous library with every save refused"""
         if self._library_too_new():
             return    # the models stay on the library they serve
+        texstore.publish_env(self.prefs)    # $AMAZELIB moves with the models, so a render before Preferences closes reads the new library
         pane = getattr(self, "notes_panel", None)
         if pane is not None:
             pane.clear_subject()    # a pending edit goes to its own library; the switch selects nothing
@@ -1724,7 +1725,6 @@ class AmazePanel(QtWidgets.QWidget):
         hostos.set_cache_override(self.prefs.cache_dir)
         switched = self.prefs.dir != old_dir
         if switched:    # only another library earns the models' full re-read
-            texstore.publish_env(self.prefs)
             self.switch_all_models()
         accent = theme.accent(self.prefs.accent_color)
         self.click_slider.set_accent_color(accent)

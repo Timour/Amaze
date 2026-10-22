@@ -1,9 +1,11 @@
 """The texture store: every file a material references is adopted INTO the library and referenced as `$AMAZELIB/...`, so the library is self-contained and survives moves, renames and other machines - the export door packs what the inventory names, and Copy To hands scenes plain absolute paths."""
 
+import json
 import os
 import shutil
 import tempfile
 import unittest
+from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")   # BEFORE the app exists ▸p/first-app-picks-the-platform
 from PySide6 import QtWidgets  # noqa: E402
@@ -266,6 +268,63 @@ class PanelEnvTest(unittest.TestCase):
             os.path.normpath(self.panel.prefs.dir),
             os.path.normpath(hou.getenv("AMAZELIB") or ""),
             "panel startup did not publish $AMAZELIB")
+
+
+class EverySwitchPublishesTheVariable(unittest.TestCase):
+    """Reload Library, Set Library and Test Library point $AMAZELIB at the library they open."""
+
+    def setUp(self):
+        previous = hou.getenv("AMAZELIB")
+        if previous is None:
+            self.addCleanup(hou.unsetenv, "AMAZELIB")
+        else:
+            self.addCleanup(hou.putenv, "AMAZELIB", previous)
+        self.panel = test_support.fixture_panel(self)
+
+    def _assert_published(self, library):
+        self.assertEqual(
+            os.path.normpath(library),
+            os.path.normpath(hou.getenv("AMAZELIB") or ""),
+            "$AMAZELIB still names the previous library until Preferences "
+            "closes, so a render reads that library's textures")
+
+    def _point_settings_at(self, library):
+        settings = os.path.join(self.panel.prefs.path, "settings.json")
+        with open(settings, encoding="utf-8") as handle:
+            data = json.load(handle)
+        data["directory"] = library
+        with open(settings, "w", encoding="utf-8") as handle:
+            json.dump(data, handle)
+
+    def test_reload_library(self):
+        other = test_support.fresh_library(self)
+        self._point_settings_at(other)
+        self.panel.open()
+        self._assert_published(other)
+
+    def test_set_library(self):
+        other = test_support.fresh_library(self)
+
+        def picked():
+            self.panel.prefs.dir = other
+            self._point_settings_at(other)    # the save the fixture panel switches off
+            return True
+
+        with mock.patch.object(self.panel.prefs, "get_dir_from_user", picked):
+            self.panel.set_library()
+        self._assert_published(other)
+
+    def test_test_library(self):
+        from amaze.dialogs import prefs_dialog
+        from amaze.prefs import prefs as prefs_mod
+        folder = _scratch_library(self)
+        ok, what = prefs_mod.seed_test_folder(folder)
+        self.assertTrue(ok, what)
+        self.panel.prefs.test_dir = folder
+        dialog = prefs_dialog.PrefsDialog(self.panel.prefs, panel=self.panel)
+        self.addCleanup(dialog.deleteLater)
+        dialog.set_test_mode(True)
+        self._assert_published(prefs_mod.test_library_dir(folder))
 
 
 if __name__ == "__main__":
