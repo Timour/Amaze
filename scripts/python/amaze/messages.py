@@ -144,6 +144,8 @@ NODE_SAVE_FAILED = '"%s" could not be saved.'
 
 OBJECT_HAS_NO_MATERIAL_PARM = '"%s" does not have a material parameter. The material was imported to /mat but was not assigned.'
 
+DROP_TAKES_NOTHING = 'Nothing here takes a %s.'
+
 STOCK_LOP_HELPERS_UNAVAILABLE = "Could not load Houdini's material-assignment helpers. The material was not imported."
 
 NETWORK_REFUSED_MATERIAL_LIBRARY = 'Amaze: %s cannot take a Material Library, so the material was not imported.\n\n%s'

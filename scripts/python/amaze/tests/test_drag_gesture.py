@@ -18,6 +18,8 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
+from amaze import messages  # noqa: E402
+from amaze.core import debug  # noqa: E402
 from amaze.panel import dragdrop_widgets  # noqa: E402
 from amaze.tests import test_support  # noqa: E402,F401 - import redirects the debug log
 
@@ -491,31 +493,85 @@ class TheBehaviourTableCells(unittest.TestCase):
             "other": file_library.KIND_OTHER,
         }[name]
 
+    def _released(self, section, kind, aim):
+        """One cell released over its stub panel, armed directly; the harness and what was refused."""
+        h = _Harness(self, section=section,
+                     kind=self._kind(kind) if kind else None)
+        h.panel.resize(400, 300)
+        if aim.get("node"):
+            h.panel._node = object()
+        if aim.get("network"):
+            h.panel._network = object()
+        if aim.get("category"):
+            h.panel._category = aim["category"]
+        h.press()
+        h.view._dragging = True
+        h.view._drag_panel = h.panel
+        global_pos = None
+        if aim.get("outside"):
+            global_pos = QtCore.QPoint(2000, 2000)
+        elif aim.get("inside"):
+            global_pos = QtCore.QPoint(50, 50)
+        said = []
+        with mock.patch.object(debug, "refuse",
+                               lambda reason, **_data: said.append(reason)):
+            h.release(global_pos=global_pos)
+        return h, said
+
     def test_every_cell_of_the_matrix(self):
         for name, section, kind, aim, expected in self.CELLS:
             with self.subTest(cell=name):
-                h = _Harness(self, section=section,
-                             kind=self._kind(kind) if kind else None)
-                h.panel.resize(400, 300)
-                if aim.get("node"):
-                    h.panel._node = object()
-                if aim.get("network"):
-                    h.panel._network = object()
-                if aim.get("category"):
-                    h.panel._category = aim["category"]
-                h.press()
-                # Armed directly - these cells pin the RELEASE dispatch only.
-                h.view._dragging = True
-                h.view._drag_panel = h.panel
-                global_pos = None
-                if aim.get("outside"):
-                    global_pos = QtCore.QPoint(2000, 2000)
-                elif aim.get("inside"):
-                    global_pos = QtCore.QPoint(50, 50)
-                h.release(global_pos=global_pos)
+                h, _said = self._released(section, kind, aim)
                 self.assertEqual(expected, h.panel.calls, name)
                 self.assertFalse(h.view._dragging,
                                  "the gesture stayed live after: " + name)
+
+    def test_every_miss_says_why_in_the_status_line(self):
+        """The red cross shows a drop failed; the status line says nothing there takes it."""
+        from amaze.panel import sections
+        for name, section, kind, aim, expected in self.CELLS:
+            with self.subTest(cell=name):
+                _h, said = self._released(section, kind, aim)
+                noun = sections.SECTION_INDEX[section].empty_noun
+                self.assertEqual([] if expected else [messages.DROP_TAKES_NOTHING % noun],
+                                 said, name)
+
+
+class TheResolversSayWhyTheyMissed(unittest.TestCase):
+    """Material and node-asset releases find their own landing, so their misses send the line."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
+
+    def _said(self, call, target=None):
+        from amaze.core import dragengine
+        from amaze.panel import panel as panel_mod
+        said = []
+        with mock.patch.object(debug, "refuse", lambda reason, **_data: said.append(reason)), \
+                mock.patch.object(dragengine, "viewport_release_target", return_value=target), \
+                mock.patch.object(panel_mod.AmazePanel, "_drop_context_under_cursor",
+                                  return_value=None):
+            self.assertFalse(call(), "a release over nothing landed")
+        return said
+
+    def test_a_material_released_over_nothing(self):
+        panel = self.panel
+        index = panel.material_sorted_model.index(0, 0)
+        for target in (None, ("lop", None, None), ("obj", None, None)):
+            with self.subTest(target=target):
+                self.assertEqual(
+                    [messages.DROP_TAKES_NOTHING % "material"],
+                    self._said(lambda: panel.sections["material"].drop_material_at_release(
+                        index), target))
+
+    def test_a_node_asset_released_over_nothing(self):
+        panel = self.panel
+        rows = QtGui.QStandardItemModel()    # any valid row: the landing is asked before the row is read
+        rows.appendRow(QtGui.QStandardItem("node asset"))
+        index = rows.index(0, 0)
+        self.assertEqual([messages.DROP_TAKES_NOTHING % "node asset"],
+                         self._said(lambda: panel.sections["cop"].drop_cop_at_release(index)))
 
 
 class TheParameterPaneHandOff(unittest.TestCase):

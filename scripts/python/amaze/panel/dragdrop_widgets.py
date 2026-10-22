@@ -468,10 +468,10 @@ class GridGestureMixin:
         if rule.on_space is not None:
             net = panel._network_under_release()
             if net is None:
-                return False
+                return section.drop_takes_nothing()
             create = sections.drop_verb(section, rule.on_space)    # the position is GATED: coordinates cross into the destination only when the release editor is showing that network itself
             return bool(create(idx, net, panel._release_position_in(net)))
-        return False
+        return section.drop_takes_nothing()
 
     @staticmethod
     def _splice_if_on_a_wire(panel, event) -> None:

@@ -90,6 +90,11 @@ class Section:
     def __init__(self, panel) -> None:
         self.panel = panel
 
+    def drop_takes_nothing(self) -> bool:
+        """A release nothing takes: the red cross shows it and the status line says why; False."""
+        debug.refuse(messages.DROP_TAKES_NOTHING % self.empty_noun)
+        return False
+
     def activate(self) -> None:
         getattr(self.panel, self.activate_method)()
 
@@ -682,20 +687,20 @@ class MaterialSection(AssetSection):
                         data=str(data), count=len(ids))
             if kind == "lop":
                 if not data:
-                    return False    # empty viewport space: no prim picked is a MISS, not an import offer
+                    return self.drop_takes_nothing()    # empty viewport space is a MISS, not an import offer
                 shown = panel._material_lop_viewport_drop(ids, viewer, data)
                 return "menu" if shown is not False else False    # the menu IS the feedback here, no outcome icon on top of it whether chosen or dismissed - but only when one was SHOWN, because _finish_preview reads "menu" as "suppress the miss icon" and the call returns False in three cases where none ever appeared: no stock LOP helper, a viewer whose pwd() failed, and no choices at all off a stale prim path or a display node whose cook failed
             if kind == "obj" and data is not None:
                 with dragengine.drop_group("Amaze Assign Material"), \
                         dragengine.keep_editor_focus():
                     return bool(panel.assign_material_to_obj(ids, data))    # propagated, never a hard True: the call returns False when the picked object has no shop_materialpath, and success feedback for an assignment that did not happen is a lie
-            return False
+            return self.drop_takes_nothing()
         context = panel._drop_context_under_cursor("materiallibrary")
         if context is None or not cop_library.accepts_context(
                 context, self.DROP.context):    # the wrong network is a strict MISS: nothing created anywhere, exactly as Houdini's own nodes refuse - the DECLARATION gates, shared with the live ghost
             debug.event("drag", "material release", target="miss",
                         context=context.path() if context else "")
-            return False
+            return self.drop_takes_nothing()
         debug.event("drag", "material release", target="network",
                     context=context.path(), count=len(ids))
         position = panel._release_position_in(context)
@@ -829,7 +834,7 @@ class CopSection(AssetSection):
         context = panel._drop_context_under_cursor(
             panel.cop_model.is_container)
         if context is None:
-            return False
+            return self.drop_takes_nothing()
         try:
             source_index = panel.cop_sorted_model.mapToSource(index)
         except Exception:
