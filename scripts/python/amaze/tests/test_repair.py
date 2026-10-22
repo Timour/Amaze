@@ -490,7 +490,7 @@ class AddingUnlistedFilesBackTest(_Case):
                               encoding="utf-8") as handle:
                         handle.write("owned by %s\n" % name)
                 findings = self._survey()
-                self.assertEqual(pairs, repair._complete_pairs(findings))
+                self.assertEqual(pairs, repair.complete_pairs(findings))
                 if not pairs:
                     choices, actions = repair_dialog._choices(findings,
                                                        may_change=True)

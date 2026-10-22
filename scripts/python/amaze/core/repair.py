@@ -288,7 +288,7 @@ def _holdings(entry: dict) -> str:
         count, database.section_noun(entry["filename"], count))
 
 
-def _copy_named_by_what_it_holds(filename: str, snap: dict) -> str:
+def copy_named_by_what_it_holds(filename: str, snap: dict) -> str:
     """A saved copy named by its date and count, never by its storage tier."""
     if filename == _SETTINGS:    # a count of settings tells the reader nothing
         return ("from %s, cannot be read" if snap["error"]
@@ -310,7 +310,7 @@ def _snapshot_line(entry: dict) -> str:
                      "library folder either way."
                      % database.section_noun(entry["filename"], 2))
         return line
-    parts = [_copy_named_by_what_it_holds(entry["filename"], snap)
+    parts = [copy_named_by_what_it_holds(entry["filename"], snap)
              for _tier, snap in entry["snapshots"]]
     return "%s: saved copies - %s." % (entry["label"], "; ".join(parts))
 
@@ -376,14 +376,14 @@ def report_lines(findings: dict) -> list:
     elif total and findings["complete"]:
         lines.append("No section lists %s. Either they belong to something "
                      "whose list was lost, or nothing needs them any more."
-                     % _files_by_folder(findings))
+                     % files_by_folder(findings))
         lines.extend(_what_can_be_added_back(findings))
     elif total:
         lines.append(
             "No section lists %s. Amaze could not check the %s list either, "
             "so some of those files may be its. Nothing will be moved "
             "while that is true."
-            % (_files_by_folder(findings), wording.and_list(unchecked)))
+            % (files_by_folder(findings), wording.and_list(unchecked)))
     else:
         lines.append("Every file in the library's own folders is accounted "
                      "for by a section.")
@@ -396,14 +396,14 @@ def report_lines(findings: dict) -> list:
     return lines
 
 
-def _files(count: int) -> str:
+def files(count: int) -> str:
     """The count and its English plural, never the parenthesised one."""
     return "1 file" if count == 1 else "%d files" % count
 
 
-def _files_on_a_button(count: int) -> str:
+def files_on_a_button(count: int) -> str:
     """The same count, capitalised: every button in this tool is Title Case."""
-    return _files(count).replace("file", "File")
+    return files(count).replace("file", "File")
 
 
 def _and_folders(folders: list) -> str:
@@ -411,13 +411,13 @@ def _and_folders(folders: list) -> str:
                       for folder in folders])
 
 
-def _files_by_folder(findings: dict) -> str:
+def files_by_folder(findings: dict) -> str:
     """Folder by folder, never one total: Clean Library weighs one folder."""
     parts = []
     for folder, names in findings["unaccounted"].items():
         if not names:
             continue
-        part = "%s in the %s folder" % (_files(len(names)),
+        part = "%s in the %s folder" % (files(len(names)),
                                         _folder_name(folder))
         if unaccounted_total(findings) <= 6:
             part += " (%s)" % ", ".join(names)
@@ -427,13 +427,13 @@ def _files_by_folder(findings: dict) -> str:
 
 def _what_can_be_added_back(findings: dict) -> list:
     """The line that keeps the two buttons apart: pairs against everything."""
-    addable = _reattachable_files(findings)
+    addable = reattachable_files(findings)
     total = unaccounted_total(findings)
     if not addable or len(addable) == total:
         return []
     return ["Of those, %s can be added back to a section. The rest are "
             "halves of an asset whose other file is not in the folder, so "
-            "they can only be moved aside." % _files(len(addable))]
+            "they can only be moved aside." % files(len(addable))]
 
 
 def _folder_name(folder: str) -> str:
@@ -494,7 +494,7 @@ def reattach(findings: dict, filename: str) -> dict:
 
     added, minted, rows = [], [], []
     folder = os.path.join(findings["directory"], findings["asset_dir"])
-    for asset_id in _complete_pairs(findings):
+    for asset_id in complete_pairs(findings):
         record = read_stamp(os.path.join(folder, asset_id + STAMP_SUFFIX))
         if record is None:
             record = material.Material(
@@ -524,7 +524,7 @@ def reattach(findings: dict, filename: str) -> dict:
     return {"added": added, "path": path, "minted": minted}
 
 
-def _complete_pairs(findings: dict) -> list:
+def complete_pairs(findings: dict) -> list:
     """The unclaimed ids with both halves present, in a stable order."""
     halves = {}
     for name in findings["unaccounted"].get(findings["asset_dir"], []):
@@ -540,9 +540,9 @@ def _complete_pairs(findings: dict) -> list:
                   if {".mat", ".interface"} <= seen)
 
 
-def _reattachable_files(findings: dict) -> list:
+def reattachable_files(findings: dict) -> list:
     """Every file adding a pair back accounts for, counted like the other button."""
-    pairs = set(_complete_pairs(findings))
+    pairs = set(complete_pairs(findings))
     if not pairs:
         return []
     covered = []
@@ -562,7 +562,7 @@ def _write_json(path: str, document) -> None:
             json.dump(document, handle, indent=4)
 
 
-def _target_of(findings: dict, filename: str) -> str:
+def target_of(findings: dict, filename: str) -> str:
     """The file a saved copy goes back over: settings.json in its own folder, a list in the library."""
     settings = findings.get("settings") or {}
     if filename == settings.get("filename"):
@@ -575,7 +575,7 @@ def put_back(findings: dict, filename: str, tier: str) -> dict:
     _refuse_a_houdini_that_holds_the_library(
         lambda phrase: restore_lib.RestoreRefused(
             "Nothing was put back: %s." % phrase))
-    target = _target_of(findings, filename)
+    target = target_of(findings, filename)
     done = restore_lib.put_back(target, tier, allow_loss=True)
     debug.event("repair", "saved copy put back", file=filename, tier=tier,
                 undo=done["undo"])
@@ -615,7 +615,7 @@ def _with_library(facts: dict, document) -> dict:
     return dict(facts, library=named if isinstance(named, str) else "")
 
 
-def _copies_naming_a_library(settings) -> list:
+def copies_naming_a_library(settings) -> list:
     """The saved settings copies that read and name a library folder; the rest are no way back."""
     return [(tier, snap) for tier, snap in (settings or {}).get("snapshots", ())
             if not snap["error"] and snap["library"]]
