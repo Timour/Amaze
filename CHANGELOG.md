@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.10.14
+
+- A drag that ends in the red cross says why in Houdini's status bar: `Nothing here takes a material`, or a node asset, snippet, file or palette.
+
 ## 1.10.13
 
 - The list of the files an asset owns has one home, which the library and its versions both read; nothing changes in the app.
