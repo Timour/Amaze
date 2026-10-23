@@ -88,7 +88,7 @@ USER_DELETE_CONFIRM = 'Delete user "%s" from this library?'
 
 USER_NAME_TAKEN = 'A user named "%s" is already in this library. Choose another name.'
 
-NO_USER_PICKED = 'No user is picked for this library, so Amaze has not opened it. Open Preferences, pick your user or create one, and press Apply.'
+NO_USER_PICKED = 'No user is picked for this library. Open Preferences, pick your user or create one, and press Apply.'
 
 MATERIAL_VERSIONS_TURN_ON_CONFIRM = 'Enable Material Versions for this library?'
 
