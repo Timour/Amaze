@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.10.20
+
+- The Library Path no longer takes the root of a disk; Amaze asks for another folder.
+
 ## 1.10.19
 
 - When the library index cannot be read, the pane opens first and then asks whether to Repair it or Open Without Library.
