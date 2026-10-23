@@ -1,16 +1,20 @@
 # Changelog
 
+## 1.10.23
+
+- Picking a library whose index has not arrived yet now says so every time, and leaves the folder untouched.
+
 ## 1.10.22
 
-- A Library Path whose library list is missing opens the pane without a library instead of an error; switching to one keeps the library you have open.
+- A library with a missing index no longer shows an error. Amaze opens without a library, and switching to one keeps your current library.
 
 ## 1.10.21
 
-- A library whose index cannot be read now asks Repair or Cancel when you switch to it; Cancel leaves the folder unchanged and keeps the library you have open.
+- Switching to a library with a damaged index now asks Repair or Cancel. Cancel keeps your current library.
 
 ## 1.10.20
 
-- The Library Path no longer takes the root of a disk; Amaze asks for another folder.
+- You can no longer choose the root of a disk as the Library Path.
 
 ## 1.10.19
 
