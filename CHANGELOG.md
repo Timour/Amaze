@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.11.9
+
+- Other files in the File section now show their system icon by default instead of the generic file icon.
+
 ## 1.11.8
 
 - The File section's Houdini code is kept apart from its list of files; nothing changes in the app.
