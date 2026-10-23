@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.11.4
+
+- The message shown when Amaze starts with no user picked now only says what to do.
+
 ## 1.11.3
 
 - Manage Libraries names the open library at its top, and a library picked for removal shows in red.
