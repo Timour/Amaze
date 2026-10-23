@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.11.6
+
+- Long tooltips on tiles, list rows and sidebar rows now wrap at one width, file and folder paths included.
+
 ## 1.11.5
 
 - The Capture, Updates and Reload shelf tools run their steps inside Amaze, where the test suite checks them.
