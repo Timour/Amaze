@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.10.21
+
+- A library whose index cannot be read now asks Repair or Cancel when you switch to it; Cancel leaves the folder unchanged and keeps the library you have open.
+
 ## 1.10.20
 
 - The Library Path no longer takes the root of a disk; Amaze asks for another folder.
