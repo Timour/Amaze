@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.11.3
+
+- Manage Libraries names the open library at its top, and a library picked for removal shows in red.
+
 ## 1.11.2
 
 - The old user picker is removed; nothing changes in the app.
