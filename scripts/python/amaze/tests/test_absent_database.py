@@ -211,6 +211,16 @@ class AMissingListOpensNoLibrary(unittest.TestCase):
         self.assertEqual(before, panel.prefs.dir, "the Library Path stayed on a folder with no list")
         self.assertEqual(before, panel._models_dir, "the open library was left")
 
+    def test_a_pane_opened_without_its_library_still_says_it_is_ready(self):
+        _point_settings(test_support.fixture_panel(self), self._held())
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        with test_support.captured_log() as log, \
+                patch.object(debug, "configure", lambda *a, **k: None):    # keeps the log on
+            test_support.reopened_panel(self)
+        self.assertIn("panel ready", log.messages("session"),
+                      "a pane that opened without its library left no sign it finished building")
+
 
 class SecondaryDatabaseAbsenceTest(unittest.TestCase):
     """database.py load(): absent + evidence must not seed and save."""

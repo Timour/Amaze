@@ -408,7 +408,7 @@ class AnUnreadableListIsAskedAboutBeforeTheSwitch(unittest.TestCase):
         with open(index, "wb") as handle:
             handle.write(b"{ this is not json")
 
-    def _answering(self, answer, action):
+    def _answering(self, answer, action, picked=None):
         asked = []
 
         def scripted(message, **kwargs):
@@ -417,7 +417,7 @@ class AnUnreadableListIsAskedAboutBeforeTheSwitch(unittest.TestCase):
 
         ui = mock.MagicMock()
         ui.displayMessage.side_effect = scripted
-        ui.selectFile.return_value = self.broken
+        ui.selectFile.return_value = picked or self.broken
         with mock.patch.object(hou, "ui", ui, create=True):
             action()
             QtWidgets.QApplication.processEvents()
@@ -432,6 +432,17 @@ class AnUnreadableListIsAskedAboutBeforeTheSwitch(unittest.TestCase):
         self.assertEqual(before, self.panel.prefs.dir, "Cancel moved the Library Path")
         self.assertEqual(before, self.panel._models_dir, "Cancel left the open library")
         self.assertEqual(files, sorted(os.listdir(self.broken)), "Cancel wrote into the folder")
+
+    def test_a_list_that_has_not_arrived_is_refused_before_anything_is_saved(self):
+        held = test_support.fresh_library(self)
+        os.remove(os.path.join(held, "library.json"))    # mat/ and img/ stay: it has held a library
+        saves = []
+        self.panel.prefs.save = lambda *a, **k: saves.append(True)
+        before = self.panel.prefs.dir
+        asked = self._answering(0, self.panel.set_library, picked=held)
+        self.assertEqual([(messages.STARTER_SEED_REFUSED_DIRECTORY_HELD_LIBRARY, ())], asked)
+        self.assertEqual([], saves, "the settings were saved, which writes into the picked folder")
+        self.assertEqual(before, self.panel.prefs.dir, "the Library Path moved")
 
     def test_repair_opens_the_picked_library(self):
         self.panel.prefs.save = lambda *a, **k: _write_settings(

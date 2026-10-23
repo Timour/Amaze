@@ -184,8 +184,7 @@ class AmazePanel(QtWidgets.QWidget):
             else:
                 opened = self.open_library()
             if not opened:
-                self._open_libraryless()
-                return
+                self._open_libraryless()    # still a finished construction, so it says ready
             debug.event(    # construction-complete tripwire, through the same engine as the session header: a log whose header exists but whose 'panel ready' is missing means logging died DURING construction - see debug.probe()
                 "session", "panel ready",
                 module_body_ms=round(    # module body = the import plus the 50-module reload chain that runs before construction can start; construction = what "session start -> panel ready" always measured
@@ -451,6 +450,15 @@ class AmazePanel(QtWidgets.QWidget):
 
     def _takes_library(self, folder: str) -> bool:
         """A picked folder is taken once its list reads: Repair first, or nothing is written to it."""
+        if library_actions.list_not_arrived(folder):
+            debug.event("session", "library not taken - its list has not arrived", dir=folder)
+            ui = getattr(hou, "ui", None)
+            if ui is not None:
+                ui.displayMessage(
+                    messages.STARTER_SEED_REFUSED_DIRECTORY_HELD_LIBRARY,
+                    severity=hou.severityType.Warning,
+                    title=messages.TITLE_AMAZE)
+            return False
         return not library_actions.index_unreadable(folder) or self._repaired(folder)
 
     def open_library(self) -> bool:
