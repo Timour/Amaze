@@ -16,6 +16,7 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
+from amaze.actions import nodes as node_actions  # noqa: E402
 from amaze.core import category, cop_library  # noqa: E402
 from amaze.panel import delegates  # noqa: E402
 from amaze.tests import test_support  # noqa: E402,F401 - redirects the log
@@ -44,7 +45,7 @@ class CategoryColorTest(unittest.TestCase):
         lop = hou.node("/obj").createNode("lopnet", "cc_src")
         lop.createNode("sphere")
         held = test_support.asset_ids(self.model)
-        self.model.add_asset(lop, cat, "", False, name="Coloured")
+        node_actions.add_asset(self.model, lop, cat, "", False, name="Coloured")
         lop.destroy()
         saved, = test_support.arrived(self.model, held)
         return self.model.find_asset_row_by_id(saved.mat_id)

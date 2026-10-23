@@ -1127,6 +1127,9 @@ core/thumbnails.py        THUMBNAIL ENGINE (cache, budget, loaders)
 core/conversion.py        CONVERSION ENGINE (file -> QImage, verified)
 core/keyed_store.py       KEYED STORE ENGINE (guarded JSON side-tables)
 render/nodes.py           MATERIAL ENGINE (build_karma_material) + save/import
+render/cop_nodes.py       the Node section's Houdini knowledge: which context
+                          a network holds, which container to create, and
+                          where saved nodes load inside a wrapper HDA
 core/debug.py             DEBUG ENGINE
 core/grid_engine.py       GRID ENGINE (every grid model's cells and row order)
 core/library.py           Library Model (Materials) + base for Cop/Code
@@ -1176,6 +1179,9 @@ actions/code.py           the Code section's Houdini verbs: a Python
                           snippet run as one undo step with a shelf
                           click's kwargs, and a snippet set onto a
                           node's code parm
+actions/nodes.py          the Node section's Houdini verbs: saving a
+                          network or a selection as an asset, loading it
+                          back, and re-rendering its tile
 actions/library.py        the steps of opening a library that need no
                           panel: refusing one a newer Amaze updated,
                           readying its folder, updating it to this

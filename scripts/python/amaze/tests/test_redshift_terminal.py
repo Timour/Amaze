@@ -40,7 +40,7 @@ class RedshiftMaterialsHoldTheTerminalInvariant(unittest.TestCase):
 
     def _terminal(self):
         for child in self.builder.children():
-            if child.type().name() in nodes.REDSHIFT_TERMINALS:
+            if child.type().name() in material.REDSHIFT_TERMINALS:
                 return child
         self.fail("no Redshift terminal among %r"
                   % [c.type().name() for c in self.builder.children()])

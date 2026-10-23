@@ -179,12 +179,12 @@ NEW_NODE_HALF = (0.5, 0.15)    # the host's own placement-ghost half size (nodeg
 
 
 def _is_vop_network(editor) -> bool:
-    from amaze.core import cop_library
+    from amaze.render import cop_nodes
     try:
         pwd = editor.pwd()
     except (AttributeError, hou.OperationFailed):
         return False
-    return cop_library.accepts_context(pwd, "Vop")
+    return cop_nodes.accepts_context(pwd, "Vop")
 
 
 def _snap_delta(editor, rect):

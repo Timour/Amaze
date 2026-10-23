@@ -18,8 +18,10 @@ sys.path.insert(        # THREE dirnames: tests/ -> amaze/ -> python/. Four land
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
+from amaze.actions import nodes as node_actions  # noqa: E402
 from amaze.core import cop_library  # noqa: E402
 from amaze.core import material  # noqa: E402
+from amaze.render import cop_nodes  # noqa: E402
 from amaze.render import nodes  # noqa: E402
 from amaze.render import thumbs  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
@@ -69,11 +71,11 @@ class NodesSectionTest(unittest.TestCase):
         geo = _sop_network("ctx_sop")
         cop = hou.node("/obj").createNode("copnet", "ctx_cop")
         lop = hou.node("/obj").createNode("lopnet", "ctx_lop")
-        self.assertEqual("Sop", self.model.context_of(geo))
-        self.assertEqual("Cop", self.model.context_of(cop))
-        self.assertEqual("Lop", self.model.context_of(lop))
+        self.assertEqual("Sop", cop_nodes.context_of(geo))
+        self.assertEqual("Cop", cop_nodes.context_of(cop))
+        self.assertEqual("Lop", cop_nodes.context_of(lop))
         items = [geo.node("the_box")]    # a selection is described by where it LIVES
-        self.assertEqual("Sop", self.model.context_of(items[0], items))
+        self.assertEqual("Sop", cop_nodes.context_of(items[0], items))
 
 
     def test_the_import_seam_returns_what_it_created(self):
@@ -81,13 +83,13 @@ class NodesSectionTest(unittest.TestCase):
         from amaze.helpers import helpers
 
         geo = _sop_network("seam_src")
-        self.assertEqual("SOP", self.model.add_asset(
-            geo, "", "", False, name="seam_sop"))
+        self.assertEqual("SOP", node_actions.add_asset(
+            self.model, geo, "", "", False, name="seam_sop"))
         geo.destroy()
 
         dest = hou.node("/obj").createNode("geo", "seam_dest")
-        ok, reason, created = self.model.import_asset_to_scene(
-            self.model.index(0, 0), context_node=dest)
+        ok, reason, created = node_actions.import_asset_to_scene(
+            self.model, self.model.index(0, 0), context_node=dest)
         self.assertTrue(ok, reason)
         self.assertTrue(created,
                         "a successful import returned no created nodes")
@@ -103,13 +105,13 @@ class NodesSectionTest(unittest.TestCase):
     def test_an_unsafe_id_is_refused_with_a_sentence(self):
         """An id that cannot be a filename gets a sentence, not a traceback - practice.md ▸p/nodes-section."""
         geo = _sop_network("unsafe_src")
-        self.assertEqual("SOP", self.model.add_asset(
-            geo, "", "", False, name="unsafe_sop"))
+        self.assertEqual("SOP", node_actions.add_asset(
+            self.model, geo, "", "", False, name="unsafe_sop"))
         geo.destroy()
         self.model.assets[0]._mat_id = "../../../Documents/x"   # the private field: mat_id is read-only by design, and a hand-edited cops.json is the only way such an id reaches a row
 
-        ok, reason, _created = self.model.import_asset_to_scene(
-            self.model.index(0, 0))
+        ok, reason, _created = node_actions.import_asset_to_scene(
+            self.model, self.model.index(0, 0))
         self.assertFalse(ok, "an id that cannot be a filename imported")
         self.assertIn("cannot be imported", reason,
                       "the refusal did not say what was wrong: %r" % reason)
@@ -117,15 +119,15 @@ class NodesSectionTest(unittest.TestCase):
     def test_sop_network_returns_intact(self):
         geo = _sop_network("rt_src")
         held = test_support.asset_ids(self.model)
-        self.assertEqual("SOP", self.model.add_asset(
-            geo, "", "", False, name="rt_sop"))
+        self.assertEqual("SOP", node_actions.add_asset(
+            self.model, geo, "", "", False, name="rt_sop"))
         saved, = test_support.arrived(self.model, held)
         self.assertEqual("SOP", saved.renderer)
         geo.destroy()
 
         dest = hou.node("/obj").createNode("geo", "rt_dest")
-        ok, reason, _created = self.model.import_asset_to_scene(
-            self.model.index(0, 0), context_node=dest)
+        ok, reason, _created = node_actions.import_asset_to_scene(
+            self.model, self.model.index(0, 0), context_node=dest)
         self.assertTrue(ok, reason)
 
         names = {n.name(): n for n in dest.children()}
@@ -139,13 +141,13 @@ class NodesSectionTest(unittest.TestCase):
         geo = _sop_network("sel_src")
         box = geo.node("the_box")
         # A selection is passed as one of the SELECTED items, not the container - the network is reached through its parent.
-        self.assertEqual("SOP", self.model.add_asset(
-            box, "", "", False, items=[box], name="sel_one"))
+        self.assertEqual("SOP", node_actions.add_asset(
+            self.model, box, "", "", False, items=[box], name="sel_one"))
         geo.destroy()
 
         dest = hou.node("/obj").createNode("geo", "sel_dest")
-        ok, reason, _created = self.model.import_asset_to_scene(
-            self.model.index(0, 0), context_node=dest)
+        ok, reason, _created = node_actions.import_asset_to_scene(
+            self.model, self.model.index(0, 0), context_node=dest)
         self.assertTrue(ok, reason)
         self.assertEqual(["the_box"], [n.name() for n in dest.children()])
 
@@ -153,7 +155,7 @@ class NodesSectionTest(unittest.TestCase):
     def test_it_still_refuses_where_nothing_can_hold_them(self):
         """The refusal must survive the widening: a matnet has no home for SOPs at any depth."""
         geo = _sop_network("refuse_src")
-        self.model.add_asset(geo, "", "", False, name="SOPwhole")
+        node_actions.add_asset(self.model, geo, "", "", False, name="SOPwhole")
         geo.destroy()
 
         dest = hou.node("/obj").createNode("matnet", "refuse_dest")
@@ -171,8 +173,8 @@ class NodesSectionTest(unittest.TestCase):
         """Save-free helper: import asset `name` into dest -> (ok, reason, the nodes it created there)."""
         row = [i for i, a in enumerate(self.model.assets) if a.name == name][0]
         before = set(dest.children())
-        ok, reason, _created = self.model.import_asset_to_scene(
-            self.model.index(row, 0), context_node=dest)
+        ok, reason, _created = node_actions.import_asset_to_scene(
+            self.model, self.model.index(row, 0), context_node=dest)
         return ok, reason, [c for c in dest.children() if c not in before]
 
     def test_a_network_asset_lands_at_object_level_in_its_container(self):
@@ -185,7 +187,7 @@ class NodesSectionTest(unittest.TestCase):
         sources["COPnet"].createNode(_cop_node_type())
         sources["LOPnet"].createNode("sphere")
         for name, node in sources.items():
-            self.model.add_asset(node, "", "", False, name=name)
+            node_actions.add_asset(self.model, node, "", "", False, name=name)
             node.destroy()
 
         expected = {"SOPnet": "geo", "COPnet": "copnet", "LOPnet": "lopnet"}
@@ -201,8 +203,8 @@ class NodesSectionTest(unittest.TestCase):
         """Object-context nodes ARE /obj's own kind - no container."""
         first = hou.node("/obj").createNode("geo", "objA")
         second = hou.node("/obj").createNode("geo", "objB")
-        self.model.add_asset(first, "", "", False,
-                             items=[first, second], name="OBJsel")
+        node_actions.add_asset(self.model, first, "", "", False,
+                               items=[first, second], name="OBJsel")
         first.destroy()
         second.destroy()
 
@@ -214,8 +216,8 @@ class NodesSectionTest(unittest.TestCase):
         """The trap: every context has a `subnet`, so a SOP subnet looks like a home for object-level nodes and is not one."""
         first = hou.node("/obj").createNode("geo", "trapA")
         second = hou.node("/obj").createNode("geo", "trapB")
-        self.model.add_asset(first, "", "", False,
-                             items=[first, second], name="OBJtrap")
+        node_actions.add_asset(self.model, first, "", "", False,
+                               items=[first, second], name="OBJtrap")
         first.destroy()
         second.destroy()
 
@@ -258,7 +260,7 @@ class NodesSectionTest(unittest.TestCase):
             ("matnet", "Object"): None,
         }
         for (dest_name, context), want in expected.items():
-            got = self.model.container_type_in(
+            got = cop_nodes.container_type_in(
                 dests[dest_name], context, saved.get(context, ""))
             self.assertEqual(
                 want, got,
@@ -267,7 +269,7 @@ class NodesSectionTest(unittest.TestCase):
 
     def test_a_sop_network_lands_in_a_sop_create_in_solaris(self):
         geo = _sop_network("solaris_src")
-        self.model.add_asset(geo, "", "", False, name="ForStage")
+        node_actions.add_asset(self.model, geo, "", "", False, name="ForStage")
         geo.destroy()
 
         stage = hou.node("/stage")
@@ -276,7 +278,7 @@ class NodesSectionTest(unittest.TestCase):
         self.assertEqual(1, len(made))
         self.assertEqual("sopcreate", made[0].type().name())
 
-        target = self.model.load_target_in(made[0], "Sop")      # DiveTarget and EditableNodes both read sopnet/create, two levels down - practice.md ▸p/nodes-section
+        target = cop_nodes.load_target_in(made[0], "Sop")      # DiveTarget and EditableNodes both read sopnet/create, two levels down - practice.md ▸p/nodes-section
         self.assertEqual("sopnet/create", target.path().split(
             made[0].path() + "/")[-1])
         landed = {n.name() for n in target.children()}
@@ -307,12 +309,12 @@ class NodesSectionTest(unittest.TestCase):
         for node in (box, mountain):
             node.setDisplayFlag(False)
             node.setRenderFlag(False)
-        self.model.add_asset(geo, "", "", False, name="Unflagged")
+        node_actions.add_asset(self.model, geo, "", "", False, name="Unflagged")
         geo.destroy()
 
         ok, reason, made = self._import_into("Unflagged", hou.node("/stage"))
         self.assertTrue(ok, reason)
-        target = self.model.load_target_in(made[0], "Sop")
+        target = cop_nodes.load_target_in(made[0], "Sop")
         flagged = [n.name() for n in target.children()
                    if n.isDisplayFlagSet()]
         self.assertEqual(
@@ -370,8 +372,8 @@ class NodesSectionTest(unittest.TestCase):
                     network = hou.node("/obj").createNode("copnet", "thumb_cop")
                     network.createNode(_cop_node_type())
                 held = test_support.asset_ids(self.model)
-                self.assertEqual(label, self.model.add_asset(
-                    network, "", "", False, name="thumbed_" + label))
+                self.assertEqual(label, node_actions.add_asset(
+                    self.model, network, "", "", False, name="thumbed_" + label))
                 saved, = test_support.arrived(self.model, held)
                 image = self._image_for(saved)
                 self.assertTrue(os.path.exists(image),
@@ -390,9 +392,9 @@ class NodesSectionTest(unittest.TestCase):
         from amaze.core import tile_icons
         lop = hou.node("/obj").createNode("lopnet", "icon_lop")
         lop.createNode("sphere")
-        self.model.add_asset(lop, "", "", False, name="icon_test")
+        node_actions.add_asset(self.model, lop, "", "", False, name="icon_test")
         geo = _sop_network("icon_sop")
-        self.model.add_asset(geo, "", "", False, name="rendered_test")
+        node_actions.add_asset(self.model, geo, "", "", False, name="rendered_test")
 
         face = tile_icons.generic_image(self.model.TILE_FACE)
         self.assertIsNotNone(face, "ui/%s.svg does not render" % self.model.TILE_FACE)
@@ -412,7 +414,7 @@ class NodesSectionTest(unittest.TestCase):
         light = hou.node("/obj").createNode("hlight", "whole_light")
         matnet = hou.node("/obj").createNode("matnet", "whole_matnet")
 
-        whole = self.model.saves_whole_network
+        whole = cop_nodes.saves_whole_network
         self.assertTrue(whole(geo))
         self.assertTrue(whole(cop))
         self.assertFalse(whole(empty), "an empty network has no interior")
@@ -420,10 +422,10 @@ class NodesSectionTest(unittest.TestCase):
         self.assertFalse(whole(geo.node("the_box")), "a leaf is not a network")
         self.assertFalse(whole(matnet), "materials are not this section's")
 
-        self.assertTrue(self.model.is_container(empty))     # a DROP TARGET is the looser half: an empty geo has no interior to save but is a fine place to land
-        self.assertTrue(self.model.is_container(geo))
-        self.assertFalse(self.model.is_container(light))
-        self.assertFalse(self.model.is_container(matnet))
+        self.assertTrue(cop_nodes.is_container(empty))     # a DROP TARGET is the looser half: an empty geo has no interior to save but is a fine place to land
+        self.assertTrue(cop_nodes.is_container(geo))
+        self.assertFalse(cop_nodes.is_container(light))
+        self.assertFalse(cop_nodes.is_container(matnet))
 
 
 class TheRenderDecisionHasOneHome(unittest.TestCase):
@@ -783,6 +785,54 @@ class ASavedBuilderTypeThisSessionLacks(unittest.TestCase):
         with self.assertRaises(hou.OperationFailed):
             self.handler.load_interface_other(self.mat, self.MISSING, "")
         self.assertEqual([], list(self.home.children()))
+
+
+class UpdatePreviewOnANodeTile(unittest.TestCase):
+    """Update Preview re-renders a Node tile from its saved context, or says it has no picture."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
+        cls.panel.prefs.render_on_import = 0
+
+    @classmethod
+    def tearDownClass(cls):
+        try:
+            test_support.stop_panel_workers(cls.panel)
+        except Exception:                                 # noqa: BLE001
+            pass
+
+    def _saved_tile(self, network, name):
+        """`network` saved as a Node asset: the asset, and its index in the Node grid."""
+        model = self.panel.cop_model
+        held = test_support.asset_ids(model)
+        node_actions.add_asset(model, network, "", "", False, name=name)
+        network.destroy()
+        asset, = test_support.arrived(model, held)
+        source = model.index(model.find_asset_row_by_id(asset.mat_id), 0)
+        index = self.panel.cop_sorted_model.mapFromSource(source)
+        if not index.isValid():
+            self.skipTest("the Node grid filters the probe out")
+        return asset, index
+
+    def test_a_sop_tile_is_rendered_again_from_its_context(self):
+        asset, index = self._saved_tile(_sop_network("preview_sop"), "preview_sop")
+        with mock.patch.object(thumbs.ThumbNailRenderer, "render_network_thumbnail",
+                               return_value=True) as rendered:
+            self.panel.sections["cop"].update_preview([index])
+        self.assertEqual([mock.call("SOP", str(asset.mat_id), mock.ANY)],
+                         rendered.call_args_list)
+
+    def test_a_context_with_no_picture_says_so(self):
+        lop = hou.node("/obj").createNode("lopnet", "preview_lop")
+        lop.createNode("sphere")
+        _asset, index = self._saved_tile(lop, "preview_lop")
+        with mock.patch.object(thumbs.ThumbNailRenderer, "render_network_thumbnail",
+                               return_value=None), \
+                mock.patch.object(node_actions.debug, "note") as said:
+            self.panel.sections["cop"].update_preview([index])
+        self.assertEqual(1, said.call_count)
+        self.assertIn("no picture to render", said.call_args.args[0])
 
 
 if __name__ == "__main__":

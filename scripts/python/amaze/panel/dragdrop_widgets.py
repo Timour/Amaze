@@ -3,10 +3,11 @@
 from PySide6 import QtWidgets, QtGui, QtCore
 import hou
 
-from amaze.core import cop_library, debug, file_library
+from amaze.core import debug, file_library
 from amaze.helpers import theme
 from amaze.helpers import ui_helpers
 from amaze.panel import sections
+from amaze.render import cop_nodes
 
 
 def _find_panel(widget: QtWidgets.QWidget):
@@ -413,7 +414,7 @@ class GridGestureMixin:
                 dragengine.ghost_clear()
                 return
             if getattr(rule, "context", "") and not \
-                    cop_library.accepts_context(pane_tab.pwd(),
+                    cop_nodes.accepts_context(pane_tab.pwd(),
                                                 rule.context):    # the network refuses this payload, so no outline promises a landing - the same declaration the release verb reads
                 dragengine.ghost_clear()
                 return

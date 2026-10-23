@@ -16,6 +16,7 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
+from amaze.actions import nodes as node_actions  # noqa: E402
 from amaze.dialogs import code_dialog, save_dialog  # noqa: E402
 from amaze.panel import sections  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
@@ -169,8 +170,8 @@ class TheChosenSectionIsWhereTheSaveLands(unittest.TestCase):
         self.assertEqual("VOP", asset.renderer)
         index = self.panel.cop_model.index(
             self.panel.cop_model.find_asset_row_by_id(asset.mat_id), 0)
-        ok, reason, created = self.panel.cop_model.import_asset_to_scene(
-            index, context_node=hou.node("/stage"))
+        ok, reason, created = node_actions.import_asset_to_scene(
+            self.panel.cop_model, index, context_node=hou.node("/stage"))
         for made in created:
             self.addCleanup(made.destroy)
         self.assertTrue(ok, reason)

@@ -14,6 +14,7 @@ import hou
 
 import amaze
 from amaze.actions import library as library_actions
+from amaze.actions import nodes as node_actions
 from amaze.core import grid_columns, grid_engine
 from amaze.panel import (dragdrop_widgets, empty_state, grid, notes_panel,
                          sections, sidebar)
@@ -47,7 +48,7 @@ from amaze.prefs import prefs
 from amaze.helpers import bytecode, hostos, theme, ui_helpers
 from amaze.utils import rc_calls
 from amaze.core import database, renderers, tile_icons, users
-from amaze.render import husk_job, nodes
+from amaze.render import cop_nodes, husk_job, nodes
 
 _DEV_RELOAD = bool(os.environ.get("AMAZE_DEV_RELOAD"))    # the reload chain below is OFF by default: it re-runs on every panel open to serve a reopen-to-refresh the live-test loop forbids anyway ▸r/module-reload
 
@@ -83,6 +84,7 @@ _reload(texstore)    # before nodes and library, which adopt and resolve through
 if _DEV_RELOAD and "amaze.preview" in sys.modules:
     sys.modules["amaze.preview"].reload_engine()    # the package reloads itself ▸r/package-reload
 _reload_loaded("amaze.render.material_converter")
+_reload(cop_nodes)    # before nodes, which builds Node assets with it
 _reload(nodes)
 _reload(husk_job)    # before thumbs, which submits to its queue
 _reload_loaded("amaze.render.thumbs")
@@ -108,6 +110,7 @@ _reload_loaded("amaze.actions.code")    # after helpers, which it calls; before 
 _reload(texture_library)
 _reload(gradient_library)
 _reload(cop_library)    # after library/category, so its subclasses bind to the freshly reloaded material classes
+_reload(node_actions)    # after nodes and cop_nodes, which it calls; before sections, which calls it
 _reload(geo_library)    # after texture_library, whose ThumbnailCache/proxy it reuses
 _reload(scene_captures)
 _reload(file_library)    # after texture/geo/hip: it composes all three engines
@@ -2677,8 +2680,8 @@ class AmazePanel(QtWidgets.QWidget):
                     self.thumblist.selectionModel()):
                 source_index = self.cop_sorted_model.mapToSource(index)
                 try:
-                    ok, reason, _created = self.cop_model.import_asset_to_scene(
-                        source_index)
+                    ok, reason, _created = node_actions.import_asset_to_scene(
+                        self.cop_model, source_index)
                 except Exception as e:
                     try:
                         name = self.cop_model.assets[source_index.row()].name
@@ -2811,7 +2814,7 @@ class AmazePanel(QtWidgets.QWidget):
         items = [i for i in hou.selectedItems() if i.parent() == net]
         if not any(i == node for i in items):
             items.append(node)
-        if len(items) == 1 and self.cop_model.saves_whole_network(node):    # container vs selection: a network container right-clicked ON ITS OWN (a geo, a copnet, a lopnet, a subnet) saves the WHOLE network, anything else saves the selection inside the network that holds it and is named after the clicked node - and a multi-selection wins over the container reading, two geos selected meaning those two nodes rather than one of their interiors
+        if len(items) == 1 and cop_nodes.saves_whole_network(node):    # a container alone saves its network
             items = None
 
         if dialog.categories:
@@ -2820,7 +2823,8 @@ class AmazePanel(QtWidgets.QWidget):
         result = None
         save_error = None    # NO LAYOUT WRAPPER around the add_asset below: it announces itself with begin/endInsertRows, and pairing the two segfaults H21 (research.md, measured 2026-08-04)
         try:
-            result = self.cop_model.add_asset(
+            result = node_actions.add_asset(
+                self.cop_model,
                 node,
                 dialog.categories,
                 dialog.tags,

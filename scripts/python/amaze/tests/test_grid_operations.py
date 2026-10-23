@@ -19,6 +19,7 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
+from amaze.actions import nodes as node_actions  # noqa: E402
 from amaze.core import library_policy, matx_import, tile_icons  # noqa: E402
 from amaze.dialogs import base_dialog, code_dialog  # noqa: E402
 from amaze.panel import sections  # noqa: E402
@@ -907,8 +908,8 @@ class CustomizeOffersTheOwningSectionsCategories(unittest.TestCase):
         self.addCleanup(lop.destroy)
         lop.createNode("sphere")
         held = test_support.asset_ids(self.model)
-        self.assertTrue(self.model.add_asset(lop, category, "", False,
-                                             name=name))
+        self.assertTrue(node_actions.add_asset(self.model, lop, category, "", False,
+                                               name=name))
         saved, = test_support.arrived(self.model, held)
         return self.model.find_asset_row_by_id(saved.mat_id)
 

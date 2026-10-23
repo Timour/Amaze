@@ -877,12 +877,12 @@ class BothRedshiftTerminalsAreLookedFor(unittest.TestCase):
                         yield name, handle.read()
 
     def test_no_source_compares_against_the_bare_literal(self):
-        from amaze.render import nodes
+        from amaze.core import material
         self.assertEqual(("redshift_material", "redshift_usd_material"),
-                         nodes.REDSHIFT_TERMINALS)
+                         material.REDSHIFT_TERMINALS)
         offenders = []
         for name, source in self._sources():
-            if name == "nodes.py":
+            if name == "material.py":
                 continue          # where the constant is defined
             for number, line in enumerate(source.splitlines(), 1):
                 if line.strip().startswith("#"):
@@ -1196,7 +1196,7 @@ class TheAfterSaveThumbnailIsOneBlock(unittest.TestCase):
         self.assertEqual(["update"], ran)
 
     def test_the_network_save_asks_the_one_context_helper(self):
-        """The Cop-or-Sop context read is CopLibrary.context_of; nodes.py hand-rolled the same guarded read beside it."""
+        """The Cop-or-Sop context read is `cop_nodes.context_of`, not a copy hand-rolled in nodes.py."""
         scopes = self._scopes_containing("childTypeCategory")
         self.assertNotIn(
             "save_node_cop", scopes,

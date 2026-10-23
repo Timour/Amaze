@@ -17,6 +17,7 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
+from amaze.actions import nodes as node_actions  # noqa: E402
 from amaze.core import category, file_library, locations  # noqa: E402
 from amaze.panel import sections  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
@@ -482,8 +483,8 @@ class _FourAssetSidebars:
             kinds = hou.copNodeTypeCategory().nodeTypes()
             net.createNode(next(kind for kind in ("constant", "ramp", "noise")
                                 if kind in kinds))
-            self.assertTrue(panel.cop_model.add_asset(net, name, "", False,
-                                                      name=name + " one"))
+            self.assertTrue(node_actions.add_asset(panel.cop_model, net, name, "", False,
+                                                   name=name + " one"))
         elif key == "code":
             self.assertTrue(panel.code_model.add_asset(
                 "x = 1", name + " one", "Python", name, "", False))

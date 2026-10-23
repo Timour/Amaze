@@ -17,8 +17,10 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
+from amaze.actions import nodes as node_actions  # noqa: E402
 from amaze.core import debug, dragengine  # noqa: E402
 from amaze.helpers import helpers  # noqa: E402
+from amaze.render import cop_nodes  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
 
@@ -74,7 +76,7 @@ class TheReleaseResolvesToTheNetworkUnderThePointer(_ReleaseCase):
 
     def setUp(self):
         super().setUp()
-        self.matcher = self.panel.cop_model.is_container
+        self.matcher = cop_nodes.is_container
 
     def test_empty_space_resolves_to_the_network_being_shown(self):
         """The plain case: blank canvas means the Network View's own network."""
@@ -141,8 +143,8 @@ class TheNodeDropLandsWhereItWasReleased(_ReleaseCase):
         """A real COP network registered in the panel's own library."""
         source = hou.node("/obj").createNode("copnet", "drop_source")
         source.createNode(_cop_node_type(), "the_pixel")
-        self.assertEqual("COP", self.panel.cop_model.add_asset(
-            source, "", "", False, name="dropped_network"))
+        self.assertEqual("COP", node_actions.add_asset(
+            self.panel.cop_model, source, "", "", False, name="dropped_network"))
         source.destroy()
         return self.panel.cop_sorted_model.mapFromSource(
             self.panel.cop_model.index(
@@ -212,16 +214,15 @@ class MaterialNetworkGateTest(unittest.TestCase):
         return idx
 
     def test_accepts_context_is_the_one_gate(self):
-        from amaze.core import cop_library
         matnet = hou.node("/obj").createNode("matnet")
         self.addCleanup(matnet.destroy)
         lopnet = hou.node("/obj").createNode("lopnet")
         self.addCleanup(lopnet.destroy)
         light = hou.node("/obj").createNode("hlight")
         self.addCleanup(light.destroy)
-        self.assertTrue(cop_library.accepts_context(matnet, "Vop"))
-        self.assertFalse(cop_library.accepts_context(lopnet, "Vop"))
-        self.assertFalse(cop_library.accepts_context(light, "Vop"),
+        self.assertTrue(cop_nodes.accepts_context(matnet, "Vop"))
+        self.assertFalse(cop_nodes.accepts_context(lopnet, "Vop"))
+        self.assertFalse(cop_nodes.accepts_context(light, "Vop"),
                          "a childless node must answer False, not raise")
 
     def test_a_wrong_network_release_creates_nothing(self):

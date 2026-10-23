@@ -1,10 +1,6 @@
 # The layer breaks that exist today. test_layers.py fails on any break not listed here,
 # and on any line here once its place is fixed, so the list only shrinks.
 # Written by test_layers.py --list; a line is added only when a break is accepted on purpose. ▸m/layer-plan
-core/cop_library.py imports render/nodes.py
-core/cop_library.py imports render/thumbs.py
-core/cop_library.py uses hou
-core/dragengine.py imports core/cop_library.py
 core/file_library.py imports core/scene_captures.py
 core/file_library.py imports render/thumbs.py
 core/file_library.py uses PySide6.QtWidgets
@@ -22,6 +18,5 @@ core/texstore.py uses hou
 core/tile_icons.py imports helpers/ui_helpers.py
 prefs/persistence.py imports panel/sections.py
 prefs/prefs.py imports core/file_library.py
-render/nodes.py imports core/cop_library.py
 render/nodes.py talks displayMessage x5
 render/thumbs.py talks displayMessage x3

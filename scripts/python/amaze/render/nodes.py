@@ -14,6 +14,7 @@ from amaze.core import texstore
 from amaze.prefs import prefs
 from amaze.core import debug
 from amaze.helpers import hostos
+from amaze.render import cop_nodes
 
 
 def make_karma_builder(parent: hou.Node, name: str) -> hou.Node:
@@ -125,8 +126,6 @@ def apply_node_color(node, color) -> None:
         pass
 
 
-REDSHIFT_TERMINALS = material.REDSHIFT_TERMINALS      # re-export; owned there
-
 OCTANE_BUILDER_MARK = "octane_material_builder"      # Octane's user data ▸r/octane-builder
 
 
@@ -157,7 +156,7 @@ def surface_terminal_wired(builder) -> bool:
         elif tname == "suboutput":
             inputs = child.inputs()
             return bool(inputs) and inputs[0] is not None
-        elif tname in REDSHIFT_TERMINALS:
+        elif tname in material.REDSHIFT_TERMINALS:
             return any(child.inputs())
     return False
 
@@ -1372,13 +1371,12 @@ class NodeHandler:
             try:
                 staging = staging_parent.createNode(net_type)
             except hou.Error:
-                from amaze.core import cop_library
                 category = ""
                 try:
                     category = containers[0].childTypeCategory().name()
                 except (AttributeError, hou.OperationFailed):
                     pass
-                net_type = cop_library.CopLibrary.CONTAINER_FOR.get(
+                net_type = cop_nodes.CONTAINER_FOR.get(
                     category, "copnet")
                 staging = staging_parent.createNode(net_type)
             for container in containers:
@@ -1572,12 +1570,11 @@ class NodeHandler:
         else:
             debug.event("save", "cop thumb source", source=None)
 
-        from amaze.core import cop_library
         self.after_save_thumbnail(
             update, "Network", asset_id, node.path(),
             lambda: thumbs.ThumbNailRenderer(
                 self._preferences).render_network_thumbnail(
-                    cop_library.CopLibrary.context_of(node, items),
+                    cop_nodes.context_of(node, items),
                     asset_id, self._cop_info.get("thumb_node", "")))
         return True
 
@@ -1606,11 +1603,10 @@ class NodeHandler:
         if not os.path.exists(file_name):
             return (False, debug.Damage(
                 '"%s": asset file is missing on disk.' % mat.name))
-        from amaze.core import cop_library
         context = str(getattr(mat, "renderer", "") or "").strip().title() \
             or "Cop"
         net_type = self.get_saved_node_type(mat) or \
-            cop_library.CopLibrary.CONTAINER_FOR.get(context, "copnet")
+            cop_nodes.CONTAINER_FOR.get(context, "copnet")
 
         dest = context_node
         if dest is None:
@@ -1655,7 +1651,7 @@ class NodeHandler:
 
         container = None
         if dest is not None:
-            build_type = cop_library.CopLibrary.container_type_in(
+            build_type = cop_nodes.container_type_in(
                 dest, context, net_type
             )
             if build_type is None:
@@ -1672,7 +1668,7 @@ class NodeHandler:
                 container = None
         if container is None:
             home = hou.node("/obj")
-            fallback = cop_library.CopLibrary.container_type_in(
+            fallback = cop_nodes.container_type_in(
                 home, context, net_type) or net_type
             try:
                 container = home.createNode(fallback)
@@ -1689,7 +1685,7 @@ class NodeHandler:
                 )
             except hou.OperationFailed:
                 pass
-            cop_library.CopLibrary.load_target_in(      # ▸r/hda-wrappers
+            cop_nodes.load_target_in(      # ▸r/hda-wrappers
                 container, context).loadItemsFromFile(file_name)
         except hou.LoadWarning as warning:    # BEFORE hou.Error below, same reason: the load succeeded, so destroying the container it filled throws away a rebuild that worked
             debug.event("import", "network load warning (non-fatal)",

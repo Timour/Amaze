@@ -12,7 +12,7 @@
 n = kwargs.get("node", None)
 if n is None:
     return False
-# Mirrors CopLibrary.ITEM_CONTEXTS: every context the Nodes section saves.
+# Mirrors render/cop_nodes.ITEM_CONTEXTS: every context the Nodes section saves.
 KINDS = ("Sop", "Cop", "Lop", "Dop", "Top", "Chop", "Object", "Vop")
 try:
     if n.type().category().name() in KINDS:

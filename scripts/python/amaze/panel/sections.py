@@ -10,12 +10,14 @@ from PySide6 import QtCore, QtWidgets
 
 from amaze import amazetheme
 from amaze.actions import code as code_actions
-from amaze.core import (category, cop_library, debug, file_library,
+from amaze.actions import nodes as node_actions
+from amaze.core import (category, debug, file_library,
                         grid_columns, locations, multifilterproxy_model, renderers,
                         scene_captures, notes)
 from amaze.helpers import hostos, ui_helpers
 from amaze import messages
 from amaze.panel import grid
+from amaze.render import cop_nodes
 from amaze.render import nodes as nodes_mod
 
 
@@ -697,7 +699,7 @@ class MaterialSection(AssetSection):
                     return bool(panel.assign_material_to_obj(ids, data))    # propagated, never a hard True: the call returns False when the picked object has no shop_materialpath, and success feedback for an assignment that did not happen is a lie
             return self.drop_takes_nothing()
         context = panel._drop_context_under_cursor("materiallibrary")
-        if context is None or not cop_library.accepts_context(
+        if context is None or not cop_nodes.accepts_context(
                 context, self.DROP.context):    # the wrong network is a strict MISS: nothing created anywhere, exactly as Houdini's own nodes refuse - the DECLARATION gates, shared with the live ghost
             debug.event("drag", "material release", target="miss",
                         context=context.path() if context else "")
@@ -833,7 +835,7 @@ class CopSection(AssetSection):
         if index is None or not index.isValid():
             return False    # a drag armed on EMPTY grid space arrives with an invalid index, and mapToSource() would return row -1, which Python-indexes to the LAST asset in the model
         context = panel._drop_context_under_cursor(
-            panel.cop_model.is_container)
+            cop_nodes.is_container)
         if context is None:
             return self.drop_takes_nothing()
         try:
@@ -841,8 +843,8 @@ class CopSection(AssetSection):
         except Exception:
             return False
         with dragengine.drop_group("Amaze Import COP Network"):
-            ok, reason, created = panel.cop_model.import_asset_to_scene(
-                source_index, context_node=context
+            ok, reason, created = node_actions.import_asset_to_scene(
+                panel.cop_model, source_index, context_node=context
             )
         if not ok and reason:
             debug.refuse(reason, net=context.path())    # the door marks library damage, which is what picks the dialog over the status line ▸p/refusal-sink
@@ -865,7 +867,7 @@ class CopSection(AssetSection):
     tile_badges = ("favourite", "comment")
     filter_tooltip = "Show setups saved from one context."
 
-    FILTER_CHOICES = (    # the contexts this section saves, spelled the way Houdini's own network tabs do; CopLibrary.SAVE_CONTEXTS is the same list in Houdini's capitalisation and the match is case-insensitive, so these can read as the user sees them on the node itself. An asset saved before the section learned about contexts carries an empty one and appears under All only - there is nothing truthful to file it under
+    FILTER_CHOICES = (    # the contexts cop_nodes.SAVE_CONTEXTS saves, spelled as Houdini's network tabs show them
         FilterEntry("SOP", "SOP", "Sop"),
         FilterEntry("COP", "COP", "Cop"),
         FilterEntry("LOP", "LOP", "Lop"),
@@ -880,7 +882,16 @@ class CopSection(AssetSection):
 
     def can_save(self, nodes) -> bool:
         return (bool(nodes) and len({n.parent() for n in nodes}) == 1
-                and cop_library.CopLibrary.can_save(nodes[0]))
+                and cop_nodes.can_save(nodes[0]))
+
+    def update_preview(self, indexes) -> None:
+        """Update Preview on Node tiles: each network's picture re-rendered by the Node verbs."""
+        st = self.stack()
+        if st is None:
+            return
+        rows = [s.row() for s in (st.proxy.mapToSource(i) for i in indexes) if s.isValid()]
+        if rows:
+            node_actions.render_thumbnails(st.model, rows)
 
     def save_categories(self) -> tuple:
         panel = self.panel

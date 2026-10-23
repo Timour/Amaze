@@ -585,6 +585,7 @@ class ModelRoleTest(unittest.TestCase):
                         "the badge cannot see the note")
 
     def test_asset_rows_answer_by_section_and_id(self):
+        from amaze.actions import nodes as node_actions
         from amaze.core import cop_library
         test_support.reset_database_singletons()
         prefs = test_support.fixture_prefs(self)
@@ -594,7 +595,7 @@ class ModelRoleTest(unittest.TestCase):
         self.addCleanup(lop.destroy)
         lop.createNode("sphere")
         held = test_support.asset_ids(model)
-        model.add_asset(lop, "", "", False, name="NoteMe")
+        node_actions.add_asset(model, lop, "", "", False, name="NoteMe")
         saved, = test_support.arrived(model, held)
         index = model.index(model.find_asset_row_by_id(saved.mat_id), 0)
         self.assertFalse(model.data(index, model.NotesRole))

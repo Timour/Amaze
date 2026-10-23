@@ -22,6 +22,7 @@ sys.path.insert(
         os.path.dirname(os.path.abspath(__file__)))))
 
 from amaze import amazetheme  # noqa: E402
+from amaze.actions import nodes as node_actions  # noqa: E402
 from amaze.core import cop_library, tile_icons  # noqa: E402
 from amaze.dialogs import icon_dialog  # noqa: E402
 from amaze.helpers import theme  # noqa: E402
@@ -103,7 +104,7 @@ class ChoiceTest(unittest.TestCase):
         lop = hou.node("/obj").createNode("lopnet", "icon_src")
         lop.createNode("sphere")
         held = test_support.asset_ids(self.model)
-        self.model.add_asset(lop, "", "", False, name="IconMe")
+        node_actions.add_asset(self.model, lop, "", "", False, name="IconMe")
         saved, = test_support.arrived(self.model, held)
         return self.model.find_asset_row_by_id(saved.mat_id)
 
@@ -231,7 +232,7 @@ class FaceChoiceTest(unittest.TestCase):
         network = hou.node("/obj").createNode(container, "face_src")
         network.createNode("sphere")
         held = test_support.asset_ids(self.model)
-        self.model.add_asset(network, "", "", False, name="FaceMe")
+        node_actions.add_asset(self.model, network, "", "", False, name="FaceMe")
         saved, = test_support.arrived(self.model, held)
         return self.model.find_asset_row_by_id(saved.mat_id)
 
