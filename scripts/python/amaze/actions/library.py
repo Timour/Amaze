@@ -1,10 +1,26 @@
 """Opening a library: the steps that need no panel. ▸archive/actions/library.py"""
 
+import json
 import os
 
 from amaze import messages
 from amaze.core import captures, database, debug, library_policy, locations
+from amaze.helpers import hostos
 from amaze.prefs import prefs as prefs_mod
+
+
+def index_unreadable(lib_dir: str) -> bool:
+    """A list on disk the library cannot load: it does not parse, or it is not shaped like one."""
+    if not lib_dir:
+        return False
+    try:
+        with open(os.path.join(lib_dir, "library.json"), "rb") as handle:
+            raw = handle.read()
+    except OSError:
+        return False    # a missing list is not an unreadable one
+    if not hostos.parses_as_json(raw):
+        return True
+    return bool(database.wrong_shape(json.loads(raw.decode("utf-8-sig"))))
 
 
 def newer_version(preferences) -> int:

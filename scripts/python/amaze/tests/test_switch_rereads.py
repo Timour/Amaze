@@ -9,6 +9,8 @@ from unittest import mock
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")   # BEFORE the app exists ▸p/first-app-picks-the-platform
 from PySide6 import QtWidgets  # noqa: E402
 
+import hou  # noqa: E402
+
 from amaze import messages
 from amaze.core import database, keyed_store, tile_icons
 from amaze.tests import test_support
@@ -280,7 +282,7 @@ class OneLibraryChangeIsOneSwitch(unittest.TestCase):
     def test_set_library(self):
         other = test_support.fresh_library(self)
 
-        def picked():
+        def picked(accept=None):
             self.panel.prefs.dir = other
             _write_settings(self.panel, directory=other)    # the save the fixture panel switches off
             return True
@@ -366,7 +368,7 @@ class EveryWayOntoALibraryTakesOneOrder(unittest.TestCase):
     def test_set_library(self):
         other = test_support.fresh_library(self)
 
-        def picked():
+        def picked(accept=None):
             self.panel.prefs.dir = other
             _write_settings(self.panel, directory=other)    # the save the fixture panel switches off
             return True
@@ -393,6 +395,68 @@ class EveryWayOntoALibraryTakesOneOrder(unittest.TestCase):
         del self.order[:]
         dialog.set_test_mode(True)
         self._assert_order("Test Library")
+
+
+class AnUnreadableListIsAskedAboutBeforeTheSwitch(unittest.TestCase):
+    """A library whose list will not read asks Repair or Cancel; Cancel keeps the open library."""
+
+    def setUp(self):
+        self.panel = test_support.fixture_panel(self)
+        self.broken = test_support.fresh_library(self)
+        index = os.path.join(self.broken, "library.json")
+        shutil.copyfile(index, index + ".bak-1")    # what Repair puts back
+        with open(index, "wb") as handle:
+            handle.write(b"{ this is not json")
+
+    def _answering(self, answer, action):
+        asked = []
+
+        def scripted(message, **kwargs):
+            asked.append((str(message), tuple(kwargs.get("buttons", ()))))
+            return answer
+
+        ui = mock.MagicMock()
+        ui.displayMessage.side_effect = scripted
+        ui.selectFile.return_value = self.broken
+        with mock.patch.object(hou, "ui", ui, create=True):
+            action()
+            QtWidgets.QApplication.processEvents()
+        return asked
+
+    def test_cancel_keeps_the_open_library_and_writes_nothing(self):
+        before = self.panel.prefs.dir
+        files = sorted(os.listdir(self.broken))
+        asked = self._answering(1, self.panel.set_library)
+        self.assertEqual([(messages.LIBRARY_INDEX_UNREADABLE_SWITCHING,
+                           messages.BUTTONS_REPAIR_OR_CANCEL)], asked)
+        self.assertEqual(before, self.panel.prefs.dir, "Cancel moved the Library Path")
+        self.assertEqual(before, self.panel._models_dir, "Cancel left the open library")
+        self.assertEqual(files, sorted(os.listdir(self.broken)), "Cancel wrote into the folder")
+
+    def test_repair_opens_the_picked_library(self):
+        self.panel.prefs.save = lambda *a, **k: _write_settings(
+            self.panel, directory=self.panel.prefs.real_dir)    # the save the fixture panel switches off
+        self._answering(0, self.panel.set_library)
+        self.assertEqual(os.path.normpath(self.broken),
+                         os.path.normpath(self.panel._models_dir),
+                         "Repair did not open the picked library")
+
+    def test_cancel_turns_test_library_back_off(self):
+        from amaze.dialogs import prefs_dialog
+        from amaze.prefs import prefs as prefs_mod
+        folder = test_support.scratch_dir("amaze_broken_test_lib_")
+        self.addCleanup(shutil.rmtree, folder, True)
+        prefs_mod.seed_test_folder(folder)
+        with open(os.path.join(prefs_mod.test_library_dir(folder), "library.json"), "wb") as handle:
+            handle.write(b"{ this is not json")
+        self.panel.prefs.test_dir = folder
+        before = self.panel.prefs.dir
+        dialog = prefs_dialog.PrefsDialog(self.panel.prefs, panel=self.panel)
+        self.addCleanup(dialog.deleteLater)
+        self._answering(1, lambda: dialog._cbx_test_mode.setChecked(True))
+        self.assertFalse(self.panel.prefs.test_mode, "Cancel left Test Library on")
+        self.assertFalse(dialog._cbx_test_mode.isChecked(), "the switch still shows Test Library on")
+        self.assertEqual(before, self.panel.prefs.dir, "Cancel left the open library")
 
 
 if __name__ == "__main__":

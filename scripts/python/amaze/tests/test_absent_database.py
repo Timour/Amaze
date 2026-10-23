@@ -83,7 +83,7 @@ def _until_idle(done) -> None:
             return
 
 
-class TheUnreadableIndexDialogTest(unittest.TestCase):  # sabotage: drop the narrow catch in the constructor and every case here dies on the raw ValueError
+class TheUnreadableIndexDialogTest(unittest.TestCase):  # sabotage: drop `_build`'s index check and it asks mid-build
     """An unparseable library.json at panel open gets ONE dialog, never a traceback."""
 
     def _panel_over_broken_index(self, answer):

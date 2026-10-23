@@ -273,7 +273,7 @@ class EveryWayIntoAnEmptyFolderReadiesIt(unittest.TestCase):
     def test_set_library(self):
         from unittest import mock
 
-        def picked():
+        def picked(accept=None):
             self.panel.prefs.dir = self.empty
             return True
 

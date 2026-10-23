@@ -1192,8 +1192,9 @@ class PrefsDialog(base_dialog.AssetDialog):
         debug.event("prefs", "test library switched",
                     on=self._prefs.test_mode, folder=self._prefs.test_dir,
                     library=self._prefs.dir)
-        if self._panel is not None:
-            self._panel.open_library()    # the one sequence every way onto a library takes
+        if self._panel is not None and not self._panel.open_library():
+            _show_quietly(self._cbx_test_mode, self._prefs.test_mode)    # a Cancel put it back
+            self._sync_test_mode_rows()
         self._sync_rows()
 
     _SHARED_ROWS = (    # (row attribute, the shared setting it shows); renderer switches ride beside

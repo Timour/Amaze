@@ -152,8 +152,8 @@ class Prefs(_Persistence):
         self._addon_betas = False  # Check for Updates on the Add-On tab takes each add-on's newest beta
         self._users_blocks: dict = {}  # uid -> the keys that are one user's on THIS machine
 
-    def get_dir_from_user(self) -> bool:
-        """Get Directory from User and write into prefs"""
+    def get_dir_from_user(self, accept=None) -> bool:
+        """A library folder from the user, saved; `accept(folder)` can decline a pick before it is used."""
         try:  # the package's ONE module-scope `import hou` lived at the top of this file and welded the whole test harness to Houdini through it; this method is the only hou user, and `hou = None` walks the same no-picker path as a UI-less hython ▸p/prefs-hou-choke
             import hou
         except ImportError:
@@ -167,8 +167,11 @@ class Prefs(_Persistence):
                                      title="Choose a folder for your Amaze library")
                 if path == "":  # Canceled
                     return False
-                if not can_hold_a_library(hou.text.expandString(path)):
+                picked = hou.text.expandString(path)
+                if not can_hold_a_library(picked):
                     continue    # asked again, and the picked folder is never touched
+                if accept is not None and not accept(picked):
+                    return False    # declined: nothing is written to the folder or the settings
                 self.dir = hou.text.expandString(path)  # through the SETTER, so meeting the picked library adopts its shared settings before the save below; the chooser hands back the `$HOME/...` spelling, which is what makes a path portable, so it expands here
             if can_hold_a_library(self._directory):
                 debug.event("session", "library set", dir=self._directory)

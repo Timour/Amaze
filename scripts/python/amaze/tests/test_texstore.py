@@ -305,7 +305,7 @@ class EverySwitchPublishesTheVariable(unittest.TestCase):
     def test_set_library(self):
         other = test_support.fresh_library(self)
 
-        def picked():
+        def picked(accept=None):
             self.panel.prefs.dir = other
             self._write_settings(directory=other)    # the save the fixture panel switches off
             return True

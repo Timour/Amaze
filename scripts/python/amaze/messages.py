@@ -102,6 +102,12 @@ REPAIR_COULD_NOT_FIX_THE_LIST = 'Repair was unable to restore the index: %s.\n\n
 
 INDEX_UNREADABLE_AFTER_REPAIR = 'The repaired index still could not be read.\n\nAmaze will open without a library. For more details, use the Repair tool on the Amaze shelf.'
 
+LIBRARY_INDEX_UNREADABLE_SWITCHING = "The library index could not be read.\n\nRepair will restore the most recent backup. If no backup is available, the index will be rebuilt from each asset's embedded metadata. Category names are preserved, but their order and colors may change during a rebuild. The corrupted file is retained as a backup in either case.\n\nCancel leaves the folder unchanged and keeps the library you have open."
+
+REPAIR_COULD_NOT_FIX_THE_LIST_SWITCHING = 'Repair was unable to restore the index: %s.\n\nAmaze keeps the library you have open. For more details, use the Repair tool on the Amaze shelf.'
+
+INDEX_UNREADABLE_AFTER_REPAIR_SWITCHING = 'The repaired index still could not be read.\n\nAmaze keeps the library you have open. For more details, use the Repair tool on the Amaze shelf.'
+
 STARTER_SEED_REFUSED_DIRECTORY_HELD_LIBRARY = 'This folder looks like a library whose list has not arrived yet, so Amaze did not set up a new one over it.\n\nIf it lives in a synced folder, let the sync finish and reopen Amaze. If the list really is gone, run Repair Library from the Amaze shelf to rebuild it.'
 
 NO_FOLDER_SELECTED_TO_RELOCATE = 'Select the registered folder to re-point first ("All" is not a real folder).'
@@ -240,6 +246,8 @@ BUTTONS_MOVE_ASIDE = ('Move Them Aside', 'Cancel')
 BUTTONS_ADD_BACK = ('Add Them Back', 'Cancel')
 
 BUTTONS_REPAIR_OR_OPEN_WITHOUT = ('Repair', 'Open Without Library')
+
+BUTTONS_REPAIR_OR_CANCEL = ('Repair', 'Cancel')
 
 BUTTONS_IMPORT = ('Import', 'Cancel')
 

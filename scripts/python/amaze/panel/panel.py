@@ -177,22 +177,11 @@ class AmazePanel(QtWidgets.QWidget):
         hostos.set_cache_override(self.prefs.cache_dir)    # custom thumbnail-cache location, set before any cache is touched - everything downstream resolves hostos.cache_root()
         if loaded:
             self.init_ui()
-            try:
+            if library_actions.index_unreadable(self.prefs.dir):
+                self._defer_open_library()
+                opened = False    # the pane opens without a library, and the question follows
+            else:
                 opened = self.open_library()
-            except (ValueError, OSError) as broken:    # AN UNREADABLE INDEX GETS A DIALOG, NOT A TRACEBACK: this narrow catch absorbs exactly one situation - the primary index is on disk and will not parse - and offers the repair the shelf tool would run. Everything else still raises where it can be seen
-                index_path = os.path.join(self.prefs.dir or "",
-                                          "library.json")
-                try:
-                    with open(index_path, "rb") as index_file:
-                        index_bytes = index_file.read()
-                except OSError:
-                    index_bytes = b""
-                if (self.prefs.dir and os.path.isfile(index_path)
-                        and not hostos.parses_as_json(index_bytes)):
-                    self._defer_index_repair(broken)
-                    opened = False    # the pane opens without a library, and the offer follows
-                else:
-                    raise
             if not opened:
                 self._open_libraryless()
                 return
@@ -220,52 +209,51 @@ class AmazePanel(QtWidgets.QWidget):
         self.matx_online_model = None    # setup() builds the online world; its door refuses without it
         self._sync_online_chip()
 
-    def _defer_index_repair(self, broken) -> None:
-        """Ask about the unreadable list once Qt is idle. ▸r/modal-in-pane-build"""
-        timer = self._index_repair_timer = QtCore.QTimer(self)    # owned, so it dies with the panel
+    def _defer_open_library(self) -> None:
+        """Open the library once Qt is idle, where its question draws. ▸r/modal-in-pane-build"""
+        timer = self._open_library_timer = QtCore.QTimer(self)    # owned, so it dies with the panel
         timer.setSingleShot(True)
         timer.setInterval(0)
-        timer.timeout.connect(lambda: self._offer_index_repair(broken))
+        timer.timeout.connect(self.open_library)
         timer.start()
 
-    def _offer_index_repair(self, broken) -> bool:
-        """The dialog an unreadable library.json earns - Repair (the newest saved copy, else the per-asset recovery stamps) or open without a library. True = repaired AND reopened; no success dialog, the recovered grid is the announcement"""
+    def _repaired(self, folder: str) -> bool:
+        """Ask about the list in `folder` that will not read; True once Repair put a readable one back."""
         from amaze.core import repair
-        debug.exception("library index unreadable at open", broken)
+        switching = getattr(self, "material_model", None) is not None    # a library is open
+        debug.event("session", "library index unreadable", dir=folder, switching=switching)
         ui = getattr(hou, "ui", None)
         if ui is None:
             return False
         choice = ui.displayMessage(
-            messages.LIBRARY_INDEX_UNREADABLE,
-            buttons=messages.BUTTONS_REPAIR_OR_OPEN_WITHOUT,
+            messages.LIBRARY_INDEX_UNREADABLE_SWITCHING if switching
+            else messages.LIBRARY_INDEX_UNREADABLE,
+            buttons=messages.BUTTONS_REPAIR_OR_CANCEL if switching
+            else messages.BUTTONS_REPAIR_OR_OPEN_WITHOUT,
             severity=hou.severityType.Warning,
             default_choice=0, close_choice=1,
             title=messages.TITLE_AMAZE)
         if choice != 0:
             debug.event("session", "index repair declined")
             return False
-        ok, how = repair.repair_index(self.prefs.dir,
-                                      self.prefs.asset_dir)
+        ok, how = repair.repair_index(folder, self.prefs.asset_dir)
         if not ok:
             ui.displayMessage(
-                messages.REPAIR_COULD_NOT_FIX_THE_LIST % how,
+                messages.REPAIR_COULD_NOT_FIX_THE_LIST_SWITCHING % how if switching
+                else messages.REPAIR_COULD_NOT_FIX_THE_LIST % how,
                 severity=hou.severityType.Warning,
                 title=messages.TITLE_AMAZE)
             return False
-        try:
-            opened = self.open_library()
-        except (ValueError, OSError) as still:
-            debug.exception("index still unreadable after repair",
-                            still)
+        if library_actions.index_unreadable(folder):
+            debug.event("session", "index still unreadable after repair", dir=folder)
             ui.displayMessage(
-                messages.INDEX_UNREADABLE_AFTER_REPAIR,
+                messages.INDEX_UNREADABLE_AFTER_REPAIR_SWITCHING if switching
+                else messages.INDEX_UNREADABLE_AFTER_REPAIR,
                 severity=hou.severityType.Warning,
                 title=messages.TITLE_AMAZE)
-            return False
-        if not opened:
             return False
         ui.setStatusMessage("Amaze: %s." % how)
-        debug.event("session", "index repaired at open", how=how)
+        debug.event("session", "index repaired", how=how, dir=folder)
         return True
 
     MENU_ICON_FILES = {    # menu title -> icon asset, each with a baked-in corner triangle as the "opens a menu" hint. The EYE belongs on the Filter menu, which is what you can see, and the 3D box on the View menu, whose items are the library and the material sources. The gear (icon_library.svg) is NOT here: it is a plain ACTION button straight into Preferences, its triangle removed from the SVG, and the Library menu's items live on the Preferences Library tab
@@ -308,7 +296,7 @@ class AmazePanel(QtWidgets.QWidget):
     def setup(self):
         for attr, model in model_registry.models_for(self.prefs).items():
             setattr(self, attr, model)    # SHARED with every other panel on this library; only the proxies, selections and delegates below are this panel's own
-        self._models_dir = self.prefs.dir    # the folder these models serve; closing Preferences compares against it
+        self._note_models_library()
 
         self.category_sorted_model = self._sidebar_proxy(self.category_model)
         self.material_sorted_model, self.material_selection_model = self._grid_proxy(
@@ -456,14 +444,21 @@ class AmazePanel(QtWidgets.QWidget):
 
     def set_library(self) -> None:
         """User Sets library via Menu Option so we have to reroute"""
-        if self.prefs.get_dir_from_user():
+        if self.prefs.get_dir_from_user(accept=self._takes_library):
             self.prefs.load()
             self.open_library()
 
+    def _takes_library(self, folder: str) -> bool:
+        """A picked folder is taken once its list reads: Repair first, or nothing is written to it."""
+        return not library_actions.index_unreadable(folder) or self._repaired(folder)
+
     def open_library(self) -> bool:
-        """Every way onto a library, in one order; False when a newer Amaze's library stays closed."""
+        """Every way onto a library, in one order; False when it stays closed."""
         if self._library_too_new():
             return False    # the models stay on the library they serve
+        if (library_actions.index_unreadable(self.prefs.dir)
+                and not self._repaired(self.prefs.dir)):
+            return self._stay_closed()
         library_actions.prepare(self.prefs)
         if getattr(self, "material_model", None) is None:
             self.setup()    # the libraryless shape has no models to switch
@@ -473,6 +468,22 @@ class AmazePanel(QtWidgets.QWidget):
         self._update_library()    # before any tile paints
         self._seed_curated_content()    # once per library, marker-guarded
         return True
+
+    def _stay_closed(self) -> bool:
+        """False; an open library is kept, and its Library Path and Test Library are put back."""
+        if getattr(self, "material_model", None) is not None:
+            real, test_mode, test_dir = self._models_pointers
+            self.prefs.test_dir = test_dir
+            self.prefs.dir = real
+            self.prefs.test_mode = test_mode    # last, so the shared settings adopted are that library's
+            self.prefs.save()
+            debug.event("session", "library kept", dir=self.prefs.dir)
+        return False
+
+    def _note_models_library(self) -> None:
+        """The library the models now serve, for closing Preferences and for a Cancel."""
+        self._models_dir = self.prefs.dir
+        self._models_pointers = (self.prefs.real_dir, self.prefs.test_mode, self.prefs.test_dir)
 
     def library_models(self) -> tuple:
         """EVERY library-backed model that exists right now, DERIVED from the sections the way `tile_delegates()` derives - each section declares its own in `library_model_attrs`, so a section arriving with a model of its own joins by existing"""
@@ -498,7 +509,7 @@ class AmazePanel(QtWidgets.QWidget):
                 m.switch_model_data()
             model_registry.rebind(self.prefs, self.material_model)    # the shared set now serves another tree, so it is re-filed under it - left under the old key, the next panel opened there is handed this library's rows
             self.click_slider.setValue(grid.active_thumbsize(self))
-        self._models_dir = self.prefs.dir    # so closing Preferences does not switch onto it a second time
+        self._note_models_library()
         debug.event("session", "library switched", dir=self._models_dir)
         section = self._section()
         if section is not None:

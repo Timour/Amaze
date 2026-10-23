@@ -421,7 +421,7 @@ class ALibrarySwitchLeavesTheNoteWhereItWasTyped(unittest.TestCase):
         with open(settings, "w", encoding="utf-8") as handle:
             json.dump(data, handle)
 
-        def picked():
+        def picked(accept=None):
             self.panel.prefs.dir = other
             return True
 
