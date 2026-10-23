@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.10.24
+
+- Two users in one library can no longer have the same name; Preferences says so when you try.
+
 ## 1.10.23
 
 - Picking a library whose index has not arrived yet now says so every time, and leaves the folder untouched.
