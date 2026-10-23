@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.10.22
+
+- A Library Path whose library list is missing opens the pane without a library instead of an error; switching to one keeps the library you have open.
+
 ## 1.10.21
 
 - A library whose index cannot be read now asks Repair or Cancel when you switch to it; Cancel leaves the folder unchanged and keeps the library you have open.
