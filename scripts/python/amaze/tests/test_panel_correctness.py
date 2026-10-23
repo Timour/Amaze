@@ -633,7 +633,7 @@ class OneProgressBarOwnerPerThingShown(unittest.TestCase):
             "over the ONLINE grid, shifting every tile down and up")
 
     def test_the_geometry_pass_does_not_hide_a_running_conversion(self):
-        source = func_source("core/file_library.py", "_render_geo_misses")
+        source = func_source("actions/files.py", "render_geo_misses")
         self.assertIn(
             "_progress_keys", source,
             "the geometry pass emits its terminal (0, 0) unconditionally, "

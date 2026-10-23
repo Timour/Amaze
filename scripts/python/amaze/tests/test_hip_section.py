@@ -18,7 +18,8 @@ from PySide6 import QtWidgets  # noqa: E402
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 import hou  # noqa: E402,F401
-from amaze.core import captures, file_library, scene_captures, thumbnails  # noqa: E402
+from amaze.actions import files as files_actions  # noqa: E402
+from amaze.core import captures, file_library, locations, scene_captures, scene_files, thumbnails  # noqa: E402
 from amaze.helpers import hostos, ui_helpers  # noqa: E402
 from amaze.panel import sections  # noqa: E402
 from amaze.tests import test_support  # noqa: E402,F401
@@ -74,7 +75,7 @@ class ExtensionsAreOneTypeTest(unittest.TestCase):
                             ("b.bgeo", False), ("c.usd", False), ("d.hip.bak", False),
                             ("e.txt", False), ("notahip", False)):
             with self.subTest(name=name):
-                self.assertEqual(scene, bool(scene_captures.matched_extension(name)))
+                self.assertEqual(scene, bool(scene_files.matched_extension(name)))
 
     def test_the_listing_shows_all_three_flavours(self):
         """All three scene extensions are ONE kind - and since the merge the listing shows every file, so the geometry decoy is a row too, just not a scene row."""
@@ -87,7 +88,7 @@ class ExtensionsAreOneTypeTest(unittest.TestCase):
                          "the File section no longer lists every file")
         kinds = [model.data(model.index(i, 0), model.KindRole)
                  for i in range(model.rowCount())]
-        self.assertEqual(3, kinds.count(file_library.KIND_HIP),
+        self.assertEqual(3, kinds.count(locations.KIND_HIP),
                          "the section did not treat all three scene "
                          "extensions as one type")
 
@@ -710,6 +711,7 @@ class OpenSceneBadgeTest(unittest.TestCase):
         self.a = self.tmp.touch("a.hiplc")
         self.b = self.tmp.touch("b.hiplc")
         self.model = file_library.FileFiles(_Prefs([self.tmp.dir]))
+        files_actions.connect(self.model, file_library.FileFolders(self.model.preferences))    # as the panel does
         self.model.set_folder(self.tmp.dir)
         real = scene_captures.current_scene_path
         self.addCleanup(setattr, scene_captures, "current_scene_path", real)
@@ -1951,7 +1953,7 @@ class CaptureFromTheMenuTest(unittest.TestCase):
                                  "one capture was offered for two tiles")
 
     def test_a_scene_is_captured_only_while_it_is_the_open_one(self):
-        rows = self._rows_of_kind(file_library.KIND_HIP)
+        rows = self._rows_of_kind(locations.KIND_HIP)
         context, chosen = self._select("file", rows[:1])
         path = chosen[0].data(self.panel.file_files_model.PathRole)
         self._patch(scene_captures, "current_scene_path", lambda: "")
@@ -1961,7 +1963,7 @@ class CaptureFromTheMenuTest(unittest.TestCase):
         self.assertTrue(context.menu_capture_enabled(chosen, chosen[0]))
 
     def test_any_other_file_takes_a_capture(self):
-        rows = self._rows_of_kind(file_library.KIND_IMAGE)
+        rows = self._rows_of_kind(locations.KIND_IMAGE)
         context, chosen = self._select("file", rows[:1])
         self.assertTrue(context.menu_capture_enabled(chosen, chosen[0]))
 

@@ -19,7 +19,7 @@ sys.path.insert(
         os.path.dirname(os.path.abspath(__file__)))))
 
 from amaze import messages  # noqa: E402
-from amaze.core import debug  # noqa: E402
+from amaze.core import debug, locations  # noqa: E402
 from amaze.panel import dragdrop_widgets  # noqa: E402
 from amaze.tests import test_support  # noqa: E402,F401 - import redirects the debug log
 
@@ -356,7 +356,7 @@ class ADropOnAWireIsOneUndoStep(unittest.TestCase):
         roles = {
             file_library.FileFiles.PathRole: os.path.join(
                 test_support.FILES_FIXTURE_DIR, "cube.bgeo"),
-            file_library.FileFiles.KindRole: file_library.KIND_GEO,
+            file_library.FileFiles.KindRole: locations.KIND_GEO,
         }
         self.view._dragging = True
         self.view._drag_panel = self.panel
@@ -421,7 +421,7 @@ class FileRowsReleaseOnNodes(unittest.TestCase):
     def test_a_node_that_takes_nothing_is_a_MISS_for_geometry_too(self):
         """ONE rule on nodes - a refused hand-over does not quietly become an import beside the node."""
         from amaze.core import file_library
-        h = _Harness(self, section="file", kind=file_library.KIND_GEO)
+        h = _Harness(self, section="file", kind=locations.KIND_GEO)
         h.panel._node = object()
         h.panel._file_path_outcome = False
         self._drag(h)
@@ -487,10 +487,10 @@ class TheBehaviourTableCells(unittest.TestCase):
     def _kind(self, name):
         from amaze.core import file_library
         return {
-            "image": file_library.KIND_IMAGE,
-            "geo": file_library.KIND_GEO,
-            "hip": file_library.KIND_HIP,
-            "other": file_library.KIND_OTHER,
+            "image": locations.KIND_IMAGE,
+            "geo": locations.KIND_GEO,
+            "hip": locations.KIND_HIP,
+            "other": locations.KIND_OTHER,
         }[name]
 
     def _released(self, section, kind, aim):
@@ -614,7 +614,7 @@ class TheParameterPaneHandOff(unittest.TestCase):
 
     def test_a_file_gesture_over_a_parm_pane_promotes(self):
         from amaze.core import file_library
-        h = self._armed("file", file_library.KIND_IMAGE)
+        h = self._armed("file", locations.KIND_IMAGE)
         start = h.item_pos()
         ran = self._with_parm_pane_under_cursor(
             h, QtCore.QPoint(start.x() + 90, start.y() + 90))

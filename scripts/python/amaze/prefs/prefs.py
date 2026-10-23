@@ -351,10 +351,10 @@ class Prefs(_Persistence):
         self._file_folders = [str(p) for p in (order or [])]
 
     def add_file_folder(self, path: str) -> None:
-        from amaze.core import file_library, locations
+        from amaze.core import locations
         landed = locations.register(self, path)
         if landed and locations.record(self, path).get("kinds") is None:    # new: Show ▸'s defaults
-            self.set_file_folder_kinds(path, file_library.SHOWN_BY_DEFAULT)
+            self.set_file_folder_kinds(path, locations.SHOWN_BY_DEFAULT)
 
     def remove_file_folder(self, path: str) -> None:
         from amaze.core import locations
@@ -433,7 +433,7 @@ class Prefs(_Persistence):
             path, "show_all", None if value is None else bool(value))
 
     def set_file_folder_kinds(self, path: str, kinds) -> None:
-        """The file kinds Show ▸ lists for one location, as `file_library`'s KIND_* values."""
+        """The file kinds Show ▸ lists for one location, as `locations`' KIND_* values."""
         self._set_location_field(path, "kinds", sorted(set(kinds)))
 
     def set_file_folder_pathname(self, path: str, on: bool) -> None:

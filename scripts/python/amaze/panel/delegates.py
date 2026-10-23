@@ -89,6 +89,34 @@ def show_item_words(event, view, index) -> bool:
     return True
 
 
+def os_file_icon(path: str, side: int) -> QtGui.QImage:
+    """The system's icon for `path`'s file type, centred on a transparent `side` square; never empty."""
+    provider = QtWidgets.QFileIconProvider()
+    icon = provider.icon(QtCore.QFileInfo(path))
+    target = side // 2
+    pixmap = icon.pixmap(target, target)
+    if pixmap.isNull():
+        style = QtWidgets.QApplication.style()
+        if style is not None:
+            pixmap = style.standardIcon(
+                QtWidgets.QStyle.StandardPixmap.SP_FileIcon
+            ).pixmap(target, target)
+    image = QtGui.QImage(
+        side, side,
+        QtGui.QImage.Format.Format_ARGB32_Premultiplied)
+    image.fill(QtCore.Qt.GlobalColor.transparent)
+    if not pixmap.isNull():
+        drawn = min(target, pixmap.width() * 2)    # a small native icon upscales at most 2x
+        painter = QtGui.QPainter(image)
+        painter.setRenderHint(
+            QtGui.QPainter.RenderHint.SmoothPixmapTransform)
+        offset = (side - drawn) // 2
+        painter.drawPixmap(
+            QtCore.QRect(offset, offset, drawn, drawn), pixmap)
+        painter.end()
+    return image
+
+
 class GridCellDelegate(QtWidgets.QStyledItemDelegate):
     """Every cell of the Grid's TABLE, and deliberately nothing else: the panel applies `hou.qt.styleSheet()` to its own root and every child inherits Houdini's item rules, so the table wears the host's selection band rather than a second opinion about it. ▸r/pluto-theme"""
 

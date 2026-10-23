@@ -395,9 +395,10 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
     def test_every_render_scratch_is_named_through_its_helper(self):
         """SOURCE-DERIVED: a capture needs a live viewer, so the call sites are read. ▸p/testing-can-fail"""
         import inspect
-        from amaze.core import file_library, scene_captures
+        from amaze.actions import files as files_actions
+        from amaze.core import scene_captures
 
-        geo = inspect.getsource(file_library.FileFiles._render_geo_misses)
+        geo = inspect.getsource(files_actions.render_geo_misses)
         capture = inspect.getsource(scene_captures._capture_scratch)
         for where, source in (("the geometry pass", geo),
                               ("the scene capture", capture)):

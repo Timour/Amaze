@@ -3,8 +3,8 @@
 from PySide6 import QtWidgets, QtGui, QtCore
 import hou
 
-from amaze.core import debug, file_library
-from amaze.helpers import theme
+from amaze.core import debug
+from amaze.helpers import helpers, theme
 from amaze.helpers import ui_helpers
 from amaze.panel import sections
 from amaze.render import cop_nodes
@@ -293,7 +293,7 @@ class GridGestureMixin:
     def _file_drag_mime(panel, path: str) -> QtCore.QMimeData:
         """One mime for a file-path drag: the spelled TEXT and NOTHING else. NEVER add the URL flavour - Houdini reads a file URL as an open-this handle, so a release outside a field offered to CLEAR THE SCENE, and inside one it won over the text and filled an absolute path while Write Paths As said $HOME."""
         mime_data = QtCore.QMimeData()
-        mime_data.setText(file_library.houdini_path(
+        mime_data.setText(helpers.houdini_path(
             path, getattr(panel.prefs, "path_style", "home")))
         return mime_data
 

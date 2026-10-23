@@ -9,15 +9,7 @@ from amaze.core import captures
 from amaze.core import debug
 from amaze.helpers import hostos
 
-HIP_EXTENSIONS = (".hiplc", ".hipnc", ".hip")  # every Houdini scene extension is ONE file type - a mixed library must not sort them into different sections or show one and hide the other
-
 MAX_THUMB_EDGE = 1024  # the captured image's long edge - a 4K viewport would otherwise write a multi-megabyte PNG per scene, and these are tiles
-
-
-def matched_extension(name: str) -> str:
-    """The HIP_EXTENSIONS entry the filename ends with, or ''."""
-    return hostos.matched_extension(name, HIP_EXTENSIONS)
-
 
 
 def _key(path: str) -> str:

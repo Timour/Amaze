@@ -5,6 +5,29 @@ import re
 
 import hou
 
+from amaze.helpers import hostos
+
+PATH_STYLES = ("absolute", "hip", "job", "home")  # Write Paths As: one variable or absolute; home by default
+_STYLE_VARS = {"hip": "$HIP", "job": "$JOB", "home": "$HOME"}
+
+
+def houdini_path(path: str, style: str = "home") -> str:
+    """`path` written as Houdini writes it, under `style`'s variable; the absolute path otherwise."""
+    path = hostos.canonical_path_key(path or "")
+    if not path or style == "absolute":
+        return path
+    var = _STYLE_VARS.get(style, "$HOME")
+    try:
+        expanded = hostos.canonical_path_key(hou.text.expandString(var))
+    except Exception:                                    # noqa: BLE001
+        return path
+    if not expanded or expanded in ("/", "."):
+        return path
+    prefix = expanded.rstrip("/") + "/"
+    if path.startswith(prefix):
+        return var + "/" + path[len(prefix):]
+    return path
+
 
 def node_pattern_match(pattern: str, name: str) -> bool:
     """Houdini node-pattern match (`*`, `mat_*`) for matnode-style parm values - hou.text.patternMatch, with the pre-hou.text fallback."""

@@ -21,10 +21,12 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
+from amaze.actions import files as files_actions  # noqa: E402
 from amaze.core import file_library  # noqa: E402
 from amaze.core import locations as locations_mod  # noqa: E402
 from amaze.core import tile_icons  # noqa: E402
-from amaze.helpers import hostos  # noqa: E402
+from amaze.helpers import helpers, hostos  # noqa: E402
+from amaze.panel import delegates  # noqa: E402
 from amaze.prefs import prefs as prefs_module  # noqa: E402
 from amaze.tests import test_support  # noqa: E402,F401 - redirects the log
 
@@ -953,7 +955,7 @@ class CreationRuleTest(unittest.TestCase):
         loader.setSelected(True)
         self._with_view_networks([sop])
         path = self._home() + "/models/amaze_click.obj"
-        roles = {file_library.FileFiles.KindRole: file_library.KIND_GEO,
+        roles = {file_library.FileFiles.KindRole: locations_mod.KIND_GEO,
                  file_library.FileFiles.PathRole: path}
         index = types.SimpleNamespace(
             data=lambda role: roles.get(role, path),
@@ -994,7 +996,7 @@ class CreationRuleTest(unittest.TestCase):
         self.panel.click_on_row(
             self.panel.sections["file"],
             self._index_for(home + "/textures/amaze_dbl.png",
-                            kind=file_library.KIND_IMAGE))
+                            kind=locations_mod.KIND_IMAGE))
         children = net.children()
         self.assertEqual(1, len(children),
                          "the empty-selection double-click did not "
@@ -1031,20 +1033,20 @@ class HoudiniPathTest(unittest.TestCase):
         """The default pins $HOME: a path under $HIP still says $HOME/... unless chosen otherwise."""
         self.assertEqual(
             "/mnt/somewhere/else.txt",
-            file_library.houdini_path("/mnt/somewhere/else.txt"))
+            helpers.houdini_path("/mnt/somewhere/else.txt"))
         home = hou.expandString("$HOME").replace("\\", "/").rstrip("/")
         if not home or home in ("/", "."):
             self.skipTest("no $HOME in this session")
         self.assertEqual(
             "$HOME/textures/wood.png",
-            file_library.houdini_path(home + "/textures/wood.png"))
+            helpers.houdini_path(home + "/textures/wood.png"))
         self.assertEqual(
             home + "/x.png",
-            file_library.houdini_path(home + "/x.png", "absolute"),
+            helpers.houdini_path(home + "/x.png", "absolute"),
             "the absolute style collapsed")
         self.addCleanup(hou.putenv, "HIP", hou.text.expandString("$HIP"))
         hou.putenv("HIP", home + "/amaze_hip")    # its own $HIP: hython's is wherever the suite started
-        collapsed = file_library.houdini_path(home + "/amaze_hip/render.exr")
+        collapsed = helpers.houdini_path(home + "/amaze_hip/render.exr")
         self.assertTrue(collapsed.startswith("$HOME/"),
                         "the default style is not $HOME: %r" % collapsed)
 
@@ -1351,6 +1353,8 @@ class OsIconTest(unittest.TestCase):
             with open(os.path.join(tmp, name), "w") as handle:
                 handle.write("x")
         model = file_library.FileFiles(_Prefs([tmp]))
+        files_actions.connect(model, file_library.FileFolders(model.preferences),
+                              os_icon=delegates.os_file_icon)    # as the panel does
         model.set_folder(tmp)
         return model
 
@@ -2757,8 +2761,8 @@ class ShowTicksTest(unittest.TestCase):
         return names
 
     def test_each_combination_lists_exactly_its_kinds(self):
-        image, geo, hip, other = (file_library.KIND_IMAGE, file_library.KIND_GEO,
-                                  file_library.KIND_HIP, file_library.KIND_OTHER)
+        image, geo, hip, other = (locations_mod.KIND_IMAGE, locations_mod.KIND_GEO,
+                                  locations_mod.KIND_HIP, locations_mod.KIND_OTHER)
         for kinds, expected in (
                 ((image,), ["a.png"]),
                 ((image, other), ["a.png", "d.txt"]),
@@ -2770,11 +2774,11 @@ class ShowTicksTest(unittest.TestCase):
 
     def test_a_location_saved_before_Show_keeps_what_it_showed(self):
         """No ticks: the three known kinds, plus Other Files where the old rule showed all files."""
-        known = set(file_library.SHOWN_BY_DEFAULT)
+        known = set(locations_mod.SHOWN_BY_DEFAULT)
         for show_unknown, override, expected in (
-                (True, None, known | {file_library.KIND_OTHER}),
+                (True, None, known | {locations_mod.KIND_OTHER}),
                 (False, None, known),
-                (False, True, known | {file_library.KIND_OTHER}),
+                (False, True, known | {locations_mod.KIND_OTHER}),
                 (True, False, known)):
             with self.subTest(show_unknown=show_unknown, override=override):
                 self.prefs.file_show_unknown = show_unknown
@@ -2788,7 +2792,7 @@ class ShowTicksTest(unittest.TestCase):
         folder = os.path.basename(self.tmp.rstrip("/\\"))
         self.assertEqual(folder, folders.display_name(self.tmp))
         self.prefs.set_file_folder_pathname(self.tmp, True)
-        path = file_library.houdini_path(self.tmp, "absolute")
+        path = helpers.houdini_path(self.tmp, "absolute")
         self.assertEqual(path, folders.display_name(self.tmp))
         self.prefs.set_file_folder_name(self.tmp, "Textures")
         self.assertEqual(path, folders.display_name(self.tmp),
@@ -2805,11 +2809,11 @@ class ANewLocationStartsWithTheKnownKindsTest(unittest.TestCase):
         folder = tempfile.mkdtemp(prefix="amaze_new_loc_")
         self.addCleanup(shutil.rmtree, folder, ignore_errors=True)
         prefs.add_file_folder(folder)
-        self.assertEqual(set(file_library.SHOWN_BY_DEFAULT),
+        self.assertEqual(set(locations_mod.SHOWN_BY_DEFAULT),
                          set(file_library.location_kinds(prefs, folder)))
-        prefs.set_file_folder_kinds(folder, (file_library.KIND_OTHER,))
+        prefs.set_file_folder_kinds(folder, (locations_mod.KIND_OTHER,))
         prefs.add_file_folder(folder)
-        self.assertEqual({file_library.KIND_OTHER},
+        self.assertEqual({locations_mod.KIND_OTHER},
                          set(file_library.location_kinds(prefs, folder)),
                          "adding a folder again reset what it shows")
 
@@ -2943,7 +2947,9 @@ class GeometryThatRendersNothingIsRememberedTest(unittest.TestCase):
             handle.write("no cookable geometry")
         prefs = _Prefs([folder])
         self.addCleanup(shutil.rmtree, prefs.dir, ignore_errors=True)
-        return folder, path, file_library.FileFiles(prefs)
+        model = file_library.FileFiles(prefs)
+        files_actions.connect(model, file_library.FileFolders(prefs))    # its render, as the panel hands it
+        return folder, path, model
 
     def _rendering(self, rendered):
         from amaze.render import thumbs

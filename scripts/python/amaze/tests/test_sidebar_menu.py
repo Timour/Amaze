@@ -19,6 +19,7 @@ sys.path.insert(
 
 from amaze.actions import nodes as node_actions  # noqa: E402
 from amaze.core import category, file_library, locations  # noqa: E402
+from amaze.helpers import helpers  # noqa: E402
 from amaze.panel import sections  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
@@ -147,15 +148,15 @@ class TheSidebarMenusAreWhatSHIPPED(unittest.TestCase):
         path = prefs.file_folders[0]
         self.addCleanup(locations.set_field, prefs, path, "kinds",
                         locations.record(prefs, path).get("kinds"))
-        prefs.set_file_folder_kinds(path, file_library.SHOWN_BY_DEFAULT)
+        prefs.set_file_folder_kinds(path, locations.SHOWN_BY_DEFAULT)
         return path
 
     def test_file_show_reads_the_location_it_is_on(self):
         """A tick that does not read its own state is a switch showing the wrong position."""
         prefs = self.panel.prefs
         path = self._file_location()
-        prefs.set_file_folder_kinds(path, (file_library.KIND_OTHER,
-                                           file_library.KIND_HIP))
+        prefs.set_file_folder_kinds(path, (locations.KIND_OTHER,
+                                           locations.KIND_HIP))
         self.addCleanup(prefs.set_file_folder_pathname, path, False)
         prefs.set_file_folder_pathname(path, True)
         show = [row for row in self._show("file", (1,)) if row.startswith("Show")]
@@ -259,17 +260,17 @@ class EachSubmenuRowWritesWhatItSays(unittest.TestCase):
     def test_each_show_tick_writes_its_own_field(self):
         context, path = self._on_row("file")
         prefs = self.panel.prefs
-        prefs.set_file_folder_kinds(path, file_library.SHOWN_BY_DEFAULT)
+        prefs.set_file_folder_kinds(path, locations.SHOWN_BY_DEFAULT)
         self._choose("Show", "Images")
         self._choose("Show", "Other Files")
-        self.assertEqual({file_library.KIND_GEO, file_library.KIND_HIP,
-                          file_library.KIND_OTHER},
+        self.assertEqual({locations.KIND_GEO, locations.KIND_HIP,
+                          locations.KIND_OTHER},
                          set(file_library.location_kinds(prefs, path)))
         self._choose("Show", "Subfolder")
         self.assertIn(path, prefs.file_recursive_folders)
         self._choose("Show", "Pathname")
         folders = self.panel.file_folders_model
-        self.assertEqual(file_library.houdini_path(path, prefs.path_style),
+        self.assertEqual(helpers.houdini_path(path, prefs.path_style),
                          folders.display_name(path))
         self._choose("Show", "Pathname")
         self.assertEqual(os.path.basename(path.rstrip("/\\")),
@@ -285,7 +286,7 @@ class EachSubmenuRowWritesWhatItSays(unittest.TestCase):
         row = self.panel.cat_list.model().index(1, 0)
         self.assertEqual("Renamed Location", row.data())
         self._choose("Show", "Pathname")
-        self.assertEqual(file_library.houdini_path(path, prefs.path_style),
+        self.assertEqual(helpers.houdini_path(path, prefs.path_style),
                          row.data(),
                          "the renamed row kept its name with Pathname ticked")
 

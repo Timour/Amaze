@@ -13,6 +13,7 @@ from PySide6 import QtWidgets, QtGui, QtCore
 import hou
 
 import amaze
+from amaze.actions import files as files_actions
 from amaze.actions import library as library_actions
 from amaze.actions import nodes as node_actions
 from amaze.core import grid_columns, grid_engine
@@ -45,7 +46,7 @@ from amaze import branding
 from amaze import messages
 from amaze import tooltips
 from amaze.prefs import prefs
-from amaze.helpers import bytecode, hostos, theme, ui_helpers
+from amaze.helpers import bytecode, helpers, hostos, theme, ui_helpers
 from amaze.utils import rc_calls
 from amaze.core import database, renderers, tile_icons, users
 from amaze.render import cop_nodes, husk_job, nodes
@@ -105,7 +106,7 @@ _reload(theme)    # before ui_helpers, whose class bodies read theme colours
 _reload(branding)    # FIRST of the ones below: everything reads its constants, and a stale branding produced 38 unhandled AttributeErrors live when APP_VERSION was added
 _reload(ui_helpers)
 _reload(rc_calls)    # after debug and messages: it hands the log the dialogs they word
-_reload_loaded("amaze.helpers.helpers")
+_reload(helpers)
 _reload_loaded("amaze.actions.code")    # after helpers, which it calls; before sections, which calls it
 _reload(texture_library)
 _reload(gradient_library)
@@ -113,7 +114,9 @@ _reload(cop_library)    # after library/category, so its subclasses bind to the 
 _reload(node_actions)    # after nodes and cop_nodes, which it calls; before sections, which calls it
 _reload(geo_library)    # after texture_library, whose ThumbnailCache/proxy it reuses
 _reload(scene_captures)
+_reload_loaded("amaze.core.scene_files")    # before file_library, which reads scenes by it
 _reload(file_library)    # after texture/geo/hip: it composes all three engines
+_reload(files_actions)    # after file_library and helpers, which it hands in; before sections
 _reload_loaded("amaze.helpers.vex_syntax")    # before code_library/code_dialog, which consume its palette and tokenizer
 _reload(code_library)    # after library/category: it subclasses the material machinery
 _reload(model_registry)    # LAST of the models: it names all ten classes, so a stale one hands the next panel the previous build's classes
@@ -311,6 +314,8 @@ class AmazePanel(QtWidgets.QWidget):
     def setup(self):
         for attr, model in model_registry.models_for(self.prefs).items():
             setattr(self, attr, model)    # SHARED with every other panel on this library; only the proxies, selections and delegates below are this panel's own
+        files_actions.connect(self.file_files_model, self.file_folders_model,
+                              os_icon=delegates.os_file_icon)
         self._note_models_library()
 
         self.category_sorted_model = self._sidebar_proxy(self.category_model)
@@ -1479,7 +1484,7 @@ class AmazePanel(QtWidgets.QWidget):
 
     def _scene_path(self, path: str) -> str:
         """Every path Amaze WRITES INTO THE SCENE goes through here, spelled per Preferences - Write Paths As."""
-        return file_library.houdini_path(    # NOT for loads or existence checks: those keep the raw path, which is a location and not a spelling
+        return helpers.houdini_path(    # NOT for loads or existence checks: those keep the raw path, which is a location and not a spelling
             path, getattr(self.prefs, "path_style", "home"))
 
     def copy_file_paths(self, proxy_indexes) -> None:
@@ -1574,7 +1579,7 @@ class AmazePanel(QtWidgets.QWidget):
         if index is None or not index.isValid():
             return ""
         if index.data(self.file_files_model.KindRole) != \
-                file_library.KIND_HIP:
+                locations.KIND_HIP:
             return ""
         return index.data(self.file_files_model.PathRole) or ""
 
@@ -2368,7 +2373,7 @@ class AmazePanel(QtWidgets.QWidget):
                       for path in self.prefs.file_folders}
             if folder not in listed:
                 self.prefs.set_file_folder_name(folder, "Import")    # before the row lands, and only here: a rename stays
-                self.prefs.set_file_folder_kinds(folder, file_library.EVERY_KIND)
+                self.prefs.set_file_folder_kinds(folder, locations.EVERY_KIND)
                 if folders is None:
                     self.prefs.add_file_folder(folder)
                 else:

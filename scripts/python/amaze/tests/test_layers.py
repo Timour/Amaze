@@ -40,7 +40,7 @@ MODULE_LAYER = {    # one row per module in core/, helpers/ and the top level
     "core.repair": "library", "core.asset_files": "library",
     "core.packages": "formats", "core.addons": "formats", "core.matx_sources": "formats",
     "core.matx_usd": "formats", "core.bsdf_reader": "formats", "core.conversion": "formats",
-    "core.geo_library": "formats",
+    "core.geo_library": "formats", "core.scene_files": "formats",
     "core.library": "models", "core.category": "models", "core.cop_library": "models",
     "core.code_library": "models", "core.gradient_library": "models",
     "core.file_library": "models", "core.folders": "models", "core.texture_library": "models",

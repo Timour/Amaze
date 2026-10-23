@@ -1152,7 +1152,8 @@ core/matx_sources.py      Online source adapters (GPUOpen/PolyHaven/...)
 core/matx_import.py       Online import orchestration + Values Adapter
 core/matx_library.py      Online Browser model
 core/{gradient,cop,code}_library.py   the other sections' models
-core/file_library.py      File Section models (kinds, sweep, OS icons)
+core/file_library.py      File Section models (rows by kind, folder sweep);
+                          the kinds themselves are core/locations.py's
 core/users.py             WHO uses this library - a uuid4 UID per
                           person with a name beside it. Everything a
                           user owns is tagged with the UID, so a rename
@@ -1179,6 +1180,10 @@ actions/code.py           the Code section's Houdini verbs: a Python
                           snippet run as one undo step with a shelf
                           click's kwargs, and a snippet set onto a
                           node's code parm
+actions/files.py          the File section's Houdini side: the geometry
+                          render pass, and what the File models are
+                          handed when the panel builds them - $HFS, the
+                          open scene, Write Paths As and the OS icons
 actions/nodes.py          the Node section's Houdini verbs: saving a
                           network or a selection as an asset, loading it
                           back, and re-rendering its tile
@@ -1202,6 +1207,8 @@ prefs/persistence.py      how it is STORED - save/load/merge/migrate,
                           mixed into Prefs, plus the portable paths
 core/folders.py           FolderListModel (shared Folder-archetype base)
 core/scene_captures.py    photographs the Scene View + open-scene state
+core/scene_files.py       which file names are Houdini scenes (.hip,
+                          .hiplc, .hipnc)
 core/captures.py          the capture store: <library>/captures, any tile
 core/repair.py            REPAIR: what is wrong with this library and
                           what is safe to do - Clean Library's opposite

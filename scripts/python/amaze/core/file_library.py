@@ -5,31 +5,24 @@ from __future__ import annotations
 import os
 import stat
 
-from PySide6 import QtCore, QtGui, QtWidgets
+from PySide6 import QtCore, QtGui
 
-from amaze.core import captures, debug, folders, geo_library, scene_captures
+from amaze.core import captures, debug, folders, geo_library, scene_files
 from amaze.core import grid_engine
 from amaze.core import keyed_store, locations
 from amaze.core import texture_library, thumbnails, tile_icons
 from amaze.helpers import hostos
 
-KIND_IMAGE = "image"  # row kinds in the order kind_for() checks them; values readable on purpose - they surface in menus, debug events and tests
-KIND_GEO = "geometry"
-KIND_HIP = "hip"
-KIND_OTHER = "other"
-SHOWN_BY_DEFAULT = (KIND_IMAGE, KIND_GEO, KIND_HIP)    # what Show ▸ ticks on a new location
-EVERY_KIND = SHOWN_BY_DEFAULT + (KIND_OTHER,)    # the Import location's ticks: a package carries any file
-
 
 def kind_for(name: str) -> str:
     """Which per-type behaviour a filename gets - the three recognisers are the sections' own: one source for what counts as an image, a geometry file or a scene."""
-    if scene_captures.matched_extension(name):
-        return KIND_HIP
+    if scene_files.matched_extension(name):
+        return locations.KIND_HIP
     if texture_library.matched_extension(name):
-        return KIND_IMAGE
+        return locations.KIND_IMAGE
     if geo_library.matched_extension(name):
-        return KIND_GEO
-    return KIND_OTHER
+        return locations.KIND_GEO
+    return locations.KIND_OTHER
 
 
 def _stat_once(known: dict):
@@ -46,35 +39,7 @@ def _stat_once(known: dict):
     return stat_of
 
 
-PATH_STYLES = ("absolute", "hip", "job", "home")  # the variables a path may be written against; home is the DEFAULT, absolute writes the literal path, and a stored auto (a retired style) maps to home in the prefs setter
-_STYLE_VARS = {"hip": "$HIP", "job": "$JOB", "home": "$HOME"}
-
-GEO_PASS_LOG = "geo thumbnails"  # per-item records the geo pass may write per RUN: event()'s flood guard keys on (category, message) alone, so these shared one key and went dark after 5 of 273 - always the first five files, not a sample worth having
-GEO_PASS_FAIL_LOG = "geo thumbnails failed"
-GEO_PASS_LOG_BUDGET = 20
 GEO_FAILURE_TAG = "png-scratch"  # untagged failures came from a scratch Qt could not read; retried once
-
-
-def houdini_path(path: str, style: str = "home") -> str:
-    """A path written the way Houdini writes them - for Copy Path and the File section's location labels. `style` is Preferences > Write Paths As: one specific variable, or absolute. Falls back to the absolute path untouched when hou is not importable (plain-python tests) or the path does not live under the chosen variable."""
-    path = hostos.canonical_path_key(path or "")
-    if not path or style == "absolute":
-        return path
-    try:
-        import hou
-    except ImportError:
-        return path
-    var = _STYLE_VARS.get(style, "$HOME")
-    try:
-        expanded = hostos.canonical_path_key(hou.text.expandString(var))
-    except Exception:                                    # noqa: BLE001
-        return path
-    if not expanded or expanded in ("/", "."):
-        return path
-    prefix = expanded.rstrip("/") + "/"
-    if path.startswith(prefix):
-        return var + "/" + path[len(prefix):]
-    return path
 
 
 def sweep_folder_cache(preferences, folder: str, remaining) -> int:
@@ -158,9 +123,9 @@ def location_kinds(preferences, location: str) -> frozenset:
     kinds = locations.record(preferences, location).get("kinds")
     if kinds is not None:
         return frozenset(kinds)
-    shown = set(SHOWN_BY_DEFAULT)
+    shown = set(locations.SHOWN_BY_DEFAULT)
     if shows_all_files(preferences, location):
-        shown.add(KIND_OTHER)
+        shown.add(locations.KIND_OTHER)
     return frozenset(shown)
 
 
@@ -174,6 +139,7 @@ class FileFolders(folders.FolderListModel):
     remove_folder_method = "remove_file_folder"
     relocate_folder_method = "relocate_file_folder"
     move_folder_method = "move_file_folder"
+    write_path = None    # Write Paths As, which needs Houdini: the panel hands it in, else the path
 
     def matches(self, filename: str) -> bool:
         """The flat contract, answered by the per-LOCATION rule. It used to be a second three-line body applying the global `file_show_unknown` preference the per-location override replaced - unreachable (this class overrides matches_in, which _folder_count calls) and WRONG, the shape that bites the next consumer of the documented subclass contract: the sidebar number disagreeing with the tiles is the exact defect the per-location rule exists to prevent. One rule, one body: with no location to ask about, the global preference is the only answer available, which is what an empty-path matches_in gives."""
@@ -196,7 +162,9 @@ class FileFolders(folders.FolderListModel):
         """The full path when Pathname is ticked, over any rename; then the rename; else the folder name."""
         record = self._record(path)
         if record.get("pathname"):    # written the way Write Paths As writes paths
-            return houdini_path(path, getattr(self.preferences, "path_style", "home"))
+            style = getattr(self.preferences, "path_style", "home")
+            return (self.write_path(path, style) if self.write_path is not None
+                    else hostos.canonical_path_key(path))
         if record.get("name"):
             return record["name"]
         return os.path.basename(path.rstrip("/\\")) or path
@@ -266,6 +234,10 @@ class FileFiles(grid_engine.GridEngine,
         self._progress_done = 0
         self._progress_total = 0
         self._os_icons: dict = {}
+        self.hfs = os.environ.get("HFS", "")    # Houdini's install, for the converter; the panel hands in $HFS
+        self.open_scene = lambda: ""    # the scene Houdini has open; the panel hands in the live answer
+        self.render_geo = None    # the geometry render pass; the panel hands it in, a bare model renders none
+        self.os_icon = None    # the system's file icons; the panel hands them in, a bare model draws none
         self._colour_cache: dict = {}  # folder -> the owning location's colour band; THE PAINT PATH - the uncached shape deep-copied a location record per tile per frame and keyed on the row's own directory, painting recursive subfolder rows bandless; cleared on rescan and by colours_changed()
         thumbnails.signals.ready.connect(self._on_thumb_key_ready)  # through the RELAY, not the engine: the singleton is replaced on every module reload, which would leave this model wired to a dead one (thumbnails._EngineSignals)
         thumbnails.signals.convert_attempted.connect(
@@ -396,9 +368,9 @@ class FileFiles(grid_engine.GridEngine,
         image_dirs: dict = {}  # ONE reconcile pass per manifest for every directory at once
         geo_dirs: dict = {}
         for dirpath, name, kind, _full in entries:
-            if kind == KIND_IMAGE:
+            if kind == locations.KIND_IMAGE:
                 image_dirs.setdefault(dirpath, []).append(name)
-            elif kind == KIND_GEO:
+            elif kind == locations.KIND_GEO:
                 geo_dirs.setdefault(dirpath, []).append(name)
         if image_dirs:
             image_cache.reconcile_many(image_dirs, stat=stat_of)
@@ -410,7 +382,7 @@ class FileFiles(grid_engine.GridEngine,
             row = len(self._files)
             self._files.append((dirpath, name))
             self._kinds.append(kind)
-            if kind == KIND_IMAGE:
+            if kind == locations.KIND_IMAGE:
                 key = ("tex", full, image_cache.size)  # NO staleness in the key: every requester discards first (here and rerender_thumbnails), and a third caller must do the same or put the mtime into the key
                 self._key_rows.setdefault(key, []).append(row)
                 cached_png = image_cache.valid_path(full, stat=stat_of)
@@ -421,14 +393,14 @@ class FileFiles(grid_engine.GridEngine,
                 else:
                     self._row_specs.append((key, "convert", full))
                     if not convert_queued:
-                        self._configure_engine_convert()  # options pushed once per batch, lazily - the hou import stays out of plain-python paths
+                        self._configure_engine_convert()  # options pushed once per batch, lazily
                         convert_queued = True
                     thumbnails.engine.discard(key)
                     thumbnails.engine.request_convert(
                         key, full, image_cache.size)
                     self._pending_writes[key] = full
                     self._progress_keys.add(key)
-            elif kind == KIND_GEO:
+            elif kind == locations.KIND_GEO:
                 key = ("geo", full, geo_cache.cache_dir)  # same discard-first contract as the tex key above
                 self._key_rows.setdefault(key, []).append(row)
                 cached_png = geo_cache.valid_path(full, stat=stat_of)
@@ -439,7 +411,7 @@ class FileFiles(grid_engine.GridEngine,
                 else:
                     self._row_specs.append((key, "render", full))
                     geo_misses.append((row, full))
-            elif kind == KIND_HIP:
+            elif kind == locations.KIND_HIP:
                 self._row_specs.append((None, "none", full))    # no render: its picture is a capture
             else:
                 self._row_specs.append(
@@ -454,14 +426,12 @@ class FileFiles(grid_engine.GridEngine,
         self.progress_changed.emit(
             self._progress_done, self._progress_total)
 
-        if geo_misses:
-            self._render_geo_misses(geo_misses)
+        if geo_misses and self.render_geo is not None:
+            self.render_geo(geo_misses)
 
     def _configure_engine_convert(self) -> None:
-        import hou
-
         thumbnails.engine.configure_convert(
-            hou.text.expandString("$HFS"),
+            self.hfs,
             self.preferences.texture_parallel_conversions,
         )
 
@@ -550,89 +520,6 @@ class FileFiles(grid_engine.GridEngine,
         self._geo_cache_key = None
         thumbnails.engine.clear()
 
-    def _render_geo_misses(self, misses: list) -> None:
-        """Render missing geometry thumbnails NOW, on the main thread - blocking but ESC-interruptable; every finished file lands in the disk cache immediately so an interrupted pass resumes."""
-        import hou
-        from amaze.render import thumbs
-
-        misses = [pair for pair in misses  # a CACHE gets no thumbnail unasked, filtered HERE so there is one answer and the dialog cannot open for a list that is entirely caches: two filecache files once re-cooked on EVERY switch to Files (~75 attempts, all no-cookable-geometry), reported as the bar flashing on entering the section
-                  if not geo_library.is_cache(pair[1])]
-        if not misses:
-            return
-        cache = self._get_geo_cache()
-        size = self.preferences.rendersize
-        thumber = thumbs.ThumbNailRenderer(self.preferences)
-        cache.ensure_dir()
-        scratch_seed = os.path.join(cache.cache_dir, "geo_render.png")  # ONE SCRATCH PER ITEM, unique, create=False: a fixed name was one buffer for the whole pass, and create_thumb_geo_file decides success by os.path.exists - an ESC'd flipbook returns without raising, found the PREVIOUS file's picture and cached the wrong image against this file's own mtime; the fixed name was also shared by every Houdini process, and a pre-created empty file passes the exists test just as well
-        total = len(misses)
-        done = 0
-        failed = []
-        debug.begin_pass(GEO_PASS_LOG)  # fresh allowance for this pass's per-item records; the closing record below carries what the budget could not
-        debug.begin_pass(GEO_PASS_FAIL_LOG)
-        self.progress_changed.emit(0, total)
-        tmp_path = ""    # bound before the try: an interrupt on the FIRST progress tick reaches the finally with the loop never entered
-        try:
-            with hou.InterruptableOperation(
-                "Rendering geometry thumbnails",
-                "Rendering geometry thumbnails",
-                open_interrupt_dialog=True,
-            ) as operation:
-                for row, full in misses:
-                    operation.updateProgress(done / total)
-                    if debug.pass_budget(GEO_PASS_LOG, GEO_PASS_LOG_BUDGET):
-                        debug.event("file", "geo thumbnail",
-                                    i=done + 1, total=total, file=full)
-                    ok = False
-                    tmp_path = hostos.render_scratch(scratch_seed)
-                    try:
-                        ok = thumber.create_thumb_geo_file(
-                            full, tmp_path, size)
-                    except hou.OperationInterrupted:
-                        raise
-                    except Exception as exc:             # noqa: BLE001
-                        failed.append(full)
-                        if debug.pass_budget(GEO_PASS_FAIL_LOG,
-                                             GEO_PASS_LOG_BUDGET):
-                            debug.event("file", "geo thumbnail failed",
-                                        file=full, error=str(exc))
-                    pictured = False
-                    try:
-                        if ok:
-                            image = QtGui.QImage(tmp_path)
-                            if not image.isNull():
-                                cache.put(full, image)
-                                thumbnails.engine.deposit(
-                                    ("geo", full, cache.cache_dir), image)
-                                pictured = True
-                    finally:  # gone before the next item, whatever happened - nothing may be left for a later render to inherit and report as its own
-                        try:
-                            os.remove(tmp_path)
-                        except OSError:
-                            pass
-                    if not pictured:
-                        operation.updateProgress(done / total)    # an Esc'd render ends imageless too; this raises
-                        cache.remember_failure(full)
-                    done += 1
-                    self.progress_changed.emit(done, total)
-                    QtWidgets.QApplication.processEvents(  # the pass blocks the event loop; pump paints only, so finished tiles appear mid-pass without letting input re-enter the panel
-                        QtCore.QEventLoop.ProcessEventsFlag
-                        .ExcludeUserInputEvents
-                    )
-        except hou.OperationInterrupted:
-            debug.event("file", "geo pass interrupted",
-                        done=done, total=total)
-        finally:
-            debug.event("file", "geo pass done", done=done, total=total,  # ONE record for the whole pass, ALWAYS, naming every failure - the per-item records are a bounded sample, and a pass that logged 5 of 273 was unreadable exactly when it mattered
-                        failed=len(failed), files=failed)
-            if not self._progress_keys:  # ONE OWNER PER FOLDER OPEN: this pass emits into the image batch's signal, so an unconditional terminal (0, 0) hid the bar while conversions still ran - a flickering bar with the wrong denominator, the only signal a long conversion is still going
-                self.progress_changed.emit(0, 0)
-            cache.save()
-            try:
-                if os.path.exists(tmp_path):
-                    os.remove(tmp_path)
-            except OSError:
-                pass
-
     def capture_path(self, row: int) -> str:
         """Where this row's capture lives in the library; "" for a row that does not exist."""
         key = self.file_key(row) if 0 <= row < len(self._files) else ""
@@ -691,39 +578,15 @@ class FileFiles(grid_engine.GridEngine,
         return -1
 
     def _os_icon_image(self, path: str):
-        """The system's icon for this file type, drawn centred on a transparent square, cached per extension (the provider is not free and a folder of logs is one icon repeated). The provider can hand back SMALL icons, so the native pixmap draws at its own size, upscaled at most 2x, never stretched across the tile - and NEVER empty: if nothing paintable comes back, Qt's generic file icon stands in, because a tile with no picture at all reads as a loading failure."""
+        """The system's icon for this file type, drawn by the panel's `os_icon`, cached per extension."""
         ext = os.path.splitext(path)[1].lower()
         canvas_side = int(getattr(
             self.preferences, "rendersize", 512) or 512)
         cache_key = (ext, canvas_side)
         cached = self._os_icons.get(cache_key)
-        if cached is not None:
-            return cached
-        provider = QtWidgets.QFileIconProvider()
-        icon = provider.icon(QtCore.QFileInfo(path))
-        target = canvas_side // 2
-        pixmap = icon.pixmap(target, target)
-        if pixmap.isNull():
-            style = QtWidgets.QApplication.style()
-            if style is not None:
-                pixmap = style.standardIcon(
-                    QtWidgets.QStyle.StandardPixmap.SP_FileIcon
-                ).pixmap(target, target)
-        image = QtGui.QImage(
-            canvas_side, canvas_side,
-            QtGui.QImage.Format.Format_ARGB32_Premultiplied)
-        image.fill(QtCore.Qt.GlobalColor.transparent)
-        if not pixmap.isNull():
-            side = min(target, pixmap.width() * 2)
-            painter = QtGui.QPainter(image)
-            painter.setRenderHint(
-                QtGui.QPainter.RenderHint.SmoothPixmapTransform)
-            offset = (canvas_side - side) // 2
-            painter.drawPixmap(
-                QtCore.QRect(offset, offset, side, side), pixmap)
-            painter.end()
-        self._os_icons[cache_key] = image
-        return image
+        if cached is None and self.os_icon is not None:
+            cached = self._os_icons[cache_key] = self.os_icon(path, canvas_side)
+        return cached
 
     def _full_path(self, row: int):
         if 0 <= row < len(self._files):
@@ -768,7 +631,7 @@ class FileFiles(grid_engine.GridEngine,
             if not full or not 0 <= row < len(self._kinds):
                 continue
             kind = self._kinds[row]
-            if kind == KIND_IMAGE:
+            if kind == locations.KIND_IMAGE:
                 if not queued:
                     self._configure_engine_convert()
                 image_cache.invalidate(full, flush=False)  # one write after the loop, not one per row: 500 selected images meant 500 full manifest serialisations with an fsync each, on the main thread, before the bar even exists
@@ -780,7 +643,7 @@ class FileFiles(grid_engine.GridEngine,
                 self._pending_writes[key] = full
                 self._progress_keys.add(key)
                 queued.add(key)
-            elif kind == KIND_GEO:
+            elif kind == locations.KIND_GEO:
                 geo_cache.invalidate(full, flush=False)
                 key = ("geo", full, geo_cache.cache_dir)
                 thumbnails.engine.discard(key)
@@ -800,8 +663,8 @@ class FileFiles(grid_engine.GridEngine,
             self._progress_total = len(self._progress_keys)
             self.progress_changed.emit(
                 self._progress_done, self._progress_total)
-        if geo_misses:
-            self._render_geo_misses(geo_misses)
+        if geo_misses and self.render_geo is not None:
+            self.render_geo(geo_misses)
 
     def file_key(self, row: int) -> str:  # rows are FILES, not library assets: per-tile state keys by `loc:<id>/<relative>` for a file a registered location owns - so a moved folder orphans nothing - and by the canonical absolute path for one no location owns
         if not 0 <= row < len(self._files):
@@ -856,18 +719,18 @@ class FileFiles(grid_engine.GridEngine,
 
     def tile_face_art(self, row: int) -> str:
         """A scene's generic face is T08's Houdini icon, every other file's T11's."""
-        return "icon_hip" if self._kind(row) == KIND_HIP else "face_file"
+        return "icon_hip" if self._kind(row) == locations.KIND_HIP else "face_file"
 
     def can_preview(self, row: int) -> bool:
         """Every file but a scene has one: a render, the image, or the system's icon for its type."""
-        return self._kind(row) != KIND_HIP
+        return self._kind(row) != locations.KIND_HIP
 
     def default_face(self, row: int) -> str:
         """Capture for a scene, Generic for a file Amaze makes no picture of, else Render."""
         kind = self._kind(row)
-        if kind == KIND_HIP:
+        if kind == locations.KIND_HIP:
             return "capture"
-        return "generic" if kind == KIND_OTHER else "preview"
+        return "generic" if kind == locations.KIND_OTHER else "preview"
 
     def preview_image(self, row: int):
         """The row's own picture as far as it has landed: the tile's Preview, and Customize's."""
@@ -912,13 +775,13 @@ class FileFiles(grid_engine.GridEngine,
                 return tile_icons.chosen_image(self, row)
             return self.preview_image(row)
         if role == self.FormatRole:
-            if kind == KIND_GEO:
+            if kind == locations.KIND_GEO:
                 return geo_library.matched_extension(
                     name).lstrip(".").upper()
-            if kind == KIND_HIP:
-                return scene_captures.matched_extension(  # capitalized, not upper-cased - a scene extension is a word
+            if kind == locations.KIND_HIP:
+                return scene_files.matched_extension(  # capitalized, not upper-cased - a scene extension is a word
                     name).lstrip(".").capitalize()
-            if kind == KIND_IMAGE:
+            if kind == locations.KIND_IMAGE:
                 return texture_library.matched_extension(  # its own recogniser, like the other two kinds; the splitext fallback below is for KIND_OTHER, which by definition has no list to match against
                     name).lstrip(".").upper()
             return os.path.splitext(name)[1].lstrip(".").upper()
@@ -941,7 +804,7 @@ class FileFiles(grid_engine.GridEngine,
                 self.preferences,
                 notes.note_key("file", self.file_key(row)))
         if role == self.OpenSceneRole:
-            if kind != KIND_HIP:
+            if kind != locations.KIND_HIP:
                 return False
-            return self._full_path(row) == scene_captures.current_scene_path()
+            return self._full_path(row) == self.open_scene()
         return None

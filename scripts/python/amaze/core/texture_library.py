@@ -332,7 +332,7 @@ class TextureFilterProxyModel(grid_proxy.GridProxyModel):
         return watched
 
     def set_kind_filter(self, kind) -> None:
-        """Show only rows of one KIND - a file_library.KIND_* value, or None for every kind (KIND_OTHER included); the kind is what the File section IS since the 2026-07-31 merge, and this is how the toolbar gets back to one of them."""
+        """Show only rows of one KIND - a locations.KIND_* value, or None for every kind (KIND_OTHER included); the kind is what the File section IS since the 2026-07-31 merge, and this is how the toolbar gets back to one of them."""
         if (kind or "") == self._kind_filter:
             return
         self._kind_filter = kind or ""

@@ -1236,10 +1236,10 @@ class FolderSection(Section):
 
     def selection_has_importable(self, indexes, current) -> bool:
         return bool(self.selected_kinds(indexes)
-                    & {file_library.KIND_IMAGE, file_library.KIND_GEO})
+                    & {locations.KIND_IMAGE, locations.KIND_GEO})
 
     def selection_has_scene(self, indexes, current) -> bool:
-        return file_library.KIND_HIP in self.selected_kinds(indexes)
+        return locations.KIND_HIP in self.selected_kinds(indexes)
 
     def menu_offers_preview(self, indexes, current) -> bool:
         return (self.offers_preview_update    # a capture is hand-framed and only a new capture replaces it, and an OS icon has nothing to regenerate, so this section CAN re-render while a particular selection cannot
@@ -1248,7 +1248,7 @@ class FolderSection(Section):
     def menu_import_enabled(self, indexes, current) -> bool:
         """An image loads onto ONE node parameter, so images import one at a time; geometry imports the whole selection."""
         kinds = self.selected_kinds(indexes)
-        return len(indexes) == 1 or kinds == {file_library.KIND_GEO}
+        return len(indexes) == 1 or kinds == {locations.KIND_GEO}
 
     def menu_capture_enabled(self, indexes, current) -> bool:
         """One tile; a scene only while it is the one open, however it was opened."""
@@ -1256,7 +1256,7 @@ class FolderSection(Section):
             return False
         files = self._p(self.files_attr)
         if files is None or current is None or \
-                current.data(files.KindRole) != file_library.KIND_HIP:
+                current.data(files.KindRole) != locations.KIND_HIP:
             return True
         path = self._path_of(current)    # another scene open would file the picture under this one
         return bool(path) and path == scene_captures.current_scene_path()
@@ -1265,11 +1265,11 @@ class FolderSection(Section):
         files = self._p(self.files_attr)
         if files is None:
             return
-        if self.selected_kinds(indexes) == {file_library.KIND_IMAGE}:
+        if self.selected_kinds(indexes) == {locations.KIND_IMAGE}:
             self.panel.click_on_row(self, current)    # THE CLICK DOOR, same as a double-click on the row: a body of its own vetoes on a selected node with no file parm
             return
         for index in indexes:
-            if index.data(files.KindRole) == file_library.KIND_GEO:
+            if index.data(files.KindRole) == locations.KIND_GEO:
                 self.panel.import_geo_asset(index)
 
     def menu_load_scene(self, indexes, current, payload=None) -> None:
@@ -1356,9 +1356,9 @@ class FileSection(FolderSection):
     EMPTY = amazetheme.EMPTY_FILE    # a button: registering a folder needs nothing selected
 
     FILTER_CHOICES = (  # the kinds it KNOWS, in the order kind_for tests them; KIND_OTHER is the absence of a kind, not a fourth to browse by
-        FilterEntry("Images", "Images", file_library.KIND_IMAGE),
-        FilterEntry("Geometry", "Geometry", file_library.KIND_GEO),
-        FilterEntry("Hip", "Hip", file_library.KIND_HIP),
+        FilterEntry("Images", "Images", locations.KIND_IMAGE),
+        FilterEntry("Geometry", "Geometry", locations.KIND_GEO),
+        FilterEntry("Hip", "Hip", locations.KIND_HIP),
     )
 
     GRID_MENU = (  # KIND-aware: the selection's kinds decide which primary actions exist. NO Delete anywhere - these are the user's own files on disk
@@ -1374,21 +1374,21 @@ class FileSection(FolderSection):
     _PATH_ONLY = DropRule(on_node="drop_file_path_on_node",    # per row KIND: every kind hands its path to the node under the cursor and what differs is the NO-NODE door, the un-kinded "" row behaving like unknown
                           click_resolve="click_copy_path")
     DROP_BY_KIND = {
-        file_library.KIND_IMAGE: DropRule(
+        locations.KIND_IMAGE: DropRule(
             on_node="drop_file_path_on_node",
             on_space="create_image_node_in",
             click_on_node="drop_file_path_on_node",
             carrier_type="mtlximage"),  # the ghost draws THIS in the air
-        file_library.KIND_GEO: DropRule(
+        locations.KIND_GEO: DropRule(
             on_node="drop_file_path_on_node",
             resolve="drop_geo_at_release",
             click_on_node="drop_file_path_on_node",
             click_resolve="click_import_geo"),
-        file_library.KIND_HIP: DropRule(
+        locations.KIND_HIP: DropRule(
             on_node="drop_file_path_on_node",
             outside="open_hip_scene",
             click_resolve="click_open_hip"),
-        file_library.KIND_OTHER: _PATH_ONLY,
+        locations.KIND_OTHER: _PATH_ONLY,
         "": _PATH_ONLY,
     }
 
@@ -1522,9 +1522,9 @@ class FileSection(FolderSection):
                   needs="on_a_location"),
     )
 
-    SHOW_KINDS = (("Images", file_library.KIND_IMAGE),    # Show ▸'s kind ticks, in menu order
-                  ("Geometry", file_library.KIND_GEO),
-                  ("HIP", file_library.KIND_HIP))
+    SHOW_KINDS = (("Images", locations.KIND_IMAGE),    # Show ▸'s kind ticks, in menu order
+                  ("Geometry", locations.KIND_GEO),
+                  ("HIP", locations.KIND_HIP))
 
     def _selected_location(self, current) -> str:
         return self.sidebar_key(current) if current is not None else ""
@@ -1548,8 +1548,8 @@ class FileSection(FolderSection):
         return (("Pathname", "pathname", "", True, bool(record.get("pathname"))),
                 ("Subfolder", "subfolder", "", True, bool(record.get("recursive"))),
                 None,
-                ("Other Files", file_library.KIND_OTHER, "", True,
-                 file_library.KIND_OTHER in kinds),
+                ("Other Files", locations.KIND_OTHER, "", True,
+                 locations.KIND_OTHER in kinds),
                 None) + tuple((label, kind, "", True, kind in kinds)
                               for label, kind in self.SHOW_KINDS)
 

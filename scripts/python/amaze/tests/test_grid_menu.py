@@ -18,7 +18,7 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze.core import file_library, renderers  # noqa: E402
+from amaze.core import file_library, locations, renderers  # noqa: E402
 from amaze.helpers import ui_helpers  # noqa: E402
 from amaze.panel import grid, sections  # noqa: E402
 from amaze.render.material_conversion import engine as conversion_engine  # noqa: E402
@@ -282,23 +282,23 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
     def test_file_menus_follow_the_kind_and_the_count_and_never_delete(self):
         """No Delete for any kind: these are the user's own files, and an os.remove once took some."""
         for kind, count, expected in (
-                (file_library.KIND_IMAGE, 1,
+                (locations.KIND_IMAGE, 1,
                  ["Import", "Copy Path", "----", "Show Location",
                   "Update Render", "Capture", "Customize", "Favorite",
                   "Export Package"]),
-                (file_library.KIND_IMAGE, 2,    # an image loads onto ONE node parameter
+                (locations.KIND_IMAGE, 2,    # an image loads onto ONE node parameter
                  ["Import(off)", "Copy Path", "----", "Show Location(off)",
                   "Update Render", "Capture(off)", "Customize", "Favorite",
                   "Export Package"]),
-                (file_library.KIND_GEO, 2,      # geometry imports the whole selection
+                (locations.KIND_GEO, 2,      # geometry imports the whole selection
                  ["Import", "Copy Path", "----", "Show Location(off)",
                   "Update Render", "Capture(off)", "Customize", "Favorite",
                   "Export Package"]),
-                (file_library.KIND_HIP, 1,      # a scene captures only while it is the open one
+                (locations.KIND_HIP, 1,      # a scene captures only while it is the open one
                  ["Load", "Copy Path", "----", "Show Location",
                   "Capture(off)", "Customize", "Favorite",
                   "Export Package"]),
-                (file_library.KIND_OTHER, 1,    # what Houdini cannot open is absent, not greyed
+                (locations.KIND_OTHER, 1,    # what Houdini cannot open is absent, not greyed
                  ["Copy Path", "----", "Show Location", "Capture", "Customize",
                   "Favorite", "Export Package"])):
             with self.subTest(kind=kind, selected=count):

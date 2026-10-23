@@ -20,6 +20,13 @@ MIGRATED_KEY = "file_locations_migrated"  # set once the six settings.json keys 
 FIELDS = ("registered", "name", "color", "show_all", "recursive",
           "kinds", "pathname")  # the record's fields, each with its own branch in normalise()
 
+KIND_IMAGE = "image"  # the kinds a record's `kinds` field lists; stored in locations.json, so fixed
+KIND_GEO = "geometry"
+KIND_HIP = "hip"
+KIND_OTHER = "other"
+SHOWN_BY_DEFAULT = (KIND_IMAGE, KIND_GEO, KIND_HIP)    # what Show ▸ ticks on a new location
+EVERY_KIND = SHOWN_BY_DEFAULT + (KIND_OTHER,)    # the Import location's ticks: a package carries any file
+
 _deferred: set = globals().get("_deferred", set())  # libraries whose migration was tried this session and did not land; survives module reloads for the same reason the registry does
 
 

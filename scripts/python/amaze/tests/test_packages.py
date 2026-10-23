@@ -433,8 +433,8 @@ class PackageImportTest(unittest.TestCase):
             "the import location was registered behind the sidebar "
             "model's back, so no view heard about its row")
         row = folders.row_of(folder)
-        from amaze.core import file_library
-        self.assertEqual(set(file_library.EVERY_KIND),
+        from amaze.core import file_library, locations
+        self.assertEqual(set(locations.EVERY_KIND),
                          set(file_library.location_kinds(self.panel.prefs, folder)),
                          "the Import location hides some of what a package carries")
 
