@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.11.0
+
+- Preferences ▸ Library picks a library and its user together. Library lists the libraries this computer has opened, the most recent first; Add puts a library folder in the list, or an empty folder for a new library, and Manage takes libraries off it. Apply opens the picked library with the picked user, and Accept does the same and closes Preferences.
+- The User list shows the picked library's users and picks the one with the same name as the current user, or the library's only user. A new user is made when you press Apply.
+- Format shows the picked library's version. The line beside Apply says when applying updates an older library; a library from a newer Amaze cannot be applied.
+- Library ▸ Set Library opens Preferences on the Library tab.
+- Test Library uses the user with the same name in the test library, and creates it there when it is missing.
+
 ## 1.10.25
 
 - Amaze keeps a list of the libraries it opens, for the Library list coming to Preferences; nothing changes in the app yet.
