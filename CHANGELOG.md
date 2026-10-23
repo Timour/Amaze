@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.11.8
+
+- The File section's Houdini code is kept apart from its list of files; nothing changes in the app.
+
 ## 1.11.7
 
 - The Node section's Houdini code is kept apart from its list of assets; nothing changes in the app.
