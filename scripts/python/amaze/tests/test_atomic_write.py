@@ -1130,7 +1130,7 @@ class TheUserIsAUidWithANameTest(unittest.TestCase):
         return test_support.fixture_prefs(self)
 
     def test_creating_a_user_answers_a_uid_not_the_name(self):
-        """So two users may share a name: a UID-keyed scheme has nothing to collide."""
+        """The tag is a UID; a name already in the library is not taken twice, in any letters."""
         from amaze.core import users
         p = self._prefs()
         uid = users.create(p, "Plum")
@@ -1139,9 +1139,47 @@ class TheUserIsAUidWithANameTest(unittest.TestCase):
                             "the tag is the typed name - a rename would "
                             "then have to move every tagged row")
         self.assertEqual("Plum", users.name_for(p, uid))
-        second = users.create(p, "Plum")
-        self.assertNotEqual(uid, second)
-        self.assertEqual(2, len(users.all_users(p)))
+        self.assertEqual("", users.create(p, "Plum"), "a second Plum was made")
+        self.assertEqual("", users.create(p, " plum "), "a second Plum was made in other letters")
+        self.assertEqual(1, len(users.all_users(p)))
+
+    def test_a_rename_cannot_take_another_users_name(self):
+        from amaze.core import users
+        p = self._prefs()
+        plum = users.create(p, "Plum")
+        sage = users.create(p, "Sage")
+        self.assertFalse(users.rename(p, sage, "plum"), "Sage was renamed to a name Plum has")
+        self.assertEqual("Sage", users.name_for(p, sage))
+        self.assertTrue(users.rename(p, plum, "PLUM"), "a user could not change the case of its own name")
+
+    def test_preferences_says_a_name_is_taken_and_makes_nobody(self):
+        import types
+        import hou
+        from amaze import messages
+        from amaze.core import users
+        from amaze.dialogs import base_dialog, prefs_dialog
+        p = self._prefs()
+        users.create(p, "Plum")
+        dialog = prefs_dialog.PrefsDialog(p, panel=None)
+        self.addCleanup(dialog.deleteLater)
+        said = []
+
+        class Named:
+            canceled = False
+            name = "plum"
+
+            def __init__(self, *_a, **_k):
+                pass
+
+            def exec(self):
+                pass
+
+        ui = types.SimpleNamespace(displayMessage=lambda text, **_k: said.append(text))
+        with mock.patch.object(base_dialog, "NameDialog", Named), \
+                mock.patch.object(hou, "ui", ui, create=True):
+            dialog._ask_create_library_user()
+        self.assertEqual([messages.USER_NAME_TAKEN % "plum"], said)
+        self.assertEqual(1, len(users.all_users(p)), "a second Plum was made")
 
     def test_renaming_keeps_the_uid(self):
         """THE WHOLE POINT. Nothing tagged is touched by a rename."""

@@ -86,6 +86,8 @@ TILE_ICON_NOT_SAVED = 'Your tile icon could not be saved.\n\nNo other data has b
 
 USER_DELETE_CONFIRM = 'Delete user "%s" from this library?'
 
+USER_NAME_TAKEN = 'A user named "%s" is already in this library. Choose another name.'
+
 MATERIAL_VERSIONS_TURN_ON_CONFIRM = 'Enable Material Versions for this library?'
 
 LIBRARY_SETTING_NOT_WRITTEN = 'The setting could not be written to the library folder and was not changed.'

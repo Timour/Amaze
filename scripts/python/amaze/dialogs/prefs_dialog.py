@@ -251,8 +251,19 @@ class PrefsDialog(base_dialog.AssetDialog):
         dialog = base_dialog.NameDialog(
             "Rename User", users.name_for(self._prefs, uid), parent=self)
         dialog.exec()
-        if not dialog.canceled:
-            self.rename_library_user(dialog.name)
+        if dialog.canceled:
+            return
+        if users.name_taken(self._prefs, dialog.name, besides=uid):
+            self._say_name_taken(dialog.name)
+            return
+        self.rename_library_user(dialog.name)
+
+    def _say_name_taken(self, name: str) -> None:
+        ui = getattr(hou, "ui", None)
+        if ui is not None:
+            ui.displayMessage(messages.USER_NAME_TAKEN % name.strip(),
+                              severity=hou.severityType.Warning,
+                              title=branding.APP_NAME)
 
     def create_library_user(self, name: str) -> None:
         """Mint a user and switch this machine to them - creating-then-becoming is this row's case; a second machine picking ITSELF is the first-open picker's."""
@@ -266,6 +277,10 @@ class PrefsDialog(base_dialog.AssetDialog):
         dialog.exec()
         if dialog.canceled:
             self._reload_library_users()    # the combo is sitting on the create row; put the real selection back
+            return
+        if users.name_taken(self._prefs, dialog.name):
+            self._say_name_taken(dialog.name)
+            self._reload_library_users()
             return
         self.create_library_user(dialog.name)
 

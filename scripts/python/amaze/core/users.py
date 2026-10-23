@@ -67,10 +67,17 @@ def name_for(preferences, uid) -> str:
     return _store(preferences).get(str(uid)).get("name", "")
 
 
+def name_taken(preferences, name: str, besides: str = "") -> bool:
+    """Whether a user other than `besides` already has `name` here, ignoring case."""
+    wanted = str(name or "").strip().casefold()
+    return any(uid != str(besides) and other.strip().casefold() == wanted
+               for uid, other in all_users(preferences).items())
+
+
 def create(preferences, name: str) -> str:
-    """Mint a user and answer its UID, or "" when the store refused (a UID not on disk would orphan everything tagged with it) - names are NOT unique on purpose: two Annas are two UIDs, and forbidding it would key on the name through the back door."""
+    """A new user's UID, or "" for a blank name, a name already taken, or a refused write."""
     name = str(name or "").strip()
-    if not name:
+    if not name or name_taken(preferences, name):
         return ""
     uid = uuid.uuid4().hex
     if not _store(preferences).set(uid, {"name": name}):
@@ -107,7 +114,7 @@ def rename(preferences, uid, name: str) -> bool:
     name = str(name or "").strip()
     store = _store(preferences)
     record = store.get(uid)
-    if not name or not record:
+    if not name or not record or name_taken(preferences, name, besides=uid):
         return False
     record = dict(record)
     record["name"] = name
