@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.11.12
+
+- The drawn Add-On tab lists the store's eight add-ons; nothing changes in the app.
+
 ## 1.11.11
 
 - The code's own notes call Update Render by its name; nothing changes in the app.
