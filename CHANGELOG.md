@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.10.25
+
+- Amaze keeps a list of the libraries it opens, for the Library list coming to Preferences; nothing changes in the app yet.
+
 ## 1.10.24
 
 - Two users in one library can no longer have the same name; Preferences says so when you try.
