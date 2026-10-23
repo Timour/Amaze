@@ -21,6 +21,7 @@ from PySide6 import QtWidgets                             # noqa: E402
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
+from amaze import messages                                # noqa: E402
 from amaze.core import database, debug, material          # noqa: E402
 from amaze.core import gradient_library                   # noqa: E402
 from amaze.core import library as library_mod             # noqa: E402
@@ -154,6 +155,61 @@ class TheUnreadableIndexDialogTest(unittest.TestCase):  # sabotage: drop `_build
         second = test_support.reopened_panel(self)
         _until_idle(lambda: False)
         self.assertIsNone(second.material_model)
+
+
+def _point_settings(panel, directory) -> None:
+    settings = os.path.join(panel.prefs.path, "settings.json")
+    with open(settings, encoding="utf-8") as handle:
+        data = json.load(handle)
+    data["directory"] = directory
+    with open(settings, "w", encoding="utf-8") as handle:
+        json.dump(data, handle)
+
+
+class AMissingListOpensNoLibrary(unittest.TestCase):
+    """A Library Path with no list opens no library; a switch onto one keeps the open library."""
+
+    def _reopened_on(self, directory):
+        """A second panel built over `directory`; (panel, dialogs, dialogs shown while it built)."""
+        _point_settings(test_support.fixture_panel(self), directory)
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        calls = []
+        ui = MagicMock()
+        ui.displayMessage.side_effect = lambda message, **_kw: calls.append(str(message))
+        with patch.object(hou, "ui", create=True, new=ui), \
+                patch.object(debug, "_alerted", set()):
+            second = test_support.reopened_panel(self)
+            building = list(calls)
+            _until_idle(lambda: calls)
+        return second, calls, building
+
+    def _held(self):
+        held = test_support.fresh_library(self)
+        os.remove(os.path.join(held, "library.json"))    # mat/ and img/ stay: it has held a library
+        return held
+
+    def test_the_root_of_a_disk_opens_no_library(self):
+        panel, calls, _building = self._reopened_on(os.path.abspath(os.sep))
+        self.assertIsNone(panel.material_model, "a library opened on the root of the disk")
+        self.assertEqual([], calls)
+
+    def test_a_list_that_has_not_arrived_is_said_after_the_pane_draws(self):
+        held = self._held()
+        panel, calls, building = self._reopened_on(held)
+        self.assertEqual([], building, "said inside onCreateInterface, where a modal draws black")
+        self.assertEqual([messages.STARTER_SEED_REFUSED_DIRECTORY_HELD_LIBRARY], calls)
+        self.assertIsNone(panel.material_model)
+        self.assertFalse(os.path.exists(os.path.join(held, "library.json")),
+                         "a starter list was seeded over the library")
+
+    def test_a_switch_onto_it_keeps_the_open_library(self):
+        panel = test_support.fixture_panel(self)
+        before = panel.prefs.dir
+        _point_settings(panel, self._held())
+        panel.open()    # Reload Library re-reads the settings, which now name the held folder
+        self.assertEqual(before, panel.prefs.dir, "the Library Path stayed on a folder with no list")
+        self.assertEqual(before, panel._models_dir, "the open library was left")
 
 
 class SecondaryDatabaseAbsenceTest(unittest.TestCase):

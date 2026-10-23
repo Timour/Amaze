@@ -177,9 +177,10 @@ class AmazePanel(QtWidgets.QWidget):
         hostos.set_cache_override(self.prefs.cache_dir)    # custom thumbnail-cache location, set before any cache is touched - everything downstream resolves hostos.cache_root()
         if loaded:
             self.init_ui()
-            if library_actions.index_unreadable(self.prefs.dir):
+            if (library_actions.index_unreadable(self.prefs.dir)
+                    or library_actions.list_not_arrived(self.prefs.dir)):
                 self._defer_open_library()
-                opened = False    # the pane opens without a library, and the question follows
+                opened = False    # the pane opens without a library; what it says follows
             else:
                 opened = self.open_library()
             if not opened:
@@ -460,6 +461,8 @@ class AmazePanel(QtWidgets.QWidget):
                 and not self._repaired(self.prefs.dir)):
             return self._stay_closed()
         library_actions.prepare(self.prefs)
+        if not library_actions.index_present(self.prefs.dir):    # prepare could not set one up
+            return self._stay_closed()
         if getattr(self, "material_model", None) is None:
             self.setup()    # the libraryless shape has no models to switch
         else:

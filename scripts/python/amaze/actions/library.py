@@ -23,6 +23,17 @@ def index_unreadable(lib_dir: str) -> bool:
     return bool(database.wrong_shape(json.loads(raw.decode("utf-8-sig"))))
 
 
+def index_present(lib_dir: str) -> bool:
+    """Whether `lib_dir` holds a list at all; an empty folder has none until `prepare` seeds one."""
+    return bool(lib_dir) and os.path.isfile(os.path.join(lib_dir, "library.json"))
+
+
+def list_not_arrived(lib_dir: str) -> bool:
+    """A folder that has held a library and has no list now, which `prepare` will not seed over."""
+    return (prefs_mod.can_hold_a_library(lib_dir) and not index_present(lib_dir)
+            and bool(starter_would_overwrite(lib_dir)))
+
+
 def newer_version(preferences) -> int:
     """The version of a library a newer Amaze updated, which this one leaves closed; else 0."""
     library_dir = str(preferences.dir or "")
