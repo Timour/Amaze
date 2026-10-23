@@ -2,28 +2,13 @@
 
 from __future__ import annotations
 
-import random
 import uuid
 
 from amaze.core import keyed_store
 
 USERS_FILE = "users.json"
 
-PLACEHOLDER_NAMES = (    # the pool a library's FIRST user is named from - minted once per LIBRARY, never per machine, never the OS user or machine name (ROADMAP line 21)
-    "Amber", "Aqua", "Auburn", "Azure", "Beige", "Blush", "Bronze",
-    "Burgundy", "Carmine", "Celadon", "Cerise", "Cerulean", "Charcoal",
-    "Chartreuse", "Cinnabar", "Cobalt", "Copper", "Coral", "Cream",
-    "Crimson", "Cyan", "Ebony", "Emerald", "Fawn", "Fuchsia", "Gold",
-    "Heliotrope", "Indigo", "Ivory", "Jade", "Lavender", "Lilac",
-    "Magenta", "Mahogany", "Maroon", "Mauve", "Mint", "Moss", "Ochre",
-    "Olive", "Onyx", "Orchid", "Pearl", "Periwinkle", "Pewter", "Plum",
-    "Rose", "Ruby", "Russet", "Rust", "Saffron", "Sage", "Salmon",
-    "Sapphire", "Scarlet", "Sepia", "Sienna", "Silver", "Slate",
-    "Tangerine", "Taupe", "Teal", "Terracotta", "Turquoise", "Ultramarine",
-    "Umber", "Vermilion", "Violet", "Viridian", "Wisteria",
-)
-
-RESOLVED = "resolved"    # what the first open must do about identity: the pointer names someone this library knows...
+RESOLVED = "resolved"    # the pointer names someone this library knows...
 MINT = "mint"            # ...the library has nobody yet...
 ASK = "ask"              # ...or it HAS people and this machine is none of them - the state that earns its cost, stopping a second machine minting a second identity for one person (ROADMAP line 21)
 
@@ -108,11 +93,6 @@ def delete(preferences, uid) -> bool:
     return True
 
 
-def _looks_like_uid(value: str) -> bool:
-    """Is this a minted UID rather than a person's name? The shape lives in `keyed_store.uid_shaped`, where the key reader needs it too."""
-    return keyed_store.uid_shaped(value)
-
-
 def rename(preferences, uid, name: str) -> bool:
     """Relink a UID's name. Nothing tagged is touched - one field write, where a name-keyed store would need `keyed_store.rekey`."""
     uid = str(uid)
@@ -139,22 +119,10 @@ def first_run_state(preferences) -> str:
 
 
 def current(preferences):
-    """This machine's user for this library, or None when the caller must ASK - never papered over with a mint, since only the caller can put a picker on screen; the MINT path adopts a legacy NAME left in the pointer (an install signing as Plum stays Plum) but never a stale UID."""
-    state = first_run_state(preferences)
-    if state == RESOLVED:
-        return str(preferences.library_user)
-    if state == ASK:
+    """This machine's user in this library, or None when it names nobody here; nobody is made."""
+    if first_run_state(preferences) != RESOLVED:
         return None
-    try:
-        carried = str(preferences.library_user or "").strip()
-    except AttributeError:
-        carried = ""
-    if _looks_like_uid(carried):
-        carried = ""    # a pointer at a DELETED user is a UID, never a name to mint under
-    uid = create(preferences, carried or random.choice(PLACEHOLDER_NAMES))
-    if not uid:
-        return None
-    return adopt(preferences, uid)
+    return str(preferences.library_user)
 
 
 def adopt_named(preferences, name: str) -> str:

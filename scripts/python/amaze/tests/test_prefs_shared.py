@@ -376,6 +376,9 @@ class EveryRowFollowsAUserOrLibraryChange(SharedPrefsCase):
                 return 0
 
         class _Panel:
+            def serves(self, _folder):
+                return True
+
             def tile_icon_models(self):
                 return (_Model(),)
 
@@ -408,6 +411,9 @@ class EveryRowFollowsAUserOrLibraryChange(SharedPrefsCase):
         elsewhere.save()
         keyed_store.release()
         class _Panel:
+            def serves(self, _folder):
+                return False
+
             def takes_library(self, _folder):
                 return True
 

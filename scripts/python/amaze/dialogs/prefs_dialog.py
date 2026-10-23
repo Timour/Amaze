@@ -238,6 +238,9 @@ class PrefsDialog(base_dialog.AssetDialog):
         return str(self.cbb_library.currentData() or "")
 
     def _picked_is_open(self) -> bool:
+        """Whether the pane has the picked library open; without a pane, whether it is the set one."""
+        if self._panel is not None:
+            return self._panel.serves(self._picked_library())
         return _same_folder(self._picked_library(), self._prefs.real_dir)
 
     def _fill_libraries(self, picked: str = "") -> None:
@@ -512,7 +515,7 @@ class PrefsDialog(base_dialog.AssetDialog):
                        self._btn_manage_libraries, self.cbb_library_user):
             widget.setEnabled(not testing)    # the test library brings its own user
         for widget in (self._btn_clean_up, self._btn_reload, self._btn_show_folder):
-            widget.setEnabled(is_open)
+            widget.setEnabled(testing or is_open)    # on the test library, while it is on
         for widget in (self._btn_edit_user, self._btn_delete_user):
             widget.setEnabled(not testing and (uid == self.NEW_USER or (is_open and picked)))
         for widget in (self._btn_apply_library, self._btn_accept_library):

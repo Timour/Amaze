@@ -329,6 +329,19 @@ def class_scope(testcase_class):
 ALL_SECTION_KEYS = ("material", "gradient", "cop", "code", "file")    # every section key, so a fixture panel can drive any tab regardless of the machine's own settings
 
 
+FIXTURE_USER_NAME = "Fixture"    # the fixture user's name, in a library a panel opens
+
+
+def with_fixture_user(library) -> str:
+    """`library`, holding the fixture user: a panel opens a library only with its user."""
+    import types
+    from amaze.core import keyed_store, users
+    holder = types.SimpleNamespace(dir=library, library_user=FIXTURE_USER)
+    keyed_store.open_store(users.SPEC, holder).set(FIXTURE_USER, {"name": FIXTURE_USER_NAME})
+    keyed_store.release()
+    return library
+
+
 def fixture_panel(testcase):
     """A REAL AmazePanel over a private fixture library: `hostos.config_root` redirected (AFTER importing panel.py, which reloads hostos), saves disabled, network blocked, workers stopped on cleanup, and the isolation ASSERTED rather than assumed. ▸p/harness-isolation"""
     from amaze.panel import panel as panel_mod       # reloads hostos
@@ -351,7 +364,7 @@ def fixture_panel(testcase):
 
     config = scratch_dir("amaze_fixture_panel_")
     testcase.addCleanup(shutil.rmtree, config, True)
-    library = fresh_library(testcase, _SEEDED[0] if _SEEDED else None)
+    library = with_fixture_user(fresh_library(testcase, _SEEDED[0] if _SEEDED else None))
     files = fresh_files_folder(testcase)
     with open(os.path.join(config, "settings.json"), "w",
               encoding="utf-8") as handle:

@@ -1,5 +1,6 @@
 """Preferences ▸ Library: a library and its user are picked together; Apply switches both."""
 
+import json
 import os
 import shutil
 import types
@@ -238,6 +239,58 @@ class TestLibraryKeepsTheUserByName(unittest.TestCase):
                          "the test library has no Plum")
         dialog.set_test_mode(False)
         self.assertEqual(mine, prefs.library_user, "turning it off left the test user")
+
+
+class AStartWithoutAUserOpensNoLibrary(unittest.TestCase):
+    """At start a library opens only with this computer's user; without one, the pane asks."""
+
+    def _reopened_with(self, user):
+        first = test_support.fixture_panel(self)
+        settings = os.path.join(first.prefs.path, "settings.json")
+        with open(settings, encoding="utf-8") as handle:
+            data = json.load(handle)
+        data["library_user"] = user
+        with open(settings, "w", encoding="utf-8") as handle:
+            json.dump(data, handle)
+        return test_support.reopened_panel(self)
+
+    def _asking(self, panel, answer):
+        asked = []
+
+        def displayed(text, **kwargs):
+            asked.append((text, kwargs.get("buttons")))
+            return answer
+
+        ui = mock.MagicMock()
+        ui.displayMessage.side_effect = displayed
+        with mock.patch.object(hou, "ui", ui, create=True):
+            panel.ensure_library_user()
+        return asked
+
+    def test_with_its_user_the_library_opens_and_nothing_is_asked(self):
+        panel = test_support.fixture_panel(self)
+        self.assertIsNotNone(panel.material_model)
+        self.assertEqual([], self._asking(panel, 1))
+
+    def test_without_a_user_no_library_opens_and_the_pane_asks(self):
+        panel = self._reopened_with("")
+        self.assertIsNone(panel.material_model, "a library opened with nobody picked")
+        self.assertEqual([(messages.NO_USER_PICKED, messages.BUTTONS_OPEN_PREFERENCES)],
+                         self._asking(panel, 1))
+        self.assertIsNone(getattr(panel, "_prefs_dialog", None), "Close opened Preferences")
+
+    def test_open_preferences_shows_the_library_tab(self):
+        panel = self._reopened_with("")
+        self._asking(panel, 0)
+        dialog = panel._prefs_dialog
+        self.addCleanup(dialog.close)
+        self.assertIs(dialog.frame_page("P01"), dialog._tabs.currentWidget())
+
+    def test_apply_with_the_user_opens_the_library(self):
+        panel = self._reopened_with("")
+        self.assertTrue(test_support.apply_library(self, panel, panel.prefs.dir))
+        self.assertIsNotNone(panel.material_model, "Apply left the library closed")
+        self.assertEqual(test_support.FIXTURE_USER, panel.prefs.library_user)
 
 
 class SetLibraryOpensTheLibraryTab(unittest.TestCase):

@@ -88,6 +88,8 @@ USER_DELETE_CONFIRM = 'Delete user "%s" from this library?'
 
 USER_NAME_TAKEN = 'A user named "%s" is already in this library. Choose another name.'
 
+NO_USER_PICKED = 'No user is picked for this library, so Amaze has not opened it. Open Preferences, pick your user or create one, and press Apply.'
+
 MATERIAL_VERSIONS_TURN_ON_CONFIRM = 'Enable Material Versions for this library?'
 
 LIBRARY_SETTING_NOT_WRITTEN = 'The setting could not be written to the library folder and was not changed.'
@@ -262,6 +264,8 @@ BUTTONS_CLEAN_LIBRARY = ('Clean Library', 'Cancel')
 BUTTONS_DELETE = ('Delete', 'Cancel')
 
 BUTTONS_DELETE_USER = ('Delete User', 'Cancel')
+
+BUTTONS_OPEN_PREFERENCES = ('Open Preferences', 'Close')
 
 BUTTONS_TURN_ON = ('Turn On', 'Cancel')
 

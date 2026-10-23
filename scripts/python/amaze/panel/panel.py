@@ -182,7 +182,7 @@ class AmazePanel(QtWidgets.QWidget):
                 self._defer_open_library()
                 opened = False    # the pane opens without a library; what it says follows
             else:
-                opened = self.open_library()
+                opened = self._open_at_start()
             if not opened:
                 self._open_libraryless()    # still a finished construction, so it says ready
             debug.event(    # construction-complete tripwire, through the same engine as the session header: a log whose header exists but whose 'panel ready' is missing means logging died DURING construction - see debug.probe()
@@ -214,8 +214,18 @@ class AmazePanel(QtWidgets.QWidget):
         timer = self._open_library_timer = QtCore.QTimer(self)    # owned, so it dies with the panel
         timer.setSingleShot(True)
         timer.setInterval(0)
-        timer.timeout.connect(self.open_library)
+        timer.timeout.connect(self._open_at_start)
         timer.start()
+
+    def _open_at_start(self) -> bool:
+        """Open the library only with this computer's user picked; `ensure_library_user` asks."""
+        return self.open_library(needs_user=True)
+
+    def serves(self, folder: str) -> bool:
+        """Whether the models are open on `folder`."""
+        return (getattr(self, "material_model", None) is not None
+                and hostos.comparable_path(str(getattr(self, "_models_dir", "") or ""))
+                == hostos.comparable_path(str(folder or "")))
 
     def _repaired(self, folder: str) -> bool:
         """Ask about the list in `folder` that will not read; True once Repair put a readable one back."""
@@ -462,7 +472,7 @@ class AmazePanel(QtWidgets.QWidget):
             return False
         return not library_actions.index_unreadable(folder) or self._repaired(folder)
 
-    def open_library(self) -> bool:
+    def open_library(self, needs_user: bool = False) -> bool:
         """Every way onto a library, in one order; False when it stays closed."""
         if self._library_too_new():
             return False    # the models stay on the library they serve
@@ -472,6 +482,9 @@ class AmazePanel(QtWidgets.QWidget):
         library_actions.prepare(self.prefs)
         if not library_actions.index_present(self.prefs.dir):    # prepare could not set one up
             return self._stay_closed()
+        if needs_user and users.current(self.prefs) is None:
+            debug.event("session", "library not opened - no user picked", dir=self.prefs.dir)
+            return self._stay_closed()    # opened from Preferences, with its user
         if getattr(self, "material_model", None) is None:
             self.setup()    # the libraryless shape has no models to switch
         else:
@@ -717,29 +730,19 @@ class AmazePanel(QtWidgets.QWidget):
 
         return bytecode.compile_missing_in_background(amaze.PACKAGE_ROOT, _done)
 
-    def ensure_library_user(self, chooser=None) -> str:
-        """Ask WHICH user this machine is, and ONLY where the library already has some and this one is not among them (`users.ASK`): a library with nobody in it mints silently, a machine whose pointer already resolves is never questioned, and cancelling is allowed - it leaves no user, so nothing is keyed under a blank this session and the question comes back next time. `chooser` takes `{uid: name}` and answers `(uid, new_name)`, both empty for a cancel, so the decision can be driven without a dialog on screen"""
+    def ensure_library_user(self) -> str:
+        """After the first paint: this computer's user, or the question that opens Preferences on Library."""
         preferences = self.prefs
-        if users.first_run_state(preferences) != users.ASK:
-            return users.current(preferences) or ""
-        known = users.all_users(preferences)
-        if chooser is None:
-            def chooser(entries):
-                from amaze.dialogs import user_dialog
-                dialog = user_dialog.UserPickerDialog(entries, parent=self)
-                dialog.exec()
-                if dialog.canceled:
-                    return ("", "")
-                return (dialog.uid, dialog.new_name)
-        uid, new_name = chooser(known)
-        if not uid and new_name:
-            uid = users.create(preferences, new_name)
-        if not uid:
-            debug.event("users", "no user picked for this library",
-                        known=len(known))
-            return ""
-        users.adopt(preferences, uid)
-        return uid
+        uid = users.current(preferences)
+        if uid or not library_actions.index_present(preferences.dir):
+            return uid or ""    # no library to ask about: the pane's own blank says where to set one
+        debug.event("users", "no user picked for this library", dir=preferences.dir)
+        ui = getattr(hou, "ui", None)
+        if ui is not None and ui.displayMessage(
+                messages.NO_USER_PICKED, buttons=messages.BUTTONS_OPEN_PREFERENCES,
+                default_choice=0, close_choice=1, title=messages.TITLE_AMAZE) == 0:
+            self.set_library()
+        return ""
 
     def event(self, event):
         """Flush the Comments pane when this panel is being DESTROYED. Measured (Qt 6.8, offscreen): hiding or closing a window sends its children a hide event, which the pane's own hideEvent covers, but DELETING a parent sends its children nothing at all - and that is how a Houdini pane tab goes away, taking the last 600ms of typing (the save debounce) with it. DeferredDelete arrives while every widget is still alive, which is what makes the pending page serializable here"""

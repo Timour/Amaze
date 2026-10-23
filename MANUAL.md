@@ -657,8 +657,10 @@ the current one, or the library's only user; otherwise pick one, or
 **Create a new user...**. Two users in one library cannot share a name.
 **Rename** renames the user shown, and **Delete** removes them with
 their favorites and registered folders on every computer that uses the
-library, after a confirmation. A computer still signed in as that user
-asks for a user the next time Amaze opens.
+library, after a confirmation. Amaze opens a library only with a user
+picked: when it starts without one, it shows a message with **Open
+Preferences**, which opens this tab. A computer still signed in as a
+deleted user shows the same message the next time Amaze opens.
 
 **Cache Path** and **Delete Local Cache** manage the thumbnail cache on
 this machine.

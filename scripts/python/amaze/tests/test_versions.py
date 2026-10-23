@@ -321,34 +321,22 @@ class StoreTest(_Case):
                          "a create wrote blind over an unreadable ledger")
         self.assertFalse(versions.switch_active(self.prefs, self.mat_id, 1))
 
-    def test_no_user_mints_one_on_a_colour_name_never_harvested(self):
-        """A library with nobody in it mints its first user once per LIBRARY from the colour pool and signs with that name - never the OS user, never the machine name - and resolves it ONCE, not per save."""
-        import getpass
-        import platform
+    def test_a_version_saved_with_nobody_picked_is_unsigned(self):
+        """With nobody picked a version is saved unsigned, and nobody is made."""
         from amaze.core import users
-        self.prefs.library_user = ""  # NOBODY, said out loud: the mint only runs on an empty pointer, and the shared fixture carries one so tagged stores can key at all
+        self.prefs.library_user = ""
         versions.create_version(self.prefs, self.mat_id)
-        author = versions.list_versions(self.prefs, self.mat_id)[0]["author"]
-        self.assertIn(author, users.PLACEHOLDER_NAMES)
-        self.assertEqual(author,
-                         users.name_for(self.prefs, self.prefs.library_user),
-                         "prefs must point at the UID whose name signed")
-        for harvested in (getpass.getuser(), platform.node(),
-                          os.environ.get("USER", "")):
-            if harvested:
-                self.assertNotEqual(harvested.lower(), author.lower())
-        self._rewrite_base(b"EDITED")
-        versions.create_version(self.prefs, self.mat_id)
-        second = versions.list_versions(self.prefs, self.mat_id)[1]["author"]
-        self.assertEqual(author, second,
-                         "the identity is resolved ONCE, not per save")
+        row = versions.list_versions(self.prefs, self.mat_id)[0]
+        self.assertEqual(("", "1"), (row["author"], row["file"]))
+        self.assertEqual({}, users.all_users(self.prefs), "saving a version made a user")
 
 
 class VersionFilesCarryTheirWriterTest(_Case):
     """The archive stem is <writer>-<n>, the writer is `library_user`, and the ledger row records the stem it wrote; what keeps two writers apart is stepping past a stem already on disk."""
 
     def test_the_stem_carries_the_writer(self):
-        self.prefs.library_user ="Crimson"
+        from amaze.core import users
+        self.prefs.library_user = users.create(self.prefs, "Crimson")
         versions.create_version(self.prefs, self.mat_id)
         row = versions.list_versions(self.prefs, self.mat_id)[0]
         self.assertEqual("Crimson", row.get("author"),
@@ -361,7 +349,7 @@ class VersionFilesCarryTheirWriterTest(_Case):
     def test_two_writers_same_number_never_collide(self):
         """TWO DIFFERENT PEOPLE, which under the UID scheme means two real user records - the second writer is not a machine that retyped a name, it is somebody the library knows about."""
         from amaze.core import users
-        self.prefs.library_user ="Crimson"
+        self.prefs.library_user = users.create(self.prefs, "Crimson")
         versions.create_version(self.prefs, self.mat_id)
         ledger_path = os.path.join(
             versions.versions_dir(self.prefs, self.mat_id),
@@ -603,7 +591,7 @@ class DeletingAUser(unittest.TestCase):
                           "somebody was adopted silently - the ASK "
                           "state is the picker's to resolve")
 
-    def test_the_last_deletion_returns_to_mint_and_a_stale_pointer_is_not_a_name(self):
+    def test_the_last_deletion_leaves_nobody_and_a_stale_pointer_makes_nobody(self):
         from amaze.core import users
         only = users.create(self.prefs, "Anna")
         self._become(only)
@@ -611,12 +599,8 @@ class DeletingAUser(unittest.TestCase):
         self.assertEqual(users.MINT, users.first_run_state(self.prefs))
 
         self._become(only)    # another machine still pointing at the dead UID
-        minted = users.current(self.prefs)
-        self.assertTrue(minted)
-        name = users.name_for(self.prefs, minted)
-        self.assertIn(name, users.PLACEHOLDER_NAMES,
-                      "the stale UID hex was minted as a NAME: %r"
-                      % name)
+        self.assertIsNone(users.current(self.prefs))
+        self.assertEqual({}, users.all_users(self.prefs), "a stale pointer made a user")
 
 
 if __name__ == "__main__":

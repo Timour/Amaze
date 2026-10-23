@@ -1193,35 +1193,33 @@ class TheUserIsAUidWithANameTest(unittest.TestCase):
                       "the rename minted a second user")
         self.assertEqual(1, len(users.all_users(p)))
 
-    def test_the_current_user_is_a_uid_and_persists(self):
+    def test_the_current_user_is_the_picked_uid(self):
         from amaze.core import users
         p = self._prefs()
-        uid = users.current(p)
-        self.assertTrue(uid)
+        self.assertIsNone(users.current(p), "a library with nobody in it has a user")
+        self.assertEqual({}, users.all_users(p), "asking for the user made one")
+        uid = users.create(p, "Plum")
+        users.adopt(p, uid)
+        self.assertEqual(uid, users.current(p))
         self.assertEqual(uid, p.library_user,
                          "the machine-local pointer must hold the UID")
-        self.assertEqual(uid, users.current(p),
-                         "a second call minted a second identity")
 
-    def test_a_name_left_by_the_first_build_is_adopted_onto_a_uid(self):
-        """An install holding a NAME keeps it and gains a UID for it, rather than becoming a second person."""
+    def test_a_name_left_in_the_pointer_is_nobody(self):
+        """A NAME in the pointer, as the first builds wrote it, names nobody, and nobody is made of it."""
         from amaze.core import users
         p = self._prefs()
         p.library_user = "Plum"
-        uid = users.current(p)
-        self.assertNotEqual("Plum", uid)
-        self.assertEqual("Plum", users.name_for(p, uid),
-                         "the existing name was dropped instead of "
-                         "carried onto the new UID")
+        self.assertIsNone(users.current(p))
+        self.assertEqual({}, users.all_users(p))
 
-    def test_a_first_run_mints_asks_or_resolves(self):
-        """No users: a colour name, once per LIBRARY. Users and no match: ASK, or one person is two."""
+    def test_nobody_asks_or_resolves_and_none_makes_a_user(self):
+        """No users, users and no match, a match: the three states, and not one of them makes a user."""
         from amaze.core import users
         p = self._prefs()
         p.library_user = ""
         self.assertEqual(users.MINT, users.first_run_state(p))
-        uid = users.current(p)
-        self.assertIn(users.name_for(p, uid), users.PLACEHOLDER_NAMES)
+        self.assertIsNone(users.current(p))
+        self.assertEqual({}, users.all_users(p))
 
         p = self._prefs()
         users.create(p, "Plum")
@@ -1246,41 +1244,8 @@ class TheUserIsAUidWithANameTest(unittest.TestCase):
         self.assertEqual("Plum", versions.writer_tag(p))
 
 
-class TheSecondMachineIsAskedWhoItIsTest(unittest.TestCase):
-    """A library with people in it, met by a machine that is none of them, ASKS instead of minting. ▸p/dialogs-are-a-bill"""
-
-    def _panel(self):
-        from amaze.tests import test_support
-        return test_support.fixture_panel(self)
-
-    def test_only_a_machine_that_is_none_of_them_is_asked(self):
-        """A cancel keys nothing and asks again; a pick adopts, and a new name creates."""
-        from amaze.core import users
-        panel = self._panel()
-        uid = users.create(panel.prefs, "Cobalt")
-        panel.prefs.library_user = uid
-
-        def _refuse(known):
-            raise AssertionError("asked a machine that already resolves")
-
-        self.assertEqual(uid, panel.ensure_library_user(_refuse))
-
-        panel.prefs.library_user = ""
-        self.assertEqual("", panel.ensure_library_user(lambda k: ("", "")))
-        self.assertEqual("", panel.prefs.library_user)
-        self.assertEqual(users.ASK, users.first_run_state(panel.prefs))
-
-        picked = panel.ensure_library_user(lambda known: (uid, ""))
-        self.assertEqual(uid, picked)
-        self.assertEqual(uid, panel.prefs.library_user)
-        self.assertEqual(1, len(users.all_users(panel.prefs)),
-                         "picking an existing user minted another")
-
-        panel.prefs.library_user = ""
-        made = panel.ensure_library_user(lambda known: ("", "Sienna"))
-        self.assertTrue(made)
-        self.assertEqual("Sienna", users.name_for(panel.prefs, made))
-        self.assertEqual(2, len(users.all_users(panel.prefs)))
+class TheUserPickerTest(unittest.TestCase):
+    """D14 lists the library's users and a create row."""
 
     def test_the_picker_offers_the_users_and_a_create_row(self):
         from amaze.dialogs import user_dialog

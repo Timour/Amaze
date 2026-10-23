@@ -1,4 +1,4 @@
-"""Which user is this machine, on a library that already has some - asked ONCE, and only when the library has people in it and this machine's pointer names none of them. A library with nobody yet mints silently and never reaches here."""
+"""The User list's rows, and D14, the user picker a start no longer raises."""
 
 from __future__ import annotations
 

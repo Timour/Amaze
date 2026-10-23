@@ -256,7 +256,10 @@ P01). The Library list is settings.json's `libraries`; picking one shows
 its users from its own `users.json` and preselects by name, then the
 only user. Nothing switches until Apply, which opens the library with
 the picked user and puts both back when it stays closed. A user named
-for a library not yet made is created after the library opens.
+for a library not yet made is created after the library opens. At start
+`open_library(needs_user=True)` stops after `prepare` when no user is
+picked; once the pane has drawn, `ensure_library_user` asks to open
+Preferences on this tab.
 
 **The Sidebar Menu** is the same table, same builder (2026-08-04):
 `Section.SIDEBAR_MENU`, rendered by the same `panel/grid.py` code that
@@ -890,7 +893,7 @@ copied per dialog.
 | **Save Dialog** | every section a scene node saves into | `dialogs/save_dialog.py` ✓ AssetDialog — D09: Section, Name, Category, Language, Tags. The Section row is guessed from the node and changeable; `dialogs/gradient_dialog.py` keeps only `CategoryDialog` |
 | **Preferences** | — (app-wide) | `dialogs/prefs_dialog.py` ✓ AssetDialog (live-apply: no OK/Cancel, 12px recorded margin) |
 | **Icon Dialog** | any tile | `dialogs/icon_dialog.py` ✓ AssetDialog (non-modal) |
-| **User Picker** | — (app-wide) | `dialogs/user_dialog.py` — raised after the first paint, only when the library has users and this machine is none of them |
+| **User Picker** | — (app-wide) | `dialogs/user_dialog.py` — D14, no longer raised: a start with no user picked opens no library and, after the first paint, asks to open Preferences ▸ Library (`panel.ensure_library_user`); `fill_users` fills the Library tab's User list |
 | **Manage Libraries** | — (app-wide) | `dialogs/library_dialog.py` ✓ AssetDialog — D15: the Library list, the most recently opened first; Remove from List takes libraries off it and leaves their folders alone |
 | **About** | — | a TAB inside `dialogs/prefs_dialog.py`, shared with Debug — there is no separate About dialog |
 
@@ -1031,7 +1034,7 @@ non-zero, so it can gate).
 | entry | what it is |
 |---|---|
 | `library.json` `cops.json` `code.json` `gradients.json` | the four databases, all four through `DatabaseConnector` since 2026-08-09 — same shape, rows under `assets` keyed by `id`. Enumerated ONCE in `database.SECTION_DATABASES` (filename, panel label, section noun, in panel order); `database.DATABASES` and Repair derive from it, and `tools/library-audit.py` keeps a deliberate copy because it must run where Houdini will not start |
-| `users.json` | **who uses this library** — a `uuid4` UID per person with a `name` beside it. Everything a user owns is tagged with the UID, so a rename relinks one label and moves nothing. The name is an alias for the UID, never the key. A library with no users mints its first from a colour-name pool; a library that HAS users asks a new machine which of them it is, rather than silently minting a second identity for one person. Created, renamed and DELETED from the Preferences User row (2026-08-22): a deletion sweeps everything tagged theirs through the engine's `retire_owner` — every user-tagged store, one guarded write each — then the record; the deleting machine's row goes blank until somebody is picked, a machine still signed in as them falls to the ASK picker, and a pointer left holding the dead UID is never minted as a NAME (`_looks_like_uid`) |
+| `users.json` | **who uses this library** — a `uuid4` UID per person with a `name` beside it. Everything a user owns is tagged with the UID, so a rename relinks one label and moves nothing. The name is an alias for the UID, never the key, and names are unique in a library. Nothing makes a user silently: a user is picked or created on Preferences ▸ Library and made on Apply, and a library opens at start only when this computer's pointer names one of its users. Created, renamed and DELETED from the Preferences User row (2026-08-22): a deletion sweeps everything tagged theirs through the engine's `retire_owner` — every user-tagged store, one guarded write each — then the record; a machine still signed in as them opens no library at its next start and asks to pick a user |
 | `notes.json` `icons.json` `locations.json` `favourites.json` `prefs.json` | the keyed side tables (per-asset comment pages; chosen tile icons; the File section's registered locations — per-user since ROADMAP line 22 stage C, `<uid>|<path>`, each user's own sidebar; every section's starred rows, `<uid>|<path-or-asset-id>`; the library's shared settings — one record per preference key, everyone's answer, ROADMAP line 22). Not DatabaseConnector documents, but written here and snapshotted here like the rest. A location record is `{registered, name, color, show_all, recursive}` keyed by path — `registered` is a FIELD, so the sidebar list is derived rather than kept beside it, and a location carrying no decoration is still visible. Path-shaped keys are stored PORTABLE (2026-08-06): `$AMAZE/...` under the install tree, `~/...` under home, absolute only past both — `hostos.storage_path_key` converts at the store boundary, every legacy spelling is absorbed on load (first in wins, logged), and the locations API answers canonical absolutes so scans and sidebars never see the variable form |
 | `policy.json` | per-library write policy |
 | `<file>.json.bak-1/-2/-3/-first` | **the restore tier** — written by `snapshot_before_write`, read by Repair Library, recovered by `restore.put_back`. Every file above that is snapshotted has one, not only the four databases |
@@ -1253,9 +1256,8 @@ messages.py               EVERY message Amaze shows in a dialog, in one
                           the Figma register cannot rot against it
                           ▸p/messages-need-one-home
 dialogs/                  save / preferences / about / code / gradient dialogs
-dialogs/user_dialog.py    WHICH user this machine is, asked once and
-                          only when the library has people in it and
-                          this machine is none of them
+dialogs/user_dialog.py    the User list's rows, A to Z then the create
+                          row; its D14 picker is no longer raised
 dialogs/library_dialog.py the Library list's Manage window: it takes
                           libraries off the list, never a folder
 dialogs/update_dialog.py  what an update asks and says - Continue or
