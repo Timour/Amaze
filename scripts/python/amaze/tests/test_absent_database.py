@@ -76,6 +76,13 @@ def _stdout_of(func):
     return result, buffer.getvalue()
 
 
+def _until_idle(done) -> None:
+    for _ in range(20):    # the zero-interval timers that wait for an idle Qt
+        QtWidgets.QApplication.processEvents()
+        if done():
+            return
+
+
 class TheUnreadableIndexDialogTest(unittest.TestCase):  # sabotage: drop the narrow catch in the constructor and every case here dies on the raw ValueError
     """An unparseable library.json at panel open gets ONE dialog, never a traceback."""
 
@@ -106,10 +113,18 @@ class TheUnreadableIndexDialogTest(unittest.TestCase):  # sabotage: drop the nar
         ui.displayMessage.side_effect = scripted
         with patch.object(hou, "ui", create=True, new=ui):
             second = test_support.reopened_panel(self)
-        return second, calls, index_path  # (panel, dialog messages, index path)
+            building = list(calls)
+            _until_idle(lambda: calls)
+        return second, calls, index_path, building  # (panel, dialogs, index path, asked while building)
+
+    def test_nothing_is_asked_while_the_pane_builds(self):
+        panel, calls, _, building = self._panel_over_broken_index(1)
+        self.assertEqual([], building,
+                         "asked inside onCreateInterface, where a modal draws black")
+        self.assertTrue(calls, "the offer never came once Qt was idle")
 
     def test_repair_reopens_the_recovered_library(self):
-        panel, calls, index_path = self._panel_over_broken_index(0)
+        panel, calls, index_path, _ = self._panel_over_broken_index(0)
         self.assertTrue(calls, "no dialog was offered")
         self.assertIn("could not be read", calls[0])
         self.assertIsNotNone(panel.material_model,
@@ -121,7 +136,7 @@ class TheUnreadableIndexDialogTest(unittest.TestCase):  # sabotage: drop the nar
             json.load(handle)
 
     def test_declining_opens_without_a_library_and_touches_nothing(self):
-        panel, calls, index_path = self._panel_over_broken_index(1)
+        panel, calls, index_path, _ = self._panel_over_broken_index(1)
         self.assertTrue(calls, "no dialog was offered")
         self.assertIsNone(panel.material_model,
                           "declined, yet a library opened")
@@ -137,6 +152,7 @@ class TheUnreadableIndexDialogTest(unittest.TestCase):  # sabotage: drop the nar
         test_support.reset_database_singletons()
         self.addCleanup(test_support.reset_database_singletons)
         second = test_support.reopened_panel(self)
+        _until_idle(lambda: False)
         self.assertIsNone(second.material_model)
 
 

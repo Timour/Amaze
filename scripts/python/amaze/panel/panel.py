@@ -189,7 +189,8 @@ class AmazePanel(QtWidgets.QWidget):
                     index_bytes = b""
                 if (self.prefs.dir and os.path.isfile(index_path)
                         and not hostos.parses_as_json(index_bytes)):
-                    opened = self._offer_index_repair(broken)
+                    self._defer_index_repair(broken)
+                    opened = False    # the pane opens without a library, and the offer follows
                 else:
                     raise
             if not opened:
@@ -218,6 +219,14 @@ class AmazePanel(QtWidgets.QWidget):
         self.file_folders_model = None
         self.matx_online_model = None    # setup() builds the online world; its door refuses without it
         self._sync_online_chip()
+
+    def _defer_index_repair(self, broken) -> None:
+        """Ask about the unreadable list once Qt is idle. ▸r/modal-in-pane-build"""
+        timer = self._index_repair_timer = QtCore.QTimer(self)    # owned, so it dies with the panel
+        timer.setSingleShot(True)
+        timer.setInterval(0)
+        timer.timeout.connect(lambda: self._offer_index_repair(broken))
+        timer.start()
 
     def _offer_index_repair(self, broken) -> bool:
         """The dialog an unreadable library.json earns - Repair (the newest saved copy, else the per-asset recovery stamps) or open without a library. True = repaired AND reopened; no success dialog, the recovered grid is the announcement"""
