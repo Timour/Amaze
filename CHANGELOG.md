@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.11.11
+
+- The code's own notes call Update Render by its name; nothing changes in the app.
+
 ## 1.11.10
 
 - The Material section's Houdini code is kept apart from its list of materials; nothing changes in the app.
