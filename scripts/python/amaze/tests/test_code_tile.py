@@ -14,6 +14,7 @@ _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 import hou  # noqa: E402
 
 from amaze import amazetheme  # noqa: E402
+from amaze.actions import code as code_actions  # noqa: E402
 from amaze.core import code_library  # noqa: E402
 from amaze.helpers import hostos, vex_syntax  # noqa: E402
 from amaze.panel import delegates  # noqa: E402
@@ -29,7 +30,7 @@ class ASnippetRunsInThisHoudini(unittest.TestCase):
                 node.destroy()
 
     def test_a_snippet_runs_and_answers_nothing(self):
-        problem = code_library.run_python(
+        problem = code_actions.run_python(
             "probe", "hou.node('/obj').createNode('null', 'snippet_probe')")
         self.assertEqual("", problem)
         self.assertIsNotNone(hou.node("/obj/snippet_probe"))
@@ -37,7 +38,7 @@ class ASnippetRunsInThisHoudini(unittest.TestCase):
     def test_a_snippet_is_one_undo_step_named_after_it(self):
         if not hou.undos.areEnabled():
             self.skipTest("undo is off in this session")
-        code_library.run_python("probe", "o = hou.node('/obj')\n"
+        code_actions.run_python("probe", "o = hou.node('/obj')\n"
                                 "o.createNode('null', 'snippet_probe1')\n"
                                 "o.createNode('null', 'snippet_probe2')")
         self.assertEqual("Run probe", hou.undos.undoLabels()[0])
@@ -49,7 +50,7 @@ class ASnippetRunsInThisHoudini(unittest.TestCase):
         for code, answer in (("1 / 0", "ZeroDivisionError: division by zero"),
                              ("x = (\n", "line ")):
             with self.subTest(code=code):
-                problem = code_library.run_python("probe", code)
+                problem = code_actions.run_python("probe", code)
                 self.assertTrue(problem.startswith(answer), problem)
                 self.assertNotIn("\n", problem, "more than the last line came back")
 
@@ -70,7 +71,7 @@ class AShelfScriptGetsItsKwargs(unittest.TestCase):
         probe = types.ModuleType("_amaze_kwargs_probe")
         sys.modules[probe.__name__] = probe
         self.addCleanup(sys.modules.pop, probe.__name__, None)
-        problem = code_library.run_python(
+        problem = code_actions.run_python(
             "probe", "import sys\nsys.modules['_amaze_kwargs_probe'].seen = dict(kwargs)\n")
         self.assertEqual("", problem)
         seen = probe.seen
@@ -89,7 +90,7 @@ class AShelfScriptGetsItsKwargs(unittest.TestCase):
                 mock.patch.object(hostos, "is_macos", return_value=platform == "darwin"), \
                 mock.patch.object(QtCore.QCoreApplication, "testAttribute",
                                   return_value=not swapped):
-            kwargs = code_library.shelf_kwargs("probe")
+            kwargs = code_actions.shelf_kwargs("probe")
         return {k for k in ("shiftclick", "ctrlclick", "altclick", "cmdclick") if kwargs[k]}
 
     def test_each_modifier_reaches_its_shelf_flag(self):

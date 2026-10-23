@@ -380,10 +380,8 @@ class GradientLibrary(library.AssetLibrary):
         if role in (self.RendererLabelRole, self.RendererRole):
             return "Gradient"  # the KIND of thing; its set or size is the Category column's
         if role == QtCore.Qt.ItemDataRole.ToolTipRole:
-            from amaze.helpers import ui_helpers
-            names = ", ".join(
+            return ", ".join(
                 str(c.get("name", "")) for c in self._colors_of(asset))
-            return ui_helpers.tooltip_text(names)
         if role == self.CategoryLabelRole:
             cats = asset.categories
             return cats[0] if cats else "Uncategorized"

@@ -9,7 +9,8 @@ import hou
 from PySide6 import QtCore, QtWidgets
 
 from amaze import amazetheme
-from amaze.core import (category, code_library, cop_library, debug, file_library,
+from amaze.actions import code as code_actions
+from amaze.core import (category, cop_library, debug, file_library,
                         grid_columns, locations, multifilterproxy_model, renderers,
                         scene_captures, notes)
 from amaze.helpers import hostos, ui_helpers
@@ -971,7 +972,7 @@ class CodeSection(AssetSection):
             node = panel._create_carrier(dest, type_name, name, position)
             if node is None:
                 return False
-            ok, _reason = panel.code_model.apply_to_node(row, node)
+            ok, _reason = code_actions.apply_to_node(panel.code_model, row, node)
             if not ok:
                 node.destroy()
                 return False
@@ -988,8 +989,8 @@ class CodeSection(AssetSection):
         except Exception:
             return False
         with dragengine.drop_group("Amaze Apply Code Snippet"):
-            ok, reason = panel.code_model.apply_to_node(
-                source_index.row(), node
+            ok, reason = code_actions.apply_to_node(
+                panel.code_model, source_index.row(), node
             )
         if not ok:
             if reason:
@@ -1018,7 +1019,7 @@ class CodeSection(AssetSection):
         if row is None:
             return
         asset = self.panel.code_model.assets[row]
-        problem = code_library.run_python(asset.name, asset.code)
+        problem = code_actions.run_python(asset.name, asset.code)
         if problem:
             debug.refuse(messages.SNIPPET_RUN_FAILED % (asset.name, problem))
 

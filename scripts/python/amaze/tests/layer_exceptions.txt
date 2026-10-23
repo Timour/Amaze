@@ -1,9 +1,6 @@
 # The layer breaks that exist today. test_layers.py fails on any break not listed here,
 # and on any line here once its place is fixed, so the list only shrinks.
 # Written by test_layers.py --list; a line is added only when a break is accepted on purpose. ▸m/layer-plan
-core/code_library.py imports helpers/helpers.py
-core/code_library.py imports helpers/ui_helpers.py
-core/code_library.py uses hou
 core/cop_library.py imports render/nodes.py
 core/cop_library.py imports render/thumbs.py
 core/cop_library.py uses hou
@@ -12,7 +9,6 @@ core/file_library.py imports core/scene_captures.py
 core/file_library.py imports render/thumbs.py
 core/file_library.py uses PySide6.QtWidgets
 core/file_library.py uses hou
-core/gradient_library.py imports helpers/ui_helpers.py
 core/library.py imports helpers/helpers.py
 core/library.py imports render/husk_job.py
 core/library.py imports render/material_conversion/engine.py
@@ -22,7 +18,6 @@ core/library.py imports render/thumbs.py
 core/library.py talks displayMessage x3
 core/library.py uses hou
 core/matx_icon.py imports helpers/ui_helpers.py
-core/matx_library.py imports helpers/ui_helpers.py
 core/texstore.py uses hou
 core/tile_icons.py imports helpers/ui_helpers.py
 prefs/persistence.py imports panel/sections.py

@@ -3,13 +3,11 @@
 import os
 import json
 
-import hou
 from PySide6 import QtCore, QtGui
 
 import amaze
 from amaze import amazetheme
 from amaze.core import debug, library, category, material, thumbnails, tile_icons
-from amaze.helpers import hostos
 
 _STARTER_DEF = "res/def/starter_snippets.json"  # example snippets shipped with the plugin, seeded ONCE per library into an "Examples" category (see seed_starter_snippets)
 _STARTER_MARKER = ".amaze_code_starter_v1"  # the marker file name is versioned, so a future batch can seed again without re-adding snippets the user may have deleted from the first
@@ -78,40 +76,6 @@ def paint_code_preview(code: str) -> QtGui.QImage:
     layer.drawImage(0, 0, text)
     layer.end()
     return image
-
-
-def shelf_kwargs(name: str) -> dict:
-    """The `kwargs` a shelf click gives its script, so shelf scripts run unchanged ▸r/shelf-kwargs."""
-    held = QtGui.QGuiApplication.keyboardModifiers()
-    keys = QtCore.Qt.KeyboardModifier
-    mac = hostos.is_macos()
-    ctrl, cmd = keys.ControlModifier, keys.MetaModifier
-    if mac and not QtCore.QCoreApplication.testAttribute(
-            QtCore.Qt.ApplicationAttribute.AA_MacDontSwapCtrlAndMeta):
-        ctrl, cmd = cmd, ctrl    # on a Mac Qt names Command "Control" unless the app turns that off
-    return {"pane": None, "viewport": None, "panename": "", "toolname": name,
-            "shiftclick": bool(held & keys.ShiftModifier), "ctrlclick": bool(held & ctrl),
-            "altclick": bool(held & keys.AltModifier), "cmdclick": mac and bool(held & cmd),
-            "requestnew": True, "branch": False, "autoplace": False,
-            "inputs": [], "inputnodename": "", "outputindex": -1,
-            "outputs": [], "outputnodename": "", "inputindex": -1}
-
-
-def run_python(name: str, code: str) -> str:
-    """Run a Python snippet in this Houdini as one undo step: "" or its error's last line."""
-    import traceback
-    try:
-        compiled = compile(str(code or ""), "<snippet %s>" % name, "exec")
-    except SyntaxError as exc:
-        return "line %s: %s" % (exc.lineno, exc.msg)
-    try:
-        with hou.undos.group("Run %s" % name):
-            exec(compiled, {"__name__": "__main__", "hou": hou,    # noqa: S102
-                            "kwargs": shelf_kwargs(name)})
-    except (Exception, SystemExit):                          # noqa: BLE001
-        traceback.print_exc()
-        return traceback.format_exc().strip().splitlines()[-1]
-    return ""
 
 
 class CodeCategories(category.Categories):
@@ -192,7 +156,6 @@ class CodeLibrary(library.AssetLibrary):
         """The tooltip is the snippet's own comment ▸p/d03-retired; the rest is the base's."""
         if role == QtCore.Qt.ItemDataRole.ToolTipRole:
             from amaze.core import notes
-            from amaze.helpers import ui_helpers
 
             page = notes.note_for(
                 self.preferences,
@@ -201,7 +164,7 @@ class CodeLibrary(library.AssetLibrary):
             said = "\n".join(item.get("text", "")    # TEXT blocks only, never a to-do or a picture
                              for item in page.get("items", [])
                              if item.get("t") == "text").strip()
-            return ui_helpers.tooltip_text(said) if said else None  # no name: the tile shows it
+            return said or None  # no name: the tile shows it
         return super().row_data(row, role)
 
     def seed_starter_snippets(self, category_model) -> None:
@@ -300,35 +263,6 @@ class CodeLibrary(library.AssetLibrary):
 
     def _paint_preview(self, asset) -> QtGui.QImage:
         return paint_code_preview(asset.code)
-
-    def apply_to_node(self, row: int, node: hou.Node):
-        """Set the snippet onto a node's code parm. Returns (ok, reason) so the panel can report a node with no code parm."""
-        from amaze.helpers import helpers
-
-        if not 0 <= row < len(self._assets):
-            return (False, "No snippet selected.")
-        if node is None:
-            return (False, "Select a node with a code/snippet parameter.")
-        parm = helpers.find_code_parm(node)
-        if parm is None:
-            return (
-                False,
-                '"%s" has no code/snippet parameter to set.' % node.name(),
-            )
-        try:
-            parm.set(self._assets[row].code)
-        except hou.OperationFailed as exc:
-            return (False, "Could not set the parameter: %s" % exc)
-        return (True, "")
-
-    def import_asset_to_scene(self, index, target="auto", context_node=None):
-        """Double-click applies the snippet to the selected node - a code snippet has no node archive to import. Returns (ok, reason, created) like every import; created is always empty here, since applying text creates nothing."""
-        node = None
-        sel = hou.selectedNodes()
-        if len(sel) == 1:
-            node = sel[0]
-        ok, reason = self.apply_to_node(index.row(), node)
-        return ok, reason, []
 
     def render_thumbnail(self, row) -> None:
         """No render - a code snippet has no thumbnail to render; repaint the preview from current content instead."""

@@ -78,6 +78,17 @@ def role_color(index, role):
     return color if color.isValid() else None
 
 
+def show_item_words(event, view, index) -> bool:
+    """An item's own hover words at the pointer, through the one width cap; False when it has none."""
+    if event is None or event.type() != QtCore.QEvent.Type.ToolTip:
+        return False
+    words = index.data(QtCore.Qt.ItemDataRole.ToolTipRole)
+    if not words:
+        return False
+    QtWidgets.QToolTip.showText(event.globalPos(), ui_helpers.tooltip_text(str(words)), view)
+    return True
+
+
 class GridCellDelegate(QtWidgets.QStyledItemDelegate):
     """Every cell of the Grid's TABLE, and deliberately nothing else: the panel applies `hou.qt.styleSheet()` to its own root and every child inherits Houdini's item rules, so the table wears the host's selection band rather than a second opinion about it. ▸r/pluto-theme"""
 
@@ -114,6 +125,11 @@ class GridCellDelegate(QtWidgets.QStyledItemDelegate):
         cell.state &= ~QtWidgets.QStyle.StateFlag.State_HasFocus
         style.drawControl(QtWidgets.QStyle.ControlElement.CE_ItemViewItem,
                           cell, painter, option.widget)
+
+    def helpEvent(self, event, view, option, index):
+        """A cell's hover words through the one width cap, as on the tiles."""
+        return (show_item_words(event, view, index)
+                or super().helpEvent(event, view, option, index))
 
 
 class TickCellDelegate(GridCellDelegate):
@@ -539,11 +555,12 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         return badge.tip
 
     def helpEvent(self, event, view, option, index):
-        """A button badge names itself on hover and the rest of the tile stays silent; Qt asks the delegate first, so this is the hook - a tooltip set on the ITEM would follow the cursor across the whole tile."""
+        """Hover words through the one width cap: a button badge's own, else the tile's."""
         if (event is not None
                 and event.type() == QtCore.QEvent.Type.ToolTip):
             badge = self.button_badge_at(index, option.rect, event.pos())
             words = self._badge_tooltip(badge, index) if badge else ""
+            words = words or str(index.data(QtCore.Qt.ItemDataRole.ToolTipRole) or "")
             if words:
                 QtWidgets.QToolTip.showText(
                     event.globalPos(),
@@ -744,6 +761,11 @@ class SidebarItemDelegate(QtWidgets.QStyledItemDelegate):
 
     def set_drag_color(self, color: QtGui.QColor) -> None:
         self._drag_color = QtGui.QColor(color)
+
+    def helpEvent(self, event, view, option, index):
+        """A row's hover words, a folder's path among them, through the one width cap."""
+        return (show_item_words(event, view, index)
+                or super().helpEvent(event, view, option, index))
 
     def _swatch_color(self, index):
         """This row's category colour, or None; invalid values are ignored rather than painted."""

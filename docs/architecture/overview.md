@@ -1172,6 +1172,10 @@ actions/clean.py          Clean Up's work in one pass: each
                           section's integrity pass, then dead folder
                           pointers and File favorites; the panel asks
                           before and shows the report after
+actions/code.py           the Code section's Houdini verbs: a Python
+                          snippet run as one undo step with a shelf
+                          click's kwargs, and a snippet set onto a
+                          node's code parm
 actions/library.py        the steps of opening a library that need no
                           panel: refusing one a newer Amaze updated,
                           readying its folder, updating it to this

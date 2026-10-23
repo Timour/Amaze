@@ -104,6 +104,7 @@ _reload(branding)    # FIRST of the ones below: everything reads its constants, 
 _reload(ui_helpers)
 _reload(rc_calls)    # after debug and messages: it hands the log the dialogs they word
 _reload_loaded("amaze.helpers.helpers")
+_reload_loaded("amaze.actions.code")    # after helpers, which it calls; before sections, which calls it
 _reload(texture_library)
 _reload(gradient_library)
 _reload(cop_library)    # after library/category, so its subclasses bind to the freshly reloaded material classes

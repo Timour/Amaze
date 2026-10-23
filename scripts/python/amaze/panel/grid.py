@@ -297,7 +297,7 @@ def bind_table_cell_delegates(panel, tile_delegate) -> None:
     installed = []
 
     keys = grid_columns.KEYS
-    grid_cell = delegates.GridCellDelegate(table)    # owns the cell padding and nothing else; selection is the host stylesheet's
+    grid_cell = delegates.GridCellDelegate(table)    # the cell padding and hover words; selection is the host stylesheet's
     installed.append(grid_cell)
     table.setItemDelegate(grid_cell)
     sources = {    # which columns are ticks is the model's list; what each reads and draws belongs here with the drawer

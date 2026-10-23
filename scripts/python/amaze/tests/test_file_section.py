@@ -1579,6 +1579,38 @@ class TooltipWidthTest(unittest.TestCase):
                       "800 logical is 1600 real pixels on that screen")
 
 
+class EveryDelegateCapsTheWordsItsItemsSay(unittest.TestCase):
+    """Models answer plain words; the tile, the list cell and the sidebar row wrap them at the cap."""
+
+    def _shown(self, delegate, words):
+        """What `delegate` hands Qt's tooltip for an item answering `words`, or None."""
+        model = QtGui.QStandardItemModel()
+        item = QtGui.QStandardItem("x")
+        item.setToolTip(words)
+        model.appendRow(item)
+        view = QtWidgets.QListView()
+        view.setModel(model)
+        option = QtWidgets.QStyleOptionViewItem()
+        option.rect = QtCore.QRect(0, 0, 200, 200)
+        point = QtCore.QPoint(150, 150)
+        event = QtGui.QHelpEvent(QtCore.QEvent.Type.ToolTip, point, point)
+        with mock.patch.object(QtWidgets.QToolTip, "showText") as show:
+            delegate.helpEvent(event, view, option, model.index(0, 0))
+        return show.call_args[0][1] if show.called else None
+
+    def test_a_long_tooltip_wraps_and_markup_shows_as_text(self):
+        from amaze.helpers import ui_helpers
+        from amaze.panel import delegates
+        long = "word " * 300
+        hostile = '<img src="http://evil.invalid/beacon.png">'    # an Online title is remote text
+        for delegate in (test_support.tile_delegate({}), delegates.GridCellDelegate(),
+                         delegates.SidebarItemDelegate()):
+            for words in (long, hostile):
+                with self.subTest(delegate=type(delegate).__name__, words=words[:10]):
+                    self.assertEqual(ui_helpers.tooltip_text(words),
+                                     self._shown(delegate, words))
+
+
 class StarRowsLeftPreferencesTest(unittest.TestCase):
     """The badge family renders the favourite star AS DRAWN, so the star-colour rows left the dialog, the keys left the store, and the notes accent pinned to the theme's star token."""
 

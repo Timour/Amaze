@@ -544,8 +544,6 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
         if role == QtCore.Qt.ItemDataRole.DecorationRole:
             return self._preview(rec)
         if role == QtCore.Qt.ItemDataRole.ToolTipRole:
-            from amaze.helpers import ui_helpers
-
             bits = [rec.title]
             if rec.author:
                 bits.append("by " + rec.author)
@@ -553,7 +551,7 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
                 bits.append(rec.licence)
             if rec.kind == "values":
                 bits.append("measured values - no textures")
-            return ui_helpers.tooltip_text("\n".join(bits))
+            return "\n".join(bits)
         if role == self.RendererLabelRole:
             # the Type column: the source, plus that value-sources produce a preset rather than a textured material; a STORE tile says what it IS
             if rec.kind == "amazepkg":
