@@ -257,11 +257,12 @@ def pin_drawn_series(widgets, frame_key: str, kind: str,
         _wear_drawn(widget, frame_key, kind, box, height)
 
 
-def header_band(parent, text: str):
-    """The drawn header strip: a full-width band carrying the asset's OWN name, which D01, D02 and D11 all wear and nothing else does. It is NOT the window title bar - the design draws both. ▸p/one-design-document"""
+def header_band(parent, text: str, height: int = amazetheme.HEADER_BAND_H,
+                inset: int = amazetheme.HEADER_BAND_INSET):
+    """The drawn header strip over the window's content; not the title bar. ▸p/one-design-document"""
     band = QtWidgets.QWidget(parent)
     band.setObjectName("amaze_header_band")
-    band.setFixedHeight(theme.ui_px(amazetheme.HEADER_BAND_H))
+    band.setFixedHeight(theme.ui_px(height))
     band.setAutoFillBackground(True)
     palette = band.palette()
     palette.setColor(QtGui.QPalette.ColorRole.Window,
@@ -269,8 +270,7 @@ def header_band(parent, text: str):
     band.setPalette(palette)
 
     row = QtWidgets.QHBoxLayout(band)
-    row.setContentsMargins(theme.ui_px(amazetheme.HEADER_BAND_INSET), 0,
-                           theme.ui_px(amazetheme.HEADER_BAND_INSET), 0)
+    row.setContentsMargins(theme.ui_px(inset), 0, theme.ui_px(inset), 0)
     label = QtWidgets.QLabel(text, band)
     label.setObjectName("amaze_header_band_text")
     font = QtGui.QFont(label.font())

@@ -175,6 +175,10 @@ class ManageLibrariesTest(unittest.TestCase):
         self.dialog._remove.click()
         self.assertTrue(os.path.isfile(marker), "Remove from List touched the folder")
 
+    def test_the_band_names_the_open_library(self):
+        band = self.dialog.findChild(QtWidgets.QLabel, "amaze_header_band_text")
+        self.assertEqual(amazetheme.LABEL_CURRENT_LIBRARY % "Studio", band.text())
+
     def test_a_folder_that_cannot_be_reached_is_marked(self):
         reached = {item.text(): item.data(library_dialog.REACHED_ROLE) for item in self._rows()}
         self.assertEqual({"Studio": True, "Archive": True, "Archive-gone": False}, reached)

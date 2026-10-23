@@ -17,7 +17,7 @@ _ALIGN = QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCente
 
 def library_name(folder: str) -> str:
     """What the Library list calls a library: its folder's name."""
-    return os.path.basename(os.path.normpath(folder)) or folder
+    return (os.path.basename(os.path.normpath(folder)) or folder) if folder else ""
 
 
 def shown_path(folder: str) -> str:
@@ -77,10 +77,12 @@ class ManageLibrariesDialog(AssetDialog):
 
     FORM_WIDTH = amazetheme.D15_WIDTH
     FRAME_KEY = "D15"
+    HEADER_BAND = True    # D15 names the open library in the drawn strip
 
     def __init__(self, preferences, open_library: str = "", parent=None) -> None:
         super().__init__(amazetheme.TITLE_MANAGE_LIBRARIES, parent=parent)
         self._prefs = preferences
+        self._open_library = open_library
         self.removed: list = []    # the folders taken off the list
         drawn = amazetheme.drawn_library_rows()
 
@@ -93,7 +95,7 @@ class ManageLibrariesDialog(AssetDialog):
         self._list.setUniformItemSizes(True)
         self._list.setItemDelegate(_LibraryRows(self._list))
         palette = self._list.palette()    # PALETTE, as the sidebar does: a view paints its viewport from Base
-        palette.setColor(QtGui.QPalette.ColorRole.Base, theme.color("field"))
+        palette.setColor(QtGui.QPalette.ColorRole.Base, theme.color("surface_low"))
         self._list.setPalette(palette)
         ui_helpers.pin_drawn(self._list, self.FRAME_KEY, "QListWidget", None)
 
@@ -119,11 +121,16 @@ class ManageLibrariesDialog(AssetDialog):
         column.addWidget(self._list)
         column.addLayout(buttons)
         self.set_content(body)
-        self.finish(ok_cancel=False, margins=drawn["margin"])    # the frame's margin, all four sides
+        self.finish(ok_cancel=False, margins=drawn["margins"][0])
+        self._inner_layout.setContentsMargins(    # the frame's own margin on each side
+            *(theme.ui_px(side) for side in drawn["margins"]))
 
         self._fill(open_library)
         self._list.itemSelectionChanged.connect(self._sync_remove)
         self._sync_remove()
+
+    def header_band_text(self) -> str:
+        return amazetheme.LABEL_CURRENT_LIBRARY % library_name(self._open_library)
 
     def _fill(self, open_library: str) -> None:
         current = hostos.comparable_path(open_library) if open_library else ""

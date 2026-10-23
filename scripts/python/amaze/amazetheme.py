@@ -79,7 +79,7 @@ P05_DIM_INK = "#7d7d7d"    # ▸ P05: the version and author lines under each pi
 P05_TEXT_INK = "#a6a6a6"   # ▸ P05: each row's short description
 P01_WARNING_INK = UPDATE_WARNING_FILL    # ▸ P01: the Format line and the line beside Apply, warning
 P01_FORMAT_INK = "#80dddddd"    # the Format line otherwise: text at half opacity, as #AARRGGBB
-D15_SELECTED_INK = "#474e62"   # ▸ D15 Manage Libraries: a selected row
+D15_SELECTED_INK = UPDATE_WARNING_FILL   # ▸ D15 Manage Libraries: a row picked for removal
 D15_DIM_INK = "#787878"        # a library that cannot be reached: its name and `not connected`
 D15_DIM_PATH_INK = "#646464"   # and its path
 PREFS_DIVIDER_ABOVE = 8  # inside the divider's own row box
@@ -168,6 +168,7 @@ LABEL_NAME = "Name"
 PLACEHOLDER_SEARCH_ICONS = "Search"     # D02 drew the count in it; it does not any more
 PLACEHOLDER_VERSION_NAME = "Rename this version"
 LABEL_NOT_CONNECTED = "not connected"    # D15: a listed library whose folder cannot be reached
+LABEL_CURRENT_LIBRARY = "Current Library: %s"    # D15's band: the open library's name
 LABEL_LIBRARY_FORMAT = "Format: v%d"     # ▸ P01, under the library's buttons
 LABEL_UPGRADES_LIBRARY = "Apply/Accept will upgrade your library to v%d"    # beside Apply
 LABEL_LIBRARY_TOO_NEW = "You need to update Amaze to use this library"
@@ -619,23 +620,25 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
         ),
     },
     "D15": {   # Manage Libraries - the Library list, opened from Preferences ▸ Library
-        "frame": (420, 226),
+        "frame": (420, 247),
         "nodes": (
-            ("QListWidget", 10, 10, 400, 170, None),
-            ("QListWidget ▸ item", 18, 16, 71, 15, "Studio Library"),
-            ("QListWidget ▸ item ▸ path", 130, 16, 158, 15, "/Volumes/Server/Amaze/Studio"),
-            ("QListWidget ▸ item ▸ selected", 12, 36, 396, 22, None),
-            ("QListWidget ▸ item", 18, 40, 69, 15, "Client Archive"),
-            ("QListWidget ▸ item ▸ path", 130, 40, 170, 15, "/Volumes/Projects/Archive/Amaze"),
-            ("QListWidget ▸ item", 18, 64, 95, 15, "Look Development"),
-            ("QListWidget ▸ item ▸ path", 130, 64, 91, 15, "~/Amaze/LookDev"),
-            ("QListWidget ▸ item", 18, 88, 56, 15, "Old Library"),
-            ("QListWidget ▸ item ▸ path", 130, 88, 148, 15, "/Volumes/Backup/Amaze/Old"),
-            ("QListWidget ▸ item ▸ not connected", 328, 88, 72, 15, "not connected"),
-            ("QPushButton", 248, 194, 104, 22, None),
-            ("QPushButton", 360, 194, 50, 22, None),
-            ("QPushButton ▸ text", 256, 198, 88, 15, "Remove from List"),
-            ("QPushButton ▸ text", 371, 198, 28, 15, "Close"),
+            ("header band", 0, 0, 420, 22, None),
+            ("QLabel", 10, 3, 206, 15, "Current Library: [current library name]"),
+            ("QListWidget", 8, 32, 404, 170, None),
+            ("QListWidget ▸ item", 19, 38, 71, 15, "Studio Library"),
+            ("QListWidget ▸ item ▸ path", 130, 38, 158, 15, "/Volumes/Server/Amaze/Studio"),
+            ("QListWidget ▸ item ▸ selected", 14, 58, 392, 22, None),
+            ("QListWidget ▸ item", 19, 62, 69, 15, "Client Archive"),
+            ("QListWidget ▸ item ▸ path", 130, 62, 170, 15, "/Volumes/Projects/Archive/Amaze"),
+            ("QListWidget ▸ item", 19, 86, 95, 15, "Look Development"),
+            ("QListWidget ▸ item ▸ path", 130, 86, 91, 15, "~/Amaze/LookDev"),
+            ("QListWidget ▸ item", 19, 110, 56, 15, "Old Library"),
+            ("QListWidget ▸ item ▸ path", 130, 110, 148, 15, "/Volumes/Backup/Amaze/Old"),
+            ("QListWidget ▸ item ▸ not connected", 328, 110, 72, 15, "not connected"),
+            ("QPushButton", 250, 213, 104, 22, None),
+            ("QPushButton", 362, 213, 50, 22, None),
+            ("QPushButton ▸ text", 258, 217, 88, 15, "Remove from List"),
+            ("QPushButton ▸ text", 373, 217, 28, 15, "Close"),
         ),
     },
     "T01": {   # the grid tile, drawn at TILE_DRAWN_SIZE - its spacing is what the delegate paints
@@ -1033,6 +1036,16 @@ def drawn_list(frame_key: str = "L01") -> dict:
     }
 
 
+def drawn_band(frame_key: str) -> tuple:
+    """(height, text inset) of the frame's header band; the house band's for a frame without one."""
+    nodes = (DIALOG_LAYOUT.get(frame_key) or {}).get("nodes", ())
+    band = next((n for n in nodes if n[0] == "header band"), None)
+    if band is None:
+        return HEADER_BAND_H, HEADER_BAND_INSET
+    label = next((n for n in nodes if n[0] == "QLabel" and n[2] < band[2] + band[4]), None)
+    return band[4], (label[1] - band[1]) if label else HEADER_BAND_INSET
+
+
 def drawn_library_rows(frame_key: str = "D15") -> dict:
     """The Manage list's margins, its row pitch, the painted row box and where each text sits in it."""
     layout = DIALOG_LAYOUT[frame_key]
@@ -1047,8 +1060,11 @@ def drawn_library_rows(frame_key: str = "D15") -> dict:
     flag, = named("QListWidget ▸ item ▸ not connected")
     buttons = named("QPushButton")
     pitch = names[1][2] - names[0][2]
+    width, height = layout["frame"]
     return {
-        "margin": view[1],
+        "margins": (view[1], view[2] - drawn_band(frame_key)[0],    # left, top under the band,
+                    width - (view[1] + view[3]),                      # right, bottom
+                    height - (buttons[0][2] + buttons[0][4])),
         "view": (view[3], view[4]),
         "button_top": buttons[0][2] - (view[2] + view[4]),    # the list's bottom to the buttons
         "button_gap": buttons[1][1] - (buttons[0][1] + buttons[0][3]),

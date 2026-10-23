@@ -153,7 +153,8 @@ class AssetDialog(QtWidgets.QDialog):
         outer = QtWidgets.QVBoxLayout()    # the band is FULL WIDTH, so the house margins move inside it rather than around it
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
-        outer.addWidget(ui_helpers.header_band(self, band_text))
+        outer.addWidget(ui_helpers.header_band(
+            self, band_text, *amazetheme.drawn_band(self.FRAME_KEY)))
         outer.addLayout(layout)
         if self._fixed_size:
             outer.setSizeConstraint(
