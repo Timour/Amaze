@@ -726,11 +726,8 @@ class FileFiles(grid_engine.GridEngine,
         return self._kind(row) != locations.KIND_HIP
 
     def default_face(self, row: int) -> str:
-        """Capture for a scene, Generic for a file Amaze makes no picture of, else Render."""
-        kind = self._kind(row)
-        if kind == locations.KIND_HIP:
-            return "capture"
-        return "generic" if kind == locations.KIND_OTHER else "preview"
+        """Capture for a scene, Render for every other file: its picture, or the system's icon."""
+        return "capture" if self._kind(row) == locations.KIND_HIP else "preview"
 
     def preview_image(self, row: int):
         """The row's own picture as far as it has landed: the tile's Preview, and Customize's."""

@@ -510,9 +510,9 @@ The **Icon** menu sets what the tile shows:
 Render is the default where Amaze makes a picture, and a tile shows its
 Generic icon until its picture exists. Scenes default to Capture. Node
 networks outside SOP and COP default to Generic, with Render greyed.
-Files without a preview default to Generic, and their Render is the
-system icon for the file type. Taking a capture switches the tile to
-Capture. The preview square shows the finished tile.
+Other files default to Render, which is the system icon for the file
+type. Taking a capture switches the tile to Capture. The preview square
+shows the finished tile.
 
 Captures are stored in the library's `captures` folder, so every computer
 using the library shows them.

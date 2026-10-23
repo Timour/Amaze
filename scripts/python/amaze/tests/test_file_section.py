@@ -1358,22 +1358,22 @@ class OsIconTest(unittest.TestCase):
         model.set_folder(tmp)
         return model
 
-    def test_an_unknown_file_shows_the_file_face_until_preview_is_chosen(self):
-        """T11 is the default for a file Amaze makes no preview of; its Preview is the system icon."""
+    def test_an_unknown_file_shows_the_system_icon_until_generic_is_chosen(self):
+        """Render is the default for a file Amaze makes no preview of: the system icon; Generic is T11."""
         for name in ("mocap.bvh", "README"):
             with self.subTest(name=name):
                 model = self._model_with(name)
-                face = model.data(model.index(0, 0), QtCore.Qt.ItemDataRole.DecorationRole)
-                self.assertEqual(tile_icons.generic_image("face_file"), face)
-                with mock.patch.object(model, "tile_icon", return_value={"face": "preview"}):
-                    shown = model.data(model.index(0, 0), QtCore.Qt.ItemDataRole.DecorationRole)
+                shown = model.data(model.index(0, 0), QtCore.Qt.ItemDataRole.DecorationRole)
                 self.assertIsNotNone(shown)
-                self.assertFalse(shown.isNull(), "Preview drew a blank")
+                self.assertFalse(shown.isNull(), "the default drew a blank")
+                self.assertEqual(1, len(model._os_icons),
+                                 "the default did not ask for the system icon")
+                with mock.patch.object(model, "tile_icon", return_value={"face": "generic"}):
+                    face = model.data(model.index(0, 0), QtCore.Qt.ItemDataRole.DecorationRole)
+                self.assertEqual(tile_icons.generic_image("face_file"), face)
                 if name == "README":    # no extension: the generic system icon, never blank
                     continue
-                self.assertNotEqual(face, shown, "Preview still shows the file face")
-                self.assertEqual(1, len(model._os_icons),
-                                 "Preview did not ask for the system icon")
+                self.assertNotEqual(face, shown, "the default shows the file face")
 
     def test_one_icon_is_composed_per_extension_not_per_file(self):
         model = self._model_with("a.log", "b.log", "c.log")
