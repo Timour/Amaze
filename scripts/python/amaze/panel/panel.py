@@ -7,6 +7,7 @@ _BODY_T0 = time.perf_counter()    #: when THIS module body began - stamped BEFOR
 import os
 import importlib
 import contextlib
+import functools
 import sys
 
 from PySide6 import QtWidgets, QtGui, QtCore
@@ -15,6 +16,7 @@ import hou
 import amaze
 from amaze.actions import files as files_actions
 from amaze.actions import library as library_actions
+from amaze.actions import materials as material_actions
 from amaze.actions import nodes as node_actions
 from amaze.core import grid_columns, grid_engine
 from amaze.panel import (dragdrop_widgets, empty_state, grid, notes_panel,
@@ -46,7 +48,7 @@ from amaze import branding
 from amaze import messages
 from amaze import tooltips
 from amaze.prefs import prefs
-from amaze.helpers import bytecode, helpers, hostos, theme, ui_helpers
+from amaze.helpers import bytecode, helpers, hostos, theme, ui_helpers, wording
 from amaze.utils import rc_calls
 from amaze.core import database, renderers, tile_icons, users
 from amaze.render import cop_nodes, husk_job, nodes
@@ -70,6 +72,7 @@ _reload(keyed_store)    # FIRST: eleven modules read their stores through it, so
 _reload(locations)      # right after the engine it binds two stores into - and the switch door calls locations.forget()
 _reload(hostos)    # before library: the models import the shared thumbnail engine
 _reload(bytecode)
+_reload(wording)    # before library, nodes and sections, which name things through it
 _reload(debug)
 _reload_loaded("amaze.core.dragengine")
 _reload_loaded("amaze.core.lop_assign")
@@ -81,6 +84,7 @@ _reload(notes)
 _reload(users)    # before versions and the dialogs showing a user: both resolve a UID through it, so a stale one answers from the previous library's people
 _reload(renderers)
 _reload(material)
+_reload_loaded("amaze.core.material_files")    # before nodes and library, which read saved materials by it
 _reload(texstore)    # before nodes and library, which adopt and resolve through it
 if _DEV_RELOAD and "amaze.preview" in sys.modules:
     sys.modules["amaze.preview"].reload_engine()    # the package reloads itself ▸r/package-reload
@@ -112,6 +116,7 @@ _reload(texture_library)
 _reload(gradient_library)
 _reload(cop_library)    # after library/category, so its subclasses bind to the freshly reloaded material classes
 _reload(node_actions)    # after nodes and cop_nodes, which it calls; before sections, which calls it
+_reload(material_actions)    # after library, nodes and husk_job, which it calls; before sections
 _reload(geo_library)    # after texture_library, whose ThumbnailCache/proxy it reuses
 _reload(scene_captures)
 _reload_loaded("amaze.core.scene_files")    # before file_library, which reads scenes by it
@@ -147,12 +152,9 @@ _reload_loaded("amaze.render.generator")
 
 
 
-from amaze.panel import delegates            # noqa: E402 - re-exported below because every section constructs them by these names
+from amaze.panel import delegates            # noqa: E402
 
 _reload(delegates)
-AssetItemDelegate = delegates.AssetItemDelegate
-
-SidebarItemDelegate = delegates.SidebarItemDelegate
 
 FILTER_DEBOUNCE_MS = 180    #: the search box's pause before it filters - a pass measures ~24ms, so a keystroke each is felt, and a pause between words is not ▸p/filter-pass-cost
 
@@ -316,12 +318,13 @@ class AmazePanel(QtWidgets.QWidget):
             setattr(self, attr, model)    # SHARED with every other panel on this library; only the proxies, selections and delegates below are this panel's own
         files_actions.connect(self.file_files_model, self.file_folders_model,
                               os_icon=delegates.os_file_icon)
+        material_actions.connect(self.material_model)
         self._note_models_library()
 
         self.category_sorted_model = self._sidebar_proxy(self.category_model)
         self.material_sorted_model, self.material_selection_model = self._grid_proxy(
             multifilterproxy_model.MultiFilterProxyModel(self), self.material_model)
-        self.thumb_delegate = AssetItemDelegate(
+        self.thumb_delegate = delegates.AssetItemDelegate(
             self.material_model.RendererLabelRole,
             self.thumblist,
             category_role=self.material_model.CategoryRole,
@@ -347,18 +350,18 @@ class AmazePanel(QtWidgets.QWidget):
             crop_role=self.material_model.CropRole,
             on_badge=self._badge_verb,
         )
-        self.asset_delegate = AssetItemDelegate(    # Node and Code get their OWN delegate, without the version roles. `grid.sync_table_columns` decides a column exists from the active delegate's roles, so borrowing thumb_delegate painted a "Version" column reading "none" on every row, floored at the width of "Version 99". Latent and worse: editorEvent and _sync_versions_hover run against that delegate too, and _open_versions_dialog maps through the MATERIAL proxy and indexes material_model.assets - so a Node or Code asset with a versions ledger would open an unrelated MATERIAL. overview.md §2 and ListColumnHeader.COLUMNS both say Version is materials-only and Open is File-only; this is what delivers it
+        self.asset_delegate = delegates.AssetItemDelegate(    # Node and Code get their OWN delegate, without the version roles. `grid.sync_table_columns` decides a column exists from the active delegate's roles, so borrowing thumb_delegate painted a "Version" column reading "none" on every row, floored at the width of "Version 99". Latent and worse: editorEvent and _sync_versions_hover run against that delegate too, and _open_versions_dialog maps through the MATERIAL proxy and indexes material_model.assets - so a Node or Code asset with a versions ledger would open an unrelated MATERIAL. overview.md §2 and ListColumnHeader.COLUMNS both say Version is materials-only and Open is File-only; this is what delivers it
             self.material_model.RendererLabelRole, self.thumblist,
             tile_badges=sections.CopSection.tile_badges,
             tile_model=cop_library.CopLibrary, **node_roles)
-        self.code_delegate = AssetItemDelegate(
+        self.code_delegate = delegates.AssetItemDelegate(
             self.material_model.RendererLabelRole, self.thumblist,
             tile_badges=sections.CodeSection.tile_badges,
             tile_model=code_library.CodeLibrary, **node_roles)
 
         self.file_sorted_model, self.file_selection_model = self._grid_proxy(
             texture_library.TextureFilterProxyModel(self), self.file_files_model)
-        self.file_delegate = AssetItemDelegate(
+        self.file_delegate = delegates.AssetItemDelegate(
             self.file_files_model.FormatRole,
             self.thumblist,
             category_role=self.file_files_model.FolderRole,
@@ -378,7 +381,7 @@ class AmazePanel(QtWidgets.QWidget):
             self.gradient_categories_model)
         self.gradient_sorted_model, self.gradient_selection_model = self._grid_proxy(
             gradient_library.GradientFilterProxyModel(self), self.gradient_model)
-        self.gradient_delegate = AssetItemDelegate(
+        self.gradient_delegate = delegates.AssetItemDelegate(
             self.gradient_model.RendererLabelRole,
             self.thumblist,
             category_role=self.gradient_model.CategoryLabelRole,
@@ -411,7 +414,7 @@ class AmazePanel(QtWidgets.QWidget):
         self.matx_source_model = matx_library.MatxSidebarModel(
             self.matx_online_model
         )
-        self.matx_delegate = AssetItemDelegate(    # the online world gets its own delegate, with only the roles its model has: matx_library exposes seven and none is licence, versions, notes or category colour, so borrowing a local delegate gave the online grid columns that can never carry a value on any row. Same defect shape as Node and Code borrowing the Materials delegate, one world over
+        self.matx_delegate = delegates.AssetItemDelegate(    # the online world gets its own delegate, with only the roles its model has: matx_library exposes seven and none is licence, versions, notes or category colour, so borrowing a local delegate gave the online grid columns that can never carry a value on any row. Same defect shape as Node and Code borrowing the Materials delegate, one world over
             self.matx_online_model.RendererLabelRole,
             self.thumblist,
             category_role=self.matx_online_model.CategoryRole,
@@ -1063,10 +1066,10 @@ class AmazePanel(QtWidgets.QWidget):
             QtGui.QPalette.ColorRole.Base, theme.color("surface_low")
         )
         cat_list_palette.setColor(
-            QtGui.QPalette.ColorRole.Text, AssetItemDelegate.TEXT_COLOR
+            QtGui.QPalette.ColorRole.Text, delegates.AssetItemDelegate.TEXT_COLOR
         )
         self.cat_list.setPalette(cat_list_palette)    # NO selection colours in it: the sidebar wears Houdini's own like the Grid table does, because hou.qt.styleSheet() on the panel root makes QAbstractItemView::item:selected paint the band and answer HighlightedText - and a sheet outranks a palette at paint time, so setting Highlight here achieves nothing
-        self.sidebar_delegate = SidebarItemDelegate(self.cat_list)    # paints the NAME, the count and the colour bar only; the cell under them - band, hover, alternating colour - is the style's (see SidebarItemDelegate's docstring)
+        self.sidebar_delegate = delegates.SidebarItemDelegate(self.cat_list)    # paints the NAME, the count and the colour bar only; the cell under them - band, hover, alternating colour - is the style's (see SidebarItemDelegate's docstring)
         self.sidebar_delegate.color_role = category.SIDEBAR_COLOR_ROLE    # only the ASSET sidebars answer this role, so the bar simply never draws in the folder and palette sidebars and no second delegate is needed
 
     def init_ui(self) -> None:
@@ -1700,7 +1703,7 @@ class AmazePanel(QtWidgets.QWidget):
             eligible += 1
             sources.add(renderers.normalized(mat.renderer))
             try:
-                ok, report = model.convert(model.index(row, 0), target)
+                ok, report = material_actions.convert(model, model.index(row, 0), target)
             except Exception as exc:                          # noqa: BLE001
                 lines.append(f'"{mat.name}": crashed - {exc}')
                 continue
@@ -1910,7 +1913,8 @@ class AmazePanel(QtWidgets.QWidget):
                         "%d/%d  %s" % (index + 1, total, name),
                     )
                 summary = gallery_import.import_entries(
-                    self.material_model, entries, progress=progress
+                    functools.partial(material_actions.add_asset, self.material_model),
+                    entries, progress=progress
                 )
         except hou.OperationInterrupted:
             debug.event("gallery", "import interrupted", **summary)
@@ -2339,6 +2343,7 @@ class AmazePanel(QtWidgets.QWidget):
         ok, reason = matx_import.import_record(    # NO layout pair: it ends in add_asset, an insert
             record, source, resolution, self.material_model, self.prefs,
             progress=on_progress, renderer=renderer,
+            save=functools.partial(material_actions.add_asset, self.material_model),
         )
         if not ok:
             return (False, reason or "Import failed.")
@@ -2908,7 +2913,7 @@ class AmazePanel(QtWidgets.QWidget):
         from amaze.helpers import helpers
         ui = getattr(hou, "ui", None)
         base = os.path.basename(path)
-        name = helpers.sanitize_usd_path(os.path.splitext(base)[0]) or "geo"
+        name = wording.sanitize_usd_path(os.path.splitext(base)[0]) or "geo"
         loader_type = geo_library.loader_sop_for(path)
 
         category = ""
@@ -3228,8 +3233,8 @@ class AmazePanel(QtWidgets.QWidget):
             if row < 0:
                 continue
             idx = self.material_model.index(row, 0)
-            ok, reason, created = self.material_model.import_asset_to_scene(
-                idx, "auto", context_node=context
+            ok, reason, created = material_actions.import_asset_to_scene(
+                self.material_model, idx, "auto", context_node=context
             )
             if not ok and reason:
                 debug.refuse(reason, net=context.path())    # the door marks library damage, which picks the dialog ▸p/refusal-sink
@@ -3914,8 +3919,8 @@ class AmazePanel(QtWidgets.QWidget):
     def _update_existing_asset(self, mat_id: str, node: hou.Node) -> None:
         """Overwrite asset `mat_id`'s content from the scene node: same entry and metadata, new files."""
         model = self.material_model
-        renderer = model.update_asset_content(    # NO layout pair: it saves, which adopts rows
-            model.find_asset_row_by_id(mat_id), node)
+        renderer = material_actions.update_asset_content(    # NO layout pair: it saves, which adopts rows
+            model, model.find_asset_row_by_id(mat_id), node)
         if renderer:
             model.row_changed(model.find_asset_row_by_id(mat_id))    # renderer and date changed IN PLACE
         self._refresh_sidebar_categories()    # a re-detected renderer can shift counts and hiding
@@ -3944,8 +3949,8 @@ class AmazePanel(QtWidgets.QWidget):
         failures = []
         for asset in sel:
             try:    # a read-only or unreachable library directory raises out of the save chain (IsADirectoryError on the .interface, verified), and debug.guarded LOGS AND RE-RAISES rather than absorbing it, so the per-material failure report needs this catch of its own
-                renderer = self.material_model.add_asset(
-                    asset, dialog.categories, dialog.tags, dialog.fav,
+                renderer = material_actions.add_asset(
+                    self.material_model, asset, dialog.categories, dialog.tags, dialog.fav,
                     name=dialog.name or None
                 )
             except Exception as exc:                    # noqa: BLE001
@@ -3996,8 +4001,8 @@ class AmazePanel(QtWidgets.QWidget):
                 self.thumblist.selectionModel()):
             source_index = self.material_sorted_model.mapToSource(index)
             try:
-                ok, reason, _created = self.material_model.import_asset_to_scene(
-                    source_index, target
+                ok, reason, _created = material_actions.import_asset_to_scene(
+                    self.material_model, source_index, target
                 )
             except Exception as e:    # an unexpected failure (corrupt .interface file, unusual node structure) joins the normal per-material failure report instead of surfacing as a raw traceback, so the rest of the selection still gets its chance
                 try:

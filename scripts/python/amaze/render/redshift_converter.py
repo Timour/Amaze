@@ -8,7 +8,7 @@ import hou
 import json
 
 from amaze.core import debug, material
-from amaze.helpers import helpers
+from amaze.helpers import wording
 from amaze.render import nodes
 from amaze.render.material_conversion import engine, materialx
 from amaze.render.material_converter import (    # the forward converter's tables and helpers are the ONE home for the pairing and the width-aware copy
@@ -40,7 +40,7 @@ class RedshiftMaterial(NamedTuple):
 def make_redshift_builder(parent: hou.Node, name: str) -> hou.Node:
     """An `rs_usd_material_builder` holding ONE terminal, `redshift_usd_material`, and the suboutput it feeds - the container Redshift itself uses in Solaris, and it renders from /mat too. The stock OpenPBR shader inside goes. ▸r/redshift-nodes"""
     builder = parent.createNode("rs_usd_material_builder")    # Redshift's Solaris builder, which also renders from /mat; a `redshift_vopnet` is refused by the LOP import door ▸r/redshift-nodes
-    builder.setName(helpers.sanitize_usd_path(name), unique_name=True)
+    builder.setName(wording.sanitize_usd_path(name), unique_name=True)
     for child in list(builder.children()):
         if child.type().name() not in material.REDSHIFT_TERMINALS + ("suboutput",):    # the stock terminal and the suboutput it feeds stay; the stock shader goes
             child.destroy()
@@ -92,7 +92,7 @@ def build_redshift_material(parent, name, produce) -> RedshiftMaterial:
 def convert_conductor(node: hou.Node, builder: hou.Node, report: ConversionReport):
     """mtlxconductor_bsdf -> RS Standard Material at metalness 1, its base colour the per-channel normal-incidence reflectance of the measured complex index; roughness copied from the conductor's first axis. Reported as approximated: Redshift has no complex IOR input. ▸r/redshift-nodes"""
     rs = builder.createNode("redshift::StandardMaterial")
-    rs.setName(helpers.sanitize_usd_path(node.name()), unique_name=True)
+    rs.setName(wording.sanitize_usd_path(node.name()), unique_name=True)
     rs.parm("metalness").set(1.0)
     ior = list(node.parmTuple("ior").eval()) if node.parmTuple("ior") else [1.0, 1.0, 1.0]
     extinction = list(node.parmTuple("extinction").eval()) if node.parmTuple("extinction") else [0.0, 0.0, 0.0]
@@ -143,7 +143,7 @@ def convert_karma_network(source: hou.Node, builder: hou.Node, report: Conversio
         colour_inputs = OPENPBR_COLOUR_INPUTS
         normals = (("geometry_normal", "geometry_normal"),    # both take a Bump Map ▸r/redshift-nodes
                    ("geometry_coat_normal", "geometry_coat_normal"))
-    rs.setName(helpers.sanitize_usd_path(src.name()), unique_name=True)
+    rs.setName(wording.sanitize_usd_path(src.name()), unique_name=True)
 
     wired_inputs = _named_inputs(src)
     for rs_name, mtlx_name in pairs:
@@ -253,7 +253,7 @@ def _pair(node: hou.Node, name: str, default: tuple) -> tuple:
 def convert_image(node: hou.Node, builder: hou.Node, report: ConversionReport, role: str):
     """mtlximage -> RS Texture Sampler on the SAME file: `tex0` takes the image's unexpanded path, so a `$AMAZELIB` token stays a token and the twins share one texture store; colour reads sRGB, data and normals Raw. ▸r/redshift-nodes"""
     sampler = builder.createNode("redshift::TextureSampler")
-    sampler.setName(helpers.sanitize_usd_path(node.name()), unique_name=True)
+    sampler.setName(wording.sanitize_usd_path(node.name()), unique_name=True)
     file_parm = node.parm("file")
     if file_parm is not None:
         sampler.parm("tex0").set(file_parm.unexpandedString())
@@ -277,7 +277,7 @@ def convert_tiledimage(node: hou.Node, builder: hou.Node, report: ConversionRepo
 def convert_normalmap(node: hou.Node, builder: hou.Node, report: ConversionReport, role: str):
     """mtlxnormalmap -> RS Bump Map in tangent-space-normal mode, the map on `input`; `scale` crosses over, which the forward converter copies only in this mode too. ▸r/redshift-nodes"""
     bump = builder.createNode("redshift::BumpMap")
-    bump.setName(helpers.sanitize_usd_path(node.name()), unique_name=True)
+    bump.setName(wording.sanitize_usd_path(node.name()), unique_name=True)
     bump.parm("inputType").set(TANGENT_SPACE_NORMAL)
     _copy_constant_parm(node, "scale", bump, "scale")
     feeding = _named_inputs(node).get("in")
@@ -291,7 +291,7 @@ def convert_normalmap(node: hou.Node, builder: hou.Node, report: ConversionRepor
 def convert_displacement(node: hou.Node, builder: hou.Node, report: ConversionReport, role: str = "data"):
     """mtlxdisplacement -> RS Displacement as a height field, the map on `texMap`, `scale` across. ▸r/redshift-nodes"""
     disp = builder.createNode("redshift::Displacement")
-    disp.setName(helpers.sanitize_usd_path(node.name()), unique_name=True)
+    disp.setName(wording.sanitize_usd_path(node.name()), unique_name=True)
     if _effective_signature(node) == "vector3":    # a tangent-space vector (encoding 0, space 2), not a height ▸r/redshift-nodes
         disp.parm("map_encoding").set("0")
         disp.parm("space_type").set("2")
@@ -310,7 +310,7 @@ def convert_displacement(node: hou.Node, builder: hou.Node, report: ConversionRe
 def convert_mix(node: hou.Node, builder: hou.Node, report: ConversionReport, role: str):
     """mtlxmix -> RS Color Mix: MaterialX shows `bg` at mix 0 and `fg` at 1, Redshift Input 1 at 0 and Input 2 at 1. ▸r/redshift-nodes"""
     mix = builder.createNode("redshift::RSColorMix")
-    mix.setName(helpers.sanitize_usd_path(node.name()), unique_name=True)
+    mix.setName(wording.sanitize_usd_path(node.name()), unique_name=True)
     wired = _named_inputs(node)
     for mtlx_name, rs_name in (("bg", "input1"), ("fg", "input2"), ("mix", "mixAmount")):
         feeding = wired.get(mtlx_name)
@@ -324,7 +324,7 @@ def convert_mix(node: hou.Node, builder: hou.Node, report: ConversionReport, rol
 def convert_multiply(node: hou.Node, builder: hou.Node, report: ConversionReport, role: str):
     """mtlxmultiply -> RS Mul (float) or RS Mul Vector (colour and vector), each input converted or copied."""
     mul = builder.createNode("redshift::RSMathMul" if _is_scalar(node) else "redshift::RSMathMulVector")
-    mul.setName(helpers.sanitize_usd_path(node.name()), unique_name=True)
+    mul.setName(wording.sanitize_usd_path(node.name()), unique_name=True)
     wired = _named_inputs(node)
     for mtlx_name, rs_name in (("in1", "input1"), ("in2", "input2")):
         feeding = wired.get(mtlx_name)
@@ -354,7 +354,7 @@ def convert_math(node: hou.Node, builder: hou.Node, report: ConversionReport, ro
     """A MaterialX math node -> the Redshift float or vector node of the same operation, each input converted or copied. ▸r/redshift-nodes"""
     scalar_type, vector_type, pairs = TWO_INPUT_MATH[node.type().name().split("::")[0]]
     made = builder.createNode(scalar_type if _is_scalar(node) else vector_type)
-    made.setName(helpers.sanitize_usd_path(node.name()), unique_name=True)
+    made.setName(wording.sanitize_usd_path(node.name()), unique_name=True)
     wired = _named_inputs(node)
     for mtlx_name, rs_name in pairs:
         feeding = wired.get(mtlx_name)
@@ -372,7 +372,7 @@ def convert_clamp(node: hou.Node, builder: hou.Node, report: ConversionReport, r
                     "the shader's own value" % (node.name(), _effective_signature(node)))
         return None
     rng = builder.createNode("redshift::RSMathRange")
-    rng.setName(helpers.sanitize_usd_path(node.name()), unique_name=True)
+    rng.setName(wording.sanitize_usd_path(node.name()), unique_name=True)
     for mtlx_name, rs_names in (("low", ("old_min", "new_min")), ("high", ("old_max", "new_max"))):
         for rs_name in rs_names:
             _copy_constant_parm(node, mtlx_name, rng, rs_name)
@@ -391,7 +391,7 @@ def convert_remap(node: hou.Node, builder: hou.Node, report: ConversionReport, r
                     "the shader's own value" % (node.name(), signature))
         return None
     rng = builder.createNode("redshift::RSMathRange")
-    rng.setName(helpers.sanitize_usd_path(node.name()), unique_name=True)
+    rng.setName(wording.sanitize_usd_path(node.name()), unique_name=True)
     for mtlx_name, rs_name in (("inlow", "old_min"), ("inhigh", "old_max"),
                                ("outlow", "new_min"), ("outhigh", "new_max")):
         _copy_constant_parm(node, mtlx_name, rng, rs_name)
@@ -404,7 +404,7 @@ def convert_remap(node: hou.Node, builder: hou.Node, report: ConversionReport, r
 def convert_extract(node: hou.Node, builder: hou.Node, report: ConversionReport, role: str):
     """mtlxextract -> RS Color Splitter, the channel picked as the OUTPUT (outR/outG/outB/outA by `index`)."""
     splitter = builder.createNode("redshift::RSColorSplitter")
-    splitter.setName(helpers.sanitize_usd_path(node.name()), unique_name=True)
+    splitter.setName(wording.sanitize_usd_path(node.name()), unique_name=True)
     index_parm = node.parm("index")
     index = int(index_parm.eval()) if index_parm is not None else 0
     feeding = _named_inputs(node).get("in")

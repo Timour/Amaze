@@ -1,5 +1,6 @@
 """Karma -> Redshift: the mirror of Convert to Karma. A saved Karma material's MaterialX network becomes a Redshift material builder whose shader carries the same numbers, whose textures are the SAME files, and whose terminal is wired. ▸r/redshift-nodes"""
 
+import functools
 import os
 import sys
 import unittest
@@ -16,6 +17,8 @@ sys.path.insert(
         os.path.dirname(os.path.abspath(__file__)))))
 
 from amaze.core import material  # noqa: E402
+from amaze.actions import materials as material_actions  # noqa: E402
+from amaze.core import material_files  # noqa: E402
 from amaze.render import nodes  # noqa: E402
 from amaze.tests import test_support  # noqa: E402,F401 - redirects the log
 
@@ -265,7 +268,7 @@ class AConstantOnAWireLandsAsAValue(unittest.TestCase):
 @unittest.skipUnless(_redshift_available(),
                      "the Redshift plugin is not loaded")
 class TheLibraryDoorMakesANewRedshiftEntry(unittest.TestCase):
-    """`MaterialLibrary.convert` to Redshift: the saved Karma material is read back from disk, converted, and registered BESIDE the source, never in its place."""
+    """`actions.materials.convert` to Redshift: the saved Karma material is read back from disk, converted, and registered BESIDE the source, never in its place."""
 
     @classmethod
     def setUpClass(cls):
@@ -283,7 +286,7 @@ class TheLibraryDoorMakesANewRedshiftEntry(unittest.TestCase):
         self.source = _karma_material(self.parent, "karma_saved")
         self.addCleanup(self.source.destroy)
         held = test_support.asset_ids(self.model)
-        self.assertEqual("Karma", self.model.add_asset(self.source, "Probe", "", False))
+        self.assertEqual("Karma", material_actions.add_asset(self.model, self.source, "Probe", "", False))
         self.source_id = str(test_support.arrived(self.model, held)[0].mat_id)
 
     @property
@@ -293,7 +296,7 @@ class TheLibraryDoorMakesANewRedshiftEntry(unittest.TestCase):
     def test_a_redshift_twin_is_added_beside_the_karma_source(self):
         before = len(self.model.assets)
         held = test_support.asset_ids(self.model)
-        ok, report = self.model.convert(self.model.index(self.row, 0), "Redshift")
+        ok, report = material_actions.convert(self.model, self.model.index(self.row, 0), "Redshift")
         self.assertTrue(ok, report.summary_lines())
         self.assertEqual(before + 1, len(self.model.assets), "no new entry was added")
         source = self.model.assets[self.row]
@@ -304,7 +307,7 @@ class TheLibraryDoorMakesANewRedshiftEntry(unittest.TestCase):
         self.assertEqual(list(source.categories), list(twin.categories))
         handler = nodes.NodeHandler(self.prefs)    # a redshift_vopnet twin was refused a LOP library
         self.assertEqual("rs_usd_material_builder",
-                         handler.get_saved_node_type(twin))
+                         material_files.get_saved_node_type(self.prefs, twin))
         self.assertEqual({"mat", "lop"}, handler.import_targets(twin))
         path = material.payload_path(self.prefs, twin.mat_id, self.prefs.ext)
         seen = set(self.parent.children())
@@ -320,7 +323,7 @@ class TheLibraryDoorMakesANewRedshiftEntry(unittest.TestCase):
 
     def test_a_non_karma_row_is_refused_with_a_reason(self):
         self.model.assets[self.row].renderer = "Redshift"
-        ok, report = self.model.convert(self.model.index(self.row, 0), "Redshift")
+        ok, report = material_actions.convert(self.model, self.model.index(self.row, 0), "Redshift")
         self.assertFalse(ok)
         self.assertTrue(report.skipped, "no reason given")
 
@@ -390,7 +393,7 @@ class ABlendWithNoBaseIsReportedNotCrashed(unittest.TestCase):
         blend = source.createNode("redshift::MaterialBlender", "blend")
         terminal.setNamedInput("Surface", blend, 0)
         held = test_support.asset_ids(self.model)
-        saved = self.model.add_asset(source, "Test", "", False,
+        saved = material_actions.add_asset(self.model, source, "Test", "", False,
                                      name="rs_blend")
         source.destroy()
         self.assertEqual("Redshift", saved,
@@ -400,7 +403,7 @@ class ABlendWithNoBaseIsReportedNotCrashed(unittest.TestCase):
 
     def test_convert_to_karma_reports_instead_of_crashing(self):
         before = len(self.model.assets)
-        ok, report = self.model.convert(
+        ok, report = material_actions.convert(self.model,
             self.model.index(self.row, 0), "Karma")
         self.assertFalse(ok)
         self.assertIn(self.NO_BASE, report.skipped)
@@ -433,7 +436,7 @@ class ALegacyRedshiftMaterialGoesIntoSolaris(unittest.TestCase):
         classic.setNamedInput("Surface", shader, 0)
         classic.setNamedInput("Bump Map", bump, 0)
         held = test_support.asset_ids(cls.model)
-        cls.model.add_asset(legacy, "Test", "", False, name="legacy_rs")
+        material_actions.add_asset(cls.model, legacy, "Test", "", False, name="legacy_rs")
         cls.row = cls.model.find_asset_row_by_id(
             test_support.arrived(cls.model, held)[0].mat_id)
         legacy.destroy()
@@ -443,7 +446,7 @@ class ALegacyRedshiftMaterialGoesIntoSolaris(unittest.TestCase):
         before = {n.path() for lib in stage.children()
                   if lib.type().name() == "materiallibrary"
                   for n in lib.children()}
-        ok, reason, _created = self.model.import_asset_to_scene(
+        ok, reason, _created = material_actions.import_asset_to_scene(self.model,
             self.model.index(self.row, 0), target="lop")
         self.assertTrue(ok, reason)
         after = [n for lib in stage.children()
@@ -456,7 +459,7 @@ class ALegacyRedshiftMaterialGoesIntoSolaris(unittest.TestCase):
     def test_it_lands_in_a_lop_library_as_the_usd_container(self):
         handler = nodes.NodeHandler(self.prefs)
         self.assertEqual("redshift_vopnet",
-                         handler.get_saved_node_type(self.model.assets[self.row]),
+                         material_files.get_saved_node_type(self.prefs, self.model.assets[self.row]),
                          "the saved files no longer say the classic container")
         self.assertEqual({"mat", "lop"},
                          handler.import_targets(self.model.assets[self.row]))
@@ -498,7 +501,7 @@ class AFirstEditionTwinGoesIntoSolaris(unittest.TestCase):
         usd.setNamedInput("Surface", shader, 0)
         usd.setNamedInput("Displacement", disp, 0)
         held = test_support.asset_ids(self.model)
-        self.model.add_asset(legacy, "Test", "", False, name="first_twin")
+        material_actions.add_asset(self.model, legacy, "Test", "", False, name="first_twin")
         self.row = self.model.find_asset_row_by_id(
             test_support.arrived(self.model, held)[0].mat_id)
         legacy.destroy()
@@ -508,7 +511,7 @@ class AFirstEditionTwinGoesIntoSolaris(unittest.TestCase):
         before = {n.path() for lib in stage.children()
                   if lib.type().name() == "materiallibrary"
                   for n in lib.children()}
-        ok, reason, _created = self.model.import_asset_to_scene(
+        ok, reason, _created = material_actions.import_asset_to_scene(self.model,
             self.model.index(self.row, 0), target="lop")
         self.assertTrue(ok, reason)
         node = [n for lib in stage.children()
@@ -640,6 +643,7 @@ class AnOnlineMaterialCanLandAsRedshift(unittest.TestCase):
         held = test_support.asset_ids(self.model)
         ok, reason = matx_import.import_record(
             self._record(), _ValuesSource(), "", self.model, self.prefs,
+            save=functools.partial(material_actions.add_asset, self.model),
             renderer="Redshift")
         self.assertTrue(ok, reason)
         self.assertEqual(before + 1, len(self.model.assets))
@@ -667,7 +671,8 @@ class AnOnlineMaterialCanLandAsRedshift(unittest.TestCase):
                                 "complexIor": [0.18, 3.42, 0.42, 2.35, 1.37, 1.77]}})
         held = test_support.asset_ids(self.model)
         ok, reason = matx_import.import_record(
-            gold, _ValuesSource(), "", self.model, self.prefs, renderer="Redshift")
+            gold, _ValuesSource(), "", self.model, self.prefs, renderer="Redshift",
+            save=functools.partial(material_actions.add_asset, self.model))
         self.assertTrue(ok, reason)
         twin, = test_support.arrived(self.model, held)
         self.assertEqual("Redshift", twin.renderer)
@@ -693,7 +698,8 @@ class AnOnlineMaterialCanLandAsRedshift(unittest.TestCase):
         record = self._record()
         held = test_support.asset_ids(self.model)
         ok, reason = matx_import.import_record(
-            record, _ValuesSource(), "", self.model, self.prefs)
+            record, _ValuesSource(), "", self.model, self.prefs,
+            save=functools.partial(material_actions.add_asset, self.model))
         self.assertTrue(ok, reason)
         landed, = test_support.arrived(self.model, held)
         self.assertEqual("Karma", landed.renderer,

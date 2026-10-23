@@ -18,6 +18,7 @@ sys.path.insert(
         os.path.dirname(os.path.abspath(__file__)))))
 
 from amaze.core import versions  # noqa: E402
+from amaze.actions import materials as material_actions  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
 
@@ -480,7 +481,7 @@ class TheWholeLoopThroughTheModelTest(unittest.TestCase):
         # A REAL parameter-only edit - import, tweak one float, update; a fresh network would be structural.
         row = self._karma_row()
         mat = self.model.assets[row]
-        ok, reason, _created = self.model.import_asset_to_scene(
+        ok, reason, _created = material_actions.import_asset_to_scene(self.model,
             self.model.index(row, 0), target="mat")
         self.assertTrue(ok, reason)
         imported = next(n for n in hou.node("/mat").children()
@@ -497,7 +498,7 @@ class TheWholeLoopThroughTheModelTest(unittest.TestCase):
             if scalar is not None:
                 scalar.set(scalar.eval() + 0.2)
 
-        renderer = self.model.update_asset_content(row, imported)
+        renderer = material_actions.update_asset_content(self.model, row, imported)
         self.assertTrue(renderer, "premise: the update itself landed")
 
         from amaze.core import versions as versions_mod
@@ -530,7 +531,7 @@ class TheWholeLoopThroughTheModelTest(unittest.TestCase):
         row = self._karma_row()
         mat = self.model.assets[row]
         fresh = self._build(self.staging, "structural_probe")
-        renderer = self.model.update_asset_content(row, fresh)
+        renderer = material_actions.update_asset_content(self.model, row, fresh)
         self.assertTrue(renderer, "premise: the update landed")
         from amaze.core import versions as versions_mod
         self.assertEqual(0, versions_mod.version_count(

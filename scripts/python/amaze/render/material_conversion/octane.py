@@ -5,7 +5,7 @@ from __future__ import annotations
 import hou
 
 from amaze.core import debug, renderers
-from amaze.helpers import helpers
+from amaze.helpers import wording
 from amaze.render import material_converter, nodes
 from amaze.render.material_conversion import engine, materialx, octane_reader
 
@@ -88,7 +88,7 @@ def _rewire(node: hou.Node, source, index: int) -> None:
 def _metal(conductor: hou.Node, report) -> None:
     """A measured metal as a metalness-1 Standard Surface coloured by its head-on reflectance."""
     metal = conductor.parent().createNode("mtlxstandard_surface")
-    metal.setName(helpers.sanitize_usd_path(conductor.name()) + "_metal", unique_name=True)
+    metal.setName(wording.sanitize_usd_path(conductor.name()) + "_metal", unique_name=True)
     metal.setPosition(conductor.position())
     metal.parmTuple("base_color").set(tuple(
         materialx.normal_incidence_reflectance(float(n), float(k)) for n, k in zip(
@@ -254,7 +254,7 @@ class OctaneAPI(engine.RendererAPI):
 
     def from_materialx(self, container, parent, name, report):
         copy = hou.copyNodesTo((container,), parent)[0]
-        copy.setName(helpers.sanitize_usd_path(name) or "material", unique_name=True)
+        copy.setName(wording.sanitize_usd_path(name) or "material", unique_name=True)
         resolve(copy, report)
         report_ignored(copy, report)
         mark(copy)

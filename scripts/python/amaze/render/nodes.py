@@ -8,21 +8,20 @@ import hou
 
 
 from amaze import messages
-from amaze.core import material
+from amaze.core import material, material_files
 from amaze.core import renderers
 from amaze.core import texstore
 from amaze.prefs import prefs
 from amaze.core import debug
-from amaze.helpers import hostos
+from amaze.helpers import hostos, wording
 from amaze.render import cop_nodes
 
 
 def make_karma_builder(parent: hou.Node, name: str) -> hou.Node:
     """The mtlx builder, starters gone, connectors KEPT for wiring."""
     import voptoolutils
-    from amaze.helpers import helpers
     builder = parent.createNode("subnet")
-    builder.setName(helpers.sanitize_usd_path(name), unique_name=True)
+    builder.setName(wording.sanitize_usd_path(name), unique_name=True)
     builder = voptoolutils._setupMtlXBuilderSubnet(
         subnet_node=builder,
         name=name,
@@ -320,7 +319,7 @@ def staged_asset(preferences, mat, loader) -> "object":
         staging = hou.node("/obj").createNode("matnet")
         try:
             handler = NodeHandler(preferences)
-            saved_type = handler.get_saved_node_type(mat)
+            saved_type = material_files.get_saved_node_type(preferences, mat)
             if saved_type and node_type_available(saved_type):
                 builder = staging.createNode(saved_type)
                 for child in builder.children():
@@ -688,89 +687,13 @@ class NodeHandler:
             self._renderer = "Karma"
         return self._renderer
 
-    LOP_CAPABLE_NODE_TYPES = (
-        "rs_usd_material_builder",  # Redshift USD material builder
-        "octane_solaris_material_builder",  # Octane Solaris material builder
-    )
-
-    def get_saved_node_type(self, mat: material.Material) -> str:
-        """The builder type in the .interface's first createNode, or ""."""
-        iface = material.payload_path(
-            self._preferences, mat.mat_id, ".interface"
-        )
-        try:
-            with open(iface, "r", encoding="utf-8") as fh:
-                text = fh.read()
-        except OSError:
-            return ""
-        match = re.search(r'createNode\(\s*[\'"]([^\'"]+)[\'"]', text)
-        return match.group(1) if match else ""
-
-    SHADER_TYPE_LABELS = {    # renderer -> (type in the saved .mat, label); the first one found wins
-        "Redshift": (
-            ("redshift::ToonMaterial", "Toon"),
-            ("redshift::OpenPBRMaterial", "PBR"),
-            ("redshift::StandardMaterial", "Standard"),
-            ("redshift::MaterialBlender", "Blend"),
-            ("redshift::Hair", "Hair"),
-            ("redshift::Volume", "Volume"),
-            ("redshift::rsOSL", "OSL"),
-        ),
-        "Octane": (    # what mixes or layers first: a layer type starts with a material's ▸r/octane-builder
-            ("octane::NT_MAT_MIX", "Mix"),
-            ("octane::NT_MAT_LAYER", "Layered"),
-            ("octane::NT_MAT_COMPOSITE", "Composite"),
-            ("octane::NT_MAT_STANDARD_SURFACE", "Standard Surface"),
-            ("octane::NT_MAT_OPEN_PBR_SURFACE", "OpenPBR"),
-            ("octane::NT_MAT_UNIVERSAL", "Universal"),
-            ("octane::NT_MAT_TOON", "Toon"),
-            ("octane::NT_MAT_HAIR", "Hair"),
-            ("octane::NT_MAT_METAL", "Metallic"),
-            ("octane::NT_MAT_GLOSSY", "Glossy"),
-            ("octane::NT_MAT_SPECULAR", "Specular"),
-            ("octane::NT_MAT_DIFFUSE", "Diffuse"),
-            ("octane::NT_MAT_SHADOW_CATCHER", "Shadow Catcher"),
-            ("octane::NT_MAT_CLIPPING", "Clipping"),
-            ("octane::NT_MAT_PORTAL", "Portal"),
-            ("octane::NT_MAT_NULL", "Null"),
-            ("mtlxstandard_surface", "MaterialX"),
-            ("mtlxopen_pbr_surface", "MaterialX"),
-        ),
-    }
-
-    @classmethod
-    def shader_type_table(cls, renderer) -> tuple:
-        """The label table for a stored renderer, or () when it has none."""
-        name = str(renderer or "")
-        return next((table for family, table in cls.SHADER_TYPE_LABELS.items()
-                     if family in name), ())
-
-    def get_shader_type_label(self, mat: material.Material) -> str:
-        """Shader-type label by text search of the .mat. ▸r/save-shape"""
-        table = self.shader_type_table(mat.renderer)
-        if not table:
-            return ""
-        mat_path = material.payload_path(
-            self._preferences, mat.mat_id, self._preferences.ext
-        )
-        try:
-            with open(mat_path, "rb") as fh:
-                data = fh.read()
-        except OSError:
-            return ""
-        text = data.decode("latin-1")
-        for needle, label in table:
-            if ("type = " + needle) in text:
-                return label
-        return ""
-
     def import_targets(self, mat: material.Material, saved_type=None) -> set:
         """Which of {"mat", "lop"} this material can be imported into; `saved_type` spares a read."""
         if renderers.is_karma(mat.renderer):
             return {"mat", "lop"}
         if saved_type is None:
-            saved_type = self.get_saved_node_type(mat)
-        if saved_type in self.LOP_CAPABLE_NODE_TYPES:
+            saved_type = material_files.get_saved_node_type(self._preferences, mat)
+        if saved_type in material_files.LOP_CAPABLE_NODE_TYPES:
             return {"mat", "lop"}
         if saved_as_octane_builder(mat.renderer, saved_type):    # lives in both, as Karma's does
             return {"mat", "lop"}
@@ -844,7 +767,7 @@ class NodeHandler:
                         '"%s" cannot be imported: its material file could '
                         "not be read (%s)" % (mat.name, exc)))
 
-        saved_type = self.get_saved_node_type(mat)
+        saved_type = material_files.get_saved_node_type(self._preferences, mat)
         if saved_type and not node_type_available(saved_type):
             self._context_override = None
             return (False,
@@ -1123,7 +1046,7 @@ class NodeHandler:
             self.load_items_file(mat)
         elif "Octane" in mat.renderer:
             if saved_type is None:
-                saved_type = self.get_saved_node_type(mat)
+                saved_type = material_files.get_saved_node_type(self._preferences, mat)
             if saved_as_octane_builder(mat.renderer, saved_type):
                 self.load_octane_builder(mat)
             else:
@@ -1160,9 +1083,8 @@ class NodeHandler:
     def load_interface_other(self, mat: material.Material, builder_name: str,
                              saved_type=None) -> None:
         """Rebuild the saved container bare, no exec; a type this session lacks gets `builder_name`."""
-        from amaze.helpers import helpers
         if saved_type is None:
-            saved_type = self.get_saved_node_type(mat)
+            saved_type = material_files.get_saved_node_type(self._preferences, mat)
         saved_type = saved_type or builder_name
         known = node_type_available(saved_type)
         builder = self._hou_parent.createNode(saved_type if known else builder_name)
@@ -1173,7 +1095,7 @@ class NodeHandler:
                 builder, read_builder_sidecar(self._builder_sidecar(mat)))
 
         builder.setName(      # a display name is the artist's text and `setName` takes node names only, answering `Invalid name` for a space
-            helpers.sanitize_usd_path(mat.name), unique_name=True)
+            wording.sanitize_usd_path(mat.name), unique_name=True)
         builder.setGenericFlag(hou.nodeFlag.Material, True)
 
         self._builder_node = builder
@@ -1230,7 +1152,7 @@ class NodeHandler:
         holder = self._builder_node
         self._builder_node = moved
         holder.destroy()
-        moved.setName(helpers.sanitize_usd_path(mat.name), unique_name=True)
+        moved.setName(wording.sanitize_usd_path(mat.name), unique_name=True)
         moved.setGenericFlag(hou.nodeFlag.Material, True)
         helpers.auto_place(moved)
         if not surface_terminal_wired(moved):
@@ -1249,7 +1171,7 @@ class NodeHandler:
             self._place_whole_builder(mat, loaded[0])
             return
         holder = self._builder_node    # loose nodes: the holder is their container, as before
-        holder.setName(helpers.sanitize_usd_path(mat.name), unique_name=True)
+        holder.setName(wording.sanitize_usd_path(mat.name), unique_name=True)
         holder.setGenericFlag(hou.nodeFlag.Material, True)
         self._builder_node = hou.moveNodesTo((holder,), self._import_path)[0]  # type: ignore
         helpers.auto_place(self._builder_node)
@@ -1605,7 +1527,7 @@ class NodeHandler:
                 '"%s": asset file is missing on disk.' % mat.name))
         context = str(getattr(mat, "renderer", "") or "").strip().title() \
             or "Cop"
-        net_type = self.get_saved_node_type(mat) or \
+        net_type = material_files.get_saved_node_type(self._preferences, mat) or \
             cop_nodes.CONTAINER_FOR.get(context, "copnet")
 
         dest = context_node
@@ -1681,7 +1603,7 @@ class NodeHandler:
         try:
             try:
                 container.setName(
-                    helpers.sanitize_usd_path(mat.name), unique_name=True
+                    wording.sanitize_usd_path(mat.name), unique_name=True
                 )
             except hou.OperationFailed:
                 pass

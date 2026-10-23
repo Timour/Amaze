@@ -7,7 +7,7 @@ import hou
 from amaze.core import debug
 from amaze.core import material
 
-from amaze.helpers import helpers
+from amaze.helpers import wording
 from amaze.render.material_conversion.report import ConversionReport    # noqa: F401  the one home
 
 
@@ -1433,7 +1433,7 @@ def convert_redshift_container(vopnet, prefs_dir_parent, report):
             mtlx_disp = convert_displacement(disp_src, prefs_dir_parent, report)
 
     mtlx.setName(    # a library name may hold spaces; setName takes node names only
-        helpers.sanitize_usd_path(report.mat_name), unique_name=True)
+        wording.sanitize_usd_path(report.mat_name), unique_name=True)
     return mtlx, mtlx_disp    # no collect node: the builder's surface connector refuses one
 
 

@@ -360,7 +360,7 @@ class SiblingAbsenceStopsTheOrphanPassTest(unittest.TestCase):
 
     def _cleanup(self):
         with patch.object(hou, "ui", MagicMock(), create=True):  # create=True: hou.ui may not exist under hython at all, and a raw assignment leaks into later tests
-            self.model.cleanup_db(show_dialog=False)
+            self.model.cleanup_db()
 
     def test_the_orphan_pass_is_skipped_when_a_sibling_is_absent_but_known(self):
         with open(self.cops + ".bak-1", "w", encoding="utf-8") as handle:
@@ -440,7 +440,7 @@ class OwnDatabaseAbsenceStopsItsOwnOrphanPassTest(unittest.TestCase):
 
     def _cleanup(self, model):
         with patch.object(hou, "ui", MagicMock(), create=True):
-            model.cleanup_db(show_dialog=False)
+            model.cleanup_db()
 
     def test_a_model_does_not_delete_while_its_own_database_is_absent(self):
         with open(self.cops + ".bak-1", "w", encoding="utf-8") as handle:
@@ -1179,7 +1179,7 @@ class AStampedAssetIsNotAnOrphanTest(unittest.TestCase):
 
     def _cleanup(self):
         with patch.object(hou, "ui", MagicMock(), create=True):
-            self.model.cleanup_db(show_dialog=False)
+            self.model.cleanup_db()
 
     def test_a_stamped_unindexed_asset_survives_the_sweep(self):
         self._cleanup()

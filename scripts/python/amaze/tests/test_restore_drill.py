@@ -384,7 +384,7 @@ class TheUndoFamilyIsBoundedTest(unittest.TestCase):
                       if n.startswith(prefix))
 
     def test_the_family_stays_at_the_cap(self):
-        from amaze.core import library as library_mod
+        from amaze.core import quarantine
         from amaze.helpers import hostos
         from amaze.helpers import restore as restore_lib
         self._mint(restore_lib.KEEP_UNDO_COPIES + 3)
@@ -397,7 +397,7 @@ class TheUndoFamilyIsBoundedTest(unittest.TestCase):
         self.assertTrue(retired[0].endswith("-000000"),
                         "retirement did not take the oldest state first")
         root = os.path.join(hostos.history_root(self.target),
-                            library_mod.QUARANTINE_PREFIX)
+                            quarantine.QUARANTINE_PREFIX)
         held = []
         for folder, _dirs, files in os.walk(root):
             held.extend(files)

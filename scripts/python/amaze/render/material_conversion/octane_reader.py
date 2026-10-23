@@ -7,7 +7,7 @@ import math
 import hou
 
 from amaze.core import debug
-from amaze.helpers import helpers
+from amaze.helpers import wording
 from amaze.render.material_converter import _copy_constant_parm, _set_poly_parm
 
 SIGNATURE = {"float": "default", "color3": "color3", "vector3": "vector3"}
@@ -154,7 +154,7 @@ class Reader:
         """A MaterialX node in the builder, named after the Octane node it stands for."""
         made = self.builder.createNode(kind)
         if after is not None:
-            made.setName(helpers.sanitize_usd_path(after.name()), unique_name=True)
+            made.setName(wording.sanitize_usd_path(after.name()), unique_name=True)
         if role and made.parm("signature") is not None:
             _set_signature(made, role)
         return made
@@ -307,7 +307,7 @@ def _normal_map(reader, source, output=0):
     key = (source.path(), "normalmap")
     if key not in reader._read:
         normalmap = reader.make("mtlxnormalmap", source)
-        normalmap.setName(helpers.sanitize_usd_path(source.name()) + "_normalmap",
+        normalmap.setName(wording.sanitize_usd_path(source.name()) + "_normalmap",
                           unique_name=True)
         reader.wire(normalmap, "in", image)
         reader._read[key] = (normalmap, 0)
@@ -923,5 +923,5 @@ def to_materialx(shader: hou.Node | None, builder: hou.Node, report) -> tuple:
     if made is None:
         return None, None
     surface = made[0]
-    surface.setName(helpers.sanitize_usd_path(report.mat_name) or "surface", unique_name=True)
+    surface.setName(wording.sanitize_usd_path(report.mat_name) or "surface", unique_name=True)
     return surface, reader.displacement

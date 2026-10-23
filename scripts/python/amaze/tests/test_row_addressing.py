@@ -17,6 +17,7 @@ sys.path.insert(
 import hou  # noqa: E402,F401
 
 from amaze.core import library, locations  # noqa: E402
+from amaze.actions import materials as material_actions  # noqa: E402
 from amaze.tests import test_support  # noqa: E402,F401 - redirects the log
 
 
@@ -82,7 +83,7 @@ class ABatchRefusesARowItCannotRender(unittest.TestCase):
              mock.patch.object(model, "rowCount", lambda: 1), \
              mock.patch.object(thumbs.ThumbNailRenderer, "render_assets",
                                lambda preferences, mats: rendered.extend(mats)):
-            model.render_thumbnails([0, 5])
+            material_actions.render_thumbnails(model, [0, 5])
         self.assertEqual(
             1, len(rendered),
             "a row past the end of the model reached the renderer")

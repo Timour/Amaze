@@ -1,7 +1,6 @@
 """Utility functions used in and around Houdini."""
 
 import contextlib
-import re
 
 import hou
 
@@ -256,12 +255,6 @@ def get_connected_output_nodes(
 ) -> list[hou.Node]:
     """Every node reachable through outputs(), seeds included."""
     return _walk_connected(nodes, selected, "outputs")
-def sanitize_usd_path(path: str) -> str:
-    """The string made safe for .usd files and Solaris - non-alphanumerics to underscores, and a leading digit prefixed (node and USD prim names may not START with one, which `01_ball.obj`-style file names hit constantly)."""
-    clean = re.sub("[^a-zA-Z0-9]", "_", path)
-    if clean and clean[0].isdigit():
-        clean = "_" + clean
-    return clean
 
 
 @contextlib.contextmanager

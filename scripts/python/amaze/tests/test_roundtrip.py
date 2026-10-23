@@ -22,6 +22,8 @@ import shutil  # noqa: E402
 import tempfile  # noqa: E402
 
 from amaze.core import library as library_mod  # noqa: E402
+from amaze.actions import materials as material_actions  # noqa: E402
+from amaze.core import material_files  # noqa: E402
 from amaze.core import material, renderers  # noqa: E402
 from amaze.helpers import hostos  # noqa: E402
 from amaze.render import nodes  # noqa: E402
@@ -143,7 +145,7 @@ class TestRoundTrip(unittest.TestCase):
         shader.setInput(1, texture)
 
         held = test_support.asset_ids(self.model)
-        self.model.add_asset(shader, "Bare", "", False)
+        material_actions.add_asset(self.model, shader, "Bare", "", False)
         asset, = test_support.arrived(self.model, held)
 
         handler = nodes.NodeHandler(self.prefs)
@@ -191,7 +193,7 @@ class TestRoundTrip(unittest.TestCase):
 
         before = {n.path() for n in mat_ctx.children()}
         held = test_support.asset_ids(self.model)
-        self.model.add_asset(source, "RedshiftProbe", "", False)
+        material_actions.add_asset(self.model, source, "RedshiftProbe", "", False)
         asset, = test_support.arrived(self.model, held)
         self.assertEqual(
             "Redshift", asset.renderer,
@@ -356,7 +358,7 @@ class TestRoundTrip(unittest.TestCase):
         rows_before = self.model.rowCount()
         builder = _build_material(self.staging, "roundtrip_mat")
         held = test_support.asset_ids(self.model)
-        self.model.add_asset(builder, "RoundTrip", "roundtrip,test", False)
+        material_actions.add_asset(self.model, builder, "RoundTrip", "roundtrip,test", False)
 
         self.assertEqual(self.model.rowCount(), rows_before + 1)  # registered once, stamped for re-saves
         mat_id = str(test_support.arrived(self.model, held)[0].mat_id)
@@ -375,7 +377,7 @@ class TestRoundTrip(unittest.TestCase):
         self.assertEqual(asset.name, "roundtrip_mat")
         self.assertIn("RoundTrip", asset.categories)
 
-        ok, reason, _created = reloaded.import_asset_to_scene(  # RE-IMPORT through the real importer, into /mat
+        ok, reason, _created = material_actions.import_asset_to_scene(reloaded,   # RE-IMPORT through the real importer, into /mat
             reloaded.index(row, 0), target="mat"
         )
         self.assertTrue(ok, reason)
@@ -402,11 +404,11 @@ class TestRoundTrip(unittest.TestCase):
         """Importing the same asset twice must yield two independent working nodes - not a collision or a half-wired copy."""
         builder = _build_material(self.staging, "twice_mat")
         held = test_support.asset_ids(self.model)
-        self.model.add_asset(builder, "RoundTrip", "", False)
+        material_actions.add_asset(self.model, builder, "RoundTrip", "", False)
         row = self.model.find_asset_row_by_id(
             test_support.arrived(self.model, held)[0].mat_id)
         for _ in range(2):
-            ok, reason, _created = self.model.import_asset_to_scene(
+            ok, reason, _created = material_actions.import_asset_to_scene(self.model,
                 self.model.index(row, 0), target="mat"
             )
             self.assertTrue(ok, reason)
@@ -433,7 +435,7 @@ class TestRoundTrip(unittest.TestCase):
                         stat.S_IRWXU)                     # restore
         try:
             try:
-                self.model.add_asset(builder, "RoundTrip", "", False)
+                material_actions.add_asset(self.model, builder, "RoundTrip", "", False)
             except (OSError, hou.Error):
                 pass          # raising is acceptable; registering is not
         finally:
@@ -450,13 +452,13 @@ class TestRoundTrip(unittest.TestCase):
         """An index row whose .mat is gone - the phantom this suite exists to prevent - must refuse to import with a REASON, not a traceback, and leave no debris in /mat."""
         builder = _build_material(self.staging, "vanishing_mat")
         held = test_support.asset_ids(self.model)
-        self.model.add_asset(builder, "RoundTrip", "", False)
+        material_actions.add_asset(self.model, builder, "RoundTrip", "", False)
         mat_id = str(test_support.arrived(self.model, held)[0].mat_id)
         row = self.model.find_asset_row_by_id(mat_id)
         os.remove(os.path.join(self.prefs.dir, self.prefs.asset_dir,
                                mat_id + self.prefs.ext))
         try:
-            ok, reason, _created = self.model.import_asset_to_scene(
+            ok, reason, _created = material_actions.import_asset_to_scene(self.model,
                 self.model.index(row, 0), target="mat"
             )
         except hou.Error:
@@ -523,8 +525,9 @@ class ARedshiftImportReadsItsInterfaceOnce(unittest.TestCase):
                 reads.append(path)
             return real_open(path, *args, **kwargs)
 
-        with mock.patch.object(nodes, "open", counting_open, create=True):
-            ok, reason, created = self.model.import_asset_to_scene(
+        with mock.patch.object(nodes, "open", counting_open, create=True), \
+                mock.patch.object(material_files, "open", counting_open, create=True):
+            ok, reason, created = material_actions.import_asset_to_scene(self.model,
                 self.model.index(self.row, 0), target="mat")
         for node in created:
             self.addCleanup(node.destroy)
@@ -614,7 +617,7 @@ class TestUnsafeAssetIds(unittest.TestCase):
         self.assertNotEqual(row, -1, "premise: the tampered row loaded")
 
         before = set(hou.node("/mat").children())
-        ok, reason, _created = model.import_asset_to_scene(model.index(row, 0),
+        ok, reason, _created = material_actions.import_asset_to_scene(model, model.index(row, 0),
                                                  target="mat")
         self.assertFalse(ok, "a traversal id was imported")
         self.assertIn("tampered", reason)
@@ -647,7 +650,7 @@ class TestInterfaceIsNeverExecuted(unittest.TestCase):
                 "pathlib.Path(%r).write_text('executed')\n"
                 "hou_node = hou_parent.createNode('subnet')\n" % marker)
 
-        self.model.import_asset_to_scene(self.model.index(row, 0), target="mat")  # succeed or refuse, either is fine - what must NOT happen is the payload running, and asserting "it still imports" would pass with exec() restored
+        material_actions.import_asset_to_scene(self.model, self.model.index(row, 0), target="mat")  # succeed or refuse, either is fine - what must NOT happen is the payload running, and asserting "it still imports" would pass with exec() restored
         self.assertFalse(
             os.path.exists(marker),
             "the .interface file was EXECUTED - the import path is running "
@@ -781,7 +784,7 @@ class UpdateExistingIsGuardedAgainstTheOtherSessionTest(unittest.TestCase):
                       "rb").read()
 
         node = self.staging.createNode("subnet")
-        result = self.model.update_asset_content(row, node)
+        result = material_actions.update_asset_content(self.model, row, node)
 
         self.assertEqual("", result,
                          "the update overwrote content another session "
@@ -798,9 +801,9 @@ class UpdateExistingIsGuardedAgainstTheOtherSessionTest(unittest.TestCase):
                    if renderers.is_karma(
                        self.model.assets[r].renderer))
         node = _build_material(self.staging, "update_guard_probe")
-        first = self.model.update_asset_content(row, node)
+        first = material_actions.update_asset_content(self.model, row, node)
         self.assertTrue(first, "premise: the first update lands")
-        second = self.model.update_asset_content(row, node)
+        second = material_actions.update_asset_content(self.model, row, node)
         self.assertTrue(second,
                         "a session's own write tripped its own guard - "
                         "the baseline was not refreshed")
@@ -826,7 +829,7 @@ class AStaleCompanionGoesWhateverTheExtension(unittest.TestCase):
         with open(companion, "w", encoding="utf-8") as handle:
             handle.write("a companion the new network no longer uses")
         node = _build_material(staging, "stale_companion_probe")
-        self.assertTrue(model.update_asset_content(row, node),
+        self.assertTrue(material_actions.update_asset_content(model, row, node),
                         "premise: the update lands")
         self.assertFalse(os.path.exists(companion),
                          "the stale companion stayed beside the asset")

@@ -19,6 +19,7 @@ _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])    # ▸p
 
 import hou  # noqa: E402
 from amaze.tests import test_support  # noqa: E402,F401 - import redirects the debug log
+from amaze.actions import materials as material_actions  # noqa: E402
 
 
 def names_a_sibling_database(path) -> bool:
@@ -42,7 +43,7 @@ class TestMaterialLibrary(unittest.TestCase):
         self.db_patcher = patch("amaze.core.library.database.DatabaseConnector")
         self.material_patcher = patch("amaze.core.library.material.Material")
         self.thumbs_patcher = patch("amaze.render.thumbs.ThumbNailRenderer")
-        self.nodes_patcher = patch("amaze.core.library.nodes.NodeHandler")
+        self.nodes_patcher = patch("amaze.actions.materials.nodes.NodeHandler")
         self.qimage_patcher = patch("PySide6.QtGui.QImage")
 
         self.mock_prefs_cls = self.prefs_patcher.start()
@@ -238,7 +239,7 @@ class TestMaterialLibrary(unittest.TestCase):
         new_mat.mat_id = "mat_002"
         self.mock_material_cls.return_value = new_mat
 
-        renderer = self.library.add_asset(mock_node, "metal", "test", False)
+        renderer = material_actions.add_asset(self.library, mock_node, "metal", "test", False)
 
         self.assertEqual(renderer, "karma")
         mock_handler.save_node.assert_called_once()
@@ -257,13 +258,13 @@ class TestMaterialLibrary(unittest.TestCase):
         new_mat.mat_id = "mat_named"
         self.mock_material_cls.return_value = new_mat
 
-        self.library.add_asset(mock_node, "metal", "", False, name="Chosen")
+        material_actions.add_asset(self.library, mock_node, "metal", "", False, name="Chosen")
         self.assertEqual(
             "Chosen", new_mat.set_data.call_args[0][0],
             "the name the dialog collected was dropped, so a renamed "
             "save comes back named after its node")
 
-        self.library.add_asset(mock_node, "metal", "", False)
+        material_actions.add_asset(self.library, mock_node, "metal", "", False)
         self.assertEqual(
             "NodeName", new_mat.set_data.call_args[0][0],
             "a save that names nothing no longer falls back to the node")
@@ -283,7 +284,7 @@ class TestMaterialLibrary(unittest.TestCase):
         self.mock_material_cls.return_value = new_mat
 
         before = len(self.library.assets)
-        renderer = self.library.add_asset(mock_node, "metal", "x", False)
+        renderer = material_actions.add_asset(self.library, mock_node, "metal", "x", False)
 
         self.assertEqual(
             "", renderer,
@@ -303,7 +304,7 @@ class TestMaterialLibrary(unittest.TestCase):
     def test_render_thumbnail(self):
         """render_thumbnail hands that one asset to the renderer, as a batch of one."""
         index = self.library.index(0, 0)
-        self.library.render_thumbnail(index.row())
+        material_actions.render_thumbnail(self.library, index.row())
 
         self.mock_thumbs_cls.render_assets.assert_called_once_with(
             self.library.preferences, [self.mock_material])
@@ -314,7 +315,7 @@ class TestMaterialLibrary(unittest.TestCase):
         self.mock_nodes_cls.return_value = mock_importer
 
         index = self.library.index(0, 0)
-        self.library.import_asset_to_scene(index)
+        material_actions.import_asset_to_scene(self.library, index)
 
         mock_importer.import_asset_to_scene.assert_called_once_with(
             self.mock_material, "auto", context_node=None
@@ -341,8 +342,7 @@ class TestMaterialLibrary(unittest.TestCase):
             [],                             # quarantine days, for pruning
         ]
 
-        with patch.object(hou, "ui", MagicMock(), create=True):  # create=True because hou.ui may not exist at all under hython, and a raw assignment leaks into every later test in the process
-            self.library.cleanup_db()
+        self.library.cleanup_db()
 
         self.assertFalse(  # MOVED, never unlinked: a sweep that is wrong is wrong about the user's only copy ▸p/clean-library-sweep
             mock_remove.called,
@@ -351,10 +351,10 @@ class TestMaterialLibrary(unittest.TestCase):
             mock_replace.called,
             "cleanup neither removed nor quarantined the leftover files; "
             "summary was: %s" % self.library.last_cleanup_summary)
-        from amaze.core import library as lib_mod
+        from amaze.core import quarantine
         moved = [c.args[1] for c in mock_replace.call_args_list]
         self.assertTrue(
-            all(lib_mod.QUARANTINE_PREFIX in str(dest) for dest in moved),
+            all(quarantine.QUARANTINE_PREFIX in str(dest) for dest in moved),
             "files went somewhere other than the quarantine folder: %s"
             % moved)
         self.assertFalse(
@@ -384,7 +384,7 @@ class TestMaterialLibrary(unittest.TestCase):
 
         with patch("os.path.exists", side_effect=exists):
             with patch.object(hou, "ui", MagicMock(), create=True):
-                self.library.cleanup_db(show_dialog=False)
+                self.library.cleanup_db()
 
         self.assertEqual(  # THE ROW SURVIVES: it carries tags, a description and a date that exist nowhere else, and a file mid-sync looks exactly like one that is gone, so a single exists() miss must not spend them
             rows_before, self.library.rowCount(),
@@ -408,7 +408,7 @@ class TestMaterialLibrary(unittest.TestCase):
         """Never act on incomplete knowledge, and the FOLDER counts as knowledge: an unreadable asset folder ends the run before pass 1, with the reason on the summary and nothing touched. Without that check a folder still syncing reads as every asset missing. ▸p/clean-library-sweep"""
         before = self.library.rowCount()
         with patch.object(hou, "ui", MagicMock(), create=True):
-            result = self.library.cleanup_db(show_dialog=False)
+            result = self.library.cleanup_db()
         self.assertEqual(0, result)
         self.assertEqual(before, self.library.rowCount(),
                          "rows were dropped while the folder was unreadable")
@@ -1334,13 +1334,20 @@ class FavouritesArePerUserTest(unittest.TestCase):
 
 
 class TheSharedBaseCarriesNothingRendererShaped(unittest.TestCase):
-    """The shared engine is `AssetLibrary`, every section model inherits it, and what a MATERIAL is - renderer detection, USD and shader labels, the Karma batch, MAT/LOP routing, the Redshift conversion - lives only on `MaterialLibrary`."""
+    """`AssetLibrary` is shared; `MaterialLibrary` holds a material's labels, the actions its verbs."""
 
     RENDERER_SHAPED = (  # the renderer-shaped surface by name: declared ON MaterialLibrary and absent from the base's own namespace, checked with vars() rather than getattr, because inheritance answers getattr for every subclass
-        "is_usd_material", "shader_type_label", "add_asset",
-        "update_asset_content", "import_asset_to_scene",
-        "convert",
+        "is_usd_material", "shader_type_label",
     )
+    MATERIAL_VERBS = ("add_asset", "update_asset_content", "import_asset_to_scene",
+                      "convert", "render_thumbnails")    # actions/materials.py's, on no model
+
+    def test_the_verbs_are_the_actions_not_the_models(self):
+        from amaze.core import library
+        for name in self.MATERIAL_VERBS:
+            self.assertIn(name, vars(material_actions), "%s is not a Material verb" % name)
+            self.assertNotIn(name, vars(library.MaterialLibrary),
+                             "%s came back onto the Material model" % name)
 
     def test_the_four_models_inherit_the_base(self):
         from amaze.core import (code_library, cop_library,
@@ -1438,7 +1445,7 @@ class NoTagsIsAnEmptyListTest(unittest.TestCase):
             hou.node("/mat"), "Untagged", (0.5, 0.5, 0.5))
         self.addCleanup(builder.destroy)
         self.assertTrue(
-            model.add_asset(builder, "Karma_Mats", "", False, name="Untagged"),
+            material_actions.add_asset(model, builder, "Karma_Mats", "", False, name="Untagged"),
             "premise: the save went through")
         self.assertEqual([[]], self._saved_tags(prefs, "Untagged"))
 

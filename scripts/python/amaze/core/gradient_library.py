@@ -274,7 +274,7 @@ class GradientLibrary(library.AssetLibrary):
             messages.PALETTE_NOT_DELETED % (asset.name or "That palette"),
             key="colors-delete-refused")
 
-    def cleanup_db(self, show_dialog: bool = True) -> int:
+    def cleanup_db(self) -> int:
         """Reduced to a state flush: palettes are stored inline, so the inherited missing-file and lonely-file passes would call every one an orphan."""
         self.save()
         self.last_cleanup_summary = [

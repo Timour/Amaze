@@ -144,17 +144,17 @@ class OverwriteIsGatedInTheMODELTest(unittest.TestCase):
     """The refusal has to sit where every caller passes: the dialog also stops offering Overwrite, but a UI check is only a suggestion."""
 
     def test_the_model_and_the_dialog_both_consult_the_policy(self):
-        """The model refuses before any file is written; the dialog does not offer the button."""
+        """The save verb refuses before any file is written; the dialog does not offer the button."""
         import re
         package = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        with open(os.path.join(package, "core", "library.py"),
+        with open(os.path.join(package, "actions", "materials.py"),
                   encoding="utf-8") as handle:
             code = handle.read()
         start = code.find("def update_asset_content")
-        end = code.find("\n    def ", start + 10)
+        end = code.find("\ndef ", start + 10)
         body = re.sub(r"#.*", "", code[start:end])
         self.assertIn("library_policy.allow_overwrite", body,
-                      "the model does not check the policy")
+                      "the save verb does not check the policy")
         gate = body.find("library_policy.allow_overwrite")
         write = body.find("save_node(")
         self.assertGreater(write, -1)

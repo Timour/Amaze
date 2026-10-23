@@ -19,6 +19,7 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
+from amaze.actions import materials as material_actions  # noqa: E402
 from amaze.actions import nodes as node_actions  # noqa: E402
 from amaze.core import library_policy, matx_import, tile_icons  # noqa: E402
 from amaze.dialogs import base_dialog, code_dialog  # noqa: E402
@@ -591,8 +592,8 @@ class NoRowMovesInsideALayoutChange(unittest.TestCase):
 
     def _saving_a_twin(self, name):
         """A converter whose last step is the real one, add_asset."""
-        def convert(_index, _target):
-            saved = self.model.add_asset(
+        def convert(_model, _index, _target):
+            saved = material_actions.add_asset(self.model,
                 _karma_material(self, name), "", "", False)
             return bool(saved), types.SimpleNamespace(
                 summary_lines=lambda: [])
@@ -611,7 +612,7 @@ class NoRowMovesInsideALayoutChange(unittest.TestCase):
                 self.model.assets[1].renderer = source
                 self._select(1)
                 before = self.model.rowCount()
-                with mock.patch.object(self.model, "convert",
+                with mock.patch.object(material_actions, "convert",
                                        self._saving_a_twin(twin)), \
                         test_support.row_moves_inside_a_layout_change(
                             self.model) as caught:
@@ -631,8 +632,8 @@ class NoRowMovesInsideALayoutChange(unittest.TestCase):
             with self.subTest(target=target):
                 self.model.assets[1].renderer = source
                 self._select(1)
-                with mock.patch.object(self.model, "convert",
-                                       lambda _index, _target: (True, report)), \
+                with mock.patch.object(material_actions, "convert",
+                                       lambda _model, _index, _target: (True, report)), \
                         mock.patch.object(hou, "ui", ui, create=True):
                     self.panel.convert_selected(target)
                 self.assertEqual(
@@ -643,7 +644,7 @@ class NoRowMovesInsideALayoutChange(unittest.TestCase):
         record = types.SimpleNamespace(kind="", category="", title="t")
 
         def importing(_record, _source, _resolution, library, *_a, **_k):
-            saved = library.add_asset(
+            saved = _k["save"](
                 _karma_material(self, "online_twin"), "", "", False)
             return bool(saved), ""
 
@@ -676,11 +677,11 @@ class NoRowMovesInsideALayoutChange(unittest.TestCase):
         self._peer_adds_a_row(self.model, {"id": "PEER-OVER",
                                            "name": "Saved elsewhere"})
 
-        def updating(_row, _node):
+        def updating(_model, _row, _node):
             self.model.save()    # the update's own last step
             return "Karma"
 
-        with mock.patch.object(self.model, "update_asset_content",
+        with mock.patch.object(material_actions, "update_asset_content",
                                updating), \
                 test_support.row_moves_inside_a_layout_change(
                     self.model) as caught:
@@ -823,12 +824,12 @@ class ARowHeldAcrossASaveIsFoundAgain(unittest.TestCase):
         self._deleted_elsewhere(model, shown[0].mat_id)
         converted = []
 
-        def convert(index, _target):
+        def convert(_model, index, _target):
             converted.append(model.assets[index.row()])
             model.save()    # the twin's own save, which takes the deletion in
             return True, types.SimpleNamespace(summary_lines=lambda: [])
 
-        with mock.patch.object(model, "convert", convert):
+        with mock.patch.object(material_actions, "convert", convert):
             self.panel.convert_selected("Redshift")
         self.assertEqual(self._ids(chosen), self._ids(converted),
                          "Convert reached other tiles: each twin saves, and the first "
@@ -843,7 +844,7 @@ class ARowHeldAcrossASaveIsFoundAgain(unittest.TestCase):
         self._deleted_elsewhere(model, model.assets[1].mat_id)
         updated = []
 
-        def update(row, _node):
+        def update(_model, row, _node):
             if 0 <= row < len(model.assets):
                 updated.append(model.assets[row])
             model.save()    # the update's own last step, which takes the deletion in
@@ -856,7 +857,7 @@ class ARowHeldAcrossASaveIsFoundAgain(unittest.TestCase):
                                   lambda node: where[id(node)]), \
                 mock.patch.object(library_policy, "allow_overwrite",
                                   lambda *_a: True), \
-                mock.patch.object(model, "update_asset_content", update):
+                mock.patch.object(material_actions, "update_asset_content", update):
             self.panel.save_asset()
         self.assertEqual(self._ids(chosen), self._ids(updated),
                          "Save Version wrote over other materials: each update saves, "

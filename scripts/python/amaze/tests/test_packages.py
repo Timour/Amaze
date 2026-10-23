@@ -21,6 +21,7 @@ sys.path.insert(
         os.path.dirname(os.path.abspath(__file__)))))
 
 from amaze.tests import test_support  # noqa: E402
+from amaze.actions import materials as material_actions  # noqa: E402
 
 
 def _bytes(path: str) -> bytes:
@@ -1522,7 +1523,7 @@ class TexturePackingTest(unittest.TestCase):
         image.parm("file").set(source)
         model = self.panel.material_model
         held = test_support.asset_ids(model)
-        self.assertTrue(model.add_asset(builder, "Fabrics", "", False),
+        self.assertTrue(material_actions.add_asset(model, builder, "Fabrics", "", False),
                         "premise: the save went through")
         saved, = test_support.arrived(model, held)
         return model, saved

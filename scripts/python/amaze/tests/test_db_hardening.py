@@ -1511,11 +1511,6 @@ class _CleanupCase(unittest.TestCase):
     """A fixture library copy plus the Clean Library call site."""
 
     def setUp(self):
-        from unittest.mock import MagicMock, patch
-        import hou
-        self._hou = hou
-        self._patch = patch
-        self._MagicMock = MagicMock
         self.prefs = test_support.fixture_prefs(self)
         test_support.reset_database_singletons()
         self.addCleanup(test_support.reset_database_singletons)
@@ -1528,10 +1523,7 @@ class _CleanupCase(unittest.TestCase):
         return self.library_mod.MaterialLibrary(preferences=self.prefs)
 
     def _cleanup(self, model):
-        # `create=True`: `hou.ui` may not exist under hython at all.
-        with self._patch.object(self._hou, "ui", self._MagicMock(),
-                                create=True):
-            model.cleanup_db(show_dialog=False)
+        model.cleanup_db()
 
     def _own_path(self):
         return os.path.join(self.prefs.dir, "library.json")
@@ -1878,20 +1870,6 @@ class AnEmptySectionWithFilesLeftBehindStopsTheSweepTest(_CleanupCase):
                       "the unreadable entry names the bare storage file "
                       "while the others say Nodes (cops.json) - one dialog "
                       "with two names for one thing")
-
-    def test_the_dialog_says_whether_anything_was_cleaned(self):
-        """The first line may not read as finished when nothing was touched."""
-        self._empty_cops()
-        model = self._model()
-        with self._patch.object(self._hou, "ui", self._MagicMock(),
-                                create=True):
-            model.cleanup_db(show_dialog=True)
-            shown = str(self._hou.ui.displayMessage.call_args_list[0])
-        self.assertIn("Clean Library stopped before deleting any files",
-                      shown,
-                      "the dialog announces a finished cleanup above a "
-                      "list of reasons nothing was done")
-        self.assertNotIn("Library cleanup finished", shown)
 
     def test_a_healthy_library_still_sweeps(self):
         """With every section listing its own assets, a leftover still goes."""

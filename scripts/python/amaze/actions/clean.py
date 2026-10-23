@@ -11,7 +11,7 @@ def clean_library(preferences, material_model, category_model, cop_model, cop_ca
     """The Materials and Node passes, then dead folders and favorites; the report's sections."""
     sections = []
 
-    rescued = material_model.cleanup_db(show_dialog=False)
+    rescued = material_model.cleanup_db()
     if rescued:
         category_model.check_add_category("Uncategorized")
     normalized = category_model.normalize_categories()
@@ -25,7 +25,7 @@ def clean_library(preferences, material_model, category_model, cop_model, cop_ca
         sections.append("Materials:\n- " + "\n- ".join(mat_summary))
 
     if cop_model:
-        cop_rescued = cop_model.cleanup_db(show_dialog=False)
+        cop_rescued = cop_model.cleanup_db()
         if cop_rescued:
             cop_category_model.check_add_category("Uncategorized")
         cop_category_model.normalize_categories()

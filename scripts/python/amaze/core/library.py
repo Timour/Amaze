@@ -7,20 +7,18 @@ import time
 from typing import Any
 from PySide6 import QtCore, QtGui
 
-import hou
-
 from amaze.core import asset_files
 from amaze.core import captures
 from amaze.core import debug
 from amaze.core import grid_engine
 from amaze.core import locations
 from amaze.core import material, database, renderers, thumbnails, tile_icons
+from amaze.core import material_files
 from amaze.core import versions
 from amaze.core import quarantine
 from amaze.helpers import hostos
 from amaze import messages
 from amaze.prefs import prefs
-from amaze.render import husk_job, nodes
 
 
 def _count(count: int, noun: str) -> str:
@@ -88,15 +86,6 @@ class _StampWriter:
                 debug.event("library", "recovery stamp not written",
                             mat_id=str(asset.mat_id), error=str(exc))
         return written
-
-
-QUARANTINE_PREFIX = quarantine.QUARANTINE_PREFIX  # re-exported: the quarantine itself lives in core/quarantine.py, which imports no hou, so helpers/restore.py can reach it from the pure-stdlib terminal tool
-QUARANTINE_DAYS = quarantine.QUARANTINE_DAYS
-quarantine_folder = quarantine.quarantine_folder
-prune_quarantine = quarantine.prune_quarantine
-quarantine_size = quarantine.quarantine_size
-quarantine_file = quarantine.quarantine_file
-quarantine_as = quarantine.quarantine_as
 
 
 class AssetLibrary(grid_engine.GridEngine,
@@ -982,10 +971,10 @@ class AssetLibrary(grid_engine.GridEngine,
 
     def find_asset_row_by_name(self, name: str) -> int:
         """Row of the asset whose (possibly sanitized) name matches, but only if the match is UNIQUE - with duplicates there is no safe answer, so -1, and the caller treats the save as a new asset."""
-        from amaze.helpers import helpers
+        from amaze.helpers import wording
         matches = []
         for row, asset in enumerate(self._assets):
-            if asset.name == name or helpers.sanitize_usd_path(asset.name) == name:
+            if asset.name == name or wording.sanitize_usd_path(asset.name) == name:
                 matches.append(row)
         return matches[0] if len(matches) == 1 else -1
 
@@ -1039,7 +1028,7 @@ class AssetLibrary(grid_engine.GridEngine,
                 continue
             if age < self._SCRATCH_MIN_AGE:
                 continue
-            if quarantine_file(self.preferences.dir, full):
+            if quarantine.quarantine_file(self.preferences.dir, full):
                 moved += 1
                 quarantined.append(name)
                 debug.event("cleanup", "dead scratch quarantined",
@@ -1075,8 +1064,8 @@ class AssetLibrary(grid_engine.GridEngine,
                 self._version_count_cache[str(asset.mat_id)] = 0
                 self._active_version_cache[str(asset.mat_id)] = ""
 
-    def cleanup_db(self, show_dialog: bool = True) -> int:
-        """Clean Library: scan, report rows whose files are missing, quarantine files no section lists, rescue uncategorised rows. Never renders, never unlinks anything in the library - a file it takes is MOVED to the quarantine, which prune_quarantine empties after QUARANTINE_DAYS - and it holds the ownership sweep back on incomplete knowledge. Read ▸p/clean-library-sweep before changing any of it. Returns 1 if anything was rescued. The summary lines are left on self.last_cleanup_summary EITHER WAY; show_dialog=False only skips the dialog, so the panel can combine several libraries into one report."""
+    def cleanup_db(self) -> int:
+        """Clean Library's pass, findings on `last_cleanup_summary`; 1 if rescued. ▸p/clean-library-sweep"""
         from amaze.helpers import wording
         summary = []
 
@@ -1091,9 +1080,6 @@ class AssetLibrary(grid_engine.GridEngine,
                 "If this library lives in a synced folder, let the sync "
                 "finish and try again." % assets_dir)
             self.last_cleanup_summary = [message]
-            ui = getattr(hou, "ui", None)  # show_dialog defaults TRUE, so the headless spelling of this call is the bare one ▸r/status-bar
-            if show_dialog and ui is not None:
-                ui.displayMessage(message)
             return 0
 
         summary.extend(database.DatabaseConnector.take_integrity_notes())  # load-time findings go BEFORE the sweep's own numbers: a list that shrank past half since its newest snapshot reads exactly like a healthy one unless somebody says both numbers out loud
@@ -1206,7 +1192,7 @@ class AssetLibrary(grid_engine.GridEngine,
                 if str(split) in awaiting_repair:
                     spared.add(str(split))    # in EVERY folder, or Repair puts the row back blank
                     continue
-                moved = quarantine_file(self.preferences.dir,
+                moved = quarantine.quarantine_file(self.preferences.dir,
                                         os.path.join(folder, f))
                 if moved:
                     taken += 1
@@ -1228,7 +1214,7 @@ class AssetLibrary(grid_engine.GridEngine,
                         files=quarantined_paths)
         if lone_count:
             shown = sorted(quarantined)[:8]  # NAMES, not a bare count, and say where they went: nothing is deleted, so the honest sentence is the one that tells you where to look if the sweep was wrong
-            held, held_bytes = quarantine_size(self.preferences.dir)
+            held, held_bytes = quarantine.quarantine_size(self.preferences.dir)
             summary.append(
                 "Moved %s that no section listed out of your library: %s.\n"
                 "Nothing was deleted. They are in Amaze's own folder on "
@@ -1245,8 +1231,8 @@ class AssetLibrary(grid_engine.GridEngine,
             summary.append(
                 "Anything moved out this way is kept for %d days and then "
                 "removed, so that folder cannot grow without end."
-                % QUARANTINE_DAYS)
-            prune_quarantine(self.preferences.dir)
+                % quarantine.QUARANTINE_DAYS)
+            quarantine.prune_quarantine(self.preferences.dir)
 
         if spared:
             shown_kept = sorted(  # SAY WHAT WAS KEPT, by NAME rather than by a section count - the shared folder holds materials, nodes and snippets, so a count noun would be a guess in the one sentence that has to be trustworthy. This is why the stamp reader hands back the record, not just the id
@@ -1289,17 +1275,6 @@ class AssetLibrary(grid_engine.GridEngine,
             self.save()
 
         self.last_cleanup_summary = list(summary)
-
-        closing = getattr(hou, "ui", None)
-        if show_dialog and closing is not None:  # --- one summary dialog for the whole run ---
-            if summary:
-                header = ("Clean Library stopped before deleting any files:"  # THE HEADER SAYS WHICH OF THE TWO HAPPENED: one header for both had a refusal opening with "cleanup finished"
-                          if unreadable_abort
-                          else "Library cleanup finished:")
-                closing.displayMessage(header + "\n\n- " + "\n- ".join(summary))
-            else:
-                closing.displayMessage(
-                    messages.CLEANUP_FOUND_NOTHING_TO_CLEAN)
 
         return mark_rescued
 
@@ -1429,13 +1404,13 @@ class AssetLibrary(grid_engine.GridEngine,
         """Re-render one row's preview. The base has nothing to render; the sections that do override this."""
 
     def render_thumbnails(self, rows) -> None:
-        for row in rows:  # one row at a time through each section's own `render_thumbnail`; MaterialLibrary overrides with the shared-scaffold Karma batch, which must NOT be routed to other sections - it would shaderball node setups and code snippets
+        for row in rows:  # each section's own render_thumbnail; Materials batch theirs in actions
             if 0 <= row < self.rowCount():
                 self.render_thumbnail(row)
 
 
 class MaterialLibrary(AssetLibrary):
-    """The Material tab's model: renderer, labels, thumbnail batches, import routing, conversion."""
+    """The Material tab's model: records, their renderer labels, and the repaint a render asks for."""
 
     NOTES_SECTION = "material"
     TILE_FACE = "face_material"    # T06
@@ -1446,7 +1421,6 @@ class MaterialLibrary(AssetLibrary):
         super().__init__(preferences)
         self._usd_cache = {}  # both are derived by READING the saved files, so they are cached per material id rather than paid on every repaint
         self._shader_type_cache = {}
-        husk_job.jobs.thumbnailWritten.connect(self._on_thumbnail_written)    # a bound method
 
     def _on_thumbnail_written(self, asset_id: str) -> None:
         """A background render's PNG landed: repaint that one tile, wherever its row is now."""
@@ -1470,9 +1444,8 @@ class MaterialLibrary(AssetLibrary):
         if mid in self._usd_cache:
             return self._usd_cache[mid]
         try:
-            handler = nodes.NodeHandler(self.preferences)
-            node_type = handler.get_saved_node_type(asset)
-            result = node_type in nodes.NodeHandler.LOP_CAPABLE_NODE_TYPES
+            node_type = material_files.get_saved_node_type(self.preferences, asset)
+            result = node_type in material_files.LOP_CAPABLE_NODE_TYPES
         except Exception:
             result = False
         self._usd_cache[mid] = result
@@ -1480,14 +1453,13 @@ class MaterialLibrary(AssetLibrary):
 
     def shader_type_label(self, asset) -> str:
         """Shader-type suffix (PBR, Standard Surface...) cached per id; '' for a renderer with no table."""
-        if not nodes.NodeHandler.shader_type_table(asset.renderer):
+        if not material_files.shader_type_table(asset.renderer):
             return ""
         mid = asset.mat_id
         if mid in self._shader_type_cache:
             return self._shader_type_cache[mid]
         try:
-            handler = nodes.NodeHandler(self.preferences)
-            result = handler.get_shader_type_label(asset)
+            result = material_files.get_shader_type_label(self.preferences, asset)
         except Exception:
             result = ""
         self._shader_type_cache[mid] = result
@@ -1503,187 +1475,3 @@ class MaterialLibrary(AssetLibrary):
         if shader_type:
             label += ":" + shader_type
         return label
-
-    def add_asset(self, node: hou.Node, cats: str, tags: str, fav: bool,
-                  name: str | None = None) -> str:
-        """Add a material to this library. `name` is the one the save dialog collected; without it the asset is named after the node, which is what a multi-selection save passes. THE RENDERER STRING IS THE CONTRACT: a renderer name means the asset is IN the library, "" means it is not, and the sibling add_assets answer the same way - so never return it unconditionally."""
-        handler = nodes.NodeHandler(self.preferences)
-        renderer = handler.get_renderer_from_node(node)
-        new_mat = material.Material()
-        tags = self.sanitize_tags(tags)
-        new_mat.set_data(name or node.name(), cats, tags, fav, renderer)
-        new_mat.node_color = nodes.custom_node_color(node)
-
-        saved = handler.save_node(node, new_mat.mat_id, False)
-        debug.event(
-            "save", "save_node result",
-            ok=bool(saved), name=new_mat.name,
-            renderer=handler._renderer,
-            node=node.path(), node_type=node.type().name(),
-            mat_id=new_mat.mat_id,
-        )
-        if saved:
-            new_mat.cop_net = handler.cop_info
-            inventory = handler.texture_inventory
-            if isinstance(inventory, (list, tuple)) and inventory:    # rides _extra like the curated tag - old builds ignore it, get_as_dict carries it
-                new_mat._extra["textures"] = list(inventory)
-            self._append_record(new_mat)    # per row, so in a multi-save each tile shows as its save lands
-            if not self.save():  # THE INDEX WRITE CAN BE REFUSED, and the files are already on disk by now, so say so rather than reporting a save that leaves an asset absent the next time Houdini opens
-                self.report_refused_index_write(new_mat)
-            try:  # stamp the scene node with its library id, so a later Save to Amaze on the same node can offer update-instead-of-duplicate
-                node.setUserData("assetlib_id", str(new_mat.mat_id))
-            except (hou.OperationFailed, hou.ObjectWasDeleted):    # the files are already on disk: a node deleted mid-save must not turn a SAVE THAT SUCCEEDED into a reported failure ▸r/node-vanished
-                pass
-            return renderer
-        debug.event("save", "add_asset refused - the node was not saved",
-                    name=new_mat.name, node=node.path(),
-                    mat_id=new_mat.mat_id)
-        return ""
-
-    def update_asset_content(self, row: int, node: hou.Node) -> str:
-        """Overwrite an EXISTING entry's node content from the given scene node - same id, name, categories, tags and favourite; new files, thumbnail, renderer info and date. The Update Existing half of the save flow. Returns the detected renderer, "" on failure."""
-        from amaze.core import library_policy
-        if row < 0 or row >= len(self._assets):
-            return ""
-        mat = self._assets[row]
-        if not library_policy.allow_overwrite(self.preferences.dir):  # THE GATE lives here, not only in the dialog: a UI-level check is a suggestion, and this is the layer every caller goes through
-            debug.event("library", "overwrite refused - the library "
-                        "does not allow it", mat_id=str(mat.mat_id),
-                        name=mat.name)
-            return ""
-        known = self._content_state.get(str(mat.mat_id))    # content is outside the index merge: last write would win
-        current = self._content_stat(mat.mat_id)
-        if known is not None and current is not None and current != known:
-            debug.event("library", "content update refused - the files "
-                        "changed since this session read them",
-                        mat_id=str(mat.mat_id), name=mat.name)
-            debug.alert(
-                messages.ASSET_CHANGED_ON_DISK_SINCE_LOAD % mat.name,
-                key="content-changed-on-disk")
-            return ""
-
-        old_signature = None  # THE VERSIONS DECISION RULE: same nodes and wiring with only values differing becomes a new VERSION, anything else takes the structural path. SYMMETRY IS THE CORRECTNESS - both sides stage-load the base, before the save and after, so the only thing that can differ is what the save changed ▸p/structure-signature
-        pre_edit = {}
-        try:  # any failure to ANSWER the question degrades to structural: a wrong structural merely skips a version, where a wrong version archives a lie
-            old_signature = nodes.staged_asset(
-                self.preferences, mat, nodes.structure_signature)
-            if versions.version_count(self.preferences, mat.mat_id) == 0:
-                pre_edit = self._hold_pre_edit_files(mat.mat_id)  # held aside because if this turns out parameter-only they become Version 1, and by then the save has overwritten the base
-        except Exception as exc:                          # noqa: BLE001
-            debug.event("versions", "pre-save staging failed - the save "
-                        "will be treated as structural",
-                        mat_id=str(mat.mat_id), error=str(exc))
-
-        handler = nodes.NodeHandler(self.preferences)
-        renderer = handler.get_renderer_from_node(node)
-        try:  # THE PRE-EDIT COPIES GO AWAY ON EVERY EXIT, which is why this try wraps the early returns too: they live in the system temp dir, outside the library, where no audit or cleanup sees them and macOS sweeps only at reboot
-            if not handler.save_node(node, mat.mat_id, True):  # update=True overwrites the pair (+ COP companion) and always re-renders the thumbnail, whatever render_on_import says
-                return ""
-            self._content_state[str(mat.mat_id)] = self._content_stat(  # our own write is the new baseline for this id
-                mat.mat_id)
-            parameter_only = False
-            if old_signature is not None:
-                try:
-                    new_signature = nodes.staged_asset(
-                        self.preferences, mat, nodes.structure_signature)
-                    parameter_only = (new_signature == old_signature)
-                except Exception as exc:                  # noqa: BLE001
-                    debug.event("versions", "post-save staging failed - "
-                                "no version minted",
-                                mat_id=str(mat.mat_id), error=str(exc))
-            if parameter_only:
-                if pre_edit and versions.version_count(
-                        self.preferences, mat.mat_id) == 0:
-                    versions.create_version(self.preferences, mat.mat_id,
-                                            source_paths=pre_edit)
-                versions.create_version(self.preferences, mat.mat_id)  # the base now holds the new state, so archive it as the new active version; auto-named, because a save is never interrupted to ask for one, and renameable in the dialog
-
-                self._version_count_cache.pop(str(mat.mat_id), None)
-                self._active_version_cache.pop(str(mat.mat_id), None)
-        finally:
-            if pre_edit:
-                shutil.rmtree(os.path.dirname(
-                    next(iter(pre_edit.values()))), ignore_errors=True)
-        mat.cop_net = handler.cop_info
-        mat._extra.pop("textures", None)    # replaced whole - the new content's references are the inventory now
-        inventory = handler.texture_inventory
-        if isinstance(inventory, (list, tuple)) and inventory:
-            mat._extra["textures"] = list(inventory)
-        if renderer:
-            mat.renderer = renderer
-        mat.node_color = nodes.custom_node_color(node)
-        mat.set_current_date()
-        self._drop_content_label_caches(mat.mat_id)  # a content update is the one flow that changes what is INSIDE the saved files, so the per-id labels read from them genuinely go stale here
-        if not mat.cop_net:  # the updated network no longer references a COP net, so the old <id>_cop.mat is stale
-            cop_path = self.asset_files(mat.mat_id).get("cop", "")
-            if cop_path and os.path.exists(cop_path):
-                try:
-                    os.remove(cop_path)
-                except OSError as exc:
-                    debug.event(
-                        "library",
-                        "stale cop file remove skipped",
-                        file=cop_path,
-                        error=str(exc),
-                    )
-        self._add_thumb_paths(row)  # the engine discard inside is what makes the repaint fetch the freshly rendered PNG
-        self.save()
-        try:
-            node.setUserData("assetlib_id", str(mat.mat_id))
-        except (hou.OperationFailed, hou.ObjectWasDeleted):    # same: the update has already been written, so a vanished node costs the stamp, never the save ▸r/node-vanished
-            pass
-        return renderer
-
-    def render_thumbnail(self, row: int) -> None:
-        self.render_thumbnails([row])  # a batch of one, down the same path
-
-    def render_thumbnails(self, rows) -> None:
-        """Re-render every row in the model: Karma's and Octane's in ONE husk each. ▸r/husk-startup"""
-        from amaze.render import thumbs
-        rows = [row for row in rows if 0 <= row < self.rowCount()]
-        if not rows:
-            return
-        thumbs.ThumbNailRenderer.render_assets(
-            self.preferences, [self._assets[row] for row in rows])
-        for row in rows:
-            self._add_thumb_paths(row)
-
-    def import_asset_to_scene(
-        self,
-        index: QtCore.QModelIndex,
-        target: str = "auto",
-        context_node=None,
-    ):
-        """Import this row into the Houdini scene. target is "auto" (context-aware), "mat" or "lop"; context_node pins the destination (a drag's release point). Returns the importer's (ok, reason, created), so the panel can report the materials that could not live in the requested context. ▸p/material-import-door"""
-        importer = nodes.NodeHandler(self.preferences)
-        return importer.import_asset_to_scene(
-            self._assets[index.row()], target, context_node=context_node
-        )
-
-    def convert(self, index: QtCore.QModelIndex, target: str):
-        """This row as a `target` material, saved beside it under its name: (ok, report)."""
-        from amaze.render.material_conversion import engine as conversion_engine
-        from amaze.render.material_conversion.report import ConversionReport
-        mat = self._assets[index.row()]
-        report = ConversionReport(mat.name)
-        reason = conversion_engine.why_not(mat.renderer, target)
-        if reason:    # before the rebuild: a missing plugin makes it raise
-            report.skip(reason)
-            return False, report
-
-        handler = nodes.NodeHandler(self.preferences)
-        with hou.undos.disabler():    # off the undo stack at BOTH ends ▸r/undo-groups
-            scratch = hou.node("/obj").createNode("matnet")
-        try:
-            source = handler.rebuild_saved(mat, scratch)
-            made = conversion_engine.convert(
-                source, mat.renderer, target, scratch, mat.name, report)
-            if made.shader is None:
-                return False, report
-            saved = self.add_asset(
-                made.builder, ",".join(mat.categories), ",".join(mat.tags), False,
-                name=mat.name)
-            return bool(saved), report    # a refused save leaves nothing: the scratch goes below
-        finally:
-            with hou.undos.disabler():
-                scratch.destroy()

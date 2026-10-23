@@ -18,6 +18,7 @@ sys.path.insert(
 import hou  # noqa: E402,F401
 
 from amaze.render import husk_job, thumbs  # noqa: E402
+from amaze.actions import materials as material_actions  # noqa: E402
 from amaze import preview  # noqa: E402
 from amaze.tests import test_support  # noqa: E402,F401 - redirects the log
 
@@ -50,9 +51,9 @@ class ASelectionIsOneHuskPerRenderer(unittest.TestCase):
                                   lambda prefs, renderer, items:
                                   batches.append((renderer, len(items)))):
             if len(rows) == 1:
-                model.render_thumbnail(rows[0])
+                material_actions.render_thumbnail(model, rows[0])
             else:
-                model.render_thumbnails(rows)
+                material_actions.render_thumbnails(model, rows)
         return batches
 
     def test_a_selection_is_one_batch_per_renderer_and_one_render_a_batch_of_one(self):
@@ -140,13 +141,62 @@ class WithNoSceneViewerNothingIsImported(unittest.TestCase):
         with mock.patch.object(hou, "ui", ui, create=True), \
                 mock.patch.object(nodes.NodeHandler,
                                   "import_asset_to_scene", spy):
-            model.render_thumbnails([0, 1])
+            material_actions.render_thumbnails(model, [0, 1])
         self.assertEqual(
             [], imported,
             "Update Preview imported every row before finding that "
             "nothing can render without a Scene Viewer")
         self.assertEqual([messages.NO_SCENE_VIEWER_FOR_THUMBNAIL], shown,
                          "the batch did not say why, exactly once")
+
+
+class ALandedRenderRepaintsItsTile(unittest.TestCase):
+    """The panel connects a Material model once; a landed PNG repaints that one tile."""
+
+    def test_one_connection_however_many_panels(self):
+        from amaze.core import library
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        model = library.MaterialLibrary(preferences=test_support.fixture_prefs(self))
+        if not model.rowCount():
+            self.skipTest("the fixture library holds no material")
+        painted = []
+        with mock.patch.object(model, "_add_thumb_paths", painted.append):
+            material_actions.connect(model)
+            material_actions.connect(model)    # a second panel on the same library
+            self.addCleanup(husk_job.jobs.thumbnailWritten.disconnect,
+                            model._on_thumbnail_written)
+            husk_job.jobs.thumbnailWritten.emit(str(model.assets[0].mat_id))
+        self.assertEqual([0], painted, "a landed render repainted no tile, or one twice")
+
+
+class UpdatePreviewOnMaterialTiles(unittest.TestCase):
+    """Update Preview on a Material selection is one render batch, through the Material verbs."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
+
+    @classmethod
+    def tearDownClass(cls):
+        try:
+            test_support.stop_panel_workers(cls.panel)
+        except Exception:                                 # noqa: BLE001
+            pass
+
+    def test_the_selection_goes_in_one_batch(self):
+        proxy = self.panel.material_sorted_model
+        if proxy.rowCount() < 2:
+            self.skipTest("the fixture shows fewer than two materials")
+        indexes = [proxy.index(0, 0), proxy.index(1, 0)]
+        model = self.panel.material_model
+        wanted = [model.assets[proxy.mapToSource(i).row()].mat_id for i in indexes]
+        batches = []
+        with mock.patch.object(thumbs.ThumbNailRenderer, "render_assets",
+                               lambda preferences, mats: batches.append(
+                                   [mat.mat_id for mat in mats])):
+            self.panel.sections["material"].update_preview(indexes)
+        self.assertEqual([wanted], batches)
 
 
 if __name__ == "__main__":

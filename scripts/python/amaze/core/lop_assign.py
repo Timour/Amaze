@@ -4,7 +4,7 @@
 import hou
 
 from amaze.core import debug, dragengine
-from amaze.helpers import helpers
+from amaze.helpers import helpers, wording
 
 
 def name_new_assign(lopnet, before, assign_path) -> None:
@@ -21,7 +21,7 @@ def name_new_assign(lopnet, before, assign_path) -> None:
     name = "_".join(parts[-2:]) if len(parts) > 1 else parts[0]
     try:
         new[0].setName(
-            helpers.sanitize_usd_path(name), unique_name=True
+            wording.sanitize_usd_path(name), unique_name=True
         )
     except hou.OperationFailed:
         pass

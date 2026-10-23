@@ -17,6 +17,8 @@ sys.path.insert(
         os.path.dirname(os.path.abspath(__file__)))))
 
 from amaze.core import library as library_mod  # noqa: E402
+from amaze.actions import materials as material_actions  # noqa: E402
+from amaze.core import material_files  # noqa: E402
 from amaze.core import matx_import  # noqa: E402
 from amaze.render import nodes  # noqa: E402
 from amaze.render.material_conversion import engine, materialx  # noqa: E402
@@ -151,7 +153,7 @@ class TheEngineRoutesThroughMaterialX(unittest.TestCase):
 
 
 class TheLibraryDoorRefusesFirst(unittest.TestCase):
-    """`MaterialLibrary.convert` says why before it rebuilds anything."""
+    """`actions.materials.convert` says why before it rebuilds anything."""
 
     @classmethod
     def setUpClass(cls):
@@ -167,7 +169,7 @@ class TheLibraryDoorRefusesFirst(unittest.TestCase):
         source = _textured(hou.node("/mat"))
         self.addCleanup(source.destroy)
         held = test_support.asset_ids(self.model)
-        self.assertEqual("Karma", self.model.add_asset(source, "Probe", "", False))
+        self.assertEqual("Karma", material_actions.add_asset(self.model, source, "Probe", "", False))
         self.source_id = str(test_support.arrived(self.model, held)[0].mat_id)
 
     @property
@@ -178,7 +180,7 @@ class TheLibraryDoorRefusesFirst(unittest.TestCase):
         before = len(self.model.assets)
         with mock.patch.object(nodes.NodeHandler, "rebuild_saved",
                                side_effect=AssertionError("rebuilt before refusing")):
-            ok, report = self.model.convert(self.model.index(self.row, 0), target)
+            ok, report = material_actions.convert(self.model, self.model.index(self.row, 0), target)
         self.assertFalse(ok)
         self.assertEqual(before, len(self.model.assets), "a refused conversion added a row")
         return report.skipped
@@ -316,11 +318,11 @@ class TheOctaneTwinLivesInTheLibrary(unittest.TestCase):
         self.addCleanup(self._clear_mat)
         source = _textured(self.mat, "brick_source")
         held = test_support.asset_ids(self.model)
-        self.assertEqual("Karma", self.model.add_asset(source, "Probe", "", False,
+        self.assertEqual("Karma", material_actions.add_asset(self.model, source, "Probe", "", False,
                                                        name="Brick Wall"))
         self.source_id = str(test_support.arrived(self.model, held)[0].mat_id)
         held = test_support.asset_ids(self.model)
-        ok, report = self.model.convert(self.model.index(self.row, 0), "Octane")
+        ok, report = material_actions.convert(self.model, self.model.index(self.row, 0), "Octane")
         self.assertTrue(ok, report.summary_lines())
         self.twin, = test_support.arrived(self.model, held)
 
@@ -348,7 +350,7 @@ class TheOctaneTwinLivesInTheLibrary(unittest.TestCase):
         self.assertEqual("Octane", self.twin.renderer)
         self.assertEqual(source.name, self.twin.name)
         self.assertEqual(list(source.categories), list(self.twin.categories))
-        self.assertEqual("subnet", nodes.NodeHandler(self.prefs).get_saved_node_type(self.twin))
+        self.assertEqual("subnet", material_files.get_saved_node_type(self.prefs, self.twin))
 
     def test_it_comes_back_as_octanes_builder(self):
         imported = self._imported()
@@ -614,10 +616,10 @@ class AnOctaneTwinIsMaterialXInTheLibrary(unittest.TestCase):
         self.addCleanup(net.destroy)
         shader.parmTuple("baseColor").set(BASE)
         held = test_support.asset_ids(model)
-        self.assertEqual("Octane", model.add_asset(net, "Probe", "", False, name="Octane Red"))
+        self.assertEqual("Octane", material_actions.add_asset(model, net, "Probe", "", False, name="Octane Red"))
         source, = test_support.arrived(model, held)
         held = test_support.asset_ids(model)
-        ok, report = model.convert(
+        ok, report = material_actions.convert(model,
             model.index(model.find_asset_row_by_id(source.mat_id), 0), "Karma")
         self.assertTrue(ok, report.summary_lines())
         twin, = test_support.arrived(model, held)

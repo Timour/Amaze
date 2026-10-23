@@ -84,11 +84,11 @@ def _category_of(entry) -> str:
     return "Gallery"
 
 
-def import_entries(model, entries, staging_parent=None,
+def import_entries(save, entries, staging_parent=None,
                    progress=None) -> dict:
-    """Import (entry, type_name, category) tuples into `model`, returning a summary dict - staged in a throwaway network, undo disabled for the whole run. ▸r/gallery-entries"""
+    """Each (entry, type_name, category) saved through `save`, staged and undo-free. ▸r/gallery-entries"""
     summary = {"imported": 0, "skipped": 0, "failed": 0, "categories": {}}
-    if model is None or not entries:
+    if save is None or not entries:
         return summary
     with hou.undos.disabler():    # the container joins the disabler at BOTH ends, or one Ctrl+Z resurrects it ▸r/undo-groups
         parent = staging_parent or hou.node("/obj").createNode("matnet")
@@ -107,7 +107,7 @@ def import_entries(model, entries, staging_parent=None,
                         continue
                     node = entry.createChildNode(parent)    # documented `-> Node` and measured so on 25 real entries: it returns a node or RAISES, never None ▸r/gallery-entries
                     node.setGenericFlag(hou.nodeFlag.Material, True)
-                    if not model.add_asset(node, category, "gallery", False):
+                    if not save(node, category, "gallery", False):
                         summary["failed"] += 1    # a refused save lands in failed, never imported: the summary is all the user reads after a bulk run ▸r/gallery-entries
                         debug.event("gallery", "entry was not saved",
                                     entry=entry.name(), type=type_name)

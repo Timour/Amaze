@@ -1,6 +1,7 @@
 """The `.mtlx` to VOP translator and what flattening must not lose. A MaterialX node name is scoped to its NODEGRAPH, so two graphs may each hold an `image1` - keyed by the bare name the last wins, both outputs resolve to it, and one texture is silently orphaned. ▸archive/test_matx_translate.py
 """
 
+import functools
 import os
 import sys
 import tempfile
@@ -17,6 +18,7 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
+from amaze.actions import materials as material_actions  # noqa: E402
 from amaze.core import matx_translate  # noqa: E402
 from amaze.render import nodes  # noqa: E402
 from amaze.tests import test_support  # noqa: E402,F401 - redirects the log
@@ -254,7 +256,8 @@ class BothOnlineDestinationsRunOneSequence(unittest.TestCase):
         from amaze.core import library as library_mod, matx_import
         model = library_mod.MaterialLibrary(preferences=self.prefs)
         ok, reason = matx_import.import_record(
-            self._record(), self._source(), "", model, self.prefs)
+            self._record(), self._source(), "", model, self.prefs,
+            save=functools.partial(material_actions.add_asset, model))
         self.assertTrue(ok, reason)
 
     def _into_scene(self):

@@ -9,7 +9,7 @@ import shutil
 import hou
 
 from amaze.core import debug, material, matx_sources, matx_translate, renderers
-from amaze.helpers import helpers, hostos
+from amaze.helpers import helpers, hostos, wording
 from amaze.render import nodes as nodes_mod
 from amaze.render.material_conversion import engine as conversion_engine
 
@@ -115,7 +115,7 @@ def _values_to_conductor_surface(values: dict, builder: hou.Node) -> hou.Node:
 def record_name(record) -> str:
     """The NODE/USD name one online record builds under. - The title after USD sanitization, sidestepping Windows reserved device names (CON, NUL, COM1...). Fine for a node - Houdini uniquifies node names itself. NOT sufficient for a directory: package_dirname() exists because two different records can share a title, and a directory name carries no uniquifier of its own."""
     return hostos.safe_filename(
-        helpers.sanitize_usd_path(record.title) or "Material")
+        wording.sanitize_usd_path(record.title) or "Material")
 
 
 def package_dirname(record) -> str:
@@ -214,7 +214,7 @@ def to_renderer(builder, scratch, name: str, renderer: str):
     builder.destroy()
     if made.builder is not None:
         try:
-            made.builder.setName(helpers.sanitize_usd_path(name) or "material",
+            made.builder.setName(wording.sanitize_usd_path(name) or "material",
                                  unique_name=True)    # it was built beside the MaterialX one
         except hou.Error as exc:
             debug.event("import", "twin not renamed", error=str(exc))
@@ -300,8 +300,8 @@ def build_in_scene(record, source, resolution, destination, preferences,
 
 
 def import_record(record, source, resolution, library, preferences,
-                  progress=None, renderer: str = renderers.HUB.key):
-    """One online record added to `library` with nothing left in the scene: (ok, why)."""
+                  progress=None, renderer: str = renderers.HUB.key, *, save):
+    """One online record saved by `save` into `library`, nothing left in the scene: (ok, why)."""
     name = record_name(record)
     debug.event("import", "start", title=record.title, name=name,
                 source=record.source, kind=record.kind,
@@ -310,7 +310,7 @@ def import_record(record, source, resolution, library, preferences,
                        renderer) as (builder, measurement_note, error):
         if error:
             return (False, error)
-        library.add_asset(   # BY ID, never by position: add_asset stamps the node with its library id and its save can ADOPT another session's row, appended after ours via the merge, so a grown row count can be true for the wrong reason and the LAST row can be somebody else's material - the id is the identity and the length was only ever a proxy for it
+        save(   # BY ID, never by position: add_asset stamps the node with its library id and its save can ADOPT another session's row, appended after ours via the merge, so a grown row count can be true for the wrong reason and the LAST row can be somebody else's material - the id is the identity and the length was only ever a proxy for it
             builder,
             record.category,
             ",".join(record.tags or []),

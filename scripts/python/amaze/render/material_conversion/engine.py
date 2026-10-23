@@ -8,7 +8,7 @@ from typing import NamedTuple
 import hou
 
 from amaze.core import renderers
-from amaze.helpers import helpers
+from amaze.helpers import wording
 from amaze.render.material_conversion.report import ConversionReport
 
 HUB = renderers.HUB.key
@@ -127,7 +127,7 @@ def convert(container, source, target, parent, name, report=None) -> Converted:
             with hou.undos.disabler():
                 middle.destroy()    # the MaterialX step is scaffolding
             if made.builder is not None:
-                made.builder.setName(helpers.sanitize_usd_path(name) or "material",
+                made.builder.setName(wording.sanitize_usd_path(name) or "material",
                                      unique_name=True)
     if made.shader is not None and not made.wired and UNWIRED not in report.skipped:
         report.skip(UNWIRED)

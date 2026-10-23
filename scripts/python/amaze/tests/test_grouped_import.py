@@ -11,6 +11,7 @@ sys.path.insert(
 
 import hou                                                # noqa: E402
 
+from amaze.actions import materials as material_actions  # noqa: E402
 from amaze.core import debug                              # noqa: E402
 from amaze.panel import panel as panel_module             # noqa: E402
 from amaze.tests import test_support                      # noqa: E402,F401
@@ -48,7 +49,10 @@ class TheGroupedImportStopsAtTheFirstRefusalTest(unittest.TestCase):
 
     def _run(self, answers, ids):
         self.panel.material_model = _Model(answers)
-        with mock.patch.object(debug, "refuse") as refused:
+        with mock.patch.object(debug, "refuse") as refused, \
+                mock.patch.object(material_actions, "import_asset_to_scene",
+                                  lambda model, idx, target, context_node=None:
+                                  model.import_asset_to_scene(idx, target, context_node)):
             self.panel._import_materials_into_context_grouped(
                 self.context, ids)
         return self.panel.material_model, refused

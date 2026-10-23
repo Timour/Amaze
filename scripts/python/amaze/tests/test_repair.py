@@ -24,7 +24,7 @@ _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 import hou                                                # noqa: E402
 
 from amaze import messages                                # noqa: E402
-from amaze.core import category, database, material, repair  # noqa: E402
+from amaze.core import category, database, material, quarantine, repair  # noqa: E402
 from amaze.core import library as library_mod             # noqa: E402
 from amaze.core import multifilterproxy_model             # noqa: E402
 from amaze.dialogs import repair_dialog                   # noqa: E402
@@ -357,7 +357,7 @@ class MovingFilesAsideTest(_Case):
         self._pair()
         result = repair.quarantine(self._survey())
         self.assertEqual(
-            os.path.normpath(library_mod.quarantine_folder(self.dir)),
+            os.path.normpath(quarantine.quarantine_folder(self.dir)),
             os.path.normpath(result["folder"]),
             "Repair quarantines somewhere other than Clean Library")
         self.assertFalse(
@@ -1065,7 +1065,7 @@ class TheRouteFromCleanLibraryTest(_Case):
 
     def _clean(self, model):
         with patch.object(hou, "ui", MagicMock(), create=True):
-            model.cleanup_db(show_dialog=False)
+            model.cleanup_db()
 
     def _material_model(self):
         from amaze.core import library as library_mod
@@ -1311,7 +1311,7 @@ class TheRealLibraryRehearsalTest(unittest.TestCase):
         from amaze.core import library as library_mod
         model = library_mod.MaterialLibrary(preferences=self.prefs)
         with patch.object(hou, "ui", MagicMock(), create=True):
-            model.cleanup_db(show_dialog=False)
+            model.cleanup_db()
         return model
 
     def _cop_ids(self):
@@ -1746,7 +1746,7 @@ class QuarantineIsBoundedTest(unittest.TestCase):
     def _day(self, stamp):
         root = os.path.join(hostos.history_root(
             os.path.join(self.dir, "library.json")),
-            library_mod.QUARANTINE_PREFIX, stamp)
+            quarantine.QUARANTINE_PREFIX, stamp)
         os.makedirs(root, exist_ok=True)
         with open(os.path.join(root, "held.mat"), "w") as fh:
             fh.write("x")
@@ -1759,7 +1759,7 @@ class QuarantineIsBoundedTest(unittest.TestCase):
         recent = _t.strftime("%Y-%m-%d",
                              _t.localtime(_t.time() - 2 * 86400))
         old_dir, recent_dir = self._day(old), self._day(recent)
-        removed = library_mod.prune_quarantine(self.dir)
+        removed = quarantine.prune_quarantine(self.dir)
         self.assertEqual(1, removed)
         self.assertFalse(os.path.exists(old_dir),
                          "a quarantine day past the window survived, so "
@@ -1774,12 +1774,12 @@ class QuarantineIsBoundedTest(unittest.TestCase):
         stray = os.path.join(self.dir, "stray.mat")
         with open(stray, "w") as fh:
             fh.write("xyz")
-        moved = library_mod.quarantine_file(self.dir, stray)
-        self.assertTrue(moved.startswith(library_mod.quarantine_folder(self.dir)))
+        moved = quarantine.quarantine_file(self.dir, stray)
+        self.assertTrue(moved.startswith(quarantine.quarantine_folder(self.dir)))
         self._day(_t.strftime("%Y-%m-%d", _t.localtime(_t.time() - 60 * 86400)))
-        self.assertEqual((2, 4), library_mod.quarantine_size(self.dir))
-        self.assertEqual(1, library_mod.prune_quarantine(self.dir))
-        self.assertEqual((1, 3), library_mod.quarantine_size(self.dir))
+        self.assertEqual((2, 4), quarantine.quarantine_size(self.dir))
+        self.assertEqual(1, quarantine.prune_quarantine(self.dir))
+        self.assertEqual((1, 3), quarantine.quarantine_size(self.dir))
 
     def test_the_window_follows_the_NAME_not_mtime(self):
         """A copy rewrites mtime; the name says which day they were taken out."""
@@ -1787,7 +1787,7 @@ class QuarantineIsBoundedTest(unittest.TestCase):
         old = _t.strftime("%Y-%m-%d", _t.localtime(_t.time() - 60 * 86400))
         old_dir = self._day(old)
         os.utime(old_dir, None)              # looks brand new by mtime
-        library_mod.prune_quarantine(self.dir)
+        quarantine.prune_quarantine(self.dir)
         self.assertFalse(os.path.exists(old_dir),
                          "pruning followed mtime, so a touched folder "
                          "never expires")
@@ -1889,7 +1889,7 @@ class DeadScratchesAreSweptWithAnAgeGateTest(unittest.TestCase):
                          "a scratch")
         root = os.path.join(hostos.history_root(
             os.path.join(self.prefs.dir, "library.json")),
-            library_mod.QUARANTINE_PREFIX)
+            quarantine.QUARANTINE_PREFIX)
         held = [f for _r, _d, files in os.walk(root) for f in files]
         self.assertIn("a.mat.xyz123.writing", held,
                       "the swept scratch is nowhere - moved means "

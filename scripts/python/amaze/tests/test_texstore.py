@@ -15,6 +15,7 @@ _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 import hou  # noqa: E402
 
 from amaze.tests import test_support  # noqa: E402
+from amaze.actions import materials as material_actions  # noqa: E402
 
 
 def _scratch_library(testcase) -> str:
@@ -208,7 +209,7 @@ class SaveDoorTest(unittest.TestCase):
         builder, image = self._saveable_builder("Adopted_Fabric", source)
         before = model.rowCount()
         held = test_support.asset_ids(model)
-        renderer = model.add_asset(builder, "Fabrics", "", False)
+        renderer = material_actions.add_asset(model, builder, "Fabrics", "", False)
         self.assertTrue(renderer, "premise: the save went through")
         self.assertEqual(before + 1, model.rowCount())
         self.assertEqual(source, image.parm("file").unexpandedString(),
@@ -239,7 +240,7 @@ class SaveDoorTest(unittest.TestCase):
         source = self._outside_texture("resolved_diff.png")
         builder, _image = self._saveable_builder("Resolved_Fabric", source)
         held = test_support.asset_ids(model)
-        self.assertTrue(model.add_asset(builder, "Fabrics", "", False))
+        self.assertTrue(material_actions.add_asset(model, builder, "Fabrics", "", False))
         row, = test_support.arrived(model, held)
         handler = nodes_mod.NodeHandler(prefs)
         ok, reason, created = handler.import_asset_to_scene(row, "/mat")

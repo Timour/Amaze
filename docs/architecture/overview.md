@@ -799,7 +799,7 @@ model (§5, the one model set). Lives in `core/grid_engine.py`.
 | Term | What it is | In code |
 |---|---|---|
 | **Library** | The on-disk folder holding an asset section's data: `library.json` (index) + `mat/` (node archives) + `img/` (thumbnails) + `matX/` (downloaded MaterialX). Path in `settings.json`. | — |
-| **Library Model** | The Qt model over a **Library**'s JSON. The shared engine is `AssetLibrary` (records, categories, tags, tile icons, saves, deletes, the connector's guards — nothing renderer-shaped); the four section models subclass it over their own JSON. `MaterialLibrary` adds what a MATERIAL is: renderer detection, USD/shader labels, the Karma render batch, MAT/LOP routing, the Redshift conversion. Colors rides the same engine with its palette payload (`colors`/`ramp`) carried on the record. | `core/library.py` → `AssetLibrary`, `MaterialLibrary`; `cop_library.py`; `code_library.py`; `gradient_library.py` |
+| **Library Model** | The Qt model over a **Library**'s JSON. The shared engine is `AssetLibrary` (records, categories, tags, tile icons, saves, deletes, the connector's guards — nothing renderer-shaped); the four section models subclass it over their own JSON. `MaterialLibrary` adds what a MATERIAL is: its USD and shader-type labels, and the repaint when a render lands; saving, updating, converting, loading and rendering one are `actions/materials.py`'s. Colors rides the same engine with its palette payload (`colors`/`ramp`) carried on the record. | `core/library.py` → `AssetLibrary`, `MaterialLibrary`; `cop_library.py`; `code_library.py`; `gradient_library.py` |
 | **Material** | One asset record (id, name, categories, tags, renderer, date, …). **NOT a favourite and NOT a tile icon** — both were retired from the record by schema 5 and live in `favourites.json` (per-user, since 2026-08-13) and `icons.json` respectively; schema 7 retired `builder` the same way (write-only since the Mantra import path left, 2026-08-14); `Material._RETIRED_KEYS` names all three so they are recognised and dropped rather than carried as unknown keys. **One category per asset** — multi-category was removed 2026-07-27; tags are the many-to-many axis. | `core/material.py` |
 | **Tile Icon** | A chosen Feather symbol on a colour, for assets with nothing to render; **`icons.json` is the ONE home**, keyed by asset id in every section, and since schema 5 the ONLY home — the record field that used to back it up is stripped from every row, so there is no second answer to drift. Composed to `<id>_icon.png` BESIDE the render, never over it — except Color, which composes in memory. | `core/tile_icons.py` |
 | **Comment** | A page of text + to-dos per asset (the Comments pane, toggled from the toolbar). Renamed from Notes 2026-08-01 - the WORDS changed, every identifier did not: `NotesRole`, `notes.json`, `notes_panel.py` and the `show_notes` / `notes_panel_width` keys are contracts with data on disk and with other machines. Stored in `notes.json` beside the index, keyed `<section>:<id>` / `file:<path>`, wearing icons.json's guard set (unreadable latch, adopt-on-write, snapshot tier). Tiles with a note carry the lower-right badge via `NotesRole` (UserRole + 10, both model families). WHICH asset the pane points at is the context's own answer — `Section.comment_subject(index)`, one of the four area hooks — because only the context can map an index through its proxy and read its roles; the panel finds the live current index and delegates. `takes_comments` is the separate, selection-free half that the toolbar chip reads. EVERY section takes notes, Color included - a gradient carries a full-uuid4 identity in `id` (from birth, or from the schema-8 migration that mints one for any row arriving without it — a construction-time backfill did this until 2026-08-20; the field was `uid` before 2026-08-09 and the VALUE never changed, so existing keys still resolve), keyed `gradient:<value>`. | `core/notes.py`, `panel/notes_panel.py` |
@@ -979,9 +979,9 @@ stepping past a stem already on disk before writing.
 ### `policy.json` — a per-library write policy, on disk only
 
 One key today, `allow_overwrite`, default **true**. When false,
-`update_asset_content` refuses to replace an existing asset's files, and
-the Save dialog stops offering Overwrite. It is checked at the LIBRARY
-layer, not beside one caller, because a UI-level check is a suggestion.
+`update_asset_content` (`actions/materials.py`) refuses to replace an existing asset's files, and
+the Save dialog stops offering Overwrite. It is checked in the verb every
+caller goes through, not beside one caller, because a UI-level check is a suggestion.
 
 Two things about it that are easy to get wrong:
 
@@ -1187,6 +1187,10 @@ actions/files.py          the File section's Houdini side: the geometry
 actions/nodes.py          the Node section's Houdini verbs: saving a
                           network or a selection as an asset, loading it
                           back, and re-rendering its tile
+actions/materials.py      the Material section's Houdini verbs: saving a
+                          material, updating one in place, converting it
+                          to another renderer, loading it and
+                          re-rendering its tile in one batch
 actions/library.py        the steps of opening a library that need no
                           panel: refusing one a newer Amaze updated,
                           readying its folder, updating it to this
@@ -1209,6 +1213,8 @@ core/folders.py           FolderListModel (shared Folder-archetype base)
 core/scene_captures.py    photographs the Scene View + open-scene state
 core/scene_files.py       which file names are Houdini scenes (.hip,
                           .hiplc, .hipnc)
+core/material_files.py    what a saved material's files say, read as
+                          text: its builder type and its shader type
 core/captures.py          the capture store: <library>/captures, any tile
 core/repair.py            REPAIR: what is wrong with this library and
                           what is safe to do - Clean Library's opposite
@@ -1248,8 +1254,9 @@ preview/thumbnail_scene.py   the room around them: lights, camera,
 preview/usd_scene.py      Karma's and Octane's, one USD stage: written
                           once per batch, a material prim each
 helpers/hostos.py         OS-INTEGRATION ENGINE (all platform branches)
-helpers/wording.py        `and_list`, a sentence's list of names; it
-                          imports nothing, so every layer shares one
+helpers/wording.py        `and_list`, a sentence's list of names, and
+                          `sanitize_usd_path`, a name USD accepts; every
+                          layer shares one
 helpers/hostver.py        HOST-CAPABILITY ENGINE - every "does this
                           environment behave differently here?" question
 helpers/bytecode.py       Amaze's compiled files, always hash-checked:

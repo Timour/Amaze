@@ -19,6 +19,8 @@ sys.path.insert(
         os.path.dirname(os.path.abspath(__file__)))))
 
 from amaze import preview  # noqa: E402
+from amaze.actions import materials as material_actions  # noqa: E402
+from amaze.core import material_files  # noqa: E402
 from amaze.core import library as library_mod  # noqa: E402
 from amaze.core import material, renderers  # noqa: E402
 from amaze.prefs import persistence  # noqa: E402
@@ -80,14 +82,13 @@ class TheTileNamesAnOctaneShader(unittest.TestCase):
         test_support.reset_database_singletons()
         self.addCleanup(test_support.reset_database_singletons)
         self.prefs = test_support.fixture_prefs(self)
-        self.handler = nodes.NodeHandler(self.prefs)
 
     def _label(self, renderer, *types):
         asset = material.Material(name="label_probe", renderer=renderer,
                                   mat_id="label_probe_%s" % renderer)
         _write_mat(self.prefs, asset.mat_id,
                    "".join("type = %s\n" % name for name in types))
-        return self.handler.get_shader_type_label(asset)
+        return material_files.get_shader_type_label(self.prefs, asset)
 
     def test_the_label_follows_the_type_lines_and_the_renderers_table(self):
         for renderer, types, label in (
@@ -189,7 +190,7 @@ class OctanesOwnBuilderRoundTrips(unittest.TestCase):
 
     def _saved(self, node):
         held = test_support.asset_ids(self.model)
-        renderer = self.model.add_asset(node, "OctaneProbe", "", False)
+        renderer = material_actions.add_asset(self.model, node, "OctaneProbe", "", False)
         self.assertEqual("Octane", renderer, "the save did not take it as Octane")
         saved, = test_support.arrived(self.model, held)
         return saved
@@ -205,8 +206,7 @@ class OctanesOwnBuilderRoundTrips(unittest.TestCase):
         _shader(source).parmTuple("baseColor").set(RED)
         asset = self._saved(source)
         self.assertEqual("Octane:Standard Surface", self.model.renderer_label(asset))
-        self.assertEqual("subnet", nodes.NodeHandler(
-            self.prefs).get_saved_node_type(asset))
+        self.assertEqual("subnet", material_files.get_saved_node_type(self.prefs, asset))
         imported = self._imported(asset)
         self.assertEqual("1", imported.userData(nodes.OCTANE_BUILDER_MARK),
                          "the import lost Octane's marker")
@@ -240,8 +240,7 @@ class OctanesOwnBuilderRoundTrips(unittest.TestCase):
     def test_the_classic_container_keeps_its_shape(self):
         """`octane_vopnet` still saves its contents and rebuilds by type in /mat."""
         asset = self._saved(self.mat.createNode("octane_vopnet"))
-        handler = nodes.NodeHandler(self.prefs)
-        self.assertEqual("octane_vopnet", handler.get_saved_node_type(asset))
+        self.assertEqual("octane_vopnet", material_files.get_saved_node_type(self.prefs, asset))
         self.assertEqual("octane_vopnet", self._imported(asset).type().name())
         self.assertEqual("Octane:Standard Surface", self.model.renderer_label(asset))
 

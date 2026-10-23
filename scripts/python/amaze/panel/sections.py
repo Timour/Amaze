@@ -10,11 +10,12 @@ from PySide6 import QtCore, QtWidgets
 
 from amaze import amazetheme
 from amaze.actions import code as code_actions
+from amaze.actions import materials as material_actions
 from amaze.actions import nodes as node_actions
 from amaze.core import (category, debug, file_library,
                         grid_columns, locations, multifilterproxy_model, renderers,
                         scene_captures, notes)
-from amaze.helpers import hostos, ui_helpers
+from amaze.helpers import hostos, ui_helpers, wording
 from amaze import messages
 from amaze.panel import grid
 from amaze.render import cop_nodes
@@ -577,7 +578,7 @@ class AssetSection(Section):
         rows = [source.row() for source in sources if source.isValid()]
         if not rows:
             return
-        st.model.render_thumbnails(rows)    # ONE Karma scaffold for the whole selection: the stage composition is identical per material, so a per-row call pays it again for every tile (core/library.py > render_thumbnails)
+        st.model.render_thumbnails(rows)    # the model's own; Materials and Nodes override this for their verbs
 
     def comment_subject(self, index):
         st = self.stack()
@@ -784,6 +785,15 @@ class MaterialSection(AssetSection):
             nodes_mod.NodeHandler(self.panel.prefs).get_renderer_from_node(n)
             for n in nodes)
 
+    def update_preview(self, indexes) -> None:
+        """Update Preview on Material tiles: the whole selection in one render batch."""
+        st = self.stack()
+        if st is None:
+            return
+        rows = [s.row() for s in (st.proxy.mapToSource(i) for i in indexes) if s.isValid()]
+        if rows:
+            material_actions.render_thumbnails(st.model, rows)
+
     def save_categories(self) -> tuple:
         panel = self.panel
         return panel.get_category_names(), panel._selected_category_name()
@@ -971,13 +981,12 @@ class CodeSection(AssetSection):
     def create_code_node_in(self, index, dest, position=None) -> bool:
         """The snippet's carrier in `dest`, where that network kind has one, loaded with the snippet."""
         from amaze.core import dragengine
-        from amaze.helpers import helpers
         panel = self.panel
         row, asset = self._code_asset(index)
         type_name = self._carrier_for(asset, dest)
         if not type_name:
             return False
-        name = helpers.sanitize_usd_path(
+        name = wording.sanitize_usd_path(
             str(getattr(asset, "name", "") or "")) or "snippet"
         with dragengine.drop_group("Amaze Create Code Node"):
             node = panel._create_carrier(dest, type_name, name, position)
@@ -1488,7 +1497,7 @@ class FileSection(FolderSection):
         path = index.data(panel.file_files_model.PathRole)
         if not path:
             return False
-        base = helpers.sanitize_usd_path(
+        base = wording.sanitize_usd_path(
             os.path.splitext(os.path.basename(path))[0]) or "image"
         with dragengine.drop_group("Amaze Create Image Node"):
             node = panel._create_carrier(dest, "mtlximage", base, position)
@@ -1830,7 +1839,7 @@ class GradientSection(AssetSection):
         """The carrier half shared by the drag door (an index) and the double-click and menu doors (an entry, optionally re-based by Apply as)."""
         from amaze.core import dragengine
         from amaze.helpers import helpers
-        name = helpers.sanitize_usd_path(
+        name = wording.sanitize_usd_path(
             str(entry.get("name") or "")) or "gradient"
         with dragengine.drop_group("Amaze Create Gradient Node"):
             node = self.panel._create_carrier(dest, "hmtlxrampc", name,
