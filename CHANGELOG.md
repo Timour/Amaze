@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.11.2
+
+- The old user picker is removed; nothing changes in the app.
+
 ## 1.11.1
 
 - Amaze opens a library only with a user picked. When it starts without one, it says so and offers Open Preferences, where a user is picked or created on the Library tab. Amaze no longer names a user itself.
