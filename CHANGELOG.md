@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.11.10
+
+- The Material section's Houdini code is kept apart from its list of materials; nothing changes in the app.
+
 ## 1.11.9
 
 - Other files in the File section now show their system icon by default instead of the generic file icon.
