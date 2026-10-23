@@ -30,7 +30,7 @@ def starter_would_overwrite(lib_dir: str) -> list:
 def prepare(preferences) -> None:
     """The library folder ready to open: a starter index in an empty one, img/ and mat/ always."""
     lib_dir = preferences.dir
-    if not lib_dir or lib_dir == "/" or not os.path.isdir(lib_dir):    # once wrote "//library.json"
+    if not prefs_mod.can_hold_a_library(lib_dir):    # once wrote "//library.json"
         debug.event("session", "no library directory set", dir=lib_dir)
         return
     new_folder = False

@@ -43,6 +43,14 @@ def test_library_dir(folder: str) -> str:
     return _normalised_dir(os.path.join(folder, TEST_LIB_SUBDIR))
 
 
+def can_hold_a_library(folder: str) -> bool:
+    """A folder that exists and is not the root of a disk."""
+    if not folder or not os.path.isdir(folder):
+        return False
+    normal = os.path.normpath(folder)
+    return os.path.dirname(normal) != normal
+
+
 def write_fresh_index(path: str, document: dict) -> None:
     """Write a library index BORN at the current schema. Every creation door writes its index through here, so the two stamps cannot be half-applied by one of them. ▸p/library-creation-doors"""
     born = dict(document)
@@ -159,8 +167,10 @@ class Prefs(_Persistence):
                                      title="Choose a folder for your Amaze library")
                 if path == "":  # Canceled
                     return False
+                if not can_hold_a_library(hou.text.expandString(path)):
+                    continue    # asked again, and the picked folder is never touched
                 self.dir = hou.text.expandString(path)  # through the SETTER, so meeting the picked library adopts its shared settings before the save below; the chooser hands back the `$HOME/...` spelling, which is what makes a path portable, so it expands here
-            if os.path.exists(self._directory):
+            if can_hold_a_library(self._directory):
                 debug.event("session", "library set", dir=self._directory)
                 self.save()
                 return True

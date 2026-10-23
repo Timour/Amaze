@@ -12,6 +12,7 @@ from PySide6 import QtCore, QtWidgets  # noqa: E402
 
 import hou  # noqa: E402
 
+from amaze import messages  # noqa: E402
 from amaze.core import dragengine, material  # noqa: E402
 from amaze.render import nodes, thumbs  # noqa: E402
 from amaze.utils import rc_calls  # noqa: E402
@@ -432,6 +433,36 @@ class TheThirdPickIsStillValidatedTest(unittest.TestCase):
         self.assertTrue(saved,
                         "the third pick was adopted in memory but never "
                         "saved - next launch is unconfigured again")
+
+
+class TheRootOfADiskIsNoLibraryTest(unittest.TestCase):
+    """A pick of a disk's root is refused and asked again, and the setting never moves there."""
+
+    def _picking(self, prefs, picks):
+        said = []
+        prefs.save = lambda: None
+        fake = types.SimpleNamespace(
+            displayMessage=lambda text, *a, **k: said.append(text),
+            selectFile=lambda *a, **k: next(picks))
+        with mock.patch.object(hou, "ui", fake, create=True):
+            answer = prefs.get_dir_from_user()
+        return answer, said
+
+    def test_the_root_is_refused_and_the_next_pick_taken(self):
+        prefs = test_support.fixture_prefs(self)
+        good = prefs.dir
+        answer, said = self._picking(prefs, iter([os.path.abspath(os.sep), good]))
+        self.assertTrue(answer, "the good second pick was reported as a cancel")
+        self.assertEqual(good, prefs.dir, "the root of the disk became the library")
+        self.assertEqual([messages.LIBRARY_PATH_INVALID], said,
+                         "the root was taken without asking again")
+
+    def test_three_roots_leave_the_setting_alone(self):
+        prefs = test_support.fixture_prefs(self)
+        before = prefs.dir
+        answer, _said = self._picking(prefs, iter([os.path.abspath(os.sep)] * 3))
+        self.assertFalse(answer, "three refused picks were reported as a library")
+        self.assertEqual(before, prefs.dir, "a refused pick still moved the setting")
 
 
 class EveryDialogRidesTheHouseShellTest(unittest.TestCase):
