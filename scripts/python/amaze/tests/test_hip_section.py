@@ -1372,14 +1372,87 @@ class ShelfTest(unittest.TestCase):
                 "%s points at %s, which does not exist"
                 % (tool.get("name"), icon))
 
-    def test_the_capture_tool_uses_the_shared_decision_path(self):
-        root = self._shelf()
-        tool = [t for t in root.findall("tool")
-                if t.get("name") == "amaze_capture_hip"][0]
-        script = tool.find("script").text or ""
-        self.assertIn("capture_open_scene", script)
-        self.assertIn("CaptureRefused", script,
-                      "the tool would fail silently on a refusal")
+    ONE_CALL = {"amaze_capture_hip": "capture", "amaze_check_updates": "check_for_updates",
+                "amaze_reload": "reload_asset_files"}
+
+    def _script(self, name):
+        return [t for t in self._shelf().findall("tool")
+                if t.get("name") == name][0].find("script").text or ""
+
+    def _refused_imports(self, refused):
+        """Each import `refused(module, names)` answers True for raises ImportError("probe")."""
+        import builtins
+        from unittest import mock
+        real = builtins.__import__
+
+        def importing(name, globals=None, locals=None, fromlist=(), level=0):
+            if refused(name, fromlist or ()):
+                raise ImportError("probe")
+            return real(name, globals, locals, fromlist, level)
+        return mock.patch.object(builtins, "__import__", importing)
+
+    def _dialogs(self):
+        """A host ui recording each message box and status line, and the patch putting it in."""
+        import types
+        from unittest import mock
+        import hou
+        said, bar = [], []
+        ui = types.SimpleNamespace(
+            displayMessage=lambda text, **kwargs: said.append(text) or 0,
+            setStatusMessage=lambda text, **kwargs: bar.append(text))
+        return said, bar, mock.patch.object(hou, "ui", ui, create=True)
+
+    def test_capture_updates_and_reload_are_one_call_each(self):
+        """The shelf keeps the import and one call; what a tool does is code the suite runs."""
+        from amaze.utils import rc_calls
+        for name, function in self.ONE_CALL.items():
+            with self.subTest(name):
+                code = [line.strip() for line in self._script(name).splitlines()
+                        if line.strip() and not line.strip().startswith("#")]
+                self.assertEqual(
+                    ["import hou", "from amaze.utils import rc_calls"],
+                    [line for line in code if line.startswith(("import ", "from "))])
+                self.assertEqual("rc_calls.%s()" % function, code[-1])
+                self.assertTrue(callable(getattr(rc_calls, function, None)),
+                                "the shelf calls a function rc_calls does not have")
+
+    def test_a_broken_install_says_what_messages_py_says(self):
+        """The shelf's own copy, shown when rc_calls cannot load, is the functions' sentence."""
+        from amaze import messages
+        for name in self.ONE_CALL:
+            with self.subTest(name):
+                said, _bar, ui = self._dialogs()
+                with ui, self._refused_imports(
+                        lambda module, names: module == "amaze.utils" and "rc_calls" in names):
+                    exec(compile(self._script(name), name, "exec"), {"__name__": name})
+                self.assertEqual([messages.AMAZE_NOT_IMPORTABLE % "probe"], said)
+
+    def test_each_function_says_it_too_when_its_own_imports_fail(self):
+        from amaze import messages
+        from amaze.utils import rc_calls
+        for function in self.ONE_CALL.values():
+            with self.subTest(function):
+                said, _bar, ui = self._dialogs()
+                with ui, self._refused_imports(lambda module, names: module.startswith("amaze")):
+                    getattr(rc_calls, function)()
+                self.assertEqual([messages.AMAZE_NOT_IMPORTABLE % "probe"], said)
+
+    def test_capture_shows_a_refusal_and_reports_a_capture(self):
+        """The panel button's capture: a refusal is a dialog, a capture a line in the status bar."""
+        from unittest import mock
+        import hou
+        from amaze.core import scene_captures
+        from amaze.prefs import prefs as prefs_module
+        from amaze.utils import rc_calls
+        said, bar, ui = self._dialogs()
+        with ui, mock.patch.object(prefs_module.Prefs, "load", return_value=True):
+            with mock.patch.object(scene_captures, "capture_open_scene",
+                                   side_effect=scene_captures.CaptureRefused("refused")):
+                rc_calls.capture()
+            with mock.patch.object(scene_captures, "capture_open_scene", return_value="x.png"):
+                rc_calls.capture()
+        self.assertEqual(["refused"], said)
+        self.assertEqual(["Amaze: thumbnail captured for %s" % hou.hipFile.basename()], bar)
 
     def test_the_panel_tool_names_the_real_interface(self):
         root = self._shelf()
@@ -1482,11 +1555,16 @@ class ShelfTest(unittest.TestCase):
             loadedFiles=lambda: [houdini_spelling(asset)],
             reloadFile=lambda path: calls.append(("reload", path)),
             installFile=lambda path: calls.append(("install", path)))
-        fake.ui = types.SimpleNamespace(setStatusMessage=lambda text: None,
-                                        displayMessage=lambda *a, **k: 0)
+        self.bar = []
+        fake.ui = types.SimpleNamespace(
+            setStatusMessage=lambda text, **kwargs: self.bar.append(text),
+            displayMessage=lambda *a, **k: 0)
+        fake.severityType = types.SimpleNamespace(Message="message")
         tool = [t for t in self._shelf().findall("tool")
                 if t.get("name") == "amaze_reload"][0]
-        with mock.patch.dict(sys.modules, {"hou": fake}):
+        from amaze.utils import rc_calls
+        with mock.patch.dict(sys.modules, {"hou": fake}), \
+                mock.patch.object(rc_calls, "hou", fake):    # the function's own hou, not the script's
             exec(compile(tool.find("script").text, "amaze_reload", "exec"),
                  {"__name__": "amaze_reload"})
         return asset, calls
@@ -1508,6 +1586,7 @@ class ShelfTest(unittest.TestCase):
         asset, calls = self._run_reload(
             lambda path: os.path.join(os.path.dirname(path), "other.hda"))
         self.assertEqual([("install", asset)], calls)
+        self.assertEqual(["Amaze: 0 asset files reloaded, 1 new"], self.bar)
 
     def test_sync_install_carries_the_toolbar(self):
         """A shipped file the sync does not carry is a file that only ever exists in the repo - the documented under-sync trap."""

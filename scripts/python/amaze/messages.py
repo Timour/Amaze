@@ -202,6 +202,8 @@ NODE_IS_NOT_A_MATERIAL_BUILDER = 'The selected node is not a Material Builder.'
 
 PANEL_NOT_OPEN = 'Open the %s panel first.'
 
+AMAZE_NOT_IMPORTABLE = 'Amaze is not importable from this session (%s).\n\nCheck that $AMAZE points at the install and that Houdini was restarted after it changed.'
+
 NO_RELEASE_TO_INSTALL = 'There is no release to install. Check for updates first.'
 
 INSTALL_LOCATION_UNKNOWN = 'Amaze cannot tell where it is installed, so it cannot replace itself. Check that $AMAZE points at the install.'

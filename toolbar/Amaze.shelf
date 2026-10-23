@@ -9,11 +9,9 @@
     <helpText><![CDATA[Capture the current scene view as a thumbnail.]]></helpText>
     <script scriptType="python"><![CDATA[import hou
 
-# The panel's button and this tool run the SAME function; every check
-# and every refusal message lives there, so the two cannot drift.
+# The tool is rc_calls.capture(), which the suite runs. The sentence is
+# messages.AMAZE_NOT_IMPORTABLE, copied for when Amaze itself cannot load.
 try:
-    from amaze.core import scene_captures
-    from amaze.prefs import prefs as prefs_module
     from amaze.utils import rc_calls
 except ImportError as exc:
     hou.ui.displayMessage(
@@ -21,17 +19,7 @@ except ImportError as exc:
         "Check that $AMAZE points at the install and that Houdini was "
         "restarted after it changed." % exc)
 else:
-    rc_calls.start()
-    preferences = prefs_module.Prefs()
-    preferences.load()
-    try:
-        scene_captures.capture_open_scene(preferences)
-    except scene_captures.CaptureRefused as exc:
-        hou.ui.displayMessage(str(exc))
-    else:
-        # basename() answers "untitled.hip" for an unsaved scene, never "".
-        hou.ui.setStatusMessage(
-            "Amaze: thumbnail captured for %s" % hou.hipFile.basename())]]></script>
+    rc_calls.capture()]]></script>
   </tool>
 
   <tool name="amaze_open_panel" label="Amaze"
@@ -87,11 +75,9 @@ else:
     <helpText><![CDATA[Check for a newer Amaze release and install it.]]></helpText>
     <script scriptType="python"><![CDATA[import hou
 
-# The verdict lives in the module, so this and the Preferences button
-# cannot say different things about the same answer.
+# The tool is rc_calls.check_for_updates(), which the suite runs. The sentence
+# is messages.AMAZE_NOT_IMPORTABLE, copied for when Amaze itself cannot load.
 try:
-    from amaze.core import updater
-    from amaze.dialogs import update_dialog
     from amaze.utils import rc_calls
 except ImportError as exc:
     hou.ui.displayMessage(
@@ -99,37 +85,17 @@ except ImportError as exc:
         "Check that $AMAZE points at the install and that Houdini was "
         "restarted after it changed." % exc)
 else:
-    from amaze import messages
-
-    rc_calls.start()
-    found = updater.check()
-    library = updater.configured_library()
-    if not found:
-        # up-to-date, no release, or unreachable - the sentence is the
-        # whole answer and there is nothing to offer.
-        hou.ui.displayMessage(found.sentence, title=messages.TITLE_AMAZE)
-    elif hou.ui.displayMessage(
-            messages.UPDATE_OFFER % updater.offer_line(found, library),
-            buttons=messages.BUTTONS_INSTALL_UPDATE,
-            close_choice=1, title=messages.TITLE_AMAZE) == 0 \
-            and update_dialog.confirmed(found, library):    # Continue or Cancel, as on the About tab
-        update_dialog.install_and_say(found)]]></script>
+    rc_calls.check_for_updates()]]></script>
   </tool>
 
   <tool name="amaze_reload" label="Reload"
         icon="$AMAZE/scripts/python/amaze/ui/icon_reload.svg">
     <helpText><![CDATA[Install any new asset file from the packages on the Houdini path and reload the loaded ones, without restarting Houdini.]]></helpText>
-    <script scriptType="python"><![CDATA[import glob
-import os
+    <script scriptType="python"><![CDATA[import hou
 
-import hou
-
-# Every otls folder a package put on the path, Houdini's own excluded: a
-# file not loaded yet is installed, a loaded one is re-read from disk, and
-# either runs the asset's install script, which is what registers an
-# embedded viewer state.
+# The tool is rc_calls.reload_asset_files(), which the suite runs. The sentence
+# is messages.AMAZE_NOT_IMPORTABLE, copied for when Amaze itself cannot load.
 try:
-    from amaze.helpers import hostos
     from amaze.utils import rc_calls
 except ImportError as exc:
     hou.ui.displayMessage(
@@ -137,22 +103,7 @@ except ImportError as exc:
         "Check that $AMAZE points at the install and that Houdini was "
         "restarted after it changed." % exc)
 else:
-    rc_calls.start()
-    hfs = os.path.realpath(hou.getenv("HFS") or "")
-    loaded = {hostos.comparable_path(p): p for p in hou.hda.loadedFiles()}    # one spelling per file
-    new, again = [], []
-    for root in hou.houdiniPath():
-        if hfs and os.path.realpath(root).startswith(hfs):
-            continue
-        for path in sorted(glob.glob(os.path.join(root, "otls", "*.hda"))):
-            known = loaded.get(hostos.comparable_path(path))
-            if known:
-                hou.hda.reloadFile(known)
-                again.append(known)
-            else:
-                hou.hda.installFile(path)
-                new.append(path)
-    hou.ui.setStatusMessage("Amaze: %d asset files reloaded, %d new" % (len(again), len(new)))]]></script>
+    rc_calls.reload_asset_files()]]></script>
   </tool>
 
   <toolshelf name="amaze" label="Amaze">

@@ -1,3 +1,6 @@
+import glob
+import os
+
 import hou
 from PySide6 import QtCore, QtGui
 
@@ -104,3 +107,78 @@ def save(node=None) -> None:
     if node is not None and not node.isSelected():
         node.setSelected(True, clear_all_selected=True)
     door(node)
+
+
+def capture() -> None:
+    """The shelf's Capture: the panel button's own capture, a refusal shown in a dialog."""
+    start()
+    ui = getattr(hou, "ui", None)
+    if ui is None:    # a shelf tool runs where there is a screen to answer on
+        return
+    try:
+        from amaze.core import scene_captures
+        from amaze.prefs import prefs as prefs_module
+    except ImportError as exc:
+        ui.displayMessage(messages.AMAZE_NOT_IMPORTABLE % exc)
+        return
+    preferences = prefs_module.Prefs()
+    preferences.load()
+    try:
+        scene_captures.capture_open_scene(preferences)
+    except scene_captures.CaptureRefused as exc:
+        ui.displayMessage(str(exc))
+    else:
+        HoudiniSpeaker.status("thumbnail captured for %s"
+                              % hou.hipFile.basename())    # "untitled.hip" when unsaved, never ""
+
+
+def check_for_updates() -> None:
+    """The shelf's Updates: the About tab's verdict and questions, in Houdini's message box."""
+    start()
+    ui = getattr(hou, "ui", None)
+    if ui is None:
+        return
+    try:
+        from amaze.core import updater
+        from amaze.dialogs import update_dialog
+    except ImportError as exc:
+        ui.displayMessage(messages.AMAZE_NOT_IMPORTABLE % exc)
+        return
+    found = updater.check()
+    library = updater.configured_library()
+    if not found:    # up to date, no release, or unreachable: the sentence is the whole answer
+        ui.displayMessage(found.sentence, title=messages.TITLE_AMAZE)
+    elif ui.displayMessage(
+            messages.UPDATE_OFFER % updater.offer_line(found, library),
+            buttons=messages.BUTTONS_INSTALL_UPDATE,
+            close_choice=1, title=messages.TITLE_AMAZE) == 0 \
+            and update_dialog.confirmed(found, library):    # Continue or Cancel, as on the About tab
+        update_dialog.install_and_say(found)
+
+
+def reload_asset_files() -> None:
+    """The shelf's Reload: package asset files installed or re-read, so their install scripts run."""
+    start()
+    ui = getattr(hou, "ui", None)
+    if ui is None:
+        return
+    try:
+        from amaze.helpers import hostos
+    except ImportError as exc:
+        ui.displayMessage(messages.AMAZE_NOT_IMPORTABLE % exc)
+        return
+    hfs = os.path.realpath(hou.getenv("HFS") or "")
+    loaded = {hostos.comparable_path(p): p for p in hou.hda.loadedFiles()}    # one spelling each
+    new, again = [], []
+    for root in hou.houdiniPath():
+        if hfs and os.path.realpath(root).startswith(hfs):
+            continue    # Houdini's own otls, not a package's
+        for path in sorted(glob.glob(os.path.join(root, "otls", "*.hda"))):
+            known = loaded.get(hostos.comparable_path(path))
+            if known:
+                hou.hda.reloadFile(known)    # its install script registers any embedded viewer state
+                again.append(known)
+            else:
+                hou.hda.installFile(path)
+                new.append(path)
+    HoudiniSpeaker.status("%d asset files reloaded, %d new" % (len(again), len(new)))

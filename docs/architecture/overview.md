@@ -1239,9 +1239,10 @@ helpers/bytecode.py       Amaze's compiled files, always hash-checked:
                           the updater writes them for a release, the
                           panel fills in what is missing after it paints
 helpers/                  theme, ui widgets, vex syntax, generic helpers
-utils/rc_calls.py         the entry points Houdini itself calls (shelf
-                          tools, OPmenu) - finds the open panel by its
-                          pane-tab label, historical names included;
+utils/rc_calls.py         the entry points Houdini itself calls: the
+                          OPmenu's Save to Amaze, and the shelf's
+                          Capture, Updates and Reload, one call each -
+                          finds the open panel by its pane-tab label;
                           `start()` hands the log its Houdini speaker
 branding.py               the app's DISPLAY name and tagline, once
 amazetheme.py             THE DESIGN, in one document: every colour,
