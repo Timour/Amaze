@@ -1244,18 +1244,18 @@ class TheUserIsAUidWithANameTest(unittest.TestCase):
         self.assertEqual("Plum", versions.writer_tag(p))
 
 
-class TheUserPickerTest(unittest.TestCase):
-    """D14 lists the library's users and a create row."""
+class TheUserListRowsTest(unittest.TestCase):
+    """The User list holds the library's users, then a create row."""
 
-    def test_the_picker_offers_the_users_and_a_create_row(self):
+    def test_the_rows_are_the_users_then_the_create_row(self):
+        from PySide6 import QtWidgets
         from amaze.dialogs import user_dialog
-        dialog = user_dialog.UserPickerDialog(
-            {"uid-a": "Cobalt", "uid-b": "Sienna"})
-        self.addCleanup(dialog.deleteLater)
-        combo = dialog._combo
+        combo = QtWidgets.QComboBox()
+        self.addCleanup(combo.deleteLater)
+        user_dialog.fill_users(combo, {"uid-a": "Cobalt", "uid-b": "Sienna"})
         self.assertEqual(3, combo.count(), "users plus the create row")
         self.assertEqual(
-            user_dialog.UserPickerDialog.CREATE,
+            user_dialog.CREATE,
             combo.itemData(combo.count() - 1),
             "the create row is not marked with the sentinel, so a "
             "library user named like it could be mistaken for it")

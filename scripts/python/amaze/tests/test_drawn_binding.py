@@ -48,7 +48,6 @@ LABEL_RIGHT = {    # where a form label's drawn box ENDS - the label column's ri
     "P06": (amazetheme.PREFS_LABEL_RIGHT,),
     "D09": (amazetheme.SAVE_LABEL_RIGHT,),
     "D13": (amazetheme.SAVE_LABEL_RIGHT,),
-    "D14": (amazetheme.D14_LABEL_RIGHT,),
 }
 
 STRETCHED_FIELDS = {    # frame and kind whose fields fill the column instead of wearing a width
@@ -146,8 +145,7 @@ DRAWN_EXEMPT = (    # (does this node need no pin, why) - EVERY drawn node off t
 def build_every_frame(case):
     """One live dialog per drawn frame, so the binding's pins are the real ones - a frame nothing builds cannot be proven bound."""
     from amaze.dialogs import (base_dialog, code_dialog, icon_dialog,
-                               library_dialog, prefs_dialog, save_dialog,
-                               user_dialog)
+                               library_dialog, prefs_dialog, save_dialog)
     versions = ui_helpers.DesignedDialog(None, title="brushed_steel")   # D01, built the way the panel builds it
     versions.add_field(QtWidgets.QComboBox(versions))
     versions.add_field(QtWidgets.QLineEdit(versions),
@@ -163,7 +161,6 @@ def build_every_frame(case):
         save_dialog.SaveDialog(["Metal"], "Metal", name="rocks1"),
         code_dialog.CodeDialog(["Metal"]),
         base_dialog.NameDialog(),
-        user_dialog.UserPickerDialog({"u1": "Plum"}),
         library_dialog.ManageLibrariesDialog(test_support.fixture_prefs(case)),
     )
     for dialog in built:
@@ -612,10 +609,10 @@ class MovingADrawnNodeMovesTheWidget(unittest.TestCase):
 
 
 class TheFormFamilyStandsOnItsFrame(unittest.TestCase):
-    """D09, D13 and D14 take every margin and gap from their frames. ▸r/form-from-frame"""
+    """D09 and D13 take every margin and gap from their frames. ▸r/form-from-frame"""
 
     def _built(self):
-        from amaze.dialogs import base_dialog, save_dialog, user_dialog
+        from amaze.dialogs import base_dialog, save_dialog
         return (
             ("D09", save_dialog.SaveDialog(
                 ["Metal"], "Metal", name="rocks1",
@@ -623,7 +620,6 @@ class TheFormFamilyStandsOnItsFrame(unittest.TestCase):
                 section="material", language="VEX",
                 language_sections=("code",))),
             ("D13", base_dialog.NameDialog()),
-            ("D14", user_dialog.UserPickerDialog({"u1": "Plum"})),
         )
 
     @staticmethod
@@ -659,18 +655,15 @@ class TheFormFamilyStandsOnItsFrame(unittest.TestCase):
 
 
 class TheSaveFamilyWearsTheDrawnButtons(unittest.TestCase):
-    """D09, D13 and D14 all draw OK 31 and Cancel 50, flush right at the field column's edge - one pair, four dialogs. ▸p/save-dialog-rows"""
+    """D09 and D13 draw OK 31 and Cancel 50 flush right at the field edge. ▸p/save-dialog-rows"""
 
     def _dialogs(self):
-        from amaze.dialogs import (base_dialog, gradient_dialog, save_dialog,
-                                   user_dialog)
+        from amaze.dialogs import base_dialog, gradient_dialog, save_dialog
         return (
             ("D09 SaveDialog",
              save_dialog.SaveDialog(["Metal"], "Metal", name="rocks1")),
             ("D13 NameDialog", base_dialog.NameDialog()),
             ("D13 CategoryDialog", gradient_dialog.CategoryDialog()),
-            ("D14 UserPickerDialog",
-             user_dialog.UserPickerDialog({"u1": "Plum"})),
         )
 
     def _shown(self, dialog):

@@ -1,48 +1,8 @@
-"""The User list's rows, and D14, the user picker a start no longer raises."""
+"""The User list's rows: each user A to Z, then the create row."""
 
 from __future__ import annotations
 
-from PySide6 import QtWidgets
-
-from amaze import amazetheme
-from amaze.dialogs.base_dialog import AssetDialog
-
-
-class UserPickerDialog(AssetDialog):
-    """Pick an existing user, or create one - `uid` is set when an existing one was picked, `new_name` when a new one was named, and both stay empty on cancel."""
-
-    FORM_WIDTH = amazetheme.D14_WIDTH           # the save family's shape, 19 wider for its longer labels ▸p/save-dialog-rows
-    FIELD_WIDTH = amazetheme.SAVE_FIELD_WIDTH
-    FRAME_KEY = "D14"
-    CREATE = "\x00create"    # itemData for the create row: not a name and not a UID, so it can never be mistaken for either
-
-    def __init__(self, known: dict, parent=None) -> None:
-        super().__init__("Who is using this library?", parent=parent)
-        self.uid = ""
-        self.new_name = ""
-
-        self._combo = QtWidgets.QComboBox()
-        fill_users(self._combo, known)
-        self.add_row("Existing Users", self._combo)
-        self._line = self.add_line("New User")
-
-        self._combo.currentIndexChanged.connect(self._sync_new_name)    # connected AFTER populating: the first `addItem` on an empty combo emits `currentIndexChanged(0)`, which would run this before the field exists
-        self.finish()
-        self._sync_new_name()
-
-    def _sync_new_name(self, _index: int = 0) -> None:
-        creating = self._combo.currentData() == self.CREATE
-        self._line.setEnabled(creating)
-        if creating:
-            self._line.setFocus()
-
-    def _on_accept(self) -> None:
-        data = self._combo.currentData()
-        if data == self.CREATE:
-            self.new_name = self._line.text().strip()
-        else:
-            self.uid = str(data or "")
-        super()._on_accept()
+CREATE = "\x00create"    # the create row's itemData: never a name and never a UID
 
 
 def fill_users(combo, known: dict) -> None:
@@ -50,4 +10,4 @@ def fill_users(combo, known: dict) -> None:
     for user_id, name in sorted(known.items(),
                                 key=lambda pair: pair[1].lower()):
         combo.addItem(name, user_id)
-    combo.addItem("Create a new user...", UserPickerDialog.CREATE)
+    combo.addItem("Create a new user...", CREATE)

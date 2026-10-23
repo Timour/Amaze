@@ -477,7 +477,7 @@ class EveryDialogKnowsWhichWindowOpenedIt(unittest.TestCase):
     """A parented dialog inherits its parent's SCREEN; a parentless one goes to the primary. With the panel torn off to another monitor that is the wrong one. ▸r/dialog-parents"""
 
     DIALOGS = {"NameDialog", "CategoryDialog",
-               "SaveDialog", "CodeDialog", "UserPickerDialog",
+               "SaveDialog", "CodeDialog", "ManageLibrariesDialog",
                "IconDialog", "PrefsDialog", "DesignedDialog"}
 
     EXEMPT = {("panel/panel.py", "PrefsDialog")}    # parented to the main window AFTER construction and kept NON-modal on purpose ▸r/dialog-parents
@@ -536,11 +536,11 @@ class EveryDialogKnowsWhichWindowOpenedIt(unittest.TestCase):
         """`NameDialog` could not take one at all - it called `super().__init__(title)` and dropped the argument."""
         import inspect
         from amaze.dialogs import (base_dialog, code_dialog, gradient_dialog,
-                                   icon_dialog, save_dialog, user_dialog)
+                                   icon_dialog, library_dialog, save_dialog)
         classes = [base_dialog.AssetDialog, base_dialog.NameDialog,
                    gradient_dialog.CategoryDialog, code_dialog.CodeDialog,
                    icon_dialog.IconDialog, save_dialog.SaveDialog,
-                   user_dialog.UserPickerDialog]
+                   library_dialog.ManageLibrariesDialog]
         for cls in classes:
             args = inspect.signature(cls.__init__).parameters
             self.assertIn(
@@ -804,9 +804,9 @@ class AnAnsweredDialogLeavesNothingBehind(unittest.TestCase):
         "category": lambda parent: __import__(
             "amaze.dialogs.gradient_dialog", fromlist=["_"]).CategoryDialog(
                 parent=parent),
-        "user picker": lambda parent: __import__(
-            "amaze.dialogs.user_dialog", fromlist=["_"]).UserPickerDialog(
-                {"a" * 32: "Cobalt"}, parent=parent),
+        "manage libraries": lambda parent: __import__(
+            "amaze.dialogs.library_dialog", fromlist=["_"]).ManageLibrariesDialog(
+                __import__("amaze.prefs.prefs", fromlist=["_"]).Prefs(), parent=parent),
         "name": lambda parent: __import__(
             "amaze.dialogs.base_dialog", fromlist=["_"]).NameDialog(
                 "Rename User", "Cobalt", parent=parent),

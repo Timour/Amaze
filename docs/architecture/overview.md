@@ -893,7 +893,6 @@ copied per dialog.
 | **Save Dialog** | every section a scene node saves into | `dialogs/save_dialog.py` ✓ AssetDialog — D09: Section, Name, Category, Language, Tags. The Section row is guessed from the node and changeable; `dialogs/gradient_dialog.py` keeps only `CategoryDialog` |
 | **Preferences** | — (app-wide) | `dialogs/prefs_dialog.py` ✓ AssetDialog (live-apply: no OK/Cancel, 12px recorded margin) |
 | **Icon Dialog** | any tile | `dialogs/icon_dialog.py` ✓ AssetDialog (non-modal) |
-| **User Picker** | — (app-wide) | `dialogs/user_dialog.py` — D14, no longer raised: a start with no user picked opens no library and, after the first paint, asks to open Preferences ▸ Library (`panel.ensure_library_user`); `fill_users` fills the Library tab's User list |
 | **Manage Libraries** | — (app-wide) | `dialogs/library_dialog.py` ✓ AssetDialog — D15: the Library list, the most recently opened first; Remove from List takes libraries off it and leaves their folders alone |
 | **About** | — | a TAB inside `dialogs/prefs_dialog.py`, shared with Debug — there is no separate About dialog |
 
@@ -1257,7 +1256,7 @@ messages.py               EVERY message Amaze shows in a dialog, in one
                           ▸p/messages-need-one-home
 dialogs/                  save / preferences / about / code / gradient dialogs
 dialogs/user_dialog.py    the User list's rows, A to Z then the create
-                          row; its D14 picker is no longer raised
+                          row
 dialogs/library_dialog.py the Library list's Manage window: it takes
                           libraries off the list, never a folder
 dialogs/update_dialog.py  what an update asks and says - Continue or

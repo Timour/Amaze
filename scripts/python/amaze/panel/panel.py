@@ -114,7 +114,8 @@ _reload_loaded("amaze.helpers.vex_syntax")    # before code_library/code_dialog,
 _reload(code_library)    # after library/category: it subclasses the material machinery
 _reload(model_registry)    # LAST of the models: it names all ten classes, so a stale one hands the next panel the previous build's classes
 
-_reload_loaded("amaze.dialogs.base_dialog")    # FIRST of the dialogs: user_dialog binds its AssetDialog class
+_reload_loaded("amaze.dialogs.base_dialog")    # FIRST of the dialogs: each binds its AssetDialog class
+_reload_loaded("amaze.dialogs.library_dialog")
 _reload_loaded("amaze.dialogs.prefs_dialog")
 _reload_loaded("amaze.dialogs.save_dialog")
 _reload_loaded("amaze.dialogs.icon_dialog")

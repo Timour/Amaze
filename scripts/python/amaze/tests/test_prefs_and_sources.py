@@ -1133,36 +1133,28 @@ class TheUserRowCreatesAndDeletes(unittest.TestCase):
         dlg = prefs_dialog.PrefsDialog(p, panel=None)
         self.addCleanup(dlg.deleteLater)
         combo = dlg.cbb_library_user
-        sentinel = user_dialog.UserPickerDialog.CREATE
+        sentinel = user_dialog.CREATE
         rows = [combo.itemData(i) for i in range(combo.count())]
         self.assertIn(sentinel, rows,
-                      "the row cannot create a user - the picker "
-                      "dialog's create entry is missing here")
+                      "the row cannot create a user - the create entry "
+                      "is missing here")
         self.assertEqual(sentinel, rows[-1],
                          "the create entry is not the LAST row, so it "
                          "reads as a user called Create")
         self.assertTrue(dlg._btn_delete_user.isEnabled())
 
-    def test_the_row_and_the_picker_list_the_same_rows(self):
-        """One filler: the first-open picker and Preferences show the same rows in the same order."""
+    def test_the_users_are_listed_a_to_z(self):
         from amaze.core import users
-        from amaze.dialogs import prefs_dialog, user_dialog
+        from amaze.dialogs import prefs_dialog
         from amaze.tests import test_support
         p = test_support.fixture_prefs(self)
         for name in ("sienna", "Cobalt", "Fern"):
             p.library_user = users.create(p, name)
         dlg = prefs_dialog.PrefsDialog(p, panel=None)
         self.addCleanup(dlg.deleteLater)
-        picker = user_dialog.UserPickerDialog(users.all_users(p))
-        self.addCleanup(picker.deleteLater)
-
-        def rows(combo):
-            return [(combo.itemText(i), combo.itemData(i))
-                    for i in range(combo.count())]
-
-        self.assertEqual(rows(picker._combo), rows(dlg.cbb_library_user))
+        combo = dlg.cbb_library_user
         self.assertEqual(["Cobalt", "Fern", "sienna"],
-                         [text for text, _ in rows(picker._combo)[:-1]],
+                         [combo.itemText(i) for i in range(combo.count() - 1)],
                          "the users are not listed by name, A to Z")
 
     def test_a_quiet_set_emits_nothing_and_keeps_an_outer_block(self):

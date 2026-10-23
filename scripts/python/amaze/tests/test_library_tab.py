@@ -74,7 +74,7 @@ class TheUserIsPickedByTheRule(unittest.TestCase):
     def test_a_folder_with_no_library_offers_only_a_new_user(self):
         self.dialog.pick_library(_empty_folder(self))
         combo = self.dialog.cbb_library_user
-        self.assertEqual([user_dialog.UserPickerDialog.CREATE],
+        self.assertEqual([user_dialog.CREATE],
                          [combo.itemData(row) for row in range(combo.count())])
         self.assertEqual(amazetheme.LABEL_LIBRARY_FORMAT % library_policy.LIBRARY_VERSION,
                          self.dialog._lbl_library_format.text())

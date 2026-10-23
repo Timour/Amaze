@@ -38,8 +38,7 @@ D02_CHOOSER_RADIUS = 3   # an icon button's corner, UNSCALED - a stylesheet px, 
 D02_CHECKED_BORDER = 2   # the ring on the chosen icon, UNSCALED
 D02_SWATCH_BORDER = 1    # the preset chips and the current-colour chip, UNSCALED
 
-D14_LABEL_RIGHT = 79     # ▸ the save family D09, D13 and D14: D14's label column, the family's 60 plus 19
-SAVE_FIELD_WIDTH = 276   # the drawn field width, the same in all three
+SAVE_FIELD_WIDTH = 276   # ▸ the save family D09 and D13: the drawn field width in both
 SAVE_LABEL_RIGHT = 60    # a label is RIGHT-aligned and ends here
 SAVE_FIELD_H = 22
 SAVE_BUTTON_H = 22       # the OK / Cancel pair, drawn flush right
@@ -619,20 +618,6 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
             ("QPushButton ▸ text", 301, 43, 34, 15, "Cancel"),
         ),
     },
-    "D14": {   # User Picker - who is using this library, on first open
-        "frame": (369, 100),
-        "nodes": (
-            ("QPushButton", 273, 69, 31, 22, None),
-            ("QPushButton ▸ text", 281, 73, 15, 15, "OK"),
-            ("QPushButton", 312, 69, 50, 22, None),
-            ("QPushButton ▸ text", 320, 73, 34, 15, "Cancel"),
-            ("QLabel", 10, 15, 69, 15, "Existing Users"),
-            ("QComboBox", 86, 11, 276, 22, None),
-            ("QComboBox ▸ text", 91, 15, 27, 15, "Plum"),
-            ("QLabel", 31, 41, 48, 15, "New User"),
-            ("QLineEdit", 86, 37, 276, 22, None),
-        ),
-    },
     "D15": {   # Manage Libraries - the Library list, opened from Preferences ▸ Library
         "frame": (420, 226),
         "nodes": (
@@ -874,7 +859,6 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
 D01_FRAME = DIALOG_LAYOUT["D01"]["frame"]    # ▸ the frame sizes call sites name, read from the drawing
 D02_FORM_WIDTH, D02_FRAME_H = DIALOG_LAYOUT["D02"]["frame"]    # the OPENING size; the grid grows
 SAVE_WIDTH = DIALOG_LAYOUT["D09"]["frame"][0]    # D09 and D13 alike, whatever their labels
-D14_WIDTH = DIALOG_LAYOUT["D14"]["frame"][0]
 D15_WIDTH = DIALOG_LAYOUT["D15"]["frame"][0]
 D11_FORM_WIDTH = DIALOG_LAYOUT["D11"]["frame"][0]    # a FLOOR: D11 resizes around its editor
 PREFS_FRAME = DIALOG_LAYOUT["P01"]["frame"]    # every Preferences tab, P01-P06

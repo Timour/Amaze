@@ -304,7 +304,7 @@ class PrefsDialog(base_dialog.AssetDialog):
     def _pick_library_user(self, index: int) -> None:
         """The create row asks for a name; any other pick waits for Apply."""
         data = self.cbb_library_user.itemData(index)
-        if data == user_dialog.UserPickerDialog.CREATE:
+        if data == user_dialog.CREATE:
             self._ask_create_library_user()
             return
         self._last_user_pick = data
@@ -509,7 +509,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         testing = bool(self._prefs.test_mode and self._prefs.test_dir)
         is_open = self._picked_is_open()
         uid = self.cbb_library_user.currentData()
-        picked = bool(uid) and uid != user_dialog.UserPickerDialog.CREATE
+        picked = bool(uid) and uid != user_dialog.CREATE
         may_apply = self._library_note(self._picked_library())[3]
         for widget in (self.cbb_library, self._btn_add_library,
                        self._btn_manage_libraries, self.cbb_library_user):
