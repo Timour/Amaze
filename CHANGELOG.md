@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.11.1
+
+- Amaze opens a library only with a user picked. When it starts without one, it says so and offers Open Preferences, where a user is picked or created on the Library tab. Amaze no longer names a user itself.
+
 ## 1.11.0
 
 - Preferences ▸ Library picks a library and its user together. Library lists the libraries this computer has opened, the most recent first; Add puts a library folder in the list, or an empty folder for a new library, and Manage takes libraries off it. Apply opens the picked library with the picked user, and Accept does the same and closes Preferences.
