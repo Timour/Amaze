@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.11.5
+
+- The Capture, Updates and Reload shelf tools run their steps inside Amaze, where the test suite checks them.
+
 ## 1.11.4
 
 - The message shown when Amaze starts with no user picked now only says what to do.
