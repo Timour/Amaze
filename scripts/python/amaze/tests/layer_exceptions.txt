@@ -27,8 +27,6 @@ core/texstore.py uses hou
 core/tile_icons.py imports helpers/ui_helpers.py
 prefs/persistence.py imports panel/sections.py
 prefs/prefs.py imports core/file_library.py
-prefs/prefs.py talks displayMessage x1, selectFile x1
-prefs/prefs.py uses hou
 render/nodes.py imports core/cop_library.py
 render/nodes.py talks displayMessage x5
 render/thumbs.py talks displayMessage x3

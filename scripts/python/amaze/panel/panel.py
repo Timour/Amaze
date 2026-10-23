@@ -443,12 +443,13 @@ class AmazePanel(QtWidgets.QWidget):
         debug.event("session", "library reloaded")
 
     def set_library(self) -> None:
-        """User Sets library via Menu Option so we have to reroute"""
-        if self.prefs.get_dir_from_user(accept=self._takes_library):
-            self.prefs.load()
-            self.open_library()
+        """Library ▸ Set Library: Preferences on its Library tab, where a library is picked with its user."""
+        self.show_prefs()
+        dialog = getattr(self, "_prefs_dialog", None)
+        if dialog is not None:
+            dialog.show_frame("P01")
 
-    def _takes_library(self, folder: str) -> bool:
+    def takes_library(self, folder: str) -> bool:
         """A picked folder is taken once its list reads: Repair first, or nothing is written to it."""
         if library_actions.list_not_arrived(folder):
             debug.event("session", "library not taken - its list has not arrived", dir=folder)

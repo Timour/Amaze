@@ -46,14 +46,14 @@ def normalise(value) -> dict:
 SPEC = keyed_store.bind(USERS_FILE, normalise)
 
 
-def _store(preferences):
-    return keyed_store.open_store(SPEC, preferences)
+def _store(preferences, library: str = ""):
+    return keyed_store.open_store(SPEC, preferences, library)
 
 
-def all_users(preferences) -> dict:
-    """`{uid: name}` for this library - a COPY, like every store read."""
+def all_users(preferences, library: str = "") -> dict:
+    """`{uid: name}` for this library, or for `library` - a COPY, like every store read."""
     return {uid: record.get("name", "")
-            for uid, record in _store(preferences).all().items()}
+            for uid, record in _store(preferences, library).all().items()}
 
 
 def roster(preferences) -> set:
@@ -67,11 +67,16 @@ def name_for(preferences, uid) -> str:
     return _store(preferences).get(str(uid)).get("name", "")
 
 
-def name_taken(preferences, name: str, besides: str = "") -> bool:
-    """Whether a user other than `besides` already has `name` here, ignoring case."""
+def name_taken(preferences, name: str, besides: str = "", library: str = "") -> bool:
+    """Whether a user other than `besides` already has `name` here, or in `library`, ignoring case."""
+    return bool(named(preferences, name, library=library, besides=besides))
+
+
+def named(preferences, name: str, library: str = "", besides: str = "") -> str:
+    """The UID of the user called `name` here, or in `library`, ignoring case; "" for nobody."""
     wanted = str(name or "").strip().casefold()
-    return any(uid != str(besides) and other.strip().casefold() == wanted
-               for uid, other in all_users(preferences).items())
+    return next((uid for uid, other in all_users(preferences, library).items()
+                 if wanted and uid != str(besides) and other.strip().casefold() == wanted), "")
 
 
 def create(preferences, name: str) -> str:
@@ -150,6 +155,12 @@ def current(preferences):
     if not uid:
         return None
     return adopt(preferences, uid)
+
+
+def adopt_named(preferences, name: str) -> str:
+    """Adopt the user called `name` here, creating them when missing; "" for no name."""
+    uid = named(preferences, name) or create(preferences, name)
+    return adopt(preferences, uid) if uid else ""
 
 
 def adopt(preferences, uid):

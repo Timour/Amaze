@@ -279,19 +279,13 @@ class OneLibraryChangeIsOneSwitch(unittest.TestCase):
             QtWidgets.QApplication.processEvents()
         return switch.call_count
 
-    def test_set_library(self):
+    def test_preferences_apply(self):
         other = test_support.fresh_library(self)
 
-        def picked(accept=None):
-            self.panel.prefs.dir = other
-            _write_settings(self.panel, directory=other)    # the save the fixture panel switches off
-            return True
+        def apply(dialog):
+            self.assertTrue(test_support.apply_library(self, self.panel, other, dialog=dialog))
 
-        def set_library(dialog):
-            with mock.patch.object(self.panel.prefs, "get_dir_from_user", picked):
-                dialog.change_library_path()
-
-        self.assertEqual(1, self._switches_while_open(set_library),
+        self.assertEqual(1, self._switches_while_open(apply),
                          "closing Preferences re-read every model a second time")
 
     def test_test_library(self):
@@ -365,17 +359,10 @@ class EveryWayOntoALibraryTakesOneOrder(unittest.TestCase):
         self.panel.open()
         self._assert_order("Reload Library")
 
-    def test_set_library(self):
+    def test_preferences_apply(self):
         other = test_support.fresh_library(self)
-
-        def picked(accept=None):
-            self.panel.prefs.dir = other
-            _write_settings(self.panel, directory=other)    # the save the fixture panel switches off
-            return True
-
-        with mock.patch.object(self.panel.prefs, "get_dir_from_user", picked):
-            self.panel.set_library()
-        self._assert_order("Set Library")
+        self.assertTrue(test_support.apply_library(self, self.panel, other))
+        self._assert_order("Preferences' Apply")
 
     def test_closing_preferences(self):
         self.panel.show_prefs()
@@ -423,13 +410,29 @@ class AnUnreadableListIsAskedAboutBeforeTheSwitch(unittest.TestCase):
             QtWidgets.QApplication.processEvents()
         return asked
 
+    def _preferences(self):
+        from amaze.dialogs import prefs_dialog
+        dialog = prefs_dialog.PrefsDialog(self.panel.prefs, panel=self.panel)
+        self.addCleanup(dialog.deleteLater)
+        return dialog
+
+    def _add_and_apply(self):
+        """Add the folder the chooser answers, name a user for it, then Apply."""
+        dialog = self._preferences()
+        dialog.add_library()
+        dialog.create_library_user("Tester")
+        dialog.apply_library()
+
     def test_cancel_keeps_the_open_library_and_writes_nothing(self):
+        from amaze.prefs import persistence
+        from amaze.prefs import prefs as prefs_mod
         before = self.panel.prefs.dir
         files = sorted(os.listdir(self.broken))
-        asked = self._answering(1, self.panel.set_library)
+        with mock.patch.object(prefs_mod.Prefs, "save", persistence._Persistence.save):    # a write must show
+            asked = self._answering(1, self._add_and_apply)
         self.assertEqual([(messages.LIBRARY_INDEX_UNREADABLE_SWITCHING,
                            messages.BUTTONS_REPAIR_OR_CANCEL)], asked)
-        self.assertEqual(before, self.panel.prefs.dir, "Cancel moved the Library Path")
+        self.assertEqual(before, self.panel.prefs.dir, "Cancel moved the library")
         self.assertEqual(before, self.panel._models_dir, "Cancel left the open library")
         self.assertEqual(files, sorted(os.listdir(self.broken)), "Cancel wrote into the folder")
 
@@ -439,15 +442,15 @@ class AnUnreadableListIsAskedAboutBeforeTheSwitch(unittest.TestCase):
         saves = []
         self.panel.prefs.save = lambda *a, **k: saves.append(True)
         before = self.panel.prefs.dir
-        asked = self._answering(0, self.panel.set_library, picked=held)
+        asked = self._answering(0, lambda: self._preferences().add_library(), picked=held)
         self.assertEqual([(messages.STARTER_SEED_REFUSED_DIRECTORY_HELD_LIBRARY, ())], asked)
         self.assertEqual([], saves, "the settings were saved, which writes into the picked folder")
-        self.assertEqual(before, self.panel.prefs.dir, "the Library Path moved")
+        self.assertEqual(before, self.panel.prefs.dir, "the library moved")
 
     def test_repair_opens_the_picked_library(self):
         self.panel.prefs.save = lambda *a, **k: _write_settings(
             self.panel, directory=self.panel.prefs.real_dir)    # the save the fixture panel switches off
-        self._answering(0, self.panel.set_library)
+        self._answering(0, self._add_and_apply)
         self.assertEqual(os.path.normpath(self.broken),
                          os.path.normpath(self.panel._models_dir),
                          "Repair did not open the picked library")

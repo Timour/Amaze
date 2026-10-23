@@ -111,10 +111,10 @@ class LibraryVersionTest(unittest.TestCase):
         prefs = test_support.fixture_prefs(self)
         dialog = prefs_dialog.PrefsDialog(prefs, panel=None)
         self.addCleanup(dialog.deleteLater)
-        self.assertEqual("Library version 1", dialog._lbl_library_version.text())
+        self.assertEqual("Format: v1", dialog._lbl_library_format.text())
         library_policy.set_library_version(prefs.dir, 2)
-        dialog._sync_test_mode_rows()
-        self.assertEqual("Library version 2", dialog._lbl_library_version.text())
+        dialog.refresh_library_version()
+        self.assertEqual("Format: v2", dialog._lbl_library_format.text())
 
 
 class NoLibraryMeansNoPolicyFileTest(unittest.TestCase):

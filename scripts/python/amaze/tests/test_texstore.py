@@ -271,7 +271,7 @@ class PanelEnvTest(unittest.TestCase):
 
 
 class EverySwitchPublishesTheVariable(unittest.TestCase):
-    """Reload Library, Set Library and Test Library point $AMAZELIB at the library they open."""
+    """Reload Library, Preferences' Apply and Test Library point $AMAZELIB at the library they open."""
 
     def setUp(self):
         previous = hou.getenv("AMAZELIB")
@@ -302,16 +302,9 @@ class EverySwitchPublishesTheVariable(unittest.TestCase):
         self.panel.open()
         self._assert_published(other)
 
-    def test_set_library(self):
+    def test_preferences_apply(self):
         other = test_support.fresh_library(self)
-
-        def picked(accept=None):
-            self.panel.prefs.dir = other
-            self._write_settings(directory=other)    # the save the fixture panel switches off
-            return True
-
-        with mock.patch.object(self.panel.prefs, "get_dir_from_user", picked):
-            self.panel.set_library()
+        self.assertTrue(test_support.apply_library(self, self.panel, other))
         self._assert_published(other)
 
     def test_test_library(self):

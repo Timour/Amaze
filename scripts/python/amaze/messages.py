@@ -138,7 +138,7 @@ TILE_ICON_SAVE_FAILED = '%d tile icon%s could not be saved. Verify that the libr
 
 CAPTURE_SELECT_ONE_TILE = 'Select one tile to capture onto.'
 
-NO_LIBRARY_CONFIGURED_2 = 'Configure a library first. Open Preferences and select one under Library Path.'
+NO_LIBRARY_CONFIGURED_2 = 'Configure a library first. Open Preferences, add one under Library and press Apply.'
 
 NO_NODE_TO_SAVE = 'To save, right-click the node or network you want to keep.'
 
@@ -181,6 +181,10 @@ SCENE_FILE_MISSING = 'That scene file is no longer there:\n%s'
 SCENE_OPEN_FAILED = 'Could not open that scene:\n%s\n\n%s'
 
 LIBRARY_PATH_INVALID = 'The selected path is not valid. Choose a library folder.'
+
+LIBRARY_LIST_FULL = 'The Library list holds %d libraries. Remove one in Manage to add another.'
+
+TITLE_CHOOSE_LIBRARY_FOLDER = 'Choose a folder for your Amaze library'
 
 IMPORTED_MATERIAL_MAY_NOT_APPEAR = '"%s" was imported into %s but may not appear as a material: %s.'
 

@@ -241,7 +241,7 @@ class TheBuilderFieldDiesAtSchemaSeven(unittest.TestCase):
 
 
 class EveryWayIntoAnEmptyFolderReadiesIt(unittest.TestCase):
-    """Opening the pane, Reload Library and Set Library each give an empty folder a library."""
+    """Opening the pane, Reload Library and Preferences' Apply each give an empty folder a library."""
 
     def setUp(self):
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -270,15 +270,8 @@ class EveryWayIntoAnEmptyFolderReadiesIt(unittest.TestCase):
         self.panel.open()
         self._assert_ready()
 
-    def test_set_library(self):
-        from unittest import mock
-
-        def picked(accept=None):
-            self.panel.prefs.dir = self.empty
-            return True
-
-        with mock.patch.object(self.panel.prefs, "get_dir_from_user", picked):
-            self.panel.set_library()
+    def test_preferences_apply(self):
+        self.assertTrue(test_support.apply_library(self, self.panel, self.empty, user="Tester"))
         self._assert_ready()
 
 

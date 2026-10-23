@@ -78,6 +78,8 @@ P05_ROW_PITCH = 101    # ▸ P05: a following row's divider to the next one's, a
 P05_LIST_TO_BUTTON = 10    # ▸ P05: the list's bottom to the button's top, as drawn (738 to 748)
 P05_DIM_INK = "#7d7d7d"    # ▸ P05: the version and author lines under each picture
 P05_TEXT_INK = "#a6a6a6"   # ▸ P05: each row's short description
+P01_WARNING_INK = UPDATE_WARNING_FILL    # ▸ P01: the Format line and the line beside Apply, warning
+P01_FORMAT_INK = "#80dddddd"    # the Format line otherwise: text at half opacity, as #AARRGGBB
 D15_SELECTED_INK = "#474e62"   # ▸ D15 Manage Libraries: a selected row
 D15_DIM_INK = "#787878"        # a library that cannot be reached: its name and `not connected`
 D15_DIM_PATH_INK = "#646464"   # and its path
@@ -167,6 +169,11 @@ LABEL_NAME = "Name"
 PLACEHOLDER_SEARCH_ICONS = "Search"     # D02 drew the count in it; it does not any more
 PLACEHOLDER_VERSION_NAME = "Rename this version"
 LABEL_NOT_CONNECTED = "not connected"    # D15: a listed library whose folder cannot be reached
+LABEL_LIBRARY_FORMAT = "Format: v%d"     # ▸ P01, under the library's buttons
+LABEL_UPGRADES_LIBRARY = "Apply/Accept will upgrade your library to v%d"    # beside Apply
+LABEL_LIBRARY_TOO_NEW = "You need to update Amaze to use this library"
+LABEL_LIBRARY_UNREACHABLE = "Amaze cannot reach this library"
+LABEL_PICK_USER = "Pick or create a user"    # the User list with nobody picked
 
 TITLE_TILE_ICON = "Tile Icon"    # what D02 says when the selection has no ONE name to show
 TITLE_MANAGE_LIBRARIES = "Manage Libraries"
@@ -294,39 +301,46 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
             ("QTabBar::tab ▸ Look", 239, 16, 25, 15, "Look"),
             ("QTabBar::tab ▸ Add-On", 292, 16, 39, 15, "Add-On"),
             ("QTabBar::tab ▸ About", 359, 16, 31, 15, "About"),
-            ("QLineEdit", 148, 42, 292, 22, None),
-            ("QPushButton", 442, 42, 28, 22, None),
-            ("QLabel", 79, 46, 61, 15, "Library Path"),
-            ("QLineEdit ▸ text", 153, 46, 35, 15, "<path>"),
-            ("QPushButton ▸ text", 452, 46, 9, 15, "..."),
-            ("QPushButton", 148, 70, 99, 22, None),
-            ("QPushButton ▸ text", 156, 74, 83, 15, "Clean Up Library"),
-            ("QPushButton", 148, 98, 88, 22, None),
-            ("QPushButton ▸ text", 156, 102, 73, 15, "Reload Library"),
-            ("QPushButton", 148, 126, 115, 22, None),
-            ("QPushButton ▸ text", 156, 130, 100, 15, "Open Library Folder"),
-            ("QWidget ▸ group divider", 20, 162, 450, 1, None),
-            ("ToggleSwitch", 148, 177, 23, 15, None),
-            ("ToggleSwitch ▸ text", 179,177, 86, 15, "Material Versions"),
-            ("QComboBox", 148, 200, 196, 22, None),
-            ("QPushButton", 352, 200, 56, 22, None),
-            ("QPushButton", 414, 200, 56, 22, None),
-            ("QLabel", 117, 204, 23, 15, "User"),
-            ("QComboBox ▸ text", 153, 204, 27, 15, "Plum"),
-            ("QPushButton ▸ text", 360, 204, 42, 15, "Rename"),
-            ("QPushButton ▸ text", 422, 204, 33, 15, "Delete"),
-            ("QWidget ▸ group divider", 20, 236, 450, 1, None),
-            ("QLineEdit", 148, 249, 236, 22, None),
-            ("QPushButton", 388, 249, 28, 22, None),
-            ("QPushButton", 418, 249, 52, 22, None),
-            ("QLabel", 83, 253, 57, 15, "Cache Path"),
-            ("QLineEdit ▸ text", 153, 253, 35, 15, "<path>"),
-            ("QPushButton ▸ text", 398, 253, 9, 15, "..."),
-            ("QPushButton ▸ text", 426, 253, 37, 15, "Default"),
-            ("QPushButton", 148, 277, 110, 22, None),
-            ("QPushButton ▸ text", 156, 281, 95, 15, "Delete Local Cache"),
-            ("QWidget ▸ group divider", 20, 311, 450, 1, None),
-            ("QLabel", 148, 324, 322, 15, "Library version 2"),
+            ("QComboBox", 148, 42, 260, 22, None),
+            ("QPushButton", 414, 42, 56, 22, None),
+            ("QLabel", 104, 46, 36, 15, "Library"),
+            ("QComboBox ▸ text", 153, 46, 99, 15, "Library folder name"),
+            ("QPushButton ▸ text", 432, 46, 20, 15, "Add"),
+            ("QPushButton", 148, 70, 63, 22, None),
+            ("QPushButton ▸ text", 156, 74, 46, 15, "Clean Up"),
+            ("QPushButton", 217, 70, 48, 22, None),
+            ("QPushButton ▸ text", 224, 74, 35, 15, "Reload"),
+            ("QPushButton", 271, 70, 76, 22, None),
+            ("QPushButton ▸ text", 278, 74, 63, 15, "Show Folder"),
+            ("QPushButton", 353, 70, 58, 22, None),
+            ("QPushButton ▸ text", 362, 74, 40, 15, "Manage"),
+            ("QLabel", 148, 98, 320, 15, "Format: v1"),
+            ("QWidget ▸ group divider", 20, 127, 450, 1, None),
+            ("ToggleSwitch", 148, 142, 23, 15, None),
+            ("ToggleSwitch ▸ text", 179, 142, 86, 15, "Material Versions"),
+            ("QComboBox", 148, 165, 196, 22, None),
+            ("QPushButton", 352, 165, 56, 22, None),
+            ("QPushButton", 414, 165, 56, 22, None),
+            ("QLabel", 117, 169, 23, 15, "User"),
+            ("QComboBox ▸ text", 153, 169, 27, 15, "Plum"),
+            ("QPushButton ▸ text", 360, 169, 42, 15, "Rename"),
+            ("QPushButton ▸ text", 422, 169, 33, 15, "Delete"),
+            ("QWidget ▸ group divider", 20, 201, 450, 1, None),
+            ("QLineEdit", 148, 214, 236, 22, None),
+            ("QPushButton", 388, 214, 28, 22, None),
+            ("QPushButton", 418, 214, 52, 22, None),
+            ("QLabel", 83, 218, 57, 15, "Cache Path"),
+            ("QLineEdit ▸ text", 153, 218, 35, 15, "<path>"),
+            ("QPushButton ▸ text", 398, 218, 9, 15, "..."),
+            ("QPushButton ▸ text", 426, 218, 37, 15, "Default"),
+            ("QPushButton", 148, 242, 110, 22, None),
+            ("QPushButton ▸ text", 156, 246, 95, 15, "Delete Local Cache"),
+            ("QWidget ▸ group divider", 20, 276, 450, 1, None),
+            ("QLabel", 20, 291, 320, 15, "Apply/Accept will upgrade your library to v3"),
+            ("QPushButton", 352, 289, 56, 22, None),
+            ("QPushButton", 414, 289, 56, 22, None),
+            ("QPushButton ▸ text", 366, 293, 29, 15, "Apply"),
+            ("QPushButton ▸ text", 425, 293, 34, 15, "Accept"),
         ),
     },
     "P02": {   # Preferences - Render

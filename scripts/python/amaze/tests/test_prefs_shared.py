@@ -357,8 +357,9 @@ class EveryRowFollowsAUserOrLibraryChange(SharedPrefsCase):
     def pick_second(self):
         combo = self.dialog.cbb_library_user
         combo.setCurrentIndex(combo.findData(self.second))
+        self.assertTrue(self.dialog.apply_library())
         self.assertEqual(self.second, self.prefs.library_user,
-                         "premise: the picker switched the user")
+                         "premise: Apply switched the user")
 
     def test_picking_a_user_shows_their_settings(self):
         self.pick_second()
@@ -406,18 +407,21 @@ class EveryRowFollowsAUserOrLibraryChange(SharedPrefsCase):
         elsewhere.rendersize = 512
         elsewhere.save()
         keyed_store.release()
-        prefs, second = self.prefs, self.second
-
         class _Panel:
-            def set_library(self):
-                prefs.dir = other + "/"
-                users.adopt(prefs, second)
+            def takes_library(self, _folder):
+                return True
+
+            def open_library(self):
+                return True
 
             def tile_icon_models(self):
                 return ()
 
         self.dialog._panel = _Panel()
-        self.dialog.change_library_path()
+        self.dialog.pick_library(other + "/")
+        combo = self.dialog.cbb_library_user
+        combo.setCurrentIndex(combo.findData(self.second))
+        self.assertTrue(self.dialog.apply_library())
         self.assertEqual(512, self.dialog.line_rendersize.value(),
                          "a shared row kept the previous library's value")
         self.assertEqual(self.SECOND, self.shown(),

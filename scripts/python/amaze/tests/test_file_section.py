@@ -1048,8 +1048,8 @@ class HoudiniPathTest(unittest.TestCase):
         self.assertTrue(collapsed.startswith("$HOME/"),
                         "the default style is not $HOME: %r" % collapsed)
 
-    def test_the_test_library_switch_freezes_the_real_path_rows(self):
-        """While the Test Library switch is on, the Library Path row is INERT - its browse button would otherwise write the real field with a test path, the one combination that could lose a library; the Cache Path row stays live, because the cache does not move with the library."""
+    def test_the_test_library_switch_rests_the_library_rows(self):
+        """Test Library on: the Library and User rows rest, the Cache Path row stays live."""
         import os
         import shutil
         import tempfile
@@ -1060,11 +1060,13 @@ class HoudiniPathTest(unittest.TestCase):
         real_library = p.dir
         dlg = prefs_dialog.PrefsDialog(p, panel=None)
         self.addCleanup(dlg.deleteLater)
+        resting = (dlg.cbb_library, dlg._btn_add_library, dlg._btn_manage_libraries,
+                   dlg.cbb_library_user)
 
         self.assertEqual("Test Library", dlg._cbx_test_mode.text())
-        self.assertTrue(dlg.line_workdir.isEnabled(),
-                        "the Library Path row starts frozen")
-        self.assertEqual(real_library, dlg.line_workdir.text())
+        self.assertTrue(all(widget.isEnabled() for widget in resting),
+                        "the Library rows start resting")
+        self.assertEqual(real_library, dlg._picked_library())
 
         folder = tempfile.mkdtemp(prefix="amaze_switch_")
         self.addCleanup(shutil.rmtree, folder, True)
@@ -1074,15 +1076,13 @@ class HoudiniPathTest(unittest.TestCase):
         dlg._sync_test_mode_rows()
 
         self.assertEqual(
-            test_support.posix_path(os.path.join(folder, "lib") + "/"),    # p.dir answers forward-slashed, so the expectation is spelled that way - bare os.path.join reddens on Windows
+            test_support.posix_path(os.path.join(folder, "lib") + "/"),    # forward-slashed, as p.dir answers
             p.dir)
-        self.assertEqual(p.dir, dlg.line_workdir.text(),
-                         "the row still shows the real library while "
-                         "the panel reads the test one")
-        self.assertFalse(dlg.line_workdir.isEnabled(),
-                         "the Library Path row is live while Test "
-                         "Library is on - its browse writes the real "
-                         "field")
+        self.assertEqual(real_library, dlg._picked_library(),
+                         "the Library list left the real library")
+        self.assertFalse(any(widget.isEnabled() for widget in resting
+                             + (dlg._btn_apply_library, dlg._btn_accept_library)),
+                         "a Library row is live while Test Library is on")
         self.assertTrue(dlg.line_cache.isEnabled(),
                         "the Cache Path row was frozen - the cache "
                         "does not move with the library")
@@ -1091,7 +1091,7 @@ class HoudiniPathTest(unittest.TestCase):
         dlg._sync_test_mode_rows()
         self.assertEqual(real_library, p.dir,
                          "the real library did not come back")
-        self.assertTrue(dlg.line_workdir.isEnabled())
+        self.assertTrue(all(widget.isEnabled() for widget in resting))
 
     def test_default_puts_the_cache_path_back(self):
         """The Cache Path row's Default button CLEARS the preference rather than writing today's default as a literal path, so the cache keeps following this machine's own convention."""
@@ -1113,33 +1113,35 @@ class HoudiniPathTest(unittest.TestCase):
                          "the field still shows the old path")
 
     def test_the_user_field_shows_a_real_name(self):
-        """The User row shows WHO this is - the one identity keying the per-user things and signing versions - and a fresh prefs mints the first user RIGHT THERE and shows the name, never a promise for later."""
+        """The User row shows names, never UIDs, and makes nobody before Apply."""
         from amaze.core import users
         from amaze.dialogs import prefs_dialog
         p = test_support.fixture_prefs(self)
-        p.library_user = ""    # NOBODY, said out loud - the mint only happens on an empty pointer
+        p.library_user = ""
         dlg = prefs_dialog.PrefsDialog(p, panel=None)
         self.addCleanup(dlg.deleteLater)
-        shown = dlg.cbb_library_user.currentText()
-        self.assertIn(shown, users.PLACEHOLDER_NAMES,
-                      "a library with nobody in it must mint its first "
-                      "user right here and show the NAME")
+        self.assertEqual(-1, dlg.cbb_library_user.currentIndex(),
+                         "somebody was picked in a library with nobody in it")
+        self.assertEqual({}, users.all_users(p), "opening Preferences made a user")
+        dlg.create_library_user("  MyOwnName  ")
+        self.assertEqual("MyOwnName", dlg.cbb_library_user.currentText())
+        self.assertEqual({}, users.all_users(p), "a user was made before Apply")
+        self.assertTrue(dlg.apply_library())
         uid = p.library_user
-        self.assertNotEqual(shown, uid,
-                            "the box is showing the UID - a person no "
-                            "more reads that than an IP address")
-        dlg.rename_library_user("  MyOwnName  ")
-        self.assertEqual("MyOwnName", users.name_for(p, uid),
-                         "typed name (trimmed) did not relink the UID")
+        self.assertEqual({uid: "MyOwnName"}, users.all_users(p),
+                         "Apply did not make the user it showed")
+        self.assertNotEqual("MyOwnName", uid,
+                            "the pointer holds the NAME, not a UID")
+        dlg.rename_library_user("Renamed")
+        self.assertEqual("Renamed", users.name_for(p, uid),
+                         "the rename did not relink the UID")
         self.assertEqual(uid, p.library_user,
-                         "a RENAME minted a new identity - everything "
-                         "already tagged would be orphaned")
-        self.assertEqual("MyOwnName", dlg.cbb_library_user.currentText(),
+                         "a RENAME minted a new identity")
+        self.assertEqual("Renamed", dlg.cbb_library_user.currentText(),
                          "the dropdown still shows the old name")
-        self.assertEqual(1, len(users.all_users(p)))
 
-    def test_the_user_row_switches_between_the_librarys_users(self):
-        """The User row is a dropdown over the LIBRARY's users, so a person on another machine picks themselves instead of becoming a stranger."""
+    def test_the_user_row_switches_between_the_librarys_users_on_apply(self):
+        """The User row lists the library's users; a pick switches this computer on Apply."""
         from amaze.core import users
         from amaze.dialogs import prefs_dialog
         p = test_support.fixture_prefs(self)
@@ -1155,8 +1157,11 @@ class HoudiniPathTest(unittest.TestCase):
         self.assertEqual("Cobalt", combo.currentText(),
                          "the box opened on somebody else")
         combo.setCurrentIndex(combo.findData(second))
+        self.assertEqual(first, p.library_user,
+                         "picking a user switched this computer before Apply")
+        self.assertTrue(dlg.apply_library())
         self.assertEqual(second, p.library_user,
-                         "picking a user did not switch this machine")
+                         "Apply did not switch this computer to the picked user")
 
     def test_the_pref_validates_and_defaults_home(self):
         from amaze.prefs import prefs as prefs_module
@@ -3245,32 +3250,21 @@ class TheUserPickerFollowsTheLibrary(unittest.TestCase):
         moved = test_support.fixture_prefs(self)
         moved.dir = second
         moved.library_user = ""
-        users.current(moved)          # mints library B's first user
-        theirs = users.name_for(moved, moved.library_user)
-        return dialog, first, second, moved.library_user, theirs
+        theirs = "Theirs"
+        return dialog, first, second, users.create(moved, theirs), theirs
 
-    def test_changing_the_library_reloads_the_picker(self):
+    def test_picking_a_library_lists_its_users(self):
         from amaze.core import users
         dialog, first, second, uid_b, name_b = self._dialog_on_a_second_library()
         self.assertNotIn(uid_b, users.all_users(first),
                          "premise: both fixture libraries hold the same user")
-
-        class _Panel:
-            def __init__(self, prefs, path):
-                self._prefs, self._path = prefs, path
-
-            def set_library(self):
-                self._prefs.dir = self._path      # what the real flow lands on
-
-        dialog._panel = _Panel(first, second)
-        dialog.change_library_path()
-
+        dialog.pick_library(second)
         listed = [dialog.cbb_library_user.itemData(i)
                   for i in range(dialog.cbb_library_user.count())]
-        self.assertIn(
-            uid_b, listed,
-            "the picker still lists the OLD library's users after a "
-            "switch - it only caught up when Preferences was reopened")
+        self.assertIn(uid_b, listed,
+                      "the picker still lists the open library's users")
+        self.assertEqual(uid_b, dialog.cbb_library_user.currentData(),
+                         "the library's only user was not picked")
 
     def test_every_method_that_swaps_the_library_reloads_the_picker(self):
         """By AST over the whole dialog, so a THIRD way onto another library added later is caught too - not just the two known ones."""

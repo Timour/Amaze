@@ -38,9 +38,11 @@ tab strip, adds the Amaze panel.
 strip, adds the Amaze shelf. Houdini stores shelf tabs per machine and
 per Houdini build, so the shelf is added again after an upgrade.
 
-**Preferences ▸ Library ▸ Library Path** sets the library folder, where
-saved assets are kept. The library belongs outside the plugin folder,
-which updates replace. Cloud-synced folders are supported.
+**Preferences ▸ Library ▸ Add** picks the library folder, where saved
+assets are kept: an existing library, or an empty folder for a new one.
+Pick your user or create one, then press **Apply**. The library belongs
+outside the plugin folder, which updates replace. Cloud-synced folders
+are supported.
 
 The library holds a list of the assets in JSON and one Houdini node
 archive per asset (`.mat` and `.interface`). Both are standard Houdini
@@ -631,29 +633,35 @@ the scene. It has six tabs.
 
 <img src="docs/images/prefs_library.png" width="440">
 
-**Library Path** and its `...` button set the library folder. **Clean Up
-Library**, **Reload Library** and **Open Library Folder** act on the
-library. **Material Versions** turns [versions](#versions) on and off.
+**Library** lists the libraries this computer has opened, the most
+recent first. Picking one shows its users and its format; **Apply**
+opens it with the user picked, and **Accept** does the same and closes
+Preferences. Until then the open library stays open. **Add** puts a
+library folder in the list, or an empty folder for a new library. The
+list holds 20 libraries; **Manage** takes libraries off it. **Clean
+Up**, **Reload** and **Show Folder** act on the open library.
 
-**User** is the user name in this library. Favorites, File folders and
-saved versions belong to the user, so the same user on another computer
-sees the same items. The menu switches users, **Rename** renames the
-current user, **Create a new user...** adds a user and switches to it,
-and **Delete** removes a user with their favorites and registered
-folders on every computer that uses the library, after a confirmation.
-A computer still signed in as that user asks for a user the next time
-Amaze opens.
+**Format** is the library's version. Version 2 keeps scene captures in
+the library. For a library from an older Amaze, the line beside
+**Apply** says that applying updates it; Amaze then moves this
+computer's scene captures into the library's `captures` folder, and the
+originals stay in Amaze's holding folder for 30 days. A library from a
+newer Amaze cannot be applied, and the line says to update Amaze.
+
+**Material Versions** turns [versions](#versions) on and off.
+
+**User** lists the users in the picked library. Favorites, File folders
+and saved versions belong to the user, so the same user on another
+computer sees the same items. Amaze picks the user with the same name as
+the current one, or the library's only user; otherwise pick one, or
+**Create a new user...**. Two users in one library cannot share a name.
+**Rename** renames the user shown, and **Delete** removes them with
+their favorites and registered folders on every computer that uses the
+library, after a confirmation. A computer still signed in as that user
+asks for a user the next time Amaze opens.
 
 **Cache Path** and **Delete Local Cache** manage the thumbnail cache on
 this machine.
-
-**Library version** is the library's own version. Version 2 keeps
-scene captures in the library. When Amaze first opens a library from an
-older Amaze, it updates the library to its version and moves this
-computer's scene captures into the library's `captures` folder. The
-originals stay in Amaze's holding folder for 30 days. Amaze does not
-open a library that a newer Amaze has updated; it offers to update
-Amaze instead.
 
 ### Render
 
@@ -711,8 +719,10 @@ report is sent with **Submit** on that page.
 
 **Debug Mode**, **Open Log**, **Save Log...** and **Clear Log** control
 the debug log. **Test Library** switches Amaze to a test library in the
-folder next to it; switched off, Amaze returns to the real Library Path,
-Cache Path and registered folders. **Add-On beta versions** sets which
+folder next to it, with the user of the same name, which it creates
+there when the test library has none; switched off, Amaze returns to the
+library picked on the Library tab, its Cache Path and registered
+folders. **Add-On beta versions** sets which
 version of each add-on Check for Updates on the Add-On tab installs: the
 newest beta when on, the newest release when off.
 
@@ -729,7 +739,7 @@ newest beta when on, the newest release when off.
 
 ## Housekeeping and troubleshooting
 
-**Clean Up Library** (Preferences ▸ Library) scans the library in one
+**Clean Up** (Preferences ▸ Library) scans the library in one
 pass for entries with missing files, uncategorized assets, category
 names to normalise, registered folders that no longer exist and
 favorites that point at missing files, and reports the result in one
@@ -741,8 +751,8 @@ Files that no asset list uses are moved to Amaze's holding folder on
 this computer, outside the library, named in the summary and kept for
 30 days. Folders on drives that are not mounted are skipped.
 
-**Repair**, on the Amaze shelf, repairs a library when Clean Up Library
-refuses or the panel does not open. It reads the library, reports the
+**Repair**, on the Amaze shelf, repairs a library when Clean Up refuses
+or the panel does not open. It reads the library, reports the
 problems and offers two fixes: rebuilding the asset list from the
 recovery copy stored with each asset, or restoring a snapshot. When
 `settings.json`, the settings file that names the library, is unreadable

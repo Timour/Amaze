@@ -245,11 +245,18 @@ counts (every row zero). A ninth model joins by declaring itself;
 the newer-library refusal, `actions/library.py`'s `prepare`, the models
 built (`setup`) or switched (`switch_all_models`), `$AMAZELIB`, the
 version update, then the shipped starters. Opening the pane, Reload
-Library, Set Library, closing Preferences on another library and Test
-Library all call it, and `test_switch_rereads` pins the order for all
-five. What stays with the caller: Reload Library saves first, and
-opening the pane and closing Preferences apply the log and cache
-settings.
+Library, Apply on Preferences ▸ Library, closing Preferences on another
+library and Test Library all call it, and `test_switch_rereads` pins the
+order for all five. What stays with the caller: Reload Library saves
+first, opening the pane and closing Preferences apply the log and cache
+settings, and Apply asks `takes_library` before it writes anything.
+
+**A LIBRARY AND ITS USER ARE PICKED TOGETHER** (Preferences ▸ Library,
+P01). The Library list is settings.json's `libraries`; picking one shows
+its users from its own `users.json` and preselects by name, then the
+only user. Nothing switches until Apply, which opens the library with
+the picked user and puts both back when it stays closed. A user named
+for a library not yet made is created after the library opens.
 
 **The Sidebar Menu** is the same table, same builder (2026-08-04):
 `Section.SIDEBAR_MENU`, rendered by the same `panel/grid.py` code that
@@ -1159,7 +1166,7 @@ actions/addons.py         the add-on check and install the Add-On tab
                           runs: which store versions are newer, then
                           fetching and installing them, each answered
                           in one sentence
-actions/clean.py          Clean Up Library's work in one pass: each
+actions/clean.py          Clean Up's work in one pass: each
                           section's integrity pass, then dead folder
                           pointers and File favorites; the panel asks
                           before and shows the report after

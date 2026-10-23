@@ -411,6 +411,24 @@ def reopened_panel(testcase):
     return panel
 
 
+def apply_library(testcase, panel, folder, user: str = "", dialog=None) -> bool:
+    """Switch `panel` to `folder` as Preferences does: pick it and a user, then Apply, saves real."""
+    from unittest import mock
+    from amaze.dialogs import prefs_dialog
+    from amaze.prefs import persistence
+    if dialog is None:
+        dialog = prefs_dialog.PrefsDialog(panel.prefs, panel=panel)
+        testcase.addCleanup(dialog.deleteLater)
+    dialog.pick_library(folder)
+    combo = dialog.cbb_library_user
+    if user and combo.findText(user) >= 0:
+        combo.setCurrentIndex(combo.findText(user))
+    elif user or combo.currentIndex() < 0:
+        dialog.create_library_user(user or "Tester")
+    with mock.patch.object(prefs.Prefs, "save", persistence._Persistence.save):    # a switch re-reads it
+        return dialog.apply_library()
+
+
 def fixture_unconfigured_panel(testcase):
     """A REAL AmazePanel with NO library configured - the first-run state - with `fixture_panel`'s guards plus the LEGACY path blanked, so `load()` cannot migrate the real settings into the "unconfigured" panel. ▸p/harness-isolation"""
     from amaze.panel import panel as panel_mod       # reloads hostos

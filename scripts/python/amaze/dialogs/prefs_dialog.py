@@ -14,7 +14,8 @@ from amaze import amazetheme
 from amaze import branding
 from amaze.core import (debug, keyed_store, library_policy, renderers,
                         texture_library, users)
-from amaze.dialogs import base_dialog, user_dialog
+from amaze.actions import library as library_actions
+from amaze.dialogs import base_dialog, library_dialog, user_dialog
 from amaze.helpers import hostos
 from amaze.core import tile_icons
 from amaze.helpers import theme
@@ -30,7 +31,8 @@ LINK_COLOR = amazetheme.LINK_COLOR   # About-tab links ▸p/one-design-document
 PREFS_FRAMES = ("P01", "P02", "P03a", "P03b", "P04", "P05", "P06")   # the drawn frame per page, in tab order; a sub-tab is a page ▸p/one-design-document
 
 VERSION_STEM = branding.APP_NAME + " v"   # what the drawn version line opens with; the number after it is a sample, and the widget goes on to carry the updater's answers
-LIBRARY_VERSION_STEM = "Library version "   # P01's drawn line opens with it; its number is a sample
+FORMAT_STEM = amazetheme.LABEL_LIBRARY_FORMAT.split("%")[0]    # P01's drawn Format line opens with it
+APPLY_LINE_STEM = amazetheme.LABEL_UPGRADES_LIBRARY.split("%")[0]    # and the line beside Apply
 
 _logo_cache = None   # rendered once and reused as a QTextDocument resource, so the About page can reference it as an img src
 
@@ -106,6 +108,18 @@ def _show_quietly(widget, value) -> None:
 def _chooser_path(path: str) -> str:
     """A folder spelled for `selectFile` and for prefs: forward slashes, trailing one only at a root."""
     return hostos.canonical_path_key(path) if path else ""   # empty stays empty: `canonical_path_key("")` is `"."`, which would open the chooser on the process working directory
+
+
+def _same_folder(one: str, other: str) -> bool:
+    """Whether two spellings name one folder; an empty one names none."""
+    return bool(one and other) and hostos.comparable_path(one) == hostos.comparable_path(other)
+
+
+def _ink(label, color: str) -> None:
+    """Colour a label's text, through a sheet because Houdini's own sheet outranks a palette."""
+    ink = QtGui.QColor(color)
+    label.setStyleSheet("QLabel { color: rgba(%d, %d, %d, %d); }"
+                        % (ink.red(), ink.green(), ink.blue(), ink.alpha()))
 
 
 def _content_holder(inner) -> QtWidgets.QWidget:
@@ -217,43 +231,112 @@ class PrefsDialog(base_dialog.AssetDialog):
             tab_widget.setCurrentIndex(index)
         return self.frame_page(frame_key)
 
-    def _reload_library_users(self) -> None:
-        """Fill the picker and select the current user, signals held so the refill cannot switch user."""
-        combo = self.cbb_library_user
-        uid = users.current(self._prefs)
+    NEW_USER = "\x00new"    # itemData for a user named here, created on Apply
+
+    def _picked_library(self) -> str:
+        """The library the Library list shows."""
+        return str(self.cbb_library.currentData() or "")
+
+    def _picked_is_open(self) -> bool:
+        return _same_folder(self._picked_library(), self._prefs.real_dir)
+
+    def _fill_libraries(self, picked: str = "") -> None:
+        """The Library list with the open library always in it; `picked` shown, else the open one."""
+        open_dir = self._prefs.real_dir
+        folders = []
+        for folder in self._added_libraries[::-1] + [open_dir] + self._prefs.libraries:
+            if folder and not any(_same_folder(folder, known) for known in folders):
+                folders.append(folder)
+        combo = self.cbb_library
         with QtCore.QSignalBlocker(combo):
             combo.clear()
-            user_dialog.fill_users(combo, users.all_users(self._prefs))
-            combo.setCurrentIndex(max(combo.findData(uid), 0) if uid else -1)
-        self._btn_edit_user.setEnabled(bool(uid))
-        self._btn_delete_user.setEnabled(bool(uid))
+            for folder in folders:
+                combo.addItem(library_dialog.library_name(folder), folder)
+                combo.setItemData(combo.count() - 1, library_dialog.shown_path(folder),
+                                  QtCore.Qt.ItemDataRole.ToolTipRole)
+            wanted = picked or open_dir
+            combo.setCurrentIndex(next((row for row, folder in enumerate(folders)
+                                        if _same_folder(folder, wanted)), -1))
+        self._stage_library()
+
+    def _stage_library(self, _index: int = 0) -> None:
+        """Show the picked library's users and what applying it does; nothing switches before Apply."""
+        self._new_user = ""
+        self._reload_library_users()
+        self.refresh_library_version()
+
+    def _known_users(self, folder: str) -> dict:
+        """`{uid: name}` in `folder`; nobody in a folder out of reach."""
+        if not folder or not os.path.isdir(folder):
+            return {}
+        return users.all_users(self._prefs, library=folder)
+
+    def _preselected(self, known: dict, folder: str) -> str:
+        """This computer's user, matched by name off the open library; else the only user; else nobody."""
+        current = str(self._prefs.library_user or "")
+        if _same_folder(folder, self._prefs.real_dir) and current in known:
+            return current
+        wanted = (users.name_for(self._prefs, current) if current else "").strip().casefold()
+        for uid, name in known.items():
+            if wanted and name.strip().casefold() == wanted:
+                return uid
+        return next(iter(known)) if len(known) == 1 else ""
+
+    def _reload_library_users(self, picked=None) -> None:
+        """Fill the User list for the picked library and select `picked`, else the user the rule picks."""
+        folder = self._picked_library()
+        known = self._known_users(folder)
+        if picked is None:
+            picked = self.NEW_USER if self._new_user else self._preselected(known, folder)
+        combo = self.cbb_library_user
+        with QtCore.QSignalBlocker(combo):
+            combo.clear()
+            user_dialog.fill_users(combo, known)
+            if self._new_user:
+                combo.insertItem(combo.count() - 1, self._new_user, self.NEW_USER)
+            combo.setCurrentIndex(combo.findData(picked) if picked else -1)
+        self._last_user_pick = combo.currentData()
+        self._sync_library_buttons()
 
     def _pick_library_user(self, index: int) -> None:
-        """Switch this machine to the chosen user - or, on the create row, ask for a name and switch to the new one; which is what a second machine does instead of becoming a stranger."""
+        """The create row asks for a name; any other pick waits for Apply."""
         data = self.cbb_library_user.itemData(index)
         if data == user_dialog.UserPickerDialog.CREATE:
             self._ask_create_library_user()
             return
-        if data:
-            users.adopt(self._prefs, data)
-            self._sync_rows()
+        self._last_user_pick = data
+        self._sync_library_buttons()
+
+    def _name_taken(self, name: str, besides: str = "") -> bool:
+        """Whether the picked library has another user called `name`."""
+        folder = self._picked_library()
+        return (bool(folder) and os.path.isdir(folder)
+                and users.name_taken(self._prefs, name, besides=besides, library=folder))
 
     def rename_library_user(self, name: str) -> None:
-        """Relink the current user's NAME; the UID is untouched so everything already tagged stays tagged - one field write, not a migration."""
-        uid = users.current(self._prefs)
-        if uid and users.rename(self._prefs, uid, name):
+        """Rename the user the User list shows: a new one before Apply, else in the open library."""
+        data = self.cbb_library_user.currentData()
+        name = str(name or "").strip()
+        if not name:
+            return
+        if data == self.NEW_USER:
+            self._new_user = name
             self._reload_library_users()
+        elif data and self._picked_is_open() and users.rename(self._prefs, data, name):
+            self._reload_library_users(picked=data)
 
     def _ask_rename_library_user(self) -> None:
-        uid = users.current(self._prefs)
-        if not uid:
+        data = self.cbb_library_user.currentData()
+        if not data:
             return
+        new = data == self.NEW_USER
         dialog = base_dialog.NameDialog(
-            "Rename User", users.name_for(self._prefs, uid), parent=self)
+            "Rename User", self._new_user if new else users.name_for(self._prefs, data),
+            parent=self)
         dialog.exec()
         if dialog.canceled:
             return
-        if users.name_taken(self._prefs, dialog.name, besides=uid):
+        if self._name_taken(dialog.name, besides="" if new else data):
             self._say_name_taken(dialog.name)
             return
         self.rename_library_user(dialog.name)
@@ -266,32 +349,32 @@ class PrefsDialog(base_dialog.AssetDialog):
                               title=branding.APP_NAME)
 
     def create_library_user(self, name: str) -> None:
-        """Mint a user and switch this machine to them - creating-then-becoming is this row's case; a second machine picking ITSELF is the first-open picker's."""
-        uid = users.create(self._prefs, name)
-        if uid:
-            users.adopt(self._prefs, uid)
-        self._sync_rows()
+        """Name a new user for the picked library; Apply creates them."""
+        self._new_user = str(name or "").strip()
+        self._reload_library_users()
 
     def _ask_create_library_user(self) -> None:
         dialog = base_dialog.NameDialog("Create User", "", parent=self)
         dialog.exec()
-        if dialog.canceled:
-            self._reload_library_users()    # the combo is sitting on the create row; put the real selection back
-            return
-        if users.name_taken(self._prefs, dialog.name):
+        if not dialog.canceled and dialog.name:
+            if not self._name_taken(dialog.name):
+                self.create_library_user(dialog.name)
+                return
             self._say_name_taken(dialog.name)
-            self._reload_library_users()
-            return
-        self.create_library_user(dialog.name)
+        self._reload_library_users(picked=self._last_user_pick)    # off the create row, back to the pick
 
     def delete_library_user(self, uid) -> None:
-        """Delete `uid` and everything tagged theirs; the row goes blank until somebody is picked - nobody is adopted silently."""
+        """Delete `uid` and everything tagged theirs from the open library; nobody is picked after."""
         if users.delete(self._prefs, uid):
             self._sync_rows()
 
     def _ask_delete_library_user(self) -> None:
-        uid = users.current(self._prefs)
-        if not uid:
+        uid = self.cbb_library_user.currentData()
+        if uid == self.NEW_USER:
+            self._new_user = ""
+            self._reload_library_users()
+            return
+        if not uid or not self._picked_is_open():
             return
         name = users.name_for(self._prefs, uid)
         answer = hou.ui.displayMessage(  # type: ignore
@@ -307,6 +390,133 @@ class PrefsDialog(base_dialog.AssetDialog):
         )
         if answer == 0:
             self.delete_library_user(uid)
+
+    def add_library(self) -> None:
+        """A library folder, or an empty one for a new library, into the Library list; Apply opens it."""
+        ui = getattr(hou, "ui", None)
+        if ui is None:
+            return
+        if len(self._prefs.libraries) >= prefs_mod.LIBRARY_LIST_LIMIT:
+            ui.displayMessage(messages.LIBRARY_LIST_FULL % prefs_mod.LIBRARY_LIST_LIMIT,
+                              severity=hou.severityType.Warning, title=branding.APP_NAME)
+            return
+        path = ui.selectFile(file_type=hou.fileType.Directory,
+                             title=messages.TITLE_CHOOSE_LIBRARY_FOLDER)
+        if not path:
+            return
+        folder = _chooser_path(hou.text.expandString(path))
+        if not prefs_mod.can_hold_a_library(folder):
+            ui.displayMessage(messages.LIBRARY_PATH_INVALID,
+                              severity=hou.severityType.Warning, title=branding.APP_NAME)
+            return
+        if library_actions.list_not_arrived(folder):
+            debug.event("prefs", "library not added - its list has not arrived", dir=folder)
+            ui.displayMessage(messages.STARTER_SEED_REFUSED_DIRECTORY_HELD_LIBRARY,
+                              severity=hou.severityType.Warning, title=messages.TITLE_AMAZE)
+            return
+        self.pick_library(folder)
+
+    def pick_library(self, folder: str) -> None:
+        """Show `folder` in the Library list, added there until applied when the list lacks it."""
+        folder = hostos.canonical_path_key(folder).rstrip("/") + "/"    # the library folder's spelling
+        if not any(_same_folder(folder, known)
+                   for known in [self._prefs.real_dir] + self._prefs.libraries
+                   + self._added_libraries):
+            self._added_libraries.append(folder)
+        self._fill_libraries(picked=folder)
+
+    def manage_libraries(self) -> None:
+        """Manage Libraries (D15), then the Library list as it stands after it."""
+        dialog = library_dialog.ManageLibrariesDialog(
+            self._prefs, open_library=self._prefs.real_dir, parent=self)
+        dialog.exec()
+        picked = self._picked_library()
+        if dialog.removed:
+            gone = any(_same_folder(picked, folder) for folder in dialog.removed)
+            self._fill_libraries(picked="" if gone else picked)
+
+    def apply_library(self) -> bool:
+        """Open the library and the user the two lists show; False when that could not be done."""
+        if not self._btn_apply_library.isEnabled():
+            return False
+        folder = self._picked_library()
+        uid = self.cbb_library_user.currentData()
+        switching = not self._picked_is_open()
+        if not switching and uid == self._prefs.library_user:
+            return True
+        self._prefs.save()    # before the switch: unsaved edits belong to the library they were made in
+        if switching and not self._switch_library(folder, uid):
+            self._fill_libraries(picked=folder)
+            return False
+        if uid == self.NEW_USER:
+            name, uid = self._new_user, users.create(self._prefs, self._new_user)
+            if not uid:
+                if users.name_taken(self._prefs, name):
+                    self._say_name_taken(name)
+                self._fill_libraries()
+                return False
+        users.adopt(self._prefs, uid)
+        debug.event("prefs", "library and user applied", library=self._prefs.dir, user=uid)
+        self._added_libraries = [known for known in self._added_libraries
+                                 if not _same_folder(known, folder)]
+        self._fill_libraries()
+        self._sync_rows()
+        return True
+
+    def _switch_library(self, folder: str, uid) -> bool:
+        """Open `folder` with the picked user; both go back when it stays closed."""
+        if self._panel is not None and not self._panel.takes_library(folder):
+            return False    # asked before anything is written to it
+        before = str(self._prefs.library_user or "")
+        if uid != self.NEW_USER:
+            self._prefs.library_user = uid    # before the models switch, so they read this user's stars
+        self._prefs.dir = folder
+        self._prefs.save()
+        opened = self._panel is None or self._panel.open_library()
+        if not opened:
+            self._prefs.library_user = before
+            self._prefs.save()
+        self._sync_rows()    # the rows show the library now open, whichever it is
+        return opened
+
+    def accept_library(self) -> None:
+        """Apply, then close Preferences, as Houdini's own Accept does."""
+        if self.apply_library():
+            self.close()
+
+    def _library_note(self, folder: str) -> tuple:
+        """(Format line, line beside Apply, whether they warn, whether Apply may run) for `folder`."""
+        known = library_policy.LIBRARY_VERSION
+        if not folder:
+            return "", "", False, False
+        if not os.path.isdir(folder):
+            return "", amazetheme.LABEL_LIBRARY_UNREACHABLE, True, False
+        if not library_actions.index_present(folder):
+            return amazetheme.LABEL_LIBRARY_FORMAT % known, "", False, True    # set up on Apply
+        found = library_policy.library_version(folder)
+        shown = amazetheme.LABEL_LIBRARY_FORMAT % found
+        if found > known:
+            return shown, amazetheme.LABEL_LIBRARY_TOO_NEW, True, False
+        if found < known:
+            return shown, amazetheme.LABEL_UPGRADES_LIBRARY % known, True, True
+        return shown, "", False, True
+
+    def _sync_library_buttons(self) -> None:
+        """Apply needs a library and a user; what acts on a library waits until it is the open one."""
+        testing = bool(self._prefs.test_mode and self._prefs.test_dir)
+        is_open = self._picked_is_open()
+        uid = self.cbb_library_user.currentData()
+        picked = bool(uid) and uid != user_dialog.UserPickerDialog.CREATE
+        may_apply = self._library_note(self._picked_library())[3]
+        for widget in (self.cbb_library, self._btn_add_library,
+                       self._btn_manage_libraries, self.cbb_library_user):
+            widget.setEnabled(not testing)    # the test library brings its own user
+        for widget in (self._btn_clean_up, self._btn_reload, self._btn_show_folder):
+            widget.setEnabled(is_open)
+        for widget in (self._btn_edit_user, self._btn_delete_user):
+            widget.setEnabled(not testing and (uid == self.NEW_USER or (is_open and picked)))
+        for widget in (self._btn_apply_library, self._btn_accept_library):
+            widget.setEnabled(not testing and picked and may_apply)
 
     def set_allow_overwrite(self, checked: bool) -> None:
         """Write the overwrite policy to the LIBRARY; turning it ON is the direction that exposes other people's work, so that is the direction confirmed."""
@@ -330,34 +540,34 @@ class PrefsDialog(base_dialog.AssetDialog):
 
     def _build_library_tab(self) -> QtWidgets.QWidget:
         page, form = self._tab_page()
+        self._added_libraries: list = []    # folders Add put in the Library list, until applied
+        self._new_user = ""                  # a user named for the picked library, created on Apply
+        self._last_user_pick = None
 
-        self.line_workdir = QtWidgets.QLineEdit(self._prefs.dir)
-        self.line_workdir.setReadOnly(True)
-        self.line_workdir.setToolTip(ui_helpers.tooltip_text(
-            tooltips.PREFS_LIBRARY_PATH))
-        browse_lib = QtWidgets.QPushButton("...")
-        browse_lib.setFixedWidth(theme.ui_px(amazetheme.PREFS_BROWSE_W))
-        browse_lib.clicked.connect(self.change_library_path)
-        form.addRow(self._label("Library Path"), self._path_row(self.line_workdir, browse_lib))
+        self.cbb_library = ui_helpers.DesignedComboBox()    # each folder by name, its path as tooltip
+        self.cbb_library.setToolTip(ui_helpers.tooltip_text(tooltips.PREFS_LIBRARY))
+        self._btn_add_library = self._library_button(
+            "Add", self.add_library, tooltips.PREFS_ADD_LIBRARY)
+        form.addRow(self._label("Library"),
+                    self._path_row(self.cbb_library, self._btn_add_library))
 
-        cleanup_btn = QtWidgets.QPushButton("Clean Up Library")
-        cleanup_btn.clicked.connect(self._panel_call("cleanup_db"))
-        cleanup_btn.setToolTip(ui_helpers.tooltip_text(
-            tooltips.PREFS_CLEAN_UP_LIBRARY))
-        form.addRow(self._label(""), cleanup_btn)
-        reload_btn = QtWidgets.QPushButton("Reload Library")
-        reload_btn.clicked.connect(self._panel_call("open"))
-        reload_btn.setToolTip(ui_helpers.tooltip_text(
-            tooltips.PREFS_RELOAD_LIBRARY))
-        form.addRow(self._label(""), reload_btn)
-        open_btn = QtWidgets.QPushButton("Open Library Folder")
-        open_btn.clicked.connect(self._panel_call("open_usdlib_folder"))
-        open_btn.setToolTip(ui_helpers.tooltip_text(
-            tooltips.PREFS_OPEN_LIBRARY_FOLDER))
-        form.addRow(self._label(""), open_btn)
+        self._btn_clean_up = self._library_button(
+            "Clean Up", self._panel_call("cleanup_db"), tooltips.PREFS_CLEAN_UP_LIBRARY)
+        self._btn_reload = self._library_button(
+            "Reload", self._panel_call("open"), tooltips.PREFS_RELOAD_LIBRARY)
+        self._btn_show_folder = self._library_button(
+            "Show Folder", self._panel_call("open_usdlib_folder"),
+            tooltips.PREFS_OPEN_LIBRARY_FOLDER)
+        self._btn_manage_libraries = self._library_button(
+            "Manage", self.manage_libraries, tooltips.PREFS_MANAGE_LIBRARIES)
+        form.addRow(self._label(""), self._button_row(
+            self._btn_clean_up, self._btn_reload, self._btn_show_folder,
+            self._btn_manage_libraries))
+        self._lbl_library_format = QtWidgets.QLabel()    # filled by refresh_library_version
+        form.addRow(self._label(""), self._lbl_library_format)
 
         self._add_divider(form)
-        # NOT A PREFERENCE: it lives in the library's own policy.json, because a switch protecting a SHARED thing must travel with the thing
+        # NOT A PREFERENCE: it lives in the library's policy.json and travels with it
         self._cbx_allow_overwrite = ui_helpers.ToggleSwitch(
             "Material Versions")
         self._cbx_allow_overwrite.setChecked(
@@ -379,9 +589,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         self._btn_delete_user.setToolTip(ui_helpers.tooltip_text(
             tooltips.PREFS_DELETE_USER))
         self._btn_delete_user.clicked.connect(self._ask_delete_library_user)
-        self._reload_library_users()
-        self.cbb_library_user.currentIndexChanged.connect(
-            self._pick_library_user)
+        self.cbb_library_user.setPlaceholderText(amazetheme.LABEL_PICK_USER)
         form.addRow(self._label("User"),
                     self._path_row(self.cbb_library_user,
                                    self._btn_edit_user,
@@ -411,37 +619,46 @@ class PrefsDialog(base_dialog.AssetDialog):
         form.addRow(self._label(""), clear_cache_btn)
 
         self._add_divider(form)
-        self._lbl_library_version = QtWidgets.QLabel()    # filled by _sync_test_mode_rows
-        form.addRow(self._label(""), self._lbl_library_version)
+        self._lbl_library_apply = QtWidgets.QLabel()    # what Apply will do, when it warns
+        self._lbl_library_apply.setAlignment(    # ending at Apply, as drawn
+            QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
+        self._btn_apply_library = self._library_button(
+            amazetheme.BTN_APPLY, self.apply_library, tooltips.PREFS_APPLY_LIBRARY)
+        self._btn_accept_library = self._library_button(
+            amazetheme.BTN_ACCEPT, self.accept_library, tooltips.PREFS_ACCEPT_LIBRARY)
+        form.addRow(self._apply_row(self._lbl_library_apply, self._btn_apply_library,
+                                    self._btn_accept_library))
 
         self._tab_built["P01"] = {
-            "QLineEdit": (self.line_workdir, self.line_cache),
-            "QComboBox": (self.cbb_library_user,),
+            "QLineEdit": (self.line_cache,),
+            "QComboBox": (self.cbb_library, self.cbb_library_user),
         }
-        self._real_path_widgets = (self.line_workdir, browse_lib)   # inert under Test Mode: showing the test path while writing the real field could lose a library. CACHE rows stay live, Test Mode does not move the cache
-        self._sync_test_mode_rows()
+        self._fill_libraries()
+        self.cbb_library.currentIndexChanged.connect(self._stage_library)
+        self.cbb_library_user.currentIndexChanged.connect(self._pick_library_user)
         return page
 
+    def _library_button(self, text: str, clicked, tooltip: str) -> QtWidgets.QPushButton:
+        button = QtWidgets.QPushButton(text)
+        button.clicked.connect(clicked)
+        button.setToolTip(ui_helpers.tooltip_text(tooltip))
+        return button
+
     def _sync_test_mode_rows(self) -> None:
-        """Show where the library actually points, freezing the library row while the test switch is on."""
-        on = bool(self._prefs.test_mode and self._prefs.test_dir)
-        for widget in getattr(self, "_real_path_widgets", ()):
-            widget.setEnabled(not on)
-        self.line_workdir.setText(self._prefs.dir)
+        """The Library and User rows rest while Test Library is on; the test library brings its user."""
         self.refresh_library_version()
 
     def refresh_library_version(self) -> None:
-        """Re-read the library's version: an update can land while this window is open."""
-        label = getattr(self, "_lbl_library_version", None)
-        if label is not None:
-            label.setText(self._library_version_line())
-
-    def _library_version_line(self) -> str:
-        """`Library version 2` for the library the dialog points at; "" with none."""
-        library_dir = str(self._prefs.dir or "")
-        if not library_dir or not os.path.isdir(library_dir):
-            return ""
-        return LIBRARY_VERSION_STEM + str(library_policy.library_version(library_dir))
+        """Re-read the picked library's format: an update can land while this window is open."""
+        label = getattr(self, "_lbl_library_format", None)
+        if label is None:
+            return
+        shown, line, warn, _may_apply = self._library_note(self._picked_library())
+        label.setText(shown)
+        _ink(label, amazetheme.P01_WARNING_INK if warn else amazetheme.P01_FORMAT_INK)
+        self._lbl_library_apply.setText(line)
+        _ink(self._lbl_library_apply, amazetheme.P01_WARNING_INK)
+        self._sync_library_buttons()
 
     def _build_render_tab(self) -> QtWidgets.QWidget:
         page, form = self._tab_page()
@@ -1001,8 +1218,10 @@ class PrefsDialog(base_dialog.AssetDialog):
                 ui_helpers.pin_drawn_series(widgets, frame_key, kind)
         ui_helpers.pin_drawn_stem(self._lbl_version, "P06", "QLabel",
                                   VERSION_STEM, height=False)
-        ui_helpers.pin_drawn_stem(self._lbl_library_version, "P01", "QLabel",
-                                  LIBRARY_VERSION_STEM, height=False)
+        ui_helpers.pin_drawn_stem(self._lbl_library_format, "P01", "QLabel",
+                                  FORMAT_STEM, height=False)
+        ui_helpers.pin_drawn_stem(self._lbl_library_apply, "P01", "QLabel",
+                                  APPLY_LINE_STEM, height=False)
         ui_helpers.pin_drawn(self._addon_list, "P05", "QTextBrowser", None, height=False)
         ui_helpers.pin_drawn(self._lbl_addons, "P05", "QLabel", None, height=False)
         for row in self._path_rows:
@@ -1066,6 +1285,28 @@ class PrefsDialog(base_dialog.AssetDialog):
         h.addWidget(browse_btn)
         for widget in extra:
             h.addWidget(widget)
+        self._path_rows.append(row)
+        return row
+
+    def _button_row(self, *buttons) -> QtWidgets.QWidget:
+        """Buttons side by side from the field column; the gaps land in `_space_pinned_row`."""
+        row = QtWidgets.QWidget()
+        h = QtWidgets.QHBoxLayout(row)
+        h.setContentsMargins(0, 0, 0, 0)
+        for button in buttons:
+            h.addWidget(button)
+        h.addStretch(1)
+        self._path_rows.append(row)
+        return row
+
+    def _apply_row(self, label, *buttons) -> QtWidgets.QWidget:
+        """A line from the content column's left edge, then buttons ending at its right edge."""
+        row = QtWidgets.QWidget()
+        h = QtWidgets.QHBoxLayout(row)
+        h.setContentsMargins(0, 0, 0, 0)
+        h.addWidget(label)
+        for button in buttons:
+            h.addWidget(button)
         self._path_rows.append(row)
         return row
 
@@ -1135,15 +1376,6 @@ class PrefsDialog(base_dialog.AssetDialog):
         return form
 
 
-    def change_library_path(self) -> None:
-        """Browse for a new library directory, through the panel's own set_library flow: validation, seed copy, model switching."""
-        if self._panel is None:
-            return
-        self._prefs.save()    # before the switch: unsaved edits belong to the library they were made in
-        self._panel.set_library()
-        self.line_workdir.setText(self._prefs.dir)
-        self._sync_rows()
-
     def change_cache_path(self) -> None:
         """Pick a custom thumbnail-cache location; an empty selection keeps the current one and existing caches regenerate at the new location on demand."""
         start = _chooser_path(self._prefs.cache_dir or hostos.cache_root())
@@ -1178,14 +1410,21 @@ class PrefsDialog(base_dialog.AssetDialog):
             hou.ui.displayMessage(  # type: ignore
                 messages.TEST_FOLDER_NOT_PREPARED % what)
             return
+        name = self._user_name()    # read in the library being left
         self._prefs.save()    # before the switch: unsaved edits belong to the library they were made in
         self._prefs.test_dir = folder
         self._prefs.save()
         self.line_test_dir.setText(folder)
-        self._apply_test_mode()
+        self._apply_test_mode(name)
+
+    def _user_name(self) -> str:
+        """This computer's user's name in the open library; "" for nobody."""
+        uid = str(self._prefs.library_user or "")
+        return users.name_for(self._prefs, uid) if uid else ""
 
     def set_test_mode(self, on: bool) -> None:
         """Switch the library and cache onto the test folder, or back; turning it on with no folder asks for one first, since the overlay ignores a blank one."""
+        name = self._user_name()    # read in the library being left
         self._prefs.save()    # before the switch: unsaved edits belong to the library they were made in
         self._prefs.test_mode = bool(on)
         if on and not self._prefs.test_dir:
@@ -1199,9 +1438,9 @@ class PrefsDialog(base_dialog.AssetDialog):
         if on:
             prefs_mod.seed_test_folder(self._prefs.test_dir)
         self._prefs.save()
-        self._apply_test_mode()
+        self._apply_test_mode(name)
 
-    def _apply_test_mode(self) -> None:
+    def _apply_test_mode(self, name: str = "") -> None:
         """Point the running session at whichever library now applies; the cache is NOT touched, so thumbnails already generated stay valid."""
         self._sync_test_mode_rows()
         debug.event("prefs", "test library switched",
@@ -1210,6 +1449,8 @@ class PrefsDialog(base_dialog.AssetDialog):
         if self._panel is not None and not self._panel.open_library():
             _show_quietly(self._cbx_test_mode, self._prefs.test_mode)    # a Cancel put it back
             self._sync_test_mode_rows()
+        elif name:
+            users.adopt_named(self._prefs, name)    # the same user by name, created when missing
         self._sync_rows()
 
     _SHARED_ROWS = (    # (row attribute, the shared setting it shows); renderer switches ride beside

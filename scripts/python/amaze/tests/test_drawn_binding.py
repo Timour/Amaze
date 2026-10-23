@@ -21,15 +21,15 @@ TEXT_SUFFIX = " ▸ text"
 PREFS_FRAMES = ("P01", "P02", "P03a", "P03b", "P04", "P05", "P06")
 
 PINNED_BUTTONS = {    # every text button Preferences takes from the document, written out here so a lost pin fails rather than quietly widening to the host font
-    "P01": ("Clean Up Library", "Reload Library", "Open Library Folder",
-            "Rename", "Delete", "Default", "Delete Local Cache"),
+    "P01": ("Add", "Clean Up", "Reload", "Show Folder", "Manage", "Rename",
+            "Delete", "Default", "Delete Local Cache", "Apply", "Accept"),
     "P05": ("Check for Updates",),
     "P06": ("Check for Updates", "Report a Bug...", "Open Log",
             "Save Log...", "Clear Log"),
 }
 
 PREFS_COMBOS = {    # (frame, attribute, drawn width) - the combos each tab builds, in creation order
-    "P01": (("cbb_library_user", 196),),
+    "P01": (("cbb_library", 260), ("cbb_library_user", 196)),
     "P02": (("_combo_geo_shading", 165), ("_combo_geo_bg", 165),
             ("cbb_matx_res", 72)),
     "P04": (("_combo_path_style", 105), ("_combo_icon_weight", 145)),
@@ -399,7 +399,7 @@ class PreferencesIsBuiltFromTheDocument(unittest.TestCase):
     def test_every_line_edit_is_the_drawn_field_height(self):
         dialog = self._dialog()
         want = theme.ui_px(amazetheme.PREFS_FIELD_H)
-        for name in ("line_workdir", "line_cache", "line_test_dir"):
+        for name in ("line_cache", "line_test_dir"):
             with self.subTest(field=name):
                 field = getattr(dialog, name)
                 self.assertEqual(want, field.height(),
@@ -572,9 +572,9 @@ class MovingADrawnNodeMovesTheWidget(unittest.TestCase):
             dialog = prefs_dialog.PrefsDialog(prefs, panel=None)
             self.addCleanup(dialog.deleteLater)
             button = [b for b in dialog.findChildren(QtWidgets.QPushButton)
-                      if b.text() == "Clean Up Library"][0]
+                      if b.text() == "Clean Up"][0]
             self.assertEqual(
-                theme.ui_px(99 + 5), pinned(self, button)[0],
+                theme.ui_px(63 + 5), pinned(self, button)[0],
                 "the drawn rect was widened and the built button did not "
                 "follow, so the dialog is not reading the document")
 

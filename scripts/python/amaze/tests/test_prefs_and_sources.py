@@ -1180,7 +1180,7 @@ class TheUserRowCreatesAndDeletes(unittest.TestCase):
         self.assertTrue(box.signalsBlocked(),
                         "a quiet set unblocked a caller's own block")
 
-    def test_creating_a_user_switches_to_them(self):
+    def test_a_created_user_is_made_and_switched_to_on_apply(self):
         from amaze.core import users
         from amaze.dialogs import prefs_dialog
         from amaze.tests import test_support
@@ -1189,14 +1189,37 @@ class TheUserRowCreatesAndDeletes(unittest.TestCase):
         dlg = prefs_dialog.PrefsDialog(p, panel=None)
         self.addCleanup(dlg.deleteLater)
         dlg.create_library_user("  Fern  ")
-        names = set(users.all_users(p).values())
-        self.assertEqual({"Cobalt", "Fern"}, names)
+        self.assertEqual({"Cobalt"}, set(users.all_users(p).values()),
+                         "the user was made before Apply")
+        self.assertEqual("Fern", dlg.cbb_library_user.currentText())
+        self.assertTrue(dlg.apply_library())
+        self.assertEqual({"Cobalt", "Fern"}, set(users.all_users(p).values()))
         self.assertEqual("Fern", users.name_for(p, p.library_user),
-                         "creating did not switch this machine to the "
-                         "new user")
+                         "Apply did not switch this computer to the new user")
         self.assertEqual("Fern", dlg.cbb_library_user.currentText())
 
-    def test_deleting_the_current_user_blanks_the_row(self):
+    def test_deleting_the_current_user_adopts_nobody(self):
+        from amaze.core import users
+        from amaze.dialogs import prefs_dialog
+        from amaze.tests import test_support
+        p = test_support.fixture_prefs(self)
+        first = users.create(p, "Cobalt")
+        users.create(p, "Sienna")
+        users.create(p, "Fern")
+        p.library_user = first
+        dlg = prefs_dialog.PrefsDialog(p, panel=None)
+        self.addCleanup(dlg.deleteLater)
+        dlg.delete_library_user(first)
+        self.assertEqual({"Sienna", "Fern"}, set(users.all_users(p).values()))
+        self.assertEqual("", str(p.library_user or ""))
+        self.assertEqual(-1, dlg.cbb_library_user.currentIndex(),
+                         "a user was picked in a library of several with no match")
+        self.assertFalse(dlg._btn_edit_user.isEnabled())
+        self.assertFalse(dlg._btn_delete_user.isEnabled())
+        self.assertFalse(dlg._btn_apply_library.isEnabled(),
+                         "Apply runs with nobody picked")
+
+    def test_the_only_user_left_is_picked_and_waits_for_apply(self):
         from amaze.core import users
         from amaze.dialogs import prefs_dialog
         from amaze.tests import test_support
@@ -1207,13 +1230,10 @@ class TheUserRowCreatesAndDeletes(unittest.TestCase):
         dlg = prefs_dialog.PrefsDialog(p, panel=None)
         self.addCleanup(dlg.deleteLater)
         dlg.delete_library_user(first)
-        self.assertEqual({"Sienna"}, set(users.all_users(p).values()))
-        self.assertEqual("", str(p.library_user or ""))
-        self.assertEqual(-1, dlg.cbb_library_user.currentIndex(),
-                         "the row adopted somebody silently - blank "
-                         "until picked is the ASK rule")
-        self.assertFalse(dlg._btn_edit_user.isEnabled())
-        self.assertFalse(dlg._btn_delete_user.isEnabled())
+        self.assertEqual("Sienna", dlg.cbb_library_user.currentText(),
+                         "the library's only user was not picked")
+        self.assertEqual("", str(p.library_user or ""),
+                         "the only user was adopted before Apply")
 
 
 class ACancelledTestFolderPickIsANoOp(unittest.TestCase):

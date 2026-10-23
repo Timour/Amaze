@@ -1,11 +1,9 @@
 """The Comments area: a context says what its own subject is - `takes_comments` answers CAN this context ever carry one (the toolbar chip, with nothing selected), `comment_subject(index)` answers what the subject is RIGHT NOW, and only a context can map its own index."""
 
-import json
 import os
 import sys
 import types
 import unittest
-from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6 import QtCore, QtGui, QtWidgets  # noqa: E402
@@ -412,21 +410,9 @@ class ALibrarySwitchLeavesTheNoteWhereItWasTyped(unittest.TestCase):
         QtWidgets.QApplication.processEvents()
 
     def _switch_library(self):
-        """Set Library's own door, the folder picker answering the way a real pick saves."""
+        """Preferences' own door: another library picked, with a user, and Apply."""
         other = test_support.fresh_library(self)
-        settings = os.path.join(self.panel.prefs.path, "settings.json")
-        with open(settings, encoding="utf-8") as handle:
-            data = json.load(handle)
-        data["directory"] = other
-        with open(settings, "w", encoding="utf-8") as handle:
-            json.dump(data, handle)
-
-        def picked(accept=None):
-            self.panel.prefs.dir = other
-            return True
-
-        with mock.patch.object(self.panel.prefs, "get_dir_from_user", picked):
-            self.panel.set_library()
+        self.assertTrue(test_support.apply_library(self, self.panel, other))
         QtWidgets.QApplication.processEvents()
         return other
 

@@ -167,7 +167,7 @@ def _point_settings(panel, directory) -> None:
 
 
 class AMissingListOpensNoLibrary(unittest.TestCase):
-    """A Library Path with no list opens no library; a switch onto one keeps the open library."""
+    """A library folder with no list opens no library; a switch onto one keeps the open library."""
 
     def _reopened_on(self, directory):
         """A second panel built over `directory`; (panel, dialogs, dialogs shown while it built)."""
@@ -208,7 +208,7 @@ class AMissingListOpensNoLibrary(unittest.TestCase):
         before = panel.prefs.dir
         _point_settings(panel, self._held())
         panel.open()    # Reload Library re-reads the settings, which now name the held folder
-        self.assertEqual(before, panel.prefs.dir, "the Library Path stayed on a folder with no list")
+        self.assertEqual(before, panel.prefs.dir, "the library stayed on a folder with no list")
         self.assertEqual(before, panel._models_dir, "the open library was left")
 
     def test_a_pane_opened_without_its_library_still_says_it_is_ready(self):

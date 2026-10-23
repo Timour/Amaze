@@ -2,7 +2,6 @@
 
 import ast
 import os
-import tempfile
 import types
 import unittest
 from unittest import mock
@@ -334,63 +333,35 @@ class ThePanelLookupStillReadsTheScreenTest(unittest.TestCase):
                          "a session that could have shown it")
 
 
-class TheLibraryPickerRefusesHeadlessTest(unittest.TestCase):
-    """With no screen there is nobody to pick a folder, so the ASK is skipped - while a library that is already set up must still be saved."""
+def _preferences(case):
+    from amaze.dialogs import prefs_dialog
+    prefs = test_support.fixture_prefs(case)
+    dialog = prefs_dialog.PrefsDialog(prefs, panel=None)
+    case.addCleanup(dialog.deleteLater)
+    return prefs, dialog
 
-    def setUp(self):
+
+class AddRefusesHeadlessTest(unittest.TestCase):
+    """With no screen there is nobody to pick a folder, so Add changes nothing."""
+
+    def test_add_without_a_screen_changes_nothing(self):
         self.assertFalse(hasattr(hou, "ui"),
                          "this host HAS a ui, so nothing here is tested")
-        self.prefs = test_support.fixture_prefs(self)
-
-    def test_a_missing_library_cannot_be_asked_for(self):
-        self.prefs._directory = os.path.join(tempfile.gettempdir(),
-                                             "amaze_no_such_library_dir")
+        prefs, dialog = _preferences(self)
+        before = dialog._picked_library()
         try:
-            answer = self.prefs.get_dir_from_user()
+            dialog.add_library()
         except AttributeError as crash:
-            self.fail("the library picker became a crash: %s" % crash)
-        self.assertFalse(answer)
-
-    def test_an_existing_library_is_still_accepted_without_a_screen(self):
-        """The branch that accepts a library never touches the host dialogs, so a guard on the FUNCTION would turn this into a silent no-op the suite could not see."""
-        try:
-            answer = self.prefs.get_dir_from_user()
-        except AttributeError as crash:
-            self.fail("accepting a set-up library became a crash: %s" % crash)
-        self.assertTrue(answer,
-                        "a library that is already set up was refused "
-                        "because there was no screen to ask at")
+            self.fail("Add became a crash without a screen: %s" % crash)
+        self.assertEqual(before, dialog._picked_library())
 
 
-class TheLibraryPickerStillAsksWhenThereIsAScreenTest(unittest.TestCase):
-    """The accept path: the picker must still open where a person can answer it."""
+class AddOpensTheChooserTest(unittest.TestCase):
+    """The click on Add is the consent: the chooser opens first, carrying its own title."""
 
-    def test_the_picker_opens_when_there_is_a_screen(self):
-        picked = []
-        prefs = test_support.fixture_prefs(self)
-        prefs._directory = os.path.join(tempfile.gettempdir(),
-                                        "amaze_no_such_library_dir")
-
-        def select_file(*_args, **_kwargs):
-            picked.append(True)
-            return ""
-
-        fake = types.SimpleNamespace(
-            displayMessage=lambda text, *a, **k: None,
-            selectFile=select_file)
-        with mock.patch.object(hou, "ui", fake, create=True):
-            prefs.get_dir_from_user()
-        self.assertTrue(picked,
-                        "the guard skipped the folder picker in a session "
-                        "that has a ui")
-
-    def test_the_picker_opens_directly_and_carries_its_own_context(self):
-        """The click that opens the picker is the consent, so nothing speaks first - the set-up preamble was a dialog in front of the dialog the gesture asked for ▸p/dialogs-are-a-bill. The context it carried moved into the picker's own title, which first launch still needs."""
-        said = []
-        titles = []
-        prefs = test_support.fixture_prefs(self)
-        prefs._directory = os.path.join(tempfile.gettempdir(),
-                                        "amaze_no_such_library_dir")
+    def test_the_chooser_opens_directly_with_its_title(self):
+        said, titles = [], []
+        _prefs, dialog = _preferences(self)
 
         def select_file(*_args, **kwargs):
             titles.append(kwargs.get("title", ""))
@@ -400,69 +371,30 @@ class TheLibraryPickerStillAsksWhenThereIsAScreenTest(unittest.TestCase):
             displayMessage=lambda text, *a, **k: said.append(text),
             selectFile=select_file)
         with mock.patch.object(hou, "ui", fake, create=True):
-            prefs.get_dir_from_user()
+            dialog.add_library()
         self.assertEqual([], said,
-                         "a message interrupted on the way to the folder "
-                         "picker")
-        self.assertTrue(titles and titles[0],
-                        "the picker opened without a title, so a first "
-                        "launch shows an unlabelled folder chooser")
-
-
-class TheThirdPickIsStillValidatedTest(unittest.TestCase):
-    """The picker allows three attempts, and every one of them counts - a valid folder picked on the last attempt must be saved, not adopted in memory and reported as a cancel."""
-
-    def test_a_valid_third_pick_is_accepted_and_saved(self):
-        prefs = test_support.fixture_prefs(self)
-        good = prefs.dir
-        prefs._directory = os.path.join(tempfile.gettempdir(),
-                                        "amaze_no_such_library_dir")
-        picks = iter(["/no/such/place", "/still/no/such/place", good])
-        saved = []
-        prefs.save = lambda: saved.append(True)
-
-        fake = types.SimpleNamespace(
-            displayMessage=lambda text, *a, **k: None,
-            selectFile=lambda *a, **k: next(picks))
-        with mock.patch.object(hou, "ui", fake, create=True):
-            answer = prefs.get_dir_from_user()
-
-        self.assertTrue(answer,
-                        "a valid folder picked on the third attempt was "
-                        "reported as a cancel")
-        self.assertTrue(saved,
-                        "the third pick was adopted in memory but never "
-                        "saved - next launch is unconfigured again")
+                         "a message interrupted on the way to the folder chooser")
+        self.assertEqual([messages.TITLE_CHOOSE_LIBRARY_FOLDER], titles,
+                         "the chooser opened without its title")
 
 
 class TheRootOfADiskIsNoLibraryTest(unittest.TestCase):
-    """A pick of a disk's root is refused and asked again, and the setting never moves there."""
+    """A disk's root picked with Add is refused, and the Library list does not show it."""
 
-    def _picking(self, prefs, picks):
+    def test_the_root_is_refused(self):
         said = []
-        prefs.save = lambda: None
+        prefs, dialog = _preferences(self)
+        before = dialog._picked_library()
         fake = types.SimpleNamespace(
             displayMessage=lambda text, *a, **k: said.append(text),
-            selectFile=lambda *a, **k: next(picks))
+            selectFile=lambda *a, **k: os.path.abspath(os.sep))
         with mock.patch.object(hou, "ui", fake, create=True):
-            answer = prefs.get_dir_from_user()
-        return answer, said
-
-    def test_the_root_is_refused_and_the_next_pick_taken(self):
-        prefs = test_support.fixture_prefs(self)
-        good = prefs.dir
-        answer, said = self._picking(prefs, iter([os.path.abspath(os.sep), good]))
-        self.assertTrue(answer, "the good second pick was reported as a cancel")
-        self.assertEqual(good, prefs.dir, "the root of the disk became the library")
+            dialog.add_library()
         self.assertEqual([messages.LIBRARY_PATH_INVALID], said,
-                         "the root was taken without asking again")
-
-    def test_three_roots_leave_the_setting_alone(self):
-        prefs = test_support.fixture_prefs(self)
-        before = prefs.dir
-        answer, _said = self._picking(prefs, iter([os.path.abspath(os.sep)] * 3))
-        self.assertFalse(answer, "three refused picks were reported as a library")
-        self.assertEqual(before, prefs.dir, "a refused pick still moved the setting")
+                         "the root was taken without a word")
+        self.assertEqual(before, dialog._picked_library(),
+                         "the root of the disk is shown as a library")
+        self.assertEqual(before, prefs.dir, "a refused pick moved the library")
 
 
 class EveryDialogRidesTheHouseShellTest(unittest.TestCase):

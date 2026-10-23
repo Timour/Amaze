@@ -5,7 +5,6 @@ import json
 
 import amaze
 from amaze import branding
-from amaze import messages
 from amaze.core import database
 from amaze.core import debug
 from amaze.core import renderers
@@ -28,6 +27,7 @@ RAM_CACHE_RANGE = (64, 4096)
 CONVERSIONS_RANGE = (1, 8)
 DOWNLOADS_RANGE = (1, 16)
 SCROLL_SPEED_RANGE = (0.1, 3.0)  # a factor; its row shows it as a percent
+LIBRARY_LIST_LIMIT = 20  # Add stops here; only Manage takes a library off the list
 
 
 def _clamped(value, bounds) -> int:
@@ -152,35 +152,6 @@ class Prefs(_Persistence):
         self._debug_mode = False
         self._addon_betas = False  # Check for Updates on the Add-On tab takes each add-on's newest beta
         self._users_blocks: dict = {}  # uid -> the keys that are one user's on THIS machine
-
-    def get_dir_from_user(self, accept=None) -> bool:
-        """A library folder from the user, saved; `accept(folder)` can decline a pick before it is used."""
-        try:  # the package's ONE module-scope `import hou` lived at the top of this file and welded the whole test harness to Houdini through it; this method is the only hou user, and `hou = None` walks the same no-picker path as a UI-less hython ▸p/prefs-hou-choke
-            import hou
-        except ImportError:
-            hou = None
-        ui = getattr(hou, "ui", None)
-        for attempt in range(3):    # every attempt is validated, the LAST included - a valid third pick adopted but never saved left the next launch unconfigured
-            if ui is not None:
-                if attempt:   # only a RETRY speaks - the first picker follows the user's own gesture, and the set-up preamble it used to carry was a dialog in front of the dialog ▸p/dialogs-are-a-bill; its context is the title below now
-                    ui.displayMessage(messages.LIBRARY_PATH_INVALID)
-                path = ui.selectFile(file_type=hou.fileType.Directory,
-                                     title="Choose a folder for your Amaze library")
-                if path == "":  # Canceled
-                    return False
-                picked = hou.text.expandString(path)
-                if not can_hold_a_library(picked):
-                    continue    # asked again, and the picked folder is never touched
-                if accept is not None and not accept(picked):
-                    return False    # declined: nothing is written to the folder or the settings
-                self.dir = hou.text.expandString(path)  # through the SETTER, so meeting the picked library adopts its shared settings before the save below; the chooser hands back the `$HOME/...` spelling, which is what makes a path portable, so it expands here
-            if can_hold_a_library(self._directory):
-                debug.event("session", "library set", dir=self._directory)
-                self.save()
-                return True
-            if ui is None:      # nobody to ask and nothing on disk to accept
-                return False
-        return False
 
     @property
     def dir(self) -> str:

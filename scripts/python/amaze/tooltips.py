@@ -3,7 +3,15 @@
 from __future__ import annotations
 
 
-PREFS_LIBRARY_PATH = 'Where your library is saved.'   # ▸ Preferences - Library tab (P01)
+PREFS_LIBRARY = 'The library Amaze shows. Pick another, then press Apply to switch to it.'   # ▸ P01
+
+PREFS_ADD_LIBRARY = 'Add a library folder to the list, or an empty folder for a new library.'
+
+PREFS_MANAGE_LIBRARIES = 'Remove libraries from the list.'
+
+PREFS_APPLY_LIBRARY = 'Switch to the library and user shown.'
+
+PREFS_ACCEPT_LIBRARY = 'Apply, then close Preferences.'
 
 PREFS_CLEAN_UP_LIBRARY = "Move files that nothing in your library uses into Amaze's holding folder for 30 days, and remove File locations whose folder is gone. You will be asked to confirm."
 

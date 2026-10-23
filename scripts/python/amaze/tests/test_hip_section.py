@@ -1704,9 +1704,9 @@ class LibraryUpdateTest(unittest.TestCase):
         self.panel.show_prefs()
         dialog = self.panel._prefs_dialog
         self.addCleanup(dialog.close)
-        self.assertEqual("Library version 1", dialog._lbl_library_version.text())
+        self.assertEqual("Format: v1", dialog._lbl_library_format.text())
         self.panel._update_library()
-        self.assertEqual("Library version 2", dialog._lbl_library_version.text())
+        self.assertEqual("Format: v2", dialog._lbl_library_format.text())
 
 
 class NewerLibraryTest(unittest.TestCase):
