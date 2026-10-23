@@ -57,6 +57,18 @@ def _encode_paths(paths):
     return [_encode_path(p) for p in paths]
 
 
+def _listed_libraries(stored) -> list:
+    """The stored Library list as folders, each once and in its order; junk reads as an empty list."""
+    out, seen = [], set()
+    for folder in _decode_paths(stored):
+        folder = _normalised_dir(folder)
+        same = hostos.comparable_path(folder) if folder else ""
+        if same and same not in seen:
+            seen.add(same)
+            out.append(folder)
+    return out
+
+
 def _normalised_dir(path) -> str:
     """Forward slashes and one trailing slash. Empty stays empty: "/" would be the filesystem root."""
     out = str(path or "").replace("\\", "/")
@@ -209,6 +221,8 @@ class _Persistence:
         records = committed("file_location_records")
         if isinstance(records, dict):
             self._file_location_records = _decode_records(records)
+        if isinstance(self.data.get("libraries"), list):    # another pane's list, when only it moved
+            self._libraries = _listed_libraries(self.data["libraries"])
 
     _RETIRED_KEYS = (  # keys this build deliberately removed, said out loud because the store's unknown-key courtesy would otherwise re-adopt them off disk on every save
         "star_color_mode", "star_custom_color",
@@ -393,6 +407,7 @@ class _Persistence:
         """Rebuild self.data as the EXACT dict save() serializes, and return it - one producer, which the debug session snapshot also records."""
         self._directory = _normalised_dir(self._directory)
         self.data["directory"] = _encode_path(self._directory)
+        self.data["libraries"] = _encode_paths(self.libraries)
         self.data["shared_settings"] = {  # the last-known COPY, one dict under one key, serving the next session when the library is unreachable; the truth goes through `_push_shared`
             stored: getattr(self, attr)
             for stored, (_prop, attr, _default) in SHARED_KEYS.items()}
@@ -449,6 +464,7 @@ class _Persistence:
         self._cache_dir = _decode_path(data.get("cache_dir", ""))
         self._test_mode = bool(data.get("test_mode", False))
         self._test_dir = _decode_path(data.get("test_dir", ""))
+        self._libraries = _listed_libraries(data.get("libraries"))
 
         if not isinstance(self._directory, str):  # _decode_path passes a non-str straight through, and `null`, `{}` or `[]` then reach os.path.exists
             self._directory = ""

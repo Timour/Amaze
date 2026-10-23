@@ -78,6 +78,9 @@ P05_ROW_PITCH = 101    # ▸ P05: a following row's divider to the next one's, a
 P05_LIST_TO_BUTTON = 10    # ▸ P05: the list's bottom to the button's top, as drawn (738 to 748)
 P05_DIM_INK = "#7d7d7d"    # ▸ P05: the version and author lines under each picture
 P05_TEXT_INK = "#a6a6a6"   # ▸ P05: each row's short description
+D15_SELECTED_INK = "#474e62"   # ▸ D15 Manage Libraries: a selected row
+D15_DIM_INK = "#787878"        # a library that cannot be reached: its name and `not connected`
+D15_DIM_PATH_INK = "#646464"   # and its path
 PREFS_DIVIDER_ABOVE = 8  # inside the divider's own row box
 PREFS_DIVIDER_BELOW = 6  # so a divider costs ROW_GAP + ABOVE + H + BELOW + ROW_GAP = 27
 
@@ -151,6 +154,8 @@ BTN_CLEAR_SEARCH = "Clear Search"
 BTN_SHOW_ALL = "Show All"
 BTN_LOCATE = "Locate"
 BTN_NEW_FILE = "New File"
+BTN_REMOVE_FROM_LIST = "Remove from List"
+BTN_CLOSE = "Close"
 
 LABEL_CHANGE_NAME = "Change Name"       # ▸ field labels and placeholders
 LABEL_TAGS = "Tags"
@@ -161,8 +166,10 @@ LABEL_LIGHT_ICON = "Light Icon"     # the D02 toggle that replaced the Lines dro
 LABEL_NAME = "Name"
 PLACEHOLDER_SEARCH_ICONS = "Search"     # D02 drew the count in it; it does not any more
 PLACEHOLDER_VERSION_NAME = "Rename this version"
+LABEL_NOT_CONNECTED = "not connected"    # D15: a listed library whose folder cannot be reached
 
 TITLE_TILE_ICON = "Tile Icon"    # what D02 says when the selection has no ONE name to show
+TITLE_MANAGE_LIBRARIES = "Manage Libraries"
 BAND_UNTITLED = "Untitled"       # what D11's band says for a snippet that has no name yet
 
 EMPTY_SHARED = {    # ▸ E06 E08 E09, the blanks every section shares, read by `empty_state.words_for`
@@ -612,6 +619,26 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
             ("QLineEdit", 86, 37, 276, 22, None),
         ),
     },
+    "D15": {   # Manage Libraries - the Library list, opened from Preferences ▸ Library
+        "frame": (420, 226),
+        "nodes": (
+            ("QListWidget", 10, 10, 400, 170, None),
+            ("QListWidget ▸ item", 18, 16, 71, 15, "Studio Library"),
+            ("QListWidget ▸ item ▸ path", 130, 16, 158, 15, "/Volumes/Server/Amaze/Studio"),
+            ("QListWidget ▸ item ▸ selected", 12, 36, 396, 22, None),
+            ("QListWidget ▸ item", 18, 40, 69, 15, "Client Archive"),
+            ("QListWidget ▸ item ▸ path", 130, 40, 170, 15, "/Volumes/Projects/Archive/Amaze"),
+            ("QListWidget ▸ item", 18, 64, 95, 15, "Look Development"),
+            ("QListWidget ▸ item ▸ path", 130, 64, 91, 15, "~/Amaze/LookDev"),
+            ("QListWidget ▸ item", 18, 88, 56, 15, "Old Library"),
+            ("QListWidget ▸ item ▸ path", 130, 88, 148, 15, "/Volumes/Backup/Amaze/Old"),
+            ("QListWidget ▸ item ▸ not connected", 328, 88, 72, 15, "not connected"),
+            ("QPushButton", 248, 194, 104, 22, None),
+            ("QPushButton", 360, 194, 50, 22, None),
+            ("QPushButton ▸ text", 256, 198, 88, 15, "Remove from List"),
+            ("QPushButton ▸ text", 371, 198, 28, 15, "Close"),
+        ),
+    },
     "T01": {   # the grid tile, drawn at TILE_DRAWN_SIZE - its spacing is what the delegate paints
         "frame": (138, 177),
         "nodes": (
@@ -834,6 +861,7 @@ D01_FRAME = DIALOG_LAYOUT["D01"]["frame"]    # ▸ the frame sizes call sites na
 D02_FORM_WIDTH, D02_FRAME_H = DIALOG_LAYOUT["D02"]["frame"]    # the OPENING size; the grid grows
 SAVE_WIDTH = DIALOG_LAYOUT["D09"]["frame"][0]    # D09 and D13 alike, whatever their labels
 D14_WIDTH = DIALOG_LAYOUT["D14"]["frame"][0]
+D15_WIDTH = DIALOG_LAYOUT["D15"]["frame"][0]
 D11_FORM_WIDTH = DIALOG_LAYOUT["D11"]["frame"][0]    # a FLOOR: D11 resizes around its editor
 PREFS_FRAME = DIALOG_LAYOUT["P01"]["frame"]    # every Preferences tab, P01-P06
 
@@ -1004,6 +1032,37 @@ def drawn_list(frame_key: str = "L01") -> dict:
         "widths": {key: n[3] for key, n in columns.items()},
         "tick_pad": tick[1] - columns[drawn_name(tick)[1]][1],
         "tick_side": tick[3],
+    }
+
+
+def drawn_library_rows(frame_key: str = "D15") -> dict:
+    """The Manage list's margins, its row pitch, the painted row box and where each text sits in it."""
+    layout = DIALOG_LAYOUT[frame_key]
+
+    def named(name):
+        return sorted((n for n in layout["nodes"] if n[0] == name),
+                      key=lambda n: (n[2], n[1]))
+
+    view, = named("QListWidget")
+    names, paths = named("QListWidget ▸ item"), named("QListWidget ▸ item ▸ path")
+    box, = named("QListWidget ▸ item ▸ selected")
+    flag, = named("QListWidget ▸ item ▸ not connected")
+    buttons = named("QPushButton")
+    pitch = names[1][2] - names[0][2]
+    return {
+        "margin": view[1],
+        "view": (view[3], view[4]),
+        "button_top": buttons[0][2] - (view[2] + view[4]),    # the list's bottom to the buttons
+        "button_gap": buttons[1][1] - (buttons[0][1] + buttons[0][3]),
+        "pitch": pitch,
+        "box_x": box[1] - view[1],
+        "box_y": (box[2] - view[2]) % pitch,
+        "box_h": box[4],
+        "text_y": next(n[2] for n in names if box[2] <= n[2] < box[2] + box[4]) - box[2],
+        "text_h": names[0][4],
+        "name_x": names[0][1] - box[1],
+        "path_x": paths[0][1] - box[1],
+        "flag_right": box[1] + box[3] - (flag[1] + flag[3]),
     }
 
 

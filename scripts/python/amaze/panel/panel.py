@@ -478,6 +478,8 @@ class AmazePanel(QtWidgets.QWidget):
         texstore.publish_env(self.prefs)    # $AMAZELIB names the library the models now serve
         self._update_library()    # before any tile paints
         self._seed_curated_content()    # once per library, marker-guarded
+        if not self.prefs.test_mode and self.prefs.note_library_opened(self.prefs.real_dir):
+            self.prefs.save()    # the Library list, the most recently opened first
         return True
 
     def _stay_closed(self) -> bool:

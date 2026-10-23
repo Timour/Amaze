@@ -137,13 +137,17 @@ DRAWN_EXEMPT = (    # (does this node need no pin, why) - EVERY drawn node off t
     (lambda f, n: f.startswith("N"),
      "the comments pane is a document and a painted margin: it reads its "
      "sizes through drawn_comments, held by TheCommentsPaneStandsOnItsFrame"),
+    (lambda f, n: f == "D15" and n[0].startswith("QListWidget ▸ item"),
+     "a library's row is PAINTED by the list's delegate: it reads its sizes "
+     "through drawn_library_rows, held by TheManageWindowStandsOnItsFrame"),
 )
 
 
 def build_every_frame(case):
     """One live dialog per drawn frame, so the binding's pins are the real ones - a frame nothing builds cannot be proven bound."""
     from amaze.dialogs import (base_dialog, code_dialog, icon_dialog,
-                               prefs_dialog, save_dialog, user_dialog)
+                               library_dialog, prefs_dialog, save_dialog,
+                               user_dialog)
     versions = ui_helpers.DesignedDialog(None, title="brushed_steel")   # D01, built the way the panel builds it
     versions.add_field(QtWidgets.QComboBox(versions))
     versions.add_field(QtWidgets.QLineEdit(versions),
@@ -160,6 +164,7 @@ def build_every_frame(case):
         code_dialog.CodeDialog(["Metal"]),
         base_dialog.NameDialog(),
         user_dialog.UserPickerDialog({"u1": "Plum"}),
+        library_dialog.ManageLibrariesDialog(test_support.fixture_prefs(case)),
     )
     for dialog in built:
         case.addCleanup(dialog.deleteLater)

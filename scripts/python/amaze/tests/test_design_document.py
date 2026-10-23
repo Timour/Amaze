@@ -22,6 +22,7 @@ DRAWS_CHROME = (    # the files that paint the panel and its dialogs; a colour h
     "dialogs/icon_dialog.py",
     "dialogs/save_dialog.py",
     "dialogs/gradient_dialog.py",
+    "dialogs/library_dialog.py",
 )
 
 ALLOWED = {    # a literal that is NOT a design colour: {file: (needle, why)}
@@ -224,6 +225,7 @@ class TheNamedFrameSizesAreTheDrawnFrames(unittest.TestCase):
                  (amazetheme.D02_FORM_WIDTH, amazetheme.D02_FRAME_H)),
                 (("D09", "D13"), "SAVE_WIDTH", amazetheme.SAVE_WIDTH),
                 (("D14",), "D14_WIDTH", amazetheme.D14_WIDTH),
+                (("D15",), "D15_WIDTH", amazetheme.D15_WIDTH),
                 (("D11",), "D11_FORM_WIDTH", amazetheme.D11_FORM_WIDTH),
                 (("P01", "P02", "P03a", "P03b", "P04", "P06"), "PREFS_FRAME",
                  amazetheme.PREFS_FRAME)):

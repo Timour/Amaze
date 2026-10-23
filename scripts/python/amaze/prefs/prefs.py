@@ -138,6 +138,7 @@ class Prefs(_Persistence):
         self._icon_line_weight = "template"  # "template" (the design template's thin 10px stroke) or "feather" (the icon set's default) - a look, not a measurement, which is why it is a preference
         self._sidebar_counts = True  # entry counts on INDIVIDUAL categories/folders; "All" always shows its total regardless
         self._cache_dir = ""  # "" = this OS's own convention via hostos.cache_root()
+        self._libraries: list[str] = []  # the Library list, the most recently opened first
         self._test_mode = False  # THE TEST LIBRARY OVERLAY, and an overlay never a write: `_directory` keeps the real path the whole time, because that is the only way back. It moves the LIBRARY only - the cache is keyed by file path, so moving it threw thousands of valid thumbnails away and protected nothing ▸ `cache_dir`
         self._test_dir = ""
         self._hide_empty_categories = True  # for Materials, "empty" respects the active renderer filter
@@ -198,6 +199,34 @@ class Prefs(_Persistence):
     def real_dir(self) -> str:
         """The configured library, ignoring the Test Mode overlay - for the few callers whose subject is the REAL library whatever the session points at, such as the disaster rehearsals."""
         return self._directory
+
+    @property
+    def libraries(self) -> list[str]:
+        """The Library list, the most recently opened first - a copy."""
+        return list(getattr(self, "_libraries", ()))    # a Prefs built through __new__ answers too
+
+    def note_library_opened(self, folder: str) -> bool:
+        """Put `folder` first in the Library list; True when the list changed."""
+        folder = _normalised_dir(folder)
+        if not folder:
+            return False
+        same = hostos.comparable_path(folder)
+        listed = [folder] + [known for known in self.libraries
+                             if hostos.comparable_path(known) != same]
+        if listed == self.libraries:
+            return False
+        self._libraries = listed
+        return True
+
+    def remove_libraries(self, folders) -> bool:
+        """Take `folders` off the Library list, leaving the folders as they are; True when any went."""
+        gone = {hostos.comparable_path(folder) for folder in folders if folder}
+        kept = [known for known in self.libraries
+                if hostos.comparable_path(known) not in gone]
+        if len(kept) == len(self.libraries):
+            return False
+        self._libraries = kept
+        return True
 
     @property
     def test_mode(self) -> bool:

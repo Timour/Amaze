@@ -884,6 +884,7 @@ copied per dialog.
 | **Preferences** | — (app-wide) | `dialogs/prefs_dialog.py` ✓ AssetDialog (live-apply: no OK/Cancel, 12px recorded margin) |
 | **Icon Dialog** | any tile | `dialogs/icon_dialog.py` ✓ AssetDialog (non-modal) |
 | **User Picker** | — (app-wide) | `dialogs/user_dialog.py` — raised after the first paint, only when the library has users and this machine is none of them |
+| **Manage Libraries** | — (app-wide) | `dialogs/library_dialog.py` ✓ AssetDialog — D15: the Library list, the most recently opened first; Remove from List takes libraries off it and leaves their folders alone |
 | **About** | — | a TAB inside `dialogs/prefs_dialog.py`, shared with Debug — there is no separate About dialog |
 
 *Adoption is complete* (R51, 2026-08-21) — every dialog rides AssetDialog,
@@ -1248,6 +1249,8 @@ dialogs/                  save / preferences / about / code / gradient dialogs
 dialogs/user_dialog.py    WHICH user this machine is, asked once and
                           only when the library has people in it and
                           this machine is none of them
+dialogs/library_dialog.py the Library list's Manage window: it takes
+                          libraries off the list, never a folder
 dialogs/update_dialog.py  what an update asks and says - Continue or
                           Cancel when it updates the library, then how
                           the install went; the About tab, the shelf's
