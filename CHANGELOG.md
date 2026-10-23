@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.10.19
+
+- When the library index cannot be read, the pane opens first and then asks whether to Repair it or Open Without Library.
+
 ## 1.10.18
 
 - Turning Test Library on or off now says when the library's list has not arrived yet, as opening the pane already did.
