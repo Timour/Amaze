@@ -786,7 +786,7 @@ class MaterialSection(AssetSection):
             for n in nodes)
 
     def update_preview(self, indexes) -> None:
-        """Update Preview on Material tiles: the whole selection in one render batch."""
+        """Update Render on Material tiles: the whole selection in one render batch."""
         st = self.stack()
         if st is None:
             return
@@ -895,7 +895,7 @@ class CopSection(AssetSection):
                 and cop_nodes.can_save(nodes[0]))
 
     def update_preview(self, indexes) -> None:
-        """Update Preview on Node tiles: each network's picture re-rendered by the Node verbs."""
+        """Update Render on Node tiles: each network's picture re-rendered by the Node verbs."""
         st = self.stack()
         if st is None:
             return
@@ -917,7 +917,7 @@ class CopSection(AssetSection):
 class CodeSection(AssetSection):
     """Saved code snippets, each tagged with a language the Filter menu narrows by, previewed as rendered text rather than a render."""
 
-    offers_preview_update = False    # NO Update Preview, as in Color: this preview is DERIVED, and _preview_key is content-addressed - ("code", id, hash(code), language) - so an edited snippet mints a new key and repaints itself, while a re-render would repaint the same text to the same image
+    offers_preview_update = False    # NO Update Render, as in Color: this preview is DERIVED, and _preview_key is content-addressed - ("code", id, hash(code), language) - so an edited snippet mints a new key and repaints itself, while a re-render would repaint the same text to the same image
 
     @staticmethod
     def delete_prompt(count: int, name: str = "") -> str:
@@ -931,7 +931,7 @@ class CodeSection(AssetSection):
     label = "Code"
     empty_noun = "snippet"
     EMPTY = amazetheme.EMPTY_CODE    # a button here because New File acts on NOTHING and so always works, the same reason its menu entry stays live over an empty selection
-    GRID_MENU = (    # Apply and Edit act on one snippet and grey out beside New File, which acts on nothing and stays live; no Update Preview, per offers_preview_update above
+    GRID_MENU = (    # Apply and Edit act on one snippet and grey out beside New File, which acts on nothing and stays live; no Update Render, per offers_preview_update above
         MenuEntry("New File", verb="menu_new_snippet", needs="always"),
         SEPARATOR,
         MenuEntry("Apply", verb="menu_apply", needs="one"),

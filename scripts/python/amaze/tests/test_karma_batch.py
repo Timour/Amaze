@@ -144,7 +144,7 @@ class WithNoSceneViewerNothingIsImported(unittest.TestCase):
             material_actions.render_thumbnails(model, [0, 1])
         self.assertEqual(
             [], imported,
-            "Update Preview imported every row before finding that "
+            "Update Render imported every row before finding that "
             "nothing can render without a Scene Viewer")
         self.assertEqual([messages.NO_SCENE_VIEWER_FOR_THUMBNAIL], shown,
                          "the batch did not say why, exactly once")
@@ -170,8 +170,8 @@ class ALandedRenderRepaintsItsTile(unittest.TestCase):
         self.assertEqual([0], painted, "a landed render repainted no tile, or one twice")
 
 
-class UpdatePreviewOnMaterialTiles(unittest.TestCase):
-    """Update Preview on a Material selection is one render batch, through the Material verbs."""
+class UpdateRenderOnMaterialTiles(unittest.TestCase):
+    """Update Render on a Material selection is one render batch, through the Material verbs."""
 
     @classmethod
     def setUpClass(cls):

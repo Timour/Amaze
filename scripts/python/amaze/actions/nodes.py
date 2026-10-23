@@ -65,7 +65,7 @@ def render_thumbnail(model, row: int) -> None:
 
 
 def render_thumbnails(model, rows) -> None:
-    """Update Preview on Node tiles: each row re-rendered in turn, as the model's base loop did."""
+    """Update Render on Node tiles: each row re-rendered in turn, as the model's base loop did."""
     for row in rows:
         if 0 <= row < model.rowCount():
             render_thumbnail(model, row)

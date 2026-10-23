@@ -466,7 +466,7 @@ class TheRenderDecisionHasOneHome(unittest.TestCase):
         return outcome, sop, cop
 
     def test_both_spellings_of_each_context_reach_one_verb(self):
-        """Save reads a category name, Update Preview a renderer tag (empty for pre-context assets): one normalisation."""
+        """Save reads a category name, Update Render a renderer tag (empty for pre-context assets): one normalisation."""
         for context, thumb_node, sop_args, cop_args in (
                 ("Sop", "", ("asset1",), None),
                 ("SOP", "", ("asset1",), None),
@@ -787,8 +787,8 @@ class ASavedBuilderTypeThisSessionLacks(unittest.TestCase):
         self.assertEqual([], list(self.home.children()))
 
 
-class UpdatePreviewOnANodeTile(unittest.TestCase):
-    """Update Preview re-renders a Node tile from its saved context, or says it has no picture."""
+class UpdateRenderOnANodeTile(unittest.TestCase):
+    """Update Render re-renders a Node tile from its saved context, or says it has no picture."""
 
     @classmethod
     def setUpClass(cls):

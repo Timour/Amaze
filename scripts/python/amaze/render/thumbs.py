@@ -411,7 +411,7 @@ class ThumbNailRenderer:
 
     def render_network_thumbnail(self, context, asset_id: str,
                                  thumb_node: str = "") -> bool | None:
-        """The single Cop-or-Sop resolver for both doors - the save side (render/nodes.py) passes a child category name like Sop or Cop, Update Preview (core/cop_library.py) passes a renderer tag like SOP, COP or empty for assets saved before contexts were recorded - and the ESC interrupt shell lives here so both doors behave the same; returns None when the context has no picture to render (Lop, Dop... - the caller owns what that means at its door), else whether the render succeeded. A source scan in test_nodes_section keeps create_thumb_sop and create_thumb_cop callable only from here."""
+        """The single Cop-or-Sop resolver for both doors - the save side (render/nodes.py) passes a child category name like Sop or Cop, Update Render (core/cop_library.py) passes a renderer tag like SOP, COP or empty for assets saved before contexts were recorded - and the ESC interrupt shell lives here so both doors behave the same; returns None when the context has no picture to render (Lop, Dop... - the caller owns what that means at its door), else whether the render succeeded. A source scan in test_nodes_section keeps create_thumb_sop and create_thumb_cop callable only from here."""
         ctx = str(context or "").strip().lower()
         if ctx not in ("sop", "cop", ""):
             return None
@@ -454,7 +454,7 @@ class ThumbNailRenderer:
             if target is None:
                 terminals = [c for c in children if not c.outputs()]  # else a terminal - nothing consumes its output
                 target = terminals[-1] if terminals else children[-1]  # else simply the last
-            tmp_geo = hostos.unique_scratch(  # UNIQUE, not a fixed name in a directory every Houdini process on this machine shares: two sessions pressing Update Preview on the same asset wrote one buffer, the second cooking a half-written file while the first deleted it from under it
+            tmp_geo = hostos.unique_scratch(  # UNIQUE, not a fixed name in a directory every Houdini process on this machine shares: two sessions pressing Update Render on the same asset wrote one buffer, the second cooking a half-written file while the first deleted it from under it
                 os.path.join(hostos.cache_root(),
                              "sop_thumb_%s.bgeo" % asset_id),
                 suffix=".geo", create=False)

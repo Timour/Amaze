@@ -524,7 +524,7 @@ class AKarmaThumbnailLeavesTheSceneAsItFoundIt(unittest.TestCase):
             "subject")
         self.assertEqual(
             (), hou.undos.undoLabels(),
-            "Update Preview left entries on the live undo stack: the "
+            "Update Render left entries on the live undo stack: the "
             "import into /mat and the cleanup that removes it, so the "
             "next Ctrl+Z puts the material back into /mat")
 
@@ -572,7 +572,7 @@ class AKarmaThumbnailLeavesTheSceneAsItFoundIt(unittest.TestCase):
         thumbs.ThumbNailRenderer(self.prefs, asset).create_thumbnail()
         self.assertIsNone(
             hou.node("/obj/Amaze/" + self.COMPANION),
-            "Update Preview restored the material's COP companion for the "
+            "Update Render restored the material's COP companion for the "
             "render and left it in the artist's scene")
         self.assertIsNone(
             hou.node("/obj/Amaze"),
@@ -766,7 +766,7 @@ class UpdatePreviewWritesTheManifestOnce(unittest.TestCase):
             "25 rows produced %d full manifest serialisations, each with "
             "an fsync and a rename, on the main thread - at 500 selected "
             "images against a manifest measured at 40,000 entries that "
-            "is the whole of Update Preview" % len(writes))
+            "is the whole of Update Render" % len(writes))
 
     def test_a_file_nothing_can_read_is_not_retried_forever(self):
         """A failed conversion is remembered, keyed to the file's CURRENT mtime and size, so a replaced file converts and Rerender clears it."""
