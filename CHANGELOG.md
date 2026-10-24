@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.11.18
+
+- File: the badge on the scene open in Houdini is a filled green dot.
+
 ## 1.11.17
 
 - Material tiles show the renderer's icon in the lower-right corner.
