@@ -16,6 +16,7 @@ _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 import hou  # noqa: E402,F401
 from amaze import amazetheme  # noqa: E402
+from amaze.core import renderers  # noqa: E402
 from amaze.panel import delegates  # noqa: E402
 from amaze.tests import test_support  # noqa: E402,F401 - redirects the debug log
 
@@ -83,7 +84,7 @@ class TheTileStandsOnItsFrame(unittest.TestCase):
         """Two frames disagreeing on a badge's place is a document error, not a choice."""
         from unittest import mock
         from amaze import amazetheme
-        moved = dict(self.layout["T01"])
+        moved = dict(self.layout["T08"])
         moved["nodes"] = tuple(
             ("badge open (top-left) ▸ badge_open", 9, 6, 22, 22, None)
             if n[0].startswith("badge open (") else n for n in moved["nodes"])
@@ -155,6 +156,9 @@ class TheTileStandsOnItsFrame(unittest.TestCase):
         try:
             test_support.tile_delegate(
                 {b.name: roles.get(b.role) for b in delegates.BADGES})._paint_badges(
+                painter, model.index(0, 0), self.px(x), self.px(y), self.px(w))
+            values[roles["RendererRole"]] = renderers.ALL[0].key
+            test_support.tile_delegate({"renderer": roles["RendererRole"]})._paint_badges(
                 painter, model.index(0, 0), self.px(x), self.px(y), self.px(w))
         finally:
             painter.end()
@@ -559,7 +563,7 @@ class BadgeFamilyTest(unittest.TestCase):
     """The four tile badges are ONE drawn family: one art set (each glyph on its own dark disc), one rasteriser (`_badge_pixmap`), one size rule (`_badge_side`) and rendered AS DRAWN with no re-tinting - four accreted looks with three size formulas made the corners hard to read on busy thumbnails."""
 
     NAMES = ("badge_open", "badge_favourite", "badge_favourite_off", "badge_versions",
-             "badge_comment", "badge_edit")
+             "badge_comment", "badge_edit") + tuple(r.badge for r in renderers.ALL)
 
     def test_all_four_arts_exist_and_render(self):
         for name in self.NAMES:
@@ -623,6 +627,7 @@ class BadgeFamilyTest(unittest.TestCase):
             ("comment", True, "badge_comment", corner, rest),
             ("execute", "Python", "badge_execute", min(45, round(45 * 128 / 130.0)), None),
             ("edit", True, "badge_edit", corner, rest),
+            ("renderer", "Redshift", "badge_renderer_redshift", corner, None),
         )
         self.assertEqual(
             len(cases), len(delegates.BADGES),
@@ -634,6 +639,17 @@ class BadgeFamilyTest(unittest.TestCase):
                 [(art, expected, 2.0, opacity)], asked,
                 "%s does not go through the family engine, or the pass "
                 "asked for a badge nothing wired" % role_kw)
+
+    def test_the_renderer_badge_draws_each_renderers_own_art(self):
+        """One badge per renderer, from the renderer table; an older spelling finds its renderer."""
+        corner = delegates.AssetItemDelegate._badge_side(128)
+        cases = [(r.key, r.badge) for r in renderers.ALL] + [("MaterialX", "badge_renderer_materialx")]
+        for stored, art in cases:
+            with self.subTest(renderer=stored):
+                self.assertEqual([(art, corner, 2.0, None)],
+                                 self._asked_for("renderer", stored, 128))
+        self.assertEqual([], self._asked_for("renderer", "Cycles", 128),
+                         "a renderer Amaze does not offer drew a badge")
 
     def test_every_button_badge_wears_the_one_rest_and_hover_opacity(self):
         """Every button badge rests at the one strength; under the pointer its hover art wins."""

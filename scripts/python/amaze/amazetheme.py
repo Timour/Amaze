@@ -643,12 +643,24 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
         "nodes": (
             ("tile card", 4, 4, 130, 173, None),
             ("thumbnail", 4, 4, 130, 130, None),
-            ("badge open (top-left) ▸ badge_open", 110, 110, 22, 22, None),
+            ("badge renderer (lower-right) ▸ badge_renderer", 110, 110, 22, 22, None),
             ("badge favourite (top-right) ▸ badge_favourite", 110, 6, 22, 22, None),
             ("badge versions (lower-left) ▸ badge_versions", 6, 110, 22, 22, None),
             ("badge comment (lower-right) ▸ badge_comment", 6, 6, 22, 22, None),
             ("tile name", 9, 142, 74, 15, "brushed_steel"),
-            ("tile subtitle", 9, 157, 47, 15, "MaterialX"),
+            ("tile subtitle", 9, 157, 49, 15, "MaterialX"),
+        ),
+    },
+    "T08": {   # a scene file's tile on its default face, with the open badge
+        "frame": (138, 177),
+        "nodes": (
+            ("tile card", 4, 4, 130, 173, None),
+            ("thumbnail", 4, 4, 130, 130, None),
+            ("face ▸ icon_hip.svg", 4, 4, 130, 130, None),
+            ("tile name", 9, 142, 47, 15, "shot_010"),
+            ("tile subtitle", 9, 157, 18, 15, "HIP"),
+            ("badge favourite (top-right) ▸ badge_favourite", 110, 6, 22, 22, None),
+            ("badge open (top-left) ▸ badge_open", 110, 110, 22, 22, None),
         ),
     },
     "T05": {   # the code tile on its generic face: Run in the middle, Edit where Versions is elsewhere

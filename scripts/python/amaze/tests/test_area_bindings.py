@@ -159,10 +159,11 @@ BADGE_ROLES = {   # which badge each context's tiles carry and the role its own 
     "comment": "NotesRole",
     "execute": "RendererRole",    # the language: drawn for one value, so the role alone says nothing
     "edit": "",                   # no role: on every tile that lists it
+    "renderer": "RendererRole",   # drawn for the renderers Amaze offers, each with its own art
 }
 
 EXPECTED_BADGES = {
-    "material": {"favourite", "versions", "comment"},
+    "material": {"favourite", "versions", "comment", "renderer"},
     "cop": {"favourite", "comment"},  # NOT versions, although these three subclass MaterialLibrary and inherit VersionsRole: a version can only be minted by `MaterialLibrary.update_asset_content`, reached from one call site on `material_model` alone, so no Node, Code or Color asset can ever hold a second version - wiring it anyway gave both a Version column reading none on every row and a badge click that mapped through the MATERIAL proxy into an unrelated asset
     "code": {"favourite", "execute", "edit", "comment"},
     "file": {"favourite", "open", "comment"},  # File has the OPEN badge, which nothing else does: only a scene can be the one Houdini currently has open
@@ -193,8 +194,8 @@ class EveryContextCarriesTheBadgesItsModelCanAnswer(AreaBindingCase):
             panel = self.activate(key)
             model = getattr(panel, BINDINGS[key]["grid"]).sourceModel()
             for badge, role_name in BADGE_ROLES.items():
-                if not role_name or delegates.BADGE[badge].equals:
-                    continue    # no role, or one value of a shared one: a model having it says nothing
+                if not role_name or delegates.BADGE[badge].equals or delegates.BADGE[badge].art_for:
+                    continue    # no role, or values of a shared one: a model having it says nothing
                 if not hasattr(model, role_name):
                     continue
                 if badge in expected:

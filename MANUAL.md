@@ -133,10 +133,11 @@ A tile has up to four **badges**, one per corner:
 
 | | | |
 |:--:|---|---|
-| <img src="scripts/python/amaze/ui/badge_open.svg" width="100"> | top-left | The scene that is open in Houdini (File). |
+| <img src="scripts/python/amaze/ui/badge_comment.svg" width="100"> | top-left | Comments: filled when the asset has [comments](#comments). Opens and closes the Comments pane. |
 | <img src="scripts/python/amaze/ui/badge_favourite.svg" width="100"> | top-right | Favorite: an outline heart, filled pink on a favorite. A click toggles it; on a selected tile, it toggles every selected tile. |
 | <img src="scripts/python/amaze/ui/badge_versions.svg" width="100"> | lower-left | [Versions](#versions). Opens the version list. |
-| <img src="scripts/python/amaze/ui/badge_comment.svg" width="100"> | lower-right | Comments: filled when the asset has [comments](#comments). Opens and closes the Comments pane. |
+| <img src="scripts/python/amaze/ui/badge_renderer_materialx.svg" width="100"> | lower-right | The renderer a material is for: MaterialX, Redshift or Octane (Material). |
+| <img src="scripts/python/amaze/ui/badge_open.svg" width="100"> | lower-right | The scene that is open in Houdini (File). |
 
 ---
 
@@ -578,7 +579,7 @@ keeps its marker.
 
 Comments are stored in the library and shared across machines. The
 <img src="scripts/python/amaze/ui/badge_comment.svg" width="14"> badge in
-the lower-right corner of every tile is filled when the asset has
+the top-left corner of every tile is filled when the asset has
 comments, and a click on it opens and closes the pane.
 
 Every section takes comments: materials, palettes, nodes, snippets and

@@ -1,0 +1,19 @@
+<svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g clip-path="url(#clip0_960_1258)">
+<g id="Version-copy">
+<path id="Rounded-Rectangle-copy" d="M0 17C0 19.7614 2.23858 22 5 22H17C19.7614 22 22 19.7614 22 17V5C22 2.23858 19.7614 0 17 0H5C2.23858 0 0 2.23858 0 5V17Z" fill-rule="evenodd" clip-rule="evenodd" fill="#000000" fill-opacity="0.75"/>
+<g>
+<path id="Subtract" d="M3 7.61182V14.3364L5.6748 16.1226L11.0713 12.7603L16.3252 16.1226L19 14.3364V7.61182L16.3252 5.87744L11.0713 9.23975L5.6748 5.87744L3 7.61182ZM8.54102 10.7505L5.76953 12.5005V9.00049L8.54102 10.7505ZM16.2773 12.4995L13.5576 10.7495L16.2773 8.99951V12.4995Z" fill="url(#paint0_linear_960_1258)" fill-opacity="0.75"/>
+</g>
+</g>
+</g>
+<defs>
+<linearGradient id="paint0_linear_960_1258" x1="3" y1="11" x2="19" y2="11" gradientUnits="userSpaceOnUse">
+<stop stop-color="#D64274"/>
+<stop offset="1" stop-color="#0B99B2"/>
+</linearGradient>
+<clipPath id="clip0_960_1258">
+<rect width="22" height="22" fill="#FFFFFF"/>
+</clipPath>
+</defs>
+</svg>

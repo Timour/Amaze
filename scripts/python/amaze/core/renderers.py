@@ -17,18 +17,21 @@ class Renderer(NamedTuple):
     samples_range: tuple
     samples_tip: str
     aliases: tuple = ()
+    badge: str = ""    # the tile badge naming this renderer, art in `ui/`
 
 
 KARMA = Renderer("Karma", "MaterialX", "Karma", "filter_materialx", "materialx",
                  "renderer_matx_enabled", "renderer_materialx",
                  "karma_rendersamples", 9, (1, 256), "PREFS_SAMPLES_KARMA",
-                 aliases=("MaterialX", "MtlX"))
+                 aliases=("MaterialX", "MtlX"), badge="badge_renderer_materialx")
 REDSHIFT = Renderer("Redshift", "Redshift", "Redshift", "filter_redshift", "redshift",
                     "renderer_redshift_enabled", "renderer_redshift",
-                    "rendersamples", 256, (1, 1024), "PREFS_SAMPLES_REDSHIFT")
+                    "rendersamples", 256, (1, 1024), "PREFS_SAMPLES_REDSHIFT",
+                    badge="badge_renderer_redshift")
 OCTANE = Renderer("Octane", "Octane", "Octane", "filter_octane", "octane",
                   "renderer_octane_enabled", "renderer_octane",
-                  "octane_rendersamples", 256, (1, 1024), "PREFS_SAMPLES_OCTANE")
+                  "octane_rendersamples", 256, (1, 1024), "PREFS_SAMPLES_OCTANE",
+                  badge="badge_renderer_octane")
 
 ALL = (KARMA, REDSHIFT, OCTANE)
 HUB = KARMA

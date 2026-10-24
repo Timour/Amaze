@@ -7,7 +7,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 import amaze
 from amaze import amazetheme
 from amaze import tooltips
-from amaze.core import category, debug
+from amaze.core import category, debug, renderers
 from amaze.helpers import theme, ui_helpers
 
 
@@ -17,11 +17,12 @@ class Badge:
     """One tile badge by its ID: the role it reads, the verb it runs, its arts and its words."""
 
     __slots__ = ("name", "art", "role", "role_attr", "verb", "minimum", "equals", "dims",
-                 "hover_art", "press_art", "off_art", "off_hover_art", "tip", "off_tip")
+                 "hover_art", "press_art", "off_art", "off_hover_art", "tip", "off_tip",
+                 "art_for")
 
     def __init__(self, name, art, role="", role_attr="", verb="", minimum=0, equals="",
                  dims=False, hover_art="", press_art="", off_art="", off_hover_art="",
-                 tip="", off_tip="") -> None:
+                 tip="", off_tip="", art_for=None) -> None:
         self.name = name
         self.art = art
         self.role = role              # the model's role, by name, that says whether it draws; "" = always
@@ -36,15 +37,24 @@ class Badge:
         self.off_hover_art = off_hover_art    # the off state under the pointer, drawn as it is
         self.tip = tip               # the hover words, from tooltips.py; "" = silent
         self.off_tip = off_tip        # the words in the off state, where a click does the opposite
+        self.art_for = art_for        # the art named by the role's value, where it differs by value
 
     def shows(self, value) -> bool:
         """Whether a truthy role value draws this badge's ON state: its count, or its one value."""
+        if self.art_for:
+            return bool(self.art_for(value))
         if self.minimum:
             return int(value) >= self.minimum
         return not self.equals or value == self.equals
 
     def __repr__(self) -> str:                                # pragma: no cover
         return "<Badge %s>" % (self.name,)
+
+
+def _renderer_badge(stored) -> str:
+    """The badge art of the renderer a material is for; "" for one Amaze does not offer."""
+    renderer = renderers.get(stored)
+    return renderer.badge if renderer is not None else ""
 
 
 BADGES = (      # in paint order; art in `ui/badge_*.svg`, one file each ▸r/tile-from-frame
@@ -63,6 +73,7 @@ BADGES = (      # in paint order; art in `ui/badge_*.svg`, one file each ▸r/ti
           tip=tooltips.BADGE_EXECUTE),    # the language role: Run is for Python only
     Badge("edit", "badge_edit", verb="menu_edit", dims=True, hover_art="badge_edit_hover",
           tip=tooltips.BADGE_EDIT),
+    Badge("renderer", "", "RendererRole", "_renderer_role", art_for=_renderer_badge),
 )
 BADGE = {badge.name: badge for badge in BADGES}
 
@@ -634,6 +645,9 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
                 art, opacity = badge.press_art, None
             elif badge.hover_art and hovered:
                 art, opacity = badge.hover_art, None
+            elif badge.art_for:
+                art = badge.art_for(index.data(getattr(self, badge.role_attr)))
+                opacity = None
             else:
                 art = badge.art
                 opacity = opacity if badge.dims else None    # as drawn, the on heart's colour
