@@ -1,11 +1,12 @@
 """The dialogs READ the drawn document: a node moved or resized in Figma moves the real widget, and a drawn label that gets renamed costs one pin rather than the dialog. ▸p/one-design-document"""
 
+import math
 import os
 import unittest
 from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")   # BEFORE the app exists: the first module to build the QApplication picks the platform for the whole hython ▸p/first-app-picks-the-platform
-from PySide6 import QtWidgets  # noqa: E402
+from PySide6 import QtGui, QtWidgets  # noqa: E402
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
@@ -179,6 +180,36 @@ def text_nodes(kind_wanted):
     return found
 
 
+UI_FONT_FILE = ("houdini", "fonts", "SideFX-SourceSansPro-Regular.ttf")    # ▸r/font-sizing
+UI_FONT_PX = 12          # the size Houdini draws it at, measured live
+BUTTON_CLEARANCE = 4     # per side, so a label never meets the button's edge
+
+
+def ui_font():
+    """Houdini's UI face at its live size, from `$HFS`; headless has no such font ▸r/font-sizing"""
+    path = os.path.join(os.environ.get("HFS", ""), *UI_FONT_FILE)
+    families = QtGui.QFontDatabase.applicationFontFamilies(
+        QtGui.QFontDatabase.addApplicationFont(path))
+    if not families:
+        return None
+    font = QtGui.QFont(families[0])
+    font.setPixelSize(UI_FONT_PX)
+    return font
+
+
+def unfit_buttons(font):
+    """Every drawn button whose label, in `font`, leaves under `BUTTON_CLEARANCE` a side."""
+    metrics = QtGui.QFontMetricsF(font)
+    unfit = []
+    for frame_key, kind, text in sorted({n[:3] for n in text_nodes("QPushButton")}):
+        needed = math.ceil(metrics.horizontalAdvance(text)) + 2 * BUTTON_CLEARANCE
+        for box in amazetheme.drawn_repeats(frame_key, kind, text):
+            if box[2] < needed:
+                unfit.append("%s %r: drawn %s wide, its label needs %d"
+                             % (frame_key, text, box[2], needed))
+    return unfit
+
+
 def pinned(case, widget):
     """The widget's pinned (w, h) - asserting it IS pinned, since reading `width()` would answer whatever the last layout pass happened to give it."""
     case.assertEqual(
@@ -214,6 +245,36 @@ class TheDocumentPairsEveryDrawnButton(unittest.TestCase):
 
     def test_an_unknown_frame_answers_empty(self):
         self.assertEqual({}, amazetheme.drawn_boxes("D99"))
+
+
+class EveryDrawnButtonFitsItsLabel(unittest.TestCase):
+    """A pinned button narrower than its label cuts it at both ends ▸r/drawn-button-width"""
+
+    def setUp(self):
+        amazetheme.forget_drawn_boxes()
+        self.addCleanup(amazetheme.forget_drawn_boxes)
+        self.font = ui_font()
+        self.assertIsNotNone(
+            self.font, "Houdini's UI font did not load from $HFS, so no "
+            "label could be measured")
+
+    def test_every_drawn_button_fits_its_label(self):
+        unfit = unfit_buttons(self.font)
+        self.assertEqual(
+            [], unfit,
+            "these drawn buttons are narrower than their label in "
+            "Houdini's face, so the label is cut at both ends:\n  "
+            + "\n  ".join(unfit))
+
+    def test_a_narrow_drawn_button_is_caught(self):
+        narrow = {"frame": [120, 40], "nodes": [
+            ("QPushButton", 10, 10, 40, 22, None),
+            ("QPushButton" + TEXT_SUFFIX, 12, 13, 36, 15, "Remove from List")]}
+        with mock.patch.dict(amazetheme.DIALOG_LAYOUT, {"ZZ99": narrow}):
+            amazetheme.forget_drawn_boxes()
+            caught = [line for line in unfit_buttons(self.font)
+                      if line.startswith("ZZ99")]
+        self.assertEqual(1, len(caught), caught)
 
 
 class TheToggleIsTheDrawnPill(unittest.TestCase):
