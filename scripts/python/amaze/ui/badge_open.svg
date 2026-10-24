@@ -1,11 +1,15 @@
 <svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
-<g>
+<g clip-path="url(#clip0_962_139)">
 <g id="Open-copy">
 <path id="Rounded-Rectangle-copy" d="M0 17C0 19.7614 2.23858 22 5 22H17C19.7614 22 22 19.7614 22 17V5C22 2.23858 19.7614 0 17 0H5C2.23858 0 0 2.23858 0 5V17Z" fill-rule="evenodd" clip-rule="evenodd" fill="#000000" fill-opacity="0.75"/>
 <g id="target">
-<circle id="Oval" cx="11" cy="11" r="6" stroke="#2AC362" stroke-linecap="round" stroke-linejoin="round"/>
-<circle id="Oval_2" cx="11" cy="11" r="2" fill="#2AC362"/>
+<circle id="Oval" cx="11" cy="11" r="6" fill="#6A9955"/>
 </g>
 </g>
 </g>
+<defs>
+<clipPath id="clip0_962_139">
+<rect width="22" height="22" fill="#FFFFFF"/>
+</clipPath>
+</defs>
 </svg>
