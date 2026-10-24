@@ -760,12 +760,11 @@ class TheSaveFamilyIsTheDrawnWidth(unittest.TestCase):
                     % (label, shown.width(), want))
 
     def test_every_field_is_the_drawn_field_width(self):
-        from amaze import amazetheme
         from amaze.helpers import theme
-        want = theme.ui_px(amazetheme.SAVE_FIELD_WIDTH)
         for label, dialog in self._dialogs():
             with self.subTest(dialog=label):
                 shown = self._shown(dialog)
+                want = theme.ui_px(shown.FIELD_WIDTH)
                 fields = [w for w in shown.findChildren(QtWidgets.QWidget)
                           if isinstance(w, (QtWidgets.QLineEdit,
                                             QtWidgets.QComboBox))

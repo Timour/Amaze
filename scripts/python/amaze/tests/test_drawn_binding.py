@@ -48,7 +48,7 @@ LABEL_RIGHT = {    # where a form label's drawn box ENDS - the label column's ri
     "P04": (amazetheme.PREFS_LABEL_RIGHT,),
     "P06": (amazetheme.PREFS_LABEL_RIGHT,),
     "D09": (amazetheme.SAVE_LABEL_RIGHT,),
-    "D13": (amazetheme.SAVE_LABEL_RIGHT,),
+    "D13": (50,),               # the drawn field less its label gap
 }
 
 STRETCHED_FIELDS = {    # frame and kind whose fields fill the column instead of wearing a width
@@ -636,6 +636,29 @@ class MovingADrawnNodeMovesTheWidget(unittest.TestCase):
                 "the drawn rect was widened and the built button did not "
                 "follow, so the dialog is not reading the document")
 
+    def test_a_wider_drawn_gap_builds_a_wider_gap(self):
+        from amaze.dialogs import base_dialog
+        frame = dict(amazetheme.DIALOG_LAYOUT["D13"])
+        frame["nodes"] = tuple(    # Cancel and its label 4 further right
+            (node[0], node[1] + 4) + node[2:]
+            if node[0].startswith("QPushButton") and node[1] >= 220 else node
+            for node in frame["nodes"])
+        with mock.patch.dict(amazetheme.DIALOG_LAYOUT, {"D13": frame}):
+            amazetheme.forget_drawn_boxes()
+            dialog = base_dialog.NameDialog()
+            self.addCleanup(dialog.deleteLater)
+            dialog.show()
+            QtWidgets.QApplication.processEvents()
+            self.addCleanup(dialog.hide)
+            box = dialog._buttons
+            ok = box.button(QtWidgets.QDialogButtonBox.StandardButton.Ok)
+            cancel = box.button(
+                QtWidgets.QDialogButtonBox.StandardButton.Cancel)
+            self.assertEqual(
+                theme.ui_px(6 + 4), cancel.x() - (ok.x() + ok.width()),
+                "the drawn gap was widened and the built pair did not "
+                "follow, so the gap is still a constant")
+
     def _prefs_dialog(self):
         from amaze.dialogs import prefs_dialog
         dialog = prefs_dialog.PrefsDialog(
@@ -716,7 +739,7 @@ class TheFormFamilyStandsOnItsFrame(unittest.TestCase):
 
 
 class TheSaveFamilyWearsTheDrawnButtons(unittest.TestCase):
-    """D09 and D13 draw OK 31 and Cancel 50 flush right at the field edge. ▸p/save-dialog-rows"""
+    """D09 and D13 draw OK and Cancel flush right at the field edge. ▸p/save-dialog-rows"""
 
     def _dialogs(self):
         from amaze.dialogs import base_dialog, gradient_dialog, save_dialog
@@ -744,21 +767,19 @@ class TheSaveFamilyWearsTheDrawnButtons(unittest.TestCase):
             with self.subTest(dialog=label):
                 shown = self._shown(dialog)
                 ok, cancel = self._pair(shown)
-                self.assertEqual(
-                    (theme.ui_px(amazetheme.SAVE_BUTTON_W[0]),
-                     theme.ui_px(amazetheme.SAVE_BUTTON_H)),
-                    pinned(self, ok), "%s: OK is not the drawn box" % label)
-                self.assertEqual(
-                    (theme.ui_px(amazetheme.SAVE_BUTTON_W[1]),
-                     theme.ui_px(amazetheme.SAVE_BUTTON_H)),
-                    pinned(self, cancel),
-                    "%s: Cancel is not the drawn box" % label)
+                boxes = amazetheme.drawn_boxes(shown.FRAME_KEY)
+                for button, word in ((ok, "OK"), (cancel, "Cancel")):
+                    box = boxes[("QPushButton", word)]
+                    self.assertEqual(
+                        (theme.ui_px(box[2]), theme.ui_px(box[3])),
+                        pinned(self, button),
+                        "%s: %s is not the drawn box" % (label, word))
                 self.assertLess(    # a style may lay Cancel first; the drawing does not
                     ok.x(), cancel.x(),
                     "%s draws Cancel before OK, which no frame does"
                     % label)
                 self.assertEqual(
-                    theme.ui_px(amazetheme.SAVE_BUTTON_GAP),
+                    theme.ui_px(amazetheme.drawn_pair_gap(shown.FRAME_KEY)),
                     cancel.x() - (ok.x() + ok.width()),
                     "%s: the gap between the pair is not the drawn one"
                     % label)

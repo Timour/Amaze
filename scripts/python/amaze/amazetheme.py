@@ -37,12 +37,11 @@ D02_CHOOSER_RADIUS = 3   # an icon button's corner, UNSCALED - a stylesheet px, 
 D02_CHECKED_BORDER = 2   # the ring on the chosen icon, UNSCALED
 D02_SWATCH_BORDER = 1    # the preset chips and the current-colour chip, UNSCALED
 
-SAVE_FIELD_WIDTH = 276   # ▸ the save family D09 and D13: the drawn field width in both
-SAVE_LABEL_RIGHT = 60    # a label is RIGHT-aligned and ends here
+SAVE_LABEL_RIGHT = 60    # ▸ the save family D09 and D13: a D09 label ends here, right-aligned
 SAVE_FIELD_H = 22
 SAVE_BUTTON_H = 22       # the OK / Cancel pair, drawn flush right
-SAVE_BUTTON_W = (31, 50)  # OK, Cancel
-SAVE_BUTTON_GAP = 8
+SAVE_BUTTON_W = (35, 65)  # OK, Cancel, for a dialog that draws no pair of its own
+SAVE_BUTTON_GAP = 6
 
 D11_EDITOR_H = 364       # ▸ D11 Save Code: the editor's minimum HEIGHT, the full content width under the form
 D11_MARGINS = (18, 19, 8, 13)  # left, top-under-band, right, bottom
@@ -559,26 +558,26 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
         ),
     },
     "D09": {   # Save to Amaze - the Section row picks where the save lands
-        "frame": (350, 177),
+        "frame": (293, 185),
         "nodes": (
-            ("QComboBox", 67, 11, 276, 22, None),
-            ("QLabel", 22, 15, 38, 15, "Section"),
-            ("QComboBox ▸ text", 72, 15, 41, 15, "Material"),
-            ("QLineEdit", 67, 37, 276, 22, None),
-            ("QLabel", 30, 41, 30, 15, "Name"),
-            ("QLineEdit ▸ text", 72, 41, 33, 15, "rocks1"),
-            ("QComboBox", 67, 63, 276, 22, None),
-            ("QLabel", 15, 67, 45, 15, "Category"),
-            ("QComboBox ▸ text", 72, 67, 28, 15, "Metal"),
-            ("QComboBox", 67, 89, 276, 22, None),
-            ("QLabel", 11, 93, 49, 15, "Language"),
-            ("QComboBox ▸ text", 72, 93, 19, 15, "VEX"),
-            ("QLineEdit", 67, 115, 276, 22, None),
-            ("QLabel", 37, 119, 23, 15, "Tags"),
-            ("QPushButton", 254, 146, 31, 22, None),
-            ("QPushButton", 293, 146, 50, 22, None),
-            ("QPushButton ▸ text", 262, 150, 15, 15, "OK"),
-            ("QPushButton ▸ text", 301, 150, 34, 15, "Cancel"),
+            ("QComboBox", 67, 14, 218, 22, None),
+            ("QLabel", 22, 18, 38, 15, "Section"),
+            ("QComboBox ▸ text", 72, 18, 41, 15, "Material"),
+            ("QLineEdit", 67, 40, 218, 22, None),
+            ("QLabel", 30, 44, 30, 15, "Name"),
+            ("QLineEdit ▸ text", 72, 44, 33, 15, "rocks1"),
+            ("QComboBox", 67, 66, 218, 22, None),
+            ("QLabel", 15, 69.5, 45, 15, "Category"),
+            ("QComboBox ▸ text", 72, 69.5, 28, 15, "Metal"),
+            ("QComboBox", 67, 92, 218, 22, None),
+            ("QLabel", 11, 96, 49, 15, "Language"),
+            ("QComboBox ▸ text", 72, 96, 19, 15, "VEX"),
+            ("QLineEdit", 67, 118, 218, 22, None),
+            ("QLabel", 37, 121.5, 23, 15, "Tags"),
+            ("QPushButton", 179, 151, 35, 22, None),
+            ("QPushButton", 220, 151, 65, 22, None),
+            ("QPushButton ▸ text", 189, 154, 15, 15, "OK"),
+            ("QPushButton ▸ text", 236, 154, 34, 15, "Cancel"),
         ),
     },
     "D11": {   # Code snippet - New Snippet and Edit; a node's code saves through D09
@@ -607,15 +606,15 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
         ),
     },
     "D13": {   # Name Input
-        "frame": (350, 72),
+        "frame": (293, 81),
         "nodes": (
-            ("QLineEdit", 67, 11, 276, 22, None),
-            ("QLabel", 30, 15, 30, 15, "Name"),
-            ("QLineEdit ▸ text", 72, 15, 30, 15, "Warm"),
-            ("QPushButton", 254, 39, 31, 22, None),
-            ("QPushButton", 293, 39, 50, 22, None),
-            ("QPushButton ▸ text", 262, 43, 15, 15, "OK"),
-            ("QPushButton ▸ text", 301, 43, 34, 15, "Cancel"),
+            ("QLineEdit", 57, 14, 228, 22, None),
+            ("QLabel", 20, 17.5, 30, 15, "Name"),
+            ("QLineEdit ▸ text", 62, 17.5, 30, 15, "Warm"),
+            ("QPushButton", 179, 47, 35, 22, None),
+            ("QPushButton", 220, 47, 65, 22, None),
+            ("QPushButton ▸ text", 189, 50, 15, 15, "OK"),
+            ("QPushButton ▸ text", 236, 50, 34, 15, "Cancel"),
         ),
     },
     "D15": {   # Manage Libraries - the Library list, opened from Preferences ▸ Library
@@ -861,6 +860,8 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
 D01_FRAME = DIALOG_LAYOUT["D01"]["frame"]    # ▸ the frame sizes call sites name, read from the drawing
 D02_FORM_WIDTH, D02_FRAME_H = DIALOG_LAYOUT["D02"]["frame"]    # the OPENING size; the grid grows
 SAVE_WIDTH = DIALOG_LAYOUT["D09"]["frame"][0]    # D09 and D13 alike, whatever their labels
+SAVE_FIELD_WIDTH = next(n[3] for n in DIALOG_LAYOUT["D09"]["nodes"] if n[0] == "QLineEdit")
+NAME_FIELD_WIDTH = next(n[3] for n in DIALOG_LAYOUT["D13"]["nodes"] if n[0] == "QLineEdit")
 D15_WIDTH = DIALOG_LAYOUT["D15"]["frame"][0]
 D11_FORM_WIDTH = DIALOG_LAYOUT["D11"]["frame"][0]    # a FLOOR: D11 resizes around its editor
 PREFS_FRAME = DIALOG_LAYOUT["P01"]["frame"]    # every Preferences tab, P01-P06
@@ -970,6 +971,16 @@ def drawn_form(frame_key: str) -> dict:
         "label_gap": first[1] - max(n[1] + n[3] for n in labels),
         "button_gap": button_top - (last[2] + last[4]),
     }
+
+
+def drawn_pair_gap(frame_key: str):
+    """The drawn gap between a frame's two buttons, left to right; None unless it draws two."""
+    nodes = (DIALOG_LAYOUT.get(frame_key) or {}).get("nodes", ())
+    pair = sorted((n for n in nodes if n[0] == "QPushButton" and n[5] is None),
+                  key=lambda n: n[1])
+    if len(pair) != 2:
+        return None
+    return pair[1][1] - (pair[0][1] + pair[0][3])
 
 
 TILE_DRAWN_SIZE = 128    # the size-slider value the T frames are drawn at

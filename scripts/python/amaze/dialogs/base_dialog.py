@@ -180,7 +180,8 @@ class AssetDialog(QtWidgets.QDialog):
                 button.setFixedSize(theme.ui_px(width), height)
         row = box.layout()
         row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(theme.ui_px(amazetheme.SAVE_BUTTON_GAP))
+        gap = amazetheme.drawn_pair_gap(self.FRAME_KEY) if self.FRAME_KEY else None
+        row.setSpacing(theme.ui_px(amazetheme.SAVE_BUTTON_GAP if gap is None else gap))
         if ok is None or cancel is None:
             return
         built = [row.itemAt(i).widget() for i in range(row.count())]
@@ -223,7 +224,7 @@ class NameDialog(AssetDialog):
     """One text field and a title - the house replacement for `hou.ui.readInput`, whose native dialog carries an unwanted "i" icon and separator lines. - `CategoryDialog` was this, in `gradient_dialog`, with one caller. It lives here so a second caller does not have to import the Colors section's dialogs to ask for a name."""
 
     FORM_WIDTH = SAVE_WIDTH
-    FIELD_WIDTH = amazetheme.SAVE_FIELD_WIDTH
+    FIELD_WIDTH = amazetheme.NAME_FIELD_WIDTH
     FRAME_KEY = "D13"
 
     def __init__(self, title: str = "Name", default: str = "",
