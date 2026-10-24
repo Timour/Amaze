@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.11.13
+
+- A test checks that every drawn button is wide enough for its label; nothing changes in the app.
+
 ## 1.11.12
 
 - The drawn Add-On tab lists the store's eight add-ons; nothing changes in the app.
