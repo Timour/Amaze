@@ -17,12 +17,11 @@ D01_LABEL_PX = 10
 D01_BUTTON_PX = 12
 D01_LABEL_INK = "#93b9e7"   # the accent-blue field label, e.g. Change Name
 
-D02_MARGINS = (8, 6, 8, 12)   # ▸ D02 Customize (Tile Icon): left, top-under-band, right, bottom
+D02_MARGINS = (8, 14, 8, 12)   # ▸ D02 Customize (Tile Icon): left, top-under-band, right, bottom
 D02_CELL = 34            # one icon button in the chooser grid
 D02_COLUMNS = 8          # what the drawn 319 grid column fits at 2px spacing
 D02_FIELD_H = 22         # every field, the search and both buttons
 D02_SWATCH_GAP = 6
-D02_BUTTON_W = 72        # Apply and Accept, drawn flush right - they do NOT span the column
 D02_CHIP_W = 35          # the current-colour chip beside the Custom Color label - swatch-sized since the 2026-08-30 redraw; clicking it IS the picker
 D02_STACK_GAP = 13       # preview to the switch stack, and its label column to its fields
 D02_ROW_GAP = 9          # between the stacked field rows, and the column rhythm below them
@@ -259,8 +258,8 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
     "D02": {   # Customize (Tile Icon)
         "frame": (335, 610),
         "nodes": (
-            ("header band", 0, 0, 335, 30, None),
-            ("QLabel", 18, 7, 82, 15, "[name of asset] "),
+            ("header band", 0, 0, 335, 22, None),
+            ("QLabel", 8, 3, 82, 15, "[name of asset] "),
             ("QLineEdit", 71, 36, 256, 22, None),
             ("QLabel", 33, 40, 30, 15, "Name"),
             ("QLineEdit ▸ text", 76, 40, 72, 15, "brushed_steel"),
@@ -284,9 +283,9 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
             ("icon grid ▸ 287 cells (collapsed)", 8, 318, 319, 250, None),
             ("QScrollBar", 311, 323, 16, 240, None),
             ("icon grid ▸ note", 16, 405, 136, 11, "287 icon cells, 34×34 — scrolls"),
-            ("QPushButton", 177, 576, 72, 22, None),
+            ("QPushButton", 184, 576, 65, 22, None),
             ("QPushButton", 255, 576, 72, 22, None),
-            ("QPushButton ▸ text", 198, 579, 29, 15, "Apply"),
+            ("QPushButton ▸ text", 202, 579, 29, 15, "Apply"),
             ("QPushButton ▸ text", 274, 579, 34, 15, "Accept"),
         ),
     },

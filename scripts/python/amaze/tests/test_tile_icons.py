@@ -540,9 +540,11 @@ class DialogTest(unittest.TestCase):
             dialog.custom_chip.mapTo(dialog, QtCore.QPoint(0, 0)).x(),
             dialog.light_toggle.mapTo(dialog, QtCore.QPoint(0, 0)).x(),
             "the chip and the Light Icon pill start at different edges")
-        self.assertEqual(theme.ui_px(amazetheme.D02_BUTTON_W),
+        apply_box, accept_box = amazetheme.drawn_repeats(
+            "D02", "QPushButton", None)
+        self.assertEqual(theme.ui_px(apply_box[2]),
                          dialog.apply_button.width())
-        self.assertEqual(theme.ui_px(amazetheme.D02_BUTTON_W),
+        self.assertEqual(theme.ui_px(accept_box[2]),
                          dialog.accept_button.width())
         self.assertEqual(4, len(dialog._swatches),
                          "the overhaul draws FOUR presets plus the chip")
