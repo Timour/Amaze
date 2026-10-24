@@ -154,7 +154,6 @@ BTN_SHOW_ALL = "Show All"
 BTN_LOCATE = "Locate"
 BTN_NEW_FILE = "New File"
 BTN_REMOVE_FROM_LIST = "Remove from List"
-BTN_CLOSE = "Close"
 
 LABEL_CHANGE_NAME = "Change Name"       # ▸ field labels and placeholders
 LABEL_TAGS = "Tags"
@@ -334,11 +333,11 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
             ("QPushButton", 148, 242, 110, 22, None),
             ("QPushButton ▸ text", 156, 246, 95, 15, "Delete Local Cache"),
             ("QWidget ▸ group divider", 20, 276, 450, 1, None),
-            ("QLabel", 20, 291, 320, 15, "Apply/Accept will upgrade your library to v3"),
-            ("QPushButton", 352, 289, 56, 22, None),
-            ("QPushButton", 414, 289, 56, 22, None),
-            ("QPushButton ▸ text", 366, 293, 29, 15, "Apply"),
-            ("QPushButton ▸ text", 425, 293, 34, 15, "Accept"),
+            ("QLabel", 20, 292, 301, 15, "Apply/Accept will upgrade your library to v3"),
+            ("QPushButton", 327, 289, 65, 22, None),
+            ("QPushButton", 398, 289, 72, 22, None),
+            ("QPushButton ▸ text", 345, 292, 29, 15, "Apply"),
+            ("QPushButton ▸ text", 417, 292, 34, 15, "Accept"),
         ),
     },
     "P02": {   # Preferences - Render
@@ -621,7 +620,7 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
         "frame": (420, 247),
         "nodes": (
             ("header band", 0, 0, 420, 22, None),
-            ("QLabel", 10, 3, 206, 15, "Current Library: [current library name]"),
+            ("QLabel", 8, 3, 206, 15, "Current Library: [current library name]"),
             ("QListWidget", 8, 32, 404, 170, None),
             ("QListWidget ▸ item", 19, 38, 71, 15, "Studio Library"),
             ("QListWidget ▸ item ▸ path", 130, 38, 158, 15, "/Volumes/Server/Amaze/Studio"),
@@ -633,10 +632,10 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
             ("QListWidget ▸ item", 19, 110, 56, 15, "Old Library"),
             ("QListWidget ▸ item ▸ path", 130, 110, 148, 15, "/Volumes/Backup/Amaze/Old"),
             ("QListWidget ▸ item ▸ not connected", 328, 110, 72, 15, "not connected"),
-            ("QPushButton", 250, 213, 104, 22, None),
-            ("QPushButton", 362, 213, 50, 22, None),
-            ("QPushButton ▸ text", 258, 217, 88, 15, "Remove from List"),
-            ("QPushButton ▸ text", 373, 217, 28, 15, "Close"),
+            ("QPushButton", 237, 213, 104, 22, None),
+            ("QPushButton", 347, 213, 65, 22, None),
+            ("QPushButton ▸ text", 245, 217, 88, 15, "Remove from List"),
+            ("QPushButton ▸ text", 363, 216, 34, 15, "Cancel"),
         ),
     },
     "T01": {   # the grid tile, drawn at TILE_DRAWN_SIZE - its spacing is what the delegate paints

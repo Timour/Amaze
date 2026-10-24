@@ -100,20 +100,20 @@ class ManageLibrariesDialog(AssetDialog):
         ui_helpers.pin_drawn(self._list, self.FRAME_KEY, "QListWidget", None)
 
         self._remove = QtWidgets.QPushButton(amazetheme.BTN_REMOVE_FROM_LIST)
-        self._close = QtWidgets.QPushButton(amazetheme.BTN_CLOSE)
-        for button in (self._remove, self._close):
+        self._cancel = QtWidgets.QPushButton(amazetheme.BTN_CANCEL)
+        for button in (self._remove, self._cancel):
             ui_helpers.pin_drawn(button, self.FRAME_KEY, "QPushButton", button.text())
             button.setAutoDefault(False)
-        self._close.setDefault(True)
+        self._cancel.setDefault(True)
         self._remove.clicked.connect(self._remove_selected)
-        self._close.clicked.connect(self._on_accept)
+        self._cancel.clicked.connect(self.reject)    # closes; a removal already made stays
 
         buttons = QtWidgets.QHBoxLayout()
         buttons.setContentsMargins(0, 0, 0, 0)
         buttons.setSpacing(theme.ui_px(drawn["button_gap"]))
         buttons.addStretch(1)
         buttons.addWidget(self._remove)
-        buttons.addWidget(self._close)
+        buttons.addWidget(self._cancel)
         body = QtWidgets.QWidget()
         column = QtWidgets.QVBoxLayout(body)
         column.setContentsMargins(0, 0, 0, 0)

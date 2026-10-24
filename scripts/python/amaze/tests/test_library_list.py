@@ -209,7 +209,7 @@ class TheManageWindowStandsOnItsFrame(unittest.TestCase):
         boxes = amazetheme.drawn_boxes("D15")
         for widget, key in ((self.dialog._list, ("QListWidget", None)),
                             (self.dialog._remove, ("QPushButton", amazetheme.BTN_REMOVE_FROM_LIST)),
-                            (self.dialog._close, ("QPushButton", amazetheme.BTN_CLOSE))):
+                            (self.dialog._cancel, ("QPushButton", amazetheme.BTN_CANCEL))):
             drawn = boxes[key][0] if key[1] is None else boxes[key]
             with self.subTest(widget=key):
                 self.assertEqual(tuple(theme.ui_px(n) for n in drawn), self._box(widget))
