@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.11.16
+
+- Preferences ▸ Library: Apply and Accept are each sized to its word. Manage Libraries: Close is now Cancel.
+
 ## 1.11.15
 
 - Save to Amaze and Name Input: narrower, with OK and Cancel each sized to its word.
