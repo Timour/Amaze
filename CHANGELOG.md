@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.11.17
+
+- Material tiles show the renderer's icon in the lower-right corner.
+
 ## 1.11.16
 
 - Preferences ▸ Library: Apply and Accept are each sized to its word. Manage Libraries: Close is now Cancel.
