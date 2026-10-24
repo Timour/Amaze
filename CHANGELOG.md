@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.11.14
+
+- Customize: the header band is lower and Apply is sized to its word.
+
 ## 1.11.13
 
 - A test checks that every drawn button is wide enough for its label; nothing changes in the app.
