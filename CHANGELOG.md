@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.11.15
+
+- Save to Amaze and Name Input: narrower, with OK and Cancel each sized to its word.
+
 ## 1.11.14
 
 - Customize: the header band is lower and Apply is sized to its word.
