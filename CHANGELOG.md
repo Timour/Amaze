@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.11.22
+
+- Code editor: a version tab and a + above the fields list New Version and the snippet's versions; Apply saves and the editor stays open. Code shows in Houdini's code font and syntax colours. Preferences ▸ Library: Material Versions is now Versions, and it turns code versions on and off too.
+
 ## 1.11.21
 
 - The version store keeps code snippets' versions too, in the library's `code/versions` folder; nothing changes in the app.
