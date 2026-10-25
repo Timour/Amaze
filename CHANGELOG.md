@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.12.1
+
+- Code editor: each version opens in a tab of its own, with a close button, and the + after the tabs opens a version or a new one. The highlighted line is centred on the text. With Versions off in Preferences, the + is gone.
+
 ## 1.12.0
 
 - Code: snippets keep versions. A snippet's tile shows the versions badge in the lower-left corner, which opens the list of versions, and the pencil moves to the lower-right corner.
