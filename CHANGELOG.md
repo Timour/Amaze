@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.11.19
+
+- Preferences ▸ Show/Hide: lines along the top and right of the sub-tab page.
+
 ## 1.11.18
 
 - File: the badge on the scene open in Houdini is a filled green dot.
