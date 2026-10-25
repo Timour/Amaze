@@ -105,6 +105,7 @@ class AssetLibrary(grid_engine.GridEngine,
         "id": "IdRole",    # the two read-only rows the Material Info dialog used to carry, now list-mode columns ▸p/d03-retired
     }
     GRID_ROWS = ("_assets", "_mat_paths", "_row_keys")
+    VERSION_SECTION = versions.MATERIAL    # where this model's versions live ▸r/version-store
     TILE_FACE = ""      # the section's generic face, `ui/<TILE_FACE>.svg` from its T frame ▸r/tile-faces
     NOTES_SECTION = "" # this model's notes-store key prefix - notes.note_key(NOTES_SECTION, id); every subclass names its own
 
@@ -595,7 +596,8 @@ class AssetLibrary(grid_engine.GridEngine,
             mat_id = str(asset.mat_id)
             cached = self._version_count_cache.get(mat_id)
             if cached is None:
-                cached = versions.version_count(self.preferences, mat_id)
+                cached = versions.version_count(self.preferences, mat_id,
+                                                self.VERSION_SECTION)
                 self._version_count_cache[mat_id] = cached
             return cached
 
@@ -604,7 +606,7 @@ class AssetLibrary(grid_engine.GridEngine,
             cached = self._active_version_cache.get(mat_id)
             if cached is None:
                 cached = versions.active_version_name(
-                    self.preferences, mat_id)
+                    self.preferences, mat_id, self.VERSION_SECTION)
                 self._active_version_cache[mat_id] = cached
             return cached
 
@@ -867,8 +869,8 @@ class AssetLibrary(grid_engine.GridEngine,
         if not material.is_safe_asset_id(mat_id):
             return {}
         try:
-            return {"versions": versions.versions_dir(self.preferences,
-                                                      mat_id)}
+            return {"versions": versions.versions_dir(
+                self.preferences, mat_id, self.VERSION_SECTION)}
         except hostos.PathEscape as exc:  # "owns no directory we can name" - it must not raise out of remove_asset, where failing to sweep is a leak but raising after the list was written is a broken library
             debug.event("library", "version store path refused",
                         mat_id=mat_id, error=str(exc))
@@ -1000,7 +1002,7 @@ class AssetLibrary(grid_engine.GridEngine,
             return False
         mat = self._assets[row]
         if not versions.rename_version(
-                self.preferences, mat.mat_id, number, name):
+                self.preferences, mat.mat_id, number, name, self.VERSION_SECTION):
             return False
         self._active_version_cache.pop(str(mat.mat_id), None)
         model_index = self.index(row, 0)
@@ -1054,9 +1056,8 @@ class AssetLibrary(grid_engine.GridEngine,
         self._version_count_cache = {}  # per id, so the delegate's paint pass never opens the ledger: a repaint runs per visible tile per frame. Invalidated point-wise on the writes that change a count
         self._active_version_cache = {}
         try:  # ONE listdir seeds both caches for every asset with NO versions folder, the overwhelming case; assets WITH one stay lazy and their first ask still reads the ledger
-            have = set(os.listdir(os.path.join(
-                self.preferences.dir, self.preferences.asset_dir,
-                "versions")))
+            have = set(os.listdir(versions.store_root(
+                self.preferences, self.VERSION_SECTION)))
         except OSError:
             have = set()
         for asset in self._assets:

@@ -959,9 +959,14 @@ reproduces byte-identically without executing a line.
     mat/versions/<asset id>/<writer>-<n>.mat
     mat/versions/<asset id>/<writer>-<n>.interface
     mat/versions/<asset id>/<writer>-<n>.png
+    code/versions/<snippet id>/<writer>-<n>.txt
 
 A directory per asset id, and a file trio per version named for its
-writer and an increasing number. Settled ahead of the build so that
+writer and an increasing number. A snippet's version is one text file:
+code goes through the same engine, `core/versions.py` taking the section,
+with the same `versions.json`. Clean Library and Repair list only `mat/`
+and `img/`, so `code/` is outside both, in this build and in every
+earlier one tried back to 1.0.34. Settled ahead of the build so that
 Clean Library's classifier can be written against a shape that is
 known rather than guessed: it whitelists only recognised stems, so
 anything it does not recognise is skipped and logged, never swept.
@@ -1045,6 +1050,7 @@ non-zero, so it can gate).
 | `mat/<id>.builder.json` | builder sidecar: the container's own parameter interface and values, as DATA |
 | `mat/<id>.stamp.json` | recovery stamp: the asset's whole record, write-only, read solely by a rebuild after `library.json` is lost |
 | `mat/versions/<id>/<n>.*` + `versions.json` | the version store: each version's archived payload (the same kinds as the base, thumbnail included), and the ledger naming them and the active one. The BASE files are always the active version's - losing this folder costs history, never the material. Deleting the asset takes the folder with it: `asset_directories()` names it and `remove_asset` sweeps it, because once the id leaves every list nothing can decide the folder is safe to take |
+| `code/versions/<id>/<n>.txt` + `versions.json` | a snippet's versions: each one's text, and the same ledger. The snippet's text in `code.json` is always the active version's; deleting the snippet takes the folder with it |
 | `img/<id>.png` | tile renders |
 | `matX/<package>/…` | MaterialX packages and their textures |
 
@@ -1230,9 +1236,10 @@ core/updater.py           is a newer Amaze released, and can this one
 core/asset_files.py       the files one asset owns, by kind - the one
                           namer the library model and the version store
                           both ask
-core/versions.py          the version store - the base files are always
-                          the ACTIVE version's, each version also has an
-                          archived copy, and versions.json is the ledger
+core/versions.py          the version store of materials and code - the
+                          base is always the ACTIVE version's, each
+                          version also has an archived copy, and
+                          versions.json is the ledger
 core/quarantine.py        where a library-internal removal puts what it
                           takes: machine-local, dated, expiring. Pure
                           stdlib, because the Houdini-free restore tool

@@ -425,9 +425,9 @@ class VersionFilesCarryTheirWriterTest(_Case):
         asked = []
         real = versions.read_ledger
 
-        def counting(preferences, mat_id):
+        def counting(preferences, mat_id, *section):
             asked.append(str(mat_id))
-            return real(preferences, mat_id)
+            return real(preferences, mat_id, *section)
 
         with mock.patch.object(versions, "read_ledger",
                                side_effect=counting):

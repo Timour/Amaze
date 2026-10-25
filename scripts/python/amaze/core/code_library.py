@@ -2,12 +2,14 @@
 
 import os
 import json
+import shutil
+import tempfile
 
 from PySide6 import QtCore, QtGui
 
 import amaze
 from amaze import amazetheme
-from amaze.core import debug, library, category, material, thumbnails, tile_icons
+from amaze.core import debug, library, category, material, thumbnails, tile_icons, versions
 
 _STARTER_DEF = "res/def/starter_snippets.json"  # example snippets shipped with the plugin, seeded ONCE per library into an "Examples" category (see seed_starter_snippets)
 _STARTER_MARKER = ".amaze_code_starter_v1"  # the marker file name is versioned, so a future batch can seed again without re-adding snippets the user may have deleted from the first
@@ -78,6 +80,28 @@ def paint_code_preview(code: str) -> QtGui.QImage:
     return image
 
 
+def _staged(text) -> dict:
+    """A snippet's text as the one file the version engine copies, {suffix: path}; {} failed."""
+    folder = ""
+    try:
+        folder = tempfile.mkdtemp(prefix="amaze_code_base_")
+        path = os.path.join(folder, "base" + versions.CODE_SUFFIX)
+        with open(path, "w", encoding="utf-8", newline="") as handle:
+            handle.write(str(text or ""))
+    except (OSError, ValueError) as exc:
+        if folder:
+            shutil.rmtree(folder, ignore_errors=True)
+        debug.event("versions", "code text not staged", error=str(exc))
+        return {}
+    return {versions.CODE_SUFFIX: path}
+
+
+def _unstage(*staged) -> None:
+    for paths in staged:
+        for path in paths.values():
+            shutil.rmtree(os.path.dirname(path), ignore_errors=True)
+
+
 class CodeCategories(category.Categories):
     """The Code section's category sidebar - same model, own database."""
 
@@ -91,6 +115,8 @@ class CodeLibrary(library.AssetLibrary):
     TILE_FACE = "face_code"    # T05
 
     DB_FILENAME = "code.json"
+    VERSION_SECTION = versions.CODE    # code/versions/<id>/, the text handed in as a file
+    NEW_VERSION = 0    # save_version's number for a version the editor has not saved yet
 
     CONTENT_SURVIVES_A_REFUSED_INDEX_WRITE = False  # snippets are stored INLINE, so a refused list write leaves nothing on disk to recover and Repair has nothing to put back - the message must say the snippet was not saved, rather than the base class's "the files are there"
 
@@ -137,20 +163,101 @@ class CodeLibrary(library.AssetLibrary):
         """Overwrite an existing snippet's content and metadata (the Edit flow). Keeps the id and favorite."""
         if not 0 <= row < len(self._assets):
             return False
-        asset = self._assets[row]
-        key_before = self._preview_key(asset)  # the OLD content's key, taken before the mutation - computed after, the discard targets the NEW key, a guaranteed miss, and the stale preview squats in the shared LRU
-        asset.set_data(
-            name.strip() or asset.name,
-            cats,
-            self.sanitize_tags(tags),
-            asset.fav,
-            language or "Code",
-        )
+        self._write_snippet(self._assets[row], code, name, language, cats, tags)
+        return True
+
+    def _write_snippet(self, asset, code, name, language, cats, tags) -> bool:
+        """Set a snippet's text and fields and save the list; True when the save landed."""
+        asset.set_data(name.strip() or asset.name, cats, self.sanitize_tags(tags),
+                       asset.fav, language or "Code")
+        return self._store_text(asset, code)
+
+    def _store_text(self, asset, code: str) -> bool:
+        key_before = self._preview_key(asset)    # the OLD content's key: taken after, it misses
         asset.code = code
         thumbnails.engine.discard(key_before)
         self.rebuild_thumbs()
-        self._saved_rows_changed([asset])
-        return True
+        return self._saved_rows_changed([asset])
+
+    def version_text(self, row: int, number: int):
+        """Version `number`'s text for the editor to show; None when its file cannot be read."""
+        if not 0 <= row < len(self._assets):
+            return None
+        mat_id = str(self._assets[row].mat_id)
+        try:
+            with open(versions.version_file(self.preferences, mat_id, number, versions.CODE),
+                      encoding="utf-8", newline="") as handle:
+                return handle.read()
+        except (OSError, ValueError) as exc:    # "" names no file, and lands here too
+            debug.event("versions", "code version unreadable", mat_id=mat_id, n=number,
+                        error=str(exc))
+            return None
+
+    def save_version(self, row: int, number: int, code: str, name: str, language: str,
+                     cats: str, tags: str) -> bool:
+        """The editor's Apply: version `number`, or a new one, holds `code` and is the active one."""
+        if not 0 <= row < len(self._assets):
+            return False
+        asset = self._assets[row]
+        mat_id = str(asset.mat_id)
+        name = str(name or "").strip() or asset.name    # a tile shows its active version's name
+        held, typed = _staged(asset.code), _staged(code)
+        try:
+            if not (held and typed) or not versions.keep_base(
+                    self.preferences, mat_id, versions.CODE, held, asset.name):
+                return False
+            active = versions.active_version(self.preferences, mat_id, versions.CODE)
+            if number not in (self.NEW_VERSION, active) and not versions.switch_active(
+                    self.preferences, mat_id, number, versions.CODE, held):
+                return False
+            if not self._write_snippet(asset, code, name, language, cats, tags):
+                self.report_refused_index_write(asset)
+                return False
+            if number == self.NEW_VERSION:
+                return bool(versions.create_version(
+                    self.preferences, mat_id, name, typed, versions.CODE))
+            return versions.record_base(
+                self.preferences, mat_id, versions.CODE_SUFFIX, versions.CODE,
+                typed[versions.CODE_SUFFIX]) and versions.rename_version(
+                    self.preferences, mat_id, number, name, versions.CODE)
+        finally:
+            _unstage(held, typed)
+            self._versions_changed(asset)
+
+    def switch_version(self, row: int, number: int) -> bool:
+        """Make version `number` the snippet's text and name, as Select does in the Versions dialog."""
+        if not 0 <= row < len(self._assets):
+            return False
+        asset = self._assets[row]
+        mat_id = str(asset.mat_id)
+        held = _staged(asset.code)
+        try:
+            if not held or not versions.switch_active(
+                    self.preferences, mat_id, number, versions.CODE, held, asset.name):
+                return False
+            with open(held[versions.CODE_SUFFIX], encoding="utf-8", newline="") as handle:
+                code = handle.read()
+            asset.name = versions.active_version_name(
+                self.preferences, mat_id, versions.CODE) or asset.name
+            asset.set_current_date()
+            if not self._store_text(asset, code):
+                self.report_refused_index_write(asset)
+                return False
+            return True
+        except OSError as exc:
+            debug.event("versions", "switched code version unreadable", mat_id=mat_id,
+                        n=number, error=str(exc))
+            return False
+        finally:
+            _unstage(held)
+            self._versions_changed(asset)
+
+    def _versions_changed(self, asset) -> None:
+        mat_id = str(asset.mat_id)
+        self._version_count_cache.pop(mat_id, None)
+        self._active_version_cache.pop(mat_id, None)
+        self.row_changed(self.find_asset_row_by_id(asset.mat_id),
+                         [self.VersionsRole, self.ActiveVersionRole])
 
     def row_data(self, row, role):
         """The tooltip is the snippet's own comment ▸p/d03-retired; the rest is the base's."""
