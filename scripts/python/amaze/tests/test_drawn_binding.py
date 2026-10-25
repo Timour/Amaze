@@ -57,7 +57,6 @@ STRETCHED_FIELDS = {    # frame and kind whose fields fill the column instead of
 }
 
 LOOSE_LABELS = {    # (frame, kind, x, y) of a label drawn BESIDE or ABOVE its control rather than in a column
-    ("D01", "QLabel", 18, 81),
     ("D02", "QLabel", 202, 189),
     ("D02", "QLabel", 212, 220),
 }
@@ -137,9 +136,9 @@ DRAWN_EXEMPT = (    # (does this node need no pin, why) - EVERY drawn node off t
     (lambda f, n: f.startswith("N"),
      "the comments pane is a document and a painted margin: it reads its "
      "sizes through drawn_comments, held by TheCommentsPaneStandsOnItsFrame"),
-    (lambda f, n: f == "D15" and n[0].startswith("QListWidget ▸ item"),
-     "a library's row is PAINTED by the list's delegate: it reads its sizes "
-     "through drawn_library_rows, held by TheManageWindowStandsOnItsFrame"),
+    (lambda f, n: f in ("D15", "D01") and n[0].startswith("QListWidget ▸ item"),
+     "a row is PAINTED by the list's delegate: it reads its sizes through "
+     "drawn_list_rows, held by TheManageWindowStandsOnItsFrame and test_versions_dialog"),
     (lambda f, n: f in ("P03a", "P03b") and n[0].startswith("Line "),
      "a line PAINTED along the sub-tab page's top or right edge, wherever "
      "the style puts the page: held by TheShowHidePageWearsItsLines"),
@@ -149,14 +148,11 @@ DRAWN_EXEMPT = (    # (does this node need no pin, why) - EVERY drawn node off t
 def build_every_frame(case):
     """One live dialog per drawn frame, so the binding's pins are the real ones - a frame nothing builds cannot be proven bound."""
     from amaze.dialogs import (base_dialog, code_dialog, icon_dialog,
-                               library_dialog, prefs_dialog, save_dialog)
-    versions = ui_helpers.DesignedDialog(None, title="brushed_steel")   # D01, built the way the panel builds it
-    versions.add_field(QtWidgets.QComboBox(versions))
-    versions.add_field(QtWidgets.QLineEdit(versions),
-                       label=amazetheme.LABEL_CHANGE_NAME)
-    versions.add_buttons(amazetheme.BTN_CANCEL, amazetheme.BTN_APPLY)
+                               library_dialog, prefs_dialog, save_dialog, versions_dialog)
     built = (
-        versions,
+        versions_dialog.VersionsDialog("brushed_steel", [
+            {"n": 1, "name": "Version 1", "date": "2026-10-22 10:00"},
+            {"n": 2, "name": "Version 2", "date": "2026-10-23 11:00"}], 2),
         icon_dialog.IconDialog(None, 0.0, None, tile_name="rocks1",
                                tile_tags="", categories=["Metal"],
                                tile_category="Metal"),
@@ -863,29 +859,6 @@ class TheSaveFamilyWearsTheDrawnButtons(unittest.TestCase):
                         "%s draws a %s %dpx tall, not the drawn %d"
                         % (label, type(field).__name__, field.height(),
                            want))
-
-
-class TheD01ButtonsWearTheirDeclaredNumbers(unittest.TestCase):
-    """`D01_RADIUS` and `D01_BUTTON_PX` were declared and never applied - a design number nothing reads is a number nobody can trust. ▸p/designed-dialog"""
-
-    def _buttons(self):
-        dialog = ui_helpers.DesignedDialog(None, title="brushed_steel")
-        dialog.add_buttons(amazetheme.BTN_CANCEL, amazetheme.BTN_APPLY)
-        self.addCleanup(dialog.deleteLater)
-        return dialog.findChildren(QtWidgets.QPushButton)
-
-    def test_each_button_carries_the_drawn_corner(self):
-        buttons = self._buttons()
-        self.assertEqual(2, len(buttons))
-        want = "border-radius: %dpx" % theme.ui_px(amazetheme.D01_RADIUS)
-        for button in buttons:
-            self.assertIn(
-                want, button.styleSheet(),
-                "the button does not carry the drawn corner radius")
-            self.assertEqual(
-                theme.ui_px(amazetheme.D01_BUTTON_PX),
-                button.font().pixelSize(),
-                "the button's text is not the size the page draws")
 
 
 if __name__ == "__main__":

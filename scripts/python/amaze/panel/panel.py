@@ -1422,8 +1422,9 @@ class AmazePanel(QtWidgets.QWidget):
             context.rc_menu()
 
     def _open_versions_dialog(self, index) -> None:
-        """The versions dialog: a dropdown of the versions, a field to rename the selected one, Cancel / Apply. Browses, switches and names - never creates (creation is automatic on save)."""
-        source = self.material_sorted_model.mapToSource(index)    # `index` arrives from the DELEGATE, so it belongs to the proxy the view shows; the model methods want source rows
+        """The Versions dialog: Select makes the picked version active; it never creates one."""
+        from amaze.dialogs import versions_dialog
+        source = self.material_sorted_model.mapToSource(index)    # `index` is the proxy's
         row = source.row()
         model = self.material_model
         mat = model.assets[row]
@@ -1431,57 +1432,11 @@ class AmazePanel(QtWidgets.QWidget):
         if len(listed) < 2:
             return
         active = versions.active_version(self.prefs, mat.mat_id)
-
-        dialog = ui_helpers.DesignedDialog(self, title=mat.name)    # the name goes in at CONSTRUCTION because it fills the drawn band as well as the title bar ▸p/one-design-document
-
-        picker = QtWidgets.QComboBox(dialog)
-        for version in listed:
-            label = version.get("name") or "Version %s" % version.get("n")
-            extra = []
-            if version.get("author"):
-                extra.append(str(version["author"]))
-            if version.get("date"):
-                extra.append(str(version["date"]))
-            if extra:
-                label += "   (%s)" % ", ".join(extra)
-            if int(version.get("n", 0)) == active:
-                label += "   active"    # the drawn row says which one is live, so a closed dropdown answers it too
-            picker.addItem(label, int(version.get("n", 0)))
-        current_row = next(
-            (i for i, v in enumerate(listed)
-             if int(v.get("n", 0)) == active), 0)
-        picker.setCurrentIndex(current_row)
-        picker.setToolTip(ui_helpers.tooltip_text(tooltips.PANEL_VERSION_ROW))
-        dialog.add_field(picker)
-
-        name_field = QtWidgets.QLineEdit(dialog)
-        name_field.setToolTip(ui_helpers.tooltip_text(
-            tooltips.PANEL_VERSION_ROW))
-        name_field.setPlaceholderText(amazetheme.PLACEHOLDER_VERSION_NAME)
-        name_field.setText(listed[current_row].get("name") or "")
-        dialog.add_field(name_field, label=amazetheme.LABEL_CHANGE_NAME)
-
-        def _sync_field(combo_row):
-            name_field.setText(listed[combo_row].get("name") or "")
-
-        picker.currentIndexChanged.connect(_sync_field)
-
-        dialog.add_buttons(amazetheme.BTN_CANCEL, amazetheme.BTN_APPLY)
-
-        try:
-            if dialog.exec() != QtWidgets.QDialog.DialogCode.Accepted:
-                return
-
-            chosen = int(picker.currentData())
-            typed = name_field.text().strip()
-            combo_row = picker.currentIndex()  # not a proxy
-        finally:
-            dialog.deleteLater()    # deleted on BOTH exits and only after its fields are read: it is parented to the panel, so dropping the Python name frees nothing (~6.5MB per open). NOT WA_DeleteOnClose - the values above are read out of its own children after exec() returns, and that attribute would schedule them for destruction first
-
-        if typed and typed != (listed[combo_row].get("name") or ""):
-            model.rename_version(row, chosen, typed)
-        if chosen != active:
-            model.switch_version(row, chosen)
+        dialog = versions_dialog.VersionsDialog(mat.name, listed, active, parent=self)
+        if dialog.exec() != QtWidgets.QDialog.DialogCode.Accepted:
+            return
+        if dialog.chosen != active:
+            model.switch_version(row, dialog.chosen)
 
 
 

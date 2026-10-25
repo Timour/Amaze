@@ -215,7 +215,7 @@ class TheManageWindowStandsOnItsFrame(unittest.TestCase):
                 self.assertEqual(tuple(theme.ui_px(n) for n in drawn), self._box(widget))
 
     def test_a_selected_row_is_painted_in_its_drawn_box(self):
-        rows = amazetheme.drawn_library_rows()
+        rows = amazetheme.drawn_list_rows()
         px = theme.ui_px
         self.dialog._list.item(1).setSelected(True)
         QtWidgets.QApplication.processEvents()

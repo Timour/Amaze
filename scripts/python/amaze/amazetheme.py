@@ -9,13 +9,7 @@ HEADER_BAND_TEXT_BOLD = True    # the drawn weight on D01, D02 and D11
 
 HOUSE_MARGIN = 5         # ▸ the content margin every compact form dialog wears; a dialog records its reason at the call to differ
 
-D01_INSET = 18              # ▸ D01 Versions: 35, both sides, leaving a 220-wide column
-D01_FIRST_FIELD_Y = 15      # 30, the first field's top
-D01_BUTTON_GAP = 19         # 38
-D01_RADIUS = 5              # 10
-D01_LABEL_PX = 10
-D01_BUTTON_PX = 12
-D01_LABEL_INK = "#93b9e7"   # the accent-blue field label, e.g. Change Name
+D01_SELECTED_INK = "#755400"   # ▸ D01 Versions: the picked version's row
 
 D02_MARGINS = (8, 14, 8, 12)   # ▸ D02 Customize (Tile Icon): left, top-under-band, right, bottom
 D02_CELL = 34            # one icon button in the chooser grid
@@ -155,18 +149,18 @@ BTN_SHOW_ALL = "Show All"
 BTN_LOCATE = "Locate"
 BTN_NEW_FILE = "New File"
 BTN_REMOVE_FROM_LIST = "Remove from List"
+BTN_SELECT = "Select"
 
-LABEL_CHANGE_NAME = "Change Name"       # ▸ field labels and placeholders
-LABEL_TAGS = "Tags"
+LABEL_TAGS = "Tags"                 # ▸ field labels and placeholders
 LABEL_CATEGORY = "Category"
 LABEL_ICON = "Icon"                 # the D02 menu choosing the tile's face
 FACE_LABELS = ("Render", "Capture", "Generic", "Custom")    # its items, in `tile_icons.FACES` order
 LABEL_LIGHT_ICON = "Light Icon"     # the D02 toggle that replaced the Lines dropdown: OFF = dark lines, ON = light
 LABEL_NAME = "Name"
 PLACEHOLDER_SEARCH_ICONS = "Search"     # D02 drew the count in it; it does not any more
-PLACEHOLDER_VERSION_NAME = "Rename this version"
 LABEL_NOT_CONNECTED = "not connected"    # D15: a listed library whose folder cannot be reached
 LABEL_CURRENT_LIBRARY = "Current Library: %s"    # D15's band: the open library's name
+LABEL_CURRENT_VERSION = "Current Version: %s"    # D01's band: the active version's name
 LABEL_LIBRARY_FORMAT = "Format: v%d"     # ▸ P01, under the library's buttons
 LABEL_UPGRADES_LIBRARY = "Apply/Accept will upgrade your library to v%d"    # beside Apply
 LABEL_LIBRARY_TOO_NEW = "You need to update Amaze to use this library"
@@ -238,20 +232,23 @@ EMPTY_FILE = {
 
 
 DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node, per frame; `AmazeNotes/tools/figma-diff.py` checks Figma against it ▸p/one-design-document
-    "D01": {   # Versions
-        "frame": (256, 185),
+    "D01": {   # Versions: a material's versions, newest first
+        "frame": (269, 364),
         "nodes": (
-            ("header band", 0, 0, 256, 30, None),
-            ("QLabel", 18, 4, 93, 15, "[name of version] "),
-            ("QComboBox", 18, 42, 220, 30, None),
-            ("QComboBox ▸ text", 23, 50, 153, 15, "Version 2   (2026-08-01)   active"),
-            ("QLabel", 18, 81, 59, 13, "Change Name"),
-            ("QLineEdit", 18, 98, 220, 30, None),
-            ("QLineEdit ▸ text", 23, 106, 46, 15, "Version 2"),
-            ("QPushButton", 18, 146, 101, 21, None),
-            ("QPushButton", 138, 146, 101, 21, None),
-            ("QPushButton ▸ text", 52, 149, 34, 15, "Cancel"),
-            ("QPushButton ▸ text", 174, 149, 29, 15, "Apply"),
+            ("header band", 0, 0, 269, 22, None),
+            ("QLabel", 8, 3, 253, 15, "Current Version: [name of version] "),
+            ("QListWidget", 8, 32, 253, 286, None),
+            ("QListWidget ▸ item ▸ selected", 14, 58, 241, 22, None),
+            ("QListWidget ▸ item", 19, 38, 90, 15, "Version 2 with red "),
+            ("QListWidget ▸ item ▸ path", 194, 38, 56, 15, "2026-10-23"),
+            ("QListWidget ▸ item", 19, 62, 168, 15, "Johns version more saturated w..."),
+            ("QListWidget ▸ item ▸ path", 194, 62, 56, 15, "2026-10-22"),
+            ("QListWidget ▸ item", 19, 86, 116, 15, "Look Development test"),
+            ("QListWidget ▸ item ▸ path", 195, 86, 56, 15, "2026-10-22"),
+            ("QPushButton", 130, 331, 60, 21, None),
+            ("QPushButton", 196, 331, 65, 21, None),
+            ("QPushButton ▸ text", 145, 334, 31, 15, "Select"),
+            ("QPushButton ▸ text", 211, 334, 34, 15, "Cancel"),
         ),
     },
     "D02": {   # Customize (Tile Icon)
@@ -1072,8 +1069,8 @@ def drawn_band(frame_key: str) -> tuple:
     return band[4], (label[1] - band[1]) if label else HEADER_BAND_INSET
 
 
-def drawn_library_rows(frame_key: str = "D15") -> dict:
-    """The Manage list's margins, its row pitch, the painted row box and where each text sits in it."""
+def drawn_list_rows(frame_key: str = "D15") -> dict:
+    """A drawn list's margins, its row pitch, the painted row box and where each text sits in it."""
     layout = DIALOG_LAYOUT[frame_key]
 
     def named(name):
@@ -1083,7 +1080,7 @@ def drawn_library_rows(frame_key: str = "D15") -> dict:
     view, = named("QListWidget")
     names, paths = named("QListWidget ▸ item"), named("QListWidget ▸ item ▸ path")
     box, = named("QListWidget ▸ item ▸ selected")
-    flag, = named("QListWidget ▸ item ▸ not connected")
+    flag = (named("QListWidget ▸ item ▸ not connected") or paths)[0]    # D01 draws no flag
     buttons = named("QPushButton")
     pitch = names[1][2] - names[0][2]
     width, height = layout["frame"]

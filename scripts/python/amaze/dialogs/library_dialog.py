@@ -25,12 +25,17 @@ def shown_path(folder: str) -> str:
     return hostos.storage_path_key(folder).rstrip("/") or folder
 
 
-class _LibraryRows(QtWidgets.QStyledItemDelegate):
-    """A row as D15 draws it: folder name, path, and `not connected` when it cannot be reached."""
+class ListRows(QtWidgets.QStyledItemDelegate):
+    """A row as a drawn list paints it: name, second column, `not connected` when unreachable."""
 
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent=None, frame_key: str = "D15",
+                 selected_ink: str = amazetheme.D15_SELECTED_INK, second=None,
+                 whole_second: bool = False) -> None:
         super().__init__(parent)
-        self._drawn = amazetheme.drawn_library_rows()
+        self._drawn = amazetheme.drawn_list_rows(frame_key)
+        self._selected_ink = selected_ink
+        self._second = second or (lambda index: shown_path(str(index.data(FOLDER_ROLE) or "")))
+        self._whole_second = whole_second    # a short text such as a date: drawn whole, never cut
 
     def sizeHint(self, option, index):
         return QtCore.QSize(option.rect.width(), theme.ui_px(self._drawn["pitch"]))
@@ -48,7 +53,7 @@ class _LibraryRows(QtWidgets.QStyledItemDelegate):
         path_x = box.x() + px(drawn["path_x"])
         painter.save()
         if option.state & QtWidgets.QStyle.StateFlag.State_Selected:
-            painter.fillRect(box, QtGui.QColor(amazetheme.D15_SELECTED_INK))
+            painter.fillRect(box, QtGui.QColor(self._selected_ink))
         painter.setFont(option.font)
         if not reached:
             flag = amazetheme.LABEL_NOT_CONNECTED
@@ -56,14 +61,19 @@ class _LibraryRows(QtWidgets.QStyledItemDelegate):
             _draw(painter, metrics, flag, QtCore.QRect(right - wide, top, wide, high),
                   QtGui.QColor(amazetheme.D15_DIM_INK), QtCore.Qt.TextElideMode.ElideNone)
             right -= wide + px(drawn["flag_right"])
+        second = self._second(index)
+        name_end, elide = path_x, QtCore.Qt.TextElideMode.ElideMiddle
+        if self._whole_second:
+            path_x = min(path_x, right - metrics.horizontalAdvance(second) - 1)    # 1: subpixel
+            name_end, elide = path_x - px(drawn["name_x"]), QtCore.Qt.TextElideMode.ElideNone
         _draw(painter, metrics, str(index.data() or ""),
-              QtCore.QRect(name_x, top, path_x - name_x, high),
+              QtCore.QRect(name_x, top, max(0, name_end - name_x), high),
               theme.color("text_bright") if reached else QtGui.QColor(amazetheme.D15_DIM_INK),
               QtCore.Qt.TextElideMode.ElideRight)
-        _draw(painter, metrics, shown_path(str(index.data(FOLDER_ROLE) or "")),
+        _draw(painter, metrics, second,
               QtCore.QRect(path_x, top, max(0, right - path_x), high),
               theme.color("text") if reached else QtGui.QColor(amazetheme.D15_DIM_PATH_INK),
-              QtCore.Qt.TextElideMode.ElideMiddle)
+              elide)
         painter.restore()
 
 
@@ -84,7 +94,7 @@ class ManageLibrariesDialog(AssetDialog):
         self._prefs = preferences
         self._open_library = open_library
         self.removed: list = []    # the folders taken off the list
-        drawn = amazetheme.drawn_library_rows()
+        drawn = amazetheme.drawn_list_rows()
 
         self._list = QtWidgets.QListWidget()
         self._list.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
@@ -93,7 +103,7 @@ class ManageLibrariesDialog(AssetDialog):
         self._list.setHorizontalScrollBarPolicy(
             QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._list.setUniformItemSizes(True)
-        self._list.setItemDelegate(_LibraryRows(self._list))
+        self._list.setItemDelegate(ListRows(self._list))
         palette = self._list.palette()    # PALETTE, as the sidebar does: a view paints its viewport from Base
         palette.setColor(QtGui.QPalette.ColorRole.Base, theme.color("surface_low"))
         self._list.setPalette(palette)

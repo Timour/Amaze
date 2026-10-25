@@ -173,8 +173,8 @@ the right end of the tab row, stops the render.
 Saving over a material keeps the previous one as a version. A tile with
 versions shows the
 <img src="scripts/python/amaze/ui/badge_versions.svg" width="14">
-badge in its lower-left corner. The badge opens the version list, where
-a version is made current or renamed.
+badge in its lower-left corner. The badge opens the list of versions,
+newest first; pick one and press **Select** to make it current.
 
 <img src="docs/images/dialog_versions.png" width="380">
 

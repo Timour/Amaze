@@ -478,7 +478,7 @@ class EveryDialogKnowsWhichWindowOpenedIt(unittest.TestCase):
 
     DIALOGS = {"NameDialog", "CategoryDialog",
                "SaveDialog", "CodeDialog", "ManageLibrariesDialog",
-               "IconDialog", "PrefsDialog", "DesignedDialog"}
+               "IconDialog", "PrefsDialog", "VersionsDialog"}
 
     EXEMPT = {("panel/panel.py", "PrefsDialog")}    # parented to the main window AFTER construction and kept NON-modal on purpose ▸r/dialog-parents
 
@@ -510,8 +510,7 @@ class EveryDialogKnowsWhichWindowOpenedIt(unittest.TestCase):
                     keywords = {k.arg for k in node.keywords}
                     parented = (
                         "parent" in keywords
-                        or (name == "IconDialog" and len(node.args) >= 3)
-                        or (name == "DesignedDialog" and bool(node.args)))
+                        or (name == "IconDialog" and len(node.args) >= 3))
                     found.append((relative, node.lineno, name, parented))
         return found
 

@@ -139,7 +139,7 @@ PANEL_TILE_SIZE = 'Tile size.'
 
 PANEL_TILE_SIZE_LIST = 'Tile size - grid only. A list row is one text line, so it does not scale.'
 
-PANEL_VERSION_ROW = 'Pick the active version in the list, or rename it in the field. Versions are made automatically when you save.'   # ▸ Versions dialog (D01)
+PANEL_VERSION_ROW = 'Pick a version and press Select to make it current. Versions are made automatically when you save.'   # ▸ Versions dialog (D01)
 
 BADGE_VERSIONS = 'Click to select a version.'   # ▸ Tile badges, on hover
 

@@ -131,6 +131,11 @@ def active_version(preferences, mat_id: str) -> int:
     return int(read_ledger(preferences, mat_id).get("active", 0) or 0)
 
 
+def version_label(entry: dict) -> str:
+    """What a version is called: its name, or `Version <n>` for one saved without a name."""
+    return str(entry.get("name") or ("Version %d" % int(entry.get("n", 0))))
+
+
 def active_version_name(preferences, mat_id: str) -> str:
     """The NAME of the version currently in the base files ("" when the asset has none) - list mode's column shows WHICH version where the grid's badge can only say versions exist, falling back to the `Version N` save_version writes."""
     ledger = read_ledger(preferences, mat_id)
@@ -140,9 +145,8 @@ def active_version_name(preferences, mat_id: str) -> str:
     active = int(ledger.get("active", 0) or 0)
     for entry in entries:
         if int(entry.get("n", 0)) == active:
-            return str(entry.get("name") or ("Version %d" % active))
-    newest = entries[-1]    # active points at nothing (a hand-edited or half-written ledger): the versions are real, so answer with the newest rather than claiming the asset has none
-    return str(newest.get("name") or ("Version %d" % int(newest.get("n", 0))))
+            return version_label(entry)
+    return version_label(entries[-1])    # active points at nothing: answer with the newest
 
 
 def _base_paths(preferences, mat_id: str) -> dict:
