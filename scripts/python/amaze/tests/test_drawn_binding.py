@@ -692,6 +692,15 @@ class TheCodeDialogStandsOnItsFrame(unittest.TestCase):
                          shot.pixel(back.left() + 4, back.top() + 1),
                          "a tab behind the front one is not the band's own colour")
 
+    def test_the_window_behind_the_form_is_the_drawn_ground(self):
+        shot = self.dialog.grab().toImage()
+        ratio = shot.devicePixelRatio()
+        name = self._drawn("QLineEdit")[0]    # beside it, on the Name label's bare left end
+        x, y = theme.ui_px(12), name[1] + name[3] // 2
+        self.assertEqual(QtGui.QColor(amazetheme.CODE_GROUND).name(),
+                         QtGui.QColor(shot.pixel(int(x * ratio), int(y * ratio))).name(),
+                         "the window behind the form is not the drawn ground")
+
     def test_the_current_line_sits_on_its_letters(self):
         """Centred between cap top and descender, in Houdini's code face, as drawn."""
         from amaze.dialogs import code_dialog

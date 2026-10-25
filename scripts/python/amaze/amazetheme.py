@@ -42,6 +42,7 @@ CODE_RADIUS = 3                    # the editor's corners, the current line's, t
 CODE_LINE_NUMBER_INK = "#b0b0b0"
 CODE_BAND = "#282828"              # ▸ D11's band, and an unselected version tab on it
 CODE_TAB = "#373838"               # the selected version tab
+CODE_GROUND = "#383838"            # the window behind the form and the editor, which the front tab meets
 CODE_TAB_INK = "#dddcdd"           # a tab's name
 CODE_TAB_MAX_W = 200               # a tab is as wide as its name and its ×, up to this
 CODE_SYNTAX = {    # ▸ token kind: Houdini's own colour name, and its value in UIDark.hcs headless

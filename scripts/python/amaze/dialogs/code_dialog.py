@@ -330,6 +330,12 @@ class CodeDialog(base_dialog.AssetDialog):
         """The version's name, which the Name field holds, and `Untitled` while it holds none."""
         return self._line_name.text().strip() or amazetheme.BAND_UNTITLED
 
+    def paintEvent(self, event):
+        """The window's drawn ground; painted here, so no child inherits it as its own colour."""
+        painter = QtGui.QPainter(self)
+        painter.fillRect(self.rect(), QtGui.QColor(amazetheme.CODE_GROUND))
+        painter.end()
+
     def build_header_band(self):
         """The strip with the version tabs and the +, which lists New Version and every version."""
         drawn = self._drawn
