@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.12.2
+
+- Versions and Manage Libraries: the strip at the top that named the current version or library is gone. The list's background is Houdini's own list colour, with rounded corners, and the picked row has rounded corners too.
+
 ## 1.12.1
 
 - Code editor: each version opens in a tab of its own, with a close button, and the + after the tabs opens a version or a new one. The highlighted line is centred on the text. With Versions off in Preferences, the + is gone.
