@@ -69,6 +69,7 @@ PREFS_ROW_GAP = 6        # between rows inside one group
 PREFS_BUTTON_GAP = 8     # between two controls sharing one row, and a spin box to its slider
 PREFS_BROWSE_W = 28      # the `...` button that opens a file dialog
 PREFS_DIVIDER_INK = "#434343"   # the 1px group divider; groups carry no title, like Houdini's own parameter panes
+PREFS_PAGE_LINE_INK = "#262626"    # ▸ P03a and P03b: the lines along the sub-tab page's top and right
 PREFS_DIVIDER_H = 1
 UPDATE_WARNING_FILL = "#e0523a"    # ▸ P06: Install Update when the update also updates the library
 P05_ROW_PITCH = 101    # ▸ P05: a following row's divider to the next one's, as drawn (139, 240, 341)
@@ -429,6 +430,8 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
             ("ToggleSwitch ▸ text", 179, 101, 41, 15, "Redshift"),
             ("ToggleSwitch", 148, 126, 23, 15, None),
             ("ToggleSwitch ▸ text", 179, 126, 36, 15, "Octane"),
+            ("Line 1", 12, 67, 474, 0, None),
+            ("Line 2", 486, 66, 0, 373, None),
         ),
     },
     "P03b": {   # Preferences - Show/Hide ▸ Sections
@@ -456,6 +459,8 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
             ("ToggleSwitch ▸ text", 179, 151, 26, 15, "Code"),
             ("ToggleSwitch", 148, 176, 23, 15, None),
             ("ToggleSwitch ▸ text", 179, 176, 18, 15, "File"),
+            ("Line 1", 12, 67, 474, 0, None),
+            ("Line 2", 486, 66, 0, 373, None),
         ),
     },
     "P04": {   # Preferences - Look

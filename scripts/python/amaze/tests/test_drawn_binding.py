@@ -140,6 +140,9 @@ DRAWN_EXEMPT = (    # (does this node need no pin, why) - EVERY drawn node off t
     (lambda f, n: f == "D15" and n[0].startswith("QListWidget ▸ item"),
      "a library's row is PAINTED by the list's delegate: it reads its sizes "
      "through drawn_library_rows, held by TheManageWindowStandsOnItsFrame"),
+    (lambda f, n: f in ("P03a", "P03b") and n[0].startswith("Line "),
+     "a line PAINTED along the sub-tab page's top or right edge, wherever "
+     "the style puts the page: held by TheShowHidePageWearsItsLines"),
 )
 
 
@@ -690,6 +693,41 @@ class MovingADrawnNodeMovesTheWidget(unittest.TestCase):
                 theme.ui_px(322), dialog._lbl_version.maximumWidth(),
                 "the drawn version number changed and the pin lost the "
                 "node, so the line is bound to a number that moves")
+
+
+class TheShowHidePageWearsItsLines(unittest.TestCase):
+    """P03a and P03b draw a line along the sub-tab page's top and down its right edge."""
+
+    def test_the_drawn_lines_frame_the_drawn_page(self):
+        bar = amazetheme.PREFS_SUBTAB_BAR
+        for frame_key in ("P03a", "P03b"):
+            nodes = {n[0]: n for n in amazetheme.DIALOG_LAYOUT[frame_key]["nodes"]}
+            top, side = nodes["Line 1"], nodes["Line 2"]
+            with self.subTest(frame=frame_key):
+                self.assertEqual(bar[0], top[1], "the top line does not start under the strip")
+                self.assertEqual(top[1] + top[3], side[1],
+                                 "the top line does not end where the side line stands")
+                self.assertEqual(bar[1] + bar[3], side[2],
+                                 "the side line does not start under the strip")
+
+    def test_the_lines_run_along_the_page_top_and_right(self):
+        from amaze.dialogs import prefs_dialog
+        dialog = prefs_dialog.PrefsDialog(test_support.fixture_prefs(self), panel=None)
+        self.addCleanup(dialog.deleteLater)
+        dialog.show()
+        self.addCleanup(dialog.hide)
+        dialog.show_frame("P03a")
+        QtWidgets.QApplication.processEvents()
+        lines = dialog._page_lines
+        stack = lines.parentWidget().findChild(QtWidgets.QStackedWidget)
+        self.assertEqual(stack.geometry(), lines.geometry(), "the lines do not lie over the page")
+        picture = lines.grab().toImage()
+        ink = QtGui.QColor(amazetheme.PREFS_PAGE_LINE_INK).rgb()
+        right, bottom = picture.width() - 1, picture.height() - 1
+        for x, y in ((0, 0), (right // 2, 0), (right, 0), (right, bottom // 2), (right, bottom)):
+            self.assertEqual(ink, picture.pixel(x, y), "no line at %d,%d" % (x, y))
+        self.assertNotEqual(ink, picture.pixel(right // 2, bottom // 2),
+                            "the page is filled, not lined")
 
 
 class TheFormFamilyStandsOnItsFrame(unittest.TestCase):

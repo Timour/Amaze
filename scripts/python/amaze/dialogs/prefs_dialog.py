@@ -152,6 +152,34 @@ def addon_row_boxes(index: int) -> dict:
     return boxes
 
 
+class _PageLines(QtWidgets.QWidget):
+    """The drawn lines along a sub-tab page's top and right edges, laid over whichever page shows."""
+
+    def __init__(self, tabs: QtWidgets.QTabWidget) -> None:
+        super().__init__(tabs)
+        self._stack = tabs.findChild(QtWidgets.QStackedWidget)
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self._stack.installEventFilter(self)
+        self._follow()
+
+    def _follow(self) -> None:
+        self.setGeometry(self._stack.geometry())
+        self.raise_()
+
+    def eventFilter(self, watched, event) -> bool:
+        if event.type() in (QtCore.QEvent.Type.Resize, QtCore.QEvent.Type.Move):
+            self._follow()
+        return False
+
+    def paintEvent(self, _event) -> None:
+        painter = QtGui.QPainter(self)
+        painter.setPen(QtGui.QColor(amazetheme.PREFS_PAGE_LINE_INK))
+        right, bottom = self.width() - 1, self.height() - 1
+        painter.drawLine(0, 0, right, 0)
+        painter.drawLine(right, 0, right, bottom)
+        painter.end()
+
+
 class PrefsDialog(base_dialog.AssetDialog):
     """Preferences on the house shell - live-apply, so no OK/Cancel and the inherited `canceled` is never read; resizable, tabs as the content."""
 
@@ -783,6 +811,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         sub_tabs.addTab(self._build_renderer_page(), "Renderer")
         sub_tabs.addTab(self._build_sections_page(), "Sections")
         column.addWidget(sub_tabs)
+        self._page_lines = _PageLines(sub_tabs)
         return holder
 
     def _build_renderer_page(self) -> QtWidgets.QWidget:
