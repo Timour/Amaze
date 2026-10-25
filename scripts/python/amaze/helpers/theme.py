@@ -210,6 +210,14 @@ def syntax_inks() -> dict:
     return live
 
 
+def list_ground() -> QtGui.QColor:
+    """Houdini's list colour, or its dark scheme's when the live one is light."""
+    from amaze import amazetheme
+    name, fallback = amazetheme.LIST_GROUND
+    ground = houdini_color(name, fallback)
+    return ground if ground.lightnessF() < 0.5 else QtGui.QColor(fallback)    # Amaze's ink is light
+
+
 def _derive(theme, name):
     oklch = theme["oklch"]
     try:

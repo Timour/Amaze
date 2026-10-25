@@ -36,7 +36,7 @@ class AssetDialog(QtWidgets.QDialog):
     FORM_WIDTH = None    # a shared width in logical px, or None to hug the content; the save family sets one so siblings match ▸p/save-dialog-rows
     FIELD_WIDTH = None   # the drawn field width; every row built through `add_*` takes it EXACTLY, so a dialog with fewer rows cannot end up with wider fields than its siblings ▸p/save-dialog-rows
     FIELD_HEIGHT = amazetheme.SAVE_FIELD_H   # the drawn field height every `add_*` row takes; the form rows are the save family's, and the drawn frames give them all one height ▸p/save-dialog-rows
-    HEADER_BAND = False  # the drawn header strip carrying the asset's name - D01, D02 and D11 wear one, the save family and Preferences do not ▸p/one-design-document
+    HEADER_BAND = False  # the drawn strip with the asset's name: D02 and D11 wear one ▸p/one-design-document
     FRAME_KEY = ""       # the frame this dialog is drawn as; set one and every `add_*` row and the OK/Cancel pair take their size from it ▸p/one-design-document
 
     def __init__(self, title: str = "", fixed_size: bool = True,

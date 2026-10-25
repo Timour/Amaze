@@ -175,9 +175,8 @@ class ManageLibrariesTest(unittest.TestCase):
         self.dialog._remove.click()
         self.assertTrue(os.path.isfile(marker), "Remove from List touched the folder")
 
-    def test_the_band_names_the_open_library(self):
-        band = self.dialog.findChild(QtWidgets.QLabel, "amaze_header_band_text")
-        self.assertEqual(amazetheme.LABEL_CURRENT_LIBRARY % "Studio", band.text())
+    def test_no_band_sits_over_the_list(self):
+        self.assertIsNone(self.dialog.findChild(QtWidgets.QLabel, "amaze_header_band_text"))
 
     def test_a_folder_that_cannot_be_reached_is_marked(self):
         reached = {item.text(): item.data(library_dialog.REACHED_ROLE) for item in self._rows()}
@@ -233,6 +232,20 @@ class TheManageWindowStandsOnItsFrame(unittest.TestCase):
                             "the selection fills the gap the frame leaves above the row")
         self.assertNotEqual(selected, ink(px(rows["box_x"]) - 1, top + 1),
                             "the selection fills the inset the frame leaves beside the row")
+        self.assertNotEqual(selected, ink(px(rows["box_x"]), top),
+                            "the selected row's corner is square; the frame rounds it")
+
+    def test_the_list_ground_is_houdinis_list_colour_with_round_corners(self):
+        picture = self.dialog.grab().toImage()
+        ratio = picture.devicePixelRatio()
+        x, y, _wide, high = self._box(self.dialog._list)
+
+        def ink(at_x, at_y):
+            return QtGui.QColor(picture.pixel(int(at_x * ratio), int(at_y * ratio))).name()
+
+        ground = theme.list_ground().name()
+        self.assertEqual(ground, ink(x + 10, y + high - 3), "the bare list is not the list colour")
+        self.assertNotEqual(ground, ink(x, y), "the list's corner is square; the frame rounds it")
 
 
 if __name__ == "__main__":

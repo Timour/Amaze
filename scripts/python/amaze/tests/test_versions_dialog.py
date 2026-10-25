@@ -71,7 +71,7 @@ class TheIconIsNotClipped(unittest.TestCase):
 
 
 class TheVersionsWindowStandsOnItsFrame(unittest.TestCase):
-    """D01's window, band, list, buttons and rows land where the frame draws them."""
+    """D01's window, list, buttons and rows land where the frame draws them."""
 
     def setUp(self):
         self.dialog = _dialog(self)
@@ -93,10 +93,21 @@ class TheVersionsWindowStandsOnItsFrame(unittest.TestCase):
             with self.subTest(widget=key):
                 self.assertEqual(tuple(theme.ui_px(n) for n in drawn), self._box(widget))
 
-    def test_the_band_names_the_active_version_and_the_title_the_material(self):
-        band = self.dialog.findChild(QtWidgets.QLabel, "amaze_header_band_text")
-        self.assertEqual(amazetheme.LABEL_CURRENT_VERSION % "Look Development test", band.text())
+    def test_no_band_sits_over_the_list_and_the_title_names_the_material(self):
+        self.assertIsNone(self.dialog.findChild(QtWidgets.QLabel, "amaze_header_band_text"))
         self.assertEqual("brushed_steel", self.dialog.windowTitle())
+
+    def test_the_list_ground_is_houdinis_list_colour_with_round_corners(self):
+        picture = self.dialog.grab().toImage()
+        ratio = picture.devicePixelRatio()
+        x, y, _wide, high = self._box(self.dialog._list)
+
+        def ink(at_x, at_y):
+            return QtGui.QColor(picture.pixel(int(at_x * ratio), int(at_y * ratio))).name()
+
+        ground = theme.list_ground().name()
+        self.assertEqual(ground, ink(x + 10, y + high - 3), "the bare list is not the list colour")
+        self.assertNotEqual(ground, ink(x, y), "the list's corner is square; the frame rounds it")
 
     def test_a_picked_row_is_painted_in_the_drawn_selection(self):
         rows = amazetheme.drawn_list_rows("D01")
@@ -113,6 +124,8 @@ class TheVersionsWindowStandsOnItsFrame(unittest.TestCase):
                          "the picked row is not painted where it is drawn")
         self.assertNotEqual(selected, ink(px(rows["box_x"]) + 1, top - 1),
                             "the selection fills the gap the frame leaves above the row")
+        self.assertNotEqual(selected, ink(px(rows["box_x"]), top),
+                            "the picked row's corner is square; the frame rounds it")
 
 
 class TheDayIsNeverCut(unittest.TestCase):

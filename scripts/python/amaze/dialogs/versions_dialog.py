@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from PySide6 import QtCore, QtGui, QtWidgets
+from PySide6 import QtCore, QtWidgets
 
 from amaze import amazetheme
 from amaze import tooltips
 from amaze.core import versions
 from amaze.dialogs.base_dialog import AssetDialog
-from amaze.dialogs.library_dialog import ListRows
+from amaze.dialogs.library_dialog import ListRows, ground_list
 from amaze.helpers import theme, ui_helpers
 
 NUMBER_ROLE = QtCore.Qt.ItemDataRole.UserRole + 10    # the version's number in its ledger
@@ -20,13 +20,10 @@ class VersionsDialog(AssetDialog):
 
     FORM_WIDTH = amazetheme.D01_FRAME[0]
     FRAME_KEY = "D01"
-    HEADER_BAND = True    # D01 names the active version in the drawn strip
 
     def __init__(self, title: str, listed: list, active: int, parent=None) -> None:
         super().__init__(title, parent=parent)
         self.chosen = active
-        self._active_label = next((versions.version_label(entry) for entry in listed
-                                   if int(entry.get("n", 0)) == active), "")
         drawn = amazetheme.drawn_list_rows(self.FRAME_KEY)
 
         self._list = QtWidgets.QListWidget()
@@ -37,9 +34,7 @@ class VersionsDialog(AssetDialog):
         self._list.setItemDelegate(ListRows(
             self._list, self.FRAME_KEY, amazetheme.D01_SELECTED_INK,
             lambda index: str(index.data(DATE_ROLE) or ""), whole_second=True))
-        palette = self._list.palette()
-        palette.setColor(QtGui.QPalette.ColorRole.Base, theme.color("surface_low"))
-        self._list.setPalette(palette)
+        ground_list(self._list)
         self._list.setToolTip(ui_helpers.tooltip_text(tooltips.PANEL_VERSION_ROW))
         ui_helpers.pin_drawn(self._list, self.FRAME_KEY, "QListWidget", None)
 
@@ -78,9 +73,6 @@ class VersionsDialog(AssetDialog):
                 self._list.setCurrentItem(item)
         self._list.itemSelectionChanged.connect(self._sync_select)
         self._sync_select()
-
-    def header_band_text(self) -> str:
-        return amazetheme.LABEL_CURRENT_VERSION % self._active_label
 
     def _sync_select(self) -> None:
         self._select.setEnabled(bool(self._list.selectedItems()))

@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-HEADER_BAND_H = 30       # ▸ THE DRAWN HEADER: a full-width strip carrying the asset's own name, on D01, D02 and D11 and nowhere else. Its fill and ink follow Houdini (`surface_low`, `text_bright`), so only the geometry is here
+HEADER_BAND_H = 30       # ▸ THE DRAWN HEADER: the name strip D02 and D11 wear; fill and ink follow Houdini
 HEADER_BAND_INSET = 18   # where the name starts
 HEADER_BAND_TEXT_PX = 12
-HEADER_BAND_TEXT_BOLD = True    # the drawn weight on D01, D02 and D11
+HEADER_BAND_TEXT_BOLD = True    # the drawn weight on D02 and D11
 
 HOUSE_MARGIN = 5         # ▸ the content margin every compact form dialog wears; a dialog records its reason at the call to differ
 
@@ -84,6 +84,8 @@ P01_FORMAT_INK = "#80dddddd"    # the Format line otherwise: text at half opacit
 D15_SELECTED_INK = UPDATE_WARNING_FILL   # ▸ D15 Manage Libraries: a row picked for removal
 D15_DIM_INK = "#787878"        # a library that cannot be reached: its name and `not connected`
 D15_DIM_PATH_INK = "#646464"   # and its path
+LIST_GROUND = ("ListBG", "#262626")    # ▸ D01's and D15's list: Houdini's list colour, UIDark's headless
+LIST_RADIUS = 3                # its corners, and a picked row's
 PREFS_DIVIDER_ABOVE = 8  # inside the divider's own row box
 PREFS_DIVIDER_BELOW = 6  # so a divider costs ROW_GAP + ABOVE + H + BELOW + ROW_GAP = 27
 
@@ -166,8 +168,6 @@ LABEL_LIGHT_ICON = "Light Icon"     # the D02 toggle that replaced the Lines dro
 LABEL_NAME = "Name"
 PLACEHOLDER_SEARCH_ICONS = "Search"     # D02 drew the count in it; it does not any more
 LABEL_NOT_CONNECTED = "not connected"    # D15: a listed library whose folder cannot be reached
-LABEL_CURRENT_LIBRARY = "Current Library: %s"    # D15's band: the open library's name
-LABEL_CURRENT_VERSION = "Current Version: %s"    # D01's band: the active version's name
 LABEL_LIBRARY_FORMAT = "Format: v%d"     # ▸ P01, under the library's buttons
 LABEL_UPGRADES_LIBRARY = "Apply/Accept will upgrade your library to v%d"    # beside Apply
 LABEL_LIBRARY_TOO_NEW = "You need to update Amaze to use this library"
@@ -242,22 +242,20 @@ EMPTY_FILE = {
 
 DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node, per frame; `AmazeNotes/tools/figma-diff.py` checks Figma against it ▸p/one-design-document
     "D01": {   # Versions: a material's versions, newest first
-        "frame": (269, 364),
+        "frame": (269, 344),
         "nodes": (
-            ("header band", 0, 0, 269, 22, None),
-            ("QLabel", 8, 3, 253, 15, "Current Version: [name of version] "),
-            ("QListWidget", 8, 32, 253, 286, None),
-            ("QListWidget ▸ item ▸ selected", 14, 58, 241, 22, None),
-            ("QListWidget ▸ item", 19, 38, 90, 15, "Version 2 with red "),
-            ("QListWidget ▸ item ▸ path", 194, 38, 56, 15, "2026-10-23"),
-            ("QListWidget ▸ item", 19, 62, 168, 15, "Johns version more saturated w..."),
-            ("QListWidget ▸ item ▸ path", 194, 62, 56, 15, "2026-10-22"),
-            ("QListWidget ▸ item", 19, 86, 116, 15, "Look Development test"),
-            ("QListWidget ▸ item ▸ path", 195, 86, 56, 15, "2026-10-22"),
-            ("QPushButton", 130, 331, 60, 21, None),
-            ("QPushButton", 196, 331, 65, 21, None),
-            ("QPushButton ▸ text", 145, 334, 31, 15, "Select"),
-            ("QPushButton ▸ text", 211, 334, 34, 15, "Cancel"),
+            ("QListWidget", 8, 12, 253, 286, None),
+            ("QListWidget ▸ item ▸ selected", 14, 38, 241, 22, None),
+            ("QListWidget ▸ item", 19, 18, 90, 15, "Version 2 with red "),
+            ("QListWidget ▸ item ▸ path", 194, 18, 56, 15, "2026-10-23"),
+            ("QListWidget ▸ item", 19, 42, 168, 15, "Johns version more saturated w..."),
+            ("QListWidget ▸ item ▸ path", 194, 42, 56, 15, "2026-10-22"),
+            ("QListWidget ▸ item", 19, 66, 116, 15, "Look Development test"),
+            ("QListWidget ▸ item ▸ path", 195, 66, 56, 15, "2026-10-22"),
+            ("QPushButton", 130, 311, 60, 21, None),
+            ("QPushButton", 196, 311, 65, 21, None),
+            ("QPushButton ▸ text", 145, 314, 31, 15, "Select"),
+            ("QPushButton ▸ text", 211, 314, 34, 15, "Cancel"),
         ),
     },
     "D02": {   # Customize (Tile Icon)
@@ -641,25 +639,23 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
         ),
     },
     "D15": {   # Manage Libraries - the Library list, opened from Preferences ▸ Library
-        "frame": (420, 247),
+        "frame": (420, 227),
         "nodes": (
-            ("header band", 0, 0, 420, 22, None),
-            ("QLabel", 8, 3, 206, 15, "Current Library: [current library name]"),
-            ("QListWidget", 8, 32, 404, 170, None),
-            ("QListWidget ▸ item", 19, 38, 71, 15, "Studio Library"),
-            ("QListWidget ▸ item ▸ path", 130, 38, 158, 15, "/Volumes/Server/Amaze/Studio"),
-            ("QListWidget ▸ item ▸ selected", 14, 58, 392, 22, None),
-            ("QListWidget ▸ item", 19, 62, 69, 15, "Client Archive"),
-            ("QListWidget ▸ item ▸ path", 130, 62, 170, 15, "/Volumes/Projects/Archive/Amaze"),
-            ("QListWidget ▸ item", 19, 86, 95, 15, "Look Development"),
-            ("QListWidget ▸ item ▸ path", 130, 86, 91, 15, "~/Amaze/LookDev"),
-            ("QListWidget ▸ item", 19, 110, 56, 15, "Old Library"),
-            ("QListWidget ▸ item ▸ path", 130, 110, 148, 15, "/Volumes/Backup/Amaze/Old"),
-            ("QListWidget ▸ item ▸ not connected", 328, 110, 72, 15, "not connected"),
-            ("QPushButton", 237, 213, 104, 22, None),
-            ("QPushButton", 347, 213, 65, 22, None),
-            ("QPushButton ▸ text", 245, 217, 88, 15, "Remove from List"),
-            ("QPushButton ▸ text", 363, 216, 34, 15, "Cancel"),
+            ("QListWidget", 8, 12, 404, 170, None),
+            ("QListWidget ▸ item", 19, 18, 71, 15, "Studio Library"),
+            ("QListWidget ▸ item ▸ path", 130, 18, 158, 15, "/Volumes/Server/Amaze/Studio"),
+            ("QListWidget ▸ item ▸ selected", 14, 38, 392, 22, None),
+            ("QListWidget ▸ item", 19, 42, 69, 15, "Client Archive"),
+            ("QListWidget ▸ item ▸ path", 130, 42, 170, 15, "/Volumes/Projects/Archive/Amaze"),
+            ("QListWidget ▸ item", 19, 66, 95, 15, "Look Development"),
+            ("QListWidget ▸ item ▸ path", 130, 66, 91, 15, "~/Amaze/LookDev"),
+            ("QListWidget ▸ item", 19, 90, 56, 15, "Old Library"),
+            ("QListWidget ▸ item ▸ path", 130, 90, 148, 15, "/Volumes/Backup/Amaze/Old"),
+            ("QListWidget ▸ item ▸ not connected", 328, 90, 72, 15, "not connected"),
+            ("QPushButton", 237, 193, 104, 22, None),
+            ("QPushButton", 347, 193, 65, 22, None),
+            ("QPushButton ▸ text", 245, 197, 88, 15, "Remove from List"),
+            ("QPushButton ▸ text", 363, 196, 34, 15, "Cancel"),
         ),
     },
     "T01": {   # the grid tile, drawn at TILE_DRAWN_SIZE - its spacing is what the delegate paints
@@ -1159,8 +1155,8 @@ def drawn_list_rows(frame_key: str = "D15") -> dict:
     pitch = names[1][2] - names[0][2]
     width, height = layout["frame"]
     return {
-        "margins": (view[1], view[2] - drawn_band(frame_key)[0],    # left, top under the band,
-                    width - (view[1] + view[3]),                      # right, bottom
+        "margins": (view[1], view[2],                    # left, top: neither list wears a band
+                    width - (view[1] + view[3]),         # right, bottom
                     height - (buttons[0][2] + buttons[0][4])),
         "view": (view[3], view[4]),
         "button_top": buttons[0][2] - (view[2] + view[4]),    # the list's bottom to the buttons

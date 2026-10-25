@@ -53,7 +53,10 @@ class ListRows(QtWidgets.QStyledItemDelegate):
         path_x = box.x() + px(drawn["path_x"])
         painter.save()
         if option.state & QtWidgets.QStyle.StateFlag.State_Selected:
-            painter.fillRect(box, QtGui.QColor(self._selected_ink))
+            painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+            painter.setPen(QtCore.Qt.PenStyle.NoPen)
+            painter.setBrush(QtGui.QColor(self._selected_ink))
+            painter.drawRoundedRect(box, px(amazetheme.LIST_RADIUS), px(amazetheme.LIST_RADIUS))
         painter.setFont(option.font)
         if not reached:
             flag = amazetheme.LABEL_NOT_CONNECTED
@@ -82,12 +85,18 @@ def _draw(painter, metrics, text, rect, ink, elide) -> None:
     painter.drawText(rect, _ALIGN, metrics.elidedText(text, elide, rect.width()))
 
 
+def ground_list(view) -> None:
+    """A drawn list's ground: Houdini's list colour, with the drawn corners."""
+    view.setStyleSheet(
+        "QListWidget { background-color: %s; border: none; border-radius: %dpx; }"
+        % (theme.list_ground().name(), theme.ui_px(amazetheme.LIST_RADIUS)))
+
+
 class ManageLibrariesDialog(AssetDialog):
     """The Library list, most recent first; the open library is shown and cannot be selected."""
 
     FORM_WIDTH = amazetheme.D15_WIDTH
     FRAME_KEY = "D15"
-    HEADER_BAND = True    # D15 names the open library in the drawn strip
 
     def __init__(self, preferences, open_library: str = "", parent=None) -> None:
         super().__init__(amazetheme.TITLE_MANAGE_LIBRARIES, parent=parent)
@@ -104,9 +113,7 @@ class ManageLibrariesDialog(AssetDialog):
             QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._list.setUniformItemSizes(True)
         self._list.setItemDelegate(ListRows(self._list))
-        palette = self._list.palette()    # PALETTE, as the sidebar does: a view paints its viewport from Base
-        palette.setColor(QtGui.QPalette.ColorRole.Base, theme.color("surface_low"))
-        self._list.setPalette(palette)
+        ground_list(self._list)
         ui_helpers.pin_drawn(self._list, self.FRAME_KEY, "QListWidget", None)
 
         self._remove = QtWidgets.QPushButton(amazetheme.BTN_REMOVE_FROM_LIST)
@@ -138,9 +145,6 @@ class ManageLibrariesDialog(AssetDialog):
         self._fill(open_library)
         self._list.itemSelectionChanged.connect(self._sync_remove)
         self._sync_remove()
-
-    def header_band_text(self) -> str:
-        return amazetheme.LABEL_CURRENT_LIBRARY % library_name(self._open_library)
 
     def _fill(self, open_library: str) -> None:
         current = hostos.comparable_path(open_library) if open_library else ""
