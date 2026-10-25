@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.11.21
+
+- The version store keeps code snippets' versions too, in the library's `code/versions` folder; nothing changes in the app.
+
 ## 1.11.20
 
 - Versions: the dialog lists the versions newest first with the day each was saved; pick one and press Select. Renaming a version is gone with the old dialog.
