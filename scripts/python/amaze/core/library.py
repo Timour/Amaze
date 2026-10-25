@@ -980,6 +980,14 @@ class AssetLibrary(grid_engine.GridEngine,
                 matches.append(row)
         return matches[0] if len(matches) == 1 else -1
 
+    def version_list(self, row: int) -> tuple:
+        """([{n, name, author, date}] oldest first, the active number) for the asset at `row`."""
+        if not 0 <= row < len(self._assets):
+            return [], 0
+        mat_id = str(self._assets[row].mat_id)
+        return (versions.list_versions(self.preferences, mat_id, self.VERSION_SECTION),
+                versions.active_version(self.preferences, mat_id, self.VERSION_SECTION))
+
     def switch_version(self, row: int, number: int) -> bool:
         """Make version `number` the active one for the asset at `row`. Everything downstream of the base files gets told here - the content baseline (or the next Update Existing reads our own switch as another session's write and refuses), the per-id label caches, the thumbnail and the tile."""
         if not 0 <= row < len(self._assets):

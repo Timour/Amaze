@@ -64,6 +64,11 @@ class AssetDialog(QtWidgets.QDialog):
         """What the drawn band says - the window title by default, since for most dialogs that already IS the asset's name. A dialog whose title is a verb rather than a name overrides this. ▸p/one-design-document"""
         return self.windowTitle()
 
+    def build_header_band(self):
+        """The drawn strip over the content; a dialog that draws more in it builds its own."""
+        return ui_helpers.header_band(self, self.header_band_text(),
+                                      *amazetheme.drawn_band(self.FRAME_KEY))
+
     def add_row(self, label, widget):
         """Add a labelled row; returns the widget for wiring. A dialog declaring `FRAME_KEY` takes the row's size from that frame's drawn rect in `finish()`; one declaring only `FIELD_WIDTH` gets it EXACTLY here, so the label column absorbs the slack and siblings with different labels still draw the same field. ▸p/save-dialog-rows"""
         if self.FRAME_KEY:
@@ -149,12 +154,10 @@ class AssetDialog(QtWidgets.QDialog):
             self._pin_label_column(sides[0] + sides[2])
             return
 
-        band_text = self.header_band_text()
         outer = QtWidgets.QVBoxLayout()    # the band is FULL WIDTH, so the house margins move inside it rather than around it
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
-        outer.addWidget(ui_helpers.header_band(
-            self, band_text, *amazetheme.drawn_band(self.FRAME_KEY)))
+        outer.addWidget(self.build_header_band())
         outer.addLayout(layout)
         if self._fixed_size:
             outer.setSizeConstraint(

@@ -600,7 +600,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         self._add_divider(form)
         # NOT A PREFERENCE: it lives in the library's policy.json and travels with it
         self._cbx_allow_overwrite = ui_helpers.ToggleSwitch(
-            "Material Versions")
+            amazetheme.LABEL_VERSIONS)
         self._cbx_allow_overwrite.setChecked(
             library_policy.allow_overwrite(self._prefs.dir))
         self._cbx_allow_overwrite.setToolTip(ui_helpers.tooltip_text(

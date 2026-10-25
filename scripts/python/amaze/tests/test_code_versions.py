@@ -152,6 +152,108 @@ class TheModelCarriesCodeVersions(_Case):
         self.assertFalse(os.path.exists(self.store), "the snippet's versions outlived it")
 
 
+class TheEditorWindowKeepsVersions(unittest.TestCase):
+    """D11 through the Code section's own door: Apply saves and the window stays open."""
+
+    def setUp(self):
+        self.panel = test_support.fixture_panel(self)
+        self.model = self.panel.code_model
+        self.mat_id = self.model.add_snippet(FIRST, "helper", "VEX", "Examples", "")
+        self.assertTrue(self.mat_id)
+
+    def _row(self):
+        return self.model.find_asset_row_by_id(self.mat_id)
+
+    def _through_the_door(self, steps, opening=None):
+        from amaze.dialogs import code_dialog
+
+        def driving(dialog):
+            steps(dialog)
+            return 0
+
+        with patch.object(code_dialog.CodeDialog, "exec", driving):
+            (opening or (lambda: self.panel.sections["code"]._edit_code_row(self._row())))()
+
+    def _listed(self):
+        return [(v["n"], v["name"]) for v in
+                versions.list_versions(self.panel.prefs, self.mat_id, versions.CODE)]
+
+    def test_new_version_then_apply_keeps_the_old_one_too(self):
+        def steps(dialog):
+            self.assertTrue(dialog._plus.isEnabled(), "a saved snippet offers no + menu")
+            dialog._new_version()
+            self.assertEqual("Version 2", dialog._line_name.text())
+            dialog._editor.setPlainText(THIRD)
+            dialog._apply()
+            self.assertEqual(2, dialog.version, "the window lost the version it saved")
+        self._through_the_door(steps)
+        self.assertEqual([(1, "helper"), (2, "Version 2")], self._listed())
+        self.assertEqual(THIRD, self.model.assets[self._row()].code)
+
+    def test_a_picked_version_opens_and_apply_saves_into_it(self):
+        self.model.save_version(self._row(), self.model.NEW_VERSION, SECOND, "helper fast",
+                                "VEX", "Examples", "")
+
+        def steps(dialog):
+            dialog._show_version(1)
+            self.assertEqual((FIRST, "helper"),
+                             (dialog._editor.toPlainText(), dialog._line_name.text()))
+            dialog._editor.setPlainText(THIRD)
+            dialog._apply()
+        self._through_the_door(steps)
+        self.assertEqual(1, versions.active_version(self.panel.prefs, self.mat_id, versions.CODE))
+        self.assertEqual(THIRD, self.model.version_text(self._row(), 1))
+        self.assertEqual(SECOND, self.model.version_text(self._row(), 2))
+
+    def test_the_menu_is_new_version_then_the_versions_newest_first(self):
+        self.model.save_version(self._row(), self.model.NEW_VERSION, SECOND, "helper fast",
+                                "VEX", "Examples", "")
+        seen = {}
+
+        def steps(dialog):
+            dialog._fill_version_menu()
+            seen["menu"] = [(a.text(), a.isChecked()) for a in dialog._version_menu.actions()]
+        self._through_the_door(steps)
+        from amaze import amazetheme
+        self.assertEqual([(amazetheme.MENU_NEW_VERSION, False), ("", False),
+                          ("helper fast", True), ("helper", False)], seen["menu"])
+
+    def test_with_versions_off_apply_saves_the_snippet_alone(self):
+        from amaze.core import library_policy
+        self.model.save_version(self._row(), self.model.NEW_VERSION, SECOND, "helper fast",
+                                "VEX", "Examples", "")
+        self.assertTrue(library_policy.set_allow_overwrite(self.panel.prefs.dir, False))
+
+        def steps(dialog):
+            self.assertFalse(dialog._plus.isEnabled(), "Versions is off and the + still works")
+            dialog._editor.setPlainText(THIRD)
+            dialog._apply()
+            self.assertFalse(dialog._plus.isEnabled(), "an Apply turned the + back on")
+        self._through_the_door(steps)
+        self.assertEqual(THIRD, self.model.assets[self._row()].code)
+        self.assertEqual([(1, "helper"), (2, "helper fast")], self._listed())
+        self.assertEqual(SECOND, self.model.version_text(self._row(), 2),
+                         "with Versions off an Apply still wrote into a version")
+
+    def test_a_new_snippet_is_added_once_and_then_offers_versions(self):
+        before = len(self.model.assets)
+
+        def steps(dialog):
+            self.assertFalse(dialog._plus.isEnabled(), "versions offered before the snippet exists")
+            dialog._line_name.setText("fresh")
+            dialog._editor.setPlainText(FIRST)
+            dialog._apply()
+            self.assertTrue(dialog._plus.isEnabled(), "the saved snippet still offers no versions")
+            dialog._editor.setPlainText(THIRD)
+            dialog._apply()
+        self._through_the_door(
+            steps, lambda: self.panel._add_code_snippet("", "VEX", ""))
+        added = [a for a in self.model.assets if a.name == "fresh"]
+        self.assertEqual((before + 1, 1), (len(self.model.assets), len(added)),
+                         "a second Apply added the snippet again")
+        self.assertEqual(THIRD, added[0].code)
+
+
 class TheSweepsLeaveCodeVersionsAlone(_Case):
     """Clean Library and Repair list mat/ and img/ only. ▸r/version-store"""
 

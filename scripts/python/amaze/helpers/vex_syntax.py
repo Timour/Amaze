@@ -4,15 +4,22 @@ import re
 
 from PySide6 import QtGui
 
-BACKGROUND = QtGui.QColor("#000000")    # the palette, a best-effort match of Houdini's own wrangle VEXpression editor
-DEFAULT = QtGui.QColor("#d4d4d4")
-COMMENT = QtGui.QColor("#6a9955")
-STRING = QtGui.QColor("#9cdb6a")   # green, brighter than comments
-NUMBER = QtGui.QColor("#d7a35b")   # gold / orange
-TYPE = QtGui.QColor("#8f9fff")     # vector / int / float - blue-violet
-KEYWORD = QtGui.QColor("#c586d9")  # if / for / return - purple
-FUNCTION = QtGui.QColor("#5e9cea") # point / addpoint / addprim - blue
-ATTRIB = QtGui.QColor("#56c2b0")   # @P / v@center - teal
+from amaze import amazetheme
+
+_INKS = {}
+
+
+def use_inks(inks: dict) -> None:
+    """Paint with `inks` by kind from now on; the panel hands in Houdini's. ▸r/houdini-code-look"""
+    global DEFAULT, COMMENT, STRING, NUMBER, TYPE, KEYWORD, FUNCTION, ATTRIB
+    _INKS.clear()
+    _INKS.update(inks)
+    DEFAULT, COMMENT, STRING, NUMBER = (inks[k] for k in ("plain", "comment", "string", "number"))
+    TYPE, KEYWORD, FUNCTION, ATTRIB = (inks[k] for k in ("type", "keyword", "function", "attrib"))
+
+
+use_inks({kind: QtGui.QColor(fallback)    # Houdini's dark scheme, until the panel says otherwise
+          for kind, (_name, fallback) in amazetheme.CODE_SYNTAX.items()})
 
 KEYWORDS = {
     "if", "else", "for", "foreach", "while", "do", "return", "break",
@@ -42,44 +49,33 @@ _TOKEN_RE = re.compile(
 _CALL_RE = re.compile(r"\s*\(")    # `\s` and `str.lstrip` strip the same characters
 
 
-def spans(line: str):
-    """(start, length, QColor) runs for ONE line; a word before `(` is a call. ▸p/vex-block-comments"""
+def _runs(line: str):
+    """(start, length, kind, QColor) for ONE line; a word before `(` is a call."""
     for m in _TOKEN_RE.finditer(line):
         kind = m.lastgroup
-        color = DEFAULT
-        if kind == "comment":
-            color = COMMENT
-        elif kind == "string":
-            color = STRING
-        elif kind == "attrib":
-            color = ATTRIB
-        elif kind == "number":
-            color = NUMBER
-        elif kind == "word":
+        if kind == "word":
             text = m.group()
-            if text in KEYWORDS:
-                color = KEYWORD
-            elif text in TYPES:
-                color = TYPE
-            elif _CALL_RE.match(line, m.end()):
-                color = FUNCTION
-            else:
-                color = DEFAULT
-        else:
-            color = DEFAULT
-        yield m.start(), m.end() - m.start(), color
+            kind = ("keyword" if text in KEYWORDS else "type" if text in TYPES
+                    else "function" if _CALL_RE.match(line, m.end()) else "word")
+        yield m.start(), m.end() - m.start(), kind, _INKS.get(kind, DEFAULT)
+
+
+def spans(line: str):
+    """(start, length, QColor) runs for ONE line; a word before `(` is a call. ▸p/vex-block-comments"""
+    for start, length, _kind, color in _runs(line):
+        yield start, length, color
 
 
 def open_comment_at(line: str):
     """Index of a `/*` still OPEN at the end of `line`, else None. ▸p/vex-block-comments"""
-    return _open_comment(line, spans(line))
+    return _open_comment(line, _runs(line))
 
 
 def _open_comment(line: str, runs):
-    """`open_comment_at` over runs `spans` already made for `line`."""
+    """`open_comment_at` over the runs `_runs` already made for `line`: masked by KIND, not ink."""
     masked = set()
-    for start, length, color in runs:
-        if color in (STRING, COMMENT):
+    for start, length, kind, _color in runs:
+        if kind in ("string", "comment"):
             masked.update(range(start, start + length))
     found = line.find("/*")
     while found != -1:
@@ -119,11 +115,11 @@ class VexHighlighter(QtGui.QSyntaxHighlighter):
         self.setCurrentBlockState(0)
 
         rest = text[offset:]
-        runs = list(spans(rest))
+        runs = list(_runs(rest))
         opened = _open_comment(rest, runs)
         if opened is not None:
             self._paint(offset + opened, len(rest) - opened, COMMENT)
             runs = [run for run in runs if run[0] < opened]    # no run crosses an open `/*`
             self.setCurrentBlockState(self.IN_BLOCK_COMMENT)
-        for start, length, color in runs:
+        for start, length, _kind, color in runs:
             self._paint(offset + start, length, color)

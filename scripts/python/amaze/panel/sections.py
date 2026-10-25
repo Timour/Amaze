@@ -13,8 +13,8 @@ from amaze.actions import code as code_actions
 from amaze.actions import materials as material_actions
 from amaze.actions import nodes as node_actions
 from amaze.core import (category, debug, file_library,
-                        grid_columns, locations, multifilterproxy_model, renderers,
-                        scene_captures, notes)
+                        grid_columns, library_policy, locations, multifilterproxy_model,
+                        renderers, scene_captures, notes)
 from amaze.helpers import hostos, ui_helpers, wording
 from amaze import messages
 from amaze.panel import grid
@@ -1047,31 +1047,42 @@ class CodeSection(AssetSection):
         from amaze.dialogs import code_dialog
         panel = self.panel
         asset = panel.code_model.assets[row]
+        model, mat_id = panel.code_model, str(asset.mat_id)
+        on = library_policy.allow_overwrite(panel.prefs.dir)    # Preferences ▸ Versions
+        listed, active = model.version_list(row) if on else ([], 0)
         dialog = code_dialog.CodeDialog(
             panel.get_code_category_names(),
-            name=asset.name,
+            name=asset.name,    # the snippet's name follows its active version's
             language=asset.renderer,
             category=asset.categories[0] if asset.categories else "",
             tags=", ".join(asset.tags),
             code=asset.code,
             title="Edit Snippet",
+            versions=listed, active=active, saved=True, versions_on=on,
+            load_version=lambda n: model.version_text(model.find_asset_row_by_id(mat_id), n),
             parent=panel,
         )
+        self.run_code_dialog(dialog, mat_id)
+
+    def run_code_dialog(self, dialog, mat_id: str) -> None:
+        """Every Apply saves the snippet `mat_id`, a new one while it is empty; the window stays."""
+        panel = self.panel
+        saved = {"id": mat_id}
+
+        def apply():
+            if dialog.category:
+                panel.code_category_model.check_add_category(dialog.category)
+            got = panel.code_model.save_from_editor(    # NO layout pair: it announces itself
+                saved["id"], dialog.version, dialog.code, dialog.name, dialog.language,
+                dialog.category, dialog.tags)
+            panel._refresh_sidebar_categories()
+            if got:
+                saved["id"] = got
+                dialog.versions_saved(*panel.code_model.version_list(
+                    panel.code_model.find_asset_row_by_id(got)))
+
+        dialog.applied.connect(apply)
         dialog.exec()
-        if dialog.canceled:
-            return
-        if dialog.category:
-            panel.code_category_model.check_add_category(dialog.category)
-        row = panel.code_model.find_asset_row_by_id(asset.mat_id)    # that save can move rows
-        if row < 0:
-            debug.event("code", "edited snippet gone from the library",
-                        mat_id=str(asset.mat_id))
-            return
-        panel.code_model.update_asset(    # NO layout pair: it saves, and announces the row itself
-            row, dialog.code, dialog.name, dialog.language,
-            dialog.category, dialog.tags,
-        )
-        panel._refresh_sidebar_categories()
     library_model_attrs = ("code_model", "code_category_model")
     model_attr = "code_model"
     proxy_attr = "code_sorted_model"

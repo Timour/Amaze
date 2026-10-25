@@ -701,8 +701,8 @@ class NoRowMovesInsideALayoutChange(unittest.TestCase):
                                      "renderer": "VEX"})
 
         def accepting(dialog):
-            dialog._on_accept()
-            return 1
+            dialog._apply()    # Apply saves and the window stays; closing saves nothing more
+            return 0
 
         with mock.patch.object(code_dialog.CodeDialog, "exec", accepting), \
                 test_support.row_moves_inside_a_layout_change(
@@ -761,10 +761,11 @@ class ARowHeldAcrossASaveIsFoundAgain(unittest.TestCase):
         self._deleted_elsewhere(code, code.assets[0].mat_id)
 
         def accepting(dialog):
-            dialog._on_accept()
+            dialog._harvest()
             dialog.category = "Brand New"
             dialog.code = "// edited here"
-            return 1
+            dialog.applied.emit()    # what Apply hands the section, with these two fields set
+            return 0
 
         with mock.patch.object(code_dialog.CodeDialog, "exec", accepting):
             self.panel.sections["code"]._edit_code_row(rows[0])

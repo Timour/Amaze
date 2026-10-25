@@ -9,6 +9,7 @@ import sys
 import tempfile
 import types
 import unittest
+from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6 import QtCore, QtGui, QtTest, QtWidgets  # noqa: E402
@@ -1196,10 +1197,11 @@ class TheHighlighterReadsEachLineOnce(unittest.TestCase):
 
     def _letters(self, line, runs):
         from amaze.helpers import vex_syntax as vs
-        names = {vs.DEFAULT.name(): "d", vs.COMMENT.name(): "c",
-                 vs.STRING.name(): "s", vs.NUMBER.name(): "n",
+        names = {vs.STRING.name(): "s", vs.COMMENT.name(): "c",
+                 vs.NUMBER.name(): "n",
                  vs.TYPE.name(): "t", vs.KEYWORD.name(): "k",
-                 vs.FUNCTION.name(): "f", vs.ATTRIB.name(): "a"}
+                 vs.FUNCTION.name(): "f", vs.ATTRIB.name(): "a",
+                 vs.DEFAULT.name(): "d"}    # last: an ink shared with the plain one reads as plain
         chars = ["."] * len(line)
         for start, length, colour in runs:
             for i in range(start, start + length):
@@ -1214,6 +1216,64 @@ class TheHighlighterReadsEachLineOnce(unittest.TestCase):
             with self.subTest(line=line):
                 self.assertEqual(letters, self._letters(line, runs))
                 self.assertEqual(state, got_state)
+
+
+class TheCodeLooksLikeHoudinis(unittest.TestCase):
+    """The code editor takes Houdini's Fixed face and its syntax colours. ▸r/houdini-code-look"""
+
+    def _houdini_file(self, *parts):
+        path = os.path.join(os.environ.get("HFS", ""), "houdini", *parts)
+        if not os.path.exists(path):
+            self.skipTest("no Houdini file at %s" % path)
+        with open(path, encoding="utf-8", errors="replace") as handle:
+            return handle.read()
+
+    def test_the_face_is_houdinis_fixed_one(self):
+        from amaze import amazetheme
+        fixed = re.search(r'^Fixed\s+"([^"]+)"', self._houdini_file("fonts", "font.map"), re.M)
+        self.assertEqual(fixed.group(1), amazetheme.CODE_FONT[0])
+
+    def test_every_fallback_is_houdinis_dark_scheme(self):
+        from amaze import amazetheme
+        scheme = self._houdini_file("config", "UIDark.hcs")
+        for kind, (name, fallback) in amazetheme.CODE_SYNTAX.items():
+            with self.subTest(kind=kind):
+                drawn = re.search(r"^%s:\s*(#[0-9a-fA-F]{6})" % name, scheme, re.M)
+                self.assertIsNotNone(drawn, "Houdini names no %s" % name)
+                self.assertEqual(drawn.group(1).lower(), fallback)
+
+    def test_the_live_scheme_wins_and_a_missing_name_falls_back(self):
+        live = types.SimpleNamespace(getColor=lambda name: QtGui.QColor("#123456"))
+        with mock.patch.object(hou, "qt", live, create=True):
+            self.assertEqual("#123456", theme.houdini_color("ParmSyntaxStringColor", "#000000").name())
+
+        def missing(name):
+            raise RuntimeError("no such colour")
+        with mock.patch.object(hou, "qt", types.SimpleNamespace(getColor=missing), create=True):
+            self.assertEqual("#79a978", theme.houdini_color("Nope", "#79a978").name())
+
+    def test_a_light_scheme_reads_as_the_dark_one(self):
+        from amaze import amazetheme
+        with mock.patch.object(theme, "houdini_color",
+                               lambda name, fallback: QtGui.QColor("#2e3440")):
+            inks = theme.syntax_inks()
+        self.assertEqual({kind: fallback for kind, (_n, fallback) in amazetheme.CODE_SYNTAX.items()},
+                         {kind: ink.name() for kind, ink in inks.items()},
+                         "dark ink from Houdini's light scheme reached the dark editor")
+
+    def test_the_panel_hands_houdinis_colours_to_the_painter(self):
+        from amaze import amazetheme
+        from amaze.helpers import vex_syntax
+        kinds = list(amazetheme.CODE_SYNTAX)
+        live = {kind: QtGui.QColor("#%02x8080" % (0x40 + 8 * i)) for i, kind in enumerate(kinds)}
+        self.addCleanup(vex_syntax.use_inks, {
+            kind: QtGui.QColor(fallback) for kind, (_n, fallback) in amazetheme.CODE_SYNTAX.items()})
+        with mock.patch.object(theme, "syntax_inks", lambda: live):
+            test_support.fixture_panel(self)
+        painted = {colour.name() for _s, _l, colour in vex_syntax.spans('int a = f(1); // "x"')}
+        self.assertLessEqual(painted, {ink.name() for ink in live.values()},
+                             "the tokenizer still paints colours the panel did not hand it")
+        self.assertEqual(live["comment"].name(), vex_syntax.COMMENT.name())
 
 
 class TheHighlighterBuildsOneFormatPerColour(unittest.TestCase):

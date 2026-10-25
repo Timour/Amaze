@@ -188,6 +188,28 @@ def color_hex(name: str) -> str:
     return color(name).name()
 
 
+def houdini_color(name: str, fallback: str) -> QtGui.QColor:
+    """Houdini's own colour `name` from the active scheme; `fallback` with no UI to ask."""
+    qt = getattr(hou, "qt", None)    # absent in hython ▸r/houdini-code-look
+    if qt is not None:
+        try:
+            return QtGui.QColor(qt.getColor(name))
+        except Exception:    # noqa: BLE001 - hou.OperationFailed for a name the scheme lacks
+            pass
+    return QtGui.QColor(fallback)
+
+
+def syntax_inks() -> dict:
+    """Houdini's syntax colours by kind; its dark scheme's when the live ones suit a light ground."""
+    from amaze import amazetheme
+    live = {kind: houdini_color(name, fallback)
+            for kind, (name, fallback) in amazetheme.CODE_SYNTAX.items()}
+    if live["plain"].lightnessF() < 0.5:    # Houdini's light scheme: unreadable on Amaze's ground
+        live = {kind: QtGui.QColor(fallback)
+                for kind, (_name, fallback) in amazetheme.CODE_SYNTAX.items()}
+    return live
+
+
 def _derive(theme, name):
     oklch = theme["oklch"]
     try:

@@ -178,8 +178,15 @@ newest first; pick one and press **Select** to make it current.
 
 <img src="docs/images/dialog_versions.png" width="380">
 
-**Material Versions** in Preferences ▸ Library turns versions on and
-off.
+A snippet keeps versions too. In the code editor, the **+** beside the
+version's name lists **New Version** and the snippet's versions. Picking
+a version opens it in the editor; **Apply** saves the code into the
+version shown, or as a new version after **New Version**. The Name field
+names the version, and the snippet's tile shows the name of its current
+version.
+
+**Versions** in Preferences ▸ Library turns versions on and off, for
+materials and snippets.
 
 ### Loading
 
@@ -348,7 +355,9 @@ The right-click menu:
 - **New File** opens the editor on a new snippet.
 - **Apply** writes the snippet into the selected node's code parameter.
 - **Edit** opens the snippet in the editor, with Name, Language,
-  Category and Tags above the code.
+  Category and Tags above the code. In the editor, **Apply** saves the
+  snippet and the editor stays open. The **+** above the fields holds
+  the snippet's [versions](#versions).
 - **Capture**, **Customize**, **Favorite**, **Export Package** and
   **Delete**.
 
@@ -649,7 +658,8 @@ computer's scene captures into the library's `captures` folder, and the
 originals stay in Amaze's holding folder for 30 days. A library from a
 newer Amaze cannot be applied, and the line says to update Amaze.
 
-**Material Versions** turns [versions](#versions) on and off.
+**Versions** turns [versions](#versions) on and off, for materials and
+snippets.
 
 **User** lists the users in the picked library. Favorites, File folders
 and saved versions belong to the user, so the same user on another
@@ -766,7 +776,7 @@ Every write takes a snapshot of the asset list first, with rolling
 backups and a first-run copy, and writes from a second Houdini session
 are merged.
 
-**Material Versions** (Preferences ▸ Library) is stored in the library,
+**Versions** (Preferences ▸ Library) is stored in the library,
 and every computer that uses the library shares it.
 
 **Debug Mode** (Preferences ▸ About) records a session log. **Save

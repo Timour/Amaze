@@ -179,6 +179,8 @@ class AmazePanel(QtWidgets.QWidget):
             raise
 
     def _build(self) -> None:
+        from amaze.helpers import vex_syntax
+        vex_syntax.use_inks(theme.syntax_inks())    # Houdini's syntax colours, tiles and editor alike
         self.prefs = prefs.Prefs()
 
         loaded = self.prefs.load()    # False means only that there was nothing usable on disk - no settings.json, an unreadable one, or a library directory that is gone - and the preferences object is populated either way, so the debug engine, the settings snapshot (the designated restore source) and the cache override must all run on BOTH paths: the session right after a settings loss is exactly the one whose record matters most
@@ -2674,7 +2676,8 @@ class AmazePanel(QtWidgets.QWidget):
     def _add_code_snippet(
         self, code: str, language: str, default_name: str
     ) -> None:
-        """Shared save flow for both Save-from-Node and New Snippet: open the Code dialog prefilled, then register the snippet."""
+        """New Snippet and a node's code: the code dialog, prefilled; each Apply saves the snippet."""
+        from amaze.core import library_policy
         from amaze.dialogs import code_dialog
         if not self.code_model:
             ui = getattr(hou, "ui", None)
@@ -2689,22 +2692,10 @@ class AmazePanel(QtWidgets.QWidget):
             language=language or "VEX",
             category=self._current_code_category(),
             code=code,
+            versions_on=library_policy.allow_overwrite(self.prefs.dir),    # Preferences ▸ Versions
             parent=self,
         )
-        dialog.exec()
-        if dialog.canceled:
-            return
-        if dialog.category:
-            self.code_category_model.check_add_category(dialog.category)
-        self.code_model.add_asset(    # no layout wrapper: add_asset announces itself with begin/endInsertRows, and pairing the two segfaults H21
-            dialog.code,
-            dialog.name,
-            dialog.language,
-            dialog.category,
-            dialog.tags,
-            False,
-        )
-        self._refresh_sidebar_categories()
+        self.sections["code"].run_code_dialog(dialog, "")    # the first Apply adds the snippet
 
     def _commit_code_save(self, node: hou.Node, dialog) -> None:
         """The snippet is the node's code parm as it reads now."""
@@ -3836,7 +3827,7 @@ class AmazePanel(QtWidgets.QWidget):
                 cancel_at, overwrite_at = 2, 0
             else:
                 message += (
-                    "\n\nMaterial Versions is off for this library, "
+                    "\n\nVersions is off for this library, "
                     "so the existing material stays as it is. Saving "
                     "will add a new material."
                 )

@@ -37,14 +37,19 @@ SAVE_BUTTON_H = 22       # the OK / Cancel pair, drawn flush right
 SAVE_BUTTON_W = (35, 65)  # OK, Cancel, for a dialog that draws no pair of its own
 SAVE_BUTTON_GAP = 6
 
-D11_EDITOR_H = 364       # ▸ D11 Save Code: the editor's minimum HEIGHT, the full content width under the form
-D11_MARGINS = (18, 19, 8, 13)  # left, top-under-band, right, bottom
-D11_FIELD_H = 22         # every field and button in the frame
-D11_ROW_GAP = 4          # between the two form rows
-D11_LABEL_GAP = 7        # label to its field
-D11_HALF_GAP = 18        # between the two form halves
-D11_STACK_GAP = 12       # fields to the editor
-D11_BUTTON_GAP = 8       # editor to the OK/Cancel row
+CODE_FONT = ("SideFX Source Code Pro", 14)    # ▸ D11's code: Houdini's Fixed face ▸r/houdini-code-look
+CODE_RADIUS = 3                    # the editor's corners, and the current line's
+CODE_LINE_NUMBER_INK = "#b0b0b0"
+CODE_SYNTAX = {    # ▸ token kind: Houdini's own colour name, and its value in UIDark.hcs headless
+    "plain": ("ParmSyntaxPlainColor", "#bcbec3"),
+    "comment": ("ParmSyntaxCommentColor", "#7b7e84"),
+    "string": ("ParmSyntaxStringColor", "#79a978"),
+    "attrib": ("ParmSyntaxVarColor", "#c892ca"),       # @P, v@center
+    "number": ("ParmSyntaxNumberColor", "#ebb845"),
+    "keyword": ("ParmSyntaxKeywordColor", "#6799c0"),  # if, for, return
+    "type": ("ParmSyntaxTypeColor", "#93d4eb"),        # vector, int, float
+    "function": ("ParmSyntaxFuncColor", "#8888c1"),    # point, addpoint
+}
 
 PREFS_FORM_WIDTH = 490   # ▸ P01-P06 Preferences: the drawn frame less Qt's 8 for a tab widget ▸r/tabwidget-adds-eight
 PREFS_INSET = 20         # content to the frame edge, both sides: rows span 20..470
@@ -133,8 +138,6 @@ MENU_HOVER_CHIP_FILL = "#424142"
 MENU_HOVER_CHIP_RING = "#555455"
 MENU_TEXT = "#e6e6e6"
 
-GUTTER_BG = "#1a1a1a"           # ▸ the code editor's gutter (D11)
-GUTTER_FG = "#7a7a7a"
 
 SIDEBAR_PICKER_START = "#4af2a1"    # the colour picker's starting colour for a row that has none
 LINK_COLOR = "#8e8a85"              # About-tab links, a step darker than body text so they read as secondary
@@ -170,6 +173,8 @@ LABEL_PICK_USER = "Pick or create a user"    # the User list with nobody picked
 TITLE_TILE_ICON = "Tile Icon"    # what D02 says when the selection has no ONE name to show
 TITLE_MANAGE_LIBRARIES = "Manage Libraries"
 BAND_UNTITLED = "Untitled"       # what D11's band says for a snippet that has no name yet
+MENU_NEW_VERSION = "New Version"    # D11's + menu, above the snippet's versions
+LABEL_VERSIONS = "Versions"         # P01's switch: versions of materials and of code
 
 EMPTY_SHARED = {    # ▸ E06 E08 E09, the blanks every section shares, read by `empty_state.words_for`
     "nothing-matches": (
@@ -312,7 +317,7 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
             ("QLabel", 148, 98, 320, 15, "Format: v1"),
             ("QWidget ▸ group divider", 20, 127, 450, 1, None),
             ("ToggleSwitch", 148, 142, 23, 15, None),
-            ("ToggleSwitch ▸ text", 179, 142, 86, 15, "Material Versions"),
+            ("ToggleSwitch ▸ text", 179, 142, 43, 15, "Versions"),
             ("QComboBox", 148, 165, 196, 22, None),
             ("QPushButton", 352, 165, 56, 22, None),
             ("QPushButton", 414, 165, 56, 22, None),
@@ -584,26 +589,35 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
     "D11": {   # Code snippet - New Snippet and Edit; a node's code saves through D09
         "frame": (638, 516),
         "nodes": (
-            ("header band", 0, 0, 638, 30, None),
-            ("QLabel", 18, 7, 82, 15, "[name of asset] "),
-            ("QLineEdit", 70, 49, 245, 22, None),
-            ("QComboBox", 385, 49, 245, 22, None),
-            ("QLabel", 33, 53, 30, 15, "Name"),
-            ("QLineEdit ▸ text", 75, 53, 33, 15, "helper"),
-            ("QLabel", 333, 53, 45, 15, "Category"),
-            ("QComboBox ▸ text", 390, 53, 28, 15, "Metal"),
-            ("QComboBox", 70, 75, 245, 22, None),
-            ("QLineEdit", 385, 75, 245, 22, None),
-            ("QLabel", 14, 79, 49, 15, "Language"),
-            ("QComboBox ▸ text", 75, 79, 19, 15, "VEX"),
-            ("QLabel", 355, 79, 23, 15, "Tags"),
-            ("CodeEditor", 18, 109, 612, 364, None),
-            ("QLabel", 37, 109, 26, 15, "Code"),
-            ("_LineNumberArea", 19, 110, 28, 362, None),
-            ("QPushButton", 541, 481, 31, 22, None),
-            ("QPushButton", 580, 481, 50, 22, None),
-            ("QPushButton ▸ text", 549, 485, 15, 15, "OK"),
-            ("QPushButton ▸ text", 588, 485, 34, 15, "Cancel"),
+            ("header band", 0, 0, 638, 22, None),
+            ("header band ▸ tab", 0, 0, 128, 22, None),
+            ("QLabel", 18, 3, 93, 15, "[name of Version] "),
+            ("icon ▸ add ▸ icon_version_add.svg", 128, 0, 22, 22, None),
+            ("QLineEdit", 70, 36, 245, 22, None),
+            ("QComboBox", 385, 36, 245, 22, None),
+            ("QLabel", 33, 36.5, 30, 15, "Name"),
+            ("QLineEdit ▸ text", 75, 36.5, 33, 15, "helper"),
+            ("QLabel", 333, 39.5, 45, 15, "Category"),
+            ("QComboBox ▸ text", 390, 40, 28, 15, "Metal"),
+            ("QComboBox", 70, 67, 245, 22, None),
+            ("QLineEdit", 385, 67, 245, 22, None),
+            ("QLabel", 14, 70.5, 49, 15, "Language"),
+            ("QComboBox ▸ text", 75, 70.5, 19, 15, "VEX"),
+            ("QLabel", 355, 70.5, 23, 15, "Tags"),
+            ("CodeEditor", 8, 109, 622, 364, None),
+            ("CodeEditor ▸ line numbers", 11, 109, 22, 363, "1\n2\n3\n4\n5\n6"),
+            ("CodeEditor ▸ text", 33, 109, 548, 253,
+             "// Facing ratio toward the camera\n"
+             "vector camP = point(1, \"P\", 0);            // 2nd input: a single cam point,\n"
+             "if (@numpt < 0) camP = getbbox_center(0);  // or wire nothing and edit here\n"
+             "vector toCam = normalize(camP - @P);\n"
+             "f@facing = fit(abs(dot(normalize(@N), toCam)), 0, 1, 0, 1);\n"
+             "@Cd = f@facing;"),
+            ("CodeEditor ▸ current line", 14, 129, 610, 16, None),
+            ("QPushButton", 494, 482, 65, 22, None),
+            ("QPushButton", 565, 482, 65, 22, None),
+            ("QPushButton ▸ text", 512, 485, 29, 15, "Apply"),
+            ("QPushButton ▸ text", 581, 485, 34, 15, "Cancel"),
         ),
     },
     "D13": {   # Name Input
@@ -1067,6 +1081,48 @@ def drawn_band(frame_key: str) -> tuple:
         return HEADER_BAND_H, HEADER_BAND_INSET
     label = next((n for n in nodes if n[0] == "QLabel" and n[2] < band[2] + band[4]), None)
     return band[4], (label[1] - band[1]) if label else HEADER_BAND_INSET
+
+
+def drawn_code_dialog(frame_key: str = "D11") -> dict:
+    """The code dialog's margins and gaps, its two label columns, and the editor's own figures."""
+    layout = DIALOG_LAYOUT[frame_key]
+    width, height = layout["frame"]
+    nodes = layout["nodes"]
+
+    def one(name):
+        found, = (n for n in nodes if n[0] == name)
+        return found
+
+    band, tab, editor = one("header band"), one("header band ▸ tab"), one("CodeEditor")
+    numbers, text = one("CodeEditor ▸ line numbers"), one("CodeEditor ▸ text")
+    line = one("CodeEditor ▸ current line")
+    fields = sorted((n for n in nodes if n[0] in ("QLineEdit", "QComboBox")),
+                    key=lambda n: (n[2], n[1]))
+    left, below = fields[0], fields[2]    # row one's first field, row two's first
+    button = min((n for n in nodes if n[0] == "QPushButton"), key=lambda n: n[1])
+    labels = [n for n in nodes if n[0] == "QLabel" and n[2] >= band[4]]
+    label_end = max(n[1] + n[3] for n in labels if n[1] + n[3] <= left[1])
+    right = [n for n in labels if n[1] >= left[1] + left[3]]
+    right_end, right_column = max(n[1] + n[3] for n in right), max(n[3] for n in right)
+    return {
+        "margins": (editor[1], left[2] - band[4], width - editor[1] - editor[3],
+                    height - button[2] - button[4]),
+        "row_gap": below[2] - left[2] - left[4],
+        "stack_gap": editor[2] - below[2] - below[4],
+        "button_gap": button[2] - editor[2] - editor[4],
+        "field": (left[3], left[4]),
+        "label_gap": left[1] - label_end,
+        "label_columns": (label_end - editor[1], right_column),
+        "half_gap": right_end - right_column - left[1] - left[3],
+        "editor": (editor[3], editor[4]),
+        "gutter": (numbers[1] - editor[1], numbers[3]),
+        "text_x": text[1] - editor[1],
+        "current_line": (line[1] - editor[1], editor[1] + editor[3] - line[1] - line[3],
+                         line[4]),
+        "tab": (tab[3], tab[4]),
+        "tab_text_x": next(n for n in nodes if n[0] == "QLabel" and n[2] < band[4])[1] - tab[1],
+        "plus": one("icon ▸ add ▸ icon_version_add.svg")[1:5],
+    }
 
 
 def drawn_list_rows(frame_key: str = "D15") -> dict:

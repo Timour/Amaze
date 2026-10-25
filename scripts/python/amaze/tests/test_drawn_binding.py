@@ -6,7 +6,7 @@ import unittest
 from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")   # BEFORE the app exists: the first module to build the QApplication picks the platform for the whole hython ▸p/first-app-picks-the-platform
-from PySide6 import QtGui, QtWidgets  # noqa: E402
+from PySide6 import QtCore, QtGui, QtWidgets  # noqa: E402
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
@@ -40,7 +40,7 @@ UNPAIRED = {}    # a drawn `▸ text` node with no rect of its own kind around i
 
 LABEL_RIGHT = {    # where a form label's drawn box ENDS - the label column's right edge, per frame. A QLabel ending anywhere else is a FIELD-side label and has to be pinned, which is what the P06 version line was not
     "D02": (63,),               # the drawn field column less `D02_LABEL_GAP`
-    "D11": (63, 378),           # two halves, each less `D11_LABEL_GAP`
+    "D11": (63, 378),           # each column's field, less the drawn label gap
     "P01": (amazetheme.PREFS_LABEL_RIGHT,),
     "P02": (amazetheme.PREFS_LABEL_RIGHT,),
     "P03a": (amazetheme.PREFS_LABEL_RIGHT,),
@@ -112,9 +112,12 @@ DRAWN_EXEMPT = (    # (does this node need no pin, why) - EVERY drawn node off t
      "D02 and D11 are the frames that RESIZE: their fields fill the "
      "column, and the drawn width is the width at the drawn size"),
     (lambda f, n: n[0] == "CodeEditor",
-     "the editor is what D11's resize grows; `D11_EDITOR_H` is its floor"),
-    (lambda f, n: n[0] == "_LineNumberArea",
-     "the gutter is as wide as the digits the host font draws in it"),
+     "the editor is what D11's resize grows; its drawn height is its floor"),
+    (lambda f, n: n[0] in ("CodeEditor ▸ line numbers", "CodeEditor ▸ current line"),
+     "PAINTED by the editor from drawn_code_dialog: held by TheCodeDialogStandsOnItsFrame"),
+    (lambda f, n: n[0] in ("header band ▸ tab", "icon ▸ add ▸ icon_version_add.svg"),
+     "the version tab and its + in D11's band, sized from drawn_code_dialog: held by "
+     "TheCodeDialogStandsOnItsFrame"),
     (lambda f, n: (f,) + n[:3] in LOOSE_LABELS,
      "drawn at its own text width beside its control; the widget takes "
      "the host font's and yields before the row overflows"),
@@ -602,6 +605,51 @@ class EveryDrawnNodeIsBoundOrNamed(unittest.TestCase):
             "P03a and P03b draw only switches and tab strips, and the panel's areas "
             "are read through their own drawn_* - any other frame listed here "
             "built no widget the document reached")
+
+
+class TheCodeDialogStandsOnItsFrame(unittest.TestCase):
+    """D11 opens at its drawn size, every part where the frame draws it. ▸p/one-design-document"""
+
+    def setUp(self):
+        from amaze.dialogs import code_dialog
+        self.dialog = code_dialog.CodeDialog(["Metal"], name="helper", saved=True)
+        self.addCleanup(self.dialog.deleteLater)
+        self.dialog.show()
+        QtWidgets.QApplication.processEvents()
+
+    def _at(self, widget):
+        corner = widget.mapTo(self.dialog, QtCore.QPoint(0, 0))
+        return (corner.x(), corner.y(), widget.width(), widget.height())
+
+    @staticmethod
+    def _drawn(name):
+        return [tuple(theme.ui_px(v) for v in n[1:5])
+                for n in amazetheme.DIALOG_LAYOUT["D11"]["nodes"] if n[0] == name]
+
+    def test_the_window_opens_at_the_frame(self):
+        self.assertEqual(tuple(theme.ui_px(v) for v in amazetheme.DIALOG_LAYOUT["D11"]["frame"]),
+                         (self.dialog.width(), self.dialog.height()))
+
+    def test_every_part_sits_on_its_drawn_box(self):
+        d = self.dialog
+        tab = d.findChild(QtWidgets.QWidget, "amaze_code_version_tab")
+        for name, widgets in (
+                ("header band ▸ tab", (tab,)),
+                ("icon ▸ add ▸ icon_version_add.svg", (d._plus,)),
+                ("CodeEditor", (d._editor,)),
+                ("QPushButton", (d._apply_button, d._cancel_button)),
+                ("QLineEdit", (d._line_name, d._line_tags)),
+                ("QComboBox", (d._combo_category, d._combo_lang))):
+            with self.subTest(part=name):
+                self.assertEqual(self._drawn(name), [self._at(w) for w in widgets])
+
+    def test_the_code_starts_where_the_drawn_text_does(self):
+        editor = self.dialog._editor
+        drawn = amazetheme.drawn_code_dialog()
+        self.assertEqual(theme.ui_px(drawn["text_x"]), editor.line_number_area_width(),
+                         "the line numbers' gutter is not the drawn width")
+        self.assertEqual(0, editor.document().documentMargin(),
+                         "a document margin moves the code off its drawn place")
 
 
 class MovingADrawnNodeMovesTheWidget(unittest.TestCase):

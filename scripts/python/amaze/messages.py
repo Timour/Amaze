@@ -88,7 +88,7 @@ USER_NAME_TAKEN = 'A user named "%s" is already in this library. Choose another 
 
 NO_USER_PICKED = 'No user is picked for this library. Open Preferences, pick your user or create one, and press Apply.'
 
-MATERIAL_VERSIONS_TURN_ON_CONFIRM = 'Enable Material Versions for this library?'
+MATERIAL_VERSIONS_TURN_ON_CONFIRM = 'Enable Versions for this library?'
 
 LIBRARY_SETTING_NOT_WRITTEN = 'The setting could not be written to the library folder and was not changed.'
 
@@ -278,10 +278,11 @@ BUTTONS_UPDATE_AMAZE = ('Update Amaze', 'Cancel')
 
 HELP_CLEAN_LIBRARY = "Files that nothing in your library uses move into Amaze's holding folder on this computer, outside your library, where they are kept for 30 days. Materials and saved networks whose files are missing stay, and the summary names them.\n\nFile locations whose folder is gone are removed, with their labels, colors, comments, favorites and icons. Favorites of missing files are removed too. This part cannot be undone. Locations and favorites on a drive that is not connected stay."
 
-HELP_MATERIAL_VERSIONS = 'This applies to everyone who opens this library, on every machine, because it is stored with the library rather than in your preferences.\n\nWith it on, saving over an existing material keeps the previous version instead of replacing it.'
+HELP_MATERIAL_VERSIONS = 'This applies to everyone who opens this library, on every machine, because it is stored with the library rather than in your preferences.\n\nWith it on, saving over an existing material keeps the previous version instead of replacing it, and the + in the code editor keeps versions of a snippet.'
 
 
 SNIPPET_HAS_NO_CODE = 'There is no code to save.'
+CODE_VERSION_UNREADABLE = "That version's file could not be read. The editor keeps the code it had."
 
 SNIPPET_RUN_FAILED = '"%s" stopped: %s'
 

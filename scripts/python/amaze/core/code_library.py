@@ -138,18 +138,35 @@ class CodeLibrary(library.AssetLibrary):
         fav: bool,
     ) -> str:
         """Register a code snippet. Returns the language string on success (the renderer-string contract add_asset has), "" on failure (empty code)."""
+        return (language or "Code") if self.add_snippet(code, name, language, cats, tags) else ""
+
+    def add_snippet(self, code: str, name: str, language: str, cats: str, tags: str) -> str:
+        """Register a snippet and answer its id, empty for no code. A refused list write is said."""
         if not code.strip():
             return ""
         new_mat = material.Material()
-        tags = self.sanitize_tags(tags)
-        new_mat.set_data(
-            name.strip() or "Snippet", cats, tags, fav, language or "Code"
-        )
+        new_mat.set_data(name.strip() or "Snippet", cats, self.sanitize_tags(tags), False,
+                         language or "Code")
         new_mat.code = code
         self._append_record(new_mat)
-        if not self.save():  # a snippet lives INLINE in code.json, so a refused write orphans no files - but the snippet the user just watched appear is not saved, and they have to be told
+        if not self.save():    # inline, so nothing is left on disk: the user must hear it
             self.report_refused_index_write(new_mat)
-        return language or "Code"
+        return str(new_mat.mat_id)
+
+    def save_from_editor(self, mat_id: str, version, code: str, name: str, language: str,
+                         cats: str, tags: str) -> str:
+        """One Apply in the code dialog: a new snippet for an empty id, else into `version`."""
+        if not mat_id:
+            return self.add_snippet(code, name, language, cats, tags)
+        row = self.find_asset_row_by_id(mat_id)    # a save can move rows
+        if row < 0:
+            debug.event("code", "edited snippet gone from the library", mat_id=mat_id)
+            return ""
+        if version is None:    # a snippet that keeps no versions
+            self.update_asset(row, code, name, language, cats, tags)
+        elif not self.save_version(row, version, code, name, language, cats, tags):
+            return ""
+        return mat_id
 
     def update_asset(
         self,

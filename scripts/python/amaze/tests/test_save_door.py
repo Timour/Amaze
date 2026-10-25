@@ -322,8 +322,8 @@ class AnUnderscoredCategoryKeepsItsStoredName(unittest.TestCase):
 
         def accepting(dialog):
             seen["shown"] = dialog._combo_category.currentText()
-            dialog._on_accept()
-            return 1
+            dialog._apply()
+            return 0
 
         with mock.patch.object(code_dialog.CodeDialog, "exec", accepting):
             self.panel.sections["code"]._edit_code_row(row)

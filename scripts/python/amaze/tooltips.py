@@ -19,7 +19,7 @@ PREFS_RELOAD_LIBRARY = 'Reload the library from disk.'
 
 PREFS_OPEN_LIBRARY_FOLDER = 'Open the library folder.'
 
-PREFS_MATERIAL_VERSIONS = "When on, saving over a material asks if you want to keep the old one as a version. When off, saving always adds a new material. This setting is stored in the library, so it applies to everyone who uses it."
+PREFS_MATERIAL_VERSIONS = "When on, saving over a material asks if you want to keep the old one as a version, and the + in the code editor keeps versions of a snippet. When off, saving always adds a new material and the + is off. This setting is stored in the library, so it applies to everyone who uses it."
 
 PREFS_LIBRARY_USER = "Who you are in this library. Your favorites and folders follow your name, so the same person on another machine sees the same items, and two people sharing one library keep their things separate. Your name also signs the versions you save. It is never guessed from your machine name."
 
@@ -113,7 +113,8 @@ CUSTOMIZE_CUSTOM_COLOR = 'The current background. Click to pick any color with H
 
 SAVE_NAME = 'Name it, pick a category, and add tags so you can find it later.'   # ▸ Save dialogs (D09, D11)
 
-CODE_NAME = 'Name it, pick a category, and add tags so you can find it later.'
+CODE_NAME = "The version's name. The tab above and the snippet's tile show it."
+CODE_VERSIONS = 'New Version saves the code as a new version when you press Apply. Pick a version to open it in the editor.'
 
 PANEL_FAVORITES = 'Show favorites.'   # ▸ Panel toolbar
 
