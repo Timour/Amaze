@@ -598,7 +598,7 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
             ("header band ▸ tab", 129, 0, 128, 22, None),    # drawn selected
             ("QLabel", 13, 3, 93, 15, "[name of Version] "),
             ("QLabel", 142, 3, 93, 15, "[name of Version] "),
-            ("icon ▸ close ▸ icon_tab_close.svg", 108, 0, 22, 22, None),
+            ("icon ▸ close ▸ icon_tab_close.svg", 106, 0, 22, 22, None),
             ("icon ▸ close ▸ icon_tab_close.svg", 235, 0, 22, 22, None),
             ("icon ▸ add ▸ icon_version_add.svg", 257, 0, 22, 22, None),
             ("QLineEdit", 70, 36, 245, 22, None),
