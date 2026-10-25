@@ -84,7 +84,7 @@ P01_FORMAT_INK = "#80dddddd"    # the Format line otherwise: text at half opacit
 D15_SELECTED_INK = UPDATE_WARNING_FILL   # ▸ D15 Manage Libraries: a row picked for removal
 D15_DIM_INK = "#787878"        # a library that cannot be reached: its name and `not connected`
 D15_DIM_PATH_INK = "#646464"   # and its path
-LIST_GROUND = ("ListBG", "#262626")    # ▸ D01's and D15's list: Houdini's list colour, UIDark's headless
+LIST_GROUND = ("ListBG", "#272727")    # ▸ D01's and D15's list: Houdini's list colour, UIDark's headless
 LIST_RADIUS = 3                # its corners, and a picked row's
 PREFS_DIVIDER_ABOVE = 8  # inside the divider's own row box
 PREFS_DIVIDER_BELOW = 6  # so a divider costs ROW_GAP + ABOVE + H + BELOW + ROW_GAP = 27
