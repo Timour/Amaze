@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.12.3
+
+- Code editor: the window behind the fields is the colour of the tab in front, so the tab and the window read as one.
+
 ## 1.12.2
 
 - Versions and Manage Libraries: the strip at the top that named the current version or library is gone. The list's background is Houdini's own list colour, with rounded corners, and the picked row has rounded corners too.
