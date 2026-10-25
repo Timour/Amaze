@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.12.4
+
+- Customize: the strip at the top is gone. The menu that sets what the tile shows is now called Image, and the toggle that draws the symbol light is called Light Icons.
+
 ## 1.12.3
 
 - Code editor: the window behind the fields is the colour of the tab in front, so the tab and the window read as one.
