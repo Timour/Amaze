@@ -218,6 +218,42 @@ class TheEditorWindowKeepsVersions(unittest.TestCase):
         self.assertEqual([(amazetheme.MENU_NEW_VERSION, False), ("", False),
                           ("helper fast", True), ("helper", False)], seen["menu"])
 
+    def test_each_version_opens_in_its_own_tab_and_keeps_its_edits(self):
+        self.model.save_version(self._row(), self.model.NEW_VERSION, THIRD, "helper fast",
+                                "VEX", "Examples", "")
+        seen = {}
+
+        def steps(dialog):
+            self.assertEqual(["helper fast"], dialog._tabbar.names(), "it opened on no tab")
+            dialog._editor.setPlainText("// edited, not saved")
+            dialog._show_version(1)
+            seen["two"] = (dialog._tabbar.names(), dialog._editor.toPlainText())
+            dialog._show_version(1)    # its tab comes forward, no second tab
+            dialog._select_tab(0)
+            seen["back"] = (len(dialog._tabbar.names()), dialog._editor.toPlainText())
+            dialog._close_tab(1)
+            seen["closed"] = dialog._tabbar.names()
+            dialog._close_tab(0)    # the last tab stays
+            seen["last"] = dialog._tabbar.names()
+        self._through_the_door(steps)
+        self.assertEqual((["helper fast", "helper"], FIRST), seen["two"])
+        self.assertEqual((2, "// edited, not saved"), seen["back"], "a tab lost its edits")
+        self.assertEqual((["helper fast"], ["helper fast"]), (seen["closed"], seen["last"]))
+        self.assertEqual([(1, "helper"), (2, "helper fast")], self._listed(),
+                         "closing a tab removed a version")
+
+    def test_new_version_opens_a_tab_and_apply_keeps_the_others(self):
+        def steps(dialog):
+            dialog._new_version()
+            self.assertEqual(["helper", "Version 2"], dialog._tabbar.names())
+            dialog._editor.setPlainText(THIRD)
+            dialog._apply()
+            dialog._select_tab(0)
+            self.assertEqual(1, dialog.version, "the snippet's own tab is not version 1 now")
+            self.assertEqual(FIRST, dialog._editor.toPlainText())
+        self._through_the_door(steps)
+        self.assertEqual([(1, "helper"), (2, "Version 2")], self._listed())
+
     def test_the_versions_badge_opens_the_window_and_select_switches(self):
         from amaze.dialogs import versions_dialog
         self.model.save_version(self._row(), self.model.NEW_VERSION, THIRD, "helper fast",
@@ -245,6 +281,7 @@ class TheEditorWindowKeepsVersions(unittest.TestCase):
         self.assertTrue(library_policy.set_allow_overwrite(self.panel.prefs.dir, False))
 
         def steps(dialog):
+            self.assertTrue(dialog._plus.isHidden(), "Versions is off and the + is still there")
             self.assertFalse(dialog._plus.isEnabled(), "Versions is off and the + still works")
             dialog._editor.setPlainText(THIRD)
             dialog._apply()

@@ -179,12 +179,14 @@ newest first; pick one and press **Select** to make it current.
 
 <img src="docs/images/dialog_versions.png" width="380">
 
-A snippet keeps versions too. In the code editor, the **+** beside the
-version's name lists **New Version** and the snippet's versions. Picking
-a version opens it in the editor; **Apply** saves the code into the
-version shown, or as a new version after **New Version**. The Name field
-names the version, and the snippet's tile shows the name of its current
-version.
+A snippet keeps versions too. In the code editor, each version opens in
+a tab of its own above the fields. The **+** after the tabs lists **New
+Version** and the snippet's versions: a version opens in a new tab, or
+its tab comes to the front, and **New Version** opens a tab with the
+front tab's code. **Apply** saves the code in the front tab, which
+becomes the snippet's current version. A tab's × closes it; the version
+is still in the **+** list. The Name field names the version, and the
+snippet's tile shows the name of its current version.
 
 **Versions** in Preferences ▸ Library turns versions on and off, for
 materials and snippets.
@@ -357,8 +359,8 @@ The right-click menu:
 - **Apply** writes the snippet into the selected node's code parameter.
 - **Edit** opens the snippet in the editor, with Name, Language,
   Category and Tags above the code. In the editor, **Apply** saves the
-  snippet and the editor stays open. The **+** above the fields holds
-  the snippet's [versions](#versions).
+  snippet and the editor stays open. The tabs above the fields hold the
+  snippet's [versions](#versions).
 - **Capture**, **Customize**, **Favorite**, **Export Package** and
   **Delete**.
 

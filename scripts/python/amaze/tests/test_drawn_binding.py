@@ -115,9 +115,10 @@ DRAWN_EXEMPT = (    # (does this node need no pin, why) - EVERY drawn node off t
      "the editor is what D11's resize grows; its drawn height is its floor"),
     (lambda f, n: n[0] in ("CodeEditor ▸ line numbers", "CodeEditor ▸ current line"),
      "PAINTED by the editor from drawn_code_dialog: held by TheCodeDialogStandsOnItsFrame"),
-    (lambda f, n: n[0] in ("header band ▸ tab", "icon ▸ add ▸ icon_version_add.svg"),
-     "the version tab and its + in D11's band, sized from drawn_code_dialog: held by "
-     "TheCodeDialogStandsOnItsFrame"),
+    (lambda f, n: n[0] in ("header band ▸ tab", "icon ▸ add ▸ icon_version_add.svg",
+                           "icon ▸ close ▸ icon_tab_close.svg"),
+     "D11's version tabs, their × and the +, PAINTED by the rule drawn_code_dialog reads: "
+     "held by TheCodeDialogStandsOnItsFrame"),
     (lambda f, n: (f,) + n[:3] in LOOSE_LABELS,
      "drawn at its own text width beside its control; the widget takes "
      "the host font's and yields before the row overflows"),
@@ -632,16 +633,109 @@ class TheCodeDialogStandsOnItsFrame(unittest.TestCase):
 
     def test_every_part_sits_on_its_drawn_box(self):
         d = self.dialog
-        tab = d.findChild(QtWidgets.QWidget, "amaze_code_version_tab")
         for name, widgets in (
-                ("header band ▸ tab", (tab,)),
-                ("icon ▸ add ▸ icon_version_add.svg", (d._plus,)),
                 ("CodeEditor", (d._editor,)),
                 ("QPushButton", (d._apply_button, d._cancel_button)),
                 ("QLineEdit", (d._line_name, d._line_tags)),
                 ("QComboBox", (d._combo_category, d._combo_lang))):
             with self.subTest(part=name):
                 self.assertEqual(self._drawn(name), [self._at(w) for w in widgets])
+
+    def _two_tabs(self, long_name=""):
+        from amaze.dialogs import code_dialog
+        dialog = code_dialog.CodeDialog(
+            ["Metal"], name=long_name or "[name of Version]", saved=True, active=2,
+            versions=[{"n": 1, "name": "[name of Version]"}, {"n": 2, "name": "x"}],
+            load_version=lambda number: "// %d" % number)
+        self.addCleanup(dialog.deleteLater)
+        dialog.show()
+        dialog._show_version(1)
+        QtWidgets.QApplication.processEvents()
+        return dialog
+
+    def test_the_tabs_follow_the_drawn_rule(self):
+        """As wide as name and ×, a drawn gap apart, the × flush right, the + right after."""
+        dialog = self._two_tabs()
+        bar, drawn = dialog._tabbar, amazetheme.drawn_code_dialog()
+        boxes = bar.boxes()
+        inset, close_w = theme.ui_px(drawn["tab_text"][0]), theme.ui_px(drawn["tab_close"][0])
+        width = inset + math.ceil(QtGui.QFontMetricsF(bar.font()).horizontalAdvance(
+            "[name of Version]")) + close_w
+        self.assertEqual([width, width], [box.width() for box in boxes])
+        self.assertEqual(theme.ui_px(drawn["tab_gap"]), boxes[1].left() - boxes[0].right())
+        self.assertEqual([box.right() for box in boxes],
+                         [bar.close_box(box).right() for box in boxes], "a × is not flush right")
+        plus = dialog._plus.mapTo(bar.parentWidget(), QtCore.QPoint(0, 0)).x()
+        self.assertEqual(bar.x() + math.ceil(boxes[-1].right()) + theme.ui_px(drawn["plus_gap"]),
+                         plus, "the + does not follow the last tab")
+
+    def test_a_long_name_stops_at_the_tab_limit(self):
+        dialog = self._two_tabs(long_name="a version name far too long for any tab " * 3)
+        self.assertEqual(theme.ui_px(amazetheme.CODE_TAB_MAX_W),
+                         dialog._tabbar.boxes()[0].width())
+
+    def test_the_front_tab_is_lit_and_rounded_at_its_top_alone(self):
+        dialog = self._two_tabs()
+        band = dialog.findChild(QtWidgets.QWidget, "amaze_header_band")
+        bar = dialog._tabbar
+        shot = band.grab().toImage()
+        front, back = (box.translated(bar.x(), bar.y()).toRect() for box in bar.boxes()[::-1])
+        lit = QtGui.QColor(amazetheme.CODE_TAB).rgb()
+        self.assertEqual(
+            (False, False, True, True, True),
+            tuple(shot.pixel(x, y) == lit for x, y in (
+                (front.left(), front.top()), (front.right(), front.top()),
+                (front.left(), front.bottom()), (front.right(), front.bottom()),
+                (front.left() + 4, front.top()))),
+            "the front tab is not rounded at its top corners alone, as drawn")
+        self.assertEqual(QtGui.QColor(amazetheme.CODE_BAND).rgb(),
+                         shot.pixel(back.left() + 4, back.top() + 1),
+                         "a tab behind the front one is not the band's own colour")
+
+    def test_the_current_line_sits_on_its_letters(self):
+        """Centred between cap top and descender, in Houdini's code face, as drawn."""
+        from amaze.dialogs import code_dialog
+        face = os.path.join(os.environ.get("HFS", ""), "houdini", "fonts",
+                            "SideFX-SourceCodePro-Regular.ttf")
+        if amazetheme.CODE_FONT[0] not in QtGui.QFontDatabase.families():
+            if not os.path.exists(face):
+                self.skipTest("no Houdini code face at %s" % face)
+            QtGui.QFontDatabase.addApplicationFont(face)
+        editor = code_dialog.CodeEditor("gggg\nHHHH")
+        self.addCleanup(editor.deleteLater)
+        editor.resize(400, 120)
+        editor.show()
+        editor.setTextCursor(QtGui.QTextCursor(editor.document().findBlockByNumber(1)))
+        QtWidgets.QApplication.processEvents()
+        shot = editor.viewport().grab().toImage()
+        ground, probe = shot.pixel(shot.width() - 3, shot.height() - 3), shot.width() - 30
+
+        def rows(number, inked):
+            block = editor.document().findBlockByNumber(number)
+            top = int(editor.blockBoundingGeometry(block).translated(editor.contentOffset()).top())
+            high = int(editor.blockBoundingRect(block).height())
+            return top, [y - top for y in range(top, top + high) if inked(y)]
+
+        _top, descender = rows(0, lambda y: any(shot.pixel(x, y) != ground for x in range(2, 40)))
+        top, letters = rows(1, lambda y: any(shot.pixel(x, y) not in (ground, shot.pixel(probe, y))
+                                             for x in range(2, 40)))
+        band = [y - top for y in range(shot.height()) if shot.pixel(probe, y) != ground]
+        self.assertLessEqual(abs((band[0] + band[-1] + 1) - (letters[0] + descender[-1] + 1)) / 2.0,
+                             1.0, "the band sits off the letters: band %s, cap %d, descender %d"
+                             % ((band[0], band[-1]), letters[0], descender[-1]))
+
+    def test_versions_off_takes_the_plus_away_and_off_looks_off(self):
+        from amaze.dialogs import code_dialog
+        off = code_dialog.CodeDialog(["Metal"], name="helper", saved=True, versions_on=False)
+        fresh = code_dialog.CodeDialog(["Metal"], name="", saved=False)
+        for dialog in (off, fresh):
+            self.addCleanup(dialog.deleteLater)
+        self.assertTrue(off._plus.isHidden(), "Versions is off and the + is still there")
+        self.assertEqual((False, False), (fresh._plus.isHidden(), fresh._plus.isEnabled()))
+        icon = fresh._plus.icon()
+        self.assertNotEqual(icon.pixmap(22, 22, QtGui.QIcon.Mode.Normal).toImage(),
+                            icon.pixmap(22, 22, QtGui.QIcon.Mode.Disabled).toImage(),
+                            "the + looks the same off as on")
 
     def test_the_code_starts_where_the_drawn_text_does(self):
         editor = self.dialog._editor

@@ -1,4 +1,6 @@
-"""The code dialog, D11: New Snippet and Edit. The band's tab names the version, its + lists them."""
+"""The code dialog, D11: New Snippet and Edit. A tab per open version, and a + that lists them."""
+
+import math
 
 from PySide6 import QtWidgets, QtGui, QtCore
 
@@ -34,6 +36,94 @@ class _LineNumberArea(QtWidgets.QWidget):
 
     def paintEvent(self, event):
         self._editor.line_number_area_paint(event)
+
+
+class _VersionTabs(QtWidgets.QWidget):
+    """The band's version tabs as drawn: each as wide as its name and its ×, the front one lit."""
+
+    picked = QtCore.Signal(int)    # a tab clicked, by its place in the row
+    closed = QtCore.Signal(int)    # a tab's × clicked
+
+    def __init__(self, drawn: dict, parent=None) -> None:
+        super().__init__(parent)
+        self._drawn = drawn
+        self._names, self._front = [], 0
+        font = QtGui.QFont(self.font())
+        font.setPixelSize(theme.ui_px(amazetheme.HEADER_BAND_TEXT_PX))
+        font.setBold(amazetheme.HEADER_BAND_TEXT_BOLD)
+        self.setFont(font)
+        self.setSizePolicy(QtWidgets.QSizePolicy.Policy.Fixed, QtWidgets.QSizePolicy.Policy.Fixed)
+
+    def sizeHint(self):
+        boxes = self.boxes()
+        return QtCore.QSize(int(math.ceil(boxes[-1].right())) if boxes else 0,
+                            theme.ui_px(self._drawn["tab"][1]))
+
+    def show_tabs(self, names, front: int) -> None:
+        self._names = [name or amazetheme.BAND_UNTITLED for name in names]
+        self._front = front
+        self.updateGeometry()    # the row and the + after it follow the tabs' width
+        self.update()
+
+    def names(self) -> list:
+        return list(self._names)
+
+    def boxes(self) -> list:
+        """Each tab's box: its name and its × wide, up to the drawn maximum, a gap apart."""
+        inset, close_w = (theme.ui_px(v) for v in (self._drawn["tab_text"][0],
+                                                   self._drawn["tab_close"][0]))
+        high, gap = theme.ui_px(self._drawn["tab"][1]), theme.ui_px(self._drawn["tab_gap"])
+        widest = theme.ui_px(amazetheme.CODE_TAB_MAX_W)
+        metrics = QtGui.QFontMetricsF(self.font())
+        boxes, x = [], 0.0
+        for name in self._names:
+            wide = min(widest, inset + math.ceil(metrics.horizontalAdvance(name)) + close_w)
+            boxes.append(QtCore.QRectF(x, 0, wide, high))
+            x += wide + gap
+        return boxes
+
+    def close_box(self, box) -> QtCore.QRectF:
+        wide, high, inset = (theme.ui_px(v) for v in self._drawn["tab_close"])
+        return QtCore.QRectF(box.right() - inset - wide, 0, wide, high)
+
+    def paintEvent(self, event):
+        painter = QtGui.QPainter(self)
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        painter.setFont(self.font())
+        radius = theme.ui_px(amazetheme.CODE_RADIUS)
+        inset, top, high = (theme.ui_px(v) for v in self._drawn["tab_text"])
+        close_w = theme.ui_px(self._drawn["tab_close"][0])
+        art = ui_helpers.device_pixmap(    # a lone tab cannot close
+            amaze.package_file("ui", "icon_tab_close.svg"), close_w, theme.screen_ratio(self),
+            opacity=None if len(self._names) > 1 else ui_helpers.DISABLED_OPACITY)
+        for index, (box, name) in enumerate(zip(self.boxes(), self._names)):
+            painter.save()
+            painter.setClipRect(box)
+            painter.setPen(QtCore.Qt.PenStyle.NoPen)
+            painter.setBrush(QtGui.QColor(amazetheme.CODE_TAB if index == self._front
+                                          else amazetheme.CODE_BAND))
+            painter.drawRoundedRect(QtCore.QRectF(box.x(), 0, box.width(), box.height() + radius),
+                                    radius, radius)    # its lower corners fall below the band
+            room = box.width() - inset - close_w
+            painter.setPen(QtGui.QColor(amazetheme.CODE_TAB_INK))
+            painter.drawText(QtCore.QRectF(box.x() + inset, top, room, high),
+                             QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter,
+                             painter.fontMetrics().elidedText(
+                                 name, QtCore.Qt.TextElideMode.ElideRight, int(room)))
+            painter.drawPixmap(self.close_box(box).topLeft(), art)
+            painter.restore()
+        painter.end()
+
+    def mousePressEvent(self, event):
+        point = event.position()
+        for index, box in enumerate(self.boxes()):
+            if box.contains(point):
+                if not self.close_box(box).contains(point):
+                    self.picked.emit(index)
+                elif len(self._names) > 1:
+                    self.closed.emit(index)
+                return
+        super().mousePressEvent(event)
 
 
 class CodeEditor(QtWidgets.QPlainTextEdit):
@@ -104,11 +194,14 @@ class CodeEditor(QtWidgets.QPlainTextEdit):
         rect = self.blockBoundingGeometry(block).translated(self.contentOffset())
         left, right, high = (theme.ui_px(v) for v in self._drawn["current_line"])
         radius = theme.ui_px(amazetheme.CODE_RADIUS)
+        letters = QtGui.QFontMetricsF(self.font())
+        baseline = rect.top() + block.layout().lineAt(0).ascent()
+        middle = baseline + (letters.descent() - letters.capHeight()) / 2.0    # cap top to descender
         painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
         painter.setPen(QtCore.Qt.PenStyle.NoPen)
         painter.setBrush(theme.color("field"))    # D11's #434343
         painter.drawRoundedRect(QtCore.QRectF(
-            left + offset_x, rect.top() + (rect.height() - high) / 2.0,
+            left + offset_x, middle - high / 2.0,
             self.width() - left - right, high), radius, radius)
 
     def line_number_area_paint(self, event):
@@ -134,12 +227,17 @@ class CodeEditor(QtWidgets.QPlainTextEdit):
 
 
 class CodeDialog(base_dialog.AssetDialog):
-    """D11 on the house shell: a version tab and its + menu, the form, the editor, Apply, Cancel."""
+    """D11 on the house shell: version tabs and their + menu, the form, the editor, Apply, Cancel."""
 
     FORM_WIDTH = amazetheme.D11_FORM_WIDTH
-    HEADER_BAND = True    # D11 draws a band that carries the version's tab
+    HEADER_BAND = True    # D11 draws a band that carries the version tabs
     FRAME_KEY = "D11"
     applied = QtCore.Signal()    # Apply: the fields are read, the caller saves, the window stays
+
+    @property
+    def version(self):
+        """What Apply saves: a version number, NEW_VERSION, or NO_VERSION for the snippet alone."""
+        return self._tabs[self._front]["n"]
 
     def __init__(self, categories: list, name: str = "", language: str = "VEX",
                  category: str = "", tags: str = "", code: str = "",
@@ -150,7 +248,8 @@ class CodeDialog(base_dialog.AssetDialog):
         drawn = self._drawn = amazetheme.drawn_code_dialog()
         self._versions = list(versions)        # [{n, name, ...}] oldest first, as the ledger
         self._load_version = load_version      # n -> the version's text, or None when unreadable
-        self.version = active if self._versions else NO_VERSION
+        self._tabs = [{"n": active if self._versions else NO_VERSION, "name": name, "code": code}]
+        self._front = 0                        # the tab the fields and the editor show
         self.name = self.language = self.category = self.tags = self.code = ""
         self._versions_on = versions_on    # the library's Versions switch, in Preferences
         self.can_add_version = saved and versions_on    # and a snippet in the library to belong to
@@ -232,40 +331,23 @@ class CodeDialog(base_dialog.AssetDialog):
         return self._line_name.text().strip() or amazetheme.BAND_UNTITLED
 
     def build_header_band(self):
-        """The strip with the version tab and its +, which lists New Version and every version."""
+        """The strip with the version tabs and the +, which lists New Version and every version."""
         drawn = self._drawn
         band = QtWidgets.QWidget(self)
         band.setObjectName("amaze_header_band")
         band.setFixedHeight(theme.ui_px(amazetheme.drawn_band(self.FRAME_KEY)[0]))
         band.setAutoFillBackground(True)
         ground = band.palette()
-        ground.setColor(QtGui.QPalette.ColorRole.Window, theme.color("surface_low"))
+        ground.setColor(QtGui.QPalette.ColorRole.Window, QtGui.QColor(amazetheme.CODE_BAND))
         band.setPalette(ground)
         row = QtWidgets.QHBoxLayout(band)
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(0)
 
-        tab = QtWidgets.QWidget(band)
-        tab.setObjectName("amaze_code_version_tab")
-        tab.setAutoFillBackground(True)    # the window's own colour: the tab opens onto the page
-        page = tab.palette()
-        page.setColor(QtGui.QPalette.ColorRole.Window,
-                      self.palette().color(QtGui.QPalette.ColorRole.Window))
-        tab.setPalette(page)
-        tab.setFixedSize(*(theme.ui_px(v) for v in drawn["tab"]))
-        inside = QtWidgets.QHBoxLayout(tab)
-        inset = theme.ui_px(drawn["tab_text_x"])
-        inside.setContentsMargins(inset, 0, inset, 0)
-        self._tab_label = QtWidgets.QLabel(tab)
-        self._tab_label.setObjectName("amaze_header_band_text")
-        font = QtGui.QFont(self._tab_label.font())
-        font.setPixelSize(theme.ui_px(amazetheme.HEADER_BAND_TEXT_PX))
-        font.setBold(amazetheme.HEADER_BAND_TEXT_BOLD)
-        self._tab_label.setFont(font)
-        ink = self._tab_label.palette()
-        ink.setColor(QtGui.QPalette.ColorRole.WindowText, theme.color("text_bright"))
-        self._tab_label.setPalette(ink)
-        inside.addWidget(self._tab_label)
+        self._tabbar = _VersionTabs(drawn, band)
+        self._tabbar.setObjectName("amaze_code_version_tabs")
+        self._tabbar.picked.connect(self._select_tab)
+        self._tabbar.closed.connect(self._close_tab)
 
         self._plus = QtWidgets.QToolButton(band)
         self._plus.setAutoRaise(True)
@@ -274,8 +356,12 @@ class CodeDialog(base_dialog.AssetDialog):
             "QToolButton { border: none; padding: 0; }"
             " QToolButton::menu-indicator { image: none; }")
         _x, _y, side, high = (theme.ui_px(v) for v in drawn["plus"])
-        self._plus.setIcon(QtGui.QIcon(ui_helpers.device_pixmap(
-            amaze.package_file("ui", "icon_version_add.svg"), side, theme.screen_ratio(self))))
+        art, dpr = amaze.package_file("ui", "icon_version_add.svg"), theme.screen_ratio(self)
+        icon = QtGui.QIcon(ui_helpers.device_pixmap(art, side, dpr))
+        icon.addPixmap(ui_helpers.device_pixmap(art, side, dpr,    # Houdini's style dims nothing
+                                                opacity=ui_helpers.DISABLED_OPACITY),
+                       QtGui.QIcon.Mode.Disabled)
+        self._plus.setIcon(icon)
         self._plus.setIconSize(QtCore.QSize(side, high))
         self._plus.setFixedSize(side, high)
         self._version_menu = QtWidgets.QMenu(self._plus)    # one menu, refilled as it opens
@@ -283,17 +369,54 @@ class CodeDialog(base_dialog.AssetDialog):
         self._plus.setMenu(self._version_menu)
         self._plus.setPopupMode(QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
         self._plus.setEnabled(self.can_add_version)
+        self._plus.setVisible(self._versions_on)    # Versions off: no + at all
 
-        row.addWidget(tab)
+        row.addWidget(self._tabbar)
+        row.addSpacing(theme.ui_px(drawn["plus_gap"]))
         row.addWidget(self._plus)
         row.addStretch(1)
         return band
 
     def _name_changed(self, _text=""):
-        """The tab shows the Name field, cut to the drawn tab."""
-        width = theme.ui_px(self._drawn["tab"][0] - 2 * self._drawn["tab_text_x"])
-        self._tab_label.setText(self._tab_label.fontMetrics().elidedText(
-            self.header_band_text(), QtCore.Qt.TextElideMode.ElideRight, width))
+        """The front tab shows the Name field."""
+        self._tabs[self._front]["name"] = self._line_name.text().strip()
+        self._tabbar.show_tabs([tab["name"] for tab in self._tabs], self._front)
+
+    def _keep_front(self) -> None:
+        tab = self._tabs[self._front]
+        tab["name"], tab["code"] = self._line_name.text().strip(), self._editor.toPlainText()
+
+    def _bring_forward(self, index: int) -> None:
+        """Show tab `index`: its name in the field, its code in the editor."""
+        self._front = index
+        tab = self._tabs[index]
+        self._line_name.setText(tab["name"])
+        self._editor.setPlainText(tab["code"])
+        self._name_changed()
+
+    def _select_tab(self, index: int) -> None:
+        if index != self._front:
+            self._keep_front()
+            self._bring_forward(index)
+
+    def _close_tab(self, index: int) -> None:
+        """Close one tab; its version stays, and the last tab cannot close."""
+        if len(self._tabs) < 2:
+            return
+        if index != self._front:
+            self._keep_front()
+        del self._tabs[index]
+        if index < self._front:
+            self._front -= 1
+        elif index == self._front:    # its unsaved edits go with it
+            self._bring_forward(min(index, len(self._tabs) - 1))
+            return
+        self._name_changed()
+
+    def _open_tab(self, tab: dict) -> None:
+        self._keep_front()
+        self._tabs.append(tab)
+        self._bring_forward(len(self._tabs) - 1)
 
     def _fill_version_menu(self) -> None:
         menu = self._version_menu
@@ -308,32 +431,41 @@ class CodeDialog(base_dialog.AssetDialog):
             action.triggered.connect(lambda _on=False, n=number: self._show_version(n))
 
     def _new_version(self) -> None:
-        """Apply will save the editor's code as a new version, under the name the field holds."""
-        self.version = NEW_VERSION
-        self._line_name.setText(version_store.version_label({"n": self._next_number()}))
+        """A tab for a new version holding the front tab's code; Apply saves it under its name."""
+        self._open_tab({"n": NEW_VERSION, "code": self._editor.toPlainText(),
+                        "name": version_store.version_label({"n": self._next_number()})})
         self._line_name.setFocus()
         self._line_name.selectAll()
 
     def _next_number(self) -> int:
-        return max([int(v.get("n", 0)) for v in self._versions] or [0]) + 1 + (
+        waiting = sum(1 for tab in self._tabs if tab["n"] == NEW_VERSION)
+        return max([int(v.get("n", 0)) for v in self._versions] or [0]) + 1 + waiting + (
             0 if self._versions else 1)    # a snippet's first New Version is Version 2
 
     def _show_version(self, number: int) -> None:
-        """Version `number` in the editor and its name in the field; nothing is saved yet."""
+        """Version `number` in a tab of its own, or its tab brought forward; nothing is saved."""
+        for index, tab in enumerate(self._tabs):
+            if tab["n"] == number:
+                self._select_tab(index)
+                return
         text = self._load_version(number) if self._load_version else None
         if text is None:
             QtWidgets.QMessageBox.warning(self, messages.TITLE_AMAZE,
                                           messages.CODE_VERSION_UNREADABLE)
             return
         entry = next(v for v in self._versions if int(v.get("n", 0)) == number)
-        self.version = number
-        self._editor.setPlainText(text)
-        self._line_name.setText(version_store.version_label(entry))
+        self._open_tab({"n": number, "code": text, "name": version_store.version_label(entry)})
 
     def versions_saved(self, versions, active: int) -> None:
         """What the caller's save left: the ledger and the version that is now active."""
+        kept_before = bool(self._versions)
         self._versions = list(versions) if self._versions_on else []    # off: the snippet alone
-        self.version = active if self._versions else NO_VERSION
+        self._tabs[self._front]["n"] = active if self._versions else NO_VERSION
+        if self._versions and not kept_before:    # the snippet alone became the first version
+            first = min(int(v.get("n", 0)) for v in self._versions)
+            for index, tab in enumerate(self._tabs):
+                if index != self._front and tab["n"] is NO_VERSION:
+                    tab["n"] = first
         self.can_add_version = self._versions_on    # the snippet exists once an Apply saved it
         self._plus.setEnabled(self.can_add_version)
 

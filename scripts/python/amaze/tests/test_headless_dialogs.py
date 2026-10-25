@@ -728,10 +728,8 @@ class TheSaveFamilyIsTheDrawnWidth(unittest.TestCase):
             with self.subTest(snippet=tag):
                 dialog = self._shown(
                     code_dialog.CodeDialog(["Metal"], name=name))
-                label = dialog.findChild(QtWidgets.QLabel,
-                                         "amaze_header_band_text")
-                self.assertIsNotNone(label, "the band carries no text")
-                self.assertEqual(expect, label.text())
+                self.assertEqual([expect], dialog._tabbar.names(),
+                                 "the band's tab does not name the snippet")
 
     def test_the_family_renders_ONE_width_whatever_that_width_is(self):
         """The structural property, and it is stronger than the value: four dialogs reading ONE constant must AGREE, so a broken mechanism shows up as one wrong number rather than four different ones. Four different widths is proof the constant never reached them. ▸p/shared-means-it-fails-together"""

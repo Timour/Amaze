@@ -38,8 +38,12 @@ SAVE_BUTTON_W = (35, 65)  # OK, Cancel, for a dialog that draws no pair of its o
 SAVE_BUTTON_GAP = 6
 
 CODE_FONT = ("SideFX Source Code Pro", 14)    # ▸ D11's code: Houdini's Fixed face ▸r/houdini-code-look
-CODE_RADIUS = 3                    # the editor's corners, and the current line's
+CODE_RADIUS = 3                    # the editor's corners, the current line's, the tab's top ones
 CODE_LINE_NUMBER_INK = "#b0b0b0"
+CODE_BAND = "#282828"              # ▸ D11's band, and an unselected version tab on it
+CODE_TAB = "#373838"               # the selected version tab
+CODE_TAB_INK = "#dddcdd"           # a tab's name
+CODE_TAB_MAX_W = 200               # a tab is as wide as its name and its ×, up to this
 CODE_SYNTAX = {    # ▸ token kind: Houdini's own colour name, and its value in UIDark.hcs headless
     "plain": ("ParmSyntaxPlainColor", "#bcbec3"),
     "comment": ("ParmSyntaxCommentColor", "#7b7e84"),
@@ -591,8 +595,12 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
         "nodes": (
             ("header band", 0, 0, 638, 22, None),
             ("header band ▸ tab", 0, 0, 128, 22, None),
-            ("QLabel", 18, 3, 93, 15, "[name of Version] "),
-            ("icon ▸ add ▸ icon_version_add.svg", 128, 0, 22, 22, None),
+            ("header band ▸ tab", 129, 0, 128, 22, None),    # drawn selected
+            ("QLabel", 13, 3, 93, 15, "[name of Version] "),
+            ("QLabel", 142, 3, 93, 15, "[name of Version] "),
+            ("icon ▸ close ▸ icon_tab_close.svg", 108, 0, 22, 22, None),
+            ("icon ▸ close ▸ icon_tab_close.svg", 235, 0, 22, 22, None),
+            ("icon ▸ add ▸ icon_version_add.svg", 257, 0, 22, 22, None),
             ("QLineEdit", 70, 36, 245, 22, None),
             ("QComboBox", 385, 36, 245, 22, None),
             ("QLabel", 33, 36.5, 30, 15, "Name"),
@@ -1094,7 +1102,12 @@ def drawn_code_dialog(frame_key: str = "D11") -> dict:
         found, = (n for n in nodes if n[0] == name)
         return found
 
-    band, tab, editor = one("header band"), one("header band ▸ tab"), one("CodeEditor")
+    band, editor = one("header band"), one("CodeEditor")
+    tabs = sorted((n for n in nodes if n[0] == "header band ▸ tab"), key=lambda n: n[1])
+    tab = tabs[-1]    # the selected one: its × ends flush with it
+    close = max((n for n in nodes if n[0] == "icon ▸ close ▸ icon_tab_close.svg"),
+                key=lambda n: n[1])
+    plus = one("icon ▸ add ▸ icon_version_add.svg")
     numbers, text = one("CodeEditor ▸ line numbers"), one("CodeEditor ▸ text")
     line = one("CodeEditor ▸ current line")
     fields = sorted((n for n in nodes if n[0] in ("QLineEdit", "QComboBox")),
@@ -1121,8 +1134,12 @@ def drawn_code_dialog(frame_key: str = "D11") -> dict:
         "current_line": (line[1] - editor[1], editor[1] + editor[3] - line[1] - line[3],
                          line[4]),
         "tab": (tab[3], tab[4]),
-        "tab_text_x": next(n for n in nodes if n[0] == "QLabel" and n[2] < band[4])[1] - tab[1],
-        "plus": one("icon ▸ add ▸ icon_version_add.svg")[1:5],
+        "tab_gap": tab[1] - tabs[-2][1] - tabs[-2][3] if len(tabs) > 1 else 0,
+        "tab_text": next((n[1] - tab[1], n[2], n[4]) for n in nodes    # x in the tab, y, height
+                         if n[0] == "QLabel" and n[2] < band[4] and n[1] >= tab[1]),
+        "tab_close": (close[3], close[4], tab[1] + tab[3] - close[1] - close[3]),    # w, h, inset
+        "plus": plus[1:5],
+        "plus_gap": plus[1] - tab[1] - tab[3],
     }
 
 
