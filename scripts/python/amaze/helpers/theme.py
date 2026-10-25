@@ -92,22 +92,20 @@ def font(role: str, source=None) -> QtGui.QFont:
 
 
 _DEFAULTS = {        # the hand-tuned palette: the fallback AND the anchor the derivations reproduce under the default theme. NO print() in this module ▸r/qt-windows-macos
-    "surface_low": "#262626",  # tab tray, sidebar backdrop, thumb bg
+    "surface_low": "#272727",  # tab tray, sidebar backdrop, thumb bg
     "surface": "#2d2d2d",  # toolbar row, tab strip, line_tags
-    "surface_high": "#313131",  # grid + details bg, star stamped hole
     "field": "#434343",  # filter box fill, toolbar divider
     "text_dim": "#696969",  # grid tile subtitle
     "text": "#a6a6a6",  # grid tile name, unselected tab text
     "text_bright": "#dddddd",  # selected tab text, "Filter" label
     "tab_chip": "#3e4765",  # section tab selected fill
     "tab_ring": "#43506d",  # section tab selected ring
-    "star": "#fcb900",  # favorite badge (Yellow mode)
+    "star": "#fdba00",  # favorite badge (Yellow mode)
 }
 
 _BASE_TONES = {      # a tone on the theme base's own hue/chroma; the default base is chroma 0, so a tinted base tints every surface coherently
-    "surface_low": 14.9,
+    "surface_low": 15.4,
     "surface": 18.2,
-    "surface_high": 20.0,
     "field": 28.1,
     "text_dim": 44.1,
     "text": 67.9,

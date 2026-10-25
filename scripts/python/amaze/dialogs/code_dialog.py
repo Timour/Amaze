@@ -142,7 +142,7 @@ class CodeEditor(QtWidgets.QPlainTextEdit):
         self.setStyleSheet(
             "QPlainTextEdit { background-color: %s; color: %s; border: none;"
             " border-radius: %dpx; selection-background-color: #264f78; }"
-            % (theme.color_hex("surface_low"), vex_syntax.DEFAULT.name(),    # D11's #262626
+            % (theme.color_hex("surface_low"), vex_syntax.DEFAULT.name(),    # D11's #272727
                theme.ui_px(amazetheme.CODE_RADIUS)))
         self._gutter = _LineNumberArea(self)
         self.blockCountChanged.connect(self._update_gutter_width)

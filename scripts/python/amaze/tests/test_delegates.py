@@ -461,7 +461,7 @@ class BandContrastTest(unittest.TestCase):
 
     def test_a_dark_category_is_legible_in_list_mode(self):
         """List mode paints the colour as the PEN on the row instead of filling a band and had no contrast rule at all - #333333 measured 1.03:1 against the row."""
-        row = QtGui.QColor("#313131")
+        row = QtGui.QColor("#2d2d2d")
         for value in ("#333333", "#262626", "#1a1a1a", "#000000"):
             adjusted = self.DELEGATE.readable_on(QtGui.QColor(value), row)
             self.assertGreaterEqual(

@@ -607,7 +607,7 @@ class TheCategoryColumnPaintsITSOwnColour(unittest.TestCase):
         self.view = QtWidgets.QTableView()
         palette = self.view.palette()  # a DARK ROW, like the panel's: on Qt's stock white palette the legibility pass has nothing to do and the test would pass on a premise the panel never has
         palette.setColor(QtGui.QPalette.ColorRole.Base,
-                         QtGui.QColor("#313131"))
+                         QtGui.QColor("#2d2d2d"))
         self.view.setPalette(palette)
         self.tiles = delegates.AssetItemDelegate(SUBTITLE_ROLE)
         self.delegate = delegates.CategoryCellDelegate(self.tiles)

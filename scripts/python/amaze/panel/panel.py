@@ -1168,8 +1168,8 @@ class AmazePanel(QtWidgets.QWidget):
         self.thumblist.viewport().installEventFilter(self)
         self.thumblist.doubleClicked.connect(self.import_asset_auto)
         self.thumblist.clicked.connect(self._refresh_notes_subject)    # a click that changes nothing still has to reach the Notes pane, and this handler is idempotent
-        thumblist_palette = self.thumblist.palette()    # grid and details unify on the `surface_high` token via QPalette (Base, the role QListView paints its viewport from) rather than setStyleSheet(), consistent with the cat_list fix above
-        thumblist_palette.setColor(QtGui.QPalette.ColorRole.Base, theme.color("surface_high"))
+        thumblist_palette = self.thumblist.palette()    # Houdini paints the ground; Base is what ink reads
+        thumblist_palette.setColor(QtGui.QPalette.ColorRole.Base, QtGui.QColor(amazetheme.GRID_GROUND))
         self.thumblist.setPalette(thumblist_palette)
 
         self.texture_progress = ui_helpers.ThinProgressBar()    # thin bar for texture thumbnail generation, docked above thumbview in verticalLayout_7 - which wraps thumbview ALONE, isolated from catview/details in the splitter. Built in code rather than the .ui; hidden until a folder with work to do is selected (see _on_texture_progress)
