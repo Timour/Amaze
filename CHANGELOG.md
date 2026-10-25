@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.11.20
+
+- Versions: the dialog lists the versions newest first with the day each was saved; pick one and press Select. Renaming a version is gone with the old dialog.
+
 ## 1.11.19
 
 - Preferences ▸ Show/Hide: lines along the top and right of the sub-tab page.
