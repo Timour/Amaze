@@ -360,6 +360,7 @@ class TheOnlineWorldBindsTheSameFourAreas(AreaBindingCase):
         names = [source.name for source in online.sources[:2]]
         for attr in ("_all", "_loaded"):
             self.addCleanup(setattr, online, attr, getattr(online, attr))
+        online._generation += 1    # outdates any fetch still in flight, or it lands on the seed ▸p/seeded-catalogue
         online._all = [matx_sources.MatxRecord(
             source=name, uid="%s-%d" % (name, n), title="%s %d" % (name, n),
             category="Metal") for name in names for n in range(3)]
