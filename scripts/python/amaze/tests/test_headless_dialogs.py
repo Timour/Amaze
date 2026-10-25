@@ -685,13 +685,13 @@ class TheSaveFamilyIsTheDrawnWidth(unittest.TestCase):
             "a caption is drawn on the editor; the design has none")
 
     def test_only_the_drawn_ones_wear_a_header_band(self):
-        """D02 and D11 carry the drawn strip; D01, D15, the save family and Preferences do not."""
+        """D11 carries the drawn strip; D01, D02, D15, the save family and Preferences do not."""
         from amaze.dialogs import (code_dialog, gradient_dialog, icon_dialog,
                                    library_dialog, prefs_dialog, save_dialog)
         from amaze.prefs import prefs as prefs_mod
         wants = (
             ("D02 Customize", lambda: icon_dialog.IconDialog(
-                None, 0.0, None, tile_name="rocks1"), True),
+                None, 0.0, None, tile_name="rocks1"), False),
             ("D11 Save Code",
              lambda: code_dialog.CodeDialog(["Metal"]), True),
             ("D15 Manage Libraries", lambda: library_dialog.ManageLibrariesDialog(

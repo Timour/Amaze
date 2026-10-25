@@ -52,13 +52,13 @@ LABEL_RIGHT = {    # where a form label's drawn box ENDS - the label column's ri
 }
 
 STRETCHED_FIELDS = {    # frame and kind whose fields fill the column instead of wearing a width
-    ("D02", "QLineEdit"), ("D02", "QComboBox", 71, 67),    # Category; the Icon menu is pinned
+    ("D02", "QLineEdit"), ("D02", "QComboBox", 71, 43),    # Category; the Image menu is pinned
     ("D11", "QLineEdit"), ("D11", "QComboBox"),
 }
 
 LOOSE_LABELS = {    # (frame, kind, x, y) of a label drawn BESIDE or ABOVE its control rather than in a column
-    ("D02", "QLabel", 202, 189),
-    ("D02", "QLabel", 212, 220),
+    ("D02", "QLabel", 202, 165),
+    ("D02", "QLabel", 212, 196),
 }
 
 

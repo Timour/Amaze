@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-HEADER_BAND_H = 30       # ▸ THE DRAWN HEADER: the name strip D02 and D11 wear; fill and ink follow Houdini
+HEADER_BAND_H = 30       # ▸ THE DRAWN HEADER: the strip D11 wears; fill and ink follow Houdini
 HEADER_BAND_INSET = 18   # where the name starts
 HEADER_BAND_TEXT_PX = 12
-HEADER_BAND_TEXT_BOLD = True    # the drawn weight on D02 and D11
+HEADER_BAND_TEXT_BOLD = True    # the drawn weight on D11
 
 HOUSE_MARGIN = 5         # ▸ the content margin every compact form dialog wears; a dialog records its reason at the call to differ
 
 D01_SELECTED_INK = "#755400"   # ▸ D01 Versions: the picked version's row
 
-D02_MARGINS = (8, 14, 8, 12)   # ▸ D02 Customize (Tile Icon): left, top-under-band, right, bottom
+D02_MARGINS = (8, 12, 8, 12)   # ▸ D02 Customize (Tile Icon): left, top, right, bottom
 D02_CELL = 34            # one icon button in the chooser grid
 D02_COLUMNS = 8          # what the drawn 319 grid column fits at 2px spacing
 D02_FIELD_H = 22         # every field, the search and both buttons
@@ -20,11 +20,12 @@ D02_CHIP_W = 35          # the current-colour chip beside the Custom Color label
 D02_STACK_GAP = 13       # preview to the switch stack, and its label column to its fields
 D02_ROW_GAP = 9          # between the stacked field rows, and the column rhythm below them
 D02_LABEL_GAP = 8        # a label to its field in the top form
+D02_FACE_GAP = 6         # the Image label to its menu
 D02_GRID_GAP = 6         # search to the grid
-D02_SECTION_GAP = 37     # the Icon menu's row to the Light Icon row
+D02_SECTION_GAP = 37     # the Image menu's row to the Light Icons row
 D02_PRESET_GAP = 10      # the current-colour chip to the preset row
-D02_TOP_GAP = 9          # the Tags row to the Icon menu
-D02_PREVIEW_DROP = 2     # the Icon menu's top to the preview square's
+D02_TOP_GAP = 9          # the Tags row to the Image menu
+D02_PREVIEW_DROP = 2     # the Image menu's top to the preview square's
 D02_BUTTON_GAP = 8       # grid to the button row
 D02_GRID_SPACING = 2     # the chooser grid's cell gap, UNSCALED: D02_COLUMNS is the count the drawn 319 column fits at exactly this gap
 D02_CHOOSER_RADIUS = 3   # an icon button's corner, UNSCALED - a stylesheet px, like the two below
@@ -164,9 +165,9 @@ BTN_SELECT = "Select"
 
 LABEL_TAGS = "Tags"                 # ▸ field labels and placeholders
 LABEL_CATEGORY = "Category"
-LABEL_ICON = "Icon"                 # the D02 menu choosing the tile's face
+LABEL_ICON = "Image"                # the D02 menu choosing the tile's face
 FACE_LABELS = ("Render", "Capture", "Generic", "Custom")    # its items, in `tile_icons.FACES` order
-LABEL_LIGHT_ICON = "Light Icon"     # the D02 toggle that replaced the Lines dropdown: OFF = dark lines, ON = light
+LABEL_LIGHT_ICON = "Light Icons"    # the D02 toggle that replaced the Lines dropdown: OFF = dark lines, ON = light
 LABEL_NAME = "Name"
 PLACEHOLDER_SEARCH_ICONS = "Search"     # D02 drew the count in it; it does not any more
 LABEL_NOT_CONNECTED = "not connected"    # D15: a listed library whose folder cannot be reached
@@ -261,37 +262,35 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
         ),
     },
     "D02": {   # Customize (Tile Icon)
-        "frame": (335, 610),
+        "frame": (335, 586),
         "nodes": (
-            ("header band", 0, 0, 335, 22, None),
-            ("QLabel", 8, 3, 82, 15, "[name of asset] "),
-            ("QLineEdit", 71, 36, 256, 22, None),
-            ("QLabel", 33, 40, 30, 15, "Name"),
-            ("QLineEdit ▸ text", 76, 40, 72, 15, "brushed_steel"),
-            ("QComboBox", 71, 67, 255, 22, None),
-            ("QLabel", 18, 71, 45, 15, "Category"),
-            ("QLineEdit", 71, 98, 255, 22, None),
-            ("QLabel", 40, 101, 23, 15, "Tags"),
-            ("QLabel", 8, 131, 150, 150, None),
-            ("QLabel", 171, 133, 22, 15, "Icon"),
-            ("QComboBox", 201, 129, 125, 22, None),
-            ("QLabel", 202, 189, 50, 15, "Light Icon"),
-            ("ToggleSwitch", 171, 189, 23, 15, None),
-            ("QToolButton", 171, 214, 35, 28, None),
-            ("QLabel", 212, 220, 68, 15, "Custom Color"),
-            ("QToolButton", 171, 252, 35, 28, None),
-            ("QToolButton", 212, 252, 34, 28, None),
-            ("QToolButton", 252, 252, 35, 28, None),
-            ("QToolButton", 293, 252, 34, 28, None),
-            ("QLineEdit", 8, 290, 319, 22, None),
-            ("QLineEdit ▸ text", 14, 294, 35, 15, "Search"),
-            ("icon grid ▸ 287 cells (collapsed)", 8, 318, 319, 250, None),
-            ("QScrollBar", 311, 323, 16, 240, None),
-            ("icon grid ▸ note", 16, 405, 136, 11, "287 icon cells, 34×34 — scrolls"),
-            ("QPushButton", 184, 576, 65, 22, None),
-            ("QPushButton", 255, 576, 72, 22, None),
-            ("QPushButton ▸ text", 202, 579, 29, 15, "Apply"),
-            ("QPushButton ▸ text", 274, 579, 34, 15, "Accept"),
+            ("QLineEdit", 71, 12, 256, 22, None),
+            ("QLabel", 33, 16, 30, 15, "Name"),
+            ("QLineEdit ▸ text", 76, 16, 72, 15, "brushed_steel"),
+            ("QComboBox", 71, 43, 255, 22, None),
+            ("QLabel", 18, 47, 45, 15, "Category"),
+            ("QLineEdit", 71, 74, 255, 22, None),
+            ("QLabel", 40, 77, 23, 15, "Tags"),
+            ("QLabel", 8, 107, 150, 150, None),
+            ("QLabel", 171, 109, 31, 15, "Image"),
+            ("QComboBox", 208, 105, 118, 22, None),
+            ("QLabel", 202, 165, 55, 15, "Light Icons"),
+            ("ToggleSwitch", 171, 165, 23, 15, None),
+            ("QToolButton", 171, 190, 35, 28, None),
+            ("QLabel", 212, 196, 68, 15, "Custom Color"),
+            ("QToolButton", 171, 228, 35, 28, None),
+            ("QToolButton", 212, 228, 34, 28, None),
+            ("QToolButton", 252, 228, 35, 28, None),
+            ("QToolButton", 293, 228, 34, 28, None),
+            ("QLineEdit", 8, 266, 319, 22, None),
+            ("QLineEdit ▸ text", 14, 270, 35, 15, "Search"),
+            ("icon grid ▸ 287 cells (collapsed)", 8, 294, 319, 250, None),
+            ("QScrollBar", 311, 299, 16, 240, None),
+            ("icon grid ▸ note", 16, 381, 136, 11, "287 icon cells, 34×34 — scrolls"),
+            ("QPushButton", 184, 552, 65, 22, None),
+            ("QPushButton", 255, 552, 72, 22, None),
+            ("QPushButton ▸ text", 202, 555, 29, 15, "Apply"),
+            ("QPushButton ▸ text", 274, 555, 34, 15, "Accept"),
         ),
     },
     "P01": {   # Preferences - Library

@@ -508,7 +508,7 @@ dialog.
 
 <img src="docs/images/menu_icon.png" width="206">
 
-The **Icon** menu sets what the tile shows:
+The **Image** menu sets what the tile shows:
 
 - **Render**: the tile's own picture. That is a material's or a node
   network's render, a snippet's code, a palette's swatches or a file's
@@ -518,7 +518,7 @@ The **Icon** menu sets what the tile shows:
 - **Generic**: the section's icon.
 - **Custom**: one of 287 Feather icons on a background colour, from four
   presets or any colour through the chip next to **Custom Color**.
-  **Light Icon** draws the symbol light.
+  **Light Icons** draws the symbol light.
 
 Render is the default where Amaze makes a picture, and a tile shows its
 Generic icon until its picture exists. Scenes default to Capture. Node

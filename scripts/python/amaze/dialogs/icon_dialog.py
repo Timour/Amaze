@@ -18,7 +18,6 @@ class IconDialog(base_dialog.AssetDialog):
     """NON-MODAL icon + colour picker on the house shell; `spec` is the result and the inherited `canceled` stays True until the user accepts, so Esc and the title-bar X read as cancel. `applied` fires on Apply, which commits without closing - Houdini's own Accept/Apply pair (ref ▸ windows/optype)."""
 
     FORM_WIDTH = amazetheme.D02_FORM_WIDTH
-    HEADER_BAND = True    # D02 wears the drawn name strip ▸p/one-design-document
     FRAME_KEY = "D02"     # the fixed-size parts only: the fields, the search and the grid stretch to the column, which is what resizes
 
     applied = QtCore.Signal()
@@ -183,7 +182,7 @@ class IconDialog(base_dialog.AssetDialog):
         return area
 
     def _build_preview_block(self):
-        """The preview square beside the stack: the Icon menu, Light Icon, the colour chip, the presets."""
+        """The preview square beside the stack: the Image menu, Light Icons, the colour chip, presets."""
         block = QtWidgets.QHBoxLayout()
         block.setSpacing(theme.ui_px(amazetheme.D02_STACK_GAP))
 
@@ -212,8 +211,8 @@ class IconDialog(base_dialog.AssetDialog):
             row.addStretch(1)
             return row, toggle
 
-        face_row = QtWidgets.QHBoxLayout()    # the Icon menu: Render, Capture, Generic, Custom
-        face_row.setSpacing(theme.ui_px(amazetheme.D02_LABEL_GAP))
+        face_row = QtWidgets.QHBoxLayout()    # the Image menu: Render, Capture, Generic, Custom
+        face_row.setSpacing(theme.ui_px(amazetheme.D02_FACE_GAP))
         face_label = QtWidgets.QLabel(amazetheme.LABEL_ICON)
         ui_helpers.pin_drawn(face_label, self.FRAME_KEY, "QLabel", amazetheme.LABEL_ICON,
                              height=False, grow=True)
