@@ -164,8 +164,8 @@ BADGE_ROLES = {   # which badge each context's tiles carry and the role its own 
 
 EXPECTED_BADGES = {
     "material": {"favourite", "versions", "comment", "renderer"},
-    "cop": {"favourite", "comment"},  # NOT versions, although these three subclass MaterialLibrary and inherit VersionsRole: a version can only be minted by `MaterialLibrary.update_asset_content`, reached from one call site on `material_model` alone, so no Node, Code or Color asset can ever hold a second version - wiring it anyway gave both a Version column reading none on every row and a badge click that mapped through the MATERIAL proxy into an unrelated asset
-    "code": {"favourite", "execute", "edit", "comment"},
+    "cop": {"favourite", "comment"},  # NOT versions: VersionsRole is inherited, and no Node asset keeps any
+    "code": {"favourite", "execute", "versions", "edit", "comment"},
     "file": {"favourite", "open", "comment"},  # File has the OPEN badge, which nothing else does: only a scene can be the one Houdini currently has open
     "gradient": {"favourite", "comment"},
 }
@@ -202,8 +202,7 @@ class EveryContextCarriesTheBadgesItsModelCanAnswer(AreaBindingCase):
                     continue
                 self.assertIn(
                     (key, badge),
-                    (("cop", "versions"), ("code", "versions"),
-                     ("gradient", "versions")),
+                    (("cop", "versions"), ("gradient", "versions")),
                     "%s's model answers %s but its tiles carry no %s "
                     "badge, and that is not one of the exceptions "
                     "this file records a reason for" % (key, role_name,

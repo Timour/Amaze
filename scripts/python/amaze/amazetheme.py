@@ -679,7 +679,7 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
             ("badge open (top-left) ▸ badge_open", 110, 110, 22, 22, None),
         ),
     },
-    "T05": {   # the code tile on its generic face: Run in the middle, Edit where Versions is elsewhere
+    "T05": {   # the code tile on its generic face: Run in the middle, Versions and Edit below
         "frame": (138, 177),
         "nodes": (
             ("tile card", 4, 4, 130, 173, None),
@@ -688,9 +688,10 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
             ("tile name", 9, 142, 52, 15, "Mtxl to RS"),
             ("tile subtitle", 9, 157, 37, 15, "Python"),
             ("badge favourite (top-right) ▸ badge_favourite", 110, 6, 22, 22, None),
-            ("badge edit (lower-left) ▸ badge_edit", 6, 110, 22, 22, None),
+            ("badge edit (lower-left) ▸ badge_edit", 110, 110, 22, 22, None),
             ("badge comment (lower-right) ▸ badge_comment", 6, 6, 22, 22, None),
             ("badge execute (centre) ▸ badge_execute", 46, 46, 45, 45, None),
+            ("badge versions (lower-left) ▸ badge_versions", 6, 110, 22, 22, None),
         ),
     },
     "L01": {   # the list table from the live panel - its header, widths and ticks are read

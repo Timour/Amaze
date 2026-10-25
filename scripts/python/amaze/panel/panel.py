@@ -1423,21 +1423,19 @@ class AmazePanel(QtWidgets.QWidget):
         if context is not None:
             context.rc_menu()
 
-    def _open_versions_dialog(self, index) -> None:
-        """The Versions dialog: Select makes the picked version active; it never creates one."""
+    def _open_versions_dialog(self, index, proxy, model) -> None:
+        """The Versions dialog over `model`'s row at `index`: Select makes the picked one active."""
         from amaze.dialogs import versions_dialog
-        source = self.material_sorted_model.mapToSource(index)    # `index` is the proxy's
-        row = source.row()
-        model = self.material_model
+        row = proxy.mapToSource(index).row()    # `index` is the proxy's
         mat = model.assets[row]
-        listed = versions.list_versions(self.prefs, mat.mat_id)
+        listed, active = model.version_list(row)
         if len(listed) < 2:
             return
-        active = versions.active_version(self.prefs, mat.mat_id)
         dialog = versions_dialog.VersionsDialog(mat.name, listed, active, parent=self)
         if dialog.exec() != QtWidgets.QDialog.DialogCode.Accepted:
             return
-        if dialog.chosen != active:
+        row = model.find_asset_row_by_id(mat.mat_id)    # the list may have moved under the window
+        if dialog.chosen != active and row >= 0:
             model.switch_version(row, dialog.chosen)
 
 

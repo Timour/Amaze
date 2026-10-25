@@ -218,6 +218,26 @@ class TheEditorWindowKeepsVersions(unittest.TestCase):
         self.assertEqual([(amazetheme.MENU_NEW_VERSION, False), ("", False),
                           ("helper fast", True), ("helper", False)], seen["menu"])
 
+    def test_the_versions_badge_opens_the_window_and_select_switches(self):
+        from amaze.dialogs import versions_dialog
+        self.model.save_version(self._row(), self.model.NEW_VERSION, THIRD, "helper fast",
+                                "VEX", "Examples", "")
+        proxy = self.panel.code_sorted_model
+        index = next(proxy.index(r, 0) for r in range(proxy.rowCount())
+                     if proxy.mapToSource(proxy.index(r, 0)).row() == self._row())
+        seen = {}
+
+        def picking(dialog):
+            seen["rows"] = dialog._list.count()
+            dialog.chosen = 1
+            return QtWidgets.QDialog.DialogCode.Accepted
+
+        with patch.object(versions_dialog.VersionsDialog, "exec", picking):
+            self.panel.sections["code"].menu_versions([index], index)
+        self.assertEqual(2, seen.get("rows"), "the badge opened no window, or another asset's")
+        asset = self.model.assets[self._row()]
+        self.assertEqual((FIRST, "helper"), (asset.code, asset.name))
+
     def test_with_versions_off_apply_saves_the_snippet_alone(self):
         from amaze.core import library_policy
         self.model.save_version(self._row(), self.model.NEW_VERSION, SECOND, "helper fast",

@@ -336,7 +336,8 @@ class Section:
         self.panel.grid_toggle_favourite(indexes)
 
     def menu_versions(self, indexes, current, payload=None) -> None:
-        self.panel._open_versions_dialog(current)
+        self.panel._open_versions_dialog(current, self._p(self.proxy_attr),
+                                         self._p(self.model_attr))
 
     def menu_comments(self, indexes, current, payload=None) -> None:
         self.panel.btn_notes.click()    # the toolbar Comments button's own click, so the two never differ
@@ -1090,7 +1091,7 @@ class CodeSection(AssetSection):
     category_attr = "code_category_model"
     sidebar_attr = "code_category_sorted_model"
     delegate_attr = "code_delegate"
-    tile_badges = ("favourite", "execute", "edit", "comment")
+    tile_badges = ("favourite", "execute", "versions", "edit", "comment")
     filter_tooltip = "Show snippets in one language."
 
     FILTER_CHOICES = (    # the same four code_dialog.LANGUAGES offers, "Code" being the catch-all; deliberately not imported from there, because this list is what the STORED strings are and a dialog is free to stop offering one while snippets saved under it are still in the library
