@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.12.0
+
+- Code: snippets keep versions. A snippet's tile shows the versions badge in the lower-left corner, which opens the list of versions, and the pencil moves to the lower-right corner.
+
 ## 1.11.22
 
 - Code editor: a version tab and a + above the fields list New Version and the snippet's versions; Apply saves and the editor stays open. Code shows in Houdini's code font and syntax colours. Preferences ▸ Library: Material Versions is now Versions, and it turns code versions on and off too.
