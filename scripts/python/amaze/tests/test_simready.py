@@ -275,6 +275,7 @@ class SimReadyRemembersTest(unittest.TestCase):
 
         class Worker(QtCore.QObject):
             done = QtCore.Signal(object, object, int)
+            progressed = QtCore.Signal(int, int, int)
             finished = QtCore.Signal()
 
             def __init__(self, _sources, _generation, previous=()):
@@ -809,6 +810,41 @@ class GPUOpenPreviewsTest(unittest.TestCase):
         place = records["m-brick"].payload.get("preview") or {}
         self.assertEqual(zlib.crc32(picture), place.get("crc"))
         self.assertNotIn("preview", records["m-moss"].payload)
+
+
+class ListingProgressTest(unittest.TestCase):
+    """The online listing puts a step per source on the thin bar, from opening to the pictures."""
+
+    def test_the_worker_reports_each_source_it_has_listed(self):
+        from amaze.core import matx_library
+
+        class Source:
+            def __init__(self, name):
+                self.name = name
+
+            def remember(self, records):
+                pass
+
+            def list_materials(self, limit=60):
+                return []
+
+        worker = matx_library._CatalogueWorker([Source("A"), Source("B")], 4)
+        steps = []
+        worker.progressed.connect(lambda *step: steps.append(step))
+        worker.run()
+        self.assertEqual([(0, 2, 4), (1, 2, 4), (2, 2, 4)], steps)
+
+    def test_the_bar_shows_the_current_listing_unless_pictures_hold_it(self):
+        from amaze.core import matx_library
+        model = matx_library.MatxOnlineLibrary()
+        self.addCleanup(model.shutdown)
+        shown = []
+        model.progress_changed.connect(lambda done, total: shown.append((done, total)))
+        model._on_catalogue_progress(1, 6, model._generation)
+        model._on_catalogue_progress(2, 6, model._generation - 1)    # an older listing's step
+        model._preview_total = 5
+        model._on_catalogue_progress(3, 6, model._generation)
+        self.assertEqual([(1, 6)], shown)
 
 
 class HostedPreviewTileTest(unittest.TestCase):

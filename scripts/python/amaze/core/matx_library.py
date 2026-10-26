@@ -62,6 +62,7 @@ class _CatalogueWorker(QtCore.QThread):
     """Every source's whole catalogue off the UI thread, ~3600 records (SimReady 1705), no paging."""
 
     done = QtCore.Signal(object, object, int)   # (records, errors, generation)
+    progressed = QtCore.Signal(int, int, int)    # (sources listed, sources, generation): the bar
 
     def __init__(self, sources, generation, previous=()):
         super().__init__()
@@ -71,7 +72,8 @@ class _CatalogueWorker(QtCore.QThread):
 
     def run(self):
         records, errors = [], []
-        for src in self._sources:
+        self.progressed.emit(0, len(self._sources), self._generation)
+        for listed, src in enumerate(self._sources, 1):
             try:
                 src.remember([r for r in self._previous if r.source == src.name])
             except Exception as exc:                    # noqa: BLE001
@@ -87,6 +89,7 @@ class _CatalogueWorker(QtCore.QThread):
             except Exception as exc:                    # noqa: BLE001
                 errors.append("%s: %s: %s"    # the MESSAGE, not just the type - the reason is what makes a missing source diagnosable
                               % (src.name, type(exc).__name__, exc))
+            self.progressed.emit(listed, len(self._sources), self._generation)
         try:
             self.done.emit(records, errors, self._generation)
         except Exception:                               # noqa: BLE001
@@ -274,6 +277,7 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
         worker = _CatalogueWorker(    # Refresh is the user asking to LOOK, so it reuses nothing
             self._sources, self._generation, () if force else self._all)
         worker.done.connect(self._on_catalogue)
+        worker.progressed.connect(self._on_catalogue_progress)
         worker.finished.connect(lambda w=worker: self._retire(w))
         self._workers.append(worker)
         worker.start()
@@ -297,6 +301,11 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
         except OSError as exc:
             debug.event("online", "catalogue cache not written",    # an EVENT: internal, the browser works either way - the unreachable-source line below stays a note because it is about what the user sees
                         error=str(exc))
+
+    def _on_catalogue_progress(self, listed, sources, generation):
+        """The listing's steps on the thin bar, a source each, unless a burst of pictures holds it."""
+        if generation == self._generation and not self._preview_total:
+            self.progress_changed.emit(listed, sources)
 
     def _on_catalogue(self, records, errors, generation):
         self._loading = False

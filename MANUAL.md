@@ -228,7 +228,8 @@ materials are built in Octane's own material builder.
 The <img src="scripts/python/amaze/ui/icon_online.svg" width="16">
 **Online** button switches the panel to the online material sources,
 shown as tabs in place of the section tabs. A second press returns to
-the library.
+the library. A thin bar above the grid fills while the sources are
+listed and again while their pictures load.
 
 <img src="docs/images/online_browser.png" width="820">
 
