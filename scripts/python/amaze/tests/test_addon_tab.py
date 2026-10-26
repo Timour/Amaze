@@ -206,5 +206,22 @@ class NoAddOnInstalledTest(_Tab):
         self.assertEqual([messages.ADDONS_NONE], shown)
 
 
+class MoreGroupsThanTheFrameHoldsTest(_Tab):
+    """Ten groups: the list scrolls in what the page leaves. ▸r/scroll-area-size-hint"""
+
+    NODES = tuple(_node("Node %d" % i, "node%d" % i, "pictures/node.svg", "Does thing %d." % i)
+                  for i in range(10))
+
+    def test_the_page_asks_for_no_more_than_the_drawn_frame(self):
+        tabs = self.dialog.findChild(QtWidgets.QTabWidget)
+        page = next(tabs.widget(i) for i in range(tabs.count()) if tabs.tabText(i) == "Add-On")
+        bar = max(theme.ui_px(amazetheme.PREFS_TAB_BAR[3]), tabs.tabBar().sizeHint().height())
+        budget = (theme.ui_px(amazetheme.PREFS_FRAME[1])
+                  - 2 * theme.ui_px(amazetheme.PREFS_DIALOG_MARGIN) - bar)
+        self.assertEqual(10, len(self.dialog.addon_rows))
+        self.assertGreater(self.dialog._addon_list.widget().height(), budget, "the rows overflow")
+        self.assertLessEqual(page.sizeHint().height(), budget)
+
+
 if __name__ == "__main__":
     unittest.main()

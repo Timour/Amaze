@@ -1077,6 +1077,8 @@ class PrefsDialog(base_dialog.AssetDialog):
         self._addon_list.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
         self._addon_list.setHorizontalScrollBarPolicy(
             QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._addon_list.setSizePolicy(    # the rows scroll in what the page leaves ▸r/scroll-area-size-hint
+            QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Ignored)
         inner.addWidget(self._addon_list, 1)
         self._btn_addons = QtWidgets.QPushButton()
         self._btn_addons.clicked.connect(self._press_addons)
