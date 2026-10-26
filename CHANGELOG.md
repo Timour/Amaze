@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.14.0
+
+- PhysicallyBased: each material's tile shows a picture of the material, rendered in Amaze's own thumbnail scene, in place of the swatch drawn from its numbers.
+- Import to Materials ▸ MaterialX from SimReady or PhysicallyBased keeps the tile's picture as the thumbnail instead of rendering one.
+
 ## 1.13.0
 
 - SimReady: each material's tile shows a picture of the material, rendered in Amaze's own thumbnail scene. A material without one keeps the Material face.
