@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.18.0
+
+- File: the sidebar shows the folders inside each location. The arrow before a folder's name opens and closes it, as do a double-click and the Right and Left arrow keys. Clicking a folder lists its files by its location's Show settings, and the File tab reopens on the last folder clicked.
+
 ## 1.17.1
 
 - Online materials: the thin bar above the grid fills while the online sources list, from opening Online until the pictures start to fill in. Nothing showed during those seconds before.
