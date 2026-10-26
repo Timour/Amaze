@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.13.0
+
+- SimReady: each material's tile shows a picture of the material, rendered in Amaze's own thumbnail scene. A material without one keeps the Material face.
+
 ## 1.12.6
 
 - SimReady: Plastic Green, Light Gray, Sky Blue, Teal and Yellow Orange now import. A colour in their files holds numbers too small for MaterialX, which refused the whole material; such a number now comes in as 0.
