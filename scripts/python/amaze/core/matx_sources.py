@@ -15,6 +15,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import zipfile
+import zlib
 
 import amaze
 from amaze.core import debug
@@ -1101,6 +1102,15 @@ class RangedFile:
 END_OF_ARCHIVE = b"PK\x05\x06"
 
 
+def remote_size(url: str) -> int:
+    """A ranged object's whole size, off the Content-Range of its first byte."""
+    with _request(url, {"Range": "bytes=0-0"}) as resp:
+        found = re.search(r"/(\d+)\s*$", str(resp.headers.get("Content-Range") or ""))
+    if not found:
+        raise ValueError("no size in the answer for " + url)
+    return int(found.group(1))
+
+
 def open_remote_zip(parts):
     """(ZipFile, RangedFile) over an archive published in parts [(url, size)]. ▸r/simready-release"""
     starts, total = [], 0
@@ -1308,6 +1318,8 @@ class SimReadySource(MatxSource):
     RELEASE = ("https://api.github.com/repos/NVIDIA-Omniverse/"
                "PhysicalAI-SimReady-Materials/releases/latest")
     HOME = "https://github.com/NVIDIA-Omniverse/PhysicalAI-SimReady-Materials"
+    PREVIEWS = ("https://github.com/Timour/AmazePackages/releases/download/"
+                "simready-previews/simready-previews.zip")    # Amaze's renders ▸r/simready-release
     BASE_CLASS = "open_pbr_uber_base_class.usda"
     MATERIAL = re.compile(r"Materials/([^/]+)/([^/]+)\.usda")
     PART = re.compile(r"(.+)\.(zip|z\d\d)")
@@ -1317,6 +1329,38 @@ class SimReadySource(MatxSource):
 
     def refresh(self):
         self._names = {}    # archive parts ((url, size), ...) -> [(folder, name)], kept on success
+        self._previews = None    # "<folder>/<name>.jpg" -> its place in PREVIEWS, read once
+
+    def _preview_places(self) -> dict:
+        """Each hosted picture's place {offset, size, crc} off the zip's directory; {} unread."""
+        if self._previews is None:
+            try:
+                bundle, _remote = open_remote_zip([(self.PREVIEWS, remote_size(self.PREVIEWS))])
+            except Exception as exc:                      # noqa: BLE001
+                debug.event("online", "SimReady previews unreadable", error=str(exc))
+                return {}
+            self._previews = {
+                info.filename: {"offset": info.header_offset, "size": info.compress_size,
+                                "crc": info.CRC}
+                for info in bundle.infolist()
+                if info.compress_type == zipfile.ZIP_STORED and info.filename.endswith(".jpg")}
+        return self._previews
+
+    def read_thumb_to(self, record, path: str) -> None:
+        """A tile's picture: one ranged read of its member's 30-byte header, name and data."""
+        place = record.payload.get("preview") or {}
+        start, size = int(place["offset"]), int(place["size"])
+        last = start + 30 + 1024 + size - 1
+        with _request(self.PREVIEWS, {"Range": "bytes=%d-%d" % (start, last)}) as resp:
+            blob = resp.read()
+        local = len(blob) >= 30 and blob[:4] == b"PK\x03\x04"
+        skip = 30 + sum(struct.unpack("<HH", blob[26:30])) if local else 0
+        data = blob[skip:skip + size]
+        if not skip or len(data) != size or zlib.crc32(data) != int(place["crc"]):
+            raise ValueError("the hosted picture for %s is not the one listed" % record.title)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "wb") as handle:
+            handle.write(data)
 
     def remember(self, records) -> None:
         """An archive whose parts are unchanged lists what it listed last time. ▸r/simready-release"""
@@ -1374,16 +1418,21 @@ class SimReadySource(MatxSource):
 
     def list_materials(self, search="", offset=0, limit=60):
         out = []
-        for folder, name, parts in self._release_materials():
+        rows = self._release_materials()
+        places = self._preview_places()
+        for folder, name, parts in rows:
             title = name.replace("_", " ")
             if search and search.lower() not in title.lower():
                 continue
+            payload = {"parts": [list(part) for part in parts],
+                       "member": "Materials/%s/%s.usda" % (folder, name)}
+            place = places.get("%s/%s.jpg" % (folder, name))
+            if place:
+                payload["preview"] = dict(place)
             out.append(MatxRecord(
                 source=self.name, uid="%s/%s" % (folder, name), title=title,
                 author="NVIDIA", category=self._cat(folder), licence=self.licence,
-                kind="package",
-                payload={"parts": [list(part) for part in parts],
-                         "member": "Materials/%s/%s.usda" % (folder, name)}))
+                kind="package", payload=payload))
         return out[offset:offset + limit]
 
     @staticmethod

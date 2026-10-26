@@ -8,7 +8,9 @@ import struct
 import sys
 import tempfile
 import unittest
+import urllib.error
 import zipfile
+import zlib
 from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -23,7 +25,7 @@ sys.path.insert(
         os.path.dirname(os.path.abspath(__file__)))))
 
 from amaze.tests import test_support  # noqa: E402
-from amaze.tests.test_packages import _ranged_server  # noqa: E402
+from amaze.tests.test_packages import _ranged_server, _Served  # noqa: E402
 
 FIXTURES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "simready")
 BASE = ("https://github.com/NVIDIA-Omniverse/PhysicalAI-SimReady-Materials/"
@@ -99,18 +101,28 @@ def _after_big(blob: bytes) -> int:
 
 
 class _Release:
-    """Canned release assets, served by ranges through `matx_sources._request`."""
+    """Canned release assets served by ranges; Amaze's `hosted` files are counted apart."""
 
-    def __init__(self, objects):
+    def __init__(self, objects, hosted=None):
         self.objects, self.calls = dict(objects), []
+        self.hosted, self.hosted_calls = dict(hosted or {}), []
         self.answer = {"tag_name": "v9", "assets": [
             {"name": name, "size": len(data), "browser_download_url": BASE + name}
             for name, data in sorted(self.objects.items())]}
 
     def serve(self, url, headers=None):
         name = url.rsplit("/", 1)[-1]
-        self.calls.append((name, str((headers or {}).get("Range") or "")))
-        return _ranged_server(self.objects[name])(url, headers)
+        spec = str((headers or {}).get("Range") or "")
+        if name in self.objects:
+            self.calls.append((name, spec))
+            return _ranged_server(self.objects[name])(url, headers)
+        self.hosted_calls.append((name, spec))
+        if name not in self.hosted:
+            raise urllib.error.HTTPError(url, 404, "Not Found", {}, None)
+        blob = self.hosted[name]
+        if spec == "bytes=0-0":    # GitHub's answer to one byte carries the whole size
+            return _Served(blob[:1], {"Content-Range": "bytes 0-0/%d" % len(blob)})
+        return _ranged_server(blob)(url, headers)
 
     def patched(self, testcase):
         from amaze.core import matx_sources
@@ -126,15 +138,25 @@ def _stone_parts():
     return blob, _split(blob, _inside_big(blob, "Stone"))
 
 
-def _release(testcase, skin_drop=()):
+def _release(testcase, skin_drop=(), hosted=None):
     _blob, (stone_z01, stone_zip) = _stone_parts()
     release = _Release({
         "Skin.zip": _archive("Skin", ["Skin_Dark"], drop=skin_drop),
         "Stone.z01": stone_z01, "Stone.zip": stone_zip,
         "Glass.zip": _archive("Glass", ["Glass_Clear"]),
-        "README.txt": b"not an archive"})
+        "README.txt": b"not an archive"}, hosted)
     release.patched(testcase)
     return release
+
+
+def _previews(pictures) -> bytes:
+    """Amaze's hosted previews zip: each picture stored as `<Category>/<Name>.jpg`."""
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w") as bundle:
+        for member, data in pictures.items():
+            bundle.writestr(member, data)
+        bundle.writestr("previews.json", b"{}")
+    return out.getvalue()
 
 
 class SimReadyListingTest(unittest.TestCase):
@@ -639,6 +661,95 @@ class PreviewlessTileTest(unittest.TestCase):
         self.assertIsNotNone(image, "a tile with no preview stayed blank")
         self.assertEqual(tile_icons.generic_image(library.MaterialLibrary.TILE_FACE), image,
                          "the online face differs from the Material section's")
+
+
+class SimReadyPreviewsTest(unittest.TestCase):
+    """A tile's picture from Amaze's hosted zip: placed at listing, one ranged read each."""
+
+    PICTURE = bytes(range(256)) * 40
+
+    def _listed(self, hosted):
+        from amaze.core import matx_sources
+        release = _release(self, hosted=hosted)
+        return release, matx_sources.SimReadySource().list_materials(limit=100)
+
+    def test_a_material_with_a_hosted_picture_is_listed_with_its_place(self):
+        _release_, records = self._listed({"simready-previews.zip": _previews(
+            {"Skin/Skin_Dark.jpg": self.PICTURE})})
+        by_uid = {r.uid: r for r in records}
+        place = by_uid["Skin/Skin_Dark"].payload.get("preview") or {}
+        self.assertEqual(zlib.crc32(self.PICTURE), place.get("crc"))
+        self.assertNotIn("preview", by_uid["Glass/Glass_Clear"].payload)
+
+    def test_previews_out_of_reach_leave_the_listing_whole(self):
+        release, records = self._listed({})
+        self.assertTrue(release.hosted_calls, "premise: the previews were asked for")
+        self.assertEqual(4, len(records))
+        self.assertFalse([r.uid for r in records if "preview" in r.payload])
+
+    def test_a_picture_is_one_ranged_read_and_its_crc_is_checked(self):
+        from amaze.core import matx_sources
+        release, records = self._listed({"simready-previews.zip": _previews(
+            {"Skin/Skin_Dark.jpg": self.PICTURE})})
+        skin = next(r for r in records if r.uid == "Skin/Skin_Dark")
+        folder = tempfile.mkdtemp(prefix="amaze_simready_preview_")
+        self.addCleanup(shutil.rmtree, folder, True)
+        release.hosted_calls.clear()
+        matx_sources.SimReadySource().read_thumb_to(skin, os.path.join(folder, "skin.png"))
+        with open(os.path.join(folder, "skin.png"), "rb") as handle:
+            self.assertEqual(self.PICTURE, handle.read())
+        self.assertEqual(1, len(release.hosted_calls), release.hosted_calls)
+        skin.payload["preview"]["crc"] ^= 1
+        with self.assertRaises(ValueError):
+            matx_sources.SimReadySource().read_thumb_to(skin, os.path.join(folder, "old.png"))
+
+
+class HostedPreviewTileTest(unittest.TestCase):
+    """A SimReady tile with a hosted picture reads it, and a re-render is a new picture."""
+
+    def _model_and_record(self, crc):
+        from amaze.core import matx_library, matx_sources
+        model = matx_library.MatxOnlineLibrary(
+            preferences=type("P", (), {"rendersize": 64})())
+        return model, matx_sources.MatxRecord(
+            source="SimReady", uid="Skin/Skin_Dark", title="Skin Dark", category="Skin",
+            kind="package", payload={"preview": {"offset": 0, "size": 1, "crc": crc}})
+
+    def test_the_tile_reads_its_picture_and_its_crc_names_tile_and_cache(self):
+        from amaze.core import matx_library
+
+        class Worker:
+            made = []
+
+            def __init__(self, jobs):
+                Worker.made.append(list(jobs))
+                self.ready = self.attempted = self.finished = mock.MagicMock()
+
+            def start(self):
+                pass
+
+        model, record = self._model_and_record(7)
+        with mock.patch.object(matx_library, "_PreviewWorker", Worker):
+            model._queue_previews([record])
+        self.assertEqual(1, len(Worker.made), "no picture was asked for")
+        (key, reader, path), = Worker.made[0]
+        self.assertTrue(callable(reader), "a hosted picture went to a URL download")
+        self.assertEqual(model._preview_key(record), key)
+        _model, rerendered = self._model_and_record(8)
+        self.assertNotEqual(path, model._cache_path(rerendered),
+                            "a re-rendered picture kept the old cache file")
+        self.assertNotEqual(key, model._preview_key(rerendered),
+                            "a re-rendered picture kept the old tile")
+
+    def test_a_relisting_that_brings_pictures_redraws_the_tiles(self):
+        model, pictured = self._model_and_record(7)
+        _model, plain = self._model_and_record(7)
+        plain.payload = {}
+        model._all, model._records = [plain], [plain]
+        with mock.patch.object(model, "_apply_filter") as redraw, \
+                mock.patch.object(model, "_save_cache"):
+            model._on_catalogue([pictured], [], model._generation)
+        redraw.assert_called_once()
 
 
 def _redshift_available():

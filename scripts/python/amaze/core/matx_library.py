@@ -25,6 +25,12 @@ def preview_cache() -> str:
     return os.path.join(hostos.cache_root(), PREVIEW_DIR_NAME)
 
 
+def _preview_crc(record):
+    """A hosted picture's CRC, in its tile key and cache name, so a re-render replaces both."""
+    payload = record.payload if isinstance(record.payload, dict) else {}
+    return (payload.get("preview") or {}).get("crc")
+
+
 SECTION_TILE_LABELS = {"gradient": "Color", "cop": "Node",
                        "code": "Code", "file": "File"}    # what a store tile's subtitle says per section; held equal to the sections' own labels by test_the_tile_labels_are_the_sections_own (a direct import would invert the core->panel layering)
 
@@ -305,7 +311,7 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
                 debug.event("online", "sources unavailable", errors=errors)
             return
         def _sig(recs):    # content identity, not just count: uid+title+preview_url covers everything a tile shows without hashing payloads
-            return [(r.source, r.uid, r.title, r.preview_url) for r in recs]
+            return [(r.source, r.uid, r.title, r.preview_url, _preview_crc(r)) for r in recs]
 
         changed = _sig(records) != _sig(self._all)
         self._all = records
@@ -351,11 +357,14 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
 
     @staticmethod
     def _preview_key(record):
-        return ("matx", record.source, record.uid)
+        crc = _preview_crc(record)
+        return ("matx", record.source, record.uid) + (() if crc is None else (crc,))
 
     def _cache_path(self, record):
+        crc = _preview_crc(record)
         digest = hashlib.md5(
-            ("%s/%s" % (record.source, record.uid)).encode("utf-8")
+            ("%s/%s%s" % (record.source, record.uid, "" if crc is None else "#%d" % crc))
+            .encode("utf-8")
         ).hexdigest()
         # the source name is SANITISED like every path-bound record field (it comes off the on-disk catalogue); the digest keeps the raw value, so two sources that sanitise alike stay apart
         return os.path.join(
@@ -479,6 +488,13 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
                                 title=rec.title, error=str(exc))
                     continue    # a FAILED draw keeps its marker - releasing it re-queued the failing draw every repaint; blank for the session, a panel reopen retries once
                 self._requested.discard(key)    # drawing is cheap: an evicted icon redraws on the next paint - don't hold the marker
+                continue
+            source = self.source_for(rec)
+            if _preview_crc(rec) is not None and hasattr(source, "read_thumb_to"):
+                reader = (lambda path, s=source, r=rec:    # one ranged read of a hosted picture
+                          s.read_thumb_to(r, path))
+                reader.label = str(rec.uid)
+                jobs.append((key, reader, self._cache_path(rec)))
                 continue
             if not rec.preview_url:
                 self._deposit_face(key, "material")    # a source that ships no picture
