@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.16.0
+
+- PolyHaven: each material's tile shows a picture of the material, rendered in Amaze's own thumbnail scene, in place of PolyHaven's own. Import to Materials ▸ MaterialX keeps that picture as the thumbnail.
+- RGL: imports carry each material's measured roughness. It was read too wide, so most came out rougher than measured and the brushed steel fully rough; the tile pictures are rendered again to match.
+- RGL: the blue, gold, purple and rosaline satin films take the colour they reflect at the mirror angle as their base colour and their reflection's colour. On average they reflect a near-white, which is how they imported before.
+
 ## 1.15.0
 
 - RGL: each material's tile shows a picture of the material, rendered in Amaze's own thumbnail scene, in place of the swatch drawn from its measured values. Import to Materials ▸ MaterialX keeps that picture as the thumbnail.
