@@ -132,6 +132,37 @@ class TheCommandAndItsEnvironment(unittest.TestCase):
         self.assertEqual("/ab/p.py", husk_job._script_arg("/ab/p.py"))
 
 
+class ARenderIsJudgedByItsFrames(unittest.TestCase):
+    """22.0.482's husk exits 139 after its last frame ▸r/husk-startup; a stand-in husk plays it."""
+
+    def _run(self, reported):
+        """A three-frame job whose stand-in husk reports `reported` frames done, then exits 139."""
+        job = husk_job.HuskJob({"usd": "", "prims": [], "ball": "", "renderer": "Karma"},
+                               test_support.scratch_dir("amaze_husk_job_"),
+                               [("id%d" % n, "") for n in range(3)])
+        self.addCleanup(job.discard)
+        husk = [test_support.plain_python(), "-c",
+                "import sys\nfor n in range(1, %d):\n    print('%s %%d' %% n, flush=True)\n"
+                "sys.exit(139)\n" % (reported + 1, husk_job.DONE)]
+        with mock.patch.object(job, "command", lambda: husk), test_support.captured_log() as log:
+            job.run_blocking()
+        return job, log
+
+    def test_an_exit_after_every_frame_is_done(self):
+        job, log = self._run(3)
+        self.assertEqual("done", job.status)
+        self.assertEqual([], log.matching("render stopped"), "a finished render said it stopped")
+        finished = [(r["data"].get("status"), r["data"].get("code"))
+                    for r in log.records("thumb") if r["msg"] == "husk finished"]
+        self.assertEqual([("done", 139)], finished, "the log lost husk's exit code")
+
+    def test_an_exit_before_the_last_frame_is_a_failure(self):
+        job, log = self._run(2)
+        self.assertEqual("failed: husk exit 139", job.status)
+        self.assertEqual(1, len(log.matching("render stopped (husk exit 139)")),
+                         "a render missing a frame did not say so")
+
+
 class ThePreFrameScriptBindsFrameNsMaterial(unittest.TestCase):
 
     def test_frame_two_binds_the_second_material(self):

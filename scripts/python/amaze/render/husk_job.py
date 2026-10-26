@@ -76,6 +76,7 @@ class HuskJob(QtCore.QObject):
         self._proc = None
         self._lines = queue.Queue()
         self._tail = collections.deque(maxlen=30)
+        self._done = set()    # the frames the post-frame script reported done
         self._timer = None
         self._cancelled = False
 
@@ -171,15 +172,18 @@ class HuskJob(QtCore.QObject):
                 pass
         elif line.startswith(DONE):
             try:
-                self.frameDone.emit(int(line.split()[1]))
+                frame = int(line.split()[1])
             except (IndexError, ValueError):
-                pass
+                return
+            self._done.add(frame)
+            self.frameDone.emit(frame)
 
     def _finish(self) -> None:
+        """Every frame back is done, whatever the exit: 22.0.482's husk exits 139 after its last."""
         code = self._proc.wait()
         if self._cancelled:
             self.status = "cancelled"
-        elif code != 0:
+        elif code != 0 and len(self._done) < len(self.frames):
             self.status = "failed: husk exit %d" % code
             debug.event("thumb", "husk failed", renderer=self.renderer, code=code,
                         tail=list(self._tail))
@@ -187,7 +191,8 @@ class HuskJob(QtCore.QObject):
                        "finish keep their old picture" % (self.renderer, code))
         else:
             self.status = "done"
-        debug.event("thumb", "husk finished", renderer=self.renderer, status=self.status)
+        debug.event("thumb", "husk finished", renderer=self.renderer, status=self.status,
+                    code=code)
         self.finished.emit(self.status)
 
     def discard(self) -> None:
