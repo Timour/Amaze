@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.17.0
+
+- GPUOpen: each material's tile shows a picture of the material, rendered in Amaze's own thumbnail scene, in place of GPUOpen's own. Import to Materials ▸ MaterialX keeps that picture as the thumbnail.
+
 ## 1.16.0
 
 - PolyHaven: each material's tile shows a picture of the material, rendered in Amaze's own thumbnail scene, in place of PolyHaven's own. Import to Materials ▸ MaterialX keeps that picture as the thumbnail.
