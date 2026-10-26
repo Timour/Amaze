@@ -592,6 +592,11 @@ class PolyHavenSource(MatxSource):
     name = "PolyHaven"
     licence = "CC0"
     API = "https://api.polyhaven.com"
+    PREVIEWS = ("https://github.com/Timour/AmazePackages/releases/download/"
+                "polyhaven-previews/polyhaven-previews.zip")
+
+    def refresh(self):
+        self._previews = None
 
     def page_url(self, record) -> str:
         return "https://polyhaven.com/a/%s" % record.uid
@@ -623,7 +628,7 @@ class PolyHavenSource(MatxSource):
                     payload={},
                 )
             )
-        return out
+        return self.with_previews(out)
 
     def _files(self, record):
         if "_files" not in record.payload:

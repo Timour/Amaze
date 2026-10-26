@@ -246,8 +246,9 @@ The right-click menu acts on one material or a selection:
 - **Import to Materials ▸ MaterialX**, **Redshift** or **Octane**
   downloads the material, builds it for that renderer and saves it to
   the library, with a preview when renders are on. A MaterialX import
-  from SimReady, PhysicallyBased or RGL keeps the tile's picture as its
-  preview instead. A renderer is available when its plugin is loaded.
+  from SimReady, PhysicallyBased, RGL or PolyHaven keeps the tile's
+  picture as its preview instead. A renderer is available when its
+  plugin is loaded.
 - **Import to Scene ▸ MaterialX**, **Redshift** or **Octane** builds the
   material in the current material library, or in `/mat`.
 - **Restore**, on Amaze packages, restores the entries the package

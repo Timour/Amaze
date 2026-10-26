@@ -757,6 +757,31 @@ class RGLPreviewsTest(unittest.TestCase):
         self.assertNotIn("preview", records["acrylic_felt_orange"].payload)
 
 
+class PolyHavenPreviewsTest(unittest.TestCase):
+    """PolyHaven's tiles carry Amaze's hosted pictures, which outrank PolyHaven's own."""
+
+    def test_a_material_with_a_hosted_picture_is_listed_with_its_place(self):
+        from amaze.core import matx_sources
+        picture = bytes(range(256)) * 14
+        hosted = _previews({"brick_4.jpg": picture})
+
+        def serve(url, headers=None):
+            if str((headers or {}).get("Range") or "") == "bytes=0-0":
+                return _Served(hosted[:1], {"Content-Range": "bytes 0-0/%d" % len(hosted)})
+            return _ranged_server(hosted)(url, headers)
+
+        assets = {"brick_4": {"name": "Brick 4", "thumbnail_url": "https://cdn/brick_4.png"},
+                  "moon_02": {"name": "Moon 02", "thumbnail_url": "https://cdn/moon_02.png"}}
+        for target, value in (("_request", serve), ("get_json", lambda _url: assets)):
+            patcher = mock.patch.object(matx_sources, target, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        records = {r.uid: r for r in matx_sources.PolyHavenSource().list_materials(limit=100)}
+        place = records["brick_4"].payload.get("preview") or {}
+        self.assertEqual(zlib.crc32(picture), place.get("crc"))
+        self.assertNotIn("preview", records["moon_02"].payload)
+
+
 class HostedPreviewTileTest(unittest.TestCase):
     """A SimReady tile with a hosted picture reads it, and a re-render is a new picture."""
 
@@ -805,6 +830,13 @@ class HostedPreviewTileTest(unittest.TestCase):
         jobs = self._jobs(model, record)
         self.assertEqual(1, len(jobs), "the tile was drawn from its numbers")
         self.assertTrue(callable(jobs[0][1]), "a hosted picture went to a URL download")
+
+    def test_a_hosted_picture_outranks_the_sources_own(self):
+        model, record = self._model_and_record(7)
+        record.source, record.preview_url = "PolyHaven", "https://cdn.example/brick_4.png"
+        jobs = self._jobs(model, record)
+        self.assertEqual(1, len(jobs), jobs)
+        self.assertTrue(callable(jobs[0][1]), "the source's own picture was fetched instead")
 
     def test_a_relisting_that_brings_pictures_redraws_the_tiles(self):
         model, pictured = self._model_and_record(7)
