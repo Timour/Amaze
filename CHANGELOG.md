@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.18.1
+
+- Repair adds back materials that no list names, as when the Materials list is missing, each with the name, category and tags saved beside its files. Before, it offered only saved copies of the list, which can all be older than every material in it.
+- Put a Saved Copy Back offers the newest saved copy of the damaged list. Older copies are under Older Copies..., newest first, and copies that hold nothing are not offered.
+- Moving files aside leaves the files of materials Repair can add back.
+
 ## 1.18.0
 
 - File: the sidebar shows the folders inside each location. The arrow before a folder's name opens and closes it, as do a double-click and the Right and Left arrow keys. Clicking a folder lists its files by its location's Show settings, and the File tab reopens on the last folder clicked.
