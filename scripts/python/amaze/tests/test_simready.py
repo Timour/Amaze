@@ -532,6 +532,15 @@ class MaterialSpecTest(unittest.TestCase):
         self.assertEqual("color3", doc.getNode("tiledimage_base_color").getType())
         self.assertIsNone(doc.getNode("convert_base_color"))
 
+    def test_a_value_too_small_for_a_float_is_written_as_zero(self):
+        """Five released Plastics write `3e-45`, which MaterialX refuses. ▸r/simready-graph"""
+        spec = {"name": "M", "labels": [], "images": {}, "normals": {}, "unread": [],
+                "constants": {"transmission_color": ("color3", (0.0, 3e-45, 0.0)),
+                              "transmission_weight": ("float", 1e-40)}}
+        surface = self._document(spec).getNode("open_pbr_surface")
+        self.assertEqual("0, 0, 0", surface.getInput("transmission_color").getValueString())
+        self.assertEqual("0", surface.getInput("transmission_weight").getValueString())
+
     def test_an_unwired_graph_is_reported_not_raised(self):
         from amaze.core import matx_usd
         folder = tempfile.mkdtemp(prefix="amaze_simready_unwired_")

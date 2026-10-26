@@ -19,6 +19,7 @@ _MX_TYPES = {    # a USD value type's MaterialX name
 }
 _DATA_TYPES = {"color3": "vector3", "color4": "vector4"}    # a raw colour map reads as data
 _DATA_SPACES = ("raw", "linear", "lin_rec709", "scene_linear")    # spaces Karma must not transform
+_FLOAT_MIN = 1.17549435e-38    # float32's smallest normal value; MaterialX refuses less but 0
 
 
 class Unread(ValueError):
@@ -183,14 +184,20 @@ def texture_files(spec: dict) -> list:
     return sorted(set(found))
 
 
+def _float(value) -> float:
+    """A source number as MaterialX reads it back: under the normal range it is 0. ▸r/simready-graph"""
+    value = float(value)
+    return 0.0 if abs(value) < _FLOAT_MIN else value
+
+
 def _mx_value(mx, kind: str, value):
     if kind in ("color3", "color4", "vector2", "vector3", "vector4"):
-        return getattr(mx, kind.capitalize())(*[float(v) for v in value])
+        return getattr(mx, kind.capitalize())(*[_float(v) for v in value])
     if kind == "boolean":
         return bool(value)
     if kind == "integer":
         return int(value)
-    return float(value)
+    return _float(value)
 
 
 def _add_image(doc, mx, name: str, image: dict):
