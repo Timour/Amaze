@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import os
 import shutil
+import tempfile
 
 import hou
 
@@ -299,6 +300,24 @@ def build_in_scene(record, source, resolution, destination, preferences,
         return (builder, "")
 
 
+def hosted_picture(record, source, renderer) -> str:
+    """Amaze's own render of `record` in a temp file, for a MaterialX import; "" when none."""
+    if renderers.normalized(renderer) != conversion_engine.HUB:
+        return ""
+    if not (getattr(record, "payload", None) or {}).get("preview"):
+        return ""
+    folder = tempfile.mkdtemp(prefix="amaze_hosted_picture_")
+    path = os.path.join(folder, "picture.jpg")
+    try:
+        source.read_thumb_to(record, path)
+    except Exception as exc:                            # noqa: BLE001
+        shutil.rmtree(folder, ignore_errors=True)
+        debug.event("import", "hosted picture not read - rendering instead",
+                    title=record.title, error=str(exc))
+        return ""
+    return path
+
+
 def import_record(record, source, resolution, library, preferences,
                   progress=None, renderer: str = renderers.HUB.key, *, save):
     """One online record saved by `save` into `library`, nothing left in the scene: (ok, why)."""
@@ -310,12 +329,16 @@ def import_record(record, source, resolution, library, preferences,
                        renderer) as (builder, measurement_note, error):
         if error:
             return (False, error)
+        picture = hosted_picture(record, source, renderer)
         save(   # BY ID, never by position: add_asset stamps the node with its library id and its save can ADOPT another session's row, appended after ours via the merge, so a grown row count can be true for the wrong reason and the LAST row can be somebody else's material - the id is the identity and the length was only ever a proxy for it
             builder,
             record.category,
             ",".join(record.tags or []),
             False,
+            **({"picture": picture} if picture else {}),
         )
+        if picture:
+            shutil.rmtree(os.path.dirname(picture), ignore_errors=True)
         stamped = builder.userData("assetlib_id") or ""
         row = library.find_asset_row_by_id(stamped) if stamped else -1
         if row == -1:

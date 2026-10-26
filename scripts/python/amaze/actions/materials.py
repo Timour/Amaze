@@ -19,9 +19,10 @@ def connect(model) -> None:
 
 
 def add_asset(model, node: hou.Node, cats: str, tags: str, fav: bool,
-              name: str | None = None) -> str:
+              name: str | None = None, picture: str = "") -> str:
     """Save `node` into `model` as a new material: its renderer when it is in, "" when it is not."""
     handler = nodes.NodeHandler(model.preferences)
+    handler.supplied_thumbnail = picture    # a hosted picture, which replaces the render
     renderer = handler.get_renderer_from_node(node)
     new_mat = material.Material()
     tags = model.sanitize_tags(tags)

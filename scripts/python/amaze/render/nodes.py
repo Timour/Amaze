@@ -601,6 +601,8 @@ class NodeHandler:
     def after_save_thumbnail(self, update: bool, label: str, asset_id,
                              node_path: str, render) -> None:
         """Render a saved asset's thumbnail. A failure costs the thumbnail, never the asset; `render()` answers True, False, or None where this context has no picture to draw. ▸p/after-save-thumbnail"""
+        if self.supplied_thumbnail and self._supply_thumbnail(asset_id):
+            return
         if not update and not self._preferences.render_on_import:
             return
         try:
@@ -617,8 +619,21 @@ class NodeHandler:
             debug.note("%s thumbnail did not render - asset saved and "
                        "registered without one." % label)
 
+    def _supply_thumbnail(self, asset_id) -> bool:
+        """The hosted picture an import brought, saved as the asset's thumbnail; False if not."""
+        from PySide6 import QtGui
+        from amaze.core import tile_icons
+        image = QtGui.QImage(self.supplied_thumbnail)
+        target = tile_icons.thumbnail_path(self._preferences, str(asset_id))
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        saved = not image.isNull() and image.save(target, "PNG")
+        debug.event("save", "thumbnail from the hosted picture",
+                    asset_id=str(asset_id), saved=saved)
+        return saved
+
     def __init__(self, preferences: prefs.Prefs) -> None:
         self._preferences = preferences
+        self.supplied_thumbnail = ""    # a picture an import brought, saved instead of a render
         self._builder_node = None
         self._renderer = ""
         self._import_path = None

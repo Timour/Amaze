@@ -3,12 +3,14 @@
 
 import functools
 import os
+import shutil
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-from PySide6 import QtWidgets  # noqa: E402
+from PySide6 import QtGui, QtWidgets  # noqa: E402
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
@@ -294,6 +296,65 @@ class BothOnlineDestinationsRunOneSequence(unittest.TestCase):
         self.assertEqual(2, len(said), said)
         self.assertEqual(said[0], said[1],
                          "the two destinations word one warning two ways")
+
+
+class HostedPictureImportTest(unittest.TestCase):
+    """A MaterialX import of a material with an Amaze render keeps it instead of rendering."""
+
+    def setUp(self):
+        if hou.getenv("OCIO") is None:
+            hou.putenv("OCIO", "/dev/null")
+        self.prefs = test_support.fixture_prefs(self)
+        self.prefs.render_on_import = 1
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        folder = tempfile.mkdtemp(prefix="amaze_hosted_test_")
+        self.addCleanup(shutil.rmtree, folder, True)
+        self.hosted = os.path.join(folder, "hosted.png")
+        image = QtGui.QImage(24, 24, QtGui.QImage.Format.Format_RGB32)
+        image.fill(QtGui.QColor("#3366cc"))
+        image.save(self.hosted, "PNG")
+
+    def _record(self):
+        from amaze.core import matx_sources
+        return matx_sources.MatxRecord(
+            source="PhysicallyBased", uid="probe-hosted", title="Probe Hosted",
+            category="Metal", kind="values", licence="CC0 1.0",
+            payload={"values": {"color": [0.8, 0.2, 0.1], "roughness": 0.3},
+                     "preview": {"offset": 0, "size": 1, "crc": 1}})
+
+    def _source(self):
+        hosted = self.hosted
+
+        class Source:
+            name = "PhysicallyBased"
+
+            def fetch(self, record, resolution, dest_dir, progress=None):
+                return {"values": record.payload["values"]}
+
+            def read_thumb_to(self, record, path):
+                shutil.copyfile(hosted, path)
+        return Source()
+
+    def test_the_hosted_picture_is_the_thumbnail_and_nothing_renders(self):
+        from amaze.core import library as library_mod, matx_import, tile_icons
+        from amaze.render import thumbs
+        model = library_mod.MaterialLibrary(preferences=self.prefs)
+        with mock.patch.object(thumbs.ThumbNailRenderer, "create_thumb_mtlx") as render:
+            ok, reason = matx_import.import_record(
+                self._record(), self._source(), "", model, self.prefs,
+                save=functools.partial(material_actions.add_asset, model))
+        self.assertTrue(ok, reason)
+        render.assert_not_called()
+        thumb = QtGui.QImage(tile_icons.thumbnail_path(self.prefs, model.assets[-1].mat_id))
+        self.assertEqual((24, 24), (thumb.width(), thumb.height()),
+                         "the thumbnail is not the hosted picture")
+        self.assertEqual("#3366cc", thumb.pixelColor(12, 12).name())
+
+    def test_a_redshift_import_renders_its_own(self):
+        from amaze.core import matx_import
+        self.assertEqual("", matx_import.hosted_picture(
+            self._record(), self._source(), "Redshift"))
 
 
 if __name__ == "__main__":
