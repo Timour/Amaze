@@ -4,7 +4,170 @@ from __future__ import annotations
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
+from amaze import amazetheme
 from amaze.core import category, debug
+from amaze.helpers import theme
+
+
+def top_level(index):
+    """The top row an index sits under; a top row answers itself."""
+    while index.isValid() and index.parent().isValid():
+        index = index.parent()
+    return index
+
+
+class SidebarTreeView(QtWidgets.QTreeView):
+    """The one sidebar: a flat list in the asset tabs, a folder tree in File. ▸r/tree-views"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setHeaderHidden(True)
+        self.setRootIsDecorated(False)    # each row draws its own arrow, after its colour bar
+        self.setUniformRowHeights(True)
+        self.setIndentation(theme.ui_px(amazetheme.SIDEBAR_INDENT))
+        self._open: dict = {}    # id(model) -> the folder paths open in it
+        self._standing = None    # (model, path) to stand on once its row arrives
+        self._watched = None
+        self._arrow_press = False
+        self.expanded.connect(self._opened)
+        self.collapsed.connect(self._closed)
+
+    def drawBranches(self, painter, rect, index):
+        """Qt's indent-column arrows stay undrawn: the row's own arrow is the only one."""
+
+    def paintEvent(self, event):
+        if not self.alternatingRowColors():
+            super().paintEvent(event)
+            return
+        rows = QtCore.QRect(0, 0, self.viewport().width(), self._rows_bottom())
+        super().paintEvent(QtGui.QPaintEvent(event.region().intersected(rows)))    # below: the plain ground
+
+    def _rows_bottom(self) -> int:
+        """Where the last row on screen ends, 0 with none."""
+        index, bottom = self.indexAt(QtCore.QPoint(0, 0)), 0
+        while index.isValid():
+            rect = self.visualRect(index)
+            bottom = rect.bottom() + 1
+            if bottom > self.viewport().height():
+                break
+            index = self.indexBelow(index)
+        return bottom
+
+    def arrow_rect(self, index) -> QtCore.QRect:
+        """Where a row's arrow sits in the viewport; empty when the row has none."""
+        model = self.model()
+        delegate = self.itemDelegateForIndex(index) if index.isValid() else None
+        if (model is None or delegate is None or not hasattr(delegate, "arrow_box")
+                or not getattr(model, "unfolds", False) or not model.hasChildren(index)):
+            return QtCore.QRect()
+        option = QtWidgets.QStyleOptionViewItem()
+        self.initViewItemOption(option)
+        option.rect = self.visualRect(index)
+        delegate.initStyleOption(option, index)
+        decoration = self.style().subElementRect(
+            QtWidgets.QStyle.SubElement.SE_ItemViewItemDecoration, option, self)
+        return delegate.arrow_box(decoration)
+
+    def _on_arrow(self, event) -> QtCore.QModelIndex:
+        point = event.position().toPoint()
+        index = self.indexAt(point)
+        if event.button() == QtCore.Qt.MouseButton.LeftButton \
+                and self.arrow_rect(index).contains(point):
+            return index
+        return QtCore.QModelIndex()
+
+    def mousePressEvent(self, event):
+        index = self._on_arrow(event)
+        if index.isValid():    # the arrow opens or closes; it neither selects nor clicks
+            self.setExpanded(index, not self.isExpanded(index))
+            self._arrow_press = True
+            event.accept()
+            return
+        self._arrow_press = False
+        super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if self._arrow_press:
+            self._arrow_press = False
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+
+    def mouseDoubleClickEvent(self, event):
+        index = self._on_arrow(event)
+        if index.isValid():    # each click on the arrow is one toggle
+            self.setExpanded(index, not self.isExpanded(index))
+            event.accept()
+            return
+        super().mouseDoubleClickEvent(event)
+
+    def _remembers(self, model) -> bool:
+        return model is not None and getattr(model, "unfolds", False) \
+            and hasattr(model, "BrowseRole")
+
+    def setModel(self, model):
+        old = self._watched
+        if old is not None:
+            for signal in (old.modelReset, old.rowsInserted):
+                try:
+                    signal.disconnect(self._reopen)
+                except (RuntimeError, TypeError):
+                    pass
+        super().setModel(model)
+        self._watched = model if self._remembers(model) else None
+        if self._watched is not None:
+            model.modelReset.connect(self._reopen)
+            model.rowsInserted.connect(self._reopen)
+            self._reopen()
+
+    def _path(self, index):
+        model = self.model()
+        return index.data(model.BrowseRole) if self._remembers(model) else None
+
+    def _opened(self, index):
+        path = self._path(index)
+        if path:
+            self._open.setdefault(id(self.model()), set()).add(path)
+
+    def _closed(self, index):
+        path = self._path(index)
+        if path:
+            self._open.get(id(self.model()), set()).discard(path)
+
+    def _reopen(self, *_args):
+        """Open again what was open, and stand on a pending folder once its row is there."""
+        model = self.model()
+        if not self._remembers(model):
+            return
+        for path in sorted(self._open.get(id(model), ()), key=len):    # parents first
+            index = model.index_of(path)
+            if index.isValid() and not self.isExpanded(index):
+                self.expand(index)
+        standing = self._standing
+        if standing is not None and standing[0] is model:
+            index = model.index_of(standing[1])
+            if index.isValid():
+                self._standing = None
+                self.selectionModel().setCurrentIndex(
+                    index, QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
+                self.scrollTo(index)
+
+    def reveal(self, path: str) -> None:
+        """Open every folder above `path` and stand on it, as their rows arrive."""
+        model = self.model()
+        if not self._remembers(model) or not path:
+            return
+        location = model.location_of(path)
+        opened = self._open.setdefault(id(model), set())
+        opened.add(location)
+        here = path.rstrip("/")
+        while "/" in here and here != location.rstrip("/"):
+            here = here.rsplit("/", 1)[0]
+            if here.rstrip("/") == location.rstrip("/"):
+                break
+            opened.add(here)
+        self._standing = (model, path)
+        self._reopen()
 
 
 class SidebarReorder(QtCore.QObject):
@@ -132,7 +295,7 @@ class SidebarReorder(QtCore.QObject):
         elif pos.y() > area.bottom() - self.EDGE_SCROLL_MARGIN:
             bar = view.verticalScrollBar()
             bar.setValue(bar.value() + bar.singleStep())
-        target = view.indexAt(clamped)
+        target = top_level(view.indexAt(clamped))    # over a subfolder, its location's row
         if not target.isValid():
             return
         to_row = max(1, target.row())

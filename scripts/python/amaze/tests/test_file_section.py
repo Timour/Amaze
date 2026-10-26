@@ -2087,11 +2087,11 @@ class CountsWalkOffTheGuiThreadTest(unittest.TestCase):
         return model, roots
 
     def _held_listing(self, held_root):
-        """An `os.listdir` that holds a WORKER inside one location until released."""
+        """An `os.scandir` that holds a WORKER inside one location until released."""
         main = threading.get_ident()
         entered, release = threading.Event(), threading.Event()
         self.addCleanup(release.set)
-        real = os.listdir
+        real = os.scandir
 
         def listing(path="."):
             if (threading.get_ident() != main
@@ -2151,7 +2151,7 @@ class CountsWalkOffTheGuiThreadTest(unittest.TestCase):
         held_key = model._folders()[0]
         others = model._folders()[1:]
         listing, entered, release = self._held_listing(roots[0])
-        with mock.patch("os.listdir", listing):
+        with mock.patch("os.scandir", listing):
             for row in range(1, model.rowCount()):
                 model.data(model.index(row, 0), model.COUNT_ROLE)
             landed = _pump_until(
@@ -2170,7 +2170,7 @@ class CountsWalkOffTheGuiThreadTest(unittest.TestCase):
         model, roots = self._model(2, 3)
         doomed = model._folders()[0]
         listing, entered, release = self._held_listing(roots[0])
-        with mock.patch("os.listdir", listing):
+        with mock.patch("os.scandir", listing):
             model.data(model.index(1, 0), model.COUNT_ROLE)
             self.assertTrue(_pump_until(entered.is_set),
                             "the walk never ran on a worker")
@@ -2195,7 +2195,7 @@ class CountsWalkOffTheGuiThreadTest(unittest.TestCase):
         model.dataChanged.connect(
             lambda first, last, roles=(): shown.append(model._counts.get(key)))
         listing, entered, release = self._held_listing(root)
-        with mock.patch("os.listdir", listing):
+        with mock.patch("os.scandir", listing):
             model.data(model.index(1, 0), model.COUNT_ROLE)
             self.assertTrue(_pump_until(entered.is_set),
                             "the walk never ran on a worker")
@@ -2216,14 +2216,14 @@ class CountsWalkOffTheGuiThreadTest(unittest.TestCase):
             open(os.path.join(new, "g%d.png" % i), "w").close()
         model.preferences.save = lambda: None
         walked = []
-        real = os.listdir
+        real = os.scandir
 
         def listing(path="."):
             if any(str(path).startswith(r) for r in roots + [new]):
                 walked.append(str(path).rstrip("/"))
             return real(path)
 
-        with mock.patch("os.listdir", listing):
+        with mock.patch("os.scandir", listing):
             self.assertGreaterEqual(model.relocate_folder(2, new), 0,
                                     "premise: the Locate refused")
             counts = _landed_counts(model)
@@ -2285,7 +2285,7 @@ class CountsWalkOffTheGuiThreadTest(unittest.TestCase):
         model, roots = self._model(*[1] * 6)
         main = threading.get_ident()
         walked = []
-        real = os.listdir
+        real = os.scandir
 
         def listing(path="."):
             if (threading.get_ident() != main
@@ -2297,7 +2297,7 @@ class CountsWalkOffTheGuiThreadTest(unittest.TestCase):
                     time.sleep(0.005)    # held until the shutdown stops it
             return real(path)
 
-        with mock.patch("os.listdir", listing):
+        with mock.patch("os.scandir", listing):
             for row in range(1, model.rowCount()):
                 model.data(model.index(row, 0), model.COUNT_ROLE)
             self.assertTrue(_pump_until(lambda: len(walked) == model.COUNT_WORKERS),

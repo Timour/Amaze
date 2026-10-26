@@ -1079,7 +1079,8 @@ class AmazePanel(QtWidgets.QWidget):
         self.ui = ui_helpers.load_ui(
             amaze.package_file("ui", "amaze.ui"),
             dragdrop_widgets.DragDropCentralWidget,
-            dragdrop_widgets.DragDropListView)
+            dragdrop_widgets.DragDropListView,
+            sidebar.SidebarTreeView)
 
         try:
             self.ui.setStyleSheet(hou.qt.styleSheet())    # SideFX's documented way to make standard widgets render as native Houdini; the toolbar's own controls are hand-painted and ignore it
@@ -1468,7 +1469,7 @@ class AmazePanel(QtWidgets.QWidget):
         """Sidebar "Locate Folder...": re-point the selected registered folder at a new location - a folder that moved on disk, or one whose path only exists on the other machine. Shared by the Textures and Geometry sidebars."""
         ui = getattr(hou, "ui", None)
         indexes = self.cat_list.selectedIndexes()
-        row = indexes[0].row() if indexes else -1
+        row = indexes[0].row() if indexes and not indexes[0].parent().isValid() else -1    # top rows
         if row <= 0:
             if ui is not None:
                 ui.displayMessage(
@@ -1938,8 +1939,9 @@ class AmazePanel(QtWidgets.QWidget):
     def remove_file_folder_user(self) -> list:
         """Unregister the selected folder pointer(s), answering the paths removed; disk is untouched."""
         folders = self.file_folders_model
-        rows = sorted(
-            (i.row() for i in self.cat_list.selectedIndexes()), reverse=True
+        rows = sorted(    # top rows only: a subfolder's row number is no location's
+            (i.row() for i in self.cat_list.selectedIndexes() if not i.parent().isValid()),
+            reverse=True
         )
         removed = []
         for row in rows:

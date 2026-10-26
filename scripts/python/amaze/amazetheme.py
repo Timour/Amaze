@@ -149,6 +149,9 @@ MENU_TEXT = "#e6e6e6"
 
 
 SIDEBAR_PICKER_START = "#4af2a1"    # the colour picker's starting colour for a row that has none
+SIDEBAR_ARROW_GAP = 3               # colour bar to arrow in a folder row; not in G01 yet ▸r/tree-views
+SIDEBAR_ARROW_BOX = 11              # the box Houdini's chevron is drawn centred in
+SIDEBAR_INDENT = 16                 # one subfolder level
 LINK_COLOR = "#8e8a85"              # About-tab links, a step darker than body text so they read as secondary
 
 BTN_APPLY = "Apply"                 # ▸ THE WORDS, from here down. Buttons first

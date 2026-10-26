@@ -1,4 +1,4 @@
-"""The ONE folder-pointer sidebar model behind every Folder-archetype section - a flat list of registered paths plus a synthetic All at row 0. POINTERS, not an index: registering a folder scans or copies nothing. ▸p/folder-sidebar
+"""Locations under All, each unfolding to its subfolders, read on a worker. ▸p/folder-sidebar
 """
 
 import atexit
@@ -11,11 +11,11 @@ from amaze.core import category, debug
 from amaze.helpers import hostos
 
 
-_unstoppable: list = globals().get("_unstoppable", [])    # walks that would not stop, parked for good ▸r/model-contracts
+_unstoppable: list = globals().get("_unstoppable", [])    # walks that would not stop ▸r/model-contracts
 
 
 def walk_following_links(root: str):
-    """`os.walk` that follows symlinked DIRECTORIES, each physical one once - same `(dirpath, dirnames, filenames)` triples, so callers may still sort `dirnames` in place. Costs a realpath per directory and per child: never call it from a paint path. ▸r/platform-files"""
+    """`os.walk` following symlinked folders, each real one once. ▸r/platform-files"""
     seen = set()
     for dirpath, dirnames, filenames in os.walk(root, followlinks=True):
         try:
@@ -33,27 +33,33 @@ def walk_following_links(root: str):
         yield dirpath, dirnames, filenames
 
 
-def count_files(path: str, recursive: bool, matches, stopped=lambda: False):
-    """Files the sidebar counts in one location, None once `stopped()` is true. ▸p/folder-sidebar"""
-    count = 0
+def scan_folder(path: str, recursive: bool, matches, stopped=lambda: False):
+    """(files the sidebar counts, visible subfolder names), or None once `stopped()`."""
+    count, subfolders = 0, []
     try:
         if recursive:
-            for _dirpath, dirnames, filenames in walk_following_links(path):
+            for depth, (_dirpath, dirnames, filenames) in enumerate(walk_following_links(path)):
                 if stopped():
                     return None
-                dirnames[:] = [d for d in dirnames    # hidden folders pruned, as the grid prunes them
-                               if not d.startswith(".")]
-                dirnames.sort()
+                dirnames[:] = sorted((d for d in dirnames if not d.startswith(".")),
+                                     key=str.lower)    # hidden folders pruned, as the grid prunes them
+                if depth == 0:
+                    subfolders = list(dirnames)
                 count += sum(1 for name in filenames if matches(name))
-            return count
-        for name in os.listdir(path):    # FILES only, matching the grid's flat scan
-            if stopped():
-                return None
-            if matches(name) and os.path.isfile(os.path.join(path, name)):
-                count += 1
+            return count, subfolders
+        with os.scandir(path) as entries:    # one read: the files to count, the folders to unfold
+            for entry in entries:
+                if stopped():
+                    return None
+                if entry.name.startswith("."):
+                    continue
+                if entry.is_dir():
+                    subfolders.append(entry.name)
+                elif matches(entry.name) and entry.is_file():
+                    count += 1
     except OSError:
-        return 0
-    return count
+        return 0, []
+    return count, sorted(subfolders, key=str.lower)
 
 
 def _gone(thread) -> bool:
@@ -66,9 +72,9 @@ def _gone(thread) -> bool:
 
 
 class _CountWorker(QtCore.QThread):
-    """Counts ONE location off the GUI thread, by the rule the GUI thread resolved."""
+    """Reads ONE folder off the GUI thread, by the rule the GUI thread resolved."""
 
-    counted = QtCore.Signal(object, object, object)    # (path, token, count)
+    counted = QtCore.Signal(object, object, object)    # (path, token, (count, subfolders))
 
     def __init__(self, path, token, recursive, matches) -> None:
         super().__init__()
@@ -84,25 +90,25 @@ class _CountWorker(QtCore.QThread):
 
     def run(self) -> None:
         try:
-            count = count_files(self.path, self._recursive, self._matches,
-                                self._stopped)
+            result = scan_folder(self.path, self._recursive, self._matches,
+                                 self._stopped)
         except Exception as exc:                          # noqa: BLE001 - logged; the worker still ends
             debug.event("folders", "count failed", folder=self.path,
                         error=str(exc))
             return
-        if count is not None:
-            self.counted.emit(self.path, self.token, count)
+        if result is not None:
+            self.counted.emit(self.path, self.token, result)
 
 
 class _CountEngine(QtCore.QObject):
-    """Every count walk in the process, held until it finishes and stopped on quit. ▸r/model-contracts"""
+    """Every folder read in the process, stopped on quit. ▸r/model-contracts"""
 
     def __init__(self) -> None:
         super().__init__()
         self._threads = []    # a running QThread must keep a reference until it ends ▸r/model-contracts
 
     def start(self, job, landed, ended) -> None:
-        """One worker over one location: `landed(path, token, count)`, then `ended(worker)`."""
+        """One worker over one folder: `landed(path, token, result)`, then `ended(worker)`."""
         worker = _CountWorker(*job)
         worker.counted.connect(landed)
         worker.finished.connect(    # bound here, never sender(): ordering is per sender ▸r/model-contracts
@@ -139,22 +145,27 @@ class _CountEngine(QtCore.QObject):
         self._threads = []
 
 
-class FolderListModel(QtCore.QAbstractListModel):
-    """Generic registered-folders list - a subclass sets the `*_attr`/`*_method` names to its section's preference surface and implements `matches(filename)`. ▸p/folder-sidebar"""
+_ROOT = QtCore.QModelIndex()
 
-    PathRole = QtCore.Qt.ItemDataRole.UserRole
+
+class FolderTreeModel(QtCore.QAbstractItemModel):
+    """Locations under a synthetic All, each with the subfolders its last read found."""
+
+    PathRole = QtCore.Qt.ItemDataRole.UserRole    # a REGISTERED location's path; None on All and subfolders
+    BrowseRole = QtCore.Qt.ItemDataRole.UserRole + 1    # the folder a row shows; None on All
     ALL_LABEL = "All"
-    COUNT_ROLE = category.SIDEBAR_COUNT_ROLE    # the ONE definition, imported so the sidebar models cannot drift apart
+    COUNT_ROLE = category.SIDEBAR_COUNT_ROLE    # the ONE definition, shared by every sidebar model
+    unfolds = True    # its rows keep an arrow's room ▸r/tree-views
 
     folders_attr = ""           # prefs attribute holding the folder list, e.g. `file_folders`
     favorites_attr = ""         # prefs attribute holding full-path favourites for this section
     last_folder_attr = ""       # prefs attribute remembering the last-selected folder
     add_folder_method = ""      # prefs METHOD names that add/remove and persist ▸p/folder-sidebar
     remove_folder_method = ""
-    relocate_folder_method = ""    # re-points one folder IN ITS OWN ROW; named, never an index assignment ▸p/folder-sidebar
+    relocate_folder_method = ""    # re-points one folder IN ITS OWN ROW ▸p/folder-sidebar
     move_folder_method = ""        # the sidebar reorder; empty = this section's folders do not reorder
-    COUNT_WORKERS = 4    # walks at once: a slow share holds one, the other counts keep landing
-    ANNOUNCE_MS = 100    # counts landing inside this window repaint the sidebar once, not each
+    COUNT_WORKERS = 4    # reads at once: a slow share holds one, the other reads keep landing
+    ANNOUNCE_MS = 100    # reads landing inside this window repaint the sidebar once, not each
     _counts_asked = QtCore.Signal()    # queued: an ask from ANY thread dispatches on the GUI thread
 
     def __init__(self, preferences, parent: QtCore.QObject | None = None) -> None:
@@ -175,10 +186,16 @@ class FolderListModel(QtCore.QAbstractListModel):
         self._rows_key = None    # what `_rows` was read against; None reads again
         self._records: dict = {}    # path -> its location record, read against `_records_key`
         self._records_key = None
+        self._listed: dict = {}    # folder path -> the subfolder names its last read found
+        self._nodes: dict = {0: (None, None)}    # row id -> (parent row id, path); 0 is All
+        self._node_ids: dict = {}    # (parent row id, path) -> row id
+        self._by_path: dict = {}    # path -> the ids of every row showing it
+        self._kids: dict = {}    # row id -> its child paths in order, once asked
+        self._next_id = 0
 
 
     def matches_in(self, path: str, filename: str) -> bool:
-        """Folder-aware match - the base asks the flat rule; File overrides it for Show ▸'s ticks."""
+        """Folder-aware match: the base asks the flat rule; File asks Show ▸'s ticks."""
         return self.matches(filename)
 
     def matches(self, filename: str) -> bool:
@@ -215,6 +232,8 @@ class FolderListModel(QtCore.QAbstractListModel):
             self._announce(before, after)
         finally:
             self._held = None
+        for path in set(before) - set(after):
+            self._forget_row(self._node_ids.get((None, path)))    # its rows went with it
         self._out_of_date(set(before).symmetric_difference(after),    # the others' counts still hold
                           keep=False)
         return before, after
@@ -225,20 +244,20 @@ class FolderListModel(QtCore.QAbstractListModel):
             return
         at = next((i for i, (old, new) in enumerate(zip(before, after))
                    if old != new), min(len(before), len(after)))
-        root = QtCore.QModelIndex()
         if len(after) == len(before) + 1 \
                 and after[:at] + after[at + 1:] == before:
-            self.beginInsertRows(root, at + 1, at + 1)    # +1 for the All row
+            self.beginInsertRows(_ROOT, at + 1, at + 1)    # +1 for the All row
             self._held = None
             self.endInsertRows()
         elif len(after) == len(before) - 1 \
                 and before[:at] + before[at + 1:] == after:
-            self.beginRemoveRows(root, at + 1, at + 1)
+            self.beginRemoveRows(_ROOT, at + 1, at + 1)
             self._held = None
             self.endRemoveRows()
         else:
             self.beginResetModel()
             self._held = None
+            self._forget_rows()
             self.endResetModel()
 
     def _favorites(self) -> list:
@@ -246,17 +265,19 @@ class FolderListModel(QtCore.QAbstractListModel):
 
 
     def switch_model_data(self):
-        """Re-point at whichever library is now live - the folders are read THROUGH to `prefs`, so the rows are already right and what was missing is the reset that repaints them. ▸p/folders-follow-the-library"""
+        """Re-point at the live library; the rows read through. ▸p/folders-follow-the-library"""
         self.beginResetModel()
         try:
             self._out_of_date(self._known(), keep=False)    # another library's rules: no number carries over
             self._rows_key = None
             self._records_key = None
+            self._forget_rows()
+            self._listed = {}
         finally:
             self.endResetModel()
 
     def refresh_counts(self) -> None:
-        """Every count out of date, each shown until a fresh walk lands; the rows read again."""
+        """Every read out of date, each shown until a fresh one lands; the rows read again."""
         self._out_of_date(self._known())
         self._rows_key = None
         self._records_key = None
@@ -265,7 +286,7 @@ class FolderListModel(QtCore.QAbstractListModel):
         return set(self._counts) | set(self._walking)
 
     def _out_of_date(self, paths, keep: bool = True) -> None:
-        """Bump each location's token, so a walk still running for it lands and is dropped."""
+        """Bump each folder's token, so a walk still running for it lands and is dropped."""
         for path in paths:
             self._tokens[path] = self._tokens.get(path, 0) + 1
             if not keep:
@@ -285,26 +306,37 @@ class FolderListModel(QtCore.QAbstractListModel):
         return found
 
     def includes_subfolders(self, path: str) -> bool:
-        """Whether THIS registered folder scans recursively - the base answers no, and recursion is the location record's. ▸p/folder-sidebar"""
+        """Whether this folder's count walks below it; the base answers no. ▸p/folder-sidebar"""
         return False
 
+    def location_of(self, path: str) -> str:
+        """The innermost registered location a folder sits in, else the folder itself."""
+        if not path:
+            return path    # no folder, no location: the global rule answers
+        from amaze.core import locations
+        return locations.innermost(self._folders(), path) or path
+
     def display_name(self, path: str) -> str:
-        """The sidebar label for a registered folder - the basename here, custom-name-or-path in FileFolders."""
+        """A location's sidebar label: its folder name here; FileFolders adds names and paths."""
         return os.path.basename(path.rstrip("/\\")) or path
 
     def _matcher_for(self, path: str):
         """One folder's name test, its rule resolved ONCE here; it runs on the count's worker."""
         return lambda name: self.matches_in(path, name)
 
+    def _shows(self, path: str) -> bool:
+        """Whether some row still shows this folder: a location, or a subfolder already read."""
+        return path in set(self._folders()) or bool(self._by_path.get(path))
+
     def _folder_count(self, path: str):
-        """The count known now, None before one lands; a stale one is walked off the GUI thread."""
+        """The count known now, None before one lands; a stale one is read off the GUI thread."""
         if self._counted.get(path) != self._tokens.get(path, 0):
             self._ask_count(path)
         return self._counts.get(path)
 
     def _ask_count(self, path: str) -> None:
         if path in self._walking:
-            return    # ONE walk per location; a stale one asks again when it lands
+            return    # ONE walk per folder; a stale one asks again when it lands
         self._walking[path] = None
         self._queued.append(path)
         if not self._count_scheduled:
@@ -312,15 +344,14 @@ class FolderListModel(QtCore.QAbstractListModel):
             self._counts_asked.emit()    # one paint's asks, one dispatch
 
     def _dispatch_counts(self) -> None:
-        """One queued location per free worker, its rule resolved HERE, on the GUI thread."""
+        """One queued folder per free worker, its rule resolved HERE, on the GUI thread."""
         self._count_scheduled = False
         if self._live >= self.COUNT_WORKERS or not self._queued:
             return    # a worker ending dispatches again
-        registered = set(self._folders())
         while self._queued and self._live < self.COUNT_WORKERS:
             path = self._queued.pop(0)    # one each: a slow share then holds only its own worker
-            if path not in registered:
-                self._walking.pop(path, None)    # removed before its walk began
+            if not self._shows(path):
+                self._walking.pop(path, None)    # gone before its walk began
                 continue
             try:
                 rule = (bool(self.includes_subfolders(path)),
@@ -335,18 +366,22 @@ class FolderListModel(QtCore.QAbstractListModel):
             self._live += 1
             counter.start((path, token) + rule, self._on_counted, self._walk_ended)
 
-    def _on_counted(self, path, token, count) -> None:
-        """A walk landed: kept and announced when still current, dropped and asked again when not."""
+    def _on_counted(self, path, token, result) -> None:
+        """A read landed: kept when still current, asked again when not."""
         if self._walking.get(path) == token:
             self._walking.pop(path)
-        row = self.row_of(path)
-        if row is None:
-            return    # removed while it walked
+        if not self._shows(path):
+            return    # gone while it walked
         if token != self._tokens.get(path, 0):
             self._ask_count(path)    # changed while it walked: its answer is the old rule's
             return
+        count, names = result
         self._counts[path] = count
         self._counted[path] = token
+        self._listed[path] = list(names)
+        wanted = [self._join(path, name) for name in names]
+        for row_id in list(self._by_path.get(path, ())):
+            self._merge(row_id, wanted)
         self._unannounced.add(path)
         if not self._walking:
             self._announce_counts()    # the last one in: say it now
@@ -355,16 +390,17 @@ class FolderListModel(QtCore.QAbstractListModel):
             QtCore.QTimer.singleShot(self.ANNOUNCE_MS, self._announce_counts)
 
     def _announce_counts(self) -> None:
-        """Every count landed since the last call, told in ONE pass, so the views repaint once."""
+        """Every read landed since the last call, told in ONE pass, so the views repaint once."""
         self._announce_armed = False
         paths, self._unannounced = self._unannounced, set()
-        rows = sorted(r for r in map(self.row_of, paths) if r is not None)
-        for at in rows + [0] if rows else []:    # each row, then All, whose total moved
-            index = self.index(at)
+        if not paths:
+            return
+        rows = [index for index in map(self.index_of, sorted(paths)) if index.isValid()]
+        for index in rows + [self.index(0, 0)]:    # each row, then All, whose total moved
             self.dataChanged.emit(index, index, [self.COUNT_ROLE])
 
     def _walk_ended(self, worker) -> None:
-        """A walk is done: unanswered, it may be asked again; the next queued location takes its slot."""
+        """A walk is done: the next queued folder takes its slot."""
         self._live = max(0, self._live - 1)
         if worker.path in self._walking and self._walking[worker.path] == worker.token:
             self._walking.pop(worker.path)
@@ -373,48 +409,193 @@ class FolderListModel(QtCore.QAbstractListModel):
                 self._walking.pop(path, None)
             self._queued = []
         elif self._queued:
-            self._dispatch_counts()    # direct: `finished` lands on the GUI thread; a queued turn per location adds up
+            self._dispatch_counts()    # direct: `finished` lands on the GUI thread
 
     def _on_folder_relocated(self, old_path: str, new_path: str) -> None:
         """Hook: per-location state follows a Locate Folder. Base: none."""
 
 
+    @staticmethod
+    def _join(folder: str, name: str) -> str:
+        return folder.rstrip("/") + "/" + name
+
+    def _id(self, parent_id, path) -> int:
+        """The row id of `path` shown under the row `parent_id` (None at the top)."""
+        key = (parent_id, path)
+        row_id = self._node_ids.get(key)
+        if row_id is None:
+            self._next_id += 1
+            row_id = self._node_ids[key] = self._next_id
+            self._nodes[row_id] = key
+            self._by_path.setdefault(path, set()).add(row_id)
+        return row_id
+
+    def _children(self, row_id) -> list:
+        """A row's child paths; the first ask takes them from the folder's last read."""
+        kids = self._kids.get(row_id)
+        if kids is None:
+            path = self._nodes[row_id][1]
+            kids = self._kids[row_id] = [self._join(path, name)
+                                         for name in self._listed.get(path, ())]
+        return kids
+
+    def _index_for(self, row_id) -> QtCore.QModelIndex:
+        """The index of a row id where it stands now, invalid once it stands nowhere."""
+        node = self._nodes.get(row_id)
+        if node is None:
+            return QtCore.QModelIndex()
+        parent_id, path = node
+        if path is None:
+            return self.createIndex(0, 0, 0)
+        if parent_id is None:
+            row = self.row_of(path)
+        else:
+            siblings = self._kids.get(parent_id) or []
+            row = siblings.index(path) if path in siblings else None
+        return QtCore.QModelIndex() if row is None else self.createIndex(row, 0, row_id)
+
+    def _merge(self, row_id, wanted: list) -> None:
+        """One row's children brought in line with a read: what left goes, what came arrives."""
+        kids = self._kids.get(row_id)
+        if kids is None or kids == wanted:
+            return    # never asked: its first ask reads the new list
+        parent = self._index_for(row_id)
+        if not parent.isValid():
+            return
+        keep = set(wanted)
+        for row in range(len(kids) - 1, -1, -1):
+            if kids[row] not in keep:
+                self.beginRemoveRows(parent, row, row)
+                gone = kids.pop(row)
+                self._forget_row(self._node_ids.get((row_id, gone)))
+                self.endRemoveRows()
+        for row, path in enumerate(wanted):
+            if row >= len(kids) or kids[row] != path:
+                self.beginInsertRows(parent, row, row)
+                kids.insert(row, path)
+                self.endInsertRows()
+
+    def _forget_row(self, row_id) -> None:
+        """Drop a row id and everything below it; no signals - its rows are already gone."""
+        if row_id is None or row_id not in self._nodes:
+            return
+        for child in self._kids.pop(row_id, None) or ():
+            self._forget_row(self._node_ids.get((row_id, child)))
+        key = self._nodes.pop(row_id)
+        self._node_ids.pop(key, None)
+        showing = self._by_path.get(key[1])
+        if showing is not None:
+            showing.discard(row_id)
+            if not showing:
+                del self._by_path[key[1]]
+                if key[0] is not None:    # a subfolder no row shows: its numbers go with it
+                    for table in (self._counts, self._counted, self._tokens, self._listed):
+                        table.pop(key[1], None)
+
+    def _forget_rows(self) -> None:
+        """Every row id but All's, inside a reset; what the reads found stays."""
+        self._nodes = {0: (None, None)}
+        self._node_ids = {}
+        self._by_path = {}
+        self._kids = {}
+
+    def index_of(self, path) -> QtCore.QModelIndex:
+        """The row showing `path`: a location, or a subfolder already read; else invalid."""
+        if not path:
+            return QtCore.QModelIndex()
+        key = str(path).rstrip("/")
+        for row, folder in enumerate(self._folders(), 1):
+            if folder.rstrip("/") == key:
+                return self.createIndex(row, 0, self._id(None, folder))
+        up = key.rsplit("/", 1)[0] if "/" in key else ""
+        parent = self.index_of(up) if up else QtCore.QModelIndex()
+        if not parent.isValid():
+            return QtCore.QModelIndex()
+        kids = self._children(parent.internalId())
+        if key not in kids:
+            return QtCore.QModelIndex()
+        return self.createIndex(kids.index(key), 0, self._id(parent.internalId(), key))
+
+
+    def index(self, row: int, column: int = 0, parent=_ROOT) -> QtCore.QModelIndex:
+        if column != 0 or row < 0:
+            return QtCore.QModelIndex()
+        if parent is None or not parent.isValid():
+            folders = self._folders()
+            if row == 0:
+                return self.createIndex(0, 0, 0)
+            if row - 1 < len(folders):
+                return self.createIndex(row, 0, self._id(None, folders[row - 1]))
+            return QtCore.QModelIndex()
+        if parent.internalId() not in self._nodes:
+            return QtCore.QModelIndex()
+        kids = self._children(parent.internalId())
+        if row < len(kids):
+            return self.createIndex(row, 0, self._id(parent.internalId(), kids[row]))
+        return QtCore.QModelIndex()
+
+    def parent(self, index=None):
+        if index is None:
+            return super().parent()    # the QObject parent this overload would hide
+        if not index.isValid():
+            return QtCore.QModelIndex()
+        node = self._nodes.get(index.internalId())
+        if node is None or node[0] is None:
+            return QtCore.QModelIndex()
+        return self._index_for(node[0])
+
     def rowCount(self, parent=None) -> int:
-        return len(self._folders()) + 1
+        if parent is None or not parent.isValid():
+            return len(self._folders()) + 1
+        node = self._nodes.get(parent.internalId())
+        if node is None or node[1] is None:
+            return 0
+        return len(self._children(parent.internalId()))
+
+    def columnCount(self, parent=None) -> int:
+        return 1
+
+    def hasChildren(self, parent=None) -> bool:
+        return self.rowCount(parent) > 0
 
     def data(self, index, role: int = 0):
         if not index.isValid():
             return None
-        row = index.row()
-        if row == 0:
-            if role == QtCore.Qt.ItemDataRole.DisplayRole:    # the All row has no real path: PathRole and all but the count stay None ▸p/folder-sidebar
+        node = self._nodes.get(index.internalId())
+        if node is None:
+            return None
+        parent_id, path = node
+        if path is None:
+            if role == QtCore.Qt.ItemDataRole.DisplayRole:    # All has no real path ▸p/folder-sidebar
                 return self.ALL_LABEL
             if role == self.COUNT_ROLE:
                 counts = [self._folder_count(p) for p in self._folders()]    # asks, walks nothing here
                 return None if None in counts else sum(counts)    # no partial total ▸p/folder-sidebar
             return None
-        path = self._folders()[row - 1]
+        location = parent_id is None
         if role == self.COUNT_ROLE:
             return self._folder_count(path)
         if role == QtCore.Qt.ItemDataRole.DisplayRole:
-            return self.display_name(path)
+            return self.display_name(path) if location else path.rsplit("/", 1)[-1]
         if role == QtCore.Qt.ItemDataRole.ToolTipRole:
             return path
         if role == self.PathRole:
+            return path if location else None    # every location verb keys off this
+        if role == self.BrowseRole:
             return path
-        if role == category.SIDEBAR_COLOR_ROLE:
-            return self.folder_color(path)    # the same role the asset sidebars answer, so ONE delegate paints it; "" draws nothing
+        if role == category.SIDEBAR_COLOR_ROLE:    # the asset sidebars' role, so ONE delegate paints it
+            return self.folder_color(path) if location else ""
         return None
 
     def row_of(self, path: str):
-        """The sidebar row showing this registered folder, or None - the +1 for the synthetic All row lives HERE so no caller re-derives it. ▸p/folder-sidebar"""
+        """The TOP row showing this registered folder, or None; the +1 for All lives HERE."""
         folders = self._folders()
         if path in folders:
             return folders.index(path) + 1
         return None
 
     def folder_color(self, path: str) -> str:
-        """This location's colour, "" for none - reads the ONE record, never the whole colour table, because this runs per row per repaint. ▸p/folder-sidebar"""
+        """This location's colour, "" for none - ONE record: this runs per row."""
         return str(self._record(path).get("color", ""))
 
 
@@ -436,7 +617,7 @@ class FolderListModel(QtCore.QAbstractListModel):
         return path not in after
 
     def move_folder(self, from_row: int, to_row: int) -> bool:
-        """Move one registered folder to another VIEW row - the sidebar's press-hold reorder, in memory, persisted on release. ▸p/folder-sidebar"""
+        """Move one location to another TOP row - the press-hold reorder, persisted on release."""
         if not self.move_folder_method:
             return False
         folders = self._folders()
@@ -447,9 +628,7 @@ class FolderListModel(QtCore.QAbstractListModel):
             return False
         path = folders[from_row - 1]
         destination = to_row if to_row < from_row else to_row + 1
-        if not self.beginMoveRows(QtCore.QModelIndex(), from_row,
-                                  from_row, QtCore.QModelIndex(),
-                                  destination):
+        if not self.beginMoveRows(_ROOT, from_row, from_row, _ROOT, destination):
             return False
         try:
             moved = bool(getattr(self.preferences,
@@ -458,12 +637,13 @@ class FolderListModel(QtCore.QAbstractListModel):
         finally:
             self.endMoveRows()
         if not moved:
-            self.beginResetModel()    # the view moved and the truth did not: resync rather than leave them disagreeing ▸p/folder-sidebar
+            self.beginResetModel()    # the view moved and the truth did not: resync ▸p/folder-sidebar
+            self._forget_rows()
             self.endResetModel()
         return moved
 
     def restore_folder_order(self, paths) -> None:
-        """Put a snapshot's order back - the reorder gesture's Esc, a whole-row-set statement wearing the reset pair. ▸p/folder-sidebar"""
+        """Put a snapshot's order back: the reorder's Esc, a reset. ▸p/folder-sidebar"""
         if not self.move_folder_method:
             return
         paths = [p for p in (paths or [])]
@@ -474,25 +654,34 @@ class FolderListModel(QtCore.QAbstractListModel):
             mover = getattr(self.preferences, self.move_folder_method)
             for row, path in enumerate(paths):
                 mover(path, row)
+            self._forget_rows()
         finally:
             self.endResetModel()
 
     def relocate_folder(self, row: int, new_path: str) -> int:
-        """Re-point the registered folder at ROW to NEW_PATH, everything keyed under the old path following through the keyed-store engine's one pass - returns the favourites moved, or -1 for an invalid row or path. ▸p/folder-sidebar"""
+        """Re-point the location at ROW; the favourites moved, or -1. ▸p/folder-sidebar"""
         if row <= 0 or not row - 1 < len(self._folders()):
             return -1
         if not new_path or not os.path.isdir(new_path):
             return -1
-        new_path = hostos.canonical_path_key(new_path)    # CANONICAL FIRST, then the trailing separator - the folder-POINTER shape ▸p/folder-sidebar
+        new_path = hostos.canonical_path_key(new_path)    # CANONICAL FIRST, then the pointer's slash
         if not new_path.endswith("/"):
             new_path += "/"
         old_path = self._folders()[row - 1]
         if new_path == old_path:
             return 0
-        old_prefix = old_path if old_path.endswith("/") else old_path + "/"    # COUNTED here, REWRITTEN by the engine ▸p/folder-sidebar
+        old_id = self._id(None, old_path)
+        kids = self._kids.get(old_id)
+        if kids:    # the old folder's subfolders leave first, while their parent still stands
+            self.beginRemoveRows(self.createIndex(row, 0, old_id), 0, len(kids) - 1)
+            for child in list(kids):
+                self._forget_row(self._node_ids.get((old_id, child)))
+            kids.clear()
+            self.endRemoveRows()
+        old_prefix = old_path if old_path.endswith("/") else old_path + "/"    # COUNTED here ▸p/folder-sidebar
         rewritten = sum(1 for fav in self._favorites()
                         if fav.startswith(old_prefix))
-        getattr(self.preferences, self.relocate_folder_method)(    # THROUGH A NAMED CALL, never an index assignment - that fails SILENTLY ▸p/folder-sidebar
+        getattr(self.preferences, self.relocate_folder_method)(    # a NAMED call ▸p/folder-sidebar
             old_path, new_path)
         if getattr(self.preferences, self.last_folder_attr) == old_path:
             setattr(self.preferences, self.last_folder_attr, new_path)
@@ -501,8 +690,11 @@ class FolderListModel(QtCore.QAbstractListModel):
         self._rows_key = None
         self._records_key = None
         self._out_of_date((old_path, new_path), keep=False)    # this location only; the rest still hold
+        self.changePersistentIndex(self.createIndex(row, 0, old_id),
+                                   self.createIndex(row, 0, self._id(None, new_path)))
+        self._forget_row(old_id)
         for at in (row, 0):
-            index = self.index(at)
+            index = self.index(at, 0)
             self.dataChanged.emit(index, index)
         return rewritten
 

@@ -129,8 +129,8 @@ def location_kinds(preferences, location: str) -> frozenset:
     return frozenset(shown)
 
 
-class FileFolders(folders.FolderListModel):
-    """The File section's registered-folder sidebar: each location counts the kinds its Show ▸ ticks."""
+class FileFolders(folders.FolderTreeModel):
+    """The File section's sidebar: each location, and each subfolder, counts by its location's ticks."""
 
     folders_attr = "file_folders"
     favorites_attr = "file_favorites"
@@ -149,14 +149,14 @@ class FileFolders(folders.FolderListModel):
     def matches_in(self, path: str, filename: str) -> bool:  # the count asks the LOCATION's rule, so the sidebar number and the grid agree per location, not just globally
         if filename.startswith("."):
             return False
-        return kind_for(filename) in location_kinds(self.preferences, path)
+        return kind_for(filename) in location_kinds(self.preferences, self.location_of(path))
 
     def _matcher_for(self, path: str):
-        kinds = location_kinds(self.preferences, path)    # resolved ONCE per folder, as _load's gather is
+        kinds = location_kinds(self.preferences, self.location_of(path))    # once per folder
         return lambda name: not name.startswith(".") and kind_for(name) in kinds
 
     def includes_subfolders(self, path: str) -> bool:
-        return bool(self._record(path).get("recursive"))
+        return bool(self._record(self.location_of(path)).get("recursive"))
 
     def display_name(self, path: str) -> str:
         """The full path when Pathname is ticked, over any rename; then the rename; else the folder name."""
@@ -306,7 +306,8 @@ class FileFiles(grid_engine.GridEngine,
                             "read", folder=folder, reason="not there")
             return results
         self._unreadable_folders.discard(folder)
-        if locations.record(self.preferences, folder).get("recursive"):
+        owner = locations.owner_of(self.preferences, folder) or folder    # a subfolder: its location's tick
+        if locations.record(self.preferences, owner).get("recursive"):
             for dirpath, dirnames, filenames in \
                     folders.walk_following_links(folder):
                 dirnames[:] = [d for d in dirnames  # the skip-hidden rule applies to DIRECTORIES too: without the prune, recursion floods the grid with thousands of .git internals
@@ -354,7 +355,8 @@ class FileFiles(grid_engine.GridEngine,
         entries = []
         known: dict = {}    # canonical path -> the one stat this load makes of it
         for folder in folder_list:
-            kinds = location_kinds(self.preferences, folder)    # per the location a file came from
+            owner = locations.owner_of(self.preferences, folder) or folder
+            kinds = location_kinds(self.preferences, owner)    # per the location a file came from
             for dirpath, name, st in self._scan(folder):
                 kind = kind_for(name)
                 if kind not in kinds:
@@ -494,18 +496,12 @@ class FileFiles(grid_engine.GridEngine,
         cached = self._colour_cache.get(folder)
         if cached is not None and cached[0] == generation:
             return cached[1]
-        colour = str(locations.record(  # the row's own directory first - the registered-location case, which must keep working on every prefs surface
+        colour = str(locations.record(    # the row's own directory first: a location itself
             self.preferences, folder).get("color", ""))
         if not colour:
-            key = hostos.canonical_path_key(folder)
-            best = -1
-            for registered in locations.paths(self.preferences):
-                root = hostos.canonical_path_key(registered).rstrip("/")
-                if (key == root or key.startswith(root + "/")) \
-                        and len(root) > best:
-                    best = len(root)
-                    colour = str(locations.record(
-                        self.preferences, registered).get("color", ""))
+            owner = locations.innermost(locations.paths(self.preferences), folder)
+            if owner:
+                colour = str(locations.record(self.preferences, owner).get("color", ""))
         self._colour_cache[folder] = (generation, colour)
         return colour
 

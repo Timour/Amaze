@@ -285,6 +285,22 @@ def _ident_under(owners: dict, stored: str) -> str:
     return LOC_PREFIX + found + ("/" + rel if rel else "")
 
 
+def innermost(bases, path: str) -> str:
+    """The longest of `bases` that is `path` or a folder above it, as given; "" for none."""
+    key = hostos.canonical_path_key(str(path)).rstrip("/")
+    best, length = "", -1
+    for base in bases:
+        root = hostos.canonical_path_key(str(base)).rstrip("/")
+        if (key == root or key.startswith(root + "/")) and len(root) > length:
+            best, length = base, len(root)
+    return best
+
+
+def owner_of(preferences, path: str) -> str:
+    """The registered location a folder belongs to - the innermost when they nest - or ""."""
+    return innermost(registered_paths(preferences), path)
+
+
 def file_ident(preferences, full_path: str) -> str:
     """`loc:<id>/<relative>` for a file inside a registered location - the INNERMOST when locations nest - or "" for a file no location owns; the ONE key-maker every per-file store shares, so a moved folder orphans nothing."""
     if not _ready(preferences):

@@ -115,7 +115,7 @@ test_restore_drill test_lop_assign test_drag_gesture \
 test_drop_targets test_drop_resolution test_cop_root \
 test_prefs_equality test_karma_batch \
 test_nodes_section test_tile_icons test_category_colors \
-test_shell_gates test_delegates test_folder_sections \
+test_shell_gates test_delegates test_folder_sections test_folder_tree \
 test_viewport_pick test_host_engines test_log_export \
 test_hip_section test_library_policy test_library_list test_library_tab test_atomic_write \
 test_gradient_guard test_absent_database test_harness_reset \

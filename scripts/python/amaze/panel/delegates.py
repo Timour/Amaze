@@ -814,6 +814,55 @@ class SidebarItemDelegate(QtWidgets.QStyledItemDelegate):
         return role_color(index, self.color_role)
 
     BAR = theme.ui_px(amazetheme.drawn_sidebar()["bar"])    # G01's; EVERY row reserves it, so all labels start level
+    ARROW_GAP = theme.ui_px(amazetheme.SIDEBAR_ARROW_GAP)    # in a folder tree: bar, gap, arrow
+    ARROW_BOX = theme.ui_px(amazetheme.SIDEBAR_ARROW_BOX)
+
+    def _arrow(self, index):
+        """None in a flat sidebar; in a folder tree "open", "closed", or "" with no subfolders."""
+        view = self.parent()
+        model = index.model()
+        if not isinstance(view, QtWidgets.QTreeView) or not getattr(model, "unfolds", False):
+            return None
+        if not model.hasChildren(index):
+            return ""
+        return "open" if view.isExpanded(index) else "closed"
+
+    def _ratio(self) -> float:
+        view = self.parent()
+        return view.devicePixelRatioF() if isinstance(view, QtWidgets.QWidget) else 1.0
+
+    def _decoration(self, side: int, swatch, arrow):
+        """The row's decoration: the colour bar, then, in a folder tree, the arrow's box."""
+        if arrow is None:    # a flat sidebar: the bar alone, as G01 draws it
+            pixmap = QtGui.QPixmap(self.BAR, side)
+            pixmap.fill(swatch if swatch is not None else QtGui.QColor(0, 0, 0, 0))
+            return QtGui.QIcon(pixmap)
+        ratio = self._ratio()
+        width = self.BAR + self.ARROW_GAP + self.ARROW_BOX
+        pixmap = QtGui.QPixmap(round(width * ratio), round(side * ratio))
+        pixmap.setDevicePixelRatio(ratio)
+        pixmap.fill(QtGui.QColor(0, 0, 0, 0))
+        painter = QtGui.QPainter(pixmap)
+        if swatch is not None:
+            painter.fillRect(QtCore.QRectF(0, 0, self.BAR, side), swatch)
+        if arrow:
+            view = self.parent()
+            flag = QtWidgets.QStyle.StateFlag
+            option = QtWidgets.QStyleOption()
+            option.initFrom(view)
+            option.rect = QtCore.QRect(self.BAR + self.ARROW_GAP, 0, self.ARROW_BOX, side)
+            option.state = flag.State_Enabled | flag.State_Item | flag.State_Children
+            if arrow == "open":
+                option.state |= flag.State_Open
+            view.style().drawPrimitive(QtWidgets.QStyle.PrimitiveElement.PE_IndicatorBranch,
+                                       option, painter, view)    # Houdini's own chevron ▸r/tree-views
+        painter.end()
+        return QtGui.QIcon(pixmap)
+
+    def arrow_box(self, decoration: QtCore.QRect) -> QtCore.QRect:
+        """The part of a folder row's decoration its arrow is drawn in."""
+        return QtCore.QRect(decoration.x() + self.BAR + self.ARROW_GAP, decoration.y(),
+                            self.ARROW_BOX, decoration.height())
 
     def initStyleOption(self, option, index):
         """Everything the STYLE needs to draw the row itself, set up as ordinary view-item fields so nothing is painted by hand; `option.text` is DISPLAY ONLY and never touches `DisplayRole`, which stays the clean name because category matching, restore-by-text and the filters all key off it."""
@@ -830,16 +879,15 @@ class SidebarItemDelegate(QtWidgets.QStyledItemDelegate):
             option.font = font
         side = max(QtGui.QFontMetrics(option.font).height(), 1)    # FROM THE FONT, never from `option.rect`: that rect is not the row here - Qt passes a much larger one when asking for a size hint - so deriving the decoration from it grew the row's hint until one selected row filled the whole sidebar with its band
         swatch = self._swatch_color(index)
-        key = (side, swatch.rgba() if swatch is not None else None)
+        arrow = self._arrow(index)
+        key = (side, swatch.rgba() if swatch is not None else None, arrow,
+               self._ratio() if arrow is not None else 1.0)
         icon = self._swatch_cache.get(key)
         if icon is None:
-            pixmap = QtGui.QPixmap(self.BAR, side)
-            pixmap.fill(swatch if swatch is not None
-                        else QtGui.QColor(0, 0, 0, 0))
-            icon = QtGui.QIcon(pixmap)
-            self._swatch_cache[key] = icon
-        option.icon = icon    # the bar is a DECORATION rather than an inset rect, because Qt lays the text out after a decoration on its own, where insetting `option.rect` would shrink the CELL and cut the band short at the row's edge
-        option.decorationSize = QtCore.QSize(self.BAR, side)
+            icon = self._swatch_cache[key] = self._decoration(side, swatch, arrow)
+        option.icon = icon    # a DECORATION, so the style lays the name out after it
+        width = self.BAR if arrow is None else self.BAR + self.ARROW_GAP + self.ARROW_BOX
+        option.decorationSize = QtCore.QSize(width, side)
         option.features |= (
             QtWidgets.QStyleOptionViewItem.ViewItemFeature.HasDecoration)
         if index.row() == self.drag_row:

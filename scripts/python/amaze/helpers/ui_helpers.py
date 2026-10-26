@@ -99,13 +99,14 @@ def live_current_index(view):
         return None
     if index.model() is not model:   # it may predate a model swap entirely (a section switch rebuilds these views); mapping it through the CURRENT proxy is the bug the drag path hit, where an online index read through the material proxy dragged whichever local material sat at that row
         return None
+    parent = index.parent()    # a tree row keeps its parent: the same row number elsewhere is another row
     try:
-        rows = model.rowCount(QtCore.QModelIndex())   # ROW ONLY, never columnCount - on a QAbstractListModel subclass that is a PRIVATE, uncallable method, and the column of a view's own currentIndex is in bounds by construction anyway ▸r/model-contracts
+        rows = model.rowCount(parent)   # ROW ONLY: a list model's columnCount is private ▸r/model-contracts
     except TypeError:
-        return None                  # a model with some other signature; refusing is safe, because the caller's fallback is "no selection" and never a wrong one
+        return None                  # another signature; "no selection" is the caller's safe fallback
     if index.row() >= rows:
         return None
-    return model.index(index.row(), 0)   # COLUMN 0, not the clicked cell: over the list-mode table the current index keeps whichever column was clicked, and the grid models answer roles only on the owning one ▸r/row-selection
+    return model.index(index.row(), 0, parent)   # COLUMN 0, not the clicked cell ▸r/row-selection
 
 
 def tooltip_text(text: str, max_px: int = 800) -> str:

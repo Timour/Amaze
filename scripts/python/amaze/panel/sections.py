@@ -1148,12 +1148,12 @@ class FolderSection(Section):
         if proxy is not None:
             proxy.set_kind_filter(value)
 
-    reorders_sidebar = True    # the sidebar reorder contract in FOLDER terms: same gesture and same one-write-on-release rule as the category form, but the rows are registered locations whose truth moves through FolderListModel's named prefs calls, and the order is this machine's own (locations.py ▸ the ORDER paragraph), so a reorder here never reshuffles another machine's sidebar
+    reorders_sidebar = True    # the reorder in FOLDER terms: locations only, this machine's own order
 
     def sidebar_movable(self, index) -> bool:
         model = self._p(self.sidebar_attr)
-        if model is None or index is None or not index.isValid():
-            return False
+        if model is None or index is None or not index.isValid() or index.parent().isValid():
+            return False    # a subfolder moves with its location, never alone
         return 1 <= index.row() <= len(model._folders())    # row 0 is the synthetic All row; everything below it is real
 
     def move_sidebar_row(self, index, to_view_row: int) -> bool:
@@ -1191,6 +1191,11 @@ class FolderSection(Section):
         last = getattr(panel.prefs, self.last_folder_pref, "")
         target_row = 0 if last == folders.ALL_LABEL else (
             folders.row_of(last) if last else None)
+        inside = ""    # a remembered subfolder: the grid shows it, the sidebar unfolds to it
+        if target_row is None and last and last != folders.ALL_LABEL:
+            owner = folders.location_of(last)
+            if owner.rstrip("/") != last.rstrip("/") and os.path.isdir(last):
+                inside, target_row = last, folders.row_of(owner)
         if target_row is None:
             target_row = 1 if folders.rowCount() > 1 else 0    # never All: it scans every location
         if panel.cat_list and folders.rowCount() > 0:
@@ -1202,7 +1207,13 @@ class FolderSection(Section):
                     QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect,
                 )
                 panel.cat_list.setCurrentIndex(target_index)
-            panel.update_selected_cat()
+            if inside:
+                self._browse(inside)
+                reveal = getattr(panel.cat_list, "reveal", None)
+                if reveal is not None:
+                    reveal(inside)    # stands on it once the reads above it land
+            else:
+                panel.update_selected_cat()
 
     def library_switched(self) -> None:
         self.activate()    # the files model lists a folder, not the library
@@ -1221,7 +1232,7 @@ class FolderSection(Section):
 
     def select_category(self, index) -> None:
         folders = self._p(self.folders_attr)
-        self._browse(index.data(folders.PathRole))
+        self._browse(index.data(folders.BrowseRole))    # a location's path, or a subfolder's
 
     def standing_key(self) -> str:
         files = self._p(self.files_attr)

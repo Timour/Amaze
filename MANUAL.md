@@ -115,7 +115,7 @@ are shown as ticks, and Category takes the
 that column, and dragging the edge of a heading sets its width.
 
 The **sidebar** holds categories (Material, Node, Code), registered
-folders (File) or palette groups (Color). Its right-click menu adds,
+folders and the folders inside them (File) or palette groups (Color). Its right-click menu adds,
 renames, deletes and [colours](#category-colors) categories; File's
 folders have a menu of [their own](#locations). **Sort by name** sorts
 the categories alphabetically, with All at the top. Preferences ▸ Look
@@ -438,6 +438,15 @@ The sidebar's right-click menu:
   [category](#category-colors).
 
 A new location lists Images, Geometry and HIP, without subfolders.
+
+A location that holds folders has an arrow before its name. Clicking the
+arrow shows the folders inside it, and each of those opens the same way;
+a double-click and the Right and Left arrow keys also open and close a
+folder. Clicking a folder lists its files by its location's Show
+settings, and with **Subfolder** on, the files in the folders below it
+too. Locate, Rename, Remove, Show and Label act on locations and are
+greyed out on the folders inside them. Folders stay open until the panel
+closes, and the File tab reopens on the last folder clicked.
 
 A removed folder is removed for everyone who uses the library. An Amaze
 that is running on another computer shows the removal after a restart.
