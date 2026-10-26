@@ -2,10 +2,14 @@
 
 import collections
 import colorsys
+import math
 import os
 import random
+import shutil
+import struct
 import sys
 import re
+import tempfile
 import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -441,6 +445,79 @@ class TestCatalogueFreshness(unittest.TestCase):
         finally:
             matx_sources.get_text = real_text
             rgl.refresh()
+
+
+def _tensor_file(path, ndf_rows, rgb=None):
+    """A Mitsuba tensor_file: `rgb` per channel over a 2 x 2 grid, `ndf_rows` as its NDF table."""
+    fields = [("rgb", 10, (1, 1, 3, 2, 2), rgb or [0.5] * 12),
+              ("ndf", 10, (len(ndf_rows), len(ndf_rows[0])),
+               [v for row in ndf_rows for v in row])]
+    head = 12 + 2 + 4 + sum(2 + len(n) + 2 + 1 + 8 + 8 * len(s) for n, _t, s, _v in fields)
+    out, blobs, at = bytearray(b"tensor_file\0" + bytes([1, 0])), b"", head
+    out += struct.pack("<I", len(fields))
+    for name, dtype, shape, numbers in fields:
+        blob = struct.pack("<%df" % len(numbers), *numbers)
+        out += struct.pack("<H", len(name)) + name.encode() + struct.pack("<H", len(shape))
+        out += bytes([dtype]) + struct.pack("<Q", at) + struct.pack("<%dQ" % len(shape), *shape)
+        blobs, at = blobs + blob, at + len(blob)
+    with open(path, "wb") as handle:
+        handle.write(bytes(out) + blobs)
+
+
+class RGLRoughnessTest(unittest.TestCase):
+    """An RGL roughness on the file's u-squared grid, as Standard Surface's square root. ▸r/rgl-values"""
+
+    WIDE = [1.0, 0.9, 0.8, 0.6, 0.4, 0.2, 0.1, 0.05, 0.0]    # half-maximum at column 4 of 9
+    NARROW = [1.0, 0.45, 0.2, 0.1, 0.05, 0.02, 0.01, 0.0, 0.0]    # half-maximum at column 1
+
+    def _roughness(self, rows):
+        folder = tempfile.mkdtemp(prefix="amaze_rgl_bsdf_")
+        self.addCleanup(shutil.rmtree, folder, True)
+        path = os.path.join(folder, "probe_rgb.bsdf")
+        _tensor_file(path, rows)
+        values, _note = matx_sources.RGLSource.values_from_bsdf(path, "probe")
+        return values["roughness"]
+
+    @staticmethod
+    def _alpha(column):
+        return math.tan((column / 8.0) ** 2 * math.pi / 2) / 0.6436
+
+    def test_a_half_width_reads_on_the_squared_grid_and_lands_as_its_root(self):
+        self.assertAlmostEqual(math.sqrt(self._alpha(4)),
+                               self._roughness([self.WIDE, self.WIDE]), places=4)
+
+    def test_an_anisotropic_file_reads_every_direction(self):
+        both = math.sqrt(math.sqrt(self._alpha(4) * self._alpha(1)))
+        self.assertAlmostEqual(both, self._roughness([self.WIDE, self.NARROW]), places=4)
+
+    PEARL = [0.2, 1.2, 0.2, 1.2,    # each channel's 2 x 2 grid; column 0 is the mirror
+             0.5, 0.9, 0.5, 0.9,
+             1.0, 0.4, 1.0, 0.4]    # a white on average, blue at the mirror
+
+    def _values(self, uid, rgb):
+        folder = tempfile.mkdtemp(prefix="amaze_rgl_bsdf_")
+        self.addCleanup(shutil.rmtree, folder, True)
+        path = os.path.join(folder, "probe_rgb.bsdf")
+        _tensor_file(path, [self.WIDE, self.WIDE], rgb)
+        return matx_sources.RGLSource.values_from_bsdf(path, uid)[0]
+
+    def test_a_satin_film_takes_the_colour_it_reflects_at_the_mirror(self):
+        values = self._values("satin_probe", self.PEARL)
+        self.assertEqual([0.2, 0.5, 1.0], values.get("specularColor"))
+        self.assertEqual([0.15, 0.375, 0.75], values["color"])
+
+    def test_anything_else_keeps_its_mean_colour(self):
+        values = self._values("paper_probe", self.PEARL)
+        self.assertNotIn("specularColor", values)
+        self.assertEqual([0.7, 0.7, 0.7], values["color"])
+
+    def test_a_satin_with_a_neutral_mirror_stays_white(self):
+        self.assertNotIn("specularColor", self._values("satin_white", [0.7] * 12))
+
+    def test_a_painted_satin_reaches_the_import_with_its_reflection(self):
+        values = matx_sources.RGLSource()._values_for("satin_blue")
+        self.assertIn("specularColor", values, "the shipped satin_blue is not painted")
+        self.assertLess(values["color"][0], values["color"][2], "satin_blue is not blue")
 
 
 class TestDownloadIntegrity(unittest.TestCase):

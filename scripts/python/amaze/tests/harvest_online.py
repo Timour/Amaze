@@ -3,7 +3,9 @@
 import argparse
 import json
 import os
+import shutil
 import sys
+import tempfile
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6 import QtWidgets  # noqa: E402
@@ -71,15 +73,46 @@ def reclassify_rgl() -> int:
     return changed
 
 
+def reread_rgl() -> int:
+    """Re-reads every RGL measurement's roughness and colours from its file, metalness kept."""
+    path = os.path.join(RES_DIR, matx_sources.RGLSource.TABLE_FILE)
+    with open(path, encoding="utf-8") as handle:
+        doc = json.load(handle)
+    folder = tempfile.mkdtemp(prefix="amaze_rgl_harvest_")
+    changed = 0
+    try:
+        for uid, entry in sorted(doc.get("materials", {}).items()):
+            target = os.path.join(folder, uid + "_rgb.bsdf")
+            matx_sources.download("%s/%s/%s_rgb.bsdf"
+                                  % (matx_sources.RGLSource.CDN, uid, uid), target)
+            values, _note = matx_sources.RGLSource.values_from_bsdf(target, uid)
+            for key in ("roughness", "color", "specularColor"):
+                if key in values and values[key] != entry.get(key):
+                    print("  %-34s %-13s %s -> %s" % (uid, key, entry.get(key), values[key]))
+                    entry[key] = values[key]
+                    changed += 1
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump(doc, handle, indent=1)
+    return changed
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--reclassify", action="store_true",
                         help="recompute RGL metal flags, no network")
+    parser.add_argument("--rgl", action="store_true",
+                        help="re-read every RGL roughness and colour from its measurement")
     args = parser.parse_args()
 
     if args.reclassify:
         changed = reclassify_rgl()
         print("RGL: %d metal flag(s) changed" % changed)
+        return 0
+    if args.rgl:
+        changed = reread_rgl()
+        print("RGL: %d value(s) changed" % changed)
         return 0
 
     table = harvest_physicallybased()

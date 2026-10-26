@@ -910,11 +910,7 @@ class RGLSource(MatxSource):
         uid = record.payload.get("uid") or record.uid    # the measurement is a means, not an asset - values sources are called with dest_dir=None, so it lands in the local cache and is reused on the next import
         entry = self.table().get(uid)
         if entry:
-            values = {    # already measured at harvest time - no download, no wait
-                "color": entry.get("color"),
-                "roughness": entry.get("roughness"),
-                "metalness": entry.get("metalness"),
-            }
+            values = self._values_for(uid)    # already measured at harvest time - no download, no wait
             return {"values": values,
                     "note": self._note(entry.get("description", ""), values)}
         folder = dest_dir or os.path.join(hostos.cache_root(), "rgl")
@@ -955,11 +951,14 @@ class RGLSource(MatxSource):
         entry = self.table().get(uid)
         if not entry:
             return {}
-        return {
+        values = {
             "color": entry.get("color"),
             "roughness": entry.get("roughness"),
             "metalness": entry.get("metalness"),
         }
+        if entry.get("specularColor"):    # a pearl film's colour at the mirror ▸r/rgl-values
+            values["specularColor"] = entry["specularColor"]
+        return values
 
     @classmethod
     def infer_metal(cls, uid: str, description: str = "",
@@ -977,13 +976,20 @@ class RGLSource(MatxSource):
     @staticmethod
     def _note(description: str, values: dict) -> str:
         """How each number was arrived at - stored on the material."""
+        if values.get("specularColor"):
+            colour = ("Base colour %s = 0.75 x the colour it reflects at the mirror direction, "
+                      "which is also its specular colour %s"
+                      % (values.get("color"), values.get("specularColor")))
+        else:
+            colour = ("Base colour = mean reflectance per channel at normal incidence %s"
+                      % values.get("color"))
         return (
-            "%s\n\nMeasured by EPFL RGL (CC0). Base colour = mean "
-            "reflectance per channel at normal incidence %s; specular "
-            "roughness = GGX alpha %s from the measured NDF half-width. "
+            "%s\n\nMeasured by EPFL RGL (CC0). %s; specular "
+            "roughness %s, the square root of the GGX alpha from the "
+            "measured NDF half-width. "
             "Metalness %s was inferred from the material's name and "
             "description - the measurement itself does not state it."
-            % (description, values.get("color"), values.get("roughness"),
+            % (description, colour, values.get("roughness"),
                values.get("metalness"))
         )
 
@@ -1020,29 +1026,43 @@ class RGLSource(MatxSource):
 
         ndf, ndf_shape = bsdf_reader.values(data, fields["ndf"])    # roughness: GGX alpha from the NDF's half-width, alpha = tan(theta_half) / 0.6436 - ▸r/rgl-values
         columns = ndf_shape[-1]
-        profile = ndf[:columns]
-        half = max(profile) / 2.0 if profile else 0.0
-        index = next(
-            (i for i, v in enumerate(profile) if v <= half), columns - 1
-        )
-        theta_half = (index / max(columns - 1, 1)) * (math.pi / 2)
-        alpha = math.tan(theta_half) / 0.6436 if theta_half < math.pi / 2 else 1.0
-        roughness = round(max(0.001, min(1.0, alpha)), 5)
+        alphas = []
+        for start in range(0, len(ndf), columns):    # a profile per direction; isotropic repeats one
+            profile = ndf[start:start + columns]
+            half = max(profile) / 2.0 if profile else 0.0
+            index = next(
+                (i for i, v in enumerate(profile) if v <= half), columns - 1
+            )
+            theta = (index / max(columns - 1, 1)) ** 2 * (math.pi / 2)    # the file's grid is u squared
+            alphas.append(min(1.0, math.tan(theta) / 0.6436) if theta < math.pi / 2 else 1.0)
+        alpha = math.sqrt(max(alphas) * min(alphas))    # an anisotropic lobe as the one of equal peak
+        theta_half = math.atan(alpha * 0.6436)
+        roughness = round(max(0.001, min(1.0, math.sqrt(alpha))), 5)    # Standard Surface squares it
 
+        mirror = [max(0.0, sum(rgb[c * plane + row * width] for row in range(height)) / height)
+                  for c in range(channels)]    # each channel down column s.x = 0, the mirror
+        tint = [round(m / max(max(mirror), 1e-9), 5) for m in mirror]
+        painted = uid.startswith("satin_") and min(tint) < 0.8    # a pearl film's colour, there only
         metal = cls.infer_metal(uid, description, colour)
         values = {
-            "color": colour,
+            "color": [round(0.75 * t, 5) for t in tint] if painted else colour,
             "roughness": roughness,
             "metalness": 1.0 if metal else 0.0,
         }
+        if painted:
+            values["specularColor"] = tint
+            base = ("Base colour %s = 0.75 x the colour it reflects at the mirror direction, "
+                    "which is also its specular colour; its mean reflectance at normal "
+                    "incidence is %s" % (values["color"], colour))
+        else:
+            base = "Base colour = mean reflectance per channel at normal incidence %s" % colour
         note = (
-            "%s\n\nMeasured by EPFL RGL (CC0). Base colour = mean "
-            "reflectance per channel at normal incidence %s; specular "
-            "roughness = GGX alpha %.4f from the measured NDF half-width "
-            "(%.1f degrees). Metalness %s was inferred from the "
-            "material's name and description - the measurement itself "
-            "does not state it."
-            % (description, colour, roughness, math.degrees(theta_half),
+            "%s\n\nMeasured by EPFL RGL (CC0). %s; specular "
+            "roughness %.4f = the square root of GGX alpha %.4f, from the "
+            "measured NDF half-width (%.1f degrees). Metalness %s was "
+            "inferred from the material's name and description - the "
+            "measurement itself does not state it."
+            % (description, base, roughness, alpha, math.degrees(theta_half),
                "1" if metal else "0")
         )
         return values, note
