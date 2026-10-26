@@ -33,8 +33,8 @@ _ONLY_A_REPORT_NOW = (
     "already read this library since Houdini started, and it would "
     "write what it remembers back over anything put right here. "
     "Quit Houdini, start it again, and run Repair before you open "
-    "Amaze - then Repair can also put a saved copy back, or move "
-    "unlisted files aside for you.")
+    "Amaze - then Repair can also add materials back, put a saved copy "
+    "back, or move unlisted files aside for you.")
 
 
 def _repair_settings(settings: dict) -> None:
@@ -129,7 +129,9 @@ def run(preferences=None) -> None:
         title=messages.TITLE_AMAZE_REPAIR,
     )
     action = actions[picked] if 0 <= picked < len(actions) else None
-    if action == "restore":
+    if action == "add-back":
+        _do_add_back(findings)
+    elif action == "restore":
         _do_restore(findings)
     elif action == "quarantine":
         _do_quarantine(findings)
@@ -140,46 +142,116 @@ def run(preferences=None) -> None:
 def _choices(findings: dict, may_change: bool):
     """Only the buttons that would change something, each with its own count."""
     choices, actions = [], []
-    if may_change and repair.restorable(findings):
+    on_record = repair.materials_on_record(findings)
+    if may_change and on_record and not repair.why_nothing_can_be_added(
+            findings, "library.json"):
+        choices.append("Add %s Back" % repair.count_on_a_button(len(on_record),
+                                                                "library.json"))
+        actions.append("add-back")
+    if may_change and repair.offered_copies(findings):
         choices.append("Put a Saved Copy Back")
         actions.append("restore")
-    if may_change and findings["complete"] and repair.complete_pairs(findings):
+    if (may_change and repair.unsorted_pairs(findings)
+            and not repair.why_nothing_can_be_added(findings)):
         choices.append("Add %s to a Section"
                        % repair.files_on_a_button(len(repair.reattachable_files(
                            findings))))
         actions.append("reattach")
-    if may_change and findings["complete"] and repair.unaccounted_total(findings):
-        choices.append("Move %s Aside"
-                       % repair.files_on_a_button(repair.unaccounted_total(findings)))
+    aside = repair.unaccounted_total(repair.movable(findings))
+    if may_change and findings["complete"] and aside:
+        choices.append("Move %s Aside" % repair.files_on_a_button(aside))
         actions.append("quarantine")
     choices.append("Close")
     actions.append(None)
     return choices, actions
 
 
+def _do_add_back(findings: dict) -> None:
+    """Confirm, put the materials back from what is saved beside their files, and say how many."""
+    count = len(repair.materials_on_record(findings))
+    label = database.section_label("library.json")
+    written_new = (" There is no %s list in the library folder, so Repair "
+                   "writes a new one with these on it." % label
+                   if repair.list_is_missing(findings, "library.json") else "")
+    if hou.ui.displayMessage(                             # type: ignore
+        messages.CONFIRM_ADD_UNLISTED_TO_SECTION
+        % (count, database.section_noun("library.json", count), label),
+        help="Each one comes back with the name, category and tags saved "
+             "beside its files.%s" % written_new,
+        buttons=messages.BUTTONS_ADD_BACK,
+        default_choice=1, close_choice=1,
+        title=messages.TITLE_AMAZE_REPAIR,
+    ) != 0:
+        return
+    try:
+        result = repair.add_materials_back(findings)
+    except ValueError as exc:
+        hou.ui.displayMessage(                            # type: ignore
+            messages.SECTION_LIST_UNCHANGED_REASON % (label, exc),
+            title=messages.TITLE_AMAZE_REPAIR)
+        return
+    added = len(result["added"])
+    hou.ui.displayMessage(                                # type: ignore
+        messages.UNLISTED_FILES_ADDED_BACK_DONE
+        % (added, database.section_noun("library.json", added), label),
+        title=messages.TITLE_AMAZE_REPAIR)
+
+
 def _do_restore(findings: dict) -> None:
-    offers = repair.restorable(findings)
-    labels = ["%s - %s" % (database.section_label(filename),
-                           repair.copy_named_by_what_it_holds(filename, snap))
-              for filename, _tier, snap, _current in offers]
+    """A list's newest saved copy is the one offered; an older one only through Older Copies."""
+    offers = repair.offered_copies(findings)
+    newest = []
+    for offer in offers:
+        if offer[0] not in [first[0] for first in newest]:
+            newest.append(offer)
+    if len(newest) > 1:
+        offer = _pick(newest, "Which list should Amaze put back? Each line is that "
+                      "list's newest saved copy.", "Newest saved copies", sections=True)
+    else:
+        offer = newest[0] if newest else None
+    if offer is None:
+        return
+    older = [other for other in offers if other[0] == offer[0] and other is not offer]
+    if _put_copy_back(findings, offer, older=bool(older)) != "older":
+        return
+    offer = _pick(older, "Which older copy of the %s list should Amaze put back?"
+                  % database.section_label(offer[0]), "Older saved copies")
+    if offer is not None:
+        _put_copy_back(findings, offer)
+
+
+def _pick(offers: list, message: str, header: str, sections: bool = False):
+    """One copy from a list that opens on its first row; None on Cancel."""
     chosen = hou.ui.selectFromList(                       # type: ignore
-        labels, exclusive=True, title=messages.TITLE_AMAZE_REPAIR,
-        message="Which saved copy should Amaze put back?",
-        column_header="Saved copies")
-    if not chosen:
-        return
-    filename, tier, snap, current = offers[chosen[0]]
+        [("%s - " % database.section_label(filename) if sections else "")
+         + repair.copy_named_by_what_it_holds(filename, snap)
+         for filename, _tier, snap, _current in offers],
+        default_choices=(0,), exclusive=True,
+        clear_on_cancel=True,    # without it Cancel answers the row that opened picked
+        title=messages.TITLE_AMAZE_REPAIR, message=message, column_header=header)
+    return offers[chosen[0]] if chosen else None
+
+
+def _copy_buttons(older: bool) -> dict:
+    """The confirm's buttons, with Older Copies where there are some; Cancel is Enter and close."""
+    buttons = (messages.BUTTONS_PUT_COPY_BACK_OR_OLDER if older
+               else messages.BUTTONS_PUT_COPY_BACK)
+    return {"buttons": buttons, "default_choice": len(buttons) - 1,
+            "close_choice": len(buttons) - 1}
+
+
+def _put_copy_back(findings: dict, offer: tuple, older: bool = False):
+    """Confirm one copy and put it back; "older" when Older Copies was pressed instead."""
+    filename, tier, snap, current = offer
     if filename == keyed_store.SETTINGS:
-        _do_restore_settings(findings, tier, snap)
-        return
+        return _do_restore_settings(findings, tier, snap, older=older)
     label = database.section_label(filename)
     if snap["error"]:
         hou.ui.displayMessage(                            # type: ignore
             messages.CHOSEN_SAVED_COPY_CANNOT_BE_READ % label,
             title=messages.TITLE_AMAZE_REPAIR)
-        return
-    # Name the gain and the loss, and do the subtraction for the reader.
-    held = snap["count"] or 0
+        return None
+    held = snap["count"] or 0    # name the gain and the loss, and do the subtraction
     if current["error"]:
         change = ("The list you have now cannot be read at the moment, so "
                   "Amaze cannot say what is in it to compare.")
@@ -189,7 +261,7 @@ def _do_restore(findings: dict) -> None:
                   "takes you from %d to %d: anything saved to %s since %s "
                   "is not in this copy and will not be there afterwards."
                   % (now_holds, now_holds, held, label, snap["when"]))
-    if hou.ui.displayMessage(                             # type: ignore
+    picked = hou.ui.displayMessage(                       # type: ignore
         messages.CONFIRM_PUT_SAVED_COPY_BACK % (label, snap["when"]),
         help="That copy is from %s and holds %d %s. %s\n\nYour %s' own "
              "files and thumbnails are not touched either way, and the "
@@ -197,17 +269,18 @@ def _do_restore(findings: dict) -> None:
              "run Repair again and it offers that copy back."
              % (snap["when"], held, database.section_noun(filename, held),
                 change, database.section_noun(filename, 2)),
-        buttons=messages.BUTTONS_PUT_COPY_BACK,
-        default_choice=1, close_choice=1,
         severity=hou.severityType.Warning,                # type: ignore
         title=messages.TITLE_AMAZE_REPAIR,
-    ) != 0:
-        return
+        **_copy_buttons(older))
+    if older and picked == 1:
+        return "older"
+    if picked != 0:
+        return None
     try:
         done = repair.put_back(findings, filename, tier)
     except restore_lib.RestoreRefused as exc:
         hou.ui.displayMessage(str(exc), title=messages.TITLE_AMAZE_REPAIR)  # type: ignore
-        return
+        return None
     undo = (restore_lib.info(os.path.join(findings["directory"],
                                           done["undo"]))
             if done["undo"] else None)
@@ -221,31 +294,33 @@ def _do_restore(findings: dict) -> None:
     hou.ui.displayMessage(                                # type: ignore
         messages.SAVED_COPY_PUT_BACK_DONE % (label, snap["when"], went_back),
         title=messages.TITLE_AMAZE_REPAIR)
+    return None
 
 
-def _do_restore_settings(findings: dict, tier: str, snap: dict) -> None:
-    """Confirm, put the chosen settings copy back through the shared door, and say how to undo it."""
+def _do_restore_settings(findings: dict, tier: str, snap: dict, older: bool = False):
+    """Confirm and put a settings copy back, saying how to undo it; "older" as `_put_copy_back`."""
     if snap["error"]:
         hou.ui.displayMessage(                            # type: ignore
             messages.SETTINGS_COPY_CANNOT_BE_READ,
             title=messages.TITLE_AMAZE_REPAIR)
-        return
+        return None
     way_back = findings["settings"]["state"] == "ok"    # only settings that read and name a library are a way back
-    if hou.ui.displayMessage(                             # type: ignore
+    picked = hou.ui.displayMessage(                       # type: ignore
         messages.CONFIRM_PUT_SETTINGS_BACK % snap["when"],
         help=messages.HELP_PUT_SETTINGS_BACK % (
             messages.SETTINGS_NOW_SAVED_FIRST if way_back else ""),
-        buttons=messages.BUTTONS_PUT_COPY_BACK,
-        default_choice=1, close_choice=1,
         severity=hou.severityType.Warning,                # type: ignore
         title=messages.TITLE_AMAZE_REPAIR,
-    ) != 0:
-        return
+        **_copy_buttons(older))
+    if older and picked == 1:
+        return "older"
+    if picked != 0:
+        return None
     try:
         done = repair.put_back(findings, keyed_store.SETTINGS, tier)
     except restore_lib.RestoreRefused as exc:
         hou.ui.displayMessage(str(exc), title=messages.TITLE_AMAZE_REPAIR)  # type: ignore
-        return
+        return None
     folder = os.path.dirname(repair.target_of(findings, keyed_store.SETTINGS))
     undo = (restore_lib.info(os.path.join(folder, done["undo"]))
             if done["undo"] else None)
@@ -255,10 +330,12 @@ def _do_restore_settings(findings: dict, tier: str, snap: dict) -> None:
     hou.ui.displayMessage(                                # type: ignore
         messages.SETTINGS_PUT_BACK_DONE % (snap["when"], kept),
         title=messages.TITLE_AMAZE_REPAIR)
+    return None
 
 
 def _do_quarantine(findings: dict) -> None:
-    total = repair.unaccounted_total(findings)
+    aside = repair.movable(findings)
+    total = repair.unaccounted_total(aside)
     if hou.ui.displayMessage(                             # type: ignore
         messages.CONFIRM_MOVE_FILES_ASIDE % repair.files(total),
         help="The files no section lists: %s. They move into Amaze's "
@@ -270,7 +347,7 @@ def _do_quarantine(findings: dict) -> None:
              "already tried putting a saved copy of a list back: if one of "
              "these files belongs to a material whose list was lost, "
              "restoring the list is what brings it back."
-             % repair.files_by_folder(findings),
+             % repair.files_by_folder(aside),
         buttons=messages.BUTTONS_MOVE_ASIDE,
         default_choice=1, close_choice=1,
         title=messages.TITLE_AMAZE_REPAIR,
@@ -298,7 +375,7 @@ def _do_quarantine(findings: dict) -> None:
 
 
 def _do_reattach(findings: dict) -> None:
-    pairs = repair.complete_pairs(findings)
+    pairs = repair.unsorted_pairs(findings)
     owners = database.ASSET_FILE_OWNERS
     labels = [database.section_label(name) for name in owners]
     chosen = hou.ui.selectFromList(                       # type: ignore
@@ -332,7 +409,7 @@ def _do_reattach(findings: dict) -> None:
     ) != 0:
         return
     try:
-        result = repair.reattach(findings, filename)
+        result = repair.reattach(findings, filename, only=pairs)
     except ValueError as exc:
         hou.ui.displayMessage(                            # type: ignore
             messages.SECTION_LIST_UNCHANGED_REASON % (label, exc),

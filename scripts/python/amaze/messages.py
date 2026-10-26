@@ -249,6 +249,8 @@ TITLE_EMPTY_SNIPPET = 'Empty snippet'
 
 BUTTONS_PUT_COPY_BACK = ('Put This Copy Back', 'Cancel')
 
+BUTTONS_PUT_COPY_BACK_OR_OLDER = ('Put This Copy Back', 'Older Copies...', 'Cancel')
+
 BUTTONS_MOVE_ASIDE = ('Move Them Aside', 'Cancel')
 
 BUTTONS_ADD_BACK = ('Add Them Back', 'Cancel')

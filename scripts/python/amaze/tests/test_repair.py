@@ -79,6 +79,14 @@ class _Case(unittest.TestCase):
         with open(path, encoding="utf-8-sig") as handle:
             return json.load(handle)
 
+    def _run(self, buttons, listed=None):
+        ui = MagicMock()
+        ui.displayMessage.side_effect = list(buttons)
+        ui.selectFromList.return_value = listed if listed is not None else ()
+        with patch.object(hou, "ui", ui, create=True):
+            repair_dialog.run(preferences=self.prefs)
+        return ui
+
 
 class TheReportSaysWhatIsWrongTest(_Case):
     """A report nobody can act on is a log with a dialog around it."""
@@ -516,6 +524,295 @@ class AddingUnlistedFilesBackTest(_Case):
                       "the Nodes section cannot see what Repair added")
 
 
+class AMissingListComesBackFromItsFilesTest(_Case):
+    """Materials made in one sitting are in no saved copy; the record beside each is the way back."""
+
+    LOST = (("FABRIC01", "Aegean Herringbone", "Karma"),
+            ("FABRIC02", "Aegean Herringbone", "Karma"),
+            ("VELVET01", "Crushed Velvet", "Octane"))
+    EMPTY = {"version": 8, "format": 3, "categories": ["_All"], "tags": [],
+             "assets": []}
+
+    def setUp(self):
+        super().setUp()
+        self.index = os.path.join(self.dir, "library.json")
+        for folder in (self.mat_dir, self.img_dir):    # a new library: only what this test saves
+            shutil.rmtree(folder)
+            os.makedirs(folder)
+        self._write(self.index, self.EMPTY)
+
+    def _saved(self, asset_id, name, renderer):
+        """The files a save leaves: the pair, the builder, the record and the picture."""
+        for suffix in (".mat", ".interface", material.BUILDER_SUFFIX):
+            with open(os.path.join(self.mat_dir, asset_id + suffix), "w",
+                      encoding="utf-8") as handle:
+                handle.write("owned by %s\n" % asset_id)
+        self._write(os.path.join(self.mat_dir, asset_id + material.STAMP_SUFFIX),
+                    {"id": asset_id, "name": name, "categories": ["Fabric"],
+                     "tags": ["cloth"], "renderer": renderer,
+                     "date": "2026-10-24 00:24:58"})
+        with open(os.path.join(self.img_dir, asset_id + ".png"), "wb") as handle:
+            handle.write(b"\x89PNG\r\n")
+
+    def _lose_the_list(self):
+        """The incident: both saved copies predate every material, then the list is moved out."""
+        for tier in ("bak-1", "bak-first"):
+            self._write(self.index + "." + tier, self.EMPTY)
+        for asset_id, name, renderer in self.LOST:
+            self._saved(asset_id, name, renderer)
+        os.remove(self.index)
+
+    def _state(self, findings, filename):
+        return [entry["state"] for entry in findings["lists"]
+                if entry["filename"] == filename][0]
+
+    def _offered(self, findings):
+        return [(filename, tier) for filename, tier, _snap, _now
+                in repair.offered_copies(findings)]
+
+    def test_the_materials_come_back_when_their_list_is_missing(self):
+        self._lose_the_list()
+        findings = self._survey()
+        self.assertEqual("absent-but-known", self._state(findings, "library.json"),
+                         "premise: the list was here and is gone")
+        choices, _actions = repair_dialog._choices(findings, may_change=True)
+        self.assertIn("Add 3 Materials Back", choices,
+                      "the materials' own files and records are in the folder, and "
+                      "Repair offered no way to put them back on the list")
+        self._run(buttons=[choices.index("Add 3 Materials Back"), 0, 0])
+        document = self._read(self.index)
+        rows = {row["id"]: row for row in document["assets"]}
+        self.assertEqual(sorted(asset_id for asset_id, _n, _r in self.LOST),
+                         sorted(rows), "not every material came back, once")
+        self.assertEqual("Crushed Velvet", rows["VELVET01"]["name"])
+        self.assertEqual("Octane", rows["VELVET01"]["renderer"])
+        self.assertIn("Fabric", document["categories"])
+        after = self._survey()
+        self.assertEqual("ok", self._state(after, "library.json"))
+        self.assertEqual(0, repair.unaccounted_total(after),
+                         "files are still unlisted after the materials came back")
+        model = library_mod.MaterialLibrary(preferences=self.prefs)
+        self.assertEqual(sorted(rows), sorted(str(a.mat_id) for a in model.assets),
+                         "the Materials section cannot see what Repair put back")
+
+    def test_a_copy_that_holds_nothing_is_not_offered(self):
+        """Nor, while the missing list has none worth having, a copy of a list that reads fine."""
+        self._lose_the_list()
+        code = os.path.join(self.dir, "code.json")
+        self._write(code, {"version": 8, "categories": ["_All"], "tags": [],
+                           "assets": [{"id": "SNIP1"}, {"id": "SNIP2"}]})
+        self._write(code + ".bak-1", {"assets": [{"id": "SNIP1"}]})
+        findings = self._survey()
+        self.assertEqual([], self._offered(findings),
+                         "a copy holding no materials, or one of a list that reads "
+                         "fine, was offered as the way back")
+        choices, _actions = repair_dialog._choices(findings, may_change=True)
+        self.assertNotIn("Put a Saved Copy Back", choices)
+
+    def test_while_a_list_is_missing_the_others_copies_stay_out(self):
+        """A copy of a list that reads fine would only take things away from it."""
+        self._lose_the_list()
+        self._write(self.index + ".bak-2", {"assets": [{"id": "OLDER01"}]})
+        code = os.path.join(self.dir, "code.json")
+        self._write(code, {"version": 8, "categories": ["_All"], "tags": [],
+                           "assets": [{"id": "SNIP1"}, {"id": "SNIP2"}]})
+        self._write(code + ".bak-1", {"assets": [{"id": "SNIP1"}]})
+        self.assertEqual([("library.json", "bak-2")], self._offered(self._survey()))
+
+    def test_a_list_with_its_materials_beside_it_offers_no_other_list_s_copy(self):
+        """The list is there and empty, as after putting back a copy older than its materials."""
+        for asset_id, name, renderer in self.LOST:
+            self._saved(asset_id, name, renderer)
+        code = os.path.join(self.dir, "code.json")
+        self._write(code, {"version": 8, "categories": ["_All"], "tags": [],
+                           "assets": [{"id": "SNIP1"}, {"id": "SNIP2"}]})
+        self._write(code + ".bak-1", {"assets": [{"id": "SNIP1"}]})
+        findings = self._survey()
+        self.assertEqual("empty", self._state(findings, "library.json"), "premise")
+        self.assertEqual([], self._offered(findings),
+                         "a copy that takes snippets away was offered while the "
+                         "materials sat unlisted beside an empty list")
+
+    def test_two_copies_that_hold_the_same_are_offered_once(self):
+        self._cops([])
+        held = {"version": 2, "categories": ["_All"], "tags": [],
+                "assets": [{"id": "A"}, {"id": "B"}]}
+        self._write(self.cops + ".bak-1", held)
+        self._write(self.cops + ".bak-first", held)
+        findings = self._survey()
+        self.assertEqual([("cops.json", "bak-1")], self._offered(findings))
+        line = [line for line in repair.report_lines(findings)
+                if line.startswith("Node: saved copies")][0]
+        self.assertEqual(1, line.count("2 saved nodes"), line)
+
+    def test_a_copy_the_list_already_matches_is_not_offered(self):
+        held = {"version": 2, "categories": ["_All"], "tags": [],
+                "assets": [{"id": "A"}]}
+        self._cops(held["assets"])
+        self._write(self.cops + ".bak-1", held)
+        self.assertEqual([], self._offered(self._survey()))
+
+    def test_a_node_s_record_keeps_it_off_the_materials_list(self):
+        self._lose_the_list()
+        self._saved("SCATTER1", "Scatter Rocks", "SOP")
+        findings = self._survey()
+        choices, _actions = repair_dialog._choices(findings, may_change=True)
+        self.assertIn("Add 3 Materials Back", choices)
+        repair.add_materials_back(findings)
+        self.assertNotIn("SCATTER1",
+                         [row["id"] for row in self._read(self.index)["assets"]],
+                         "a saved node was put on the Materials list")
+
+    def test_the_files_beside_a_pair_are_not_called_halves(self):
+        """The builder and the record travel with the pair; neither is half of anything."""
+        for asset_id, name, renderer in self.LOST:
+            self._saved(asset_id, name, renderer)
+        findings = self._survey()
+        self.assertEqual(15, repair.unaccounted_total(findings), "premise")
+        text = "\n".join(repair.report_lines(findings))
+        self.assertNotIn("halves of an asset", text)
+        self.assertIn("Crushed Velvet", text, "the materials it can put back are not named")
+        self.assertIn("Add 3 Materials Back", text)
+
+    def test_moving_aside_leaves_the_materials_it_can_put_back(self):
+        """Their record names them, so the holding folder is never their first stop."""
+        for asset_id, name, renderer in self.LOST:
+            self._saved(asset_id, name, renderer)
+        half = os.path.join(self.mat_dir, "HALFONLY1.mat")
+        with open(half, "w", encoding="utf-8") as handle:
+            handle.write("no .interface beside me\n")
+        findings = self._survey()
+        choices, actions = repair_dialog._choices(findings, may_change=True)
+        self.assertIn("Move 1 File Aside", choices,
+                      "Move Aside counts the files of materials Repair can put back")
+        self._run(buttons=[actions.index("quarantine"), 0, 0])
+        self.assertFalse(os.path.exists(half))
+        for asset_id, _name, _renderer in self.LOST:
+            self.assertTrue(os.path.exists(os.path.join(self.mat_dir, asset_id + ".mat")),
+                            "a material Repair could put back was moved aside")
+
+    def test_nothing_is_added_while_the_materials_list_cannot_be_read(self):
+        self._lose_the_list()
+        with open(self.index, "w", encoding="utf-8") as handle:
+            handle.write('{"assets": [')
+        findings = self._survey()
+        choices, _actions = repair_dialog._choices(findings, may_change=True)
+        self.assertNotIn("Add 3 Materials Back", choices)
+        with self.assertRaises(ValueError):
+            repair.add_materials_back(findings)
+        with open(self.index, encoding="utf-8") as handle:
+            self.assertEqual('{"assets": [', handle.read())
+
+    def test_a_list_that_arrives_meanwhile_is_not_written_over(self):
+        self._lose_the_list()
+        findings = self._survey()
+        self._write(self.index, dict(self.EMPTY, assets=[{"id": "SYNCED01"}]))
+        with self.assertRaises(ValueError):
+            repair.add_materials_back(findings)
+        self.assertEqual(["SYNCED01"],
+                         [row["id"] for row in self._read(self.index)["assets"]])
+
+    def test_a_houdini_that_has_read_the_library_is_refused(self):
+        self._lose_the_list()
+        findings = self._survey()
+        database.DatabaseConnector("library.json")     # the panel, earlier
+        with self.assertRaises(ValueError):
+            repair.add_materials_back(findings)
+        self.assertFalse(os.path.exists(self.index))
+        choices, _actions = repair_dialog._choices(findings, may_change=False)
+        self.assertEqual(["Close"], choices)
+
+    def test_the_panel_s_repair_keeps_materials_saved_after_the_copy(self):
+        """Its saved copy predates the newest materials, and their records are newer than it."""
+        self._lose_the_list()
+        self._saved("OLDONE01", "Old One", "Karma")
+        self._write(self.index + ".bak-1", dict(
+            self.EMPTY, assets=[{"id": "OLDONE01", "name": "Old One",
+                                 "categories": ["Fabric"], "renderer": "Karma"}]))
+        with open(self.index, "w", encoding="utf-8") as handle:
+            handle.write('{"assets": [')
+        ok, how = repair.repair_index(self.dir, self.prefs.asset_dir)
+        self.assertTrue(ok, how)
+        ids = [row["id"] for row in self._read(self.index)["assets"]]
+        self.assertEqual(sorted(["OLDONE01", "FABRIC01", "FABRIC02", "VELVET01"]),
+                         sorted(ids), "the copy came back without the materials "
+                                      "saved after it, or with one twice")
+
+
+class TheNewestCopyIsTheOnePickedTest(_Case):
+    """Put a Saved Copy Back offers the newest copy; an older one is a second, deliberate step."""
+
+    COPIES = (("bak-1", ["NEW1", "NEW2"], 24), ("bak-2", ["MID1"], 23),
+              ("bak-first", ["OLD1", "OLD2", "OLD3"], 22))
+
+    def setUp(self):
+        super().setUp()
+        self._cops([])
+        for tier, ids, day in self.COPIES:
+            path = self.cops + "." + tier
+            self._write(path, {"version": 2, "categories": ["_All"], "tags": [],
+                               "assets": [{"id": asset_id} for asset_id in ids]})
+            stamp = time.mktime((2026, 10, day, 12, 0, 0, 0, 0, -1))
+            os.utime(path, (stamp, stamp))
+
+    def _ids(self):
+        return [row["id"] for row in self._read(self.cops)["assets"]]
+
+    def _restore_button(self):
+        _choices, actions = repair_dialog._choices(self._survey(), may_change=True)
+        return actions.index("restore")
+
+    def test_the_newest_copy_is_offered_without_a_list(self):
+        ui = self._run(buttons=[self._restore_button(), 0, 0])
+        self.assertFalse(ui.selectFromList.called,
+                         "a list of copies came before the newest one")
+        confirm = ui.displayMessage.call_args_list[1]
+        self.assertIn("2026-10-24", confirm.args[0], "the copy offered is not the newest")
+        self.assertEqual(messages.BUTTONS_PUT_COPY_BACK_OR_OLDER,
+                         confirm.kwargs["buttons"])
+        self.assertEqual(2, confirm.kwargs["default_choice"],
+                         "Enter puts a copy back instead of cancelling")
+        self.assertEqual(["NEW1", "NEW2"], self._ids())
+
+    def test_an_older_copy_is_one_deliberate_step_away(self):
+        ui = self._run(buttons=[self._restore_button(), 1, 0, 0], listed=(1,))
+        older = ui.selectFromList.call_args
+        self.assertEqual(2, len(older.args[0]), "the older copies repeat the newest")
+        self.assertIn("2026-10-23", older.args[0][0], "the older copies are not newest first")
+        self.assertEqual((0,), tuple(older.kwargs["default_choices"]))
+        self.assertTrue(older.kwargs["clear_on_cancel"],
+                        "a cancelled list answers its picked row, so Cancel would put "
+                        "that copy back")
+        self.assertEqual(["OLD1", "OLD2", "OLD3"], self._ids())
+
+    def test_cancelling_the_older_copies_puts_nothing_back(self):
+        self._run(buttons=[self._restore_button(), 1], listed=())
+        self.assertEqual([], self._ids())
+
+    def test_newest_is_by_when_the_copy_was_saved_not_by_its_slot(self):
+        """An undo copy is listed first, and can hold a state older than every slot."""
+        undo = self.cops + ".bak-before-restore-20260901-120000"
+        self._write(undo, {"assets": [{"id": "UNDO1"}]})
+        stamp = time.mktime((2026, 9, 1, 12, 0, 0, 0, 0, -1))
+        os.utime(undo, (stamp, stamp))
+        offers = repair.offered_copies(self._survey())
+        self.assertEqual("bak-1", offers[0][1], "a month-old copy was offered as the newest")
+        self.assertIn("bak-before-restore-20260901-120000", [offer[1] for offer in offers])
+
+    def test_with_two_lists_in_trouble_each_shows_only_its_newest_copy(self):
+        code = os.path.join(self.dir, "code.json")
+        self._write(code, {"version": 8, "categories": ["_All"], "tags": [],
+                           "assets": []})
+        self._write(code + ".bak-1", {"assets": [{"id": "SNIP1"}]})
+        ui = self._run(buttons=[self._restore_button(), 2], listed=(0,))
+        lists = ui.selectFromList.call_args_list[0]
+        self.assertEqual(2, len(lists.args[0]), "a list showed more than its newest copy")
+        self.assertIn("2026-10-24", lists.args[0][0])
+        self.assertEqual((0,), tuple(lists.kwargs["default_choices"]))
+        self.assertTrue(lists.kwargs["clear_on_cancel"])
+        self.assertEqual([], self._ids(), "Cancel on the confirm put a copy back")
+
+
 class ADateOnAWholeSecondKeepsItsSecondsTest(_Case):
     """The stored date is `YYYY-MM-DD HH:MM:SS`; a clock on a whole second prints no fraction."""
 
@@ -582,6 +879,10 @@ class PuttingASavedCopyBackTest(_Case):
                       "the copy the done-dialog promises is not among the "
                       "copies Repair offers, so the only route to the "
                       "promised undo is the one the tool does not have")
+        self.assertIn(("cops.json", undo_tier),
+                      [(filename, tier) for filename, tier, _snap, _now
+                       in repair.offered_copies(self._survey())],
+                      "the pick list leaves out the copy the done-dialog promises")
 
         repair.put_back(self._survey(), "cops.json", undo_tier)
         self.assertEqual(
@@ -757,14 +1058,6 @@ class _NoLibraryPrefs:
 
 class TheWholeFlowTest(_Case):
     """Driving `run` itself: a feature is not verified until its call site is."""
-
-    def _run(self, buttons, listed=None):
-        ui = MagicMock()
-        ui.displayMessage.side_effect = list(buttons)
-        ui.selectFromList.return_value = listed if listed is not None else ()
-        with patch.object(hou, "ui", ui, create=True):
-            repair_dialog.run(preferences=self.prefs)
-        return ui
 
     def test_the_report_is_one_dialog_and_close_changes_nothing(self):
         """Aggregate before interrupting: one dialog, never one per problem."""
@@ -1036,8 +1329,9 @@ class TheSettingsComeBackTest(_Case):
                       "the copies that name a library are not offered back")
         self.assertEqual(messages.SETTINGS_NO_LIBRARY_REPAIR_REPORT % when, report.args[0],
                          "the report lists a copy that names no library or will not read")
-        self.assertEqual(1, len(ui.selectFromList.call_args.args[0]),
-                         "the pick list offers a copy that names no library or will not read")
+        self.assertEqual(messages.BUTTONS_PUT_COPY_BACK,
+                         ui.displayMessage.call_args_list[1].kwargs["buttons"],
+                         "an older copy that names no library or will not read is offered")
         confirm = ui.displayMessage.call_args_list[1]
         self.assertEqual(messages.CONFIRM_PUT_SETTINGS_BACK % when, confirm.args[0])
         self.assertNotIn("offers that copy back", confirm.kwargs["help"],

@@ -781,11 +781,15 @@ this computer, outside the library, named in the summary and kept for
 
 **Repair**, on the Amaze shelf, repairs a library when Clean Up refuses
 or the panel does not open. It reads the library, reports the
-problems and offers two fixes: rebuilding the asset list from the
-recovery copy stored with each asset, or restoring a snapshot. When
-`settings.json`, the settings file that names the library, is unreadable
-or missing, Repair lists its dated copies and restores one. Its
-strongest action moves files into a dated folder inside the library.
+problems and offers the fixes that apply. It puts materials that no
+list names back into Materials, with the name, category and tags
+stored beside each one, and writes a new list when the old one is
+missing. It puts a damaged list back to one of its dated copies,
+leaving out copies that hold nothing. When `settings.json`, the
+settings file that names the library, is unreadable or missing, Repair
+lists its dated copies and restores one. It moves files that belong to
+nothing to Amaze's holding folder on this computer, where they are kept
+for 30 days.
 
 Every write takes a snapshot of the asset list first, with rolling
 backups and a first-run copy, and writes from a second Houdini session
