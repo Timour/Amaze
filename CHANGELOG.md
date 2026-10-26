@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.17.1
+
+- Online materials: the thin bar above the grid fills while the online sources list, from opening Online until the pictures start to fill in. Nothing showed during those seconds before.
+
 ## 1.17.0
 
 - GPUOpen: each material's tile shows a picture of the material, rendered in Amaze's own thumbnail scene, in place of GPUOpen's own. Import to Materials ▸ MaterialX keeps that picture as the thumbnail.
