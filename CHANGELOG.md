@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.12.5
+
+- Karma and Octane thumbnails: a render that finishes every tile is done, whatever code husk exits with. Houdini 22.0.482's husk exits with code 139 after the last tile. The note that a thumbnail render stopped now appears only when some tiles keep their old picture.
+
 ## 1.12.4
 
 - Customize: the strip at the top is gone. The menu that sets what the tile shows is now called Image, and the toggle that draws the symbol light is called Light Icons.
