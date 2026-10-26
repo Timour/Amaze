@@ -731,6 +731,32 @@ class PhysicallyBasedPreviewsTest(unittest.TestCase):
         self.assertNotIn("preview", records["Banana"].payload)
 
 
+class RGLPreviewsTest(unittest.TestCase):
+    """RGL's tiles carry their hosted pictures, found by the measurement's name."""
+
+    def test_a_material_with_a_hosted_picture_is_listed_with_its_place(self):
+        from amaze.core import matx_sources
+        picture = bytes(range(256)) * 12
+        hosted = _previews({"acrylic_felt_green.jpg": picture})
+
+        def serve(url, headers=None):
+            if str((headers or {}).get("Range") or "") == "bytes=0-0":
+                return _Served(hosted[:1], {"Content-Range": "bytes 0-0/%d" % len(hosted)})
+            return _ranged_server(hosted)(url, headers)
+
+        def offline(_url):
+            raise urllib.error.URLError("offline")
+
+        for target, value in (("_request", serve), ("get_text", offline)):
+            patcher = mock.patch.object(matx_sources, target, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        records = {r.uid: r for r in matx_sources.RGLSource().list_materials(limit=1000)}
+        place = records["acrylic_felt_green"].payload.get("preview") or {}
+        self.assertEqual(zlib.crc32(picture), place.get("crc"))
+        self.assertNotIn("preview", records["acrylic_felt_orange"].payload)
+
+
 class HostedPreviewTileTest(unittest.TestCase):
     """A SimReady tile with a hosted picture reads it, and a re-render is a new picture."""
 

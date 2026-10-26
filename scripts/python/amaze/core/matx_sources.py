@@ -811,6 +811,8 @@ class RGLSource(MatxSource):
     kind = "values"
     SITE = "https://rgl.epfl.ch/materials"
     CDN = "https://d38rqfq1h7iukm.cloudfront.net/media/materials"
+    PREVIEWS = ("https://github.com/Timour/AmazePackages/releases/download/"
+                "rgl-previews/rgl-previews.zip")
 
     METAL_WORDS = (    # a measured BSDF cannot state conductor-ness, so the inference is keyword-based, word-boundary, and reported
         "metal", "metallic", "aluminium", "aluminum", "copper", "steel",
@@ -830,6 +832,7 @@ class RGLSource(MatxSource):
 
     def refresh(self):
         self._names = None
+        self._previews = None
 
     def needs_download(self, record) -> bool:
         return str(getattr(record, "uid", "")) not in self.table()    # an unknown-to-the-table material still costs a multi-hundred-KB BSDF - that one DOES need the bar
@@ -898,7 +901,7 @@ class RGLSource(MatxSource):
                     payload={"values": self._values_for(uid), "uid": uid},    # real measured values, so the tile shows the material's own colour; unknown materials carry {} and fill in on import
                 )
             )
-        return out
+        return self.with_previews(out)
 
     def resolutions(self, record):
         return []
