@@ -604,6 +604,13 @@ def set_favourites(preferences, wanted: dict) -> keyed_store.Written:
     return written
 
 
+def files_moved(preferences, keys: dict) -> dict:
+    """Files moved on disk: their entries follow `{old key: new key}`, the settings copy too."""
+    written = keyed_store.rekey_files(preferences, keys)
+    _sync_mirror(preferences)
+    return written
+
+
 def _copy_records(preferences) -> dict:
     """The settings copy's records keyed in STORAGE spelling, however they were written."""
     return {hostos.storage_path_key(path): dict(value) for path, value in

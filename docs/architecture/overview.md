@@ -132,6 +132,7 @@ Plus one *view mode*, not a section:
 | `sidebar_key(index)` | what a **Sidebar** row is keyed by — a category name in three sections, a registered folder PATH in File |
 | `reorders_sidebar` + `sidebar_movable` / `move_sidebar_row` / `sidebar_order_snapshot` / `restore_sidebar_order` / `commit_sidebar_order` | the press-hold reorder (`sidebar.SidebarReorder` asks) — the base speaks the category form, File overrides in folder terms, Online answers no |
 | `sidebar_colour(name)` / `set_sidebar_colour(name, colour)` | read and write that row's colour, in whichever store this context keeps it |
+| `takes_file_drops` + `accepts_file_drop` / `drop_folder` / `move_files_to` / `can_undo_move` / `menu_undo_move` | a **Grid** tile released on a **Sidebar** folder moves the selected files there on disk (File only; `core/file_moves.py`), and Undo Move puts the last move back |
 | `double_click(index)` | a **Tile** is double-clicked (the *primary action*) — routes through the **Click Door** below |
 | `rc_menu()` | right-click on the **Grid** — renders `GRID_MENU` (below) |
 | `catlist_menu()` | right-click on the **Sidebar** — renders `SIDEBAR_MENU` |
@@ -1220,6 +1221,8 @@ prefs/prefs.py            Prefs - what a setting IS (the property pairs)
 prefs/persistence.py      how it is STORED - save/load/merge/migrate,
                           mixed into Prefs, plus the portable paths
 core/folders.py           FolderTreeModel (shared Folder-archetype base, locations and subfolders)
+core/file_moves.py        moves files between folders on a worker, never over a taken
+                          name; a file's star, comment, icon and capture follow it
 core/scene_captures.py    photographs the Scene View + open-scene state
 core/scene_files.py       which file names are Houdini scenes (.hip,
                           .hiplc, .hipnc)

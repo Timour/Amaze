@@ -513,6 +513,15 @@ def refuse(reason: str, /, **data) -> bool:
         return True
 
 
+def status(message: str, /) -> bool:
+    """Say on the status line what a gesture is doing, True when it spoke; never recorded or raised."""
+    try:
+        _ui.status(str(message))
+        return True
+    except Exception:                                    # noqa: BLE001 - none handed over, or no screen
+        return False
+
+
 def exception(where: str, exc: BaseException | None = None, /, **data) -> None:
     """A full traceback for a HANDLED exception, Debug-Mode gated; an UNCAUGHT one goes through `install()` regardless."""
     if not _enabled or _rotation_blocked:

@@ -12,7 +12,7 @@ from amaze import amazetheme
 from amaze.actions import code as code_actions
 from amaze.actions import materials as material_actions
 from amaze.actions import nodes as node_actions
-from amaze.core import (category, debug, file_library,
+from amaze.core import (category, debug, file_library, file_moves,
                         grid_columns, library_policy, locations, multifilterproxy_model,
                         renderers, scene_captures, notes)
 from amaze.helpers import hostos, ui_helpers, wording
@@ -55,6 +55,16 @@ GRID_MENU_TAIL = (
     MenuEntry("Export Package", verb="menu_export_package"),
     MenuEntry("Delete", verb="menu_delete", shown="deletes_rows"),
 )
+
+UNDO_MOVE = (    # first in both File menus while the last move can be undone
+    MenuEntry("Undo Move", verb="menu_undo_move", needs="always", shown="can_undo_move"),
+    SEPARATOR,
+)
+
+
+def _file_count(count: int) -> str:
+    """`1 file` or `3 files`, for the move's sentences."""
+    return messages.MOVE_ONE_FILE if count == 1 else messages.MOVE_FILES % count
 
 
 class Section:
@@ -286,7 +296,8 @@ class Section:
         else:
             self.panel.sidebar_set_colour(False, payload or "")
 
-    takes_category_drops = False  # a tile dropped on a row RECATEGORISES it. Only AssetSection sets it True: the File family keeps this default deliberately, because its sidebar lists filesystem FOLDERS, so a drop there would mean moving files on disk rather than changing metadata
+    takes_category_drops = False  # a tile dropped on a row RECATEGORISES it; AssetSection sets it
+    takes_file_drops = False  # a tile dropped on a folder row MOVES its file there; FolderSection sets it
 
     def accepts_category_drop(self, index, name: str) -> bool:
         """Is THIS row a legal drop target, beyond being a category? Asked after the shared rules (a real row, not "All")."""
@@ -1324,6 +1335,102 @@ class FolderSection(Section):
         if files is not None:
             files.toggle_favorites(rows)
 
+    takes_file_drops = True    # ▸r/cross-volume-move
+    _last_move = ()    # (source, destination) per file the last move carried, until it is undone
+
+    def accepts_file_drop(self, index) -> bool:
+        """A location, or a folder inside one; never All."""
+        return bool(self.drop_folder(index))
+
+    def drop_folder(self, index) -> str:
+        folders = self._p(self.folders_attr)
+        return str(index.data(folders.BrowseRole) or "") if folders is not None else ""
+
+    def move_files_to(self, folder: str) -> bool:
+        """Move the grid's selected files into `folder`, on a worker; True when a move started."""
+        if file_moves.mover.busy():
+            debug.refuse(messages.MOVE_BUSY)
+            return False
+        selection = self._p(self.selection_attr)
+        paths = [self._path_of(index) for index in
+                 (grid_columns.selected_rows(selection) if selection is not None else ())]
+        scene = scene_captures.current_scene_path()
+        held = [path for path in paths if path and scene
+                and hostos.canonical_path_key(path) == hostos.canonical_path_key(scene)]
+        said = [messages.MOVE_OPEN_SCENE % os.path.basename(path) for path in held]
+        pairs = file_moves.targets([path for path in paths if path not in held], folder)
+        if not pairs:
+            if said:
+                debug.refuse(" ".join(said))
+            return False
+        self._start_move(pairs, folder, said, undo=False)
+        return True
+
+    def can_undo_move(self, indexes, current) -> bool:
+        return bool(self._last_move) and not file_moves.mover.busy()
+
+    def menu_undo_move(self, indexes, current, payload=None) -> None:
+        pairs = file_moves.back(self._last_move)
+        if not pairs or file_moves.mover.busy():
+            return
+        self._last_move = ()
+        self._start_move(pairs, os.path.dirname(pairs[0][1]), [], undo=True)
+
+    def _start_move(self, pairs, folder: str, said, undo: bool) -> None:
+        self._move_job = {"count": len(pairs), "name": self._folder_name(folder),
+                          "said": list(said), "undo": undo, "percent": -1}
+        file_moves.mover.start(pairs, self.panel.prefs, self._move_ticked, self._move_landed)
+
+    def _move_ticked(self, done, total) -> None:
+        """A cross-drive copy's progress on the status line, once per whole percent."""
+        job = self._move_job
+        percent = int(done * 100 / total) if total else 100
+        if percent != job["percent"]:
+            job["percent"] = percent
+            debug.status(messages.MOVE_PROGRESS % (_file_count(job["count"]), job["name"], percent))
+
+    def _move_landed(self, result) -> None:
+        """Refresh what shows the moved files, offer Undo, and say what happened in one line."""
+        job = self._move_job
+        for attr in (self.files_attr, self.folders_attr):
+            model = self._p(attr)
+            if model is not None:
+                (model.refresh_counts if attr == self.folders_attr
+                 else model.refresh_current_folder)()
+        self._last_move = () if job["undo"] else tuple(result.moved)
+        said = list(job["said"])
+        if result.moved:
+            count = _file_count(len(result.moved))
+            said.insert(0, messages.MOVE_BACK % count if job["undo"]
+                        else messages.MOVE_DONE % (count, job["name"]))
+        said += self._taken_lines(result.skipped)
+        said += [messages.MOVE_FAILED % (os.path.basename(source), why)
+                 for source, why in result.failed]
+        if job["said"] or result.skipped or result.failed:
+            debug.refuse(" ".join(said))
+        elif said:
+            debug.status(" ".join(said))
+
+    def _taken_lines(self, skipped) -> list:
+        """One sentence per folder that already held a name: the first three, then a count."""
+        by_folder = {}
+        for _source, dest in skipped:
+            by_folder.setdefault(os.path.dirname(dest), []).append(os.path.basename(dest))
+        lines = []
+        for folder, names in by_folder.items():
+            shown = names[:3] + ([messages.MOVE_MORE % (len(names) - 3)] if len(names) > 3 else [])
+            listed, name = wording.and_list(shown), self._folder_name(folder)
+            lines.append(messages.MOVE_TAKEN % (listed, name) if len(names) == 1
+                         else messages.MOVE_TAKEN_MANY % (listed, name))
+        return lines
+
+    def _folder_name(self, folder: str) -> str:
+        """A folder as the sidebar names it, else its own name."""
+        folders = self._p(self.folders_attr)
+        index = folders.index_of(folder) if folders is not None else QtCore.QModelIndex()
+        shown = index.data() if index.isValid() else ""
+        return str(shown or os.path.basename(folder.rstrip("/\\")) or folder)
+
     colour_title = "Location Color"
 
     def sidebar_key(self, index) -> str:
@@ -1393,7 +1500,7 @@ class FileSection(FolderSection):
         FilterEntry("Hip", "Hip", locations.KIND_HIP),
     )
 
-    GRID_MENU = (  # KIND-aware: the selection's kinds decide which primary actions exist. NO Delete anywhere - these are the user's own files on disk
+    GRID_MENU = UNDO_MOVE + (  # the selection's KINDS pick the actions; no Delete: the user's own files
         MenuEntry("Import", verb="menu_import", needs="menu_import_enabled",
                   shown="selection_has_importable"),
         MenuEntry("Load", verb="menu_load_scene", needs="one",
@@ -1538,7 +1645,7 @@ class FileSection(FolderSection):
         self.panel.copy_file_paths([index])
         return True
 
-    SIDEBAR_MENU = (  # per-location entries need a REAL row: All is synthetic and its key is ""
+    SIDEBAR_MENU = UNDO_MOVE + (  # per-location entries need a REAL row: All is synthetic, its key ""
         MenuEntry("Add", verb="menu_add_location", needs="always"),
         MenuEntry("Locate", verb="menu_locate_location",
                   needs="on_a_location"),

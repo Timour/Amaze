@@ -356,9 +356,12 @@ class GridGestureMixin:
                 if panel is not None and idx is not None:
                     section = self._drag_section
                     category = panel._category_under_cursor()    # the sidebar outranks a node target; None for folder sections and the All row
+                    folder = None if category is not None else panel._folder_under_cursor()
                     if category is not None:
                         panel.assign_category_active(category)
                         outcome = True
+                    elif folder is not None:    # File: the tiles' files move into that folder, on disk
+                        outcome = panel.move_files_active(folder)
                     else:    # THE BEHAVIOUR TABLE: each section declares its doors and one walk serves them all; no rule for this row, or a release over nothing, is silent but for the miss indicator
                         rule = self._drop_rule(panel, section, idx)
                         if rule is not None:

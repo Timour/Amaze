@@ -331,13 +331,15 @@ class SidebarReorder(QtCore.QObject):
 def droppable_index(panel, pos):
     """THE ONE PLACE the drop-target rules live; None if no tile may land here."""
     context = panel._section()
-    if context is None or not context.takes_category_drops:
+    if context is None or not (context.takes_category_drops or context.takes_file_drops):
         return None
     if panel.cat_list is None:
         return None
     index = panel.cat_list.indexAt(pos)
     if not index.isValid():
         return None
+    if context.takes_file_drops:    # a folder row: the tile's file moves there, on disk
+        return index if context.accepts_file_drop(index) else None
     name = panel._raw_category_name(index)
     if not name or category.is_all(name):
         return None
@@ -348,8 +350,20 @@ def droppable_index(panel, pos):
 
 def category_at_point(panel, pos):
     """The droppable category at a point, by its STORED name - the form the write needs."""
+    context = panel._section()
+    if context is None or not context.takes_category_drops:
+        return None
     index = droppable_index(panel, pos)
     return None if index is None else panel._raw_category_name(index)
+
+
+def folder_at_point(panel, pos):
+    """The folder a tile dropped at a point moves into, or None."""
+    context = panel._section()
+    if context is None or not context.takes_file_drops:
+        return None
+    index = droppable_index(panel, pos)
+    return None if index is None else context.drop_folder(index)
 
 
 def _cursor_in_sidebar(panel):
@@ -367,12 +381,22 @@ def category_under_cursor(panel):
     return None if pos is None else category_at_point(panel, pos)
 
 
-def set_hover_row(panel, row: int) -> None:
-    """Highlight a row (-1 clears); `repaint()`, never `update()`. ▸r/native-drag-paint"""
+def folder_under_cursor(panel):
+    """The folder under the GLOBAL cursor that a self-managed release moves files into."""
+    pos = _cursor_in_sidebar(panel)
+    return None if pos is None else folder_at_point(panel, pos)
+
+
+def set_hover_row(panel, row) -> None:
+    """Highlight one row by its index (-1 clears); `repaint()`, never `update()`. ▸r/native-drag-paint"""
     delegate = getattr(panel, "sidebar_delegate", None)
-    if delegate is None or delegate.drag_row == row:
+    if delegate is None:
         return
-    delegate.drag_row = row
+    held = (QtCore.QPersistentModelIndex(row) if isinstance(row, QtCore.QModelIndex)
+            else QtCore.QPersistentModelIndex())
+    if held == delegate.drag_index:
+        return
+    delegate.drag_index = held
     if panel.cat_list is not None:
         panel.cat_list.viewport().repaint()
 
@@ -380,7 +404,7 @@ def set_hover_row(panel, row: int) -> None:
 def update_hover(panel, pos) -> None:
     """Set the highlight from a sidebar-local point."""
     index = droppable_index(panel, pos)
-    set_hover_row(panel, index.row() if index is not None else -1)
+    set_hover_row(panel, index if index is not None else -1)
 
 
 def update_hover_global(panel) -> None:
@@ -396,15 +420,20 @@ def can_drop(panel, event) -> bool:
     """Only OUR OWN grid, only into a context that takes drops - the rest falls through."""
     context = panel._section()
     return bool(context is not None
-                and context.takes_category_drops
+                and (context.takes_category_drops or context.takes_file_drops)
                 and event.source() is panel.thumblist)
 
 
 def handle_drop(panel, event) -> bool:
-    """Recategorise if it landed on a real category; CONSUME the drop either way."""
+    """Recategorise on a category, move the files on a folder; CONSUME the drop either way."""
     if not can_drop(panel, event):
         return False
-    category = category_at_point(panel, event.position().toPoint())
+    pos = event.position().toPoint()
+    folder = folder_at_point(panel, pos)
+    if folder is not None:
+        panel.move_files_active(folder)
+        return True
+    category = category_at_point(panel, pos)
     if category is not None:
         panel.assign_category_active(category)
     return True

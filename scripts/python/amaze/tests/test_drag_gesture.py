@@ -51,6 +51,10 @@ class _StubPanel(QtWidgets.QWidget):
     def _category_under_cursor(self):
         return self._category
 
+    def _folder_under_cursor(self):
+        """No folder row under a release here; the File move has its own tests."""
+        return None
+
     def _update_category_drag_hover_global(self):
         """Every drag walks the live move path that drives the sidebar hover glow."""
 

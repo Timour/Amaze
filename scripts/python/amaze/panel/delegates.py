@@ -797,12 +797,17 @@ class SidebarItemDelegate(QtWidgets.QStyledItemDelegate):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.show_counts = True    # counts on individual categories can be toggled off in Preferences; All always shows its total
-        self.drag_row = -1         # row highlighted while an asset is dragged over it, -1 for none
+        self.drag_index = QtCore.QPersistentModelIndex()    # the row a drag would land on; none when invalid
         self._drag_color = QtGui.QColor(amazetheme.TILE_SUBTITLE)    # until the panel sets the accent
         self.color_role = None     # role carrying a category's colour, or None for sidebars that have none (folders, palette groups)
 
     def set_drag_color(self, color: QtGui.QColor) -> None:
         self._drag_color = QtGui.QColor(color)
+
+    def drop_target(self, index) -> bool:
+        """Is `index` the row a drag would land on? The row itself: a tree numbers rows per parent."""
+        return (self.drag_index.isValid()
+                and QtCore.QPersistentModelIndex(index) == self.drag_index)
 
     def helpEvent(self, event, view, option, index):
         """A row's hover words, a folder's path among them, through the one width cap."""
@@ -890,5 +895,5 @@ class SidebarItemDelegate(QtWidgets.QStyledItemDelegate):
         option.decorationSize = QtCore.QSize(width, side)
         option.features |= (
             QtWidgets.QStyleOptionViewItem.ViewItemFeature.HasDecoration)
-        if index.row() == self.drag_row:
+        if self.drop_target(index):
             option.backgroundBrush = QtGui.QBrush(self._drag_color)    # drop-target feedback through the option the style READS, rather than a fill painted over the top of what it drew

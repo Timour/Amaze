@@ -1077,6 +1077,35 @@ def relocate(preferences, old: str, new: str) -> dict:
     return results
 
 
+def rekey_files(preferences, keys: dict) -> dict:
+    """Files moved: each `{old key: new key}` follows in every store, every owner's entry."""
+    results = {}
+    if not keys:
+        return results
+    for spec in stores():
+        if spec.keyspace == KEY_ID:
+            continue                # an asset id does not move
+        prefix = spec.path_prefix or ""
+        wanted = {storage_key(spec, prefix + old): storage_key(spec, prefix + new)
+                  for old, new in keys.items()}
+        store = open_store(spec, preferences)
+        table = store.everyones()
+        moves, stale = {}, []
+        for stored in table:
+            owner, bare = untagged_key(spec, stored)
+            if bare not in wanted:
+                continue
+            target = (owner + USER_SEP if owner else "") + wanted[bare]
+            moves[stored] = target
+            if target in table:
+                stale.append(target)    # left by a file once there; the arriving file's entry wins
+        if stale:
+            store.retire_stored(stale)
+        if moves:
+            results[spec.filename] = store.rekey_stored(moves)
+    return results
+
+
 def location_ids_at(preferences, prefix: str) -> list:
     """Every identity-table id whose path is `prefix` - either trailing-separator spelling."""
     store = open_store(_registry[LOCATION_PATHS], preferences)

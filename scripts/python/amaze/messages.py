@@ -154,6 +154,30 @@ OBJECT_HAS_NO_MATERIAL_PARM = '"%s" does not have a material parameter. The mate
 
 DROP_CANCELED = 'The action was canceled.'
 
+MOVE_DONE = 'Moved %s to %s.'
+
+MOVE_BACK = 'Moved %s back.'
+
+MOVE_ONE_FILE = '1 file'
+
+MOVE_FILES = '%d files'
+
+MOVE_PROGRESS = 'Moving %s to %s: %d%%'
+
+MOVE_TAKEN = 'A file named %s is already in %s, so it was not moved.'
+
+MOVE_TAKEN_MANY = 'Files named %s are already in %s, so they were not moved.'
+
+MOVE_MORE = '%d more'
+
+MOVE_FAILED = '%s could not be moved: %s.'
+
+MOVE_KEPT_BOTH = 'the copy is in place, but the original could not be removed (%s)'
+
+MOVE_OPEN_SCENE = '%s is the scene open in Houdini, so it was not moved.'
+
+MOVE_BUSY = 'Another move is still running.'
+
 STOCK_LOP_HELPERS_UNAVAILABLE = "Could not load Houdini's material-assignment helpers. The material was not imported."
 
 NETWORK_REFUSED_MATERIAL_LIBRARY = 'Amaze: %s cannot take a Material Library, so the material was not imported.\n\n%s'

@@ -97,6 +97,7 @@ _reload(tile_icons)    # before gradient_library and the Node Info dialog, which
 _reload(grid_columns)    # BEFORE the engine, which reads its column order
 _reload(grid_engine)    # BEFORE library and its siblings, which mix it in
 _reload(captures)    # before library, file_library and scene_captures, which read it
+_reload_loaded("amaze.core.file_moves")    # after captures and locations, which it carries keys through
 _reload(library)
 _reload(category)
 _reload_loaded("amaze.core.repair")
@@ -3193,8 +3194,17 @@ class AmazePanel(QtWidgets.QWidget):
     def _category_under_cursor(self):
         return sidebar.category_under_cursor(self)
 
-    def _set_drag_hover_row(self, row: int) -> None:
-        """Highlight (row) or clear (row=-1) the sidebar row being dragged over. Logic in panel/sidebar.py."""
+    def _folder_under_cursor(self):
+        return sidebar.folder_under_cursor(self)
+
+    def move_files_active(self, folder: str) -> bool:
+        """Move the ACTIVE section's selected files into `folder`; True when a move started."""
+        context = self._section()
+        return bool(context is not None and context.takes_file_drops
+                    and context.move_files_to(folder))
+
+    def _set_drag_hover_row(self, row) -> None:
+        """Highlight a sidebar row by its index, or clear with -1. Logic in panel/sidebar.py."""
         sidebar.set_hover_row(self, row)
 
     def _update_category_drag_hover(self, pos) -> None:

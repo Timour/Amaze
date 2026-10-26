@@ -35,7 +35,7 @@ MODULE_LAYER = {    # one row per module in core/, helpers/ and the top level
     "core.database": "library", "core.keyed_store": "library", "helpers.restore": "library",
     "core.quarantine": "library", "core.material": "library", "core.locations": "library",
     "core.notes": "library", "core.users": "library", "core.versions": "library",
-    "core.captures": "library", "core.library_policy": "library",
+    "core.captures": "library", "core.library_policy": "library", "core.file_moves": "library",
     "core.library_prefs": "library", "core.tile_icons": "library", "core.texstore": "library",
     "core.repair": "library", "core.asset_files": "library",
     "core.packages": "formats", "core.addons": "formats", "core.matx_sources": "formats",

@@ -448,6 +448,16 @@ too. Locate, Rename, Remove, Show and Label act on locations and are
 greyed out on the folders inside them. Folders stay open until the panel
 closes, and the File tab reopens on the last folder clicked.
 
+Dragging files from the grid onto a folder in the sidebar moves them into
+that folder on disk, all the selected files together. A file whose name is
+already taken in that folder stays where it is, and the status line names
+it; the scene open in Houdini also stays. On another drive each file is copied first,
+with the progress on the status line, and the original is removed once
+its copy is complete. A moved file keeps its favorite, comment, tile icon
+and capture. Its path changes, so a scene that reads it from the old path
+finds nothing there. After a move, **Undo Move** at the top of the
+right-click menu puts the files back.
+
 A removed folder is removed for everyone who uses the library. An Amaze
 that is running on another computer shows the removal after a restart.
 

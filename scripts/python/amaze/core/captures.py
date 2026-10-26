@@ -47,6 +47,19 @@ def exists(path: str) -> bool:
         return False
 
 
+def move_file_capture(preferences, old_key: str, new_key: str) -> bool:
+    """A moved file's capture follows its key; one already under the new key goes to quarantine."""
+    from amaze.core import quarantine
+    old, new = file_path(preferences, old_key), file_path(preferences, new_key)
+    if not exists(old):
+        return False
+    if os.path.lexists(new):
+        quarantine.quarantine_file(str(preferences.dir), new)
+    os.replace(old, new)
+    announce(new_key)
+    return True
+
+
 class _Signals(QtCore.QObject):
     """Announces a landed capture by its tile key, so every live model repaints that tile."""
 
