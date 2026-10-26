@@ -6,6 +6,7 @@ import io
 import json
 import os
 import shutil
+import sys
 import tempfile
 
 from amaze.helpers import hostos
@@ -284,6 +285,15 @@ def plugins_loaded(*renderers):
             stack.enter_context(mock.patch.object(
                 each, "available", lambda name=each.name: name in renderers))
     return stack
+
+
+def plain_python() -> str:
+    """The Python under this one, started in under a second; hython itself costs 20 s."""
+    for name in (os.path.join("bin", "python3"), "python.exe"):
+        path = os.path.join(sys.base_prefix, name)
+        if os.path.isfile(path):
+            return path
+    return sys.executable
 
 
 def live_library_to_rehearse_on(testcase):

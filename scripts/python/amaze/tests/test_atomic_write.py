@@ -1643,14 +1643,6 @@ class ImportingTheHarnessArmsTheSandboxTest(unittest.TestCase):
              "print('ARMED=%s' % hostos.sandboxed())\n"
              "print('SETTINGS=%s' % hostos.config_root())\n")
 
-    def _plain_python(self):
-        """The Python under this one, started in under a second; hython itself costs 20 s."""
-        for name in (os.path.join("bin", "python3"), "python.exe"):
-            path = os.path.join(sys.base_prefix, name)
-            if os.path.isfile(path):
-                return path
-        return sys.executable
-
     def _bare_run(self):
         """{key: value} the child printed, run with none of the runner's sandbox environment."""
         log = tempfile.mkdtemp(prefix="amaze_bare_run_log_")
@@ -1659,7 +1651,7 @@ class ImportingTheHarnessArmsTheSandboxTest(unittest.TestCase):
             os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
         for name in (hostos.SANDBOX_VAR, hostos.SANDBOX_HOME_VAR):
             env.pop(name, None)
-        result = subprocess.run([self._plain_python(), "-c", self.CHILD],
+        result = subprocess.run([test_support.plain_python(), "-c", self.CHILD],
                                 capture_output=True, text=True, env=env,
                                 timeout=300)
         self.assertEqual(0, result.returncode,
