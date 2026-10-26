@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.12.6
+
+- SimReady: Plastic Green, Light Gray, Sky Blue, Teal and Yellow Orange now import. A colour in their files holds numbers too small for MaterialX, which refused the whole material; such a number now comes in as 0.
+
 ## 1.12.5
 
 - Karma and Octane thumbnails: a render that finishes every tile is done, whatever code husk exits with. Houdini 22.0.482's husk exits with code 139 after the last tile. The note that a thumbnail render stopped now appears only when some tiles keep their old picture.
