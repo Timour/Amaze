@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.15.0
+
+- RGL: each material's tile shows a picture of the material, rendered in Amaze's own thumbnail scene, in place of the swatch drawn from its measured values. Import to Materials ▸ MaterialX keeps that picture as the thumbnail.
+
 ## 1.14.0
 
 - PhysicallyBased: each material's tile shows a picture of the material, rendered in Amaze's own thumbnail scene, in place of the swatch drawn from its numbers.
