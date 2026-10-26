@@ -439,6 +439,8 @@ class GPUOpenSource(MatxSource):
 
     name = "GPUOpen"
     licence = "MIT Public Domain"
+    PREVIEWS = ("https://github.com/Timour/AmazePackages/releases/download/"
+                "gpuopen-previews/gpuopen-previews.zip")
     API = "https://api.matlib.gpuopen.com/api"    # "matlib" is THEIR hostname, never ours to rename - ▸r/matx-source-quirks
 
     def page_url(self, record) -> str:
@@ -449,6 +451,7 @@ class GPUOpenSource(MatxSource):
 
     def refresh(self):
         self._categories = None    # the next listing re-reads the site's category map - never fetch HERE, refresh() runs on the UI thread
+        self._previews = None
 
     def _category_map(self):
         if self._categories is not None:
@@ -504,7 +507,7 @@ class GPUOpenSource(MatxSource):
                     payload={"packages": r.get("packages") or []},
                 )
             )
-        return out
+        return self.with_previews(out)
 
     def _packages(self, record):
         """Resolve the material's package list to (resolution, id) pairs."""

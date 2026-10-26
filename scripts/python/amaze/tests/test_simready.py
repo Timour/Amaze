@@ -782,6 +782,35 @@ class PolyHavenPreviewsTest(unittest.TestCase):
         self.assertNotIn("preview", records["moon_02"].payload)
 
 
+class GPUOpenPreviewsTest(unittest.TestCase):
+    """GPUOpen's tiles carry Amaze's hosted pictures, found by the material's id."""
+
+    def test_a_material_with_a_hosted_picture_is_listed_with_its_place(self):
+        from amaze.core import matx_sources
+        picture = bytes(range(256)) * 16
+        hosted = _previews({"m-brick.jpg": picture})
+
+        def serve(url, headers=None):
+            if str((headers or {}).get("Range") or "") == "bytes=0-0":
+                return _Served(hosted[:1], {"Content-Range": "bytes 0-0/%d" % len(hosted)})
+            return _ranged_server(hosted)(url, headers)
+
+        def answer(url):
+            if "/categories/" in url:
+                return {"results": []}
+            return {"results": [{"id": "m-brick", "title": "Brick", "renders": ["r1"]},
+                                {"id": "m-moss", "title": "Moss", "renders": ["r2"]}]}
+
+        for target, value in (("_request", serve), ("get_json", answer)):
+            patcher = mock.patch.object(matx_sources, target, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        records = {r.uid: r for r in matx_sources.GPUOpenSource().list_materials(limit=100)}
+        place = records["m-brick"].payload.get("preview") or {}
+        self.assertEqual(zlib.crc32(picture), place.get("crc"))
+        self.assertNotIn("preview", records["m-moss"].payload)
+
+
 class HostedPreviewTileTest(unittest.TestCase):
     """A SimReady tile with a hosted picture reads it, and a re-render is a new picture."""
 
