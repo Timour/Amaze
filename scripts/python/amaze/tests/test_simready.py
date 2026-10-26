@@ -704,6 +704,33 @@ class SimReadyPreviewsTest(unittest.TestCase):
             matx_sources.SimReadySource().read_thumb_to(skin, os.path.join(folder, "old.png"))
 
 
+class PhysicallyBasedPreviewsTest(unittest.TestCase):
+    """PhysicallyBased's tiles carry their hosted pictures, found by the material's name."""
+
+    def test_a_material_with_a_hosted_picture_is_listed_with_its_place(self):
+        from amaze.core import matx_sources
+        picture = bytes(range(256)) * 10
+        hosted = _previews({"Aluminum.jpg": picture})
+
+        def serve(url, headers=None):
+            if str((headers or {}).get("Range") or "") == "bytes=0-0":
+                return _Served(hosted[:1], {"Content-Range": "bytes 0-0/%d" % len(hosted)})
+            return _ranged_server(hosted)(url, headers)
+
+        def offline(_url):
+            raise urllib.error.URLError("offline")
+
+        for target, value in (("_request", serve), ("get_json", offline)):
+            patcher = mock.patch.object(matx_sources, target, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        records = {r.uid: r for r in
+                   matx_sources.PhysicallyBasedSource().list_materials(limit=1000)}
+        place = records["Aluminum"].payload.get("preview") or {}
+        self.assertEqual(zlib.crc32(picture), place.get("crc"))
+        self.assertNotIn("preview", records["Banana"].payload)
+
+
 class HostedPreviewTileTest(unittest.TestCase):
     """A SimReady tile with a hosted picture reads it, and a re-render is a new picture."""
 
@@ -715,24 +742,28 @@ class HostedPreviewTileTest(unittest.TestCase):
             source="SimReady", uid="Skin/Skin_Dark", title="Skin Dark", category="Skin",
             kind="package", payload={"preview": {"offset": 0, "size": 1, "crc": crc}})
 
-    def test_the_tile_reads_its_picture_and_its_crc_names_tile_and_cache(self):
+    def _jobs(self, model, record) -> list:
+        """The preview jobs `record` queues, the worker that would run them held back."""
         from amaze.core import matx_library
+        made = []
 
         class Worker:
-            made = []
-
             def __init__(self, jobs):
-                Worker.made.append(list(jobs))
+                made.extend(jobs)
                 self.ready = self.attempted = self.finished = mock.MagicMock()
 
             def start(self):
                 pass
 
-        model, record = self._model_and_record(7)
         with mock.patch.object(matx_library, "_PreviewWorker", Worker):
             model._queue_previews([record])
-        self.assertEqual(1, len(Worker.made), "no picture was asked for")
-        (key, reader, path), = Worker.made[0]
+        return made
+
+    def test_the_tile_reads_its_picture_and_its_crc_names_tile_and_cache(self):
+        model, record = self._model_and_record(7)
+        jobs = self._jobs(model, record)
+        self.assertEqual(1, len(jobs), "no picture was asked for")
+        (key, reader, path), = jobs
         self.assertTrue(callable(reader), "a hosted picture went to a URL download")
         self.assertEqual(model._preview_key(record), key)
         _model, rerendered = self._model_and_record(8)
@@ -740,6 +771,14 @@ class HostedPreviewTileTest(unittest.TestCase):
                             "a re-rendered picture kept the old cache file")
         self.assertNotEqual(key, model._preview_key(rerendered),
                             "a re-rendered picture kept the old tile")
+
+    def test_a_values_tile_reads_its_hosted_picture_instead_of_drawing(self):
+        model, record = self._model_and_record(7)
+        record.source, record.kind = "PhysicallyBased", "values"
+        record.payload["values"] = {"color": [0.8, 0.2, 0.1]}
+        jobs = self._jobs(model, record)
+        self.assertEqual(1, len(jobs), "the tile was drawn from its numbers")
+        self.assertTrue(callable(jobs[0][1]), "a hosted picture went to a URL download")
 
     def test_a_relisting_that_brings_pictures_redraws_the_tiles(self):
         model, pictured = self._model_and_record(7)

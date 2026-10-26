@@ -473,6 +473,13 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
                     continue
                 self._deposit_face(key, str(rec.payload.get("section") or ""))
                 continue
+            source = self.source_for(rec)
+            if _preview_crc(rec) is not None and hasattr(source, "read_thumb_to"):
+                reader = (lambda path, s=source, r=rec:    # Amaze's render, before any drawn face
+                          s.read_thumb_to(r, path))
+                reader.label = str(rec.uid)
+                jobs.append((key, reader, self._cache_path(rec)))
+                continue
             if rec.kind == "values":
                 try:    # no render to download - the tile is DRAWN from the measured numbers, cheap enough on the spot, no worker
                     thumbnails.engine.deposit(
@@ -488,13 +495,6 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
                                 title=rec.title, error=str(exc))
                     continue    # a FAILED draw keeps its marker - releasing it re-queued the failing draw every repaint; blank for the session, a panel reopen retries once
                 self._requested.discard(key)    # drawing is cheap: an evicted icon redraws on the next paint - don't hold the marker
-                continue
-            source = self.source_for(rec)
-            if _preview_crc(rec) is not None and hasattr(source, "read_thumb_to"):
-                reader = (lambda path, s=source, r=rec:    # one ranged read of a hosted picture
-                          s.read_thumb_to(r, path))
-                reader.label = str(rec.uid)
-                jobs.append((key, reader, self._cache_path(rec)))
                 continue
             if not rec.preview_url:
                 self._deposit_face(key, "material")    # a source that ships no picture

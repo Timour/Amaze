@@ -358,6 +358,7 @@ class MatxSource:
     name = ""
     licence = ""
     kind = "package"
+    PREVIEWS = ""    # Amaze's own renders of this source, a hosted zip ▸r/simready-release
 
     def page_url(self, record) -> str:
         """A link back to where this material came from, for crediting the creators - the exact page where the scheme is known, else the library's home."""
@@ -389,6 +390,47 @@ class MatxSource:
     def needs_download(self, record) -> bool:
         """True when importing fetches bytes - package sources always, a values source only when its shipped table does not know the material."""
         return getattr(record, "kind", "") != "values"
+
+    def with_previews(self, records) -> list:
+        """`records`, each one with a hosted picture carrying its place in PREVIEWS."""
+        places = self._preview_places() if self.PREVIEWS else {}
+        for record in records:
+            place = places.get(record.uid + ".jpg")
+            if place:
+                record.payload["preview"] = dict(place)
+        return records
+
+    def _preview_places(self) -> dict:
+        """Each hosted picture's place {offset, size, crc} off the zip's directory; {} unread."""
+        if getattr(self, "_previews", None) is None:
+            try:
+                bundle, _remote = open_remote_zip([(self.PREVIEWS, remote_size(self.PREVIEWS))])
+            except Exception as exc:                      # noqa: BLE001
+                debug.event("online", "hosted previews unreadable", source=self.name,
+                            error=str(exc))
+                return {}
+            self._previews = {
+                info.filename: {"offset": info.header_offset, "size": info.compress_size,
+                                "crc": info.CRC}
+                for info in bundle.infolist()
+                if info.compress_type == zipfile.ZIP_STORED and info.filename.endswith(".jpg")}
+        return self._previews
+
+    def read_thumb_to(self, record, path: str) -> None:
+        """A tile's picture: one ranged read of its member's 30-byte header, name and data."""
+        place = record.payload.get("preview") or {}
+        start, size = int(place["offset"]), int(place["size"])
+        last = start + 30 + 1024 + size - 1
+        with _request(self.PREVIEWS, {"Range": "bytes=%d-%d" % (start, last)}) as resp:
+            blob = resp.read()
+        local = len(blob) >= 30 and blob[:4] == b"PK\x03\x04"
+        skip = 30 + sum(struct.unpack("<HH", blob[26:30])) if local else 0
+        data = blob[skip:skip + size]
+        if not skip or len(data) != size or zlib.crc32(data) != int(place["crc"]):
+            raise ValueError("the hosted picture for %s is not the one listed" % record.title)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "wb") as handle:
+            handle.write(data)
 
 
 
@@ -648,6 +690,8 @@ class PhysicallyBasedSource(MatxSource):
     licence = "CC0 1.0 - physicallybased.info (Anton Palmqvist)"    # stated by the project itself; the vague "see source reference" this replaced was stored verbatim on every import
     kind = "values"
     API = "https://api.physicallybased.info"
+    PREVIEWS = ("https://github.com/Timour/AmazePackages/releases/download/"
+                "physicallybased-previews/physicallybased-previews.zip")
 
     def page_url(self, record) -> str:
         return "https://physicallybased.info/"
@@ -659,6 +703,7 @@ class PhysicallyBasedSource(MatxSource):
 
     def refresh(self):
         self._all = None    # the next load (worker thread) goes to the API - never fetch HERE, refresh() runs on the UI thread
+        self._previews = None
 
     def _usable(self, payload) -> bool:
         """Is a live response worth preferring over the shipped table - REACHABLE is not CORRECT, so it must look like the dataset: a list of name+colour entries, not dramatically smaller than what ships. ▸r/matx-source-quirks"""
@@ -749,7 +794,7 @@ class PhysicallyBasedSource(MatxSource):
                     payload={"values": m},
                 )
             )
-        return out
+        return self.with_previews(out)
 
     def resolutions(self, record):
         return []           # nothing to download
@@ -1329,38 +1374,7 @@ class SimReadySource(MatxSource):
 
     def refresh(self):
         self._names = {}    # archive parts ((url, size), ...) -> [(folder, name)], kept on success
-        self._previews = None    # "<folder>/<name>.jpg" -> its place in PREVIEWS, read once
-
-    def _preview_places(self) -> dict:
-        """Each hosted picture's place {offset, size, crc} off the zip's directory; {} unread."""
-        if self._previews is None:
-            try:
-                bundle, _remote = open_remote_zip([(self.PREVIEWS, remote_size(self.PREVIEWS))])
-            except Exception as exc:                      # noqa: BLE001
-                debug.event("online", "SimReady previews unreadable", error=str(exc))
-                return {}
-            self._previews = {
-                info.filename: {"offset": info.header_offset, "size": info.compress_size,
-                                "crc": info.CRC}
-                for info in bundle.infolist()
-                if info.compress_type == zipfile.ZIP_STORED and info.filename.endswith(".jpg")}
-        return self._previews
-
-    def read_thumb_to(self, record, path: str) -> None:
-        """A tile's picture: one ranged read of its member's 30-byte header, name and data."""
-        place = record.payload.get("preview") or {}
-        start, size = int(place["offset"]), int(place["size"])
-        last = start + 30 + 1024 + size - 1
-        with _request(self.PREVIEWS, {"Range": "bytes=%d-%d" % (start, last)}) as resp:
-            blob = resp.read()
-        local = len(blob) >= 30 and blob[:4] == b"PK\x03\x04"
-        skip = 30 + sum(struct.unpack("<HH", blob[26:30])) if local else 0
-        data = blob[skip:skip + size]
-        if not skip or len(data) != size or zlib.crc32(data) != int(place["crc"]):
-            raise ValueError("the hosted picture for %s is not the one listed" % record.title)
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "wb") as handle:
-            handle.write(data)
+        self._previews = None    # "<uid>.jpg" -> its place in PREVIEWS, read once
 
     def remember(self, records) -> None:
         """An archive whose parts are unchanged lists what it listed last time. ▸r/simready-release"""
@@ -1418,22 +1432,17 @@ class SimReadySource(MatxSource):
 
     def list_materials(self, search="", offset=0, limit=60):
         out = []
-        rows = self._release_materials()
-        places = self._preview_places()
-        for folder, name, parts in rows:
+        for folder, name, parts in self._release_materials():
             title = name.replace("_", " ")
             if search and search.lower() not in title.lower():
                 continue
-            payload = {"parts": [list(part) for part in parts],
-                       "member": "Materials/%s/%s.usda" % (folder, name)}
-            place = places.get("%s/%s.jpg" % (folder, name))
-            if place:
-                payload["preview"] = dict(place)
             out.append(MatxRecord(
                 source=self.name, uid="%s/%s" % (folder, name), title=title,
                 author="NVIDIA", category=self._cat(folder), licence=self.licence,
-                kind="package", payload=payload))
-        return out[offset:offset + limit]
+                kind="package",
+                payload={"parts": [list(part) for part in parts],
+                         "member": "Materials/%s/%s.usda" % (folder, name)}))
+        return self.with_previews(out)[offset:offset + limit]
 
     @staticmethod
     def _extract(bundle, remote, name: str, dest_dir: str, on_bytes=None) -> str:
