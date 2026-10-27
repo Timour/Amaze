@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.19.2
+
+- File: on Windows, a file that something is reading for a moment, such as Amaze making its thumbnail, now moves when dropped on a folder instead of failing.
+- File: on Windows, moving to another drive no longer copies a file another program has open, and a read-only file now moves instead of leaving a copy behind.
+- File: on Windows, large folders and folders with many subfolders list faster.
+- A material saved on Windows now writes exactly the same files as on a Mac, so saving on one machine does not make it look changed on the other.
+
 ## 1.19.1
 
 - File: a moved file's thumbnail moves with it, so the file is not rendered again in its new folder, and Undo Move brings back the same picture.
