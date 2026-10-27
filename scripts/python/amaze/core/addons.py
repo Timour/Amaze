@@ -179,7 +179,8 @@ def install(path: str, amaze_root: str, running=None) -> dict:
                 os.makedirs(os.path.dirname(dest), exist_ok=True)
                 with open(dest, "wb") as handle:
                     handle.write(bundle.read(member))
-            with open(os.path.join(staging, packages.MANIFEST), "w", encoding="utf-8") as handle:
+            with open(os.path.join(staging, packages.MANIFEST), "w", encoding="utf-8",
+                      newline="\n") as handle:
                 json.dump(manifest, handle, indent=2)
         except (OSError, zipfile.BadZipFile, zlib.error) as exc:
             shutil.rmtree(staging, ignore_errors=True)

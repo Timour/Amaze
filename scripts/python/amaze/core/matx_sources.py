@@ -177,7 +177,7 @@ def repair_mtlx_references(mtlx_path: str, dest_dir: str) -> list:
 
     if changed:
         try:
-            with open(mtlx_path, "w", encoding="utf-8") as handle:
+            with open(mtlx_path, "w", encoding="utf-8", newline="\n") as handle:
                 handle.write(text)
         except OSError as exc:
             debug.event("online", "mtlx repair could not be written",
@@ -1477,7 +1477,7 @@ class SimReadySource(MatxSource):
 
     @staticmethod
     def _extract(bundle, remote, name: str, dest_dir: str, on_bytes=None) -> str:
-        target = hostos.contained_join(dest_dir, name)    # member names come from the network
+        target = hostos.contained_join(dest_dir, *name.split("/"))    # member names come from the network, `/`-separated whatever the OS
         try:
             data = read_member(bundle, remote, name, on_bytes)
         except KeyError:

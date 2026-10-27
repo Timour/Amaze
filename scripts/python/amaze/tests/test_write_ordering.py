@@ -249,7 +249,7 @@ class SwitchingVersionsIsAllOrNothing(unittest.TestCase):
         real_promote = hostos.promote_scratch
 
         def held_png(scratch, target):
-            if target.endswith(".png") and os.sep + "img" in target:
+            if target.endswith(".png") and "/img" in target.replace(os.sep, "/"):    # the img dir is joined with `/`, so a Windows path is mixed
                 raise PermissionError("held by another process")
             return real_promote(scratch, target)
 

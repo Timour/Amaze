@@ -5,6 +5,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+import unittest.mock
 
 sys.path.insert(    # THREE dirnames up = scripts/python, the directory holding the `amaze` package - the DEV tree, not the install on Houdini's path
     0, os.path.dirname(os.path.dirname(
@@ -162,9 +163,8 @@ class AFolderLoadTouchesEachFileOnce(unittest.TestCase):
             "file", {spec[1] for spec in model._row_specs
                      if spec[0] and spec[0][0] == "tex"}.pop(),
             "premise: the images are not served from the cache")
-        self.assertEqual({name: 1 for name in names[:4]},
-                         {name: stated.count(name) for name in names[:4]},
-                         "a cached image was stated more than once")
+        self.assertEqual([], [name for name in names[:4] if stated.count(name) > 1],    # 0 is the flat scan's own listing stat
+                         "a cached image was stated more than once: %s" % stated)
         self.assertEqual(sorted(names), sorted(kinds),
                          "a name was classified more than once")
 
@@ -288,6 +288,81 @@ class SymlinkedSubfoldersTest(unittest.TestCase):
                     self._names(self.folders.walk_following_links(self.root)),
                     "with %s, a linked file was skipped or listed twice"
                     % shape)
+
+
+class TheWalkResolvesOnlyWhatIsALinkTest(unittest.TestCase):
+    """A `realpath` per folder AND per child is a handle opened per call on Windows - 4x the walk measured on a 4,789-file library - and only a link can lead anywhere its own name does not."""
+
+    def setUp(self):
+        from amaze.core import folders
+
+        self.folders = folders
+        self.base = tempfile.mkdtemp(prefix="amaze_walk_links_")
+        self.addCleanup(shutil.rmtree, self.base, True)
+        self.real = os.path.join(self.base, "real")
+        os.makedirs(os.path.join(self.real, "deep"))
+        self.root = os.path.join(self.base, "root")
+        for sub in ("a", os.path.join("a", "b"), "c"):
+            os.makedirs(os.path.join(self.root, sub))
+            open(os.path.join(self.root, sub, "f.png"), "wb").close()
+        open(os.path.join(self.real, "deep", "inside.png"), "wb").close()
+
+    def _walked(self):
+        return [(d, sorted(s), sorted(f)) for d, s, f in
+                self.folders.walk_following_links(self.root)]
+
+    def test_a_tree_with_no_link_resolves_only_its_root(self):
+        real = os.path.realpath
+        calls = []
+
+        def counted(path, *args, **kwargs):
+            calls.append(path)
+            return real(path, *args, **kwargs)
+
+        with unittest.mock.patch("os.path.realpath", counted):
+            walked = self._walked()
+        self.assertEqual([(d, sorted(s), sorted(f)) for d, s, f in os.walk(self.root)],
+                         walked, "the walk no longer lists what os.walk lists")
+        self.assertEqual(1, len(calls), "a plain folder was resolved: %s" % calls)
+
+    @unittest.skipUnless(sys.platform == "win32", "a junction is Windows' own link")
+    def test_a_junction_cycle_ends_and_a_diamond_lists_once(self):
+        """A junction needs no Developer Mode, so it is the link every Windows artist can make."""
+        import _winapi
+        _winapi.CreateJunction(self.real, os.path.join(self.root, "linked"))
+        _winapi.CreateJunction(self.real, os.path.join(self.root, "also_linked"))
+        _winapi.CreateJunction(self.real, os.path.join(self.real, "deep", "loop"))
+        names = sorted(n for _d, _s, files in self.folders.walk_following_links(self.root)
+                       for n in files)
+        self.assertEqual(["f.png"] * 3 + ["inside.png"], names,
+                         "a junction was skipped, followed into a loop, or listed twice")
+
+
+class TheFlatScanStatsFromTheListingTest(unittest.TestCase):
+    """`os.scandir` answers size and date from the folder listing itself; `os.stat` opens each file on Windows - 20x slower on a 180-file HDR folder."""
+
+    def test_a_flat_scan_opens_no_file_to_stat_it(self):
+        from amaze.core import file_library
+        folder = tempfile.mkdtemp(prefix="amaze_flat_scan_")
+        self.addCleanup(shutil.rmtree, folder, True)
+        for name in ("a.png", "b.exr", ".hidden.png"):
+            open(os.path.join(folder, name), "wb").close()
+        os.makedirs(os.path.join(folder, "sub"))
+        model = file_library.FileFiles(test_support.fixture_prefs(self))
+        real = os.stat
+        statted = []
+
+        def counted(path, *args, **kwargs):
+            if os.path.dirname(os.fspath(path)) == folder:
+                statted.append(path)
+            return real(path, *args, **kwargs)
+
+        with unittest.mock.patch("os.stat", counted):
+            scanned = model._scan(folder)
+        self.assertEqual(["a.png", "b.exr"], [name for _d, name, _st in scanned])
+        self.assertTrue(all(st is not None and st.st_size == 0 for _d, _n, st in scanned),
+                        "the scan stopped handing on the stat it made")
+        self.assertEqual([], statted, "each file was opened to stat it")
 
 
 class StaleRowTest(unittest.TestCase):

@@ -498,7 +498,7 @@ class EveryDialogKnowsWhichWindowOpenedIt(unittest.TestCase):
                 path = os.path.join(dirpath, filename)
                 with open(path, "r", encoding="utf-8") as handle:
                     tree = ast.parse(handle.read())
-                relative = os.path.relpath(path, root)
+                relative = os.path.relpath(path, root).replace(os.sep, "/")    # EXEMPT is spelled with `/` on every OS
                 for node in ast.walk(tree):
                     if not isinstance(node, ast.Call):
                         continue

@@ -78,7 +78,7 @@ class _StampWriter:
                 pass                       # absent or unreadable: rewrite
             try:
                 with hostos.scratch_beside(path) as scratch:
-                    with open(scratch, "w", encoding="utf-8") as handle:
+                    with open(scratch, "w", encoding="utf-8", newline="\n") as handle:
                         handle.write(payload)
                 written += 1
                 _STAMPED[known] = seen

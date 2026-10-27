@@ -108,9 +108,11 @@ class HuskJob(QtCore.QObject):
         return env
 
     def _write_scripts(self) -> None:
-        with open(os.path.join(self.job_dir, "preframe.py"), "w") as fh:
+        with open(os.path.join(self.job_dir, "preframe.py"), "w", encoding="utf-8",
+                  newline="\n") as fh:    # husk reads Python source as UTF-8, and a prim or a path may not be ASCII
             fh.write(PREFRAME % {"prims": self.batch["prims"], "ball": self.batch["ball"]})
-        with open(os.path.join(self.job_dir, "postframe.py"), "w") as fh:
+        with open(os.path.join(self.job_dir, "postframe.py"), "w", encoding="utf-8",
+                  newline="\n") as fh:
             fh.write(POSTFRAME % {"dir": self.job_dir, "done": DONE})
 
     def _spawn(self) -> None:

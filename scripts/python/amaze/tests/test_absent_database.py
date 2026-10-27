@@ -1121,7 +1121,7 @@ class UnmountedVolumesAreNotGoneTest(unittest.TestCase):
 
     def test_only_a_path_on_an_absent_volume_is_unreachable(self):
         self.assertFalse(
-            self._check("/tmp/definitely-gone-xyzzy"),
+            self._check(os.path.join(tempfile.gettempdir(), "definitely-gone-xyzzy")),    # native: `/tmp` on Windows is another platform's spelling, left alone by design
             "a deleted path on a mounted volume read as unreachable - "
             "nothing would ever be pruned")
         mounted = [v for v in glob.glob("/Volumes/*") if os.path.isdir(v)]

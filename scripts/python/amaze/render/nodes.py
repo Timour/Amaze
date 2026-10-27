@@ -576,9 +576,9 @@ class NodeHandler:
             tmp_mat = hostos.unique_scratch(mat_path)
             if builder_path:
                 tmp_builder = hostos.unique_scratch(builder_path)
-                with open(tmp_builder, "w", encoding="utf-8") as handle:
+                with open(tmp_builder, "w", encoding="utf-8", newline="\n") as handle:    # one file's bytes whichever OS saved it: the versions compare them
                     handle.write(builder_text)
-            with open(tmp_interface, "w", encoding="utf-8") as handle:
+            with open(tmp_interface, "w", encoding="utf-8", newline="\n") as handle:
                 handle.write(interface_text)
             write_mat(tmp_mat)
             if not os.path.exists(tmp_mat) or os.path.getsize(tmp_mat) == 0:

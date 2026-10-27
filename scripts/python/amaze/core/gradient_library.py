@@ -175,7 +175,7 @@ class GradientLibrary(library.AssetLibrary):
                         "database is not on disk", file=lib_dir)
             return
         try:
-            with open(marker, "w", encoding="utf-8") as handle:
+            with open(marker, "w", encoding="utf-8", newline="\n") as handle:
                 handle.write("seeded %d curated palettes\n" % seeded)
         except OSError as exc:
             debug.exception("gradient seed marker", exc, marker=marker)

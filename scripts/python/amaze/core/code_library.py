@@ -342,7 +342,7 @@ class CodeLibrary(library.AssetLibrary):
                         "database is not on disk", file=lib_dir)
             return  # database.save() reports an OSError to the user instead of raising, so a save held off by a full disk or a cloud-sync lock lands here looking successful; a marker with no database behind it then refuses code.json on every future launch and blocks writes for the session, curable only by deleting a dotfile, while retrying the seed cannot duplicate anything because nothing reached disk
         try:
-            with open(marker, "w", encoding="utf-8") as handle:  # written OUTSIDE the try that wraps the save, and even when nothing was added, so a broken or empty def file is not retried on every launch
+            with open(marker, "w", encoding="utf-8", newline="\n") as handle:  # written OUTSIDE the try that wraps the save, and even when nothing was added, so a broken or empty def file is not retried on every launch
                 handle.write("seeded\n")
         except OSError as exc:
             debug.exception("snippet seed marker", exc, marker=marker)

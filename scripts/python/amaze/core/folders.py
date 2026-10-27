@@ -15,22 +15,45 @@ _unstoppable: list = globals().get("_unstoppable", [])    # walks that would not
 
 
 def walk_following_links(root: str):
-    """`os.walk` following symlinked folders, each real one once. ▸r/platform-files"""
+    """`os.walk` following symlinked folders, each real one once; a caller may prune or sort `dirnames` in place. Only a link is resolved: a plain folder's real path is its parent's plus its name. ▸r/platform-files"""
+    try:
+        stack = [(root, os.path.realpath(root))]
+    except OSError:
+        return
     seen = set()
-    for dirpath, dirnames, filenames in os.walk(root, followlinks=True):
-        try:
-            real = os.path.realpath(dirpath)
-        except OSError:
-            continue
+    while stack:
+        dirpath, real = stack.pop()
         if real in seen:
-            dirnames[:] = []          # already covered by another path
-            continue
+            continue                  # already covered by another path
         seen.add(real)
-        dirnames[:] = [
-            name for name in dirnames
-            if os.path.realpath(os.path.join(dirpath, name)) not in seen
-        ]
+        try:
+            with os.scandir(dirpath) as listing:
+                entries = list(listing)
+        except OSError:
+            continue                  # unreadable, as os.walk skips it
+        dirnames, filenames, reals = [], [], {}
+        for entry in entries:
+            try:
+                is_dir = entry.is_dir()    # follows a link, as followlinks=True does
+            except OSError:
+                is_dir = False
+            if not is_dir:
+                filenames.append(entry.name)
+                continue
+            if hostos.is_link_like(entry):
+                try:
+                    child_real = os.path.realpath(entry.path)
+                except OSError:
+                    continue
+            else:
+                child_real = os.path.join(real, entry.name)
+            if child_real not in seen:
+                dirnames.append(entry.name)
+                reals[entry.name] = child_real
         yield dirpath, dirnames, filenames
+        for name in reversed(dirnames):    # depth first, in the caller's order, as os.walk goes
+            if name in reals:
+                stack.append((os.path.join(dirpath, name), reals[name]))
 
 
 def scan_folder(path: str, recursive: bool, matches, stopped=lambda: False):

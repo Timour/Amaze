@@ -399,7 +399,7 @@ def file_lock(path: str):
     handle = None
     held = False
     try:
-        handle = open(lock_path(path), "a+")
+        handle = open(lock_path(path), "a+", encoding="utf-8", newline="\n")    # never written: the lock is a byte range
     except OSError:
         handle = None
     if handle is not None:
@@ -657,6 +657,55 @@ def _set_mode(path: str, mode: int) -> None:
         os.chmod(path, mode)
     except OSError:
         pass
+
+
+def is_link_like(entry) -> bool:
+    """Whether an `os.scandir` entry can lead somewhere its own name does not: a symlink, or on Windows any reparse point - a junction is not `is_symlink()`, and `os.walk` follows it whatever `followlinks` says. Read from the listing, so it opens nothing."""
+    try:
+        if entry.is_symlink():
+            return True
+        if is_windows():
+            attributes = entry.stat(follow_symlinks=False).st_file_attributes
+            return bool(attributes & stat.FILE_ATTRIBUTE_REPARSE_POINT)
+    except OSError:
+        return True    # unreadable: resolve it rather than guess its real path
+    return False
+
+
+def check_deletable(path: str) -> None:
+    """Raise the OSError deleting `path` would raise because another program holds it open; POSIX deletes an open file, so only Windows can refuse."""
+    if not is_windows():
+        return
+    import ctypes
+    from ctypes import wintypes
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateFileW.argtypes = (wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
+                                     wintypes.LPVOID, wintypes.DWORD, wintypes.DWORD,
+                                     wintypes.HANDLE)
+    kernel32.CreateFileW.restype = wintypes.HANDLE
+    kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+    delete, share_all, open_existing = 0x00010000, 0x7, 3
+    handle = kernel32.CreateFileW(os.path.abspath(path), delete, share_all, None,
+                                  open_existing, 0, None)
+    if handle in (None, wintypes.HANDLE(-1).value):    # a holder that did not share delete: Python's own open() is one
+        code = ctypes.get_last_error()
+        raise OSError(errno.EACCES, ctypes.FormatError(code).strip(), path, code)
+    kernel32.CloseHandle(handle)
+
+
+def remove_file(path: str) -> None:
+    """`os.unlink`, clearing a read-only flag first on Windows, which refuses to delete one where POSIX asks only the folder; the flag is put back when the delete fails anyway."""
+    if not is_windows():
+        os.unlink(path)
+        return
+    mode = os.stat(path).st_mode
+    if not mode & stat.S_IWRITE:
+        os.chmod(path, mode | stat.S_IWRITE)
+    try:
+        os.unlink(path)
+    except OSError:
+        _set_mode(path, mode)
+        raise
 
 
 def discard_scratch(scratch: str) -> None:

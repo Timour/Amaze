@@ -59,8 +59,9 @@ MODULES="test_widget test_other"
 mode="${FAKE_SUITE_MODE:-green}"
 echo "$mode $*${AMAZE_HOUDINI:+ on $AMAZE_HOUDINI}" >> "$FAKE_SUITE_CALLS"
 if [ -n "${AMAZE_SKIP_REPORT:-}" ]; then
+    houdini="$(printf '%s' "${AMAZE_HOUDINI:-}" | sed 's/\\/\\\\/g')"    # a Windows path's backslashes are JSON escapes
     printf '{"testsRun": 203, "houdini": "%s", "skipped": %s}\n' \
-        "${AMAZE_HOUDINI:-}" "${FAKE_SKIPPED:-[]}" > "$AMAZE_SKIP_REPORT"
+        "$houdini" "${FAKE_SKIPPED:-[]}" > "$AMAZE_SKIP_REPORT"
 fi
 
 case "$mode" in

@@ -77,6 +77,7 @@ def copy_across(source: str, dest: str, tick=None, stopped=lambda: False) -> boo
     """Copy `source` whole beside `dest`, place it, then remove the source; False if `dest` is taken."""
     if os.path.lexists(dest):
         return False
+    hostos.check_deletable(source)    # held open on Windows: copying would only make a second file
     part = os.path.join(os.path.dirname(dest), "." + os.path.basename(dest) + PART)
     made = False
     try:
@@ -104,7 +105,7 @@ def copy_across(source: str, dest: str, tick=None, stopped=lambda: False) -> boo
         if made:
             _remove(part)
     try:
-        os.unlink(source)
+        hostos.remove_file(source)    # a read-only original goes too, as it does on POSIX
     except OSError as exc:
         raise OSError(exc.errno, messages.MOVE_KEPT_BOTH % (exc.strerror or exc)) from exc
     return True

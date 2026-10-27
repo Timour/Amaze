@@ -274,6 +274,7 @@ class TheRecorderChargesEachTestWhatItRan(unittest.TestCase):
         with open(fresh, "w", encoding="utf-8") as handle:
             handle.write("VALUE = 1\n")
         self.addCleanup(sys.modules.pop, "impact_fresh", None)
+        importlib.invalidate_caches()    # the finder caches the folder listing; on Windows a file written this fast is not in it
         recorder = impact_map.Recorder(self.root, tool=sys.monitoring.COVERAGE_ID)
         if not recorder.start():
             self.skipTest("the coverage tool id is taken in this process")
@@ -301,6 +302,7 @@ class TheRecorderChargesEachTestWhatItRan(unittest.TestCase):
         with open(os.path.join(self.root, "impact_built.py"), "w", encoding="utf-8") as handle:
             handle.write("def build():\n    return [1]\n\n\nTABLE = build()\n")
         self.addCleanup(sys.modules.pop, "impact_built", None)
+        importlib.invalidate_caches()    # the finder caches the folder listing; on Windows a file written this fast is not in it
         recorder = impact_map.Recorder(self.root, tool=sys.monitoring.COVERAGE_ID)
         if not recorder.start(audit=False):
             self.skipTest("the coverage tool id is taken in this process")

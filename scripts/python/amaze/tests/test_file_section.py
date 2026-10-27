@@ -2055,6 +2055,21 @@ def _landed_counts(model, timeout=10.0):
         time.sleep(0.002)
 
 
+def _norm(path) -> str:
+    """One spelling of a path, so a watched call matches whatever separators the model passed."""
+    return os.path.normcase(os.path.normpath(str(path)))
+
+
+def _same_path(path, other) -> bool:
+    return _norm(path) == _norm(other)
+
+
+def _under(path, root) -> bool:
+    """`path` is `root` or inside it, compared by `_norm` - a raw startswith misses on Windows."""
+    path, root = _norm(path), _norm(root)
+    return path == root or path.startswith(root.rstrip(os.sep) + os.sep)
+
+
 def _pump_until(done, timeout=10.0) -> bool:
     """Run the event loop until `done()` answers true, or the time is up."""
     deadline = time.monotonic() + timeout
@@ -2095,7 +2110,7 @@ class CountsWalkOffTheGuiThreadTest(unittest.TestCase):
 
         def listing(path="."):
             if (threading.get_ident() != main
-                    and str(path).rstrip("/") == held_root.rstrip("/")):
+                    and _same_path(path, held_root)):
                 entered.set()
                 release.wait(10)
             return real(path)
@@ -2114,7 +2129,7 @@ class CountsWalkOffTheGuiThreadTest(unittest.TestCase):
         def watched(real):
             def call(path="."):
                 if (threading.get_ident() == main
-                        and any(str(path).startswith(r) for r in roots)):
+                        and any(_under(path, r) for r in roots)):
                     on_gui.append(str(path))
                 return real(path)
             return call
@@ -2219,8 +2234,8 @@ class CountsWalkOffTheGuiThreadTest(unittest.TestCase):
         real = os.scandir
 
         def listing(path="."):
-            if any(str(path).startswith(r) for r in roots + [new]):
-                walked.append(str(path).rstrip("/"))
+            if any(_under(path, r) for r in roots + [new]):
+                walked.append(_norm(path))
             return real(path)
 
         with mock.patch("os.scandir", listing):
@@ -2228,7 +2243,7 @@ class CountsWalkOffTheGuiThreadTest(unittest.TestCase):
                                     "premise: the Locate refused")
             counts = _landed_counts(model)
         self.assertEqual([8, 1, 4, 3], counts, "the moved location's count is wrong")
-        self.assertEqual([new.rstrip("/")], walked,
+        self.assertEqual([_norm(new)], walked,
                          "a Locate recounted locations it did not move")
 
     def test_a_count_asked_from_another_thread_still_lands(self):
@@ -2258,7 +2273,7 @@ class CountsWalkOffTheGuiThreadTest(unittest.TestCase):
         real = os.scandir
 
         def slow(path="."):
-            if threading.get_ident() != main and str(path).startswith(root):
+            if threading.get_ident() != main and _under(path, root):
                 entered.set()
                 time.sleep(0.25)    # 41 folders: about 10s for a walk nobody stops
             return real(path)
@@ -2289,7 +2304,7 @@ class CountsWalkOffTheGuiThreadTest(unittest.TestCase):
 
         def listing(path="."):
             if (threading.get_ident() != main
-                    and any(str(path).startswith(r) for r in roots)):
+                    and any(_under(path, r) for r in roots)):
                 walked.append(str(path))
                 thread = QtCore.QThread.currentThread()
                 deadline = time.monotonic() + 3

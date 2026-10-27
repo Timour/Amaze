@@ -323,7 +323,7 @@ def _rotate() -> None:
     # A Windows reader's handle blocks the rename, a deny-write one blocks the truncate too. ▸r/failed-write
     try:
         shutil.copyfile(_path, _path + ".1")
-        open(_path, "w", encoding="utf-8").close()
+        open(_path, "w", encoding="utf-8", newline="\n").close()
     except OSError:
         _rotation_blocked = True
 
@@ -346,7 +346,7 @@ def _write_locked(record: dict) -> None:
     record["session"] = _session
     try:
         os.makedirs(os.path.dirname(_path), exist_ok=True)
-        with open(_path, "a", encoding="utf-8") as handle:
+        with open(_path, "a", encoding="utf-8", newline="\n") as handle:
             handle.write(json.dumps(record, default=_stringify) + "\n")
     except Exception:
         pass

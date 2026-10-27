@@ -1681,5 +1681,51 @@ class TheSandboxStaysArmedForTheSuiteTest(unittest.TestCase):
             "- every test after this module can now write live data")
 
 
+class TextFilesAreTheSameBytesOnEveryOS(unittest.TestCase):
+    """Text mode on Windows encodes by the locale and writes `\\r\\n`, so a file one Mac and one PC both save flips under the sync and a byte compare calls it changed. Read from the SOURCE, so a new open() is held to it too. ▸r/platform-files"""
+
+    def _text_opens(self) -> list:
+        """(file:line, mode, keywords) for every built-in open() not in binary mode, tests excluded."""
+        import ast
+        package = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        found = []
+        for root, dirs, files in os.walk(package):
+            dirs[:] = [d for d in dirs if d not in ("__pycache__", "tests")]
+            for filename in files:
+                if not filename.endswith(".py"):
+                    continue
+                path = os.path.join(root, filename)
+                with open(path, encoding="utf-8") as handle:
+                    tree = ast.parse(handle.read())
+                for node in ast.walk(tree):
+                    if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                            and node.func.id == "open"):
+                        continue
+                    keywords = {k.arg for k in node.keywords}
+                    mode = node.args[1] if len(node.args) > 1 else next(
+                        (k.value for k in node.keywords if k.arg == "mode"), None)
+                    mode = mode.value if isinstance(mode, ast.Constant) else "r"
+                    if "b" not in mode:
+                        where = "%s:%d" % (os.path.relpath(path, package).replace(os.sep, "/"),
+                                           node.lineno)
+                        found.append((where, mode, keywords))
+        return found
+
+    def test_the_scan_still_finds_the_package_opens(self):
+        self.assertGreaterEqual(len(self._text_opens()), 40,    # ▸p/vacuous-register
+                                "the scan stopped matching, so its silence means nothing")
+
+    def test_every_text_open_names_its_encoding(self):
+        bare = [where for where, _mode, keywords in self._text_opens()
+                if "encoding" not in keywords]
+        self.assertEqual([], bare, "these read or write in the locale's encoding, "
+                                   "which is cp1252 on a Windows Python: %s" % bare)
+
+    def test_every_text_write_names_its_newline(self):
+        bare = [where for where, mode, keywords in self._text_opens()
+                if any(c in mode for c in "wax+") and "newline" not in keywords]
+        self.assertEqual([], bare, "these write \\r\\n on Windows and \\n elsewhere: %s" % bare)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

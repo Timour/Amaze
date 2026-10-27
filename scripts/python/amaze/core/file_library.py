@@ -380,21 +380,22 @@ class FileFiles(grid_engine.GridEngine,
                         results.append((dirpath, name, None))
         else:
             try:
-                names = sorted(os.listdir(folder), key=str.lower)
+                with os.scandir(folder) as listing:
+                    entries = sorted(listing, key=lambda entry: entry.name.lower())
             except OSError as exc:  # present but unreadable - a permissions change, a share dropped mid-session; same rule as above, say so rather than showing an empty folder
                 self._unreadable_folders.add(folder)
                 debug.event("file", "a registered folder could not be "
                             "read", folder=folder, error=str(exc))
                 return []
-            for name in names:
-                if name.startswith("."):
+            for entry in entries:
+                if entry.name.startswith("."):
                     continue
                 try:
-                    st = os.stat(os.path.join(folder, name))
+                    st = entry.stat()    # from the listing on Windows, where os.stat opens the file; follows a link as os.stat does
                 except (OSError, ValueError):
                     continue
                 if stat.S_ISREG(st.st_mode):    # `os.path.isfile`, keeping the stat it made
-                    results.append((folder, name, st))
+                    results.append((folder, entry.name, st))
         return results
 
     def _load(self, folder_list: list) -> None:

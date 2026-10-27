@@ -3,6 +3,8 @@
 import errno
 import os
 import shutil
+import stat
+import sys
 import tempfile
 import types
 import unittest
@@ -45,6 +47,14 @@ def _picture(colour):
 
 GEO_CACHE = dict(prefix="geo_thumbnails_hiddenlineghost_black",
                  failure_tag=file_library.GEO_FAILURE_TAG)    # the one `_Prefs` points the grid at
+
+
+def _writable(path):
+    """Clear a read-only flag so cleanup can delete the file - Windows refuses otherwise."""
+    try:
+        os.chmod(path, stat.S_IREAD | stat.S_IWRITE)
+    except OSError:
+        pass
 
 
 class _Folders(unittest.TestCase):
@@ -137,6 +147,30 @@ class AFileCopiesAcrossDrivesTest(_Folders):
             result = self._move()
         self.assertEqual([(self.plate, self.landed)], result.skipped)
         self.assertEqual(("plate", "other"), (_read(self.plate), _read(self.landed)))
+        self.assertEqual([], self._parts())
+
+    def test_a_read_only_original_still_goes(self):
+        """POSIX deletes a read-only file from a writable folder; Windows refuses until the flag is off."""
+        os.chmod(self.plate, stat.S_IREAD)
+        self.addCleanup(_writable, self.plate)
+        self.addCleanup(_writable, self.landed)
+        result = self._move()
+        self.assertEqual([(self.plate, self.landed)], result.moved,
+                         "a read-only file was copied and its original kept")
+        self.assertFalse(os.path.exists(self.plate))
+        self.assertEqual("plate", _read(self.landed))
+        self.assertFalse(os.stat(self.landed).st_mode & stat.S_IWRITE,
+                         "the moved file lost its read-only flag")
+
+    @unittest.skipUnless(sys.platform == "win32", "only Windows refuses to delete a file held open")
+    def test_an_original_held_open_is_not_copied(self):
+        """A file another program holds cannot be deleted on Windows, so a copy would only double it."""
+        with open(self.plate, "rb"):
+            result = self._move()
+        self.assertEqual([], result.moved)
+        self.assertEqual([self.plate], [source for source, _why in result.failed])
+        self.assertEqual("plate", _read(self.plate))
+        self.assertFalse(os.path.exists(self.landed), "the held file was copied anyway")
         self.assertEqual([], self._parts())
 
     def test_a_stop_mid_copy_keeps_the_original_and_leaves_no_part(self):
