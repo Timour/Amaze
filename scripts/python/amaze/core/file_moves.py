@@ -14,6 +14,7 @@ from amaze.helpers import hostos
 Result = collections.namedtuple("Result", "moved skipped failed")    # pairs, pairs, (source, why)
 PART = ".amaze-part"    # a cross-drive copy's suffix until it is whole and placed
 CHUNK = 4 << 20    # bytes per read: one stop check and one progress tick between reads
+carriers = globals().get("carriers", {})    # name -> fn(preferences, pairs), a higher layer's share
 
 
 class Stopped(Exception):
@@ -137,22 +138,26 @@ def move(pairs, tick=None, stopped=lambda: False) -> Result:
 
 
 def carry(preferences, pairs) -> None:
-    """What Amaze keeps about each moved file - star, comment, icon, capture - follows it."""
+    """What Amaze keeps about each moved file follows it: star, comment, icon, capture, pictures."""
     keys = {}
     for old, new in pairs:
         before = captures.file_key(preferences, old)
         after = captures.file_key(preferences, new)
         if before and after and before != after:
             keys[before] = after
-    if not keys:
-        return
-    locations.files_moved(preferences, keys)
+    if keys:
+        locations.files_moved(preferences, keys)
     for before, after in keys.items():
         try:
             captures.move_file_capture(preferences, before, after)
         except OSError as exc:
             debug.event("move", "a capture did not follow its file",
                         key=before, error=str(exc))
+    for name, follow in list(carriers.items()):
+        try:
+            follow(preferences, pairs)
+        except Exception as exc:                          # noqa: BLE001 - one carrier failing leaves the rest theirs
+            debug.event("move", "a carrier failed", carrier=name, error=str(exc))
 
 
 def _size(path: str) -> int:

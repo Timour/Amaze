@@ -7,7 +7,7 @@ import stat
 
 from PySide6 import QtCore, QtGui
 
-from amaze.core import captures, debug, folders, geo_library, scene_files
+from amaze.core import captures, debug, file_moves, folders, geo_library, scene_files
 from amaze.core import grid_engine
 from amaze.core import keyed_store, locations
 from amaze.core import texture_library, thumbnails, tile_icons
@@ -108,6 +108,68 @@ def sweep_folder_cache(preferences, folder: str, remaining) -> int:
         debug.event("file", "removed folder's cache swept",
                     folder=folder, thumbnails=removed)
     return removed
+
+
+def carry_thumbnails(preferences, pairs) -> int:
+    """Moved files keep their cached pictures: in every cache here, each picture and entry follow."""
+    key = texture_library.ThumbnailCache._key
+    moves = {key(old): key(new) for old, new in pairs if key(old) != key(new)}
+    root = hostos.cache_root()
+    try:
+        names = sorted(os.listdir(root), key=str.lower) if moves else []
+    except OSError:
+        return 0
+    import json as json_mod
+    carried = 0
+    for name in names:
+        if not name.startswith(("texture_thumbnails_", "geo_thumbnails_")):
+            continue
+        cache_dir = os.path.join(root, name)
+        live = texture_library.live_caches(cache_dir)
+        for cache in live:
+            cache.save()    # what an open cache holds unwritten reaches the file first
+        manifest_path = os.path.join(cache_dir, "manifest.json")
+        try:
+            with open(manifest_path, encoding="utf-8") as handle:
+                manifest = json_mod.load(handle)
+        except (OSError, ValueError):
+            continue    # none yet, or one the cache itself refuses to read
+        if not isinstance(manifest, dict):
+            continue
+
+        def picture(path, cache_dir=cache_dir):
+            return os.path.join(cache_dir, texture_library.ThumbnailCache._cache_filename(path))
+
+        changed = False
+        for old, new in moves.items():
+            entry = manifest.pop(old, None)
+            if entry is None:
+                continue
+            changed = True
+            if not entry.get("failed"):    # a failure is an entry with no picture
+                try:
+                    os.replace(picture(old), picture(new))
+                except OSError:
+                    continue    # no picture to carry: the entry goes, and the file renders anew
+            manifest[new] = entry
+            carried += 1
+        if not changed:
+            continue
+        try:
+            hostos.write_json_atomic(manifest_path, manifest, indent=None)
+        except OSError as exc:
+            debug.event("file", "moved pictures not filed", dir=name, error=str(exc))
+            continue
+        for cache in live:
+            cache.moved(moves)
+            for path in [*moves, *moves.values()]:    # the grid's decoded copies, both ends
+                thumbnails.engine.discard(
+                    ("geo", path, cache.cache_dir) if name.startswith("geo_")
+                    else ("tex", path, cache.size))
+    return carried
+
+
+file_moves.carriers["thumbnails"] = carry_thumbnails    # a move takes the cached pictures along
 
 
 def shows_all_files(preferences, location: str) -> bool:

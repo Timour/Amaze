@@ -15,7 +15,7 @@ _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 from amaze import messages  # noqa: E402
 from amaze.core import captures, debug, file_library, file_moves  # noqa: E402
-from amaze.core import keyed_store, notes, tile_icons  # noqa: E402
+from amaze.core import keyed_store, notes, texture_library, thumbnails, tile_icons  # noqa: E402
 from amaze.core import locations as locations_mod  # noqa: E402
 from amaze.panel import sidebar  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
@@ -35,6 +35,16 @@ def _write(path, text):
 def _read(path):
     with open(path, encoding="utf-8") as handle:
         return handle.read()
+
+
+def _picture(colour):
+    image = QtGui.QImage(8, 8, QtGui.QImage.Format.Format_RGB32)
+    image.fill(QtGui.QColor(colour))
+    return image
+
+
+GEO_CACHE = dict(prefix="geo_thumbnails_hiddenlineghost_black",
+                 failure_tag=file_library.GEO_FAILURE_TAG)    # the one `_Prefs` points the grid at
 
 
 class _Folders(unittest.TestCase):
@@ -208,6 +218,120 @@ class WhatAmazeKeepsFollowsTheFileTest(unittest.TestCase):
         self.assertEqual("kept", page["items"][0]["text"])
 
 
+class ThePicturesFollowTheFileTest(unittest.TestCase):
+    """A moved file's cached pictures follow it: nothing renders again, nothing stays behind."""
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp(prefix="amaze_move_thumbs_")
+        self.addCleanup(shutil.rmtree, self.root, True)
+        self.a = os.path.join(self.root, "a")
+        self.b = os.path.join(self.root, "b")
+        os.makedirs(self.b)
+        self.plate = os.path.join(self.a, "plate.exr")
+        self.mesh = os.path.join(self.a, "mesh.obj")
+        _write(self.plate, "plate")
+        _write(self.mesh, "v 0 0 0")
+        locations_mod.forget()
+        self.addCleanup(locations_mod.forget)
+        self.prefs = _Prefs([self.root])
+        self.addCleanup(shutil.rmtree, self.prefs.dir, True)
+        self.images = texture_library.ThumbnailCache(256)
+        self.geo = texture_library.ThumbnailCache(256, **GEO_CACHE)
+        self.images.put(self.plate, _picture("#d08040"))
+        self.geo.put(self.mesh, _picture("#40d080"))
+        self.images.save()
+        self.geo.save()
+
+    def _move(self, sources, folder=None):
+        result = file_moves.move(file_moves.targets(sources, folder or self.b))
+        file_moves.carry(self.prefs, result.moved)
+        return result.moved
+
+    def _on_disk(self, cache):
+        """What the cache's manifest file says, read fresh, as the next session will."""
+        kwargs = GEO_CACHE if cache is self.geo else {}
+        return texture_library.ThumbnailCache(cache.size, **kwargs)
+
+    def test_a_moved_files_pictures_follow_it_and_leave_nothing_behind(self):
+        self._move([self.plate, self.mesh])
+        for cache, old in ((self.images, self.plate), (self.geo, self.mesh)):
+            new = os.path.join(self.b, os.path.basename(old))
+            for reader in (cache, self._on_disk(cache)):
+                with self.subTest(cache=cache.cache_dir, reader=reader is cache):
+                    self.assertIsNotNone(reader.valid_path(new), "the picture did not follow")
+                    self.assertIsNone(reader.valid_path(old), "an entry stayed behind")
+            gone = os.path.join(cache.cache_dir, texture_library.ThumbnailCache._cache_filename(
+                texture_library.ThumbnailCache._key(old)))
+            self.assertFalse(os.path.exists(gone), "the old picture file stayed behind")
+
+    def test_the_open_caches_do_not_write_the_old_entry_back(self):
+        self._move([self.plate])
+        self.images._dirty = True
+        self.images.save()
+        held = self._on_disk(self.images).paths()
+        self.assertNotIn(texture_library.ThumbnailCache._key(self.plate), held)
+        self.assertIn(texture_library.ThumbnailCache._key(os.path.join(self.b, "plate.exr")), held)
+
+    def test_a_picture_left_at_the_new_place_yields_to_the_file_arriving(self):
+        stale = os.path.join(self.b, "plate.exr")
+        _write(stale, "an older file of that name")
+        self.images.put(stale, _picture("#2040ff"))
+        self.images.save()
+        os.remove(stale)    # that file left; its picture stayed
+        self._move([self.plate])
+        png = self.images.valid_path(stale)
+        self.assertIsNotNone(png, "the arriving file has no picture")
+        self.assertEqual("#d08040", QtGui.QImage(png).pixelColor(1, 1).name())
+
+    def test_a_picture_not_yet_saved_follows_too(self):
+        fresh = os.path.join(self.a, "fresh.exr")
+        _write(fresh, "fresh")
+        self.images.put(fresh, _picture("#80c040"))    # made, and not in the manifest file yet
+        self._move([fresh])
+        landed = os.path.join(self.b, "fresh.exr")
+        self.assertIsNotNone(self._on_disk(self.images).valid_path(landed),
+                             "a picture the grid had not saved stayed behind")
+
+    def test_the_grids_copy_of_an_old_picture_is_dropped(self):
+        landed = texture_library.ThumbnailCache._key(os.path.join(self.b, "plate.exr"))
+        stale = ("tex", landed, self.images.size)    # the key the grid paints that row by
+        thumbnails.engine.deposit(stale, _picture("#2040ff"))
+        self.addCleanup(thumbnails.engine.discard, stale)
+        self._move([self.plate])
+        self.assertIsNone(thumbnails.engine.peek(stale), "the grid would paint a stale copy")
+
+    def test_undo_brings_back_the_picture_the_file_has_now(self):
+        """Not the stale one its old place kept - the one 1.19.0 showed after a move back."""
+        moved = self._move([self.plate])
+        landed = os.path.join(self.b, "plate.exr")
+        self.images.put(landed, _picture("#2040ff"))    # made again where it landed
+        self.images.save()
+        back = file_moves.move(file_moves.back(moved))
+        file_moves.carry(self.prefs, back.moved)
+        png = self.images.valid_path(self.plate)
+        self.assertIsNotNone(png, "the file came back without a picture")
+        self.assertEqual("#2040ff", QtGui.QImage(png).pixelColor(1, 1).name(),
+                         "the old place's stale picture came back")
+        self.assertIsNone(self.images.valid_path(landed))
+
+    def test_a_hundred_moved_files_render_nothing(self):
+        meshes = []
+        for at in range(100):
+            path = os.path.join(self.a, "m%03d.obj" % at)
+            _write(path, "v %d 0 0" % at)
+            self.geo.put(path, _picture("#40d080"))
+            meshes.append(path)
+        self.geo.save()
+        self._move(meshes)
+        model = file_library.FileFiles(self.prefs)
+        asked = []
+        model.render_geo = asked.extend
+        model.set_folder(self.b)
+        listed = [model.data(model.index(row, 0)) for row in range(model.rowCount())]
+        self.assertEqual(100, sum(1 for name in listed if name.startswith("m")))
+        self.assertEqual([], asked, "moved files were sent to render again")
+
+
 class TheFileTabMovesWhatLandsOnAFolderTest(unittest.TestCase):
     """A release over a folder row moves the selected files there; Undo Move puts them back."""
 
@@ -272,6 +396,15 @@ class TheFileTabMovesWhatLandsOnAFolderTest(unittest.TestCase):
         self.assertTrue(_pump_until(lambda: self._tile("plate.exr") is None),
                         "the moved file is still listed where it was")
         self.assertEqual(messages.MOVE_DONE % ("1 file", "b"), self.said[-1])
+
+    def test_the_release_carries_the_files_picture(self):
+        cache = self.panel.file_files_model._get_image_cache()
+        cache.put(self.plate, _picture("#d08040"))
+        cache.save()
+        self._release_over(self.b)
+        held = texture_library.ThumbnailCache(cache.size).paths()
+        self.assertIn(texture_library.ThumbnailCache._key(self.landed), held)
+        self.assertNotIn(texture_library.ThumbnailCache._key(self.plate), held)
 
     def test_undo_move_puts_the_file_back(self):
         self.assertFalse(self.section.can_undo_move([], None), "premise: nothing to undo yet")

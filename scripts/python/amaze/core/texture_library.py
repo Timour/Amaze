@@ -70,6 +70,13 @@ class ThumbnailCache:
         for path in paths:
             self._manifest.pop(self._key(path), None)
 
+    def moved(self, moves: dict) -> None:
+        """Entries a move re-filed on disk: both ends dropped, then the disk read in, the move's own."""
+        for old, new in moves.items():
+            self._manifest.pop(self._key(old), None)
+            self._manifest.pop(self._key(new), None)    # a stale entry here would outlive the carry
+        self._adopt_from_disk()
+
     def _load_manifest(self) -> dict:
         """The manifest, or {} - a file that EXISTS but will not parse latches `_unreadable`, because reading it as empty and writing over it turns one truncated write into permanent loss of the whole map (every PNG orphaned, ~6.2s per EXR to re-convert; tile_icons is the reference policy)."""
         self._unreadable = False

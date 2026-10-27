@@ -453,8 +453,8 @@ that folder on disk, all the selected files together. A file whose name is
 already taken in that folder stays where it is, and the status line names
 it; the scene open in Houdini also stays. On another drive each file is copied first,
 with the progress on the status line, and the original is removed once
-its copy is complete. A moved file keeps its favorite, comment, tile icon
-and capture. Its path changes, so a scene that reads it from the old path
+its copy is complete. A moved file keeps its favorite, comment, tile icon,
+capture and thumbnail. Its path changes, so a scene that reads it from the old path
 finds nothing there. After a move, **Undo Move** at the top of the
 right-click menu puts the files back.
 
