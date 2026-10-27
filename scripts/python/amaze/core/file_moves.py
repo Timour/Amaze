@@ -4,6 +4,7 @@ import atexit
 import collections
 import os
 import shutil
+import time
 
 from PySide6 import QtCore
 
@@ -14,6 +15,7 @@ from amaze.helpers import hostos
 Result = collections.namedtuple("Result", "moved skipped failed")    # pairs, pairs, (source, why)
 PART = ".amaze-part"    # a cross-drive copy's suffix until it is whole and placed
 CHUNK = 4 << 20    # bytes per read: one stop check and one progress tick between reads
+HELD_WAITS = (0.05, 0.15, 0.35)    # seconds between tries at a file Windows says is in use
 carriers = globals().get("carriers", {})    # name -> fn(preferences, pairs), a higher layer's share
 
 
@@ -48,11 +50,21 @@ def same_drive(path: str, folder: str) -> bool:
         return False
 
 
+def _patiently(call, *args):
+    """`call(*args)`, retried while Windows answers the file is held, then once more raising - `hostos.replace_file`'s waits."""
+    for wait in HELD_WAITS:
+        try:
+            return call(*args)
+        except PermissionError:    # a thumbnail read or a sync scanner holding it for a moment
+            time.sleep(wait)
+    return call(*args)
+
+
 def place(source: str, dest: str) -> bool:
     """Move a file within one drive; False, and nothing changed, when `dest` is taken."""
     if hostos.is_windows():
         try:
-            os.rename(source, dest)    # Windows refuses a taken name itself
+            _patiently(os.rename, source, dest)    # Windows refuses a taken name itself
         except FileExistsError:
             return False
         return True
@@ -77,7 +89,7 @@ def copy_across(source: str, dest: str, tick=None, stopped=lambda: False) -> boo
     """Copy `source` whole beside `dest`, place it, then remove the source; False if `dest` is taken."""
     if os.path.lexists(dest):
         return False
-    hostos.check_deletable(source)    # held open on Windows: copying would only make a second file
+    _patiently(hostos.check_deletable, source)    # held open on Windows: copying would only make a second file
     part = os.path.join(os.path.dirname(dest), "." + os.path.basename(dest) + PART)
     made = False
     try:

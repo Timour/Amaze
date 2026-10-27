@@ -6,6 +6,7 @@ import shutil
 import stat
 import sys
 import tempfile
+import threading
 import types
 import unittest
 from unittest import mock
@@ -93,6 +94,25 @@ class AFileMovesOnOneDriveTest(_Folders):
 
     def test_a_file_already_in_the_folder_is_no_target(self):
         self.assertEqual([], file_moves.targets([self.plate], self.a))
+
+    @unittest.skipUnless(sys.platform == "win32", "only Windows refuses to rename a file held open")
+    def test_a_file_held_for_a_moment_still_moves(self):
+        """A thumbnail read holds the file for a moment; Windows refuses the rename until it lets go."""
+        holder = open(self.plate, "rb")
+        threading.Timer(0.1, holder.close).start()
+        result = self._move()
+        holder.close()
+        self.assertEqual([(self.plate, self.landed)], result.moved,
+                         "a hold that ended in 0.1 s failed the move: %s" % (result.failed,))
+        self.assertEqual("plate", _read(self.landed))
+
+    @unittest.skipUnless(sys.platform == "win32", "only Windows refuses to rename a file held open")
+    def test_a_file_held_for_good_fails_and_stays(self):
+        with open(self.plate, "rb"):
+            result = self._move()
+        self.assertEqual([self.plate], [source for source, _why in result.failed])
+        self.assertEqual("plate", _read(self.plate))
+        self.assertFalse(os.path.exists(self.landed))
 
     def test_without_hard_links_a_taken_name_is_still_refused(self):
         """No hard links means a rename, which replaces silently. ▸r/cross-volume-move"""
