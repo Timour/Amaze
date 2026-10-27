@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.19.1
+
+- File: a moved file's thumbnail moves with it, so the file is not rendered again in its new folder, and Undo Move brings back the same picture.
+
 ## 1.19.0
 
 - File: files dragged from the grid onto a folder in the sidebar move into that folder on disk. A file whose name is already taken there stays where it is, and the status line names it. A move to another drive copies in the background, with the progress on the status line. A moved file keeps its favorite, comment, tile icon and capture, and Undo Move on the right-click menu puts the files back.
