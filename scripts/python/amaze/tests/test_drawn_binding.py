@@ -19,6 +19,19 @@ from amaze.tests import test_support  # noqa: E402
 
 TEXT_SUFFIX = " ▸ text"
 
+
+def _houdini_ui_font():
+    """Houdini's own UI font at its 12 px, loaded from $HFS: the headless placeholder is Courier on Windows, 84 px for a label the font draws at 58. ▸r/windows-files"""
+    path = os.path.join(hou.getenv("HFS") or "", "houdini", "fonts",
+                        "SideFX-SourceSansPro-Regular.ttf")
+    families = QtGui.QFontDatabase.applicationFontFamilies(
+        QtGui.QFontDatabase.addApplicationFont(path))
+    if not families:
+        raise unittest.SkipTest("Houdini's UI font is not at %s" % path)
+    font = QtGui.QFont(families[0])
+    font.setPixelSize(theme.ui_px(12))
+    return font
+
 PREFS_FRAMES = ("P01", "P02", "P03a", "P03b", "P04", "P05", "P06")
 
 PINNED_BUTTONS = {    # every text button Preferences takes from the document, written out here so a lost pin fails rather than quietly widening to the host font
@@ -387,6 +400,7 @@ class PreferencesIsBuiltFromTheDocument(unittest.TestCase):
     def test_every_pinned_widget_lands_on_its_drawn_x(self):
         """SIZE was pinned and POSITION was not, so a row of pinned widgets ended near its drawn boxes rather than on them: the content column is held to the drawn width, and each gap is the drawn gap. Vertical is Qt's own and the host's tab bar moves it, so only x is checked here."""
         dialog = self._dialog()
+        dialog.setFont(_houdini_ui_font())    # a row's x depends on its label's width, so measure the font the artist sees
         dialog.show()
         self.addCleanup(dialog.hide)
         QtWidgets.QApplication.processEvents()
