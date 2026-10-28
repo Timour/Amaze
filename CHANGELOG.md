@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.19.3
+
+- Amaze's own test suite runs in about half the time on Windows. Nothing changes in how Amaze works.
+
 ## 1.19.2
 
 - File: on Windows, a file that something is reading for a moment, such as Amaze making its thumbnail, now moves when dropped on a folder instead of failing.
