@@ -31,7 +31,7 @@ def host_of(report) -> str:
     """A name for the install a report came from, for the message."""
     houdini = (report.get("houdini") or "").rstrip("/")
     if not houdini:
-        return "(newest install)"
+        return "(production build)"
     for part in houdini.split("/"):
         if part.startswith("Houdini") and any(c.isdigit() for c in part):
             return part

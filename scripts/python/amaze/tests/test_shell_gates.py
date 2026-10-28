@@ -685,6 +685,52 @@ class AStartedPatchIsUndoneWhenWhatFollowsRaises(unittest.TestCase):
         self.assertEqual([], _starts_left_running(ast.parse(paired)))
 
 
+class TheSuiteRunsOnTheProductionBuild(unittest.TestCase):
+    """`amaze_houdini`: the LOWEST build of the newest major - production, with a daily above it."""
+
+    def _pick(self, *roots):
+        resolver = os.path.join(REPO, "tools", "houdini-env.sh")
+        fake = " ".join("'%s'" % root for root in roots)
+        script = (". '%s'\namaze_houdini_roots() { [ -z \"%s\" ] || printf '%%s\\n' %s; }\n"
+                  "amaze_houdini\n" % (resolver, fake, fake))
+        result = subprocess.run(["bash", "-c", script], capture_output=True, text=True)
+        self.assertEqual(0, result.returncode, result.stderr)
+        return result.stdout.strip()
+
+    def test_production_runs_and_the_daily_above_it_does_not(self):
+        self.assertEqual("/A/Houdini22.0.100",
+                         self._pick("/A/Houdini22.0.100", "/A/Houdini22.0.200"))
+
+    def test_an_older_major_beside_them_is_not_run(self):
+        self.assertEqual("/A/Houdini22.0.100", self._pick(
+            "/A/Houdini21.0.300", "/A/Houdini22.0.100", "/A/Houdini22.0.200"))
+
+    def test_one_install_is_the_one_run(self):
+        self.assertEqual("/A/Houdini22.0.200", self._pick("/A/Houdini22.0.200"))
+
+    def test_every_platform_spelling_names_its_major(self):
+        windows = "C:/Program Files/Side Effects Software/Houdini %s"
+        self.assertEqual(windows % "22.0.100", self._pick(
+            windows % "21.0.300", windows % "22.0.100", windows % "22.0.200"))
+        mac = "/Applications/Houdini/Houdini%s/Frameworks/Houdini.framework/Versions/Current/Resources"
+        self.assertEqual(mac % "22.0.100",
+                         self._pick(mac % "21.0.300", mac % "22.0.100", mac % "22.0.200"))
+        self.assertEqual("/opt/hfs22.0.100",
+                         self._pick("/opt/hfs21.0.300", "/opt/hfs22.0.100", "/opt/hfs22.0"))
+
+    def test_no_install_answers_nothing(self):
+        self.assertEqual("", self._pick())
+
+    def test_no_runner_still_asks_for_the_newest(self):
+        """The one choice lives in the resolver; a caller asking for the newest bypasses it."""
+        callers = [os.path.join("tools", name) for name in os.listdir(os.path.join(REPO, "tools"))
+                   if name.endswith(".sh")]
+        callers += [os.path.join("tools", "git-hooks", "pre-push"), RUNNER_REL]
+        for relative in callers:
+            with open(os.path.join(REPO, relative), encoding="utf-8") as handle:
+                self.assertNotIn("amaze_newest_houdini", handle.read(), relative)
+
+
 class EveryToolSpeaksTheResolver(unittest.TestCase):
     """Every `tools/*.sh` reaching for hython sources the one resolver, and the two recorded trap spellings are banned from the directory."""
 

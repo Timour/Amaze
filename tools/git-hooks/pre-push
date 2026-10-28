@@ -47,7 +47,7 @@ refs="$(cat)"
 # shellcheck source=tools/houdini-env.sh
 . "$repo/tools/houdini-env.sh"
 if ! command -v hython >/dev/null 2>&1 && [ -z "${HFS:-}" ]; then
-    HFS="$(amaze_newest_houdini)"
+    HFS="$(amaze_houdini)"
     export HFS
 fi
 if ! command -v hython >/dev/null 2>&1 && [ ! -d "${HFS:-}" ]; then
@@ -61,8 +61,8 @@ fi
 # TREE, so the whole suite runs for anything that tree may not be: no refs, a
 # ref that is not HEAD, a new branch or a deletion, an unreadable range, or
 # uncommitted files, and so does a map that cannot answer. A new minor or major
-# version (1.7 to 1.8) runs it whole, on the newest Houdini like every run: an
-# older major is tested only by hand, with `run-tests.sh --all-versions`. A
+# version (1.7 to 1.8) runs it whole, on the production build like every run:
+# any other install is tested only by hand, with `run-tests.sh --all-versions`. A
 # patch (1.7.0 to 1.7.1) runs what it reaches. Only a whole run updates the install.
 whole=""
 head="$(git rev-parse HEAD 2>/dev/null || echo none)"

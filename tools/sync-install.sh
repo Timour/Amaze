@@ -130,7 +130,7 @@ cp "$repo/OPmenu.xml" "$install/OPmenu.xml"
 find "$install" -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null || true
 _root="${HFS:-}"
 if [ -z "$_root" ] || ! amaze_hython "$_root" >/dev/null; then
-    _root="$(amaze_newest_houdini)"
+    _root="$(amaze_houdini)"
 fi
 _hython=""    # the compiler: Houdini's own Python first - a hython start costs 15 s here
 if [ -n "$_root" ]; then
@@ -182,8 +182,8 @@ if ! command -v hython >/dev/null 2>&1 && [ -z "${HFS:-}" ]; then
     # Never a bare `ls -d <glob>` here: under `set -euo pipefail` it
     # exits non-zero when nothing matches and kills this script with NO
     # output, on the fresh machine these lines exist for.
-    # amaze_newest_houdini returns "" instead, which is reportable.
-    HFS="$(amaze_newest_houdini)"
+    # amaze_houdini returns "" instead, which is reportable.
+    HFS="$(amaze_houdini)"
     export HFS
 fi
 if ! command -v hython >/dev/null 2>&1 && [ ! -d "${HFS:-}" ]; then

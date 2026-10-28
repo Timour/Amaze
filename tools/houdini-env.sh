@@ -12,9 +12,9 @@ amaze_is_windows() {
     esac
 }
 
-# Every install, oldest first, so `tail -1` is the newest. Counted by
-# holding bin/hython, never by name. NOT `ls -d <glob>` - that exits
-# non-zero on no match and kills the caller under pipefail.
+# Every install, oldest first. Counted by holding bin/hython, never by
+# name. NOT `ls -d <glob>` - that exits non-zero on no match and kills
+# the caller under pipefail.
 amaze_houdini_roots() {
     # zsh ABORTS on an unmatched glob where bash carries it as a literal, and this file is sourced from interactive zsh too - nonomatch, function-scoped, gives every shell the bash reading (measured 2026-08-21: `/opt/hfs*` killed the sourcing shell on a Mac).
     [ -n "${ZSH_VERSION:-}" ] && setopt localoptions nonomatch 2>/dev/null
@@ -54,8 +54,24 @@ amaze_houdini_roots() {
     if [ -n "$found" ]; then printf '%s' "$found" | sort -V | cut -f2; fi
 }
 
-amaze_newest_houdini() {
-    amaze_houdini_roots | tail -1
+# The build every default run uses: the LOWEST install of the newest major,
+# because a newer build beside it is a daily. `--all-versions` runs them all.
+amaze_houdini() {
+    local roots major root
+    roots="$(amaze_houdini_roots)"
+    [ -n "$roots" ] || return 0
+    major="$(amaze_houdini_major "$(printf '%s\n' "$roots" | tail -1)")"
+    while IFS= read -r root; do
+        if [ "$(amaze_houdini_major "$root")" = "$major" ]; then
+            printf '%s\n' "$root"
+            return 0
+        fi
+    done <<< "$roots"
+}
+
+# A root's major version from its own spelling: Houdini22.0.x, Houdini 22.0.x, hfs22.0.
+amaze_houdini_major() {
+    printf '%s' "$1" | sed -nE 's/.*([Hh]oudini ?|hfs)([0-9]+).*/\2/p'
 }
 
 amaze_hython() {

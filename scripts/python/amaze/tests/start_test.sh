@@ -70,7 +70,7 @@ if [ -n "${AMAZE_HOUDINI:-}" ]; then
     PATH="$HFS/bin:$PATH"
     export PATH
 elif ! command -v hython >/dev/null 2>&1 && [ -z "${HFS:-}" ]; then
-    HFS="$(amaze_newest_houdini)"
+    HFS="$(amaze_houdini)"    # the production build, never a daily beside it
     export HFS
 fi
 

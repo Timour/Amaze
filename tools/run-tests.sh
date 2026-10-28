@@ -75,9 +75,9 @@ for arg in "$@"; do
 done
 set -- ${args[@]+"${args[@]}"}
 
-# --all-versions: EVERY installed Houdini, not just the newest. Bugs
-# here are version-specific and the default run follows whichever
-# install is newest, so a green suite can mean the other major never ran.
+# --all-versions: EVERY installed Houdini, not just the production build.
+# Bugs here are version-specific and the default run takes one build
+# (amaze_houdini), so a green suite can mean another install never ran.
 if [ "${1:-}" = "--all-versions" ]; then
     shift
     overall=0

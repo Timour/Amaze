@@ -132,7 +132,7 @@ class TheHostNameTest(unittest.TestCase):
         self.assertEqual(
             check_dead_cover.host_of({"houdini": H21}), "Houdini21.0.729")
         self.assertEqual(
-            check_dead_cover.host_of({"houdini": ""}), "(newest install)")
+            check_dead_cover.host_of({"houdini": ""}), "(production build)")
 
 
 class TheReportWriterTest(_ReportsMixin):
