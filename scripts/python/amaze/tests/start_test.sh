@@ -136,6 +136,13 @@ test_fixture_guard test_packages test_texstore test_event_pumps \
 test_bug_report test_peer_read test_two_panels test_peer_merge test_peer_refresh test_file_lock \
 test_impact_map"
 
+# NOT in a default run: the gate scripts' slower cases, each a hook in a
+# throwaway repo, 5-20 s a test on Windows. A push that changes tools/ runs
+# them (GATE_TESTS in tools/select-tests.py), CI runs them every time, and
+# naming one runs it by hand.
+# shellcheck disable=SC2034  # read by test_shell_gates and select-tests.py
+GATE_MODULES="test_shell_gates_more"
+
 # Vulkan viewport multithreading OFF, every platform: ten panel modules
 # crash 10/10 with it on. Suite-only - a live Houdini keeps its defaults.
 # ▸r/vulkan-threading

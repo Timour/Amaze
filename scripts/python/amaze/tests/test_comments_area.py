@@ -411,7 +411,7 @@ class ALibrarySwitchLeavesTheNoteWhereItWasTyped(unittest.TestCase):
 
     def _switch_library(self):
         """Preferences' own door: another library picked, with a user, and Apply."""
-        other = test_support.fresh_library(self)
+        other = test_support.seeded_library(self)
         self.assertTrue(test_support.apply_library(self, self.panel, other))
         QtWidgets.QApplication.processEvents()
         return other

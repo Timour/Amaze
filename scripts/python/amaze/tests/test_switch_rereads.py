@@ -126,7 +126,7 @@ class AfterASwitchFileShowsTheNewLibrarysLocation(unittest.TestCase):
         settings = os.path.join(panel.prefs.path, "settings.json")
         with open(settings, encoding="utf-8") as handle:
             data = json.load(handle)
-        data.update(directory=test_support.fresh_library(self),
+        data.update(directory=test_support.seeded_library(self),
                     file_folders=[theirs], last_file_folder=theirs,
                     file_location_records={theirs: {"registered": True}})
         with open(settings, "w", encoding="utf-8") as handle:
@@ -148,7 +148,7 @@ class AfterASwitchAnAssetGridFollowsItsSidebar(unittest.TestCase):
         settings = os.path.join(panel.prefs.path, "settings.json")
         with open(settings, encoding="utf-8") as handle:
             data = json.load(handle)
-        data.update(directory=test_support.fresh_library(self))
+        data.update(directory=test_support.seeded_library(self))
         with open(settings, "w", encoding="utf-8") as handle:
             json.dump(data, handle)
         panel.switch_all_models()
@@ -187,7 +187,7 @@ class AfterASwitchTheGridAndTheSidebarShareOneDocument(unittest.TestCase):
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
-        other = test_support.fresh_library(self)
+        other = test_support.seeded_library(self)
         settings = os.path.join(self.panel.prefs.path, "settings.json")
         with open(settings, encoding="utf-8") as handle:
             data = json.load(handle)
@@ -220,7 +220,7 @@ class AnUnreadableNodeFileDoesNotStopTheSwitch(unittest.TestCase):
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
-        self.other = test_support.fresh_library(self)
+        self.other = test_support.seeded_library(self)
         with open(os.path.join(self.other, "cops.json"), "w",
                   encoding="utf-8") as handle:
             handle.write('{"assets": [')    # cut off mid-sync
@@ -280,7 +280,7 @@ class OneLibraryChangeIsOneSwitch(unittest.TestCase):
         return switch.call_count
 
     def test_preferences_apply(self):
-        other = test_support.fresh_library(self)
+        other = test_support.seeded_library(self)
 
         def apply(dialog):
             self.assertTrue(test_support.apply_library(self, self.panel, other, dialog=dialog))
@@ -301,7 +301,7 @@ class OneLibraryChangeIsOneSwitch(unittest.TestCase):
                          "closing Preferences re-read every model a second time")
 
     def test_a_folder_changed_behind_preferences_is_switched_to_at_close(self):
-        other = test_support.fresh_library(self)
+        other = test_support.seeded_library(self)
         self.assertEqual(
             1, self._switches_while_open(
                 lambda dialog: _write_settings(self.panel, directory=other)),
@@ -360,13 +360,13 @@ class EveryWayOntoALibraryTakesOneOrder(unittest.TestCase):
         self._assert_order("Reload Library")
 
     def test_preferences_apply(self):
-        other = test_support.fresh_library(self)
+        other = test_support.seeded_library(self)
         self.assertTrue(test_support.apply_library(self, self.panel, other))
         self._assert_order("Preferences' Apply")
 
     def test_closing_preferences(self):
         self.panel.show_prefs()
-        _write_settings(self.panel, directory=test_support.fresh_library(self))
+        _write_settings(self.panel, directory=test_support.seeded_library(self))
         del self.order[:]
         self.panel._prefs_dialog.close()
         QtWidgets.QApplication.processEvents()
@@ -389,7 +389,7 @@ class AnUnreadableListIsAskedAboutBeforeTheSwitch(unittest.TestCase):
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
-        self.broken = test_support.fresh_library(self)
+        self.broken = test_support.seeded_library(self)
         index = os.path.join(self.broken, "library.json")
         shutil.copyfile(index, index + ".bak-1")    # what Repair puts back
         with open(index, "wb") as handle:
@@ -437,7 +437,7 @@ class AnUnreadableListIsAskedAboutBeforeTheSwitch(unittest.TestCase):
         self.assertEqual(files, sorted(os.listdir(self.broken)), "Cancel wrote into the folder")
 
     def test_a_list_that_has_not_arrived_is_refused_before_anything_is_saved(self):
-        held = test_support.fresh_library(self)
+        held = test_support.seeded_library(self)
         os.remove(os.path.join(held, "library.json"))    # mat/ and img/ stay: it has held a library
         saves = []
         self.panel.prefs.save = lambda *a, **k: saves.append(True)

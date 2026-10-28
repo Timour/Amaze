@@ -168,6 +168,11 @@ def _keep_seeded(library: str) -> None:
     _SEEDED.append(keep)
 
 
+def seeded_library(testcase) -> str:
+    """`fresh_library`, already seeded once a fixture panel has run: a switch onto it skips the curated palettes, 8.5 of a switch's 8.8 s on Windows."""
+    return fresh_library(testcase, _SEEDED[0] if _SEEDED else None)
+
+
 class _RecordedLog:
     """The records a `captured_log()` block wrote, read back per RECORD - deliberately no joined-text accessor, and drained before the block's tempdir goes. ▸p/harness-isolation"""
 
@@ -352,11 +357,17 @@ def with_fixture_user(library) -> str:
     return library
 
 
-def fixture_panel(testcase):
+def fixture_panel(testcase, render_geometry=False):
     """A REAL AmazePanel over a private fixture library: `hostos.config_root` redirected (AFTER importing panel.py, which reloads hostos), saves disabled, network blocked, workers stopped on cleanup, and the isolation ASSERTED rather than assumed. ▸p/harness-isolation"""
     from amaze.panel import panel as panel_mod       # reloads hostos
     from amaze.helpers import hostos as hostos_mod
     from amaze.core import matx_library, matx_sources
+    from amaze.actions import files as files_actions
+
+    if not render_geometry:    # the fixture's three geometry files cost ~1.2 s a render, every panel, every folder shown
+        real_render = files_actions.render_geo_misses
+        files_actions.render_geo_misses = lambda model, misses: None
+        testcase.addCleanup(setattr, files_actions, "render_geo_misses", real_render)
 
     def _no_network(url, *args, **kwargs):
         raise OSError(

@@ -448,6 +448,31 @@ class FileOpensOnTheFolderItLeft(unittest.TestCase):
                 self.assertEqual(row, panel.cat_list.currentIndex().row())
 
 
+class AFixturePanelRendersGeometryOnlyWhenAsked(unittest.TestCase):
+    """The fixture folder holds three geometry files; rendering them cost the slowest class 29 of its 35 s on Windows."""
+
+    def _renders(self, **kwargs):
+        from amaze.render import thumbs
+        asked = []
+
+        def counted(_renderer, path, _out, _size):
+            asked.append(path)
+            return False
+
+        with unittest.mock.patch.object(thumbs.ThumbNailRenderer, "create_thumb_geo_file", counted):
+            panel = test_support.fixture_panel(self, **kwargs)
+            panel.section_tabs.setChecked("file")
+            QtWidgets.QApplication.processEvents()
+        return asked
+
+    def test_a_fixture_panel_renders_no_geometry(self):
+        self.assertEqual([], self._renders(), "a fixture panel rendered geometry nobody asked for")
+
+    def test_a_test_that_asks_still_gets_the_render(self):
+        self.assertTrue(self._renders(render_geometry=True),
+                        "render_geometry=True no longer reaches the renderer")
+
+
 class RemovingALocationLeavesNoTileOfIt(unittest.TestCase):
     """Remove Location takes the row you stand on to All, any other row leaves you where you are."""
 

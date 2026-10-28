@@ -10,7 +10,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TESTS = "scripts/python/amaze/tests/"
 MAP_NAME = "amaze-test-impact.json"
 EVERYTHING = (TESTS + "run_suite.py", TESTS + "start_test.sh", TESTS + "impact_map.py")
-GATE_TESTS = ("test_shell_gates", "test_dead_cover")
+GATE_TESTS = ("test_shell_gates", "test_shell_gates_more", "test_dead_cover")
 
 _spec = importlib.util.spec_from_file_location(
     "impact_map", os.path.join(REPO, TESTS, "impact_map.py"))

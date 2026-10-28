@@ -298,13 +298,13 @@ class EverySwitchPublishesTheVariable(unittest.TestCase):
             json.dump(data, handle)
 
     def test_reload_library(self):
-        other = test_support.fresh_library(self)
+        other = test_support.seeded_library(self)
         self._write_settings(directory=other)
         self.panel.open()
         self._assert_published(other)
 
     def test_preferences_apply(self):
-        other = test_support.fresh_library(self)
+        other = test_support.seeded_library(self)
         self.assertTrue(test_support.apply_library(self, self.panel, other))
         self._assert_published(other)
 
