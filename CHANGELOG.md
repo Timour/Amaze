@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.19.4
+
+- The test suite runs on the lowest Houdini build installed of the newest major, and a newer build beside it runs only when asked for; nothing changes in the app.
+
 ## 1.19.3
 
 - Amaze's own test suite runs in about half the time on Windows. Nothing changes in how Amaze works.
