@@ -47,7 +47,7 @@ def _cache_dir_for(size: int, prefix: str = "texture_thumbnails") -> str:
 
 
 class ThumbnailCache:
-    """Disk-backed cache of generated thumbnails, keyed by canonical source path and kept 1:1 with the folder by reconcile(); main-thread only - the background worker generates images and never touches the cache."""
+    """Thumbnails by canonical source path, kept 1:1 with the folder; the manifest is main-thread only."""
 
     def __init__(self, size: int, prefix: str = "texture_thumbnails",
                  failure_tag: str = "") -> None:
@@ -146,6 +146,23 @@ class ThumbnailCache:
 
     def _cache_path(self, full_path: str) -> str:
         return os.path.join(self.cache_dir, self._cache_filename(full_path))
+
+    def png_path(self, full_path: str) -> str:
+        """Where `full_path`'s thumbnail PNG lives in this cache - what a convert worker writes."""
+        return self._cache_path(self._key(full_path))
+
+    def adopt(self, full_path: str, png: str) -> bool:
+        """Record the worker's PNG for `full_path`; False when `png` is not its file here, or it is gone."""
+        full_path = self._key(full_path)
+        if hostos.comparable_path(png) != hostos.comparable_path(self._cache_path(full_path)):
+            return False
+        try:
+            st = os.stat(full_path)
+        except OSError:
+            return False
+        self._manifest[full_path] = {"mtime": st.st_mtime, "size": st.st_size}
+        self._dirty = True
+        return True
 
     def valid_path(self, full_path: str, stat=None) -> str | None:
         """The cached PNG's path if the manifest entry still matches the source file (same mtime/size) - a stat, no decode; the engine's background loader does the reading."""

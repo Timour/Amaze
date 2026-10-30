@@ -944,11 +944,33 @@ def _real_base(base: str) -> str:
     return os.path.realpath(base)
 
 
+def _under_real_base(real_base: str, parts):
+    """realpath(join(base, *parts)) built on the resolved base, a lstat a name; None: ask realpath."""
+    names = []
+    for part in parts:
+        if os.path.isabs(part) or os.path.splitdrive(part)[0]:
+            return None
+        names += part.replace(os.altsep or os.sep, os.sep).split(os.sep)
+    if not names or any(name in ("", ".", "..") for name in names):
+        return None
+    current = real_base
+    for index, name in enumerate(names):
+        current = os.path.join(current, name)
+        try:
+            st = os.lstat(current)
+        except OSError:
+            return os.path.join(current, *names[index + 1:])    # realpath appends what it cannot stat
+        if (stat.S_ISLNK(st.st_mode)
+                or getattr(st, "st_file_attributes", 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT):
+            return None    # a link or a junction: only realpath knows where it lands
+    return current
+
+
 def contained_join(base: str, *parts: str) -> str:
     """`os.path.join(base, *parts)`, raising `PathEscape` for anything that lands outside `base` - asset filenames are composed from an id that comes verbatim out of `library.json`, which the app does not author alone and cannot assume is honest."""
     composed = os.path.join(base, *parts)
     real_base = _real_base(base)
-    real_composed = os.path.realpath(composed)
+    real_composed = _under_real_base(real_base, parts) or os.path.realpath(composed)
     if real_composed != real_base and not real_composed.startswith(
             real_base.rstrip(os.sep) + os.sep):
         raise PathEscape(

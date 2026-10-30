@@ -531,6 +531,60 @@ class TheHomeLayoutsLiveInHostos(unittest.TestCase):
             "recognised layout and must be left as it is")
 
 
+class ContainmentAnswersAsRealpathDoes(unittest.TestCase):
+    """`contained_join` builds on the base resolved once and realpaths only what a link could move."""
+
+    @staticmethod
+    def _by_realpath(base, *parts):
+        """The answer every caller relied on: both ends resolved by `os.path.realpath`."""
+        composed = os.path.join(base, *parts)
+        real_base, real = os.path.realpath(base), os.path.realpath(composed)
+        if real != real_base and not real.startswith(real_base.rstrip(os.sep) + os.sep):
+            raise hostos.PathEscape(composed)
+        return composed
+
+    def setUp(self):
+        self.base = os.path.join(tempfile.mkdtemp(prefix="amaze_contain_"), "lib")
+        self.outside = tempfile.mkdtemp(prefix="amaze_outside_")
+        for folder in (os.path.dirname(self.base), self.outside):
+            self.addCleanup(shutil.rmtree, folder, True)
+        os.makedirs(os.path.join(self.base, "mat"))
+        for path in (os.path.join(self.base, "mat", "a.mat"), os.path.join(self.outside, "o.mat")):
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write("x")
+        os.symlink(self.outside, os.path.join(self.base, "mat", "away"))
+        os.symlink(os.path.join(self.outside, "o.mat"), os.path.join(self.base, "mat", "o.mat"))
+        os.symlink(os.path.join(self.base, "mat", "a.mat"), os.path.join(self.base, "mat", "in.mat"))
+
+    def test_every_shape_gets_the_answer_realpath_gives(self):
+        shapes = [("mat", "a.mat"), ("mat/a.mat",), ("mat", "missing.mat"), ("new", "deeper", "x.mat"),
+                  ("mat", "in.mat"), ("mat", "o.mat"), ("mat", "away", "o.mat"), ("mat", "away"),
+                  ("mat/", "a.mat"), ("mat", "..", "..", "x.mat"), ("mat", "..", "mat", "a.mat"),
+                  ("mat", "."), ("",), (self.outside, "o.mat"), (os.path.join(self.base, "mat"),)]
+        refused = 0
+        for parts in shapes:
+            with self.subTest(parts=parts):
+                try:
+                    expected = self._by_realpath(self.base, *parts)
+                except hostos.PathEscape:
+                    refused += 1
+                    with self.assertRaises(hostos.PathEscape):
+                        hostos.contained_join(self.base, *parts)
+                    continue
+                self.assertEqual(expected, hostos.contained_join(self.base, *parts))
+        self.assertEqual(5, refused, "premise: the shapes no longer hold five escapes")
+
+    def test_a_plain_name_under_a_resolved_base_costs_no_realpath(self):
+        hostos.contained_join(self.base, "mat", "a.mat")    # resolves the base, once
+        with mock.patch.object(os.path, "realpath", wraps=os.path.realpath) as realpath:
+            hostos.contained_join(self.base, "mat", "a.mat")
+            hostos.contained_join(self.base, "mat", "missing.mat")
+            self.assertEqual(0, realpath.call_count, "a plain name was resolved component by component")
+            with self.assertRaises(hostos.PathEscape):
+                hostos.contained_join(self.base, "mat", "o.mat")
+            self.assertEqual(1, realpath.call_count, "a link was not handed to realpath")
+
+
 class OnlineDownloadsStayInsideTheLibrary(unittest.TestCase):
 
     def test_no_hand_rolled_containment_is_left(self):

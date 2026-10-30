@@ -100,6 +100,7 @@ class _PreviewWorker(QtCore.QThread):
     """Fetches preview images - a URL download or a callable reader - and reports them by thumbnail-engine key."""
 
     ready = QtCore.Signal(object, object)   # (key, QImage)
+    failed = QtCore.Signal(object)          # (key): the job brought no picture
     attempted = QtCore.Signal()             # per job, success OR failure
 
     def __init__(self, jobs):
@@ -123,12 +124,14 @@ class _PreviewWorker(QtCore.QThread):
                     debug.event("online", "preview did not decode",
                                 url=getattr(fetch, "label", None)    # a reader carries its label - str() of a lambda names nothing
                                 or str(fetch), path=path)
+                    self.failed.emit(key)
                 else:
                     self.ready.emit(key, image)
             except Exception as exc:
                 debug.exception("preview download", exc,
                                 url=getattr(fetch, "label", None)
                                 or str(fetch), path=path)
+                self.failed.emit(key)
             finally:
                 self.attempted.emit()    # drives the bar - must fire even on failure, or a timed-out preview stalls it short of 100%
 
@@ -175,6 +178,7 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
             app.aboutToQuit.connect(self.shutdown)
         self._error = ""
         self._requested = set()      # keys already asked for
+        self._hosted = {}            # key -> whether its hosted picture may still be asked this session
         self._preview_total = 0      # preview downloads queued this burst
         self._preview_done = 0       # ...and attempted (ok or failed)
         self._pending = []           # records awaiting the next dispatch
@@ -369,8 +373,8 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
         crc = _preview_crc(record)
         return ("matx", record.source, record.uid) + (() if crc is None else (crc,))
 
-    def _cache_path(self, record):
-        crc = _preview_crc(record)
+    def _cache_path(self, record, hosted=True):
+        crc = _preview_crc(record) if hosted else None
         digest = hashlib.md5(
             ("%s/%s%s" % (record.source, record.uid, "" if crc is None else "#%d" % crc))
             .encode("utf-8")
@@ -483,7 +487,9 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
                 self._deposit_face(key, str(rec.payload.get("section") or ""))
                 continue
             source = self.source_for(rec)
-            if _preview_crc(rec) is not None and hasattr(source, "read_thumb_to"):
+            if (_preview_crc(rec) is not None and hasattr(source, "read_thumb_to")
+                    and self._hosted.get(key, True)):
+                self._hosted[key] = True
                 reader = (lambda path, s=source, r=rec:    # Amaze's render, before any drawn face
                           s.read_thumb_to(r, path))
                 reader.label = str(rec.uid)
@@ -509,13 +515,14 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
                 self._deposit_face(key, "material")    # a source that ships no picture
                 continue
             url = rec.preview_url.replace("format=webp", "format=png")    # Qt reads no WebP ▸r/matx-source-quirks
-            jobs.append((key, url, self._cache_path(rec)))
+            jobs.append((key, url, self._cache_path(rec, hosted=False)))    # never the hosted file's place
         if not jobs:
             return
         self._preview_total += len(jobs)
         self.progress_changed.emit(self._preview_done, self._preview_total)
         worker = _PreviewWorker(jobs)
         worker.ready.connect(self._deposit_preview)
+        worker.failed.connect(self._on_preview_failed)
         worker.attempted.connect(self._on_preview_attempted)
         worker.finished.connect(lambda w=worker: self._preview_batch_done(w))
         self._workers.append(worker)
@@ -541,6 +548,16 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
     def _deposit_preview(self, key, image):
         thumbnails.engine.deposit(key, image)
         self._requested.discard(key)    # the RAM budget can still evict - drop the marker so the next paint re-asks (the disk cache answers)
+
+    def _on_preview_failed(self, key):
+        """A hosted picture that did not arrive: the next paint falls through to the tile's own face."""
+        if not self._hosted.get(key):
+            return    # any other failure keeps its marker, or every repaint would fetch it again
+        self._hosted[key] = False
+        self._requested.discard(key)
+        row = self._key_rows.get(key)
+        if row is not None and 0 <= row < len(self._records):
+            self.row_changed(row, [QtCore.Qt.ItemDataRole.DecorationRole])
 
     def _on_preview_ready(self, key):
         try:

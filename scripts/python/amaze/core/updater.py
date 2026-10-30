@@ -331,7 +331,10 @@ def apply_update(staged: str, install: str) -> None:
     if not os.path.isdir(staged):
         raise OSError("the staged update is not there: %s" % staged)
     aside = install.rstrip("/\\") + ".replacing"
+    if os.path.isdir(aside):
+        _carry_addons(aside, install)    # an older build's failed carry left the only copy here
     shutil.rmtree(aside, ignore_errors=True)    # a leftover from a run that died mid-swap
+    _carry_addons(install, staged)    # part of the swap: a carry that fails refuses the update
     os.rename(install, aside)    # same parent as the install, so this one never crosses a volume
     try:
         try:
@@ -342,19 +345,17 @@ def apply_update(staged: str, install: str) -> None:
         shutil.rmtree(install, ignore_errors=True)    # a half-copied install is not one to leave in place
         os.rename(aside, install)    # PUT IT BACK - the window between the two renames is the only moment this is not whole
         raise
-    if not _carry_addons(aside, install):
-        debug.event("updater", "update applied", install=install, old_kept=aside)
-        return
     shutil.rmtree(aside, ignore_errors=True)    # only once the new one is IN PLACE, so the rollback above is still reachable until here
     debug.event("updater", "update applied", install=install)
 
 
-def _carry_addons(old: str, new: str) -> bool:
-    """Move the installed add-ons into the new install; False, logged, leaves the old one standing."""
+def _carry_addons(old: str, new: str) -> None:
+    """Copy the add-ons `new` lacks out of `old`; raises OSError with a finished sentence."""
     from amaze.core import addons
     try:
         addons.carry(old, new)
     except OSError as exc:
         debug.event("updater", "add-ons not carried", error=str(exc), kept=old)
-        return False
-    return True
+        raise OSError(
+            "the installed add-ons could not be copied into the update (%s), "
+            "so it was not installed. Nothing has been changed." % exc) from exc

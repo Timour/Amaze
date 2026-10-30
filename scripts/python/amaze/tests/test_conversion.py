@@ -3,6 +3,7 @@
 import inspect
 import os
 import shutil
+import struct
 import sys
 import tempfile
 import threading
@@ -126,6 +127,13 @@ class _StubProcess:
     def program(self):
         return "/usr/bin/stub"
 
+    def arguments(self):
+        return ["/a/stub/source.exr"]
+
+    def moveToThread(self, thread):
+        self.thread_moved_to = thread
+        return True
+
     def deleteLater(self):
         self.deleted = True
 
@@ -209,6 +217,108 @@ class ACompletionReapedElsewhere(unittest.TestCase):
             parked_before, len(conversion._ABANDONED),
             "a phantom was parked in the graveyard - its destruction "
             "will stall shutdown")
+
+
+def _sigkill_deferred():
+    """The killed child stays Running past the grace, as uninterruptible disk I/O keeps it."""
+    return mock.patch.object(conversion._Child, "waitForFinished",
+                             lambda self, msecs=30000: False)
+
+
+def _parked_since(before) -> list:
+    return [process for process in conversion._ABANDONED if process not in before]
+
+
+def _collect(parked, seconds=5.0) -> list:
+    """Run the main loop until `parked` are collected; answers those left, released unawaited."""
+    import time
+    deadline = time.monotonic() + seconds
+    while (any(p in conversion._ABANDONED for p in parked)
+           and time.monotonic() < deadline):
+        _app.processEvents()
+        time.sleep(0.01)
+    left = [p for p in parked if p in conversion._ABANDONED]
+    for process in left:    # its death went unheard; marked, its destructor does not wait 30 s
+        process.mark_reaped_elsewhere()
+        conversion._ABANDONED.remove(process)
+    return left
+
+
+@unittest.skipUnless(os.name == "posix", "the stand-in children are /bin/sleep and /bin/sh")
+class AChildParkedByAWorkerIsStillCollected(unittest.TestCase):
+    """A worker has no event loop once run() returns; its last parked child is the main loop's."""
+
+    def test_a_child_parked_from_a_worker_thread_is_reaped_on_the_main_loop(self):
+        before = list(conversion._ABANDONED)
+
+        class Worker(QtCore.QThread):
+            def run(self):
+                conversion._run_process("/bin/sleep", ["5"], timeout_ms=300)
+
+        with _sigkill_deferred():
+            worker = Worker()
+            worker.start()
+            self.assertTrue(worker.wait(10000), "the worker never came back")
+        parked = _parked_since(before)
+        self.assertEqual(1, len(parked), "premise: the killed child was not parked")
+        self.assertEqual([], _collect(parked),
+                         "a child parked by a finished worker is never collected")
+
+
+@unittest.skipUnless(os.name == "posix", "the stand-in children are /bin/sleep and /bin/sh")
+class AStuckChildEndsItsFilesChain(unittest.TestCase):
+    """A child that outlives its kill is stuck in its file's reads: no second converter starts."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp(prefix="amaze_stuck_")
+        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
+        self.source = os.path.join(self.dir, "cloud.exr")
+        with open(self.source, "wb") as handle:
+            handle.write(b"not a picture Qt can read")
+        self.started = []
+        before = list(conversion._ABANDONED)
+        self.addCleanup(lambda: _collect(_parked_since(before)))
+
+    def _stuck(self, source, out_path, ctx):
+        self.started.append("stuck")
+        return conversion._run_process("/bin/sh", ["-c", "sleep 5", source],
+                                       timeout_ms=300, cancelled=ctx.cancelled)
+
+    def _next(self, source, out_path, ctx):
+        self.started.append("next")
+        return False, "not reached"
+
+    def test_an_abandoned_child_stops_its_files_chain(self):
+        adapters = (("stuck", self._stuck), ("next", self._next))
+        with _sigkill_deferred(), mock.patch.object(conversion, "_FORMAT_ADAPTERS", adapters):
+            result = conversion.convert_image(self.source, 64)
+        self.assertEqual(["stuck"], self.started,
+                         "a second converter was started on a file whose reads are stuck")
+        self.assertEqual(conversion.REASON_STALLED, result.reason)
+
+    def test_the_timeout_and_graveyard_records_name_the_file(self):
+        adapters = (("stuck", self._stuck),)
+        with test_support.captured_log() as log, _sigkill_deferred():
+            with mock.patch.object(conversion, "_FORMAT_ADAPTERS", adapters):
+                conversion.convert_image(self.source, 64)
+        for message in ("a converter hit its timeout", "helper abandoned to the graveyard"):
+            with self.subTest(message):
+                found = [r for r in log.records("convert") if r.get("msg") == message]
+                self.assertEqual(1, len(found), "premise: no %r record" % message)
+                self.assertIn(self.source, found[0]["data"].get("args") or [],
+                              "the record does not name the file")
+
+
+def _exr_header(width, height) -> bytes:
+    """An OpenEXR header laid out as Houdini's iconvert writes one, with a box2i data window."""
+    def attribute(name, kind, value):
+        return name + b"\0" + kind + b"\0" + struct.pack("<i", len(value)) + value
+    window = struct.pack("<4i", 0, 0, width - 1, height - 1)
+    return (b"\x76\x2f\x31\x01" + struct.pack("<I", 2)
+            + attribute(b"compression", b"compression", b"\x03")
+            + attribute(b"dataWindow", b"box2i", window)
+            + attribute(b"displayWindow", b"box2i", window)
+            + b"\0" + b"\0" * 64)    # the header's end, then where offsets and pixels would be
 
 
 class ConversionCase(unittest.TestCase):
@@ -464,6 +574,36 @@ class ItAnswersWithAReasonNeverABareNone(ConversionCase):
                                 "- the ceiling is doing more than it should")
         self.assertLessEqual(max(result.image.width(),
                                  result.image.height()), 256)
+
+
+class AnEXRIsMeasuredFromItsOwnHeader(ConversionCase):
+    """Qt declares no size for an EXR, so the decoded ceiling reads its header's data window."""
+
+    def _converters_started(self, width, height):
+        path = self.path("plate.exr")
+        with open(path, "wb") as handle:
+            handle.write(_exr_header(width, height))
+        _image, declared, _error = conversion._read_qt(path, 64)
+        self.assertFalse(declared.isValid(), "premise: Qt itself declared the EXR's size")
+        started = []
+
+        def converter(source, out_path, ctx):
+            started.append(source)
+            return False, "no answer"
+
+        with mock.patch.object(conversion, "_FORMAT_ADAPTERS", (("converter", converter),)):
+            result = self.convert(path, 64)
+        return started, result
+
+    def test_an_exr_past_the_ceiling_is_declined_before_any_converter(self):
+        started, result = self._converters_started(20000, 16000)    # 1,280 MB decoded
+        self.assertEqual([], started, "a converter was started on an EXR past the ceiling")
+        self.assertEqual(conversion.REASON_TOO_LARGE, result.reason)
+
+    def test_an_ordinary_exr_still_reaches_the_converters(self):
+        started, result = self._converters_started(4096, 2048)
+        self.assertEqual(1, len(started), "an EXR within the ceiling was refused")
+        self.assertEqual(conversion.REASON_UNREADABLE, result.reason)
 
 
 class TheSizeContract(ConversionCase):

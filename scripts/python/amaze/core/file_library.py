@@ -304,6 +304,7 @@ class FileFiles(grid_engine.GridEngine,
         thumbnails.signals.ready.connect(self._on_thumb_key_ready)  # through the RELAY, not the engine: the singleton is replaced on every module reload, which would leave this model wired to a dead one (thumbnails._EngineSignals)
         thumbnails.signals.convert_attempted.connect(
             self._on_convert_attempted)
+        thumbnails.signals.converted.connect(self._on_converted)
         captures.signals.landed.connect(self._on_capture_landed)    # from any panel or the shelf
 
     def _get_image_cache(self):
@@ -462,7 +463,7 @@ class FileFiles(grid_engine.GridEngine,
                         convert_queued = True
                     thumbnails.engine.discard(key)
                     thumbnails.engine.request_convert(
-                        key, full, image_cache.size)
+                        key, full, image_cache.size, image_cache.png_path(full))
                     self._pending_writes[key] = full
                     self._progress_keys.add(key)
             elif kind == locations.KIND_GEO:
@@ -501,24 +502,21 @@ class FileFiles(grid_engine.GridEngine,
         )
 
     def _on_thumb_key_ready(self, key) -> None:
-        """Engine delivery: repaint every row holding the key, and give a freshly GENERATED image its main-thread disk-cache write (the manifest is main-thread-only by design)."""
+        """Engine delivery: repaint every row holding the key."""
         rows = self._key_rows.get(key) or ()
         if not rows:
             return
-        full_path = self._pending_writes.pop(key, None)
-        if full_path is not None and self._image_cache is not None:
-            image = thumbnails.engine.peek(key)
-            queued_size = key[2] if len(key) > 2 else None  # filed at the size it was made at, or not at all: Preferences is non-modal, so RenderSize can change mid-batch and late deliveries were written into the NEW size's manifest - small images served as large ones across restarts; the row still repaints below, only the durable copy would be mislabelled
-            if image is not None and queued_size == self.preferences.rendersize:
-                self._image_cache.put(full_path, image)
-            elif image is not None:
-                debug.event("file", "converted image not cached - the "
-                                    "size changed while it was in flight",
-                            queued=queued_size,
-                            now=self.preferences.rendersize)
         for row in rows:
             index = self.index(row, 0)
             self.row_changed(index.row(), [QtCore.Qt.ItemDataRole.DecorationRole])
+
+    def _on_converted(self, key, png) -> None:
+        """A conversion's PNG landed: filed in this model's manifest, on the GUI thread, if it asked."""
+        full_path = self._pending_writes.pop(key, None)
+        if full_path is None or self._image_cache is None:
+            return
+        if not self._image_cache.adopt(full_path, png):    # another cache's PNG, or the file went
+            debug.event("file", "converted image not cached", png=png, path=full_path)
 
     def _on_convert_attempted(self, key) -> None:
         """Advance the bar for every attempted item, success or failure; flush the manifest once the batch completes."""
@@ -614,21 +612,6 @@ class FileFiles(grid_engine.GridEngine,
             if self.file_key(row) == str(key):
                 self.row_changed(row, [QtCore.Qt.ItemDataRole.DecorationRole])
 
-    def refresh_row(self, row: int) -> None:
-        """Repaint one row after its capture was replaced - drops the engine's copy first or the old image keeps being served."""
-        full = self._full_path(row)
-        if full and 0 <= row < len(self._row_specs):
-            key = self._row_specs[row][0]
-            if key is not None:
-                try:
-                    thumbnails.engine.discard(key)
-                except Exception as exc:                 # noqa: BLE001
-                    debug.event("file", "could not drop cached image",
-                                error=str(exc))
-        if 0 <= row < len(self._files):
-            index = self.index(row, 0)
-            self.row_changed(index.row(), [QtCore.Qt.ItemDataRole.DecorationRole])
-
     def row_for_path(self, path: str) -> int:
         wanted = hostos.canonical_path_key(path or "")
         for row in range(len(self._files)):
@@ -698,7 +681,7 @@ class FileFiles(grid_engine.GridEngine,
                 thumbnails.engine.discard(key)
                 self._row_specs[row] = (key, "convert", full)
                 thumbnails.engine.request_convert(
-                    key, full, image_cache.size)
+                    key, full, image_cache.size, image_cache.png_path(full))
                 self._pending_writes[key] = full
                 self._progress_keys.add(key)
                 queued.add(key)
@@ -803,9 +786,9 @@ class FileFiles(grid_engine.GridEngine,
         if image is not None:
             return image
         if source == "convert":
-            if not thumbnails.engine.is_pending(key) and not (
-                thumbnails.engine.is_missing(key)
-            ):
+            if thumbnails.engine.is_missing(key):
+                return tile_icons.generic_image(self.tile_face_art(row))    # no converter read it
+            if not thumbnails.engine.is_pending(key):
                 cache = self._image_cache
                 cached_png = (
                     cache.valid_path(payload) if cache else None)

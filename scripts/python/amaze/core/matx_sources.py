@@ -935,7 +935,9 @@ class RGLSource(MatxSource):
                 os.remove(target)
             except OSError:
                 pass
-        if not os.path.exists(target):
+        unread = "%s did not return a measurement (the download is not a tensor_file)" % uid
+        fresh = not os.path.exists(target)
+        if fresh:
             on_bytes = None    # a 0..1 FRACTION per fetch's contract - a string here met a numeric clamp as a TypeError, hidden while no caller passed the callback
             if progress is not None:
                 def on_bytes(read, total):
@@ -947,11 +949,20 @@ class RGLSource(MatxSource):
                     os.remove(target)
                 except OSError:
                     pass
-                raise ValueError(
-                    "%s did not return a measurement (the download is "
-                    "not a tensor_file)" % uid
-                )
-        values, note = self.values_from_bsdf(target, uid)
+                raise ValueError(unread)
+        try:
+            values, note = self.values_from_bsdf(target, uid)
+        except (struct.error, ValueError, KeyError, IndexError, TypeError,
+                ZeroDivisionError) as exc:    # the magic with a body that will not parse
+            try:
+                os.remove(target)
+            except OSError:
+                pass
+            if fresh or os.path.exists(target):    # one download a fetch, never a loop
+                raise ValueError(unread) from exc
+            debug.event("online", "cached RGL measurement does not parse - "
+                        "refetching", uid=uid, path=target, error=str(exc))
+            return self.fetch(record, resolution, dest_dir, progress)
         return {"values": values, "note": note, "files": [target]}
 
     def _values_for(self, uid: str) -> dict:

@@ -134,6 +134,36 @@ class TestFloodGuard(_LogCase):
                             for record in tenth.values()))
 
 
+class TwoThreadsCountEveryOccurrence(_LogCase):
+    """Convert workers and the UI log together, and a flood's final count is promised exact."""
+
+    def test_two_threads_logging_one_event_lose_no_count(self):
+        import threading
+        per_thread, start = 3000, threading.Barrier(2)
+
+        def log():
+            start.wait()
+            for i in range(per_thread):
+                debug.event("race", "same message", i=i)
+
+        interval = sys.getswitchinterval()
+        sys.setswitchinterval(1e-6)    # the GIL handed over as often as a busy Houdini hands it
+        try:
+            threads = [threading.Thread(target=log) for _ in range(2)]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join()
+        finally:
+            sys.setswitchinterval(interval)
+        key = debug._flood_key("event:race", "same message", "")
+        self.assertEqual(2 * per_thread, debug._crash_counts.get(key),
+                         "the flood count lost increments")
+        written = [r for r in self._records() if r.get("cat") == "race"]
+        self.assertEqual(len(written), debug._crash_recorded.get(key),
+                         "the recorded count is not what was written")
+
+
 class TestPerPassBudget(_LogCase):
     """Per-item records share one flood key, so a pass needs its own allowance."""
 

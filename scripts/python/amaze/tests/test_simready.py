@@ -7,6 +7,7 @@ import shutil
 import struct
 import sys
 import tempfile
+import time
 import unittest
 import urllib.error
 import zipfile
@@ -866,7 +867,7 @@ class HostedPreviewTileTest(unittest.TestCase):
         class Worker:
             def __init__(self, jobs):
                 made.extend(jobs)
-                self.ready = self.attempted = self.finished = mock.MagicMock()
+                self.ready = self.attempted = self.failed = self.finished = mock.MagicMock()
 
             def start(self):
                 pass
@@ -902,6 +903,78 @@ class HostedPreviewTileTest(unittest.TestCase):
         jobs = self._jobs(model, record)
         self.assertEqual(1, len(jobs), jobs)
         self.assertTrue(callable(jobs[0][1]), "the source's own picture was fetched instead")
+
+    def _offline(self) -> list:
+        """The network door raising, as a timeout or an offline machine does; answers what was asked."""
+        from amaze.core import matx_sources
+        asked = []
+
+        def offline(url, headers=None):
+            asked.append(url)
+            raise urllib.error.URLError("offline")
+
+        patcher = mock.patch.object(matx_sources, "_request", offline)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return asked
+
+    def _fresh(self, model, record):
+        from amaze.core import thumbnails
+        thumbnails.engine.discard(model._preview_key(record))
+        self.addCleanup(thumbnails.engine.discard, model._preview_key(record))
+
+    def _paint(self, model, record):
+        """One paint of the tile, then the event loop until its workers have reported back."""
+        from amaze.core import thumbnails
+        model._preview(record)
+        deadline = time.monotonic() + 10
+        while (model._pending_scheduled or model._pending or model._preview_workers) \
+                and time.monotonic() < deadline:
+            _app.processEvents()
+        return thumbnails.engine.peek(model._preview_key(record))
+
+    def test_a_values_tile_whose_hosted_picture_fails_is_drawn_from_its_numbers(self):
+        from amaze.core import matx_icon
+        asked = self._offline()
+        model, record = self._model_and_record(7)
+        record.source, record.kind, record.uid = "PhysicallyBased", "values", "Failed/Values"
+        record.payload["values"] = {"color": [0.8, 0.2, 0.1]}
+        self._fresh(model, record)
+        self.assertIsNone(self._paint(model, record), "premise: the hosted picture arrived")
+        self.assertTrue(asked, "premise: the hosted picture was never asked for")
+        drawn = self._paint(model, record)
+        self.assertIsNotNone(drawn, "the tile stayed blank after its hosted picture failed")
+        self.assertEqual(matx_icon.render(record.payload["values"], 64, record.source), drawn,
+                         "the tile shows something other than its own values drawing")
+
+    def test_a_failed_hosted_picture_falls_back_to_the_sources_own_cached_apart(self):
+        self._offline()
+        model, record = self._model_and_record(7)
+        record.source, record.uid = "PolyHaven", "Failed/Url"
+        record.preview_url = "https://cdn.example/brick_4.png"
+        self._fresh(model, record)
+        self._paint(model, record)
+        self.assertNotIn(model._preview_key(record), model._requested,
+                         "the failed tile still holds its request, so no paint asks again")
+        jobs = self._jobs(model, record)
+        self.assertEqual(1, len(jobs), jobs)
+        (_key, url, path), = jobs
+        self.assertEqual(record.preview_url, url, "the fallback is not the source's own picture")
+        self.assertNotEqual(model._cache_path(record), path,
+                            "the source's picture would be cached as the hosted one")
+
+    def test_a_fallback_that_fails_too_is_not_fetched_on_every_paint(self):
+        asked = self._offline()
+        model, record = self._model_and_record(7)
+        record.source, record.uid = "PolyHaven", "Failed/Twice"
+        record.preview_url = "https://cdn.example/brick_9.png"
+        self._fresh(model, record)
+        self._paint(model, record)
+        self._paint(model, record)
+        self.assertIn(record.preview_url, asked, "premise: the source's own picture was not tried")
+        before = list(asked)
+        self._paint(model, record)
+        self.assertEqual(before, asked, "a tile whose pictures both failed fetched again")
 
     def test_a_relisting_that_brings_pictures_redraws_the_tiles(self):
         model, pictured = self._model_and_record(7)

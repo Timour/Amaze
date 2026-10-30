@@ -5,6 +5,7 @@ import functools
 import locale
 import os
 import shutil
+import struct
 import tempfile
 import threading
 
@@ -21,6 +22,7 @@ REASON_NONE = ""                       # there IS an image; the rest tell a canc
 REASON_CANCELLED = "cancelled"
 REASON_TOO_LARGE = "too-large"
 REASON_UNREADABLE = "unreadable"
+REASON_STALLED = "stalled"    # a converter's child outlived its kill: the file's reads are stuck
 
 MAX_RESCUE_MEGABYTES = 1024    # the most we inflate for, decoded: every route decodes the WHOLE image first, so this is what stops a 32K texture taking a live Houdini down ▸r/conversion-internals
 
@@ -58,6 +60,34 @@ def _decoded_megabytes(size: QtCore.QSize) -> float:
     return size.width() * size.height() * 4 / 1e6
 
 
+_EXR_MAGIC = b"\x76\x2f\x31\x01"
+
+
+def _exr_size(path: str) -> QtCore.QSize:
+    """An OpenEXR file's data window, read from its own header; an invalid size for anything else."""
+    try:
+        with open(path, "rb") as handle:
+            head = handle.read(65536)
+    except OSError:
+        return QtCore.QSize()
+    at = 8 if head[:4] == _EXR_MAGIC else len(head)    # past the magic and the version field
+    while at < len(head) and head[at]:    # name NUL, type NUL, int32 size, value; a NUL ends them
+        name_end = head.find(b"\0", at)
+        type_end = head.find(b"\0", name_end + 1) if name_end > 0 else -1
+        if type_end < 0 or type_end + 5 > len(head):
+            break
+        size = struct.unpack_from("<i", head, type_end + 1)[0]
+        value = type_end + 5
+        if (head[at:name_end] == b"dataWindow" and head[name_end + 1:type_end] == b"box2i"
+                and size == 16 and value + 16 <= len(head)):
+            x_min, y_min, x_max, y_max = struct.unpack_from("<4i", head, value)
+            return QtCore.QSize(x_max - x_min + 1, y_max - y_min + 1)
+        if size < 0:
+            break
+        at = value + size
+    return QtCore.QSize()
+
+
 @contextlib.contextmanager
 def _scratch_png():
     """THE temp-file lifetime, for every adapter that needs one. ▸p/conversion-shape"""
@@ -80,10 +110,22 @@ class _Child(QtCore.QProcess):
         self.setProcessState(QtCore.QProcess.ProcessState.NotRunning)
 
 
+ABANDONED = "timed out, and its child outlived the kill - the file's reads are stuck"
+
+
 def _run_process(program: str, args: list, timeout_ms: int = CONVERT_TIMEOUT_MS,
                  cancelled=None) -> tuple:
-    """Run a subprocess to completion, returning (success, stderr_text) - QProcess not `subprocess`, waited on a scoped QEventLoop not `waitForFinished()`, both for measured reasons. ▸r/conversion-internals"""
+    """(success, stderr_text) from `_wait_for`, or (False, ABANDONED) when its child was parked."""
     process = _Child()
+    answer = _wait_for(process, program, args, timeout_ms, cancelled)
+    if answer[1] != "cancelled" and process in _ABANDONED:
+        return False, ABANDONED
+    return answer
+
+
+def _wait_for(process, program: str, args: list, timeout_ms: int,
+              cancelled) -> tuple:
+    """Run a subprocess to completion, returning (success, stderr_text) - QProcess not `subprocess`, waited on a scoped QEventLoop not `waitForFinished()`, both for measured reasons. ▸r/conversion-internals"""
     loop = QtCore.QEventLoop()
     state = {"timed_out": False, "cancelled": False}
 
@@ -144,6 +186,7 @@ def _run_process(program: str, args: list, timeout_ms: int = CONVERT_TIMEOUT_MS,
                             == QtCore.QProcess.ProcessState.NotRunning)
             debug.event("convert", "a converter hit its timeout",    # the FULL path, not a basename: a source scan bans name-reading calls here ▸r/conversion-internals
                         program=program,
+                        args=args,
                         timeout_ms=timeout_ms,
                         child_already_exited=already_gone,
                         exit_code=(process.exitCode() if already_gone
@@ -199,9 +242,12 @@ def _reap_or_abandon(process) -> bool:
         process.deleteLater()
 
     _ABANDONED.append(process)
+    app = QtCore.QCoreApplication.instance()
+    if app is not None:    # a finished worker runs no event loop, so `finished` would never arrive there
+        process.moveToThread(app.thread())
     process.finished.connect(_gone)
     debug.event("convert", "helper abandoned to the graveyard",
-                program=process.program())
+                program=process.program(), args=process.arguments())
     if process.state() == QtCore.QProcess.ProcessState.NotRunning:    # it may have died between the failed wait and the connect, so the signal is never coming
         _gone()
     return False
@@ -416,6 +462,8 @@ def _run_adapters(adapters, source: str, ctx: _Ctx, need: str,
                     ctx.tried(name, why)
                     return _Step(need=need, reason=REASON_CANCELLED)
                 ctx.tried(name, why)
+                if why == ABANDONED:    # no second converter on a file whose reads are stuck
+                    return _Step(need=need, reason=REASON_STALLED)
                 continue
             step = reread(out_path, ctx)
             if step.image is None:
@@ -477,6 +525,12 @@ def convert_image(path: str, size: int, cancelled=None, hfs=None) -> Conversion:
     if step.need != FORMAT:
         return _unanswered(ctx, step.need, step.reason)    # FIT already ran its whole order inside _fitted, and no format conversion helps an image Qt can read
 
+    declared_mb = _decoded_megabytes(_exr_size(path))    # Qt declares no size for an EXR; its header does
+    if declared_mb > MAX_RESCUE_MEGABYTES:
+        debug.event("convert", "image too large to convert - declined",
+                    path=path, declared_mb=round(declared_mb),
+                    ceiling_mb=MAX_RESCUE_MEGABYTES, why="the EXR header's data window")
+        return _unanswered(ctx, FORMAT, REASON_TOO_LARGE)
     step = _run_adapters(_FORMAT_ADAPTERS, path, ctx, FORMAT, _fitted)
     if step.image is not None:
         return _answered(ctx, step)
@@ -495,7 +549,7 @@ def _answered(ctx: _Ctx, step: _Step) -> Conversion:
 
 def _unanswered(ctx: _Ctx, need: str, reason: str) -> Conversion:
     """No adapter produced a picture - a kept uniform answer is delivered here rather than thrown away. ▸p/conversion-shape"""
-    if reason == REASON_UNREADABLE and ctx.fallback is not None:
+    if reason in (REASON_UNREADABLE, REASON_STALLED) and ctx.fallback is not None:
         debug.event("convert", "converted, but every pixel is identical",
                     path=ctx.path, via=ctx.fallback_via, need=need,
                     tried=ctx.trail(),
@@ -507,7 +561,9 @@ def _unanswered(ctx: _Ctx, need: str, reason: str) -> Conversion:
     if reason == REASON_CANCELLED:
         return Conversion(need=need, reason=reason, attempts=ctx.attempts)    # browsing away is not a failure and does not belong in the log ▸p/conversion-shape
     if reason != REASON_TOO_LARGE:
-        debug.event("convert", "no thumbnail - nothing could read it",    # TOO_LARGE has already said its piece, with its ceiling
+        said = ("no thumbnail - a converter stalled on its reads" if reason == REASON_STALLED
+                else "no thumbnail - nothing could read it")
+        debug.event("convert", said,    # TOO_LARGE has already said its piece, with its ceiling
                     path=ctx.path, need=need,
                     why=ctx.attempts[0][1] if ctx.attempts else "",
                     tried=ctx.trail(),

@@ -1,5 +1,6 @@
 """Add-ons: Houdini packages shipped as `.amazepkg`, installed inside Amaze, one folder each."""
 
+import contextlib
 import json
 import os
 import re
@@ -238,13 +239,37 @@ def installed_all(amaze_root: str) -> list:
     return sorted(found, key=lambda pair: str(pair[1]["name"]).lower())
 
 
-def carry(old_root: str, new_root: str) -> bool:
-    """Move the installed add-ons out of an install being replaced into its replacement."""
+def carry(old_root: str, new_root: str) -> list:
+    """Copy the add-ons `new_root` lacks out of `old_root`, all or none; answers the names copied."""
     source, dest = os.path.join(old_root, ROOT), os.path.join(new_root, ROOT)
-    if not os.path.isdir(source) or os.path.exists(dest):
-        return False
-    shutil.move(source, dest)
-    return True
+    if not os.path.isdir(source):
+        return []
+    hostos.check_sandbox(dest)
+    made = not os.path.lexists(dest)
+    names = [name for name in sorted(os.listdir(source))
+             if not os.path.lexists(os.path.join(dest, name))]
+    copied = []
+    try:
+        os.makedirs(dest, exist_ok=True)
+        for name in names:
+            copied.append(name)
+            src, dst = os.path.join(source, name), os.path.join(dest, name)
+            if os.path.isdir(src) and not os.path.islink(src):
+                shutil.copytree(src, dst, symlinks=True)
+            else:
+                shutil.copy2(src, dst, follow_symlinks=False)
+    except OSError as exc:
+        for path in [dest] if made else [os.path.join(dest, name) for name in copied]:
+            if os.path.isdir(path) and not os.path.islink(path):
+                shutil.rmtree(path, ignore_errors=True)
+            elif os.path.lexists(path):
+                with contextlib.suppress(OSError):
+                    os.remove(path)
+        gathered = exc.args[0] if isinstance(exc, shutil.Error) and exc.args else None
+        if isinstance(gathered, list) and gathered:    # copytree's (src, dst, why) per file
+            raise OSError(gathered[0][-1]) from exc
+        raise
+    return names
 
 
 def is_beta(version) -> bool:

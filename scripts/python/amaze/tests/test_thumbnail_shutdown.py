@@ -91,7 +91,7 @@ class TestThumbnailShutdown(unittest.TestCase):
             def isFinished(self):
                 raise RuntimeError("Internal C++ object already deleted.")
 
-            def keys(self):
+            def requests(self):
                 raise RuntimeError("Internal C++ object already deleted.")
 
         engine._threads = [_Gone()]
@@ -113,7 +113,7 @@ class TestPruneWaitsForItsOwnDeliveries(unittest.TestCase):
         self.engine._prune_threads(self.loader)   # the race's early prune
         image = QtGui.QImage(4, 4, QtGui.QImage.Format.Format_ARGB32)
         image.fill(QtGui.QColor("red"))
-        self.engine._on_loaded("k1", image)       # its own delivery, landing next
+        self.engine._on_loaded("k1", image, 0)    # its own delivery, landing next
         _app.processEvents()
         self.assertEqual(
             "done", self.engine._states["k1"],
@@ -132,7 +132,7 @@ class TestAFileIsMissingOnlyWhenItsLoadFails(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.dir, True)
 
     def _ran(self, key, path):
-        loader = thumbnails._FileLoader([(key, path)])
+        loader = thumbnails._FileLoader([(key, path, 0)])
         loader.loaded.connect(self.engine._on_loaded)
         loader.failed.connect(self.engine._on_failed)
         self.engine._states = {key: "pending"}
@@ -152,12 +152,133 @@ class TestAFileIsMissingOnlyWhenItsLoadFails(unittest.TestCase):
                 self.assertEqual(expected, self.engine._states[key])
 
 
+class TestAStaleDeliveryNeverBeatsTheFreshOne(unittest.TestCase):
+    """A load in flight across a re-render answers with the OLD file after the re-request."""
+
+    def setUp(self):
+        self.engine = thumbnails.ThumbnailEngine()
+        self.addCleanup(self.engine.shutdown)
+        self.dir = tempfile.mkdtemp(prefix="amaze_stale_")
+        self.addCleanup(shutil.rmtree, self.dir, True)
+        self.path = os.path.join(self.dir, "thumb.png")
+
+    def _paint(self, colour):
+        image = QtGui.QImage(8, 8, QtGui.QImage.Format.Format_RGB32)
+        image.fill(QtGui.QColor(colour))
+        self.assertTrue(image.save(self.path, "PNG"))
+
+    def _requested(self, key):
+        """The loader the engine would start for `key`, built from its own queue."""
+        self.engine.request_file(key, self.path)
+        items, self.engine._file_queue = list(self.engine._file_queue), []
+        return thumbnails._FileLoader(items)
+
+    def _fresh(self, key):
+        """The re-render's request: discard, ask again, and a loader that delivers to the engine."""
+        self.engine.discard(key)
+        loader = self._requested(key)
+        loader.loaded.connect(self.engine._on_loaded)
+        loader.failed.connect(self.engine._on_failed)
+        return loader
+
+    def test_the_old_picture_landing_after_the_re_request_is_dropped(self):
+        key = ("lib", "mat", "stale-picture")
+        self._paint("red")
+        old, held = self._requested(key), []
+        old.loaded.connect(lambda *delivery: held.append(delivery))
+        old.run()    # read the old render; its delivery waits in the queue
+        self._paint("blue")
+        new = self._fresh(key)
+        self.engine._on_loaded(*held[0])    # the old delivery lands after the re-request
+        self.engine._prune_threads(old)     # then the old loader's finish
+        _app.processEvents()
+        new.run()
+        image = self.engine.peek(key)
+        self.assertIsNotNone(image, "the fresh picture was dropped")
+        self.assertEqual(QtGui.QColor("blue").rgb(), image.pixel(0, 0),
+                         "the tile kept the previous render")
+
+    def _converting(self, key, dest):
+        """The convert loader the engine would start for `key`, built from its own queue."""
+        self.engine.request_convert(key, self.path, 64, dest)
+        items, self.engine._convert_queue = list(self.engine._convert_queue), []
+        return thumbnails._ConvertLoader(items, None)
+
+    def test_a_stale_conversion_never_files_its_png(self):
+        key, dest = ("tex", self.path, 64), os.path.join(self.dir, "cache", "thumb.png")
+        filed = []
+        self.engine.converted.connect(lambda _key, png: filed.append(png))
+        self._paint("red")
+        old, held = self._converting(key, dest), []
+        old.loaded.connect(lambda *delivery: held.append(delivery))
+        old.run()    # converted and encoded red; its delivery waits
+        self._paint("blue")
+        self.engine.discard(key)
+        new = self._converting(key, dest)
+        new.loaded.connect(self.engine._on_loaded)
+        new.failed.connect(self.engine._on_failed)
+        new.run()
+        self.engine._on_loaded(*held[0])    # the stale one lands after the fresh one
+        self.assertEqual([dest], filed, "the fresh PNG was not filed exactly once")
+        self.assertEqual(QtGui.QColor("blue").rgb(), QtGui.QImage(dest).pixel(0, 0),
+                         "a stale conversion replaced the fresh PNG")
+        self.assertEqual(["thumb.png"], os.listdir(os.path.dirname(dest)),
+                         "a scratch PNG was left beside the cache file")
+
+    def test_a_superseded_attempt_is_not_reported_as_the_fresh_one(self):
+        """The model reads an attempt with no picture as a FAILED file, remembered across visits."""
+        key, attempts = ("tex", self.path, 64), []
+        self.engine.convert_attempted.connect(attempts.append)
+        self._paint("red")
+        old, held = self._converting(key, ""), []
+        old.attempted.connect(lambda *attempt: held.append(attempt))
+        old.run()
+        self.engine.discard(key)
+        new = self._converting(key, "")
+        new.loaded.connect(self.engine._on_loaded)
+        new.attempted.connect(self.engine._on_convert_attempted)
+        self.engine._on_convert_attempted(*held[0])    # the old attempt lands after the re-request
+        new.run()
+        self.assertEqual([key], attempts, "a superseded attempt was reported as this request's")
+
+    def test_an_old_failure_landing_after_the_re_request_marks_nothing_missing(self):
+        key = ("lib", "mat", "stale-failure")
+        with open(self.path, "wb") as handle:
+            handle.write(b"half a png")
+        old, held = self._requested(key), []
+        old.failed.connect(lambda *delivery: held.append(delivery))
+        old.run()
+        self.assertTrue(held, "premise: the old read did not fail")
+        self._paint("blue")
+        new = self._fresh(key)
+        self.engine._on_failed(*held[0])
+        new.run()
+        self.assertFalse(self.engine.is_missing(key), "a stale failure condemned the fresh render")
+        self.assertIsNotNone(self.engine.peek(key))
+
+
+class AnUnsavedPngLeavesNothingAndSaysSo(unittest.TestCase):
+    """`QImage.save` answers False rather than raising, so the worker reads it. ▸r/model-contracts"""
+
+    def test_a_png_that_will_not_save_is_said_and_leaves_no_scratch(self):
+        folder = tempfile.mkdtemp(prefix="amaze_unsaved_")
+        self.addCleanup(shutil.rmtree, folder, True)
+        image = QtGui.QImage(4, 4, QtGui.QImage.Format.Format_RGB32)
+        image.fill(QtGui.QColor("red"))
+        with test_support.captured_log() as log, \
+                mock.patch.object(QtGui.QImage, "save", return_value=False):
+            written = thumbnails._encoded(image, os.path.join(folder, "thumb.png"), "/a/photo.png")
+        self.assertIsNone(written, "a PNG that did not save was handed on to be filed")
+        self.assertEqual([], os.listdir(folder), "the failed scratch was left beside the cache")
+        self.assertTrue(log.matching("photo.png"), "the failed save was not said")
+
+
 class TestAConvertIsMissingOnlyWhenItFails(unittest.TestCase):
     """The convert loader names its failures as the file loader does: one rule for both."""
 
     def _ran(self, image):
         engine = thumbnails.ThumbnailEngine()
-        loader = thumbnails._ConvertLoader([("c1", "/nowhere/plate.exr", 64)], None)
+        loader = thumbnails._ConvertLoader([("c1", "/nowhere/plate.exr", 64, "", 0)], None)
         loader.loaded.connect(engine._on_loaded)
         loader.failed.connect(engine._on_failed)
         engine._states = {"c1": "pending"}
@@ -191,8 +312,8 @@ class TestPruneJudgesOnlyItsOwnLoader(unittest.TestCase):
             self._keys = list(keys)
             self._canceled = False
 
-        def keys(self):
-            return self._keys
+        def requests(self):
+            return [(key, 0) for key in self._keys]
 
         def isFinished(self):
             return True
@@ -265,7 +386,7 @@ class TestConvertCancellation(unittest.TestCase):
     def test_shutdown_does_not_wait_out_a_running_iconvert(self):
         engine = thumbnails.ThumbnailEngine()
         loader = thumbnails._ConvertLoader(
-            [("k%d" % i, self.source, 256) for i in range(3)], self.hfs)
+            [("k%d" % i, self.source, 256, "", 0) for i in range(3)], self.hfs)
         engine._threads.append(loader)
         self.addCleanup(loader.wait, 5000)
         loader.start()
@@ -297,7 +418,7 @@ class TestConvertCancellation(unittest.TestCase):
         """`terminate()` skips the cleanup, orphaning a real Houdini subprocess for every stuck worker."""
         engine = thumbnails.ThumbnailEngine()
         loader = thumbnails._ConvertLoader(
-            [("k0", self.source, 256)], self.hfs)
+            [("k0", self.source, 256, "", 0)], self.hfs)
         engine._threads.append(loader)
         self.addCleanup(loader.wait, 5000)
         loader.start()

@@ -1386,6 +1386,67 @@ class OsIconTest(unittest.TestCase):
                          "icons instead of one")
 
 
+class AFailedConversionShowsTheFileFaceTest(unittest.TestCase):
+    """An image no converter reads wears the generic file face once it fails, not a blank card."""
+
+    def test_the_card_turns_generic_once_the_engine_marks_it_missing(self):
+        from amaze.core import conversion, thumbnails
+        tmp = tempfile.mkdtemp(prefix="amaze_failed_convert_")
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        with open(os.path.join(tmp, "broken.png"), "w") as handle:
+            handle.write("not a picture")
+        model = file_library.FileFiles(_Prefs([tmp]))
+        with mock.patch.object(conversion, "_FORMAT_ADAPTERS", ()):    # no converter to fall back on
+            model.set_folder(tmp)
+            key, source, _payload = model._row_specs[0]
+            self.addCleanup(thumbnails.engine.discard, key)
+            self.assertEqual("convert", source, "premise: the image was not queued to convert")
+            deadline = time.monotonic() + 10
+            while not thumbnails.engine.is_missing(key) and time.monotonic() < deadline:
+                QtWidgets.QApplication.processEvents()
+        self.assertTrue(thumbnails.engine.is_missing(key), "premise: the conversion never failed")
+        face = model.data(model.index(0, 0), QtCore.Qt.ItemDataRole.DecorationRole)
+        self.assertEqual(tile_icons.generic_image("face_file"), face,
+                         "a failed conversion left a blank card")
+
+
+class TheCachePngIsWrittenOffTheGuiThreadTest(unittest.TestCase):
+    """A converted image's cache PNG is encoded by the convert worker; the GUI thread only files it."""
+
+    def test_the_worker_writes_the_png_and_the_manifest_files_it(self):
+        from amaze.core import thumbnails
+        tmp = tempfile.mkdtemp(prefix="amaze_cache_png_")
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        picture = QtGui.QImage(320, 200, QtGui.QImage.Format.Format_RGB32)
+        picture.fill(QtGui.QColor("#a03020"))
+        painter = QtGui.QPainter(picture)
+        painter.fillRect(40, 30, 120, 90, QtGui.QColor("#2050c0"))
+        painter.end()
+        self.assertTrue(picture.save(os.path.join(tmp, "photo.png"), "PNG"))
+        model = file_library.FileFiles(_Prefs([tmp]))
+        saves, real_save = [], QtGui.QImage.save
+
+        def recording(image, *args, **kwargs):
+            on_gui = threading.current_thread() is threading.main_thread()
+            saves.append((str(args[0]) if args else "", on_gui))
+            return real_save(image, *args, **kwargs)
+
+        with mock.patch.object(QtGui.QImage, "save", recording):
+            model.set_folder(tmp)
+            key, source, full = model._row_specs[0]
+            self.addCleanup(thumbnails.engine.discard, key)
+            self.assertEqual("convert", source, "premise: the image was not queued to convert")
+            deadline = time.monotonic() + 10
+            while model._progress_done < model._progress_total and time.monotonic() < deadline:
+                QtWidgets.QApplication.processEvents()
+        cache = model._image_cache
+        written = [on_gui for path, on_gui in saves if os.path.dirname(path) == cache.cache_dir]
+        self.assertTrue(written, "premise: no cache PNG was written")
+        self.assertNotIn(True, written, "the cache PNG was encoded on the GUI thread")
+        self.assertEqual(cache.png_path(full), cache.valid_path(full),
+                         "the written PNG was not filed in the manifest")
+
+
 class _RecordingPanel:
     """A stand-in `self` for the live click door - click_on_row and _apply_click_rule run for real, and the panel PLUMBING each section verb reaches for records instead of touching a scene."""
 

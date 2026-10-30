@@ -578,6 +578,55 @@ class TestDownloadIntegrity(unittest.TestCase):
         finally:
             matx_sources.download = real_download
 
+    TRUNCATED = b"tensor_file\0" + bytes([1, 0]) + struct.pack("<I", 5)    # the magic, then nothing
+
+    def _served(self, body) -> list:
+        """The network door answering every request with `body`; answers the URLs asked."""
+        from unittest import mock
+        from amaze.tests.test_packages import _Served
+        asked = []
+
+        def serve(url, headers=None):
+            asked.append(url)
+            return _Served(body, {"Content-Length": str(len(body))})
+
+        patcher = mock.patch.object(matx_sources, "_request", serve)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return asked
+
+    def _cached(self, uid, body):
+        record = matx_sources.MatxRecord(source="RGL", uid=uid, title=uid, kind="values",
+                                         payload={})
+        target = os.path.join(self.tmp, "%s_rgb.bsdf" % uid)
+        with open(target, "wb") as handle:
+            handle.write(body)
+        return record, target
+
+    def test_a_cached_measurement_that_does_not_parse_is_fetched_once_more(self):
+        good = os.path.join(self.tmp, "good.bsdf")
+        _tensor_file(good, [RGLRoughnessTest.WIDE] * 2)
+        with open(good, "rb") as handle:
+            asked = self._served(handle.read())
+        record, target = self._cached("truncated", self.TRUNCATED)
+        try:
+            got = self.rgl.fetch(record, None, self.tmp)
+        except Exception as exc:                             # noqa: BLE001
+            self.fail("the unreadable cache was not fetched again: %s" % exc)
+        self.assertEqual(1, len(asked), asked)
+        self.assertIn("roughness", got["values"])
+        self.assertTrue(matx_sources.RGLSource._is_measurement(target))
+
+    def test_a_measurement_that_does_not_parse_twice_is_refused_in_one_sentence(self):
+        asked = self._served(self.TRUNCATED)
+        record, target = self._cached("truncated", self.TRUNCATED)
+        with self.assertRaises(Exception) as refused:
+            self.rgl.fetch(record, None, self.tmp)
+        self.assertEqual("truncated did not return a measurement (the download is not a "
+                         "tensor_file)", str(refused.exception))
+        self.assertEqual(1, len(asked), "the refetch was not asked exactly once")
+        self.assertFalse(os.path.exists(target), "an unreadable measurement stayed cached")
+
 
 class ThirdPartyHostTest(unittest.TestCase):
     """Third-party URLs are not ours to rename - the LITERAL hosts are asserted so a future rename fails immediately instead of a feature failing quietly weeks later. ▸r/matx-source-quirks"""

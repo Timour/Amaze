@@ -1157,7 +1157,7 @@ class CaptureRefreshesTheTileTest(unittest.TestCase):
     """Regression: the shelf tool captured correctly - the PNG replaced each time - and the tile did not change. The engine keeps a decoded copy in memory and nothing invalidated it, because the REFRESH lived in the panel button right after its own call rather than in the capture; one caller hid that, a second exposed it immediately."""
 
     def test_the_whole_chain_repaints_the_right_row(self):
-        """END TO END: emit -> slot -> row_for_path -> refresh_row. The original three cases tested the links and never the chain, so replacing _on_capture_landed's body with a bare return left them all green - the regression this class is named for, twice shipped. The case this replaces emitted the signal itself after connecting its own listener, which tested PySide rather than Amaze."""
+        """END TO END: emit -> _on_capture_landed -> the matching file_key's row dropped, repainted."""
         tmp = _Tmp(self)
         scene = tmp.touch("one.hiplc")
         tmp.touch("two.hiplc")
@@ -1190,25 +1190,6 @@ class CaptureRefreshesTheTileTest(unittest.TestCase):
         captures.signals.landed.emit("/elsewhere/other.hiplc")
         self.assertEqual([], painted,
                          "a capture elsewhere repainted this model")
-
-    def test_the_model_drops_its_cached_image_and_repaints(self):
-        """The two halves that make a tile actually change: dropping without repainting shows the old picture until something else invalidates the view; repainting without dropping re-serves the same decoded copy."""
-        model = file_library.FileFiles(_Prefs())
-        dropped, painted = [], []
-        model._full_path = lambda row: "/scenes/x.hip"
-        model._files = [("/scenes", "x.hip")]
-        model._kinds = ["hip"]
-        model._row_specs = [("KEY:/scenes/x.hip", "capture",
-                             "/scenes/x.hip")]
-        original = thumbnails.engine.discard
-        thumbnails.engine.discard = dropped.append
-        self.addCleanup(setattr, thumbnails.engine, "discard", original)
-        model.dataChanged.connect(
-            lambda *a, **k: painted.append(1))
-        model.refresh_row(0)
-        self.assertEqual(["KEY:/scenes/x.hip"], dropped,
-                         "the engine's stale copy was not dropped")
-        self.assertEqual(1, len(painted), "the tile was not repainted")
 
     def test_the_capture_path_is_wired_to_the_models(self):
         """Source-derived: a capture is announced once it lands; both model families listen."""

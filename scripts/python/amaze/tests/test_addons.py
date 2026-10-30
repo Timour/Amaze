@@ -357,6 +357,114 @@ class AnAmazeUpdateKeepsItsAddOnsTest(_Workspace):
             self.amaze, addons.ROOT, "example", packages.MANIFEST)),
             "the update deleted the installed add-ons with the old install")
 
+    HOME_MADE = os.path.join(addons.ROOT, "mytool", "otls", "mytool.hda")    # never in the store
+
+    def _release(self, name, which):
+        _write(os.path.join(self.dir, name, "scripts", "which.txt"), which)
+        return os.path.join(self.dir, name)
+
+    def _which(self):
+        with open(os.path.join(self.amaze, "scripts", "which.txt"), encoding="utf-8") as handle:
+            return handle.read()
+
+    def _add_on_files(self):
+        """Every add-on file anywhere in the workspace, relative to it."""
+        return sorted(os.path.relpath(os.path.join(folder, name), self.dir)
+                      for folder, _dirs, names in os.walk(self.dir)
+                      for name in names if addons.ROOT in folder.split(os.sep))
+
+    def test_a_carry_that_fails_refuses_the_update_and_keeps_the_old_install(self):
+        """The refusal names its reason, the old install stays whole, the next update carries."""
+        _write(os.path.join(self.amaze, "scripts", "which.txt"), "1.0")
+        _write(os.path.join(self.amaze, self.HOME_MADE), "a home-made add-on")
+        real, calls = addons.carry, []
+
+        def held_once(old, new):
+            calls.append(new)
+            if len(calls) == 1:
+                raise OSError(13, "Permission denied", os.path.join(old, self.HOME_MADE))
+            return real(old, new)
+
+        with mock.patch.object(addons, "carry", held_once):
+            with self.assertRaises(OSError) as refused:
+                updater.apply_update(self._release("staged1", "1.1"), self.amaze)
+            self.assertIn("add-ons", str(refused.exception))
+            self.assertIn("Permission denied", str(refused.exception), "the refusal lost its reason")
+            self.assertEqual("1.0", self._which(), "a refused update still replaced the install")
+            self.assertEqual([os.path.join("Amaze", self.HOME_MADE)], self._add_on_files(),
+                             "a refused update moved the add-ons out of the install")
+            updater.apply_update(self._release("staged2", "1.2"), self.amaze)
+        self.assertEqual("1.2", self._which())
+        self.assertEqual([os.path.join("Amaze", self.HOME_MADE)], self._add_on_files(),
+                         "after the next update the add-ons are not in the install alone")
+
+    def test_a_leftover_beside_the_install_gives_its_add_ons_back_before_it_goes(self):
+        """`<install>.replacing` from an older build can hold the only copy of the add-ons."""
+        _write(os.path.join(self.amaze, "scripts", "which.txt"), "1.1")
+        leftover = self.amaze + ".replacing"
+        _write(os.path.join(leftover, "scripts", "which.txt"), "1.0")
+        _write(os.path.join(leftover, self.HOME_MADE), "a home-made add-on")
+        updater.apply_update(self._release("staged", "1.2"), self.amaze)
+        self.assertEqual("1.2", self._which())
+        self.assertEqual([os.path.join("Amaze", self.HOME_MADE)], self._add_on_files(),
+                         "the leftover was deleted with the only copy of the add-ons in it")
+        self.assertFalse(os.path.exists(leftover))
+
+    def test_a_leftover_whose_add_ons_cannot_be_carried_is_kept(self):
+        _write(os.path.join(self.amaze, "scripts", "which.txt"), "1.1")
+        leftover = self.amaze + ".replacing"
+        _write(os.path.join(leftover, self.HOME_MADE), "a home-made add-on")
+        with mock.patch.object(addons, "carry", side_effect=OSError(28, "No space left")):
+            with self.assertRaises(OSError):
+                updater.apply_update(self._release("staged", "1.2"), self.amaze)
+        self.assertEqual([os.path.join("Amaze.replacing", self.HOME_MADE)], self._add_on_files(),
+                         "a leftover holding add-ons was deleted without carrying them")
+        self.assertEqual("1.1", self._which())
+
+
+class TheCarryTest(_Workspace):
+    """`carry` copies what a new tree lacks; the old install keeps its add-ons until it goes."""
+
+    def setUp(self):
+        super().setUp()
+        self.new = os.path.join(self.dir, "staged")
+        for member in ("a/otls/a.hda", "a.json", "b/otls/b.hda", "b.json"):
+            _write(os.path.join(self.amaze, addons.ROOT, *member.split("/")), "old " + member)
+
+    def _tree(self, root):
+        found = []
+        for folder, _dirs, names in os.walk(os.path.join(root, addons.ROOT)):
+            found += [os.path.relpath(os.path.join(folder, name), root) for name in names]
+        return sorted(found)
+
+    def test_the_carry_copies_only_what_the_new_tree_lacks(self):
+        _write(os.path.join(self.new, addons.ROOT, "a", "otls", "a.hda"), "installed since")
+        addons.carry(self.amaze, self.new)
+        with open(os.path.join(self.new, addons.ROOT, "a", "otls", "a.hda"), encoding="utf-8") as fh:
+            self.assertEqual("installed since", fh.read(), "the carry wrote over an add-on there")
+        self.assertEqual(self._tree(self.amaze), self._tree(self.new))
+        self.assertEqual(4, len(self._tree(self.amaze)), "the carry emptied the old tree")
+
+    def test_a_carry_that_dies_part_way_takes_back_what_it_copied(self):
+        real = shutil.copytree
+
+        def dies_in_b(src, dst, *args, **kwargs):
+            if os.path.basename(src) == "b":
+                _write(os.path.join(dst, "otls", "fragment"), "half")
+                why = "[Errno 28] No space left on device"
+                raise shutil.Error([(os.path.join(src, "otls", "b.hda"), dst, why)])
+            return real(src, dst, *args, **kwargs)
+
+        os.makedirs(self.new)
+        with mock.patch.object(shutil, "copytree", dies_in_b):
+            with self.assertRaises(OSError) as failed:
+                addons.carry(self.amaze, self.new)
+        self.assertEqual("[Errno 28] No space left on device", str(failed.exception),
+                         "the reason reads as copytree's list rather than its first cause")
+        self.assertEqual([], self._tree(self.new), "a failed carry left part of the add-ons behind")
+        self.assertFalse(os.path.exists(os.path.join(self.new, addons.ROOT)))
+        self.assertEqual(4, len(self._tree(self.amaze)), "a failed carry lost add-on files")
+
 
 class ThePackageTemplateTest(unittest.TestCase):
 

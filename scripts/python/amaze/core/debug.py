@@ -35,6 +35,7 @@ FLOOD_DECAY_SECONDS = 300
 
 _crash_recorded: dict = globals().get("_crash_recorded", {})
 _crash_last_seen: dict = globals().get("_crash_last_seen", {})
+_flood_lock = globals().get("_flood_lock") or threading.RLock()    # the three counters, together; re-entrant
 
 
 def _flood_key(kind: str, exc_type_name: str, tb_text: str) -> str:
@@ -47,24 +48,25 @@ def _flood_key(kind: str, exc_type_name: str, tb_text: str) -> str:
 def _flood_check(kind: str, exc_type_name: str, tb_text: str):
     """Rate-limit an identical, repeating failure; (record_it, count). ▸o/debug-engine"""
     key = _flood_key(kind, exc_type_name, tb_text)
-    now = time.monotonic()
-    last = _crash_last_seen.get(key)
-    if last is not None and now - last > FLOOD_DECAY_SECONDS:
-        _flush_repeat(key)
-        _crash_counts.pop(key, None)
-        _crash_recorded.pop(key, None)
-    _crash_last_seen[key] = now
+    with _flood_lock:    # never `_write_lock`: `_flush_repeat` takes that one inside
+        now = time.monotonic()
+        last = _crash_last_seen.get(key)
+        if last is not None and now - last > FLOOD_DECAY_SECONDS:
+            _flush_repeat(key)
+            _crash_counts.pop(key, None)
+            _crash_recorded.pop(key, None)
+        _crash_last_seen[key] = now
 
-    count = _crash_counts.get(key, 0) + 1
-    _crash_counts[key] = count
-    if count <= FLOOD_VERBATIM:
-        _crash_recorded[key] = _crash_recorded.get(key, 0) + 1
-        return True, count
-    power_of_ten = count == 10 ** (len(str(count)) - 1)
-    if power_of_ten or count % FLOOD_MARKER_EVERY == 0:
-        _crash_recorded[key] = _crash_recorded.get(key, 0) + 1
-        return True, count
-    return False, count
+        count = _crash_counts.get(key, 0) + 1
+        _crash_counts[key] = count
+        if count <= FLOOD_VERBATIM:
+            _crash_recorded[key] = _crash_recorded.get(key, 0) + 1
+            return True, count
+        power_of_ten = count == 10 ** (len(str(count)) - 1)
+        if power_of_ten or count % FLOOD_MARKER_EVERY == 0:
+            _crash_recorded[key] = _crash_recorded.get(key, 0) + 1
+            return True, count
+        return False, count
 
 
 def _suppressed_for(kind: str, exc_type_name: str, tb_text: str, count: int) -> int:
