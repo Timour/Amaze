@@ -592,7 +592,7 @@ class NoRowMovesInsideALayoutChange(unittest.TestCase):
 
     def _saving_a_twin(self, name):
         """A converter whose last step is the real one, add_asset."""
-        def convert(_model, _index, _target):
+        def convert(_model, _index, _target, render=True):
             saved = material_actions.add_asset(self.model,
                 _karma_material(self, name), "", "", False)
             return bool(saved), types.SimpleNamespace(
@@ -633,7 +633,7 @@ class NoRowMovesInsideALayoutChange(unittest.TestCase):
                 self.model.assets[1].renderer = source
                 self._select(1)
                 with mock.patch.object(material_actions, "convert",
-                                       lambda _model, _index, _target: (True, report)), \
+                                       lambda _model, _index, _target, render=True: (True, report)), \
                         mock.patch.object(hou, "ui", ui, create=True):
                     self.panel.convert_selected(target)
                 self.assertEqual(
@@ -825,7 +825,7 @@ class ARowHeldAcrossASaveIsFoundAgain(unittest.TestCase):
         self._deleted_elsewhere(model, shown[0].mat_id)
         converted = []
 
-        def convert(_model, index, _target):
+        def convert(_model, index, _target, render=True):
             converted.append(model.assets[index.row()])
             model.save()    # the twin's own save, which takes the deletion in
             return True, types.SimpleNamespace(summary_lines=lambda: [])

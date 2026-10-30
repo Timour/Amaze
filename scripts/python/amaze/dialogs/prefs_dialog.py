@@ -190,7 +190,8 @@ class PrefsDialog(base_dialog.AssetDialog):
         super().__init__(branding.APP_NAME + " Preferences",
                          fixed_size=False, parent=parent)
         self._prefs = prefs
-        keyed_store.refresh_all(prefs)    # opening this dialog is a DOOR: without it every list below is the copy read when the panel opened, so a user another machine created is invisible until Houdini restarts ▸r/peer-read
+        keyed_store.refresh_all(prefs)    # a DOOR: every list below reads what peers wrote ▸r/peer-read
+        prefs.follow_shared()    # and so do the shared settings this session left alone
         # the panel owns the library operations and this only forwards; None in tests keeps the other tabs constructable
         self._panel = panel
         self._file_files_model = file_files_model
@@ -498,14 +499,15 @@ class PrefsDialog(base_dialog.AssetDialog):
         """Open `folder` with the picked user; both go back when it stays closed."""
         if self._panel is not None and not self._panel.takes_library(folder):
             return False    # asked before anything is written to it
-        before = str(self._prefs.library_user or "")
+        before, before_dir = str(self._prefs.library_user or ""), self._prefs.real_dir
         if uid != self.NEW_USER:
             self._prefs.library_user = uid    # before the models switch, so they read this user's stars
         self._prefs.dir = folder
-        self._prefs.save()
+        self._prefs.save()    # the models' switch re-reads settings.json
         opened = self._panel is None or self._panel.open_library()
-        if not opened:
+        if not opened:    # the settings name the library that is open, or none
             self._prefs.library_user = before
+            self._prefs.dir = before_dir
             self._prefs.save()
         self._sync_rows()    # the rows show the library now open, whichever it is
         return opened

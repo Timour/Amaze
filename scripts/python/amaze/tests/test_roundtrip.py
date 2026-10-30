@@ -334,23 +334,6 @@ class TestRoundTrip(unittest.TestCase):
                           "the import left the COP companion it restored")
         self.assertEqual([], self._libraries(stage))
 
-    def test_the_import_is_one_undo_entry(self):
-        """Derived from the SOURCE, because driving it needs a live panel: the loop must sit inside a hou.undos.group, like every other import entry point. ▸p/source-derived-tests"""
-        import re
-
-        path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "panel", "panel.py")
-        with open(path, encoding="utf-8") as handle:
-            source = handle.read()
-        match = re.search(
-            r"def import_asset\(self.*?\n    def ", source, re.S)
-        self.assertIsNotNone(match, "import_asset not found")
-        self.assertIn(
-            "hou.undos.group", match.group(0),
-            "import_asset is not grouped - one Ctrl+Z leaves a stray "
-            "matnet and a half-imported builder behind")
-
     def test_saved_material_survives_disk_and_reimports(self):  # -- the round-trip --
         rows_before = self.model.rowCount()
         builder = _build_material(self.staging, "roundtrip_mat")

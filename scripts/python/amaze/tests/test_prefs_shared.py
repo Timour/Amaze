@@ -7,6 +7,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6 import QtWidgets  # noqa: E402
@@ -432,6 +433,91 @@ class EveryRowFollowsAUserOrLibraryChange(SharedPrefsCase):
                          "a shared row kept the previous library's value")
         self.assertEqual(self.SECOND, self.shown(),
                          "a per-user row kept the previous user's value")
+
+
+class AMachineRunningBeforeAChangeTakesIt(SharedPrefsCase):
+    """r5: B, open since before A's change, takes it at its next save instead of writing its own back."""
+
+    def setUp(self):
+        super().setUp()
+        self._tables = {"A": {}, "B": {}}    # two processes share no open store
+
+    def on(self, machine):
+        return mock.patch.object(keyed_store, "_open", self._tables[machine])
+
+    def stored(self, key):
+        return self.store_doc()["prefs"][key]["value"]
+
+    def both_open(self):
+        with self.on("A"):
+            a = self.machine(self.home_a)
+            a.save()
+        with self.on("B"):
+            b = self.machine(self.home_b)
+            b.save()
+        return a, b
+
+    def test_a_save_after_a_refresh_door_keeps_the_peers_value(self):
+        a, b = self.both_open()
+        with self.on("A"):
+            a.rendersize = 512
+            a.save()
+        with self.on("B"):
+            keyed_store.refresh_all(b)    # the panel shown, Preferences opened
+            b.sidebar_width = 300
+            b.save()
+        self.assertEqual(512, self.stored("rendersize"), "B wrote its own value back")
+        self.assertEqual(512, b.rendersize, "B still answers with its own value")
+
+    def test_with_no_door_the_second_save_keeps_it_too(self):
+        a, b = self.both_open()
+        with self.on("A"):
+            a.rendersize = 1024
+            a.save()
+        with self.on("B"):
+            b.path_style = "absolute"
+            b.save()    # its commit merges A's value in
+            self.assertEqual(1024, b.rendersize, "the save that merged A's value left B on its own")
+            b.show_notes = True
+            b.save()
+        self.assertEqual(1024, self.stored("rendersize"), "B's second save reverted A's change")
+        self.assertEqual("absolute", self.stored("path_style"), "B's own change was lost")
+        with self.on("A"):
+            a.rendersize = 768
+            with test_support.captured_log() as log:
+                a.save()
+        self.assertEqual([], log.messages("alert"),
+                         "A's next change was reported as a conflict with B")
+
+    def test_a_value_pushed_here_follows_a_later_peer_change(self):
+        a, b = self.both_open()
+        with self.on("B"):
+            b.rendersize = 300
+            b.save()
+        with self.on("A"):
+            keyed_store.refresh_all(a)
+            a.sidebar_width = 200
+            a.save()
+            a.rendersize = 512
+            a.save()
+        with self.on("B"):
+            keyed_store.refresh_all(b)
+            b.sidebar_width = 300
+            b.save()
+        self.assertEqual(512, self.stored("rendersize"),
+                         "B wrote back the value it pushed before A's change")
+
+    def test_preferences_shows_the_peers_value(self):
+        from amaze.dialogs import prefs_dialog
+        a, b = self.both_open()
+        with self.on("A"):
+            a.rendersize = 512
+            a.save()
+        with self.on("B"):
+            dialog = prefs_dialog.PrefsDialog(b, panel=None)    # the door re-reads the stores
+            self.addCleanup(dialog.deleteLater)
+        self.assertEqual(512, dialog.line_rendersize.value(),
+                         "Preferences shows the value this machine started with")
 
 
 if __name__ == "__main__":

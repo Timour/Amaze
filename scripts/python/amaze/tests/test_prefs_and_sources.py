@@ -390,6 +390,40 @@ class ThePerUserBlocksRoundTripAndMerge(unittest.TestCase):
                          "a key only the peer held was dropped")
 
 
+class APointerMovedInOnePaneStaysMoved(unittest.TestCase):
+    """r6: each pane holds its own Prefs over the one settings.json; B's saves keep A's switch."""
+
+    def test_the_other_panes_second_save_keeps_the_switch(self):
+        import json
+        config = tempfile.mkdtemp(prefix="amaze_two_panes_")
+        self.addCleanup(shutil.rmtree, config, True)
+        first, second = test_support.fresh_library(self), test_support.fresh_library(self)
+
+        def pane():
+            held = prefs_mod.Prefs()
+            held.path = config
+            held.load()
+            return held
+
+        start = prefs_mod.Prefs()
+        start.path = config
+        start.dir = first
+        start.save()
+        a, b = pane(), pane()
+        a.dir = second    # Preferences in pane A switches the library
+        a.save()
+        b.sidebar_width = 300    # pane B drags its sidebar, twice
+        b.save()
+        b.sidebar_width = 310
+        b.save()
+        with open(os.path.join(config, "settings.json"), encoding="utf-8") as handle:
+            stored = json.load(handle)["directory"]
+        self.assertEqual(os.path.normpath(second),
+                         os.path.normpath(hostos.expand_storage_path(stored)),
+                         "pane B wrote the previous library back: the next Houdini opens it")
+        self.assertEqual(second, b.dir, "pane B still points at the previous library")
+
+
 class TheTestLibrarySwitchIsAnOverlay(unittest.TestCase):
     """One switch, one folder - and the contract that matters is the way BACK: the real library and cache paths stay untouched while it is on."""
 

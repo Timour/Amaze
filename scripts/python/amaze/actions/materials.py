@@ -181,7 +181,7 @@ def import_asset_to_scene(
     )
 
 
-def convert(model, index: QtCore.QModelIndex, target: str):
+def convert(model, index: QtCore.QModelIndex, target: str, render: bool = True):
     """This row as a `target` material, saved beside it under its name: (ok, report)."""
     from amaze.render.material_conversion import engine as conversion_engine
     from amaze.render.material_conversion.report import ConversionReport
@@ -203,7 +203,7 @@ def convert(model, index: QtCore.QModelIndex, target: str):
                 return False, report
             saved = add_asset(
                 model, made.builder, ",".join(mat.categories), ",".join(mat.tags), False,
-                name=mat.name)
+                name=mat.name, render=render)
             return bool(saved), report    # a refused save leaves nothing: the scratch goes below
         finally:
             scratch.destroy()

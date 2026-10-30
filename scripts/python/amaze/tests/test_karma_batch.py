@@ -334,5 +334,108 @@ class UpdateRenderOnMaterialTiles(unittest.TestCase):
         self.assertEqual([wanted], batches)
 
 
+class AMultiMaterialDoorRendersOneBatch(unittest.TestCase):
+    """Convert to and an online Import to Library: no husk per save, then ONE batch. ▸r/husk-startup"""
+
+    @classmethod
+    def setUpClass(cls):
+        if not hou.getenv("OCIO"):    # save_node refuses without one
+            hou.putenv("OCIO", "/dev/null")
+
+    def setUp(self):
+        self.panel = test_support.fixture_panel(self)
+        self.panel.prefs.render_on_import = 1
+        self.model = self.panel.material_model
+        self.batches = []
+        for owner, name, value in (
+                (thumbs.ThumbNailRenderer, "render_assets", lambda prefs, mats:
+                 self.batches.append(sorted(str(mat.mat_id) for mat in mats))),
+                (thumbs.ThumbNailRenderer, "create_thumb_mtlx", mock.Mock(return_value=True))):
+            patcher = mock.patch.object(owner, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.each = thumbs.ThumbNailRenderer.create_thumb_mtlx    # the render a save starts
+
+    def _landed(self, door):
+        held = test_support.asset_ids(self.model)
+        door()
+        return sorted(str(mat.mat_id) for mat in test_support.arrived(self.model, held))
+
+    def test_convert_to_renders_its_twins_in_one_batch(self):
+        from PySide6 import QtCore
+        from amaze.core import renderers
+        from amaze.render import nodes
+        from amaze.render.material_conversion import engine
+
+        class Plain(engine.RendererAPI):    # a target whose twin is MaterialX: no plugin needed
+            name = "Octane"
+
+            def available(self):
+                return True
+
+            def from_materialx(self, container, parent, name, report):
+                builder = nodes.make_karma_builder(parent, "twin")
+                shader = builder.createNode("mtlxstandard_surface")
+                nodes.wire_builder_output(builder, shader)
+                return engine.Converted(builder, shader, True, report)
+
+        rows = [row for row, mat in enumerate(self.model.assets)
+                if renderers.is_karma(mat.renderer)][:2]
+        self.assertEqual(2, len(rows), "premise: two MaterialX materials in the fixture")
+        proxy, selection = self.panel.material_sorted_model, self.panel.material_selection_model
+        for row in rows:
+            selection.select(proxy.mapFromSource(self.model.index(row, 0)),
+                             QtCore.QItemSelectionModel.SelectionFlag.Select)
+        registry = {engine.HUB: engine.apis()[engine.HUB], "Octane": Plain()}
+        with mock.patch.dict(engine._registry, registry, clear=True):
+            twins = self._landed(lambda: self.panel.convert_selected("Octane"))
+        self.assertEqual(2, len(twins), "premise: the conversion saved no twins")
+        self.assertEqual(0, self.each.call_count, "a twin started a render of its own")
+        self.assertEqual([twins], self.batches, "not ONE batch of the twins")
+
+    def test_an_online_import_renders_what_landed_without_a_picture(self):
+        import shutil
+        import tempfile
+        from PySide6 import QtGui
+        from amaze.core import matx_sources
+        folder = tempfile.mkdtemp(prefix="amaze_batch_online_")
+        self.addCleanup(shutil.rmtree, folder, True)
+        hosted = os.path.join(folder, "hosted.png")
+        image = QtGui.QImage(24, 24, QtGui.QImage.Format.Format_RGB32)
+        image.fill(QtGui.QColor("#3366cc"))
+        image.save(hosted, "PNG")
+
+        class Source:
+            name = "PhysicallyBased"
+
+            def needs_download(self, record):
+                return False
+
+            def fetch(self, record, resolution, dest_dir, progress=None):
+                return {"values": record.payload["values"]}
+
+            def read_thumb_to(self, record, path):
+                shutil.copyfile(hosted, path)
+
+        def record(uid, picture):
+            payload = {"values": {"color": [0.8, 0.2, 0.1], "roughness": 0.3}}
+            if picture:
+                payload["preview"] = {"offset": 0, "size": 1, "crc": 1}
+            return matx_sources.MatxRecord(
+                source="PhysicallyBased", uid=uid, title=uid, category="Metal",
+                kind="values", licence="CC0 1.0", payload=payload)
+
+        records = [record("batch-hosted", True), record("batch-plain", False)]
+        with mock.patch.object(self.panel.matx_online_model, "_sources", [Source()]):
+            landed = self._landed(lambda: self.panel._import_online_records(records))
+        self.assertEqual(2, len(landed), "premise: the two records did not land")
+        plain = [str(mat.mat_id) for mat in self.model.assets
+                 if mat._extra.get("online_uid") == "batch-plain" and str(mat.mat_id) in landed]
+        self.assertEqual(1, len(plain), "premise: the plain record is not one row")
+        self.assertEqual(0, self.each.call_count, "a record started a render of its own")
+        self.assertEqual([plain], self.batches,
+                         "not ONE batch of what landed without a hosted picture")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -322,22 +322,25 @@ class EveryWayInHandsTheLogItsSpeaker(unittest.TestCase):
         os.path.dirname(os.path.abspath(__file__))))))
 
     def test_every_shelf_tool_that_imports_amaze_hands_it_over(self):
-        """In its script, or in the rc_calls function the script calls."""
-        import inspect
+        """In its script, or by the rc_calls function the script calls, run here with no screen."""
         import re
         import xml.etree.ElementTree as ET
         from amaze.utils import rc_calls
+        self.assertFalse(hasattr(hou, "ui"), "premise: a screen would run the tools for real")
+        self.addCleanup(debug.hand_over, debug._ui)
         root = ET.parse(os.path.join(self.REPO, "toolbar", "Amaze.shelf")).getroot()
         missing = []
         for tool in root.findall("tool"):
             script = tool.find("script").text
-            if "from amaze" not in script:
+            if "from amaze" not in script or "rc_calls.start()" in script:
                 continue
-            called = [getattr(rc_calls, name) for name in re.findall(r"\brc_calls\.(\w+)\(", script)
-                      if name != "start" and hasattr(rc_calls, name)]
-            if "rc_calls.start()" not in script and not any(
-                    "start()" in inspect.getsource(function) for function in called):
-                missing.append(tool.get("name"))
+            for name in re.findall(r"\brc_calls\.(\w+)\(", script):
+                if not hasattr(rc_calls, name):
+                    continue
+                debug.hand_over(None)
+                getattr(rc_calls, name)()    # with no screen each stops after its prologue
+                if debug._ui is not rc_calls.HoudiniSpeaker:
+                    missing.append("%s (%s)" % (tool.get("name"), name))
         self.assertEqual([], missing, "these tools' alerts would print instead of showing")
 
     def test_the_pane_hands_it_over_before_the_log_starts(self):

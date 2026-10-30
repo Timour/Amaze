@@ -222,6 +222,22 @@ def arrived(model, before) -> list:
     return [asset for asset in model.assets if str(asset.mat_id) not in before]
 
 
+def refused_at_open(path, error=None):
+    """`open` refusing `path` alone, by default as a file another account owns refuses this one."""
+    import errno
+    from unittest import mock
+    error = error or PermissionError(errno.EACCES, "Permission denied", path)
+    real_open = open
+    wanted = os.path.realpath(path)
+
+    def refused(name, *args, **kwargs):
+        if isinstance(name, (str, os.PathLike)) and os.path.realpath(name) == wanted:
+            raise error
+        return real_open(name, *args, **kwargs)
+
+    return mock.patch("builtins.open", refused)
+
+
 @contextlib.contextmanager
 def captured_log():
     """Capture what `debug` RECORDS inside the block, not what it prints - Debug Mode on for the duration, its own throwaway file, mode and the shared log restored even on exception. ▸p/harness-isolation"""

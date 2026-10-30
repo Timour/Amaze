@@ -1824,6 +1824,19 @@ class NewerLibraryTest(unittest.TestCase):
         self._idle(asked)
         self.assertEqual(1, len(asked), "the update was not offered")
 
+    def test_a_switch_onto_it_puts_the_library_path_back(self):
+        """The settings keep naming the open library: else every later save is refused."""
+        asked = self._answering(1)
+        other = test_support.seeded_library(self)
+        self.policy.set_library_version(other, self.newer)
+        before = self.panel.prefs.dir
+        self.addCleanup(setattr, self.panel.prefs, "dir", before)    # the class shares one panel
+        self.panel.prefs.dir = other    # what Reload or closing Preferences reads back
+        self.assertFalse(self.panel.open_library())
+        self._idle(asked)
+        self.assertEqual(before, self.panel.prefs.dir,
+                         "the Library Path names a library that stayed closed")
+
     def test_update_amaze_installs_the_newest_release(self):
         from unittest import mock
         from amaze.core import updater

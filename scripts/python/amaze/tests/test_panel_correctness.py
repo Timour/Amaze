@@ -1316,5 +1316,58 @@ class TheHighlighterBuildsOneFormatPerColour(unittest.TestCase):
                              "a shared format carries more than its colour")
 
 
+class AStaleVersionsBadgeOpensNothing(unittest.TestCase):
+    """An index that maps to no row is no material: row -1 indexes the LAST asset."""
+
+    def test_an_index_with_no_row_opens_no_versions_window(self):
+        from amaze.dialogs import versions_dialog
+        panel = test_support.fixture_panel(self)
+        model, opened = panel.material_model, []
+        self.assertTrue(model.assets, "premise: the fixture library holds materials")
+
+        def dialog(name, *_args, **_kwargs):
+            opened.append(name)
+            return mock.Mock(exec=lambda: QtWidgets.QDialog.DialogCode.Rejected)
+
+        with mock.patch.object(versions_dialog, "VersionsDialog", dialog), \
+                mock.patch.object(model, "version_list", lambda row: (["v1", "v2"], "v1")):
+            panel._open_versions_dialog(QtCore.QModelIndex(), panel.material_sorted_model,
+                                        model)
+        self.assertEqual([], opened, "a stale badge opened another material's versions")
+
+
+class PanelVisibleIsStampedAfterTheFirstPaint(unittest.TestCase):
+    """`construct_to_painted_ms` is read as including the first paint of the grid."""
+
+    def test_the_stamp_follows_the_first_tiles(self):
+        from amaze.core import debug
+        from amaze.panel import delegates
+        panel = test_support.fixture_panel(self)
+        painted, at_stamp = [], []
+        real_paint, real_event = delegates.AssetItemDelegate.paint, debug.event
+
+        def paint(delegate, *args):
+            painted.append(True)
+            return real_paint(delegate, *args)
+
+        def event(category, message, /, **data):
+            if message == "panel visible":
+                at_stamp.append(len(painted))
+            return real_event(category, message, **data)
+
+        with mock.patch.object(delegates.AssetItemDelegate, "paint", paint), \
+                mock.patch.object(debug, "event", event):
+            panel.resize(900, 600)
+            panel.show()
+            self.addCleanup(panel.hide)
+            for _ in range(50):
+                QtWidgets.QApplication.processEvents()
+                if at_stamp and painted:
+                    break
+        self.assertTrue(painted, "premise: the shown grid painted no tile")
+        self.assertEqual(1, len(at_stamp), "'panel visible' was not written once")
+        self.assertGreater(at_stamp[0], 0, "stamped before the grid painted a tile")
+
+
 if __name__ == "__main__":
     unittest.main()

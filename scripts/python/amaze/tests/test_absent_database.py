@@ -259,15 +259,7 @@ class AListThatWillNotOpenIsNotOneToRepairTest(unittest.TestCase):
         self.index = os.path.join(self.dir, "library.json")
 
     def _refused(self, error):
-        real_open = open
-
-        def refused(path, *args, **kwargs):
-            if (isinstance(path, (str, os.PathLike))
-                    and os.path.abspath(path) == os.path.abspath(self.index)):
-                raise error
-            return real_open(path, *args, **kwargs)
-
-        return patch("builtins.open", refused)
+        return test_support.refused_at_open(self.index, error)
 
     def test_a_list_this_account_may_not_read_is_said_and_kept_from_repair(self):
         from amaze.actions import library as library_actions
@@ -292,6 +284,30 @@ class AListThatWillNotOpenIsNotOneToRepairTest(unittest.TestCase):
         os.remove(self.index)
         self.assertEqual("", library_actions.index_unopenable(self.dir))
         self.assertEqual("", library_actions.index_unopenable(""))
+
+
+class AListThatWillNotOpenOpensNoLibraryTest(unittest.TestCase):
+    """r7 at panel open: the pane builds without the list, then says why once Qt is idle."""
+
+    def test_the_pane_builds_closed_and_says_why(self):
+        from amaze.actions import library as library_actions
+        first = test_support.fixture_panel(self)
+        library = first.prefs.dir
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        calls = []
+        ui = MagicMock()
+        ui.displayMessage.side_effect = lambda message, **_kw: calls.append(str(message))
+        with test_support.refused_at_open(os.path.join(library, "library.json")), \
+                patch.object(hou, "ui", create=True, new=ui):
+            second = test_support.reopened_panel(self)    # the refusal used to escape the build
+            building = list(calls)
+            _until_idle(lambda: calls)
+            why = library_actions.index_unopenable(library)
+        self.assertIsNone(second.material_model, "a list that will not open was opened")
+        self.assertEqual([], building, "said inside onCreateInterface, where a modal draws black")
+        self.assertEqual([messages.LIBRARY_NOT_OPENED % why], calls,
+                         "not the one sentence naming the list - Repair would put a copy over it")
 
 
 class SecondaryDatabaseAbsenceTest(unittest.TestCase):

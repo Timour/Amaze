@@ -121,6 +121,7 @@ class Prefs(_Persistence):
         self.data = {}
         for _prop, attr, default in SHARED_KEYS.values():  # load() reads the same table
             setattr(self, attr, default)
+        self._shared_seen: dict = {}  # stored key -> the value last adopted from or pushed to the library
         self._show_categories = True
         self._section_filters: dict = {}  # the Filter menu's choice per section key, as the entry's id
         self._view_mode = "grid"

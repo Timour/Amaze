@@ -103,6 +103,16 @@ RENDERER_KEYS = {"_" + r.switch: r.switch_stored for r in renderers.ALL}  # data
 IMG_SUBDIR = "img/"  # the two folders a library needs ▸p/library-creation-doors
 ASSET_SUBDIR = "mat/"
 
+_UNSEEN = object()  # a shared key this session never adopted nor pushed: the next push carries it
+
+POINTERS = (  # settings.json's own scalars as (stored key, setter, decode); test_mode last, as a switch
+    ("library_user", "library_user", lambda value: str(value or "")),
+    ("cache_dir", "cache_dir", _decode_path),
+    ("test_dir", "test_dir", _decode_path),
+    ("directory", "dir", lambda value: _normalised_dir(_decode_path(value))),
+    ("test_mode", "test_mode", bool),
+)
+
 SHARED_KEYS = {  # truth in the library's prefs.json: stored key -> (property or None, attr, default)
     "extension": (None, "_ext", ".mat"),
     "img_extension": (None, "_img_ext", ".png"),
@@ -193,12 +203,13 @@ class _Persistence:
         retire = list(self._RETIRED_KEYS)
         if self._library_user:  # the per-user spellings retire only once a user exists to carry them, so a userless session keeps the old flat shape
             retire.extend(USER_RETIRED)
-        if store.replace(self.data, retire=retire,
+        composed = self.data    # the commit may merge another pane's values over it
+        if store.replace(composed, retire=retire,
                          settle=self._drop_departed_merged):
-            self._absorb_committed(store)
+            self._absorb_committed(store, composed)
 
-    def _absorb_committed(self, store) -> None:
-        """The committed document back into the attributes, because the panel paints from those and not from the bytes."""
+    def _absorb_committed(self, store, composed=None) -> None:
+        """The committed document back into the attributes, which the panel paints from."""
         self.data = store.everyones()
         stored = self.data.get("users")
         self._users_blocks = {
@@ -223,6 +234,11 @@ class _Persistence:
             self._file_location_records = _decode_records(records)
         if isinstance(self.data.get("libraries"), list):    # another pane's list, when only it moved
             self._libraries = _listed_libraries(self.data["libraries"])
+        if composed is None:
+            return
+        for key, setter, decode in POINTERS:
+            if key in self.data and self.data[key] != composed.get(key):    # the merge took theirs
+                setattr(self, setter, decode(self.data[key]))
 
     _RETIRED_KEYS = (  # keys this build deliberately removed, said out loud because the store's unknown-key courtesy would otherwise re-adopt them off disk on every save
         "star_color_mode", "star_custom_color",
@@ -241,18 +257,21 @@ class _Persistence:
         "file_folder_show_all", "file_recursive_folders",
         "file_include_subfolders")
 
-    def _adopt_shared(self) -> None:
-        """Fold the library's shared settings over the attributes, through the same setters load() uses."""
+    def _adopt_shared(self, follow: bool = False) -> None:
+        """Fold the library's shared settings over the attributes; `follow`: keys left alone here only."""
+        if not follow or not hasattr(self, "_shared_seen"):
+            self._shared_seen = {}    # a load or another library: nothing pushed there yet
         directory = self.dir  # every setter that moves `dir` adopts, so save unsaved edits before moving it
         if not directory or not os.path.isdir(directory):
             return
         from amaze.core import library_prefs
-        values = library_prefs.all_values(self)
-        if not values:
-            return          # fresh, latched or empty - the copy holds
+        values = library_prefs.all_values(self)    # fresh, latched or empty: the copy holds
+        seen = self._shared_seen
         for stored, (prop, attr, _default) in SHARED_KEYS.items():
             if stored not in values:
                 continue
+            if follow and getattr(self, attr) != seen.get(stored, _UNSEEN):
+                continue    # changed here since adopted or pushed: the next push carries it
             value = values[stored]
             if prop is None:
                 if isinstance(value, str):  # the layout quartet is read-only properties over strings the connector composes paths from, so only a string may land
@@ -260,18 +279,28 @@ class _Persistence:
             else:
                 _through_setter(self, prop, value,
                                 getattr(self, attr, None))
+            seen[stored] = getattr(self, attr)
+
+    def follow_shared(self) -> None:
+        """After a door re-read the library's stores: what peers changed, for keys left alone here."""
+        self._adopt_shared(follow=True)
 
     def _push_shared(self) -> None:
-        """Carry the attributes into the library's store in ONE write; a refused or skipped push loses nothing."""
+        """The shared keys THIS session changed, into the library's store in ONE write."""
         directory = self.dir
         if not directory or not os.path.isdir(directory):
             return  # with no library directory the store would write a relative path into the CWD, and a latched store must keep its evidence
         from amaze.core import library_prefs
         if not library_prefs.takes_writes(self):
             return
-        library_prefs.set_values(self, {
-            stored: getattr(self, attr)
-            for stored, (_prop, attr, _default) in SHARED_KEYS.items()})
+        self._adopt_shared(follow=True)    # first what peers wrote, for each key left alone here
+        seen = self._shared_seen
+        changed = {stored: getattr(self, attr)
+                   for stored, (_prop, attr, _default) in SHARED_KEYS.items()
+                   if getattr(self, attr) != seen.get(stored, _UNSEEN)}
+        if changed and library_prefs.set_values(self, changed):    # refused: retried next save
+            seen.update(changed)
+            self._adopt_shared(follow=True)    # the commit may have merged a peer's keys in
 
     def _user_state_document(self) -> dict:
         """The current per-user state as its stored keys - ONE composer for the block branch, the flat branch and the switch snapshot."""

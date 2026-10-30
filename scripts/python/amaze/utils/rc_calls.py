@@ -1,5 +1,6 @@
 import glob
 import os
+import sys
 
 import hou
 from PySide6 import QtCore, QtGui
@@ -109,18 +110,27 @@ def save(node=None) -> None:
     door(node)
 
 
-def capture() -> None:
-    """The shelf's Capture: the panel button's own capture, a refusal shown in a dialog."""
+def _shelf_tool(*names):
+    """A shelf tool's prologue: (ui, each of `names` imported), or None when it must stop there."""
     start()
     ui = getattr(hou, "ui", None)
     if ui is None:    # a shelf tool runs where there is a screen to answer on
-        return
+        return None
     try:
-        from amaze.core import scene_captures
-        from amaze.prefs import prefs as prefs_module
+        for name in names:
+            __import__(name)    # the import statement's own door, so a broken install is said
     except ImportError as exc:
         ui.displayMessage(messages.AMAZE_NOT_IMPORTABLE % exc)
+        return None
+    return (ui,) + tuple(sys.modules[name] for name in names)
+
+
+def capture() -> None:
+    """The shelf's Capture: the panel button's own capture, a refusal shown in a dialog."""
+    tool = _shelf_tool("amaze.core.scene_captures", "amaze.prefs.prefs")
+    if tool is None:
         return
+    ui, scene_captures, prefs_module = tool
     preferences = prefs_module.Prefs()
     preferences.load()
     try:
@@ -134,16 +144,10 @@ def capture() -> None:
 
 def check_for_updates() -> None:
     """The shelf's Updates: the About tab's verdict and questions, in Houdini's message box."""
-    start()
-    ui = getattr(hou, "ui", None)
-    if ui is None:
+    tool = _shelf_tool("amaze.core.updater", "amaze.dialogs.update_dialog")
+    if tool is None:
         return
-    try:
-        from amaze.core import updater
-        from amaze.dialogs import update_dialog
-    except ImportError as exc:
-        ui.displayMessage(messages.AMAZE_NOT_IMPORTABLE % exc)
-        return
+    ui, updater, update_dialog = tool
     found = updater.check()
     library = updater.configured_library()
     if not found:    # up to date, no release, or unreachable: the sentence is the whole answer
@@ -158,15 +162,10 @@ def check_for_updates() -> None:
 
 def reload_asset_files() -> None:
     """The shelf's Reload: package asset files installed or re-read, so their install scripts run."""
-    start()
-    ui = getattr(hou, "ui", None)
-    if ui is None:
+    tool = _shelf_tool("amaze.helpers.hostos")
+    if tool is None:
         return
-    try:
-        from amaze.helpers import hostos
-    except ImportError as exc:
-        ui.displayMessage(messages.AMAZE_NOT_IMPORTABLE % exc)
-        return
+    _ui, hostos = tool
     hfs = os.path.realpath(hou.getenv("HFS") or "")
     loaded = {hostos.comparable_path(p): p for p in hou.hda.loadedFiles()}    # one spelling each
     new, again = [], []

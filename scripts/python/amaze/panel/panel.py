@@ -164,6 +164,28 @@ MIN_PANEL_WIDTH = 500    #: design px through `theme.ui_px` at use. ONE constant
 
 
 
+class _FirstPaint(QtCore.QObject):
+    """Calls `done` once, after `viewport`'s first paint has RETURNED, then lets go of it."""
+
+    def __init__(self, viewport, done) -> None:
+        super().__init__(viewport)    # dies with the viewport
+        self._done = done
+        self._painting = False
+        viewport.installEventFilter(self)
+
+    def eventFilter(self, watched, event) -> bool:
+        if self._painting or event.type() != QtCore.QEvent.Type.Paint:
+            return False
+        self._painting = True
+        try:
+            QtCore.QCoreApplication.sendEvent(watched, event)    # the paint, every filter included
+        finally:
+            self._painting = False
+            watched.removeEventFilter(self)    # safe inside eventFilter, says the Qt manual
+        self._done()
+        return True    # painted above: the original stops here
+
+
 class AmazePanel(QtWidgets.QWidget):
     """The panel widget: shell, sections and the views onto their models."""
 
@@ -491,7 +513,7 @@ class AmazePanel(QtWidgets.QWidget):
     def open_library(self, needs_user: bool = False) -> bool:
         """Every way onto a library, in one order; False when it stays closed."""
         if self._library_too_new():
-            return False    # the models stay on the library they serve
+            return self._stay_closed()    # the update is offered once Qt is idle
         if (library_actions.index_unreadable(self.prefs.dir)
                 and not self._repaired(self.prefs.dir)):
             return self._stay_closed()
@@ -501,10 +523,9 @@ class AmazePanel(QtWidgets.QWidget):
         if needs_user and users.current(self.prefs) is None:
             debug.event("session", "library not opened - no user picked", dir=self.prefs.dir)
             return self._stay_closed()    # opened from Preferences, with its user
-        if getattr(self, "material_model", None) is None:
-            self.setup()    # the libraryless shape has no models to switch
-        else:
-            self.switch_all_models()
+        why = self._open_models()
+        if why:
+            return self._stay_closed(why)
         texstore.publish_env(self.prefs)    # $AMAZELIB names the library the models now serve
         self._update_library()    # before any tile paints
         self._seed_curated_content()    # once per library, marker-guarded
@@ -512,15 +533,32 @@ class AmazePanel(QtWidgets.QWidget):
             self.prefs.save()    # the Library list, the most recently opened first
         return True
 
-    def _stay_closed(self) -> bool:
-        """False; an open library is kept, and its Library Path and Test Library are put back."""
-        if getattr(self, "material_model", None) is not None:
+    def _open_models(self) -> str:
+        """The models' step of `open_library`: "" once they serve `prefs.dir`, else why not."""
+        try:
+            if getattr(self, "material_model", None) is None:
+                self.setup()    # the libraryless shape has no models to switch
+            else:
+                self.switch_all_models()
+        except (OSError, ValueError, KeyError) as exc:    # a list that is there and will not open
+            debug.exception("library open", exc, dir=self.prefs.dir)
+            return (library_actions.index_unopenable(self.prefs.dir)
+                    or messages.LIBRARY_LIST_NOT_LOADED % exc)
+        return ""
+
+    def _stay_closed(self, why: str = "") -> bool:
+        """False; an open library is kept, its Library Path and Test Library put back, `why` said."""
+        switching = getattr(self, "material_model", None) is not None
+        if switching:
             real, test_mode, test_dir = self._models_pointers
             self.prefs.test_dir = test_dir
             self.prefs.dir = real
             self.prefs.test_mode = test_mode    # last, so the shared settings adopted are that library's
             self.prefs.save()
             debug.event("session", "library kept", dir=self.prefs.dir)
+        if why:    # deferred by the sink: a modal inside the pane's build draws black ▸r/modal-in-pane-build
+            debug.refuse(debug.Damage(messages.LIBRARY_NOT_OPENED_SWITCHING % why if switching
+                                      else messages.LIBRARY_NOT_OPENED % why))
         return False
 
     def _note_models_library(self) -> None:
@@ -714,7 +752,7 @@ class AmazePanel(QtWidgets.QWidget):
         empty_state.track(self)    # the other view is up now, so the blank re-attaches to ITS model rather than relying on the two sharing a proxy
 
     def showEvent(self, event):
-        """Record construct-to-painted on the FIRST show only - reopening a tab must not look like a fresh open - and after the event loop turns once, so the number includes the first paint: "panel ready" fires while the widget is still unparented and unpainted, before Houdini shows it and Qt polishes it under the Houdini stylesheet, lays it out and paints the first page of tiles"""
+        """On the FIRST show only: `panel visible` is written once the grid's first paint returned."""
         super(AmazePanel, self).showEvent(event)
         if self._first_show_logged:
             return
@@ -731,7 +769,7 @@ class AmazePanel(QtWidgets.QWidget):
                 construct_to_painted_ms=round(
                     (time.perf_counter() - t0) * 1000, 1))
 
-        QtCore.QTimer.singleShot(0, _record)
+        _FirstPaint(grid.visible_view(self).viewport(), _record)
 
     FILL_DELAY_MS = 5000    #: well after the first paint: the compile holds Python's lock ▸r/pane-open-cost
 
@@ -1429,6 +1467,8 @@ class AmazePanel(QtWidgets.QWidget):
         """The Versions dialog over `model`'s row at `index`: Select makes the picked one active."""
         from amaze.dialogs import versions_dialog
         row = proxy.mapToSource(index).row()    # `index` is the proxy's
+        if not 0 <= row < len(model.assets):    # -1 would index the LAST asset ▸r/model-contracts
+            return
         mat = model.assets[row]
         listed, active = model.version_list(row)
         if len(listed) < 2:
@@ -1651,6 +1691,7 @@ class AmazePanel(QtWidgets.QWidget):
         ids = [model.tile_key(self.material_sorted_model.mapToSource(index).row())
                for index in indexes]    # by ID, with no layout pair: each twin inserts and saves
         lines, converted, eligible, sources = [], 0, 0, set()
+        held = {str(mat.mat_id) for mat in model.assets}    # the twins are what arrives after
         for row in (model.find_asset_row_by_id(mat_id) for mat_id in ids):
             if row < 0:
                 continue
@@ -1660,18 +1701,34 @@ class AmazePanel(QtWidgets.QWidget):
             eligible += 1
             sources.add(renderers.normalized(mat.renderer))
             try:
-                ok, report = material_actions.convert(model, model.index(row, 0), target)
+                ok, report = material_actions.convert(model, model.index(row, 0), target,
+                                                      render=False)
             except Exception as exc:                          # noqa: BLE001
                 lines.append(f'"{mat.name}": crashed - {exc}')
                 continue
             converted += 1 if ok else 0
             lines.extend(report.summary_lines())
+        self._render_landed(held)
         shown = " and ".join(renderers.label(source)
                              for source in conversion_engine.targets() if source in sources)
         ui = getattr(hou, "ui", None)
         if ui is not None and eligible:
             ui.displayMessage(messages.CONVERSION_SUMMARY % (
                 converted, eligible, shown, renderers.label(target), "\n".join(lines)))
+
+    def _render_landed(self, before: set) -> None:
+        """ONE render batch for the materials saved since `before` that have no picture yet."""
+        model = self.material_model
+        if not model.preferences.render_on_import:    # what a save asked before it rendered alone
+            return
+        rows = []
+        for row, mat in enumerate(model.assets):
+            if str(mat.mat_id) in before:
+                continue
+            path = tile_icons.tile_read_path(model.preferences, str(mat.mat_id), False)
+            if path and not os.path.exists(path):    # a hosted picture is already the thumbnail
+                rows.append(row)
+        material_actions.render_thumbnails(model, rows)    # one husk per renderer ▸r/husk-startup
 
     def show_prefs(self) -> None:
         """Show the Preferences Dialog - NON-MODAL, floating above the main window, and opening with or without a library set (its Library tab is the only way to set one). A second open while the window exists just fronts it."""
@@ -1817,7 +1874,7 @@ class AmazePanel(QtWidgets.QWidget):
         return picked
 
     def import_galleries(self) -> None:
-        """Gallery Import: every material preset in a .gal file becomes a library material through the same save funnel a hand-saved one takes. Thumbnails are NOT rendered during the run - the summary says how to render them afterwards."""
+        """Every material preset in a .gal file saved as a material; ONE render batch after it."""
         from amaze.core import gallery_import
         ui = getattr(hou, "ui", None)
         if not self.material_model:
@@ -1849,17 +1906,20 @@ class AmazePanel(QtWidgets.QWidget):
             "  %d x %s" % (count, name)
             for name, count in sorted(types.items(), key=lambda x: -x[1])
         )
+        renders = self.material_model.preferences.render_on_import    # what import_entries asks
+        if renders:
+            question = messages.IMPORT_MATERIAL_PRESETS_FROM_RENDERING % (
+                len(entries), os.path.basename(picked), listing)
+        else:
+            question = messages.IMPORT_MATERIAL_PRESETS_FROM % (
+                len(entries), os.path.basename(picked), listing)
         choice = ui.displayMessage(
-            messages.IMPORT_MATERIAL_PRESETS_FROM
-            % (len(entries), os.path.basename(picked), listing),
-            buttons=messages.BUTTONS_IMPORT,
+            question, buttons=messages.BUTTONS_IMPORT,
             default_choice=0, close_choice=1,
         ) if ui is not None else 1    # no screen to ask, so the answer is the close_choice - Cancel
         if choice != 0:
             return
-        render_pref = self.prefs.render_on_import
-        self.prefs.render_on_import = 0
-        summary = {}
+        summary, interrupted = {}, False    # import_entries fills OURS, so an Esc keeps what landed
         try:
             with hou.InterruptableOperation(  # type: ignore
                 "Importing gallery presets", open_interrupt_dialog=True
@@ -1869,24 +1929,25 @@ class AmazePanel(QtWidgets.QWidget):
                         float(index) / max(total, 1),
                         "%d/%d  %s" % (index + 1, total, name),
                     )
-                summary = gallery_import.import_entries(
+                gallery_import.import_entries(
                     functools.partial(material_actions.add_asset, self.material_model),
-                    entries, progress=progress
-                )
+                    entries, progress=progress, summary=summary,
+                    library=self.material_model)    # each save skips its render; ONE batch follows
         except hou.OperationInterrupted:
+            interrupted = True
             debug.event("gallery", "import interrupted", **summary)
-        finally:
-            self.prefs.render_on_import = render_pref
-            self.prefs.save()
         for name in sorted(summary.get("categories", {})):
             self.category_model.check_add_category(name)
         self._refresh_sidebar_categories()
+        imported, skipped, failed = (summary.get(key, 0) for key in ("imported", "skipped", "failed"))
+        if interrupted:
+            said = messages.GALLERY_IMPORT_INTERRUPTED % (imported, skipped, failed)
+        elif renders:
+            said = messages.GALLERY_IMPORT_FINISHED_RENDERING % (imported, skipped, failed)
+        else:
+            said = messages.GALLERY_IMPORT_FINISHED_IMPORTED_SKIPPED % (imported, skipped, failed)
         if ui is not None:
-            ui.displayMessage(
-                messages.GALLERY_IMPORT_FINISHED_IMPORTED_SKIPPED
-                % (summary.get("imported", 0), summary.get("skipped", 0),
-                   summary.get("failed", 0))
-            )
+            ui.displayMessage(said)
 
     def cleanup_db(self) -> None:
         """Cleans the WHOLE v2 estate in one pass, one combined report: the material library, the COP library (the same integrity passes over cops.json), registered folder pointers whose directory is gone, and favorites pointing at files that are gone."""
@@ -2265,18 +2326,21 @@ class AmazePanel(QtWidgets.QWidget):
             return
         total = len(records)
         failures = []
+        held = {str(mat.mat_id) for mat in getattr(self.material_model, "assets", ())}
         with self._download_bar(records) as progress_for:
             for i, rec in enumerate(records):
                 on_progress = progress_for(i)
                 try:    # ONE BAD RECORD MUST NOT ABANDON THE BATCH: matx_import.import_record has only try/finally, so build_karma_material and library.add_asset raise straight through it, and without this the remaining records go unimported and `failures` never reaches its dialog
                     ok, reason = self.import_online_material(
-                        rec, on_progress=on_progress, renderer=renderer
+                        rec, on_progress=on_progress, renderer=renderer, render=False
                     )
                 except Exception as exc:                  # noqa: BLE001
                     debug.exception("online import", exc, record=rec.title)
                     ok, reason = False, str(exc)
                 if not ok:
                     failures.append("%s: %s" % (rec.title, reason))
+        if self.material_model is not None:
+            self._render_landed(held)
         ui = getattr(hou, "ui", None)
         if failures and ui is not None:    # ONE dialog for the batch, never one per record
             ui.displayMessage(
@@ -2285,7 +2349,7 @@ class AmazePanel(QtWidgets.QWidget):
             )
 
     def import_online_material(self, record, on_progress=None,
-                               renderer=renderers.HUB.key):
+                               renderer=renderers.HUB.key, render=True):
         """Download and save one online material as `renderer`, calling on_progress(0..1): (ok, reason)."""
         from amaze.core import matx_import
         if record is None or not self.material_model:
@@ -2302,6 +2366,7 @@ class AmazePanel(QtWidgets.QWidget):
             record, source, resolution, self.material_model, self.prefs,
             progress=on_progress, renderer=renderer,
             save=functools.partial(material_actions.add_asset, self.material_model),
+            render=render,    # False: the caller renders its batch once
         )
         if not ok:
             return (False, reason or "Import failed.")
@@ -2641,28 +2706,32 @@ class AmazePanel(QtWidgets.QWidget):
 
 
     def import_cop_assets(self) -> None:
-        """Import every selected Nodes-section asset, reporting failures in one summary dialog (same shape as the material importer)."""
+        """Import every selected Node tile; what failed is said in one dialog."""
+        self._import_selection(
+            self.cop_sorted_model, self.cop_model, node_actions.import_asset_to_scene,
+            "Amaze Import Nodes Asset", "node asset",
+            lambda listed: messages.NODE_ASSETS_IMPORT_FAILURES % listed)
+
+    def _import_selection(self, proxy, model, verb, label: str, noun: str, sentence) -> None:
+        """Each selected tile through `verb(model, source_index)`: ONE undo entry, one dialog."""
         failures = []
-        with hou.undos.group("Amaze Import Nodes Asset"):    # one user action, one undo: the container and whatever is loaded into it must revert as a single step, never as separate entries
-            for index in grid_columns.selected_rows(
-                    self.thumblist.selectionModel()):
-                source_index = self.cop_sorted_model.mapToSource(index)
+        with hou.undos.group(label):    # the containers and what loads into them revert as one step
+            for index in grid_columns.selected_rows(self.thumblist.selectionModel()):
+                source_index = proxy.mapToSource(index)
                 try:
-                    ok, reason, _created = node_actions.import_asset_to_scene(
-                        self.cop_model, source_index)
-                except Exception as e:
+                    ok, reason, _created = verb(model, source_index)
+                except Exception as e:    # one bad tile joins the report; the rest still import
                     try:
-                        name = self.cop_model.assets[source_index.row()].name
+                        name = model.assets[source_index.row()].name
                     except Exception:
-                        name = "node asset"
+                        name = noun
                     failures.append(f'"{name}" failed to import: {e}')
                     continue
                 if not ok and reason:
                     failures.append(reason)
         ui = getattr(hou, "ui", None)
         if failures and ui is not None:
-            ui.displayMessage(
-                messages.NODE_ASSETS_IMPORT_FAILURES % "\n".join(failures))
+            ui.displayMessage(sentence("\n".join(failures)))
 
 
     def get_code_category_names(self) -> list[str]:
@@ -3943,32 +4012,11 @@ class AmazePanel(QtWidgets.QWidget):
         """Import the selected materials: `target` "auto" follows the network, "mat"/"lop" force one."""
         if not self.material_model or not self.category_model:
             return
-        failures = []
-        with hou.undos.group("Amaze Import Materials"):    # ONE undo entry for the whole import, as at every other import entry point: ungrouped, the destination container, the staging matnet, the builder, the move and the materiallibrary entry are separate entries, so one Ctrl+Z leaves a stray matnet and a half-imported builder behind
-            self._import_selected_materials(target, failures)
-        ui = getattr(hou, "ui", None)
-        if failures and ui is not None:
-            ui.displayMessage(
-                messages.MATERIALS_IMPORT_FAILURES % "\n".join(failures))
-
-    def _import_selected_materials(self, target: str, failures: list) -> None:
-        """The import loop itself - see import_asset for the grouping."""
-        for index in grid_columns.selected_rows(
-                self.thumblist.selectionModel()):
-            source_index = self.material_sorted_model.mapToSource(index)
-            try:
-                ok, reason, _created = material_actions.import_asset_to_scene(
-                    self.material_model, source_index, target
-                )
-            except Exception as e:    # an unexpected failure (corrupt .interface file, unusual node structure) joins the normal per-material failure report instead of surfacing as a raw traceback, so the rest of the selection still gets its chance
-                try:
-                    name = self.material_model.assets[source_index.row()].name
-                except Exception:
-                    name = "material"
-                failures.append(f'"{name}" failed to import: {e}')
-                continue
-            if not ok and reason:
-                failures.append(reason)
+        self._import_selection(
+            self.material_sorted_model, self.material_model,
+            lambda model, index: material_actions.import_asset_to_scene(model, index, target),
+            "Amaze Import Materials", "material",
+            lambda listed: messages.MATERIALS_IMPORT_FAILURES % listed)
 
     def import_asset_auto(self, index: QtCore.QModelIndex | None = None):
         """Double-click handler, shared across sections since thumblist is reused for all of them, and answered by the section itself (Section.double_click): Materials import context-aware, with the index never reaching the "auto"/"mat"/"lop" target argument import_asset() expects a string for; Textures push the double-clicked file's path onto a selected texture node's image parm, and there the index IS what says which file was clicked."""

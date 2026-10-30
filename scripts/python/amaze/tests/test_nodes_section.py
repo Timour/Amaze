@@ -908,5 +908,82 @@ class UpdateRenderOnANodeTile(unittest.TestCase):
         self.assertIn("no picture to render", said.call_args.args[0])
 
 
+class ASelectionImportsAsOneStep(unittest.TestCase):
+    """Import on a Node or a Material selection: one undo entry, one dialog for what failed."""
+
+    @classmethod
+    def setUpClass(cls):
+        if not hou.getenv("OCIO"):    # save_node refuses without one
+            hou.putenv("OCIO", "/dev/null")
+
+    def setUp(self):
+        import types
+        self.panel = test_support.fixture_panel(self)
+        self.panel.prefs.render_on_import = 0
+        self.said = []
+        ui = types.SimpleNamespace(
+            displayMessage=lambda text, *a, **k: self.said.append(text) or 0,
+            paneTabs=lambda *a, **k: ())    # no network editor: the import lands in /obj
+        patcher = mock.patch.object(hou, "ui", ui, create=True)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        before = {node.path() for root in ("/obj", "/mat") for node in hou.node(root).children()}
+        self.addCleanup(lambda: [node.destroy() for root in ("/obj", "/mat")
+                                 for node in hou.node(root).children()
+                                 if node.path() not in before])
+        self.addCleanup(hou.undos.clear)
+
+    def _two_tiles(self, key, model, save, network):
+        """Two saved tiles shown and selected in section `key`; the second's id made unsafe."""
+        from PySide6 import QtCore
+        held = test_support.asset_ids(model)
+        for name in ("one_step_good", "one_step_bad"):
+            source = network(name)
+            save(model, source, "", "", False, name=name)
+            source.destroy()
+        landed = test_support.arrived(model, held)
+        self.assertEqual(2, len(landed), "premise: the two tiles were not saved")
+        self.panel.section_tabs.setChecked(key)
+        QtWidgets.QApplication.processEvents()
+        proxy, selection = self.panel.thumblist.model(), self.panel.thumblist.selectionModel()
+        selection.clearSelection()
+        rows = [model.find_asset_row_by_id(asset.mat_id) for asset in landed]
+        for row in rows:
+            index = proxy.mapFromSource(model.index(row, 0))
+            self.assertTrue(index.isValid(), "premise: the grid does not show the tile")
+            selection.select(index, QtCore.QItemSelectionModel.SelectionFlag.Select)
+        bad = next(row for row in rows if model.assets[row].name == "one_step_bad")
+        model.assets[bad]._mat_id = "../../../Documents/x"    # its import refuses with a sentence
+        hou.undos.clear()
+        return model.index(bad, 0)
+
+    def test_node_tiles(self):
+        from amaze import messages
+        bad = self._two_tiles("cop", self.panel.cop_model, node_actions.add_asset, _sop_network)
+        self.panel.import_cop_assets()
+        self.assertEqual(("Amaze Import Nodes Asset",), hou.undos.undoLabels())
+        self.assertTrue([node for node in hou.node("/obj").allSubChildren()
+                         if node.name() == "the_box"], "the good tile did not land")
+        _ok, reason, _created = node_actions.import_asset_to_scene(self.panel.cop_model, bad)
+        self.assertEqual([messages.NODE_ASSETS_IMPORT_FAILURES % reason], self.said)
+
+    def test_material_tiles(self):
+        from amaze import messages
+        from amaze.actions import materials as material_actions
+
+        def network(name):
+            builder = nodes.make_karma_builder(hou.node("/mat"), name)
+            nodes.wire_builder_output(builder, builder.createNode("mtlxstandard_surface"))
+            return builder
+
+        model = self.panel.material_model
+        bad = self._two_tiles("material", model, material_actions.add_asset, network)
+        self.panel.import_asset("mat")
+        self.assertEqual(("Amaze Import Materials",), hou.undos.undoLabels())
+        self.assertIsNotNone(hou.node("/mat/one_step_good"), "the good tile did not land")
+        _ok, reason, _created = material_actions.import_asset_to_scene(model, bad, "mat")
+        self.assertEqual([messages.MATERIALS_IMPORT_FAILURES % reason], self.said)
+
+
 if __name__ == "__main__":
     unittest.main()

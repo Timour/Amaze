@@ -1,5 +1,6 @@
 """A library switch drops the keyed-store tables, so the panel never serves rows the disk no longer holds: an open store reads its file ONCE, and without the drop a session that switched away and back would show the first library's old notes, icons and folders until Houdini restarted, hiding edits sync landed behind the cache."""
 
+import contextlib
 import json
 import os
 import shutil
@@ -471,6 +472,71 @@ class AnUnreadableListIsAskedAboutBeforeTheSwitch(unittest.TestCase):
         self.assertFalse(self.panel.prefs.test_mode, "Cancel left Test Library on")
         self.assertFalse(dialog._cbx_test_mode.isChecked(), "the switch still shows Test Library on")
         self.assertEqual(before, self.panel.prefs.dir, "Cancel left the open library")
+
+
+class AListThatWillNotOpenIsNotSwitchedTo(unittest.TestCase):
+    """r7 and r2 at Preferences' Apply: a list refused at OPEN keeps what was open; `{}` opens."""
+
+    def setUp(self):
+        self.other = test_support.seeded_library(self)
+
+    def _apply(self, panel, refused=True):
+        """Apply onto `self.other`, saves real: (opened, what was said, the list's own sentence)."""
+        from amaze.actions import library as library_actions
+        from amaze.prefs import persistence
+        from amaze.prefs import prefs as prefs_mod
+        said = []
+        ui = mock.MagicMock()
+        ui.displayMessage.side_effect = lambda text, **_kw: said.append(str(text)) or 0
+        index = os.path.join(self.other, "library.json")
+        with mock.patch.object(hou, "ui", ui, create=True), \
+                mock.patch.object(prefs_mod.Prefs, "save", persistence._Persistence.save), \
+                (test_support.refused_at_open(index) if refused else contextlib.nullcontext()):
+            opened = test_support.apply_library(self, panel, self.other)
+            for _ in range(20):    # the sentence waits for an idle Qt
+                QtWidgets.QApplication.processEvents()
+            why = library_actions.index_unopenable(self.other)
+        return opened, said, why
+
+    def _next_start(self, panel) -> str:
+        """The library settings.json names, read the way the next pane reads it."""
+        from amaze.prefs import prefs as prefs_mod
+        reader = prefs_mod.Prefs()
+        reader.path = panel.prefs.path
+        reader.load()
+        return reader.dir
+
+    def test_the_open_library_and_its_settings_are_kept(self):
+        panel = test_support.fixture_panel(self)
+        before, user = panel.prefs.dir, panel.prefs.library_user
+        opened, said, why = self._apply(panel)
+        self.assertFalse(opened, "Apply answered a library that stayed closed as open")
+        self.assertEqual(before, panel._models_dir, "the open library was left")
+        self.assertEqual((before, user), (panel.prefs.dir, panel.prefs.library_user))
+        self.assertEqual(before, self._next_start(panel),
+                         "the next Houdini opens the library that would not open")
+        self.assertTrue(database.DatabaseConnector("library.json").serves(before),
+                        "the list's connection was left on the library that did not open")
+        self.assertEqual([messages.LIBRARY_NOT_OPENED_SWITCHING % why], said)
+
+    def test_a_pane_without_a_library_keeps_its_settings_too(self):
+        panel = test_support.fixture_unconfigured_panel(self)
+        opened, said, why = self._apply(panel)
+        self.assertFalse(opened)
+        self.assertIsNone(panel.material_model, "a list that will not open was opened")
+        self.assertEqual("", self._next_start(panel),
+                         "the next Houdini starts on the library that would not open")
+        self.assertEqual([messages.LIBRARY_NOT_OPENED % why], said)
+
+    def test_a_list_without_its_containers_opens(self):
+        for name in ("library.json", "cops.json"):
+            with open(os.path.join(self.other, name), "w", encoding="utf-8") as handle:
+                json.dump({}, handle)
+        panel = test_support.fixture_panel(self)
+        opened, said, _why = self._apply(panel, refused=False)
+        self.assertTrue(opened, "a list that parses was refused: %r" % said)
+        self.assertEqual(os.path.normpath(self.other), os.path.normpath(panel._models_dir))
+        self.assertEqual([], said)
 
 
 if __name__ == "__main__":
