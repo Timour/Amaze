@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.21.0
+
+- Quitting Houdini while online pictures are downloading, a folder is being counted, files are moving or thumbnails are loading waits one window of three seconds for all of them together, not three seconds each: sixteen stalled downloads cost 3 s instead of 30. A worker that will not stop is kept until Houdini exits instead of being freed while it runs.
+- The sidebar highlight stays on the grid's row when a merge from another computer resets the list, when a second panel sorts or deletes, and after Esc; a browsed subfolder deleted on disk stands on its location.
+- The first save of a session no longer re-reads every recovery stamp before it returns: the stamps of what the save changed are written at once, the rest are checked in the background. At 1,500 materials the first save takes 50 ms instead of 116, and 46 ms instead of 723 when no stamps exist yet.
+- Swapping a material on a prim keeps the old material when a referenced or sublayered USD file still binds it somewhere on the stage.
+- A category typed with a comma in its name is one category; before, the sidebar split it in two.
+- A dropped material or geometry that cannot be placed says so in the status line; a scene file that cannot be opened still gets its dialog.
+- Switching libraries reads the settings file once instead of once per list, and the panel that switched keeps its own settings on the new library; they could stay on the old one when a second panel had opened the lists last.
+- List mode checks whether the library is reachable once per change instead of at every row.
+- The online preview cache drops pictures that a refreshed listing no longer names.
+- Updating a material's content leaves no empty temporary folder behind.
+- The status line no longer repeats the Amaze: prefix when a network cannot take a Material Library.
+- The test suite's source scans read their folder filters relative to the package, so a checkout under a folder named tests is scanned too.
+
 ## 1.20.0
 
 - Clean Up sets aside a registered folder that is not on this computer and keeps its comments, tile icons and favorites; they are back when the folder is added again. Removing a folder from the sidebar still clears them.
