@@ -85,9 +85,14 @@ def _category_of(entry) -> str:
 
 
 def import_entries(save, entries, staging_parent=None,
-                   progress=None) -> dict:
+                   progress=None, summary=None, library=None) -> dict:
     """Each (entry, type_name, category) saved through `save`, staged and undo-free. ▸r/gallery-entries"""
-    summary = {"imported": 0, "skipped": 0, "failed": 0, "categories": {}}
+    summary = summary if summary is not None else {}    # the caller's: an Esc keeps what landed
+    for key in ("imported", "skipped", "failed"):
+        summary.setdefault(key, 0)
+    summary.setdefault("categories", {})
+    asked = {} if library is None else {"render": False}    # `library`: ONE batch renders after
+    landed = []
     if save is None or not entries:
         return summary
     with hou.undos.disabler():    # the container joins the disabler at BOTH ends, or one Ctrl+Z resurrects it ▸r/undo-groups
@@ -107,7 +112,7 @@ def import_entries(save, entries, staging_parent=None,
                         continue
                     node = entry.createChildNode(parent)    # documented `-> Node` and measured so on 25 real entries: it returns a node or RAISES, never None ▸r/gallery-entries
                     node.setGenericFlag(hou.nodeFlag.Material, True)
-                    if not save(node, category, "gallery", False):
+                    if not save(node, category, "gallery", False, **asked):
                         summary["failed"] += 1    # a refused save lands in failed, never imported: the summary is all the user reads after a bulk run ▸r/gallery-entries
                         debug.event("gallery", "entry was not saved",
                                     entry=entry.name(), type=type_name)
@@ -116,6 +121,7 @@ def import_entries(save, entries, staging_parent=None,
                     summary["categories"][category] = summary[
                         "categories"
                     ].get(category, 0) + 1
+                    landed.append(node.userData("assetlib_id") or "")    # the save's own stamp
                 except (AttributeError, hou.Error) as exc:    # AttributeError too: if a build ever DID hand back None, one entry fails instead of the whole run aborting ▸r/gallery-entries
                     summary["failed"] += 1
                     debug.event("gallery", "entry import failed",
@@ -137,4 +143,10 @@ def import_entries(save, entries, staging_parent=None,
     debug.event("gallery", "import finished", **{
         k: v for k, v in summary.items() if k != "categories"
     })
+    if library is not None and library.preferences.render_on_import:
+        from amaze.render import thumbs
+        rows = [library.find_asset_row_by_id(key) for key in landed if key]
+        mats = [library.assets[row] for row in rows if row != -1]
+        if mats:
+            thumbs.ThumbNailRenderer.render_assets(library.preferences, mats)
     return summary

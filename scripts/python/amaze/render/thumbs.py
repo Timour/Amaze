@@ -1,4 +1,5 @@
 import contextlib
+import functools
 import os
 import shutil
 import tempfile
@@ -11,12 +12,22 @@ import amaze
 from amaze.core import tile_icons
 from amaze.render import husk_job
 from amaze.render import nodes
+from amaze.render.material_conversion import engine as conversion_engine
 from amaze import messages
 from amaze import preview
 from amaze.prefs import prefs
 from amaze.helpers import helpers, hostos
 
 # (module reloads consolidated into panel.py's single chain)
+
+
+def _undo_free(method):
+    """`method` run whole inside one undo disabler: its staged work is nobody's Ctrl+Z."""
+    @functools.wraps(method)
+    def run(*args, **kwargs):
+        with hou.undos.disabler():    # nests safely in a caller's ▸r/undo-groups
+            return method(*args, **kwargs)
+    return run
 
 
 def usd_renderer(mat) -> str:
@@ -42,7 +53,11 @@ class ThumbNailRenderer:
         items = [(str(asset_id), node) for asset_id, node in items if node is not None]
         if not items:
             return False
-        scaffold = preview.build_usd_scaffold(preferences, renderer)    # one stage, the batch's
+        try:
+            scaffold = preview.build_usd_scaffold(preferences, renderer)    # one stage, the batch's
+        except hou.Error as exc:    # a renderer this Houdini lacks refuses its settings node
+            debug.exception("thumbnail stage", exc, renderer=renderer, materials=len(items))
+            return False
         if scaffold is None:    # no Scene Viewer to read OCIO from
             return False
         job_dir = tempfile.mkdtemp(prefix="amaze_thumbs_",
@@ -53,6 +68,9 @@ class ThumbNailRenderer:
             debug.exception("thumbnail batch", exc, renderer=renderer, materials=len(items))
             shutil.rmtree(job_dir, ignore_errors=True)
             return False
+        except BaseException:
+            shutil.rmtree(job_dir, ignore_errors=True)    # not ours to answer, but the folder is
+            raise
         finally:
             with hou.undos.disabler():    # a bare destroy brings the scaffold back on Ctrl+Z
                 scaffold["net"].destroy()
@@ -94,6 +112,11 @@ class ThumbNailRenderer:
         handlers = []
         items = []
         refused = []
+        api = conversion_engine.api(renderer)
+        if api is not None and not api.available():    # its stage cannot be built here
+            refused = [messages.THUMBNAIL_RENDERER_NOT_LOADED % (mat.name, renderers.label(renderer))
+                       for mat in mats]
+            mats = ()    # nothing imported, so render_batch has nothing to stage
         with hou.undos.disabler():    # the imports and their cleanup are a pair ▸r/undo-groups
             try:
                 for mat in mats:
@@ -176,6 +199,7 @@ class ThumbNailRenderer:
         """FALLBACK-ONLY picker for assets saved before the source-node name was recorded at save time (that is the reliable path - see create_thumb_cop); shares the live pick's logic via helpers.pick_cop_display_child so the two cannot drift."""
         return helpers.pick_cop_display_child(temp)
 
+    @_undo_free
     def create_thumb_geo_file(
         self, file_path: str, out_path: str, size: int
     ) -> bool:
@@ -423,6 +447,7 @@ class ThumbNailRenderer:
             return bool(self.create_thumb_cop(str(asset_id),
                                               str(thumb_node)))
 
+    @_undo_free
     def create_thumb_sop(self, asset_id: str) -> bool:
         """Thumbnail for a saved SOP-network asset (the Nodes section), rendered from the ARCHIVE and never the scene: the saved items load into a throwaway /obj container, its terminal SOP is written to a temporary scratch geometry file, and that file goes through create_thumb_geo_file - the same camera-fit-and-flipbook renderer the Geometry section uses - so a re-render still works long after the original nodes are gone. Every failure prints an Amaze-prefixed reason and returns False, which the caller must read as saved-without-a-thumbnail, never as a save failure."""
         out_path = tile_icons.thumbnail_path(self._preferences, asset_id)
@@ -483,6 +508,7 @@ class ThumbNailRenderer:
                 except OSError:
                     pass
 
+    @_undo_free
     def create_thumb_cop(self, asset_id: str, source_name: str = "") -> bool:
         """Thumbnail for a standalone COP-network asset (the v2 Cop section): the network's own display/output image IS the thumbnail - no shaderball, lights or camera - rendered from a temporary copy loaded from the just-saved asset file (never the scene node) through a rop_image created inside that copy, which is always destroyed. Every failure path prints an Amaze-prefixed reason; callers treat False as registered-without-a-thumbnail, never as a save failure."""
         out_path = tile_icons.thumbnail_path(self._preferences, asset_id)

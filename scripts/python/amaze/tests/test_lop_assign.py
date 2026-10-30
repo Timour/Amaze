@@ -91,6 +91,34 @@ class TestRemoveUnreferenced(unittest.TestCase):
                     left, {node.name() for node in scene.liblop.children()})
 
 
+class TheLibrarysOwnAssignIsAUse(unittest.TestCase):
+    """A material library entry's Assign to Geometry binds its material too."""
+
+    def _assigned(self, assign, geopath):
+        scene = _Scene(self)
+        scene.liblop.parm("assign1").set(assign)
+        scene.liblop.parm("geopath1").set(geopath)
+        return scene
+
+    def test_a_swap_keeps_the_material_the_entry_still_binds(self):
+        scene = self._assigned(1, "/sphere_*")
+        self.assertIn("/materials/mat_a", dict(lop_assign.bound_materials_under(
+            scene.stage(), "/sphere_b")), "premise: the entry's Assign binds nothing")
+        scene.bind("/sphere_a", "/materials/mat_b")    # the swap, on one prim
+        self.assertFalse(lop_assign.remove_unreferenced_material(
+            scene.lopnet, scene.liblop, "/materials/mat_a"))
+        self.assertIn("/materials/mat_a", dict(lop_assign.bound_materials_under(
+            scene.stage(), "/sphere_b")), "the prim the swap did not touch lost its material")
+
+    def test_an_assign_that_binds_nothing_is_no_use(self):
+        for assign, geopath in ((1, ""), (0, "/sphere_*")):
+            with self.subTest(assign=assign, geopath=geopath):
+                scene = self._assigned(assign, geopath)
+                self.assertTrue(lop_assign.remove_unreferenced_material(
+                    scene.lopnet, scene.liblop, "/materials/mat_a"))
+                self.assertEqual({"mat_b"}, {n.name() for n in scene.liblop.children()})
+
+
 class TestNameNewAssign(unittest.TestCase):
 
     def test_names_only_the_new_assign_after_what_it_drives(self):

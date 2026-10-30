@@ -528,6 +528,25 @@ class AKarmaThumbnailLeavesTheSceneAsItFoundIt(unittest.TestCase):
             "import into /mat and the cleanup that removes it, so the "
             "next Ctrl+Z puts the material back into /mat")
 
+    def test_a_loose_network_keeps_a_wire_through_a_dot(self):
+        """A loose save's thumbnail stages its nodes with the dots between them. ▸r/node-items"""
+        from pxr import Usd, UsdShade
+        home = hou.node("/mat").createNode("subnet", "AmazeDotProbe")
+        self.addCleanup(self._drop, home)
+        image = home.createNode("mtlximage", "probe_image")
+        surface = home.createNode("mtlxstandard_surface", "probe_surface")
+        dot = home.createNetworkDot()
+        dot.setInput(image, 0)
+        surface.setInput(surface.inputIndex("base_color"), dot, 0)
+        batch = preview.write_batch(
+            self._scaffold(), [("DOT_PROBE", [surface, image])], self.out)    # as save_node_collect
+        stage = Usd.Stage.Open(batch["usd"])
+        staged = next(UsdShade.Shader(prim) for prim in Usd.PrimRange(
+            stage.GetPrimAtPath(batch["prims"][0])) if prim.GetName() == "probe_surface")
+        wire = staged.GetInput("base_color")
+        fed = [path.GetPrimPath().name for path in (wire.GetAttr().GetConnections() if wire else [])]
+        self.assertEqual(["probe_image"], fed, "the staged surface lost the wire through the dot")
+
     def test_a_render_puts_the_selection_back(self):
         scaffold = self._scaffold()
         mat = self._material()
@@ -597,6 +616,63 @@ class AKarmaThumbnailLeavesTheSceneAsItFoundIt(unittest.TestCase):
             before, (survivor.sessionId(),
                      [c.name() for c in survivor.children()]),
             "the shared companion is not the network that was there")
+
+
+class ANetworkThumbnailLeavesNothingOnTheUndoStack(unittest.TestCase):
+    """SOP, COP and geometry-file thumbnails stage their work off the artist's stack. ▸r/undo-groups"""
+
+    def setUp(self):
+        from amaze.core import cop_library
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        self.prefs = test_support.fixture_prefs(self)
+        self.prefs.render_on_import = 0
+        self.prefs.rendersize = 32
+        self.model = cop_library.CopLibrary(preferences=self.prefs)
+        self.addCleanup(hou.undos.clear)
+
+    def _saved(self, network):
+        """`network` saved as a Node asset, then gone from the scene: its asset id."""
+        from amaze.actions import nodes as node_actions
+        held = test_support.asset_ids(self.model)
+        node_actions.add_asset(self.model, network, "", "", False, name=network.name())
+        with hou.undos.disabler():
+            network.destroy()
+        saved, = test_support.arrived(self.model, held)
+        return str(saved.mat_id)
+
+    def _render(self, context, asset_id):
+        hou.undos.clear()
+        rendered = thumbs.ThumbNailRenderer(self.prefs).render_network_thumbnail(
+            context, asset_id)
+        self.assertTrue(rendered, "premise: the %s thumbnail did not render" % context)
+        return hou.undos.undoLabels()
+
+    def test_a_sop_thumbnail_adds_no_undo_entries(self):
+        with hou.undos.disabler():
+            geo = hou.node("/obj").createNode("geo", "undo_sop")
+            geo.createNode("box").setDisplayFlag(True)
+        self.assertEqual((), self._render("SOP", self._saved(geo)))
+
+    def test_a_cop_thumbnail_adds_no_undo_entries(self):
+        with hou.undos.disabler():
+            net = hou.node("/obj").createNode("copnet", "undo_cop")
+            kinds = hou.copNodeTypeCategory().nodeTypes()
+            net.createNode(next(k for k in ("ramp", "constant", "noise") if k in kinds))
+        self.assertEqual((), self._render("COP", self._saved(net)))
+
+    def test_a_geometry_file_thumbnail_adds_no_undo_entries(self):
+        folder = test_support.scratch_dir("amaze_geo_undo_")
+        self.addCleanup(shutil.rmtree, folder, True)
+        path = os.path.join(folder, "box.bgeo")
+        with hou.undos.disabler():
+            geo = hou.node("/obj").createNode("geo")
+            geo.createNode("box").geometry().saveToFile(path)
+            geo.destroy()
+        hou.undos.clear()
+        self.assertTrue(thumbs.ThumbNailRenderer(self.prefs).create_thumb_geo_file(
+            path, os.path.join(folder, "box.png"), 32), "premise: nothing rendered")
+        self.assertEqual((), hou.undos.undoLabels())
 
 
 class _CamStub:

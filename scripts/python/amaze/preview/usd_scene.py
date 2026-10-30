@@ -152,6 +152,10 @@ def _stage_material(lib, node, asset_id, prim_path: str) -> str:
         if not isinstance(node, list) and node.type().name() == "octane_vopnet":
             from amaze.render.material_conversion import octane    # late: it imports render/
             curr_nodes = [octane.classic_into(lib, node)]
+        elif isinstance(node, list):    # a loose save's nodes, with their dots ▸r/node-items
+            from amaze.render import nodes    # late, as octane above
+            curr_nodes = [item for item in nodes.copy_with_dots(curr_items, lib)
+                          if isinstance(item, hou.Node)]    # a dot is no material candidate
         else:
             curr_nodes = hou.copyNodesTo(curr_items, lib)  # type: ignore
     if curr_nodes:    # empty for a builder subnet with no children: nothing to render

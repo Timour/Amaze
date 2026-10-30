@@ -158,6 +158,7 @@ class TheDamageDoorMarksItsRefusalsTest(unittest.TestCase):
 
     DAMAGE = {    # opening words -> is the LIBRARY broken? A forwarded reason (a bare name) is absent: it keeps its origin's marking
         '"%s": asset file is missing on disk.': True,
+        '"%s": %s.': True,    # the Node door's empty or unreadable file, its reason composed in
         '"%s" cannot be imported: its id is not a usable file': True,
         '"%s" cannot be imported: its files resolve to': True,
         '"%s" cannot be imported: its material file is': True,

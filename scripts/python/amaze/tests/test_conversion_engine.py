@@ -152,6 +152,28 @@ class TheEngineRoutesThroughMaterialX(unittest.TestCase):
         self.assertEqual(1, made.report.skipped.count(engine.UNWIRED))
 
 
+class RedshiftLoadsOnlyWithBothItsContainers(unittest.TestCase):
+    """The converters build `rs_usd_material_builder` and read `redshift_vopnet`. ▸r/renderer-plugins"""
+
+    BOTH = ("redshift_vopnet", "rs_usd_material_builder")
+
+    def _why_not(self, present):
+        """`why_not` in a host whose type registry holds `present` alone, in every category."""
+        category = mock.Mock()
+        category.nodeType.side_effect = lambda name: object() if name in present else None
+        with mock.patch.object(hou, "nodeTypeCategories", lambda: {"Vop": category}), \
+                mock.patch.object(hou, "nodeType", lambda cat, name: cat.nodeType(name)):
+            return engine.why_not("Karma", "Redshift")
+
+    def test_one_container_without_the_other_refuses_before_building(self):
+        for present in (self.BOTH[:1], self.BOTH[1:], ()):
+            with self.subTest(present=present):
+                self.assertIn("Redshift isn't loaded", self._why_not(present))
+
+    def test_both_containers_convert(self):
+        self.assertEqual("", self._why_not(self.BOTH))
+
+
 class TheLibraryDoorRefusesFirst(unittest.TestCase):
     """`actions.materials.convert` says why before it rebuilds anything."""
 

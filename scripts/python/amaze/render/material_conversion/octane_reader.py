@@ -136,7 +136,8 @@ def _set(node, name, value) -> None:
         parm.set(value)
 
 
-def _at_default(node, name) -> bool:
+def at_default(node, name) -> bool:
+    """Whether every component of `node`'s `name` is at its default; True for no such parm."""
     values = node.parmTuple(name)
     return values is None or all(parm.isAtDefault() for parm in values)
 
@@ -222,7 +223,7 @@ class Reader:
         for name in names:
             if node.parmTuple(name) is None and name not in wired:
                 continue
-            if name in wired or not _at_default(node, name):
+            if name in wired or not at_default(node, name):
                 self.report.skip('"%s" uses %s, %s' % (node.name(), name, why))
 
 

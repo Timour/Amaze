@@ -55,6 +55,38 @@ class ASnippetRunsInThisHoudini(unittest.TestCase):
                 self.assertNotIn("\n", problem, "more than the last line came back")
 
 
+class ASnippetOntoANodeIsSetOrRefused(unittest.TestCase):
+    """`apply_to_node` sets the snippet, or says why not. ▸r/hou-errors"""
+
+    def setUp(self):
+        geo = hou.node("/obj").createNode("geo", "apply_probe")
+        self.addCleanup(geo.destroy)
+        self.wrangle = geo.createNode("attribwrangle")
+        self.model = types.SimpleNamespace(assets=[types.SimpleNamespace(code="@Cd = 0.5;")])
+
+    def test_the_snippet_lands_on_the_code_parm(self):
+        self.assertEqual((True, ""), code_actions.apply_to_node(self.model, 0, self.wrangle))
+        self.assertEqual("@Cd = 0.5;", self.wrangle.parm("snippet").eval())
+
+    def test_a_parm_houdini_will_not_write_is_refused_with_a_sentence(self):
+        """`Parm.set` raises PermissionError on a parm it will not write (hou/Parm.txt)."""
+        real = hou.Parm.set
+
+        def refusing(parm, *args, **kwargs):
+            if parm.name() == "snippet":
+                raise hou.PermissionError("the asset is locked")
+            return real(parm, *args, **kwargs)
+
+        with mock.patch.object(hou.Parm, "set", refusing):
+            try:
+                ok, reason = code_actions.apply_to_node(self.model, 0, self.wrangle)
+            except hou.Error as exc:
+                self.fail("a refused parm escaped as %s: %s" % (type(exc).__name__, exc))
+        self.assertFalse(ok)
+        self.assertTrue(reason.startswith("Could not set the parameter"), reason)
+        self.assertEqual("", self.wrangle.parm("snippet").eval().strip())
+
+
 SHELF_KEYS = {    # hom.zip ▸ tool_script.txt; `bbox` is "may not be present" ▸r/shelf-kwargs
     "pane", "viewport", "panename", "toolname",
     "shiftclick", "ctrlclick", "altclick", "cmdclick",

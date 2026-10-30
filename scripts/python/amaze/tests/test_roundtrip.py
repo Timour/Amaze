@@ -31,12 +31,9 @@ from amaze.tests import test_support  # noqa: E402
 
 
 def _redshift_available():
-    """Same probe test_redshift_terminal.py uses: ask for the TYPE. It skips only where Redshift genuinely is not installed - never on every host at once, which would make it dead cover. ▸r/renderer-plugins"""
-    try:
-        return hou.vopNodeTypeCategory().nodeType(
-            "redshift_vopnet") is not None
-    except Exception:                                        # noqa: BLE001
-        return False
+    """The product's own probe: skips only where Redshift is not loaded. ▸r/renderer-plugins"""
+    from amaze.render import material_converter
+    return material_converter._redshift_type_available()
 
 SPEC = {  # distinctive, non-default values: the point is proving THESE numbers survive disk, not that a node with defaults reappears
     "base_color": (0.123, 0.456, 0.789),

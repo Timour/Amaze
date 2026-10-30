@@ -373,14 +373,28 @@ def clear_inherited_stamps(container: hou.Node, include_self=False) -> int:
     return cleared
 
 
-def load_items_strict(node: hou.Node, file_name: str) -> str:
-    """Strict load: "" or the fatal reason. ▸r/node-items"""
+def empty_file_reason(file_name: str) -> str:
+    """"" or why `file_name` cannot be loaded at all: empty, or unreadable. ▸r/node-items"""
     try:
         if os.path.getsize(file_name) == 0:
             return ("its material file is empty (%s) - the save that "
                     "produced it did not finish" % file_name)
     except OSError as exc:
         return "its material file could not be read (%s)" % exc
+    return ""
+
+
+def nothing_loaded(name: str, file_name: str) -> str:
+    """The refusal for a load that raised nothing and added no node. ▸r/node-items"""
+    return ('nothing could be loaded for "%s" - its .mat file looks '
+            "corrupt or empty (%s)" % (name, file_name))
+
+
+def load_items_strict(node: hou.Node, file_name: str) -> str:
+    """Strict load: "" or the fatal reason. ▸r/node-items"""
+    problem = empty_file_reason(file_name)
+    if problem:
+        return problem
     try:
         node.loadItemsFromFile(file_name)
     except hou.LoadWarning as warning:    # BEFORE hou.Error below - it is a subclass, and the broad handler would swallow the recoverable case
@@ -395,6 +409,23 @@ def load_items_strict(node: hou.Node, file_name: str) -> str:
                    or "Houdini gave no reason"))
     clear_inherited_stamps(node)    # the file carries the stamps its inner nodes had when it was SAVED, and a later Save to Amaze on one of them would offer to update that unrelated entry ▸r/inherited-stamps
     return ""
+
+
+def copy_with_dots(nodes, parent) -> tuple:
+    """`nodes` and the dots on their input wires copied into `parent`: every copy, dots too."""
+    nodes = list(nodes)
+    if len({node.parent().path() for node in nodes}) != 1:    # copyItems takes one network
+        return hou.copyNodesTo(nodes, parent)    # a wire through a dot is lost here ▸r/node-items
+    dots, seen = [], set()
+    for node in nodes:
+        for connection in node.inputConnections():
+            item = connection.inputItem()
+            while isinstance(item, hou.NetworkDot) and item.path() not in seen:
+                seen.add(item.path())
+                dots.append(item)
+                item = item.inputItem()
+    return parent.copyItems(nodes + dots,    # copyNodesTo drops a wire through a dot ▸r/node-items
+                            connect_outputs_to_multi_inputs=False)    # never wires the originals' consumers
 
 
 def node_type_available(type_name: str) -> bool:
@@ -603,7 +634,7 @@ class NodeHandler:
         """Render a saved asset's thumbnail. A failure costs the thumbnail, never the asset; `render()` answers True, False, or None where this context has no picture to draw. ▸p/after-save-thumbnail"""
         if self.supplied_thumbnail and self._supply_thumbnail(asset_id):
             return
-        if not update and not self._preferences.render_on_import:
+        if not update and not (self.render_after_save and self._preferences.render_on_import):
             return
         try:
             rendered = render()
@@ -634,6 +665,7 @@ class NodeHandler:
     def __init__(self, preferences: prefs.Prefs) -> None:
         self._preferences = preferences
         self.supplied_thumbnail = ""    # a picture an import brought, saved instead of a render
+        self.render_after_save = True    # False: a new save skips its render, a batch follows
         self._builder_node = None
         self._renderer = ""
         self._import_path = None
@@ -1153,10 +1185,7 @@ class NodeHandler:
             c for c in self._builder_node.children() if c not in pre_existing
         ]
         if not loaded:
-            raise hou.OperationFailed(
-                'nothing could be loaded for "%s" - its .mat file looks '
-                "corrupt or empty (%s)" % (mat.name, file_name)
-            )
+            raise hou.OperationFailed(nothing_loaded(mat.name, file_name))
         texstore.resolve_parms(self._builder_node, self._preferences)    # before any move: scenes get plain absolute paths
         return loaded
 
@@ -1540,6 +1569,9 @@ class NodeHandler:
         if not os.path.exists(file_name):
             return (False, debug.Damage(
                 '"%s": asset file is missing on disk.' % mat.name))
+        problem = empty_file_reason(file_name)
+        if problem:
+            return (False, debug.Damage('"%s": %s.' % (mat.name, problem)))
         context = str(getattr(mat, "renderer", "") or "").strip().title() \
             or "Cop"
         net_type = material_files.get_saved_node_type(self._preferences, mat) or \
@@ -1560,6 +1592,7 @@ class NodeHandler:
         if dest is not None:
             if dest_context == context:
                 before = set(dest.children())
+                held = {item.path() for item in dest.allItems()}    # notes, boxes and dots too
                 try:
                     dest.loadItemsFromFile(file_name)
                 except hou.LoadWarning as warning:    # BEFORE hou.Error below - it is a subclass, and this one means the load SUCCEEDED with warnings (a substituted node type, a missing texture) ▸r/node-items
@@ -1576,6 +1609,14 @@ class NodeHandler:
                 new_children = [
                     c for c in dest.children() if c not in before
                 ]
+                if not new_children:    # the load added no node, whatever it said ▸r/node-items
+                    for item in dest.allItems():
+                        if item.path() not in held:
+                            try:
+                                item.destroy()    # the refusal leaves the artist's network as it was
+                            except hou.ObjectWasDeleted:
+                                pass
+                    return (False, debug.Damage(nothing_loaded(mat.name, file_name)))
                 for loaded in new_children:    # ONLY what this load added - sweeping `dest` would clear the stamps on the user's own nodes ▸r/inherited-stamps
                     clear_inherited_stamps(loaded, include_self=True)
                 if new_children:
@@ -1622,8 +1663,9 @@ class NodeHandler:
                 )
             except hou.OperationFailed:
                 pass
-            cop_nodes.load_target_in(      # ▸r/hda-wrappers
-                container, context).loadItemsFromFile(file_name)
+            target = cop_nodes.load_target_in(container, context)    # ▸r/hda-wrappers
+            held = set(target.children())
+            target.loadItemsFromFile(file_name)
         except hou.LoadWarning as warning:    # BEFORE hou.Error below, same reason: the load succeeded, so destroying the container it filled throws away a rebuild that worked
             debug.event("import", "network load warning (non-fatal)",
                         file=file_name, node=container.path(),
@@ -1636,6 +1678,9 @@ class NodeHandler:
                     '"%s": failed to load the saved network (%s).'
                     % (mat.name, exc)),
             )
+        if not [child for child in target.children() if child not in held]:
+            container.destroy()    # ours, and empty: never left stamped in the scene
+            return (False, debug.Damage(nothing_loaded(mat.name, file_name)))
         clear_inherited_stamps(container)    # before the container's own stamp below ▸r/inherited-stamps
         helpers.auto_place(container)
         try:
@@ -1707,8 +1752,8 @@ class NodeHandler:
             children = sub_tmp.children()
             for n in children:
                 n.destroy()
-            hou.copyNodesTo((nodetree), sub_tmp)  # type: ignore
-            children = sub_tmp.children()
+            copy_with_dots(nodetree, sub_tmp)
+            children = sub_tmp.allItems()    # NOT children(): a dot is no child ▸r/node-items
 
             path_map = self.prepare_cop_companion(
                 tuple(nodetree), str(asset_id), node.name()

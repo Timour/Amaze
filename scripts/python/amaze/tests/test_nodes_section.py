@@ -756,6 +756,79 @@ class WhatCountsAsAFailure(unittest.TestCase):
                     saver.call_args_list)
 
 
+class ANodeAssetThatLoadsNothingIsRefused(unittest.TestCase):
+    """An empty Node asset, or one that loads no node, is refused with its reason. ▸r/node-items"""
+
+    def setUp(self):
+        self.prefs = test_support.fixture_prefs(self)
+        self.prefs.render_on_import = 0
+        self.addCleanup(self._clear_obj)
+
+    def _clear_obj(self):
+        for child in hou.node("/obj").children():
+            try:
+                child.destroy()
+            except hou.OperationFailed:
+                pass
+
+    def _asset(self, name, content):
+        mat = material.Material(name=name, renderer="SOP")
+        payload = material.payload_path(self.prefs, mat.mat_id, self.prefs.ext)
+        os.makedirs(os.path.dirname(payload), exist_ok=True)
+        with open(payload, "wb") as handle:
+            handle.write(content)
+        return mat, payload
+
+    def _no_node(self):
+        """A real items file holding a sticky note alone: it loads, and adds no node."""
+        geo = hou.node("/obj").createNode("geo", "note_src")
+        path = os.path.join(test_support.scratch_dir("amaze_no_node_"), "note.mat")
+        self.addCleanup(shutil.rmtree, os.path.dirname(path), True)
+        geo.saveItemsToFile([geo.createStickyNote()], path)
+        geo.destroy()
+        with open(path, "rb") as handle:
+            return handle.read()
+
+    @staticmethod
+    def _everything():
+        """Every node, note, box and dot under /obj, by path."""
+        obj = hou.node("/obj")
+        return {item.path() for network in (obj,) + obj.allSubChildren()
+                for item in network.allItems()}
+
+    def _import(self, mat, where):
+        dest = (hou.node("/obj").createNode("geo", "nothing_dest") if where == "direct"
+                else hou.node("/obj"))
+        before = self._everything()
+        ok, reason, created = nodes.NodeHandler(self.prefs).import_cop_asset(
+            mat, context_node=dest)
+        return ok, reason, created, self._everything() - before
+
+    def test_an_empty_file_is_refused_with_the_strict_loads_sentence(self):
+        for where in ("direct", "boxed"):
+            with self.subTest(where=where):
+                mat, payload = self._asset("empty_" + where, b"")
+                ok, reason, created, left = self._import(mat, where)
+                self.assertFalse(ok, "an empty Node asset imported")
+                self.assertIn("is empty (%s) - the save that produced it did not finish"
+                              % payload, reason)
+                self.assertEqual(([], set()), (created, left), "the refusal left nodes behind")
+
+    def test_a_file_that_loads_no_node_is_refused(self):
+        content = self._no_node()
+        for where in ("direct", "boxed"):
+            with self.subTest(where=where):
+                mat, payload = self._asset("no_node_" + where, content)
+                holder = hou.node("/obj").createNode("geo", "premise_holder")
+                holder.loadItemsFromFile(payload)
+                self.assertEqual((), holder.children(), "premise: the file loads a node")
+                holder.destroy()
+                ok, reason, created, left = self._import(mat, where)
+                self.assertFalse(ok, "a Node asset that loaded nothing imported: %r" % created)
+                self.assertIn("nothing could be loaded", reason)
+                self.assertEqual(([], set()), (created, left), "the refusal left items behind")
+
+
 class ASavedBuilderTypeThisSessionLacks(unittest.TestCase):
     """`load_interface_other` when no category here can create the saved builder type."""
 

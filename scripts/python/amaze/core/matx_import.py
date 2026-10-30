@@ -319,14 +319,15 @@ def hosted_picture(record, source, renderer) -> str:
 
 
 def import_record(record, source, resolution, library, preferences,
-                  progress=None, renderer: str = renderers.HUB.key, *, save):
+                  progress=None, renderer: str = renderers.HUB.key, *, save, render=True):
     """One online record saved by `save` into `library`, nothing left in the scene: (ok, why)."""
     name = record_name(record)
     debug.event("import", "start", title=record.title, name=name,
                 source=record.source, kind=record.kind,
                 category=record.category, resolution=resolution)
-    with _staged_build(record, source, resolution, preferences, progress,
-                       renderer) as (builder, measurement_note, error):
+    with hou.undos.disabler(), \
+            _staged_build(record, source, resolution, preferences, progress,
+                          renderer) as (builder, measurement_note, error):    # all scratch ▸r/undo-groups
         if error:
             return (False, error)
         picture = hosted_picture(record, source, renderer)
@@ -336,6 +337,7 @@ def import_record(record, source, resolution, library, preferences,
             ",".join(record.tags or []),
             False,
             **({"picture": picture} if picture else {}),
+            **({} if render else {"render": False}),    # its caller renders the batch once
         )
         if picture:
             shutil.rmtree(os.path.dirname(picture), ignore_errors=True)

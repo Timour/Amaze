@@ -19,10 +19,11 @@ def connect(model) -> None:
 
 
 def add_asset(model, node: hou.Node, cats: str, tags: str, fav: bool,
-              name: str | None = None, picture: str = "") -> str:
+              name: str | None = None, picture: str = "", render: bool = True) -> str:
     """Save `node` into `model` as a new material: its renderer when it is in, "" when it is not."""
     handler = nodes.NodeHandler(model.preferences)
     handler.supplied_thumbnail = picture    # a hosted picture, which replaces the render
+    handler.render_after_save = render    # False: the caller renders its rows in one batch
     renderer = handler.get_renderer_from_node(node)
     new_mat = material.Material()
     tags = model.sanitize_tags(tags)
@@ -192,18 +193,17 @@ def convert(model, index: QtCore.QModelIndex, target: str):
         return False, report
 
     handler = nodes.NodeHandler(model.preferences)
-    with hou.undos.disabler():    # off the undo stack at BOTH ends ▸r/undo-groups
+    with hou.undos.disabler():    # the WHOLE staged body, the twin's stamp included ▸r/undo-groups
         scratch = hou.node("/obj").createNode("matnet")
-    try:
-        source = handler.rebuild_saved(mat, scratch)
-        made = conversion_engine.convert(
-            source, mat.renderer, target, scratch, mat.name, report)
-        if made.shader is None:
-            return False, report
-        saved = add_asset(
-            model, made.builder, ",".join(mat.categories), ",".join(mat.tags), False,
-            name=mat.name)
-        return bool(saved), report    # a refused save leaves nothing: the scratch goes below
-    finally:
-        with hou.undos.disabler():
+        try:
+            source = handler.rebuild_saved(mat, scratch)
+            made = conversion_engine.convert(
+                source, mat.renderer, target, scratch, mat.name, report)
+            if made.shader is None:
+                return False, report
+            saved = add_asset(
+                model, made.builder, ",".join(mat.categories), ",".join(mat.tags), False,
+                name=mat.name)
+            return bool(saved), report    # a refused save leaves nothing: the scratch goes below
+        finally:
             scratch.destroy()

@@ -270,6 +270,37 @@ class BothOnlineDestinationsRunOneSequence(unittest.TestCase):
         self.assertIsNotNone(builder, reason)
         self.addCleanup(builder.destroy)
 
+    def test_an_import_to_the_library_adds_no_undo_entry(self):
+        """Build, convert and save all happen in scratch: the artist's next Ctrl+Z is theirs."""
+        hou.undos.clear()
+        self.addCleanup(hou.undos.clear)
+        self._into_library()
+        self.assertEqual((), hou.undos.undoLabels())
+
+    def test_one_undo_takes_an_import_to_scene_back_whole(self):
+        """The panel's one group around the build: Ctrl+Z and redo each one whole step."""
+        from amaze.core import matx_import
+        destination = hou.node("/mat")
+        mat_before = sorted(child.name() for child in destination.children())
+        obj_before = self._obj()
+        hou.undos.clear()
+        self.addCleanup(hou.undos.clear)
+        with hou.undos.group("Amaze Import to Scene"):
+            builder, reason = matx_import.build_in_scene(
+                self._record(), self._source(), "", destination, self.prefs)
+        self.assertIsNotNone(builder, reason)
+        name = builder.name()
+        self.addCleanup(lambda: destination.node(name) and destination.node(name).destroy())
+        self.assertEqual(("Amaze Import to Scene",), hou.undos.undoLabels())
+        hou.undos.performUndo()
+        self.assertEqual((mat_before, obj_before),
+                         (sorted(child.name() for child in destination.children()), self._obj()))
+        hou.undos.performRedo()
+        redone = destination.node(name)
+        self.assertIsNotNone(redone, "redo did not bring the material back")
+        self.assertIn("mtlxstandard_surface", [c.type().name() for c in redone.children()])
+        self.assertEqual(obj_before, self._obj(), "redo brought the staging back")
+
     def test_nothing_is_staged_in_obj_while_the_download_runs(self):
         before = self._obj()
         self._into_library()
@@ -350,6 +381,23 @@ class HostedPictureImportTest(unittest.TestCase):
         self.assertEqual((24, 24), (thumb.width(), thumb.height()),
                          "the thumbnail is not the hosted picture")
         self.assertEqual("#3366cc", thumb.pixelColor(12, 12).name())
+
+    def test_an_import_asked_not_to_render_renders_nothing(self):
+        """`import_record(render=False)`: the loop renders its rows in one batch afterwards."""
+        from amaze.core import library as library_mod, matx_import
+        from amaze.render import thumbs
+        model = library_mod.MaterialLibrary(preferences=self.prefs)
+        record = self._record()
+        record.payload = {"values": record.payload["values"]}    # no hosted picture
+        for kwargs, renders in (({"render": False}, 0), ({}, 1)):
+            with self.subTest(kwargs=kwargs):
+                with mock.patch.object(thumbs.ThumbNailRenderer, "create_thumb_mtlx",
+                                       return_value=True) as render:
+                    ok, reason = matx_import.import_record(
+                        record, self._source(), "", model, self.prefs,
+                        save=functools.partial(material_actions.add_asset, model), **kwargs)
+                self.assertTrue(ok, reason)
+                self.assertEqual(renders, render.call_count)
 
     def test_a_redshift_import_renders_its_own(self):
         from amaze.core import matx_import

@@ -55,6 +55,6 @@ def apply_to_node(model, row: int, node) -> tuple:
         )
     try:
         parm.set(model.assets[row].code)
-    except hou.OperationFailed as exc:
+    except hou.Error as exc:    # a locked parm raises PermissionError, a sibling ▸r/hou-errors
         return (False, "Could not set the parameter: %s" % exc)
     return (True, "")

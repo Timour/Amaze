@@ -136,6 +136,30 @@ class TheOctaneCheckFollowsTheHost(unittest.TestCase):
             self.assertFalse(material_converter._octane_type_available())
 
 
+class WhatOctaneIgnoresIsJudgedByTheReadersDefaultTest(unittest.TestCase):
+    """`report_ignored` names an input only once it is off its default; no plugin needed."""
+
+    def test_a_moved_input_is_named_and_a_default_one_is_not(self):
+        from amaze.render.material_conversion import octane_reader
+        from amaze.render.material_conversion.report import ConversionReport
+        parent = hou.node("/obj").createNode("matnet")
+        self.addCleanup(parent.destroy)
+        builder = nodes.make_karma_builder(parent, "ignored_probe")
+        shader = builder.createNode("mtlxstandard_surface")
+        image = builder.createNode("mtlximage")
+        shader.setNamedInput("base_color", image, 0)
+        quiet = ConversionReport("quiet")
+        octane_api.report_ignored(builder, quiet)
+        self.assertEqual([], quiet.skipped)
+        image.parm("filtertype").set("closest")
+        said = ConversionReport("said")
+        octane_api.report_ignored(builder, said)
+        self.assertEqual(1, len([line for line in said.skipped if "filtertype" in line]),
+                         said.skipped)
+        self.assertFalse(octane_reader.at_default(image, "filtertype"))
+        self.assertTrue(octane_reader.at_default(image, "no_such_parm"), "a parm it lacks")
+
+
 @unittest.skipUnless(_octane_available(), "the Octane plugin is not loaded")
 class OctanesOwnBuilderIsAnOctaneMaterial(unittest.TestCase):
     """Recognised by Octane's own marker, before any MaterialX walk."""

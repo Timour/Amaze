@@ -915,10 +915,9 @@ class HostedPreviewTileTest(unittest.TestCase):
 
 
 def _redshift_available():
-    try:
-        return hou.vopNodeTypeCategory().nodeType("redshift_vopnet") is not None
-    except Exception:                                        # noqa: BLE001
-        return False
+    """The product's own probe: both containers the converters use. ▸r/renderer-plugins"""
+    from amaze.render import material_converter
+    return material_converter._redshift_type_available()
 
 
 @unittest.skipUnless(_redshift_available(), "the Redshift plugin is not loaded")

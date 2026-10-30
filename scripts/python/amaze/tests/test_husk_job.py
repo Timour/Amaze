@@ -1,6 +1,7 @@
 """One background husk per batch: command, per-frame swap, progress, Cancel. ▸r/husk-startup"""
 
 import os
+import shutil
 import sys
 import time
 import unittest
@@ -161,6 +162,98 @@ class ARenderIsJudgedByItsFrames(unittest.TestCase):
         self.assertEqual("failed: husk exit 139", job.status)
         self.assertEqual(1, len(log.matching("render stopped (husk exit 139)")),
                          "a render missing a frame did not say so")
+
+
+class AFrameWithNoPictureIsRecorded(unittest.TestCase):
+    """A frame husk calls done with no EXR, or one that converts to nothing, is in the log."""
+
+    def _run(self, write_exr):
+        """A two-frame job whose stand-in husk reports both done, writing frame 1's EXR or not."""
+        folder = test_support.scratch_dir("amaze_husk_frames_")
+        self.addCleanup(shutil.rmtree, folder, True)
+        job = husk_job.HuskJob({"usd": "", "prims": [], "ball": "", "renderer": "Karma",
+                                "ocio": ("d", "v", "s")}, folder,
+                               [("NO_EXR_%d" % n, os.path.join(folder, "p%d.png" % n))
+                                for n in (1, 2)])
+        exr = os.path.join(folder, "f1.exr") if write_exr else ""
+        husk = [test_support.plain_python(), "-c",
+                "import sys\nif %r:\n    open(%r, 'wb').write(b'x')\n"
+                "print('%s 1', flush=True)\nprint('%s 2', flush=True)\n"
+                % (bool(exr), exr, husk_job.DONE, husk_job.DONE)]
+        written = []
+        slot = written.append
+        husk_job.jobs.thumbnailWritten.connect(slot)
+        self.addCleanup(husk_job.jobs.thumbnailWritten.disconnect, slot)
+        with mock.patch.object(job, "command", lambda: husk), \
+                mock.patch.object(preview, "exr_to_png", return_value=False), \
+                test_support.captured_log() as log:
+            husk_job.jobs.submit(job, blocking=True)
+        self.assertEqual([], written, "a tile was told a picture landed")
+        return [(r["data"].get("asset_id"), r["data"].get("frame"))
+                for r in log.records("thumb") if r["data"].get("frame") is not None]
+
+    def test_a_missing_exr_is_logged_per_frame(self):
+        self.assertEqual([("NO_EXR_1", 1), ("NO_EXR_2", 2)], self._run(write_exr=False))
+
+    def test_an_exr_that_converts_to_nothing_is_logged(self):
+        self.assertEqual([("NO_EXR_1", 1), ("NO_EXR_2", 2)], self._run(write_exr=True))
+
+
+class QuittingLeavesNoJobFolder(unittest.TestCase):
+    """At Houdini's exit the running husk stops and every job's folder goes with it."""
+
+    def _sleeper(self, jobs):
+        folder = test_support.scratch_dir("amaze_husk_quit_")
+        self.addCleanup(shutil.rmtree, folder, True)
+        job = husk_job.HuskJob({"usd": "", "prims": [], "ball": "", "renderer": "Karma"},
+                               folder, [("QUIT", "")])
+        husk = [test_support.plain_python(), "-c", "import time\ntime.sleep(60)\n"]
+        patcher = mock.patch.object(job, "command", lambda: husk)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        jobs.submit(job)
+        return job
+
+    def test_stop_now_discards_the_running_and_the_waiting(self):
+        jobs = husk_job.Jobs()
+        running, waiting = self._sleeper(jobs), self._sleeper(jobs)
+        self.addCleanup(lambda: running._proc and running._proc.kill())
+        self.addCleanup(lambda: running._timer and running._timer.stop())
+        self.assertIs(running, jobs._running, "premise: the first job is not the running one")
+        self.assertTrue(os.path.isdir(waiting.job_dir), "premise: no waiting folder")
+        jobs.stop_now()
+        self.assertFalse(os.path.exists(running.job_dir), "the running job's folder was left")
+        self.assertFalse(os.path.exists(waiting.job_dir), "a waiting job's folder was left")
+        self.assertIsNotNone(running._proc.poll(), "husk outlived the session")
+
+
+class AFailedStageWriteLeavesNoFolder(unittest.TestCase):
+    """`render_batch` removes its job folder on every way out of the stage write."""
+
+    def test_any_exception_from_the_write_takes_the_folder(self):
+        _patch_viewer(self)
+        made = []
+        real = thumbs.tempfile.mkdtemp
+
+        def recorded(*args, **kwargs):
+            made.append(real(*args, **kwargs))
+            return made[-1]
+
+        def failing(scaffold, items, out_dir):
+            raise OSError("disk full")
+
+        prefs = test_support.fixture_prefs(self)
+        material = hou.node("/mat").createNode("subnet")
+        self.addCleanup(_drop, material)
+        material.createNode("mtlxstandard_surface")
+        with mock.patch.object(thumbs.tempfile, "mkdtemp", recorded), \
+                mock.patch.object(preview, "write_batch", failing):
+            with self.assertRaises(OSError):
+                thumbs.ThumbNailRenderer.render_batch(
+                    prefs, "Karma", [("FOLDER_PROBE", material)])
+        self.assertEqual(1, len(made), "premise: no job folder was made")
+        self.addCleanup(shutil.rmtree, made[0], True)
+        self.assertFalse(os.path.exists(made[0]), "a failed write left its job folder")
 
 
 class ThePreFrameScriptBindsFrameNsMaterial(unittest.TestCase):

@@ -186,6 +186,50 @@ class AWholeNetworkSaveKeepsItsDots(unittest.TestCase):
             "is gone from the restored network")
 
 
+class ALooseSurfaceSaveKeepsAWireThroughADot(unittest.TestCase):
+    """A surface saved on its own (`save_node_collect`) comes back fed as it was. ▸r/node-items"""
+
+    def setUp(self):
+        if not hou.getenv("OCIO"):
+            hou.putenv("OCIO", "/dev/null")
+        self.prefs = test_support.fixture_prefs(self)
+        self.prefs.render_on_import = 0
+        self.home = hou.node("/mat").createNode("subnet", "dot_probe_home")
+        self.addCleanup(self.home.destroy)
+
+    def test_the_image_behind_a_dot_still_feeds_base_colour(self):
+        image = self.home.createNode("mtlximage", "probe_image")
+        surface = self.home.createNode("mtlxstandard_surface", "probe_surface")
+        dot = self.home.createNetworkDot()
+        dot.setInput(image, 0)
+        surface.setInput(surface.inputIndex("base_color"), dot, 0)
+        self.assertNotIn(dot, self.home.children(), "premise: the dot is a child")
+        handler = nodes.NodeHandler(self.prefs)
+        handler._renderer = "Karma"
+        self.assertTrue(handler.save_node(surface, "dotprobe", False), "premise: no save")
+        restored = self.home.createNode("subnet", "restored")
+        restored.loadItemsFromFile(material.payload_path(self.prefs, "dotprobe", self.prefs.ext))
+        copy = next(c for c in restored.children() if c.type().name() == "mtlxstandard_surface")
+        fed = copy.input(copy.inputIndex("base_color"))
+        self.assertEqual("mtlximage", fed.type().name() if fed is not None else None,
+                         "the saved surface lost the wire that ran through a dot")
+
+    def test_the_premise_copyNodesTo_drops_a_wire_through_a_dot(self):
+        """Measured: if Houdini ever keeps the wire, the dot copy is no longer needed."""
+        image = self.home.createNode("mtlximage", "premise_image")
+        surface = self.home.createNode("mtlxstandard_surface", "premise_surface")
+        dot = self.home.createNetworkDot()
+        dot.setInput(image, 0)
+        surface.setInput(surface.inputIndex("base_color"), dot, 0)
+        self.assertEqual(image, surface.inputs()[surface.inputIndex("base_color")],
+                         "inputs() no longer sees through a dot")
+        scratch = self.home.createNode("subnet", "premise_copy")
+        copy = next(c for c in hou.copyNodesTo([image, surface], scratch)
+                    if c.type().name() == "mtlxstandard_surface")
+        self.assertIsNone(copy.input(copy.inputIndex("base_color")),
+                          "copyNodesTo now keeps the wire through an uncopied dot")
+
+
 class AnImportCarriesNoOneElsesStamp(unittest.TestCase):
     """`assetlib_id` on an INNER node survives save and reload, so an imported copy would offer to update whichever library entry that inner node was once saved as. ▸r/inherited-stamps"""
 

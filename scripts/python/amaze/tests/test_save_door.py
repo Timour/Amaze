@@ -236,6 +236,33 @@ class ASaveLeavesNothingOnTheUndoStack(unittest.TestCase):
             "the save's staging copy left entries on the undo stack, so "
             "the next Ctrl+Z after Save to Amaze undoes the save's noise")
 
+    def test_a_convert_adds_no_undo_entry(self):
+        """Convert to rebuilds, converts and saves a twin in scratch: none of it is the artist's."""
+        from amaze.actions import materials as material_actions
+        from amaze.core import library
+        from amaze.render import nodes
+        if not hou.getenv("OCIO"):
+            hou.putenv("OCIO", "/dev/null")
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        prefs = test_support.fixture_prefs(self)
+        prefs.render_on_import = 0
+        model = library.MaterialLibrary(preferences=prefs)
+        source = nodes.make_karma_builder(hou.node("/mat"), "convert_undo")
+        self.addCleanup(source.destroy)
+        nodes.wire_builder_output(source, source.createNode("mtlxstandard_surface"))
+        held = test_support.asset_ids(model)
+        self.assertEqual("Karma", material_actions.add_asset(model, source, "", "", False))
+        saved, = test_support.arrived(model, held)
+        row = model.find_asset_row_by_id(saved.mat_id)
+        hou.undos.clear()
+        self.addCleanup(hou.undos.clear)
+        with test_support.plugins_loaded("Octane"):    # Karma to Octane runs with no plugin
+            ok, report = material_actions.convert(model, model.index(row, 0), "Octane")
+        self.assertTrue(ok, "premise: the conversion did not run: %s" % report.summary_lines())
+        self.assertEqual((), hou.undos.undoLabels(),
+                         "Convert to left its scratch work on the artist's undo stack")
+
 
 class AnUpdateBeforeARestartSaysSo(unittest.TestCase):
     """The menu reloads from disk and the panel does not, so a new menu can meet an old panel."""

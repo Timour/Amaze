@@ -200,6 +200,16 @@ class HuskJob(QtCore.QObject):
     def discard(self) -> None:
         shutil.rmtree(self.job_dir, ignore_errors=True)
 
+    def stop(self, timeout: float = 5.0) -> None:
+        """Cancel, wait for husk to exit, then discard: for quitting, where nothing drains."""
+        self.cancel()
+        if self._proc is not None:
+            try:
+                self._proc.wait(timeout=timeout)
+            except subprocess.TimeoutExpired:    # its files may still be open: the folder stays
+                debug.event("thumb", "husk outlived its stop", pid=self._proc.pid)
+        self.discard()
+
 
 class Jobs(QtCore.QObject):
     """The one queue of thumbnail husks, run one at a time."""
@@ -264,6 +274,9 @@ class Jobs(QtCore.QObject):
         from amaze import preview
         if os.path.exists(exr) and preview.exr_to_png(exr, png, job.batch["ocio"], asset_id):
             self.thumbnailWritten.emit(asset_id)
+        else:    # the tile keeps its old picture: this line is the only trace
+            debug.event("thumb", "frame done without a picture", asset_id=asset_id,
+                        frame=frame, exr_found=os.path.exists(exr), renderer=job.renderer)
         try:
             os.remove(exr)
         except OSError:
@@ -275,10 +288,12 @@ class Jobs(QtCore.QObject):
             self._next()
 
     def stop_now(self) -> None:
-        """At Houdini's exit: no husk outlives the session that started it."""
-        self._waiting = []
+        """At Houdini's exit: no husk outlives the session, and no job leaves its folder."""
+        waiting, self._waiting = self._waiting, []
+        for job in waiting:
+            job.discard()
         if self._running is not None:
-            self._running.cancel()
+            self._running.stop()
 
 
 jobs = Jobs()

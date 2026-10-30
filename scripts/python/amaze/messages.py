@@ -316,6 +316,8 @@ CONFIRM_CLEAR_THUMBNAIL_CACHE = 'This deletes all cached image and geometry thum
 
 NO_SCENE_VIEWER_FOR_THUMBNAIL = "Amaze renders thumbnails with a Scene Viewer's color settings, and no Scene Viewer is open. Open one, then use Update Render."
 
+THUMBNAIL_RENDERER_NOT_LOADED = '"%s" was not rendered because %s isn\'t loaded in this Houdini.'
+
 LOG_NOT_SAVED_UNEXPECTED = 'The log could not be saved. Unexpected error: %s'
 
 

@@ -109,6 +109,13 @@ def swap_assignments(stock, lopnet, liblop, anchor, targets, vop):
                 old=[o for o, _ in targets], removed=removed)
 
 
+def _assigns_geometry(liblop, index: int) -> bool:
+    """Whether material entry `index` binds its material itself: Assign on, a geometry path set."""
+    assign, geopath = liblop.parm("assign%d" % index), liblop.parm("geopath%d" % index)
+    return bool(assign is not None and assign.eval()
+                and geopath is not None and geopath.eval().strip())
+
+
 def remove_unreferenced_material(lopnet, liblop,
                                   matprimpath) -> bool:
     """Deletes a material's definition IF no assignmaterial entry still uses it - never one still assigned elsewhere, and an empty primpattern is not a use. EXPLICIT entries are removed; PATTERN entries are never touched, and never RESOLVED to check, because a wildcard resolves to a real child and reads as a sharer. Failures here land part way through a scene edit, so they say why."""
@@ -119,7 +126,7 @@ def remove_unreferenced_material(lopnet, liblop,
     name = matprimpath.rsplit("/", 1)[-1]
     vop = None
     explicit = []
-    pattern_covered = False
+    covering = []
     for i in range(1, matsparm.eval() + 1):
         mp = liblop.parm("matpath%d" % i)
         np = liblop.parm("matnode%d" % i)
@@ -134,11 +141,13 @@ def remove_unreferenced_material(lopnet, liblop,
             if cand is not None and np.eval() and \
                     helpers.node_pattern_match(
                         np.eval(), liblop.relativePathTo(cand)):
-                pattern_covered = True
+                covering.append(i)
                 if vop is None:
                     vop = cand
-    if not explicit and not pattern_covered:
+    if not explicit and not covering:
         return False
+    if any(_assigns_geometry(liblop, i) for i in explicit + covering):
+        return False    # the entry's own Assign to Geometry still binds it
     for node in lopnet.children():
         if node.type().name() != "assignmaterial":
             continue

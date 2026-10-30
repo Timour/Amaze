@@ -8,15 +8,16 @@ from amaze.core import debug
 from amaze.core import material
 
 from amaze.helpers import wording
+from amaze.render import nodes
 from amaze.render.material_conversion.report import ConversionReport    # noqa: F401  the one home
 
 
+REDSHIFT_CONTAINERS = ("redshift_vopnet", "rs_usd_material_builder")    # read, and written
+
+
 def _redshift_type_available() -> bool:
-    """True if the Redshift plugin is loaded - `redshift_vopnet` creatable in ANY node type category, never assuming which one owns it."""
-    for cat in hou.nodeTypeCategories().values():
-        if hou.nodeType(cat, "redshift_vopnet") is not None:
-            return True
-    return False
+    """True when Redshift is loaded: both containers the converters use are creatable here."""
+    return all(nodes.node_type_available(name) for name in REDSHIFT_CONTAINERS)
 
 
 OCTANE_BUILDER_SHADER = "octane::NT_MAT_STANDARD_SURFACE"    # what Octane's own builder starts with

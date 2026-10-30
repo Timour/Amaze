@@ -162,11 +162,6 @@ def resolve(container: hou.Node, report) -> None:
             _drop(node, report)
 
 
-def _at_default(node: hou.Node, name: str) -> bool:
-    values = node.parmTuple(name)
-    return values is None or all(parm.isAtDefault() for parm in values)
-
-
 def _mixes_surfaces(node: hou.Node) -> bool:
     """An mtlxmix whose inputs are surfaces, directly or through further mixes."""
     return any(upstream is not None and (
@@ -188,11 +183,11 @@ def report_ignored(container: hou.Node, report) -> None:
         wired = {names[conn.inputIndex()] for conn in node.inputConnections()
                  if conn.inputIndex() < len(names)}
         for name in DROPPED.get(kind, ()):
-            if name in wired or not _at_default(node, name):
+            if name in wired or not octane_reader.at_default(node, name):
                 report.skip('"%s" uses %s, which Octane has no place for, so it renders '
                             "without it" % (node.name(), name))
         for name in WIRED_ONLY.get(kind, ()):
-            if name not in wired and not _at_default(node, name):
+            if name not in wired and not octane_reader.at_default(node, name):
                 report.skip('"%s" sets %s by value, which Octane reads only from a wire, so '
                             "it uses its own default" % (node.name(), name))
 

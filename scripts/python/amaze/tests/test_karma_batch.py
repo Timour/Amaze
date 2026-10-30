@@ -45,6 +45,7 @@ class ASelectionIsOneHuskPerRenderer(unittest.TestCase):
             return True, "", []
 
         with mock.patch.object(preview, "ocio_from_viewer", lambda: {"display": "d"}), \
+                test_support.plugins_loaded("Octane"), \
                 mock.patch.object(nodes.NodeHandler, "import_asset_to_scene", imported), \
                 mock.patch.object(nodes.NodeHandler, "cleanup"), \
                 mock.patch.object(thumbs.ThumbNailRenderer, "render_batch",
@@ -148,6 +149,140 @@ class WithNoSceneViewerNothingIsImported(unittest.TestCase):
             "nothing can render without a Scene Viewer")
         self.assertEqual([messages.NO_SCENE_VIEWER_FOR_THUMBNAIL], shown,
                          "the batch did not say why, exactly once")
+
+
+OCIO = {"display": "sRGB - Display", "view": "ACES 1.0 - SDR Video", "space": "ACEScg"}
+ABSENT_SETTINGS = "amaze_absent_octane_settings"    # a stage type no category has: createNode refuses
+
+
+def _viewer_and_husk(testcase):
+    """A Scene Viewer's OCIO for both seams, and husk's queue recording instead of rendering."""
+    for seam in (preview.thumbnail_scene, preview):
+        patcher = mock.patch.object(seam, "ocio_from_viewer", lambda: dict(OCIO))
+        patcher.start()
+        testcase.addCleanup(patcher.stop)
+    submitted = []
+    patcher = mock.patch.object(husk_job.jobs, "submit",
+                                lambda job, blocking=False: submitted.append(job))
+    patcher.start()
+    testcase.addCleanup(patcher.stop)
+    testcase.addCleanup(lambda: [job.discard() for job in submitted])
+    return submitted
+
+
+class AnOctaneTwinWithoutOctaneIsRefusedNotRaised(unittest.TestCase):
+    """Update Render on a Convert-to-Octane twin where Octane is not loaded. ▸r/hou-errors"""
+
+    @classmethod
+    def setUpClass(cls):
+        if not hou.getenv("OCIO"):    # save_node refuses without one
+            hou.putenv("OCIO", "/dev/null")
+
+    def setUp(self):
+        from amaze.core import library
+        self.submitted = _viewer_and_husk(self)
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        self.prefs = test_support.fixture_prefs(self)
+        self.prefs.render_on_import = 0
+        self.model = library.MaterialLibrary(preferences=self.prefs)
+        self.twin = self._octane_twin()
+
+    def _octane_twin(self):
+        """A MaterialX builder carrying Octane's mark, saved as Convert to Octane saves one."""
+        from amaze.render import nodes
+        from amaze.render.material_conversion import octane
+        builder = nodes.make_karma_builder(hou.node("/mat"), "octane_twin_probe")
+        self.addCleanup(builder.destroy)
+        nodes.wire_builder_output(builder, builder.createNode("mtlxstandard_surface"))
+        octane.mark(builder)
+        held = test_support.asset_ids(self.model)
+        self.assertEqual("Octane", material_actions.add_asset(
+            self.model, builder, "", "", False, name="Octane Twin Probe"))
+        twin, = test_support.arrived(self.model, held)
+        return twin
+
+    def test_one_message_names_the_twin_and_the_rest_render(self):
+        from amaze.core import renderers
+        from amaze.render import nodes
+        karma = [row for row, mat in enumerate(self.model.assets)
+                 if renderers.is_karma(mat.renderer)][:2]
+        self.assertTrue(karma, "premise: the fixture library holds no MaterialX material")
+        rows = [self.model.find_asset_row_by_id(self.twin.mat_id)] + karma
+        shown, imported = [], []
+        desktop = types.SimpleNamespace(paneTabOfType=lambda kind: None)
+        ui = types.SimpleNamespace(
+            curDesktop=lambda: desktop, paneTabs=lambda: (),
+            setStatusMessage=lambda *a, **k: None,
+            displayMessage=lambda text, *a, **k: shown.append(text))
+        real = nodes.NodeHandler.import_asset_to_scene
+
+        def spy(handler, mat, *args, **kwargs):
+            imported.append(mat.name)
+            return real(handler, mat, *args, **kwargs)
+
+        with mock.patch.object(hou, "ui", ui, create=True), test_support.plugins_loaded(), \
+                mock.patch.object(preview.usd_scene, "OCTANE_SETTINGS", ABSENT_SETTINGS), \
+                mock.patch.object(nodes.NodeHandler, "import_asset_to_scene", spy):
+            try:
+                material_actions.render_thumbnails(self.model, rows)
+            except hou.Error as exc:
+                self.fail("Update Render raised out of the menu: %s" % exc)
+        self.assertEqual(1, len(shown), "not ONE message for the batch: %r" % shown)
+        self.assertIn('"%s"' % self.twin.name, shown[0])
+        self.assertIn("Octane", shown[0])
+        self.assertNotIn(self.twin.name, imported, "the twin was imported before refusing")
+        self.assertEqual([len(karma)], [len(job.frames) for job in self.submitted],
+                         "the MaterialX materials in the same Update Render did not render")
+
+    def test_a_stage_the_host_refuses_is_a_failed_batch(self):
+        material = hou.node("/mat").createNode("subnet", "refused_stage_probe")
+        self.addCleanup(material.destroy)
+        material.createNode("mtlxstandard_surface")
+        before = set(hou.node("/obj").children())
+        with mock.patch.object(preview.usd_scene, "OCTANE_SETTINGS", ABSENT_SETTINGS), \
+                test_support.captured_log() as log:
+            try:
+                ok = thumbs.ThumbNailRenderer.render_batch(
+                    self.prefs, "Octane", [("REFUSED_STAGE", material)])
+            except hou.Error as exc:
+                self.fail("the refused stage escaped render_batch: %s" % exc)
+        self.assertFalse(ok)
+        self.assertEqual([], self.submitted)
+        self.assertEqual(before, set(hou.node("/obj").children()), "a half-built stage was left")
+        self.assertEqual(1, len([r for r in log.records("exception")
+                                 if r["data"].get("renderer") == "Octane"]),
+                         "the refusal was not logged with its traceback")
+
+
+class ASaveAskedNotToRenderRendersNothing(unittest.TestCase):
+    """`add_asset(render=False)` skips the per-save thumbnail a batch renders later. ▸r/husk-startup"""
+
+    @classmethod
+    def setUpClass(cls):
+        if not hou.getenv("OCIO"):
+            hou.putenv("OCIO", "/dev/null")
+
+    def test_render_false_skips_the_thumbnail_and_the_default_renders(self):
+        from amaze.core import library
+        from amaze.render import nodes
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        prefs = test_support.fixture_prefs(self)
+        prefs.render_on_import = 1
+        model = library.MaterialLibrary(preferences=prefs)
+        for kwargs, renders in (({"render": False}, 0), ({}, 1)):
+            with self.subTest(kwargs=kwargs):
+                builder = nodes.make_karma_builder(hou.node("/mat"), "render_flag_probe")
+                self.addCleanup(builder.destroy)
+                nodes.wire_builder_output(builder, builder.createNode("mtlxstandard_surface"))
+                held = test_support.asset_ids(model)
+                with mock.patch.object(thumbs.ThumbNailRenderer, "create_thumb_mtlx",
+                                       return_value=True) as rendered:
+                    self.assertEqual("Karma", material_actions.add_asset(
+                        model, builder, "", "", False, **kwargs))
+                self.assertEqual(1, len(test_support.arrived(model, held)), "premise: no save")
+                self.assertEqual(renders, rendered.call_count)
 
 
 class ALandedRenderRepaintsItsTile(unittest.TestCase):
