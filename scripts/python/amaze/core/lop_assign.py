@@ -116,6 +116,24 @@ def _assigns_geometry(liblop, index: int) -> bool:
                 and geopath is not None and geopath.eval().strip())
 
 
+def _bound_on_stage(node, matprimpath) -> bool:
+    """Whether any prim on `node`'s cooked stage resolves to `matprimpath`; True when it cannot tell."""
+    try:
+        from pxr import UsdShade
+        prims = list(node.stage().Traverse())
+    except Exception as exc:                         # noqa: BLE001
+        debug.event("lop", "stage unreadable - material kept",
+                    error="%s: %s" % (type(exc).__name__, exc), material=matprimpath)
+        return True
+    api = UsdShade.MaterialBindingAPI
+    for purpose in api.GetMaterialPurposes():
+        _materials, rels = api.ComputeBoundMaterials(prims, purpose)
+        if any(rel and str(api.GetResolvedTargetPathFromBindingRel(rel)) == matprimpath
+               for rel in rels):
+            return True
+    return False
+
+
 def remove_unreferenced_material(lopnet, liblop,
                                   matprimpath) -> bool:
     """Deletes a material's definition IF no assignmaterial entry still uses it - never one still assigned elsewhere, and an empty primpattern is not a use. EXPLICIT entries are removed; PATTERN entries are never touched, and never RESOLVED to check, because a wildcard resolves to a real child and reads as a sharer. Failures here land part way through a scene edit, so they say why."""
@@ -158,6 +176,9 @@ def remove_unreferenced_material(lopnet, liblop,
             if spec is not None and spec.eval() == matprimpath \
                     and pat is not None and pat.eval().strip():
                 return False
+    if _bound_on_stage(lopnet.displayNode() or liblop, matprimpath):
+        debug.event("lop", "material kept - the stage still binds it", material=matprimpath)
+        return False    # a file the network loads binds it: no node shows that, the stage does
     if vop is not None and not vop.path().startswith(
             liblop.path() + "/"):
         vop = None

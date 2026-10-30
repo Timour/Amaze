@@ -87,6 +87,39 @@ class PreEditHoldsTheRightFilesTest(_Case):
                       "the interface never joined the held set")
 
 
+class APreEditHoldLeavesNoFolderBehind(_Case):
+    """The hold's temp folder goes when it holds nothing, and when a copy into it fails."""
+
+    def _holding(self, mat_id, copyfile=shutil.copyfile):
+        """What `_hold_pre_edit_files` answered or raised, and what it left in the temp folder."""
+        import tempfile
+        from unittest import mock
+        from amaze.core import library as library_mod
+
+        model = library_mod.MaterialLibrary(preferences=self.prefs)
+        temp = test_support.scratch_dir("amaze_preedit_parent_")
+        self.addCleanup(shutil.rmtree, temp, True)
+        with mock.patch.object(tempfile, "tempdir", temp), \
+                mock.patch.object(shutil, "copyfile", copyfile):
+            try:
+                answer = model._hold_pre_edit_files(mat_id)
+            except OSError as exc:
+                answer = exc
+        return answer, os.listdir(temp)
+
+    def test_nothing_to_hold_leaves_no_folder(self):
+        self.assertEqual(({}, []), self._holding("NO_SUCH_ASSET"),
+                         "an empty hold left its temp folder behind")
+
+    def test_a_failed_copy_takes_the_folder_with_it(self):
+        def refused(source, target):
+            raise OSError("disk full")
+
+        answer, left = self._holding(self.mat_id, refused)
+        self.assertEqual((OSError, []), (type(answer), left),
+                         "a failed copy left its temp folder behind, or did not say it failed")
+
+
 class SwitchRollsBackOnALedgerRefusal(_Case):
     """switch_active promotes the archive over the base and THEN writes the ledger, so a refused ledger write must roll the promotion back rather than leave the base holding a version the ledger does not name."""
 

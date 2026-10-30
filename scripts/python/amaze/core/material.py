@@ -290,11 +290,10 @@ class Material:
         return self._cats
 
     @categories.setter
-    def categories(self, cats: str) -> None:
-        if isinstance(cats, (list, tuple)):
-            found = [str(c).strip() for c in cats if str(c).strip()]
-        else:
-            found = [c.strip() for c in str(cats).split(",") if c.strip()]
+    def categories(self, cats) -> None:
+        if not isinstance(cats, (list, tuple)):
+            cats = [cats or ""]    # a string is ONE name, its commas included
+        found = [str(c).strip() for c in cats if str(c).strip()]
         self._cats = found[:1]
 
     def remove_category(self, cat: str) -> None:

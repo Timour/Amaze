@@ -3,9 +3,8 @@
 from typing import Any
 from PySide6 import QtCore
 
-from amaze import messages
 from amaze.prefs import prefs
-from amaze.core import database, debug, material, renderers
+from amaze.core import database, material, renderers
 
 SIDEBAR_COUNT_ROLE = int(QtCore.Qt.ItemDataRole.UserRole) + 40  # the ONLY declaration - every sidebar model and SidebarItemDelegate import it from here
 SIDEBAR_COLOR_ROLE = int(QtCore.Qt.ItemDataRole.UserRole) + 41  # a category's colour, for the sidebar's left-edge bar
@@ -27,11 +26,9 @@ class Categories(QtCore.QAbstractListModel):
     def __init__(self, preferences: prefs.Prefs) -> None:
         super().__init__()
         self.preferences = preferences  # REQUIRED: a model that can default binds to whatever library the machine's settings name ▸p/duplication-third-verb
-        db = database.DatabaseConnector(self.DB_FILENAME)
-        self._data = database.load_survivable(db, self.preferences.dir)  # survivable: a sidecar that will not read must not take the panel down from here
+        self._data = database.open_document(self)  # a sidecar that will not read must not take the panel down
         self._categories = self._data["categories"]
         self._shown = list(self._categories)    # what the views have been told about; `apply_refresh` compares against it, and starting empty made its FIRST call silent
-        self._colours_seen = db._colours_adopted    # colours a merge took in, as the views know them
         self.CatSortRole = QtCore.Qt.ItemDataRole.UserRole  # 256
         self._renderer_filter = ""  # lowercased; "" = no filter. Pushed in by the panel so counts agree with the grid
         self._count_cache = None  # category -> visible count, "_All" = total; dropped on every mutation path
@@ -95,7 +92,7 @@ class Categories(QtCore.QAbstractListModel):
                 total += 1
                 cats = asset.get("categories", [])
                 if isinstance(cats, str):
-                    cats = cats.split(",")
+                    cats = [cats]    # one name, its commas included
                 seen = set()
                 for cat in cats:
                     if isinstance(cat, str):
@@ -114,21 +111,17 @@ class Categories(QtCore.QAbstractListModel):
         self.beginResetModel()
         try:
             self.preferences.load()
-            db = database.DatabaseConnector(self.DB_FILENAME)
-            data = database.load_survivable(
-                db, self.preferences.dir, reload=True)    # one unreadable file must not stop the switch
+            data = database.open_document(self, reload=True)    # one unreadable file must not stop the switch
             self._data = data  # the whole dict: counts and empty-category hiding read _data["assets"]
             self._categories = data["categories"]
             self._shown = list(self._categories)    # a switch has told the views everything already
-            self._colours_seen = db._colours_adopted
             self.drop_count_cache()
         finally:
             self.endResetModel()
 
     def apply_refresh(self, db) -> bool:
         """Signal the rows a refresh already merged. This list IS the connector's, so the merge landed in it unseen; what is missing is the reset the views need. True when the sidebar moved. ▸p/mutate-not-rebind"""
-        recoloured = db._colours_adopted != self._colours_seen
-        self._colours_seen = db._colours_adopted
+        recoloured = database.colours_moved(self, db)
         if list(self._categories) == self._shown:
             if recoloured and self._categories:
                 self.dataChanged.emit(
@@ -265,23 +258,20 @@ class Categories(QtCore.QAbstractListModel):
                      if isinstance(name, str) and display_name(name) == label), typed)
 
     def check_add_category(self, cat: str) -> None:
-        """Add this category if it does not exist yet."""
+        """Add this category if it does not exist yet - one name, its commas included."""
         if material.MULTIPLE_VALUES in cat:
             return
-        changed = False
-        for c in cat.split(","):
-            c = c.strip()
-            if c != "" and c not in self._categories:
-                row = len(self._categories)
-                self.beginInsertRows(QtCore.QModelIndex(), row, row)
-                try:
-                    self._categories.append(c)
-                finally:
-                    self.endInsertRows()
-                changed = True
-        if changed:
-            self._told_views()
-            self.save()
+        cat = cat.strip()
+        if cat == "" or cat in self._categories:
+            return
+        row = len(self._categories)
+        self.beginInsertRows(QtCore.QModelIndex(), row, row)
+        try:
+            self._categories.append(cat)
+        finally:
+            self.endInsertRows()
+        self._told_views()
+        self.save()
 
     def colors(self) -> dict:
         """{category name: colour} for this library, stored beside the names in the same json so it travels with the library."""
@@ -316,14 +306,8 @@ class Categories(QtCore.QAbstractListModel):
 
     def save(self) -> bool:
         """Save categories and colours to disk as json; False when the write was refused."""
-        db = database.DatabaseConnector(self.DB_FILENAME)
-        if not db.serves(self.preferences.dir):  # a switch in another pane repoints the shared connector, and db.set replaces in place
-            debug.event("library", "category save refused - the "
-                        "connector now serves another library",
-                        model=self.preferences.dir, connector=db._path)
-            debug.alert(
-                messages.LIBRARY_NOT_SAVED_ANOTHER_PANEL,
-                key="connector-moved")
+        db = database.connector_for_save(self, "category save")
+        if db is None:  # a switch in another pane repoints the shared connector, and db.set replaces in place
             return False
         data = {}
         data["categories"] = self._categories

@@ -130,9 +130,7 @@ class AssetLibrary(grid_engine.GridEngine,
         super().__init__()
         self.preferences = preferences  # REQUIRED, and SHARED with the panel: per-model instances each re-read settings.json and drift after any save ▸p/duplication-third-verb
 
-        db = database.DatabaseConnector(self.DB_FILENAME)
-        self._data = database.load_survivable(db, self.preferences.dir)
-        self._colours_seen = db._colours_adopted    # colours a merge took in, as the views know them
+        self._data = database.open_document(self)
 
         self._assets = [self._asset_from_row(d)  # non-dict rows are SKIPPED, never allowed to abort the model: one junk row must not cost the whole library
                         for d in self._data["assets"]
@@ -233,10 +231,7 @@ class AssetLibrary(grid_engine.GridEngine,
         self.beginResetModel()  # NOT bookkeeping - replacing the row set without it leaves proxies on their old count and the selection on an index into rows that are gone, so the next gesture acts on the wrong row ▸r/model-contracts
         try:
             self.preferences.load()
-            db = database.DatabaseConnector(self.DB_FILENAME)
-            self._data = database.load_survivable(
-                db, self.preferences.dir, reload=True)
-            self._colours_seen = db._colours_adopted
+            self._data = database.open_document(self, reload=True)
 
             self._assets = [
                 self._asset_from_row(d) for d in self._data["assets"]
@@ -406,7 +401,7 @@ class AssetLibrary(grid_engine.GridEngine,
         asset = self._assets[row]
         if list(asset.categories or []) == [name]:
             return False
-        asset.categories = [name]    # a LIST: the setter splits a string, and a name may hold a comma
+        asset.categories = [name]    # one name, its commas included
         self._edited(asset, save)
         return True
 
@@ -628,14 +623,8 @@ class AssetLibrary(grid_engine.GridEngine,
 
     def save(self) -> bool:
         """Write the index to disk as json. True ONLY when it reached the file - honour that answer, because add_asset writes the payload files before this runs and a caller that cannot tell a refused save from a completed one reports success for an asset the library does not list."""
-        db = database.DatabaseConnector(self.DB_FILENAME)
-        if not db.serves(self.preferences.dir):  # THE CONNECTOR MAY HAVE MOVED: it is shared by filename across every pane, so a library switch elsewhere repoints it and this model still holds the OLD library's rows
-            debug.event("library", "save refused - the connector now "
-                        "serves another library",
-                        model=self.preferences.dir, connector=db._path)
-            debug.alert(
-                messages.LIBRARY_NOT_SAVED_ANOTHER_PANEL,
-                key="connector-moved")
+        db = database.connector_for_save(self, "save")
+        if db is None:  # another pane moved the shared connector: this model holds the old library's rows
             return False
         self.apply_refresh(db)    # the sidebar shares this connector: its save may have merged a peer's edit
         data = {}
@@ -655,8 +644,7 @@ class AssetLibrary(grid_engine.GridEngine,
         self._adopt_rows(rows)
         self._adopt_fields(fields)
         self._drop_rows(gone)
-        recoloured = db._colours_adopted != self._colours_seen
-        self._colours_seen = db._colours_adopted
+        recoloured = database.colours_moved(self, db)
         if recoloured:
             self.repaint_category_colours()
         return bool(rows or fields or gone or recoloured)
@@ -853,14 +841,19 @@ class AssetLibrary(grid_engine.GridEngine,
         """Copy the asset's CURRENT files aside for the version store: {archive suffix: held path}, per `versions.SOURCE_KINDS`. Read the source dict by KIND, never by filename suffix - `<id>_cop.mat` shares ".mat" with the material and `<id>_icon.png` shares ".png" with the render, so a suffix key lets whichever comes later overwrite the real payload. Kinds SOURCE_KINDS does not name are not versioned."""
         import tempfile as _tempfile
         keep = _tempfile.mkdtemp(prefix="amaze_preedit_")
-        held = {}
-        for kind, path in self.asset_files(mat_id).items():
-            suffix = versions.SOURCE_KINDS.get(kind)
-            if suffix is None or not os.path.exists(path):
-                continue
-            target = os.path.join(keep, os.path.basename(path))
-            shutil.copyfile(path, target)
-            held[suffix] = target
+        held, copied = {}, False
+        try:
+            for kind, path in self.asset_files(mat_id).items():
+                suffix = versions.SOURCE_KINDS.get(kind)
+                if suffix is None or not os.path.exists(path):
+                    continue
+                target = os.path.join(keep, os.path.basename(path))
+                shutil.copyfile(path, target)
+                held[suffix] = target
+            copied = True
+        finally:
+            if not (copied and held):
+                shutil.rmtree(keep, ignore_errors=True)    # nothing held, or a copy raised: no folder left
         return held
 
     def asset_directories(self, mat_id: str) -> dict:

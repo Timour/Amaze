@@ -340,6 +340,32 @@ def load_survivable(db, path: str, reload: bool = False):
         return empty
 
 
+def open_document(model, reload: bool = False) -> dict:
+    """`model`'s document as its connector holds it, read once a switch, the recolour baseline taken."""
+    db = DatabaseConnector(model.DB_FILENAME)
+    data = load_survivable(db, model.preferences.dir, reload=reload)
+    model._colours_seen = db._colours_adopted
+    return data
+
+
+def connector_for_save(model, what: str):
+    """`model`'s connector, or None, said once, when another pane switched it to another library."""
+    db = DatabaseConnector(model.DB_FILENAME)
+    if db.serves(model.preferences.dir):
+        return db
+    debug.event("library", "%s refused - the connector now serves another "
+                "library" % what, model=model.preferences.dir, connector=db._path)
+    debug.alert(messages.LIBRARY_NOT_SAVED_ANOTHER_PANEL, key="connector-moved")
+    return None
+
+
+def colours_moved(model, db) -> bool:
+    """Whether a merge recoloured a category since `model` opened or last asked; asking clears it."""
+    moved = db._colours_adopted != model._colours_seen
+    model._colours_seen = db._colours_adopted
+    return moved
+
+
 class DatabaseConnector:
     """Saves a json database to disk with one live connection per database file, instances keyed by `filename`; `_instances` and `_integrity_notes` bind to module-level dicts because `panel.py` reloads this module on every panel open and a re-executed class body would otherwise strand live models on a dead registry."""
 

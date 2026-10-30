@@ -17,7 +17,7 @@ from amaze.core import grid_engine
 PREVIEW_DIR_NAME = "matx_previews"    # a NAME only - where it lives resolves per call in preview_cache(), like CATALOGUE_NAME below
 
 
-from amaze.core.multifilterproxy_model import split_search  # noqa: E402,F401 - the colon rules' ONE home; re-exported because this module's callers and tests reach it here
+from amaze.core.multifilterproxy_model import split_search  # noqa: E402 - the colon rules' ONE home; re-exported because this module's callers and tests reach it here
 
 
 def preview_cache() -> str:
@@ -337,6 +337,7 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
                 "tries them again." % len(errors), errors=errors)
         else:
             self._save_cache(records)
+            self._prune_previews(records)
         by_source = {}
         for r in records:
             by_source[r.source] = by_source.get(r.source, 0) + 1
@@ -383,6 +384,30 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
         return os.path.join(
             preview_cache(), hostos.safe_filename(str(record.source)),
             digest + ".png")
+
+    def _prune_previews(self, records) -> None:
+        """Remove each listed source's cached pictures that no record names; a re-render orphans one."""
+        keep = {}
+        for rec in records:
+            for path in (self._cache_path(rec), self._cache_path(rec, hosted=False)):
+                folder, name = os.path.split(path)
+                keep.setdefault(folder, set()).add(name)
+        removed = 0
+        for folder in keep:
+            try:
+                with os.scandir(folder) as found:
+                    stale = [entry.path for entry in found if entry.name.endswith(".png")
+                             and entry.name not in keep[folder]]    # a download in flight is not a .png
+            except OSError:
+                continue
+            for path in stale:
+                try:
+                    hostos.remove_file(path)
+                    removed += 1
+                except OSError as exc:
+                    debug.event("online", "stale preview not removed", path=path, error=str(exc))
+        if removed:
+            debug.event("online", "stale previews removed", count=removed)
 
     def _icon_size(self):
         try:

@@ -986,6 +986,47 @@ class HostedPreviewTileTest(unittest.TestCase):
         redraw.assert_called_once()
 
 
+class AListingPrunesThePreviewCache(unittest.TestCase):
+    """A whole listing keeps each source's cached pictures that a listed record names, and no other."""
+
+    def setUp(self):
+        from amaze.core import matx_library, matx_sources
+        self.model = matx_library.MatxOnlineLibrary(
+            preferences=type("P", (), {"rendersize": 64})())
+        self.addCleanup(self.model.shutdown)
+        self.record = matx_sources.MatxRecord(
+            source="PruneProbe", uid="Wood/Oak", title="Oak", category="Wood",
+            preview_url="https://cdn.example/oak.png",
+            payload={"preview": {"offset": 0, "size": 1, "crc": 8}})
+        rerendered = matx_sources.MatxRecord(
+            source="PruneProbe", uid="Wood/Oak", title="Oak", category="Wood",
+            payload={"preview": {"offset": 0, "size": 1, "crc": 7}})
+        self.files = {"hosted": self.model._cache_path(self.record),
+                      "own": self.model._cache_path(self.record, hosted=False),
+                      "rerendered": self.model._cache_path(rerendered),
+                      "in flight": self.model._cache_path(self.record) + ".x1y2.writing"}
+        folder = os.path.dirname(self.files["hosted"])
+        self.addCleanup(shutil.rmtree, folder, True)
+        os.makedirs(folder, exist_ok=True)
+        for path in self.files.values():
+            with open(path, "wb") as handle:
+                handle.write(b"picture")
+
+    def _land(self, errors):
+        with mock.patch.object(self.model, "_apply_filter"), \
+                mock.patch.object(self.model, "_save_cache"):
+            self.model._on_catalogue([self.record], errors, self.model._generation)
+        return {name for name, path in self.files.items() if os.path.exists(path)}
+
+    def test_a_whole_listing_removes_what_no_record_names(self):
+        self.assertEqual({"hosted", "own", "in flight"}, self._land([]),
+                         "the cache kept a picture no record names, or lost one a record does")
+
+    def test_a_partial_listing_removes_nothing(self):
+        self.assertEqual(set(self.files), self._land(["PolyHaven: URLError: offline"]),
+                         "a listing missing a source pruned the cache")
+
+
 @unittest.skipUnless(test_support.renderer_loaded("Redshift"), "the Redshift plugin is not loaded")
 class RedshiftTiledImageTest(unittest.TestCase):
     """Tiling and a raw colour map cross to Redshift as Karma reads them. ▸r/rs-sampler-uv"""

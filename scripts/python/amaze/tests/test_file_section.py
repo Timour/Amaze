@@ -3484,5 +3484,56 @@ class TheUserPickerFollowsTheLibrary(unittest.TestCase):
             % ", ".join(offenders))
 
 
+class ReadinessIsAskedOncePerGeneration(unittest.TestCase):
+    """A list page asks the stars per cell: the library is looked at once until a location write."""
+
+    def _looks_at_the_library(self, prefs, read):
+        """How many times `read` stat'ed the library folder."""
+        with mock.patch.object(locations_mod.os.path, "isdir", wraps=os.path.isdir) as isdir:
+            read()
+        return sum(1 for call in isdir.call_args_list if call.args[:1] == (prefs.dir,))
+
+    def test_a_page_of_reads_looks_once_and_a_write_looks_again(self):
+        prefs, _library = _location_prefs(self, {})
+        self.assertTrue(locations_mod.ready(prefs), "premise: the library cannot answer")
+
+        def page():
+            for _ in range(48):
+                locations_mod.is_favourite(prefs, "139888336268658010")
+
+        self.assertEqual(0, self._looks_at_the_library(prefs, page),
+                         "every star read looked at the library folder again")
+        locations_mod.touch()
+        self.assertEqual(1, self._looks_at_the_library(prefs, page),
+                         "a moved generation did not ask the library again, once")
+
+    def test_a_library_that_appears_is_seen_after_the_switch_door(self):
+        prefs, library = _location_prefs(self, {})
+        here, away = library.rstrip("/\\"), library.rstrip("/\\") + "_away"
+        os.rename(here, away)    # a share not mounted yet
+        self.addCleanup(lambda: os.path.isdir(away) and os.rename(away, here))
+        self.assertFalse(locations_mod.ready(prefs), "premise: an absent library answered")
+        os.rename(away, here)
+        locations_mod.forget()    # what a library switch runs
+        self.assertTrue(locations_mod.ready(prefs),
+                        "a library that came back stayed unseen after the switch door")
+
+    def test_a_pre_tag_row_a_refresh_reads_is_adopted_at_the_next_read(self):
+        from amaze.core import keyed_store
+        prefs, library = _location_prefs(self, {})
+        self.assertTrue(locations_mod.register(prefs, library), "premise: no location store")
+        self.assertTrue(locations_mod.ready(prefs), "premise: the library cannot answer")
+        path = os.path.join(library, "locations.json")
+        with open(path, encoding="utf-8") as handle:
+            document = json.load(handle)
+        document["locations"]["/peer/folder/"] = {"registered": True, "name": "Peer"}
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(document, handle)    # an older build on another machine
+        keyed_store.refresh_all(prefs)
+        self.assertEqual({"registered": True, "name": "Peer"},
+                         locations_mod.record(prefs, "/peer/folder/"),
+                         "a row a refresh read waited for the next location write")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -110,6 +110,16 @@ class TestCategories(unittest.TestCase):
         self.assertEqual(2, model._category_count("Cat1"))
         self.assertEqual(2, model._category_count("_All"))
 
+    def test_a_name_holding_a_comma_counts_as_one(self):
+        self.mock_db_instance.load.return_value = {
+            "categories": ["Wood, Oak"],
+            "assets": [{"categories": ["Wood, Oak"], "renderer": "Karma"},
+                       {"categories": "Wood, Oak", "renderer": "Karma"}],    # a hand-edited row
+        }
+        model = self.category_module.Categories(self.mock_prefs_instance)
+        self.assertEqual((2, 0), (model._category_count("Wood, Oak"), model._category_count("Wood")),
+                         "the count split a category name at its comma")
+
     def test_switch_model_data(self):
         """Test switch_model_data reloads preferences and uses reload_with_path."""
         model = self.category_module.Categories(self.mock_prefs_instance)
@@ -159,9 +169,9 @@ class TestCategories(unittest.TestCase):
             ("Multiple Values...", (), False),
             ("NewCat", ("NewCat",), True),
             ("Cat1", (), False),
-            ("NewCat1, NewCat2, NewCat3", ("NewCat1", "NewCat2", "NewCat3"), True),
+            ("Wood, Oak", ("Wood, Oak",), True),    # one asset, one category: a comma is part of the name
             ("  SpacedCat  ", ("SpacedCat",), True),
-            ("  ,  ,  ", (), False),
+            ("   ", (), False),
         )
         for typed, added, saves in cases:
             with self.subTest(typed=typed):
@@ -273,7 +283,8 @@ class ALocalEditIsNotReadAsAMerge(unittest.TestCase):
     def test_no_local_edit_is_read_as_a_merge(self):
         model = self.model
         for door, edit in (
-                ("add", lambda: model.check_add_category("Zeta, Alpha")),
+                ("add", lambda: (model.check_add_category("Zeta"),
+                                 model.check_add_category("Alpha"))),
                 ("move", lambda: model.move_category(4, 1)),
                 ("rename", lambda: model.rename_category("usds", "USD")),
                 ("remove", lambda: model.remove_category("Alpha")),

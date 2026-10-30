@@ -539,9 +539,10 @@ class SingleCategoryTest(unittest.TestCase):
         return Material()
 
     def test_any_spelling_keeps_only_the_first_category(self):
-        """Split on commas only, so "rs material" stays one name."""
-        for given, kept in (("Metal, Rough, Worn", ["Metal"]), (["Metal", "Rough"], ["Metal"]),
-                            ("rs material", ["rs material"]), ("", [])):
+        """A string is one name, its commas included; a list keeps its first."""
+        for given, kept in (("Metal, Rough, Worn", ["Metal, Rough, Worn"]),
+                            (["Metal", "Rough"], ["Metal"]),
+                            ("  rs material ", ["rs material"]), ("", [])):
             with self.subTest(given=given):
                 asset = self._asset()
                 asset.categories = given
@@ -549,9 +550,11 @@ class SingleCategoryTest(unittest.TestCase):
 
     def test_set_data_cannot_smuggle_a_second_one_in(self):
         """set_data is the path every save and every edit goes through."""
-        asset = self._asset()
-        asset.set_data("n", "Metal, Rough", "", False, "Karma")
-        self.assertEqual(["Metal"], asset.categories)
+        for given, kept in (("Wood, Oak", ["Wood, Oak"]), (["Metal", "Rough"], ["Metal"])):
+            with self.subTest(given=given):
+                asset = self._asset()
+                asset.set_data("n", given, "", False, "Karma")
+                self.assertEqual(kept, asset.categories)
 
 
 class ACommaInsideOneCategoryNameStaysWholeTest(unittest.TestCase):
@@ -579,6 +582,24 @@ class ACommaInsideOneCategoryNameStaysWholeTest(unittest.TestCase):
         self.model.cleanup_db()
         self.assertEqual([self.NAME], self.asset.categories,
                          "Clean Up split the category name at its comma")
+
+    def test_assigning_the_whole_name_keeps_it_whole(self):
+        """The sidebar drop and the info edit both write through set_assetdata."""
+        row = self.model.find_asset_row_by_id(self.asset.mat_id)
+        self.model.set_assetdata(self.model.index(row, 0), self.asset.name, self.NAME,
+                                 "", None, save=False)
+        self.assertEqual([self.NAME], self.asset.categories,
+                         "assigning the category split its name at the comma")
+
+    def test_an_edit_leaving_multiple_values_keeps_the_name(self):
+        """A multi-selection edit that leaves Category alone hands back each asset's own."""
+        from amaze.core import material
+        self.asset.categories = [self.NAME]
+        row = self.model.find_asset_row_by_id(self.asset.mat_id)
+        self.model.set_assetdata(self.model.index(row, 0), self.asset.name,
+                                 material.MULTIPLE_VALUES, "", None, save=False)
+        self.assertEqual([self.NAME], self.asset.categories,
+                         "an edit that left Category alone split the name at its comma")
 
 
 class AnInlineSectionCleansByFlushingTest(unittest.TestCase):

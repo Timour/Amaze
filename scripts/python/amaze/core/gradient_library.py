@@ -234,7 +234,7 @@ class GradientLibrary(library.AssetLibrary):
                 continue
             asset = self._assets[row]
             if asset.categories != [category_name]:
-                asset.categories = [category_name]    # a LIST: the setter splits a string at its commas
+                asset.categories = [category_name]    # one name, its commas included
                 moved.append(asset)
         if moved:
             self._saved_rows_changed(moved)

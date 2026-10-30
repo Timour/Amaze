@@ -117,7 +117,27 @@ def ready(preferences) -> bool:
     return _ready(preferences)
 
 
+_ready_memo: tuple = ((), False)    # (key, answer)
+
+
+def _ready_key(preferences) -> tuple:
+    """What moves `_ready_now`'s answer, but the disk: writes, store loads, library, user, conversion."""
+    library = str(getattr(preferences, "dir", ""))
+    return (_generation, keyed_store.loads(), library, library in _converted,
+            str(getattr(preferences, "library_user", "") or ""))
+
+
 def _ready(preferences) -> bool:
+    """`_ready_now`, once per generation: the paint path asks per cell. An unmount shows at a write."""
+    global _ready_memo
+    if _ready_memo[0] == _ready_key(preferences):
+        return _ready_memo[1]
+    answer = _ready_now(preferences)
+    _ready_memo = (_ready_key(preferences), answer)    # after: the answer may migrate or bump
+    return answer
+
+
+def _ready_now(preferences) -> bool:
     """Is the library's own answer the one to use? Present, writable, not awaiting a user, migrated, and the untagged rows adopted - the migration is attempted HERE as well as at load because `dir` can be set long after settings were read, and the copy stays the truth until it has landed."""
     if not library_present(preferences):
         return False
@@ -1019,8 +1039,10 @@ def migrate_asset_favourites(preferences) -> dict:
 
 def forget() -> None:
     """Drop the cached tables AND the deferred sets - the library switch's own door (`switch_all_models` calls this), because a switch is exactly the change that earns an unreachable library another migration try; also the test seam."""
+    global _ready_memo
     _deferred.clear()
     _asset_deferred.clear()
     _orphans_deferred.clear()
     _converted.clear()
+    _ready_memo = ((), False)
     keyed_store.release()

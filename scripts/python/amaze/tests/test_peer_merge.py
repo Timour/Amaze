@@ -9,6 +9,7 @@ from unittest import mock
 
 from PySide6 import QtCore, QtWidgets
 
+from amaze import messages
 from amaze.core import category, database
 from amaze.tests import test_support
 
@@ -569,6 +570,66 @@ class TheBaselineIsTheBytesParsed(_Case):
             {"name": self._row().get("name"), "conflicts told": len(alerts)},
             "a rename made elsewhere read as a conflict: the merge base "
             "was the file before its ids were minted")
+
+
+class OneDocumentProtocolServesBothModels(unittest.TestCase):
+    """The sidebar and the grid open, guard and drain library.json through the same doors."""
+
+    def setUp(self):
+        self.panel = test_support.fixture_panel(self)
+        self.db = database.DatabaseConnector("library.json")
+        self.models = (("sidebar", self.panel.category_model),
+                       ("grid", self.panel.material_model))
+
+    def _switch_to(self, folder):
+        """What Preferences does: the new directory saved, then the one switch door."""
+        settings = os.path.join(self.panel.prefs.path, "settings.json")
+        with open(settings, encoding="utf-8") as handle:
+            data = json.load(handle)
+        data["directory"] = folder
+        with open(settings, "w", encoding="utf-8") as handle:
+            json.dump(data, handle)
+        self.panel.switch_all_models()
+
+    def test_each_holds_the_connectors_own_document(self):
+        for when in ("opened", "switched"):
+            if when == "switched":
+                self._switch_to(test_support.seeded_library(self))
+            for name, model in self.models:
+                with self.subTest(when=when, model=name):
+                    self.assertIs(self.db._data, model._data,
+                                  "the %s holds a copy no merge or other model reaches" % name)
+
+    def test_each_refuses_a_save_the_connector_moved_away_from(self):
+        other = test_support.seeded_library(self)
+        on_disk = os.path.join(other, "library.json")
+        with open(on_disk, "rb") as handle:
+            before = handle.read()
+        self.addCleanup(self.db.reload_with_path, self.panel.prefs.dir)
+        self.db.reload_with_path(other)    # another pane switched the shared connector
+        for name, model in self.models:
+            with self.subTest(model=name):
+                with test_support.captured_log() as log:
+                    self.assertFalse(model.save(), "the %s saved into another library" % name)
+                self.assertIn(messages.LIBRARY_NOT_SAVED_ANOTHER_PANEL, log.messages("alert"))
+                with open(on_disk, "rb") as handle:
+                    self.assertEqual(before, handle.read(),
+                                     "the %s's rows reached the other library" % name)
+
+    def test_each_hears_a_merged_colour_once(self):
+        self.assertTrue(self.panel.material_model.save(), "premise: the first save failed")
+        path = os.path.join(self.panel.prefs.dir, "library.json")
+        with open(path, encoding="utf-8-sig") as handle:
+            document = json.load(handle)
+        document["category_colors"] = {"Karma_Mats": "#123456"}
+        with open(path, "w", encoding="utf-8", newline="\n") as handle:
+            json.dump(document, handle, indent=4)
+        self.assertTrue(self.db.refresh(), "premise: the refresh merged nothing")
+        for name, model in self.models:
+            with self.subTest(model=name):
+                self.assertEqual((True, False),
+                                 (model.apply_refresh(self.db), model.apply_refresh(self.db)),
+                                 "the %s did not hear the merged colour exactly once" % name)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 """LOP material assignment, tested headlessly: the USD half of a viewport drop, built directly out of real stages, real bindings and real assignmaterial nodes rather than reached by dragging a tile onto a Solaris viewport - which is worth the trouble because the debug log counts drag as the app's single largest activity."""
 
 import os
+import shutil
 import sys
 import unittest
 
@@ -117,6 +118,77 @@ class TheLibrarysOwnAssignIsAUse(unittest.TestCase):
                 self.assertTrue(lop_assign.remove_unreferenced_material(
                     scene.lopnet, scene.liblop, "/materials/mat_a"))
                 self.assertEqual({"mat_b"}, {n.name() for n in scene.liblop.children()})
+
+
+class ABindingAnotherLayerAuthorsIsAUse(unittest.TestCase):
+    """A file the network loads can bind a prim to the library's material, which only the stage shows."""
+
+    SUBLAYERED = '#usda 1.0\nover "sphere_b"\n{\n    rel material:binding = </materials/%s>\n}\n'
+    REFERENCED = ('#usda 1.0\n(\n    defaultPrim = "asset"\n)\n\ndef Xform "asset"\n{\n'
+                  '    def Sphere "ball"\n    {\n'
+                  '        rel material:binding = </asset/materials/mat_a>\n    }\n}\n')
+
+    def _loading(self, lop_type, text, primpath=""):
+        """`_Scene` with a `lop_type` LOP between the spheres and the library, loading `text`."""
+        folder = test_support.scratch_dir("amaze_lop_layer_")
+        self.addCleanup(shutil.rmtree, folder, True)
+        path = os.path.join(folder, "layer.usda")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(text)
+        scene = _Scene(self)
+        layer = scene.lopnet.createNode(lop_type)
+        layer.setFirstInput(scene.b)
+        scene.liblop.setFirstInput(layer)
+        layer.parm("filepath1").set(path)
+        if primpath:
+            layer.parm("primpath1").set(primpath)
+        return scene
+
+    def _swap_sphere_a(self, scene, old):
+        """What a swap leaves on the assign node: the old entry emptied, a new one on mat_b."""
+        scene.bind("/sphere_a", old)
+        scene.bind("/sphere_a", "/materials/mat_b", index=2)
+        scene.assign.parm("primpattern1").set("")
+
+    def test_a_sublayered_binding_keeps_the_material(self):
+        scene = self._loading("sublayer", self.SUBLAYERED % "mat_a")
+        self._swap_sphere_a(scene, "/materials/mat_a")
+        self.assertEqual([("/materials/mat_a", ["/sphere_b"])], lop_assign.bound_materials_under(
+            scene.stage(), "/sphere_b"), "premise: the sublayer binds nothing")
+        self.assertFalse(lop_assign.remove_unreferenced_material(
+            scene.lopnet, scene.liblop, "/materials/mat_a"),
+            "the material a sublayered file still binds was removed")
+        self.assertIn("mat_a", {node.name() for node in scene.liblop.children()})
+
+    def test_a_referenced_binding_keeps_the_material(self):
+        scene = self._loading("reference", self.REFERENCED, primpath="/asset")
+        scene.liblop.parm("matpath1").set("/asset/materials/mat_a")    # the library overrides the asset's own
+        self._swap_sphere_a(scene, "/asset/materials/mat_a")
+        self.assertEqual([("/asset/materials/mat_a", ["/asset/ball"])], lop_assign.bound_materials_under(
+            scene.stage(), "/asset/ball"), "premise: the referenced file binds nothing")
+        self.assertFalse(lop_assign.remove_unreferenced_material(
+            scene.lopnet, scene.liblop, "/asset/materials/mat_a"),
+            "the material a referenced file still binds was removed")
+        self.assertIn("mat_a", {node.name() for node in scene.liblop.children()})
+
+    def test_a_layer_after_the_assign_is_read_too(self):
+        scene = self._loading("sublayer", self.SUBLAYERED % "mat_a")
+        layer = scene.liblop.inputs()[0]
+        scene.liblop.setFirstInput(scene.b)
+        layer.setFirstInput(scene.assign)    # loaded last, below the library and the assign
+        layer.setDisplayFlag(True)
+        self._swap_sphere_a(scene, "/materials/mat_a")
+        self.assertFalse(lop_assign.remove_unreferenced_material(
+            scene.lopnet, scene.liblop, "/materials/mat_a"),
+            "a binding loaded below the library was not read")
+
+    def test_a_layer_binding_another_material_is_no_use(self):
+        scene = self._loading("sublayer", self.SUBLAYERED % "mat_b")
+        self._swap_sphere_a(scene, "/materials/mat_a")
+        self.assertTrue(lop_assign.remove_unreferenced_material(
+            scene.lopnet, scene.liblop, "/materials/mat_a"),
+            "a material nothing on the stage binds was kept")
+        self.assertEqual({"mat_b"}, {node.name() for node in scene.liblop.children()})
 
 
 class TestNameNewAssign(unittest.TestCase):

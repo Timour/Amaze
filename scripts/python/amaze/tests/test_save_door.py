@@ -356,6 +356,36 @@ class AnUnderscoredCategoryKeepsItsStoredName(unittest.TestCase):
         self._assert_filed_under_the_stored_name(code.assets[row])
 
 
+class ACategoryHoldingACommaIsOneCategory(unittest.TestCase):
+    """A save filed under "Wood, Oak" lands there whole and mints no "Wood" or "Oak"."""
+
+    NAME = "Wood, Oak"
+
+    def setUp(self):
+        self.panel = test_support.fixture_panel(self)
+        self.categories = self.panel.code_category_model
+        self.categories.check_add_category("Placeholder")
+        self.categories.rename_category("Placeholder", self.NAME)    # the rename keeps a comma
+        self.panel.section_tabs.setChecked("code")
+        QtWidgets.QApplication.processEvents()
+        self.before = list(self.categories._categories)
+
+    def test_a_save_into_it_files_under_the_whole_name(self):
+        def fake_exec(dialog):
+            dialog.combo_cats.setCurrentIndex(dialog.combo_cats.findText(self.NAME))
+            dialog._on_accept()
+            return 1
+
+        wrangle = _wrangle(self)
+        held = test_support.asset_ids(self.panel.code_model)
+        with mock.patch.object(save_dialog.SaveDialog, "exec", fake_exec):
+            self.panel._save_new([wrangle], "code", wrangle)
+        saved, = test_support.arrived(self.panel.code_model, held)
+        self.assertEqual(([self.NAME], self.before),
+                         (list(saved.categories), list(self.categories._categories)),
+                         "the save split the category at its comma")
+
+
 class ASaveOpensOnTheSidebarRowOnlyInItsOwnSection(unittest.TestCase):
     """The sidebar is shared, so a row pre-selects a save only of the section it belongs to."""
 
