@@ -572,5 +572,31 @@ class TheReleaseVerbsLiveOnTheirSections(unittest.TestCase):
             "and there is no panel fallback any more: %s" % missing)
 
 
+class EveryDoubleClickReachesTheClickWalker(unittest.TestCase):
+    """A double-click is the click walker's in every section, one added tomorrow included."""
+
+    def test_every_section_and_a_new_one_reach_the_walker(self):
+        from amaze.panel import sections
+
+        class _Panel:
+            def __init__(self):
+                self.walked = []
+
+            def click_on_row(self, section, index, payload=None):
+                self.walked.append((section, index))
+
+        class _NewSection(sections.Section):    # declares no double-click of its own
+            key = "new"
+
+        for cls in sections.SECTION_CLASSES + (_NewSection,):
+            with self.subTest(section=cls.__name__):
+                panel = _Panel()
+                section = cls(panel)
+                index = object()
+                section.double_click(index)
+                self.assertEqual([(section, index)], panel.walked,
+                                 "%s's double-click never reached the walker" % cls.__name__)
+
+
 if __name__ == "__main__":
     unittest.main()

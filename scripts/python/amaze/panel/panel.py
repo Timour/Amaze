@@ -1545,6 +1545,9 @@ class AmazePanel(QtWidgets.QWidget):
             return
         self.cat_list.setCurrentIndex(view_model.index(row, 0))
         self._locate_folder_user(model)
+        context = self._section()
+        if context is not None:
+            context.stand_again()    # a Locate cancelled or refused moved only the highlight
 
     def capture_from_toolbar(self) -> None:
         """Toolbar Capture: the one selected tile; in File with nothing selected, the open scene."""
@@ -1972,6 +1975,9 @@ class AmazePanel(QtWidgets.QWidget):
             self.prefs, self.material_model, self.category_model,
             getattr(self, "cop_model", None), getattr(self, "cop_category_model", None),
             self.file_folders_model)
+        context = self._section()
+        if context is not None:
+            context.stand_again()    # a location set aside slid the highlight off the grid's row
 
         if sections:
             if ui is not None:

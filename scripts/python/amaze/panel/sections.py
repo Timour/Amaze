@@ -128,6 +128,14 @@ class Section:
         """(model, proxy) for the tile a menu is acting on - what the shared Customize handler needs."""
         return None, None
 
+    def _model_and_rows(self, indexes):
+        """(tile model, SOURCE rows) behind proxy indexes; one that no longer maps is no row."""
+        model, proxy = self.tile_models()
+        if model is None or proxy is None:
+            return None, []
+        sources = (proxy.mapToSource(index) for index in indexes if index is not None)
+        return model, [source.row() for source in sources if source.isValid()]
+
     def catlist_menu(self) -> None:
         """Build and exec this section's sidebar right-click menu, over SIDEBAR_MENU."""
         grid.open_catlist_menu(self.panel, self)
@@ -198,6 +206,18 @@ class Section:
         """The sidebar key the GRID stands on, "" for All - a right press moves only the sidebar."""
         return ""
 
+    def stand_again(self) -> None:
+        """The highlight back on the row the grid shows; both on All once that row is gone."""
+        view, model = self._sidebar_view()
+        if model is None:
+            return
+        key = self.standing_key()
+        target = self._row_keyed(model, key) if key else model.index(0, 0)
+        if target is None:
+            self.stand_on_key(key)
+            return
+        self._highlight(view, target)
+
     def stand_after_removal(self, removed) -> None:
         """Rows in `removed` left the sidebar: stand both on the row the grid stood on, or on All."""
         standing = self.standing_key()
@@ -205,19 +225,35 @@ class Section:
 
     def stand_on_key(self, key: str) -> None:
         """Stand the sidebar and the grid on the row keyed `key`, or on All when no row is."""
+        view, model = self._sidebar_view()
+        if model is None:
+            return
+        target = self._row_keyed(model, key) if key else None
+        if target is None:
+            target = model.index(0, 0)    # All heads every sidebar
+        self._highlight(view, target)
+        self.select_category(target)
+
+    def _sidebar_view(self):
+        """(the sidebar, its model) while it shows this section's rows, else (None, None)."""
         view = getattr(self.panel, "cat_list", None)
         model = view.model() if view is not None else None
         if model is None or model is not self._p(self.sidebar_attr) or not model.rowCount():
-            return
-        target = model.index(0, 0)    # All heads every sidebar
-        for row in range(model.rowCount()) if key else ():
-            if self.sidebar_key(model.index(row, 0)) == key:
-                target = model.index(row, 0)
-                break
-        view.setCurrentIndex(target)
+            return None, None
+        return view, model
+
+    @staticmethod
+    def _highlight(view, index) -> None:
+        view.setCurrentIndex(index)
         view.selectionModel().select(
-            target, QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
-        self.select_category(target)
+            index, QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
+
+    def _row_keyed(self, model, key: str):
+        """The sidebar row keyed `key`, or None."""
+        for row in range(model.rowCount()):
+            if self.sidebar_key(model.index(row, 0)) == key:
+                return model.index(row, 0)
+        return None
 
     reorders_sidebar = False  # the five below are the CATEGORY form; File overrides
 
@@ -270,7 +306,8 @@ class Section:
             source.save()
 
     def double_click(self, index) -> None:
-        pass
+        """The click walker, aimed by the row's own declaration; the online world answers its own."""
+        self.panel.click_on_row(self, index)
 
     deletes_rows = False  # File says no: its rows are files it only browses
 
@@ -456,18 +493,9 @@ class AssetSection(Section):
 
     def export_package_to(self, indexes, path: str) -> int:
         """ACT half: the selected rows (proxy indexes) leave as one `.amazepkg` - record, existing family files and note per asset - answering the entry count."""
-        st = self.stack()
         from amaze.core import packages
-        if st is None:
-            return 0
-        items = []
-        for index in indexes:
-            if index is None or not index.isValid():
-                continue
-            source = (st.proxy.mapToSource(index)
-                      if st.proxy is not None else index)
-            asset = st.model.assets[source.row()]
-            items.append(packages.collect_asset(st.model, asset.mat_id))
+        model, rows = self._model_and_rows(indexes)
+        items = [packages.collect_asset(model, model.assets[row].mat_id) for row in rows]
         if not items:
             return 0
         return packages.write_package(path, items)
@@ -534,6 +562,15 @@ class AssetSection(Section):
         return ((st.model, st.proxy) if st is not None
                 else (None, None))
 
+    def save_categories(self) -> tuple:
+        """(this section's STORED categories, the sidebar's row - only while it shows this section)."""
+        st = self.stack()
+        if st is None:
+            return [], ""
+        panel = self.panel
+        current = panel._selected_category_name() if panel._section() is self else ""
+        return panel._category_names_from(st.categories), current
+
     def stack(self):
         model = self._p(self.model_attr)
         category = self._p(self.category_attr)
@@ -547,12 +584,9 @@ class AssetSection(Section):
         )
 
     def toggle_favourite(self, indexes) -> None:
-        st = self.stack()
-        if st is None:
-            return
-        sources = (st.proxy.mapToSource(index) for index in indexes)
-        st.model.toggle_favs([source.row() for source in sources
-                              if source.isValid()])
+        model, rows = self._model_and_rows(indexes)
+        if model is not None:
+            model.toggle_favs(rows)
 
     deletes_rows = True
 
@@ -581,16 +615,6 @@ class AssetSection(Section):
             st.model.repaint_category_colours()    # the grid reads the colour off the same document
 
     offers_preview_update = True
-
-    def update_preview(self, indexes) -> None:
-        st = self.stack()    # Materials and Nodes re-render, the UI blocking for it, while Code repaints from content - all three reach it the same way, which is what stops Code being the one that forgot
-        if st is None:
-            return
-        sources = (st.proxy.mapToSource(i) for i in indexes)
-        rows = [source.row() for source in sources if source.isValid()]
-        if not rows:
-            return
-        st.model.render_thumbnails(rows)    # the model's own; Materials and Nodes override this for their verbs
 
     def comment_subject(self, index):
         st = self.stack()
@@ -789,9 +813,6 @@ class MaterialSection(AssetSection):
             FilterEntry(renderer.key, renderer.label, renderer.key, renderer.icon)
             for renderer in renderers.offered(self.panel.prefs))
 
-    def double_click(self, index) -> None:
-        self.panel.click_on_row(self, index)
-
     def can_save(self, nodes) -> bool:
         return bool(nodes) and all(    # a fresh handler per node: it remembers the last renderer
             nodes_mod.NodeHandler(self.panel.prefs).get_renderer_from_node(n)
@@ -799,16 +820,9 @@ class MaterialSection(AssetSection):
 
     def update_preview(self, indexes) -> None:
         """Update Render on Material tiles: the whole selection in one render batch."""
-        st = self.stack()
-        if st is None:
-            return
-        rows = [s.row() for s in (st.proxy.mapToSource(i) for i in indexes) if s.isValid()]
+        model, rows = self._model_and_rows(indexes)
         if rows:
-            material_actions.render_thumbnails(st.model, rows)
-
-    def save_categories(self) -> tuple:
-        panel = self.panel
-        return panel.get_category_names(), panel._selected_category_name()
+            material_actions.render_thumbnails(model, rows)
 
     @classmethod
     def save_rank(cls, nodes) -> int:
@@ -899,27 +913,15 @@ class CopSection(AssetSection):
         FilterEntry("Object", "Object", "Object"),
     )
 
-    def double_click(self, index) -> None:
-        self.panel.click_on_row(self, index)
-
     def can_save(self, nodes) -> bool:
         return (bool(nodes) and len({n.parent() for n in nodes}) == 1
                 and cop_nodes.can_save(nodes[0]))
 
     def update_preview(self, indexes) -> None:
         """Update Render on Node tiles: each network's picture re-rendered by the Node verbs."""
-        st = self.stack()
-        if st is None:
-            return
-        rows = [s.row() for s in (st.proxy.mapToSource(i) for i in indexes) if s.isValid()]
+        model, rows = self._model_and_rows(indexes)
         if rows:
-            node_actions.render_thumbnails(st.model, rows)
-
-    def save_categories(self) -> tuple:
-        panel = self.panel
-        current = (panel._selected_category_name()
-                   if panel.current_section == self.key else "")
-        return panel.get_cop_category_names(), current
+            node_actions.render_thumbnails(model, rows)
 
     @classmethod
     def save_rank(cls, nodes) -> int:
@@ -1112,19 +1114,12 @@ class CodeSection(AssetSection):
         FilterEntry("Code", "Code", "Code"),
     )
 
-    def double_click(self, index) -> None:
-        self.panel.click_on_row(self, index)
-
     takes_language = True
 
     def can_save(self, nodes) -> bool:
         from amaze.helpers import helpers
         parm = helpers.find_code_parm(nodes[0]) if len(nodes) == 1 else None
         return parm is not None and bool(parm.eval().strip())    # an empty snippet saves nothing
-
-    def save_categories(self) -> tuple:
-        panel = self.panel
-        return panel.get_code_category_names(), panel._current_code_category()
 
     @classmethod
     def save_rank(cls, nodes) -> int:
@@ -1249,20 +1244,36 @@ class FolderSection(Section):
         files = self._p(self.files_attr)
         return files.browsing() if files is not None else ""
 
+    def _row_keyed(self, model, key: str):
+        index = model.index_of(key)    # a location, or a subfolder already read
+        return index if index.isValid() else None
+
+    def stand_on_key(self, key: str) -> None:
+        """A subfolder whose row is not read yet stands on its location's row until it arrives."""
+        view, folders = self._sidebar_view()
+        if not (key and folders is not None and self._unfolding(folders, key)):
+            super().stand_on_key(key)
+            return
+        self._highlight(view, folders.index(folders.row_of(folders.location_of(key)), 0))
+        if self.standing_key() != key:
+            self._browse(key)
+        reveal = getattr(view, "reveal", None)
+        if reveal is not None:
+            reveal(key)
+
+    @staticmethod
+    def _unfolding(folders, path: str) -> bool:
+        """Is `path` a folder inside a registered location whose row has not been read yet?"""
+        owner = folders.location_of(path)
+        return (owner.rstrip("/") != path.rstrip("/") and folders.row_of(owner) is not None
+                and not folders.index_of(path).isValid() and os.path.isdir(path))
+
     def nothing_yet(self, source) -> bool:
         folders = self._p(self.folders_attr)    # the grid lists one location; the blank means none
         return folders is None or not folders._folders()
 
     def tile_models(self):
         return self._p(self.files_attr), self._p(self.files_proxy_attr)
-
-    def _files_and_rows(self, indexes):
-        """The files model and the SOURCE rows behind proxy indexes - an index that no longer maps is dropped, and no models yet answers (None, []), so a caller loops over nothing rather than guarding twice."""
-        files, proxy = self.tile_models()
-        if files is None or proxy is None:
-            return None, []
-        sources = (proxy.mapToSource(index) for index in indexes)
-        return files, [source.row() for source in sources if source.isValid()]
 
     def selected_kinds(self, indexes) -> set:
         """Every KIND in the selection, read once for the whole Grid menu - the one menu table whose entries depend on the kind of the rows in hand rather than on how many there are."""
@@ -1316,7 +1327,7 @@ class FolderSection(Section):
                 self.panel.import_geo_asset(index)
 
     def menu_load_scene(self, indexes, current, payload=None) -> None:
-        self.panel.open_hip_scene(current)
+        self.open_hip_scene(current)
 
     def menu_copy_path(self, indexes, current, payload=None) -> None:
         self.panel.copy_file_paths(indexes)
@@ -1331,7 +1342,7 @@ class FolderSection(Section):
             debug.event("file", "reveal failed", error=str(exc))
 
     def toggle_favourite(self, indexes) -> None:
-        files, rows = self._files_and_rows(indexes)    # the model resolves each row to its path key
+        files, rows = self._model_and_rows(indexes)    # the model resolves each row to its path key
         if files is not None:
             files.toggle_favorites(rows)
 
@@ -1464,7 +1475,7 @@ class FolderSection(Section):
     offers_preview_update = True
 
     def update_preview(self, indexes) -> None:
-        files, rows = self._files_and_rows(indexes)    # the files model re-renders a BATCH - image rows re-convert, scene rows re-read their capture - so the rows go over in one call rather than one at a time
+        files, rows = self._model_and_rows(indexes)    # ONE batch: images re-convert, scenes re-read
         if rows:
             files.rerender_thumbnails(rows)
 
@@ -1762,9 +1773,6 @@ class FileSection(FolderSection):
         if files is not None:
             files.refresh_current_folder()    # once, so look preferences show unclicked
 
-    def double_click(self, index) -> None:
-        self.panel.click_on_row(self, index)
-
 
 class OnlineContext(Section):
     """The online world, with a Section's interface and none of its identity: a PARALLEL WORLD rather than a view mode over Materials (overview.md §5), driving the same four widgets every section drives, so it shares the interface even though it is not in SECTION_CLASSES and never appears in enabled_sections. Enter it through activate() like any other, or the Capture button, the search box and the Comments pane all keep the state the section you left gave them."""
@@ -1778,6 +1786,12 @@ class OnlineContext(Section):
     delegate_attr = "matx_delegate"    # ITS OWN, carrying only the roles matx_library has: borrowing the Materials delegate gives the online grid a Version, Licence and Comments column no online record can fill
     search_hint = ""    # empty is the standing decree for every tab; the box's tooltip is what teaches the leading-colon tag search, here as everywhere else
 
+    def __init__(self, panel) -> None:
+        super().__init__(panel)
+        sidebar = self._p(self.sidebar_attr)
+        if sidebar is not None:    # a catalogue landing replaces the categories under the user
+            sidebar.modelReset.connect(self._categories_replaced)
+
     def activate(self) -> None:
         panel = self.panel
         if panel.cat_list:
@@ -1788,6 +1802,24 @@ class OnlineContext(Section):
         panel.set_conversion_bar_visible(False)
         panel.matx_online_model.reload()
         panel.sync_list_columns()
+
+    def _categories_replaced(self) -> None:
+        """Stand again a turn later, once Qt's own reset has cleared the highlight."""
+        view = getattr(self.panel, "cat_list", None)
+        if view is not None:
+            QtCore.QTimer.singleShot(0, view, self._stand_again_if_shown)
+
+    def _stand_again_if_shown(self) -> None:
+        view = self.panel.cat_list
+        if self.panel._section() is self and view.model() is self._p(self.sidebar_attr):
+            self.stand_again()
+
+    def sidebar_key(self, index) -> str:
+        return self.panel.matx_source_model.category_at(index.row()) or ""
+
+    def standing_key(self) -> str:
+        role = self.panel.matx_online_model.CategoryRole
+        return self.panel.matx_sorted_model.filter_value(role) or ""
 
     def filter_text(self, text: str) -> None:
         """The online search asks the SOURCE, not a proxy."""
@@ -2074,9 +2106,6 @@ class GradientSection(AssetSection):
 
     def apply_filter(self, value) -> None:
         self.panel.gradient_sorted_model.set_size_filter(value)    # a documented KEEP, NOT inheritable: a palette's kind field is uniformly "Gradient" so the menu narrows by SIZE, and pushing these colour-COUNT tuples through the base's set_renderer_filter would store "(2, 2)" as a renderer matching nothing, count every category 0 and collapse the sidebar to _All under Hide Empty
-
-    def double_click(self, index) -> None:
-        self.panel.click_on_row(self, index)
 
     def can_save(self, nodes) -> bool:
         from amaze.helpers import helpers

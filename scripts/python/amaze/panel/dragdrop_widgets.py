@@ -119,7 +119,8 @@ class GridGestureMixin:
         ):
             self._drag_start = point
             self._drag_section = section
-            self._drag_index = self.indexAt(point).siblingAtColumn(0)    # THE ROW, not the pressed cell: in list mode a cell >= 1 answers None for KindRole/PathRole ▸r/row-selection
+            self._drag_index = QtCore.QPersistentModelIndex(    # THE ROW, not the cell ▸r/row-selection
+                self.indexAt(point).siblingAtColumn(0))    # persistent: the gesture outlives a reset
             self._drag_panel = panel
         else:
             self._drag_start = None
@@ -186,16 +187,22 @@ class GridGestureMixin:
         )
         return label
 
+    def _drag_row(self):
+        """The pressed row as an index, None once it has left the model mid-gesture."""
+        held = self._drag_index
+        if held is None or not held.isValid():
+            return None
+        return QtCore.QModelIndex(held)
+
     def _begin_drag(self) -> None:
         """Start the shared self-managed drag: a floating name tag following the cursor, one gesture for every ARMED_SECTIONS row, File included - a File row only leaves it if the cursor later crosses a Parameters pane."""
         from amaze.core import dragengine
         self._dragging = True
         dragengine.begin(self._drag_section or "")
         name = ""
-        if self._drag_index is not None and self._drag_index.isValid():
-            name = (
-                self._drag_index.data(QtCore.Qt.ItemDataRole.DisplayRole) or ""
-            )
+        index = self._drag_row()
+        if index is not None:
+            name = index.data(QtCore.Qt.ItemDataRole.DisplayRole) or ""
         label = self._overlay_label(str(name))
         label.setStyleSheet(ui_helpers.DRAG_TAG_STYLE)    # shared with the native drags' pixmap, so every drag tag looks identical
         label.adjustSize()
@@ -299,10 +306,8 @@ class GridGestureMixin:
 
     def _run_file_path_drag(self) -> None:
         """The one real `QDrag`, carrying the spelled path as TEXT (`_file_drag_mime`, which is the whole mime) under the shared name-tag pixmap - "native" is the drop mechanism only, the picture stays the same everywhere."""
-        index = self._drag_index    # the press-captured row: currentIndex() can point at a different one than was pressed
-        if index is None or not index.isValid():
-            index = self.currentIndex()
-        if not index.isValid():
+        index = self._drag_row()    # the PRESSED row: currentIndex() can name another
+        if index is None:
             return
         panel = _find_panel(self)
         if panel is None:
@@ -346,7 +351,7 @@ class GridGestureMixin:
             self._dragging = False
             dragengine.end()    # restores the hover highlight, on EVERY exit path
             panel = self._drag_panel
-            idx = self._drag_index
+            idx = self._drag_row()    # None when the row left the model mid-drag: a miss
             if panel is not None:
                 panel._set_drag_hover_row(-1)   # clear the drop-target glow
             outcome = False
@@ -400,8 +405,9 @@ class GridGestureMixin:
         """Per move: the outline where the payload would land, asking the SAME questions the release will, so what is drawn is what will happen - the pane arrives TRACKED from the caller, the outline's POSITION follows every move, and the target questions run on the engine's tick (a full per-move resolution saturated the loop at the mouse's own rate, ▸p/drag-move-cost). Over a node the editor's own drop-target highlight owns it and no ghost is drawn. ▸r/node-graph"""
         from amaze.core import dragengine
         section = self._drag_section
-        idx = self._drag_index
+        idx = self._drag_row()
         if panel is None or idx is None:
+            dragengine.ghost_clear()
             return
         rule = self._drop_rule(panel, section, idx)
         if rule is None:

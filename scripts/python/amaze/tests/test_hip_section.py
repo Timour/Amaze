@@ -2027,6 +2027,38 @@ class CaptureFromTheMenuTest(unittest.TestCase):
         self.assertEqual([""], asked, "the open scene was not captured")
 
 
+class LoadOnTheGridMenuOpensTheSceneTest(unittest.TestCase):
+    """File ▸ right-click a .hip ▸ Load, through the menu's own dispatch, reaches Houdini's load."""
+
+    def setUp(self):
+        self.panel = test_support.fixture_panel(self)
+
+    def test_load_opens_the_row_it_was_picked_on(self):
+        from unittest import mock
+        from PySide6 import QtCore as _QtCore
+        panel = self.panel
+        panel.section_tabs.setChecked("file")
+        QtWidgets.QApplication.processEvents()
+        proxy = panel.thumblist.model()
+        kind, path_role = panel.file_files_model.KindRole, panel.file_files_model.PathRole
+        row = next((r for r in range(proxy.rowCount())
+                    if proxy.index(r, 0).data(kind) == locations.KIND_HIP), None)
+        self.assertIsNotNone(row, "premise: the fixture folder lists no scene")
+        flags = _QtCore.QItemSelectionModel.SelectionFlag
+        panel.thumblist.selectionModel().select(proxy.index(row, 0), flags.ClearAndSelect)
+        loaded = []
+
+        def _pick(menu, *_args, **_kwargs):
+            return next(a for a in menu.actions() if a.text() == "Load")
+
+        with mock.patch.object(QtWidgets.QMenu, "exec_", _pick), \
+                mock.patch.object(hou.hipFile, "load",
+                                  lambda path, **_kwargs: loaded.append(path)):
+            panel._section().rc_menu()
+        self.assertEqual([proxy.index(row, 0).data(path_role)], loaded,
+                         "Load did not open the scene it was picked on")
+
+
 class SectionListIsSingleSourcedTest(unittest.TestCase):
     """Every list of sections must come from ONE place: three copies existed - the tab strip and two inside the Preferences dialog - and the two in Preferences never learned the new key, so toggling ANY section rebuilt enabled_sections from a six-entry list and dropped the tab: vanished, persisted, no switch to turn it back on, and a migration flag that would not re-add it."""
 

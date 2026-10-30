@@ -90,6 +90,9 @@ def _feather_icon(name: str, side: int, ink: str, widget=None) -> QtGui.QPixmap:
 STATE_TODO = 1   # to-do state is each block's userState; it is NOT inherited across Enter, a fresh block reads -1 ▸r/qt-text-checklists
 STATE_DONE = 2
 STATE_IMAGE = 3   # a picture block: ONE image fragment, no text of its own ▸p/comment-images
+STATE_UNLOADED = 4    # a picture whose file would not load: words stand in, `src` rides on the block
+_UNLOADED_SRC = QtGui.QTextFormat.Property.UserProperty.value + 1
+_UNLOADED_TEXT = QtGui.QTextFormat.Property.UserProperty.value + 2
 
 IMAGE_DIR = "img/comments"    # inside the library, beside the thumbnails `img/` already holds ▸p/comment-images
 
@@ -124,6 +127,28 @@ class _NoteEdit(QtWidgets.QTextEdit):
     @staticmethod
     def is_image_block(block) -> bool:
         return block.userState() == STATE_IMAGE
+
+    @staticmethod
+    def unloaded_picture(block):
+        """The picture item an unloaded block stands in for; None once its words are edited away."""
+        if block.userState() != STATE_UNLOADED:
+            return None
+        held = block.blockFormat()
+        shown = str(held.property(_UNLOADED_TEXT) or "")
+        if not shown or shown not in block.text():
+            return None
+        return {"t": "image", "src": str(held.property(_UNLOADED_SRC) or ""), "text": shown}
+
+    def _stand_in(self, cursor, src: str, shown: str) -> None:
+        """`shown` in the cursor's block, holding `src` so `serialize` writes the picture back."""
+        block = cursor.block()
+        block.setUserState(STATE_UNLOADED)
+        self._restyle_block(block, False, False)
+        held = QtGui.QTextBlockFormat()
+        held.setProperty(_UNLOADED_SRC, src)
+        held.setProperty(_UNLOADED_TEXT, shown)
+        cursor.mergeBlockFormat(held)
+        cursor.insertText(shown, self._label_format(False))
 
     @staticmethod
     def image_src(block) -> str:
@@ -223,14 +248,17 @@ class _NoteEdit(QtWidgets.QTextEdit):
         cursor.select(QtGui.QTextCursor.SelectionType.BlockUnderCursor)
         cursor.mergeCharFormat(self._label_format(todo and done))
 
-    def make_todo_here(self, cursor, done: bool = False) -> None:
-        """Turn the cursor's block into a to-do frame."""
-        block = cursor.block()
+    def _set_todo(self, block, done: bool) -> None:
+        """Make `block` a to-do, done or open: its state, its look and the glyph's repaint."""
         block.setUserState(STATE_DONE if done else STATE_TODO)
         self._restyle_block(block, True, done)
+        self.viewport().update()
+
+    def make_todo_here(self, cursor, done: bool = False) -> None:
+        """Turn the cursor's block into a to-do frame."""
+        self._set_todo(cursor.block(), done)
         cursor.setCharFormat(self._label_format(done))
         self.setTextCursor(cursor)
-        self.viewport().update()
 
     def make_plain_here(self, cursor) -> None:
         """Turn the cursor's block back into flowing text; the label survives as words."""
@@ -256,10 +284,7 @@ class _NoteEdit(QtWidgets.QTextEdit):
         """Flip one to-do's done state. Returns whether it was one."""
         if not self.is_todo_block(block):
             return False
-        done = not self.block_done(block)
-        block.setUserState(STATE_DONE if done else STATE_TODO)
-        self._restyle_block(block, True, done)
-        self.viewport().update()
+        self._set_todo(block, not self.block_done(block))
         return True
 
 
@@ -267,10 +292,7 @@ class _NoteEdit(QtWidgets.QTextEdit):
         """Merge across a block separator, then give the survivor the KEEPER's to-do state back; Qt stamps it with the FOLLOWING block's userState. ▸r/qt-text-checklists"""
         done = self.block_done(keeper)
         super().keyPressEvent(event)
-        block = self.textCursor().block()
-        block.setUserState(STATE_DONE if done else STATE_TODO)
-        self._restyle_block(block, True, done)
-        self.viewport().update()
+        self._set_todo(self.textCursor().block(), done)
 
     def keyPressEvent(self, event) -> None:
         if event.key() == QtCore.Qt.Key.Key_Backspace:
@@ -387,15 +409,13 @@ class _NoteEdit(QtWidgets.QTextEdit):
                 src = str(item.get("src", ""))
                 if not first:
                     cursor.insertBlock(self._plain_format())
-                    first = True    # the block exists now, so the fallback below REUSES it rather than adding a second
                 if self.make_image_here(cursor, src):
                     cursor = self.textCursor()
-                    first = False
-                    continue
-                cursor.block().setUserState(-1)    # the picture would not load, so this block carries the fallback text below instead
-                item = {"t": "text",    # the file is gone or unreadable: show the fallback the item already carries rather than a blank ▸p/comment-images
-                        "text": item.get("text")
-                        or "[image: %s]" % os.path.basename(src)}
+                else:    # not here yet, or gone: the item's own fallback words, never a blank ▸p/comment-images
+                    self._stand_in(cursor, src,
+                                   item.get("text") or "[image: %s]" % os.path.basename(src))
+                first = False
+                continue
             if item.get("t") == "todo":
                 done = bool(item.get("done"))
                 if not first:
@@ -431,7 +451,14 @@ class _NoteEdit(QtWidgets.QTextEdit):
 
         block = self.document().begin()
         while block.isValid():
-            if self.is_image_block(block):
+            picture = self.unloaded_picture(block)
+            if picture is not None:    # its file may arrive later: the item goes back as it came
+                flush_text()
+                items.append(picture)
+                typed = block.text().replace(picture["text"], "", 1)
+                if typed.strip():
+                    text_lines.append(typed)
+            elif self.is_image_block(block):
                 flush_text()
                 src = self.image_src(block)
                 if src:

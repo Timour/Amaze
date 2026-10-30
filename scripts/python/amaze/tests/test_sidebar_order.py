@@ -363,9 +363,9 @@ class PanelWiresNoSidebarSortTest(unittest.TestCase):
         with open(os.path.join(root, "panel", "sections.py"),
                   encoding="utf-8") as handle:
             sections_flat = "".join(handle.read().split())
-        self.assertIn(
-            "returnpanel.get_category_names(),", sections_flat,
-            "the Material section's list no longer comes straight from "
+        self.assertIn(    # the three asset sections share one body over their own categories
+            "returnpanel._category_names_from(st.categories),", sections_flat,
+            "the asset sections' list no longer comes straight from "
             "the ONE category-names home")
 
 
@@ -403,6 +403,10 @@ class _RecordingSection:
         self.proxy = proxy
         self.commits = 0
         self.moves = []
+        self.stood = 0
+
+    def stand_again(self):
+        self.stood += 1
 
     def sidebar_movable(self, index):
         return index.isValid() and index.row() > 0
@@ -544,6 +548,7 @@ class HoldGestureTest(unittest.TestCase):
         controller.eventFilter(view, esc)
         self.assertFalse(controller.reordering())
         self.assertEqual(["_All", "a", "b", "c"], model._categories)
+        self.assertEqual(1, section.stood, "the highlight the reset cleared was not put back")
         self._release(view, controller, self._row_center(view, 3))
         self.assertEqual(0, section.commits)
 

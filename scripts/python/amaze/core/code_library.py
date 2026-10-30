@@ -372,11 +372,3 @@ class CodeLibrary(library.AssetLibrary):
 
     def _paint_preview(self, asset) -> QtGui.QImage:
         return paint_code_preview(asset.code)
-
-    def render_thumbnail(self, row) -> None:
-        """No render - a code snippet has no thumbnail to render; repaint the preview from current content instead."""
-        if 0 <= row < len(self._assets):
-            thumbnails.engine.discard(
-                self._preview_key(self._assets[row])
-            )
-            self.row_changed(row, [QtCore.Qt.ItemDataRole.DecorationRole])

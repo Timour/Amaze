@@ -394,7 +394,7 @@ class StaleRowTest(unittest.TestCase):
 
 
 class TheFilesAndProxyArePairedOnce(unittest.TestCase):
-    """`tile_models` answers the pair and `_files_and_rows` maps a selection; a door that re-derives either is how the two drift apart."""
+    """`tile_models` pairs them, `Section._model_and_rows` maps a selection; a re-deriving door drifts."""
 
     def test_no_door_derives_the_pair_or_maps_a_selection_for_itself(self):
         import ast
@@ -408,22 +408,22 @@ class TheFilesAndProxyArePairedOnce(unittest.TestCase):
                        and {"files_attr", "files_proxy_attr"}
                        <= {n.attr for n in ast.walk(scope) if isinstance(n, ast.Attribute)})
         maps = sorted(scope.name for scope in methods
-                      if scope.name not in ("_files_and_rows", "comment_subject")
+                      if scope.name != "comment_subject"
                       and any(isinstance(n, ast.Attribute) and n.attr == "mapToSource"
                               for n in ast.walk(scope)))
         self.assertEqual([], pairs, "the files+proxy pair is re-derived outside tile_models()")
-        self.assertEqual([], maps, "a door maps proxy indexes itself, not via _files_and_rows")
+        self.assertEqual([], maps, "a door maps proxy indexes itself, not via _model_and_rows")
 
     def test_a_dropped_index_is_no_row_and_each_is_mapped_once(self):
         """An invalid map is no row, never -1, and one map per index: a proxy can move in between."""
         section = sections.FileSection.__new__(sections.FileSection)
         section.tile_models = lambda: (object(), _DroppingProxy())
-        files, rows = sections.FolderSection._files_and_rows(
+        files, rows = sections.Section._model_and_rows(
             section, [QtCore.QModelIndex()])
         self.assertEqual([], rows)
         proxy = _CountingProxy()
         section.tile_models = lambda: (object(), proxy)
-        sections.FolderSection._files_and_rows(
+        sections.Section._model_and_rows(
             section, [QtCore.QModelIndex()] * 3)
         self.assertEqual(3, proxy.calls)
 
@@ -550,7 +550,7 @@ class RemovingALocationLeavesNoTileOfIt(unittest.TestCase):
 
 
 class _Source:
-    """The two answers `_files_and_rows` asks a mapped index for."""
+    """The two answers `_model_and_rows` asks a mapped index for."""
 
     def __init__(self, valid, row=0):
         self._valid = valid

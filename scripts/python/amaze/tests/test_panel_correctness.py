@@ -213,12 +213,13 @@ class ACategoryIsActedOnByItsStoredName(_PanelCase):
             func_source("panel/panel.py", "_current_code_category"),
             "_current_code_category answers 'which category is selected' "
             "on its own again")
-        for cls in ("MaterialSection", "CopSection"):
-            self.assertIn(
-                "_selected_category_name",
-                method_source("panel/sections.py", cls, "save_categories"),
-                "%s answers 'which category is selected' on its own "
-                "again" % cls)
+        self.assertIn(    # Material, Node and Code share one body; Color keeps its first-category default
+            "_selected_category_name",
+            method_source("panel/sections.py", "AssetSection", "save_categories"),
+            "the asset sections answer 'which category is selected' on their own again")
+        for cls in ("MaterialSection", "CopSection", "CodeSection"):
+            with self.assertRaises(AssertionError, msg="%s keeps a save_categories of its own" % cls):
+                method_source("panel/sections.py", cls, "save_categories")
 
 
 class TheMapNamesEveryModule(unittest.TestCase):

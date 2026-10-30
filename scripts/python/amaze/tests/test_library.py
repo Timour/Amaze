@@ -1402,13 +1402,20 @@ class TheSharedBaseCarriesNothingRendererShaped(unittest.TestCase):
     )
     MATERIAL_VERBS = ("add_asset", "update_asset_content", "import_asset_to_scene",
                       "convert", "render_thumbnails")    # actions/materials.py's, on no model
+    RENDER_VERBS = ("render_thumbnail", "render_thumbnails")    # Update Render's, on no model at all
 
     def test_the_verbs_are_the_actions_not_the_models(self):
-        from amaze.core import library
+        from amaze.core import code_library, cop_library, gradient_library, library
         for name in self.MATERIAL_VERBS:
             self.assertIn(name, vars(material_actions), "%s is not a Material verb" % name)
             self.assertNotIn(name, vars(library.MaterialLibrary),
                              "%s came back onto the Material model" % name)
+        for name in self.RENDER_VERBS:
+            self.assertIn(name, vars(material_actions), "%s is not a Material verb" % name)
+            for model in (library.AssetLibrary, cop_library.CopLibrary,
+                          code_library.CodeLibrary, gradient_library.GradientLibrary):
+                self.assertNotIn(name, vars(model),
+                                 "%s is on %s, where no menu reaches it" % (name, model.__name__))
 
     def test_the_four_models_inherit_the_base(self):
         from amaze.core import (code_library, cop_library,

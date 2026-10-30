@@ -1419,14 +1419,6 @@ class AssetLibrary(grid_engine.GridEngine,
         for row in flipped:
             self.row_changed(row, [self.FavoriteRole])
 
-    def render_thumbnail(self, row) -> None:
-        """Re-render one row's preview. The base has nothing to render; the sections that do override this."""
-
-    def render_thumbnails(self, rows) -> None:
-        for row in rows:  # each section's own render_thumbnail; Materials batch theirs in actions
-            if 0 <= row < self.rowCount():
-                self.render_thumbnail(row)
-
 
 class MaterialLibrary(AssetLibrary):
     """The Material tab's model: records, their renderer labels, and the repaint a render asks for."""

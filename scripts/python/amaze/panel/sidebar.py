@@ -29,6 +29,7 @@ class SidebarTreeView(QtWidgets.QTreeView):
         self._standing = None    # (model, path) to stand on once its row arrives
         self._watched = None
         self._arrow_press = False
+        self._pressed = None    # the row a left press landed on, held across the gesture
         self.expanded.connect(self._opened)
         self.collapsed.connect(self._closed)
 
@@ -84,6 +85,11 @@ class SidebarTreeView(QtWidgets.QTreeView):
             event.accept()
             return
         self._arrow_press = False
+        pressed = self.indexAt(event.position().toPoint())
+        if pressed.isValid():
+            self._standing = None    # a row the user chose outranks a folder still unfolding
+        left = event.button() == QtCore.Qt.MouseButton.LeftButton
+        self._pressed = QtCore.QPersistentModelIndex(pressed) if left else None
         super().mousePressEvent(event)
 
     def mouseReleaseEvent(self, event):
@@ -91,7 +97,20 @@ class SidebarTreeView(QtWidgets.QTreeView):
             self._arrow_press = False
             event.accept()
             return
-        super().mouseReleaseEvent(event)
+        pressed, self._pressed = self._pressed, None
+        under = self.indexAt(event.position().toPoint())
+        super().mouseReleaseEvent(event)    # Qt clicks only a release on the row pressed
+        if pressed is None or not pressed.isValid() or QtCore.QModelIndex(pressed) == under:
+            return
+        current = self.currentIndex()
+        if current.isValid() and self.selectionModel().isSelected(current):
+            self.clicked.emit(current)    # dragged onto another row, or released off it: still a choice
+
+    def keyPressEvent(self, event):
+        before = QtCore.QPersistentModelIndex(self.currentIndex())
+        super().keyPressEvent(event)
+        if QtCore.QModelIndex(before) != self.currentIndex():
+            self._standing = None    # the user moved off the row waiting for its folder
 
     def mouseDoubleClickEvent(self, event):
         index = self._on_arrow(event)
@@ -320,12 +339,15 @@ class SidebarReorder(QtCore.QObject):
         return False
 
     def _abort(self) -> None:
-        """Esc, or the world moved under the gesture: put the order back."""
+        """Esc, or the world moved under the gesture: put the order back, and the grid's row."""
         section = self._section()
         snapshot = self._snapshot
         self._reset()
-        if section is not None and snapshot is not None:
-            section.restore_sidebar_order(snapshot)
+        if section is None:
+            return
+        if snapshot is not None:
+            section.restore_sidebar_order(snapshot)    # a reset, which clears the highlight
+        section.stand_again()
 
 
 def droppable_index(panel, pos):

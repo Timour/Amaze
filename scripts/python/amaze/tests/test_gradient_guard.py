@@ -454,6 +454,34 @@ class GradientCategoryColorTest(unittest.TestCase):
         self.assertEqual("", self._reload_sidebar().color_of("Warm"))
 
 
+class APaletteCategoryWithACommaStaysWholeTest(unittest.TestCase):
+    """A palette dropped on a category whose name holds a comma is filed under the whole name."""
+
+    NAME = "Wood, Oak"
+
+    def setUp(self):
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        self.dir = tempfile.mkdtemp(prefix="amaze_gcomma_")
+        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
+        with open(os.path.join(self.dir, "gradients.json"), "w", encoding="utf-8") as fh:
+            json.dump({"version": SCHEMA, "categories": ["Warm", self.NAME],
+                       "assets": [{"name": "ours", "categories": ["Warm"], "id": "ourscomma",
+                                   "colors": [{"name": "red", "hex": "#ff0000"}]}]}, fh)
+        self.lib = gradient_library.GradientLibrary(
+            preferences=_fixture_prefs(self, self.dir))
+
+    def test_the_drop_door_files_it_under_the_whole_name(self):
+        row = _row_named(self, self.lib, "ours")
+        self.assertEqual(1, self.lib.set_user_category([row], self.NAME))
+        self.assertEqual([self.NAME], self.lib.assets[row].categories,
+                         "the drop split the category name at its comma")
+        test_support.reset_database_singletons()
+        again = gradient_library.GradientLibrary(preferences=_fixture_prefs(self, self.dir))
+        self.assertEqual([self.NAME], again.assets[_row_named(self, again, "ours")].categories,
+                         "the saved palette names another category")
+
+
 def _curated_note_count() -> int:
     """How many curated combinations ship colour text - DERIVED, so a seed test cannot pass by counting nothing."""
     found = 0

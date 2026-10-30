@@ -464,6 +464,27 @@ class TheSidebarTreeView(unittest.TestCase):
         self.assertTrue(view.isExpanded(model.index_of(self.loc)))
         self.assertTrue(view.isExpanded(model.index_of(_child(self.loc, "A"))))
 
+    def test_a_click_before_the_read_lands_keeps_the_row_clicked(self):
+        """A remembered folder still unfolding never takes the highlight off a row the user chose."""
+        view, model = self.view, self.model
+        deep = _child(self.loc, "A", "deep")
+        view.reveal(deep)
+        other = view.visualRect(model.index_of(self.other)).center()
+        QtTest.QTest.mouseClick(view.viewport(), QtCore.Qt.MouseButton.LeftButton,
+                                QtCore.Qt.KeyboardModifier.NoModifier, other)
+        self.assertEqual(self.other, view.currentIndex().data(model.BrowseRole),
+                         "premise: the click did not stand on the other location")
+        for _round in range(3):
+            for path in (self.loc, _child(self.loc, "A")):
+                if model.index_of(path).isValid():
+                    model.data(model.index_of(path), COUNT)
+            _pump_until(lambda: model.index_of(deep).isValid(), timeout=2.0)
+        self.assertTrue(model.index_of(deep).isValid(), "premise: the read never landed")
+        _pump_until(lambda: False, timeout=0.05)
+        self.assertEqual([self.other], [i.data(model.BrowseRole) for i in view.selectedIndexes()],
+                         "the remembered folder took the highlight off the row clicked")
+        self.assertEqual(self.other, view.currentIndex().data(model.BrowseRole))
+
 
 class TheFileTabWalksSubfolders(unittest.TestCase):
     """A subfolder is browsed like a location and never moved, removed or relocated as one."""

@@ -234,7 +234,7 @@ class GradientLibrary(library.AssetLibrary):
                 continue
             asset = self._assets[row]
             if asset.categories != [category_name]:
-                asset.categories = category_name
+                asset.categories = [category_name]    # a LIST: the setter splits a string at its commas
                 moved.append(asset)
         if moved:
             self._saved_rows_changed(moved)
@@ -369,12 +369,6 @@ class GradientLibrary(library.AssetLibrary):
             )
         painter.fillRect(0, 0, THUMB_SIZE, THUMB_SIZE,
                          QtGui.QBrush(gradient))
-
-    def render_thumbnail(self, row) -> None:
-        """No render - the preview is drawn from the palette's own ramp; repaint it from current content."""
-        if 0 <= row < len(self._assets):
-            thumbnails.engine.discard(self._swatch_key(row))
-            self.row_changed(row, [QtCore.Qt.ItemDataRole.DecorationRole])
 
     def row_data(self, row, role):
         asset = self._assets[row]

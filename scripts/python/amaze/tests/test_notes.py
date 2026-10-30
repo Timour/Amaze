@@ -1211,6 +1211,36 @@ class APictureIsATHIRDItemType(unittest.TestCase):
         self.assertEqual("[image: gone.png]", self.edit.toPlainText(),
                          "a picture whose file is gone left an empty line")
 
+    PAGE_WITH_A_LATE_PICTURE = [
+        {"t": "text", "text": "Reference for the brick wall"},
+        {"t": "image", "src": "img/comments/wall.png", "text": "[image: wall.png]"},
+        {"t": "todo", "label": "check the roughness", "done": False}]
+
+    def test_a_picture_not_here_yet_survives_an_edit_elsewhere(self):
+        """Its file is still syncing: the page saved after an edit keeps the picture's item."""
+        self.edit.load_items(self.PAGE_WITH_A_LATE_PICTURE)
+        cursor = self.edit.textCursor()
+        cursor.movePosition(QtGui.QTextCursor.MoveOperation.End)
+        cursor.insertText(" today")
+        back = self.edit.serialize()
+        self.assertEqual(["text", "image", "todo"], [item["t"] for item in back],
+                         "the edit saved the picture as text")
+        self.assertEqual(self.PAGE_WITH_A_LATE_PICTURE[1], back[1],
+                         "the picture came back pointing somewhere else")
+        self.assertEqual("check the roughness today", back[2]["label"])
+
+    def test_deleting_the_stand_in_deletes_the_picture(self):
+        """As deleting a picture that did load: its block's words go, and the item with them."""
+        self.edit.load_items(self.PAGE_WITH_A_LATE_PICTURE)
+        block = self.edit.document().begin().next()
+        self.assertEqual("[image: wall.png]", block.text(), "premise: the stand-in is block two")
+        cursor = QtGui.QTextCursor(block)
+        cursor.movePosition(QtGui.QTextCursor.MoveOperation.EndOfBlock,
+                            QtGui.QTextCursor.MoveMode.KeepAnchor)
+        cursor.removeSelectedText()
+        self.assertEqual(["text", "todo"], [item["t"] for item in self.edit.serialize()],
+                         "the picture outlived the words that stood in for it")
+
     def test_a_picture_is_not_mistaken_for_a_to_do(self):
         src = self._a_picture_in_the_library()
         self.edit.load_items([{"t": "image", "src": src}])

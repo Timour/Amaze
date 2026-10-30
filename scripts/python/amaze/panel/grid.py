@@ -159,6 +159,7 @@ def open_catlist_menu(panel, context) -> None:
         return
     _open(panel, context, getattr(context, "SIDEBAR_MENU", ()),
           context.sidebar_selection(), panel.cat_list)
+    context.stand_again()    # the right press moved only the highlight, picked or not
 
 
 def selected_current(view, indexes):
@@ -185,12 +186,26 @@ def _open(panel, context, entries, indexes, view) -> None:
     current = selected_current(view, indexes)    # the row the menu is about is ALWAYS a selected row
 
     menu, verbs = build_menu(panel, context, entries, indexes, current)
+    held = [QtCore.QPersistentModelIndex(index) for index in indexes]    # exec_ runs Qt's loop: a model can reset
+    held_current = QtCore.QPersistentModelIndex(current) if current is not None else None
     chosen = menu.exec_(QtGui.QCursor.pos())
     verb, payload = verbs.get(chosen, ("", None))    # a dismissed menu and a never-built entry are both None - a dict lookup, never `==` chains
     menu.deleteLater()    # after the lookup (the dict is keyed by the menu's own QActions); parented menus otherwise live forever ▸r/menu-lifetime
     if not verb:
         return
-    getattr(context, verb)(indexes, current, payload)
+    live = [QtCore.QModelIndex(index) for index in held if index.isValid()]
+    if held and not live and _needs(entries, verb) != "always":
+        return    # every row the menu was opened on has left the model
+    if held_current is not None and held_current.isValid():
+        current = QtCore.QModelIndex(held_current)
+    else:
+        current = live[0] if live else None
+    getattr(context, verb)(live, current, payload)
+
+
+def _needs(entries, verb) -> str:
+    """What the entry naming `verb` needs; its submenu rows carry the same verb."""
+    return next((entry.needs for entry in entries if entry.verb == verb), "any")
 
 
 def restore_drag_mode(panel) -> None:

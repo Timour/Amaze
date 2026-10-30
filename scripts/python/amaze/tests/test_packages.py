@@ -232,6 +232,19 @@ class ExportMenuTest(unittest.TestCase):
         self.assertEqual(
             1, len(packages.read_manifest(out)["entries"]))
 
+    def test_an_index_the_proxy_cannot_map_exports_nothing(self):
+        """It maps to row -1, which a Python list reads as the LAST asset."""
+        foreign = QtCore.QStringListModel(["not a tile"])
+        for key, proxy in (("material", self.panel.material_sorted_model),
+                           ("gradient", self.panel.gradient_sorted_model)):
+            with self.subTest(section=key):
+                index = foreign.index(0, 0)
+                self.assertTrue(index.isValid(), "premise: the index itself is valid")
+                self.assertFalse(proxy.mapToSource(index).isValid(), "premise: it maps")
+                out = _out_path(self)
+                self.assertEqual(0, self.panel.sections[key].export_package_to([index], out))
+                self.assertFalse(os.path.exists(out), "a package was written for no tile")
+
     def test_the_category_act_door_writes_every_member(self):
         from amaze.core import packages
         section = self.panel.sections["gradient"]

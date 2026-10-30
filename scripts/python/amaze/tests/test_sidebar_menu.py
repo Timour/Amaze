@@ -220,14 +220,17 @@ class EachSubmenuRowWritesWhatItSays(unittest.TestCase):
         view = self.panel.cat_list
         if row >= view.model().rowCount():
             self.skipTest("the %s sidebar has no row %d" % (key, row))
+        self._row = row
         index = view.model().index(row, 0)
-        view.selectionModel().setCurrentIndex(
-            index, QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
         context = self.panel._section()
         return context, context.sidebar_key(index)
 
     def _choose(self, *labels):
-        """Open the sidebar menu and pick `labels`, a path through its submenus."""
+        """A right press on the row `_on_row` named, then its menu: `labels` down the submenus."""
+        view = self.panel.cat_list
+        view.selectionModel().setCurrentIndex(    # every menu opens on its own right press
+            view.model().index(self._row, 0), QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
+
         def pick(menu, *_args, **_kwargs):
             for label in labels:
                 action = next(a for a in menu.actions() if a.text() == label)
@@ -651,6 +654,20 @@ class RenameAndSortStandWhereTheGridStood(_FourAssetSidebars, unittest.TestCase)
             gone_tiles = self._stand(gone)
             self._sort(gone)
             self._assert_standing(gone, gone_tiles)
+        self._each_section(case)
+
+
+class ADismissedMenuStandsWhereTheGridStands(_FourAssetSidebars, unittest.TestCase):
+    """A right press moves only the sidebar, so a menu closed with no pick puts it back."""
+
+    def test_the_highlight_returns_to_the_grids_row(self):
+        def case(kept, gone, everything, kept_tiles):
+            self._stand(kept)
+            self._press(gone)
+            with mock.patch.object(QtWidgets.QMenu, "exec_", lambda *a, **k: None):
+                self.panel._section().catlist_menu()
+            QtWidgets.QApplication.processEvents()
+            self._assert_standing(kept, kept_tiles)
         self._each_section(case)
 
 

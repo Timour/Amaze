@@ -359,5 +359,46 @@ class AnUnderscoredCategoryKeepsItsStoredName(unittest.TestCase):
         self._assert_filed_under_the_stored_name(code.assets[row])
 
 
+class ASaveOpensOnTheSidebarRowOnlyInItsOwnSection(unittest.TestCase):
+    """The sidebar is shared, so a row pre-selects a save only of the section it belongs to."""
+
+    SHARED = "Shared"    # one stored name in all three asset sections
+    ASSET_KEYS = ("material", "cop", "code")
+
+    def setUp(self):
+        self.panel = test_support.fixture_panel(self)
+        for key in self.ASSET_KEYS:
+            self.panel.sections[key].stack().categories.check_add_category(self.SHARED)
+
+    def _offered(self):
+        return {key: self.panel.sections[key].save_categories() for key in self.ASSET_KEYS}
+
+    def test_only_the_section_showing_its_row_pre_selects_it(self):
+        for standing in self.ASSET_KEYS:
+            with self.subTest(standing_in=standing):
+                self.panel.section_tabs.setChecked(standing)
+                QtWidgets.QApplication.processEvents()
+                self.assertTrue(self.panel._stand_on_category(self.SHARED), "premise: no row")
+                for key, (names, current) in self._offered().items():
+                    self.assertIn(self.SHARED, names, "%s does not list its own category" % key)
+                    self.assertEqual(self.SHARED if key == standing else "", current,
+                                     "a %s save opened on the %s sidebar's row" % (key, standing))
+
+    def test_an_online_row_pre_selects_no_save(self):
+        from amaze.core import matx_sources
+        self.panel.section_tabs.setChecked("cop")
+        QtWidgets.QApplication.processEvents()
+        self.panel.enter_online_world()
+        QtWidgets.QApplication.processEvents()
+        online = self.panel.matx_online_model
+        self.addCleanup(setattr, online, "_all", online._all)
+        online._all = [matx_sources.MatxRecord(source=online._source_filter, uid="shared-probe",
+                                               title="Probe", category=self.SHARED)]
+        self.panel.matx_source_model.refresh()
+        self.assertTrue(self.panel._stand_on_category(self.SHARED), "premise: no online row")
+        for key, (_names, current) in self._offered().items():
+            self.assertEqual("", current, "a %s save opened on an online category" % key)
+
+
 if __name__ == "__main__":
     unittest.main()

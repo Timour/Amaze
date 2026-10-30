@@ -337,6 +337,32 @@ class TestGestureRelease(unittest.TestCase):
         self.assertEqual(h.panel.calls, [])
 
 
+class AGestureOutlivesNoRowItWasPressedOn(unittest.TestCase):
+    """The grid can change mid-drag: the release acts on the row pressed, or ends as a miss."""
+
+    def _armed_on(self, row):
+        h = _Harness(self)
+        seen = []
+        h.section.drop_material_at_release = lambda idx: seen.append(idx.data()) or True
+        h.press(h.item_pos(row))
+        h.view._dragging = True
+        h.view._drag_panel = h.panel
+        return h, seen
+
+    def test_a_row_removed_above_drops_the_row_pressed(self):
+        h, seen = self._armed_on(2)
+        h.view.model().removeRow(0)
+        h.release(h.item_pos(1))
+        self.assertEqual(["asset_2"], seen, "the release dropped another row than the one pressed")
+
+    def test_the_model_reset_mid_drag_ends_it_as_a_miss(self):
+        h, seen = self._armed_on(2)
+        h.view.model().clear()
+        h.release()
+        self.assertEqual([], seen, "a row that left the model was dropped")
+        self.assertFalse(h.view._dragging)
+
+
 def _host_insert(conn, chain, _every, remove_existing_connections=False):
     """What `insertItemsIntoWire` does for one chain, in its own group; the real one needs `hou.ui`."""
     with hou.undos.group("Insert items"):
@@ -362,11 +388,15 @@ class ADropOnAWireIsOneUndoStep(unittest.TestCase):
                 test_support.FILES_FIXTURE_DIR, "cube.bgeo"),
             file_library.FileFiles.KindRole: locations.KIND_GEO,
         }
+        self.rows = QtGui.QStandardItemModel()    # the gesture holds a real row, persistently
+        tile = QtGui.QStandardItem("cube.bgeo")
+        for role, value in roles.items():
+            tile.setData(value, role)
+        self.rows.appendRow(tile)
         self.view._dragging = True
         self.view._drag_panel = self.panel
         self.view._drag_section = "file"
-        self.view._drag_index = types.SimpleNamespace(
-            data=lambda role: roles.get(role), isValid=lambda: True)
+        self.view._drag_index = QtCore.QPersistentModelIndex(self.rows.index(0, 0))
         self.addCleanup(hou.undos.clear)
 
     def _release_on_the_wire(self):

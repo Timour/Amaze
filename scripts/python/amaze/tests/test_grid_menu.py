@@ -660,6 +660,60 @@ class EveryRendererRowWEARSTheFilterMenusIcon(unittest.TestCase):
                          "the renderer icon table has more than one home")
 
 
+class AVerbActsOnlyOnRowsStillThere(unittest.TestCase):
+    """The menu's event loop can move the grid; its verb gets the picked rows as they are now."""
+
+    def setUp(self):
+        self.panel = test_support.fixture_panel(self)
+
+    def _pick_through_the_menu(self, key, row, label, during):
+        panel = self.panel
+        panel.section_tabs.setChecked(key)
+        QtWidgets.QApplication.processEvents()
+        proxy = panel.thumblist.model()
+        flags = QtCore.QItemSelectionModel.SelectionFlag
+        selection = panel.thumblist.selectionModel()
+        selection.select(proxy.index(row, 0), flags.ClearAndSelect)
+        selection.setCurrentIndex(proxy.index(row, 0), flags.NoUpdate)
+
+        def _exec(menu, *_args, **_kwargs):
+            during()
+            return next(a for a in menu.actions() if a.text() == label)
+
+        with mock.patch.object(QtWidgets.QMenu, "exec_", _exec):
+            panel._section().rc_menu()
+
+    def _starred(self, model):
+        return {str(a.mat_id) for a in model.assets
+                if locations.is_favourite(self.panel.prefs, a.mat_id)}
+
+    def test_a_row_removed_above_the_one_picked(self):
+        """A plain index would now name the tile below it."""
+        model = self.panel.gradient_model
+        self.panel.section_tabs.setChecked("gradient")
+        proxy = self.panel.thumblist.model()
+        self.assertGreater(proxy.rowCount(), 3, "premise: rows above and below the picked one")
+        picked = str(model.assets[proxy.mapToSource(proxy.index(2, 0)).row()].mat_id)
+        above = proxy.mapToSource(proxy.index(0, 0)).row()
+        before = self._starred(model)
+
+        def _remove_above():
+            model._unlist_row(above)
+            model.rebuild_thumbs()
+
+        self._pick_through_the_menu("gradient", 2, "Favorite", _remove_above)
+        self.assertEqual(before ^ {picked}, self._starred(model),
+                         "the star landed on another tile than the one picked")
+
+    def test_a_folder_reloaded_under_the_menu_hands_its_verb_nothing(self):
+        """A move landing reloads the folder; Copy Path then copies nothing rather than a dead row."""
+        clipboard = QtWidgets.QApplication.clipboard()
+        clipboard.setText("sentinel")
+        self._pick_through_the_menu("file", 0, "Copy Path",
+                                    self.panel.file_files_model.refresh_current_folder)
+        self.assertEqual("sentinel", clipboard.text(), "a reloaded row's path was copied")
+
+
 class EveryVerbREACHESItsOwner(unittest.TestCase):
     """The five verbs that already had owners, reached THROUGH them rather than copied into a table."""
 
