@@ -93,6 +93,7 @@ class TheUnreadableIndexDialogTest(unittest.TestCase):  # sabotage: drop `_build
         first = test_support.fixture_panel(self)
         index_path = os.path.join(first.prefs.dir, "library.json")
         first.material_model.save()  # a SAVE is what writes stamps - _StampWriter refreshes after a successful index write, never before
+        test_support.settle_stamps()    # the stamps a save did not change are written on a worker
         premise = os.path.join(
             first.prefs.dir, first.prefs.asset_dir)
         mine = {str(a.mat_id) for a in first.material_model.assets}  # MATERIAL stamps only: mat/ is shared with Nodes and Code, so "does ANY stamp exist" was satisfied by the shipped Code starter alone

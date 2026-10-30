@@ -110,6 +110,7 @@ TEST_CACHE = isolate_cache_root()    # redirected at IMPORT for the same reason 
 def reset_database_singletons() -> None:
     """Drop every cached DatabaseConnector so the next construction loads from the test's own path - CLEARED in place, never rebound, and the identity check is load-bearing. ▸p/mutate-not-rebind, ▸p/harness-isolation"""
     from amaze.core import model_registry
+    stop_stamp_checks()    # a stamp check of the last test's library would write into the next
     database.DatabaseConnector._instances.clear()
     model_registry.release()    # the models alias the connector's document, so a dropped connector with a kept model hands the next panel rows from the previous test
     if database.DatabaseConnector._instances is not database._INSTANCES:
@@ -118,6 +119,21 @@ def reset_database_singletons() -> None:
             "every reload-survival mechanism reads that global, so this "
             "reset drops nothing a reloaded module can see"
         )
+
+
+def settle_stamps() -> None:
+    """Wait for every stamp check to end, then hand what each found to this thread."""
+    from PySide6 import QtCore
+    from amaze.core import library
+    for worker in list(library.stamps._threads):
+        worker.wait(10000)
+    QtCore.QCoreApplication.sendPostedEvents()
+
+
+def stop_stamp_checks() -> None:
+    """Stop every stamp check, as quitting does: one left running outlives the test that started it."""
+    from amaze.core import library
+    library.stamps.shutdown()
 
 
 FILES_FIXTURE_DIR = os.path.join(os.path.dirname(__file__), "assets", "files")    # the committed File-section fixture: one tiny file per KIND, built by make_file_fixtures.py, all synthetic
@@ -146,6 +162,7 @@ def fresh_library(testcase, source=None) -> str:
     """A throwaway COPY of the committed fixture library, auto-removed after the test, in the `prefs.dir` convention WHOLE - forward slashes AND trailing separator. Tests may mutate and save freely. ▸p/harness-isolation"""
     tmp = scratch_dir("amaze_test_lib_")
     testcase.addCleanup(shutil.rmtree, tmp, True)
+    testcase.addCleanup(stop_stamp_checks)    # runs first: no check writes into a copy being removed
     dest = os.path.join(tmp, "library")
     shutil.copytree(source or FIXTURE_DIR, dest)
     return posix_path(dest) + "/"
@@ -580,7 +597,7 @@ def dispose_panel(panel) -> None:
 
 
 def stop_panel_workers(panel) -> None:
-    """Stop every QThread a constructed panel may have started - both shutdowns idempotent, the same calls the app makes on quit, made here because hython never gets there. ▸p/harness-isolation"""
+    """Every QThread a panel may have started, stopped as quitting would. ▸p/harness-isolation"""
     from amaze.core import thumbnails
 
     try:
@@ -594,6 +611,10 @@ def stop_panel_workers(panel) -> None:
             pass
     try:
         thumbnails.engine.shutdown()
+    except Exception:                                    # noqa: BLE001
+        pass
+    try:
+        stop_stamp_checks()
     except Exception:                                    # noqa: BLE001
         pass
 

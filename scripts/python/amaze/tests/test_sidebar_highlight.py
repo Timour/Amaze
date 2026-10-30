@@ -1,5 +1,6 @@
 """The sidebar's highlighted row and what the grid shows agree after every path that moves either."""
 
+import json
 import os
 import shutil
 import tempfile
@@ -14,7 +15,7 @@ _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 import hou  # noqa: E402
 
-from amaze.core import category, file_moves, matx_sources  # noqa: E402
+from amaze.core import category, database, file_moves, matx_sources, model_registry  # noqa: E402
 from amaze.helpers import ui_helpers  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 from amaze.tests.test_file_section import _pump_until  # noqa: E402
@@ -137,12 +138,14 @@ class _HighlightCase:
         self._held(to)
         QtTest.QTest.mouseRelease(self.view.viewport(), LEFT, NOMOD, to)
 
-    def reorder(self, grabbed, over, release_at=None, escape=False):
-        """Press-hold `grabbed`, follow the hand over `over`, then Esc, and release."""
+    def reorder(self, grabbed, over, release_at=None, escape=False, turn=False):
+        """Press-hold `grabbed`, follow the hand over `over`, a turn of events, Esc, and release."""
         to = self.at(over)
         QtTest.QTest.mousePress(self.view.viewport(), LEFT, NOMOD, self.at(grabbed))
         self.panel.sidebar_reorder._hold_fired()
         self._held(to)
+        if turn:
+            _pump()
         if escape:
             QtTest.QTest.keyClick(self.view, QtCore.Qt.Key.Key_Escape)
         QtTest.QTest.mouseRelease(self.view.viewport(), LEFT, NOMOD, release_at or to)
@@ -169,6 +172,19 @@ class _AssetSidebarPaths(_HighlightCase):
 
     def _answer(self, name):
         return mock.patch.object(self.panel, "ask_category_name", lambda *_a, **_k: name)
+
+    def _peer_adds(self, name):
+        """Another machine adds category `name`; the merge reaches the models through the registry."""
+        categories = self.panel._section().stack().categories
+        path = os.path.join(self.panel.prefs.dir, categories.DB_FILENAME)
+        with open(path, encoding="utf-8-sig") as handle:
+            document = json.load(handle)
+        document["categories"].append(name)
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(document, handle, indent=4)
+        db = database.DatabaseConnector(categories.DB_FILENAME)
+        self.assertTrue(db.refresh(), "premise: the merge did not read the other machine's write")
+        model_registry.apply_merged(db)
 
     def test_every_path_leaves_the_highlight_on_the_grids_row(self):
         panel, section = self.panel, self.panel._section()
@@ -245,6 +261,49 @@ class _AssetSidebarPaths(_HighlightCase):
             panel.leave_online_world()
         self.check("entering and leaving Online", online_and_back, grid="Kept")
         self.check("a library switch", self.switch_library, grid="")
+
+    def test_a_change_made_elsewhere_leaves_the_highlight_on_the_grids_row(self):
+        """A peer merge and a second panel's verbs reach this sidebar only through the shared model."""
+        categories = self.panel._section().stack().categories
+
+        def peer_merge():
+            self.stand()
+            self._peer_adds("Peer")
+        self.check("a peer merge through the registry", peer_merge, grid="Kept")
+        second = test_support.reopened_panel(self)
+        theirs = second.sections[self.KEY]
+
+        def second_panel_sorts():
+            self.stand()
+            categories.check_add_category("Aardvark")    # last in the list: the sort has a row to move
+            theirs.menu_sort_categories([], None)
+        self.check("a second panel's Sort by name", second_panel_sorts, grid="Kept")
+
+        def second_panel_deletes_it():
+            self.stand()
+            row = second._sidebar_row_stored(getattr(second, theirs.sidebar_attr), "Kept")
+            self.assertIsNotNone(row, "premise: the second panel has no Kept row")
+            theirs.menu_remove_category([row], row)
+        self.check("a second panel deletes the row", second_panel_deletes_it, grid="")
+
+    def test_a_reorder_held_across_a_turn_follows_the_grabbed_row(self):
+        """The sidebar's moves under a press-hold reorder do not stand it again mid-gesture."""
+        def held_across_a_turn():
+            self.stand()
+            self.reorder(self.row("Other"), self.row("Kept"), turn=True)
+        self.check("a reorder held across an event-loop turn", held_across_a_turn, grid="Other")
+
+    def test_a_burst_of_resets_stands_again_once(self):
+        """However many resets land in one event-loop turn, the sidebar stands again once."""
+        section = self.panel._section()
+        categories = section.stack().categories
+        self.stand()
+        order, stood = categories.order_snapshot(), []
+        with mock.patch.object(section, "stand_again", lambda: stood.append(1)):
+            categories.restore_order(order[:1] + order[:0:-1])    # one reset
+            categories.restore_order(order)    # and a second, in the same turn
+            _pump()
+        self.assertEqual([1], stood, "two resets in one turn stood again %d times" % len(stood))
 
 
 class MaterialSidebarTest(_AssetSidebarPaths, unittest.TestCase):
@@ -433,6 +492,18 @@ class FileSidebarTest(_HighlightCase, unittest.TestCase):
             with mock.patch.object(hou, "ui", _ui(), create=True):
                 panel.locate_unreadable_folder()
         self.check("the blank's Locate, cancelled", locate_cancelled, grid="")
+
+    def test_a_browsed_subfolder_removed_on_disk(self):
+        """Its row leaves at the next read: the highlight and the grid stand on its location."""
+        def removed_then_read():
+            self.stand(self.nested)
+            shutil.rmtree(self.nested)
+            self.folders.refresh_counts()
+            self.folders.data(self.folders.index_of(self.loc), COUNT)
+            self.assertTrue(_pump_until(lambda: not self.folders.index_of(self.nested).isValid()),
+                            "premise: the removed subfolder's row stayed")
+        self.check("a browsed subfolder removed on disk, then read again", removed_then_read,
+                   grid=self.loc)
 
 
 class OnlineSidebarTest(_HighlightCase, unittest.TestCase):

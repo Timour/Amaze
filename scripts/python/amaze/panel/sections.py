@@ -103,6 +103,15 @@ class Section:
 
     def __init__(self, panel) -> None:
         self.panel = panel
+        sidebar = self._p(self.sidebar_attr)
+        if sidebar is None:
+            return
+        self._restand = QtCore.QTimer(panel)    # restarted by every signal, so it fires once a turn
+        self._restand.setSingleShot(True)
+        self._restand.setInterval(0)
+        self._restand.timeout.connect(self._stand_again_if_shown)
+        for moved in (sidebar.modelReset, sidebar.layoutChanged, sidebar.rowsRemoved):
+            moved.connect(self._sidebar_moved)
 
     def drop_takes_nothing(self) -> bool:
         """A release nothing takes: the red cross, and a status line saying it was canceled; False."""
@@ -217,6 +226,19 @@ class Section:
             self.stand_on_key(key)
             return
         self._highlight(view, target)
+
+    def _sidebar_moved(self, *_args) -> None:
+        """Rows reset, moved or removed under the sidebar, maybe by another panel: stand again."""
+        try:
+            self._restand.start()
+        except RuntimeError:    # the panel is gone, and File's shared model outlives it
+            pass
+
+    def _stand_again_if_shown(self) -> None:
+        """The watcher's stand: only while this section is shown, never under a press-hold reorder."""
+        reorder = getattr(self.panel, "sidebar_reorder", None)
+        if self.panel._section() is self and not (reorder is not None and reorder.reordering()):
+            self.stand_again()
 
     def stand_after_removal(self, removed) -> None:
         """Rows in `removed` left the sidebar: stand both on the row the grid stood on, or on All."""
@@ -1249,10 +1271,13 @@ class FolderSection(Section):
         return index if index.isValid() else None
 
     def stand_on_key(self, key: str) -> None:
-        """A subfolder whose row is not read yet stands on its location's row until it arrives."""
+        """A subfolder with no row stands on its location: until its row arrives, or for good if gone."""
         view, folders = self._sidebar_view()
-        if not (key and folders is not None and self._unfolding(folders, key)):
+        if not (key and folders is not None and self._rowless(folders, key)):
             super().stand_on_key(key)
+            return
+        if not os.path.isdir(key):    # gone from disk: its location's row, and its files shown
+            super().stand_on_key(folders.location_of(key))
             return
         self._highlight(view, folders.index(folders.row_of(folders.location_of(key)), 0))
         if self.standing_key() != key:
@@ -1262,11 +1287,11 @@ class FolderSection(Section):
             reveal(key)
 
     @staticmethod
-    def _unfolding(folders, path: str) -> bool:
-        """Is `path` a folder inside a registered location whose row has not been read yet?"""
+    def _rowless(folders, path: str) -> bool:
+        """Is `path` a folder inside a registered location, with no row of its own?"""
         owner = folders.location_of(path)
         return (owner.rstrip("/") != path.rstrip("/") and folders.row_of(owner) is not None
-                and not folders.index_of(path).isValid() and os.path.isdir(path))
+                and not folders.index_of(path).isValid())
 
     def nothing_yet(self, source) -> bool:
         folders = self._p(self.folders_attr)    # the grid lists one location; the blank means none
@@ -1780,12 +1805,6 @@ class OnlineContext(Section):
     delegate_attr = "matx_delegate"    # ITS OWN, carrying only the roles matx_library has: borrowing the Materials delegate gives the online grid a Version, Licence and Comments column no online record can fill
     search_hint = ""    # empty is the standing decree for every tab; the box's tooltip is what teaches the leading-colon tag search, here as everywhere else
 
-    def __init__(self, panel) -> None:
-        super().__init__(panel)
-        sidebar = self._p(self.sidebar_attr)
-        if sidebar is not None:    # a catalogue landing replaces the categories under the user
-            sidebar.modelReset.connect(self._categories_replaced)
-
     def activate(self) -> None:
         panel = self.panel
         if panel.cat_list:
@@ -1796,17 +1815,6 @@ class OnlineContext(Section):
         panel.set_conversion_bar_visible(False)
         panel.matx_online_model.reload()
         panel.sync_list_columns()
-
-    def _categories_replaced(self) -> None:
-        """Stand again a turn later, once Qt's own reset has cleared the highlight."""
-        view = getattr(self.panel, "cat_list", None)
-        if view is not None:
-            QtCore.QTimer.singleShot(0, view, self._stand_again_if_shown)
-
-    def _stand_again_if_shown(self) -> None:
-        view = self.panel.cat_list
-        if self.panel._section() is self and view.model() is self._p(self.sidebar_attr):
-            self.stand_again()
 
     def sidebar_key(self, index) -> str:
         return self.panel.matx_source_model.category_at(index.row()) or ""

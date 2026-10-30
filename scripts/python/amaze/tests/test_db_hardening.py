@@ -6,6 +6,8 @@ import os
 import shutil
 import sys
 import tempfile
+import threading
+import time
 import unittest
 from unittest import mock
 
@@ -13,9 +15,14 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze.core import database, material
-from amaze.helpers import hostos
-from amaze.tests import test_support
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+from PySide6 import QtCore, QtWidgets
+
+_app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+
+from amaze.core import database, material  # noqa: E402
+from amaze.helpers import hostos  # noqa: E402
+from amaze.tests import test_support  # noqa: E402
 
 SCHEMA = database.SCHEMA_VERSION
 
@@ -1388,6 +1395,7 @@ class AOneRowSaveTouchesOneStamp(unittest.TestCase):
         self.model = library_mod.MaterialLibrary(preferences=self.prefs)
         self.assertGreater(self.model.rowCount(), 3, "premise: four rows")
         self.assertTrue(self.model.save(), "premise: the first save landed")
+        test_support.settle_stamps()    # the stamps it did not change are checked on a worker
 
     def _stamps_opened(self, action):
         """The asset ids whose stamp `action` opened, to read or to write."""
@@ -1469,6 +1477,203 @@ class AOneRowSaveTouchesOneStamp(unittest.TestCase):
         self.assertTrue(self.model.save(), "premise: the re-add landed")
         self.assertEqual(str(asset.mat_id), str(self._stamp(asset.mat_id)["id"]),
                          "the asset came back without its recovery stamp")
+
+
+class AFirstSaveLeavesTheUnchangedStampsToAWorker(unittest.TestCase):
+    """A save writes the stamps it changed before it returns; the unchanged wait for a worker."""
+
+    def setUp(self):
+        self.prefs = test_support.fixture_prefs(self)
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        from amaze.core import library as library_mod
+        self.library_mod = library_mod
+        first = library_mod.MaterialLibrary(preferences=self.prefs)
+        self.assertTrue(first.save(), "premise: the first session saved")
+        library_mod._StampWriter(first).refresh()    # every stamp on disk, written on this thread
+        test_support.reset_database_singletons()
+        self.model = library_mod.MaterialLibrary(preferences=self.prefs)    # a new session
+        self.ids = [str(asset.mat_id) for asset in self.model.assets]
+        self.assertGreater(len(self.ids), 3, "premise: four rows")
+
+    def _stamp_path(self, mat_id):
+        return os.path.join(self.prefs.dir, self.prefs.asset_dir,
+                            str(mat_id) + material.STAMP_SUFFIX)
+
+    def _stamp(self, mat_id):
+        with open(self._stamp_path(mat_id), encoding="utf-8") as handle:
+            return json.load(handle)
+
+    @staticmethod
+    def _until(done, seconds=10.0) -> bool:
+        """Serve this thread's events until `done()`, as the GUI loop would."""
+        deadline = time.monotonic() + seconds
+        while not done() and time.monotonic() < deadline:
+            QtCore.QCoreApplication.processEvents()
+            time.sleep(0.002)
+        return bool(done())
+
+    def _row(self, mat_id) -> int:
+        return self.model.find_asset_row_by_id(mat_id)
+
+    def _worker_reads_wait(self, mat_id):
+        """(reached, release): a stamp worker's read of `mat_id`'s stamp waits for `release`."""
+        reached, release, real = threading.Event(), threading.Event(), self.library_mod._holds
+
+        def held(path, payload):
+            if (threading.current_thread() is not threading.main_thread()
+                    and os.path.basename(path) == mat_id + material.STAMP_SUFFIX):
+                reached.set()
+                release.wait(10)
+            return real(path, payload)
+
+        patcher = mock.patch.object(self.library_mod, "_holds", held)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.addCleanup(release.set)
+        return reached, release
+
+    def _held_by_a_check(self, mat_id):
+        """`mat_id`'s stamp removed, then a save leaves a check stopped on the way to rewriting it."""
+        os.remove(self._stamp_path(mat_id))
+        reached, release = self._worker_reads_wait(mat_id)
+        self.assertTrue(self.model.set_tile_name(self._row(self.ids[2]), "First Here"),
+                        "premise: saved")
+        self.assertTrue(reached.wait(10), "premise: no check reached the held stamp")
+        return release
+
+    @staticmethod
+    def _opened_here(action) -> list:
+        """The ids whose stamp `action` opened on this thread, the GUI's."""
+        import builtins
+        opened, real = [], builtins.open
+
+        def counting(file, *args, **kwargs):
+            name = os.path.basename(str(file))
+            if (material.STAMP_SUFFIX in name
+                    and threading.current_thread() is threading.main_thread()):
+                opened.append(name.split(".")[0])
+            return real(file, *args, **kwargs)
+
+        with mock.patch("builtins.open", counting):
+            action()
+        return opened
+
+    def test_a_save_reads_only_the_stamp_it_changed_on_this_thread(self):
+        target, writes, release = self.ids[2], hostos.scratch_beside, threading.Event()
+        self.addCleanup(release.set)
+
+        def held(path, *args, **kwargs):    # a worker's write waits: what is on disk, the save wrote
+            if threading.current_thread() is not threading.main_thread():
+                release.wait(10)
+            return writes(path, *args, **kwargs)
+
+        def renamed():
+            self.assertTrue(self.model.set_tile_name(2, "Renamed Here"), "premise: saved")
+            self.assertEqual("Renamed Here", self._stamp(target)["name"],
+                             "the changed record's stamp did not hold it when save() returned")
+
+        with mock.patch.object(hostos, "scratch_beside", held):
+            opened = self._opened_here(renamed)
+        self.assertEqual({target}, set(opened),
+                         "the first save of a session opened %d stamps on the GUI thread"
+                         % len(set(opened)))
+
+    def test_a_row_stored_in_an_older_shape_is_not_an_edit(self):
+        """A row written before a default field existed holds the same record: a worker checks it."""
+        index = os.path.join(self.prefs.dir, self.model.DB_FILENAME)
+        with open(index, encoding="utf-8") as handle:
+            document = json.load(handle)
+        for row in document["assets"]:
+            row.pop("license", None)
+        with open(index, "w", encoding="utf-8") as handle:
+            json.dump(document, handle)
+        test_support.reset_database_singletons()
+        self.model = self.library_mod.MaterialLibrary(preferences=self.prefs)
+        target = str(self.model.assets[2].mat_id)
+        opened = self._opened_here(lambda: self.model.set_tile_name(2, "Renamed Here"))
+        self.assertEqual({target}, set(opened),
+                         "rows in an older shape counted as edits: %d stamps read on the GUI thread"
+                         % len(set(opened)))
+
+    def test_an_unchanged_missing_stamp_is_written_by_the_worker_before_shutdown(self):
+        unchanged, written, real = self.ids[3], [], hostos.scratch_beside
+        os.remove(self._stamp_path(unchanged))
+
+        def watched(path, *args, **kwargs):
+            if path.endswith(material.STAMP_SUFFIX):
+                written.append((os.path.basename(path).split(".")[0],
+                                threading.current_thread() is threading.main_thread()))
+            return real(path, *args, **kwargs)
+
+        known = (str(self.prefs.dir), unchanged)
+        with mock.patch.object(hostos, "scratch_beside", watched):
+            self.assertTrue(self.model.set_tile_name(2, "Renamed Here"), "premise: saved")
+            self.assertTrue(self._until(lambda: known in self.library_mod._STAMPED),
+                            "no stamp check reported the unchanged record")
+        self.assertEqual(unchanged, str(self._stamp(unchanged)["id"]),
+                         "the unchanged record's missing stamp was never written")
+        self.assertEqual([(unchanged, False)], [w for w in written if w[0] == unchanged],
+                         "the unchanged record's stamp was written on the GUI thread, in the save")
+        self.library_mod.stamps.shutdown()
+        self.assertEqual([], self.library_mod.stamps._threads, "a stamp worker outlived shutdown")
+
+    def test_a_later_save_s_stamp_is_never_overwritten_by_an_older_check(self):
+        held = self.ids[3]
+        release = self._held_by_a_check(held)
+        worker, real = self.library_mod.stamps._threads[-1], self.library_mod._write
+
+        def then_release(path, payload, mat_id):    # the older check runs to its end right here
+            written = real(path, payload, mat_id)
+            if str(mat_id) == held and threading.current_thread() is threading.main_thread():
+                release.set()
+                worker.wait(10000)
+            return written
+
+        with mock.patch.object(self.library_mod, "_write", then_release):
+            self.assertTrue(self.model.set_tile_name(self._row(held), "Second Here"),
+                            "premise: saved again")
+        self.assertEqual("Second Here", self._stamp(held)["name"],
+                         "an older check wrote its record over the stamp a later save wrote")
+
+    def test_a_deletion_taken_in_from_elsewhere_is_never_written_back(self):
+        held = self.ids[3]
+        release = self._held_by_a_check(held)
+        index = os.path.join(self.prefs.dir, self.model.DB_FILENAME)
+        with open(index, encoding="utf-8") as handle:
+            document = json.load(handle)
+        document["assets"] = [row for row in document["assets"] if str(row.get("id")) != held]
+        with open(index, "w", encoding="utf-8") as handle:
+            json.dump(document, handle)
+        db = database.DatabaseConnector(self.model.DB_FILENAME)
+        self.assertTrue(db.refresh(), "premise: the refresh saw the other machine's delete")
+        self.model.apply_refresh(db)
+        self.assertEqual(-1, self._row(held), "premise: the delete was taken in")
+        release.set()
+        test_support.settle_stamps()
+        self.assertFalse(os.path.exists(self._stamp_path(held)),
+                         "a check wrote a stamp back for an asset deleted while it ran")
+
+    def test_a_library_switch_stops_the_check_of_the_library_left(self):
+        held = self.ids[3]
+        left = self._stamp_path(held)
+        release = self._held_by_a_check(held)
+        self.prefs.dir = test_support.fresh_library(self)
+        self.model.switch_model_data()
+        release.set()
+        test_support.settle_stamps()
+        self.assertFalse(os.path.exists(left),
+                         "a check went on writing into the library left behind")
+
+    def test_what_a_stopped_check_found_never_counts(self):
+        unchanged = self.ids[3]
+        self.assertTrue(self.model.set_tile_name(2, "First Here"), "premise: saved")
+        for worker in list(self.library_mod.stamps._threads):
+            worker.wait(10000)    # done; what it found is queued, not handed over yet
+        self.library_mod._StampWriter.forget(self.prefs, unchanged)
+        test_support.settle_stamps()
+        self.assertFalse((str(self.prefs.dir), unchanged) in self.library_mod._STAMPED,
+                         "a check stopped by a later forget still filled what the session knows")
 
 
 class QuarantineCrossesVolumes(unittest.TestCase):

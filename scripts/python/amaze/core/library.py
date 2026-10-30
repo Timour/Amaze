@@ -1,9 +1,12 @@
 """The shared asset model every library-backed section runs on, plus `MaterialLibrary` - the renderer-shaped half only Materials needs."""
 
+import functools
 import os
 import json
 import shutil
+import threading
 import time
+import types
 from typing import Any
 from PySide6 import QtCore, QtGui
 
@@ -12,7 +15,7 @@ from amaze.core import captures
 from amaze.core import debug
 from amaze.core import grid_engine
 from amaze.core import locations
-from amaze.core import material, database, renderers, thumbnails, tile_icons
+from amaze.core import material, database, renderers, thumbnails, tile_icons, workers
 from amaze.core import material_files
 from amaze.core import versions
 from amaze.core import quarantine
@@ -27,6 +30,104 @@ def _count(count: int, noun: str) -> str:
 
 
 _STAMPED: dict = {}    # (library dir, asset id) -> repr of the record its stamp was last seen holding
+_STAMP_LOCK = threading.Lock()    # held by a worker across one stamp's check-and-write
+
+
+def _holds(path: str, payload: str) -> bool:
+    """Whether the stamp at `path` reads exactly `payload`; an absent or unreadable one does not."""
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            return handle.read() == payload
+    except (OSError, ValueError):
+        return False
+
+
+def _write(path: str, payload: str, mat_id) -> bool:
+    """Write one stamp atomically; a failure is logged and answered False, never raised."""
+    try:
+        with hostos.scratch_beside(path) as scratch:
+            with open(scratch, "w", encoding="utf-8", newline="\n") as handle:
+                handle.write(payload)
+        return True
+    except OSError as exc:  # a safety net is never the thing being saved
+        debug.event("library", "recovery stamp not written",
+                    mat_id=str(mat_id), error=str(exc))
+        return False
+
+
+class _StampWorker(QtCore.QThread):
+    """Checks the stamps a save did not change against disk, writing any that differ."""
+
+    checked = QtCore.Signal(object, object)    # (this worker, [(key, repr)] of stamps now current)
+
+    def __init__(self, where, preferences, items) -> None:
+        super().__init__()
+        self.where = where
+        self._preferences = preferences    # dir and asset_dir only, read on the GUI thread
+        self._items = items    # [(key, repr, payload)], every one a string
+        self._canceled = False    # set under _STAMP_LOCK: no write after it, its findings dropped
+
+    def cancel(self) -> None:
+        self._canceled = True
+
+    def run(self) -> None:
+        current = []
+        for known, seen, payload in self._items:
+            if self._canceled or self.isInterruptionRequested():
+                return
+            try:
+                path = material.payload_path(self._preferences, known[1],
+                                             material.STAMP_SUFFIX)
+            except hostos.PathEscape:
+                continue
+            if not _holds(path, payload):
+                with _STAMP_LOCK:
+                    written = not self._canceled and _write(path, payload, known[1])
+                if not written:
+                    continue
+            current.append((known, seen))
+        self.checked.emit(self, current)
+
+
+class _StampEngine(QtCore.QObject):
+    """Every stamp check in the process, stopped on quit and whenever its library moves on."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._threads = []    # a running QThread must keep a reference until it ends ▸r/model-contracts
+
+    def start(self, where, preferences, items) -> None:
+        """Check `items` of the library at `where` on a worker, its older checks stopped first."""
+        self.cancel(where)
+        worker = _StampWorker(where, preferences, items)
+        worker.checked.connect(self._checked)
+        worker.finished.connect(functools.partial(self._finished, worker))    # never sender()
+        self._threads.append(worker)
+        worker.start()
+
+    def cancel(self, where=None) -> None:
+        """Stop the checks of the library at `where`, or all; none writes after this returns."""
+        with _STAMP_LOCK:
+            for worker in self._threads:
+                if where is None or worker.where == where:
+                    worker.cancel()
+
+    def _checked(self, worker, current) -> None:
+        if not worker._canceled:    # a stopped check may hold records older than the model's
+            for known, seen in current:
+                _STAMPED[known] = seen
+
+    def _finished(self, worker) -> None:
+        self._threads = [t for t in self._threads if t is not worker]
+
+    def shutdown(self) -> None:
+        """Stop every check under the lock, THEN wait them out together; safe twice and when idle."""
+        self.cancel()    # under _STAMP_LOCK first: no write begins after this
+        workers.stop(self._threads, "library")
+        self._threads = []
+
+
+stamps = workers.install(__name__ + ".stamps", _StampEngine, QtCore.QCoreApplication.instance())
 
 
 class _StampWriter:
@@ -38,21 +139,25 @@ class _StampWriter:
     @staticmethod
     def forget(preferences, mat_id) -> None:
         """Drop what this session knows of one asset's stamp, so the next save checks it again."""
+        stamps.cancel(str(preferences.dir))    # a running check may hold the record before this one
         _STAMPED.pop((str(preferences.dir), str(mat_id)), None)
 
     @staticmethod
     def forget_library(preferences) -> None:
         """Drop what this session knows of every stamp in one library, once its rows are read afresh."""
         where = str(preferences.dir)
+        stamps.cancel(where)
         for known in [key for key in _STAMPED if key[0] == where]:
             del _STAMPED[known]
 
-    def refresh(self) -> int:
-        """Write each stamp whose record changed since this session last saw it; returns how many."""
-        written = 0
+    def refresh(self, indexed=None) -> int:
+        """Stamp now the records unlike `indexed`, the index before this save; a worker checks the rest."""
+        written, later = 0, []
         preferences = self._library.preferences
+        where = str(preferences.dir)
+        stamps.cancel(where)    # no older check may write after the stamps written here
         for asset in list(self._library._assets):
-            known = (str(preferences.dir), str(asset.mat_id))
+            known = (where, str(asset.mat_id))
             try:
                 record = asset.get_as_dict()
                 seen = repr(record)
@@ -60,32 +165,38 @@ class _StampWriter:
                     continue
                 if not material.is_safe_asset_id(known[1]):
                     continue
+                payload = json.dumps(record, indent=1, sort_keys=True)
+                if indexed is not None and self._indexed(indexed.get(known[1]), record):
+                    later.append((known, seen, payload))
+                    continue
                 path = material.payload_path(preferences, known[1],
                                              material.STAMP_SUFFIX)
-                payload = json.dumps(record, indent=1, sort_keys=True)
             except hostos.PathEscape:
                 continue
             except (TypeError, ValueError) as exc:  # logged, never raised: the index write already landed
                 debug.event("library", "recovery stamp could not be built",
                             mat_id=str(asset.mat_id), error=str(exc))
                 continue
-            try:
-                with open(path, "r", encoding="utf-8") as handle:
-                    if handle.read() == payload:
-                        _STAMPED[known] = seen
-                        continue
-            except (OSError, ValueError):
-                pass                       # absent or unreadable: rewrite
-            try:
-                with hostos.scratch_beside(path) as scratch:
-                    with open(scratch, "w", encoding="utf-8", newline="\n") as handle:
-                        handle.write(payload)
+            if _holds(path, payload):
+                _STAMPED[known] = seen
+            elif _write(path, payload, asset.mat_id):
                 written += 1
                 _STAMPED[known] = seen
-            except OSError as exc:  # same: a safety net is never the thing being saved
-                debug.event("library", "recovery stamp not written",
-                            mat_id=str(asset.mat_id), error=str(exc))
+        if later:
+            stamps.start(where, types.SimpleNamespace(dir=preferences.dir,
+                                                      asset_dir=preferences.asset_dir), later)
         return written
+
+    def _indexed(self, row, record) -> bool:
+        """Whether the index's `row` already held `record`: as stored, or as today's reader reads it."""
+        if row is None:
+            return False
+        if row == record:
+            return True
+        try:
+            return self._library._asset_from_row(row).get_as_dict() == record
+        except Exception:                                # noqa: BLE001 - an unreadable row is an edit
+            return False
 
 
 class AssetLibrary(grid_engine.GridEngine,
@@ -227,7 +338,8 @@ class AssetLibrary(grid_engine.GridEngine,
                 return
 
     def switch_model_data(self):
-        """Point this model at whatever library Preferences now names. No worker teardown is needed: engine deliveries are keyed by material id, so an in-flight load cannot misroute."""
+        """Point this model at the library Preferences names; stamp checks stop, thumbnail loads need not."""
+        stamps.cancel()    # a check still running holds the records of the library left behind
         self.beginResetModel()  # NOT bookkeeping - replacing the row set without it leaves proxies on their old count and the selection on an index into rows that are gone, so the next gesture acts on the wrong row ▸r/model-contracts
         try:
             self._data = database.open_document(self, reload=True)
@@ -629,11 +741,12 @@ class AssetLibrary(grid_engine.GridEngine,
         data = {}
         data["assets"] = [asset.get_as_dict() for asset in self._assets]
         db.set(data)
+        indexed = db._loaded_rows    # the index before this save: a record unlike it is this save's edit
         stored = db.save()
         from amaze.core import model_registry
         model_registry.apply_merged(db, also=self)    # every model on this file takes what the save merged
         if stored and db._save_outcome != "identical-skip":
-            _StampWriter(self).refresh()  # AFTER the index write and only when it landed; skipped on an identical-skip, where no record changed and the scan would find nothing to rewrite ▸p/recovery-stamp
+            _StampWriter(self).refresh(indexed)  # after a write that landed ▸p/recovery-stamp
         return stored
 
     def apply_refresh(self, db) -> bool:

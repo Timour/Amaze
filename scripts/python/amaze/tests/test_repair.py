@@ -1810,8 +1810,9 @@ class TheRebuildDrillTest(unittest.TestCase):
         test_support.reset_database_singletons()
         self.addCleanup(test_support.reset_database_singletons)
         self.model = library_mod.MaterialLibrary(preferences=self.prefs)
-        # One save writes every stamp, and none exists yet.
+        # One save stamps every record, and none exists yet: the unchanged ones on a worker.
         self.assertTrue(self.model.save(), "premise: the fixture saves")
+        test_support.settle_stamps()
         self.mat_dir = os.path.join(self.prefs.dir, self.prefs.asset_dir)
 
     def _stamps(self):
