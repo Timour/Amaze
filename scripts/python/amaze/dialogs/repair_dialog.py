@@ -28,15 +28,6 @@ def open_panel_tab():
     return None
 
 
-_ONLY_A_REPORT_NOW = (
-    "Repair can only tell you this much right now: Amaze has "
-    "already read this library since Houdini started, and it would "
-    "write what it remembers back over anything put right here. "
-    "Quit Houdini, start it again, and run Repair before you open "
-    "Amaze - then Repair can also add materials back, put a saved copy "
-    "back, or move unlisted files aside for you.")
-
-
 def _repair_settings(settings: dict) -> None:
     """settings.json will not read, is missing or names no library: offer saved copies back."""
     folder = os.path.dirname(settings["path"])
@@ -63,7 +54,7 @@ def _repair_settings(settings: dict) -> None:
         report = messages.SETTINGS_UNREADABLE_REPAIR_REPORT % copies
     may_change = not repair.session_has_a_library_open()
     if not may_change:
-        report += "\n\n" + _ONLY_A_REPORT_NOW
+        report += "\n\n" + messages.REPAIR_ONLY_A_REPORT_NOW
     choices, actions = _choices(findings, may_change)
     picked = hou.ui.displayMessage(                       # type: ignore
         report, buttons=tuple(choices),
@@ -118,7 +109,7 @@ def run(preferences=None) -> None:
     lines = repair.report_lines(findings)
     may_change = not repair.session_has_a_library_open()
     if not may_change:
-        lines += ["", _ONLY_A_REPORT_NOW]
+        lines += ["", messages.REPAIR_ONLY_A_REPORT_NOW]
 
     choices, actions = _choices(findings, may_change)
     picked = hou.ui.displayMessage(                       # type: ignore
@@ -145,23 +136,23 @@ def _choices(findings: dict, may_change: bool):
     on_record = repair.materials_on_record(findings)
     if may_change and on_record and not repair.why_nothing_can_be_added(
             findings, "library.json"):
-        choices.append("Add %s Back" % repair.count_on_a_button(len(on_record),
-                                                                "library.json"))
+        choices.append(messages.BUTTON_REPAIR_ADD_BACK
+                       % repair.count_on_a_button(len(on_record), "library.json"))
         actions.append("add-back")
     if may_change and repair.offered_copies(findings):
-        choices.append("Put a Saved Copy Back")
+        choices.append(messages.BUTTON_REPAIR_PUT_COPY_BACK)
         actions.append("restore")
     if (may_change and repair.unsorted_pairs(findings)
             and not repair.why_nothing_can_be_added(findings)):
-        choices.append("Add %s to a Section"
+        choices.append(messages.BUTTON_REPAIR_ADD_TO_SECTION
                        % repair.files_on_a_button(len(repair.reattachable_files(
                            findings))))
         actions.append("reattach")
     aside = repair.unaccounted_total(repair.movable(findings))
     if may_change and findings["complete"] and aside:
-        choices.append("Move %s Aside" % repair.files_on_a_button(aside))
+        choices.append(messages.BUTTON_REPAIR_MOVE_ASIDE % repair.files_on_a_button(aside))
         actions.append("quarantine")
-    choices.append("Close")
+    choices.append(messages.BUTTON_REPAIR_CLOSE)
     actions.append(None)
     return choices, actions
 
@@ -170,14 +161,12 @@ def _do_add_back(findings: dict) -> None:
     """Confirm, put the materials back from what is saved beside their files, and say how many."""
     count = len(repair.materials_on_record(findings))
     label = database.section_label("library.json")
-    written_new = (" There is no %s list in the library folder, so Repair "
-                   "writes a new one with these on it." % label
+    written_new = (messages.ADD_BACK_WRITES_A_NEW_LIST % label
                    if repair.list_is_missing(findings, "library.json") else "")
     if hou.ui.displayMessage(                             # type: ignore
         messages.CONFIRM_ADD_UNLISTED_TO_SECTION
         % (count, database.section_noun("library.json", count), label),
-        help="Each one comes back with the name, category and tags saved "
-             "beside its files.%s" % written_new,
+        help=messages.HELP_ADD_BACK % written_new,
         buttons=messages.BUTTONS_ADD_BACK,
         default_choice=1, close_choice=1,
         title=messages.TITLE_AMAZE_REPAIR,
@@ -205,8 +194,8 @@ def _do_restore(findings: dict) -> None:
         if offer[0] not in [first[0] for first in newest]:
             newest.append(offer)
     if len(newest) > 1:
-        offer = _pick(newest, "Which list should Amaze put back? Each line is that "
-                      "list's newest saved copy.", "Newest saved copies", sections=True)
+        offer = _pick(newest, messages.PICK_LIST_TO_PUT_BACK,
+                      messages.COLUMN_NEWEST_SAVED_COPIES, sections=True)
     else:
         offer = newest[0] if newest else None
     if offer is None:
@@ -214,8 +203,8 @@ def _do_restore(findings: dict) -> None:
     older = [other for other in offers if other[0] == offer[0] and other is not offer]
     if _put_copy_back(findings, offer, older=bool(older)) != "older":
         return
-    offer = _pick(older, "Which older copy of the %s list should Amaze put back?"
-                  % database.section_label(offer[0]), "Older saved copies")
+    offer = _pick(older, messages.PICK_OLDER_COPY_TO_PUT_BACK
+                  % database.section_label(offer[0]), messages.COLUMN_OLDER_SAVED_COPIES)
     if offer is not None:
         _put_copy_back(findings, offer)
 
@@ -253,20 +242,14 @@ def _put_copy_back(findings: dict, offer: tuple, older: bool = False):
         return None
     held = snap["count"] or 0    # name the gain and the loss, and do the subtraction
     if current["error"]:
-        change = ("The list you have now cannot be read at the moment, so "
-                  "Amaze cannot say what is in it to compare.")
+        change = messages.CURRENT_LIST_UNREADABLE
     else:
         now_holds = current["count"] or 0
-        change = ("The list you have now holds %d. Putting this copy back "
-                  "takes you from %d to %d: anything saved to %s since %s "
-                  "is not in this copy and will not be there afterwards."
+        change = (messages.CURRENT_LIST_COMPARED
                   % (now_holds, now_holds, held, label, snap["when"]))
     picked = hou.ui.displayMessage(                       # type: ignore
         messages.CONFIRM_PUT_SAVED_COPY_BACK % (label, snap["when"]),
-        help="That copy is from %s and holds %d %s. %s\n\nYour %s' own "
-             "files and thumbnails are not touched either way, and the "
-             "list you have now is saved in the library folder first - "
-             "run Repair again and it offers that copy back."
+        help=messages.HELP_PUT_SAVED_COPY_BACK
              % (snap["when"], held, database.section_noun(filename, held),
                 change, database.section_noun(filename, 2)),
         severity=hou.severityType.Warning,                # type: ignore
@@ -285,12 +268,9 @@ def _put_copy_back(findings: dict, offer: tuple, older: bool = False):
                                           done["undo"]))
             if done["undo"] else None)
     if undo is not None and undo["exists"]:
-        went_back = ("The list you had a moment ago is still in the library "
-                     "folder: run Repair again and put back the copy from "
-                     "%s to return to it." % undo["when"])
+        went_back = messages.LIST_EARLIER_COPY_KEPT % undo["when"]
     else:
-        went_back = ("There was no list here before, so there is nothing to "
-                     "go back to.")
+        went_back = messages.NO_EARLIER_LIST
     hou.ui.displayMessage(                                # type: ignore
         messages.SAVED_COPY_PUT_BACK_DONE % (label, snap["when"], went_back),
         title=messages.TITLE_AMAZE_REPAIR)
@@ -338,16 +318,7 @@ def _do_quarantine(findings: dict) -> None:
     total = repair.unaccounted_total(aside)
     if hou.ui.displayMessage(                             # type: ignore
         messages.CONFIRM_MOVE_FILES_ASIDE % repair.files(total),
-        help="The files no section lists: %s. They move into Amaze's "
-             "own holding folder on this computer - outside your "
-             "library, so they do not sync and do not travel. Nothing "
-             "is deleted today: they are kept for 30 days and named in "
-             "the report, and moving one back is copying it back.\n\n"
-             "Everything showing in Amaze stays. Do this only if you have "
-             "already tried putting a saved copy of a list back: if one of "
-             "these files belongs to a material whose list was lost, "
-             "restoring the list is what brings it back."
-             % repair.files_by_folder(aside),
+        help=messages.HELP_MOVE_FILES_ASIDE % repair.files_by_folder(aside),
         buttons=messages.BUTTONS_MOVE_ASIDE,
         default_choice=1, close_choice=1,
         title=messages.TITLE_AMAZE_REPAIR,
@@ -380,11 +351,9 @@ def _do_reattach(findings: dict) -> None:
     labels = [database.section_label(name) for name in owners]
     chosen = hou.ui.selectFromList(                       # type: ignore
         labels, exclusive=True, title=messages.TITLE_AMAZE_REPAIR,
-        message="Which section do these %s belong in? Amaze cannot tell "
-                "from the files themselves - a saved material and a saved "
-                "node look the same in the folder."
+        message=messages.PICK_SECTION_FOR_FILES
                 % repair.files(len(repair.reattachable_files(findings))),
-        column_header="Section")
+        column_header=messages.COLUMN_SECTION)
     if not chosen:
         return
     filename = owners[chosen[0]]
@@ -393,15 +362,7 @@ def _do_reattach(findings: dict) -> None:
     if hou.ui.displayMessage(                             # type: ignore
         # How a material is stored is not what it is.
         messages.CONFIRM_ADD_UNLISTED_TO_SECTION % (len(pairs), noun, label),
-        help="Each one keeps the name, category and tags recorded beside "
-             "its files, and comes back where it was. Anything with no "
-             "such record comes back in a new category called %s, named "
-             "%s plus the start of its file name, with no renderer badge "
-             "until you save it again - rename those afterwards.\n\n"
-             "If there is a saved copy of the %s list from before they "
-             "went missing, putting that back instead is still the "
-             "closest match. Nothing here is deleted or overwritten "
-             "either way."
+        help=messages.HELP_ADD_TO_SECTION
              % (repair.RECOVERED_CATEGORY, repair.RECOVERED_CATEGORY, label),
         buttons=messages.BUTTONS_ADD_BACK,
         default_choice=1, close_choice=1,

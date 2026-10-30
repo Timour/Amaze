@@ -1592,11 +1592,7 @@ class FileSection(FolderSection):
         if not path:
             return
         if not os.path.isfile(path):
-            ui = getattr(hou, "ui", None)
-            if ui is not None:
-                ui.displayMessage(
-                    messages.SCENE_FILE_MISSING % path,
-                    severity=hou.severityType.Warning)
+            debug.refuse(debug.Damage(messages.SCENE_FILE_MISSING % path))    # ▸p/refusal-sink
             debug.event("hip", "scene missing", file=path)
             return
         try:
@@ -1606,9 +1602,7 @@ class FileSection(FolderSection):
             debug.event("hip", "opened with warnings", file=path,
                         warning=str(warn)[:400])
         except Exception as exc:                         # noqa: BLE001
-            hou.ui.displayMessage(  # type: ignore
-                messages.SCENE_OPEN_FAILED % (path, exc),
-                severity=hou.severityType.Error)
+            debug.refuse(debug.Damage(messages.SCENE_OPEN_FAILED % (path, exc)))
             debug.event("hip", "open failed", file=path, error=str(exc))
             return
         debug.event("hip", "scene opened", file=path)
@@ -1623,7 +1617,7 @@ class FileSection(FolderSection):
             return False
         parm = helpers.find_file_parm(node)
         if parm is None:
-            debug.refuse("%s has no file parameter to take %s"
+            debug.refuse(messages.NODE_HAS_NO_FILE_PARM
                          % (node.name(), os.path.basename(path)))
             return False
         with dragengine.drop_group("Amaze Set File Path"):
@@ -1969,8 +1963,7 @@ class GradientSection(AssetSection):
             return False
         parm = helpers.find_color_ramp_parm(node)
         if parm is None:
-            debug.refuse("%s has no color ramp to take the gradient"
-                         % node.name())
+            debug.refuse(messages.NODE_HAS_NO_COLOR_RAMP % node.name())
             return False
         with dragengine.drop_group("Amaze Apply Gradient"):
             parm.set(self._entry_ramp(entry, basis))

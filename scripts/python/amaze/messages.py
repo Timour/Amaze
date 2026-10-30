@@ -194,7 +194,7 @@ MOVE_BUSY = 'Another move is still running.'
 
 STOCK_LOP_HELPERS_UNAVAILABLE = "Could not load Houdini's material-assignment helpers. The material was not imported."
 
-NETWORK_REFUSED_MATERIAL_LIBRARY = 'Amaze: %s cannot take a Material Library, so the material was not imported.\n\n%s'
+NETWORK_REFUSED_MATERIAL_LIBRARY = '%s cannot take a Material Library, so the material was not imported.\n\n%s'
 
 DROPPED_MATERIAL_IMPORT_FAILED = 'The dropped material could not be imported and was not assigned. The remaining selected items were added to the library.'
 
@@ -274,6 +274,86 @@ ADDON_VERSION = 'version %s'
 
 ADDON_AUTHOR = 'author: %s'
 
+CANNOT_LOAD_HERE = 'This content can not be loaded into this context.'
+
+MATERIAL_ALREADY_IN_LIBRARY = '"%s" already exists in the library.'
+
+MATERIALS_ALREADY_IN_LIBRARY = '%d of %d dropped materials already exist in the library.'
+
+VERSIONS_OFF_SAVES_NEW = '\n\nVersions is off for this library, so the existing material stays as it is. Saving will add a new material.'
+
+SAVE_DID_NOT_COMPLETE_LINE = '"%s": the save did not complete'
+
+CONVERSION_CRASHED_LINE = '"%s": crashed - %s'
+
+ASSET_FAILED_TO_IMPORT_LINE = '"%s" failed to import: %s'
+
+NAMELESS_NODE_ASSET = 'node asset'
+
+NAMELESS_MATERIAL = 'material'
+
+NO_LIBRARY_TO_IMPORT_INTO = 'No library to import into.'
+
+ONLINE_SOURCE_UNKNOWN = 'Unknown source'
+
+ONLINE_SOURCE_UNKNOWN_NAMED = 'Unknown source %s'
+
+ONLINE_IMPORT_FAILED = 'Import failed.'
+
+NO_DOWNLOADABLE_PACKAGE = '"%s" has no downloadable package.'
+
+STORE_TILE_HAS_NO_ENTRY = 'the record carries no manifest entry'
+
+STORE_TILE_NOT_IMPORTED = 'the tile could not be imported'
+
+STORE_TILE_IMPORTED_NOTHING = 'nothing in this tile could be imported'
+
+STORE_RESTORE_SUMMARY = 'Restored %d, %d already present.'
+
+NODE_HAS_NO_FILE_PARM = '%s has no file parameter to take %s'
+
+NODE_HAS_NO_COLOR_RAMP = '%s has no color ramp to take the gradient'
+
+LOG_SAVED_AS = 'Saved as:\n%s'
+
+LOG_NOT_CLEARED = 'the debug log could not be cleared (%s). It is still there, and Debug Mode keeps writing to it.'
+
+REPAIR_ONLY_A_REPORT_NOW = 'Repair can only tell you this much right now: Amaze has already read this library since Houdini started, and it would write what it remembers back over anything put right here. Quit Houdini, start it again, and run Repair before you open Amaze - then Repair can also add materials back, put a saved copy back, or move unlisted files aside for you.'
+
+ADD_BACK_WRITES_A_NEW_LIST = ' There is no %s list in the library folder, so Repair writes a new one with these on it.'
+
+PICK_LIST_TO_PUT_BACK = "Which list should Amaze put back? Each line is that list's newest saved copy."
+
+PICK_OLDER_COPY_TO_PUT_BACK = 'Which older copy of the %s list should Amaze put back?'
+
+PICK_SECTION_FOR_FILES = 'Which section do these %s belong in? Amaze cannot tell from the files themselves - a saved material and a saved node look the same in the folder.'
+
+COLUMN_NEWEST_SAVED_COPIES = 'Newest saved copies'
+
+COLUMN_OLDER_SAVED_COPIES = 'Older saved copies'
+
+COLUMN_SECTION = 'Section'
+
+CURRENT_LIST_UNREADABLE = 'The list you have now cannot be read at the moment, so Amaze cannot say what is in it to compare.'
+
+CURRENT_LIST_COMPARED = 'The list you have now holds %d. Putting this copy back takes you from %d to %d: anything saved to %s since %s is not in this copy and will not be there afterwards.'
+
+LIST_EARLIER_COPY_KEPT = 'The list you had a moment ago is still in the library folder: run Repair again and put back the copy from %s to return to it.'
+
+NO_EARLIER_LIST = 'There was no list here before, so there is nothing to go back to.'
+
+BUTTON_SHOW_IN_FOLDER = 'Show in Folder'
+
+BUTTON_REPAIR_ADD_BACK = 'Add %s Back'
+
+BUTTON_REPAIR_PUT_COPY_BACK = 'Put a Saved Copy Back'
+
+BUTTON_REPAIR_ADD_TO_SECTION = 'Add %s to a Section'
+
+BUTTON_REPAIR_MOVE_ASIDE = 'Move %s Aside'
+
+BUTTON_REPAIR_CLOSE = 'Close'
+
 
 
 TITLE_AMAZE = 'Amaze'
@@ -282,7 +362,11 @@ TITLE_AMAZE_REPAIR = 'Amaze Repair'
 
 TITLE_LOG_NOT_SAVED = 'Amaze — Log not saved'
 
+TITLE_LOG_SAVED = 'Amaze - log saved'
+
 TITLE_EMPTY_SNIPPET = 'Empty snippet'
+
+TITLE_SAVE_TO = 'Save to %s'
 
 
 BUTTONS_PUT_COPY_BACK = ('Put This Copy Back', 'Cancel')
@@ -315,10 +399,26 @@ BUTTONS_CONTINUE = ('Continue', 'Cancel')
 
 BUTTONS_UPDATE_AMAZE = ('Update Amaze', 'Cancel')
 
+BUTTONS_SAVE_VERSION_OR_NEW = ('Save Version', 'Save New', 'Cancel')
+
+BUTTONS_SAVE_NEW = ('Save New', 'Cancel')
+
 
 HELP_CLEAN_LIBRARY = "Files that nothing in your library uses move into Amaze's holding folder on this computer, outside your library, where they are kept for 30 days. Materials and saved networks whose files are missing stay, and the summary names them.\n\nFile locations whose folder is gone are removed, with their labels, colors, comments, favorites and icons. Favorites of missing files are removed too. This part cannot be undone. Locations and favorites on a drive that is not connected stay."
 
 HELP_MATERIAL_VERSIONS = 'This applies to everyone who opens this library, on every machine, because it is stored with the library rather than in your preferences.\n\nWith it on, saving over an existing material keeps the previous version instead of replacing it, and the + in the code editor keeps versions of a snippet.'
+
+HELP_DELETE_USER = 'Their favorites and registered folders are removed from this library everywhere it syncs. A machine signed in as "%s" will ask who is using the library the next time it opens. This cannot be undone.'
+
+HELP_LOG_SAVED = 'It contains your file paths, asset and material names - check before sharing it.'
+
+HELP_ADD_BACK = 'Each one comes back with the name, category and tags saved beside its files.%s'
+
+HELP_PUT_SAVED_COPY_BACK = "That copy is from %s and holds %d %s. %s\n\nYour %s' own files and thumbnails are not touched either way, and the list you have now is saved in the library folder first - run Repair again and it offers that copy back."
+
+HELP_MOVE_FILES_ASIDE = "The files no section lists: %s. They move into Amaze's own holding folder on this computer - outside your library, so they do not sync and do not travel. Nothing is deleted today: they are kept for 30 days and named in the report, and moving one back is copying it back.\n\nEverything showing in Amaze stays. Do this only if you have already tried putting a saved copy of a list back: if one of these files belongs to a material whose list was lost, restoring the list is what brings it back."
+
+HELP_ADD_TO_SECTION = 'Each one keeps the name, category and tags recorded beside its files, and comes back where it was. Anything with no such record comes back in a new category called %s, named %s plus the start of its file name, with no renderer badge until you save it again - rename those afterwards.\n\nIf there is a saved copy of the %s list from before they went missing, putting that back instead is still the closest match. Nothing here is deleted or overwritten either way.'
 
 
 SNIPPET_HAS_NO_CODE = 'There is no code to save.'

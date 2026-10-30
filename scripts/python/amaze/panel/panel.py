@@ -585,8 +585,10 @@ class AmazePanel(QtWidgets.QWidget):
         models = self.library_models()
         if not models:
             return
+        self.prefs.load()    # the switch's one read of the settings; every model takes this Prefs
         with ui_helpers.relayout(*models), database.one_read_per_file():    # grid and sidebar share one read
             for m in models:
+                m.preferences = self.prefs    # a shared model may hold another panel's ▸p/one-model-set
                 m.switch_model_data()
             model_registry.rebind(self.prefs, self.material_model)    # the shared set now serves another tree, so it is re-filed under it - left under the old key, the next panel opened there is handed this library's rows
             self.click_slider.setValue(grid.active_thumbsize(self))
@@ -1389,9 +1391,6 @@ class AmazePanel(QtWidgets.QWidget):
                 names.append(str(name))
         return sorted(names, key=lambda name: category.display_name(name).lower())
 
-    def get_category_names(self) -> list[str]:
-        return self._category_names_from(self.category_model)
-
     def assign_category_active(self, category: str) -> None:
         """Set (replace) the category of the ACTIVE section's selected assets - one category per asset. The path behind dragging assets onto a sidebar category, for every section with real categories: Materials / Cop / Code and Colors."""
         category = (category or "").strip()
@@ -1707,7 +1706,7 @@ class AmazePanel(QtWidgets.QWidget):
                 ok, report = material_actions.convert(model, model.index(row, 0), target,
                                                       render=False)
             except Exception as exc:                          # noqa: BLE001
-                lines.append(f'"{mat.name}": crashed - {exc}')
+                lines.append(messages.CONVERSION_CRASHED_LINE % (mat.name, exc))
                 continue
             converted += 1 if ok else 0
             lines.extend(report.summary_lines())
@@ -2359,12 +2358,12 @@ class AmazePanel(QtWidgets.QWidget):
         """Download and save one online material as `renderer`, calling on_progress(0..1): (ok, reason)."""
         from amaze.core import matx_import
         if record is None or not self.material_model:
-            return (False, "No library to import into.")
+            return (False, messages.NO_LIBRARY_TO_IMPORT_INTO)
         source, resolution, error = self._online_source_for(record)
         if error:
             return (False, error)
         if source is None:
-            return (False, "Unknown source")
+            return (False, messages.ONLINE_SOURCE_UNKNOWN)
         if getattr(record, "kind", "") == "amazepkg":
             return self._import_amaze_package_record(
                 record, source, restore=False, on_progress=on_progress)
@@ -2375,7 +2374,7 @@ class AmazePanel(QtWidgets.QWidget):
             render=render,    # False: the caller renders its batch once
         )
         if not ok:
-            return (False, reason or "Import failed.")
+            return (False, reason or messages.ONLINE_IMPORT_FAILED)
         self.category_model.check_add_category(record.category)    # no relayout wrapper here: check_add_category announces itself with begin/endInsertRows, and pairing the two segfaults H21 (research.md)
         self._refresh_sidebar_categories()
         return (True, "")
@@ -2430,7 +2429,7 @@ class AmazePanel(QtWidgets.QWidget):
         try:
             entry = record.payload.get("entry")
             if not entry:
-                return (False, "the record carries no manifest entry")
+                return (False, messages.STORE_TILE_HAS_NO_ENTRY)
             notify = None if on_progress is None else (
                 lambda done, total:
                 on_progress(min(done / float(max(total, 1)), 1.0)))
@@ -2444,11 +2443,11 @@ class AmazePanel(QtWidgets.QWidget):
                 on_progress(1.0)
             if summary.get("refused"):
                 return (False, "; ".join(summary.get("problems") or ())
-                               or "the tile could not be imported")
+                               or messages.STORE_TILE_NOT_IMPORTED)
             if restore and summary.get("skipped"):
                 return (True, "")
             if not summary.get("imported") and not summary.get("files"):
-                return (False, "nothing in this tile could be imported")
+                return (False, messages.STORE_TILE_IMPORTED_NOTHING)
             return (True, "")
         except Exception as exc:                          # noqa: BLE001
             debug.exception("package import", exc, record=record.title)
@@ -2464,7 +2463,7 @@ class AmazePanel(QtWidgets.QWidget):
                     record)
                 if error or source is None:
                     failures.append("%s: %s" % (record.title,
-                                                error or "Unknown source"))
+                                                error or messages.ONLINE_SOURCE_UNKNOWN))
                     continue
                 try:
                     ok, reason = self._import_amaze_package_record(
@@ -2482,7 +2481,7 @@ class AmazePanel(QtWidgets.QWidget):
                     failures.append("%s: %s" % (record.title, reason))
         ui = getattr(hou, "ui", None)
         if ui is not None:
-            lines = ["Restored %d, %d already present."
+            lines = [messages.STORE_RESTORE_SUMMARY
                      % (totals["imported"], totals["skipped"])]
             if failures:
                 lines += [""] + failures[:10]
@@ -2506,7 +2505,7 @@ class AmazePanel(QtWidgets.QWidget):
         """The record's source and the resolution to fetch it at: (source, resolution, error)."""
         source = self.matx_online_model.source_for(record)
         if source is None:
-            return (None, None, "Unknown source %s" % record.source)
+            return (None, None, messages.ONLINE_SOURCE_UNKNOWN_NAMED % record.source)
         if not source.needs_download(record):    # ASK THE SOURCE, never re-spell its answer as `record.kind == "values"`: that is the BASE class's answer and RGL overrides it, because a uid its shipped table has never seen still costs a measurement download
             return (source, None, "")     # nothing to download
         if record.kind in ("values", "amazepkg"):
@@ -2516,7 +2515,7 @@ class AmazePanel(QtWidgets.QWidget):
         )
         if resolution is None:
             return (None, None,
-                    '"%s" has no downloadable package.' % record.title)
+                    messages.NO_DOWNLOADABLE_PACKAGE % record.title)
         return (source, resolution, "")
 
     def _import_online_records_to_scene(self, records,
@@ -2715,7 +2714,7 @@ class AmazePanel(QtWidgets.QWidget):
         """Import every selected Node tile; what failed is said in one dialog."""
         self._import_selection(
             self.cop_sorted_model, self.cop_model, node_actions.import_asset_to_scene,
-            "Amaze Import Nodes Asset", "node asset",
+            "Amaze Import Nodes Asset", messages.NAMELESS_NODE_ASSET,
             lambda listed: messages.NODE_ASSETS_IMPORT_FAILURES % listed)
 
     def _import_selection(self, proxy, model, verb, label: str, noun: str, sentence) -> None:
@@ -2731,7 +2730,7 @@ class AmazePanel(QtWidgets.QWidget):
                         name = model.assets[source_index.row()].name
                     except Exception:
                         name = noun
-                    failures.append(f'"{name}" failed to import: {e}')
+                    failures.append(messages.ASSET_FAILED_TO_IMPORT_LINE % (name, e))
                     continue
                 if not ok and reason:
                     failures.append(reason)
@@ -2836,9 +2835,6 @@ class AmazePanel(QtWidgets.QWidget):
                     return True
         return False
 
-    def get_cop_category_names(self) -> list[str]:
-        return self._category_names_from(self.cop_category_model)
-
     def _commit_cop_save(self, node: hou.Node, dialog) -> None:
         """Works in any context the Nodes section supports; the asset records which one."""
         ui = getattr(hou, "ui", None)
@@ -2933,7 +2929,6 @@ class AmazePanel(QtWidgets.QWidget):
         self, path: str, dest: hou.Node | None
     ) -> hou.Node | None:
         from amaze.helpers import helpers
-        ui = getattr(hou, "ui", None)
         base = os.path.basename(path)
         name = wording.sanitize_usd_path(os.path.splitext(base)[0]) or "geo"
         loader_type = geo_library.loader_sop_for(path)
@@ -2978,9 +2973,7 @@ class AmazePanel(QtWidgets.QWidget):
                     pass
             debug.event("import", "geometry import failed",
                         file=base, error=str(exc))
-            if ui is not None:
-                ui.displayMessage(
-                    messages.GEOMETRY_IMPORT_FAILED % (base, exc))
+            debug.refuse(messages.GEOMETRY_IMPORT_FAILED % (base, exc))    # ▸p/refusal-sink
             return
         parm = helpers.find_file_parm(loader)
         if parm is None:
@@ -2988,9 +2981,7 @@ class AmazePanel(QtWidgets.QWidget):
                 (container or loader).destroy()
             except (hou.OperationFailed, hou.ObjectWasDeleted):
                 pass
-            if ui is not None:
-                ui.displayMessage(
-                    messages.LOADER_SOP_HAS_NO_FILE_PARM % loader_type)
+            debug.refuse(messages.LOADER_SOP_HAS_NO_FILE_PARM % loader_type)
             return
         parm.set(self._scene_path(path))
         try:
@@ -3058,9 +3049,8 @@ class AmazePanel(QtWidgets.QWidget):
             debug.event("import", "import failed",    # every failed import leaves a NAMED reason in the log, never a bare "imported: 0"
                         material=mat.name, target=target,
                         reason=reason or "(no reason reported)")
-            ui = getattr(hou, "ui", None)
-            if reason and ui is not None:
-                ui.displayMessage(reason)
+            if reason:
+                debug.refuse(reason)    # the door marks library damage, which picks the dialog ▸p/refusal-sink
             return None
         return handler.builder_node
 
@@ -3083,11 +3073,7 @@ class AmazePanel(QtWidgets.QWidget):
             return False
         parm = obj_node.parm("shop_materialpath")
         if parm is None:
-            ui = getattr(hou, "ui", None)
-            if ui is not None:
-                ui.displayMessage(
-                    messages.OBJECT_HAS_NO_MATERIAL_PARM % obj_node.name()
-                )
+            debug.refuse(messages.OBJECT_HAS_NO_MATERIAL_PARM % obj_node.name())
             return False
         parm.set(builder.path())
         return True
@@ -3116,13 +3102,9 @@ class AmazePanel(QtWidgets.QWidget):
         """LOP-viewport release: our ancestor-prim menu, then import into a materiallibrary resolved by Houdini's STOCK helper and assign with its stock assignMat - SideFX semantics, Amaze law."""
         from amaze.core import dragengine, lop_assign
         from amaze.helpers import helpers
-        ui = getattr(hou, "ui", None)
         stock = dragengine.stock_lop()
         if stock is None:
-            if ui is not None:
-                ui.displayMessage(
-                    messages.STOCK_LOP_HELPERS_UNAVAILABLE
-                )
+            debug.refuse(messages.STOCK_LOP_HELPERS_UNAVAILABLE)    # ▸p/refusal-sink
             return False
         try:
             lopnet = viewer.pwd()
@@ -3175,11 +3157,8 @@ class AmazePanel(QtWidgets.QWidget):
                     debug.event("drag", "the network refused a material "
                                 "library", dest=lopnet.path(),
                                 error=str(refusal))
-                    if ui is not None:
-                        ui.displayMessage(
-                            messages.NETWORK_REFUSED_MATERIAL_LIBRARY
-                            % (lopnet.name(), refusal)
-                        )
+                    debug.refuse(messages.NETWORK_REFUSED_MATERIAL_LIBRARY
+                                 % (lopnet.name(), refusal))
                     return False
             assign_node = dragengine.find_assignmaterial(    # prefers one in the display chain, exactly as the library lookup above does: unfiltered this took the first assignmaterial in CREATION order, so a leftover disconnected one won over the live node and the binding was written where nothing displays it, silently
                 lopnet, connected_to=target_lop
@@ -3202,20 +3181,18 @@ class AmazePanel(QtWidgets.QWidget):
             pressed_vop = None
             if imported and ids and imported[0][0] == ids[0]:
                 pressed_vop = imported[0][1]
-            elif imported and ui is not None:
-                ui.displayMessage(
-                    messages.DROPPED_MATERIAL_IMPORT_FAILED
-                )
+            elif imported:
+                debug.refuse(messages.DROPPED_MATERIAL_IMPORT_FAILED)
             debug.event("drag", "lop viewport drop", imported=len(vops),
                         amaze=liblop.path(), assign=str(assign_path),
                         swap=bool(swap_targets))
             if pressed_vop is not None and swap_targets is not None:
-                reason = lop_assign.swap_assignments(    # the module does the USD and REPORTS; the panel owns the dialog, being the half with a screen
+                reason = lop_assign.swap_assignments(    # the module does the USD and reports; the panel says it
                     stock, lopnet, liblop, node2, swap_targets,
                     pressed_vop
                 )
-                if reason and ui is not None:
-                    ui.displayMessage("Amaze: " + reason)
+                if reason:
+                    debug.refuse(reason)
             elif assign_path and pressed_vop is not None:
                 try:
                     matpath = stock.getMaterialPrimPathForNode(
@@ -3229,10 +3206,7 @@ class AmazePanel(QtWidgets.QWidget):
                     lop_assign.name_new_assign(lopnet, before, assign_path)
                 except Exception as exc:
                     debug.event("drag", "lop assign failed", error=str(exc))
-                    if ui is not None:
-                        ui.displayMessage(
-                            messages.MATERIAL_ASSIGN_FAILED % exc
-                        )
+                    debug.refuse(messages.MATERIAL_ASSIGN_FAILED % exc)
         return bool(vops)
 
 
@@ -3729,7 +3703,7 @@ class AmazePanel(QtWidgets.QWidget):
         builder = None
         destination = None
         ui = getattr(hou, "ui", None)
-        with hou.undos.group("Amaze Generate Material"):    # the whole gesture is ONE undo step, staging AND the destination resolution that may itself create a material library: a move whose source parent was destroyed outside the group has nothing coherent to undo to, and a library created outside it survives the undo as an orphan
+        with hou.undos.group("Amaze Generate Material"):    # ONE undo step with the library it may create; a move out of staging undoes clean ▸r/node-items
             destination = nodes.karma_destination(self.prefs)
             if destination is None:
                 if ui is not None:
@@ -3899,31 +3873,24 @@ class AmazePanel(QtWidgets.QWidget):
                         self.material_model.find_asset_row_by_id(existing[0][0]), 0),
                     QtCore.Qt.ItemDataRole.DisplayRole,
                 )
-                message = '"%s" already exists in the library.' % name
+                message = messages.MATERIAL_ALREADY_IN_LIBRARY % name
             else:
-                message = (
-                    "%d of %d dropped materials already exist in the "
-                    "library." % (len(existing), len(sel))
-                )
+                message = messages.MATERIALS_ALREADY_IN_LIBRARY % (len(existing), len(sel))
             may_overwrite = library_policy.allow_overwrite(
                 self.material_model.preferences.dir)    # the LIBRARY decides, not this machine's preferences - a switch only one machine can see protects nobody. The stored key stays allow_overwrite (keys are identifiers, never names) while the UI calls it Material Versions, because that is what saying yes DOES: a save-over archives a version first and destroys nothing
             if may_overwrite:
-                buttons = ("Save Version", "Save New", "Cancel")
+                buttons = messages.BUTTONS_SAVE_VERSION_OR_NEW
                 cancel_at, overwrite_at = 2, 0
             else:
-                message += (
-                    "\n\nVersions is off for this library, "
-                    "so the existing material stays as it is. Saving "
-                    "will add a new material."
-                )
-                buttons = ("Save New", "Cancel")    # with Material Versions off the save-over button is not offered at all: an option that always fails is worse than an option that is not there
+                message += messages.VERSIONS_OFF_SAVES_NEW
+                buttons = messages.BUTTONS_SAVE_NEW    # Versions off: no save-over, an option that would always fail
                 cancel_at, overwrite_at = 1, -1
             choice = ui.displayMessage(
                 message,
                 buttons=buttons,
                 default_choice=0,
                 close_choice=cancel_at,
-                title="Save to " + branding.APP_NAME,
+                title=messages.TITLE_SAVE_TO % branding.APP_NAME,
             ) if ui is not None else cancel_at    # no screen to ask, so the answer is the close_choice - Cancel
             if choice == cancel_at:
                 return
@@ -3989,8 +3956,7 @@ class AmazePanel(QtWidgets.QWidget):
                 failures.append('"%s": %s' % (asset.name(), exc))
                 continue
             if not renderer:    # add_asset answers "" for a refused save, and two of the three causes have already shown their own dialog naming the reason, so this line only has to say WHICH material of the batch never made it
-                failures.append('"%s": the save did not complete'
-                                % asset.name())
+                failures.append(messages.SAVE_DID_NOT_COMPLETE_LINE % asset.name())
                 continue
             renderers.append(renderer)
             QtWidgets.QApplication.processEvents(    # lets the fresh tile PAINT before the next material's blocking render starts: with add_asset emitting real row-insert signals, this flush is what makes a long multi-save appear one material at a time
@@ -4021,7 +3987,7 @@ class AmazePanel(QtWidgets.QWidget):
         self._import_selection(
             self.material_sorted_model, self.material_model,
             lambda model, index: material_actions.import_asset_to_scene(model, index, target),
-            "Amaze Import Materials", "material",
+            "Amaze Import Materials", messages.NAMELESS_MATERIAL,
             lambda listed: messages.MATERIALS_IMPORT_FAILURES % listed)
 
     def import_asset_auto(self, index: QtCore.QModelIndex | None = None):
@@ -4032,12 +3998,10 @@ class AmazePanel(QtWidgets.QWidget):
         if section is not None:
             section.double_click(index)
 
-    CANNOT_LOAD_HERE = "This content can not be loaded into this context."    # the ONE double-click refusal, everywhere; an exact copy lives in the UI text register. The drag door never dialogs - it has the miss indicator
-
     def _cannot_load_here(self) -> None:
         ui = getattr(hou, "ui", None)
         if ui is not None:
-            ui.displayMessage(self.CANNOT_LOAD_HERE)  # type: ignore
+            ui.displayMessage(messages.CANNOT_LOAD_HERE)  # type: ignore
 
     def _network_under_release(self) -> hou.Node | None:
         """The network a no-node release happened INSIDE - the editor under the cursor answers with its pwd. None off any editor."""

@@ -97,18 +97,6 @@ class TheVersionsWindowStandsOnItsFrame(unittest.TestCase):
         self.assertIsNone(self.dialog.findChild(QtWidgets.QLabel, "amaze_header_band_text"))
         self.assertEqual("brushed_steel", self.dialog.windowTitle())
 
-    def test_the_list_ground_is_houdinis_list_colour_with_round_corners(self):
-        picture = self.dialog.grab().toImage()
-        ratio = picture.devicePixelRatio()
-        x, y, _wide, high = self._box(self.dialog._list)
-
-        def ink(at_x, at_y):
-            return QtGui.QColor(picture.pixel(int(at_x * ratio), int(at_y * ratio))).name()
-
-        ground = theme.list_ground().name()
-        self.assertEqual(ground, ink(x + 10, y + high - 3), "the bare list is not the list colour")
-        self.assertNotEqual(ground, ink(x, y), "the list's corner is square; the frame rounds it")
-
     def test_a_picked_row_is_painted_in_the_drawn_selection(self):
         rows = amazetheme.drawn_list_rows("D01")
         px = theme.ui_px

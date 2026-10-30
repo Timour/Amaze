@@ -110,7 +110,6 @@ class Categories(QtCore.QAbstractListModel):
         # Same whole-row-set replacement as MaterialLibrary.switch_model_data.
         self.beginResetModel()
         try:
-            self.preferences.load()
             data = database.open_document(self, reload=True)    # one unreadable file must not stop the switch
             self._data = data  # the whole dict: counts and empty-category hiding read _data["assets"]
             self._categories = data["categories"]

@@ -411,10 +411,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         name = users.name_for(self._prefs, uid)
         answer = hou.ui.displayMessage(  # type: ignore
             messages.USER_DELETE_CONFIRM % name,
-            help="Their favorites and registered folders are removed "
-                 "from this library everywhere it syncs. A machine "
-                 'signed in as "%s" will ask who is using the library '
-                 "the next time it opens. This cannot be undone." % name,
+            help=messages.HELP_DELETE_USER % name,
             buttons=messages.BUTTONS_DELETE_USER,
             default_choice=1, close_choice=1,
             severity=hou.severityType.Warning,
@@ -1691,12 +1688,10 @@ class PrefsDialog(base_dialog.AssetDialog):
                 messages.LOG_NOT_SAVED_UNEXPECTED % exc)
             return
         box = QtWidgets.QMessageBox(self)
-        box.setWindowTitle("Amaze - log saved")
-        box.setText("Saved as:\n%s" % os.path.basename(target))
-        box.setInformativeText(
-            "It contains your file paths, asset and material names - "
-            "check before sharing it.")
-        reveal = box.addButton("Show in Folder",
+        box.setWindowTitle(messages.TITLE_LOG_SAVED)
+        box.setText(messages.LOG_SAVED_AS % os.path.basename(target))
+        box.setInformativeText(messages.HELP_LOG_SAVED)
+        reveal = box.addButton(messages.BUTTON_SHOW_IN_FOLDER,
                                QtWidgets.QMessageBox.ActionRole)
         box.addButton(QtWidgets.QMessageBox.Close)
         box.exec()
@@ -1707,9 +1702,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         # through the ENGINE, not os.remove behind its back: it owns the session header and the flood counters
         ok, reason = debug.clear_log()
         if not ok:
-            debug.note(
-                "the debug log could not be cleared (%s). It is still "
-                "there, and Debug Mode keeps writing to it." % reason)
+            debug.note(messages.LOG_NOT_CLEARED % reason)
 
     def set_rendersize(self):
         """RenderSize is ALSO the resolution texture and geometry thumbnails generate at; their caches are keyed by it."""

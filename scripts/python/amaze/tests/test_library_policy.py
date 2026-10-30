@@ -164,10 +164,12 @@ class OverwriteIsGatedInTheMODELTest(unittest.TestCase):
                   encoding="utf-8") as handle:
             code = handle.read()
         self.assertIn("may_overwrite = library_policy.allow_overwrite", code)
-        self.assertIn('buttons = ("Save New", "Cancel")', code,
+        self.assertIn("buttons = messages.BUTTONS_SAVE_NEW", code,
                       "the Save Version button is still offered when the "
                       "library forbids it - an option that always fails "
                       "is worse than one that is not there")
+        from amaze import messages
+        self.assertNotIn("Save Version", messages.BUTTONS_SAVE_NEW)
 
 
 class BrokenPolicyShapesFailClosedTest(unittest.TestCase):

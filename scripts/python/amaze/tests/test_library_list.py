@@ -235,17 +235,41 @@ class TheManageWindowStandsOnItsFrame(unittest.TestCase):
         self.assertNotEqual(selected, ink(px(rows["box_x"]), top),
                             "the selected row's corner is square; the frame rounds it")
 
+
+class EveryDrawnListWearsTheListGround(unittest.TestCase):
+    """D15 and D01 build their list through one door, `drawn_list`, so one test holds both."""
+
+    def _dialogs(self):
+        from amaze.dialogs import versions_dialog
+        prefs = test_support.fixture_prefs(self)
+        for name in ("C", "B", "A"):
+            prefs.note_library_opened(_folder(self, name))
+        listed = [{"n": n, "name": "Version %d" % n, "date": "2026-10-2%d 09:00" % n}
+                  for n in (1, 2, 3)]
+        return (("D15", library_dialog.ManageLibrariesDialog(prefs)),
+                ("D01", versions_dialog.VersionsDialog("brushed_steel", listed, 2)))
+
     def test_the_list_ground_is_houdinis_list_colour_with_round_corners(self):
-        picture = self.dialog.grab().toImage()
-        ratio = picture.devicePixelRatio()
-        x, y, _wide, high = self._box(self.dialog._list)
+        for frame, dialog in self._dialogs():
+            with self.subTest(frame=frame):
+                self.addCleanup(dialog.deleteLater)
+                dialog.show()
+                self.addCleanup(dialog.hide)
+                QtWidgets.QApplication.processEvents()
+                picture = dialog.grab().toImage()
+                ratio = picture.devicePixelRatio()
+                corner = dialog._list.mapTo(dialog, dialog._list.rect().topLeft())
+                x, y, high = corner.x(), corner.y(), dialog._list.height()
 
-        def ink(at_x, at_y):
-            return QtGui.QColor(picture.pixel(int(at_x * ratio), int(at_y * ratio))).name()
+                def ink(at_x, at_y, picture=picture, ratio=ratio):    # bound per subTest
+                    return QtGui.QColor(picture.pixel(int(at_x * ratio),
+                                                      int(at_y * ratio))).name()
 
-        ground = theme.list_ground().name()
-        self.assertEqual(ground, ink(x + 10, y + high - 3), "the bare list is not the list colour")
-        self.assertNotEqual(ground, ink(x, y), "the list's corner is square; the frame rounds it")
+                ground = theme.list_ground().name()
+                self.assertEqual(ground, ink(x + 10, y + high - 3),
+                                 "the bare list is not the list colour")
+                self.assertNotEqual(ground, ink(x, y),
+                                    "the list's corner is square; the frame rounds it")
 
 
 if __name__ == "__main__":

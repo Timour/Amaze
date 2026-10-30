@@ -181,7 +181,7 @@ class GalleryImportInThePanel(unittest.TestCase):
         with mock.patch.object(hou, "InterruptableOperation", _Escaped):
             landed = self._import(["GalleryEscA", "GalleryEscB", "GalleryEscC"])
         self.assertEqual(2, len(landed), "premise: the Esc did not stop the third entry")
-        shown = self.panel.get_category_names()
+        shown = self.panel._category_names_from(self.panel.category_model)
         self.assertEqual([True, True, False],
                          [name in shown for name in ("GalleryEscA", "GalleryEscB", "GalleryEscC")],
                          "the categories of what landed have no sidebar row")

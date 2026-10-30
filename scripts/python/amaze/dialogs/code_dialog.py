@@ -295,18 +295,8 @@ class CodeDialog(base_dialog.AssetDialog):
         self._editor = CodeEditor(code)
         self._editor.setMinimumHeight(theme.ui_px(drawn["editor"][1]))
 
-        self._apply_button = QtWidgets.QPushButton(amazetheme.BTN_APPLY)
-        self._cancel_button = QtWidgets.QPushButton(amazetheme.BTN_CANCEL)
-        buttons = QtWidgets.QHBoxLayout()
-        buttons.setContentsMargins(0, 0, 0, 0)
-        buttons.setSpacing(theme.ui_px(amazetheme.drawn_pair_gap(self.FRAME_KEY)))
-        buttons.addStretch(1)
-        for button in (self._apply_button, self._cancel_button):
-            ui_helpers.pin_drawn(button, self.FRAME_KEY, "QPushButton", button.text())
-            button.setAutoDefault(False)
-            buttons.addWidget(button)
-        self._apply_button.clicked.connect(self._apply)
-        self._cancel_button.clicked.connect(self.reject)    # what Apply saved stays saved
+        self._apply_button, self._cancel_button, buttons = self.drawn_pair(    # Cancel keeps what Apply saved
+            amazetheme.BTN_APPLY, self._apply)
 
         content = QtWidgets.QWidget()
         stack = QtWidgets.QVBoxLayout(content)
@@ -320,9 +310,7 @@ class CodeDialog(base_dialog.AssetDialog):
 
         self._version_menu = None
         self.set_content(content)
-        margins = drawn["margins"]
-        self.finish(ok_cancel=False, margins=(margins[0] + margins[2]) // 2)    # the strut's width
-        self._inner_layout.setContentsMargins(*(theme.ui_px(m) for m in margins))
+        self.finish(ok_cancel=False, margins=drawn["margins"])
         self._line_name.textChanged.connect(self._name_changed)
         self._name_changed()
 

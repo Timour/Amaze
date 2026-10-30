@@ -92,6 +92,20 @@ def ground_list(view) -> None:
         % (theme.list_ground().name(), theme.ui_px(amazetheme.LIST_RADIUS)))
 
 
+def drawn_list(frame_key: str, selection_mode, delegate) -> QtWidgets.QListWidget:
+    """A drawn list: no frame, no sideways scroll, `delegate` painting rows on the list ground."""
+    view = QtWidgets.QListWidget()
+    view.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+    view.setSelectionMode(selection_mode)
+    view.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    view.setUniformItemSizes(True)
+    delegate.setParent(view)    # the view does not own its delegate ▸r/delegate-orphans
+    view.setItemDelegate(delegate)
+    ground_list(view)
+    ui_helpers.pin_drawn(view, frame_key, "QListWidget", None)
+    return view
+
+
 class ManageLibrariesDialog(AssetDialog):
     """The Library list, most recent first; the open library is shown and cannot be selected."""
 
@@ -105,32 +119,14 @@ class ManageLibrariesDialog(AssetDialog):
         self.removed: list = []    # the folders taken off the list
         drawn = amazetheme.drawn_list_rows()
 
-        self._list = QtWidgets.QListWidget()
-        self._list.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
-        self._list.setSelectionMode(
-            QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)    # one or more
-        self._list.setHorizontalScrollBarPolicy(
-            QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self._list.setUniformItemSizes(True)
-        self._list.setItemDelegate(ListRows(self._list))
-        ground_list(self._list)
-        ui_helpers.pin_drawn(self._list, self.FRAME_KEY, "QListWidget", None)
-
-        self._remove = QtWidgets.QPushButton(amazetheme.BTN_REMOVE_FROM_LIST)
-        self._cancel = QtWidgets.QPushButton(amazetheme.BTN_CANCEL)
-        for button in (self._remove, self._cancel):
-            ui_helpers.pin_drawn(button, self.FRAME_KEY, "QPushButton", button.text())
-            button.setAutoDefault(False)
+        self._list = drawn_list(
+            self.FRAME_KEY,
+            QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection,    # one or more
+            ListRows())
+        self._remove, self._cancel, buttons = self.drawn_pair(    # Cancel closes; a removal made stays
+            amazetheme.BTN_REMOVE_FROM_LIST, self._remove_selected)
         self._cancel.setDefault(True)
-        self._remove.clicked.connect(self._remove_selected)
-        self._cancel.clicked.connect(self.reject)    # closes; a removal already made stays
 
-        buttons = QtWidgets.QHBoxLayout()
-        buttons.setContentsMargins(0, 0, 0, 0)
-        buttons.setSpacing(theme.ui_px(drawn["button_gap"]))
-        buttons.addStretch(1)
-        buttons.addWidget(self._remove)
-        buttons.addWidget(self._cancel)
         body = QtWidgets.QWidget()
         column = QtWidgets.QVBoxLayout(body)
         column.setContentsMargins(0, 0, 0, 0)
@@ -138,9 +134,7 @@ class ManageLibrariesDialog(AssetDialog):
         column.addWidget(self._list)
         column.addLayout(buttons)
         self.set_content(body)
-        self.finish(ok_cancel=False, margins=drawn["margins"][0])
-        self._inner_layout.setContentsMargins(    # the frame's own margin on each side
-            *(theme.ui_px(side) for side in drawn["margins"]))
+        self.finish(ok_cancel=False, margins=drawn["margins"])
 
         self._fill(open_library)
         self._list.itemSelectionChanged.connect(self._sync_remove)

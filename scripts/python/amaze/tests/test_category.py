@@ -58,7 +58,7 @@ class TestCategories(unittest.TestCase):
         model = self.category_module.Categories(self.mock_prefs_instance)
 
         self.assertIs(self.mock_prefs_instance, model.preferences)
-        self.mock_prefs_instance.load.assert_not_called()  # the model shares the panel's Prefs OBJECT, so a load() here would re-read settings.json under the panel and revert its unsaved edits; switch_model_data reloads deliberately, construction must not
+        self.mock_prefs_instance.load.assert_not_called()  # a load here reverts the panel's unsaved edits
         self.mock_db_instance.load.assert_called_once_with("/mock/path")
         self.assertEqual(model._categories, ["Cat1", "_Hidden", "Cat2"])
         self.assertEqual(model.CatSortRole, 256)
@@ -121,14 +121,13 @@ class TestCategories(unittest.TestCase):
                          "the count split a category name at its comma")
 
     def test_switch_model_data(self):
-        """Test switch_model_data reloads preferences and uses reload_with_path."""
+        """A switch reads the library the Prefs it holds names NOW; the panel loaded them once."""
         model = self.category_module.Categories(self.mock_prefs_instance)
-        self.mock_prefs_instance.load.reset_mock()
+        self.mock_prefs_instance.dir = "/mock/other"
 
         model.switch_model_data()
 
-        self.mock_prefs_instance.load.assert_called_once()
-        self.mock_db_instance.reload_with_path.assert_called_once_with("/mock/path")
+        self.mock_db_instance.reload_with_path.assert_called_once_with("/mock/other")
         self.assertEqual(model._categories, ["New1", "New2"])
 
     def test_remove_category(self):

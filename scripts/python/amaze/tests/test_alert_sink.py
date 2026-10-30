@@ -11,11 +11,14 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")    # BEFORE the app ▸p/first-app-picks-the-platform
 import hou                                                # noqa: E402
-from PySide6 import QtCore                                # noqa: E402
+from PySide6 import QtCore, QtWidgets                     # noqa: E402
+
+_app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])    # the fixture panel is a widget
 
 from amaze.core import debug                             # noqa: E402
-from amaze.tests import test_support                      # noqa: E402,F401
+from amaze.tests import test_support                      # noqa: E402
 
 
 class AlertIsOncePerConditionTest(unittest.TestCase):
@@ -237,6 +240,134 @@ class TheDamageDoorMarksItsRefusalsTest(unittest.TestCase):
             "sentence left unmarked reaches the user as a status line "
             "the next write erases, and a bad-aim sentence marked opens "
             "a dialog mid-gesture:\n  " + "\n  ".join(wrong))
+
+
+class NoReleaseVerbOpensAModalInline(unittest.TestCase):
+    """A release verb speaks through the sink: a modal in a release takes its click. ▸p/refusal-sink"""
+
+    ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    MODALS = {"displayMessage", "displayConfirmation", "displayCustomConfirmation", "readInput",
+              "readMultiInput", "selectFromList", "selectFile", "selectColor", "selectNode"}
+    BOX_MODALS = {"information", "warning", "critical", "question"}    # on QMessageBox
+    PANEL_RELEASES = ("assign_category_active", "move_files_active")    # the gesture's own calls
+    REACHED = ("_material_lop_viewport_drop", "assign_material_to_obj", "_import_material_builder",
+               "_import_geo_in_context", "open_hip_scene")    # the doors that once opened one
+
+    def _methods(self, relative, only=None) -> dict:
+        """{name: [def]} for the methods of one source file, of class `only` when given."""
+        with open(os.path.join(self.ROOT, *relative.split("/")), encoding="utf-8") as fh:
+            tree = ast.parse(fh.read())
+        found = {}
+        for cls in ast.walk(tree):
+            if isinstance(cls, ast.ClassDef) and only in (None, cls.name):
+                for item in cls.body:
+                    if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                        found.setdefault(item.name, []).append(item)
+        return found
+
+    @staticmethod
+    def _release_verbs() -> set:
+        """Every verb a section declares for a release, read off the live DropRules."""
+        from amaze.panel import sections
+        verbs = set()
+        for cls in sections.SECTION_CLASSES + (sections.OnlineContext,):
+            for rule in [cls.DROP] + list(cls.DROP_BY_KIND.values()):
+                if rule is not None:
+                    verbs.update(v for v in (rule.on_node, rule.on_space, rule.resolve,
+                                             rule.outside) if v)
+        return verbs
+
+    def test_no_release_verb_reaches_a_modal(self):
+        own = {"section": self._methods("panel/sections.py"),
+               "panel": self._methods("panel/panel.py", "AmazePanel")}
+        stack = [("section", verb, verb) for verb in sorted(self._release_verbs())]
+        stack += [("panel", verb, verb) for verb in self.PANEL_RELEASES]
+        seen, offenders = set(), []
+        while stack:
+            side, name, path = stack.pop()
+            if (side, name) in seen:
+                continue
+            seen.add((side, name))
+            for function in own[side].get(name, ()):
+                for node in ast.walk(function):
+                    if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)):
+                        continue
+                    owner, called = ast.unparse(node.func.value), node.func.attr
+                    if called in self.MODALS or (
+                            called in self.BOX_MODALS and owner.endswith("QMessageBox")):
+                        offenders.append("%s: %s, line %d" % (path, called, node.lineno))
+                    elif owner == "self":
+                        stack.append((side, called, path + " > " + called))
+                    elif owner in ("panel", "self.panel"):
+                        stack.append(("panel", called, path + " > " + called))
+                    elif owner in ("context", "section"):
+                        stack.append(("section", called, path + " > " + called))
+        reached = {name for _side, name in seen}
+        self.assertEqual([], [door for door in self.REACHED if door not in reached],
+                         "premise: the walk no longer reaches these doors - re-key REACHED")
+        self.assertEqual(
+            [], offenders,
+            "a release verb opens a modal inline, where it takes the drag's own "
+            "release click - return the reason to debug.refuse:\n  "
+            + "\n  ".join(offenders))
+
+
+class AFailedReleaseSpeaksThroughTheSink(unittest.TestCase):
+    """Two doors driven for real: nothing opens inside the release, and the reason reaches the sink."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
+
+    def setUp(self):
+        from amaze.utils import rc_calls
+        self.shown, self.said = [], []
+        self.addCleanup(debug.hand_over, debug._ui)
+        debug.hand_over(rc_calls.HoudiniSpeaker)
+        ui = types.SimpleNamespace(
+            displayMessage=lambda text, *a, **k: self.shown.append(text),
+            setStatusMessage=lambda text, *a, **k: self.said.append(text))
+        for patcher in (mock.patch.object(hou, "ui", ui, create=True),
+                        mock.patch.object(QtCore.QTimer, "singleShot")):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.later = QtCore.QTimer.singleShot
+
+    def test_a_scene_that_will_not_open_is_told_after_the_release(self):
+        """The hip door's `outside` verb, its load refused by Houdini."""
+        from amaze.core import locations
+        panel = self.panel
+        panel.section_tabs.setChecked("file")
+        QtWidgets.QApplication.processEvents()
+        proxy = panel.thumblist.model()
+        kind, path_role = panel.file_files_model.KindRole, panel.file_files_model.PathRole
+        row = next((r for r in range(proxy.rowCount())
+                    if proxy.index(r, 0).data(kind) == locations.KIND_HIP), None)
+        self.assertIsNotNone(row, "premise: the fixture folder lists no scene")
+        failed = mock.Mock(side_effect=hou.OperationFailed("the file is damaged"))
+        self.later.reset_mock()    # the section switch defers work of its own
+        with mock.patch.object(hou.hipFile, "load", failed):
+            panel.sections["file"].open_hip_scene(proxy.index(row, 0))
+        self.assertEqual(1, failed.call_count, "premise: the load was never asked")
+        self.assertEqual([], self.shown, "the failed open showed a modal inside the release")
+        self.assertEqual(1, self.later.call_count, "the failed open was not handed to the sink")
+        self.later.call_args.args[1]()    # what the sink parked for when Qt is idle
+        self.assertEqual(1, len(self.shown))
+        self.assertIn(proxy.index(row, 0).data(path_role), self.shown[0])
+
+    def test_a_network_that_takes_no_geometry_is_said_on_the_status_line(self):
+        """The geo door's import, its container refused: bad aim, never a dialog."""
+        def refuse(*_args, **_kwargs):
+            raise hou.OperationFailed("Cannot create a node inside a locked asset")
+        network = types.SimpleNamespace(
+            childTypeCategory=lambda: types.SimpleNamespace(name=lambda: "Object"),
+            createNode=refuse)
+        made = self.panel._import_geo_in_context("/nowhere/rock.bgeo.sc", network)
+        self.assertIsNone(made)
+        self.assertEqual(([], 0), (self.shown, self.later.call_count),
+                         "a network refusing the import opened a dialog")
+        self.assertEqual(1, len(self.said), "the refusal reached no status line")
+        self.assertIn("rock.bgeo.sc", self.said[0])
 
 
 class TheTenSitesAreConvertedTest(unittest.TestCase):

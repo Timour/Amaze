@@ -1170,7 +1170,7 @@ class LibrarySwitchTest(unittest.TestCase):
         self.selection = QtCore.QItemSelectionModel(self.proxy)
 
     def _switch_to_an_empty_library(self):
-        """Point prefs at a library with no assets and switch. Prefs is SAVED first, because switch_model_data re-reads settings.json - the fixture's own copy, never the machine's."""
+        """Point the model's Prefs at a library with no assets and switch."""
         self.prefs.dir = _empty_library_dir(self)
         self.prefs.save()
         self.model.switch_model_data()
@@ -1211,8 +1211,9 @@ class LibrarySwitchTest(unittest.TestCase):
         self.model.modelAboutToBeReset.connect(lambda: began.append(1))
         self.model.modelReset.connect(lambda: ended.append(1))
 
-        with patch.object(type(self.prefs), "load",  # fail INSIDE the reset window: prefs.load is the first call after beginResetModel
-                          side_effect=OSError("settings unreadable")):
+        from amaze.core import database
+        with patch.object(database, "load_survivable",    # fail INSIDE the reset window, at the read
+                          side_effect=OSError("library unreadable")):
             with self.assertRaises(OSError):
                 self.model.switch_model_data()
 

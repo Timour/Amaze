@@ -930,7 +930,7 @@ class CustomizeOffersTheOwningSectionsCategories(unittest.TestCase):
         combo = self._customize(self.rows[:1]).category_combo
         offered = [combo.itemData(i) for i in range(combo.count())
                    if combo.itemData(i)]
-        self.assertEqual(self.panel.get_cop_category_names(), offered,
+        self.assertEqual(self.panel._category_names_from(self.panel.cop_category_model), offered,
                          "a Node tile was offered another section's "
                          "categories")
         self.assertEqual("Rigs", base_dialog.chosen_category(combo))

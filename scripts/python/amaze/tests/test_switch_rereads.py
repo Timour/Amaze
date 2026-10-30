@@ -63,6 +63,54 @@ class SwitchRereadsCase(unittest.TestCase):
             "Houdini restarts")
 
 
+class ASwitchReadsTheSettingsOnce(unittest.TestCase):
+    """The models of a switch take the Prefs it loaded: one read of settings.json, not one each."""
+
+    def setUp(self):
+        self.panel = test_support.fixture_panel(self)
+
+    def _switch_reads(self, folder) -> int:
+        """Name `folder` in settings.json as Preferences does, switch, and count the reads of it."""
+        _write_settings(self.panel, directory=folder)    # the harness turns Prefs.save off
+        settings = os.path.abspath(os.path.join(self.panel.prefs.path, "settings.json"))
+        reads, real = [], open
+
+        def counting(file, mode="r", *args, **kwargs):
+            if "r" in mode and os.path.abspath(str(file)) == settings:
+                reads.append(file)
+            return real(file, mode, *args, **kwargs)
+
+        with mock.patch("builtins.open", counting):
+            self.panel.switch_all_models()
+        return len(reads)
+
+    def _landed(self, folder) -> str:
+        return os.path.realpath(str(folder).rstrip("/"))
+
+    def test_one_switch_reads_the_settings_once(self):
+        other = test_support.fresh_library(self)
+        self.assertEqual(1, self._switch_reads(other),
+                         "each model re-read settings.json for itself")
+        self.assertEqual(self._landed(other), self._landed(self.panel.prefs.dir),
+                         "the switch did not land on the new library")
+        self.assertTrue(database.DatabaseConnector("library.json").serves(self.panel.prefs.dir),
+                        "the models were not re-pointed at the new library")
+
+    def test_shared_models_follow_the_panel_that_switched(self):
+        """A second panel looked the shared models up last, so they held its Prefs."""
+        second = test_support.reopened_panel(self)
+        self.assertIs(second.prefs, self.panel.material_model.preferences,
+                      "premise: the shared models hold the second panel's Prefs")
+        other = test_support.fresh_library(self)
+        self._switch_reads(other)
+        for model in self.panel.library_models():
+            with self.subTest(model=type(model).__name__):
+                self.assertEqual(self._landed(other), self._landed(model.preferences.dir),
+                                 "a shared model kept the library another panel's Prefs named")
+                self.assertEqual(self._landed(other), self._landed(self.panel.prefs.dir),
+                                 "the panel that switched still names the old library")
+
+
 class TheRegisteredFoldersFollowTheLibrary(unittest.TestCase):
     """Every registered File location vanished from the pane after a library switch: the rows were never lost, the File section simply declared no `library_model_attrs` and nothing repainted. ▸p/folders-follow-the-library"""
 
@@ -250,7 +298,7 @@ class AnUnreadableNodeFileDoesNotStopTheSwitch(unittest.TestCase):
         self.assertEqual(0, self.panel.cop_model.rowCount())
 
     def test_a_node_save_is_refused_for_the_file_it_could_not_read(self):
-        self.panel.cop_model.switch_model_data()
+        self.panel.switch_all_models()    # the door that reads the settings; a model reads none
         with test_support.captured_log() as log:
             self.assertFalse(self.panel.cop_model.save(),
                              "premise: a save over an unread file went ahead")

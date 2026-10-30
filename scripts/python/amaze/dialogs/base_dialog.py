@@ -100,8 +100,8 @@ class AssetDialog(QtWidgets.QDialog):
         """Adopt a prebuilt central widget in place of form rows - the shell (title, house margins, `canceled`/accept, the optional OK/Cancel strip, the sizing rule) stays the base's while the guts stay the dialog's; the four one-off dialogs hand-copied exactly this shell before ROADMAP R51 moved them onto it."""
         self._content = widget
 
-    def finish(self, ok_cancel: bool = True, margins: int | None = None) -> None:
-        """Add the OK/Cancel button row and lay the dialog out - call once, after all rows are added (or after `set_content`). `margins` is the house 5px unless a dialog records its reason to differ at the call."""
+    def finish(self, ok_cancel: bool = True, margins: int | tuple | None = None) -> None:
+        """Lay out the rows or content and OK/Cancel, once; `margins`: house 5px, an int or (l, t, r, b)."""
         for kind, widgets in self._rows_built.items():
             ui_helpers.pin_drawn_series(widgets, self.FRAME_KEY, kind)
         if ok_cancel:
@@ -139,10 +139,12 @@ class AssetDialog(QtWidgets.QDialog):
             if self._buttons is not None:
                 self._form.addRow(self._buttons)
             layout.addLayout(self._form)
-        _m = theme.ui_px(
-            amazetheme.HOUSE_MARGIN if margins is None else margins)
-        sides = ([theme.ui_px(form[k]) for k in ("left", "top", "right", "bottom")]
-                 if form else [_m] * 4)
+        if form:
+            sides = [theme.ui_px(form[k]) for k in ("left", "top", "right", "bottom")]
+        elif isinstance(margins, tuple):
+            sides = [theme.ui_px(side) for side in margins]
+        else:
+            sides = [theme.ui_px(amazetheme.HOUSE_MARGIN if margins is None else margins)] * 4
         layout.setContentsMargins(*sides)
         if self.FORM_WIDTH:
             layout.addStrut(theme.ui_px(self.FORM_WIDTH) - sides[0] - sides[2])    # ▸r/fixed-size-constraint
@@ -194,6 +196,22 @@ class AssetDialog(QtWidgets.QDialog):
             row.addStretch(1)      # the pair is drawn flush RIGHT, level with the fields above it
             row.addWidget(ok)
             row.addWidget(cancel)
+
+    def drawn_pair(self, primary_label: str, on_primary):
+        """The frame's primary button and Cancel, flush right at their drawn sizes: (primary, cancel, row)."""
+        primary = QtWidgets.QPushButton(primary_label)
+        cancel = QtWidgets.QPushButton(amazetheme.BTN_CANCEL)
+        row = QtWidgets.QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(theme.ui_px(amazetheme.drawn_pair_gap(self.FRAME_KEY)))
+        row.addStretch(1)
+        for button in (primary, cancel):
+            ui_helpers.pin_drawn(button, self.FRAME_KEY, "QPushButton", button.text())
+            button.setAutoDefault(False)    # Enter goes to the button a dialog makes default, or none
+            row.addWidget(button)
+        primary.clicked.connect(on_primary)
+        cancel.clicked.connect(self.reject)
+        return primary, cancel, row
 
     def _pin_label_column(self, sides: int) -> None:
         """Pin every label to the slack the drawn numbers leave, clipping a long one as Houdini's own panes do - unpinned, a label 1px past the slack outgrows the strut and the whole family widens; AFTER setLayout, because `horizontalSpacing` answers -1 until the style resolves ▸p/save-dialog-rows"""
