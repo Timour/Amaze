@@ -543,8 +543,12 @@ store; a location that is gone is `retire_prefix(prefs, path)`. The
 caller never enumerates the stores, because a list held by a caller is
 a list someone can write short, and both callers that held one already
 had been. Whether a store SURVIVES a location removal is
-`survives_forget` on its spec — a product decision said once (comments
-and tile icons stay; the location record dies with the pointer).
+`survives_forget` on its spec — a product decision said once (a Remove
+from the sidebar clears the comments, tile icons and stars under it,
+and the identity row dies with the pointer). Clean Up never removes: a
+folder absent from this machine is SET ASIDE, the pointer only
+(`FolderTreeModel.set_aside_folder`), so the per-file state waits for
+the folder to return and re-attaches by id.
 
 `<file>.json.bak-first` arrives on the FIRST write —
 `hostos.seed_restore_floor` mints the write-once floor from the file

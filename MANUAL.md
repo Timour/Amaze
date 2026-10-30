@@ -779,15 +779,18 @@ newest beta when on, the newest release when off.
 
 **Clean Up** (Preferences ▸ Library) scans the library in one
 pass for entries with missing files, uncategorized assets, category
-names to normalise, registered folders that no longer exist and
-favorites that point at missing files, and reports the result in one
-summary.
+names to normalise, registered folders that are not on this computer
+and favorites that point at files gone from their folder, and reports
+the result in one summary.
 
 Entries with missing files are reported and kept, since a file that is
 still syncing looks the same as a deleted one; **Delete** removes them.
 Files that no asset list uses are moved to Amaze's holding folder on
 this computer, outside the library, named in the summary and kept for
-30 days. Folders on drives that are not mounted are skipped.
+30 days. A registered folder that is not on this computer is set aside:
+it leaves the sidebar, and its comments, tile icons and favorites are
+kept until the folder is added again. Folders on drives that are not
+mounted are skipped.
 
 **Repair**, on the Amaze shelf, repairs a library when Clean Up refuses
 or the panel does not open. It reads the library, reports the
