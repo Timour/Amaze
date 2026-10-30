@@ -5,7 +5,7 @@ import unittest
 from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")   # BEFORE the app exists: the first module to build the QApplication picks the Qt platform for the whole hython, and on the native one the class font hash answers QListView 12pt against QTableView 13pt - which fails ANOTHER module's font assert ▸p/first-app-picks-the-platform
-from PySide6 import QtCore, QtGui, QtWidgets  # noqa: E402
+from PySide6 import QtCore, QtGui, QtWidgets
 
 from amaze import amazetheme
 from amaze.panel import dragdrop_widgets, empty_state, grid, sections

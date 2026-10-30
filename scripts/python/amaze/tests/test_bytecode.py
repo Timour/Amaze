@@ -15,10 +15,10 @@ sys.path.insert(
         os.path.dirname(os.path.abspath(__file__)))))
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6 import QtWidgets                             # noqa: E402
+from PySide6 import QtWidgets
 
-from amaze.helpers import bytecode                        # noqa: E402
-from amaze.tests import test_support                      # noqa: E402
+from amaze.helpers import bytecode
+from amaze.tests import test_support
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 

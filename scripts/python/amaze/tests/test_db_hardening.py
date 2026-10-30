@@ -14,8 +14,8 @@ sys.path.insert(
         os.path.dirname(os.path.abspath(__file__)))))
 
 from amaze.core import database, material
-from amaze.helpers import hostos                             # noqa: E402
-from amaze.tests import test_support                        # noqa: E402
+from amaze.helpers import hostos
+from amaze.tests import test_support
 
 SCHEMA = database.SCHEMA_VERSION
 

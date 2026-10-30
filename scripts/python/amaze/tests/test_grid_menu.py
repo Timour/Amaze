@@ -8,7 +8,7 @@ import unittest
 from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-from PySide6 import QtCore, QtWidgets  # noqa: E402
+from PySide6 import QtCore, QtWidgets
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
@@ -653,7 +653,7 @@ class EveryRendererRowWEARSTheFilterMenusIcon(unittest.TestCase):
                 del kept
         owners = [os.path.relpath(os.path.join(root, name), PACKAGE)
                   for root, _dirs, files in os.walk(PACKAGE)
-                  if os.sep + "tests" not in root
+                  if "tests" not in os.path.relpath(root, PACKAGE).split(os.sep)
                   for name in files if name.endswith(".py")
                   and "filter_redshift" in open(os.path.join(root, name)).read()]
         self.assertEqual([os.path.join("core", "renderers.py")], owners,

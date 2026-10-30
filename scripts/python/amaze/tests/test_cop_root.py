@@ -7,7 +7,7 @@ import unittest
 from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-from PySide6 import QtWidgets  # noqa: E402
+from PySide6 import QtWidgets
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
@@ -19,7 +19,7 @@ import hou  # noqa: E402
 
 from amaze.core import material  # noqa: E402
 from amaze.render import nodes  # noqa: E402
-from amaze.tests import test_support  # noqa: E402,F401 - redirects the log
+from amaze.tests import test_support  # noqa: E402 - redirects the log
 
 ROOT = "/obj/Amaze"
 

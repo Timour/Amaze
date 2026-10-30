@@ -12,9 +12,9 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze.prefs import persistence                  # noqa: E402
-from amaze.prefs import prefs as prefs_mod           # noqa: E402
-from amaze.tests import test_support                 # noqa: E402,F401
+from amaze.prefs import persistence
+from amaze.prefs import prefs as prefs_mod
+from amaze.tests import test_support
 
 UID_A = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 UID_B = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"

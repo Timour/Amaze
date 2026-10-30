@@ -6,7 +6,7 @@ import unittest
 from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-from PySide6 import QtWidgets  # noqa: E402
+from PySide6 import QtWidgets
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
@@ -633,6 +633,15 @@ class AnOctaneTwinIsMaterialXInTheLibrary(unittest.TestCase):
         self.assertTrue(ok, report.summary_lines())
         twin, = test_support.arrived(model, held)
         self.assertEqual(("Karma", "Octane Red"), (twin.renderer, twin.name))
+
+
+class TheConversionDevToolsShareOneSettingsStub(unittest.TestCase):
+    """conversion_report and extract_specs run the convert path on one settings stub."""
+
+    def test_extract_specs_reads_the_stub_conversion_report_holds(self):
+        from amaze.tests import conversion_report, extract_specs
+        self.assertIs(conversion_report._Prefs, extract_specs._Prefs,
+                      "the two dev tools carry a settings stub each again")
 
 
 if __name__ == "__main__":

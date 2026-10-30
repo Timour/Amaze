@@ -9,12 +9,12 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-import hou                                                # noqa: E402
+import hou
 
-from amaze.actions import materials as material_actions  # noqa: E402
-from amaze.core import debug                              # noqa: E402
-from amaze.panel import panel as panel_module             # noqa: E402
-from amaze.tests import test_support                      # noqa: E402,F401
+from amaze.actions import materials as material_actions
+from amaze.core import debug
+from amaze.panel import panel as panel_module
+from amaze.tests import test_support                      # noqa: F401
 
 
 class _Model:

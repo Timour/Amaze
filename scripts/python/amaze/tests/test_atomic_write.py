@@ -13,7 +13,7 @@ import unittest
 from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-from PySide6 import QtWidgets  # noqa: E402
+from PySide6 import QtWidgets
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
@@ -23,7 +23,7 @@ sys.path.insert(
 
 from amaze.helpers import hostos                         # noqa: E402
 from amaze.prefs import prefs                            # noqa: E402
-from amaze.tests import test_support                     # noqa: E402,F401
+from amaze.tests import test_support                     # noqa: E402
 
 
 class AtomicWriteTest(unittest.TestCase):
@@ -737,7 +737,7 @@ class NoContentWriterTargetsItsDestinationTest(unittest.TestCase):
         offenders = []
         root = self._package_root()
         for folder, _dirs, files in os.walk(root):
-            if "tests" in folder.split(os.sep):
+            if "tests" in os.path.relpath(folder, root).split(os.sep):
                 continue
             for name in files:
                 if not name.endswith(".py"):

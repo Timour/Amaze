@@ -10,13 +10,13 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))))
 
-import amaze                                            # noqa: E402
-from amaze import branding                              # noqa: E402
-from amaze.core import database                         # noqa: E402
-from amaze.core import material                         # noqa: E402
-from amaze.helpers import hostos                        # noqa: E402
-from amaze.prefs import prefs as prefs_mod              # noqa: E402
-from amaze.tests import test_support                    # noqa: E402
+import amaze
+from amaze import branding
+from amaze.core import database
+from amaze.core import material
+from amaze.helpers import hostos
+from amaze.prefs import prefs as prefs_mod
+from amaze.tests import test_support
 
 
 class TheTestLibraryDoorMakesAWholeLibrary(unittest.TestCase):

@@ -16,9 +16,9 @@ sys.path.insert(  # THREE dirnames up = scripts/python, the DEV tree - not the i
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-import hou                                                # noqa: E402
+import hou
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")   # BEFORE the app exists ▸p/first-app-picks-the-platform
-from PySide6 import QtWidgets                             # noqa: E402
+from PySide6 import QtWidgets
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 

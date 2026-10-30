@@ -11,7 +11,7 @@ import unittest
 from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-from PySide6 import QtCore, QtGui, QtWidgets  # noqa: E402
+from PySide6 import QtCore, QtGui, QtWidgets
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
@@ -21,7 +21,7 @@ sys.path.insert(
 
 from amaze.core import conversion  # noqa: E402
 from amaze.helpers import hostos  # noqa: E402
-from amaze.tests import test_support  # noqa: E402,F401
+from amaze.tests import test_support  # noqa: E402
 
 
 def write_radiance_hdr(path, width=256, height=128):

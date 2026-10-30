@@ -8,7 +8,7 @@ import unittest
 from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-from PySide6 import QtCore, QtGui, QtTest, QtWidgets  # noqa: E402
+from PySide6 import QtCore, QtGui, QtTest, QtWidgets
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
@@ -16,7 +16,7 @@ from amaze import amazetheme  # noqa: E402
 from amaze.core import category, file_library, locations  # noqa: E402
 from amaze.helpers import hostos, theme, ui_helpers  # noqa: E402
 from amaze.panel import delegates, sidebar  # noqa: E402
-from amaze.tests import test_support  # noqa: E402,F401 - arms the sandbox
+from amaze.tests import test_support  # noqa: E402 - arms the sandbox
 from amaze.tests.test_file_section import _Prefs, _pump_until  # noqa: E402
 
 COUNT = category.SIDEBAR_COUNT_ROLE

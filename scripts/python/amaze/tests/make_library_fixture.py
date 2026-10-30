@@ -10,10 +10,10 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze import branding                                 # noqa: E402
-from amaze.core import database                            # noqa: E402
-from amaze.render import nodes as nodes_mod                # noqa: E402
-from amaze.tests import make_file_fixtures as guard        # noqa: E402
+from amaze import branding
+from amaze.core import database
+from amaze.render import nodes as nodes_mod
+from amaze.tests import make_file_fixtures as guard
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "assets", "library")

@@ -12,7 +12,7 @@ sys.path.insert(
         os.path.dirname(os.path.abspath(__file__)))))
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")   # BEFORE the app exists ▸p/first-app-picks-the-platform
-from PySide6 import QtCore, QtGui, QtWidgets             # noqa: E402
+from PySide6 import QtCore, QtGui, QtWidgets
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
@@ -23,7 +23,7 @@ from amaze.core import keyed_store                       # noqa: E402
 from amaze.core import tile_icons                        # noqa: E402
 from amaze.panel import sections                         # noqa: E402
 from amaze.prefs import prefs                            # noqa: E402
-from amaze.tests import test_support                     # noqa: E402,F401
+from amaze.tests import test_support                     # noqa: E402
 
 SCHEMA = database.SCHEMA_VERSION    # the stamp a fixture carries so it is a CURRENT document rather than one the load path has to upgrade; read from the module and never typed, because a literal turns every fixture into a silent test of the migration at the next bump instead of the behaviour it names
 

@@ -9,7 +9,7 @@ from amaze.core import material
 
 from amaze.helpers import wording
 from amaze.render import nodes
-from amaze.render.material_conversion.report import ConversionReport    # noqa: F401  the one home
+from amaze.render.material_conversion.report import ConversionReport    # the one home
 
 
 REDSHIFT_CONTAINERS = ("redshift_vopnet", "rs_usd_material_builder")    # read, and written

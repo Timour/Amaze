@@ -6,7 +6,7 @@ import sys
 import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-from PySide6 import QtCore, QtWidgets  # noqa: E402
+from PySide6 import QtCore, QtWidgets
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
@@ -15,7 +15,7 @@ sys.path.insert(
         os.path.dirname(os.path.abspath(__file__)))))
 
 from amaze.core import grid_columns, grid_engine, multifilterproxy_model  # noqa: E402
-from amaze.tests import test_support  # noqa: E402,F401
+from amaze.tests import test_support  # noqa: E402
 
 DISPLAY = QtCore.Qt.ItemDataRole.DisplayRole
 NAME = grid_columns.KEYS.index("name")

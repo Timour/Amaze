@@ -10,7 +10,7 @@ import unittest
 from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-from PySide6 import QtGui, QtWidgets  # noqa: E402
+from PySide6 import QtGui, QtWidgets
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
@@ -931,7 +931,8 @@ class BothRedshiftTerminalsAreLookedFor(unittest.TestCase):
     def _sources(self):
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         for folder, _dirs, files in os.walk(root):
-            if "tests" in folder or "__pycache__" in folder:
+            segments = os.path.relpath(folder, root).split(os.sep)
+            if "tests" in segments or "__pycache__" in segments:
                 continue
             for name in files:
                 if name.endswith(".py"):
@@ -972,7 +973,8 @@ class ANodeRefusalIsCaughtAsHouError(unittest.TestCase):
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         offenders = []
         for folder, _dirs, files in os.walk(root):
-            if "tests" in folder or "__pycache__" in folder:
+            segments = os.path.relpath(folder, root).split(os.sep)
+            if "tests" in segments or "__pycache__" in segments:
                 continue
             for name in files:
                 if not name.endswith(".py"):
@@ -1017,7 +1019,8 @@ class BundledFilesAreFoundThroughOneLookup(unittest.TestCase):
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         offenders = []
         for folder, _dirs, files in os.walk(root):
-            if "tests" in folder or "__pycache__" in folder:
+            segments = os.path.relpath(folder, root).split(os.sep)
+            if "tests" in segments or "__pycache__" in segments:
                 continue
             for name in files:
                 if not name.endswith(".py"):
@@ -1049,7 +1052,8 @@ class BundledFilesAreFoundThroughOneLookup(unittest.TestCase):
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         offenders = []
         for folder, _dirs, files in os.walk(root):
-            if "tests" in folder or "__pycache__" in folder:
+            segments = os.path.relpath(folder, root).split(os.sep)
+            if "tests" in segments or "__pycache__" in segments:
                 continue
             for name in files:
                 if not name.endswith(".py"):
@@ -1124,7 +1128,8 @@ class MantraIsNotASupportedRenderer(unittest.TestCase):
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         offenders = []
         for folder, _dirs, files in os.walk(root):
-            if "tests" in folder or "__pycache__" in folder:
+            segments = os.path.relpath(folder, root).split(os.sep)
+            if "tests" in segments or "__pycache__" in segments:
                 continue
             for name in files:
                 if not name.endswith(".py"):

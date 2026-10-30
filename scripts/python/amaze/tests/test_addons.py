@@ -14,8 +14,8 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze.core import addons, matx_sources, packages, updater          # noqa: E402
-from amaze.tests import test_support                      # noqa: E402,F401
+from amaze.core import addons, matx_sources, packages, updater
+from amaze.tests import test_support
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__))))))

@@ -11,7 +11,7 @@ import unittest
 from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-from PySide6 import QtCore, QtGui, QtWidgets  # noqa: E402
+from PySide6 import QtCore, QtGui, QtWidgets
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
@@ -27,7 +27,7 @@ from amaze.core import cop_library, keyed_store, tile_icons  # noqa: E402
 from amaze.dialogs import icon_dialog  # noqa: E402
 from amaze.helpers import theme  # noqa: E402
 from amaze.panel import panel as panel_mod  # noqa: E402
-from amaze.tests import test_support  # noqa: E402,F401 - redirects the log
+from amaze.tests import test_support  # noqa: E402 - redirects the log
 
 
 def ink_box(image, background="#ef8878"):

@@ -17,7 +17,7 @@ sys.path.insert(
         os.path.dirname(os.path.abspath(__file__)))))
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-from PySide6 import QtWidgets                             # noqa: E402
+from PySide6 import QtWidgets
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
@@ -1962,7 +1962,7 @@ class TheRebuildDrillTest(unittest.TestCase):
             library_mod.__file__)))
         readers = []
         for folder, _dirs, files in os.walk(root):
-            if "tests" in folder.split(os.sep):
+            if "tests" in os.path.relpath(folder, root).split(os.sep):
                 continue
             for name in files:
                 if not name.endswith(".py") or name == "repair.py":

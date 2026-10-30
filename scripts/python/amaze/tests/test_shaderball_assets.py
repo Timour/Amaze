@@ -10,7 +10,7 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze.tests import test_support  # noqa: E402,F401
+from amaze.tests import test_support  # noqa: F401
 
 
 class ShaderBallAssetsTest(unittest.TestCase):

@@ -13,8 +13,8 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze.core import database                             # noqa: E402
-from amaze.tests import test_support                        # noqa: E402
+from amaze.core import database
+from amaze.tests import test_support
 
 
 class ConnectorResetDetachesNothingTest(unittest.TestCase):

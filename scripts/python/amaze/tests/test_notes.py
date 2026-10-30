@@ -10,11 +10,11 @@ import unittest
 from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-from PySide6 import QtCore, QtGui, QtWidgets  # noqa: E402
+from PySide6 import QtCore, QtGui, QtWidgets
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
-import hou  # noqa: E402,F401
+import hou  # noqa: E402
 
 sys.path.insert(
     0, os.path.dirname(os.path.dirname(
@@ -22,7 +22,7 @@ sys.path.insert(
 
 from amaze.panel import sections  # noqa: E402
 from amaze.core import keyed_store, notes  # noqa: E402
-from amaze.tests import test_support  # noqa: E402,F401 - redirects the log
+from amaze.tests import test_support  # noqa: E402 - redirects the log
 
 
 def _plus_menu(widget, label):

@@ -15,9 +15,9 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze import branding                                # noqa: E402
-from amaze.core import matx_sources, updater              # noqa: E402
-from amaze.tests import test_support                      # noqa: E402,F401
+from amaze import branding
+from amaze.core import matx_sources, updater
+from amaze.tests import test_support
 
 
 class _Response(io.BytesIO):
@@ -472,7 +472,6 @@ class TheAboutTabCanActuallyRunAnInstall(unittest.TestCase):
 
     def _dialog(self):
         from amaze.dialogs import prefs_dialog
-        from amaze.tests import test_support
 
         prefs = test_support.fixture_prefs(self)
         dialog = prefs_dialog.PrefsDialog(prefs, panel=None)
@@ -567,7 +566,6 @@ class TheAboutTabOffersTheUpdateInOnePlace(unittest.TestCase):
 
     def _dialog(self):
         from amaze.dialogs import prefs_dialog
-        from amaze.tests import test_support
 
         prefs = test_support.fixture_prefs(self)
         dialog = prefs_dialog.PrefsDialog(prefs, panel=None)

@@ -10,7 +10,7 @@ sys.path.insert(   # THREE dirnames up = scripts/python, holding the `amaze` pac
         os.path.dirname(os.path.abspath(__file__)))))
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")   # BEFORE the app exists ▸p/first-app-picks-the-platform
-from PySide6 import QtCore, QtGui, QtWidgets  # noqa: E402
+from PySide6 import QtCore, QtGui, QtWidgets
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
@@ -18,7 +18,7 @@ import hou  # noqa: E402,F401
 from amaze import amazetheme  # noqa: E402
 from amaze.core import renderers  # noqa: E402
 from amaze.panel import delegates  # noqa: E402
-from amaze.tests import test_support  # noqa: E402,F401 - redirects the debug log
+from amaze.tests import test_support  # noqa: E402 - redirects the debug log
 
 
 class _ExplodingModel(QtCore.QAbstractListModel):
@@ -846,7 +846,7 @@ class OnePickerForTheWholeAppTest(unittest.TestCase):
                        fromlist=["x"]).__file__)))
         offenders = []
         for folder, _dirs, files in os.walk(root):
-            parts = folder.split(os.sep)
+            parts = os.path.relpath(folder, root).split(os.sep)
             if "tests" in parts or "__pycache__" in parts:
                 continue
             for name in files:

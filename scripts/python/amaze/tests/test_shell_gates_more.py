@@ -5,9 +5,9 @@ import os
 import subprocess
 import unittest
 
-from amaze.tests import impact_map  # noqa: E402
+from amaze.tests import impact_map
 from amaze.tests import test_support  # noqa: F401 - arms the sandbox
-from amaze.tests.test_shell_gates import (  # noqa: E402
+from amaze.tests.test_shell_gates import (
     GateFixture,
     PUSH_END,
     PUSH_GREEN_MSG,

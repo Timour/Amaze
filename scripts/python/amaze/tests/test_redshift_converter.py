@@ -6,7 +6,7 @@ import sys
 import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-from PySide6 import QtWidgets  # noqa: E402
+from PySide6 import QtWidgets
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
@@ -20,7 +20,7 @@ from amaze.core import material  # noqa: E402
 from amaze.actions import materials as material_actions  # noqa: E402
 from amaze.core import material_files  # noqa: E402
 from amaze.render import nodes  # noqa: E402
-from amaze.tests import test_support  # noqa: E402,F401 - redirects the log
+from amaze.tests import test_support  # noqa: E402 - redirects the log
 
 
 SPEC = {    # distinctive values, so a default reappearing cannot pass as a copy

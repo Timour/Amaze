@@ -16,9 +16,9 @@ sys.path.insert(
         os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-import check_dead_cover                                   # noqa: E402
-import run_suite                                          # noqa: E402
-from amaze.tests import test_support                      # noqa: E402,F401
+import check_dead_cover
+import run_suite
+from amaze.tests import test_support                      # noqa: F401
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__))))))

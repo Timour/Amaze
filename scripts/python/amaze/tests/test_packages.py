@@ -10,11 +10,11 @@ import unittest
 import zipfile
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-from PySide6 import QtCore, QtWidgets  # noqa: E402
+from PySide6 import QtCore, QtWidgets
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
-import hou  # noqa: E402,F401
+import hou  # noqa: E402
 
 sys.path.insert(
     0, os.path.dirname(os.path.dirname(
@@ -1522,8 +1522,6 @@ class TexturePackingTest(unittest.TestCase):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
 
     def _material_with_texture(self, name):
-        import hou
-
         from amaze.tests import make_library_fixture
         outside = tempfile.mkdtemp(prefix="amaze_outside_")
         self.addCleanup(

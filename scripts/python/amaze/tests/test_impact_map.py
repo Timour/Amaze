@@ -16,8 +16,8 @@ sys.path.insert(
         os.path.dirname(os.path.abspath(__file__)))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-import impact_map                                          # noqa: E402
-from amaze.tests import test_support                      # noqa: E402,F401
+import impact_map
+from amaze.tests import test_support                      # noqa: F401
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__))))))

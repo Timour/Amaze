@@ -14,7 +14,7 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze.tests import test_support  # noqa: E402,F401 - redirects the log
+from amaze.tests import test_support  # noqa: F401 - redirects the log
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__))))))

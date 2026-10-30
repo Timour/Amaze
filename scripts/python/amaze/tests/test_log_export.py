@@ -9,9 +9,9 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze.core import debug  # noqa: E402
-from amaze.helpers import hostos  # noqa: E402
-from amaze.tests import test_support  # noqa: E402,F401 - redirects the log
+from amaze.core import debug
+from amaze.helpers import hostos
+from amaze.tests import test_support  # redirects the log
 
 
 class _Log:
@@ -93,7 +93,7 @@ class TestExportRefusesOutLoud(unittest.TestCase):
         self.assertIn("empty", str(caught.exception).lower())
 
     def test_no_destination_is_refused(self):
-        log = _Log(self)
+        _Log(self)
         with self.assertRaises(debug.ExportRefused) as caught:
             debug.export_log("")
         self.assertIn("destination", str(caught.exception).lower(),

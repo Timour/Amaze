@@ -6,7 +6,7 @@ import sys
 import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-from PySide6 import QtGui, QtWidgets  # noqa: E402
+from PySide6 import QtGui, QtWidgets
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
@@ -19,7 +19,7 @@ sys.path.insert(
 from amaze.actions import nodes as node_actions  # noqa: E402
 from amaze.core import category, cop_library  # noqa: E402
 from amaze.panel import delegates  # noqa: E402
-from amaze.tests import test_support  # noqa: E402,F401 - redirects the log
+from amaze.tests import test_support  # noqa: E402 - redirects the log
 
 
 class CategoryColorTest(unittest.TestCase):

@@ -10,14 +10,14 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from PySide6 import QtCore                               # noqa: E402
+from PySide6 import QtCore
 
-from amaze.core import code_library                      # noqa: E402
-from amaze.core import cop_library                       # noqa: E402
-from amaze.core import gradient_library                  # noqa: E402
-from amaze.core import library                           # noqa: E402
-from amaze.core import matx_library                      # noqa: E402
-from amaze.tests import test_support                     # noqa: E402,F401
+from amaze.core import code_library
+from amaze.core import cop_library
+from amaze.core import gradient_library
+from amaze.core import library
+from amaze.core import matx_library
+from amaze.tests import test_support                     # noqa: F401
 
 _USER = int(QtCore.Qt.ItemDataRole.UserRole)
 

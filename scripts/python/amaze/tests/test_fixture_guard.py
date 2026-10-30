@@ -12,8 +12,8 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze.tests import make_file_fixtures as gen  # noqa: E402
-from amaze.tests import test_support  # noqa: E402,F401 - redirects the log
+from amaze.tests import make_file_fixtures as gen
+from amaze.tests import test_support  # redirects the log
 
 
 class GuardCase(unittest.TestCase):

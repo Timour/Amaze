@@ -14,7 +14,7 @@ import unittest
 from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-from PySide6 import QtCore, QtGui, QtWidgets  # noqa: E402
+from PySide6 import QtCore, QtGui, QtWidgets
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
@@ -25,7 +25,7 @@ sys.path.insert(
         os.path.dirname(os.path.abspath(__file__)))))
 
 from amaze.core import conversion, thumbnails  # noqa: E402
-from amaze.tests import test_support  # noqa: E402,F401 - import redirects the debug log
+from amaze.tests import test_support  # noqa: E402 - import redirects the debug log
 
 
 def _sample_images(count=40):

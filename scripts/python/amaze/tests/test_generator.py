@@ -13,7 +13,7 @@ import tempfile
 import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-from PySide6 import QtWidgets  # noqa: E402
+from PySide6 import QtWidgets
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
@@ -25,7 +25,7 @@ sys.path.insert(    # THREE dirnames land on python/, where amaze imports from t
 
 from amaze.core import material, matx_sources  # noqa: E402
 from amaze.render import generator, nodes  # noqa: E402
-from amaze.tests import test_support  # noqa: E402,F401 - import redirects the debug log
+from amaze.tests import test_support  # noqa: E402 - import redirects the debug log
 
 SAMPLES = 400    # enough that a 1-in-100 rule (emission) is exercised
 

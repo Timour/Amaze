@@ -7,7 +7,7 @@ import re
 import sys
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-from PySide6 import QtWidgets  # noqa: E402
+from PySide6 import QtWidgets
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
@@ -19,6 +19,7 @@ sys.path.insert(
 
 from amaze.core import database, material as matmod  # noqa: E402
 from amaze.render import material_converter, nodes  # noqa: E402
+from amaze.tests.conversion_report import _Prefs  # noqa: E402
 
 SPEC_PARMS = (
     "base", "base_color", "metalness", "specular", "specular_roughness",
@@ -26,20 +27,6 @@ SPEC_PARMS = (
     "emission", "emission_color", "sheen", "sheen_roughness",
     "subsurface", "subsurface_color",
 )
-
-
-class _Prefs:
-    def __init__(self, library_dir):
-        self.dir = library_dir
-        self.asset_dir = "mat/"
-        self.img_dir = "img/"
-        self.ext = ".mat"
-        self.img_ext = ".png"
-        self.render_on_import = 0
-        self.rendersize = 256
-        self.thumbsize = 128
-        self.rendersamples = 8
-        self.karma_rendersamples = 9
 
 
 def _read_shader(shader) -> dict:
