@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.20.0
+
+- Clean Up sets aside a registered folder that is not on this computer and keeps its comments, tile icons and favorites; they are back when the folder is added again. Removing a folder from the sidebar still clears them.
+- Repair's Put a Saved Copy Back takes each material's own newer record over the copy's, and names the materials the copy lists whose files are gone.
+- A library whose list cannot be opened on this computer, or holds no material rows, stays closed with the reason, and Amaze opens without it.
+- A setting changed on another computer, or a library switched in another pane, is kept when this one saves.
+- Moving a file keeps its comment, tile icon and favorite in one write. A part file left by an interrupted move across drives no longer blocks later moves of that name, and a move between two mounts of one disk copies instead of failing.
+- Switching a material's version replaces every file of the version, and switching back and forth adds no extra versions.
+- Locate on a folder that contains another registered folder moves both.
+- A category name with a comma in it stays one category in Clean Up, Customize and the Colors list.
+- In the sidebar, the highlighted row and what the grid shows agree after every path in every section: a menu closed without a pick, a reorder taken back, a press dragged onto another row, a folder still unfolding, a Clean Up or a Locate.
+- A file move or an online refresh that lands while a right-click menu is open, or while a tile is being dragged, no longer acts on another file or crashes Houdini.
+- File: Load on a scene file in the right-click menu works again.
+- A comment picture whose file has not arrived yet stays in the comment; before, the next edit turned it into text.
+- Gallery Import stopped with Esc keeps the materials it imported, with their categories, and reports the real counts. Its thumbnails render in one batch afterwards when Render Thumbs on Import is on.
+- Convert to and the online import render their new thumbnails in one husk per renderer instead of one per material.
+- Update Render on a converted Octane material in a Houdini without Octane says so and renders the rest; a Redshift conversion is refused before it starts when Redshift's builder is missing.
+- Dropping a code snippet on a node Houdini will not let you edit says so instead of raising an error.
+- A Node asset whose file holds no node is refused, and nothing is left in the network.
+- Saving a Karma material whose nodes are wired through a network dot keeps the wire, in the library and in its thumbnail.
+- Swapping a material on a prim keeps a material its library entry still assigns to geometry.
+- Convert to, online imports and thumbnail renders leave nothing on the undo stack.
+- Online: a hosted picture that fails to download shows the material's own picture instead of a blank tile for the session; a damaged cached RGL measurement is fetched again.
+- Opening a folder of many images no longer freezes Houdini while their thumbnails are made: a folder of 1,000 images holds it 67 ms instead of 5 s.
+- A thumbnail re-render shows the new picture, never an older one that was still loading.
+- A file whose reading stalls costs one converter attempt instead of two, and the log names the file; an EXR too large to convert is declined before any attempt.
+- An update whose add-ons cannot be carried over is refused and leaves the installed Amaze as it is, instead of losing the add-ons at the next update.
+- Thumbnail husks leave no folders behind when Houdini quits, and a frame that produced no picture is logged.
+- The panel opens about 20 ms faster at 1,500 materials.
+
 ## 1.19.4
 
 - The test suite runs on the lowest Houdini build installed of the newest major, and a newer build beside it runs only when asked for; nothing changes in the app.
