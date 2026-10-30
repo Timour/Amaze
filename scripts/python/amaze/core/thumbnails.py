@@ -1,27 +1,15 @@
 """The ONE thumbnail system every section flows through: keyed (never row-numbered) images in one byte-capped LRU with absent/pending/done/missing states, missing sticky until `discard()`; the providers (FILE, CONVERT ▸o/conversion, RENDER, PAINT) are the only per-source code - this engine keeps the cache and the loaders, it is not the decoder."""
 
-import atexit
 import functools
 import os
 from collections import OrderedDict
 
 from PySide6 import QtCore, QtGui
 
-from amaze.core import debug
+from amaze.core import debug, workers
 from amaze.helpers import hostos
 
 CACHE_PNG_QUALITY = 80    # the zlib level only - PNG is lossless, so the picture is the same at any
-
-
-_unstoppable: list = globals().get("_unstoppable", [])    # threads that refused to stop, parked FOREVER and carried across reloads: the parked reference must exist at thread COMPLETION, and an isRunning()-based prune re-opens the dealloc-inside-run window - they finish or the process ends ▸r/model-contracts ▸r/module-reload
-
-
-def _thread_finished(thread) -> bool:
-    """isFinished(), treating a deleted C++ side as finished."""
-    try:
-        return thread.isFinished()
-    except RuntimeError:
-        return True
 
 
 class _FileLoader(QtCore.QThread):
@@ -260,7 +248,7 @@ class ThumbnailEngine(QtCore.QObject):
         parallel = self._convert_parallel
         live = sum(    # a LIVE cap, not per-dispatch: counting nothing let a rerender during a running batch double the subprocesses, 8 loaders against a preference of 4
             1 for t in self._threads
-            if isinstance(t, _ConvertLoader) and not _thread_finished(t)
+            if isinstance(t, _ConvertLoader) and not workers.finished(t)
         )
         free = parallel - live
         if free <= 0:
@@ -295,7 +283,7 @@ class ThumbnailEngine(QtCore.QObject):
             return
         live = sum(
             1 for t in self._threads
-            if isinstance(t, _FileLoader) and not _thread_finished(t)
+            if isinstance(t, _FileLoader) and not workers.finished(t)
         )
         if live >= self.FILE_LOADER_LIMIT:
             self._file_queue = items + self._file_queue    # back on the queue: it drains into free slots instead of spawning a thread per turn
@@ -341,29 +329,7 @@ class ThumbnailEngine(QtCore.QObject):
 
     def shutdown(self) -> None:
         """Stop every worker and WAIT for it - a QThread freed while run() executes takes the process down (▸r/model-contracts), which is what a panel reopen's reload used to do. Safe to call twice, and safe when nothing is running."""
-        for thread in list(self._threads):    # cancel EVERYTHING first, then wait - one thread at a time let the other seven keep working through the first one's timeout, ~28s per reopen
-            try:
-                cancel = getattr(thread, "cancel", None)
-                if cancel is not None:
-                    cancel()
-                thread.requestInterruption()
-            except RuntimeError:
-                pass
-        unstopped = []
-        for thread in list(self._threads):
-            try:
-                if not thread.isRunning():
-                    continue
-                if not thread.wait(3000):    # bounded: a stuck iconvert must not hold up a reopen
-                    thread.terminate()
-                    if not thread.wait(500):
-                        unstopped.append(thread)
-            except RuntimeError:
-                pass          # already gone - nothing left to wait for
-        if unstopped:    # a thread that would NOT stop keeps its Python reference - parked, it dies with the process; cleared, the collector frees a QThread mid-run ▸r/model-contracts
-            _unstoppable.extend(unstopped)
-            debug.event("thumbnails", "threads would not stop - parked",
-                        count=len(unstopped))
+        workers.stop(self._threads, "thumbnails")
         self._threads = []
         self._lru.clear()    # the cache dies with the engine - a reopen replaces the singleton, and holding the old images pinned a full budget per reopen
         self._bytes = 0
@@ -378,16 +344,8 @@ class ThumbnailEngine(QtCore.QObject):
         """A finished loader's own unanswered keys are asked for again; a sibling's are left alone."""
         if finisher is None:
             finisher = self.sender()    # fallback for a direct call; the connect sites pass the loader explicitly
-
-        def _gone(thread):
-            try:
-                thread.isFinished()
-                return False
-            except RuntimeError:
-                return True   # C++ side deleted - it can never emit
-
         self._threads = [t for t in self._threads    # drops the finisher and the C++-deleted; a finished SIBLING is deliberately kept until its own signal, since Qt may still hold its queued deliveries
-                         if t is not finisher and not _gone(t)]
+                         if t is not finisher and not workers.gone(t)]
         if finisher is None:
             return
         try:
@@ -408,22 +366,7 @@ class ThumbnailEngine(QtCore.QObject):
         QtCore.QTimer.singleShot(0, _forget)    # one turn later: its own queued deliveries land first ▸p/prune-outran-deliveries
 
 
-_previous_engine = globals().get("engine")    # the reopen HANDOVER: reload re-runs this body, and without stopping the old engine first the collector freed a QThread mid-run ▸r/module-reload ▸r/model-contracts
-if _previous_engine is not None:
-    try:
-        _previous_engine.shutdown()
-    except Exception:                                    # noqa: BLE001
-        pass
-    try:
-        atexit.unregister(_previous_engine.shutdown)    # the old engine's hooks go too, or every reopen adds another dead engine to atexit and aboutToQuit for the session
-    except Exception:                                    # noqa: BLE001
-        pass
-    try:
-        _prev_app = QtCore.QCoreApplication.instance()
-        if _prev_app is not None:
-            _prev_app.aboutToQuit.disconnect(_previous_engine.shutdown)
-    except (RuntimeError, TypeError):
-        pass                     # was never connected, or already gone
+_previous_engine = globals().get("engine")    # its relays are let go below; install() stops it
 
 class _EngineSignals(QtCore.QObject):
     """Reload-stable engine signals: models connect here; a method here would freeze. ▸r/module-reload"""
@@ -446,13 +389,7 @@ if _previous_engine is not None:
         except (AttributeError, RuntimeError, TypeError):    # an older engine may lack the signal
             pass
 
-engine = ThumbnailEngine()
+engine = workers.install(__name__, ThumbnailEngine, QtCore.QCoreApplication.instance())
 engine.ready.connect(signals.ready)
 engine.convert_attempted.connect(signals.convert_attempted)
 engine.converted.connect(signals.converted)
-
-_app_instance = QtCore.QCoreApplication.instance()
-if _app_instance is not None:
-    _app_instance.aboutToQuit.connect(engine.shutdown)    # quitting Houdini mid-load is the same hazard by another route
-
-atexit.register(engine.shutdown)    # once more at interpreter teardown: aboutToQuit never fires in a headless script, where PySide tears the QApplication down from atexit and destroys any live QThread mid-run

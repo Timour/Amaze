@@ -1,12 +1,14 @@
 """Files moved between folders on disk, and what Amaze keeps about each. ▸r/cross-volume-move"""
 
 import errno
+import importlib
 import os
 import shutil
 import stat
 import sys
 import tempfile
 import threading
+import time
 import types
 import unittest
 from unittest import mock
@@ -19,6 +21,7 @@ _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 from amaze import messages  # noqa: E402
 from amaze.core import captures, debug, file_library, file_moves  # noqa: E402
 from amaze.core import keyed_store, notes, texture_library, thumbnails, tile_icons  # noqa: E402
+from amaze.core import workers  # noqa: E402
 from amaze.core import locations as locations_mod  # noqa: E402
 from amaze.helpers import hostos  # noqa: E402
 from amaze.panel import sidebar  # noqa: E402
@@ -241,6 +244,71 @@ class AFileCopiesAcrossDrivesTest(_Folders):
         said = [record for record in log.records("move")
                 if str(record.get("data", {}).get("file", "")).endswith(file_moves.PART)]
         self.assertTrue(said, "a part the copy could not remove was left in silence")
+
+
+def _held(entered, release):
+    """A `move` that ignores its stop and cannot be terminated, as a copy on a dead share."""
+    def move(pairs, tick=None, stopped=lambda: False):
+        QtCore.QThread.setTerminationEnabled(False)    # so terminate() cannot end it either
+        entered.set()
+        release.wait(30)    # never asks stopped()
+        return file_moves.Result([], [], [])
+    return move
+
+
+def _let_go(worker, release, ended):
+    """Free a held move, and unpark it only once its `finished` has landed here."""
+    release.set()
+    if not _pump_until(lambda: bool(ended), timeout=30):
+        raise AssertionError("the held move never ended")
+    if worker in workers._unstoppable:
+        workers._unstoppable.remove(worker)
+
+
+def _started(testcase, engine, landed=lambda result: None):
+    """A held move running on `engine`, to be freed at cleanup; (its worker, its release)."""
+    entered, release, ended = threading.Event(), threading.Event(), []
+    patcher = mock.patch.object(file_moves, "move", _held(entered, release))
+    patcher.start()
+    testcase.addCleanup(patcher.stop)
+    testcase.assertTrue(engine.start([("/nowhere/a.exr", "/nowhere/b/a.exr")], None,
+                                     lambda *tick: None, landed))
+    worker = engine._worker
+    worker.finished.connect(lambda: ended.append(True))
+    testcase.addCleanup(_let_go, worker, release, ended)
+    testcase.assertTrue(entered.wait(10), "premise: the move never started")
+    return worker, release
+
+
+class AMoveThatWillNotStopIsParkedTest(unittest.TestCase):
+    """A copy the OS will not cut short outlives the quit's waits; let go, it aborts as it ends."""
+
+    def test_the_quit_parks_a_move_that_ignores_its_stop(self):
+        engine = file_moves._MoveEngine()
+        worker, _release = _started(self, engine)
+        started = time.monotonic()
+        engine.shutdown()
+        elapsed = time.monotonic() - started
+        self.assertTrue(worker.isRunning(), "premise: the move stopped, so nothing was parked")
+        self.assertIn(worker, workers._unstoppable,
+                      "a move still running was let go - it aborts the process as it ends")
+        bound = (workers.WAIT_MS + workers.TERMINATE_MS) / 1000.0 + 1.0
+        self.assertLess(elapsed, bound, "the quit waited %.1fs on one move" % elapsed)
+
+
+class AReloadLeavesAMoveUnderWayAloneTest(unittest.TestCase):
+    """A reload keeps the engine a move runs on, so the move lands; an idle engine is replaced."""
+
+    def test_a_busy_mover_outlives_a_reload_and_an_idle_one_does_not(self):
+        before, landed = file_moves.mover, []
+        _worker, release = _started(self, before, landed.append)
+        importlib.reload(file_moves)
+        self.assertIs(before, file_moves.mover, "a reload replaced the engine running a move")
+        release.set()
+        self.assertTrue(_pump_until(lambda: bool(landed) and not before.busy()),
+                        "the move under way never landed")
+        importlib.reload(file_moves)
+        self.assertIsNot(before, file_moves.mover, "a reload kept an idle engine")
 
 
 class WhatAmazeKeepsFollowsTheFileTest(unittest.TestCase):

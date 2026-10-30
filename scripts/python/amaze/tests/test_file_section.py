@@ -2321,7 +2321,7 @@ class CountsWalkOffTheGuiThreadTest(unittest.TestCase):
 
     def test_shutdown_does_not_wait_out_a_walk(self):
         """The stop flag is read between folders, so quitting mid-walk returns at once."""
-        from amaze.core import folders as folders_mod
+        from amaze.core import folders as folders_mod, workers
         root = tempfile.mkdtemp(prefix="amaze_walk_deep_")
         self.addCleanup(shutil.rmtree, root, ignore_errors=True)
         for i in range(40):
@@ -2352,7 +2352,7 @@ class CountsWalkOffTheGuiThreadTest(unittest.TestCase):
         self.assertLess(elapsed, 1.0, "shutdown waited %.2fs on a walk" % elapsed)
         self.assertFalse(any(t.isRunning() for t in running),
                          "a walk outlived the shutdown")
-        self.assertEqual([], folders_mod._unstoppable,
+        self.assertEqual([], [t for t in running if t in workers._unstoppable],
                          "a walk had to be parked, so terminate() was reached")
 
     def test_a_shutdown_starts_none_of_the_queued_walks(self):

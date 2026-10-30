@@ -11,7 +11,7 @@ import hashlib
 
 from PySide6 import QtCore, QtGui
 
-from amaze.core import debug, matx_sources, renderers, thumbnails
+from amaze.core import debug, matx_sources, renderers, thumbnails, workers
 from amaze.core import grid_engine
 
 PREVIEW_DIR_NAME = "matx_previews"    # a NAME only - where it lives resolves per call in preview_cache(), like CATALOGUE_NAME below
@@ -74,6 +74,8 @@ class _CatalogueWorker(QtCore.QThread):
         records, errors = [], []
         self.progressed.emit(0, len(self._sources), self._generation)
         for listed, src in enumerate(self._sources, 1):
+            if self.isInterruptionRequested():
+                return    # a quit: no `done`, or a listing cut short is cached as the whole
             try:
                 src.remember([r for r in self._previous if r.source == src.name])
             except Exception as exc:                    # noqa: BLE001
@@ -109,6 +111,8 @@ class _PreviewWorker(QtCore.QThread):
 
     def run(self):
         for key, fetch, path in self._jobs:
+            if self.isInterruptionRequested():
+                return    # a quit: the pictures not yet fetched stay unfetched
             try:
                 if not os.path.exists(path):
                     if callable(fetch):    # an Amaze tile's thumbnail is one ranged member read, not a URL
@@ -349,16 +353,7 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
 
     def shutdown(self) -> None:
         """Stop every worker and WAIT for it - called on application quit, safe to call twice or when nothing runs."""
-        for worker in list(self._workers):
-            try:
-                if not worker.isRunning():
-                    continue
-                worker.requestInterruption()
-                if not worker.wait(3000):    # bounded: a stuck socket must not hold up the quit
-                    worker.terminate()
-                    worker.wait(500)
-            except RuntimeError:
-                pass            # already destroyed by Qt - nothing to do
+        workers.stop(self._workers, "online", cancel=False)    # its workers read the interruption alone
         self._workers = []
         self._loading = False
 

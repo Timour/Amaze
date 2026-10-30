@@ -1,6 +1,5 @@
 """Files moved between folders on disk, never over a name already taken. ▸r/cross-volume-move"""
 
-import atexit
 import collections
 import errno
 import os
@@ -10,7 +9,7 @@ import time
 from PySide6 import QtCore
 
 from amaze import messages
-from amaze.core import captures, debug, locations
+from amaze.core import captures, debug, locations, workers
 from amaze.helpers import hostos
 
 Result = collections.namedtuple("Result", "moved skipped failed")    # pairs, pairs, (source, why)
@@ -200,13 +199,13 @@ class _MoveWorker(QtCore.QThread):
     def __init__(self, pairs) -> None:
         super().__init__()
         self.pairs = list(pairs)
-        self.canceled = False
+        self._canceled = False
 
     def cancel(self) -> None:
-        self.canceled = True
+        self._canceled = True
 
     def _stopped(self) -> bool:
-        return self.canceled or self.isInterruptionRequested()
+        return self._canceled or self.isInterruptionRequested()
 
     def run(self) -> None:
         total = sum(_size(source) for source, dest in self.pairs
@@ -269,34 +268,10 @@ class _MoveEngine(QtCore.QObject):
 
     def shutdown(self) -> None:
         """Stop the move, THEN wait; safe twice and with nothing running."""
-        worker = self._worker
-        if worker is None:
-            return
-        try:
-            worker.cancel()
-            worker.requestInterruption()
-            if worker.isRunning() and not worker.wait(3000):    # bounded, as the counts' is
-                worker.terminate()
-                worker.wait(500)
-        except RuntimeError:
-            pass
+        if self._worker is not None:
+            workers.stop([self._worker], "move")    # one that will not stop is parked, never dropped
         self._worker, self._job = None, None
 
 
-_previous_mover = globals().get("mover")    # a reload re-runs this body ▸r/module-reload
-if _previous_mover is not None and _previous_mover.busy():
-    mover = _previous_mover    # a move under way finishes on the engine that started it
-else:
-    if _previous_mover is not None:
-        try:
-            atexit.unregister(_previous_mover.shutdown)
-            _prev_app = QtCore.QCoreApplication.instance()
-            if _prev_app is not None:
-                _prev_app.aboutToQuit.disconnect(_previous_mover.shutdown)
-        except (RuntimeError, TypeError):
-            pass                 # never connected, or already gone
-    mover = _MoveEngine()
-    _app_instance = QtCore.QCoreApplication.instance()
-    if _app_instance is not None:
-        _app_instance.aboutToQuit.connect(mover.shutdown)    # quitting Houdini mid-copy
-    atexit.register(mover.shutdown)    # headless, aboutToQuit never fires ▸r/model-contracts
+mover = workers.install(__name__, _MoveEngine, QtCore.QCoreApplication.instance(),
+                        keep=lambda old: old.busy())    # a move under way ends on the engine it began on

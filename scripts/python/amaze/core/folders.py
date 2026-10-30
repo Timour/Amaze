@@ -1,17 +1,13 @@
 """Locations under All, each unfolding to its subfolders, read on a worker. ▸p/folder-sidebar
 """
 
-import atexit
 import functools
 import os
 
 from PySide6 import QtCore
 
-from amaze.core import category, debug
+from amaze.core import category, debug, workers
 from amaze.helpers import hostos
-
-
-_unstoppable: list = globals().get("_unstoppable", [])    # walks that would not stop ▸r/model-contracts
 
 
 def walk_following_links(root: str):
@@ -85,15 +81,6 @@ def scan_folder(path: str, recursive: bool, matches, stopped=lambda: False):
     return count, sorted(subfolders, key=str.lower)
 
 
-def _gone(thread) -> bool:
-    """A thread whose C++ side is deleted: it can never emit again."""
-    try:
-        thread.isFinished()
-        return False
-    except RuntimeError:
-        return True
-
-
 class _CountWorker(QtCore.QThread):
     """Reads ONE folder off the GUI thread, by the rule the GUI thread resolved."""
 
@@ -103,13 +90,13 @@ class _CountWorker(QtCore.QThread):
         super().__init__()
         self.path, self.token = path, token
         self._recursive, self._matches = recursive, matches
-        self.canceled = False    # the stop flag, the thumbnail loaders' contract; kept once it ends
+        self._canceled = False    # the stop flag workers.stop() sets, as every engine's worker spells it
 
     def cancel(self) -> None:
-        self.canceled = True
+        self._canceled = True
 
     def _stopped(self) -> bool:
-        return self.canceled or self.isInterruptionRequested()
+        return self._canceled or self.isInterruptionRequested()
 
     def run(self) -> None:
         try:
@@ -141,30 +128,12 @@ class _CountEngine(QtCore.QObject):
 
     def _finished(self, worker, ended) -> None:
         self._threads = [t for t in self._threads
-                         if t is not worker and not _gone(t)]
+                         if t is not worker and not workers.gone(t)]
         ended(worker)
 
     def shutdown(self) -> None:
         """Stop every walk, THEN wait for each; safe twice and with nothing running."""
-        for thread in list(self._threads):
-            try:
-                thread.cancel()
-                thread.requestInterruption()
-            except RuntimeError:
-                pass
-        unstopped = []
-        for thread in list(self._threads):
-            try:
-                if thread.isRunning() and not thread.wait(3000):    # bounded, as thumbnails' is
-                    thread.terminate()
-                    if not thread.wait(500):
-                        unstopped.append(thread)
-            except RuntimeError:
-                pass
-        if unstopped:    # parked, not dropped: freed mid-run it takes the process down
-            _unstoppable.extend(unstopped)
-            debug.event("folders", "count walks would not stop - parked",
-                        count=len(unstopped))
+        workers.stop(self._threads, "folders")
         self._threads = []
 
 
@@ -427,7 +396,7 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
         self._live = max(0, self._live - 1)
         if worker.path in self._walking and self._walking[worker.path] == worker.token:
             self._walking.pop(worker.path)
-        if worker.canceled:    # a shutdown: start nothing; the next paint asks again
+        if worker._canceled:    # a shutdown: start nothing; the next paint asks again
             for path in self._queued:
                 self._walking.pop(path, None)
             self._queued = []
@@ -726,27 +695,4 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
         return rewritten
 
 
-_previous_counter = globals().get("counter")    # a reload re-runs this body: stop the old walks first ▸r/module-reload
-if _previous_counter is not None:
-    try:
-        _previous_counter.shutdown()
-    except Exception:                                    # noqa: BLE001
-        pass
-    try:
-        atexit.unregister(_previous_counter.shutdown)
-    except Exception:                                    # noqa: BLE001
-        pass
-    try:
-        _prev_app = QtCore.QCoreApplication.instance()
-        if _prev_app is not None:
-            _prev_app.aboutToQuit.disconnect(_previous_counter.shutdown)
-    except (RuntimeError, TypeError):
-        pass                     # never connected, or already gone
-
-counter = _CountEngine()
-
-_app_instance = QtCore.QCoreApplication.instance()
-if _app_instance is not None:
-    _app_instance.aboutToQuit.connect(counter.shutdown)    # quitting Houdini mid-walk
-
-atexit.register(counter.shutdown)    # headless, aboutToQuit never fires ▸r/model-contracts
+counter = workers.install(__name__, _CountEngine, QtCore.QCoreApplication.instance())

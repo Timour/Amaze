@@ -76,6 +76,7 @@ _reload(wording)    # before library, nodes and sections, which name things thro
 _reload(debug)
 _reload_loaded("amaze.core.dragengine")
 _reload_loaded("amaze.core.lop_assign")
+_reload_loaded("amaze.core.workers")    # before the engines that stop their threads through it
 _reload(thumbnails)
 _reload(database)
 _reload_loaded("amaze.core.library_policy")    # before library, which gates overwriting on it

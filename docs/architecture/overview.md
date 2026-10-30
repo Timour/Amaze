@@ -1146,6 +1146,9 @@ render/cop_nodes.py       the Node section's Houdini knowledge: which context
                           a network holds, which container to create, and
                           where saved nodes load inside a wrapper HDA
 core/debug.py             DEBUG ENGINE
+core/workers.py           how every engine stops its QThreads (one shared
+                          window, then terminate, then parked for good) and
+                          hands itself over on a reload; base layer
 core/grid_engine.py       GRID ENGINE (every grid model's cells and row order)
 core/library.py           Library Model (Materials) + base for Cop/Code
 core/model_registry.py    the ONE source-model set per library; panels are views

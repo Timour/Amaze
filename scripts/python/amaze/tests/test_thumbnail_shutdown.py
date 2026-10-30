@@ -11,6 +11,7 @@ import sys
 import tempfile
 import time
 import unittest
+import warnings
 from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -24,7 +25,7 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze.core import conversion, thumbnails  # noqa: E402
+from amaze.core import conversion, thumbnails, workers  # noqa: E402
 from amaze.tests import test_support  # noqa: E402 - import redirects the debug log
 
 
@@ -408,9 +409,8 @@ class TestConvertCancellation(unittest.TestCase):
             "shutdown waited out the full wait(3000) - the cancelled "
             "callback is not reaching _run_process, so cancel() cannot "
             "interrupt a running iconvert (measured 3.01s at HEAD)")
-        self.assertEqual(
-            [], thumbnails._unstoppable,
-            "a worker had to be parked, so terminate() was reached")
+        self.assertNotIn(loader, workers._unstoppable,
+                         "a worker had to be parked, so terminate() was reached")
 
     @unittest.skipUnless(sys.platform != "win32",
                          "the probe uses a bash stub and pgrep")
@@ -447,27 +447,110 @@ class TestConvertCancellation(unittest.TestCase):
 
 
 class TestParkedThreadsSurviveReload(unittest.TestCase):
-    """`_unstoppable` holds the last reference to threads that refused to stop, so a plain `= []` on reload hands them to the collector. The crash is DEFERRED to when each thread COMPLETES, which is why an empty parking lot reads as harmless."""
+    """The lot holds the last reference to a thread that would not stop; emptied, it aborts later."""
 
     def test_a_reload_keeps_the_parked_threads(self):
         marker = object()
-        thumbnails._unstoppable.append(marker)
-        before = thumbnails._unstoppable
-        self.addCleanup(
-            lambda: marker in thumbnails._unstoppable
-            and thumbnails._unstoppable.remove(marker))
+        lot, installed = workers._unstoppable, workers._installed
+        lot.append(marker)
         try:
-            importlib.reload(thumbnails)
+            importlib.reload(workers)
             self.assertIs(
-                before, thumbnails._unstoppable,
+                lot, workers._unstoppable,
                 "the reload replaced the parking lot - every thread parked "
                 "by an earlier panel open just lost its last reference")
-            self.assertIn(
-                marker, thumbnails._unstoppable,
-                "a parked thread did not survive a panel reopen")
+            self.assertIn(marker, workers._unstoppable,
+                          "a parked thread did not survive a panel reopen")
+            self.assertIs(installed, workers._installed,
+                          "the reload forgot the engines, so the next handover stops none")
         finally:
-            if marker in thumbnails._unstoppable:
-                thumbnails._unstoppable.remove(marker)
+            if marker in workers._unstoppable:
+                workers._unstoppable.remove(marker)
+
+
+class AThreadThatEndsByItselfIsNotTerminated(unittest.TestCase):
+    """terminate() on an ended thread cancels a pthread id that may be another thread's now."""
+
+    class _Ending:
+        def __init__(self):
+            self.running, self.terminated = True, False
+
+        def cancel(self):
+            pass
+
+        def requestInterruption(self):
+            pass
+
+        def isRunning(self):
+            return self.running
+
+        def wait(self, ms):
+            self.running = False    # it ends just as its window closes
+            return False
+
+        def terminate(self):
+            self.terminated = True
+
+    def test_a_thread_ended_since_its_wait_is_left_alone(self):
+        thread = self._Ending()
+        workers.stop([thread], "test")
+        self.assertFalse(thread.terminated, "terminate() reached a thread that had already ended")
+        self.assertNotIn(thread, workers._unstoppable, "an ended thread was parked")
+
+
+class OneHandoverForEveryEngine(unittest.TestCase):
+    """A reload makes a new engine and stops the old one, whose quit hooks move to the new."""
+
+    class _Engine:
+        def __init__(self):
+            self.stops, self.busy = 0, False
+
+        def shutdown(self):
+            self.stops += 1
+
+    def setUp(self):
+        self.hooked, self.unhooked = [], []
+        self.addCleanup(self._forget)
+
+    def _install(self, keep=None):
+        with mock.patch.object(workers.atexit, "register", self.hooked.append), \
+                mock.patch.object(workers.atexit, "unregister", self.unhooked.append):
+            return workers.install("test-handover", self._Engine, _app, keep=keep)
+
+    def _forget(self):
+        engine = workers._installed.pop("test-handover", None)
+        if engine is not None:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")    # disconnect() warns for a slot never connected
+                _app.aboutToQuit.disconnect(engine.shutdown)
+
+    def test_the_old_engine_stops_and_its_hooks_move_to_the_new(self):
+        first = self._install()
+        second = self._install()
+        self.assertIsNot(first, second, "a reload kept the old engine")
+        self.assertEqual((1, 0), (first.stops, second.stops), "the old engine was not stopped once")
+        self.assertEqual([first.shutdown, second.shutdown], self.hooked)
+        self.assertEqual([first.shutdown], self.unhooked, "the old engine stayed in atexit")
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            self.assertFalse(_app.aboutToQuit.disconnect(first.shutdown),
+                             "the old engine still rides aboutToQuit")
+        self.assertTrue(_app.aboutToQuit.disconnect(second.shutdown),
+                        "the new engine does not ride aboutToQuit")
+
+    def test_a_kept_engine_carries_on_untouched(self):
+        first = self._install()
+        first.busy = True
+        self.assertIs(first, self._install(keep=lambda old: old.busy), "a busy engine was replaced")
+        self.assertEqual(0, first.stops, "a kept engine was stopped")
+        self.assertEqual([], self.unhooked, "a kept engine lost its quit hooks")
+
+    def test_each_engine_module_runs_the_one_handover(self):
+        from amaze.core import file_moves, folders
+        for module, name in ((thumbnails, "engine"), (folders, "counter"), (file_moves, "mover")):
+            with self.subTest(module.__name__):
+                self.assertIs(getattr(module, name), workers._installed.get(module.__name__),
+                              "this engine was made outside workers.install")
 
 
 class TestDeliveriesSurviveAReload(unittest.TestCase):

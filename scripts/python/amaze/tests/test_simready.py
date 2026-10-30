@@ -4,10 +4,13 @@ import io
 import os
 import re
 import shutil
+import socket
 import struct
 import sys
 import tempfile
+import threading
 import time
+import types
 import unittest
 import urllib.error
 import zipfile
@@ -26,6 +29,7 @@ sys.path.insert(
         os.path.dirname(os.path.abspath(__file__)))))
 
 from amaze.tests import test_support  # noqa: E402
+from amaze.tests.test_file_section import _pump_until  # noqa: E402
 from amaze.tests.test_packages import _ranged_server, _Served  # noqa: E402
 
 FIXTURES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "simready")
@@ -1025,6 +1029,118 @@ class AListingPrunesThePreviewCache(unittest.TestCase):
     def test_a_partial_listing_removes_nothing(self):
         self.assertEqual(set(self.files), self._land(["PolyHaven: URLError: offline"]),
                          "a listing missing a source pruned the cache")
+
+
+class TheOnlineQuitStopsEveryWorkerAtOnce(unittest.TestCase):
+    """A quit asks every online worker to stop at once; held by a socket, they cost ONE window."""
+
+    def _model(self, parallel):
+        from amaze.core import matx_library
+        model = matx_library.MatxOnlineLibrary(preferences=types.SimpleNamespace(
+            rendersize=64, matx_parallel_downloads=parallel))
+        self.addCleanup(model.shutdown)
+        return model
+
+    def _painted(self, model, count, read, ready, release=lambda: None):
+        """`count` tiles painted, each picture fetched by `read()`; their workers once `ready()`."""
+        from amaze.core import matx_sources
+        source = types.SimpleNamespace(name="QuitProbe", read_thumb_to=lambda record, path: read())
+        patcher = mock.patch.object(model, "_sources", [source])    # the registry, not the lookup
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        for n in range(count):
+            model._preview(matx_sources.MatxRecord(
+                source=source.name, uid="Quit/%03d" % n, title="Quit", category="Quit",
+                payload={"preview": {"offset": 0, "size": 1, "crc": 7}}))
+        self.assertTrue(_pump_until(ready), "premise: the downloads never started")
+        threads, ended = list(model._preview_workers), []
+        for thread in threads:
+            thread.finished.connect(lambda: ended.append(True))
+        self.addCleanup(self._let_go, threads, ended, release)
+        return threads
+
+    def _let_go(self, threads, ended, release):
+        """Free what still reads, then unpark each worker once its `finished` has landed here."""
+        from amaze.core import workers
+        release()
+        self.assertTrue(_pump_until(lambda: len(ended) == len(threads), timeout=40),
+                        "a download never ended")
+        for thread in threads:
+            if thread in workers._unstoppable:
+                workers._unstoppable.remove(thread)
+
+    def test_sixteen_downloads_held_by_a_silent_server_cost_one_window(self):
+        from amaze.core import matx_sources, workers
+        model, peers, lock = self._model(16), [], threading.Lock()
+
+        def silent():
+            QtCore.QThread.setTerminationEnabled(False)    # cancelled inside recv, a thread leaves a dead Python state
+            mine, theirs = socket.socketpair()
+            with lock:
+                peers.append(theirs)
+            mine.settimeout(matx_sources.TIMEOUT)    # urllib's own wait on a server that never answers
+            try:
+                mine.recv(1)
+            finally:
+                mine.close()
+
+        threads = self._painted(model, 16, silent, lambda: len(peers) == 16,
+                                release=lambda: [peer.close() for peer in peers])
+        self.assertEqual(16, len(threads), "premise: not one worker per download")
+        started = time.monotonic()
+        model.shutdown()
+        elapsed = time.monotonic() - started
+        dropped = [t for t in threads if not t.isFinished() and t not in workers._unstoppable]
+        self.assertEqual([], dropped, "a download still running was let go")
+        self.assertEqual(16, sum(1 for t in threads if t in workers._unstoppable),
+                         "a held download terminate() could not end was not parked")
+        bound = (workers.WAIT_MS + workers.TERMINATE_MS) / 1000.0 + 1.0
+        self.assertLess(elapsed, bound, "the quit took %.1fs for 16 held downloads" % elapsed)
+
+    def test_downloads_between_pictures_stop_when_asked(self):
+        from amaze.core import workers
+        model, reads = self._model(2), []
+
+        def slow():
+            reads.append(True)
+            time.sleep(0.1)    # one picture's fetch
+
+        threads = self._painted(model, 80, slow, lambda: len(reads) >= 2)
+        self.assertEqual(2, len(threads), "premise: not two workers of forty pictures each")
+        started = time.monotonic()
+        model.shutdown()
+        elapsed = time.monotonic() - started
+        self.assertEqual([], [t for t in threads if t in workers._unstoppable],
+                         "a download had to be parked")
+        self.assertLess(elapsed, 1.0, "the quit waited %.1fs on downloads between pictures" % elapsed)
+
+    def test_a_listing_stops_between_sources_and_lands_nothing(self):
+        from amaze.core import matx_sources
+        model, listed, saved = self._model(1), [], []
+
+        class Slow:
+            def __init__(self, n):
+                self.name = "Slow%02d" % n
+
+            def remember(self, records):
+                pass
+
+            def list_materials(self, limit=60):
+                listed.append(self.name)
+                time.sleep(0.1)    # one source's listing
+                return [matx_sources.MatxRecord(source=self.name, uid="u", title="t")]
+
+        model._loaded, model._all = True, []
+        with mock.patch.object(model, "_sources", [Slow(n) for n in range(40)]), \
+                mock.patch.object(model, "_save_cache", saved.append):
+            model.reload(force=True)
+            self.assertTrue(_pump_until(lambda: listed), "premise: the listing never started")
+            started = time.monotonic()
+            model.shutdown()
+            elapsed = time.monotonic() - started
+            _pump_until(lambda: False, timeout=0.3)    # whatever the worker sent lands now
+        self.assertLess(elapsed, 1.0, "the quit waited %.1fs on a listing between sources" % elapsed)
+        self.assertEqual([], saved, "a listing cut short replaced the cached catalogue")
 
 
 @unittest.skipUnless(test_support.renderer_loaded("Redshift"), "the Redshift plugin is not loaded")
