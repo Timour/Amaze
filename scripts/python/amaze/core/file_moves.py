@@ -2,6 +2,7 @@
 
 import atexit
 import collections
+import errno
 import os
 import shutil
 import time
@@ -90,7 +91,8 @@ def copy_across(source: str, dest: str, tick=None, stopped=lambda: False) -> boo
     if os.path.lexists(dest):
         return False
     _patiently(hostos.check_deletable, source)    # held open on Windows: copying would only make a second file
-    part = os.path.join(os.path.dirname(dest), "." + os.path.basename(dest) + PART)
+    part = hostos.unique_scratch(    # a fresh name each copy: a part an interrupted one left blocks nothing
+        os.path.join(os.path.dirname(dest), "." + os.path.basename(dest)), PART, create=False)
     made = False
     try:
         with open(source, "rb") as reader, open(part, "xb") as writer:
@@ -125,9 +127,21 @@ def copy_across(source: str, dest: str, tick=None, stopped=lambda: False) -> boo
 
 def _remove(path: str) -> None:
     try:
-        os.unlink(path)
-    except OSError:
-        pass
+        hostos.remove_file(path)
+    except OSError as exc:    # left behind, hidden; the next copy of that name takes another
+        debug.event("move", "a part could not be removed", file=path, error=str(exc))
+
+
+def _move_one(source: str, dest: str, tick, stopped) -> bool:
+    """Placed on one drive, copied whole across two; False when `dest` is taken."""
+    if not same_drive(source, os.path.dirname(dest)):
+        return copy_across(source, dest, tick, stopped)
+    try:
+        return place(source, dest)
+    except OSError as exc:
+        if exc.errno != errno.EXDEV:
+            raise
+    return copy_across(source, dest, tick, stopped)    # one st_dev, two mounts ▸r/cross-volume-move
 
 
 def move(pairs, tick=None, stopped=lambda: False) -> Result:
@@ -137,10 +151,7 @@ def move(pairs, tick=None, stopped=lambda: False) -> Result:
         if stopped():
             break
         try:
-            if same_drive(source, os.path.dirname(dest)):
-                landed = place(source, dest)
-            else:
-                landed = copy_across(source, dest, tick, stopped)
+            landed = _move_one(source, dest, tick, stopped)
         except Stopped:
             break
         except OSError as exc:

@@ -738,6 +738,39 @@ class AMissingListComesBackFromItsFilesTest(_Case):
                          sorted(ids), "the copy came back without the materials "
                                       "saved after it, or with one twice")
 
+    def _put_back_over(self, rows):
+        """A copy holding `rows` is the newest, and the list itself will not read."""
+        self._write(self.index + ".bak-1", dict(self.EMPTY, assets=rows))
+        with open(self.index, "w", encoding="utf-8") as handle:
+            handle.write('{"assets": [')
+        ok, how = repair.repair_index(self.dir, self.prefs.asset_dir)
+        self.assertTrue(ok, how)
+        return {row["id"]: row for row in self._read(self.index)["assets"]}, how
+
+    def test_a_row_edited_after_the_copy_comes_back_as_its_stamp_says(self):
+        """A stamp is written only after its list landed, so it is never older than a copy."""
+        for asset_id, name, renderer in self.LOST:
+            self._saved(asset_id, name, renderer)
+        stamped = os.path.join(self.mat_dir, "FABRIC01" + material.STAMP_SUFFIX)
+        stamp = dict(self._read(stamped), categories=["Woven"])
+        self._write(stamped, stamp)
+        older = dict(stamp, name="Herringbone", categories=["Before"])
+        rows, how = self._put_back_over([older])
+        self.assertEqual(stamp, rows["FABRIC01"],
+                         "the copy's older record came back over the newer one its stamp holds")
+        self.assertIn("Woven", self._read(self.index)["categories"],
+                      "the newer record's category is missing from the list")
+
+    def test_a_row_whose_files_and_record_are_gone_is_named(self):
+        self._saved("VELVET01", "Crushed Velvet", "Octane")
+        gone = {"id": "GONE0001", "name": "Deleted Since", "categories": ["Fabric"],
+                "tags": [], "renderer": "Karma"}
+        rows, how = self._put_back_over([gone])
+        self.assertIn("GONE0001", rows, "Repair dropped a row - it never deletes")
+        self.assertIn("Deleted Since", how,
+                      "a row whose files and record are both gone came back unnamed")
+        self.assertNotIn("Crushed Velvet", how, "a material with its files was named as gone")
+
 
 class TheNewestCopyIsTheOnePickedTest(_Case):
     """Put a Saved Copy Back offers the newest copy; an older one is a second, deliberate step."""

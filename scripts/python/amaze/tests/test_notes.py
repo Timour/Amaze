@@ -707,7 +707,7 @@ class GradientNotesTest(unittest.TestCase):
                               "keys": [0.0], "bases": ["Constant"]})
         row = next(r for r in range(self.model.rowCount())
                    if self.model.entry(r).get("name") == "BirthTest")
-        self.addCleanup(self.model.remove_user_gradient, row)
+        self.addCleanup(self.model.remove_rows, [row])
         self.assertTrue(self.model.tile_key(row),
                         "a freshly saved gradient has no identity - "
                         "birth is where every section stamps it")

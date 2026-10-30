@@ -18,6 +18,7 @@ from amaze.helpers import hostos
 from amaze import messages
 
 THUMB_SIZE = 256
+EMPTY_SWATCH = "#444444"    # under whatever a palette cannot paint
 
 
 def _def_path(filename: str) -> str:
@@ -44,20 +45,27 @@ def _palette_ramp_data(colors: list) -> dict:
     return {"keys": keys, "values": values, "bases": ["Constant"] * n}
 
 
+def _has_rgb(value) -> bool:
+    """Whether a ramp value carries the three channels a colour needs; a shorter one is left out."""
+    return isinstance(value, (list, tuple)) and len(value) >= 3
+
+
 def paint_swatch(colors: list, ramp: dict) -> QtGui.QImage:
     """The Color section's tile face, THUMB_SIZE square: stacked horizontal bands when the palette is banded, the saved ramp otherwise - the one palette painter, shared with the online browser."""
     image = QtGui.QImage(
         THUMB_SIZE, THUMB_SIZE, QtGui.QImage.Format.Format_RGB32
     )
+    image.fill(QtGui.QColor(EMPTY_SWATCH))
     painter = QtGui.QPainter(image)
     try:
         if GradientLibrary._is_banded(colors or [], ramp or {}):
             band_h = THUMB_SIZE / max(len(colors or []), 1)  # stacked horizontal bands - the dictionary's own presentation
             for i, color in enumerate(colors or []):
-                painter.fillRect(
-                    QtCore.QRectF(0, i * band_h, THUMB_SIZE, band_h + 1),
-                    QtGui.QColor(color["hex"]),
-                )
+                hex_value = color.get("hex") if isinstance(color, dict) else None
+                colour = QtGui.QColor(hex_value if isinstance(hex_value, str) else "")
+                if colour.isValid():    # no readable hex: the band stays empty, never black
+                    painter.fillRect(
+                        QtCore.QRectF(0, i * band_h, THUMB_SIZE, band_h + 1), colour)
         else:
             GradientLibrary._paint_ramp(painter, ramp or {})
     finally:
@@ -256,10 +264,6 @@ class GradientLibrary(library.AssetLibrary):
             return
         self.row_changed(0)
 
-    def remove_user_gradient(self, row: int) -> None:
-        """Delete a palette, then its stamp - only once the list stops naming it."""
-        self.remove_rows([row])
-
     def _owned_paths(self, mat_id) -> tuple:
         """A palette owns its stamp and nothing else on disk: it is stored inline."""
         try:
@@ -273,14 +277,6 @@ class GradientLibrary(library.AssetLibrary):
         debug.alert(
             messages.PALETTE_NOT_DELETED % (asset.name or "That palette"),
             key="colors-delete-refused")
-
-    def cleanup_db(self) -> int:
-        """Reduced to a state flush: palettes are stored inline, so the inherited missing-file and lonely-file passes would call every one an orphan."""
-        self.save()
-        self.last_cleanup_summary = [
-            "Colors: nothing to clean (palettes are stored inline)."
-        ]
-        return 0
 
     def _tile_icon_landed(self, row: int, spec, stored: bool) -> bool:
         """No PNG is written for a palette; the row is re-pointed, as a Capture face reads a file."""
@@ -343,24 +339,31 @@ class GradientLibrary(library.AssetLibrary):
     @staticmethod
     def _paint_ramp(painter: QtGui.QPainter, ramp_data: dict) -> None:
         """Left-to-right preview of a saved ramp: hard bands when it is fully constant-basis, otherwise a linear-interpolated gradient."""
-        keys = ramp_data.get("keys", [])
-        values = ramp_data.get("values", [])
+        keys = list(ramp_data.get("keys") or [])
+        values = list(ramp_data.get("values") or [])
         bases = ramp_data.get("bases", [])
-        if not keys or not values:
+        width = min(len(keys), len(values))    # the width both hold, as data_to_ramp ▸r/ramp-and-walk-edges
+        keys, values = keys[:width], values[:width]
+        if not width:
             painter.fillRect(0, 0, THUMB_SIZE, THUMB_SIZE,
-                             QtGui.QColor("#444444"))
+                             QtGui.QColor(EMPTY_SWATCH))
             return
         if all(b == "Constant" for b in bases):
             edges = list(keys) + [1.0]
             for i, value in enumerate(values):
+                if not _has_rgb(value):
+                    continue
                 x0 = max(0.0, min(1.0, edges[i])) * THUMB_SIZE
                 x1 = max(0.0, min(1.0, edges[i + 1])) * THUMB_SIZE
                 color = QtGui.QColor.fromRgbF(*value[:3])
                 painter.fillRect(
                     QtCore.QRectF(x0, 0, x1 - x0 + 1, THUMB_SIZE), color)
             return
+        stops = [(key, value) for key, value in zip(keys, values) if _has_rgb(value)]
+        if not stops:
+            return
         gradient = QtGui.QLinearGradient(0, 0, THUMB_SIZE, 0)
-        for key, value in zip(keys, values):
+        for key, value in stops:
             gradient.setColorAt(
                 max(0.0, min(1.0, key)), QtGui.QColor.fromRgbF(*value[:3])
             )

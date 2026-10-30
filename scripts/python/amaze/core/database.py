@@ -487,6 +487,8 @@ class DatabaseConnector:
                 self._data = parsed
                 self._remember_disk_state(hostos.PeerFile(    # the bytes parsed, never a second read
                     hostos.PEER_CHANGED, parsed, hostos.file_fingerprint(raw)))
+                parsed.setdefault("categories", ["_All"])    # `{}` parses: every model reads both
+                parsed.setdefault("assets", [])
                 self._normalize_all_category()
                 self._note_suspicious_shrink(full)
         return self._data

@@ -42,10 +42,10 @@ def clean_library(preferences, material_model, category_model, cop_model, cop_ca
 
 
 def clean_folders_and_favorites(preferences, file_folders_model) -> list:
-    """Folder pointers and File favorites whose target is gone are dropped; disk is never touched."""
+    """A folder not here loses its pointer, a star on a file gone from its folder goes; disk untouched."""
     lines = []
 
-    removed_folders = []
+    set_aside = []
     skipped_unmounted = 0
     folders = list(preferences.file_folders)    # the live file_* keys only ▸archive/actions/clean.py
     for index in range(len(folders) - 1, -1, -1):    # highest row first, so removing one never shifts the row of another not yet examined
@@ -57,13 +57,14 @@ def clean_folders_and_favorites(preferences, file_folders_model) -> list:
             debug.event("cleanup", "folder pointer kept - its volume "
                         "is not mounted", path=path)
             continue
-        debug.event("cleanup", "folder pointer removed", path=path)
-        file_folders_model.remove_folder(index + 1)    # through the MODEL; row 0 is the synthetic "All"
-        removed_folders.append(path)
-    if removed_folders:
+        debug.event("cleanup", "folder pointer set aside", path=path)
+        file_folders_model.set_aside_folder(index + 1)    # the pointer only; row 0 is the synthetic "All"
+        set_aside.append(path)
+    if set_aside:
         lines.append(    # NAMES, not a count - a count is a sentence nobody can check
-            "These folders no longer exist, so their entries were "
-            "removed:\n  " + "\n  ".join(sorted(removed_folders)))
+            "These folders are not on this computer, so they were set aside. "
+            "Their comments, icons and favorites are kept, and come back "
+            "when the folder is added again:\n  " + "\n  ".join(sorted(set_aside)))
     if skipped_unmounted:
         lines.append(
             "%d folder(s) on an unmounted drive were left alone - "
@@ -79,6 +80,10 @@ def clean_folders_and_favorites(preferences, file_folders_model) -> list:
         if hostos.volume_unreachable(path):
             debug.event("cleanup", "favorite kept - its volume is "
                         "not mounted", path=path)
+            continue
+        if not os.path.isdir(os.path.dirname(path)):    # its folder is not here, set aside or unsynced
+            debug.event("cleanup", "favorite kept - its folder is not here",
+                        path=path)
             continue
         debug.event("cleanup", "missing-file favorite removed",
                     path=path)

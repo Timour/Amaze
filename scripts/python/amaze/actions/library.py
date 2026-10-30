@@ -23,6 +23,23 @@ def index_unreadable(lib_dir: str) -> bool:
     return bool(database.wrong_shape(json.loads(raw.decode("utf-8-sig"))))
 
 
+def index_unopenable(lib_dir: str) -> str:
+    """Why the list will not OPEN here, "" when it opens or is absent - closed, never one for Repair."""
+    if not lib_dir:
+        return ""
+    path = os.path.join(lib_dir, "library.json")
+    try:
+        with open(path, "rb"):
+            return ""
+    except (FileNotFoundError, NotADirectoryError):
+        return ""    # absent: `index_present` answers that
+    except OSError as exc:
+        cause, why = hostos.why_failed(exc, path)
+        if cause == hostos.FAILED_READ_ONLY:    # its sentence is a WRITE's; a refused read is permissions
+            return messages.LIBRARY_INDEX_READ_NOT_PERMITTED % path
+        return why
+
+
 def index_present(lib_dir: str) -> bool:
     """Whether `lib_dir` holds a list at all; an empty folder has none until `prepare` seeds one."""
     return bool(lib_dir) and os.path.isfile(os.path.join(lib_dir, "library.json"))

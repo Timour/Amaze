@@ -1,6 +1,7 @@
 """Absent + evidence (.bak or seed marker) must not seed; absent alone must."""
 
 import contextlib
+import errno
 import glob
 import io
 import json
@@ -220,6 +221,77 @@ class AMissingListOpensNoLibrary(unittest.TestCase):
             test_support.reopened_panel(self)
         self.assertIn("panel ready", log.messages("session"),
                       "a pane that opened without its library left no sign it finished building")
+
+
+class AListWithoutItsContainersStillOpensTest(unittest.TestCase):
+    """`{}` parses and passes `wrong_shape`, so the load supplies what every model reads first."""
+
+    def setUp(self):
+        self.dir = test_support.fresh_library(self)
+        for name in ("library.json", "cops.json"):
+            with open(os.path.join(self.dir, name), "w", encoding="utf-8") as handle:
+                json.dump({}, handle)
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        self.prefs = _Prefs(self.dir)
+
+    def test_every_model_over_it_builds(self):
+        from amaze.core import category, cop_library
+        for name, build in (
+                ("Categories", category.Categories),
+                ("CopCategories", cop_library.CopCategories),
+                ("MaterialLibrary", lambda p: library_mod.MaterialLibrary(preferences=p)),
+                ("CopLibrary", lambda p: cop_library.CopLibrary(preferences=p))):
+            try:
+                build(self.prefs)
+            except KeyError as exc:
+                self.fail("%s raised KeyError %s over a list with no containers" % (name, exc))
+        for name in ("library.json", "cops.json"):
+            data = database.DatabaseConnector(name)._data
+            self.assertEqual((["_All"], []), (data["categories"], data["assets"]), name)
+
+
+class AListThatWillNotOpenIsNotOneToRepairTest(unittest.TestCase):
+    """Present but refused at OPEN: a saved copy put over it would lose a list that is fine elsewhere."""
+
+    def setUp(self):
+        self.dir = test_support.fresh_library(self)
+        self.index = os.path.join(self.dir, "library.json")
+
+    def _refused(self, error):
+        real_open = open
+
+        def refused(path, *args, **kwargs):
+            if (isinstance(path, (str, os.PathLike))
+                    and os.path.abspath(path) == os.path.abspath(self.index)):
+                raise error
+            return real_open(path, *args, **kwargs)
+
+        return patch("builtins.open", refused)
+
+    def test_a_list_this_account_may_not_read_is_said_and_kept_from_repair(self):
+        from amaze.actions import library as library_actions
+        with self._refused(PermissionError(errno.EACCES, "Permission denied", self.index)):
+            why = library_actions.index_unopenable(self.dir)
+            unreadable = library_actions.index_unreadable(self.dir)
+        self.assertTrue(why, "a list that will not open was answered as one that opens")
+        self.assertNotIn("read-only", why,
+                         "a refused READ was blamed on a read-only folder, the wrong thing to fix")
+        self.assertIn(self.index, why, "the sentence does not say which file")
+        self.assertFalse(unreadable, "the list was offered to Repair, which would put a copy over it")
+
+    def test_another_refusal_says_what_the_disk_said(self):
+        from amaze.actions import library as library_actions
+        with self._refused(OSError(errno.EIO, "Input/output error", self.index)):
+            why = library_actions.index_unopenable(self.dir)
+        self.assertIn("Input/output error", why)
+
+    def test_a_list_that_opens_or_is_not_there_answers_nothing(self):
+        from amaze.actions import library as library_actions
+        self.assertEqual("", library_actions.index_unopenable(self.dir))
+        os.remove(self.index)
+        self.assertEqual("", library_actions.index_unopenable(self.dir))
+        self.assertEqual("", library_actions.index_unopenable(""))
 
 
 class SecondaryDatabaseAbsenceTest(unittest.TestCase):

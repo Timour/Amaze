@@ -236,5 +236,32 @@ class ALockedFileMetByARefreshWipesNothing(_Case):
                          hostos.peer_read(under_a_file).verdict)
 
 
+class AnAbsentFileMetByARefreshWipesNothing(_Case):
+    """A sync client replacing the file non-atomically leaves it absent for a moment."""
+
+    def test_a_moment_without_the_file_keeps_the_table_and_says_nothing(self):
+        store = keyed_store.open_store(users.SPEC, self.prefs)
+        self.assertTrue(store.set("u-me", {"name": "Me"}), "premise: the store did not write")
+        self.assertTrue(hostos.existed_before(self.path("users.json")),
+                        "premise: no trace says the file was here, so its absence reads as new")
+        base, seen = dict(store._base), store._disk_state
+        os.replace(self.path("users.json"), self.path("users.json.syncing"))
+        with mock.patch.object(keyed_store.debug, "alert") as spoke:
+            moved = store.refresh()
+        self.assertEqual(
+            {"moved": False, "rows": {"u-me": "Me"}, "writable": True,
+             "alerted": False},
+            {"moved": moved, "rows": users.all_users(self.prefs),
+             "writable": store.writable, "alerted": spoke.called},
+            "a moment's absence was read as the file being gone for good")
+        self.assertEqual((base, seen), (store._base, store._disk_state),
+                         "the merge base or the fingerprint moved")
+        keyed_store.release()
+        with mock.patch.object(keyed_store.debug, "alert"):
+            opened = keyed_store.open_store(users.SPEC, self.prefs)
+        self.assertFalse(opened.writable,
+                         "an OPEN still meets the absence with the guard that refuses to write")
+
+
 if __name__ == "__main__":
     unittest.main()

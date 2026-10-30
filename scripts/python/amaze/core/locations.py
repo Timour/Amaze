@@ -566,9 +566,15 @@ def _repoint(preferences, old: str, new: str) -> keyed_store.Written:
     lid = location_id(preferences, old)
     if lid:
         ids = _ids_store(preferences)
-        row = dict(ids.get(lid))
-        row["path"] = new
-        written = ids.set(lid, row)
+        old_edge, new_edge = keyed_store._boundary(old), keyed_store._boundary(new)
+        rows = {}
+        for other, row in ids.all().items():    # every row AT or UNDER the old path, as relocate reads one
+            path = str(row.get("path") or "")
+            if keyed_store.path_identity(path) == keyed_store.path_identity(old):
+                rows[other] = dict(row, path=new)
+            elif path.startswith(old_edge):
+                rows[other] = dict(row, path=new_edge + path[len(old_edge):])
+        written = ids.update(rows)
         _generation += 1    # AFTER the row edit - the resolver in `location_id` above rebuilt the cached map at the pre-edit table, and a bump only before the write leaves that stale map current
         _converted.discard(str(getattr(preferences, "dir", "")))    # a Locate onto a path another location already owns mints a rival pair - the next read collapses it
         _sync_mirror(preferences)

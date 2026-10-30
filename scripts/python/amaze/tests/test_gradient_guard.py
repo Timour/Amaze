@@ -12,7 +12,7 @@ sys.path.insert(
         os.path.dirname(os.path.abspath(__file__)))))
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")   # BEFORE the app exists ▸p/first-app-picks-the-platform
-from PySide6 import QtCore, QtWidgets                    # noqa: E402
+from PySide6 import QtCore, QtGui, QtWidgets             # noqa: E402
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
@@ -113,7 +113,7 @@ class GradientStaleWriteTest(unittest.TestCase):
     def test_a_deleted_gradient_stays_deleted(self):
         """The connector unions - a row the caller does not mention is kept - so a delete has to be said out loud through forget(); without that the palette reappears on the next save, which is worse than a refused delete because the user watched it go."""
         row = _row_named(self, self.lib, "ours")
-        self.lib.remove_user_gradient(row)
+        self.lib.remove_rows([row])
         self.lib.add_user_gradient("kept", "", {"values": [], "keys": []})
         names = [g["name"] for g in self._read()["assets"]]
         self.assertIn("kept", names, "premise: the later save landed")
@@ -843,7 +843,7 @@ class ColorsHonourARefusedSave(unittest.TestCase):
         self.assertGreaterEqual(row, 0, "premise: the fixture loaded")
         with patch.object(database.DatabaseConnector, "save",
                           return_value=False):
-            self.lib.remove_user_gradient(row)
+            self.lib.remove_rows([row])
 
         self.assertIn("doomed", self._on_disk_names(),
                       "premise: the refusal kept it on disk")
@@ -878,7 +878,7 @@ class ColorsHonourARefusedSave(unittest.TestCase):
     def test_a_delete_removes_the_palette_and_its_stamp(self):
         """A stamp no list claims is what Repair rebuilds from, so a deleted palette takes its own."""
         stamp = self._stamp_of("doomeduid")
-        self.lib.remove_user_gradient(self._row_named("doomed"))
+        self.lib.remove_rows([self._row_named("doomed")])
         self.assertEqual(-1, self._row_named("doomed"))
         self.assertNotIn("doomed", self._on_disk_names())
         self.assertFalse(os.path.exists(stamp),
@@ -896,7 +896,7 @@ class ColorsHonourARefusedSave(unittest.TestCase):
         connector = database.DatabaseConnector(self.lib.DB_FILENAME)
         connector.reload_with_path(other + os.sep)
 
-        self.lib.remove_user_gradient(self._row_named("doomed"))
+        self.lib.remove_rows([self._row_named("doomed")])
 
         self.assertGreaterEqual(
             self._row_named("doomed"), 0,
@@ -1264,6 +1264,46 @@ class ARampHelperIsTotal(unittest.TestCase):
             ramp = self.helpers.build_basis_ramp(["#ff0000", "#0000ff"], name)
             self.assertEqual(name, self.helpers.ramp_to_data(ramp)["bases"][0],
                              "the menu offers a basis the reader cannot name")
+
+
+class TheSwatchPainterIsTotal(unittest.TestCase):
+    """It paints inside `data()`, so a palette `data_to_ramp` survives paints. ▸r/ramp-and-walk-edges"""
+
+    SIZE = gradient_library.THUMB_SIZE
+
+    def _painted(self, colors, ramp):
+        try:
+            image = gradient_library.paint_swatch(colors, ramp)
+        except Exception as exc:                          # noqa: BLE001
+            self.fail("the swatch raised %s: %s - a blank tile and a traceback per repaint"
+                      % (type(exc).__name__, exc))
+        self.assertEqual((self.SIZE, self.SIZE), (image.width(), image.height()))
+        return image
+
+    def _at(self, image, x, y):
+        return image.pixelColor(int(x * self.SIZE), int(y * self.SIZE))
+
+    def test_keys_shorter_than_values_paint_the_width_both_hold(self):
+        image = self._painted([], {"keys": [0.0], "values": [[1, 0, 0], [0, 1, 0]]})
+        self.assertGreater(self._at(image, 0.5, 0.5).red(), 200)
+
+    def test_a_value_with_two_channels_is_left_out(self):
+        image = self._painted([], {"keys": [0.0, 1.0], "values": [[1, 0], [0, 1, 0]],
+                                   "bases": ["Linear", "Linear"]})
+        self.assertGreater(self._at(image, 0.5, 0.5).green(), 200)
+        stepped = self._painted([], {"keys": [0.0, 0.5], "values": [[1, 0, 0], [0, 1]],
+                                     "bases": ["Constant", "Constant"]})
+        self.assertGreater(self._at(stepped, 0.25, 0.5).red(), 200)
+        self.assertEqual(QtGui.QColor(gradient_library.EMPTY_SWATCH),
+                         self._at(stepped, 0.75, 0.5),
+                         "the band it left out is not the empty swatch's colour")
+
+    def test_a_colour_with_no_hex_still_paints_the_others(self):
+        image = self._painted([{"name": "red"}, "#00ff00", {"hex": "#0000ff"}], {})
+        self.assertGreater(self._at(image, 0.5, 0.85).blue(), 200)
+        empty = QtGui.QColor(gradient_library.EMPTY_SWATCH)
+        self.assertEqual([empty, empty], [self._at(image, 0.5, y) for y in (0.15, 0.5)],
+                         "a band with no readable hex was painted, not left empty")
 
 
 class TheNodeWalkIsNotRecursive(unittest.TestCase):

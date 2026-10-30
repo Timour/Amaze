@@ -228,6 +228,7 @@ def _copy_set(sources: dict, targets: dict, kinds: tuple = _KINDS) -> bool:
     staged = []
     displaced = []
     created = []
+    vacated = []
     promoted = 0
     try:
         for kind, required in kinds:
@@ -238,6 +239,8 @@ def _copy_set(sources: dict, targets: dict, kinds: tuple = _KINDS) -> bool:
                             source=source)
                 return False
             if not present:
+                if targets.get(kind) and os.path.exists(targets[kind]):
+                    vacated.append(targets[kind])    # the targets mirror the sources: it leaves too
                 continue
             target = targets[kind]
             try:
@@ -261,6 +264,10 @@ def _copy_set(sources: dict, targets: dict, kinds: tuple = _KINDS) -> bool:
             hostos.promote_scratch(scratch, target)
             promoted += 1
         staged = []
+        for target in vacated:    # aside like a replaced kind, so a rollback puts it back
+            aside = hostos.unique_scratch(target, ".rollback", create=False)
+            hostos.replace_file(target, aside)
+            displaced.append((aside, target))
     except OSError as exc:
         debug.event("versions", "promote failed - putting the base back",
                     promoted=promoted, of=len(staged), error=str(exc))

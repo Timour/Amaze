@@ -632,6 +632,10 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
 
     def remove_folder(self, row: int) -> bool:
         # row 0 is the synthetic All entry; True when the pointer is gone
+        return self.set_aside_folder(row)
+
+    def set_aside_folder(self, row: int) -> bool:
+        """Drop the pointer at ROW and nothing else; what its files carry waits for it to return."""
         if row <= 0 or not row - 1 < len(self._folders()):
             return False
         path = self._folders()[row - 1]

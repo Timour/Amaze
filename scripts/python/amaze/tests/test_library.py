@@ -554,6 +554,67 @@ class SingleCategoryTest(unittest.TestCase):
         self.assertEqual(["Metal"], asset.categories)
 
 
+class ACommaInsideOneCategoryNameStaysWholeTest(unittest.TestCase):
+    """The rename dialog keeps a comma in a name; a door moving an asset INTO it hands over a list."""
+
+    NAME = "Wood, Oak"
+
+    def setUp(self):
+        from amaze.core import library as library_mod
+        self.prefs = test_support.fixture_prefs(self)
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        self.model = library_mod.MaterialLibrary(preferences=self.prefs)
+        self.asset = next(a for a in self.model.assets if a.name == "Metal")
+
+    def test_customize_moves_the_asset_into_the_whole_name(self):
+        row = self.model.find_asset_row_by_id(self.asset.mat_id)
+        self.assertTrue(self.model.set_tile_category(row, self.NAME))
+        self.assertEqual([self.NAME], self.asset.categories,
+                         "Customize split the category name at its comma")
+
+    def test_clean_up_leaves_the_whole_name_on_the_asset(self):
+        self.asset.categories = [self.NAME]
+        self.assertEqual([self.NAME], self.asset.categories, "premise: the record split it")
+        self.model.cleanup_db()
+        self.assertEqual([self.NAME], self.asset.categories,
+                         "Clean Up split the category name at its comma")
+
+
+class AnInlineSectionCleansByFlushingTest(unittest.TestCase):
+    """Code and Colors keep their content IN their list: no row of theirs has files to miss."""
+
+    def setUp(self):
+        self.prefs = test_support.fixture_prefs(self)
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+
+    def _rows(self, model):
+        with open(os.path.join(self.prefs.dir, model.DB_FILENAME), encoding="utf-8-sig") as handle:
+            return json.load(handle)["assets"]
+
+    def _cleaned(self, model):
+        before = self._rows(model)
+        self.assertTrue(before, "premise: the list holds nothing to keep")
+        self.assertEqual(0, model.cleanup_db())
+        self.assertEqual(before, self._rows(model), "Clean changed the list's rows")
+        self.assertEqual([], [line for line in model.last_cleanup_summary if "missing" in line],
+                         "Clean reported inline content as files that are missing")
+
+    def test_clean_on_code_keeps_every_snippet(self):
+        from amaze.core import code_library
+        model = code_library.CodeLibrary(preferences=self.prefs)
+        self.assertTrue(model.add_snippet("int x = 1;", "One", "VEX", "Mine", ""))
+        self._cleaned(model)
+
+    def test_clean_on_colors_keeps_every_palette(self):
+        from amaze.core import gradient_library
+        model = gradient_library.GradientLibrary(preferences=self.prefs)
+        model.add_user_gradient("Two", "Mine", {"keys": [0.0], "values": [[1, 0, 0]],
+                                                "bases": ["Constant"]})
+        self._cleaned(model)
+
+
 class ReloadChainTest(unittest.TestCase):
     """Every amaze module the panel imports must also be in its reload chain - a module left OUT keeps its old code while everything around it is new. COMPLETENESS is the invariant, not whether the chain executes: it no longer runs by default, and a chain with a hole in it is worth nothing on the day someone turns it on. Derived from the source, so a new import cannot quietly skip it. ▸p/source-derived-tests"""
 

@@ -719,8 +719,8 @@ class Store:
         return self._drop([str(k) for k in (keys or ())
                            if str(k) in self._table])
 
-    def rekey_stored(self, moves: dict) -> Written:
-        """Rewrite keys AS STORED in ONE write - every owner's, no user needed; `rekey` is the scoped door, and a destination entry WINS here too."""
+    def rekey_stored(self, moves: dict, arriving_wins: bool = False) -> Written:
+        """Rewrite keys AS STORED in ONE write, every owner's; the destination wins unless `arriving_wins`."""
         moves = {str(k): str(v) for k, v in (moves or {}).items()
                  if str(k) != str(v)}
         touched = [k for k in moves if k in self._table]
@@ -729,7 +729,10 @@ class Store:
         staged = dict(self._table)
         for old in touched:
             value = staged.pop(old)
-            staged.setdefault(moves[old], value)
+            if arriving_wins:    # a moved file's own entry over one a file once there left
+                staged[moves[old]] = value
+            else:
+                staged.setdefault(moves[old], value)
         return self._commit(staged, touched,
                             retire=[k for k in touched if k not in staged])    # the OLD keys as retired, or the commit's disk adoption resurrects them beside their moved selves - sparing one another move re-filled as its destination
 
@@ -774,8 +777,8 @@ class Store:
         answer = hostos.peer_read(self.path, self._disk_state)
         if answer.verdict == hostos.PEER_UNCHANGED:
             return False
-        if answer.verdict == hostos.PEER_ABSENT and self._disk_state is None:
-            return False    # absent, and it was absent when we looked: nothing has happened
+        if answer.verdict == hostos.PEER_ABSENT:
+            return False    # never there, or gone a moment while a sync replaces it: keep what is held
         if answer.verdict in (hostos.PEER_UNREADABLE, hostos.PEER_HELD):
             return False    # half-written, a placeholder or held open: keep it all ▸p/store-refuses-unreadable-peer
         self.reread()
@@ -1089,20 +1092,14 @@ def rekey_files(preferences, keys: dict) -> dict:
         wanted = {storage_key(spec, prefix + old): storage_key(spec, prefix + new)
                   for old, new in keys.items()}
         store = open_store(spec, preferences)
-        table = store.everyones()
-        moves, stale = {}, []
-        for stored in table:
+        moves = {}
+        for stored in store.everyones():
             owner, bare = untagged_key(spec, stored)
             if bare not in wanted:
                 continue
-            target = (owner + USER_SEP if owner else "") + wanted[bare]
-            moves[stored] = target
-            if target in table:
-                stale.append(target)    # left by a file once there; the arriving file's entry wins
-        if stale:
-            store.retire_stored(stale)
-        if moves:
-            results[spec.filename] = store.rekey_stored(moves)
+            moves[stored] = (owner + USER_SEP if owner else "") + wanted[bare]
+        if moves:    # an entry a file once at the destination left yields, in the same write
+            results[spec.filename] = store.rekey_stored(moves, arriving_wins=True)
     return results
 
 

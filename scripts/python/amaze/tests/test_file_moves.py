@@ -20,6 +20,7 @@ from amaze import messages  # noqa: E402
 from amaze.core import captures, debug, file_library, file_moves  # noqa: E402
 from amaze.core import keyed_store, notes, texture_library, thumbnails, tile_icons  # noqa: E402
 from amaze.core import locations as locations_mod  # noqa: E402
+from amaze.helpers import hostos  # noqa: E402
 from amaze.panel import sidebar  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 from amaze.tests.test_file_section import _Prefs, _pump_until  # noqa: E402
@@ -128,6 +129,23 @@ class AFileMovesOnOneDriveTest(_Folders):
         self.assertEqual([(self.plate, self.landed)], result.moved)
         self.assertFalse(os.path.exists(self.plate))
 
+    def test_a_rename_refused_across_mounts_still_moves_by_copy(self):
+        """One st_dev is not one mount: a bind mount refuses the rename with EXDEV. ▸r/cross-volume-move"""
+        def across(real):
+            def call(source, dest, *args, **kwargs):
+                if os.path.dirname(source) != os.path.dirname(dest):
+                    raise OSError(errno.EXDEV, os.strerror(errno.EXDEV))
+                return real(source, dest, *args, **kwargs)
+            return call
+
+        with mock.patch.object(os, "link", across(os.link)), \
+                mock.patch.object(os, "rename", across(os.rename)):
+            result = self._move()
+        self.assertEqual([(self.plate, self.landed)], result.moved,
+                         "a rename the mounts refused failed the move: %s" % (result.failed,))
+        self.assertFalse(os.path.exists(self.plate))
+        self.assertEqual("plate", _read(self.landed))
+
 
 class AFileCopiesAcrossDrivesTest(_Folders):
     """`same_drive` answers no, so every file takes the copy door."""
@@ -202,6 +220,34 @@ class AFileCopiesAcrossDrivesTest(_Folders):
         self.assertFalse(os.path.exists(self.landed))
         self.assertEqual([], self._parts())
 
+    def test_a_part_left_by_an_earlier_copy_blocks_nothing(self):
+        """Quitting Houdini mid-copy, or a crash, leaves a part behind; the name is still free."""
+        left = "." + os.path.basename(self.landed) + file_moves.PART
+        _write(os.path.join(self.b, left), "half")
+        result = self._move()
+        self.assertEqual([(self.plate, self.landed)], result.moved,
+                         "an earlier copy's part blocked the move: %s" % (result.failed,))
+        self.assertEqual("plate", _read(self.landed))
+        self.assertEqual([left], self._parts(), "this copy left a part of its own")
+
+    def test_a_part_that_will_not_go_is_said_in_the_log(self):
+        real_unlink = os.unlink
+
+        def held(path, *args, **kwargs):    # Windows refusing a read-only part, here on every OS
+            if str(path).endswith(file_moves.PART):
+                raise PermissionError(errno.EACCES, "Permission denied", str(path))
+            return real_unlink(path, *args, **kwargs)
+
+        with test_support.captured_log() as log, \
+                mock.patch.object(os, "fsync", side_effect=OSError(errno.ENOSPC, "full")), \
+                mock.patch.object(os, "unlink", held):
+            result = self._move()
+        self.assertEqual([self.plate], [source for source, _why in result.failed],
+                         "premise: the copy did not fail")
+        said = [record for record in log.records("move")
+                if str(record.get("data", {}).get("file", "")).endswith(file_moves.PART)]
+        self.assertTrue(said, "a part the copy could not remove was left in silence")
+
 
 class WhatAmazeKeepsFollowsTheFileTest(unittest.TestCase):
     """Star, comment, icon and capture are filed by the file's key; a move re-files them."""
@@ -270,6 +316,31 @@ class WhatAmazeKeepsFollowsTheFileTest(unittest.TestCase):
         new = self._moved()
         page = notes.note_for(self.prefs, notes.note_key("file", new))
         self.assertEqual("kept", page["items"][0]["text"])
+
+    def test_a_refused_write_never_trades_the_moved_comment_for_the_stale_one(self):
+        """One write per store: a refusal moves nothing, never half."""
+        _model, _row, old = self._annotate()
+        stale = captures.file_key(self.prefs, self.landed)
+        notes.set_note(self.prefs, notes.note_key("file", stale),
+                       [{"t": "text", "text": "stale"}])
+        real_write, refused = hostos.write_json_atomic, []
+
+        def held_once(path, *args, **kwargs):    # a Windows hold that clears within a second
+            if os.path.basename(path) == notes.NOTES_FILE and not refused:
+                refused.append(path)
+                raise PermissionError(errno.EACCES, "held for a moment", path)
+            return real_write(path, *args, **kwargs)
+
+        with mock.patch.object(hostos, "write_json_atomic", held_once), \
+                mock.patch.object(keyed_store.debug, "alert"):
+            new = self._moved()
+        self.assertTrue(refused, "premise: no write of the comments was refused")
+        self.assertEqual(stale, new, "premise: the file landed where the stale comment is")
+        said = [(notes.note_for(self.prefs, notes.note_key("file", key)).get("items")
+                 or [{}])[0].get("text") for key in (old, new)]
+        self.assertIn("kept", said,
+                      "the moved file's comment is gone and the stale one shows in its "
+                      "place: %s" % said)
 
 
 class ThePicturesFollowTheFileTest(unittest.TestCase):

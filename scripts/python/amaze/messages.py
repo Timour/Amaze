@@ -110,6 +110,8 @@ REPAIR_COULD_NOT_FIX_THE_LIST_SWITCHING = 'Repair was unable to restore the inde
 
 INDEX_UNREADABLE_AFTER_REPAIR_SWITCHING = 'The repaired index still could not be read.\n\nAmaze keeps the library you have open. For more details, use the Repair tool on the Amaze shelf.'
 
+LIBRARY_INDEX_READ_NOT_PERMITTED = 'this account is not allowed to read it:\n%s\n\nThe permissions on the file, or on a folder above it, have to let this account read it.'
+
 STARTER_SEED_REFUSED_DIRECTORY_HELD_LIBRARY = 'This folder looks like a library whose list has not arrived yet, so Amaze did not set up a new one over it.\n\nIf it lives in a synced folder, let the sync finish and reopen Amaze. If the list really is gone, run Repair Library from the Amaze shelf to rebuild it.'
 
 NO_FOLDER_SELECTED_TO_RELOCATE = 'Select the registered folder to re-point first ("All" is not a real folder).'

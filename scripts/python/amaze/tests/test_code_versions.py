@@ -145,6 +145,20 @@ class TheModelCarriesCodeVersions(_Case):
         self.assertEqual(2, self.model.data(index, self.model.VersionsRole))
         self.assertEqual("helper fast", self.model.data(index, self.model.ActiveVersionRole))
 
+    def test_the_badge_roles_follow_a_save_and_a_select(self):
+        """Both roles are cached per id, so each version door drops what it moved."""
+        index = self.model.index(self.row, 0)
+
+        def shown():
+            return tuple(self.model.data(index, role) for role in
+                         (self.model.VersionsRole, self.model.ActiveVersionRole))
+
+        self.assertEqual((0, ""), shown(), "premise: the roles were not read before the save")
+        self._save(self.model.NEW_VERSION, SECOND, "helper fast")
+        self.assertEqual((2, "helper fast"), shown(), "a save left the row on its cached roles")
+        self.assertTrue(self.model.switch_version(self.row, 1))
+        self.assertEqual((2, "helper"), shown(), "a select left the row on its cached roles")
+
     def test_deleting_the_snippet_takes_its_versions(self):
         self._save(self.model.NEW_VERSION, SECOND, "helper fast")
         with patch.object(hou, "ui", MagicMock(), create=True):

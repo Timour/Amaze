@@ -2715,6 +2715,78 @@ class CleanupPrunesOnlyFileFavouritesTest(unittest.TestCase):
             "the offline copy hands a material id to the File favourites")
 
 
+class CleanUpSetsAFolderMissingHereAsideTest(unittest.TestCase):
+    """A folder missing HERE may be on another machine: its pointer goes, its files' state waits."""
+
+    ICON = {"name": "activity", "bg": "#ff8000"}
+
+    def setUp(self):
+        from amaze.core import notes
+        self.notes = notes
+        self.root = tempfile.mkdtemp(prefix="amaze_set_aside_")
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+        self.folder = os.path.join(self.root, "Textures")
+        os.makedirs(self.folder)
+        self.rock = os.path.join(self.folder, "rock.png")
+        with open(self.rock, "wb") as handle:
+            handle.write(b"png")
+        locations_mod.forget()
+        self.addCleanup(locations_mod.forget)
+        self.prefs = _Prefs([self.folder])
+        self.addCleanup(shutil.rmtree, self.prefs.dir, ignore_errors=True)
+        self.model = file_library.FileFolders(self.prefs)
+        self.lid = locations_mod.location_id(self.prefs, self.folder)
+        self.key = locations_mod.file_ident(self.prefs, self.rock)
+        self.assertTrue(self.lid and self.key.startswith("loc:" + self.lid + "/"),
+                        "premise: the registered folder does not own its file")
+        notes.set_note(self.prefs, notes.note_key("file", self.key),
+                       [{"t": "text", "text": "approved by lighting"}])
+        tile_icons.set_override(self.prefs, self.key, self.ICON)
+        locations_mod.set_favourite(self.prefs, self.key, True)
+        self.assertEqual((True, True, True), self._kept(), "premise: nothing was set")
+
+    def _kept(self):
+        return (self.notes.has_note(self.prefs, self.notes.note_key("file", self.key)),
+                bool(tile_icons.override_for(self.prefs, self.key)),
+                locations_mod.is_favourite(self.prefs, self.key))
+
+    def _registered(self):
+        return [hostos.canonical_path_key(p) for p in self.prefs.file_folders]
+
+    def _clean_while_elsewhere(self):
+        from amaze.actions import clean
+        os.rename(self.folder, self.folder + ".elsewhere")
+        return clean.clean_folders_and_favorites(self.prefs, self.model)
+
+    def test_the_pointer_goes_and_what_its_files_carry_stays(self):
+        lines = self._clean_while_elsewhere()
+        self.assertNotIn(hostos.canonical_path_key(self.folder), self._registered(),
+                         "Clean Up kept the pointer of a folder that is not here")
+        self.assertEqual(self.lid, locations_mod.location_id(self.prefs, self.folder),
+                         "the location's identity went with its pointer")
+        self.assertEqual((True, True, True), self._kept(),
+                         "comment, icon and star of a file in it were deleted")
+        said = [line for line in lines if os.path.basename(self.folder) in line]
+        self.assertEqual(1, len(said), lines)
+        self.assertIn("set aside", said[0])
+        self.assertNotIn("removed", said[0])
+
+    def test_the_folder_coming_back_brings_them_with_it(self):
+        self._clean_while_elsewhere()
+        os.rename(self.folder + ".elsewhere", self.folder)
+        self.assertTrue(self.model.add_folder(self.folder), "premise: the folder was not re-added")
+        self.assertEqual(self.key, locations_mod.file_ident(self.prefs, self.rock),
+                         "the returning folder was given a new identity")
+        self.assertEqual((True, True, True), self._kept())
+
+    def test_the_sidebar_remove_still_forgets_everything(self):
+        row = self._registered().index(hostos.canonical_path_key(self.folder)) + 1
+        self.assertTrue(self.model.remove_folder(row))
+        self.assertEqual((False, False, False), self._kept(),
+                         "Remove left a comment, an icon or a star behind")
+        self.assertEqual("", locations_mod.location_id(self.prefs, self.folder))
+
+
 class ShowUnknownFilesSwitchTest(unittest.TestCase):
     """`file_show_unknown`, read by a location saved before Show ▸: the count agrees either way."""
 

@@ -130,6 +130,115 @@ class AFailedRollbackSpeaksTest(_Case):
             "a divergence the next save builds on stayed in the log")
 
 
+class ASwitchPutsTheWholeVersionOnTheBase(_Case):
+    """A version saved without a sidecar or a render takes the other version's OUT of the base."""
+
+    def setUp(self):
+        super().setUp()
+        self.builder = self.base_mat[:-len(".mat")] + ".builder.json"
+        images = os.path.join(self.prefs.dir, self.prefs.img_dir)
+        os.makedirs(images, exist_ok=True)
+        self.png = os.path.join(images, self.mat_id + ".png")
+        for path in (self.builder, self.png):    # version 1: an older save, its render not landed
+            if os.path.exists(path):
+                os.remove(path)
+        self.assertEqual(1, versions.create_version(self.prefs, self.mat_id))
+        self._rewrite_base(b"V2-NETWORK")
+        for path, text in ((self.builder, '{"dialog_script": "v2"}'), (self.png, "V2-RENDER")):
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(text)
+        self.assertEqual(2, versions.create_version(self.prefs, self.mat_id))
+
+    def _in_base(self):
+        return {kind: os.path.exists(path)
+                for kind, path in ((".builder.json", self.builder), (".png", self.png))}
+
+    def _archived_png(self, number):
+        stem = {int(r["n"]): r["file"] for r in versions.list_versions(self.prefs, self.mat_id)}
+        return os.path.exists(os.path.join(versions.versions_dir(self.prefs, self.mat_id),
+                                           stem[number] + ".png"))
+
+    def test_a_kind_the_version_lacks_leaves_the_base(self):
+        self.assertTrue(versions.switch_active(self.prefs, self.mat_id, 1))
+        self.assertEqual({".builder.json": False, ".png": False}, self._in_base(),
+                         "version 1 sits beside version 2's sidecar or picture")
+        self.assertTrue(versions.switch_active(self.prefs, self.mat_id, 2))
+        self.assertEqual({".builder.json": True, ".png": True}, self._in_base())
+        self.assertTrue(versions.switch_active(self.prefs, self.mat_id, 1))
+        self.assertEqual([1, 2], [int(r["n"]) for r in versions.list_versions(
+            self.prefs, self.mat_id)], "a switch back and forth minted a version")
+
+    def test_a_kind_that_will_not_leave_puts_the_whole_base_back(self):
+        from unittest import mock
+        real = versions.hostos.replace_file
+
+        def held(source, dest):    # the picture held open by a viewer while it is moved aside
+            if os.path.normpath(source) == os.path.normpath(self.png):
+                raise PermissionError(13, "Permission denied", source)
+            return real(source, dest)
+
+        def base():
+            found = []
+            for path in (self.base_mat, self.builder, self.png):
+                if not os.path.exists(path):
+                    found.append(None)
+                    continue
+                with open(path, "rb") as fh:
+                    found.append(fh.read())
+            return found
+
+        before = base()
+        with mock.patch.object(versions.hostos, "replace_file", held):
+            self.assertFalse(versions.switch_active(self.prefs, self.mat_id, 1))
+        self.assertEqual(before, base(), "a switch that could not finish left the base mixed")
+        self.assertEqual(2, versions.active_version(self.prefs, self.mat_id))
+
+    def test_a_switch_through_the_model_records_no_picture(self):
+        """Held twice: the switch vacates the picture, the repaint records none (the spy's pin)."""
+        from unittest import mock
+        from amaze.core import library as library_mod
+        model = library_mod.MaterialLibrary(preferences=self.prefs)
+        with mock.patch.object(versions, "record_render",
+                               wraps=versions.record_render) as recorded:
+            self.assertTrue(model.switch_version(
+                model.find_asset_row_by_id(self.mat_id), 1))
+        self.assertFalse(self._archived_png(1),
+                         "version 2's picture was recorded into version 1's archive")
+        self.assertFalse(recorded.called, "a switch recorded the base picture as a fresh render")
+
+
+class TheBaseModelSwitchesInItsOwnSection(_Case):
+    """`switch_version` asks the store its model names, as every other version call does."""
+
+    def test_a_switch_reads_the_section_the_model_names(self):
+        from amaze.core import library as library_mod
+        model = library_mod.MaterialLibrary(preferences=self.prefs)
+        row = model.find_asset_row_by_id(self.mat_id)
+        model.VERSION_SECTION = versions.Section(
+            lambda preferences: (preferences.asset_dir, "elsewhere"),
+            versions.MATERIAL.kinds, versions.MATERIAL.source_kinds)
+        original = self._base_bytes()
+        versions.create_version(self.prefs, self.mat_id, section=model.VERSION_SECTION)
+        self._rewrite_base(b"EDITED-STATE")
+        versions.create_version(self.prefs, self.mat_id, section=model.VERSION_SECTION)
+        self.assertTrue(model.switch_version(row, 1),
+                        "the switch looked for the versions in another section's store")
+        self.assertEqual(original, self._base_bytes())
+        self.assertEqual("Version 1", model.data(model.index(row, 0), model.ActiveVersionRole),
+                         "the row still shows the version it showed before the switch")
+
+    def test_a_rename_shows_on_the_row_at_once(self):
+        from amaze.core import library as library_mod
+        versions.create_version(self.prefs, self.mat_id)
+        model = library_mod.MaterialLibrary(preferences=self.prefs)
+        row = model.find_asset_row_by_id(self.mat_id)
+        index = model.index(row, 0)
+        self.assertEqual("Version 1", model.data(index, model.ActiveVersionRole), "premise")
+        self.assertTrue(model.rename_version(row, 1, "Hero look"))
+        self.assertEqual("Hero look", model.data(index, model.ActiveVersionRole),
+                         "the row kept the old name until something else repainted it")
+
+
 class TheArchiveIsEachVersionsDurableThumbnail(_Case):
     """A version is minted at SAVE time, before that save's render lands, so a fresh archive slot starts holding the previous version's picture; record_render runs wherever a row's PNG is declared fresh and copies it into the ACTIVE slot, so each version keeps its own picture until the version goes."""
 

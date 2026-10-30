@@ -1803,6 +1803,33 @@ class ALocationIsAnIdAndItsPathIsAProperty(unittest.TestCase):
         self.assertTrue(locations.is_favourite(self.prefs, moved),
                         "the star was keyed to the path after all")
 
+    def test_a_location_inside_a_moved_one_moves_with_it(self):
+        """Locate on the outer folder: the inner location follows, and its files keep their keys."""
+        outer = self._reg("proj")
+        inner = self._reg(os.path.join("proj", "tex"))
+        beside = self._reg("projects")    # a sibling whose name merely extends the moved one
+        ident = locations.file_ident(self.prefs, os.path.join(inner, "wood.png"))
+        self.assertTrue(
+            ident.startswith("loc:" + locations.location_id(self.prefs, inner) + "/"),
+            "premise: the inner location does not own the file")
+        locations.set_favourite(self.prefs, ident, True)
+
+        moved = os.path.join(self.dir, "newproj")
+        os.rename(outer, moved)
+        locations.relocate_record(self.prefs, outer, moved)
+
+        registered = [hostos.canonical_path_key(p).rstrip("/")
+                      for p in locations.registered_paths(self.prefs)]
+        self.assertEqual(
+            sorted(hostos.canonical_path_key(p) for p in
+                   (moved, os.path.join(moved, "tex"), beside)),
+            sorted(registered),
+            "the nested location stayed behind, or the sibling moved with it")
+        here = locations.file_ident(self.prefs, os.path.join(moved, "tex", "wood.png"))
+        self.assertEqual(ident, here,
+                         "the nested location's file changed key, so its star stopped showing")
+        self.assertTrue(locations.is_favourite(self.prefs, here))
+
     def test_the_move_reaches_every_user_at_once(self):
         folder = self._reg("tex")
         ident = locations.file_ident(self.prefs,

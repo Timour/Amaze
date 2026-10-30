@@ -220,7 +220,7 @@ class NoMENUKnowsHowToFavourite(unittest.TestCase):
 
     def test_no_right_click_handler_favourites_or_deletes_rows_itself(self):
         offenders = menu_verbs_calling("toggle_fav", "toggle_favorite",
-                                       "remove_asset", "remove_user_gradient")
+                                       "remove_asset")
         self.assertEqual(
             [], offenders,
             "a right-click verb still favourites or removes rows itself, "

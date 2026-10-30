@@ -120,14 +120,6 @@ class CodeLibrary(library.AssetLibrary):
 
     CONTENT_SURVIVES_A_REFUSED_INDEX_WRITE = False  # snippets are stored INLINE, so a refused list write leaves nothing on disk to recover and Repair has nothing to put back - the message must say the snippet was not saved, rather than the base class's "the files are there"
 
-    def cleanup_db(self) -> int:
-        """Deliberately reduced to a state flush: code snippets live INLINE in code.json - there are no <id>.mat/.interface/thumbnail files - so the inherited cleanup's missing-file and lonely-file passes would classify EVERY snippet as an orphan and delete the whole library."""
-        self.save()
-        self.last_cleanup_summary = [  # a LIST, matching the base contract - the panel joins the lines; a bare string would be joined character by character
-            "Code: nothing to clean (snippets are stored inline)."
-        ]
-        return 0
-
     def add_asset(
         self,
         code: str,
@@ -268,13 +260,6 @@ class CodeLibrary(library.AssetLibrary):
         finally:
             _unstage(held)
             self._versions_changed(asset)
-
-    def _versions_changed(self, asset) -> None:
-        mat_id = str(asset.mat_id)
-        self._version_count_cache.pop(mat_id, None)
-        self._active_version_cache.pop(mat_id, None)
-        self.row_changed(self.find_asset_row_by_id(asset.mat_id),
-                         [self.VersionsRole, self.ActiveVersionRole])
 
     def row_data(self, row, role):
         """The tooltip is the snippet's own comment ▸p/d03-retired; the rest is the base's."""

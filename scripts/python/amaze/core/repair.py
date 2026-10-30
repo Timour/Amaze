@@ -239,13 +239,9 @@ def repair_index(directory: str, asset_dir: str = "mat/") -> tuple:
             continue
         debug.event("repair", "index restored from a snapshot",
                     tier=tier, undo=outcome.get("undo", ""))
+        refreshed, gone = _rows_against_their_stamps(target, os.path.join(directory, asset_dir))
         newer = _materials_newer_than_the_copy(directory, asset_dir)
-        if newer:
-            return True, ("the newest saved copy was put back, and the %d %s "
-                          "saved after it %s added back"
-                          % (newer, database.section_noun("library.json", newer),
-                             "was" if newer == 1 else "were"))
-        return True, "the newest saved copy was put back"
+        return True, _put_back_sentence(refreshed, newer, gone)
     document = rebuild_from_stamps(directory, asset_dir)
     if document["unreadable"]:  # a list that will not parse claims NOTHING, so every asset it owns reads as unclaimed and lands here as ours ▸p/clean-library-sweep
         debug.event("repair", "rebuild refused - a sibling list is "
@@ -276,6 +272,65 @@ def repair_index(directory: str, asset_dir: str = "mat/") -> tuple:
                 assets=len(document["assets"]),
                 damaged=len(document["damaged"]))
     return True, how
+
+
+def _rows_against_their_stamps(target: str, folder: str) -> tuple:
+    """(listed rows that took their stamp's record, names of rows with no .mat and no stamp)."""
+    document, error = restore_lib.read_document(target)
+    if error or database.wrong_shape(document):
+        return 0, []
+    rows = document.get("assets") or []
+    categories = document.setdefault("categories", ["_All"])
+    taken, gone = 0, []
+    for index, row in enumerate(rows):
+        asset_id = database.row_id(row) if isinstance(row, dict) else ""
+        if not material.is_safe_asset_id(asset_id):
+            continue
+        stamp = os.path.join(folder, asset_id + STAMP_SUFFIX)
+        if not os.path.exists(stamp):
+            if not os.path.exists(os.path.join(folder, asset_id + ".mat")):
+                gone.append(str(row.get("name") or asset_id))    # listed, never dropped
+            continue
+        record = read_stamp(stamp)    # written only after its list landed: never older than a copy
+        if record is None or str(record.get("id", asset_id)) != asset_id:
+            continue
+        record["id"] = row.get("id", asset_id)
+        if record != row:
+            rows[index] = record
+            taken += 1
+            for cat in record.get("categories") or []:
+                if cat and cat not in categories:
+                    categories.append(cat)    # a newer record brings its category back too
+    if taken:
+        try:
+            _write_json(target, document)
+        except OSError as exc:    # the copy is back either way
+            debug.event("repair", "newer records not taken", error=str(exc))
+            taken = 0
+    debug.event("repair", "rows checked against their stamps", taken=taken, gone=len(gone))
+    return taken, sorted(gone)
+
+
+def _put_back_sentence(refreshed: int, newer: int, gone: list) -> str:
+    """What the put-back did, in the status line's words: counts, then the rows whose files are gone."""
+    def counted(count, after):
+        return "the %d %s %s after it %s" % (
+            count, database.section_noun("library.json", count), after,
+            "was" if count == 1 else "were")
+
+    done = []
+    if refreshed:
+        done.append(counted(refreshed, "changed") + " brought up to date")
+    if newer:
+        done.append(counted(newer, "saved") + " added back")
+    how = "the newest saved copy was put back"
+    if done:
+        how += ", and " + wording.and_list(done)
+    if gone:
+        how += " - %s %s listed in it, but %s files are gone" % (
+            wording.and_list(gone[:8]) + (" and %d more" % (len(gone) - 8) if len(gone) > 8 else ""),
+            "is" if len(gone) == 1 else "are", "its" if len(gone) == 1 else "their")
+    return how
 
 
 def _materials_newer_than_the_copy(directory: str, asset_dir: str) -> int:

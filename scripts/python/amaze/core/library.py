@@ -406,7 +406,7 @@ class AssetLibrary(grid_engine.GridEngine,
         asset = self._assets[row]
         if list(asset.categories or []) == [name]:
             return False
-        asset.categories = name    # the RECORD's own setter splits and drops the blanks
+        asset.categories = [name]    # a LIST: the setter splits a string, and a name may hold a comma
         self._edited(asset, save)
         return True
 
@@ -993,15 +993,14 @@ class AssetLibrary(grid_engine.GridEngine,
         if not 0 <= row < len(self._assets):
             return False
         mat = self._assets[row]
-        if not versions.switch_active(self.preferences, mat.mat_id, number):
+        if not versions.switch_active(self.preferences, mat.mat_id, number,
+                                      self.VERSION_SECTION):
             return False
         self._content_state[str(mat.mat_id)] = self._content_stat(
             mat.mat_id)
         self._drop_content_label_caches(mat.mat_id)
-        self._version_count_cache.pop(str(mat.mat_id), None)
-        self._active_version_cache.pop(str(mat.mat_id), None)
-        self._add_thumb_paths(row)
-        self.row_changed(row, [self.VersionsRole, self.ActiveVersionRole, QtCore.Qt.ItemDataRole.DecorationRole])
+        self._add_thumb_paths(row, base_changed=False)    # the archive's own picture, no fresh render
+        self._versions_changed(mat)
         return True
 
     def rename_version(self, row: int, number: int, name: str) -> bool:
@@ -1012,10 +1011,16 @@ class AssetLibrary(grid_engine.GridEngine,
         if not versions.rename_version(
                 self.preferences, mat.mat_id, number, name, self.VERSION_SECTION):
             return False
-        self._active_version_cache.pop(str(mat.mat_id), None)
-        model_index = self.index(row, 0)
-        self.row_changed(model_index.row(), [self.ActiveVersionRole])
+        self._versions_changed(mat)
         return True
+
+    def _versions_changed(self, asset) -> None:
+        """Drop the row's two ledger caches and repaint both version columns, wherever the row is now."""
+        mat_id = str(asset.mat_id)
+        self._version_count_cache.pop(mat_id, None)
+        self._active_version_cache.pop(mat_id, None)
+        self.row_changed(self.find_asset_row_by_id(asset.mat_id),
+                         [self.VersionsRole, self.ActiveVersionRole])
 
     _SCRATCH_TAILS = (".writing", ".capturing", ".tmp", ".part", ".new")
     _SCRATCH_MIN_AGE = 60 * 60
@@ -1075,6 +1080,11 @@ class AssetLibrary(grid_engine.GridEngine,
 
     def cleanup_db(self) -> int:
         """Clean Library's pass, findings on `last_cleanup_summary`; 1 if rescued. ▸p/clean-library-sweep"""
+        if not self.CONTENT_SURVIVES_A_REFUSED_INDEX_WRITE:    # inline: every row would read as files missing
+            self.save()
+            self.last_cleanup_summary = ["%s: nothing to clean (%s are stored inline)." % (
+                database.section_label(self.DB_FILENAME), database.section_noun(self.DB_FILENAME))]
+            return 0
         from amaze.helpers import wording
         summary = []
 
@@ -1273,7 +1283,7 @@ class AssetLibrary(grid_engine.GridEngine,
                     "cleanup", "asset rescued to Uncategorized",
                     mat_id=str(asset.mat_id), name=asset.name,
                 )
-            asset.categories = ", ".join(cats)
+            asset.categories = cats    # a LIST, so a name holding a comma stays whole
         if rescued_count:
             summary.append(
                 "Moved %s with no category into 'Uncategorized'."
