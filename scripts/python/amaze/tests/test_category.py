@@ -1,7 +1,7 @@
 """The Categories model, with PySide6, prefs and the database connector mocked out."""
 
 import unittest
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 import os
 import sys

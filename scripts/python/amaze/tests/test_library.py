@@ -1,7 +1,7 @@
 """The library models: `MaterialLibrary` over mocked prefs/database/material in `TestMaterialLibrary`, and the rest against a real fixture library - merges, switches, schema stamps, favourites and the shared base's contract."""
 
 import unittest
-from unittest.mock import Mock, MagicMock, patch, call
+from unittest.mock import Mock, MagicMock, patch
 import os
 import json
 import shutil
@@ -193,7 +193,7 @@ class TestMaterialLibrary(unittest.TestCase):
         self.library.set_assetdata(index, "Multiple Values...", "cat1", "tag1", False)
 
         call_args = self.mock_material.set_data.call_args  # the name is preserved rather than overwritten with the placeholder
-        self.assertNotEqual(call_args[0][0], "Multiple Values...")
+        self.assertEqual(original_name, call_args[0][0])
 
     @patch("os.path.exists", return_value=True)
     @patch("os.remove")
@@ -1505,6 +1505,7 @@ class NoTagsIsAnEmptyListTest(unittest.TestCase):
         from amaze.core import library as library_mod
         from amaze.tests import make_library_fixture
 
+        test_support.pin_env(self, "OCIO", "/dev/null")    # save_node gates on $OCIO; nothing renders here
         test_support.reset_database_singletons()
         prefs = test_support.fixture_prefs(self)
         prefs.render_on_import = 0

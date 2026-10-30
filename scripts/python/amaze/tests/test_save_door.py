@@ -195,8 +195,7 @@ class ASaveKeepsTheArtistsSelection(unittest.TestCase):
     """The save stages a COPY, and `hou.copyNodesTo` selects what it makes."""
 
     def setUp(self):
-        if not hou.getenv("OCIO"):
-            hou.putenv("OCIO", "/dev/null")
+        test_support.pin_env(self, "OCIO", "/dev/null")
         self.panel = test_support.fixture_panel(self)
         self.panel.prefs.render_on_import = 0
 
@@ -219,8 +218,7 @@ class ASaveLeavesNothingOnTheUndoStack(unittest.TestCase):
 
     def test_a_material_save_adds_no_undo_entry(self):
         from amaze.render import nodes
-        if not hou.getenv("OCIO"):
-            hou.putenv("OCIO", "/dev/null")
+        test_support.pin_env(self, "OCIO", "/dev/null")
         prefs = test_support.fixture_prefs(self)
         prefs.render_on_import = 0
         node = _material(self, "door_undo")
@@ -241,8 +239,7 @@ class ASaveLeavesNothingOnTheUndoStack(unittest.TestCase):
         from amaze.actions import materials as material_actions
         from amaze.core import library
         from amaze.render import nodes
-        if not hou.getenv("OCIO"):
-            hou.putenv("OCIO", "/dev/null")
+        test_support.pin_env(self, "OCIO", "/dev/null")
         test_support.reset_database_singletons()
         self.addCleanup(test_support.reset_database_singletons)
         prefs = test_support.fixture_prefs(self)

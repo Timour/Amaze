@@ -342,7 +342,7 @@ class GradientTileIconTest(unittest.TestCase):
 
     def setUp(self):
         test_support.reset_database_singletons()
-        tile_icons.forget_overrides()
+        keyed_store.release()
         self.dir = tempfile.mkdtemp(prefix="amaze_gicon_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
         self.path = os.path.join(self.dir, "gradients.json")
@@ -374,7 +374,7 @@ class GradientTileIconTest(unittest.TestCase):
             self.row, {"name": "layers", "bg": "#4af2a1"}))
         self.assertEqual("layers", self.lib.tile_icon(self.row)["name"])
         test_support.reset_database_singletons()
-        tile_icons.forget_overrides()
+        keyed_store.release()
         again = gradient_library.GradientLibrary(
             preferences=_fixture_prefs(self, self.dir))
         row = _row_named(self, again, "ours")

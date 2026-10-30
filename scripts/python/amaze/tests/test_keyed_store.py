@@ -1856,7 +1856,7 @@ class ALocationIsAnIdAndItsPathIsAProperty(unittest.TestCase):
             "the other user's star waited for their own Locate")
 
     def test_the_innermost_location_owns_the_file(self):
-        outer = self._reg("a")
+        self._reg("a")
         inner = self._reg(os.path.join("a", "b"))
         ident = locations.file_ident(self.prefs,
                                      os.path.join(inner, "wood.png"))
@@ -1921,6 +1921,7 @@ class ALocationIsAnIdAndItsPathIsAProperty(unittest.TestCase):
         rival = "ffffffffffffffffffffffffffffffff"
         ids = keyed_store.open_store(locations.IDS_SPEC, self.prefs)
         ids._table[rival] = {"path": hostos.storage_path_key(folder)}
+        locations.touch()    # written past the module's doors, as a peer's row arrives
         notes_store = keyed_store.open_store(notes.SPEC, self.prefs)
         notes_store._table["file:" + ident] = {
             "items": [{"t": "text", "text": "mine"}]}
@@ -1929,6 +1930,8 @@ class ALocationIsAnIdAndItsPathIsAProperty(unittest.TestCase):
 
         locations.convert_to_ids(self.prefs)
 
+        self.assertEqual(keep, locations.location_id(self.prefs, folder),
+                         "the folder now resolves to the rival id, whose comment the user sees")
         self.assertEqual(
             [{"t": "text", "text": "mine"}],
             notes_store.get("file:" + ident).get("items"),

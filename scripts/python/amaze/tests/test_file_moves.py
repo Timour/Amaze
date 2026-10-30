@@ -30,12 +30,6 @@ OTHER_USER = "a1b2c3d4e5f60718293a4b5c6d7e8f90"    # a second minted-shaped uid
 ICON = {"name": "activity", "bg": "#ff8000"}
 
 
-def _write(path, text):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as handle:
-        handle.write(text)
-
-
 def _read(path):
     with open(path, encoding="utf-8") as handle:
         return handle.read()
@@ -68,7 +62,7 @@ class _Folders(unittest.TestCase):
         self.a = os.path.join(self.root, "a")
         self.b = os.path.join(self.root, "b")
         self.plate = os.path.join(self.a, "plate.exr")
-        _write(self.plate, "plate")
+        test_support.write_text(self.plate, "plate")
         os.makedirs(self.b)
         self.landed = os.path.join(self.b, "plate.exr")
 
@@ -88,7 +82,7 @@ class AFileMovesOnOneDriveTest(_Folders):
         self.assertEqual("plate", _read(self.landed))
 
     def test_a_taken_name_is_skipped_and_both_files_are_kept(self):
-        _write(self.landed, "other")
+        test_support.write_text(self.landed, "other")
         result = self._move()
         self.assertEqual(([], [(self.plate, self.landed)]), (result.moved, result.skipped))
         self.assertEqual(("plate", "other"), (_read(self.plate), _read(self.landed)))
@@ -117,7 +111,7 @@ class AFileMovesOnOneDriveTest(_Folders):
 
     def test_without_hard_links_a_taken_name_is_still_refused(self):
         """No hard links means a rename, which replaces silently. ▸r/cross-volume-move"""
-        _write(self.landed, "other")
+        test_support.write_text(self.landed, "other")
         with mock.patch.object(os, "link", side_effect=PermissionError(errno.EPERM, "no links")):
             result = self._move()
         self.assertEqual([(self.plate, self.landed)], result.skipped)
@@ -178,7 +172,7 @@ class AFileCopiesAcrossDrivesTest(_Folders):
         real_place = file_moves.place
 
         def taken(source, dest):
-            _write(dest, "other")    # another hand got there first
+            test_support.write_text(dest, "other")    # another hand got there first
             return real_place(source, dest)
 
         with mock.patch.object(file_moves, "place", side_effect=taken):
@@ -223,7 +217,7 @@ class AFileCopiesAcrossDrivesTest(_Folders):
     def test_a_part_left_by_an_earlier_copy_blocks_nothing(self):
         """Quitting Houdini mid-copy, or a crash, leaves a part behind; the name is still free."""
         left = "." + os.path.basename(self.landed) + file_moves.PART
-        _write(os.path.join(self.b, left), "half")
+        test_support.write_text(os.path.join(self.b, left), "half")
         result = self._move()
         self.assertEqual([(self.plate, self.landed)], result.moved,
                          "an earlier copy's part blocked the move: %s" % (result.failed,))
@@ -258,7 +252,7 @@ class WhatAmazeKeepsFollowsTheFileTest(unittest.TestCase):
         self.a = os.path.join(self.root, "a")
         self.b = os.path.join(self.root, "b")
         self.plate = os.path.join(self.a, "plate.exr")
-        _write(self.plate, "plate")
+        test_support.write_text(self.plate, "plate")
         os.makedirs(self.b)
         self.landed = os.path.join(self.b, "plate.exr")
         locations_mod.forget()
@@ -276,7 +270,7 @@ class WhatAmazeKeepsFollowsTheFileTest(unittest.TestCase):
         model.set_tile_icon(row, ICON)
         notes.set_note(self.prefs, notes.note_key("file", key),
                        [{"t": "text", "text": "kept"}])
-        _write(captures.file_path(self.prefs, key), "png")
+        test_support.write_text(captures.file_path(self.prefs, key), "png")
         return model, row, key
 
     def _moved(self):
@@ -354,8 +348,8 @@ class ThePicturesFollowTheFileTest(unittest.TestCase):
         os.makedirs(self.b)
         self.plate = os.path.join(self.a, "plate.exr")
         self.mesh = os.path.join(self.a, "mesh.obj")
-        _write(self.plate, "plate")
-        _write(self.mesh, "v 0 0 0")
+        test_support.write_text(self.plate, "plate")
+        test_support.write_text(self.mesh, "v 0 0 0")
         locations_mod.forget()
         self.addCleanup(locations_mod.forget)
         self.prefs = _Prefs([self.root])
@@ -399,7 +393,7 @@ class ThePicturesFollowTheFileTest(unittest.TestCase):
 
     def test_a_picture_left_at_the_new_place_yields_to_the_file_arriving(self):
         stale = os.path.join(self.b, "plate.exr")
-        _write(stale, "an older file of that name")
+        test_support.write_text(stale, "an older file of that name")
         self.images.put(stale, _picture("#2040ff"))
         self.images.save()
         os.remove(stale)    # that file left; its picture stayed
@@ -410,7 +404,7 @@ class ThePicturesFollowTheFileTest(unittest.TestCase):
 
     def test_a_picture_not_yet_saved_follows_too(self):
         fresh = os.path.join(self.a, "fresh.exr")
-        _write(fresh, "fresh")
+        test_support.write_text(fresh, "fresh")
         self.images.put(fresh, _picture("#80c040"))    # made, and not in the manifest file yet
         self._move([fresh])
         landed = os.path.join(self.b, "fresh.exr")
@@ -443,7 +437,7 @@ class ThePicturesFollowTheFileTest(unittest.TestCase):
         meshes = []
         for at in range(100):
             path = os.path.join(self.a, "m%03d.obj" % at)
-            _write(path, "v %d 0 0" % at)
+            test_support.write_text(path, "v %d 0 0" % at)
             self.geo.put(path, _picture("#40d080"))
             meshes.append(path)
         self.geo.save()
@@ -472,7 +466,7 @@ class TheFileTabMovesWhatLandsOnAFolderTest(unittest.TestCase):
         self.a, self.b = _child(self.loc, "a"), _child(self.loc, "b")
         self.plate = os.path.join(self.a, "plate.exr")
         self.landed = os.path.join(self.b, "plate.exr")
-        _write(self.plate, "plate")
+        test_support.write_text(self.plate, "plate")
         os.makedirs(self.b)
         self.panel.section_tabs.setChecked("file")
         QtWidgets.QApplication.processEvents()
@@ -544,7 +538,7 @@ class TheFileTabMovesWhatLandsOnAFolderTest(unittest.TestCase):
         self.assertFalse(self.section.can_undo_move([], None), "an undone move undoes again")
 
     def test_a_taken_name_is_named_on_the_status_line(self):
-        _write(self.landed, "other")
+        test_support.write_text(self.landed, "other")
         self._release_over(self.b)
         self.assertEqual(("plate", "other"), (_read(self.plate), _read(self.landed)))
         self.assertEqual(messages.MOVE_TAKEN % ("plate.exr", "b"), self.said[-1])

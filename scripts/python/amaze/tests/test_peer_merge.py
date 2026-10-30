@@ -283,8 +283,8 @@ class ARealConflictIsTOLD(_Case):
             "said so - the user was never told")
 
 
-class AnAdoptedFieldReachesTheModel(unittest.TestCase):
-    """H6's other half: the connector names the field, the MODEL must apply it."""
+class _PanelCase(unittest.TestCase):
+    """A fixture panel, its Material model, and its library.json read and written whole."""
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
@@ -298,6 +298,10 @@ class AnAdoptedFieldReachesTheModel(unittest.TestCase):
     def _write(self, document):
         with open(self.path, "w", encoding="utf-8", newline="\n") as handle:
             json.dump(document, handle, indent=4)
+
+
+class AnAdoptedFieldReachesTheModel(_PanelCase):
+    """H6's other half: the connector names the field, the MODEL must apply it."""
 
     def test_a_peer_field_edit_is_in_the_model_after_our_save(self):
         self.assertTrue(self.model.save(), "premise: the first save failed")
@@ -317,21 +321,8 @@ class AnAdoptedFieldReachesTheModel(unittest.TestCase):
             "value, so the next ordinary save writes it back out")
 
 
-class ASidebarSaveDoesNotStrandWhatItMerged(unittest.TestCase):
+class ASidebarSaveDoesNotStrandWhatItMerged(_PanelCase):
     """The sidebar shares the asset model's connector, so what ITS save merges must reach the model."""
-
-    def setUp(self):
-        self.panel = test_support.fixture_panel(self)
-        self.model = self.panel.material_model
-        self.path = os.path.join(self.panel.prefs.dir, "library.json")
-
-    def _disk(self):
-        with open(self.path, encoding="utf-8-sig") as handle:
-            return json.load(handle)
-
-    def _write(self, document):
-        with open(self.path, "w", encoding="utf-8", newline="\n") as handle:
-            json.dump(document, handle, indent=4)
 
     def _sidebar_save_then_asset_save(self):
         self.assertTrue(self.panel.category_model.save(),
@@ -380,23 +371,14 @@ class ASidebarSaveDoesNotStrandWhatItMerged(unittest.TestCase):
             "save wrote the model's stale name straight back over it")
 
 
-class TheSidebarHearsWhatASaveMerged(unittest.TestCase):
+class TheSidebarHearsWhatASaveMerged(_PanelCase):
     """A save merging another machine's categories tells the sidebar's views at once."""
 
     def setUp(self):
-        self.panel = test_support.fixture_panel(self)
+        super().setUp()
         self.sidebar = self.panel.category_model
-        self.path = os.path.join(self.panel.prefs.dir, "library.json")
         self.assertTrue(self.panel.material_model.save(),
                         "premise: the first save failed")
-
-    def _disk(self):
-        with open(self.path, encoding="utf-8-sig") as handle:
-            return json.load(handle)
-
-    def _write(self, document):
-        with open(self.path, "w", encoding="utf-8", newline="\n") as handle:
-            json.dump(document, handle, indent=4)
 
     def _view(self):
         """A proxy maps only what the model has signalled, as every view does."""

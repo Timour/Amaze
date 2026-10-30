@@ -93,11 +93,6 @@ def set_notes(preferences, pages: dict):
         {key: {"items": items} for key, items in (pages or {}).items()})
 
 
-def forget_notes() -> None:
-    """Drop the cache - a test seam like its keyed-store siblings; the product's library switch drops every table through `keyed_store.release()` at the switch door."""
-    keyed_store.release()
-
-
 IMAGE_DIR = "img/comments"    # ▸p/comment-images
 
 

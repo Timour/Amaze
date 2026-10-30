@@ -224,8 +224,7 @@ class BothOnlineDestinationsRunOneSequence(unittest.TestCase):
     """Into the library or into the scene: the same fetch, staging, build and warning."""
 
     def setUp(self):
-        if hou.getenv("OCIO") is None:
-            hou.putenv("OCIO", "/dev/null")
+        test_support.pin_env(self, "OCIO", "/dev/null")
         self.prefs = test_support.fixture_prefs(self)
         self.prefs.render_on_import = 0
         test_support.reset_database_singletons()
@@ -333,8 +332,7 @@ class HostedPictureImportTest(unittest.TestCase):
     """A MaterialX import of a material with an Amaze render keeps it instead of rendering."""
 
     def setUp(self):
-        if hou.getenv("OCIO") is None:
-            hou.putenv("OCIO", "/dev/null")
+        test_support.pin_env(self, "OCIO", "/dev/null")
         self.prefs = test_support.fixture_prefs(self)
         self.prefs.render_on_import = 1
         test_support.reset_database_singletons()

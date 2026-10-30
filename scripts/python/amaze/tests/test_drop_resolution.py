@@ -53,15 +53,7 @@ class _ReleaseCase(unittest.TestCase):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
 
     def setUp(self):
-        self.addCleanup(self._clear_obj)
-
-    def _clear_obj(self):
-        """Object level back to empty, whatever a test built there."""
-        for child in hou.node("/obj").children():
-            try:
-                child.destroy()
-            except hou.OperationFailed:
-                pass
+        self.addCleanup(test_support.clear_obj)
 
     def _patch(self, editor):
         """Serve `editor` as the pane under the pointer for this test."""

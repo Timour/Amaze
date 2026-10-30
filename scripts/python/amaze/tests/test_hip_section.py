@@ -565,24 +565,27 @@ class ViewportStateTest(unittest.TestCase):
             scene_captures.viewport_state(_Viewer("Houdini VK", False))["blocking"])
 
 
+def _patch(testcase, owner, name, value):
+    """`owner.name` is `value` for this test, put back when it ends."""
+    from unittest import mock
+    patcher = mock.patch.object(owner, name, value)
+    patcher.start()
+    testcase.addCleanup(patcher.stop)
+
+
 class SlowCapturePromptTest(unittest.TestCase):
     """What the refusal SAYS and DOES when the viewport is rendering. Was source-derived against panel.py; the policy moved into scene_captures.capture_open_scene (one home, two callers) and every one of these went red on the move - tests pinned to WHERE the code lives rather than to what it does. Behavioural now: capture_open_scene never touches hou.ui, so the real decision runs headless and the assertions are on its actual output."""
 
     def setUp(self):
         self.prefs = _library_prefs(self)
 
-    def _patch(self, name, value):
-        original = getattr(scene_captures, name)
-        setattr(scene_captures, name, value)
-        self.addCleanup(setattr, scene_captures, name, original)
-
     def _blocking(self, debug_on=False):
         """A viewport rendering through Karma, with capture sabotaged so any attempt to proceed fails the test rather than passing it."""
         self.scene = _real_scene(self)
-        self._patch("current_scene_path", lambda: self.scene)
-        self._patch("viewport_state",
-                    lambda *a: {"blocking": True, "renderer": "Karma CPU"})
-        self._patch("capture_viewport", lambda out, viewer=None: self.fail(
+        _patch(self, scene_captures, "current_scene_path", lambda: self.scene)
+        _patch(self, scene_captures, "viewport_state",
+               lambda *a: {"blocking": True, "renderer": "Karma CPU"})
+        _patch(self, scene_captures, "capture_viewport", lambda out, viewer=None: self.fail(
             "captured through a rendering delegate - the refusal fell "
             "through into an unbounded stall"))
         original = scene_captures.debug.is_on
@@ -611,11 +614,11 @@ class SlowCapturePromptTest(unittest.TestCase):
         """Order, measured rather than read: the state must be consulted BEFORE the capture, or reading it cannot avoid the stall."""
         order = []
         self.scene = _real_scene(self)
-        self._patch("current_scene_path", lambda: self.scene)
-        self._patch("viewport_state",
-                    lambda *a: order.append("state") or {"blocking": False})
-        self._patch("capture_viewport",
-                    lambda out, viewer=None: order.append("capture") or out)
+        _patch(self, scene_captures, "current_scene_path", lambda: self.scene)
+        _patch(self, scene_captures, "viewport_state",
+               lambda *a: order.append("state") or {"blocking": False})
+        _patch(self, scene_captures, "capture_viewport",
+               lambda out, viewer=None: order.append("capture") or out)
         scene_captures.capture_open_scene(self.prefs, self.scene)
         self.assertEqual(["state", "capture"], order)
 
@@ -1066,31 +1069,26 @@ class CaptureDecisionPathTest(unittest.TestCase):
     def setUp(self):
         self.prefs = _library_prefs(self)
 
-    def _patch(self, name, value):
-        original = getattr(scene_captures, name)
-        setattr(scene_captures, name, value)
-        self.addCleanup(setattr, scene_captures, name, original)
-
     def test_no_open_scene_is_refused_with_a_reason(self):
-        self._patch("current_scene_path", lambda: "")
+        _patch(self, scene_captures, "current_scene_path", lambda: "")
         with self.assertRaises(scene_captures.CaptureRefused) as caught:
             scene_captures.capture_open_scene(self.prefs)
         self.assertIn("nothing to capture", str(caught.exception).lower())
 
     def test_a_target_that_is_not_open_is_refused(self):
         self.scene = _real_scene(self)
-        self._patch("current_scene_path", lambda: self.scene)
+        _patch(self, scene_captures, "current_scene_path", lambda: self.scene)
         with self.assertRaises(scene_captures.CaptureRefused) as caught:
             scene_captures.capture_open_scene(self.prefs, _real_scene(self, "other.hiplc"))
         self.assertIn("different scene", str(caught.exception))
 
     def test_a_rendering_viewport_is_refused(self):
         self.scene = _real_scene(self)
-        self._patch("current_scene_path", lambda: self.scene)
-        self._patch("viewport_state",
-                    lambda *a: {"blocking": True, "renderer": "Karma CPU"})
-        self._patch("capture_viewport",
-                    lambda out, viewer=None: self.fail("captured through a renderer"))
+        _patch(self, scene_captures, "current_scene_path", lambda: self.scene)
+        _patch(self, scene_captures, "viewport_state",
+               lambda *a: {"blocking": True, "renderer": "Karma CPU"})
+        _patch(self, scene_captures, "capture_viewport",
+               lambda out, viewer=None: self.fail("captured through a renderer"))
         with self.assertRaises(scene_captures.CaptureRefused) as caught:
             scene_captures.capture_open_scene(self.prefs, self.scene)
         self.assertIn("stop the viewport render", str(caught.exception))
@@ -1100,13 +1098,13 @@ class CaptureDecisionPathTest(unittest.TestCase):
         handed = []
         viewers = iter(["FIRST", "SECOND", "THIRD"])
         self.scene = _real_scene(self)
-        self._patch("current_scene_path", lambda: self.scene)
-        self._patch("scene_viewer", lambda: next(viewers))
-        self._patch("viewport_state",
-                    lambda v=None: handed.append(("guard", v))
-                    or {"blocking": False})
-        self._patch("capture_viewport",
-                    lambda out, viewer=None: handed.append(("shot", viewer)) or out)
+        _patch(self, scene_captures, "current_scene_path", lambda: self.scene)
+        _patch(self, scene_captures, "scene_viewer", lambda: next(viewers))
+        _patch(self, scene_captures, "viewport_state",
+               lambda v=None: handed.append(("guard", v))
+               or {"blocking": False})
+        _patch(self, scene_captures, "capture_viewport",
+               lambda out, viewer=None: handed.append(("shot", viewer)) or out)
         scene_captures.capture_open_scene(self.prefs, self.scene)
         self.assertEqual(2, len(handed), "guard or capture did not run")
         self.assertEqual(
@@ -1121,10 +1119,10 @@ class CaptureDecisionPathTest(unittest.TestCase):
         """No tile means no mismatch is possible, so the shelf tool captures whatever is open - including a scene Amaze did not open itself."""
         taken = []
         self.scene = _real_scene(self, "manual.hiplc")
-        self._patch("current_scene_path", lambda: self.scene)
-        self._patch("viewport_state", lambda *a: {"blocking": False})
-        self._patch("capture_viewport",
-                    lambda out, viewer=None: taken.append(out) or out)
+        _patch(self, scene_captures, "current_scene_path", lambda: self.scene)
+        _patch(self, scene_captures, "viewport_state", lambda *a: {"blocking": False})
+        _patch(self, scene_captures, "capture_viewport",
+               lambda out, viewer=None: taken.append(out) or out)
         out = scene_captures.capture_open_scene(self.prefs)
         expected = captures.file_path(self.prefs, captures.file_key(self.prefs, self.scene))
         self.assertEqual([expected], taken, "the open scene's capture went somewhere else")
@@ -1214,11 +1212,6 @@ class CaptureRefreshesTheTileTest(unittest.TestCase):
 class ReviewFixesTest(unittest.TestCase):
     """Regressions for the defects a five-lens review found, each of which shipped and none of which any existing test caught."""
 
-    def _patch(self, name, value):
-        original = getattr(scene_captures, name)
-        setattr(scene_captures, name, value)
-        self.addCleanup(setattr, scene_captures, name, original)
-
     def _png(self, colours):
         from PySide6 import QtGui
         img = QtGui.QImage(64, 64, QtGui.QImage.Format.Format_ARGB32)
@@ -1242,8 +1235,8 @@ class ReviewFixesTest(unittest.TestCase):
         self.assertEqual("", scene_captures._key(""))
 
     def test_an_unsaved_scene_is_refused(self):
-        self._patch("current_scene_path", lambda: "/nope/untitled.hip")
-        self._patch("capture_viewport", lambda out, viewer=None: self.fail(
+        _patch(self, scene_captures, "current_scene_path", lambda: "/nope/untitled.hip")
+        _patch(self, scene_captures, "capture_viewport", lambda out, viewer=None: self.fail(
             "captured a scene that is not on disk"))
         with self.assertRaises(scene_captures.CaptureRefused) as caught:
             scene_captures.capture_open_scene(_library_prefs(self))
@@ -1253,10 +1246,10 @@ class ReviewFixesTest(unittest.TestCase):
         """The old wording said the viewport showed a different scene even when it showed exactly this one and Amaze merely had not opened it."""
         tmp = _Tmp(self)
         scene = tmp.touch("open.hiplc")
-        self._patch("current_scene_path", lambda: scene)
-        self._patch("viewport_state", lambda *a: {"blocking": False})
-        self._patch("scene_viewer", lambda: "V")
-        self._patch("capture_viewport", lambda out, viewer=None: out)
+        _patch(self, scene_captures, "current_scene_path", lambda: scene)
+        _patch(self, scene_captures, "viewport_state", lambda *a: {"blocking": False})
+        _patch(self, scene_captures, "scene_viewer", lambda: "V")
+        _patch(self, scene_captures, "capture_viewport", lambda out, viewer=None: out)
         scene_captures.capture_open_scene(_library_prefs(self), scene)      # must NOT raise
 
 
@@ -1281,17 +1274,12 @@ class AnyViewerContextCanBeCapturedTest(unittest.TestCase):
                     return _Cat()
             return _Node()
 
-    def _patch(self, name, value):
-        original = getattr(scene_captures, name)
-        setattr(scene_captures, name, value)
-        self.addCleanup(setattr, scene_captures, name, original)
-
     def _capture_from(self, category):
         scene = _real_scene(self)
-        self._patch("current_scene_path", lambda: scene)
-        self._patch("scene_viewer", lambda: self._Viewer(category))
-        self._patch("viewport_state", lambda *a: {"blocking": False})
-        self._patch("capture_viewport", lambda out, viewer=None: "/tmp/shot.png")
+        _patch(self, scene_captures, "current_scene_path", lambda: scene)
+        _patch(self, scene_captures, "scene_viewer", lambda: self._Viewer(category))
+        _patch(self, scene_captures, "viewport_state", lambda *a: {"blocking": False})
+        _patch(self, scene_captures, "capture_viewport", lambda out, viewer=None: "/tmp/shot.png")
         return scene_captures.capture_open_scene(_library_prefs(self), scene)
 
     def test_every_context_including_COP_and_an_unreadable_one_is_captured(self):
@@ -1719,28 +1707,23 @@ class LibraryUpdateTest(unittest.TestCase):
         self.dir = self.panel.prefs.dir
         library_policy.set_library_version(self.dir, 1)    # a library from before 1.9
         self.moved, self.asked = [], []
-        self._patch(captures, "adopt_machine_captures",
-                    lambda preferences: self.moved.append(preferences) or 0)
+        _patch(self, captures, "adopt_machine_captures",
+               lambda preferences: self.moved.append(preferences) or 0)
         ui = types.SimpleNamespace(displayMessage=lambda *a, **k: self.asked.append(a) or 0)
         patcher = mock.patch.object(hou, "ui", ui, create=True)
         patcher.start()
         self.addCleanup(patcher.stop)
 
-    def _patch(self, owner, name, value):
-        original = getattr(owner, name)
-        setattr(owner, name, value)
-        self.addCleanup(setattr, owner, name, original)
-
     def test_this_computers_captures_move_without_a_question(self):
         """1.9.0 offered Later, which left the library open but not updated."""
-        self._patch(captures, "machine_capture_count", lambda: 3)
+        _patch(self, captures, "machine_capture_count", lambda: 3)
         self.panel._update_library()
         self.assertEqual(1, len(self.moved), "the captures were not moved")
         self.assertEqual(2, self.policy.library_version(self.dir))
         self.assertEqual([], self.asked, "the update asked first")
 
     def test_with_nothing_to_move_only_the_version_changes(self):
-        self._patch(captures, "machine_capture_count", lambda: 0)
+        _patch(self, captures, "machine_capture_count", lambda: 0)
         self.panel._update_library()
         self.assertEqual([], self.moved)
         self.assertEqual(2, self.policy.library_version(self.dir))
@@ -1748,13 +1731,13 @@ class LibraryUpdateTest(unittest.TestCase):
     def test_an_updated_library_still_takes_this_computers_captures(self):
         """Another computer updated it first; this computer's own captures are still outside."""
         self.policy.set_library_version(self.dir, 2)
-        self._patch(captures, "machine_capture_count", lambda: 2)
+        _patch(self, captures, "machine_capture_count", lambda: 2)
         self.panel._update_library()
         self.assertEqual(1, len(self.moved), "an updated library left this computer's behind")
 
     def test_a_panel_is_updated_before_it_is_shown(self):
         """No tile may paint from a library this Amaze has not updated."""
-        self._patch(captures, "machine_capture_count", lambda: 3)
+        _patch(self, captures, "machine_capture_count", lambda: 3)
         test_support.reopened_panel(self)
         self.assertEqual(1, len(self.moved), "the panel was built over an old library")
         self.assertEqual(2, self.policy.library_version(self.dir))
@@ -1762,7 +1745,7 @@ class LibraryUpdateTest(unittest.TestCase):
 
     def test_an_open_preferences_window_shows_the_new_version(self):
         """Reload Library runs the update under an open Preferences, which kept saying 1."""
-        self._patch(captures, "machine_capture_count", lambda: 0)
+        _patch(self, captures, "machine_capture_count", lambda: 0)
         self.panel.show_prefs()
         dialog = self.panel._prefs_dialog
         self.addCleanup(dialog.close)
@@ -1904,11 +1887,6 @@ class CaptureFromTheMenuTest(unittest.TestCase):
     def setUpClass(cls):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
 
-    def _patch(self, owner, name, value):
-        original = getattr(owner, name)
-        setattr(owner, name, value)
-        self.addCleanup(setattr, owner, name, original)
-
     def _select(self, key, rows):
         """Show section `key` with `rows` selected; answers its context and the selection."""
         from PySide6 import QtCore as _QtCore
@@ -1935,7 +1913,7 @@ class CaptureFromTheMenuTest(unittest.TestCase):
 
     def _refusals(self):
         said = []
-        self._patch(self.panel, "_report_capture_refused", said.append)
+        _patch(self, self.panel, "_report_capture_refused", said.append)
         return said
 
     def test_one_tile_in_any_section_can_be_captured(self):
@@ -1950,10 +1928,10 @@ class CaptureFromTheMenuTest(unittest.TestCase):
         rows = self._rows_of_kind(locations.KIND_HIP)
         context, chosen = self._select("file", rows[:1])
         path = chosen[0].data(self.panel.file_files_model.PathRole)
-        self._patch(scene_captures, "current_scene_path", lambda: "")
+        _patch(self, scene_captures, "current_scene_path", lambda: "")
         self.assertFalse(context.menu_capture_enabled(chosen, chosen[0]),
                          "a scene that is not open was offered a capture")
-        self._patch(scene_captures, "current_scene_path", lambda: path)
+        _patch(self, scene_captures, "current_scene_path", lambda: path)
         self.assertTrue(context.menu_capture_enabled(chosen, chosen[0]))
 
     def test_any_other_file_takes_a_capture(self):
@@ -1973,7 +1951,7 @@ class CaptureFromTheMenuTest(unittest.TestCase):
             taken.append((out, key))
             return out
 
-        self._patch(scene_captures, "capture_tile", capture)
+        _patch(self, scene_captures, "capture_tile", capture)
         self.addCleanup(model.set_tile_icons, [row], {})
         self.panel.capture_onto_tile(context, chosen[0])
         self.assertEqual([(model.capture_path(row), model.tile_key(row))], taken)
@@ -2003,7 +1981,7 @@ class CaptureFromTheMenuTest(unittest.TestCase):
         def refuse(out, key):
             raise scene_captures.CaptureRefused("Please stop the viewport render before capturing.")
 
-        self._patch(scene_captures, "capture_tile", refuse)
+        _patch(self, scene_captures, "capture_tile", refuse)
         said = self._refusals()
         self.panel.capture_onto_tile(context, chosen[0])
         self.assertEqual(["Please stop the viewport render before capturing."], said)
@@ -2013,16 +1991,16 @@ class CaptureFromTheMenuTest(unittest.TestCase):
         from amaze import messages
         self._select("material", [])
         said = self._refusals()
-        self._patch(scene_captures, "capture_tile",
-                    lambda out, key: self.fail("captured onto no tile"))
+        _patch(self, scene_captures, "capture_tile",
+               lambda out, key: self.fail("captured onto no tile"))
         self.panel.capture_from_toolbar()
         self.assertEqual([messages.CAPTURE_SELECT_ONE_TILE], said)
 
     def test_the_toolbar_in_File_with_nothing_selected_takes_the_open_scene(self):
         self._select("file", [])
         asked = []
-        self._patch(scene_captures, "capture_open_scene",
-                    lambda preferences, target="": asked.append(target) or "")
+        _patch(self, scene_captures, "capture_open_scene",
+               lambda preferences, target="": asked.append(target) or "")
         self.panel.capture_from_toolbar()
         self.assertEqual([""], asked, "the open scene was not captured")
 

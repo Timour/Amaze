@@ -21,12 +21,6 @@ REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__))))))
 
 
-def _write(path, text):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as handle:
-        handle.write(text)
-
-
 def _node(label, kind, icon="icons/one.svg", group=None, short="Does one thing."):
     node = {"label": label, "type": "Sop/example::%s::0.1" % kind,
             "file": "otls/example_%s.hda" % kind, "addon_icon": icon,
@@ -57,7 +51,7 @@ class _Workspace(unittest.TestCase):
     def package(self, files=None, version="1.2.3", **extra):
         files = files or {"otls/example_one.hda": "hda one", "icons/one.svg": "<svg/>"}
         for member, text in files.items():
-            _write(os.path.join(self.root, *member.split("/")), text)
+            test_support.write_text(os.path.join(self.root, *member.split("/")), text)
         return addons.write(self.out, self.fields(version, **extra), self.root, list(files))
 
 
@@ -120,8 +114,8 @@ class TheWriterTest(_Workspace):
         self.assertIn("One: group is not text", str(caught.exception))
 
     def test_a_member_passed_twice_is_written_once(self):
-        _write(os.path.join(self.root, "otls", "example_one.hda"), "1")
-        _write(os.path.join(self.root, "icons", "one.svg"), "s")
+        test_support.write_text(os.path.join(self.root, "otls", "example_one.hda"), "1")
+        test_support.write_text(os.path.join(self.root, "icons", "one.svg"), "s")
         path = addons.write(self.out, self.fields(), self.root,
                             ["otls/example_one.hda", "icons/one.svg", "icons/one.svg"])
         with zipfile.ZipFile(path) as bundle:
@@ -151,7 +145,7 @@ class TheWriterTest(_Workspace):
         self.assertIn("'../outside.hda' is not a plain relative path", str(caught.exception))
 
     def test_a_listed_file_missing_from_root_is_refused(self):
-        _write(os.path.join(self.root, "icons", "one.svg"), "s")
+        test_support.write_text(os.path.join(self.root, "icons", "one.svg"), "s")
         with self.assertRaises(packages.PackageError) as caught:
             addons.write(self.out, self.fields(), self.root,
                          ["otls/example_one.hda", "icons/one.svg"])
@@ -347,10 +341,10 @@ class TheStoreTest(_ThreeRows):
 class AnAmazeUpdateKeepsItsAddOnsTest(_Workspace):
 
     def test_the_updater_carries_the_add_ons_into_the_new_install(self):
-        _write(os.path.join(self.amaze, "scripts", "old.txt"), "the version being replaced")
-        _write(os.path.join(self.amaze, addons.ROOT, "example", packages.MANIFEST), "{}")
+        test_support.write_text(os.path.join(self.amaze, "scripts", "old.txt"), "the version being replaced")
+        test_support.write_text(os.path.join(self.amaze, addons.ROOT, "example", packages.MANIFEST), "{}")
         staged = os.path.join(self.dir, "staged")
-        _write(os.path.join(staged, "scripts", "new.txt"), "the release")
+        test_support.write_text(os.path.join(staged, "scripts", "new.txt"), "the release")
         updater.apply_update(staged, self.amaze)
         self.assertTrue(os.path.isfile(os.path.join(self.amaze, "scripts", "new.txt")))
         self.assertTrue(os.path.isfile(os.path.join(
@@ -360,7 +354,7 @@ class AnAmazeUpdateKeepsItsAddOnsTest(_Workspace):
     HOME_MADE = os.path.join(addons.ROOT, "mytool", "otls", "mytool.hda")    # never in the store
 
     def _release(self, name, which):
-        _write(os.path.join(self.dir, name, "scripts", "which.txt"), which)
+        test_support.write_text(os.path.join(self.dir, name, "scripts", "which.txt"), which)
         return os.path.join(self.dir, name)
 
     def _which(self):
@@ -375,8 +369,8 @@ class AnAmazeUpdateKeepsItsAddOnsTest(_Workspace):
 
     def test_a_carry_that_fails_refuses_the_update_and_keeps_the_old_install(self):
         """The refusal names its reason, the old install stays whole, the next update carries."""
-        _write(os.path.join(self.amaze, "scripts", "which.txt"), "1.0")
-        _write(os.path.join(self.amaze, self.HOME_MADE), "a home-made add-on")
+        test_support.write_text(os.path.join(self.amaze, "scripts", "which.txt"), "1.0")
+        test_support.write_text(os.path.join(self.amaze, self.HOME_MADE), "a home-made add-on")
         real, calls = addons.carry, []
 
         def held_once(old, new):
@@ -400,10 +394,10 @@ class AnAmazeUpdateKeepsItsAddOnsTest(_Workspace):
 
     def test_a_leftover_beside_the_install_gives_its_add_ons_back_before_it_goes(self):
         """`<install>.replacing` from an older build can hold the only copy of the add-ons."""
-        _write(os.path.join(self.amaze, "scripts", "which.txt"), "1.1")
+        test_support.write_text(os.path.join(self.amaze, "scripts", "which.txt"), "1.1")
         leftover = self.amaze + ".replacing"
-        _write(os.path.join(leftover, "scripts", "which.txt"), "1.0")
-        _write(os.path.join(leftover, self.HOME_MADE), "a home-made add-on")
+        test_support.write_text(os.path.join(leftover, "scripts", "which.txt"), "1.0")
+        test_support.write_text(os.path.join(leftover, self.HOME_MADE), "a home-made add-on")
         updater.apply_update(self._release("staged", "1.2"), self.amaze)
         self.assertEqual("1.2", self._which())
         self.assertEqual([os.path.join("Amaze", self.HOME_MADE)], self._add_on_files(),
@@ -411,9 +405,9 @@ class AnAmazeUpdateKeepsItsAddOnsTest(_Workspace):
         self.assertFalse(os.path.exists(leftover))
 
     def test_a_leftover_whose_add_ons_cannot_be_carried_is_kept(self):
-        _write(os.path.join(self.amaze, "scripts", "which.txt"), "1.1")
+        test_support.write_text(os.path.join(self.amaze, "scripts", "which.txt"), "1.1")
         leftover = self.amaze + ".replacing"
-        _write(os.path.join(leftover, self.HOME_MADE), "a home-made add-on")
+        test_support.write_text(os.path.join(leftover, self.HOME_MADE), "a home-made add-on")
         with mock.patch.object(addons, "carry", side_effect=OSError(28, "No space left")):
             with self.assertRaises(OSError):
                 updater.apply_update(self._release("staged", "1.2"), self.amaze)
@@ -429,7 +423,7 @@ class TheCarryTest(_Workspace):
         super().setUp()
         self.new = os.path.join(self.dir, "staged")
         for member in ("a/otls/a.hda", "a.json", "b/otls/b.hda", "b.json"):
-            _write(os.path.join(self.amaze, addons.ROOT, *member.split("/")), "old " + member)
+            test_support.write_text(os.path.join(self.amaze, addons.ROOT, *member.split("/")), "old " + member)
 
     def _tree(self, root):
         found = []
@@ -438,7 +432,7 @@ class TheCarryTest(_Workspace):
         return sorted(found)
 
     def test_the_carry_copies_only_what_the_new_tree_lacks(self):
-        _write(os.path.join(self.new, addons.ROOT, "a", "otls", "a.hda"), "installed since")
+        test_support.write_text(os.path.join(self.new, addons.ROOT, "a", "otls", "a.hda"), "installed since")
         addons.carry(self.amaze, self.new)
         with open(os.path.join(self.new, addons.ROOT, "a", "otls", "a.hda"), encoding="utf-8") as fh:
             self.assertEqual("installed since", fh.read(), "the carry wrote over an add-on there")
@@ -450,7 +444,7 @@ class TheCarryTest(_Workspace):
 
         def dies_in_b(src, dst, *args, **kwargs):
             if os.path.basename(src) == "b":
-                _write(os.path.join(dst, "otls", "fragment"), "half")
+                test_support.write_text(os.path.join(dst, "otls", "fragment"), "half")
                 why = "[Errno 28] No space left on device"
                 raise shutil.Error([(os.path.join(src, "otls", "b.hda"), dst, why)])
             return real(src, dst, *args, **kwargs)

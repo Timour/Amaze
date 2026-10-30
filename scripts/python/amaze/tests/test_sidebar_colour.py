@@ -60,7 +60,10 @@ class TheColourReachesBOTHPlacesItIsPainted(unittest.TestCase):
                 told = []
                 for signal in (model.dataChanged, model.modelReset,
                                model.layoutChanged):
-                    signal.connect(lambda *a, s=signal: told.append(s))
+                    def heard(*_args, s=signal, told=told):    # bound now: no other sidebar fills it
+                        told.append(s)
+                    signal.connect(heard)
+                    self.addCleanup(signal.disconnect, heard)
 
                 context.set_sidebar_colour(name, "#4af2a1")
                 QtWidgets.QApplication.processEvents()

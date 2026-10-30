@@ -371,11 +371,6 @@ def _store(preferences):
     return keyed_store.open_store(SPEC, preferences)
 
 
-def overrides(preferences) -> dict:
-    """Every icon choice in this library - a COPY."""
-    return _store(preferences).all()
-
-
 def override_for(preferences, key: str) -> dict:
     return _store(preferences).get(key)
 
@@ -394,8 +389,3 @@ def set_overrides(preferences, specs: dict) -> dict:
     held = written.reason != keyed_store.REASON_NO_USER    # as `set` answers: an unchanged key holds
     return {key: held and store.get(key) == normalise(spec)
             for key, spec in specs.items()}
-
-
-def forget_overrides() -> None:
-    """Drop the cached tables - a test seam like its keyed-store siblings; the product's library switch drops them through the one `keyed_store.release()` at the switch door."""
-    keyed_store.release()

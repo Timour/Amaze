@@ -28,12 +28,7 @@ from amaze.render import husk_job, thumbs  # noqa: E402
 from amaze import preview  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
-PACKAGE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-
-def source_of(relative: str) -> str:
-    with open(os.path.join(PACKAGE, relative), encoding="utf-8") as handle:
-        return handle.read()
+source_of = test_support.source_of
 
 
 class _Parm:
@@ -431,26 +426,18 @@ class AKarmaThumbnailLeavesTheSceneAsItFoundIt(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.out, True)
         self.addCleanup(hou.undos.clear)
 
-    @staticmethod
-    def _drop(node):
-        with hou.undos.disabler():    # the teardown is not the thing under measurement
-            try:
-                node.destroy()
-            except hou.ObjectWasDeleted:
-                pass
-
     def _scaffold(self):
         scaffold = preview.build_usd_scaffold(self.prefs, "Karma")
         self.assertIsNotNone(
             scaffold,
             "no scaffold was built although the OCIO seam is patched - "
             "this test can no longer see its subject")
-        self.addCleanup(self._drop, scaffold["net"])
+        self.addCleanup(test_support.drop_node, scaffold["net"])
         return scaffold    # its real ROP: write_batch writes the USD and starts no render
 
     def _material(self):
         mat = hou.node("/mat").createNode("subnet", "AmazeKarmaProbe")
-        self.addCleanup(self._drop, mat)
+        self.addCleanup(test_support.drop_node, mat)
         mat.createNode("mtlxstandard_surface")
         return mat
 
@@ -532,7 +519,7 @@ class AKarmaThumbnailLeavesTheSceneAsItFoundIt(unittest.TestCase):
         """A loose save's thumbnail stages its nodes with the dots between them. ▸r/node-items"""
         from pxr import Usd, UsdShade
         home = hou.node("/mat").createNode("subnet", "AmazeDotProbe")
-        self.addCleanup(self._drop, home)
+        self.addCleanup(test_support.drop_node, home)
         image = home.createNode("mtlximage", "probe_image")
         surface = home.createNode("mtlxstandard_surface", "probe_surface")
         dot = home.createNetworkDot()
@@ -552,7 +539,7 @@ class AKarmaThumbnailLeavesTheSceneAsItFoundIt(unittest.TestCase):
         mat = self._material()
         with hou.undos.disabler():
             keeper = hou.node("/obj").createNode("null")
-        self.addCleanup(self._drop, keeper)
+        self.addCleanup(test_support.drop_node, keeper)
         keeper.setSelected(True, True)
         preview.write_batch(scaffold, [("SEL_PROBE", mat)], self.out)
         self.assertEqual(
@@ -566,7 +553,7 @@ class AKarmaThumbnailLeavesTheSceneAsItFoundIt(unittest.TestCase):
     def _sweep_cop_root(self):
         root = hou.node("/obj/Amaze")
         if root is not None:
-            self._drop(root)
+            test_support.drop_node(root)
 
     def _asset_with_a_companion(self):
         """A Karma fixture asset whose saved COP companion restores as `/obj/Amaze/<net>`."""
@@ -582,7 +569,7 @@ class AKarmaThumbnailLeavesTheSceneAsItFoundIt(unittest.TestCase):
             source.createNode("constant")
         source.saveItemsToFile(source.allItems(), material.payload_path(
             self.prefs, asset.mat_id, "_cop" + self.prefs.ext))
-        self._drop(source)
+        test_support.drop_node(source)
         asset.cop_net = {"name": self.COMPANION, "type": "copnet"}
         return asset
 

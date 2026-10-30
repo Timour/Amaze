@@ -1,7 +1,6 @@
 """List mode: badges become COLUMNS, and the slider stops pretending. A list row is one text line tall with a 16px thumbnail, and a 12px badge on a 16px picture covers most of what it annotates - so list mode draws no badges and the four facts they carry (Favorite, Version, Open, Notes) become columns; Version gains the room to say WHICH version. The marks are ticks, not the words true/false. Grid runs 64-512 with a magnet at 128; a list row does not scale, so the slider greys there. These tests PAINT - an earlier badge test asserted a method body mentioned a variable and stayed green through a sabotage that deleted the code using it (practice.md), so nothing here trusts a constant or a flag: a row is rendered and the pixels read back."""
 
 import os
-import sys
 import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")

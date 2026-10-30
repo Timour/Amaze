@@ -1063,7 +1063,7 @@ class RangedFileTest(unittest.TestCase):
                 return False
 
         def counting(url_, headers=None):
-            calls.append(headers or {})
+            calls.append((url_, headers or {}))
             return _Resp(blob)
 
         source = matx_sources.AmazeSource()
@@ -1077,7 +1077,8 @@ class RangedFileTest(unittest.TestCase):
             "the tree already NAMES the size - a package under one "
             "block must be fetched whole in ONE request, not probe-"
             "416-refetch (%s)" % calls)
-        self.assertNotIn("Range", calls[0],
+        self.assertEqual(url, calls[0][0], "the one fetch asked for another file")
+        self.assertNotIn("Range", calls[0][1],
                          "the single fetch must be plain, not ranged")
 
     def test_a_package_smaller_than_a_block_survives_a_416(self):
@@ -1517,6 +1518,7 @@ class TexturePackingTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
+        test_support.pin_env(test_support.class_scope(cls), "OCIO", "/dev/null")    # save_node gates on $OCIO
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
 
     def _material_with_texture(self, name):
@@ -1948,7 +1950,6 @@ class OnlineTilePaintingTest(unittest.TestCase):
         path = os.path.join(folder, "tile.png")
 
         def fetch(target):
-            image = QtWidgets.QApplication.instance()    # any small valid png
             from PySide6 import QtGui
             canvas = QtGui.QImage(8, 8, QtGui.QImage.Format.Format_RGB32)
             canvas.fill(QtGui.QColor("#123456"))

@@ -175,8 +175,7 @@ class AnOctaneTwinWithoutOctaneIsRefusedNotRaised(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        if not hou.getenv("OCIO"):    # save_node refuses without one
-            hou.putenv("OCIO", "/dev/null")
+        test_support.pin_env(test_support.class_scope(cls), "OCIO", "/dev/null")    # save_node refuses without one
 
     def setUp(self):
         from amaze.core import library
@@ -260,8 +259,7 @@ class ASaveAskedNotToRenderRendersNothing(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        if not hou.getenv("OCIO"):
-            hou.putenv("OCIO", "/dev/null")
+        test_support.pin_env(test_support.class_scope(cls), "OCIO", "/dev/null")
 
     def test_render_false_skips_the_thumbnail_and_the_default_renders(self):
         from amaze.core import library
@@ -311,13 +309,6 @@ class UpdateRenderOnMaterialTiles(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
-
-    @classmethod
-    def tearDownClass(cls):
-        try:
-            test_support.stop_panel_workers(cls.panel)
-        except Exception:                                 # noqa: BLE001
-            pass
 
     def test_the_selection_goes_in_one_batch(self):
         proxy = self.panel.material_sorted_model

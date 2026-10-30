@@ -21,7 +21,7 @@ sys.path.insert(
         os.path.dirname(os.path.abspath(__file__)))))
 
 from amaze.panel import sections  # noqa: E402
-from amaze.core import notes  # noqa: E402
+from amaze.core import keyed_store, notes  # noqa: E402
 from amaze.tests import test_support  # noqa: E402,F401 - redirects the log
 
 
@@ -44,8 +44,8 @@ class _Prefs:
 class StoreTest(unittest.TestCase):
 
     def setUp(self):
-        notes.forget_notes()
-        self.addCleanup(notes.forget_notes)
+        keyed_store.release()
+        self.addCleanup(keyed_store.release)
         self.prefs = _Prefs(self)
 
     def _path(self):
@@ -66,7 +66,7 @@ class StoreTest(unittest.TestCase):
             with self.subTest(ident=ident):
                 key = notes.note_key("material", ident)
                 self.assertTrue(notes.set_note(self.prefs, key, flow))
-                notes.forget_notes()                 # a fresh session reads disk
+                keyed_store.release()                 # a fresh session reads disk
                 page = notes.note_for(self.prefs, key)
                 self.assertEqual(flow, page["items"],
                                  "the flow lost its order or content")
@@ -157,8 +157,8 @@ class PanelWidgetTest(unittest.TestCase):
     """One flowing editor: text and framed to-dos interleave in order."""
 
     def setUp(self):
-        notes.forget_notes()
-        self.addCleanup(notes.forget_notes)
+        keyed_store.release()
+        self.addCleanup(keyed_store.release)
         self.prefs = _Prefs(self)
         from amaze.panel import notes_panel
         self.widget = notes_panel.NotesPanel(self.prefs)
@@ -553,8 +553,8 @@ class ModelRoleTest(unittest.TestCase):
     """NotesRole is the badge's question, answered by the real models."""
 
     def setUp(self):
-        notes.forget_notes()
-        self.addCleanup(notes.forget_notes)
+        keyed_store.release()
+        self.addCleanup(keyed_store.release)
 
     def test_file_rows_answer_by_path(self):
         from amaze.core import file_library
@@ -654,8 +654,8 @@ class GradientNotesTest(unittest.TestCase):
     """Notes reach gradients like every section, keyed gradient:<id>."""
 
     def setUp(self):
-        notes.forget_notes()
-        self.addCleanup(notes.forget_notes)
+        keyed_store.release()
+        self.addCleanup(keyed_store.release)
         test_support.reset_database_singletons()
         self.prefs = test_support.fixture_prefs(self)
         from amaze.core import gradient_library
@@ -1127,8 +1127,8 @@ class AnUndoNeverEatsALoadedNote(unittest.TestCase):
     """Loading a note is not an edit: left on the undo stack it comes apart under one Ctrl+Z, and the debounced save writes the emptied page over the real one. ▸r/programmatic-load-is-undoable"""
 
     def setUp(self):
-        notes.forget_notes()
-        self.addCleanup(notes.forget_notes)
+        keyed_store.release()
+        self.addCleanup(keyed_store.release)
         self.prefs = _Prefs(self)
         from amaze.panel import notes_panel
         self.widget = notes_panel.NotesPanel(self.prefs)
@@ -1267,8 +1267,8 @@ class ThePictureButtonIsActuallyRun(unittest.TestCase):
         from amaze.core import notes as notes_mod
         from amaze.panel import notes_panel
         from amaze.tests import test_support
-        notes_mod.forget_notes()
-        self.addCleanup(notes_mod.forget_notes)
+        keyed_store.release()
+        self.addCleanup(keyed_store.release)
         self.notes = notes_mod
         self.prefs = test_support.fixture_prefs(self)
         self.widget = notes_panel.NotesPanel(self.prefs)
@@ -1485,8 +1485,8 @@ class AboutBecomesAComment(unittest.TestCase):
     """The About credit block retired with the Material Info dialog; its text is a comment now, and every existing library carries some. ▸p/d03-retired"""
 
     def setUp(self):
-        notes.forget_notes()
-        self.addCleanup(notes.forget_notes)
+        keyed_store.release()
+        self.addCleanup(keyed_store.release)
         test_support.reset_database_singletons()
         self.addCleanup(test_support.reset_database_singletons)
         self.prefs = test_support.fixture_prefs(self)

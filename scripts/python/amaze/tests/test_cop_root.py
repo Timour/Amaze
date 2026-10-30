@@ -190,8 +190,7 @@ class ALooseSurfaceSaveKeepsAWireThroughADot(unittest.TestCase):
     """A surface saved on its own (`save_node_collect`) comes back fed as it was. ▸r/node-items"""
 
     def setUp(self):
-        if not hou.getenv("OCIO"):
-            hou.putenv("OCIO", "/dev/null")
+        test_support.pin_env(self, "OCIO", "/dev/null")
         self.prefs = test_support.fixture_prefs(self)
         self.prefs.render_on_import = 0
         self.home = hou.node("/mat").createNode("subnet", "dot_probe_home")
@@ -328,8 +327,7 @@ class AFailedSaveLeavesNoCompanionScratch(unittest.TestCase):
     ASSET = "scratchprobe"
 
     def setUp(self):
-        if not hou.getenv("OCIO"):
-            hou.putenv("OCIO", "/dev/null")
+        test_support.pin_env(self, "OCIO", "/dev/null")
         self.prefs = test_support.fixture_prefs(self)
         self.prefs.render_on_import = 0
         with hou.undos.disabler():

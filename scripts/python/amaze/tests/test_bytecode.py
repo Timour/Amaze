@@ -23,19 +23,13 @@ from amaze.tests import test_support                      # noqa: E402
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 
-def _write(path, text):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as handle:
-        handle.write(text)
-
-
 class _OneModule(unittest.TestCase):
 
     def setUp(self):
         self.root = tempfile.mkdtemp(prefix="amaze_bytecode_")
         self.addCleanup(shutil.rmtree, self.root, True)
         self.module = os.path.join(self.root, "pkg", "mod.py")
-        _write(self.module, "VALUE = 1\n")
+        test_support.write_text(self.module, "VALUE = 1\n")
 
     def _compile(self, mode):
         py_compile.compile(self.module, doraise=True, invalidation_mode=mode)
@@ -57,11 +51,11 @@ class StaleNamesWhatPythonWouldCompileTest(_OneModule):
 
     def test_a_compile_of_an_older_source_is_stale(self):
         self._compile(py_compile.PycInvalidationMode.CHECKED_HASH)
-        _write(self.module, "VALUE = 2\n")
+        test_support.write_text(self.module, "VALUE = 2\n")
         self.assertEqual([self.module], bytecode.stale(self.root))
 
     def test_a_tests_folder_is_never_walked(self):
-        _write(os.path.join(self.root, "pkg", "tests", "test_mod.py"), "X = 1\n")
+        test_support.write_text(os.path.join(self.root, "pkg", "tests", "test_mod.py"), "X = 1\n")
         self.assertEqual([self.module], bytecode.stale(self.root))
 
 
@@ -88,7 +82,7 @@ class CompileMissingTest(_OneModule):
         compile_.assert_not_called()
 
     def test_a_file_that_does_not_compile_is_skipped(self):
-        _write(os.path.join(self.root, "pkg", "broken.py"), "def (:\n")
+        test_support.write_text(os.path.join(self.root, "pkg", "broken.py"), "def (:\n")
         self.assertEqual(1, bytecode.compile_missing(self.root))
 
     def test_the_background_run_hands_back_what_it_wrote(self):

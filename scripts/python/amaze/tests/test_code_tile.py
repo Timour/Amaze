@@ -214,13 +214,6 @@ class ThePanelWiresTheCodeButtons(unittest.TestCase):
     def setUpClass(cls):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
 
-    @classmethod
-    def tearDownClass(cls):
-        try:
-            test_support.stop_panel_workers(cls.panel)
-        except Exception:                                 # noqa: BLE001
-            pass
-
     def _proxy_index(self, code, language="Python"):
         model = self.panel.code_model
         name = "probe_%d" % model.rowCount()

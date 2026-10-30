@@ -30,21 +30,6 @@ PLASTIC = "139888337459841200"    # a fixture whose surface takes its colour fro
 OCTANE_SHADER = "octane::NT_MAT_STANDARD_SURFACE"
 
 
-def _octane_available():
-    try:
-        return hou.vopNodeTypeCategory().nodeType(OCTANE_SHADER) is not None
-    except Exception:                                        # noqa: BLE001
-        return False
-
-
-def _drop(node):
-    with hou.undos.disabler():
-        try:
-            node.destroy()
-        except hou.ObjectWasDeleted:
-            pass
-
-
 def _patch_viewer(testcase):
     """Headless there is no Scene Viewer: both seams that read one answer this OCIO."""
     for target in (preview.thumbnail_scene, preview):
@@ -56,7 +41,7 @@ def _patch_viewer(testcase):
 def _plastic(testcase, colour):
     """The plastic fixture in a plain holder, its base colour set."""
     holder = hou.node("/mat").createNode("subnet")
-    testcase.addCleanup(_drop, holder)
+    testcase.addCleanup(test_support.drop_node, holder)
     holder.loadItemsFromFile(os.path.join(test_support.FIXTURE_DIR, "mat", PLASTIC + ".mat"))
     surface = next(c for c in holder.children() if c.type().name() == "mtlxstandard_surface")
     surface.parmTuple("base_color").set(colour)
@@ -66,7 +51,7 @@ def _plastic(testcase, colour):
 def _octane(testcase, colour):
     import octane_material_builder
     builder = octane_material_builder.createMaskedOctaneSubnet(target_node=hou.node("/mat"))
-    testcase.addCleanup(_drop, builder)
+    testcase.addCleanup(test_support.drop_node, builder)
     shader = next(c for c in builder.children() if c.type().name() == OCTANE_SHADER)
     shader.parmTuple("baseColor").set(colour)
     return builder
@@ -244,7 +229,7 @@ class AFailedStageWriteLeavesNoFolder(unittest.TestCase):
 
         prefs = test_support.fixture_prefs(self)
         material = hou.node("/mat").createNode("subnet")
-        self.addCleanup(_drop, material)
+        self.addCleanup(test_support.drop_node, material)
         material.createNode("mtlxstandard_surface")
         with mock.patch.object(thumbs.tempfile, "mkdtemp", recorded), \
                 mock.patch.object(preview, "write_batch", failing):
@@ -296,7 +281,7 @@ class OneHuskRendersEachMaterial(unittest.TestCase):
         self.assertEqual(["red", "green"], self._render("Karma", items),
                          "one husk did not give each frame its own material")
 
-    @unittest.skipUnless(_octane_available(), "the Octane plugin is not loaded")
+    @unittest.skipUnless(test_support.renderer_loaded("Octane"), "the Octane plugin is not loaded")
     def test_two_octane_materials_are_two_pictures(self):
         items = [("RED_OCT", _octane(self, RED)), ("GREEN_OCT", _octane(self, GREEN))]
         self.assertEqual(["red", "green"], self._render("Octane", items),

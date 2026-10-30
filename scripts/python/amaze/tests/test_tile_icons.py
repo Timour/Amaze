@@ -23,7 +23,7 @@ sys.path.insert(
 
 from amaze import amazetheme  # noqa: E402
 from amaze.actions import nodes as node_actions  # noqa: E402
-from amaze.core import cop_library, tile_icons  # noqa: E402
+from amaze.core import cop_library, keyed_store, tile_icons  # noqa: E402
 from amaze.dialogs import icon_dialog  # noqa: E402
 from amaze.helpers import theme  # noqa: E402
 from amaze.panel import panel as panel_mod  # noqa: E402
@@ -86,19 +86,12 @@ class ChoiceTest(unittest.TestCase):
 
     def setUp(self):
         test_support.reset_database_singletons()
-        tile_icons.forget_overrides()
+        keyed_store.release()
         self.prefs = test_support.fixture_prefs(self)
         self.prefs.render_on_import = 0
         self.model = cop_library.CopLibrary(preferences=self.prefs)
-        self.addCleanup(self._clear_obj)
+        self.addCleanup(test_support.clear_obj)
         self.row = self._an_asset()
-
-    def _clear_obj(self):
-        for child in hou.node("/obj").children():
-            try:
-                child.destroy()
-            except hou.OperationFailed:
-                pass
 
     def _an_asset(self) -> int:
         lop = hou.node("/obj").createNode("lopnet", "icon_src")
@@ -222,7 +215,7 @@ class FaceChoiceTest(unittest.TestCase):
 
     def setUp(self):
         test_support.reset_database_singletons()
-        tile_icons.forget_overrides()
+        keyed_store.release()
         self.prefs = test_support.fixture_prefs(self)
         self.prefs.render_on_import = 0
         self.model = cop_library.CopLibrary(preferences=self.prefs)
@@ -267,20 +260,20 @@ class FileRowTest(unittest.TestCase):
     """The File section's rows are files with no asset record, so their choices live in the library's icons.json, keyed by path - hip rows included since the merge closed that gap."""
 
     def setUp(self):
-        tile_icons.forget_overrides()
+        keyed_store.release()
         self.prefs = test_support.fixture_prefs(self)
 
     def test_a_path_keyed_choice_round_trips(self):
         tile_icons.set_override(self.prefs, "/tmp/a.exr",
                                 {"name": "image", "bg": "#5cc9f5"})
-        tile_icons.forget_overrides()
+        keyed_store.release()
         self.assertEqual({"name": "image", "bg": "#5cc9f5",
                           "ink": "dark"},
                          tile_icons.override_for(self.prefs, "/tmp/a.exr"))
         self.assertTrue(os.path.exists(
             os.path.join(self.prefs.dir, tile_icons.OVERRIDES_FILE)))
         tile_icons.set_override(self.prefs, "/tmp/a.exr", {})
-        tile_icons.forget_overrides()
+        keyed_store.release()
         self.assertEqual({}, tile_icons.override_for(self.prefs, "/tmp/a.exr"),
                          "clearing did not forget the path on disk")
 
@@ -288,7 +281,7 @@ class FileRowTest(unittest.TestCase):
         path = os.path.join(self.prefs.dir, tile_icons.OVERRIDES_FILE)
         with open(path, "w", encoding="utf-8") as handle:
             handle.write("{ this is not json")
-        tile_icons.forget_overrides()
+        keyed_store.release()
         self.assertEqual({}, tile_icons.override_for(self.prefs, "/tmp/a.exr"))
 
 

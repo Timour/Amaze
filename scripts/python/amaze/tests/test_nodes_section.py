@@ -3,7 +3,6 @@
 import os
 import shutil
 import sys
-import tempfile
 import unittest
 from unittest import mock
 
@@ -53,14 +52,7 @@ class NodesSectionTest(unittest.TestCase):
         self.prefs = test_support.fixture_prefs(self)
         self.prefs.render_on_import = 0
         self.model = cop_library.CopLibrary(preferences=self.prefs)
-        self.addCleanup(self._clear_obj)
-
-    def _clear_obj(self):
-        for child in hou.node("/obj").children():
-            try:
-                child.destroy()
-            except hou.OperationFailed:
-                pass
+        self.addCleanup(test_support.clear_obj)
 
     def _image_for(self, asset) -> str:
         return os.path.join(self.prefs.dir, self.prefs.img_dir,
@@ -643,14 +635,7 @@ class WhatCountsAsAFailure(unittest.TestCase):
     def setUp(self):
         self.prefs = test_support.fixture_prefs(self)
         self.prefs.render_on_import = 0
-        self.addCleanup(self._clear_scene)
-
-    def _clear_scene(self):
-        for child in hou.node("/obj").children():
-            try:
-                child.destroy()
-            except hou.OperationFailed:
-                pass
+        self.addCleanup(test_support.clear_obj)
 
     def _asset_that_warns_on_load(self, name: str):
         """An asset whose saved file holds an instance of an HDA that is then UNINSTALLED: Houdini rebuilds it as a substituted node type and raises `hou.LoadWarning` saying so, which is the manual's load-that-SUCCEEDED-with-warnings."""
@@ -762,14 +747,7 @@ class ANodeAssetThatLoadsNothingIsRefused(unittest.TestCase):
     def setUp(self):
         self.prefs = test_support.fixture_prefs(self)
         self.prefs.render_on_import = 0
-        self.addCleanup(self._clear_obj)
-
-    def _clear_obj(self):
-        for child in hou.node("/obj").children():
-            try:
-                child.destroy()
-            except hou.OperationFailed:
-                pass
+        self.addCleanup(test_support.clear_obj)
 
     def _asset(self, name, content):
         mat = material.Material(name=name, renderer="SOP")
@@ -867,13 +845,6 @@ class UpdateRenderOnANodeTile(unittest.TestCase):
     def setUpClass(cls):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
         cls.panel.prefs.render_on_import = 0
-
-    @classmethod
-    def tearDownClass(cls):
-        try:
-            test_support.stop_panel_workers(cls.panel)
-        except Exception:                                 # noqa: BLE001
-            pass
 
     def _saved_tile(self, network, name):
         """`network` saved as a Node asset: the asset, and its index in the Node grid."""

@@ -30,18 +30,8 @@ plugins_loaded = test_support.plugins_loaded
 BASE = (0.123, 0.456, 0.789)    # distinctive, so a default reappearing cannot pass as a copy
 ALBEDO = "$AMAZELIB/matX/Test__pkg/textures/test_albedo.png"
 GOLD = ((0.27, 0.68, 1.32), (3.6, 2.4, 1.8))    # a measured metal's (n, k) per channel
-
-
-def _available(type_name):
-    """Asks for the TYPE, as the Redshift and Octane suites do."""
-    try:
-        return hou.vopNodeTypeCategory().nodeType(type_name) is not None
-    except Exception:                                        # noqa: BLE001
-        return False
-
-
-OCTANE = _available("octane::NT_MAT_STANDARD_SURFACE")
-REDSHIFT = _available("redshift_vopnet")
+OCTANE = test_support.renderer_loaded("Octane")
+REDSHIFT = test_support.renderer_loaded("Redshift")
 
 
 def _textured(parent, name="karma_source"):
@@ -179,8 +169,7 @@ class TheLibraryDoorRefusesFirst(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        if hou.getenv("OCIO") is None:    # save_node gates on $OCIO; nothing renders here
-            hou.putenv("OCIO", "/dev/null")
+        test_support.pin_env(test_support.class_scope(cls), "OCIO", "/dev/null")    # save_node gates on $OCIO; nothing renders here
 
     def setUp(self):
         test_support.reset_database_singletons()
@@ -326,8 +315,7 @@ class TheOctaneTwinLivesInTheLibrary(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        if hou.getenv("OCIO") is None:
-            hou.putenv("OCIO", "/dev/null")
+        test_support.pin_env(test_support.class_scope(cls), "OCIO", "/dev/null")
 
     def setUp(self):
         test_support.reset_database_singletons()
@@ -624,8 +612,7 @@ class AnOctaneTwinIsMaterialXInTheLibrary(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        if hou.getenv("OCIO") is None:
-            hou.putenv("OCIO", "/dev/null")
+        test_support.pin_env(test_support.class_scope(cls), "OCIO", "/dev/null")
 
     def test_convert_saves_a_materialx_twin_beside_it(self):
         test_support.reset_database_singletons()

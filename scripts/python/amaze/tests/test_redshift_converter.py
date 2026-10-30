@@ -23,12 +23,6 @@ from amaze.render import nodes  # noqa: E402
 from amaze.tests import test_support  # noqa: E402,F401 - redirects the log
 
 
-def _redshift_available():
-    """The product's own probe: both containers the converters use. ▸r/renderer-plugins"""
-    from amaze.render import material_converter
-    return material_converter._redshift_type_available()
-
-
 SPEC = {    # distinctive values, so a default reappearing cannot pass as a copy
     "base_color": (0.123, 0.456, 0.789),
     "specular_roughness": 0.321,
@@ -78,7 +72,7 @@ def _karma_material(parent, name="karma_source"):
     return nodes.build_karma_material(parent, name, produce).builder
 
 
-@unittest.skipUnless(_redshift_available(),
+@unittest.skipUnless(test_support.renderer_loaded("Redshift"),
                      "the Redshift plugin is not loaded")
 class AKarmaMaterialBecomesARedshiftOne(unittest.TestCase):
     """Network to network, through the engine door the library will call."""
@@ -162,7 +156,7 @@ class AKarmaMaterialBecomesARedshiftOne(unittest.TestCase):
         self.assertEqual(bump.path(), self._inputs(self.shader)["bump_input"].path())
 
 
-@unittest.skipUnless(_redshift_available(),
+@unittest.skipUnless(test_support.renderer_loaded("Redshift"),
                      "the Redshift plugin is not loaded")
 class WhatHasNoRedshiftShapeIsReportedNotInvented(unittest.TestCase):
 
@@ -187,7 +181,7 @@ class WhatHasNoRedshiftShapeIsReportedNotInvented(unittest.TestCase):
                          "something was wired into base_color in place of the noise")
 
 
-@unittest.skipUnless(_redshift_available(),
+@unittest.skipUnless(test_support.renderer_loaded("Redshift"),
                      "the Redshift plugin is not loaded")
 class AConstantOnAWireLandsAsAValue(unittest.TestCase):
     """Downloaded materials expose their dials as mtlxconstant nodes WIRED into inputs (a Tint into the colour multiply, a UV scale into the texcoord multiply). Redshift's math nodes default to zero, so a dropped constant renders black - one twin did, 2026-09-04. ▸r/redshift-nodes"""
@@ -264,15 +258,14 @@ class AConstantOnAWireLandsAsAValue(unittest.TestCase):
                         "\n".join(self.report.summary_lines()))
 
 
-@unittest.skipUnless(_redshift_available(),
+@unittest.skipUnless(test_support.renderer_loaded("Redshift"),
                      "the Redshift plugin is not loaded")
 class TheLibraryDoorMakesANewRedshiftEntry(unittest.TestCase):
     """`actions.materials.convert` to Redshift: the saved Karma material is read back from disk, converted, and registered BESIDE the source, never in its place."""
 
     @classmethod
     def setUpClass(cls):
-        if hou.getenv("OCIO") is None:
-            hou.putenv("OCIO", "/dev/null")
+        test_support.pin_env(test_support.class_scope(cls), "OCIO", "/dev/null")
 
     def setUp(self):
         from amaze.core import library as library_mod
@@ -327,7 +320,7 @@ class TheLibraryDoorMakesANewRedshiftEntry(unittest.TestCase):
         self.assertTrue(report.skipped, "no reason given")
 
 
-@unittest.skipUnless(_redshift_available(),
+@unittest.skipUnless(test_support.renderer_loaded("Redshift"),
                      "the Redshift plugin is not loaded")
 class ATangentSpaceBumpKeepsItsStrength(unittest.TestCase):
     """Convert to Karma on a `redshift::BumpMap`, whose `inputType` menu answers STRING tokens."""
@@ -362,7 +355,7 @@ class ATangentSpaceBumpKeepsItsStrength(unittest.TestCase):
                 self.assertAlmostEqual(kept, normalmap.parm("scale").eval(), places=5)
 
 
-@unittest.skipUnless(_redshift_available(),
+@unittest.skipUnless(test_support.renderer_loaded("Redshift"),
                      "the Redshift plugin is not loaded")
 class ABlendWithNoBaseIsReportedNotCrashed(unittest.TestCase):
     """Convert to Karma on a `redshift::MaterialBlender` whose base input is empty."""
@@ -372,8 +365,7 @@ class ABlendWithNoBaseIsReportedNotCrashed(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        if hou.getenv("OCIO") is None:
-            hou.putenv("OCIO", "/dev/null")
+        test_support.pin_env(test_support.class_scope(cls), "OCIO", "/dev/null")
 
     def setUp(self):
         from amaze.core import library as library_mod
@@ -410,7 +402,7 @@ class ABlendWithNoBaseIsReportedNotCrashed(unittest.TestCase):
                          "a material that did not convert was added")
 
 
-@unittest.skipUnless(_redshift_available(),
+@unittest.skipUnless(test_support.renderer_loaded("Redshift"),
                      "the Redshift plugin is not loaded")
 class ALegacyRedshiftMaterialGoesIntoSolaris(unittest.TestCase):
     """A material saved in the classic `redshift_vopnet` container used to be refused by Copy To /stage. Now the import door rebuilds it into the `rs_usd_material_builder` on the way in, the saved files untouched, so every Redshift material is LOP-capable."""
@@ -480,7 +472,7 @@ class ALegacyRedshiftMaterialGoesIntoSolaris(unittest.TestCase):
                          "the classic terminal came along")
 
 
-@unittest.skipUnless(_redshift_available(),
+@unittest.skipUnless(test_support.renderer_loaded("Redshift"),
                      "the Redshift plugin is not loaded")
 class AFirstEditionTwinGoesIntoSolaris(unittest.TestCase):
     """The twins 1.0.33 saved were a `redshift_vopnet` holding a USD terminal and no classic one. The upgrade used to look for the classic terminal alone, so such a twin arrived in the LOP library with its shader wired to a SECOND USD terminal and the one feeding the suboutput empty (seen 2026-09-04)."""
@@ -535,7 +527,7 @@ class AFirstEditionTwinGoesIntoSolaris(unittest.TestCase):
             "the suboutput is not fed by the one terminal")
 
 
-@unittest.skipUnless(_redshift_available(),
+@unittest.skipUnless(test_support.renderer_loaded("Redshift"),
                      "the Redshift plugin is not loaded")
 class AnOpenPBRKarmaMaterialConvertsByItsOwnNames(unittest.TestCase):
     """An mtlxopen_pbr_surface spells its inputs the way the RS OpenPBR material does; the table's standard-surface column read nothing off it, so weights, metalness and textures stayed at defaults while the report said fully converted (audit 2026-09-04)."""
@@ -571,7 +563,7 @@ class AnOpenPBRKarmaMaterialConvertsByItsOwnNames(unittest.TestCase):
         self.assertTrue(report.is_clean(), "\n".join(report.summary_lines()))
 
 
-@unittest.skipUnless(_redshift_available(),
+@unittest.skipUnless(test_support.renderer_loaded("Redshift"),
                      "the Redshift plugin is not loaded")
 class AWireThroughADotSurvivesTheSolarisRebuild(unittest.TestCase):
     """moveNodesTo carries nodes only, so a wire through a network dot would die with the old container; the dots are bypassed first. ▸r/node-items"""
@@ -610,15 +602,14 @@ class _ValuesSource:
         return {"values": record.payload.get("values", {})}
 
 
-@unittest.skipUnless(_redshift_available(),
+@unittest.skipUnless(test_support.renderer_loaded("Redshift"),
                      "the Redshift plugin is not loaded")
 class AnOnlineMaterialCanLandAsRedshift(unittest.TestCase):
     """`matx_import.import_record(..., renderer="Redshift")`: the online record is built as the Karma network it always was, converted, and the Redshift twin is what the library registers."""
 
     @classmethod
     def setUpClass(cls):
-        if hou.getenv("OCIO") is None:
-            hou.putenv("OCIO", "/dev/null")
+        test_support.pin_env(test_support.class_scope(cls), "OCIO", "/dev/null")
 
     def setUp(self):
         from amaze.core import library as library_mod

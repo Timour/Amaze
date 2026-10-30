@@ -21,13 +21,7 @@ from amaze.render import nodes  # noqa: E402
 from amaze.tests import test_support  # noqa: E402,F401 - redirects the log
 
 
-def _redshift_available():
-    """The product's own probe: both containers the converters use. ▸r/renderer-plugins"""
-    from amaze.render import material_converter
-    return material_converter._redshift_type_available()
-
-
-@unittest.skipUnless(_redshift_available(),
+@unittest.skipUnless(test_support.renderer_loaded("Redshift"),
                      "the Redshift plugin is not loaded (H22 has no build)")
 class RedshiftMaterialsHoldTheTerminalInvariant(unittest.TestCase):
     """ROADMAP 19. Both polarities, so a green cannot mean `always True`."""
@@ -107,7 +101,7 @@ class NoTerminalInputIsLookedUpByHand(unittest.TestCase):
             "material.terminal_input so both spellings are tried")
 
 
-@unittest.skipUnless(_redshift_available(),
+@unittest.skipUnless(test_support.renderer_loaded("Redshift"),
                      "the Redshift plugin is not installed")
 class TheSpellingTableIsWhatThePluginSays(unittest.TestCase):
     """The table is a MEASUREMENT, so the plugin gets to refute it - runs on any host carrying Redshift."""
@@ -161,7 +155,7 @@ class AContainerWithNoTerminalAnswersNone(unittest.TestCase):
         self.assertIsNone(material.redshift_surface_shader(subnet))
 
 
-@unittest.skipUnless(_redshift_available(),
+@unittest.skipUnless(test_support.renderer_loaded("Redshift"),
                      "the Redshift plugin is not installed")
 class OneLookupFindsTheTerminalAndTheShader(unittest.TestCase):
     """Both terminal forms and the stock shader, found by the helpers in `core/material.py`."""

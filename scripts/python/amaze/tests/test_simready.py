@@ -459,8 +459,7 @@ class SimReadyImportTest(unittest.TestCase):
 
     def test_every_image_points_at_a_downloaded_file(self):
         from amaze.core import matx_import, matx_sources
-        if hou.getenv("OCIO") is None:
-            hou.putenv("OCIO", "/dev/null")
+        test_support.pin_env(self, "OCIO", "/dev/null")
         prefs = test_support.fixture_prefs(self)
         prefs.render_on_import = 0
         _release(self)
@@ -987,13 +986,7 @@ class HostedPreviewTileTest(unittest.TestCase):
         redraw.assert_called_once()
 
 
-def _redshift_available():
-    """The product's own probe: both containers the converters use. ▸r/renderer-plugins"""
-    from amaze.render import material_converter
-    return material_converter._redshift_type_available()
-
-
-@unittest.skipUnless(_redshift_available(), "the Redshift plugin is not loaded")
+@unittest.skipUnless(test_support.renderer_loaded("Redshift"), "the Redshift plugin is not loaded")
 class RedshiftTiledImageTest(unittest.TestCase):
     """Tiling and a raw colour map cross to Redshift as Karma reads them. ▸r/rs-sampler-uv"""
 

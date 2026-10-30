@@ -94,8 +94,10 @@ class TestExportRefusesOutLoud(unittest.TestCase):
 
     def test_no_destination_is_refused(self):
         log = _Log(self)
-        with self.assertRaises(debug.ExportRefused):
+        with self.assertRaises(debug.ExportRefused) as caught:
             debug.export_log("")
+        self.assertIn("destination", str(caught.exception).lower(),
+                      "the refusal did not say a folder must be chosen")
 
     def test_an_unwritable_destination_says_which_one(self):
         log = _Log(self)

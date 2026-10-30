@@ -572,6 +572,7 @@ class TheWholeLoopThroughTheModelTest(unittest.TestCase):
         from amaze.render import nodes as nodes_mod
         self.nodes = nodes_mod
         self.renderers = renderers
+        test_support.pin_env(self, "OCIO", "/dev/null")    # save_node gates on $OCIO; nothing renders here
         self.prefs = test_support.fixture_prefs(self)
         test_support.reset_database_singletons()
         self.addCleanup(test_support.reset_database_singletons)

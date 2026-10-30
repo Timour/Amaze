@@ -238,8 +238,8 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
                 self.img_ext = ".png"
 
         prefs = _Prefs(self.dir + os.sep)
-        tile_icons.forget_overrides()
-        self.addCleanup(tile_icons.forget_overrides)
+        keyed_store.release()
+        self.addCleanup(keyed_store.release)
         # Through the ENGINE's resolver - one place composes the path for every keyed side table.
         path = keyed_store.open_store(tile_icons.SPEC, prefs).path
         for n in range(6):

@@ -30,16 +30,9 @@ class CategoryColorTest(unittest.TestCase):
         self.prefs.render_on_import = 0
         self.cats = cop_library.CopCategories(preferences=self.prefs)
         self.model = cop_library.CopLibrary(preferences=self.prefs)
-        self.addCleanup(self._clear_obj)
+        self.addCleanup(test_support.clear_obj)
         self.row = self._an_asset("Metal")
         self.cats.check_add_category("Metal")
-
-    def _clear_obj(self):
-        for child in hou.node("/obj").children():
-            try:
-                child.destroy()
-            except hou.OperationFailed:
-                pass
 
     def _an_asset(self, cat: str) -> int:
         lop = hou.node("/obj").createNode("lopnet", "cc_src")

@@ -568,6 +568,7 @@ class NoRowMovesInsideALayoutChange(unittest.TestCase):
     """A row insert inside a layout-change pair segfaults H21 (research.md, measured 2026-08-04)."""
 
     def setUp(self):
+        test_support.pin_env(self, "OCIO", "/dev/null")    # save_node gates on $OCIO; nothing renders here
         self.panel = test_support.fixture_panel(self)
         self.panel.prefs.render_on_import = 0
         self.model = self.panel.material_model

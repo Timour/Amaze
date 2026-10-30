@@ -34,14 +34,6 @@ OCTANE_SHADER = "octane::NT_MAT_STANDARD_SURFACE"
 RED = (0.8, 0.05, 0.05)
 
 
-def _octane_available():
-    """Asks for the TYPE, as the Redshift suites do."""
-    try:
-        return hou.vopNodeTypeCategory().nodeType(OCTANE_SHADER) is not None
-    except Exception:                                        # noqa: BLE001
-        return False
-
-
 def _octane_builder(parent):
     """Octane's own builder, made by Octane's own factory."""
     import octane_material_builder
@@ -130,8 +122,8 @@ class TheOctaneCheckFollowsTheHost(unittest.TestCase):
     """Both polarities, so a green cannot mean `always True`."""
 
     def test_it_agrees_with_the_type_registry_and_reads_an_empty_one_as_absent(self):
-        self.assertEqual(_octane_available(),
-                         material_converter._octane_type_available())
+        registered = hou.vopNodeTypeCategory().nodeType(OCTANE_SHADER) is not None
+        self.assertEqual(registered, material_converter._octane_type_available())
         with mock.patch.object(hou, "nodeTypeCategories", lambda: {}):
             self.assertFalse(material_converter._octane_type_available())
 
@@ -160,7 +152,7 @@ class WhatOctaneIgnoresIsJudgedByTheReadersDefaultTest(unittest.TestCase):
         self.assertTrue(octane_reader.at_default(image, "no_such_parm"), "a parm it lacks")
 
 
-@unittest.skipUnless(_octane_available(), "the Octane plugin is not loaded")
+@unittest.skipUnless(test_support.renderer_loaded("Octane"), "the Octane plugin is not loaded")
 class OctanesOwnBuilderIsAnOctaneMaterial(unittest.TestCase):
     """Recognised by Octane's own marker, before any MaterialX walk."""
 
@@ -185,14 +177,13 @@ class OctanesOwnBuilderIsAnOctaneMaterial(unittest.TestCase):
         self.assertEqual("Karma", self._renderer(bare))
 
 
-@unittest.skipUnless(_octane_available(), "the Octane plugin is not loaded")
+@unittest.skipUnless(test_support.renderer_loaded("Octane"), "the Octane plugin is not loaded")
 class OctanesOwnBuilderRoundTrips(unittest.TestCase):
     """Saved whole, as a MaterialX builder is, so it comes back as Octane's builder."""
 
     @classmethod
     def setUpClass(cls):
-        if hou.getenv("OCIO") is None:    # save_node gates on $OCIO; nothing renders here
-            hou.putenv("OCIO", "/dev/null")
+        test_support.pin_env(test_support.class_scope(cls), "OCIO", "/dev/null")    # save_node gates on $OCIO; nothing renders here
 
     def setUp(self):
         test_support.reset_database_singletons()
@@ -294,7 +285,7 @@ class OctanesOwnBuilderRoundTrips(unittest.TestCase):
         self.assertEqual("USD Octane:Standard Surface", self.model.renderer_label(asset))
 
 
-@unittest.skipUnless(_octane_available(), "the Octane plugin is not loaded")
+@unittest.skipUnless(test_support.renderer_loaded("Octane"), "the Octane plugin is not loaded")
 class TheOctaneThumbnailIsTheMaterialXStage(unittest.TestCase):
     """The MaterialX thumbnail's USD stage with Octane's settings; nothing renders."""
 
@@ -307,16 +298,8 @@ class TheOctaneThumbnailIsTheMaterialXStage(unittest.TestCase):
         self.prefs.octane_rendersamples = 77    # not 256: the default proves nothing
         self.scaffold = preview.build_usd_scaffold(self.prefs, "Octane")
         self.assertIsNotNone(self.scaffold, "no scaffold with the OCIO seam patched")
-        self.addCleanup(self._drop, self.scaffold["net"])
+        self.addCleanup(test_support.drop_node, self.scaffold["net"])
         self.settings = self.scaffold["render_props"]
-
-    @staticmethod
-    def _drop(node):
-        with hou.undos.disabler():
-            try:
-                node.destroy()
-            except hou.ObjectWasDeleted:
-                pass
 
     def test_the_stage_carries_octanes_settings(self):
         settings = self.settings
@@ -360,7 +343,7 @@ class TheOctaneThumbnailIsTheMaterialXStage(unittest.TestCase):
     def test_karmas_stage_is_left_as_it_was(self):
         """The other polarity: the edit and the EXR floor are Octane's alone."""
         karma = preview.build_usd_scaffold(self.prefs, "Karma")
-        self.addCleanup(self._drop, karma["net"])
+        self.addCleanup(test_support.drop_node, karma["net"])
         self.assertEqual("reference::2.0", karma["lib1"].inputs()[0].type().name())
         stage = self._stage_above_the_floor(karma)
         self.assertAlmostEqual(5.6, stage.GetPrimAtPath(preview.usd_scene.RENDER_CAMERA)
@@ -387,7 +370,7 @@ class TheOctaneThumbnailIsTheMaterialXStage(unittest.TestCase):
             with self.subTest(container=kind):
                 node = (_octane_builder(mat) if kind == "builder"
                         else mat.createNode(kind))
-                self.addCleanup(self._drop, node)
+                self.addCleanup(test_support.drop_node, node)
                 prim, outputs = self._batch_material(node)
                 self.assertTrue(prim.startswith("/materials/"), prim)
                 self.assertTrue(any(o.endswith(":surface") and ":mtlx:" not in o
@@ -395,7 +378,7 @@ class TheOctaneThumbnailIsTheMaterialXStage(unittest.TestCase):
 
     def test_a_classic_container_keeps_its_own_shader(self):
         vopnet = hou.node("/mat").createNode("octane_vopnet")
-        self.addCleanup(self._drop, vopnet)
+        self.addCleanup(test_support.drop_node, vopnet)
         vopnet.node("Standard_Surface").parmTuple("baseColor").set(RED)
         lib = self.scaffold["net"].createNode("materiallibrary")
         rebuilt = octane_api.classic_into(lib, vopnet)

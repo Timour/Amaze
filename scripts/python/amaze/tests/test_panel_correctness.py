@@ -22,7 +22,7 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze.core import file_library, folders, geo_library  # noqa: E402
+from amaze.core import file_library, geo_library  # noqa: E402
 from amaze.core import grid_columns, grid_engine  # noqa: E402
 from amaze.core import keyed_store, locations, notes, tile_icons  # noqa: E402
 from amaze.dialogs import save_dialog  # noqa: E402
@@ -61,11 +61,7 @@ def _location_prefs(case, names, colors, show_all, recursive):
     return prefs
 
 PACKAGE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-
-def source_of(relative):
-    with open(os.path.join(PACKAGE, relative), encoding="utf-8") as handle:
-        return handle.read()
+source_of = test_support.source_of
 
 
 def method_source(relative, class_name, name):
@@ -101,13 +97,6 @@ class _PanelCase(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
-
-    @classmethod
-    def tearDownClass(cls):
-        try:
-            test_support.stop_panel_workers(cls.panel)
-        except Exception:                                 # noqa: BLE001
-            pass
 
 
 class EveryAssetSidebarFollowsItsFilter(unittest.TestCase):

@@ -29,12 +29,6 @@ from amaze.helpers import hostos  # noqa: E402
 from amaze.render import nodes  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
-
-def _redshift_available():
-    """The product's own probe: skips only where Redshift is not loaded. ▸r/renderer-plugins"""
-    from amaze.render import material_converter
-    return material_converter._redshift_type_available()
-
 SPEC = {  # distinctive, non-default values: the point is proving THESE numbers survive disk, not that a node with defaults reappears
     "base_color": (0.123, 0.456, 0.789),
     "specular_roughness": 0.321,
@@ -67,8 +61,7 @@ class TestRoundTrip(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        if hou.getenv("OCIO") is None:  # save_node() gates on $OCIO first and reports its absence through hou.ui, which does not exist headless; nothing renders here, so the gate only needs the variable set
-            hou.putenv("OCIO", "/dev/null")
+        test_support.pin_env(test_support.class_scope(cls), "OCIO", "/dev/null")    # save_node gates on $OCIO; nothing renders here
 
     def setUp(self):
         self.prefs = test_support.fixture_prefs(self)
@@ -180,7 +173,7 @@ class TestRoundTrip(unittest.TestCase):
         self.assertEqual(1, len([c for c in imported.children()
                                  if c.type().name() == "subinput"]))
 
-    @unittest.skipUnless(_redshift_available(),
+    @unittest.skipUnless(test_support.renderer_loaded("Redshift"),
                          "the Redshift plugin is not loaded")
     def test_an_import_keeps_its_builder(self):
         """A rebuilt container is KEPT and moved, not gutted - moving the loaded children OUT and destroying it dumps loose VOPs into /mat with no material node, which a later Rerender Thumbnail then half-cleans and leaves permanently."""
@@ -437,13 +430,11 @@ class TestRoundTrip(unittest.TestCase):
         row = self.model.find_asset_row_by_id(mat_id)
         os.remove(os.path.join(self.prefs.dir, self.prefs.asset_dir,
                                mat_id + self.prefs.ext))
-        try:
-            ok, reason, _created = material_actions.import_asset_to_scene(self.model,
-                self.model.index(row, 0), target="mat"
-            )
-        except hou.Error:
-            ok, reason = False, "raised hou.Error"
+        ok, reason, _created = material_actions.import_asset_to_scene(self.model,
+            self.model.index(row, 0), target="mat"
+        )
         self.assertFalse(ok)
+        self.assertTrue(reason.strip(), "the refusal gave the artist no reason")
         fresh = [n for n in hou.node("/mat").children()
                  if n not in self._mat_before
                  and n.userData("assetlib_id") == mat_id]
@@ -737,6 +728,7 @@ class UpdateExistingIsGuardedAgainstTheOtherSessionTest(unittest.TestCase):
     """Two sessions both doing a structural Update Existing to the same id silently last-write-wins the .mat/.interface pair - the one write that stays exclusive even after Versions, because content is outside the index merge entirely."""
 
     def setUp(self):
+        test_support.pin_env(self, "OCIO", "/dev/null")    # save_node gates on $OCIO; nothing renders here
         self.prefs = test_support.fixture_prefs(self)
         test_support.reset_database_singletons()
         self.addCleanup(test_support.reset_database_singletons)
@@ -793,8 +785,7 @@ class AStaleCompanionGoesWhateverTheExtension(unittest.TestCase):
 
     def test_an_update_with_no_cop_net_removes_the_companion(self):
         """The companion's name follows the extension preference, as every other asset file does."""
-        if hou.getenv("OCIO") is None:
-            hou.putenv("OCIO", "/dev/null")
+        test_support.pin_env(self, "OCIO", "/dev/null")
         prefs = test_support.fixture_prefs(self)
         prefs._ext = ".cpio"
         test_support.reset_database_singletons()

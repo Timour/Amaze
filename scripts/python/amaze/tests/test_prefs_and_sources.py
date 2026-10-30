@@ -28,11 +28,7 @@ from amaze.prefs import prefs as prefs_mod  # noqa: E402
 from amaze.tests import test_support  # noqa: E402,F401
 
 PACKAGE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-
-def source_of(relative):
-    with open(os.path.join(PACKAGE, relative), encoding="utf-8") as handle:
-        return handle.read()
+source_of = test_support.source_of
 
 
 def calls(relative, func_name, callee) -> bool:
@@ -688,6 +684,20 @@ class RefreshDropsEveryCacheASourceKeeps(unittest.TestCase):
             "the category map survived Refresh - a renamed remote "
             "category files its materials under Uncategorized until "
             "Houdini restarts")
+
+    def test_every_source_with_hosted_pictures_drops_their_places(self):
+        """A picture's place is read off the hosted zip once; kept past Refresh it points into the old zip."""
+        from amaze.core import matx_sources
+        hosting = [cls for cls in matx_sources.SOURCES if cls.PREVIEWS]
+        self.assertTrue(hosting, "no source hosts pictures, so this checks nothing")
+        kept = []
+        for cls in hosting:
+            source = cls()
+            source._previews = {"old.jpg": {"offset": 0, "size": 1, "crc": 0}}
+            source.refresh()
+            if source._previews is not None:
+                kept.append(cls.__name__)
+        self.assertEqual([], kept, "these kept the old pictures' places through Refresh")
 
 
 class TheShippedTableIsClosedAfterTheSizeCheck(unittest.TestCase):

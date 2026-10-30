@@ -462,11 +462,13 @@ class NoUpgradeStepsFromBeforeTheFirstReleaseTest(_Case):
             "the version claim is refused, never the user's edit")
 
 
-class ARepairedFileCanBeSavedAgainTest(unittest.TestCase):
-    """The unreadable latch must not outlive the problem it was set for."""
+class _SettingsHome(unittest.TestCase):
+    """A throwaway settings folder, and a Prefs that reads and writes it."""
+
+    PREFIX = "amaze_settings_"
 
     def setUp(self):
-        self.home = tempfile.mkdtemp(prefix="amaze_relatch_")
+        self.home = tempfile.mkdtemp(prefix=self.PREFIX)
         self.addCleanup(shutil.rmtree, self.home, ignore_errors=True)
         self.settings = os.path.join(self.home, "settings.json")
 
@@ -475,6 +477,12 @@ class ARepairedFileCanBeSavedAgainTest(unittest.TestCase):
         p = prefs_mod.Prefs()
         p.path = self.home
         return p
+
+
+class ARepairedFileCanBeSavedAgainTest(_SettingsHome):
+    """The unreadable latch must not outlive the problem it was set for."""
+
+    PREFIX = "amaze_relatch_"
 
     def _good_settings(self):
         library = os.path.join(self.home, "library")
@@ -585,19 +593,10 @@ class ARepairedFileCanBeSavedAgainTest(unittest.TestCase):
                       "the save was still refused after the repair")
 
 
-class SettingsGetTheirOwnRestoreFloor(unittest.TestCase):
+class SettingsGetTheirOwnRestoreFloor(_SettingsHome):
     """A restore floor, but no absence verdict: this file is per-machine."""
 
-    def setUp(self):
-        self.home = tempfile.mkdtemp(prefix="amaze_absent_prefs_")
-        self.addCleanup(shutil.rmtree, self.home, ignore_errors=True)
-        self.settings = os.path.join(self.home, "settings.json")
-
-    def _prefs(self):
-        from amaze.prefs import prefs as prefs_mod
-        p = prefs_mod.Prefs()
-        p.path = self.home
-        return p
+    PREFIX = "amaze_absent_prefs_"
 
     def _configured(self):
         """A settings.json written the way the product writes one."""
@@ -748,19 +747,10 @@ class MergeRefusesJsonOfTheWrongShapeTest(_Case):
                       "the good row beside the bad one was lost")
 
 
-class PrefsKeepsKeysItDoesNotKnowTest(unittest.TestCase):
+class PrefsKeepsKeysItDoesNotKnowTest(_SettingsHome):
     """A save must not delete the settings this build has never heard of."""
 
-    def setUp(self):
-        self.home = tempfile.mkdtemp(prefix="amaze_prefs_keys_")
-        self.addCleanup(shutil.rmtree, self.home, ignore_errors=True)
-        self.settings = os.path.join(self.home, "settings.json")
-
-    def _prefs(self):
-        from amaze.prefs import prefs as prefs_mod
-        p = prefs_mod.Prefs()
-        p.path = self.home
-        return p
+    PREFIX = "amaze_prefs_keys_"
 
     def _seed(self, **extra):
         library = os.path.join(self.home, "library")

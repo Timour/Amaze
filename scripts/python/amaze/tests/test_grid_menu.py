@@ -18,7 +18,7 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze.core import file_library, locations, renderers  # noqa: E402
+from amaze.core import locations, renderers  # noqa: E402
 from amaze.helpers import ui_helpers  # noqa: E402
 from amaze.panel import grid, sections  # noqa: E402
 from amaze.render.material_conversion import engine as conversion_engine  # noqa: E402

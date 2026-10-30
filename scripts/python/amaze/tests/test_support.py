@@ -308,6 +308,59 @@ def plugins_loaded(*renderers):
     return stack
 
 
+def renderer_loaded(key: str) -> bool:
+    """Whether `key`'s plugin is loaded, asked the product's way - the answer `plugins_loaded` fakes."""
+    from amaze.render.material_conversion import engine
+    return engine.api(key).available()
+
+
+def pin_env(scope, name: str, value: str) -> None:
+    """`$name` is `value` for `scope` wherever the product reads it as unset; its own state comes back."""
+    import hou
+    previous = hou.getenv(name)
+    if previous:    # the product's gate is `not hou.getenv(name)`, so an empty `OCIO =` is unset
+        return
+    if previous is None:
+        scope.addCleanup(hou.unsetenv, name)
+    else:
+        scope.addCleanup(hou.putenv, name, previous)
+    hou.putenv(name, value)
+
+
+def clear_obj() -> None:
+    """Object level back to empty, whatever a test built there."""
+    import hou
+    for child in hou.node("/obj").children():
+        try:
+            child.destroy()
+        except hou.OperationFailed:
+            pass
+
+
+def drop_node(node) -> None:
+    """Destroy `node` off the undo stack; one the test already destroyed is fine."""
+    import hou
+    with hou.undos.disabler():
+        try:
+            node.destroy()
+        except hou.ObjectWasDeleted:
+            pass
+
+
+def write_text(path: str, text: str) -> None:
+    """`text` into `path` as UTF-8, its folder made first."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write(text)
+
+
+def source_of(relative: str) -> str:
+    """The text of a package file, named relative to the package: `core/notes.py`."""
+    package = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    with open(os.path.join(package, relative), encoding="utf-8") as handle:
+        return handle.read()
+
+
 def plain_python() -> str:
     """The Python under this one, started in under a second; hython itself costs 20 s."""
     for name in (os.path.join("bin", "python3"), "python.exe"):

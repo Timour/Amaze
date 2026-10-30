@@ -385,7 +385,7 @@ class MatxSource:
         return " ".join(w[:1].upper() + w[1:] for w in name.split())
     def refresh(self):
         """Drop this source's cache so the next listing rebuilds - Refresh is the user asking us to go and LOOK; table-shipping sources drop their table cache too, so the next load re-queries the live site."""
-        return None
+        self._previews = None    # the hosted pictures' places, owned here: a subclass calls super()
 
     def needs_download(self, record) -> bool:
         """True when importing fetches bytes - package sources always, a values source only when its shipped table does not know the material."""
@@ -451,7 +451,7 @@ class GPUOpenSource(MatxSource):
 
     def refresh(self):
         self._categories = None    # the next listing re-reads the site's category map - never fetch HERE, refresh() runs on the UI thread
-        self._previews = None
+        super().refresh()
 
     def _category_map(self):
         if self._categories is not None:
@@ -598,9 +598,6 @@ class PolyHavenSource(MatxSource):
     PREVIEWS = ("https://github.com/Timour/AmazePackages/releases/download/"
                 "polyhaven-previews/polyhaven-previews.zip")
 
-    def refresh(self):
-        self._previews = None
-
     def page_url(self, record) -> str:
         return "https://polyhaven.com/a/%s" % record.uid
 
@@ -711,7 +708,7 @@ class PhysicallyBasedSource(MatxSource):
 
     def refresh(self):
         self._all = None    # the next load (worker thread) goes to the API - never fetch HERE, refresh() runs on the UI thread
-        self._previews = None
+        super().refresh()
 
     def _usable(self, payload) -> bool:
         """Is a live response worth preferring over the shipped table - REACHABLE is not CORRECT, so it must look like the dataset: a list of name+colour entries, not dramatically smaller than what ships. ▸r/matx-source-quirks"""
@@ -840,7 +837,7 @@ class RGLSource(MatxSource):
 
     def refresh(self):
         self._names = None
-        self._previews = None
+        super().refresh()
 
     def needs_download(self, record) -> bool:
         return str(getattr(record, "uid", "")) not in self.table()    # an unknown-to-the-table material still costs a multi-hundred-KB BSDF - that one DOES need the bar
@@ -1416,7 +1413,7 @@ class SimReadySource(MatxSource):
 
     def refresh(self):
         self._names = {}    # archive parts ((url, size), ...) -> [(folder, name)], kept on success
-        self._previews = None    # "<uid>.jpg" -> its place in PREVIEWS, read once
+        super().refresh()
 
     def remember(self, records) -> None:
         """An archive whose parts are unchanged lists what it listed last time. ▸r/simready-release"""
