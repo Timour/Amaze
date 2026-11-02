@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.21.1
+
+- Importing an online material built as Redshift no longer freezes Houdini. The step that puts the network editor back after an import now waits until the import has finished.
+
 ## 1.21.0
 
 - Quitting Houdini while online pictures are downloading, a folder is being counted, files are moving or thumbnails are loading waits one window of three seconds for all of them together, not three seconds each: sixteen stalled downloads cost 3 s instead of 30. A worker that will not stop is kept until Houdini exits instead of being freed while it runs.
