@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.21.2
+
+- A double-click import of an online material now leaves the selection and the network editor where they were, as the menu import does.
+
 ## 1.21.1
 
 - Importing an online material built as Redshift no longer freezes Houdini. The step that puts the network editor back after an import now waits until the import has finished.
