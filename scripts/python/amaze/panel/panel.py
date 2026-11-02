@@ -2534,7 +2534,8 @@ class AmazePanel(QtWidgets.QWidget):
             return
         built, failures, last = [], [], None
         ui = getattr(hou, "ui", None)
-        with self._download_bar(records) as progress_for:
+        with helpers.preserving_selection_and_current(), \
+                self._download_bar(records) as progress_for:    # wrapped at the door, as import_geo_asset is: both callers inherit it
             with hou.undos.group("Amaze Import to Scene"):    # ONE undo step INCLUDING the destination resolution, which may itself create a material library: a material moved into a library that an undo then removes would have nothing coherent to undo to
                 destination = nodes.karma_destination(self.prefs)
                 if destination is None:

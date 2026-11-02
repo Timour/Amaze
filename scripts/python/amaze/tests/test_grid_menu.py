@@ -12,7 +12,7 @@ from PySide6 import QtCore, QtWidgets
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
-import hou  # noqa: E402,F401
+import hou  # noqa: E402
 
 sys.path.insert(
     0, os.path.dirname(os.path.dirname(
@@ -538,6 +538,35 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
             context.menu_import_to_library([], None)
             self.assertEqual({"renderer": "Karma"},
                              lib.call_args.kwargs)
+
+    def test_both_online_scene_doors_run_inside_the_editor_restore(self):
+        """Both online doors reach the scene inside the block that puts the editor back."""
+        import types
+        from amaze.helpers import helpers
+        from amaze.render import nodes
+        panel = self.panel
+        context = panel.online_context
+        rec = types.SimpleNamespace(title="rec", kind="material", source="test")
+        depth = []
+
+        def offline(record):
+            depth.append(helpers._open_blocks)
+            return None, None, "offline in the test"
+
+        index = mock.MagicMock()
+        index.isValid.return_value = True
+        with mock.patch.object(hou, "ui", mock.MagicMock(), create=True), \
+                mock.patch.object(nodes, "karma_destination",
+                                  return_value=hou.node("/obj")), \
+                mock.patch.object(panel, "_online_source_for", side_effect=offline), \
+                mock.patch.object(panel, "matx_sorted_model"), \
+                mock.patch.object(panel, "matx_online_model"), \
+                mock.patch.object(type(context), "_records", lambda self, idx: [rec]):
+            panel.matx_online_model.record.return_value = rec
+            context.double_click(index)    # the door the menu verb does not share
+            context.menu_import_to_scene([], None)
+        self.assertEqual([1, 1], depth,
+                         "a door reached the scene outside the editor restore")
 
 
 def icon_image(action):

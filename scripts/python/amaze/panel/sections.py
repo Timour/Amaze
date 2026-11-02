@@ -1889,10 +1889,8 @@ class OnlineContext(Section):
                                           renderer=payload or renderers.HUB.key)
 
     def menu_import_to_scene(self, indexes, current, payload=None) -> None:
-        from amaze.helpers import helpers
-        with helpers.preserving_selection_and_current():    # same wrapper as menu_copy_to: a menu import must not move the artist's selection, current node or view
-            self.panel._import_online_records_to_scene(
-                self._records(indexes), renderer=payload or renderers.HUB.key)
+        self.panel._import_online_records_to_scene(    # the door wraps the editor restore for both of its callers
+            self._records(indexes), renderer=payload or renderers.HUB.key)
 
     def selection_is_amaze_packages(self, indexes, current) -> bool:
         """Every selected record is an amazepkg - Restore means nothing for a material source."""
