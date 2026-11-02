@@ -31,6 +31,24 @@ from amaze.prefs import prefs as prefs_module  # noqa: E402
 from amaze.tests import test_support  # noqa: E402,F401 - redirects the log
 
 
+def _call_as_amaze(fn):
+    """Call `fn` from a frame whose module name is Amaze's own, the way an import's frames read."""
+    import types
+
+    def inside():
+        return _fn()    # noqa: F821 - bound by the globals handed to FunctionType below
+
+    return types.FunctionType(inside.__code__, {"__name__": "amaze.render.nodes", "_fn": fn})()
+
+
+def _settle(done, timeout=3.0) -> None:
+    """Pump the event loop from a test frame, which counts as idle, until `done()` or `timeout`."""
+    deadline = time.monotonic() + timeout
+    while not done() and time.monotonic() < deadline:
+        QtWidgets.QApplication.processEvents()
+        time.sleep(0.01)
+
+
 def _prefs_with_settings(testcase, settings: dict, tag_favourites=True):
     """A Prefs whose settings.json holds exactly `settings`, loaded - `library_user` goes IN the file because load() reads it back off disk (assigned-after is overwritten), and the favourites copy is tagged at this one door; `tag_favourites=False` deliberately writes the PRE-TAG shape an upgrading machine's settings.json actually holds."""
     home = tempfile.mkdtemp(prefix="amaze_file_prefs_")
@@ -891,6 +909,77 @@ class CreationRuleTest(unittest.TestCase):
                               "every drop now costs undo steps")
         self.assertEqual((a,), hou.selectedNodes(),
                          "the block did not put the selection back")
+
+    def _editor_showing(self, home, anchor, seen):
+        """A network editor stand-in at `home` with `anchor` current, so a put-back calls setCurrentNode."""
+        import types
+
+        class _Tab:
+            _pwd = home
+
+            def type(self):
+                return hou.paneTabType.NetworkEditor
+
+            def pwd(self):
+                return self._pwd
+
+            def setPwd(self, node):
+                self._pwd = node
+                seen.append(("pwd", node.path()))
+
+            def currentNode(self):
+                return anchor
+
+            def setCurrentNode(self, node):
+                seen.append(("current", node.path()))
+
+        return types.SimpleNamespace(paneTabs=lambda: [_Tab()])
+
+    def test_the_deferred_put_back_waits_while_amaze_is_still_at_work(self):
+        """The pass a save armed must not run inside Houdini's event pump. ▸r/editor-put-back"""
+        from amaze.helpers import helpers
+        home = self._geo()
+        anchor = home.createNode("box")
+        seen = []
+        with mock.patch.object(hou, "ui", self._editor_showing(home, anchor, seen),
+                               create=True):
+            with helpers.preserving_selection_and_current():    # the save's own block arms the pass
+                pass
+            seen.clear()
+
+            def pump():
+                QtWidgets.QApplication.processEvents()    # Houdini's Esc check inside createNode
+                self.assertEqual([], seen, "the put-back ran inside Amaze's own work")
+
+            _call_as_amaze(pump)
+            _settle(lambda: any(s[0] == "current" for s in seen))
+        self.assertEqual([("current", anchor.path())],
+                         [s for s in seen if s[0] == "current"],
+                         "the put-back did not run once the event loop was idle")
+
+    def test_a_nested_block_arms_no_put_back_of_its_own(self):
+        """An inner block's deferred pass would run last and win with a mid-operation state."""
+        from amaze.helpers import helpers
+        home = self._geo()
+        anchor = home.createNode("box")
+        seen, passes = [], []
+        real = helpers._put_editors_back
+
+        def _watch(editors, pass_name):
+            passes.append(pass_name)
+            return real(editors, pass_name)
+
+        with mock.patch.object(hou, "ui", self._editor_showing(home, anchor, seen),
+                               create=True), \
+                mock.patch.object(helpers, "_put_editors_back", _watch):
+            with helpers.preserving_selection_and_current():
+                with helpers.preserving_selection_and_current():
+                    pass
+                QtWidgets.QApplication.processEvents()
+                self.assertEqual(["immediate"], passes,
+                                 "a nested block armed or ran a pass of its own")
+            _settle(lambda: "deferred" in passes)
+        self.assertEqual(["immediate", "immediate", "deferred"], passes)
 
     def test_a_selection_is_a_hint_the_click_and_the_menu_read_alike(self):
         """A selected node that cannot take the snippet falls through to creation; one that can, takes it."""

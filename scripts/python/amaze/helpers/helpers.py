@@ -1,6 +1,8 @@
 """Utility functions used in and around Houdini."""
 
 import contextlib
+import functools
+import sys
 
 import hou
 
@@ -8,6 +10,8 @@ from amaze.helpers import hostos
 
 PATH_STYLES = ("absolute", "hip", "job", "home")  # Write Paths As: one variable or absolute; home by default
 _STYLE_VARS = {"hip": "$HIP", "job": "$JOB", "home": "$HOME"}
+_open_blocks = 0    # preserving blocks open right now; only the outermost arms the deferred put-back
+_RETRY_MS = 100
 
 
 def houdini_path(path: str, style: str = "home") -> str:
@@ -274,9 +278,12 @@ def preserving_selection_and_current():
                                     pane_tab.pwd()))
         except (AttributeError, hou.Error):
             editors = []
+    global _open_blocks
+    _open_blocks += 1
     try:
         yield
     finally:
+        _open_blocks -= 1
         with hou.undos.disabler():
             try:
                 after = hou.selectedNodes()
@@ -294,12 +301,40 @@ def preserving_selection_and_current():
                 except (hou.OperationFailed, hou.ObjectWasDeleted):
                     pass
             _put_editors_back(editors, "immediate")
-        try:
-            from PySide6 import QtCore
-            QtCore.QTimer.singleShot(  # AND AGAIN on the next event-loop turn: Houdini POSTS its pane sync, so the follow-the-current dive lands after this call returns and overwrites an immediate-only restore - measured; each pass names itself in the log (research.md ▸ Qt)
-                0, lambda: _put_editors_back(editors, "deferred"))
-        except Exception:                                    # noqa: BLE001
-            pass
+        if not _open_blocks:    # an inner block's pass would run last and win with a mid-operation state
+            _arm_put_back(editors)
+
+
+def _arm_put_back(editors) -> None:
+    """Arm the second pass; Houdini posts its own dive after the first. ▸r/editor-put-back"""
+    try:
+        from PySide6 import QtCore
+    except Exception:                                    # noqa: BLE001
+        return
+    QtCore.QTimer.singleShot(0, functools.partial(_put_back_when_idle, editors, 0))
+
+
+def _put_back_when_idle(editors, waited: int) -> None:
+    """Run the second pass at the top of the event loop only; inside Amaze's own work, wait on."""
+    if _open_blocks or inside_amaze_work(sys._getframe(0).f_back):
+        if not waited:
+            from amaze.core import debug
+            debug.event("interact", "editor put-back waits", open_blocks=_open_blocks)
+        from PySide6 import QtCore
+        QtCore.QTimer.singleShot(
+            _RETRY_MS, functools.partial(_put_back_when_idle, editors, waited + _RETRY_MS))
+        return
+    _put_editors_back(editors, "deferred")
+
+
+def inside_amaze_work(frame) -> bool:
+    """True while an Amaze frame but a test's is below `frame`: an event pump inside our own work."""
+    while frame is not None:
+        name = frame.f_globals.get("__name__", "")
+        if name.startswith("amaze.") and not name.startswith("amaze.tests"):
+            return True
+        frame = frame.f_back
+    return False
 
 
 def _put_editors_back(editors, pass_name: str) -> None:
