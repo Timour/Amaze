@@ -3,11 +3,12 @@ import os
 import sys
 
 import hou
-from PySide6 import QtCore, QtGui
+from PySide6 import QtGui
 
 from amaze import branding
 from amaze import messages
 from amaze.core import debug
+from amaze.helpers import helpers
 
 
 class HoudiniSpeaker:
@@ -15,14 +16,14 @@ class HoudiniSpeaker:
 
     @staticmethod
     def dialog(text: str) -> None:
-        """A warning shown once Qt is idle, so it never lands inside a mouse release."""
+        """A warning shown at the top of the event loop, outside any mouse release or pump."""
         ui = getattr(hou, "ui", None)
         if ui is None:
             raise AttributeError("no hou.ui in this session")
-        QtCore.QTimer.singleShot(0, lambda: ui.displayMessage(
+        helpers.run_at_top_of_loop(lambda: ui.displayMessage(
             text, severity=hou.severityType.Warning,  # type: ignore
             title=messages.TITLE_AMAZE,
-        ))
+        ), "alert dialog")
 
     @staticmethod
     def status(text: str) -> None:

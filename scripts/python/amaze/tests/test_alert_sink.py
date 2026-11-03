@@ -130,6 +130,20 @@ class RefuseIsTheGestureSinkTest(unittest.TestCase):
                          "the next write erases")
         self.assertEqual(['"Rust": asset file is missing.'], self.shown)
 
+    def test_the_deferred_dialog_waits_while_amaze_is_still_at_work(self):
+        """The parked dialog must not open inside Houdini's event pump. ▸p/deferred-ui-at-top-level"""
+        with mock.patch.object(hou, "ui", self._ui(), create=True):
+            debug.refuse(debug.Damage('"Rust": asset file is missing.'))
+
+            def pump():
+                QtWidgets.QApplication.processEvents()    # Houdini's Esc check inside createNode
+                self.assertEqual([], self.shown, "the dialog opened inside Amaze's own work")
+
+            test_support.call_as_amaze(pump)
+            test_support.settle(lambda: self.shown)
+        self.assertEqual(['"Rust": asset file is missing.'], self.shown,
+                         "the dialog did not open once the event loop was idle")
+
     def test_with_nothing_handed_over_the_log_only_prints(self):
         """The log reaches Houdini only through what was handed over, never by itself."""
         debug.hand_over(None)

@@ -213,6 +213,39 @@ class ASaveKeepsTheArtistsSelection(unittest.TestCase):
             "after Save to Amaze the saved node is no longer selected")
 
 
+class ADroppedNodeIsSavedAtTheTopOfTheEventLoop(unittest.TestCase):
+    """The save a drop defers must not run inside Houdini's event pump. ▸p/deferred-ui-at-top-level"""
+
+    def setUp(self):
+        self.panel = test_support.fixture_panel(self)
+
+    def test_the_deferred_save_waits_while_amaze_is_still_at_work(self):
+        from PySide6 import QtCore
+        from amaze.panel import dragdrop_widgets
+        node = _material(self, "door_dropped")
+        target = self.panel.findChild(dragdrop_widgets.DragDropCentralWidget)
+        self.assertIsNotNone(target, "premise: the panel has no drop target")
+        mime = QtCore.QMimeData()
+        mime.setText(node.path())
+        event = mock.MagicMock()
+        event.source.return_value = None    # a drag from a network editor, not from the panel
+        event.mimeData.return_value = mime
+        saved = []
+        with mock.patch.object(self.panel, "save_from_node",
+                               lambda dropped, **_kw: saved.append(dropped.path())):
+            target.dropEvent(event)
+            self.assertEqual([], saved, "the drop saved inside the release handler")
+
+            def pump():
+                QtWidgets.QApplication.processEvents()    # Houdini's Esc check inside createNode
+                self.assertEqual([], saved, "the save ran inside Amaze's own work")
+
+            test_support.call_as_amaze(pump)
+            test_support.settle(lambda: saved)
+        self.assertEqual([node.path()], saved,
+                         "the save did not run once the event loop was idle")
+
+
 class ASaveLeavesNothingOnTheUndoStack(unittest.TestCase):
     """The staging copies are the save's own business; the next Ctrl+Z is the artist's."""
 

@@ -568,7 +568,7 @@ class DragDropCentralWidget(QtWidgets.QWidget):
                         node=node.path(), section=getattr(section, "key", None))
             panel.save_from_node(node, prefer=getattr(section, "key", ""))
 
-        QtCore.QTimer.singleShot(0, _route)
+        helpers.run_at_top_of_loop(_route, "drop save")    # a bare timer can land inside a builder's pump
 
 
 class CategoryDropFilter(QtCore.QObject):

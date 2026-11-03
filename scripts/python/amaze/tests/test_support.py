@@ -8,10 +8,29 @@ import os
 import shutil
 import sys
 import tempfile
+import time
+import types
 
 from amaze.helpers import hostos
 
 os.environ[hostos.SANDBOX_VAR] = "1"    # armed at IMPORT, however the test was started ▸p/hand-run-script-is-unguarded
+
+
+def call_as_amaze(fn):
+    """Call `fn` from a frame whose module name is Amaze's own, the way an import's frames read."""
+    def inside():
+        return _fn()    # noqa: F821 - bound by the globals handed to FunctionType below
+
+    return types.FunctionType(inside.__code__, {"__name__": "amaze.render.nodes", "_fn": fn})()
+
+
+def settle(done, timeout=3.0) -> None:
+    """Pump the event loop from a test frame, which counts as idle, until `done()` or `timeout`."""
+    from PySide6 import QtWidgets
+    deadline = time.monotonic() + timeout
+    while not done() and time.monotonic() < deadline:
+        QtWidgets.QApplication.processEvents()
+        time.sleep(0.01)
 
 
 def _adopt_suite_root() -> str:

@@ -302,29 +302,30 @@ def preserving_selection_and_current():
                     pass
             _put_editors_back(editors, "immediate")
         if not _open_blocks:    # an inner block's pass would run last and win with a mid-operation state
-            _arm_put_back(editors)
+            run_at_top_of_loop(functools.partial(_put_editors_back, editors, "deferred"),
+                               "editor put-back")    # Houdini's own dive follows the first pass ▸r/editor-put-back
 
 
-def _arm_put_back(editors) -> None:
-    """Arm the second pass; Houdini posts its own dive after the first. ▸r/editor-put-back"""
+def run_at_top_of_loop(fn, what: str) -> None:
+    """Run `fn` at the top of the event loop, outside Amaze's work. ▸p/deferred-ui-at-top-level"""
     try:
         from PySide6 import QtCore
     except Exception:                                    # noqa: BLE001
         return
-    QtCore.QTimer.singleShot(0, functools.partial(_put_back_when_idle, editors, 0))
+    QtCore.QTimer.singleShot(0, functools.partial(_run_when_idle, fn, what, 0))
 
 
-def _put_back_when_idle(editors, waited: int) -> None:
-    """Run the second pass at the top of the event loop only; inside Amaze's own work, wait on."""
+def _run_when_idle(fn, what: str, waited: int) -> None:
+    """Run `fn` with no Amaze block open and no Amaze frame below; otherwise re-arm at 100 ms."""
     if _open_blocks or inside_amaze_work(sys._getframe(0).f_back):
         if not waited:
             from amaze.core import debug
-            debug.event("interact", "editor put-back waits", open_blocks=_open_blocks)
+            debug.event("interact", "%s waits" % what, open_blocks=_open_blocks)
         from PySide6 import QtCore
         QtCore.QTimer.singleShot(
-            _RETRY_MS, functools.partial(_put_back_when_idle, editors, waited + _RETRY_MS))
+            _RETRY_MS, functools.partial(_run_when_idle, fn, what, waited + _RETRY_MS))
         return
-    _put_editors_back(editors, "deferred")
+    fn()
 
 
 def inside_amaze_work(frame) -> bool:

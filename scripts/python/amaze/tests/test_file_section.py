@@ -28,25 +28,7 @@ from amaze.core import tile_icons  # noqa: E402
 from amaze.helpers import helpers, hostos  # noqa: E402
 from amaze.panel import delegates  # noqa: E402
 from amaze.prefs import prefs as prefs_module  # noqa: E402
-from amaze.tests import test_support  # noqa: E402,F401 - redirects the log
-
-
-def _call_as_amaze(fn):
-    """Call `fn` from a frame whose module name is Amaze's own, the way an import's frames read."""
-    import types
-
-    def inside():
-        return _fn()    # noqa: F821 - bound by the globals handed to FunctionType below
-
-    return types.FunctionType(inside.__code__, {"__name__": "amaze.render.nodes", "_fn": fn})()
-
-
-def _settle(done, timeout=3.0) -> None:
-    """Pump the event loop from a test frame, which counts as idle, until `done()` or `timeout`."""
-    deadline = time.monotonic() + timeout
-    while not done() and time.monotonic() < deadline:
-        QtWidgets.QApplication.processEvents()
-        time.sleep(0.01)
+from amaze.tests import test_support  # noqa: E402 - redirects the log
 
 
 def _prefs_with_settings(testcase, settings: dict, tag_favourites=True):
@@ -951,8 +933,8 @@ class CreationRuleTest(unittest.TestCase):
                 QtWidgets.QApplication.processEvents()    # Houdini's Esc check inside createNode
                 self.assertEqual([], seen, "the put-back ran inside Amaze's own work")
 
-            _call_as_amaze(pump)
-            _settle(lambda: any(s[0] == "current" for s in seen))
+            test_support.call_as_amaze(pump)
+            test_support.settle(lambda: any(s[0] == "current" for s in seen))
         self.assertEqual([("current", anchor.path())],
                          [s for s in seen if s[0] == "current"],
                          "the put-back did not run once the event loop was idle")
@@ -978,7 +960,7 @@ class CreationRuleTest(unittest.TestCase):
                 QtWidgets.QApplication.processEvents()
                 self.assertEqual(["immediate"], passes,
                                  "a nested block armed or ran a pass of its own")
-            _settle(lambda: "deferred" in passes)
+            test_support.settle(lambda: "deferred" in passes)
         self.assertEqual(["immediate", "immediate", "deferred"], passes)
 
     def test_a_selection_is_a_hint_the_click_and_the_menu_read_alike(self):
