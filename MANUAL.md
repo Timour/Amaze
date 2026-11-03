@@ -396,12 +396,11 @@ Browses folders on disk.
   thumbnails already made.
 - **Geometry** (.bgeo, .obj, .fbx, .abc, .usd and more) gets
   viewport-rendered thumbnails, wireframe over shaded. **Double-click**,
-  or a drag into a network, imports it in context and keeps the current
-  node and display flag. Esc interrupts a long first scan, which
-  resumes later.
+  or a drag into a network, imports it in context. Esc interrupts a long
+  first scan, which resumes later.
 - **Scenes** (.hip, .hiplc, .hipnc) open on **double-click**, with
-  Houdini's own prompt for unsaved changes. A scene dragged out of the
-  panel and released also opens. The open scene has a tick on its tile.
+  Houdini's own prompt for unsaved changes. The open scene has a tick on
+  its tile.
   A scene's picture is a capture: **Capture** on the right-click menu, or
   the <img src="scripts/python/amaze/ui/icon_screenshot.svg" width="14">
   **Capture** button, takes one from the Scene View while that scene is
@@ -650,8 +649,6 @@ a miss indicator
   file from the OS file browser does.
 - **Geometry** into a network or viewport: imports it in context at the
   drop point.
-- **Scenes** released outside the panel: opens the scene, as a
-  double-click does.
 - **Code** onto a node: writes the snippet into the node's code
   parameter.
 - **Any asset** onto a sidebar category: files it in that category.

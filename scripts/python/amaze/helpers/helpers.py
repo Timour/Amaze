@@ -263,7 +263,7 @@ def get_connected_output_nodes(
 
 @contextlib.contextmanager
 def preserving_selection_and_current():
-    """Restores the selection, each network editor's current node and its PWD after the wrapped drop, so the artist stays where they were: an import arrives selected and current (research.md ▸ Node graph) and the FollowSelection link group dives to the new current node, while restoring current alone left an editor at root. Runs the restore under `hou.undos.disabler()` because selection calls push undo entries (research.md ▸ Viewport & picking); a MENU action is deliberately not wrapped, fronting the created node being the host's own behaviour there."""
+    """Puts back the selection and the Network Editors after Amaze's own scratch copies took them."""
     try:
         before = list(hou.selectedNodes())
     except hou.Error:

@@ -488,62 +488,22 @@ class EveryTileDelegateIsSweptByEverySweep(AreaBindingCase):
 class TheBindingsAreDeclaredNotHandWritten(unittest.TestCase):
     """Every section activates through its own activate(); the online world enters via the panel."""
 
-    _CHAINS_THE_SCAN_CANNOT_FOLLOW = ("menu_load", "menu_copy_to")   # menu verbs whose import chain leaves panel.py, so the scan below cannot follow it - NAMED, because a scan that silently covered less than it looks like is worse than one that says where it stops, and everything the scan CAN follow is found without appearing here
+    _PUT_BACKS = ("preserving_selection_and_current", "keep_editor_focus")    # ▸p/amaze-follows-houdini
 
-    _SCENE_API = ("createNode(", "createOutputNode(", "loadItemsFromFile(",   # Houdini's own scene-mutating calls: the seed is the HOST's API rather than our verb names, so adding an import verb of our own is followed automatically and only a new Houdini API would need a line here
-                  "moveNodesTo(", "copyNodesTo(", "setDisplayFlag(",
-                  "setCurrent(", "setSelected(")
-
-    def test_every_scene_importing_menu_verb_preserves_the_view(self):
-        """A menu verb that reaches into the scene must put back what it disturbed - either by routing through the click door (which wraps) or by carrying the wrapper itself. - The File section's geometry import carried neither, so Import on a .bgeo row moved the artist's current node and display flag with no way back, while Load, Copy To and Import to Scene beside it all preserved. The guard could not see it: it named THREE verbs by hand and there are five, with its own docstring claiming it was pinned so a fourth could not ship bare. - Derived now, from a reachability scan over panel.py seeded on Houdini's own scene API - so a new verb of ours is followed rather than remembered."""
-        import ast
-        import re
-
+    def test_no_import_door_puts_the_artist_back(self):
+        """An import leaves the new node selected and the editors where Houdini puts them."""
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        panel_source = open(os.path.join(root, "panel", "panel.py"),
-                            encoding="utf-8").read()
-        section_source = open(os.path.join(root, "panel", "sections.py"),
-                              encoding="utf-8").read()
-
-        bodies = {node.name: (ast.get_source_segment(panel_source, node) or "")
-                  for node in ast.walk(ast.parse(panel_source))
-                  if isinstance(node, ast.FunctionDef)}
-        reaching = {name for name, body in bodies.items()
-                    if any(call in body for call in self._SCENE_API)}
-        growing = True
-        while growing:                       # transitive, to a fixed point
-            growing = False
-            for name, body in bodies.items():
-                if name in reaching:
-                    continue
-                if set(re.findall(r"self\.(\w+)\(", body)) & reaching:
-                    reaching.add(name)
-                    growing = True
-        self.assertTrue(
-            reaching, "the scan found no scene-reaching panel method at "
-                      "all - it is keyed on names that no longer exist")
-
-        bare = []   # PER CALL, never per function: checking the menu verb's whole body for the wrapper is the same disease as a test satisfied by a comment, since `menu_import` calls the door for images AND `import_geo_asset` for geometry, so one `click_on_row` anywhere in it would vouch for a bare sibling call three lines below - each scene-reaching call answers for itself
-        for node in ast.walk(ast.parse(section_source)):
-            if not (isinstance(node, ast.FunctionDef)
-                    and node.name.startswith("menu_")):
-                continue
-            body = ast.get_source_segment(section_source, node) or ""
-            menu_wraps = "preserving_selection_and_current" in body
-            called = set(re.findall(r"panel\.(\w+)\(", body))
-            for verb in sorted(called & reaching):
-                if menu_wraps or "preserving_selection_and_current" in \
-                        bodies.get(verb, ""):
-                    continue
-                bare.append("%s -> %s" % (node.name, verb))
-            if (node.name in self._CHAINS_THE_SCAN_CANNOT_FOLLOW
-                    and not menu_wraps):
-                bare.append("%s (chain outside panel.py)" % node.name)
+        found = []
+        for name in ("panel.py", "sections.py", "dragdrop_widgets.py"):
+            with open(os.path.join(root, "panel", name), encoding="utf-8") as fh:
+                source = fh.read()
+            for wrapper in self._PUT_BACKS:
+                if wrapper in source:
+                    found.append("%s uses %s" % (name, wrapper))
         self.assertEqual(
-            [], bare,
-            "these menu verbs reach into the scene without preserving "
-            "what they disturb, so the artist's current node and "
-            "display flag move with no way back: %s" % bare)
+            [], found,
+            "an import door puts the selection or the network editors "
+            "back, which undoes what Houdini does for a new node: %s" % found)
 
 
 class TheReleaseVerbsLiveOnTheirSections(unittest.TestCase):
@@ -559,7 +519,7 @@ class TheReleaseVerbsLiveOnTheirSections(unittest.TestCase):
                 rules.append(cls.DROP)
             rules.extend(getattr(cls, "DROP_BY_KIND", {}).values())
             names = {name for rule in rules for name in (
-                rule.on_node, rule.on_space, rule.resolve, rule.outside,
+                rule.on_node, rule.on_space, rule.resolve,
                 rule.click_on_node, rule.click_resolve) if name}
             if getattr(cls, "carrier_type_verb", ""):
                 names.add(cls.carrier_type_verb)

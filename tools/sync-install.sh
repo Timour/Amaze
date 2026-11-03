@@ -122,32 +122,8 @@ amaze_mirror "$repo/scripts" "$install/scripts" '__pycache__'
 amaze_mirror "$repo/python_panels" "$install/python_panels"
 amaze_mirror "$repo/toolbar" "$install/toolbar"
 cp "$repo/OPmenu.xml" "$install/OPmenu.xml"
-# BYTECODE: purge, then rebuild HASH-VALIDATED (PEP 552). A synced .py
-# arrives with a preserved mtime, so a TIMESTAMP-validated .pyc looks
-# current while holding the previous version. --force overwrites any
-# timestamp-validated .pyc left from before. Compile with the SAME
-# interpreter Houdini runs or the magic number mismatches.
+# Stale compiled copies go with the sources they came from; Python writes fresh ones on import.
 find "$install" -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null || true
-_root="${HFS:-}"
-if [ -z "$_root" ] || ! amaze_hython "$_root" >/dev/null; then
-    _root="$(amaze_houdini)"
-fi
-_hython=""    # the compiler: Houdini's own Python first - a hython start costs 15 s here
-if [ -n "$_root" ]; then
-    _hython="$(amaze_plain_python "$_root" || amaze_hython "$_root" || true)"
-fi
-if [ -n "$_hython" ] && [ -x "$_hython" ]; then
-    "$_hython" -c "
-import compileall, py_compile, sys
-ok = compileall.compile_dir(
-    '$install/scripts', quiet=1, force=True,
-    invalidation_mode=py_compile.PycInvalidationMode.CHECKED_HASH)
-sys.exit(0 if ok else 1)
-" && echo "sync-install: bytecode rebuilt (hash-validated)" \
-      || echo "sync-install: bytecode compile failed - the install still works, it just recompiles at load" >&2
-else
-    echo "sync-install: no hython found - skipping bytecode precompile" >&2
-fi
 
 # Verify the whole of scripts/, not just python/amaze: the rsync copies
 # "$repo/scripts/", so anything added beside it would ship UNVERIFIED.

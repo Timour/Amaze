@@ -265,7 +265,7 @@ class NoReleaseVerbOpensAModalInline(unittest.TestCase):
     BOX_MODALS = {"information", "warning", "critical", "question"}    # on QMessageBox
     PANEL_RELEASES = ("assign_category_active", "move_files_active")    # the gesture's own calls
     REACHED = ("_material_lop_viewport_drop", "assign_material_to_obj", "_import_material_builder",
-               "_import_geo_in_context", "open_hip_scene")    # the doors that once opened one
+               "_import_geo_in_context")    # the doors that once opened one
 
     def _methods(self, relative, only=None) -> dict:
         """{name: [def]} for the methods of one source file, of class `only` when given."""
@@ -287,8 +287,8 @@ class NoReleaseVerbOpensAModalInline(unittest.TestCase):
         for cls in sections.SECTION_CLASSES + (sections.OnlineContext,):
             for rule in [cls.DROP] + list(cls.DROP_BY_KIND.values()):
                 if rule is not None:
-                    verbs.update(v for v in (rule.on_node, rule.on_space, rule.resolve,
-                                             rule.outside) if v)
+                    verbs.update(v for v in (rule.on_node, rule.on_space, rule.resolve)
+                                 if v)
         return verbs
 
     def test_no_release_verb_reaches_a_modal(self):

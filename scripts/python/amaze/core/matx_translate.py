@@ -186,13 +186,8 @@ def build_material(mtlx_path: str, builder: hou.Node, name: str):
                 fp = vnode.parm(inp.getName())
                 if fp is not None:
                     fp.set(resolved)
-                cs = inp.getAttribute("colorspace")
+                cs = inp.getAttribute("colorspace")    # the file's own; with none, the signature decides
                 csp = vnode.parm("filecolorspace")
-                if not cs:  # no colorspace attribute (SideFX's own data maps ship none): leaving `automatic` hands the choice to Houdini's OCIO FILE RULES, which read every png/jpg as sRGB and degamma roughness/normal DATA maps (research/material-creation.md) - the node's declared type decides instead, non-color signatures read Raw
-                    if mnode.getType() in (
-                        "float", "vector2", "vector3", "vector4"
-                    ):
-                        cs = "Raw"
                 if cs and csp is not None:
                     try:
                         csp.set(cs)

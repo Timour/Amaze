@@ -312,6 +312,7 @@ class TestMaterialLibrary(unittest.TestCase):
     def test_import_asset_to_scene(self):
         """Test import_asset_to_scene imports asset to Houdini"""
         mock_importer = Mock()
+        mock_importer.import_asset_to_scene.return_value = (True, "", [])    # the seam's shape
         self.mock_nodes_cls.return_value = mock_importer
 
         index = self.library.index(0, 0)

@@ -261,33 +261,6 @@ class TheCursorLookupStillReadsTheScreenTest(unittest.TestCase):
                          "has a ui")
 
 
-class TheFocusKeeperNeedsNoScreenTest(unittest.TestCase):
-    """The capture has nothing to ask with no ui present, and still asks when there is one - the half that catches an over-guard."""
-
-    def test_the_focus_keeper_runs_without_a_screen(self):
-        try:
-            with dragengine.keep_editor_focus():
-                pass
-        except AttributeError as crash:
-            self.fail("keeping the editor focus became a crash: %s" % crash)
-
-    def test_the_focus_keeper_still_reads_the_pane_tabs(self):
-        reads = []
-
-        def pane_tabs():
-            reads.append(True)
-            return ()
-
-        with mock.patch.object(hou, "ui",
-                               types.SimpleNamespace(paneTabs=pane_tabs),
-                               create=True):
-            with dragengine.keep_editor_focus():
-                pass
-        self.assertEqual(1, len(reads),
-                         "the capture skipped the pane-tab read in a session "
-                         "that has a ui")
-
-
 class ThePanelLookupRefusesHeadlessTest(unittest.TestCase):
     """The right-click entry points answer None instead of crashing, and the four callers already skip on None."""
 

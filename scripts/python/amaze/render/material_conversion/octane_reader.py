@@ -485,9 +485,8 @@ def read_mix_material(reader, node, role):
 
 
 def _colour_space(reader, node, image, role) -> None:
-    """mtlximage's colour space from Octane's own; a normal map always reads Raw."""
+    """mtlximage's colour space from Octane's own; a vector3 signature reads untransformed."""
     if role == "vector3":
-        _set(image, "filecolorspace", "Raw")
         return
     space = _token(node, "colorSpace")
     if space == "NAMED_COLOR_SPACE_LINEAR_SRGB_WITH_LEGACY_GAMMA":

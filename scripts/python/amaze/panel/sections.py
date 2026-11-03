@@ -32,9 +32,9 @@ FilterEntry = collections.namedtuple(    # `id` is what the remembered choice sa
 
 DropRule = collections.namedtuple(
     "DropRule",
-    "on_node on_space resolve outside click_on_node click_resolve "
+    "on_node on_space resolve click_on_node click_resolve "
     "carrier_type context",
-    defaults=(None, None, None, None, None, None, "", ""),
+    defaults=(None, None, None, None, None, "", ""),
 )    # context: the childTypeCategory a network must hold for this drag to land there ("" gates nothing) - ONE declaration read by the release verb AND the live ghost
 
 
@@ -753,8 +753,7 @@ class MaterialSection(AssetSection):
                 shown = panel._material_lop_viewport_drop(ids, viewer, data)
                 return "menu" if shown is not False else False    # the menu IS the feedback here, no outcome icon on top of it whether chosen or dismissed - but only when one was SHOWN, because _finish_preview reads "menu" as "suppress the miss icon" and the call returns False in three cases where none ever appeared: no stock LOP helper, a viewer whose pwd() failed, and no choices at all off a stale prim path or a display node whose cook failed
             if kind == "obj" and data is not None:
-                with dragengine.drop_group("Amaze Assign Material"), \
-                        dragengine.keep_editor_focus():
+                with dragengine.drop_group("Amaze Assign Material"):
                     return bool(panel.assign_material_to_obj(ids, data))    # propagated, never a hard True: the call returns False when the picked object has no shop_materialpath, and success feedback for an assignment that did not happen is a lie
             return self.drop_takes_nothing()
         context = panel._drop_context_under_cursor("materiallibrary")
@@ -775,12 +774,10 @@ class MaterialSection(AssetSection):
                 ("/stage/materiallibrary", "lop", "", True))    # names the LANDING: the copy goes INSIDE a material library under /stage, never stage root
 
     def menu_copy_to(self, indexes, current, payload=None) -> None:
-        from amaze.helpers import helpers
-        with helpers.preserving_selection_and_current():    # a menu import leaves the artist where they were, like a drop; the drag and click dispatchers wrap, the menu dispatcher does not, so the scene-importing verbs carry it themselves
-            if payload == "lop":
-                self.panel.import_asset_to_lop()
-            else:
-                self.panel.import_asset_to_mat()
+        if payload == "lop":
+            self.panel.import_asset_to_lop()
+        else:
+            self.panel.import_asset_to_mat()
 
     def _sources_held(self, indexes) -> frozenset:
         """The renderers among these rows that convert: one walk per menu, kept for the list asked about."""
@@ -912,9 +909,7 @@ class CopSection(AssetSection):
         return True
 
     def menu_load(self, indexes, current, payload=None) -> None:
-        from amaze.helpers import helpers
-        with helpers.preserving_selection_and_current():    # same wrapper as menu_copy_to: a menu import must not move the artist's selection, current node or view
-            self.panel.import_cop_assets()
+        self.panel.import_cop_assets()
     library_model_attrs = ("cop_model", "cop_category_model")
     model_attr = "cop_model"
     proxy_attr = "cop_sorted_model"
@@ -1561,7 +1556,6 @@ class FileSection(FolderSection):
             click_resolve="click_import_geo"),
         locations.KIND_HIP: DropRule(
             on_node="drop_file_path_on_node",
-            outside="open_hip_scene",
             click_resolve="click_open_hip"),
         locations.KIND_OTHER: _PATH_ONLY,
         "": _PATH_ONLY,

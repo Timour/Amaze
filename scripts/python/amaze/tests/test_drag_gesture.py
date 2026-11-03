@@ -504,8 +504,8 @@ class TheBehaviourTableCells(unittest.TestCase):
          dict(node=True), ["file_path"]),
         ("a hip inside the panel misses", "file", "hip",
          dict(inside=True), []),
-        ("a hip outside the panel loads the scene", "file", "hip",
-         dict(outside=True), ["open_hip"]),
+        ("a hip outside the panel does nothing", "file", "hip",
+         dict(outside=True), []),
         ("an unknown file hands the path to the node", "file", "other",
          dict(node=True), ["file_path"]),
         ("an unknown file has no creation rule", "file", "other",
@@ -798,16 +798,6 @@ class TheGestureRunsOnBOTHViews(unittest.TestCase):
 
 class TheEnginesHousekeepingSurvivesOneFailure(unittest.TestCase):
     """A release keeps tidying past a node that raises, and a snap that cannot run says so once."""
-
-    def test_one_node_that_raises_does_not_keep_the_rest_selected(self):
-        from amaze.core import dragengine
-        bad = mock.Mock()
-        bad.setCurrent.side_effect = hou.OperationFailed("gone")
-        good = mock.Mock()
-        with mock.patch.object(hou, "selectedNodes", side_effect=[[], [bad, good]]):
-            with dragengine.keep_editor_focus():
-                pass
-        good.setSelected.assert_called_once_with(False)
 
     def test_one_node_that_raises_does_not_keep_the_rest_unselected(self):
         """The hover's OBJ highlight gives the user's selection back node by node."""

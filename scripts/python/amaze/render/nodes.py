@@ -1688,6 +1688,7 @@ class NodeHandler:
         except hou.OperationFailed:
             pass
         apply_node_color(container, mat.node_color)
+        container.setCurrent(True, True)    # current and selected, as a node from the Tab menu is
         self._imported_cop_nodes = [container]
         return (True, "")
 

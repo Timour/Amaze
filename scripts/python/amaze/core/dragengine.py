@@ -910,46 +910,6 @@ def _restore_highlight() -> None:
         pass
 
 
-
-@contextmanager
-def keep_editor_focus():
-    """Wrap a VIEWPORT release so path-linked network editors do not follow the imported node into the library - captures editor paths and the selection, unflags what the wrapped work selected, and restores any editor that moved; network-editor releases deliberately do NOT use it."""
-    ui = getattr(hou, "ui", None)
-    try:
-        editors = [
-            (pt, pt.pwd())
-            for pt in (ui.paneTabs() if ui is not None else ())
-            if pt.type() == hou.paneTabType.NetworkEditor
-        ]
-    except Exception:
-        editors = []
-    try:
-        prev = set(hou.selectedNodes())
-    except Exception:
-        prev = None
-    try:
-        yield
-    finally:
-        if prev is not None:
-            try:
-                added = [n for n in hou.selectedNodes() if n not in prev]
-            except Exception:                                # noqa: BLE001
-                added = []
-            with hou.undos.disabler():
-                for n in added:
-                    try:
-                        n.setCurrent(False)
-                        n.setSelected(False)
-                    except Exception:                        # noqa: BLE001
-                        continue    # one node that raises must not keep the rest selected
-        for pt, pwd in editors:
-            try:
-                if pt.pwd() != pwd:
-                    pt.setPwd(pwd)
-            except Exception:
-                pass
-
-
 def viewport_release_target(panel):
     """One more pick at release: ("lop", viewer, primpath_or_"") / ("obj", viewer, node_or_None) / None when the release was not over a material-capable scene viewer."""
     viewer, x, y, wh, scale = _scene_viewer_under_cursor()

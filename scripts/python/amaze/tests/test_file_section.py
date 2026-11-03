@@ -542,6 +542,28 @@ class ScenePathsAreSpelledPerPreferenceTest(unittest.TestCase):
                          "reads it as open-this-file")
 
 
+class AGeometryImportFrontsWhatItMade(unittest.TestCase):
+    """The geometry import leaves its new node current and selected, as the Tab menu does."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
+
+    def test_the_imported_geometry_is_the_current_node(self):
+        index = mock.MagicMock()
+        index.data.return_value = "/nowhere/amaze_fronted.obj"
+        with mock.patch.object(self.panel, "_active_network_pwd",
+                               return_value=hou.node("/obj")):
+            self.panel.import_geo_asset(index)
+        made = hou.node("/obj/amaze_fronted")
+        self.assertIsNotNone(made, "premise: the import made no geo node")
+        self.addCleanup(made.destroy)
+        self.assertTrue(made.isCurrent(),
+                        "the imported geometry is not the current node")
+        self.assertIn(made, hou.selectedNodes(),
+                      "the imported geometry is not selected")
+
+
 class DropFilePathOnNodeTest(unittest.TestCase):
     """The release-on-a-node verb: the node's FIRST file parameter takes the SPELLED path, and a node with no file parameter refuses with a dialog-free False so the gesture can show its own miss - dispatch pinned in test_drag_gesture."""
 
@@ -732,8 +754,8 @@ class CreationRuleTest(unittest.TestCase):
             "the newborn carrier stayed selected - it will hijack "
             "the next double-click")
 
-    def test_a_menu_copy_to_leaves_the_artists_scene_state_alone(self):
-        """The menu's Copy To imports into /mat and the artist's scene selection survives it exactly as it survives a drop - the verb's wrapper puts the artist back."""
+    def test_a_menu_copy_to_selects_the_imported_material(self):
+        """Copy To imports into /mat and leaves the new material selected, as the Tab menu does."""
         net = self._geo()
         self._with_view_networks([net])
         keeper = net.createNode("box", "the_artists_own")
@@ -754,14 +776,16 @@ class CreationRuleTest(unittest.TestCase):
             QtCore.QItemSelectionModel.ClearAndSelect
             | QtCore.QItemSelectionModel.Rows)
         mat_net = hou.node("/mat")
-        before = len(mat_net.children())
+        held = set(mat_net.children())
         self.panel.sections["material"].menu_copy_to(
             (index,), index, payload="mat")
-        if len(mat_net.children()) == before:
+        new = [n for n in mat_net.children() if n not in held]
+        if not new:
             self.skipTest("the fixture material did not import")
-        self.assertEqual(
-            (keeper,), hou.selectedNodes(),
-            "a menu Copy To moved the artist's scene selection")
+        self.assertIn(new[0], hou.selectedNodes(),
+                      "a menu Copy To did not leave the imported material selected")
+        self.assertTrue(new[0].isCurrent(),
+                        "the imported material is not the current node")
 
     def test_the_click_dispatcher_absorbs_a_refusal_and_lets_a_crash_out(self):
         """A locked network's no is absorbed like a drop's; a programming error still crashes visibly."""
@@ -1610,8 +1634,8 @@ class CopyPathTest(unittest.TestCase):
             "per line")
 
 
-class HipDragLoadsOutsideTest(unittest.TestCase):
-    """A hip dragged OUTSIDE Amaze loads the scene like double-click; released inside the panel it stays silent, because a drag that ends where it began is not a decision."""
+class HipDragLoadsNothingTest(unittest.TestCase):
+    """A hip dragged out of Amaze and released loads nothing; a double-click opens the scene."""
 
     def _armed_hip(self):
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -1635,11 +1659,11 @@ class HipDragLoadsOutsideTest(unittest.TestCase):
             QtCore.Qt.KeyboardModifier.NoModifier)
         h.view.mouseReleaseEvent(event)
 
-    def test_released_outside_the_panel_loads_and_inside_stays_silent(self):
+    def test_released_outside_or_inside_the_panel_loads_nothing(self):
         h = self._armed_hip()
         self._release_at_global(h, QtCore.QPoint(5000, 5000))
-        self.assertIn("open", h.panel.calls,
-                      "a hip dragged out of Amaze did not load")
+        self.assertNotIn("open", h.panel.calls,
+                         "a hip dragged out of Amaze loaded the scene")
         h = self._armed_hip()
         inside = h.panel.mapToGlobal(QtCore.QPoint(5, 5))
         self._release_at_global(h, inside)

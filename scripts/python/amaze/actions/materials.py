@@ -176,9 +176,12 @@ def import_asset_to_scene(
 ):
     """Load `index` into the scene by `target`: (ok, reason, created). ▸p/material-import-door"""
     importer = nodes.NodeHandler(model.preferences)
-    return importer.import_asset_to_scene(
+    ok, reason, created = importer.import_asset_to_scene(
         model._assets[index.row()], target, context_node=context_node
     )
+    for node in created:
+        node.setCurrent(True, True)    # current and selected, as a node from the Tab menu is
+    return ok, reason, created
 
 
 def convert(model, index: QtCore.QModelIndex, target: str, render: bool = True):

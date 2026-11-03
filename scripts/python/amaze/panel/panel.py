@@ -48,7 +48,7 @@ from amaze import branding
 from amaze import messages
 from amaze import tooltips
 from amaze.prefs import prefs
-from amaze.helpers import bytecode, helpers, hostos, theme, ui_helpers, wording
+from amaze.helpers import helpers, hostos, theme, ui_helpers, wording
 from amaze.utils import rc_calls
 from amaze.core import database, renderers, tile_icons, users
 from amaze.render import cop_nodes, husk_job, nodes
@@ -71,7 +71,6 @@ def _reload_loaded(name):
 _reload(keyed_store)    # FIRST: eleven modules read their stores through it, so a stale engine keeps old tables while every caller gets new code; a re-register keeps existing bindings, so binder modules outside this chain stay whole
 _reload(locations)      # right after the engine it binds two stores into - and the switch door calls locations.forget()
 _reload(hostos)    # before library: the models import the shared thumbnail engine
-_reload(bytecode)
 _reload(wording)    # before library, nodes and sections, which name things through it
 _reload(debug)
 _reload_loaded("amaze.core.dragengine")
@@ -761,7 +760,6 @@ class AmazePanel(QtWidgets.QWidget):
             return
         self._first_show_logged = True
         QtCore.QTimer.singleShot(0, self.ensure_library_user)    # after the first paint, never during construction: a modal dialog raised from a half-built panel blocks the paint it is sitting on top of
-        QtCore.QTimer.singleShot(self.FILL_DELAY_MS, self.fill_compiled_files)
         t0 = getattr(self, "_construct_t0", None)
         if t0 is None:
             return
@@ -773,19 +771,6 @@ class AmazePanel(QtWidgets.QWidget):
                     (time.perf_counter() - t0) * 1000, 1))
 
         _FirstPaint(grid.visible_view(self).viewport(), _record)
-
-    FILL_DELAY_MS = 5000    #: well after the first paint: the compile holds Python's lock ▸r/pane-open-cost
-
-    def fill_compiled_files(self):
-        """Compiles, in the background, Amaze's own files an update left uncompiled ▸r/pane-open-cost"""
-        started = time.perf_counter()
-
-        def _done(written):
-            if written:
-                debug.event("session", "compiled files written", count=written,
-                            ms=round((time.perf_counter() - started) * 1000))
-
-        return bytecode.compile_missing_in_background(amaze.PACKAGE_ROOT, _done)
 
     def ensure_library_user(self) -> str:
         """After the first paint: this computer's user, or the question that opens Preferences on Library."""
@@ -2534,8 +2519,7 @@ class AmazePanel(QtWidgets.QWidget):
             return
         built, failures, last = [], [], None
         ui = getattr(hou, "ui", None)
-        with helpers.preserving_selection_and_current(), \
-                self._download_bar(records) as progress_for:    # wrapped at the door, as import_geo_asset is: both callers inherit it
+        with self._download_bar(records) as progress_for:
             with hou.undos.group("Amaze Import to Scene"):    # ONE undo step INCLUDING the destination resolution, which may itself create a material library: a material moved into a library that an undo then removes would have nothing coherent to undo to
                 destination = nodes.karma_destination(self.prefs)
                 if destination is None:
@@ -2796,7 +2780,6 @@ class AmazePanel(QtWidgets.QWidget):
 
     def click_on_row(self, section, index, payload=None) -> None:    # THE CLICK WALKER: the second half of the interaction engine, with sections.DropRule carrying the declarations. It replaced FIVE hand-written double-click handlers that answered one question five ways - three carried a selection VETO, where a selected node that could not take the payload refused instead of creating, and two never consulted the selection at all. The drag walker has read these same declarations since the behaviour table shipped; this is the aiming method it was missing
         """A click door on `index` in `section` - aimed by the SELECTION, executed from the section's own declaration. BOTH DOORS COME THROUGH HERE: the double-click, and the menu entry labelled with the same verb."""
-        from amaze.helpers import helpers
         if index is None or not index.isValid():
             return
         rule = sections.drop_rule(section, self, index)    # THE DRAG WALKER'S READER, not a second one - both doors read the one declaration through it
@@ -2804,9 +2787,8 @@ class AmazePanel(QtWidgets.QWidget):
             self._cannot_load_here()
             return
         try:
-            with helpers.preserving_selection_and_current():
-                landed = self._apply_click_rule(section, rule, index,
-                                                payload)    # `payload` is the menu's extra word where an entry carries one (Color's Apply as names a ramp basis); it reaches only the verbs that declare they take it
+            landed = self._apply_click_rule(section, rule, index,
+                                            payload)    # the menu's extra word
         except hou.PermissionError as refusal:    # ONLY this class, the same absorption the drag door carries: a click into a locked network is the app being told no, where any other exception is a defect that must still raise
             debug.exception("click refused", refusal,
                             section=getattr(section, "key", ""))
@@ -2920,12 +2902,10 @@ class AmazePanel(QtWidgets.QWidget):
 
     def import_geo_asset(self, index: QtCore.QModelIndex) -> None:
         """Double-click/right-click import for a geometry file, CONTEXT-AWARE per network (the branches of _import_geo_in_context spell out which). The drag imports the same way at the release point (drop_geo_at_release)."""
-        from amaze.helpers import helpers
         path = index.data(self.file_files_model.PathRole)
         if not path:
             return
-        with helpers.preserving_selection_and_current():    # WRAPPED HERE and not at each caller, so the door, the drag and any later caller inherit it instead of having to remember - like every other scene-importing verb, this one leaves the artist's current node and display flag as it found them
-            self._import_geo_in_context(path, self._active_network_pwd())
+        self._import_geo_in_context(path, self._active_network_pwd())
 
     def _import_geo_in_context(
         self, path: str, dest: hou.Node | None
@@ -3002,7 +2982,9 @@ class AmazePanel(QtWidgets.QWidget):
                 container.setDisplayFlag(True)    # what you just added is what you want to see: createOutputNode wires but does not flag, so a Solaris import would otherwise land downstream of the display node and show nothing
             except (AttributeError, hou.Error):
                 pass
-        return container or loader    # the import seam: the caller receives what was created - the container when one was built, else the loader itself
+        made = container or loader
+        made.setCurrent(True, True)    # current and selected, as a node from the Tab menu is
+        return made
 
     def _drop_context_under_cursor(
         self, matcher, include_viewports: bool = False    # matcher = a type-name substring like "materiallibrary"/"copnet", or a callable(node) -> bool such as geometry's SOP-container test
@@ -3140,7 +3122,7 @@ class AmazePanel(QtWidgets.QWidget):
             "Amaze Swap Material" if swap_targets is not None
             else "Amaze Assign Material"
         )
-        with hou.undos.group(undo_label), dragengine.keep_editor_focus():
+        with hou.undos.group(undo_label):
             liblop = dragengine.first_materiallibrary(    # CONTAINER POLICY, the anti-clutter rule: the network's FIRST existing materiallibrary takes every drop and only a library-less network gets a new one, assignments reusing the first existing assignmaterial the same way, so repeated drops converge on ONE library and ONE assign node. Viewport drops prefer a library IN THE DISPLAY CHAIN, because an assignment into a disconnected one silently does not display, then any first, then create WIRED into the chain - the placement law being that viewport-created libraries join the display and network-created ones stay unwired
                 lopnet, connected_to=target_lop
             )
@@ -3739,7 +3721,7 @@ class AmazePanel(QtWidgets.QWidget):
                     registered = nodes.register_in_materiallibrary(
                         destination, builder
                     )
-                builder.setCurrent(True, True)    # fronted like any hand-created node: a menu action IS the user asking for it, unlike a drop, where keep_editor_focus applies
+                builder.setCurrent(True, True)    # current and selected, as a node from the Tab menu is
                 debug.event("generate", "random material",
                             name=builder.name(),
                             destination=destination.path(),

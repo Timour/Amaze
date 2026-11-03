@@ -507,7 +507,8 @@ class AnOctaneMaterialBecomesMaterialX(unittest.TestCase):
         self.assertTrue(normalmap.type().name().startswith("mtlxnormalmap"))
         read = _feeding(normalmap, "in")
         self.assertEqual("vector3", read.parm("signature").evalAsString())
-        self.assertEqual("Raw", read.parm("filecolorspace").evalAsString())
+        self.assertEqual("automatic", read.parm("filecolorspace").evalAsString(),
+                         "the signature decides; nothing forces Raw on a data map")
 
     def test_a_2d_transform_turns_and_scales_about_the_centre(self):
         net, shader = _octane_net(self.parent)

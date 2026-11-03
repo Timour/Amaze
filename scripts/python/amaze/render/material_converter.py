@@ -318,20 +318,20 @@ _COLOUR_INPUTS = frozenset({    # the standard-surface inputs that carry COLOUR 
 def _apply_image_colorspace(
     image_node: hou.Node, role: str, report: ConversionReport, label: str
 ) -> None:
-    """Set an mtlximage's signature + colour space by semantic role - "color" (sRGB, color3), "data" (Raw, float) or "normal" (Raw, vector3); a texture read in the wrong space looks SUBTLY wrong, which is why it is forced rather than left to the node default."""
+    """The image's signature by role: colour reads sRGB, float and vector3 read untransformed."""
     if "image" not in image_node.type().name():
         return
     signature, colorspace = {
         "color": ("color3", "srgb_texture"),
-        "data": ("default", "Raw"),
-        "normal": ("vector3", "Raw"),
+        "data": ("float", None),
+        "normal": ("vector3", None),
     }.get(role, ("color3", "srgb_texture"))
     for parm_name, value in (
         ("signature", signature),
         ("filecolorspace", colorspace),
     ):
         parm = image_node.parm(parm_name)
-        if parm is None:
+        if parm is None or value is None:
             continue
         try:
             parm.set(value)

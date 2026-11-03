@@ -355,8 +355,6 @@ class GridGestureMixin:
             if panel is not None:
                 panel._set_drag_hover_row(-1)   # clear the drop-target glow
             outcome = False
-            keeper = helpers.preserving_selection_and_current()    # entered by hand so the refusal handler below runs BEFORE __exit__, where a `with` would restore first
-            keeper.__enter__()
             try:
                 if panel is not None and idx is not None:
                     section = self._drag_section
@@ -384,7 +382,6 @@ class GridGestureMixin:
                 debug.refuse(str(refusal),    # Houdini's own sentence is already a good one; `outcome` stays False so the miss indicator carries the rest ▸p/refusal-sink
                              section=self._drag_section)
             finally:
-                keeper.__exit__(None, None, None)
                 self._finish_preview(outcome)
 
     @staticmethod
@@ -460,18 +457,12 @@ class GridGestureMixin:
 
     @staticmethod
     def _apply_drop_rule(rule, panel, section, idx, event) -> bool:
-        """ONE precedence for every section, fixed here and nowhere else: `on_node` (whose refusal is FINAL, never a fallback) then `outside` then `resolve` then `on_space`, a door that does not apply falling through and no door left answering False. `section` is the LIVE instance, verbs resolving through `sections.drop_verb` so this door and the click door cannot drift. ▸o/section-api"""
+        """One precedence for every door: on_node (refusal final), resolve, then on_space ▸o/section-api"""
         if rule.on_node is not None:
             node = panel._node_under_cursor()
             if node is not None:
                 take = sections.drop_verb(section, rule.on_node)
                 return bool(take(idx, node))
-        if rule.outside is not None:
-            global_pos = event.globalPosition().toPoint()
-            local = panel.mapFromGlobal(global_pos)
-            if not panel.rect().contains(local):
-                sections.drop_verb(section, rule.outside)(idx)
-                return True
         if rule.resolve is not None:
             aim = sections.drop_verb(section, rule.resolve)
             return bool(aim(idx))

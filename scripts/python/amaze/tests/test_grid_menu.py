@@ -539,8 +539,8 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
             self.assertEqual({"renderer": "Karma"},
                              lib.call_args.kwargs)
 
-    def test_both_online_scene_doors_run_inside_the_editor_restore(self):
-        """Both online doors reach the scene inside the block that puts the editor back."""
+    def test_neither_online_scene_door_puts_the_editor_back(self):
+        """Both online doors reach the scene with no restore block open. ▸p/amaze-follows-houdini"""
         import types
         from amaze.helpers import helpers
         from amaze.render import nodes
@@ -565,8 +565,8 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
             panel.matx_online_model.record.return_value = rec
             context.double_click(index)    # the door the menu verb does not share
             context.menu_import_to_scene([], None)
-        self.assertEqual([1, 1], depth,
-                         "a door reached the scene outside the editor restore")
+        self.assertEqual([0, 0], depth,
+                         "a door reached the scene inside a restore block")
 
 
 def icon_image(action):

@@ -148,7 +148,7 @@ class GateFixture(unittest.TestCase):
 
         _write(os.path.join(self.repo, RUNNER_REL), _STUB, executable=True)
         plain = os.path.join(sys.base_prefix, "bin", "python3")
-        _write(os.path.join(self.hfs, "bin", "hython"),    # sync's bytecode step: a real Houdini costs 1.3s a sync
+        _write(os.path.join(self.hfs, "bin", "hython"),    # a stand-in for the gate scripts: a real Houdini costs 1.3s a sync
                '#!/bin/bash\nexec "%s" "$@"\n'
                % (plain if os.path.isfile(plain) else "python3"), executable=True)
         _write(os.path.join(self.repo, "OPmenu.xml"), "<menuDocument/>\n")

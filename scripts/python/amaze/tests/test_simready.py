@@ -526,7 +526,7 @@ class MaterialSpecTest(unittest.TestCase):
                          .getInput("file").getAttribute("colorspace"))
         self.assertEqual("", doc.getNode("tiledimage_specular_roughness")
                          .getInput("file").getAttribute("colorspace"),
-                         "a data map carries no colour space; the translator reads it Raw")
+                         "a data map carries no colour space; its signature decides")
 
     def test_a_coat_normal_map_lands_on_the_coat(self):
         normals = self._spec("Stone", "Volga_Blue_Deep_Pollished")["normals"]

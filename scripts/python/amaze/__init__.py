@@ -1,7 +1,3 @@
-import sys
-
-sys.dont_write_bytecode = True    # Python's own write is timestamp-checked; helpers/bytecode.py writes hash-checked
-
 import os as _os
 
 PACKAGE_ROOT = _os.path.dirname(_os.path.abspath(__file__))    # THE way to locate bundled files (ui/, res/) - derived from this module's own location, so it needs no environment at all
