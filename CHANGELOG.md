@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.21.3
+
+- A warning dialog, or a save started by dropping a node on the panel, now waits until a running import has finished, as the network editor restore does.
+
 ## 1.21.2
 
 - A double-click import of an online material now leaves the selection and the network editor where they were, as the menu import does.
