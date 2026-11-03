@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.22.0
+
+- Whatever you import from the panel, a material, a geometry file or a node setup, is selected after the import.
+- Dropping a material on an object in the viewport leaves the material library and the assign node it made selected.
+- Dragging a scene file out of the panel no longer opens it. A double-click does.
+- Imported MaterialX materials no longer force roughness, normal and other data textures to Raw. Karma reads them untransformed by their type.
+- Amaze no longer turns off Python's compiled-file cache for the whole Houdini session and no longer builds its own. Python compiles Amaze on first import, as it does Houdini's own tools.
+
 ## 1.21.3
 
 - A warning dialog, or a save started by dropping a node on the panel, now waits until a running import has finished, as the network editor restore does.
