@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.24.0
+
+- Importing online materials, restoring a package and saving several materials at once now show their progress in Houdini's status line, and Esc stops the batch after the current one.
+- The panel's own progress bar no longer shows for downloads. It still shows for texture conversions and online previews.
+
 ## 1.23.0
 
 - A material imported into Solaris goes into the Material Library you are in. Outside a library the import says so in the status line and makes nothing.
