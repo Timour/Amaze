@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.25.0
+
+- A new preference on the Render page, OBJ Drag Outline, switches off the outline of the object under the pointer while a material drags over an OBJ viewport. It is on by default.
+
 ## 1.24.0
 
 - Importing online materials, restoring a package and saving several materials at once now show their progress in Houdini's status line, and Esc stops the batch after the current one.
