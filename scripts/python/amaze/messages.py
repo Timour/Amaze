@@ -204,6 +204,16 @@ NO_MATERIAL_DESTINATION_NETWORK = 'A material goes into a Material Library or in
 
 LOP_IMPORT_OUTSIDE_LIBRARY = 'A material goes into a Material Library. Dive into one and import again.'
 
+IMPORTING_ONLINE_MATERIALS = 'Importing online materials'
+
+SAVING_MATERIALS = 'Saving materials'
+
+UPDATING_MATERIALS = 'Updating materials'
+
+ONLINE_IMPORT_STOPPED = 'Import stopped after %d of %d.'
+
+SAVE_STOPPED = 'Saving stopped after %d of %d.'
+
 MATERIAL_GENERATION_FAILED = 'Generation failed. See the debug log for details.'
 
 GENERATED_MATERIAL_MOVE_FAILED = 'Amaze: the generated material could not be moved into %s.'

@@ -945,7 +945,7 @@ class NoNetworkBeforeTheProgressBarTest(unittest.TestCase):
                 % (source.name, len(self.calls)))
 
     def test_both_doors_find_a_records_source_one_way(self):
-        """The bar's question and the import's find the same source by name, or none."""
+        """The import and the model find the same source by name, or none, off the network."""
         panel = test_support.fixture_panel(self)
         named = panel.matx_online_model.sources[0]
         record = self._records(named.name, kind="values", count=1)[0]
@@ -953,7 +953,6 @@ class NoNetworkBeforeTheProgressBarTest(unittest.TestCase):
         self.assertIs(named, panel._online_source_for(record)[0])
         self.assertEqual((None, None, "Unknown source Nowhere"),
                          panel._online_source_for(stray))
-        self.assertFalse(panel._needs_download([stray]))
         self.assertEqual([], self.calls, "a source lookup reached the network")
         model = panel.matx_online_model
         self.assertIsNone(model.source_for(stray))
@@ -961,12 +960,6 @@ class NoNetworkBeforeTheProgressBarTest(unittest.TestCase):
             with self.subTest(source=named.name):
                 self.assertIs(named, model.source_for(
                     self._records(named.name, count=1)[0]))
-                self.calls.clear()
-                panel._needs_download(self._records(named.name))
-                self.assertEqual(
-                    [], self.calls,
-                    "the progress-bar question resolved a download "
-                    "resolution - one HTTP GET per package on the UI thread")
 
 
 class CertificateVerificationTest(unittest.TestCase):

@@ -2278,38 +2278,24 @@ class AmazePanel(QtWidgets.QWidget):
         self._apply_context(self.online_context, self.online_context.key)    # not an `_activate_*` method on a section, because the online world is deliberately not a Section and never appears in `enabled_sections`; a ban test keeps the old shape from coming back
 
 
-    _IMPORT_PROGRESS_SCALE = 1000    # sub-steps per material for the download bar: a smooth 0..N*SCALE range folds each material's own 0..1 download fraction into the overall multi-import progress
-
     @contextlib.contextmanager
-    def _download_bar(self, records):
-        """The download bar, for the length of a multi-record import, and ONE frame for both online importers. Yields `progress_for(i)` - the per-record 0..1 callback for record `i` of the batch, folded into the overall 0..N*SCALE range. The bar is shown only when something actually has to be downloaded, and is always taken down again."""
-        total = len(records)
-        scale = self._IMPORT_PROGRESS_SCALE
-        pump = QtCore.QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents    # the download is synchronous and blocks the UI thread, so the byte callback pumps events per chunk; excluding user input is what stops a second click re-entering mid-import (the geometry thumbnail pass does the same)
-        self._online_download_active = True    # the event pumping can deliver a late preview-worker signal, and this flag keeps that from repainting the bar with preview counts while the download owns it
-        show_bar = self._needs_download(records)
-        if show_bar:
-            self.set_conversion_bar_visible(True)
-            self.texture_progress.set_progress(0, total * scale)
-            QtWidgets.QApplication.processEvents(pump)
-
-        def progress_for(i):
-            def on_progress(frac):
-                if not show_bar:
-                    return
-                frac = 0.0 if frac < 0.0 else (1.0 if frac > 1.0 else frac)
-                self.texture_progress.set_progress(
-                    int((i + frac) * scale), total * scale
-                )
-                QtWidgets.QApplication.processEvents(pump)
-            return on_progress
-
+    def _download_operation(self, records):
+        """The interruptable operation around a multi-record import; yields progress_for(i, name)."""
+        total = max(len(records), 1)
+        self._online_download_active = True    # a late preview signal must not repaint the bar
         try:
-            yield progress_for
+            with hou.InterruptableOperation(    # type: ignore
+                messages.IMPORTING_ONLINE_MATERIALS, open_interrupt_dialog=True
+            ) as op:
+                def progress_for(i, name=""):
+                    def on_progress(frac):
+                        frac = 0.0 if frac < 0.0 else (1.0 if frac > 1.0 else frac)
+                        op.updateLongProgress((i + frac) / total,
+                                              "%d/%d  %s" % (i + 1, total, name))
+                    return on_progress
+                yield progress_for
         finally:
             self._online_download_active = False
-            if show_bar:
-                self.set_conversion_bar_visible(False)
 
     def _import_online_records(self, records, renderer=renderers.HUB.key) -> None:
         """Import online records into the LIBRARY, built as `renderer` through the conversion engine."""
@@ -2318,13 +2304,16 @@ class AmazePanel(QtWidgets.QWidget):
         total = len(records)
         failures = []
         held = {str(mat.mat_id) for mat in getattr(self.material_model, "assets", ())}
-        with self._download_bar(records) as progress_for:
+        with self._download_operation(records) as progress_for:
             for i, rec in enumerate(records):
-                on_progress = progress_for(i)
+                on_progress = progress_for(i, rec.title)
                 try:    # ONE BAD RECORD MUST NOT ABANDON THE BATCH: matx_import.import_record has only try/finally, so build_karma_material and library.add_asset raise straight through it, and without this the remaining records go unimported and `failures` never reaches its dialog
                     ok, reason = self.import_online_material(
                         rec, on_progress=on_progress, renderer=renderer, render=False
                     )
+                except hou.OperationInterrupted:
+                    debug.status(messages.ONLINE_IMPORT_STOPPED % (i, total))
+                    break
                 except Exception as exc:                  # noqa: BLE001
                     debug.exception("online import", exc, record=rec.title)
                     ok, reason = False, str(exc)
@@ -2443,7 +2432,7 @@ class AmazePanel(QtWidgets.QWidget):
         """Restore-mode import for the SELECTED tiles: adopt-only by curated tag / original id, one summary for the batch - inside the download bar, whose pump keeps the UI alive through the ranged reads."""
         totals = {"imported": 0, "skipped": 0, "files": 0, "refused": 0}
         failures = []
-        with self._download_bar(records) as progress_for:
+        with self._download_operation(records) as progress_for:
             for i, record in enumerate(records):
                 source, _resolution, error = self._online_source_for(
                     record)
@@ -2454,7 +2443,10 @@ class AmazePanel(QtWidgets.QWidget):
                 try:
                     ok, reason = self._import_amaze_package_record(
                         record, source, restore=True,
-                        on_progress=progress_for(i))
+                        on_progress=progress_for(i, record.title))
+                except hou.OperationInterrupted:
+                    debug.status(messages.ONLINE_IMPORT_STOPPED % (i, len(records)))
+                    break
                 except Exception as exc:                  # noqa: BLE001
                     debug.exception("package restore", exc,
                                     record=record.title)
@@ -2473,19 +2465,6 @@ class AmazePanel(QtWidgets.QWidget):
                 lines += [""] + failures[:10]
             ui.displayMessage("\n".join(lines))
         return totals
-
-    def _needs_download(self, records) -> bool:
-        """True when importing these records will actually fetch bytes, answered WITHOUT touching the network - the source is looked up DIRECTLY here, never through _online_source_for, which also resolves the download RESOLUTION at one main-thread HTTP GET per package. Asked because the progress bar sits ABOVE the grid, so showing it for a value source (RGL, PhysicallyBased) that carries its numbers in the catalogue and downloads nothing shifts every tile down and back for no work at all."""
-        for record in records:
-            source = self.matx_online_model.source_for(record)
-            if source is None:
-                continue
-            try:
-                if source.needs_download(record):
-                    return True
-            except Exception:                          # noqa: BLE001
-                return True          # unknown = assume it downloads
-        return False
 
     def _online_source_for(self, record):
         """The record's source and the resolution to fetch it at: (source, resolution, error)."""
@@ -2517,9 +2496,9 @@ class AmazePanel(QtWidgets.QWidget):
         total = len(records)
         if not total:
             return
-        built, failures, last = [], [], None
+        built, failures, last, stopped_after = [], [], None, None
         ui = getattr(hou, "ui", None)
-        with self._download_bar(records) as progress_for:
+        with self._download_operation(records) as progress_for:
             with hou.undos.group("Amaze Import to Scene"):    # ONE undo step INCLUDING the destination resolution, which may itself create a material library: a material moved into a library that an undo then removes would have nothing coherent to undo to
                 destination = nodes.karma_destination(self.prefs)
                 if destination is None:
@@ -2533,13 +2512,16 @@ class AmazePanel(QtWidgets.QWidget):
                     if error:
                         failures.append("%s: %s" % (rec.title, error))
                         continue
-                    on_progress = progress_for(i)
+                    on_progress = progress_for(i, rec.title)
 
                     try:
                         builder, reason = matx_import.build_in_scene(
                             rec, source, resolution, destination, self.prefs,
                             progress=on_progress, renderer=renderer,
                         )
+                    except hou.OperationInterrupted:
+                        stopped_after = i
+                        break
                     except Exception as exc:           # noqa: BLE001
                         debug.exception("import to scene", exc,
                                         title=rec.title)
@@ -2552,19 +2534,19 @@ class AmazePanel(QtWidgets.QWidget):
                 if last is not None:
                     last.setCurrent(True, True)    # front the new material like any hand-created node - a menu action IS the user asking for it
         debug.event("import", "to scene finished", built=len(built),
-                    failed=len(failures))
-        if ui is None:
-            return
-        if failures:
+                    failed=len(failures), stopped_after=stopped_after)
+        if ui is not None and failures:
             ui.displayMessage(
                 messages.SCENE_BUILD_PARTIAL_FAILURE
                 % (len(failures), total, "\n".join(failures[:10]))
             )
-        elif last is not None:
+        elif ui is not None and last is not None and stopped_after is None:
             ui.setStatusMessage(
                 "Amaze: %s in %s" % (", ".join(built[:3]),
                                      last.parent().path())
             )
+        if stopped_after is not None:
+            debug.status(messages.ONLINE_IMPORT_STOPPED % (stopped_after, total))
 
 
     def _select_default_sidebar_row(self, sidebar_proxy):
@@ -3865,11 +3847,18 @@ class AmazePanel(QtWidgets.QWidget):
             if choice == cancel_at:
                 return
             if choice == overwrite_at:
-                for mat_id, node in existing:
-                    self._update_existing_asset(mat_id, node)
-                    QtWidgets.QApplication.processEvents(
-                        QtCore.QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents
-                    )
+                total, done = len(existing), 0
+                try:
+                    with hou.InterruptableOperation(    # type: ignore
+                        messages.UPDATING_MATERIALS, open_interrupt_dialog=True
+                    ) as op:
+                        for mat_id, node in existing:
+                            op.updateLongProgress(
+                                done / total, "%d/%d  %s" % (done + 1, total, node.name()))
+                            self._update_existing_asset(mat_id, node)
+                            done += 1
+                except hou.OperationInterrupted:
+                    debug.status(messages.SAVE_STOPPED % (done, total))
                 if new_nodes:
                     self.get_material_info_user(new_nodes)
                 return
@@ -3915,23 +3904,33 @@ class AmazePanel(QtWidgets.QWidget):
 
         renderers = []
         failures = []
-        for asset in sel:
-            try:    # a read-only or unreachable library directory raises out of the save chain (IsADirectoryError on the .interface, verified), and debug.guarded LOGS AND RE-RAISES rather than absorbing it, so the per-material failure report needs this catch of its own
-                renderer = material_actions.add_asset(
-                    self.material_model, asset, dialog.categories, dialog.tags, dialog.fav,
-                    name=dialog.name or None
-                )
-            except Exception as exc:                    # noqa: BLE001
-                debug.exception("save_asset", exc, node=asset.path())
-                failures.append('"%s": %s' % (asset.name(), exc))
-                continue
-            if not renderer:    # add_asset answers "" for a refused save, and two of the three causes have already shown their own dialog naming the reason, so this line only has to say WHICH material of the batch never made it
-                failures.append(messages.SAVE_DID_NOT_COMPLETE_LINE % asset.name())
-                continue
-            renderers.append(renderer)
-            QtWidgets.QApplication.processEvents(    # lets the fresh tile PAINT before the next material's blocking render starts: with add_asset emitting real row-insert signals, this flush is what makes a long multi-save appear one material at a time
-                QtCore.QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents
-            )
+        total, done = len(sel), 0
+        try:
+            with hou.InterruptableOperation(    # type: ignore
+                messages.SAVING_MATERIALS, open_interrupt_dialog=True
+            ) as op:
+                for asset in sel:
+                    op.updateLongProgress(done / total,
+                                          "%d/%d  %s" % (done + 1, total, asset.name()))
+                    try:    # a raise out of the save chain joins the per-material report
+                        renderer = material_actions.add_asset(
+                            self.material_model, asset, dialog.categories, dialog.tags,
+                            dialog.fav, name=dialog.name or None
+                        )
+                    except hou.OperationInterrupted:
+                        raise
+                    except Exception as exc:                    # noqa: BLE001
+                        debug.exception("save_asset", exc, node=asset.path())
+                        failures.append('"%s": %s' % (asset.name(), exc))
+                        done += 1
+                        continue
+                    done += 1
+                    if not renderer:    # "" is a refused save that already spoke; name which one
+                        failures.append(messages.SAVE_DID_NOT_COMPLETE_LINE % asset.name())
+                        continue
+                    renderers.append(renderer)
+        except hou.OperationInterrupted:
+            debug.status(messages.SAVE_STOPPED % (done, total))
 
         ui = getattr(hou, "ui", None)
         if failures and ui is not None:

@@ -246,7 +246,9 @@ The right-click menu acts on one material or a selection:
 
 - **Import to Materials ▸ MaterialX**, **Redshift** or **Octane**
   downloads the material, builds it for that renderer and saves it to
-  the library, with a preview when renders are on. A MaterialX import
+  the library, with a preview when renders are on. The progress reads
+  in Houdini's status line, and Esc stops the batch after the current
+  material. A MaterialX import
   from SimReady, PhysicallyBased, RGL, PolyHaven or GPUOpen keeps the
   tile's picture as its preview instead. A renderer is available when its
   plugin is loaded.

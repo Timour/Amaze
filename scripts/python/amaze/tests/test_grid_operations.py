@@ -840,7 +840,8 @@ class ARowHeldAcrossASaveIsFoundAgain(unittest.TestCase):
     def test_saving_over_several_materials_updates_exactly_those(self):
         model = self._material_tiles()
         chosen = [model.assets[row] for row in (2, 4, 6)]
-        nodes = [object() for _asset in chosen]
+        nodes = [types.SimpleNamespace(name=lambda i=i: "held%d" % i)
+                 for i, _asset in enumerate(chosen)]    # the save names each in the status line
         where = {id(node): model.assets.index(asset)
                  for node, asset in zip(nodes, chosen)}
         self._deleted_elsewhere(model, model.assets[1].mat_id)
