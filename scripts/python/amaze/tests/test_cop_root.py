@@ -1,8 +1,9 @@
-"""The COP companion's scene root, and what a refused import leaves behind in `/obj` - driven against REAL nodes, because a leaked container is a scene-graph fact a mocked `hou` cannot show. `restore_cop_companion` runs BEFORE the material, so anything it abandons leaves the material's `op:` references dangling."""
+"""The COP companion: where it lands and what a refused import leaves behind, on REAL nodes."""
 
 import os
 import shutil
 import sys
+import types
 import unittest
 from unittest import mock
 
@@ -21,93 +22,95 @@ from amaze.core import material  # noqa: E402
 from amaze.render import nodes  # noqa: E402
 from amaze.tests import test_support  # noqa: E402 - redirects the log
 
-ROOT = "/obj/Amaze"
+TOKEN_ROOT = "/obj/Amaze"    # the path saved files carry; the import maps it
 
 
-class TheCopRootCase(unittest.TestCase):
+class TheCompanionIsTheImportsOwn(unittest.TestCase):
+    """A refused import takes back the COP network it made and nothing else."""
 
     def setUp(self):
-        existing = hou.node(ROOT)    # a root left by an earlier test would make every assertion here read the wrong scene
-        if existing is not None:
-            existing.destroy()
-        self.addCleanup(self._sweep)
         self.handler = nodes.NodeHandler.__new__(nodes.NodeHandler)
 
-    def _sweep(self):
-        leftover = hou.node(ROOT)
-        if leftover is not None:
-            leftover.destroy()
-
-    def _make_root(self):
-        """The root exactly as restore_cop_companion makes it."""
-        root = hou.node("/obj").createNode("subnet")
-        root.setName("Amaze")
-        self.handler._created_cop_root = root
-        return root
-
-    def test_a_rollback_takes_the_root_it_made_back_out(self):
-        root = self._make_root()
-        net = root.createNode("copnet", "companion")
+    def test_a_rollback_takes_back_the_companion_it_made(self):
+        net = hou.node("/obj").createNode("copnet", "companion_probe")
         self.handler._created_cop_net = net
-
         self.handler._undo_cop_companion()
+        self.assertIsNone(hou.node("/obj/companion_probe"),
+                          "the refused import left its COP network in the scene")
 
-        self.assertIsNone(
-            hou.node(ROOT),
-            "the refused import left an empty /obj/Amaze in the scene")
-
-    def test_a_root_holding_another_material_s_network_stays(self):
-        """The guard that makes this safe: a network another material restored is somebody's, and the root is its home."""
-        root = self._make_root()
-        theirs = root.createNode("copnet", "someone_elses")
-        mine = root.createNode("copnet", "mine")
-        self.handler._created_cop_net = mine
-
+    def test_a_companion_this_import_did_not_make_is_never_touched(self):
+        theirs = hou.node("/obj").createNode("copnet", "someone_elses_probe")
+        self.addCleanup(theirs.destroy)
+        self.handler._created_cop_net = None
         self.handler._undo_cop_companion()
-
-        surviving = hou.node(ROOT)
-        self.assertIsNotNone(surviving, "a root still in use was removed")
-        self.assertEqual(
-            [theirs.name()], [c.name() for c in surviving.children()])
-
-    def test_a_root_this_import_did_not_make_is_never_touched(self):
-        """Reuse is not ownership: the root was already there, so it outlives this import whatever happens to the network."""
-        root = hou.node("/obj").createNode("subnet")
-        root.setName("Amaze")
-        self.handler._created_cop_root = None
-        net = root.createNode("copnet", "companion")
-        self.handler._created_cop_net = net
-
-        self.handler._undo_cop_companion()
-
-        self.assertIsNotNone(
-            hou.node(ROOT),
-            "a root this import merely reused was destroyed")
+        self.assertIsNotNone(hou.node("/obj/someone_elses_probe"),
+                             "a companion this import merely reused was destroyed")
 
     def test_nothing_created_means_nothing_removed(self):
         """The ordinary success path calls this too."""
         self.handler._created_cop_net = None
-        self.handler._created_cop_root = None
         self.handler._undo_cop_companion()      # must not raise
-        self.assertIsNone(hou.node(ROOT))
+
+
+class ACompanionLandsBesideItsMaterial(unittest.TestCase):
+    """Where a COP network goes: /stage, /obj or the geometry ▸r/houdini-after-create"""
+
+    NAME = "companion_home_probe"
+
+    def setUp(self):
+        test_support.pin_env(self, "OCIO", "/dev/null")
+        self.prefs = test_support.fixture_prefs(self)
+        self.handler = nodes.NodeHandler(self.prefs)
+        file_name = material.payload_path(self.prefs, "companionhome",
+                                          "_cop" + self.prefs.ext)
+        nodes.ensure_asset_folder(self.prefs, file_name)
+        source = hou.node("/obj").createNode("copnet")
+        source.createNode("constant")
+        source.saveItemsToFile(source.allItems(), file_name)
+        source.destroy()
+        self.mat = types.SimpleNamespace(
+            mat_id="companionhome", name="companionhome",
+            cop_net={"name": self.NAME, "type": "copnet"})
+
+    def _restored(self, beside):
+        made = self.handler.restore_cop_companion(self.mat, beside)
+        self.assertIsNotNone(made, "premise: the companion was not made")
+        self.addCleanup(made.destroy)
+        return made
+
+    @staticmethod
+    def _shape(node):
+        return node.parent().path(), node.type().name(), node.type().category().name()
+
+    def test_beside_a_material_library_it_is_a_cop_network_in_that_lop_network(self):
+        stage = hou.node("/obj").createNode("lopnet", "companion_stage_probe")
+        self.addCleanup(stage.destroy)
+        made = self._restored(stage.createNode("materiallibrary"))
+        self.assertEqual((stage.path(), "copnet", "Lop"), self._shape(made))
+
+    def test_for_mat_it_is_a_cop_network_object_in_obj(self):
+        made = self._restored(hou.node("/mat"))
+        self.assertEqual(("/obj", "copnet", "Object"), self._shape(made))
+
+    def test_for_a_matnet_in_a_geometry_it_is_a_cop_network_sop_in_that_geometry(self):
+        geo = hou.node("/obj").createNode("geo", "companion_geo_probe")
+        self.addCleanup(geo.destroy)
+        made = self._restored(geo.createNode("matnet"))
+        self.assertEqual((geo.path(), "copnet", "Sop"), self._shape(made))
+
+    def test_the_materials_references_are_mapped_to_where_it_landed(self):
+        """The saved file carries the token path; the import maps it to the companion's path."""
+        made = self._restored(hou.node("/mat"))
+        self.assertEqual({"op:" + TOKEN_ROOT + "/" + self.NAME: "op:" + made.path()},
+                         self.handler.companion_ref_map(self.mat))
 
 
 class ACompanionThatOnlyWarnedIsKept(unittest.TestCase):
     """`hou.LoadWarning` is raised on a load that SUCCEEDED, and this restore runs BEFORE the material - so destroying the network it filled leaves every `op:` reference in the material pointing at nothing."""
 
     def setUp(self):
-        existing = hou.node(ROOT)
-        if existing is not None:
-            existing.destroy()
-        self.addCleanup(self._sweep)
         self.handler = nodes.NodeHandler.__new__(nodes.NodeHandler)
-        self.handler._created_cop_root = None
         self.handler._created_cop_net = None
-
-    def _sweep(self):
-        leftover = hou.node(ROOT)
-        if leftover is not None:
-            leftover.destroy()
 
     def test_LoadWarning_really_is_caught_by_the_broad_clause(self):
         """The premise: without its own branch above, `except (OSError, hou.Error)` swallows the warning - so the fix is an ordering fix, not an added class."""

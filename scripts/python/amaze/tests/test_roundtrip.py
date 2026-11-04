@@ -226,8 +226,8 @@ class TestRoundTrip(unittest.TestCase):
             1, len(matnets),
             "three imports left %d matnets in one geo" % len(matnets))
 
-    def _failing_lop_import(self, stage):
-        """Import a Karma asset whose `.mat` is damaged into `stage`; answers the import's ok."""
+    def _failing_lop_import(self, context):
+        """Import a Karma asset whose `.mat` is damaged into `context`; answers the import's ok."""
         asset = next(a for a in self.model.assets
                      if renderers.is_karma(a.renderer))
         payload = material.payload_path(self.prefs, asset.mat_id,
@@ -236,27 +236,44 @@ class TestRoundTrip(unittest.TestCase):
             handle.write("not an items file")
         ok, _reason, _created = nodes.NodeHandler(
             self.prefs).import_asset_to_scene(
-                asset, target="lop", context_node=stage)
+                asset, target="lop", context_node=context)
         return ok
 
     def _libraries(self, stage):
         return [c.name() for c in stage.children()
                 if c.type().name() == "materiallibrary"]
 
-    def test_a_failed_import_takes_back_only_the_library_it_made(self):
-        for probe, theirs, left in (("failed_import_probe", None, []),
-                                    ("kept_library_probe", "theirs", ["theirs"])):
-            with self.subTest(existing=theirs):
-                stage = hou.node("/obj").createNode("lopnet", probe)
-                self.addCleanup(stage.destroy)
-                if theirs:
-                    stage.createNode("materiallibrary", theirs)
-                self.assertFalse(self._failing_lop_import(stage),
-                                 "premise: a damaged .mat must fail the import")
-                self.assertEqual(
-                    left, self._libraries(stage),
-                    "a failed import left the library it made, or removed "
-                    "one it only reused")
+    def test_a_lop_import_lands_in_the_library_it_is_handed_or_nowhere(self):
+        """Outside a Material Library an import makes nothing; inside one, a bad load leaves it."""
+        from amaze import messages
+        stage = hou.node("/obj").createNode("lopnet", "lop_landing_probe")
+        self.addCleanup(stage.destroy)
+        ok, reason, _created = nodes.NodeHandler(self.prefs).import_asset_to_scene(
+            self._karma_asset(), target="lop", context_node=stage)
+        self.assertFalse(ok, "an import outside a Material Library went ahead")
+        self.assertEqual(messages.LOP_IMPORT_OUTSIDE_LIBRARY, reason)
+        self.assertEqual([], self._libraries(stage),
+                         "the import made a library on its own")
+        theirs = stage.createNode("materiallibrary", "theirs")
+        self.assertFalse(self._failing_lop_import(theirs),
+                         "premise: a damaged .mat must fail the import")
+        self.assertEqual(["theirs"], self._libraries(stage),
+                         "a failed import removed the library it was handed")
+
+    def test_karma_destination_is_the_library_or_nothing_in_solaris(self):
+        """The online import and Generate land in the current Material Library, or nowhere."""
+        stage = hou.node("/obj").createNode("lopnet", "destination_probe")
+        self.addCleanup(stage.destroy)
+        with mock.patch.object(nodes.NodeHandler, "get_current_network_node",
+                               return_value=stage):
+            self.assertIsNone(nodes.karma_destination(self.prefs),
+                              "a LOP network outside a library was given a destination")
+        self.assertEqual([], self._libraries(stage),
+                         "karma_destination made a library on its own")
+        theirs = stage.createNode("materiallibrary", "theirs")
+        with mock.patch.object(nodes.NodeHandler, "get_current_network_node",
+                               return_value=theirs):
+            self.assertEqual(theirs, nodes.karma_destination(self.prefs))
 
     def _karma_asset(self):
         return next(a for a in self.model.assets
@@ -277,19 +294,20 @@ class TestRoundTrip(unittest.TestCase):
             messages.MATERIAL_FAILED_TO_IMPORT % asset.name, reason)
         self.assertEqual([], created)
 
-    def test_a_companion_that_raises_takes_back_the_library_made(self):
+    def test_a_companion_that_raises_leaves_the_library_it_was_handed(self):
         stage = hou.node("/obj").createNode("lopnet", "companion_raise_probe")
         self.addCleanup(stage.destroy)
+        theirs = stage.createNode("materiallibrary", "theirs")
         handler = nodes.NodeHandler(self.prefs)
 
-        def refusing(mat):
+        def refusing(mat, beside):
             raise hou.OperationFailed("companion refused")
 
         handler.restore_cop_companion = refusing
-        self._assert_refused_plainly(handler, stage)
-        self.assertEqual([], self._libraries(stage),
-                         "the import left the library it made when the COP "
-                         "companion raised")
+        self._assert_refused_plainly(handler, theirs)
+        self.assertEqual(["theirs"], self._libraries(stage),
+                         "the import removed the library it was handed when "
+                         "the COP companion raised")
         self.assertIsNone(handler._context_override,
                           "the import kept the context it was handed")
 
@@ -297,12 +315,13 @@ class TestRoundTrip(unittest.TestCase):
         """The companion is restored before the staging network exists, and both are the import's."""
         stage = hou.node("/obj").createNode("lopnet", "staging_raise_probe")
         self.addCleanup(stage.destroy)
+        library = stage.createNode("materiallibrary", "theirs")
         real_node = hou.node
         self.addCleanup(lambda: [n.destroy() for n in
                                  [real_node("/obj/staging_probe_cops")]
                                  if n is not None])
         handler = nodes.NodeHandler(self.prefs)
-        handler.restore_cop_companion = lambda mat: real_node(
+        handler.restore_cop_companion = lambda mat, beside: real_node(
             "/obj").createNode("copnet", "staging_probe_cops")
 
         class RefusesStaging:
@@ -322,10 +341,10 @@ class TestRoundTrip(unittest.TestCase):
             return RefusesStaging(found) if path == "/obj" else found
 
         with mock.patch.object(hou, "node", node):
-            self._assert_refused_plainly(handler, stage)
+            self._assert_refused_plainly(handler, library)
         self.assertIsNone(real_node("/obj/staging_probe_cops"),
                           "the import left the COP companion it restored")
-        self.assertEqual([], self._libraries(stage))
+        self.assertEqual(["theirs"], self._libraries(stage))
 
     def test_saved_material_survives_disk_and_reimports(self):  # -- the round-trip --
         rows_before = self.model.rowCount()

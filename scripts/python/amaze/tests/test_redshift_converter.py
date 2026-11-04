@@ -437,8 +437,10 @@ class ALegacyRedshiftMaterialGoesIntoSolaris(unittest.TestCase):
         before = {n.path() for lib in stage.children()
                   if lib.type().name() == "materiallibrary"
                   for n in lib.children()}
+        library = stage.createNode("materiallibrary")    # the import lands in the library it is handed
+        self.addCleanup(library.destroy)
         ok, reason, _created = material_actions.import_asset_to_scene(self.model,
-            self.model.index(self.row, 0), target="lop")
+            self.model.index(self.row, 0), target="lop", context_node=library)
         self.assertTrue(ok, reason)
         after = [n for lib in stage.children()
                  if lib.type().name() == "materiallibrary"
@@ -502,8 +504,10 @@ class AFirstEditionTwinGoesIntoSolaris(unittest.TestCase):
         before = {n.path() for lib in stage.children()
                   if lib.type().name() == "materiallibrary"
                   for n in lib.children()}
+        library = stage.createNode("materiallibrary")    # the import lands in the library it is handed
+        self.addCleanup(library.destroy)
         ok, reason, _created = material_actions.import_asset_to_scene(self.model,
-            self.model.index(self.row, 0), target="lop")
+            self.model.index(self.row, 0), target="lop", context_node=library)
         self.assertTrue(ok, reason)
         node = [n for lib in stage.children()
                 if lib.type().name() == "materiallibrary"

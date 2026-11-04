@@ -979,16 +979,6 @@ def _first_child_where(network, matches, connected_to=None):
     return None
 
 
-def first_materiallibrary(network, connected_to=None):
-    """The FIRST editable, non-bypassed materiallibrary in the network, or None - the drop policy's container, so drops add to one instead of scattering a fresh library each time; `connected_to` restricts it to that node's input chain."""
-    def _is_library(child):
-        return ("materiallibrary" in child.type().name()
-                and child.isEditable()
-                and not child.isBypassed())
-
-    return _first_child_where(network, _is_library, connected_to)
-
-
 def find_assignmaterial(network, connected_to=None):
     """The FIRST assignmaterial node in the network, or None - reused so repeated drops converge on one node rather than chaining; PASS `connected_to` for a viewport drop, or a leftover disconnected node wins on creation order and the binding lands where nothing displays it."""
     return _first_child_where(

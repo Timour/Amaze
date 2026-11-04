@@ -194,8 +194,8 @@ materials and snippets.
 ### Loading
 
 - **Double-click** loads the material into the current network.
-- **Copy To ▸ /mat** and **Copy To ▸ /stage/materiallibrary** load it
-  into that location.
+- **Copy To ▸ /mat** loads it into /mat; **Copy To ▸ /stage/materiallibrary**
+  loads it into the Material Library you are in.
 - **Dragging** the tile onto an object assigns the material; dragging it
   into a network loads it there. See [Drag and drop](#drag-and-drop).
 

@@ -200,7 +200,9 @@ DROPPED_MATERIAL_IMPORT_FAILED = 'The dropped material could not be imported and
 
 MATERIAL_ASSIGN_FAILED = 'The material was imported, but assignment failed: %s'
 
-NO_MATERIAL_DESTINATION_NETWORK = 'Unable to create the material. Open a LOP or /mat network first.'
+NO_MATERIAL_DESTINATION_NETWORK = 'A material goes into a Material Library or into /mat. Dive into one first.'
+
+LOP_IMPORT_OUTSIDE_LIBRARY = 'A material goes into a Material Library. Dive into one and import again.'
 
 MATERIAL_GENERATION_FAILED = 'Generation failed. See the debug log for details.'
 

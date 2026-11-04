@@ -549,17 +549,18 @@ class AKarmaThumbnailLeavesTheSceneAsItFoundIt(unittest.TestCase):
             "the end, and nothing puts back what was selected before")
 
     COMPANION = "amaze_preview_probe_cop"
+    HOME = "/obj/amaze_preview_probe_cop"    # a /mat import's companion: a COP Network object in /obj
 
-    def _sweep_cop_root(self):
-        root = hou.node("/obj/Amaze")
-        if root is not None:
-            test_support.drop_node(root)
+    def _sweep_companion(self):
+        left = hou.node(self.HOME)
+        if left is not None:
+            test_support.drop_node(left)
 
     def _asset_with_a_companion(self):
-        """A Karma fixture asset whose saved COP companion restores as `/obj/Amaze/<net>`."""
+        """A Karma fixture asset whose saved COP companion restores as a COP Network object in /obj."""
         from amaze.core import material, renderers
-        self._sweep_cop_root()
-        self.addCleanup(self._sweep_cop_root)
+        self._sweep_companion()
+        self.addCleanup(self._sweep_companion)
         test_support.reset_database_singletons()
         model = library_mod.MaterialLibrary(preferences=self.prefs)
         asset = next(a for a in model.assets
@@ -577,24 +578,18 @@ class AKarmaThumbnailLeavesTheSceneAsItFoundIt(unittest.TestCase):
         asset = self._asset_with_a_companion()
         thumbs.ThumbNailRenderer(self.prefs, asset).create_thumbnail()
         self.assertIsNone(
-            hou.node("/obj/Amaze/" + self.COMPANION),
+            hou.node(self.HOME),
             "Update Render restored the material's COP companion for the "
             "render and left it in the artist's scene")
-        self.assertIsNone(
-            hou.node("/obj/Amaze"),
-            "the preview made /obj/Amaze for its companion and left it "
-            "behind empty")
 
     def test_a_companion_already_in_the_scene_is_left_as_it_was(self):
         asset = self._asset_with_a_companion()
         with hou.undos.disabler():
-            root = hou.node("/obj").createNode("subnet")
-            root.setName("Amaze")
-            shared = root.createNode("copnet", self.COMPANION)
+            shared = hou.node("/obj").createNode("copnet", self.COMPANION)
             shared.createNode("null", "keep_me")
         before = (shared.sessionId(), [c.name() for c in shared.children()])
         thumbs.ThumbNailRenderer(self.prefs, asset).create_thumbnail()
-        survivor = hou.node("/obj/Amaze/" + self.COMPANION)
+        survivor = hou.node(self.HOME)
         self.assertIsNotNone(
             survivor,
             "a companion shared by name was in the scene before the "

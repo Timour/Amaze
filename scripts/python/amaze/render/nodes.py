@@ -486,15 +486,16 @@ def register_in_materiallibrary(library, builder) -> bool:
     return True
 
 
-def karma_destination(prefs) -> hou.Node:
-    """Where a newly built material belongs: the LOP matlib, else /mat."""
+def karma_destination(prefs):
+    """The Material Library the editor is in, /mat in the OBJ world, or None."""
     handler = NodeHandler(prefs)
     try:
         world = handler._auto_world()
     except AttributeError:
         world = "mat"      # no UI (headless): /mat is always valid
     if world == "lop":
-        handler._set_lop_import_path()
+        if handler._set_lop_import_path():
+            return None
     else:
         handler._import_path = hou.node("/mat")
     return handler._import_path
@@ -836,7 +837,7 @@ class NodeHandler:
         self._hou_parent = None
         completed = False
         try:
-            self._created_cop_net = self.restore_cop_companion(mat)
+            self._created_cop_net = self.restore_cop_companion(mat, self._import_path)
             self._hou_parent = hou.node("/obj").createNode("matnet")
             if debug.is_on():
                 debug.event(
@@ -849,6 +850,9 @@ class NodeHandler:
             rebuilt, refusal = self._load_saved(mat, saved_type)
             if not rebuilt:
                 return (False, refusal)
+            landed = self.companion_ref_map(mat)
+            if landed and self._builder_node is not None:
+                self.rewrite_cop_refs((self._builder_node,), landed)    # the token path to the companion
 
             loaded_ok = True
             if (
@@ -1005,7 +1009,9 @@ class NodeHandler:
 
         self._use_existing_node = False    # each branch says whether it reused, for THIS import
         if world == "lop":
-            self._set_lop_import_path()
+            refusal = self._set_lop_import_path()
+            if refusal:
+                return (False, refusal)
         elif world == "sop":
             self._set_sop_import_path()
         else:  # "mat" (and any fallback)
@@ -1034,27 +1040,15 @@ class NodeHandler:
             return "sop"
         return "mat"
 
-    def _set_lop_import_path(self) -> None:
-        """Point at a LOP materiallibrary: reuse, else create. ▸r/matlib-entries"""
+    def _set_lop_import_path(self) -> str:
+        """The Material Library the editor is in, else a refusal and nothing made."""
+        from amaze import messages
         curr = self.get_current_network_node()
         if curr is not None and "materiallibrary" in curr.type().name():
             self._import_path = curr
             self._use_existing_node = True
-            return
-        from amaze.core import dragengine
-
-        if curr is not None and (
-            "stage" in curr.type().name() or "lopnet" in curr.type().name()
-        ):
-            network = curr
-        else:
-            network = hou.node("/stage")
-        existing = dragengine.first_materiallibrary(network)
-        if existing is not None:
-            self._import_path = existing
-            self._use_existing_node = True
-            return
-        self._import_path = network.createNode("materiallibrary")
+            return ""
+        return messages.LOP_IMPORT_OUTSIDE_LIBRARY
 
     def _set_sop_import_path(self) -> None:
         """Reuse or create ONE matnet in the current geo/SOP network."""
@@ -1261,7 +1255,7 @@ class NodeHandler:
         self._builder_node.layoutChildren()
         helpers.auto_place(self._builder_node)
 
-    COP_LIB_ROOT = "/obj/Amaze"
+    COP_LIB_ROOT = "/obj/Amaze"    # the token saved files carry; the import maps it to the companion
 
     @property
     def cop_info(self) -> dict:
@@ -1393,7 +1387,7 @@ class NodeHandler:
         return path_map
 
     def rewrite_cop_refs(self, nodes, path_map: dict) -> None:
-        """Rewrite op: refs - on SAVE COPIES only, never on scene nodes."""
+        """Rewrite op: refs on Amaze's own copies, never on the artist's nodes."""
         if not path_map:
             return
         keys = sorted(path_map.keys(), key=len, reverse=True)
@@ -1417,25 +1411,33 @@ class NodeHandler:
             except hou.Error as exc:
                 debug.event("import", "could not undo the COP companion",
                             error=str(exc))
-        self._drop_created_cop_root()
 
-    def _drop_created_cop_root(self) -> None:
-        """Take back a COP root THIS import made, only while childless."""
-        root = getattr(self, "_created_cop_root", None)
-        self._created_cop_root = None
-        if root is None:
-            return
-        try:
-            if root.children():
-                return
-            root.destroy()
-        except hou.Error as exc:
-            debug.event("import", "could not undo the COP root",
-                        error=str(exc))
+    @staticmethod
+    def _companion_home(beside):
+        """The companion's network: /stage beside a library, /obj for /mat, the geo for a matnet."""
+        obj = hou.node("/obj")
+        if beside is None:
+            return obj
+        type_name = beside.type().name()
+        parent = beside.parent()
+        if "materiallibrary" in type_name and parent is not None:
+            return parent
+        if type_name == "matnet" and parent is not None and parent.type().name() == "geo":
+            return parent
+        return obj
 
-    def restore_cop_companion(self, mat: material.Material):
-        """Restore the saved COP network; returns only what THIS call made."""
+    def companion_ref_map(self, mat) -> dict:
+        """The token path saved files carry, mapped to where this import put the COP network."""
+        info = getattr(mat, "cop_net", {}) or {}
+        landed = getattr(self, "_cop_companion_path", None)
+        if not info.get("name") or not landed:
+            return {}
+        return {"op:" + self.COP_LIB_ROOT + "/" + info["name"]: "op:" + landed}
+
+    def restore_cop_companion(self, mat: material.Material, beside):
+        """Restore the saved COP network beside `beside`; returns only what THIS call made."""
         from amaze.helpers import helpers
+        self._cop_companion_path = None
         info = getattr(mat, "cop_net", {}) or {}
         if not info or not info.get("name"):
             return
@@ -1445,32 +1447,28 @@ class NodeHandler:
         if not os.path.exists(file_name):
             debug.note("COP companion file missing for " + mat.name + " - skipped")
             return
-        root = hou.node(self.COP_LIB_ROOT)
-        self._created_cop_root = None
-        if root is None:
-            root = hou.node("/obj").createNode("subnet")
-            try:
-                root.setName("Amaze")
-            except hou.OperationFailed:
-                debug.note("could not create /obj/Amaze - COP restore skipped")
-                root.destroy()
-                return
-            self._created_cop_root = root
-        if root.node(info["name"]) is not None:
+        home = self._companion_home(beside)
+        if home is None:
+            debug.note("no network for the COP companion of " + mat.name + " - skipped")
+            return
+        existing = home.node(info["name"])
+        if existing is not None and existing.childTypeCategory() is not None \
+                and existing.childTypeCategory().name() in ("Cop", "Cop2"):
+            self._cop_companion_path = existing.path()
             debug.event("import", "cop restored",
                         name=info["name"], reused=True)
             return
         try:
-            copnet = root.createNode(info.get("type", "copnet"))
+            copnet = home.createNode(info.get("type", "copnet"))
         except hou.Error:
-            copnet = root.createNode("copnet")
+            copnet = home.createNode("copnet")
         try:
-            copnet.setName(info["name"])
+            copnet.setName(info["name"], unique_name=True)
         except hou.OperationFailed:
             pass
         try:
             copnet.loadItemsFromFile(file_name)
-        except hou.LoadWarning as warning:    # BEFORE hou.Error below, same reason as the two sites above - and this one runs FIRST, so destroying a companion that loaded leaves the material's `op:` references pointing at nothing
+        except hou.LoadWarning as warning:    # a load that SUCCEEDED: destroying it would dangle the refs
             debug.event("import", "cop companion load warning (non-fatal)",
                         material=mat.name, node=copnet.path(),
                         warning=str(warning)[:300])
@@ -1478,10 +1476,10 @@ class NodeHandler:
             debug.event("import", "cop companion load failed",
                         material=mat.name, error=str(exc))
             copnet.destroy()
-            self._drop_created_cop_root()
             return
         clear_inherited_stamps(copnet)    # ▸r/inherited-stamps
         helpers.auto_place(copnet)
+        self._cop_companion_path = copnet.path()
         debug.event("import", "cop restored",
                     name=info["name"], reused=False)
         return copnet

@@ -365,5 +365,21 @@ class TestLockedContextIsRefused(unittest.TestCase):
             "the refused context override leaked into the next import")
 
 
+class TheViewportDropUsesHoudinisOwnLibraryPicker(unittest.TestCase):
+    """The Solaris viewport drop picks or makes the Material Library as Houdini's own drop does."""
+
+    def test_the_drop_asks_the_stock_picker_and_amaze_keeps_no_rule_of_its_own(self):
+        import inspect
+        from amaze.core import dragengine
+        from amaze.panel import panel as panel_mod
+        source = inspect.getsource(panel_mod.AmazePanel._material_lop_viewport_drop)
+        self.assertIn("getMaterialLibraryLop", source,
+                      "the viewport drop picks the library itself instead of "
+                      "asking Houdini's own script")
+        self.assertNotIn("first_materiallibrary", source)
+        self.assertFalse(hasattr(dragengine, "first_materiallibrary"),
+                         "Amaze still carries its own first-library rule")
+
+
 if __name__ == "__main__":
     unittest.main()

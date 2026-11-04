@@ -3118,41 +3118,27 @@ class AmazePanel(QtWidgets.QWidget):
         kind, payload = actions[chosen]
         assign_path = payload if kind == "assign" else None
         swap_targets = payload if kind == "swap" else None
-        undo_label = (    # the undo group opens BEFORE the container policy, not just around the import: creating the materiallibrary, wiring it, moving it and moving the display flag all ran OUTSIDE the group, so one Ctrl+Z undid the assignment and the VOP and left an EMPTY library wired into the display chain with the flag still moved. Verified through hou.undos.undoLabels(); that orphan library is what the container policy then picks up for every later drop
+        undo_label = (
             "Amaze Swap Material" if swap_targets is not None
             else "Amaze Assign Material"
         )
-        with hou.undos.group(undo_label):
-            liblop = dragengine.first_materiallibrary(    # CONTAINER POLICY, the anti-clutter rule: the network's FIRST existing materiallibrary takes every drop and only a library-less network gets a new one, assignments reusing the first existing assignmaterial the same way, so repeated drops converge on ONE library and ONE assign node. Viewport drops prefer a library IN THE DISPLAY CHAIN, because an assignment into a disconnected one silently does not display, then any first, then create WIRED into the chain - the placement law being that viewport-created libraries join the display and network-created ones stay unwired
-                lopnet, connected_to=target_lop
-            )
-            if liblop is None and not (assign_path or swap_targets):
-                liblop = dragengine.first_materiallibrary(lopnet)    # the unconditional fallback is only safe when nothing will be ASSIGNED: with an assignment pending, an unwired leftover library silently does not display, so the material imports, the binding is written and the viewport does not change. Better to create one wired into the chain below
-            created = False
-            if liblop is None:
-                try:
+        with hou.undos.group(undo_label):    # the library, the import and the assign revert as one step
+            try:    # Houdini's own library picker and its own assign ▸r/houdini-after-create
+                if target_lop is not None:
+                    node2, liblop, _vop = stock.getMaterialLibraryLop(target_lop)
+                else:    # an empty network: the library Houdini's own branch makes, unwired
                     liblop = lopnet.createNode("materiallibrary")
-                    if target_lop is not None:
-                        liblop.setInput(0, target_lop)
                     helpers.auto_place(liblop)
                     liblop.setDisplayFlag(True)
-                    created = True
-                except hou.Error as refusal:    # hou.Error, NOT hou.OperationFailed: a locked digital asset answers `Cannot create a node inside a locked asset` as hou.PermissionError, a SIBLING of OperationFailed, which went straight past this handler - 12 tracebacks in the real log with this message one line away and unreachable. The network-drop path already catches it this way (research.md > hou.PermissionError is a SIBLING)
-                    debug.event("drag", "the network refused a material "
-                                "library", dest=lopnet.path(),
-                                error=str(refusal))
-                    debug.refuse(messages.NETWORK_REFUSED_MATERIAL_LIBRARY
-                                 % (lopnet.name(), refusal))
-                    return False
-            assign_node = dragengine.find_assignmaterial(    # prefers one in the display chain, exactly as the library lookup above does: unfiltered this took the first assignmaterial in CREATION order, so a leftover disconnected one won over the live node and the binding was written where nothing displays it, silently
-                lopnet, connected_to=target_lop
-            ) or dragengine.find_assignmaterial(lopnet)
-            if assign_node is not None:    # stock.assignMat REUSES an assignmaterial passed as the node (multiparm dedupe) and otherwise creates a fresh one chained onto what we pass, so that anchor must sit AT OR BELOW the library - chaining onto the old display node when the library was JUST created put the assign in a parallel branch UPSTREAM of its own material
-                node2 = assign_node
-            elif created:
-                node2 = liblop
-            else:
-                node2 = target_lop if target_lop is not None else liblop
+                    liblop.setCurrent(True, True)
+                    node2 = liblop
+            except hou.Error as refusal:    # a locked asset raises PermissionError, a sibling
+                debug.event("drag", "the network refused a material "
+                            "library", dest=lopnet.path(),
+                            error=str(refusal))
+                debug.refuse(messages.NETWORK_REFUSED_MATERIAL_LIBRARY
+                             % (lopnet.name(), refusal))
+                return False
             if swap_targets is not None:
                 ids = list(ids)[:1]    # a swap replaces ONE material; importing the rest of a multi-selection would recreate the dead-material pile the swap exists to prevent
             vops = []
