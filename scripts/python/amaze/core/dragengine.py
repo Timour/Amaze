@@ -799,6 +799,7 @@ def hover_update(panel, section_key, pane_tab=None,
     """Per-move hover, throttled here: pick under the cursor and drive the highlight - called from the drag widgets during the gesture, Materials only, with the TRACKED pane handed in so a tick over any other pane costs no lookup; a tracked MISS is an answer too, never re-asked ▸p/drag-move-cost."""
     if section_key != "material":
         return
+    _hover["outline"] = bool(getattr(getattr(panel, "prefs", None), "obj_drag_outline", 1))
     now = time.time()
     if now - _hover["last_pick"] < PICK_INTERVAL:
         return
@@ -871,7 +872,7 @@ def _set_highlight(viewer, world, target, now, force_clear=False):
     try:
         if w == "lop" and v is not None:
             v.setSceneGraphHighlight([target] if target else [])
-        elif w == "obj":
+        elif w == "obj" and _hover.get("outline", True):    # the OBJ Drag Outline preference
             with hou.undos.disabler():
                 if target:
                     node = hou.node(target)

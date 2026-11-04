@@ -786,6 +786,12 @@ class PrefsDialog(base_dialog.AssetDialog):
             self._field_slider_row(self.spin_matx_parallel,
                                    *prefs_mod.DOWNLOADS_RANGE),
         )
+        self.cbx_obj_drag_outline = ui_helpers.ToggleSwitch("OBJ Drag Outline")
+        self.cbx_obj_drag_outline.setChecked(bool(self._prefs.obj_drag_outline))
+        self.cbx_obj_drag_outline.stateChanged.connect(self.set_obj_drag_outline)
+        self.cbx_obj_drag_outline.setToolTip(ui_helpers.tooltip_text(
+            tooltips.PREFS_OBJ_DRAG_OUTLINE))
+        form.addRow(self._label(""), self.cbx_obj_drag_outline)
         spins = ((self.line_rendersize,)
                  + tuple(self._samples_spins[r.key] for r in renderers.RENDER_TAB)
                  + (self.spin_ram_cache, self.spin_parallel, self.spin_matx_parallel))
@@ -1496,6 +1502,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         ("_combo_geo_bg", "geometry_bg"),
         ("_combo_path_style", "path_style"),
         ("cbx_render_on_import", "render_on_import"),
+        ("cbx_obj_drag_outline", "obj_drag_outline"),
     )
 
     _USER_ROWS = (    # (row attribute, the per-user setting it shows); sections and scroll ride beside
@@ -1763,6 +1770,9 @@ class PrefsDialog(base_dialog.AssetDialog):
 
     def set_render_on_import(self):
         self._prefs.render_on_import = int(self.cbx_render_on_import.isChecked())
+
+    def set_obj_drag_outline(self):
+        self._prefs.obj_drag_outline = int(self.cbx_obj_drag_outline.isChecked())
 
 
     def closeEvent(self, arg__1: QCloseEvent) -> None:

@@ -799,6 +799,32 @@ class TheGestureRunsOnBOTHViews(unittest.TestCase):
 class TheEnginesHousekeepingSurvivesOneFailure(unittest.TestCase):
     """A release keeps tidying past a node that raises, and a snap that cannot run says so once."""
 
+    def test_the_obj_outline_follows_the_preference(self):
+        """OBJ Drag Outline off: the hover selects nothing; on: it selects the object under the pointer."""
+        import time
+        from amaze.core import dragengine
+        self.addCleanup(dragengine._hover.update, dict(dragengine._hover))
+        for outline, selected in ((False, 0), (True, 1)):
+            with self.subTest(outline=outline):
+                node = mock.Mock()
+                dragengine._hover.update(viewer=None, world=None, cur=None, orig=None,
+                                         dirty=False, outline=outline,
+                                         serial=dragengine.serial)
+                with mock.patch.object(hou, "node", return_value=node), \
+                        mock.patch.object(hou, "selectedNodes", return_value=[]):
+                    dragengine._set_highlight(mock.Mock(), "obj", "/obj/box", time.time())
+                self.assertEqual(selected, node.setSelected.call_count)
+
+    def test_the_hover_reads_the_preference_off_the_panel(self):
+        import types
+        from amaze.core import dragengine
+        self.addCleanup(dragengine._hover.update, dict(dragengine._hover))
+        panel = types.SimpleNamespace(prefs=types.SimpleNamespace(obj_drag_outline=0))
+        dragengine.hover_update(panel, "material", pane_tab=None,
+                                pane_kind=hou.paneTabType.NetworkEditor)
+        self.assertFalse(dragengine._hover.get("outline", True),
+                         "the hover ignored the preference")
+
     def test_one_node_that_raises_does_not_keep_the_rest_unselected(self):
         """The hover's OBJ highlight gives the user's selection back node by node."""
         from amaze.core import dragengine

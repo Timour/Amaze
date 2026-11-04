@@ -55,6 +55,8 @@ PREFS_DOWNLOAD_RESOLUTION = 'The texture size to download. If that size is not a
 
 PREFS_PARALLEL_DOWNLOADS = 'How many previews download at the same time. More is faster because these wait on network delay, not your bandwidth.'
 
+PREFS_OBJ_DRAG_OUTLINE = 'Outline the object under the pointer while a material drags over an OBJ viewport. The outline is a selection, so a heavy scene can make the drag lag.'
+
 PREFS_RENDERER_SWITCH = 'Which renderers Amaze offers. Hide the ones you do not use.'   # ▸ Preferences - Show/Hide ▸ Renderer (P03a)
 
 PREFS_SECTION_SWITCH = 'Which sections the panel shows. Hiding a section keeps everything in it; its tab is just hidden.'   # ▸ Show/Hide ▸ Sections (P03b)

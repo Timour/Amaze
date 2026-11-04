@@ -278,6 +278,15 @@ class Prefs(_Persistence):
         self._render_on_import = 1 if int(val) else 0
 
     @property
+    def obj_drag_outline(self) -> int:
+        """Outline the object under the pointer while a material drags over an OBJ viewport."""
+        return self._obj_drag_outline
+
+    @obj_drag_outline.setter
+    def obj_drag_outline(self, val: int) -> None:
+        self._obj_drag_outline = 1 if int(val) else 0
+
+    @property
     def img_dir(self) -> str:
         return self._img_dir
 

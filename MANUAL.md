@@ -640,8 +640,10 @@ destination.
   material into it, wired and registered.
 - Onto the **network editor**: imports the material there.
 
-During a drag over a viewport, the prim under the pointer is highlighted
-with Houdini's scene graph highlight. A drop on an invalid target shows
+During a drag over a Solaris viewport, the prim under the pointer is
+highlighted with Houdini's scene graph highlight. Over an OBJ viewport
+the object under the pointer is outlined by selecting it, which **OBJ
+Drag Outline** in Preferences switches off. A drop on an invalid target shows
 a miss indicator
 <img src="scripts/python/amaze/ui/icon_drop_miss.svg" width="14">.
 
@@ -707,8 +709,10 @@ this machine.
 **RenderSize**, **Samples (Redshift)**, **Samples (Karma)**, **Samples
 (Octane)**, **RAM Cache (MB)**, **Geometry Shading**, **Geometry
 Background** and **Render Thumbs on Import**. Below the divider:
-**Conversion Threads** for texture conversion, and **Download
-Resolution** and **Parallel Downloads** for the online sources.
+**Conversion Threads** for texture conversion, **Download
+Resolution** and **Parallel Downloads** for the online sources, and
+**OBJ Drag Outline**, the outline of the object under the pointer while
+a material drags over an OBJ viewport.
 
 ### Show/Hide
 
