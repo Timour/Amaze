@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.23.0
+
+- A material imported into Solaris goes into the Material Library you are in. Outside a library the import says so in the status line and makes nothing.
+- Dropping a material on an object in a Solaris viewport picks or makes the Material Library the way Houdini's own drop does, and the assign node follows it.
+- A material's COP network lands beside the material: in /stage next to a Material Library, in /obj for a /mat material, inside the geometry for a material in a geometry's matnet. The Amaze subnet in /obj is no longer made.
+
 ## 1.22.0
 
 - Whatever you import from the panel, a material, a geometry file or a node setup, is selected after the import.
