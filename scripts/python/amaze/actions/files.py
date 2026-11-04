@@ -23,6 +23,37 @@ def connect(files_model, folders_model, os_icon=None) -> None:
     folders_model.write_path = lambda path, style: helpers.houdini_path(path, style)
 
 
+def scene_folder() -> str:
+    """`$HIP`, the open scene's folder, with the pointer's slash. ▸r/hip-and-scene-events"""
+    hip = hou.getenv("HIP") or ""
+    if not hip:
+        return ""
+    hip = hostos.canonical_path_key(hip)
+    return hip if hip.endswith("/") else hip + "/"
+
+
+def watch_scene(folders_model):
+    """The sidebar's scene row follows Save, Open and New; answers the callback to remove."""
+    folders_model.set_scene_folder(scene_folder())
+    moves = (hou.hipFileEventType.AfterSave, hou.hipFileEventType.AfterLoad,
+             hou.hipFileEventType.AfterClear)    # the three that move $HIP ▸r/hip-and-scene-events
+
+    @debug.guarded("files.watch_scene")
+    def on_scene_event(event_type, **_kwargs):
+        if event_type in moves:
+            folders_model.set_scene_folder(scene_folder())
+    hou.hipFile.addEventCallback(on_scene_event)
+    return on_scene_event
+
+
+def unwatch_scene(callback, *_destroyed) -> None:
+    """Take a `watch_scene` callback back; one already gone is no error."""
+    try:
+        hou.hipFile.removeEventCallback(callback)
+    except hou.OperationFailed:    # the manual's answer for a callback not registered
+        pass
+
+
 def render_geo_misses(model, misses: list) -> None:
     """Render `model`'s missing geometry thumbnails now: blocking, Esc stops it, each lands at once."""
     misses = [pair for pair in misses  # a CACHE file gets no thumbnail unasked

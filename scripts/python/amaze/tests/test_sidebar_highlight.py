@@ -331,14 +331,14 @@ class FileSidebarTest(_HighlightCase, unittest.TestCase):
     def setUp(self):
         super().setUp()
         self.folders = self.panel.file_folders_model
-        self.loc = self.folders.data(self.folders.index(1, 0), self.folders.PathRole)
+        self.loc = self.folders.registered_at(self.folders._offset())    # the first location
         self.nested = self.loc + "nested"
         self.second = self.add(test_support.fresh_files_folder(self))
         self.read(self.loc, self.nested)
 
     def locations(self) -> list:
         return [self.folders.data(self.folders.index(row, 0), self.folders.PathRole)
-                for row in range(1, self.folders.rowCount())]
+                for row in range(self.folders._offset(), self.folders.rowCount())]
 
     def added_since(self, before) -> str:
         """The one location registered since `before`, spelled as its sidebar row stores it."""

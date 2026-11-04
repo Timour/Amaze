@@ -150,6 +150,24 @@ class ALocationUnfoldsToItsSubfolders(unittest.TestCase):
         self.assertTrue(model.remove_folder(model.row_of(self.loc)), "premise: refused")
         self.assertTrue(model.add_folder(self.loc), "premise: the add refused")
         _shown(model, self.loc)
+        hip = _tree(self, {"s1": {}, "s2": {}})
+        self.assertTrue(model.set_scene_folder(hip), "premise: the scene folder was not set")
+        _shown(model, hip)
+        _pump_until(lambda: model.rowCount(model.index_of(hip)) == 2)
+        other = _tree(self, {"t": {}})
+        self.assertTrue(model.set_scene_folder(other), "premise: the scene folder did not move")
+        _shown(model, other)
+        _pump_until(lambda: model.rowCount(model.index(1, 0)) == 1)
+        self.assertTrue(model.add_folder(other), "premise: a location at the scene's folder")
+        _shown(model, other)
+        same = [model.index(row, 0) for row in range(1, model.rowCount())
+                if model.index(row, 0).data(model.BrowseRole) == other]
+        self.assertEqual(2, len(same), "the scene row and the location at its folder are not two rows")
+        self.assertNotEqual(same[0].internalId(), same[1].internalId(), "the two rows share a node")
+        for index in same:
+            self.assertFalse(model.parent(index).isValid(), "a top row has a parent")
+        self.assertTrue(model.set_scene_folder(""), "premise: the scene folder was not cleared")
+        _shown(model, other)
         self.assertEqual([], complaints, "Qt's model checker objected")
 
     def test_a_subfolder_counts_by_its_locations_rule(self):
@@ -258,6 +276,123 @@ class ALocationUnfoldsToItsSubfolders(unittest.TestCase):
             _pump_until(lambda: not model._walking)
         self.assertFalse(model.index_of(_child(self.loc, "A")).isValid(),
                          "a read for a removed location still added its subfolders")
+
+
+class TheSceneFolderIsOneMoreTopRow(unittest.TestCase):
+    """The scene's folder heads the locations as a fixed row the same engine reads."""
+
+    def setUp(self):
+        self.model, self.prefs, self.roots = _model(self, {"x.png": None}, {"y.png": None})
+        self.hip = _tree(self, {"one": {"deep": {}}, "two": {}, "a.png": None, "b.png": None,
+                                "c.xyz": None})
+
+    def _set(self, path=None):
+        self.assertTrue(self.model.set_scene_folder(self.hip if path is None else path),
+                        "premise: the scene folder did not change")
+
+    def test_it_sits_under_all_before_every_location(self):
+        model = self.model
+        self._set()
+        self.assertEqual(len(self.roots) + 2, model.rowCount())
+        row = model.index(1, 0)
+        self.assertEqual(model.SCENE_LABEL, row.data())
+        self.assertEqual(self.hip, row.data(QtCore.Qt.ItemDataRole.ToolTipRole))
+        self.assertIsNone(row.data(model.PathRole), "the scene row answers as a location")
+        self.assertEqual(self.hip, row.data(model.BrowseRole))
+        self.assertEqual("", row.data(category.SIDEBAR_COLOR_ROLE))
+        self.assertTrue(model.is_scene_row(row))
+        self.assertEqual(1, model.scene_row())
+        self.assertEqual(self.hip, model.scene_folder())
+        for n, root in enumerate(self.roots):
+            self.assertEqual(n + 2, model.row_of(root), "a location did not move down one row")
+            self.assertEqual(root, model.index(n + 2, 0).data(model.PathRole))
+            self.assertFalse(model.is_scene_row(model.index(n + 2, 0)))
+        self.assertFalse(model.is_scene_row(model.index(0, 0)), "All reads as the scene row")
+        self.assertEqual(1, model.row_of(self.hip))
+        self.assertEqual(row, model.index_of(self.hip))
+
+    def test_it_counts_and_unfolds_like_a_location_and_all_leaves_it_out(self):
+        model = self.model
+        self._set()
+        row = _shown(model, self.hip)
+        self.assertEqual(2, row.data(COUNT), "the scene row counted by another rule")
+        self.assertTrue(_pump_until(lambda: model.rowCount(model.index(1, 0)) == 2),
+                        "the scene folder's subfolders never arrived")
+        self.assertEqual(["one", "two"], _names(model, model.index(1, 0)))
+        sub = model.index_of(_child(self.hip, "one"))
+        self.assertTrue(sub.isValid(), "index_of does not find a subfolder of the scene folder")
+        self.assertEqual(model.index(1, 0), model.parent(sub))
+        self.assertIsNone(sub.data(model.PathRole))
+        for root in self.roots:
+            _shown(model, root)
+        self.assertTrue(_pump_until(lambda: model.index(0, 0).data(COUNT) is not None))
+        self.assertEqual(2, model.index(0, 0).data(COUNT), "All counted the scene folder")
+
+    def test_rows_are_found_through_the_tops_and_rules_through_the_locations(self):
+        model = self.model
+        self._set()
+        sub = _child(self.hip, "one", "deep")
+        self.assertEqual(self.hip, model.top_of(sub), "a scene subfolder finds no row above it")
+        self.assertEqual(sub, model.location_of(sub), "a scene subfolder took a location's rules")
+        self.assertEqual(self.roots[0], model.top_of(_child(self.roots[0], "x")))
+        self.assertEqual("/nowhere/at/all", model.top_of("/nowhere/at/all"))
+        inner = _child(self.roots[0], "shot") + "/"
+        os.makedirs(inner)
+        self._set(inner)
+        self.assertEqual(self.roots[0], model.location_of(inner),
+                         "the scene folder inside a location lost that location's rules")
+        self.assertEqual(inner, model.top_of(_child(inner, "x")))
+
+    def test_a_scene_change_repoints_the_row_in_place(self):
+        model = self.model
+        self._set()
+        _shown(model, self.hip)
+        self.assertTrue(_pump_until(lambda: model.rowCount(model.index(1, 0)) == 2))
+        held = QtCore.QPersistentModelIndex(model.index(1, 0))
+        moved, removed = [], []
+        model.scene_folder_changed.connect(lambda old, new: moved.append((old, new)))
+        model.rowsRemoved.connect(lambda p, a, b: removed.append((p.data(model.BrowseRole), a, b)))
+        other = _tree(self, {"z": {}})
+        self.assertTrue(model.set_scene_folder(other.rstrip("/")))
+        self.assertEqual([(self.hip, other)], moved, "the change was not announced once")
+        self.assertEqual([(self.hip, 0, 1)], removed, "the old subfolder rows did not leave")
+        self.assertEqual(1, held.row(), "a held index lost the scene row")
+        self.assertEqual(other, held.data(model.BrowseRole))
+        self.assertEqual(0, model.rowCount(model.index(1, 0)), "the old subfolders stayed")
+        _shown(model, other)
+        self.assertTrue(_pump_until(lambda: _names(model, model.index(1, 0)) == ["z"]),
+                        "the new folder's subfolders never arrived")
+        self.assertFalse(model.set_scene_folder(other), "the same folder changed something")
+        self.assertEqual(1, len(moved))
+        self.assertTrue(model.set_scene_folder(""))
+        self.assertIsNone(model.scene_row())
+        self.assertEqual(len(self.roots) + 1, model.rowCount())
+        self.assertEqual(self.roots[0], model.index(1, 0).data(model.PathRole),
+                         "the locations did not slide up")
+        self.assertEqual(1, len(moved), "a clear announced a move")
+
+    def test_no_scene_folder_no_fixed_row(self):
+        model = self.model
+        self.assertIsNone(model.scene_row())
+        self.assertEqual("", model.scene_folder())
+        self.assertEqual(self.roots[0], model.registered_at(1))
+        self.assertFalse(model.set_scene_folder(""))
+
+    def test_no_location_verb_reaches_the_scene_row(self):
+        model = self.model
+        self._set()
+        before = list(model._folders())
+        self.assertEqual("", model.registered_at(1))
+        self.assertEqual("", model.registered_at(0))
+        self.assertEqual(self.roots[0], model.registered_at(2))
+        self.assertEqual("", model.registered_at(len(self.roots) + 2))
+        self.assertFalse(model.remove_folder(1), "the scene row was removed")
+        self.assertFalse(model.set_aside_folder(1), "the scene row was set aside")
+        self.assertEqual(-1, model.relocate_folder(1, self.roots[1]), "the scene row relocated")
+        self.assertFalse(model.move_folder(1, 2), "the scene row moved")
+        self.assertFalse(model.move_folder(2, 1), "a location moved above the scene row")
+        self.assertEqual(before, list(model._folders()), "a pointer changed")
+        self.assertEqual(self.hip, model.scene_folder())
 
 
 class TheGridBrowsesASubfolderByItsLocationsRules(unittest.TestCase):
@@ -492,8 +627,8 @@ class TheFileTabWalksSubfolders(unittest.TestCase):
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
         self.folders = self.panel.file_folders_model
-        self.loc = self.folders.data(self.folders.index(1, 0), self.folders.PathRole)
-        for name in ("a_sub", "b_sub"):
+        self.loc = self.folders.registered_at(self.folders._offset())
+        for name in ("a_sub", "b_sub", "c_sub"):
             os.makedirs(os.path.join(self.loc, name), exist_ok=True)
         second = test_support.fresh_files_folder(self)
         self.assertTrue(self.folders.add_folder(second), "premise: a second location")
@@ -501,10 +636,11 @@ class TheFileTabWalksSubfolders(unittest.TestCase):
         QtWidgets.QApplication.processEvents()
         _shown(self.folders, self.loc)
         self.assertTrue(_pump_until(
-            lambda: self.folders.rowCount(self.folders.index_of(self.loc)) == 3),
+            lambda: self.folders.rowCount(self.folders.index_of(self.loc)) == 4),
             "premise: the fixture location's subfolders never arrived")
-        self.sub = self.folders.index_of(_child(self.loc, "b_sub"))    # row 1, a location's row
-        self.assertEqual(1, self.sub.row(), "premise: the subfolder is not on row 1")
+        self.sub = self.folders.index_of(_child(self.loc, "c_sub"))    # the first location's row number
+        self.assertEqual(self.folders._offset(), self.sub.row(),
+                         "premise: the subfolder is not on the first location's row")
 
     def _stand(self, index):
         view = self.panel.cat_list
@@ -516,8 +652,8 @@ class TheFileTabWalksSubfolders(unittest.TestCase):
     def test_a_click_on_a_subfolder_browses_it(self):
         self._stand(self.sub)
         files = self.panel.file_files_model
-        self.assertEqual(_child(self.loc, "b_sub"), files.browsing())
-        self.assertEqual(_child(self.loc, "b_sub"), self.panel.prefs.last_file_folder)
+        self.assertEqual(_child(self.loc, "c_sub"), files.browsing())
+        self.assertEqual(_child(self.loc, "c_sub"), self.panel.prefs.last_file_folder)
 
     def test_a_subfolder_is_never_removed_moved_or_relocated_as_a_location(self):
         section = self.panel.sections["file"]

@@ -138,6 +138,7 @@ class _CountEngine(QtCore.QObject):
 
 
 _ROOT = QtCore.QModelIndex()
+_SCENE = -1    # the fixed scene row's parent id: its node is never a registered location's at the same path
 
 
 class FolderTreeModel(QtCore.QAbstractItemModel):
@@ -146,6 +147,8 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
     PathRole = QtCore.Qt.ItemDataRole.UserRole    # a REGISTERED location's path; None on All and subfolders
     BrowseRole = QtCore.Qt.ItemDataRole.UserRole + 1    # the folder a row shows; None on All
     ALL_LABEL = "All"
+    SCENE_LABEL = "$HIP"    # the fixed scene row's label, and the token the last folder remembers it by
+    scene_folder_changed = QtCore.Signal(str, str)    # (old, new) once the scene row reads another folder
     COUNT_ROLE = category.SIDEBAR_COUNT_ROLE    # the ONE definition, shared by every sidebar model
     unfolds = True    # its rows keep an arrow's room ▸r/tree-views
 
@@ -184,6 +187,7 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
         self._by_path: dict = {}    # path -> the ids of every row showing it
         self._kids: dict = {}    # row id -> its child paths in order, once asked
         self._next_id = 0
+        self._scene = ""    # the open scene's folder the fixed row shows; "" shows no such row
 
 
     def matches_in(self, path: str, filename: str) -> bool:
@@ -204,6 +208,60 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
             self._rows = list(getattr(self.preferences, self.folders_attr))
             self._rows_key = key
         return self._rows
+
+    def scene_folder(self) -> str:
+        """The folder the fixed scene row shows, "" while there is none."""
+        return self._scene
+
+    def _fixed(self) -> list:
+        return [self._scene] if self._scene else []
+
+    def _tops(self) -> list:
+        """The top rows after All, in view order: the fixed row, then every registered location."""
+        return self._fixed() + self._folders()
+
+    def _offset(self) -> int:
+        """The view row the registered locations start at."""
+        return 1 + len(self._fixed())
+
+    def scene_row(self):
+        """The fixed scene row's view row, None while no scene folder is set."""
+        return 1 if self._scene else None
+
+    def is_scene_row(self, index) -> bool:
+        node = self._nodes.get(index.internalId()) if index is not None and index.isValid() else None
+        return node is not None and node[0] == _SCENE
+
+    def registered_at(self, row) -> str:
+        """The registered location at a top view row; "" for All, the fixed row or no row."""
+        folders = self._folders()
+        at = row - self._offset()
+        return folders[at] if 0 <= at < len(folders) else ""
+
+    def set_scene_folder(self, path: str) -> bool:
+        """Point the fixed row at the scene's folder; True when what it shows changed."""
+        if path:
+            path = hostos.canonical_path_key(path)    # CANONICAL FIRST, then the pointer's slash
+            if not path.endswith("/"):
+                path += "/"
+        old = self._scene
+        if path == old:
+            return False
+        if not old:
+            self.beginInsertRows(_ROOT, 1, 1)
+            self._scene = path
+            self.endInsertRows()
+            return True
+        if not path:
+            self.beginRemoveRows(_ROOT, 1, 1)
+            self._scene = ""
+            self._forget_row(self._node_ids.get((_SCENE, old)))
+            self.endRemoveRows()
+            self._out_of_date((old,), keep=False)
+            return True
+        self._repoint(1, _SCENE, old, path, lambda: setattr(self, "_scene", path))
+        self.scene_folder_changed.emit(old, path)
+        return True
 
     def _rows_token(self) -> tuple:
         """What the registered list derives from: a location write, the copy's order, library, user."""
@@ -236,14 +294,15 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
             return
         at = next((i for i, (old, new) in enumerate(zip(before, after))
                    if old != new), min(len(before), len(after)))
+        row = at + self._offset()    # All and the fixed row sit above the locations
         if len(after) == len(before) + 1 \
                 and after[:at] + after[at + 1:] == before:
-            self.beginInsertRows(_ROOT, at + 1, at + 1)    # +1 for the All row
+            self.beginInsertRows(_ROOT, row, row)
             self._held = None
             self.endInsertRows()
         elif len(after) == len(before) - 1 \
                 and before[:at] + before[at + 1:] == after:
-            self.beginRemoveRows(_ROOT, at + 1, at + 1)
+            self.beginRemoveRows(_ROOT, row, row)
             self._held = None
             self.endRemoveRows()
         else:
@@ -308,6 +367,13 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
         from amaze.core import locations
         return locations.innermost(self._folders(), path) or path
 
+    def top_of(self, path: str) -> str:
+        """The innermost top row's folder a folder sits in, the scene's included, else the folder itself."""
+        if not path:
+            return path
+        from amaze.core import locations
+        return locations.innermost(self._tops(), path) or path
+
     def display_name(self, path: str) -> str:
         """A location's sidebar label: its folder name here; FileFolders adds names and paths."""
         return os.path.basename(path.rstrip("/\\")) or path
@@ -317,8 +383,8 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
         return lambda name: self.matches_in(path, name)
 
     def _shows(self, path: str) -> bool:
-        """Whether some row still shows this folder: a location, or a subfolder already read."""
-        return path in set(self._folders()) or bool(self._by_path.get(path))
+        """Whether some row still shows this folder: a top row, or a subfolder already read."""
+        return path in set(self._tops()) or bool(self._by_path.get(path))
 
     def _folder_count(self, path: str):
         """The count known now, None before one lands; a stale one is read off the GUI thread."""
@@ -388,6 +454,9 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
         if not paths:
             return
         rows = [index for index in map(self.index_of, sorted(paths)) if index.isValid()]
+        rows += [index for index in (self._index_for(row_id) for path in sorted(paths)    # a folder on two top rows
+                                     for row_id in sorted(self._by_path.get(path, ())))
+                 if index.isValid() and index not in rows]
         for index in rows + [self.index(0, 0)]:    # each row, then All, whose total moved
             self.dataChanged.emit(index, index, [self.COUNT_ROLE])
 
@@ -439,8 +508,12 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
         parent_id, path = node
         if path is None:
             return self.createIndex(0, 0, 0)
-        if parent_id is None:
-            row = self.row_of(path)
+        if parent_id == _SCENE:
+            fixed = self._fixed()
+            row = 1 + fixed.index(path) if path in fixed else None
+        elif parent_id is None:
+            folders = self._folders()
+            row = self._offset() + folders.index(path) if path in folders else None
         else:
             siblings = self._kids.get(parent_id) or []
             row = siblings.index(path) if path in siblings else None
@@ -492,13 +565,14 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
         self._kids = {}
 
     def index_of(self, path) -> QtCore.QModelIndex:
-        """The row showing `path`: a location, or a subfolder already read; else invalid."""
+        """The row showing `path`: a top row, the scene's first, or a subfolder already read; else invalid."""
         if not path:
             return QtCore.QModelIndex()
         key = str(path).rstrip("/")
-        for row, folder in enumerate(self._folders(), 1):
+        fixed = len(self._fixed())
+        for row, folder in enumerate(self._tops(), 1):
             if folder.rstrip("/") == key:
-                return self.createIndex(row, 0, self._id(None, folder))
+                return self.createIndex(row, 0, self._id(_SCENE if row <= fixed else None, folder))
         up = key.rsplit("/", 1)[0] if "/" in key else ""
         parent = self.index_of(up) if up else QtCore.QModelIndex()
         if not parent.isValid():
@@ -513,11 +587,12 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
         if column != 0 or row < 0:
             return QtCore.QModelIndex()
         if parent is None or not parent.isValid():
-            folders = self._folders()
             if row == 0:
                 return self.createIndex(0, 0, 0)
-            if row - 1 < len(folders):
-                return self.createIndex(row, 0, self._id(None, folders[row - 1]))
+            tops = self._tops()
+            if row - 1 < len(tops):
+                parent_id = _SCENE if row < self._offset() else None
+                return self.createIndex(row, 0, self._id(parent_id, tops[row - 1]))
             return QtCore.QModelIndex()
         if parent.internalId() not in self._nodes:
             return QtCore.QModelIndex()
@@ -532,13 +607,13 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
         if not index.isValid():
             return QtCore.QModelIndex()
         node = self._nodes.get(index.internalId())
-        if node is None or node[0] is None:
+        if node is None or node[0] is None or node[0] == _SCENE:
             return QtCore.QModelIndex()
         return self._index_for(node[0])
 
     def rowCount(self, parent=None) -> int:
         if parent is None or not parent.isValid():
-            return len(self._folders()) + 1
+            return len(self._tops()) + 1
         node = self._nodes.get(parent.internalId())
         if node is None or node[1] is None:
             return 0
@@ -564,9 +639,11 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
                 counts = [self._folder_count(p) for p in self._folders()]    # asks, walks nothing here
                 return None if None in counts else sum(counts)    # no partial total ▸p/folder-sidebar
             return None
-        location = parent_id is None
         if role == self.COUNT_ROLE:
             return self._folder_count(path)
+        if parent_id == _SCENE:
+            return self._scene_data(path, role)
+        location = parent_id is None
         if role == QtCore.Qt.ItemDataRole.DisplayRole:
             return self.display_name(path) if location else path.rsplit("/", 1)[-1]
         if role == QtCore.Qt.ItemDataRole.ToolTipRole:
@@ -579,11 +656,21 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
             return self.folder_color(path) if location else ""
         return None
 
+    def _scene_data(self, path: str, role: int):
+        """The fixed row: browsed like a folder, no PathRole, so no location verb reaches it."""
+        if role == QtCore.Qt.ItemDataRole.DisplayRole:
+            return self.SCENE_LABEL
+        if role in (QtCore.Qt.ItemDataRole.ToolTipRole, self.BrowseRole):
+            return path
+        if role == category.SIDEBAR_COLOR_ROLE:
+            return ""
+        return None
+
     def row_of(self, path: str):
-        """The TOP row showing this registered folder, or None; the +1 for All lives HERE."""
-        folders = self._folders()
-        if path in folders:
-            return folders.index(path) + 1
+        """The first TOP row showing this folder, the scene's first, or None; All's +1 lives HERE."""
+        tops = self._tops()
+        if path in tops:
+            return tops.index(path) + 1
         return None
 
     def folder_color(self, path: str) -> str:
@@ -600,14 +687,14 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
         return len(after) > len(before)
 
     def remove_folder(self, row: int) -> bool:
-        # row 0 is the synthetic All entry; True when the pointer is gone
+        # All and the scene row are no pointers; True when the pointer is gone
         return self.set_aside_folder(row)
 
     def set_aside_folder(self, row: int) -> bool:
         """Drop the pointer at ROW and nothing else; what its files carry waits for it to return."""
-        if row <= 0 or not row - 1 < len(self._folders()):
+        path = self.registered_at(row)
+        if not path:
             return False
-        path = self._folders()[row - 1]
         _before, after = self._answered(
             lambda: getattr(self.preferences, self.remove_folder_method)(path))
         return path not in after
@@ -617,19 +704,20 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
         if not self.move_folder_method:
             return False
         folders = self._folders()
-        count = len(folders)
-        if not (1 <= from_row <= count and 1 <= to_row <= count):
+        first = self._offset()    # nothing moves onto or above All and the scene row
+        last = first + len(folders) - 1
+        if not (first <= from_row <= last and first <= to_row <= last):
             return False
         if from_row == to_row:
             return False
-        path = folders[from_row - 1]
+        path = folders[from_row - first]
         destination = to_row if to_row < from_row else to_row + 1
         if not self.beginMoveRows(_ROOT, from_row, from_row, _ROOT, destination):
             return False
         try:
             moved = bool(getattr(self.preferences,
                                  self.move_folder_method)(path,
-                                                          to_row - 1))
+                                                          to_row - first))
         finally:
             self.endMoveRows()
         if not moved:
@@ -656,17 +744,37 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
 
     def relocate_folder(self, row: int, new_path: str) -> int:
         """Re-point the location at ROW; the favourites moved, or -1. ▸p/folder-sidebar"""
-        if row <= 0 or not row - 1 < len(self._folders()):
+        old_path = self.registered_at(row)
+        if not old_path:
             return -1
         if not new_path or not os.path.isdir(new_path):
             return -1
         new_path = hostos.canonical_path_key(new_path)    # CANONICAL FIRST, then the pointer's slash
         if not new_path.endswith("/"):
             new_path += "/"
-        old_path = self._folders()[row - 1]
         if new_path == old_path:
             return 0
-        old_id = self._id(None, old_path)
+        old_prefix = old_path if old_path.endswith("/") else old_path + "/"    # COUNTED here ▸p/folder-sidebar
+        rewritten = sum(1 for fav in self._favorites()
+                        if fav.startswith(old_prefix))
+
+        def write():
+            getattr(self.preferences, self.relocate_folder_method)(    # a NAMED call ▸p/folder-sidebar
+                old_path, new_path)
+            if getattr(self.preferences, self.last_folder_attr) == old_path:
+                setattr(self.preferences, self.last_folder_attr, new_path)
+            self._on_folder_relocated(old_path, new_path)    # everything else keyed on the old path rides along
+            self.preferences.save()
+            self._rows_key = None
+            self._records_key = None
+        self._repoint(row, None, old_path, new_path, write)
+        index = self.index(0, 0)
+        self.dataChanged.emit(index, index)    # All's total moved
+        return rewritten
+
+    def _repoint(self, row: int, parent_id, old_path: str, new_path: str, write) -> None:
+        """One top row reads another folder IN PLACE: its subfolder rows leave, `write` moves the truth."""
+        old_id = self._id(parent_id, old_path)
         kids = self._kids.get(old_id)
         if kids:    # the old folder's subfolders leave first, while their parent still stands
             self.beginRemoveRows(self.createIndex(row, 0, old_id), 0, len(kids) - 1)
@@ -674,25 +782,15 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
                 self._forget_row(self._node_ids.get((old_id, child)))
             kids.clear()
             self.endRemoveRows()
-        old_prefix = old_path if old_path.endswith("/") else old_path + "/"    # COUNTED here ▸p/folder-sidebar
-        rewritten = sum(1 for fav in self._favorites()
-                        if fav.startswith(old_prefix))
-        getattr(self.preferences, self.relocate_folder_method)(    # a NAMED call ▸p/folder-sidebar
-            old_path, new_path)
-        if getattr(self.preferences, self.last_folder_attr) == old_path:
-            setattr(self.preferences, self.last_folder_attr, new_path)
-        self._on_folder_relocated(old_path, new_path)    # everything else keyed on the old path rides along
-        self.preferences.save()
-        self._rows_key = None
-        self._records_key = None
-        self._out_of_date((old_path, new_path), keep=False)    # this location only; the rest still hold
+        write()
+        self._out_of_date((old_path, new_path), keep=False)    # this row only; the rest still hold
+        new_id = self._id(parent_id, new_path)
+        self._kids[new_id] = []    # its subfolders arrive by the next read's inserts, never unannounced
         self.changePersistentIndex(self.createIndex(row, 0, old_id),
-                                   self.createIndex(row, 0, self._id(None, new_path)))
+                                   self.createIndex(row, 0, new_id))
         self._forget_row(old_id)
-        for at in (row, 0):
-            index = self.index(at, 0)
-            self.dataChanged.emit(index, index)
-        return rewritten
+        index = self.index(row, 0)
+        self.dataChanged.emit(index, index)
 
 
 counter = workers.install(__name__, _CountEngine, QtCore.QCoreApplication.instance())

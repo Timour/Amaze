@@ -176,7 +176,7 @@ class SidebarTreeView(QtWidgets.QTreeView):
         model = self.model()
         if not self._remembers(model) or not path:
             return
-        location = model.location_of(path)
+        location = model.top_of(path)    # the scene row's folders open under it too
         opened = self._open.setdefault(id(model), set())
         opened.add(location)
         here = path.rstrip("/")

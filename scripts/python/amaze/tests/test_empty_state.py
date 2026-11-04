@@ -617,7 +617,10 @@ class TheUnreachableBlankPointsAtSomethingReal(unittest.TestCase):
         self.addCleanup(folders.remove_folder, folders.row_of(target))
         self.assertIsNotNone(folders.row_of(target),
                              "premise: the second folder registered")
-        self.model._unreadable_folders.add(target)
+        self.panel.section_tabs.setChecked("file")    # the blank's sidebar is File's
+        QtWidgets.QApplication.processEvents()
+        self.panel.sections["file"].stand_on_key("")    # the grid and the sidebar on All
+        self.model._unreadable_folders.add(target)    # after the scans, which would clear it
         self.addCleanup(self.model._unreadable_folders.discard, target)
         self.panel.cat_list.setCurrentIndex(
             self.panel.cat_list.model().index(0, 0))    # the All row

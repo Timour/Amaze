@@ -530,7 +530,7 @@ class TheFileTabMovesWhatLandsOnAFolderTest(unittest.TestCase):
                                               dialog=self.said.append))
         self.addCleanup(debug.hand_over, previous)
         self.folders = self.panel.file_folders_model
-        self.loc = self.folders.data(self.folders.index(1, 0), self.folders.PathRole)
+        self.loc = self.folders.registered_at(self.folders._offset())    # the first location
         self.a, self.b = _child(self.loc, "a"), _child(self.loc, "b")
         self.plate = os.path.join(self.a, "plate.exr")
         self.landed = os.path.join(self.b, "plate.exr")
@@ -644,7 +644,7 @@ class TheFileTabMovesWhatLandsOnAFolderTest(unittest.TestCase):
         self.assertIsNone(sidebar.folder_at_point(
             self.panel, view.visualRect(all_row).center()))
         self.assertEqual(self.loc, sidebar.folder_at_point(
-            self.panel, view.visualRect(self.folders.index(1, 0)).center()))
+            self.panel, view.visualRect(self.folders.index_of(self.loc)).center()))
         self.panel.section_tabs.setChecked("material")
         QtWidgets.QApplication.processEvents()
         self.assertIsNone(sidebar.folder_under_cursor(self.panel))

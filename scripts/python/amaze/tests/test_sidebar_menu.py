@@ -114,6 +114,13 @@ class TheSidebarMenusAreWhatSHIPPED(unittest.TestCase):
              "Sort by name", "----",
              LABEL, "----", "Export Category"]
 
+    FILE_NO_LOCATION = ["Add", "Locate(off)",
+                        "Rename > [Edit, ----, Set to Default(off)](off)",
+                        "Remove(off)", "----",
+                        "Show > [Pathname[ ], Subfolder[ ], ----, Other Files[ ], "
+                        "----, Images[ ], Geometry[ ], HIP[ ]](off)", "----",
+                        LABEL + "(off)"]
+
     def test_each_sidebar_renders_the_menu_that_shipped(self):
         """Rename acts on one row; All is a view, so it greys or drops the per-row entries."""
         for key, rows, prepare, expected in (
@@ -127,14 +134,9 @@ class TheSidebarMenusAreWhatSHIPPED(unittest.TestCase):
                 ("gradient", (0,), None,
                  ["Add", "----", "Sort by name", "----", "Export Category"]),
                 ("gradient", (1,), None, self.SPINE),
-                ("file", (0,), None,
-                 ["Add", "Locate(off)",
-                  "Rename > [Edit, ----, Set to Default(off)](off)",
-                  "Remove(off)", "----",
-                  "Show > [Pathname[ ], Subfolder[ ], ----, Other Files[ ], "
-                  "----, Images[ ], Geometry[ ], HIP[ ]](off)", "----",
-                  LABEL + "(off)"]),
-                ("file", (1,), self._file_location,
+                ("file", (0,), None, self.FILE_NO_LOCATION),
+                ("file", (1,), None, self.FILE_NO_LOCATION),    # the scene row: Add only
+                ("file", (2,), self._file_location,
                  ["Add", "Locate", "Rename > [Edit, ----, Set to Default(off)]",
                   "Remove", "----", SHOW_NEW, "----", LABEL])):
             with self.subTest(section=key, rows=rows):
@@ -159,7 +161,7 @@ class TheSidebarMenusAreWhatSHIPPED(unittest.TestCase):
                                            locations.KIND_HIP))
         self.addCleanup(prefs.set_file_folder_pathname, path, False)
         prefs.set_file_folder_pathname(path, True)
-        show = [row for row in self._show("file", (1,)) if row.startswith("Show")]
+        show = [row for row in self._show("file", (2,)) if row.startswith("Show")]    # the first location
         self.assertEqual(
             ["Show > [Pathname[x], Subfolder[ ], ----, Other Files[x], ----, "
              "Images[ ], Geometry[ ], HIP[x]]"], show)
@@ -213,11 +215,13 @@ class EachSubmenuRowWritesWhatItSays(unittest.TestCase):
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
 
-    def _on_row(self, key, row=1):
-        """A right press on `row` of `key`'s sidebar; answers the context and the row's key."""
+    def _on_row(self, key, row=None):
+        """A right press on `row` of `key`'s sidebar, else its first real row; answers the context and key."""
         self.panel.section_tabs.setChecked(key)
         QtWidgets.QApplication.processEvents()
         view = self.panel.cat_list
+        if row is None:    # File's first location sits under All and the scene row
+            row = getattr(view.model(), "_offset", lambda: 1)()
         if row >= view.model().rowCount():
             self.skipTest("the %s sidebar has no row %d" % (key, row))
         self._row = row
@@ -286,7 +290,7 @@ class EachSubmenuRowWritesWhatItSays(unittest.TestCase):
         self.addCleanup(prefs.set_file_folder_name, path, "")
         self.addCleanup(prefs.set_file_folder_pathname, path, False)
         prefs.set_file_folder_name(path, "Renamed Location")
-        row = self.panel.cat_list.model().index(1, 0)
+        row = self.panel.cat_list.model().index(self._row, 0)
         self.assertEqual("Renamed Location", row.data())
         self._choose("Show", "Pathname")
         self.assertEqual(helpers.houdini_path(path, prefs.path_style),

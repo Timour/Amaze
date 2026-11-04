@@ -17,7 +17,7 @@ from amaze.core import (category, debug, file_library, file_moves,
                         renderers, scene_captures, notes)
 from amaze.helpers import hostos, ui_helpers, wording
 from amaze import messages
-from amaze.panel import grid
+from amaze.panel import grid, sidebar
 from amaze.render import cop_nodes
 from amaze.render import nodes as nodes_mod
 
@@ -1156,6 +1156,24 @@ class FolderSection(Section):
     search_hint = ""    # these tiles are files on disk with no tags and no categories, so the file name is genuinely all there is to match
     library_model_attrs = ("file_folders_model",)    # the registered folders live in the LIBRARY's locations.json, so a library switch has to re-point them like every other library-backed model ▸p/folders-follow-the-library
 
+    def __init__(self, panel) -> None:
+        super().__init__(panel)
+        changed = getattr(self._p(self.folders_attr), "scene_folder_changed", None)
+        if changed is not None:
+            changed.connect(self._scene_moved)
+
+    def _scene_moved(self, old: str, new: str) -> None:
+        """The scene's folder moved: a grid on the scene row, or inside it, follows."""
+        try:
+            view, folders = self._sidebar_view()
+        except RuntimeError:    # the panel is gone, and the shared model outlives it
+            return
+        if folders is None:
+            return
+        if folders.is_scene_row(sidebar.top_level(view.currentIndex())):
+            self._highlight(view, folders.index(folders.scene_row(), 0))
+            self._browse(new, remember=folders.SCENE_LABEL)
+
     def filter_text(self, text: str) -> None:
         proxy = self._p(self.files_proxy_attr)
         if proxy is not None:
@@ -1177,13 +1195,13 @@ class FolderSection(Section):
         model = self._p(self.sidebar_attr)
         if model is None or index is None or not index.isValid() or index.parent().isValid():
             return False    # a subfolder moves with its location, never alone
-        return 1 <= index.row() <= len(model._folders())    # row 0 is the synthetic All row; everything below it is real
+        return model._offset() <= index.row() < model.rowCount()    # All and the scene row stay put
 
     def move_sidebar_row(self, index, to_view_row: int) -> bool:
         model = self._p(self.sidebar_attr)
         if model is None or index is None or not index.isValid():
             return False
-        to_view_row = max(1, min(int(to_view_row), model.rowCount() - 1))
+        to_view_row = max(model._offset(), min(int(to_view_row), model.rowCount() - 1))    # parks under $HIP
         return model.move_folder(index.row(), to_view_row)
 
     def sidebar_order_snapshot(self):
@@ -1212,11 +1230,15 @@ class FolderSection(Section):
         panel.sync_list_columns()  # different section = different names
 
         last = getattr(panel.prefs, self.last_folder_pref, "")
-        target_row = 0 if last == folders.ALL_LABEL else (
-            folders.row_of(last) if last else None)
+        if last == folders.ALL_LABEL:
+            target_row = 0
+        elif last == folders.SCENE_LABEL:
+            target_row = folders.scene_row()
+        else:
+            target_row = folders.row_of(last) if last else None
         inside = ""    # a remembered subfolder: the grid shows it, the sidebar unfolds to it
-        if target_row is None and last and last != folders.ALL_LABEL:
-            owner = folders.location_of(last)
+        if target_row is None and last and last not in (folders.ALL_LABEL, folders.SCENE_LABEL):
+            owner = folders.top_of(last)
             if owner.rstrip("/") != last.rstrip("/") and os.path.isdir(last):
                 inside, target_row = last, folders.row_of(owner)
         if target_row is None:
@@ -1241,7 +1263,7 @@ class FolderSection(Section):
     def library_switched(self) -> None:
         self.activate()    # the files model lists a folder, not the library
 
-    def _browse(self, path) -> None:
+    def _browse(self, path, remember=None) -> None:
         """Point the files model at a folder path (None = the synthetic 'All' row), remember it, and persist."""
         files = self._p(self.files_attr)
         folders = self._p(self.folders_attr)
@@ -1249,13 +1271,14 @@ class FolderSection(Section):
             setattr(self.panel.prefs, self.last_folder_pref, folders.ALL_LABEL)
             files.set_all_folders()
         else:
-            setattr(self.panel.prefs, self.last_folder_pref, path)
+            setattr(self.panel.prefs, self.last_folder_pref, path if remember is None else remember)
             files.set_folder(path)
         self.panel.prefs.save()
 
     def select_category(self, index) -> None:
         folders = self._p(self.folders_attr)
-        self._browse(index.data(folders.BrowseRole))    # a location's path, or a subfolder's
+        remember = folders.SCENE_LABEL if folders.is_scene_row(index) else None    # by token: it moves
+        self._browse(index.data(folders.BrowseRole), remember)    # a location's path, or a subfolder's
 
     def standing_key(self) -> str:
         files = self._p(self.files_attr)
@@ -1271,10 +1294,10 @@ class FolderSection(Section):
         if not (key and folders is not None and self._rowless(folders, key)):
             super().stand_on_key(key)
             return
-        if not os.path.isdir(key):    # gone from disk: its location's row, and its files shown
-            super().stand_on_key(folders.location_of(key))
+        if not os.path.isdir(key):    # gone from disk: the row above it, and its files shown
+            super().stand_on_key(folders.top_of(key))
             return
-        self._highlight(view, folders.index(folders.row_of(folders.location_of(key)), 0))
+        self._highlight(view, folders.index(folders.row_of(folders.top_of(key)), 0))
         if self.standing_key() != key:
             self._browse(key)
         reveal = getattr(view, "reveal", None)
@@ -1283,8 +1306,8 @@ class FolderSection(Section):
 
     @staticmethod
     def _rowless(folders, path: str) -> bool:
-        """Is `path` a folder inside a registered location, with no row of its own?"""
-        owner = folders.location_of(path)
+        """Is `path` a folder inside a top row's folder, with no row of its own?"""
+        owner = folders.top_of(path)
         return (owner.rstrip("/") != path.rstrip("/") and folders.row_of(owner) is not None
                 and not folders.index_of(path).isValid())
 

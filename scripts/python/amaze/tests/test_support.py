@@ -177,6 +177,18 @@ def fresh_files_folder(testcase) -> str:
     return posix_path(dest) + "/"
 
 
+def pin_scene_folder(testcase) -> str:
+    """`$HIP` is a fresh folder of two files for the test, then its old value."""
+    import hou
+    scene = scratch_dir("amaze_test_scene_")
+    testcase.addCleanup(shutil.rmtree, scene, True)
+    for name in ("shot.hip", "notes.txt"):
+        open(os.path.join(scene, name), "w").close()
+    testcase.addCleanup(hou.putenv, "HIP", hou.getenv("HIP"))    # always set: `pin_env` would skip it
+    hou.putenv("HIP", scene)
+    return posix_path(scene) + "/"
+
+
 def fresh_library(testcase, source=None) -> str:
     """A throwaway COPY of the committed fixture library, auto-removed after the test, in the `prefs.dir` convention WHOLE - forward slashes AND trailing separator. Tests may mutate and save freely. ▸p/harness-isolation"""
     tmp = scratch_dir("amaze_test_lib_")
@@ -492,6 +504,7 @@ def fixture_panel(testcase, render_geometry=False):
     testcase.addCleanup(shutil.rmtree, config, True)
     library = with_fixture_user(fresh_library(testcase, _SEEDED[0] if _SEEDED else None))
     files = fresh_files_folder(testcase)
+    scene = pin_scene_folder(testcase)    # before the panel: its cleanup then runs after the panel's
     with open(os.path.join(config, "settings.json"), "w",
               encoding="utf-8") as handle:
         json.dump({"directory": library,
@@ -514,7 +527,8 @@ def fixture_panel(testcase, render_geometry=False):
     checked = [("settings", panel.prefs.path),
                ("library", panel.prefs.dir),
                ("catalogue cache", matx_library.catalogue_cache()),
-               ("preview cache", matx_library.preview_cache())]
+               ("preview cache", matx_library.preview_cache()),
+               ("scene folder", scene)]
     for folder in panel.prefs.file_folders or ():    # NAMED field, not a defaulting getattr - a default would narrow this check silently
         checked.append(("file_folders", str(folder)))
     for label, path in checked:
@@ -628,6 +642,10 @@ def stop_panel_workers(panel) -> None:
             model.shutdown()
         except Exception:                                # noqa: BLE001
             pass
+    try:
+        panel.unwatch_scene()    # deleteLater never pumps `destroyed` here
+    except Exception:                                    # noqa: BLE001
+        pass
     try:
         thumbnails.engine.shutdown()
     except Exception:                                    # noqa: BLE001

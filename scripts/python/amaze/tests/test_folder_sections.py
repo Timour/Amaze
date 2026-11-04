@@ -429,17 +429,16 @@ class TheFilesAndProxyArePairedOnce(unittest.TestCase):
 
 
 class FileOpensOnTheFolderItLeft(unittest.TestCase):
-    """Activation stands on the remembered location's row, on All, or on the first real one."""
+    """Activation stands on the remembered location's row, on All, or on the scene row."""
 
     def test_activation_stands_on_the_remembered_row(self):
         panel = test_support.fixture_panel(self)
         folders = panel.file_folders_model
-        first = folders.data(folders.index(1, 0), folders.PathRole)
         second = test_support.fresh_files_folder(self)
         self.assertTrue(folders.add_folder(second), "premise: a second location")
         for remembered, row in ((second, folders.row_of(second)),
                                 (folders.ALL_LABEL, 0),
-                                ("/nowhere/registered/", folders.row_of(first))):
+                                ("/nowhere/registered/", folders.scene_row())):
             with self.subTest(remembered=remembered):
                 panel.section_tabs.setChecked("material")
                 panel.prefs.last_file_folder = remembered
@@ -481,8 +480,7 @@ class RemovingALocationLeavesNoTileOfIt(unittest.TestCase):
         self.panel.section_tabs.setChecked("file")
         QtWidgets.QApplication.processEvents()
         self.folders = self.panel.file_folders_model
-        self.kept = self.folders.data(self.folders.index(1, 0),
-                                      self.folders.PathRole)
+        self.kept = self.folders.registered_at(self.folders._offset())    # the first location
         self.gone = test_support.fresh_files_folder(self)
         below = test_support.fresh_files_folder(self)    # the row Qt slides the selection onto
         for path in (self.gone, below):

@@ -343,6 +343,10 @@ class AmazePanel(QtWidgets.QWidget):
             setattr(self, attr, model)    # SHARED with every other panel on this library; only the proxies, selections and delegates below are this panel's own
         files_actions.connect(self.file_files_model, self.file_folders_model,
                               os_icon=delegates.os_file_icon)
+        if getattr(self, "_scene_watch", None) is None:    # one callback per panel, however often setup runs
+            self._scene_watch = files_actions.watch_scene(self.file_folders_model)
+            self.destroyed.connect(    # holds the callback, never the panel
+                functools.partial(files_actions.unwatch_scene, self._scene_watch))
         material_actions.connect(self.material_model)
         self._note_models_library()
 
@@ -1496,7 +1500,7 @@ class AmazePanel(QtWidgets.QWidget):
         ui = getattr(hou, "ui", None)
         indexes = self.cat_list.selectedIndexes()
         row = indexes[0].row() if indexes and not indexes[0].parent().isValid() else -1    # top rows
-        if row <= 0:
+        if row <= 0 or not folders_model.registered_at(row):    # nothing selected, All or the scene row: no location
             if ui is not None:
                 ui.displayMessage(
                     messages.NO_FOLDER_SELECTED_TO_RELOCATE
@@ -1988,6 +1992,12 @@ class AmazePanel(QtWidgets.QWidget):
         if not path:
             return
         self.file_folders_model.add_folder(hou.text.expandString(path))
+
+    def unwatch_scene(self) -> None:
+        """The scene row stops following the scene; a second call removes nothing."""
+        watch, self._scene_watch = getattr(self, "_scene_watch", None), None
+        if watch is not None:
+            files_actions.unwatch_scene(watch)
 
     def remove_file_folder_user(self) -> list:
         """Unregister the selected folder pointer(s), answering the paths removed; disk is untouched."""

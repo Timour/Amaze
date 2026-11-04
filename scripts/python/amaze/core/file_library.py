@@ -232,9 +232,9 @@ class FileFolders(folders.FolderTreeModel):
         return os.path.basename(path.rstrip("/\\")) or path
 
     def remove_folder(self, row: int) -> bool:
-        if row <= 0 or not row - 1 < len(self._folders()):
-            return False
-        path = self._folders()[row - 1]
+        path = self.registered_at(row)
+        if not path:
+            return False    # All and the scene row are no pointers
         if not super().remove_folder(row):
             return False    # a refused removal keeps the pointer, so every key under it stays
         if not locations.rehome_covered(self.preferences, path):

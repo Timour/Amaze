@@ -58,7 +58,8 @@ def clean_folders_and_favorites(preferences, file_folders_model) -> list:
                         "is not mounted", path=path)
             continue
         debug.event("cleanup", "folder pointer set aside", path=path)
-        file_folders_model.set_aside_folder(index + 1)    # the pointer only; row 0 is the synthetic "All"
+        file_folders_model.set_aside_folder(    # the pointer only; All and the scene row sit above
+            index + file_folders_model._offset())
         set_aside.append(path)
     if set_aside:
         lines.append(    # NAMES, not a count - a count is a sentence nobody can check

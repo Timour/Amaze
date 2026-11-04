@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.26.0
+
+- The File sidebar has $HIP as a fixed location under All, showing the folder of the current open .hip file. All does not include it.
+
 ## 1.25.0
 
 - A new preference on the Render page, OBJ Drag Outline, switches off the outline of the object under the pointer while a material drags over an OBJ viewport. It is on by default.

@@ -418,7 +418,7 @@ class PackageImportTest(unittest.TestCase):
         listed = [hostos_mod.canonical_path_key(p)
                   for p in self.panel.prefs.file_folders]
         if folder in listed:
-            self.assertTrue(folders.remove_folder(listed.index(folder) + 1),
+            self.assertTrue(folders.remove_folder(listed.index(folder) + folders._offset()),
                             "premise: the import location stayed listed")
         sources = tempfile.mkdtemp(prefix="amaze_pkg_rows_")
         self.addCleanup(

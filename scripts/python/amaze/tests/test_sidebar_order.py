@@ -691,6 +691,26 @@ class FolderOrderTest(unittest.TestCase):
         self.assertEqual([test_support.posix_path(p) for p in (two, one)],
                          prefs.file_folders)
 
+    def test_the_model_move_respects_the_scene_row(self):
+        from amaze.core import file_library
+        base = self._base()
+        one, two, hip = (os.path.join(base, n) for n in ("1", "2", "hip"))
+        prefs = self._prefs([one, two])
+        os.makedirs(hip)
+        model = file_library.FileFolders(prefs)
+        self.assertTrue(model.set_scene_folder(hip), "premise: no scene row")
+        seen = []
+        model.rowsAboutToBeMoved.connect(lambda *a: seen.append("about"))
+        model.rowsMoved.connect(lambda *a: seen.append("moved"))
+        self.assertFalse(model.move_folder(1, 3), "the scene row moved")
+        self.assertFalse(model.move_folder(2, 1), "a location moved above the scene row")
+        self.assertEqual([], seen)
+        self.assertTrue(model.move_folder(2, 3))
+        self.assertEqual(["about", "moved"], seen)
+        self.assertEqual([test_support.posix_path(p) for p in (two, one)],
+                         prefs.file_folders)
+        self.assertEqual(model.SCENE_LABEL, model.index(1, 0).data())
+
 
 if __name__ == "__main__":
     unittest.main()

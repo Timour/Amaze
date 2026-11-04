@@ -449,6 +449,12 @@ too. Locate, Rename, Remove, Show and Label act on locations and are
 greyed out on the folders inside them. Folders stay open until the panel
 closes, and the File tab reopens on the last folder clicked.
 
+**$HIP** shows the folder of the current open .hip file. It is a fixed
+location under All: its folders open as a location's do, it lists
+Images, Geometry and HIP, and inside a registered location it lists what
+that location lists. Locate, Rename, Remove, Show and Label are greyed
+out on it, it cannot be dragged, and All does not include it.
+
 Dragging files from the grid onto a folder in the sidebar moves them into
 that folder on disk, all the selected files together. A file whose name is
 already taken in that folder stays where it is, and the status line names

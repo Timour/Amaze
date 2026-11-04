@@ -48,7 +48,8 @@ class TheColourReachesBOTHPlacesItIsPainted(unittest.TestCase):
         self.assertGreater(model.rowCount(), 1,
                            "the %s sidebar has only All, so there is "
                            "nothing to colour" % key)
-        return panel._section(), model, model.index(1, 0)
+        row = getattr(model, "_offset", lambda: 1)()    # File's first location sits under the scene row
+        return panel._section(), model, model.index(row, 0)
 
     def test_the_sidebar_is_TOLD_so_the_row_actually_repaints(self):
         """Reading the role back proves nothing - these models answer live from the store, so a gesture that wrote and told nobody reads correct and shows nothing. The SIGNAL is the repaint."""
@@ -78,7 +79,7 @@ class TheColourReachesBOTHPlacesItIsPainted(unittest.TestCase):
                     "%s did not store the colour" % key)
                 self.assertEqual(
                     "#4af2a1",
-                    str(model.index(1, 0).data(
+                    str(model.index(index.row(), 0).data(
                         category.SIDEBAR_COLOR_ROLE) or ""),
                     "the %s sidebar row does not paint it" % key)
 
@@ -88,7 +89,7 @@ class TheColourReachesBOTHPlacesItIsPainted(unittest.TestCase):
                 self.assertEqual("", context.sidebar_colour(name))
                 self.assertEqual(
                     "",
-                    str(model.index(1, 0).data(
+                    str(model.index(index.row(), 0).data(
                         category.SIDEBAR_COLOR_ROLE) or ""),
                     "the %s row still wears the cleared colour" % key)
 
