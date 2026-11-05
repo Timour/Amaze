@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.29.2
+
+- Viewport Preview is removed from the node menu's Amaze submenu. Neither of the two previews it built showed in the viewport on a Redshift USD material. A material that got one keeps what was added, a MaterialX preview node or viewport properties, until it is deleted by hand.
+
 ## 1.29.1
 
 - Viewport Preview now builds a MaterialX USD Preview Surface inside the Redshift material, wired as its second output and filled from the shader and its textures. The 1.29.0 version added viewport properties the viewport does not read on a Redshift USD material builder; running Viewport Preview on such a material removes them.

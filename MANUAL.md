@@ -227,16 +227,6 @@ Each entry is offered when the node's material has a route to that
 renderer and its plugin is loaded. With several materials selected, an
 entry acts on all of them, in one undo step.
 
-**Amaze ▸ Viewport Preview**, on a Redshift USD material, adds a
-MaterialX USD Preview Surface inside the material, wired as its second
-output and filled from the shader: diffuse, roughness, metallic,
-emission and opacity follow the shader's parameters, and a MaterialX
-image reads each texture a Texture Sampler feeds, the normal map
-included. The material then carries the preview beside Redshift's own,
-as a MaterialX network. It acts on the selection, runs again without
-doubling anything, takes one undo step, and removes the viewport
-properties an earlier version added.
-
 All conversions go through MaterialX. Redshift to Octane, for example,
 converts Redshift to MaterialX and then MaterialX to Octane. Octane
 materials are built in Octane's own material builder.

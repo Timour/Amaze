@@ -78,8 +78,7 @@ class TheGuardedPanelRefusesHeadlessTest(unittest.TestCase):
                  ("_locate_folder_user", lambda: panel._locate_folder_user(None)),
                  ("rc_calls.convert(None)", lambda: rc_calls.convert(None, "Karma")),
                  ("rc_calls.convert(geo)", lambda: rc_calls.convert(geo, "Karma")),
-                 ("rc_calls.convert(geo, swap)", lambda: rc_calls.convert(geo, "Karma", swap=True)),
-                 ("rc_calls.viewport_preview(geo)", lambda: rc_calls.viewport_preview(geo)))
+                 ("rc_calls.convert(geo, swap)", lambda: rc_calls.convert(geo, "Karma", swap=True)))
         panel.material_model = None
         for name, call in doors:
             with self.subTest(door=name):
