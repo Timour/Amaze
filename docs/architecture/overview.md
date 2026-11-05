@@ -743,20 +743,20 @@ thumbnail is made and where the file goes belong to the **Thumbnail
 Engine** and the thumbnail runner (`render/thumbs.py`), its callers.
 
 - **Package:** `preview/` · **Door:** `amaze.preview`
-- **API:** `ThumbNailScene(renderer)` → `.get_node()` · `.rop` ·
-  `ocio_from_viewer()` · `safe_set(node, parm, value)` ·
-  `rig_key(renderer)` · `build_usd_scaffold(prefs, renderer)` ·
-  `write_batch(scaffold, items, out_dir)` · `exr_to_png(exr, png, ocio, id)`
-- **Two scenes.** Redshift renders in an `/obj` scene (`ThumbNailScene`)
-  with its own lights and a studio HDRI; `rig_key` answers the light-size
-  spelling and RAISES on a renderer it does not name. Karma and Octane
-  render the SAME USD stage (`preview/usd_scene.py`): the shaderball USD
-  with its own USD lights, a MaterialX floor, and per renderer only the
-  render settings and the USD Render ROP's delegate differ, so a
-  MaterialX tile and an Octane tile are lit alike by construction. Both
-  write an ACEScg EXR that one conversion turns into the PNG through the
-  viewer's OCIO display and view. A classic `octane_vopnet` is rebuilt
-  into Octane's Solaris builder for the render, which LOPs can read.
+- **API:** `ocio_from_viewer()` · `safe_set(node, parm, value)` ·
+  `build_usd_scaffold(prefs, renderer)` · `write_batch(scaffold, items, out_dir)` ·
+  `exr_to_png(exr, png, ocio, id)`
+- **One scene.** Karma, Octane and Redshift render the SAME USD stage
+  (`preview/usd_scene.py`): the shaderball USD with its own USD lights, a
+  MaterialX floor, and per renderer only the render settings LOP, the USD
+  Render ROP's delegate, the floor texture's format and a light scale
+  differ, so the three tiles are lit alike by construction. Every renderer
+  writes an ACEScg EXR that one conversion turns into the PNG through the
+  viewer's OCIO display and view. A classic `octane_vopnet` is rebuilt into
+  Octane's Solaris builder and a classic `redshift_vopnet` into the Redshift
+  USD builder for the render, which LOPs can read. The `/obj` Redshift scene
+  of 1.0 to 1.29 is gone: a render inside Houdini could not be ended, and
+  twice froze a session until a force quit (devlog 756).
 - **One stage and ONE husk per batch, in the background.** `write_batch`
   writes the batch's stage once, every material its own prim, with the
   USD Render ROP's Run Command off; `render/husk_job.py` then runs ONE
@@ -1276,11 +1276,10 @@ core/bsdf_reader.py       reads the `tensor_file` container the measured
 preview/                  THE PREVIEW ENGINE (below) - the scene a
                           material thumbnail is rendered in. Callers
                           use `amaze.preview`, never its insides
-preview/shaderball_scene.py  the ball, the plane and their materials
-preview/thumbnail_scene.py   the room around them: lights, camera,
-                          output - Redshift
-preview/usd_scene.py      Karma's and Octane's, one USD stage: written
-                          once per batch, a material prim each
+preview/thumbnail_scene.py   what every path shares: safe_set and the
+                          viewer's OCIO
+preview/usd_scene.py      every renderer's one USD stage: written once
+                          per batch, a material prim each
 helpers/hostos.py         OS-INTEGRATION ENGINE (all platform branches)
 helpers/wording.py        `and_list`, a sentence's list of names, and
                           `sanitize_usd_path`, a name USD accepts; every

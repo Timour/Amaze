@@ -45,7 +45,7 @@ class ASelectionIsOneHuskPerRenderer(unittest.TestCase):
             return True, "", []
 
         with mock.patch.object(preview, "ocio_from_viewer", lambda: {"display": "d"}), \
-                test_support.plugins_loaded("Octane"), \
+                test_support.plugins_loaded("Octane", "Redshift"), \
                 mock.patch.object(nodes.NodeHandler, "import_asset_to_scene", imported), \
                 mock.patch.object(nodes.NodeHandler, "cleanup"), \
                 mock.patch.object(thumbs.ThumbNailRenderer, "render_batch",
@@ -62,6 +62,8 @@ class ASelectionIsOneHuskPerRenderer(unittest.TestCase):
         for renderers, batches in ((["MaterialX"] * 10, [("Karma", 10)]),
                                    (["MaterialX", "Octane", "MaterialX", "Octane"],
                                     [("Karma", 2), ("Octane", 2)]),
+                                   (["Redshift", "MaterialX", "Redshift"],
+                                    [("Redshift", 2), ("Karma", 1)]),
                                    (["MaterialX"], [("Karma", 1)])):
             with self.subTest(renderers=renderers):
                 model = self._model(renderers)

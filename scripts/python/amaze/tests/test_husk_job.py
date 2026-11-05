@@ -3,6 +3,7 @@
 import os
 import shutil
 import sys
+import threading
 import time
 import unittest
 from unittest import mock
@@ -19,7 +20,7 @@ sys.path.insert(
         os.path.dirname(os.path.abspath(__file__)))))
 
 from amaze import preview  # noqa: E402
-from amaze.core import tile_icons  # noqa: E402
+from amaze.core import material, tile_icons  # noqa: E402
 from amaze.render import husk_job, thumbs  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
@@ -57,6 +58,22 @@ def _octane(testcase, colour):
     return builder
 
 
+def _redshift(testcase, colour, classic=False):
+    """A Redshift material with its base colour set: the USD builder, or the classic container."""
+    kind = "redshift_vopnet" if classic else "rs_usd_material_builder"
+    builder = hou.node("/mat").createNode(kind)
+    testcase.addCleanup(test_support.drop_node, builder)
+    shader = material.redshift_surface_shader(builder)
+    if shader is None:
+        shader = builder.createNode("redshift::StandardMaterial")
+    terminal = material.redshift_terminal(builder)
+    if terminal is not None and not any(
+            c.inputNode() is shader for c in terminal.inputConnections()):
+        terminal.setNamedInput("Surface", shader, 0)
+    shader.parmTuple("base_color").set(colour)
+    return builder
+
+
 def _hue(png):
     """`red`, `green` or `neither`, from the middle third of the picture."""
     img = QtGui.QImage(png)
@@ -89,6 +106,7 @@ class TheCommandAndItsEnvironment(unittest.TestCase):
         for renderer, current, expected in (
                 ("Karma", "", "{redshift4houdini.*,Houdini_Octane*}"),
                 ("Octane", "", "redshift4houdini.*"),
+                ("Redshift", "", "Houdini_Octane*"),
                 ("Octane", "mine*", "{mine*,redshift4houdini.*}"),
                 ("Karma", "{a,b}", "{a,b}")):
             with self.subTest(renderer=renderer, current=current):
@@ -99,6 +117,17 @@ class TheCommandAndItsEnvironment(unittest.TestCase):
         with mock.patch.dict(os.environ, {husk_job.EXCLUDE: ""}):
             env = self._job("Karma").environment()
         self.assertEqual(husk_job.plugin_exclusion("Karma"), env[husk_job.EXCLUDE])
+
+    def test_a_redshift_husk_keeps_its_own_cache_and_log(self):
+        """Its local data path is its own folder under Amaze's cache, apart from the session's."""
+        from amaze.helpers import hostos
+        env = self._job("Redshift").environment()
+        self.assertEqual(os.path.join(hostos.cache_root(), "redshift"),
+                         env["REDSHIFT_LOCALDATAPATH"])
+        self.assertTrue(os.path.isdir(env["REDSHIFT_LOCALDATAPATH"]))
+        self.assertEqual(os.environ.get("REDSHIFT_LOCALDATAPATH"),
+                         self._job("Karma").environment().get("REDSHIFT_LOCALDATAPATH"),
+                         "a Karma husk changed the session's Redshift path")
 
     def test_one_husk_renders_every_frame_and_only_octane_restarts(self):
         """Octane keeps frame 1's material unless restarted ▸r/husk-startup."""
@@ -286,6 +315,55 @@ class OneHuskRendersEachMaterial(unittest.TestCase):
         items = [("RED_OCT", _octane(self, RED)), ("GREEN_OCT", _octane(self, GREEN))]
         self.assertEqual(["red", "green"], self._render("Octane", items),
                          "Octane kept the first material for the second frame")
+
+    @unittest.skipUnless(test_support.renderer_loaded("Redshift"),
+                         "the Redshift plugin is not loaded")
+    def test_two_redshift_materials_are_two_pictures(self):
+        """The USD builder and a classic container, one husk through Redshift's delegate."""
+        items = [("RED_RS", _redshift(self, RED)),
+                 ("GREEN_RS", _redshift(self, GREEN, classic=True))]
+        self.assertEqual(["red", "green"], self._render("Redshift", items),
+                         "one Redshift husk did not give each frame its own material")
+
+
+class AHuskThatWillNotStopIsKilled(unittest.TestCase):
+    """A Redshift husk stuck in a texture conversion ignored its terminate. ▸r/redshift-thumbnail-paths"""
+
+    def _deaf_job(self):
+        folder = test_support.scratch_dir("amaze_husk_deaf_")
+        self.addCleanup(shutil.rmtree, folder, True)
+        job = husk_job.HuskJob({"usd": "", "prims": [], "ball": "", "renderer": "Redshift"},
+                               folder, [("DEAF", "")])
+        husk = [test_support.plain_python(), "-c",
+                "import signal, time\nsignal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+                "print('ready', flush=True)\ntime.sleep(120)\n"]
+        patcher = mock.patch.object(job, "command", lambda: husk)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.addCleanup(lambda: job._proc and job._proc.poll() is None and job._proc.kill())
+        return job
+
+    def test_cancel_kills_after_the_grace(self):
+        job = self._deaf_job()
+        with mock.patch.object(husk_job, "KILL_AFTER", 1.0):
+            threading.Timer(1.0, job.cancel).start()
+            started = time.monotonic()
+            job.run_blocking()
+        self.assertEqual("cancelled", job.status)
+        self.assertIsNotNone(job._proc.poll(), "the husk outlived its cancel")
+        self.assertLess(time.monotonic() - started, 15.0, "the kill came late")
+
+    def test_a_quiet_husk_is_stalled_and_killed(self):
+        job = self._deaf_job()
+        with mock.patch.object(husk_job, "STALL_SECONDS", 2), \
+                mock.patch.object(husk_job, "KILL_AFTER", 1.0), \
+                test_support.captured_log() as log:
+            started = time.monotonic()
+            job.run_blocking()
+        self.assertEqual("failed: stalled", job.status)
+        self.assertIsNotNone(job._proc.poll(), "the stalled husk was left running")
+        self.assertLess(time.monotonic() - started, 15.0, "the stall was found late")
+        self.assertEqual(1, len(log.matching("printed nothing")), "the stall was not said")
 
 
 class TheBackgroundQueue(unittest.TestCase):

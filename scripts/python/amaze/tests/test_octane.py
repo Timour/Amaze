@@ -332,7 +332,7 @@ class TheOctaneThumbnailIsTheMaterialXStage(unittest.TestCase):
             camera = stage.GetPrimAtPath(preview.usd_scene.RENDER_CAMERA)
             self.assertEqual(0.0, camera.GetAttribute("fStop").Get())
             right = stage.GetPrimAtPath("/shaderBallScene/lights/Right")
-            self.assertAlmostEqual(math.pi * preview.usd_scene.OCTANE_LIGHT_SCALE,
+            self.assertAlmostEqual(math.pi * preview.usd_scene.LIGHT_SCALE["Octane"],
                                    right.GetAttribute("inputs:intensity").Get(), places=4)
 
     def _stage_above_the_floor(self, scaffold):

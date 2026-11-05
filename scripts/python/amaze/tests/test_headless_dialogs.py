@@ -11,7 +11,7 @@ from PySide6 import QtCore, QtWidgets  # noqa: E402
 
 import hou  # noqa: E402
 
-from amaze import messages  # noqa: E402
+from amaze import messages, preview  # noqa: E402
 from amaze.core import dragengine, material  # noqa: E402
 from amaze.render import nodes, thumbs  # noqa: E402
 from amaze.utils import rc_calls  # noqa: E402
@@ -192,13 +192,17 @@ class TheThumbnailRefusalNeedsNoScreenTest(unittest.TestCase):
     def setUp(self):
         self.assertFalse(hasattr(hou, "ui"))
         self.prefs = test_support.fixture_prefs(self)
+        patcher = mock.patch.object(    # the batch needs a viewer's OCIO before it imports anything
+            preview, "ocio_from_viewer", lambda: {"display": "d", "view": "v", "space": "s"})
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def _refusing_import(self, *_args, **_kwargs):
         return False, "the asset file is missing on disk", None
 
     def _renderer(self):
         return thumbs.ThumbNailRenderer(
-            self.prefs, material.Material(name="gone", mat_id="no-such-id"))
+            self.prefs, material.Material(name="gone", mat_id="no-such-id", renderer="Karma"))
 
     def test_a_refused_import_does_not_crash_the_render(self):
         with mock.patch.object(nodes.NodeHandler, "import_asset_to_scene",

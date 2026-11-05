@@ -157,7 +157,7 @@ def render_thumbnail(model, row: int) -> None:
 
 
 def render_thumbnails(model, rows) -> None:
-    """Re-render every row in the model: Karma's and Octane's in ONE husk each. ▸r/husk-startup"""
+    """Re-render every row in the model: each renderer's rows in ONE husk. ▸r/husk-startup"""
     from amaze.render import thumbs
     rows = [row for row in rows if 0 <= row < model.rowCount()]
     if not rows:

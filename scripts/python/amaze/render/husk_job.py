@@ -6,18 +6,24 @@ import queue
 import shutil
 import subprocess
 import threading
+import time
 
 import hou
 from PySide6 import QtCore
 
 from amaze.core import debug
 
-DELEGATES = {"Karma": "BRAY_HdKarma", "Octane": "HdOctaneRendererPlugin"}
+DELEGATES = {"Karma": "BRAY_HdKarma", "Octane": "HdOctaneRendererPlugin",
+             "Redshift": "HdRedshiftRendererPlugin"}    # ▸r/redshift-thumbnail-paths
 UNUSED_PLUGINS = {    # Houdini plugins a thumbnail husk skips; Octane aborts without its own
     "Karma": ("redshift4houdini.*", "Houdini_Octane*"),
     "Octane": ("redshift4houdini.*",),
+    "Redshift": ("Houdini_Octane*",),
 }
 RESTART_EVERY = {"Octane": 1}    # Octane keeps frame 1's material unless restarted
+KILL_AFTER = 5.0    # seconds a husk may outlive its terminate ▸r/redshift-thumbnail-paths
+STALL_SECONDS = 600    # quiet this long, a husk is killed; done tiles stay ▸r/redshift-thumbnail-stall
+LOCAL_DATA = {"Redshift": "REDSHIFT_LOCALDATAPATH"}    # a renderer whose husk keeps its own cache and log
 PROGRESS = "ALF_PROGRESS"
 DONE = "AMAZE_FRAME_DONE"
 EXCLUDE = "HOUDINI_DSO_EXCLUDE_PATTERN"
@@ -54,6 +60,14 @@ def plugin_exclusion(renderer: str, current: str = "") -> str:
     return patterns[0] if len(patterns) == 1 else "{%s}" % ",".join(patterns)
 
 
+def local_data_path(renderer: str) -> str:
+    """A `renderer` husk's own cache and log folder, under Amaze's cache ▸r/redshift-thumbnail-stall"""
+    from amaze.helpers import hostos
+    path = os.path.join(hostos.cache_root(), renderer.lower())
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
 def _script_arg(path: str) -> str:
     """husk splits a script argument like a command line, so a path with a space is quoted."""
     return '"%s"' % path if any(c.isspace() for c in path) else path
@@ -79,6 +93,11 @@ class HuskJob(QtCore.QObject):
         self._done = set()    # the frames the post-frame script reported done
         self._timer = None
         self._cancelled = False
+        self._stop_reason = ""    # "cancelled", or what the watchdog found
+        self._last_line = 0.0    # when husk last printed anything
+        self._terminated_at = None    # when it was asked to stop
+        self._killed_at = None    # when it was killed for not stopping
+        self._finished = False
 
     def exr(self, frame: int) -> str:
         return os.path.join(self.job_dir, "f%d.exr" % frame)
@@ -105,6 +124,9 @@ class HuskJob(QtCore.QObject):
         pattern = plugin_exclusion(self.renderer, env.get(EXCLUDE, ""))
         if pattern:
             env[EXCLUDE] = pattern
+        variable = LOCAL_DATA.get(self.renderer)
+        if variable:
+            env[variable] = local_data_path(self.renderer)    # apart from the session's own
         return env
 
     def _write_scripts(self) -> None:
@@ -123,6 +145,7 @@ class HuskJob(QtCore.QObject):
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))    # Windows: no console
         debug.event("thumb", "husk started", renderer=self.renderer,
                     frames=len(self.frames), pid=self._proc.pid)
+        self._last_line = time.monotonic()
         threading.Thread(target=self._read, daemon=True).start()
 
     def _read(self) -> None:
@@ -142,18 +165,54 @@ class HuskJob(QtCore.QObject):
         """With no event loop (hython, tests): the same lines, handled as they come."""
         self._spawn()
         while True:
-            line = self._lines.get()
+            try:
+                line = self._lines.get(timeout=1.0)
+            except queue.Empty:
+                if self._watch():
+                    break
+                continue
             if line is None:
                 break
             self._handle(line)
         self._finish()
 
-    def cancel(self) -> None:
+    def cancel(self, why: str = "cancelled") -> None:
         self._cancelled = True
+        self._stop_reason = self._stop_reason or why
         if self._proc is not None and self._proc.poll() is None:
             self._proc.terminate()    # husk stops within 0.05 s ▸r/husk-startup
+            self._terminated_at = time.monotonic()
+
+    def _watch(self) -> bool:
+        """Kill a husk that ignored its terminate, or that went quiet; True once it is over."""
+        if self._proc is None or self._finished:
+            return self._finished
+        now = time.monotonic()
+        if self._killed_at is not None:    # its pipe may stay open past its death: give up reading
+            return now - self._killed_at > KILL_AFTER
+        if self._proc.poll() is not None:
+            return False
+        if self._terminated_at is not None:
+            if now - self._terminated_at > KILL_AFTER:
+                self._proc.kill()
+                self._killed_at = now
+                debug.event("thumb", "husk killed", renderer=self.renderer,
+                            pid=self._proc.pid, why=self._stop_reason)
+        elif now - self._last_line > STALL_SECONDS:
+            debug.event("thumb", "husk stalled", renderer=self.renderer, pid=self._proc.pid,
+                        quiet_s=int(now - self._last_line), done=len(self._done),
+                        frames=len(self.frames))
+            debug.note("%s thumbnail render stopped: husk printed nothing for %d minutes. "
+                       "The tiles it did not finish keep their old picture"
+                       % (self.renderer, STALL_SECONDS // 60))
+            self.cancel("stalled")
+        return False
 
     def _drain(self) -> None:
+        if self._watch():
+            self._timer.stop()
+            self._finish()
+            return
         while True:
             try:
                 line = self._lines.get_nowait()
@@ -166,6 +225,7 @@ class HuskJob(QtCore.QObject):
             self._handle(line)
 
     def _handle(self, line: str) -> None:
+        self._last_line = time.monotonic()
         self._tail.append(line)
         if line.startswith(PROGRESS):
             try:
@@ -182,9 +242,16 @@ class HuskJob(QtCore.QObject):
 
     def _finish(self) -> None:
         """Every frame back is done, whatever the exit: 22.0.482's husk exits 139 after its last."""
-        code = self._proc.wait()
+        if self._finished:
+            return
+        self._finished = True
+        try:
+            code = self._proc.wait(timeout=KILL_AFTER)    # a killed husk is dead; its pipe may not be
+        except subprocess.TimeoutExpired:
+            code = -1
         if self._cancelled:
-            self.status = "cancelled"
+            self.status = ("cancelled" if self._stop_reason == "cancelled"
+                           else "failed: " + self._stop_reason)
         elif code != 0 and len(self._done) < len(self.frames):
             self.status = "failed: husk exit %d" % code
             debug.event("thumb", "husk failed", renderer=self.renderer, code=code,
@@ -200,14 +267,19 @@ class HuskJob(QtCore.QObject):
     def discard(self) -> None:
         shutil.rmtree(self.job_dir, ignore_errors=True)
 
-    def stop(self, timeout: float = 5.0) -> None:
-        """Cancel, wait for husk to exit, then discard: for quitting, where nothing drains."""
+    def stop(self, timeout: float = KILL_AFTER) -> None:
+        """Cancel, wait for husk to exit, kill it if it will not, then discard: for quitting."""
         self.cancel()
         if self._proc is not None:
             try:
                 self._proc.wait(timeout=timeout)
-            except subprocess.TimeoutExpired:    # its files may still be open: the folder stays
-                debug.event("thumb", "husk outlived its stop", pid=self._proc.pid)
+            except subprocess.TimeoutExpired:
+                self._proc.kill()    # a stuck Redshift husk outlived a terminate by 35 min once
+                debug.event("thumb", "husk killed at stop", pid=self._proc.pid)
+                try:
+                    self._proc.wait(timeout=timeout)
+                except subprocess.TimeoutExpired:    # its files may still be open: the folder stays
+                    debug.event("thumb", "husk outlived its stop", pid=self._proc.pid)
         self.discard()
 
 

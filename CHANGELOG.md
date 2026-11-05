@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.30.0
+
+- Redshift previews render in the background, in the same husk as Karma's and Octane's: one render per renderer for a whole selection, the progress bar above the grid, and Cancel stops it. A preview no longer runs inside Houdini. A classic Redshift material is rebuilt into the USD builder for its render, as it is for a LOP import.
+- Redshift's preview husk keeps its own cache and log under Amaze's cache folder, apart from the Redshift in your session.
+- A background render that prints nothing for ten minutes is ended, and one that ignores Cancel is killed five seconds later. The tiles it finished stay.
+- The /obj thumbnail scene, its shader ball geometry and the studio HDRI are gone from the package.
+
 ## 1.29.2
 
 - Viewport Preview is removed from the node menu's Amaze submenu. Neither of the two previews it built showed in the viewport on a Redshift USD material. A material that got one keeps what was added, a MaterialX preview node or viewport properties, until it is deleted by hand.

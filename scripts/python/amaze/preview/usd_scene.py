@@ -1,4 +1,4 @@
-"""The USD preview scene, Karma's and Octane's: one stage per batch, written for husk to render."""
+"""The USD preview scene, every renderer's: one stage per batch, written for husk to render."""
 import datetime
 import os
 
@@ -12,12 +12,15 @@ from amaze.preview import thumbnail_scene
 RENDER_CAMERA = "/shaderBallScene/cameras/RenderCam"
 BALL = "/shaderBallScene/geo/ball"    # the prim every thumbnail material is bound to
 BATCH_MATERIAL = "/materials/amaze_thumb_%d"    # one per material in a batch's stage
-FLOOR_TEXTURE = {    # Octane reads no `.rat`; the EXR is the same picture ▸r/octane-thumbnail
+FLOOR_TEXTURE = {    # Octane and Redshift read no `.rat` here ▸r/octane-thumbnail ▸r/redshift-thumbnail-paths
     "Karma": "$AMAZE/scripts/python/amaze/res/img/FloorTexture.rat",
     "Octane": "$AMAZE/scripts/python/amaze/res/img/FloorTexture.exr",
+    "Redshift": "$AMAZE/scripts/python/amaze/res/img/FloorTexture.exr",
 }
 OCTANE_LOP_CONTAINER = "octane_solaris_material_builder"    # wired at creation ▸r/octane-builder
-COPIED_WHOLE = ("subnet", OCTANE_LOP_CONTAINER)    # containers a material library takes as they are
+REDSHIFT_BUILDER = "rs_usd_material_builder"    # Redshift's USD builder ▸r/stage-karma-to-redshift
+REDSHIFT_LEGACY = "redshift_vopnet"    # a classic container, rebuilt into the builder for a stage
+COPIED_WHOLE = ("subnet", OCTANE_LOP_CONTAINER, REDSHIFT_BUILDER, REDSHIFT_LEGACY)    # copied whole
 
 
 def _karma_settings(net, preferences) -> tuple:
@@ -68,10 +71,30 @@ def _octane_settings(net, preferences) -> tuple:
     return settings, rop
 
 
-RENDER_SETTINGS = {"Karma": _karma_settings, "Octane": _octane_settings}
+REDSHIFT_SETTINGS = "redshift::1.1"    # Redshift's render settings LOP ▸r/redshift-thumbnail-paths
 
-OCTANE_LIGHT_SCALE = 0.5    # Octane lights this stage about twice as bright ▸r/octane-thumbnail
-OCTANE_STAGE_EDIT = (    # the camera's f-stop off, as Karma's settings turn DOF off; the lights scaled
+
+def _redshift_settings(net, preferences) -> tuple:
+    """Redshift's render settings and a USD Render ROP through its delegate, lit by the stage."""
+    settings = net.createNode(REDSHIFT_SETTINGS)
+    settings.parm("RS_renderCamera").set(RENDER_CAMERA)
+    settings.parm("res_mode").set("manual")
+    for name in ("RS_overrideRes1", "RS_overrideRes2"):
+        settings.parm(name).set(preferences.rendersize)
+    settings.parm("redshiftglobalUnifiedMaxSamples").set(preferences.rendersamples)
+
+    rop = net.createNode("usdrender_rop")
+    rop.parm("renderer").set("HdRedshiftRendererPlugin")
+    rop.setFirstInput(settings)
+    rop.parm("soho_foreground").set(1)
+    return settings, rop
+
+
+RENDER_SETTINGS = {"Karma": _karma_settings, "Octane": _octane_settings,
+                   "Redshift": _redshift_settings}
+
+LIGHT_SCALE = {"Octane": 0.5, "Redshift": 0.86}    # lights scaled to Karma's, f-stop off ▸r/octane-thumbnail
+STAGE_EDIT = (    # the camera's f-stop off, as Karma's settings turn DOF off; the lights scaled
     "from pxr import UsdLux\n"
     "stage = hou.pwd().editableStage()\n"
     "stage.GetPrimAtPath(%r).GetAttribute('fStop').Set(0.0)\n"
@@ -81,10 +104,10 @@ OCTANE_STAGE_EDIT = (    # the camera's f-stop off, as Karma's settings turn DOF
     "        intensity.Set(intensity.Get() * %r)\n")
 
 
-def _octane_stage(net, upstream):
-    """The stage as Octane needs it, edited after `upstream`: no depth of field, lights scaled."""
-    edit = net.createNode("pythonscript", "octane_stage")
-    edit.parm("python").set(OCTANE_STAGE_EDIT % (RENDER_CAMERA, OCTANE_LIGHT_SCALE))
+def _edited_stage(net, upstream, renderer: str):
+    """The stage as `renderer` needs it, edited after `upstream`: no depth of field, lights scaled."""
+    edit = net.createNode("pythonscript", renderer.lower() + "_stage")
+    edit.parm("python").set(STAGE_EDIT % (RENDER_CAMERA, LIGHT_SCALE[renderer]))
     edit.setFirstInput(upstream)
     return edit
 
@@ -109,7 +132,7 @@ def build_usd_scaffold(preferences, renderer="Karma"):
             ref.parm("primpath1").set("/shaderBallScene")
             lib1 = net.createNode("materiallibrary")
             lib1.setFirstInput(
-                _octane_stage(net, ref) if renderer == "Octane" else ref)
+                _edited_stage(net, ref, renderer) if renderer in LIGHT_SCALE else ref)
             surf = lib1.createNode("mtlxstandard_surface")
             tex = lib1.createNode("mtlxtiledimage")
             tex.parm("file").set(FLOOR_TEXTURE[renderer])
@@ -158,6 +181,9 @@ def _stage_material(lib, node, asset_id, prim_path: str) -> str:
                           if isinstance(item, hou.Node)]    # a dot is no material candidate
         else:
             curr_nodes = hou.copyNodesTo(curr_items, lib)  # type: ignore
+            if not isinstance(node, list) and node.type().name() == REDSHIFT_LEGACY:
+                from amaze.render.material_conversion import engine    # late: it imports render/
+                curr_nodes = [engine.ready_for_solaris(curr_nodes[0], "Redshift")]    # the copy, as the USD builder
     if curr_nodes:    # empty for a builder subnet with no children: nothing to render
         curr_nodes[0].setSelected(True)
 
@@ -174,7 +200,7 @@ def _stage_material(lib, node, asset_id, prim_path: str) -> str:
                 mat_node = n
                 break
             elif ("subnet" in n.type().name()
-                  or n.type().name() == OCTANE_LOP_CONTAINER):
+                  or n.type().name() in (OCTANE_LOP_CONTAINER, REDSHIFT_BUILDER)):
                 n.setGenericFlag(hou.nodeFlag.Material, True)
                 mat_node = n
                 break

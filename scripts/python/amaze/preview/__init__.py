@@ -1,17 +1,14 @@
-"""THE PREVIEW ENGINE - the throwaway subnet a material thumbnail is shot in; the CALLER destroys it (`render/thumbs.py`). Inherited from egMatLib (GPLv3). ▸p/egmatlib-overlap"""
+"""THE PREVIEW ENGINE: the USD stage a thumbnail batch renders in ▸r/husk-startup"""
 import importlib
 
-from amaze.preview import shaderball_scene
 from amaze.preview import thumbnail_scene
 from amaze.preview import usd_scene
 
-_LEAF_FIRST = (shaderball_scene, thumbnail_scene, usd_scene)
+_LEAF_FIRST = (thumbnail_scene, usd_scene)
 
 _DOOR = {
-    "ThumbNailScene": thumbnail_scene,
     "ocio_from_viewer": thumbnail_scene,
     "safe_set": thumbnail_scene,
-    "rig_key": thumbnail_scene,
     "build_usd_scaffold": usd_scene,
     "write_batch": usd_scene,
     "exr_to_png": usd_scene,

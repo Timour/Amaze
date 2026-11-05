@@ -1,4 +1,3 @@
-import contextlib
 import functools
 import os
 import shutil
@@ -31,11 +30,12 @@ def _undo_free(method):
 
 
 def usd_renderer(mat) -> str:
-    """`Karma` or `Octane` for a material husk renders in the background, "" for the rest."""
+    """`Karma`, `Octane` or `Redshift`: the husk a material renders in; "" for a renderer with none."""
     if renderers.is_karma(mat.renderer):
         return "Karma"
-    if "Octane" in str(mat.renderer):
-        return "Octane"
+    for name in ("Octane", "Redshift"):
+        if name in str(mat.renderer):
+            return name
     return ""
 
 
@@ -86,15 +86,16 @@ class ThumbNailRenderer:
 
     @staticmethod
     def render_assets(preferences, mats) -> None:
-        """Re-render library materials: Karma's and Octane's each in ONE husk, the rest in turn."""
+        """Re-render library materials: each renderer's in ONE husk; one with no husk is named."""
         groups = {}
-        others = []
+        refused = []
         for mat in mats:
             renderer = usd_renderer(mat)
             if renderer:
                 groups.setdefault(renderer, []).append(mat)
             else:
-                others.append(mat)
+                refused.append(messages.THUMBNAIL_RENDERER_NOT_LOADED
+                               % (mat.name, renderers.label(mat.renderer)))
         if not preview.ocio_from_viewer():    # every renderer takes its OCIO from a Scene Viewer
             debug.event("thumb", "no scene viewer - the batch renders nothing")
             ui = getattr(hou, "ui", None)
@@ -103,8 +104,9 @@ class ThumbNailRenderer:
             return
         for renderer, group in groups.items():
             ThumbNailRenderer._render_group(preferences, renderer, group)
-        for mat in others:
-            ThumbNailRenderer(preferences, mat).create_thumbnail()
+        ui = getattr(hou, "ui", None)
+        if refused and ui is not None:    # ONE message for the rows no husk renders
+            ui.displayMessage("\n".join(refused))
 
     @staticmethod
     def _render_group(preferences, renderer: str, mats) -> None:
@@ -136,63 +138,12 @@ class ThumbNailRenderer:
             ui.displayMessage("\n".join(refused))
 
     def create_thumbnail(self) -> None:
-        """Render this material's thumbnail: Karma's and Octane's in the background."""
-        if usd_renderer(self._mat):
-            ThumbNailRenderer.render_assets(self._preferences, [self._mat])
-            return
-        node_handler = nodes.NodeHandler(self._preferences)
-        with hou.undos.disabler():    # the import into /mat and its cleanup are a pair ▸r/undo-groups
-            ok, reason, _created = node_handler.import_asset_to_scene(
-                self._mat, target="mat")  # `mat`, never `auto`: from a LOP editor, auto leaves a dead entry
-            if not ok:  # refused: there is no builder node to render
-                ui = getattr(hou, "ui", None)
-                if reason and ui is not None:
-                    ui.displayMessage(reason)
-                return
-
-            try:
-                with hou.InterruptableOperation(
-                    "Rendering", "Performing Tasks", open_interrupt_dialog=True
-                ):
-                    if "Redshift" in self._mat.renderer:
-                        self.create_thumb_redshift(
-                            node_handler.builder_node, self._mat.mat_id)
-            finally:
-                node_handler.cleanup()  # in the finally: an interrupted render leaves no copy in /mat
+        """Render this material's thumbnail in the background: a batch of one."""
+        ThumbNailRenderer.render_assets(self._preferences, [self._mat])
 
     def create_thumb_mtlx(self, node: hou.Node, asset_id: str) -> bool:
         """One MaterialX thumbnail, in the background; a batch of one."""
         return self.render_batch(self._preferences, "Karma", [(asset_id, node)])
-
-    @contextlib.contextmanager
-    def _thumb_scene(self, renderer: str):
-        """Yield (scene, thumb) and destroy the scene on every exit, the raising ones included - so set every parm INSIDE the `with`: anything that raises before it leaves a Thumbnail_* subnet behind in the user's scene, which is then saved into the hip file."""
-        with hou.undos.disabler():  # research.md ▸ Undo names thumbnails explicitly; measured, a createNode/destroy pair on the live stack comes back on one Ctrl+Z and the same pair inside a disabler does not, so without this the next undo resurrects the throwaway scene
-            sc = preview.ThumbNailScene(renderer)
-            thumb = sc.get_node()
-            try:
-                yield sc, thumb
-            finally:
-                thumb.destroy()  # in the finally, so an interrupted render leaves no orphaned thumbnail scene with a live ROP in /obj
-
-    def _setup_thumb_rop(self, thumb, node: hou.Node, out_path: str) -> None:
-        """Set the shared material/path/exclusion/light/resolution parms on a thumbnail ROP, every one through `safe_set`, so a parm a given renderer build does not expose is skipped instead of raising."""
-        preview.safe_set(thumb, "mat", node.path())
-        preview.safe_set(thumb, "path", out_path)
-        preview.safe_set(thumb, "obj_exclude", "* ^" + thumb.name())
-        preview.safe_set(thumb, "lights", thumb.name() + "/*")
-        preview.safe_set(thumb, "resx", self._preferences.rendersize)
-        preview.safe_set(thumb, "resy", self._preferences.rendersize)
-
-    def _rendered(self, png_path: str, renderer: str, asset_id: str,
-                  errors=None) -> bool:
-        """Did the render write png_path? False also logs it - callers must pass `errors` they gathered while the thumb scene was still alive, and must actually branch on the result (per practice.md #364 a failed render keeps the OLD thumbnail, so this log line is the only trace)."""
-        if os.path.exists(png_path):
-            return True
-        debug.event("thumb", "render produced no image",
-                    renderer=renderer, asset_id=str(asset_id),
-                    path=png_path, errors=errors or "")  # gathered by the caller, not here: every caller reaches this AFTER its `with self._thumb_scene` block, which destroys the scene the ROP is a grandchild of, so reading them here raised hou.ObjectWasDeleted and node_errors swallowed it into {}
-        return False
 
     @staticmethod
     def _pick_cop_thumb_source(temp: hou.Node) -> hou.Node | None:
@@ -585,15 +536,8 @@ class ThumbNailRenderer:
                     temp.destroy()
 
     def create_thumb_redshift(self, node: hou.Node, asset_id: str) -> bool:
-        path = tile_icons.thumbnail_path(self._preferences, asset_id)
-        with self._thumb_scene("Redshift") as (sc, thumb):
-            self._setup_thumb_rop(thumb, node, path)
-            preview.safe_set(  # rendersamples is the Redshift dial (Karma has its own karma_rendersamples); MAX only - the min stays at the ROP default so Redshift's adaptive sampling still decides how much of the budget each pixel needs
-                sc.rop, "UnifiedMaxSamples", self._preferences.rendersamples
-            )
-            thumb.parm("render").pressButton()
-            errors = helpers.node_errors(getattr(sc, "rop", None))
-        return self._rendered(path, "Redshift", asset_id, errors)
+        """One Redshift thumbnail in the shared stage, in the background. ▸r/redshift-thumbnail-stall"""
+        return self.render_batch(self._preferences, "Redshift", [(asset_id, node)])
 
     def create_thumb_octane(self, node: hou.Node, asset_id: str) -> bool:
         """One Octane thumbnail in the MaterialX one's stage, in the background. ▸r/octane-thumbnail"""

@@ -31,111 +31,28 @@ from amaze.tests import test_support  # noqa: E402
 source_of = test_support.source_of
 
 
-class _Parm:
-    def __init__(self, log, name):
-        self._log, self._name = log, name
+class EveryRendererRendersInTheOneBatch(unittest.TestCase):
+    """No material renders inside Houdini: each renderer's door is a batch of one."""
 
-    def set(self, value, **kw):
-        self._log.append((self._name, value))
+    def test_each_door_is_a_batch_of_one(self):
+        prefs = test_support.fixture_prefs(self)
+        node = mock.Mock(name="builder")
+        for door, renderer in (("create_thumb_mtlx", "Karma"),
+                               ("create_thumb_octane", "Octane"),
+                               ("create_thumb_redshift", "Redshift")):
+            with self.subTest(door=door):
+                batches = []
+                with mock.patch.object(thumbs.ThumbNailRenderer, "render_batch", staticmethod(
+                        lambda _prefs, r, items: batches.append((r, items)))):
+                    getattr(thumbs.ThumbNailRenderer(prefs), door)(node, "ID")
+                self.assertEqual([(renderer, [("ID", node)])], batches)
 
-    def pressButton(self):
-        self._log.append((self._name, "PRESSED"))
-
-
-class _Thumb:
-    """Stands in for the thumbnail subnet, so the render verdict is answerable without a Scene Viewer or a licence."""
-
-    def __init__(self, missing=()):
-        self.sets = []
-        self.destroyed = 0
-        self.missing = set(missing)
-
-    def parm(self, name):
-        return None if name in self.missing else _Parm(self.sets, name)
-
-    def name(self):
-        return "Thumbnail_Stub"
-
-    def path(self):
-        return "/obj/Thumbnail_Stub"
-
-    def destroy(self):
-        self.destroyed += 1
-
-
-class _Scene:
-    def __init__(self, renderer="Redshift", missing=()):
-        self.renderer = renderer
-        self.thumb = _Thumb(missing)
-        self.rop = _Thumb()
-
-    def get_node(self):
-        return self.thumb
-
-
-class _RendererCase(unittest.TestCase):
-
-    def setUp(self):
-        test_support.reset_database_singletons()
-        self.addCleanup(test_support.reset_database_singletons)
-        self.prefs = test_support.fixture_prefs(self)
-        self.renderer = thumbs.ThumbNailRenderer(self.prefs)
-        self.scenes = []
-
-    def stub_scene(self, missing=()):
-        # Patch the PACKAGE name, which thumbs.py resolves at call time.
-        real = preview.ThumbNailScene
-        self.addCleanup(setattr, preview, "ThumbNailScene", real)
-
-        def factory(renderer="Redshift"):
-            scene = _Scene(renderer, missing)
-            self.scenes.append(scene)
-            return scene
-
-        preview.ThumbNailScene = factory
-
-    def paths(self):
-        # Every /obj-scene renderer; Octane renders in the USD stage now.
-        return (("Redshift", self.renderer.create_thumb_redshift),)
-
-
-class ARenderThatWroteNothingReportsFailure(_RendererCase):
-
-    def test_no_image_means_False(self):
-        self.stub_scene()
-        for name, call in self.paths():
-            self.assertFalse(
-                call(hou.node("/obj"), "NO_SUCH_ASSET"),
-                "%s reported success after a render that wrote no "
-                "image - nodes.py's failure branch for it is dead code, "
-                "and a failed render keeps the OLD thumbnail, so the "
-                "tile shows the previous picture and nothing anywhere "
-                "says the new one never happened" % name)
-            target = tile_icons.thumbnail_path(self.prefs, "WROTE_%s" % name)
-            os.makedirs(os.path.dirname(target), exist_ok=True)
-            QtGui.QImage(4, 4, QtGui.QImage.Format.Format_RGB32).save(target)
-            self.assertTrue(
-                call(hou.node("/obj"), "WROTE_%s" % name),
-                "%s reported failure although the image is on disk" % name)
-
-
-class EveryRendererCleansUpItsScene(_RendererCase):
-
-    def test_a_missing_parm_still_destroys_the_scene(self):
-        """A missing `mat` parm must still leave no Thumbnail_* subnet in the user's scene."""
-        for name, call in self.paths():
-            self.scenes = []
-            self.stub_scene(missing=("mat",))
-            try:
-                call(hou.node("/obj"), "X")
-            except Exception:                             # noqa: BLE001
-                pass
-            self.assertTrue(self.scenes, "no scene was built for " + name)
-            self.assertEqual(
-                1, self.scenes[-1].thumb.destroyed,
-                "%s did not destroy its thumbnail scene when a parm was "
-                "missing - an orphaned subnet with a live ROP is left in "
-                "/obj and saved into the user's scene" % name)
+    def test_no_material_path_opens_an_interrupt_dialog(self):
+        """Houdini's Interrupt dialog cannot end a third-party render; a husk's Cancel can."""
+        source = source_of("render/thumbs.py")
+        material_part = source[:source.index("def create_thumb_geo_file")]
+        self.assertNotIn("InterruptableOperation", material_part)
+        self.assertNotIn("ThumbNailScene", source)
 
 
 class TheThumbnailPathIsComposedInOnePlace(unittest.TestCase):
@@ -373,35 +290,6 @@ class ThumbnailsLeaveNothingOnTheUndoStack(unittest.TestCase):
             "these destroy a scene container on the LIVE undo stack, "
             "so one Ctrl+Z resurrects it with its children: %s"
             % unguarded)
-
-
-class TheSceneBuildKeepsTheUsersSelection(unittest.TestCase):
-    """Building a scene puts the user's node selection back; the Redshift spare-parm hscript works on the selection."""
-
-    def test_building_a_redshift_scene_restores_the_selection(self):
-        if hou.nodeType(hou.ropNodeTypeCategory(), "Redshift_ROP") is None:
-            self.skipTest("Redshift is not available in this session")
-        # Patch the SUBMODULE here: the constructor resolves it locally.
-        module = preview.thumbnail_scene
-        real = module.ocio_from_viewer
-        module.ocio_from_viewer = lambda: {
-            "display": "sRGB - Display",
-            "view": "ACES 1.0 - SDR Video",
-            "space": "ACEScg",
-        }
-        self.addCleanup(setattr, module, "ocio_from_viewer", real)
-        with hou.undos.disabler():
-            keeper = hou.node("/obj").createNode("null")
-        self.addCleanup(lambda: keeper.destroy())
-        keeper.setSelected(True, True)
-        scene = preview.ThumbNailScene("Redshift")
-        try:
-            self.assertIn(
-                keeper, hou.selectedNodes(),
-                "building a thumbnail scene ate the user's selection")
-        finally:
-            with hou.undos.disabler():
-                scene.get_node().destroy()
 
 
 class AKarmaThumbnailLeavesTheSceneAsItFoundIt(unittest.TestCase):
@@ -657,74 +545,7 @@ class ANetworkThumbnailLeavesNothingOnTheUndoStack(unittest.TestCase):
         self.assertEqual((), hou.undos.undoLabels())
 
 
-class _CamStub:
-    """Enough node for build_cam to run with no licence and no viewer: every parm exists and accepts every set."""
-
-    def __init__(self):
-        self.sets = []
-
-    def createNode(self, kind):
-        return _CamStub()
-
-    def parm(self, name):
-        return _Parm(self.sets, name)
-
-    def setName(self, name, *args):
-        pass
-
-    def setInput(self, *args):
-        pass
-
-    def setSelected(self, *args):
-        pass
-
-    def path(self):
-        return "/obj/CamStub"
-
-
-class TheSpareParmCommandIsCheckedByItsReturnValue(unittest.TestCase):
-    """`hou.hscript` reports failure in the SECOND string of the tuple it returns and never raises, so a guard written as `except` alone reads every failure as a success."""
-
-    def _build_cam(self, answer):
-        module = preview.thumbnail_scene
-        scene = module.ThumbNailScene.__new__(module.ThumbNailScene)
-        scene.renderer = "Redshift"
-        scene.geo_node = _CamStub()
-        scene._user_selection = hou.selectedNodes()   # build_cam puts it back
-        asked = []
-
-        def fake_hscript(command):
-            asked.append(command)
-            return answer
-
-        with mock.patch.object(module.hou, "hscript", fake_hscript), \
-                mock.patch.object(module.debug, "event") as recorded:
-            scene.build_cam()
-        return asked, [call for call in recorded.call_args_list
-                       if "Redshift_cameraSpareParameters" in str(call)]
-
-    def test_a_command_that_failed_is_recorded(self):
-        for error, recorded in (("Unknown command: RS_camera_spare\n", True),
-                                ("", False)):
-            with self.subTest(error=error):
-                asked, said = self._build_cam(("", error))
-                self.assertEqual(
-                    1, len(asked),
-                    "build_cam never ran the spare-parm command, so this "
-                    "test cannot say anything about how its failure is read")
-                self.assertEqual(
-                    recorded, bool(said),
-                    "hou.hscript returns (output, error) and never raises: "
-                    "an error must be recorded, and an empty one is a "
-                    "command that WORKED")
-
-
-class TheLightRigDegradesLikeTheRopsDo(unittest.TestCase):
-
-    def test_a_renderer_with_no_rig_is_refused_not_placed(self):
-        """An unnamed renderer raises rather than silently placing a light with no size parms."""
-        with self.assertRaises(hou.OperationFailed):
-            preview.rig_key("Arnold")
+class SafeSetSurvivesAMissingParm(unittest.TestCase):
 
     def test_safe_set_survives_a_missing_parm(self):
         class Bare:
@@ -893,13 +714,13 @@ class ACapturePathCostsNoDisk(unittest.TestCase):
 
 class ARerenderNeverEntersTheUsersLopContext(unittest.TestCase):
 
-    def test_create_thumbnail_forces_the_mat_context(self):
-        """A thumbnail render forces target="mat"; "auto" would import into whatever LOP network the user has in front. Read by AST, not by text. ▸p/source-derived-tests"""
+    def test_the_batch_import_forces_the_mat_context(self):
+        """The batch imports with target="mat", never "auto". Read by AST ▸p/source-derived-tests"""
         tree = ast.parse(source_of("render/thumbs.py"))
         targets = []
         for function in ast.walk(tree):
             if not (isinstance(function, ast.FunctionDef)
-                    and function.name == "create_thumbnail"):
+                    and function.name == "_render_group"):
                 continue
             for node in ast.walk(function):
                 if not (isinstance(node, ast.Call)
@@ -910,11 +731,11 @@ class ARerenderNeverEntersTheUsersLopContext(unittest.TestCase):
                                 if kw.arg == "target"
                                 and isinstance(kw.value, ast.Constant)])
         self.assertTrue(
-            targets, "create_thumbnail no longer imports an asset at all "
+            targets, "_render_group no longer imports an asset at all "
                      "- this test can no longer see its subject")
         self.assertEqual(
             [["mat"]] * len(targets), targets,
-            "create_thumbnail imports with the active editor's context "
+            "the batch imports with the active editor's context "
             "again - a thumbnail has no business in the user's LOP "
             "network, and every rerender there leaves a dead entry "
             "behind and retranslates their whole material library")
@@ -1273,17 +1094,11 @@ class TheThumbnailPicksItsRendererAsTheImportDoes(unittest.TestCase):
 
     def _rendered_by(self, label):
         from amaze.core import material
-        from amaze.render import nodes
         mat = material.Material(name="labelled", renderer=label)
         calls = []
-        with mock.patch.object(nodes.NodeHandler, "import_asset_to_scene",
-                               return_value=(True, "", [])), \
-                mock.patch.object(nodes.NodeHandler, "cleanup"), \
-                mock.patch.object(thumbs.ThumbNailRenderer, "create_thumb_redshift",
-                                  lambda _self, *_args: calls.append("Redshift")), \
-                mock.patch.object(thumbs.ThumbNailRenderer, "render_assets",
-                                  lambda _prefs, mats: calls.extend(
-                                      thumbs.usd_renderer(m) for m in mats)):
+        with mock.patch.object(thumbs.ThumbNailRenderer, "render_assets",
+                               lambda _prefs, mats: calls.extend(
+                                   thumbs.usd_renderer(m) for m in mats)):
             thumbs.ThumbNailRenderer(mock.Mock(), mat).create_thumbnail()
         return calls
 

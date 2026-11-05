@@ -162,9 +162,9 @@ require `$OCIO`.
 
 ### Preview rendering
 
-Karma and Octane previews render in the background. A progress bar
-above the grid follows the render, and each tile updates when its
-preview is done. Redshift previews render in the foreground.
+Previews render in the background, one render per renderer for the
+whole selection. A progress bar above the grid follows the render, and
+each tile updates when its preview is done.
 
 **Update Render** renders the selected materials again. **Cancel**, at
 the right end of the tab row, stops the render.
@@ -716,7 +716,7 @@ Preferences**, which opens this tab. A computer still signed in as a
 deleted user shows the same message the next time Amaze opens.
 
 **Cache Path** and **Delete Local Cache** manage the thumbnail cache on
-this machine.
+this machine, the cache and log of Redshift's preview renders included.
 
 ### Render
 
