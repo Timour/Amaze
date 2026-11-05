@@ -70,10 +70,14 @@ class TheGuardedPanelRefusesHeadlessTest(unittest.TestCase):
     def test_every_guarded_door_refuses_instead_of_crashing(self):
         """No library, no editor, no selected folder: each returns early. No network reads None."""
         panel = self.panel
+        geo = hou.node("/obj").createNode("geo", "headless_convert_geo")    # no conversion route: the refusal is said
+        self.addCleanup(geo.destroy)
         doors = (("cleanup_db", lambda: panel.cleanup_db()),
                  ("open_usdlib_folder", lambda: panel.open_usdlib_folder()),
                  ("_active_network_pwd", lambda: self.assertIsNone(panel._active_network_pwd())),
-                 ("_locate_folder_user", lambda: panel._locate_folder_user(None)))
+                 ("_locate_folder_user", lambda: panel._locate_folder_user(None)),
+                 ("rc_calls.convert(None)", lambda: rc_calls.convert(None, "Karma")),
+                 ("rc_calls.convert(geo)", lambda: rc_calls.convert(geo, "Karma")))
         panel.material_model = None
         for name, call in doors:
             with self.subTest(door=name):

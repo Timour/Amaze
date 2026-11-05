@@ -149,7 +149,7 @@ are Redshift, Karma (MaterialX) and Octane.
 
 ### Saving
 
-**Save to Amaze**, on the right-click menu of a material node in the
+**Amaze ▸ Save**, on the right-click menu of a material node in the
 network editor, opens the save dialog. The dialog sets the name,
 category and tags, and **Section** sets the section the material is
 saved to. Amaze renders a preview and adds the material to the library.
@@ -216,6 +216,12 @@ tile onto a category in the sidebar moves it to that category.
 **Convert to ▸ MaterialX**, **Redshift** or **Octane** builds a copy of
 the material for that renderer next to the original, with the same name
 and textures. Anything that cannot be converted is listed in a report.
+
+**Amaze ▸ Convert to Redshift** and **Amaze ▸ Convert to Karma**, on the
+right-click menu of a material node in the network editor, build the
+converted material beside the node and select it. Each is offered when
+the node's material has a route to that renderer and its plugin is
+loaded.
 
 All conversions go through MaterialX. Redshift to Octane, for example,
 converts Redshift to MaterialX and then MaterialX to Octane. Octane
@@ -292,7 +298,7 @@ materials: about a third have a clearcoat, and very few emit.
 
 The **node comment** of a generated material records the measurement it
 started from and what was varied. Generated materials are scene nodes,
-added to the library with **Save to Amaze**.
+added to the library with **Amaze ▸ Save**.
 
 ---
 
@@ -320,7 +326,7 @@ The right-click menu:
 <img src="docs/images/menu_apply_as.png" width="200">
 <img src="docs/images/menu_copy_color.png" width="260">
 
-**Save to Amaze** on a node with a colour ramp, with **Section** set to
+**Amaze ▸ Save** on a node with a colour ramp, with **Section** set to
 Color, saves the ramp as a palette.
 
 ---
@@ -334,7 +340,7 @@ tile.
 
 <img src="docs/images/node_grid.png" width="820">
 
-**Save to Amaze**, with **Section** set to Node, saves the contents of a
+**Amaze ▸ Save**, with **Section** set to Node, saves the contents of a
 network container (a `geo`, `copnet`, `lopnet` or `subnet`) or the
 selected nodes.
 

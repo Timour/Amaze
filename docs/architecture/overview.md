@@ -664,7 +664,8 @@ Structured session logging, JSON Lines. **Two tiers:**
   refusal's status line and the session header's Houdini facts go
   through what `hand_over` was given: `utils/rc_calls.HoudiniSpeaker`,
   handed over by `rc_calls.start()`, the first call of the pane, of every
-  shelf tool and of Save to Amaze. Until then alerts and refusals print.
+  shelf tool and of the node menu's Amaze ▸ Save and Convert to entries.
+  Until then alerts and refusals print.
 - **`$AMAZE_LOG_DIR` moves the whole log dir, read ONCE at import** so a
   process can be isolated before any module has logged anything. The
   test runner sets it: the crash tier writes with Debug Mode off, so a
@@ -1291,7 +1292,8 @@ helpers/bytecode.py       Amaze's compiled files, always hash-checked:
                           panel fills in what is missing after it paints
 helpers/                  theme, ui widgets, vex syntax, generic helpers
 utils/rc_calls.py         the entry points Houdini itself calls: the
-                          OPmenu's Save to Amaze, and the shelf's
+                          OPmenu's Amaze submenu (Convert to Redshift,
+                          Convert to Karma, Save), and the shelf's
                           Capture, Updates and Reload, one call each -
                           finds the open panel by its pane-tab label;
                           `start()` hands the log its Houdini speaker

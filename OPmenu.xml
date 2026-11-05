@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <menuDocument>
     <menu>
-        <scriptItem id="saveToAmaze">
+        <subMenu id="amaze">
+            <label>Amaze</label>
             <context>
                 <expression>
 <![CDATA[
@@ -32,18 +33,56 @@ except Exception:
 return False ]]>
                     </expression>
             </context>
-            <labelExpression>
+            <scriptItem id="amazeConvertToRedshift">
+                <label>Convert to Redshift</label>
+                <context>
+                    <expression>
 <![CDATA[
+# Context code asks the package and shows nothing: a broken install hides the item, never the menu.
 try:
-    from amaze import branding
-    _APP = branding.APP_NAME
+    from amaze.utils import rc_calls
+    return rc_calls.convertible(kwargs.get("node", None), "Redshift")
 except Exception:
-    _APP = "Amaze"
-
-return "Save to " + _APP
+    return False
 ]]>
-</labelExpression>
-            <scriptCode>
+                    </expression>
+                </context>
+                <scriptCode>
+<![CDATA[
+from amaze.utils import rc_calls
+import importlib
+importlib.reload(rc_calls)
+rc_calls.convert(kwargs.get("node", None), "Redshift")
+]]>
+                </scriptCode>
+            </scriptItem>
+            <scriptItem id="amazeConvertToKarma">
+                <label>Convert to Karma</label>
+                <context>
+                    <expression>
+<![CDATA[
+# Context code asks the package and shows nothing: a broken install hides the item, never the menu.
+try:
+    from amaze.utils import rc_calls
+    return rc_calls.convertible(kwargs.get("node", None), "Karma")
+except Exception:
+    return False
+]]>
+                    </expression>
+                </context>
+                <scriptCode>
+<![CDATA[
+from amaze.utils import rc_calls
+import importlib
+importlib.reload(rc_calls)
+rc_calls.convert(kwargs.get("node", None), "Karma")
+]]>
+                </scriptCode>
+            </scriptItem>
+            <separatorItem id="amazeSeparator"/>
+            <scriptItem id="amazeSave">
+                <label>Save</label>
+                <scriptCode>
 <![CDATA[
 from amaze.utils import rc_calls
 import importlib
@@ -51,6 +90,7 @@ importlib.reload(rc_calls)
 rc_calls.save(kwargs.get("node", None))
 ]]>
                 </scriptCode>
-        </scriptItem>
+            </scriptItem>
+        </subMenu>
     </menu>
 </menuDocument>

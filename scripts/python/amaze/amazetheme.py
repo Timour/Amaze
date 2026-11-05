@@ -205,7 +205,7 @@ EMPTY_MATERIAL = {    # ▸ E01-E05, each section's FIRST-RUN blank, and the quo
     "nothing-yet": (
         "No materials saved yet",
         "Right-click a material in the network editor and choose "
-        "Save to Amaze.",
+        "Amaze ▸ Save.",
         "", ""),
 }
 QUOTE_MATERIAL = (
@@ -215,7 +215,7 @@ QUOTE_MATERIAL = (
 EMPTY_COLOR = {
     "nothing-yet": (
         "No palettes saved yet",
-        "Right-click a color ramp and choose Save to Amaze.",
+        "Right-click a color ramp and choose Amaze ▸ Save.",
         "", ""),
 }
 QUOTE_COLOR = ('"I\'m profoundly optimistic about nothing."',
@@ -224,8 +224,8 @@ QUOTE_COLOR = ('"I\'m profoundly optimistic about nothing."',
 EMPTY_NODE = {
     "nothing-yet": (
         "No node assets saved yet",
-        "Select nodes in a network, right-click and choose Save to "
-        "Amaze.",
+        "Select nodes in a network, right-click and choose "
+        "Amaze ▸ Save.",
         "", ""),
 }
 QUOTE_NODE = ('"I have nothing to say and I am saying it."',
@@ -234,7 +234,7 @@ QUOTE_NODE = ('"I have nothing to say and I am saying it."',
 EMPTY_CODE = {
     "nothing-yet": (
         "No code saved yet",
-        "Right-click a wrangle and choose Save to Amaze.",
+        "Right-click a wrangle and choose Amaze ▸ Save.",
         BTN_NEW_FILE, "new_code_snippet"),
 }
 

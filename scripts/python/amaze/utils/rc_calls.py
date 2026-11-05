@@ -111,6 +111,55 @@ def save(node=None) -> None:
     door(node)
 
 
+def node_renderer(node) -> str:
+    """The renderer a scene node's type implies, "" for none, by the save door's own detector."""
+    if node is None:
+        return ""
+    from amaze.render import nodes
+    return nodes.NodeHandler(None).get_renderer_from_node(node)    # the detector reads no preferences
+
+
+def convertible(node, target) -> bool:
+    """Whether the right-click offers `Convert to <target>`: no dialog, no panel, as context code must."""
+    from amaze.core import renderers
+    from amaze.render.material_conversion import engine
+    renderer = node_renderer(node)
+    return bool(renderer) and renderers.normalized(renderer) != target \
+        and engine.can_convert(renderer, target)    # a target whose plugin is not loaded is not offered
+
+
+def convert(node, target) -> None:
+    """Right-click `Convert to <target>`: the panel's engine on the node itself, its twin beside it."""
+    start()
+    if node is None:
+        return
+    from amaze.core import renderers
+    from amaze.render.material_conversion import engine
+    from amaze.render.material_conversion.report import ConversionReport
+    ui = getattr(hou, "ui", None)
+    renderer = node_renderer(node)
+    report = ConversionReport(node.name())
+    reason = engine.why_not(renderer, target)
+    if reason:    # before the build: a missing plugin makes it raise
+        if ui is not None:
+            ui.displayMessage(reason)
+        return
+    word = renderers.get(target).engine    # the menu item's own word, Karma, where the library label says MaterialX
+    with hou.undos.group("Convert to %s" % word):    # one undo step per menu command, as Houdini's own
+        made = engine.convert(node, renderer, target, node.parent(),
+                              "%s_%s" % (node.name(), word.lower()), report)
+        if made.builder is not None:
+            made.builder.setCurrent(True, True)    # current and selected, as a node from the Tab menu is
+    if ui is None:    # no screen to say it on: the twin is the answer
+        return
+    if made.shader is not None and report.is_clean():    # summary_lines always holds the name line, so cleanliness is asked
+        HoudiniSpeaker.status(messages.NODE_CONVERTED % (node.name(), word))
+    else:
+        ui.displayMessage(messages.CONVERSION_SUMMARY % (
+            1 if made.shader is not None else 0, 1, renderers.label(renderer), word,
+            "\n".join(report.summary_lines())))
+
+
 def _shelf_tool(*names):
     """A shelf tool's prologue: (ui, each of `names` imported), or None when it must stop there."""
     start()

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.27.0
+
+- The node right-click menu has an Amaze submenu in place of Save to Amaze: Convert to Redshift, Convert to Karma and Save. The converts build the converted material beside the node, through the same converters as the panel's Convert to.
+
 ## 1.26.0
 
 - The File sidebar has $HIP as a fixed location under All, showing the folder of the current open .hip file. All does not include it.
