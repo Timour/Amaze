@@ -211,29 +211,39 @@ def convert(node, target, swap=False) -> None:
             made_count, len(chosen), shown, word, "\n".join(lines)))
 
 
-VIEWPORT_PROPERTIES = (
-    "ogl_diff", "ogl_spec", "ogl_rough", "ogl_metallic", "ogl_emit", "ogl_alpha",
-    "ogl_normalmap", "ogl_roughmap", "ogl_metallicmap", "ogl_emissionmap", "ogl_opacitymap",
-    "ogl_numtex",
-)    # Houdini's own material properties ▸r/viewport-ogl-block
+USD_BUILDER = "rs_usd_material_builder"    # the classic builder has no suboutput to carry a preview
 
-VIEWPORT_CHANNELS = (
-    ("ogl_diff", ("base_color",), "ogl_tex1"),
-    ("ogl_spec", ("refl_color", "specular_color"), None),
-    ("ogl_rough", ("refl_roughness", "specular_roughness"), "ogl_roughmap"),
-    ("ogl_metallic", ("metalness", "base_metalness"), "ogl_metallicmap"),
-    ("ogl_emit", ("emission_color",), "ogl_emissionmap"),
-    ("ogl_alpha", ("opacity_color", "geometry_opacity"), "ogl_opacitymap"),
-)    # property, shader parm (Standard, then OpenPBR), map slot ▸r/redshift-nodes
+PREVIEW_NAME = "preview"
+
+PREVIEW_SURFACE = "mtlxUsdPreviewSurface"    # the MaterialX spelling the viewport help lists ▸r/usd-builder-no-viewport-block
+
+PREVIEW_CHANNELS = (
+    ("diffuseColor", ("base_color",), "preview_diffuse", "color3"),
+    ("specularColor", ("refl_color", "specular_color"), None, None),
+    ("roughness", ("refl_roughness", "specular_roughness"), "preview_roughness", "float"),
+    ("metallic", ("metalness", "base_metalness"), "preview_metallic", "float"),
+    ("emissiveColor", ("emission_color",), "preview_emissive", "color3"),
+    ("opacity", ("opacity_color", "geometry_opacity"), "preview_opacity", "float"),
+)    # preview input, shader parm (Standard, then OpenPBR), image node, its signature
+
+EMISSION_WEIGHTS = (
+    ("emission_weight", 'ch("%s")'),
+    ("emission_luminance", '(ch("%s") > 0)'),
+)    # OpenPBR's is a luminance in nits, no 0-1 weight: it only switches the colour on
 
 BUMP_INPUTS = ("bump_input", "geometry_normal")    # Standard Material's, then OpenPBR's
 
 HEIGHT_FIELD = "0"    # redshift::BumpMap inputType: a height field is no normal map
 
 
+def _kind(node) -> str:
+    """`node`'s type name without namespace or version: `mtlxnormalmap::2.0` is `mtlxnormalmap`."""
+    return node.type().nameComponents()[2]
+
+
 def previewable(node) -> bool:
     """Whether the right-click offers `Viewport Preview`: no dialog, no panel."""
-    return node_renderer(node) == "Redshift"
+    return node_renderer(node) == "Redshift" and _kind(node) == USD_BUILDER
 
 
 def _wired(node, input_name):
@@ -264,55 +274,111 @@ def _normal_texture(shader):
     return None
 
 
-def _viewport_block(builder) -> None:
-    """The OpenGL properties `builder` lacks, added to its OpenGL folder as the library's are."""
-    group = builder.parmTemplateGroup()
-    missing = [hou.properties.parmTemplate("material", name)
-               for name in VIEWPORT_PROPERTIES if group.find(name) is None]
-    if not missing:
+def _drop_old_block(builder) -> None:
+    """The spare `ogl_` parms an earlier Viewport Preview added, and their emptied folder, removed."""
+    names = {parm.tuple().name() for parm in builder.parms()
+             if parm.isSpare() and parm.name().startswith("ogl_")}
+    if not names:
         return
-    if group.findFolder("OpenGL") is None:    # by label: the classic builder's folder has another name
-        group.append(hou.FolderParmTemplate("OpenGL", "OpenGL", folder_type=hou.folderType.Tabs))
-    for template in missing:
-        group.appendToFolder(group.findFolder("OpenGL"), template)
+    group = builder.parmTemplateGroup()
+    for name in names:
+        if group.find(name) is not None:    # a multiparm's instances leave with its count
+            group.remove(name)
+    folder = group.findFolder("OpenGL")
+    if folder is not None and not folder.parmTemplates():
+        group.remove(folder)
     builder.setParmTemplateGroup(group)
 
 
-def _follow_file(builder, slot, texture) -> None:
-    """`builder`'s map `slot` a string reference to `texture`'s file."""
-    builder.parm(slot).setExpression('chs("%s/tex0")' % builder.relativePathTo(texture),
+def _child(builder, wired, name, kind):
+    """`wired` when it is a `kind`, else the `kind` called `name`, else a new one; and whether new."""
+    for node in (wired, builder.node(name)):
+        if node is not None and _kind(node) == kind:
+            return node, False
+    return builder.createNode(kind, name), True    # a name taken by another type gains a number
+
+
+def _place(node, beside, offset) -> None:
+    """A new `node` near `beside`, then to a free tile: a scripted createNode lands at the origin."""
+    node.setPosition(beside.position() + hou.Vector2(*offset))
+    helpers.auto_place(node)
+
+
+def _image(builder, target, input_name, name, signature, source, row):
+    """`target`'s `input_name` fed by a MaterialX image reading `source`'s file."""
+    image, new = _child(builder, _wired(target, input_name), name, "mtlximage")
+    if new:
+        _place(image, target, (-3, -row))
+    image.parm("signature").set(signature)
+    image.parm("file").setExpression('chs("%s/tex0")' % image.relativePathTo(source),
                                      hou.exprLanguage.Hscript)
+    target.setNamedInput(input_name, image, "out")
+    return image
 
 
-def _follow(builder, shader) -> bool:
-    """Each OpenGL property a reference into `shader`, each map slot its sampler; False for none."""
+def _normal_map(builder, preview, source, row) -> None:
+    """`preview`'s `normal` fed by a MaterialX normal map, its image reading `source`'s file."""
+    normal_map, new = _child(builder, _wired(preview, "normal"), "preview_normalmap",
+                             "mtlxnormalmap")
+    if new:
+        _place(normal_map, preview, (-3, -row))
+    _image(builder, normal_map, "in", "preview_normal", "vector3", source, 0)
+    preview.setNamedInput("normal", normal_map, "out")
+
+
+def _emission(preview, shader, channel) -> None:
+    """`emissiveColor` the shader's emission colour, times its weight where it has one."""
+    path = preview.relativePathTo(shader)
+    weight = next((form % ("%s/%s" % (path, name)) for name, form in EMISSION_WEIGHTS
+                   if shader.parm(name) is not None), None)
+    for index, parm in enumerate(preview.parmTuple("emissiveColor")):
+        expression = 'ch("%s/%s")' % (path, channel[index].name())
+        if weight is not None:
+            expression += " * " + weight
+        parm.setExpression(expression, hou.exprLanguage.Hscript)
+
+
+def _preview_surface(builder, shader) -> bool:
+    """A USD Preview Surface on the builder's second output, read off `shader`; False for none."""
     plan = []
-    for prop, sources, slot in VIEWPORT_CHANNELS:
+    for input_name, sources, image, signature in PREVIEW_CHANNELS:
         channel = next((shader.parmTuple(s) for s in sources
                         if shader.parmTuple(s) is not None), None)
         if channel is not None:
-            plan.append((prop, channel, slot))
+            plan.append((input_name, channel, image, signature))
     if not plan:
         return False
-    _viewport_block(builder)
-    path = builder.relativePathTo(shader)
-    for prop, channel, slot in plan:
-        for index, parm in enumerate(builder.parmTuple(prop)):
-            component = channel[min(index, len(channel) - 1)]    # Alpha reads a colour's first component
-            parm.setExpression('ch("%s/%s")' % (path, component.name()), hou.exprLanguage.Hscript)
-        sampler = _sampler(_wired(shader, channel.name())) if slot else None    # each parm is its own input
+    suboutput = next(c for c in builder.children() if c.type().name() == "suboutput")
+    inputs = suboutput.inputs()    # by index: a wired suboutput input takes its source's output name
+    second = inputs[1] if len(inputs) > 1 else None
+    preview, new = _child(builder, second, PREVIEW_NAME, PREVIEW_SURFACE)
+    if new:
+        _place(preview, inputs[0] if inputs and inputs[0] else suboutput, (0, -1.5))
+    if second is not preview:
+        suboutput.setInput(1, preview)    # `next`: the Redshift terminal keeps input 0
+    preview.parm("useSpecularWorkflow").set(0)
+    path = preview.relativePathTo(shader)
+    row = 0
+    for input_name, channel, image, signature in plan:
+        if input_name == "emissiveColor":
+            _emission(preview, shader, channel)
+        else:
+            for index, parm in enumerate(preview.parmTuple(input_name)):
+                component = channel[min(index, len(channel) - 1)]    # opacity reads a colour's first
+                parm.setExpression('ch("%s/%s")' % (path, component.name()),
+                                   hou.exprLanguage.Hscript)
+        sampler = _sampler(_wired(shader, channel.name())) if image else None
         if sampler is not None:
-            if slot == "ogl_tex1" and builder.parm("ogl_numtex").eval() < 1:
-                builder.parm("ogl_numtex").set(1)    # the first diffuse texture layer
-            _follow_file(builder, slot, sampler)
+            _image(builder, preview, input_name, image, signature, sampler, row)
+            row += 1
     normal = _normal_texture(shader)
     if normal is not None:
-        _follow_file(builder, "ogl_normalmap", normal)
+        _normal_map(builder, preview, normal, row)
     return True
 
 
 def viewport_preview(node) -> None:
-    """Right-click `Viewport Preview`: each chosen Redshift material shown by its shader's values."""
+    """Right-click `Viewport Preview`: a USD Preview Surface in each chosen Redshift USD material."""
     start()
     if node is None:
         return
@@ -322,11 +388,15 @@ def viewport_preview(node) -> None:
     with hou.undos.group("Viewport Preview"):    # one undo step for the whole selection
         for each in chosen:
             shader = material.redshift_surface_shader(each) if previewable(each) else None
-            if not previewable(each):
+            if previewable(each):
+                _drop_old_block(each)    # 1.29.0's OpenGL block: this node type's viewport reads none of it
+            if node_renderer(each) == "Redshift" and not previewable(each):
+                skipped.append(messages.VIEWPORT_PREVIEW_CLASSIC % each.name())
+            elif not previewable(each):
                 skipped.append(messages.VIEWPORT_PREVIEW_NOT_REDSHIFT % each.name())
             elif shader is None:
                 skipped.append(messages.VIEWPORT_PREVIEW_NO_SHADER % each.name())
-            elif not _follow(each, shader):
+            elif not _preview_surface(each, shader):
                 skipped.append(messages.VIEWPORT_PREVIEW_NO_CHANNELS
                                % (each.name(), shader.type().description()))
             else:

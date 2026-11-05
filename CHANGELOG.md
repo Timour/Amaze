@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.29.1
+
+- Viewport Preview now builds a MaterialX USD Preview Surface inside the Redshift material, wired as its second output and filled from the shader and its textures. The 1.29.0 version added viewport properties the viewport does not read on a Redshift USD material builder; running Viewport Preview on such a material removes them.
+
 ## 1.29.0
 
 - Convert, Convert and Swap and the new Viewport Preview act on all selected materials, in one undo step.

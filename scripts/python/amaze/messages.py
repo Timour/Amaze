@@ -469,6 +469,8 @@ VIEWPORT_PREVIEW_SKIPPED = 'Viewport preview added to %d of %d. Skipped:\n\n%s'
 
 VIEWPORT_PREVIEW_NOT_REDSHIFT = '"%s" is not a Redshift material.'
 
+VIEWPORT_PREVIEW_CLASSIC = '"%s" is a classic RS Material Builder, which has no USD preview.'
+
 VIEWPORT_PREVIEW_NO_SHADER = '"%s" holds no Redshift surface shader.'
 
 VIEWPORT_PREVIEW_NO_CHANNELS = '"%s": the viewport cannot follow a %s.'

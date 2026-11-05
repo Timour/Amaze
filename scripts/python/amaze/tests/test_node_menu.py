@@ -35,9 +35,12 @@ SWAPS = (("amazeSwapToRedshift", "Convert and Swap to Redshift", "Redshift"),
 REDSHIFT = test_support.renderer_loaded("Redshift")
 REDSHIFT_TYPE = hou.vopNodeTypeCategory().nodeTypes().get("redshift_vopnet") is not None
 TERMINALS = ("redshift_material", "redshift_usd_material", "suboutput")
-VIEWPORT = ("ogl_diff", "ogl_spec", "ogl_rough", "ogl_metallic", "ogl_emit", "ogl_alpha",
-            "ogl_normalmap", "ogl_roughmap", "ogl_metallicmap", "ogl_emissionmap",
-            "ogl_opacitymap", "ogl_numtex")
+PREVIEW = "mtlxUsdPreviewSurface"
+TEXTURES = (("preview_diffuse", "diffuseColor", "color", "diffuse"),
+            ("preview_roughness", "roughness", "float", "rough"))    # image, input, output type, role
+OGL = ("ogl_diff", "ogl_spec", "ogl_rough", "ogl_metallic", "ogl_emit", "ogl_alpha",
+       "ogl_normalmap", "ogl_roughmap", "ogl_metallicmap", "ogl_emissionmap",
+       "ogl_opacitymap", "ogl_numtex")    # the block 1.29.0 added
 
 
 def _submenu():
@@ -239,10 +242,14 @@ class TheMenuOffersViewportPreviewOnRedshift(unittest.TestCase):
         return _run(_expression(item), kwargs)
 
     @unittest.skipUnless(REDSHIFT_TYPE, "the Redshift plugin is not loaded")
-    def test_a_redshift_material_offers_it(self):
-        self.assertTrue(self._offered({"node": _redshift(self, "menu_offer_rs")}))
+    def test_a_redshift_usd_material_offers_it(self):
         self.assertTrue(self._offered({"node": _redshift(self, "menu_offer_usd",
                                                          "rs_usd_material_builder")}))
+
+    @unittest.skipUnless(REDSHIFT_TYPE, "the Redshift plugin is not loaded")
+    def test_a_classic_builder_does_not(self):
+        self.assertFalse(self._offered({"node": _redshift(self, "menu_offer_rs")}),
+                         "a classic builder has no suboutput to carry a preview")
 
     def test_a_materialx_material_does_not(self):
         self.assertFalse(self._offered({"node": _materialx(self, "menu_offer_mtlx")}))
@@ -516,8 +523,8 @@ class ASelectionConvertsAsOne(unittest.TestCase):
 
 
 @unittest.skipUnless(REDSHIFT_TYPE, "the Redshift plugin is not loaded")
-class ViewportPreviewFollowsTheShader(unittest.TestCase):
-    """Houdini's own OpenGL properties added to the builder, each a reference into the shader."""
+class ViewportPreviewIsAUsdPreviewSurface(unittest.TestCase):
+    """A USD Preview Surface inside the builder, its second output, its values read off the shader."""
 
     def setUp(self):
         _speakers(self)
@@ -527,60 +534,92 @@ class ViewportPreviewFollowsTheShader(unittest.TestCase):
         hou.undos.clear()    # the fixture's own steps are not the preview's
         rc_calls.viewport_preview(node)
 
-    def _assert_block(self, builder, shader, wired):
-        group = builder.parmTemplateGroup()
-        for name in VIEWPORT:
-            with self.subTest(name):
-                self.assertIsNotNone(group.find(name), "%s was not added" % name)
-                parm = builder.parm(name) or builder.parmTuple(name)[0]
-                self.assertEqual(("OpenGL",), parm.containingFolders())
-        names = [p.name() for p in builder.parms()]
-        self.assertEqual(sorted(set(names)), sorted(names), "a property was added twice")
-        s = shader.name()
-        for c in "rgb":
-            self.assertEqual('ch("%s/base_color%s")' % (s, c),
-                             builder.parm("ogl_diff" + c).expression())
-            self.assertEqual('ch("%s/refl_color%s")' % (s, c),
-                             builder.parm("ogl_spec" + c).expression())
-            self.assertEqual('ch("%s/emission_color%s")' % (s, c),
-                             builder.parm("ogl_emit" + c).expression())
-        self.assertEqual('ch("%s/refl_roughness")' % s, builder.parm("ogl_rough").expression())
-        self.assertEqual('ch("%s/metalness")' % s, builder.parm("ogl_metallic").expression())
-        self.assertEqual('ch("%s/opacity_colorr")' % s, builder.parm("ogl_alpha").expression())
-        self.assertGreaterEqual(builder.parm("ogl_numtex").eval(), 1)
-        for slot, role in (("ogl_tex1", "diffuse"), ("ogl_roughmap", "rough"),
-                           ("ogl_normalmap", "normal")):
-            self.assertEqual('chs("%s/tex0")' % wired[role].name(),
-                             builder.parm(slot).expression(), slot)
-            self.assertEqual("/textures/%s.png" % role, builder.parm(slot).eval(), slot)
-        shader.parm("base_colorr").set(0.25)
-        self.assertAlmostEqual(0.25, builder.parm("ogl_diffr").eval())
+    def _feeds(self, node, input_name):
+        """(upstream node, its output name) wired into `node`'s input, by name or index."""
+        index = input_name if isinstance(input_name, int) else node.inputNames().index(input_name)
+        for connection in node.inputConnections():
+            if connection.inputIndex() == index:
+                upstream = connection.inputNode()
+                return upstream, upstream.outputNames()[connection.outputIndex()]
+        return None, None
 
-    def test_a_standard_material_gains_the_block(self):
+    def _the_preview(self, builder):
+        previews = [c for c in builder.children() if c.type().nameComponents()[2] == PREVIEW]
+        self.assertEqual(1, len(previews), "not one preview surface: %s" % previews)
+        return previews[0]
+
+    def _assert_wired(self, builder):
+        preview = self._the_preview(builder)
+        self.assertEqual("preview", preview.name())
+        suboutput = next(c for c in builder.children() if c.type().name() == "suboutput")
+        self.assertEqual((preview, "out"), self._feeds(suboutput, 1),
+                         "the preview is not the suboutput's second input, `next` before wiring")
+        upstream, _output = self._feeds(suboutput, 0)
+        self.assertEqual("redshift_usd_material", upstream.type().name(),
+                         "the Redshift terminal lost its place on the first output")
+        self.assertEqual(("Shader", "out"), builder.outputNames())
+        return preview
+
+    def _assert_values(self, preview, shader, names):
+        """`names`: the shader's diffuse, specular, roughness, metallic and opacity parms."""
+        path = preview.relativePathTo(shader)
+        diffuse, specular, rough, metal, opacity = names
+        self.assertEqual(0, preview.parm("useSpecularWorkflow").eval())
+        for index, c in enumerate("rgb"):
+            self.assertEqual('ch("%s/%s%s")' % (path, diffuse, c),
+                             preview.parmTuple("diffuseColor")[index].expression())
+            self.assertEqual('ch("%s/%s%s")' % (path, specular, c),
+                             preview.parmTuple("specularColor")[index].expression())
+        self.assertEqual('ch("%s/%s")' % (path, rough), preview.parm("roughness").expression())
+        self.assertEqual('ch("%s/%s")' % (path, metal), preview.parm("metallic").expression())
+        self.assertEqual('ch("%s/%s")' % (path, opacity), preview.parm("opacity").expression())
+
+    def _assert_textures(self, builder, preview, wired):
+        normal_map = builder.node("preview_normalmap")
+        self.assertIsNotNone(normal_map, "no preview_normalmap")
+        self.assertEqual("mtlxnormalmap", normal_map.type().nameComponents()[2])
+        self.assertEqual((normal_map, "out"), self._feeds(preview, "normal"))
+        images = [(name, preview, input_name, kind, role)
+                  for name, input_name, kind, role in TEXTURES]
+        images.append(("preview_normal", normal_map, "in", "vector", "normal"))
+        for name, target, input_name, kind, role in images:
+            with self.subTest(name):
+                image = builder.node(name)
+                self.assertIsNotNone(image, "no %s" % name)
+                self.assertEqual("mtlximage", image.type().nameComponents()[2])
+                self.assertEqual((kind,), image.outputDataTypes())    # the float token reads `default`
+                self.assertEqual((image, "out"), self._feeds(target, input_name))
+                self.assertEqual('chs("%s/tex0")' % image.relativePathTo(wired[role]),
+                                 image.parm("file").expression())
+                self.assertEqual("/textures/%s.png" % role, image.parm("file").eval())
+
+    def test_a_standard_material_gains_the_preview(self):
         builder, shader, wired = _textured(self, "menu_preview_usd")
         self._preview(builder)
-        self.assertEqual(("Viewport Preview",), hou.undos.undoLabels())    # before the block's own probe sets a value
-        self._assert_block(builder, shader, wired)
+        self.assertEqual(("Viewport Preview",), hou.undos.undoLabels())
+        preview = self._assert_wired(builder)
+        self._assert_values(preview, shader, ("base_color", "refl_color", "refl_roughness",
+                                              "metalness", "opacity_colorr"))
+        self._assert_textures(builder, preview, wired)
+        shader.parm("base_colorr").set(0.25)
+        self.assertAlmostEqual(0.25, preview.parmTuple("diffuseColor")[0].eval())
         self.assertEqual([], self.said)
         self.assertEqual(['Amaze: ' + messages.VIEWPORT_PREVIEW_ADDED % "menu_preview_usd"],
                          self.bar)
 
-    def test_running_it_again_only_rewrites_the_references(self):
-        builder, shader, wired = _textured(self, "menu_preview_again")
+    def test_the_emission_carries_its_weight(self):
+        builder, shader, _wired = _textured(self, "menu_preview_emit")
         self._preview(builder)
-        count = len(builder.parms())
-        self._preview(builder)
-        self.assertEqual(count, len(builder.parms()), "the second run added parameters")
-        self._assert_block(builder, shader, wired)
-
-    def test_a_legacy_builder_reuses_its_own_properties(self):
-        builder, shader, wired = _textured(self, "menu_preview_legacy", "redshift_vopnet")
-        built_in = [p.name() for p in builder.parms() if p.name().startswith("ogl_")]
-        self._preview(builder)
-        self._assert_block(builder, shader, wired)
-        self.assertEqual([], [n for n in built_in if builder.parm(n).isSpare()],
-                         "a built-in property was replaced by a spare one")
-        self.assertTrue(builder.parm("ogl_metallic").isSpare())
+        preview = self._the_preview(builder)
+        path = preview.relativePathTo(shader)
+        for index, c in enumerate("rgb"):
+            self.assertEqual('ch("%s/emission_color%s") * ch("%s/emission_weight")'
+                             % (path, c, path),
+                             preview.parmTuple("emissiveColor")[index].expression())
+        self.assertEqual((0, 0, 0), preview.parmTuple("emissiveColor").eval(),
+                         "a material that does not glow glows in the preview")
+        shader.parm("emission_weight").set(0.5)
+        self.assertAlmostEqual(0.5, preview.parmTuple("emissiveColor")[1].eval())
 
     def test_an_openpbr_material_follows_its_own_names(self):
         builder = hou.node("/mat").createNode("rs_usd_material_builder", "menu_preview_pbr")
@@ -588,11 +627,76 @@ class ViewportPreviewFollowsTheShader(unittest.TestCase):
         shader = next(c for c in builder.children()
                       if c.type().name() == "redshift::OpenPBRMaterial")
         self._preview(builder)
-        s = shader.name()
-        self.assertEqual('ch("%s/specular_colorg")' % s, builder.parm("ogl_specg").expression())
-        self.assertEqual('ch("%s/specular_roughness")' % s, builder.parm("ogl_rough").expression())
-        self.assertEqual('ch("%s/base_metalness")' % s, builder.parm("ogl_metallic").expression())
-        self.assertEqual('ch("%s/geometry_opacity")' % s, builder.parm("ogl_alpha").expression())
+        preview = self._assert_wired(builder)
+        self._assert_values(preview, shader, ("base_color", "specular_color", "specular_roughness",
+                                              "base_metalness", "geometry_opacity"))
+        self.assertEqual((0, 0, 0), preview.parmTuple("emissiveColor").eval(),
+                         "a material that does not glow glows in the preview")
+        shader.parm("emission_luminance").set(10)
+        self.assertEqual((1, 1, 1), preview.parmTuple("emissiveColor").eval())
+        self.assertEqual([], [c.name() for c in builder.children()
+                              if c.type().nameComponents()[2] == "mtlximage"],
+                         "an untextured material gained texture readers")
+
+    def test_running_it_again_adds_no_node_and_keeps_the_wiring(self):
+        builder, shader, wired = _textured(self, "menu_preview_again")
+        self._preview(builder)
+        before = sorted(c.name() for c in builder.children())
+        self._preview(builder)
+        self.assertEqual(before, sorted(c.name() for c in builder.children()),
+                         "the second run added or lost a node")
+        preview = self._assert_wired(builder)
+        self._assert_textures(builder, preview, wired)
+
+    def test_a_texture_that_lost_its_sampler_is_left_as_it_is(self):
+        builder, shader, wired = _textured(self, "menu_preview_lost")
+        self._preview(builder)
+        shader.setInput(shader.inputNames().index("refl_roughness"), None)
+        self._preview(builder)
+        texture = builder.node("preview_roughness")
+        self.assertIsNotNone(texture, "the run destroyed a node it no longer needs")
+        self.assertEqual((texture, "out"), self._feeds(self._the_preview(builder), "roughness"))
+
+    def test_a_name_taken_by_another_node_is_left_to_it(self):
+        builder, _shader, _wired = _textured(self, "menu_preview_taken")
+        squatter = builder.createNode("null", "preview")
+        self._preview(builder)
+        self._preview(builder)
+        self.assertEqual("null", builder.node("preview").type().name())
+        previews = [c for c in builder.children() if c.type().nameComponents()[2] == PREVIEW]
+        self.assertEqual(1, len(previews), "the second run made another preview")
+        self.assertIsNot(squatter, previews[0])
+
+    def test_the_authored_usd_material_carries_both_surfaces(self):
+        source, _shader, _wired = _textured(self, "menu_preview_usd_lib")
+        self._preview(source)
+        library = hou.node("/stage").createNode("materiallibrary", "menu_preview_lib")
+        self.addCleanup(library.destroy)
+        builder, = hou.copyNodesTo([source], library)    # a fixture built inside prints translator errors
+        library.cook(force=True)
+        self.assertEqual((), library.errors())
+        stage = library.stage()
+        material = next(p for p in stage.Traverse()
+                        if p.GetTypeName() == "Material" and p.GetName() == builder.name())
+
+        def target(prim, name):
+            sources = prim.GetAttribute(name).GetConnections()
+            self.assertEqual(1, len(sources), "%s has no single connection" % name)
+            return stage.GetPrimAtPath(sources[0].GetPrimPath())
+
+        surface = target(material, "outputs:mtlx:surface")
+        self.assertEqual("ND_UsdPreviewSurface_surfaceshader",
+                         surface.GetAttribute("info:id").Get())
+        self.assertEqual("redshift_usd_material",
+                         target(material, "outputs:Redshift:surface")
+                         .GetAttribute("info:id").Get())
+        image = target(surface, "inputs:diffuseColor")
+        self.assertEqual("ND_image_color3", image.GetAttribute("info:id").Get())
+        self.assertEqual("/textures/diffuse.png", image.GetAttribute("inputs:file").Get().path)
+        normal_map = target(surface, "inputs:normal")
+        self.assertTrue(normal_map.GetAttribute("info:id").Get().startswith("ND_normalmap"))
+        self.assertEqual("/textures/normal.png", target(normal_map, "inputs:in")
+                         .GetAttribute("inputs:file").Get().path)
 
     def test_a_selection_of_two_both_gain_it(self):
         a, _sa, _wa = _textured(self, "menu_preview_a")
@@ -600,17 +704,62 @@ class ViewportPreviewFollowsTheShader(unittest.TestCase):
         _select(a, b)
         self._preview(a)
         for builder in (a, b):
-            self.assertIsNotNone(builder.parm("ogl_roughmap"), builder.name())
+            self._assert_wired(builder)
         self.assertEqual(("Viewport Preview",), hou.undos.undoLabels())
         self.assertEqual(['Amaze: ' + messages.VIEWPORT_PREVIEWS_ADDED % 2], self.bar)
+
+    def test_the_old_opengl_block_is_removed(self):
+        builder, _shader, _wired = _textured(self, "menu_preview_old_block")
+        group = builder.parmTemplateGroup()
+        group.append(hou.FolderParmTemplate("OpenGL", "OpenGL", folder_type=hou.folderType.Tabs))
+        for name in OGL:
+            group.appendToFolder(group.findFolder("OpenGL"),
+                                 hou.properties.parmTemplate("material", name))
+        builder.setParmTemplateGroup(group)    # as 1.29.0 added it
+        builder.parm("ogl_numtex").set(1)
+        others = sorted(p.name() for p in builder.parms()
+                        if not p.name().startswith("ogl_") and p.name() != "OpenGL")
+        self._preview(builder)
+        self.assertEqual([], [p.name() for p in builder.parms()
+                              if p.name().startswith("ogl_") or p.name() == "OpenGL"])
+        self.assertIsNone(builder.parmTemplateGroup().findFolder("OpenGL"))
+        self.assertEqual(others, sorted(p.name() for p in builder.parms()))
+        self._assert_wired(builder)
+        self.assertEqual(['Amaze: ' + messages.VIEWPORT_PREVIEW_ADDED % "menu_preview_old_block"],
+                         self.bar)
+        hou.undos.performUndo()
+        self.assertIsNotNone(builder.parmTemplateGroup().findFolder("OpenGL"))
+        for name in OGL:
+            self.assertIsNotNone(builder.parmTuple(name), "%s did not come back" % name)
+
+    def test_one_undo_takes_it_all_back(self):
+        builder, _shader, _wired = _textured(self, "menu_preview_undo")
+        before = sorted(c.name() for c in builder.children())
+        self._preview(builder)
+        hou.undos.performUndo()
+        self.assertEqual(before, sorted(c.name() for c in builder.children()))
+        self.assertEqual(("Shader",), builder.outputNames())
+
+    def test_a_classic_builder_in_the_selection_is_skipped(self):
+        a, _s, _w = _textured(self, "menu_preview_new")
+        classic, _sc, _wc = _textured(self, "menu_preview_classic", "redshift_vopnet")
+        inside = sorted(c.name() for c in classic.children())
+        _select(a, classic)
+        self._preview(a)
+        self._assert_wired(a)
+        self.assertEqual(inside, sorted(c.name() for c in classic.children()))
+        self.assertEqual([], self.bar)
+        self.assertEqual([messages.VIEWPORT_PREVIEW_SKIPPED % (
+            1, 2, messages.VIEWPORT_PREVIEW_CLASSIC % "menu_preview_classic")], self.said)
 
     def test_a_materialx_material_in_the_selection_is_skipped(self):
         a, _s, _w = _textured(self, "menu_preview_rs")
         mtlx = _materialx(self, "menu_preview_mtlx")
+        inside = sorted(c.name() for c in mtlx.children())
         _select(a, mtlx)
         self._preview(a)
-        self.assertIsNotNone(a.parm("ogl_diffr"))
-        self.assertEqual([], [p.name() for p in mtlx.parms() if p.name().startswith("ogl_")])
+        self._assert_wired(a)
+        self.assertEqual(inside, sorted(c.name() for c in mtlx.children()))
         self.assertEqual([], self.bar)
         self.assertEqual([messages.VIEWPORT_PREVIEW_SKIPPED % (
             1, 2, messages.VIEWPORT_PREVIEW_NOT_REDSHIFT % "menu_preview_mtlx")], self.said)
