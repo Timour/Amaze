@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.28.0
+
+- Convert and Swap to Redshift and Convert and Swap to Karma, on the node menu's Amaze submenu, convert a material, delete the old one and give the new one its exact name and place. One undo puts the old material back.
+- A converted material now lands beside the node it came from.
+
 ## 1.27.0
 
 - The node right-click menu has an Amaze submenu in place of Save to Amaze: Convert to Redshift, Convert to Karma and Save. The converts build the converted material beside the node, through the same converters as the panel's Convert to.

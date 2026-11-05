@@ -128,8 +128,8 @@ def convertible(node, target) -> bool:
         and engine.can_convert(renderer, target)    # a target whose plugin is not loaded is not offered
 
 
-def convert(node, target) -> None:
-    """Right-click `Convert to <target>`: the panel's engine on the node itself, its twin beside it."""
+def convert(node, target, swap=False) -> None:
+    """Right-click `Convert to <target>`: the twin beside the node, or with `swap` in its place."""
     start()
     if node is None:
         return
@@ -145,15 +145,25 @@ def convert(node, target) -> None:
             ui.displayMessage(reason)
         return
     word = renderers.get(target).engine    # the menu item's own word, Karma, where the library label says MaterialX
-    with hou.undos.group("Convert to %s" % word):    # one undo step per menu command, as Houdini's own
+    old_name, old_position = node.name(), node.position()    # read before a swap destroys the node
+    label = ("Convert and Swap to %s" if swap else "Convert to %s") % word
+    with hou.undos.group(label):    # one undo step per menu command, as Houdini's own; it covers the destroy
         made = engine.convert(node, renderer, target, node.parent(),
-                              "%s_%s" % (node.name(), word.lower()), report)
+                              "%s_%s" % (old_name, word.lower()), report)
         if made.builder is not None:
+            made.builder.setPosition(old_position)    # a scripted createNode lands at the origin
+            helpers.auto_place(made.builder)    # to a free tile beside it, moving no other node
+            swapped = swap and made.shader is not None    # no shader: the old node stays, as a plain convert leaves it
+            if swapped:
+                node.destroy()
+                made.builder.setName(old_name)    # exact: references by path reach the twin; a refusal undoes the whole step
+                made.builder.setPosition(old_position)
             made.builder.setCurrent(True, True)    # current and selected, as a node from the Tab menu is
     if ui is None:    # no screen to say it on: the twin is the answer
         return
     if made.shader is not None and report.is_clean():    # summary_lines always holds the name line, so cleanliness is asked
-        HoudiniSpeaker.status(messages.NODE_CONVERTED % (node.name(), word))
+        HoudiniSpeaker.status(messages.NODE_SWAPPED % (old_name, word) if swap
+                              else messages.NODE_CONVERTED % (old_name, word))
     else:
         ui.displayMessage(messages.CONVERSION_SUMMARY % (
             1 if made.shader is not None else 0, 1, renderers.label(renderer), word,

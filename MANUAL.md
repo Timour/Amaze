@@ -219,9 +219,12 @@ and textures. Anything that cannot be converted is listed in a report.
 
 **Amaze ▸ Convert to Redshift** and **Amaze ▸ Convert to Karma**, on the
 right-click menu of a material node in the network editor, build the
-converted material beside the node and select it. Each is offered when
-the node's material has a route to that renderer and its plugin is
-loaded.
+converted material beside the node and select it. **Amaze ▸ Convert and
+Swap to Redshift** and **Convert and Swap to Karma** convert, delete the
+old material and give the new one its exact name and place, so every
+reference by path still finds it; one undo puts the old material back.
+Each entry is offered when the node's material has a route to that
+renderer and its plugin is loaded.
 
 All conversions go through MaterialX. Redshift to Octane, for example,
 converts Redshift to MaterialX and then MaterialX to Octane. Octane

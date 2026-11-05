@@ -80,6 +80,53 @@ rc_calls.convert(kwargs.get("node", None), "Karma")
                 </scriptCode>
             </scriptItem>
             <separatorItem id="amazeSeparator"/>
+            <scriptItem id="amazeSwapToRedshift">
+                <label>Convert and Swap to Redshift</label>
+                <context>
+                    <expression>
+<![CDATA[
+# Context code asks the package and shows nothing: a broken install hides the item, never the menu.
+try:
+    from amaze.utils import rc_calls
+    return rc_calls.convertible(kwargs.get("node", None), "Redshift")
+except Exception:
+    return False
+]]>
+                    </expression>
+                </context>
+                <scriptCode>
+<![CDATA[
+from amaze.utils import rc_calls
+import importlib
+importlib.reload(rc_calls)
+rc_calls.convert(kwargs.get("node", None), "Redshift", swap=True)
+]]>
+                </scriptCode>
+            </scriptItem>
+            <scriptItem id="amazeSwapToKarma">
+                <label>Convert and Swap to Karma</label>
+                <context>
+                    <expression>
+<![CDATA[
+# Context code asks the package and shows nothing: a broken install hides the item, never the menu.
+try:
+    from amaze.utils import rc_calls
+    return rc_calls.convertible(kwargs.get("node", None), "Karma")
+except Exception:
+    return False
+]]>
+                    </expression>
+                </context>
+                <scriptCode>
+<![CDATA[
+from amaze.utils import rc_calls
+import importlib
+importlib.reload(rc_calls)
+rc_calls.convert(kwargs.get("node", None), "Karma", swap=True)
+]]>
+                </scriptCode>
+            </scriptItem>
+            <separatorItem id="amazeSeparator2"/>
             <scriptItem id="amazeSave">
                 <label>Save</label>
                 <scriptCode>

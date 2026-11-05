@@ -451,6 +451,8 @@ CONVERSION_SUMMARY = 'Converted %d of %d %s material(s) to %s.\n\n%s'
 
 NODE_CONVERTED = 'Converted "%s" to %s.'
 
+NODE_SWAPPED = 'Converted "%s" to %s in its place.'
+
 NODE_ASSETS_IMPORT_FAILURES = 'Some node assets could not be imported:\n\n%s'
 
 MATERIALS_SAVE_FAILURES = 'Some materials could not be saved:\n\n%s'

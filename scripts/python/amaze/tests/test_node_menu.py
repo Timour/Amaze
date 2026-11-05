@@ -1,4 +1,4 @@
-"""The node right-click menu's Amaze submenu: Convert to Redshift, Convert to Karma, Save."""
+"""The node right-click menu's Amaze submenu: the two converts, the two swaps, Save."""
 
 import os
 import sys
@@ -30,6 +30,8 @@ MENU = os.path.join(REPO, "OPmenu.xml")
 KINDS = '("Sop", "Cop", "Lop", "Dop", "Top", "Chop", "Object", "Vop")'
 CONVERTS = (("amazeConvertToRedshift", "Convert to Redshift", "Redshift"),
             ("amazeConvertToKarma", "Convert to Karma", "Karma"))
+SWAPS = (("amazeSwapToRedshift", "Convert and Swap to Redshift", "Redshift"),
+         ("amazeSwapToKarma", "Convert and Swap to Karma", "Karma"))
 REDSHIFT = test_support.renderer_loaded("Redshift")
 REDSHIFT_TYPE = hou.vopNodeTypeCategory().nodeTypes().get("redshift_vopnet") is not None
 
@@ -49,19 +51,26 @@ def _run(expression, kwargs):
     return scope["_f"](kwargs, hou)
 
 
+def _gone(path):
+    """Whatever holds `path` now destroyed: after a swap the twin holds the source's path."""
+    node = hou.node(path)
+    if node is not None:
+        node.destroy()
+
+
 def _materialx(test, name="menu_mtlx"):
     """A MaterialX material in /mat, its standard surface wired, as the converter tests build one."""
     made = nodes.build_karma_material(
         hou.node("/mat"), name,
         lambda builder: builder.createNode("mtlxstandard_surface"))
-    test.addCleanup(made.builder.destroy)
+    test.addCleanup(_gone, made.builder.path())
     return made.builder
 
 
 def _redshift(test, name="menu_rs"):
     """A classic Redshift builder holding a standard material wired to its terminal."""
     source = hou.node("/mat").createNode("redshift_vopnet", name)
-    test.addCleanup(source.destroy)
+    test.addCleanup(_gone, source.path())
     for child in list(source.children()):
         if child.type().name() != "redshift_material":
             child.destroy()
@@ -77,10 +86,29 @@ def _geo(test, name="menu_geo"):
     return geo
 
 
+def _speakers(test):
+    """`hou.ui` patched to record its dialogs in `test.said` and its status line in `test.bar`."""
+    test.said, test.bar = [], []
+    ui = types.SimpleNamespace(
+        displayMessage=lambda text, *a, **k: test.said.append(text) or 0,
+        setStatusMessage=lambda text, *a, **k: test.bar.append(text))
+    patcher = mock.patch.object(hou, "ui", ui, create=True)
+    patcher.start()
+    test.addCleanup(patcher.stop)
+    test.addCleanup(hou.undos.clear)
+
+
+def _overlaps(a, b):
+    """Whether two nodes' tiles share any area in the network editor."""
+    (ax, ay), (aw, ah) = a.position(), a.size()
+    (bx, by), (bw, bh) = b.position(), b.size()
+    return ax < bx + bw and bx < ax + aw and ay < by + bh and by < ay + ah
+
+
 class TheMenuIsOneAmazeSubmenu(unittest.TestCase):
     """One submenu, three items in a fixed order, every id stable because ids map to hotkeys."""
 
-    def test_the_submenu_holds_the_two_converts_and_save(self):
+    def test_the_submenu_holds_the_converts_the_swaps_and_save(self):
         root = ET.parse(MENU).getroot()
         submenus = list(root.iter("subMenu"))
         self.assertEqual(["amaze"], [s.get("id") for s in submenus])
@@ -94,6 +122,9 @@ class TheMenuIsOneAmazeSubmenu(unittest.TestCase):
             ("scriptItem", "amazeConvertToRedshift", "Convert to Redshift"),
             ("scriptItem", "amazeConvertToKarma", "Convert to Karma"),
             ("separatorItem", "amazeSeparator", None),
+            ("scriptItem", "amazeSwapToRedshift", "Convert and Swap to Redshift"),
+            ("scriptItem", "amazeSwapToKarma", "Convert and Swap to Karma"),
+            ("separatorItem", "amazeSeparator2", None),
             ("scriptItem", "amazeSave", "Save")], children)
 
     def test_each_item_calls_its_door(self):
@@ -105,6 +136,14 @@ class TheMenuIsOneAmazeSubmenu(unittest.TestCase):
                               _expression(item))
                 self.assertIn('rc_calls.convert(kwargs.get("node", None), "%s")' % target,
                               item.findtext("scriptCode"))
+        for item_id, _label, target in SWAPS:
+            with self.subTest(item_id):
+                item = submenu.find("scriptItem[@id='%s']" % item_id)
+                self.assertIsNotNone(item, "no %s item" % item_id)
+                self.assertIn('rc_calls.convertible(kwargs.get("node", None), "%s")' % target,
+                              _expression(item))
+                self.assertIn('rc_calls.convert(kwargs.get("node", None), "%s", swap=True)'
+                              % target, item.findtext("scriptCode"))
         save = submenu.find("scriptItem[@id='amazeSave']")
         self.assertIn('rc_calls.save(kwargs.get("node", None))', save.findtext("scriptCode"))
 
@@ -120,6 +159,12 @@ class TheMenuOffersWhatTheNodeCanBecome(unittest.TestCase):
         converts = {target: _run(_expression(submenu.find("scriptItem[@id='%s']" % item_id)),
                                  kwargs)
                     for item_id, _label, target in CONVERTS}
+        swaps = {}
+        for item_id, _label, target in SWAPS:
+            item = submenu.find("scriptItem[@id='%s']" % item_id)
+            self.assertIsNotNone(item, "no %s item" % item_id)
+            swaps[target] = _run(_expression(item), kwargs)
+        self.assertEqual(converts, swaps, "a swap is offered where its convert is not, or the reverse")
         return bool(_run(_expression(submenu), kwargs)), converts
 
     def test_a_materialx_material_offers_redshift(self):
@@ -152,14 +197,7 @@ class AConvertBuildsTheTwinBesideTheNode(unittest.TestCase):
     """One menu command, one undo step: the twin is current and selected, the source as it was."""
 
     def setUp(self):
-        self.said, self.bar = [], []
-        ui = types.SimpleNamespace(
-            displayMessage=lambda text, *a, **k: self.said.append(text) or 0,
-            setStatusMessage=lambda text, *a, **k: self.bar.append(text))
-        patcher = mock.patch.object(hou, "ui", ui, create=True)
-        patcher.start()
-        self.addCleanup(patcher.stop)
-        self.addCleanup(hou.undos.clear)
+        _speakers(self)
 
     def _convert(self, source, target):
         from amaze.core import renderers
@@ -214,6 +252,121 @@ class AConvertBuildsTheTwinBesideTheNode(unittest.TestCase):
         from amaze.utils import rc_calls
         rc_calls.convert(None, "Karma")
         self.assertEqual(([], []), (self.said, self.bar))
+
+    @unittest.skipUnless(REDSHIFT, "the Redshift plugin is not loaded")
+    def test_the_twin_lands_beside_the_source(self):
+        source = _materialx(self, "menu_placed")
+        source.setPosition(hou.Vector2(7, -3))
+        twin = self._convert(source, "Redshift")
+        self.assertNotEqual(hou.Vector2(0, 0), twin.position(), "the twin landed at the origin")
+        self.assertNotEqual(source.position(), twin.position(), "the twin sits on the source")
+        self.assertFalse(_overlaps(source, twin), "the twin overlaps the source")
+        for axis in (0, 1):
+            self.assertLessEqual(abs(twin.position()[axis] - source.position()[axis]), 4,
+                                 "the twin is far from the source: %s" % twin.position())
+
+    @unittest.skipUnless(REDSHIFT, "the Redshift plugin is not loaded")
+    def test_the_twin_avoids_a_neighbour_on_its_tile(self):
+        source = _materialx(self, "menu_crowded")
+        source.setPosition(hou.Vector2(7, -3))
+        neighbour = hou.node("/mat").createNode("subnet", "menu_neighbour")
+        self.addCleanup(neighbour.destroy)
+        neighbour.setPosition(source.position() + hou.Vector2(2.5236, -0.9624))    # the measured free tile
+        twin = self._convert(source, "Redshift")
+        self.assertFalse(_overlaps(source, twin), "the twin overlaps the source")
+        self.assertFalse(_overlaps(neighbour, twin), "the twin overlaps the neighbour")
+        for axis in (0, 1):    # far away overlaps nothing; the next free tile measured 5.05 across
+            self.assertLessEqual(abs(twin.position()[axis] - source.position()[axis]), 8,
+                                 "the twin is far from the source: %s" % twin.position())
+
+
+class ASwapPutsTheTwinInTheNodesPlace(unittest.TestCase):
+    """The old node destroyed, the twin at its exact name, path and position, all one undo step."""
+
+    def setUp(self):
+        _speakers(self)
+
+    def _swap(self, source, target):
+        from amaze.core import renderers
+        from amaze.utils import rc_calls
+        parent = source.parent()
+        old_path, old_name, old_position = source.path(), source.name(), source.position()
+        old_type = source.type().name()
+        before = sorted(c.name() for c in parent.children())
+        hou.undos.clear()    # the fixture's own steps are not the swap's
+        rc_calls.convert(source, target, swap=True)
+        twin = hou.node(old_path)
+        self.assertIsNotNone(twin, "nothing holds the old path; said %s" % self.said)
+        self.assertEqual(before, sorted(c.name() for c in parent.children()),
+                         "the swap left a node behind or lost one")
+        self.assertNotEqual(old_type, twin.type().name(), "the old node is still there")
+        self.assertEqual(target, nodes.NodeHandler(None).get_renderer_from_node(twin))
+        self.assertEqual(old_name, twin.name())
+        self.assertEqual(old_path, twin.path())
+        self.assertEqual(old_position, twin.position(), "the twin is not where the old node was")
+        self.assertTrue(twin.isCurrent(), "the twin is not the current node")
+        self.assertTrue(twin.isSelected(), "the twin is not selected")
+        word = renderers.get(target).engine
+        self.assertEqual(("Convert and Swap to %s" % word,), hou.undos.undoLabels(),
+                         "the swap is not one undo step")
+        return twin, old_type, before
+
+    def _undo_brings_it_back(self, path, old_type, before):
+        hou.undos.performUndo()
+        back = hou.node(path)
+        self.assertIsNotNone(back, "one undo did not bring the old node back")
+        self.assertEqual(old_type, back.type().name())
+        self.assertEqual(before, sorted(c.name() for c in back.parent().children()),
+                         "one undo left the twin behind")
+
+    @unittest.skipUnless(REDSHIFT, "the Redshift plugin is not loaded")
+    def test_a_materialx_material_is_swapped_for_redshift(self):
+        source = _materialx(self, "menu_swap_rs")
+        source.setPosition(hou.Vector2(7, -3))
+        path = source.path()
+        _twin, old_type, before = self._swap(source, "Redshift")
+        self.assertEqual([], self.said, "a clean swap opened a dialog")
+        self.assertEqual(['Amaze: ' + messages.NODE_SWAPPED % ("menu_swap_rs", "Redshift")],
+                         self.bar)
+        self._undo_brings_it_back(path, old_type, before)
+
+    @unittest.skipUnless(REDSHIFT_TYPE and REDSHIFT, "the Redshift plugin is not loaded")
+    def test_a_redshift_material_is_swapped_for_karma(self):
+        source = _redshift(self, "menu_swap_mtlx")
+        path = source.path()
+        _twin, old_type, before = self._swap(source, "Karma")
+        self.assertEqual(1, len(self.said) + len(self.bar), "said nothing, or twice")
+        self._undo_brings_it_back(path, old_type, before)
+
+    @unittest.skipUnless(REDSHIFT, "the Redshift plugin is not loaded")
+    def test_a_reference_by_path_reaches_the_new_material(self):
+        source = _materialx(self, "menu_swap_ref")
+        geo = _geo(self, "menu_swap_ref_geo")
+        geo.parm("shop_materialpath").set(source.path())
+        self._swap(source, "Redshift")
+        reached = hou.node(geo.parm("shop_materialpath").eval())
+        self.assertIsNotNone(reached, "the object's material path names nothing after the swap")
+        self.assertEqual("Redshift", nodes.NodeHandler(None).get_renderer_from_node(reached))
+
+    def test_a_swap_that_makes_no_shader_keeps_the_old_node(self):
+        from amaze.utils import rc_calls
+        source = _materialx(self, "menu_swap_none")
+        parent, path, old_type = source.parent(), source.path(), source.type().name()
+        before = sorted(c.name() for c in parent.children())
+        hou.undos.clear()
+        with mock.patch.object(engine, "why_not", lambda *a: ""), \
+                mock.patch.object(engine, "convert",
+                                  lambda node, source, target, parent, name, report=None:
+                                  engine.Converted(None, None, False, report)):
+            rc_calls.convert(source, "Redshift", swap=True)
+        self.assertEqual(path, source.path(), "the old node was renamed or destroyed")
+        self.assertEqual(old_type, hou.node(path).type().name())
+        self.assertEqual(before, sorted(c.name() for c in parent.children()), "something was made")
+        self.assertEqual([], self.bar)
+        self.assertEqual((), hou.undos.undoLabels(), "a swap that made nothing left an undo step")
+        self.assertEqual(1, len(self.said), "no summary dialog, or more than one")
+        self.assertTrue(self.said[0].startswith(messages.CONVERSION_SUMMARY.split("%d")[0]),
+                        self.said[0])
 
 
 if __name__ == "__main__":
