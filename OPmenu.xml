@@ -127,6 +127,30 @@ rc_calls.convert(kwargs.get("node", None), "Karma", swap=True)
                 </scriptCode>
             </scriptItem>
             <separatorItem id="amazeSeparator2"/>
+            <scriptItem id="amazeViewportPreview">
+                <label>Viewport Preview</label>
+                <context>
+                    <expression>
+<![CDATA[
+# Context code asks the package and shows nothing: a broken install hides the item, never the menu.
+try:
+    from amaze.utils import rc_calls
+    return rc_calls.previewable(kwargs.get("node", None))
+except Exception:
+    return False
+]]>
+                    </expression>
+                </context>
+                <scriptCode>
+<![CDATA[
+from amaze.utils import rc_calls
+import importlib
+importlib.reload(rc_calls)
+rc_calls.viewport_preview(kwargs.get("node", None))
+]]>
+                </scriptCode>
+            </scriptItem>
+            <separatorItem id="amazeSeparator3"/>
             <scriptItem id="amazeSave">
                 <label>Save</label>
                 <scriptCode>

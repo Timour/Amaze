@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.29.0
+
+- Convert, Convert and Swap and the new Viewport Preview act on all selected materials, in one undo step.
+- Viewport Preview, on the Amaze submenu of a Redshift material, adds Houdini's viewport properties to the material, following the shader's colours, roughness, metalness, emission, opacity and textures.
+
 ## 1.28.0
 
 - Convert and Swap to Redshift and Convert and Swap to Karma, on the node menu's Amaze submenu, convert a material, delete the old one and give the new one its exact name and place. One undo puts the old material back.

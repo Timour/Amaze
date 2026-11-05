@@ -128,8 +128,40 @@ def convertible(node, target) -> bool:
         and engine.can_convert(renderer, target)    # a target whose plugin is not loaded is not offered
 
 
+def _chosen(node) -> list:
+    """The selection when `node` is in it, else `node` alone: the save door's rule."""
+    selected = list(hou.selectedNodes())
+    return selected if node in selected else [node]
+
+
+def _refusal(node, renderer, target) -> str:
+    """Why `node` cannot become `target`, or "" when it can."""
+    from amaze.render.material_conversion import engine
+    if not renderer:
+        return messages.NODE_NOT_A_MATERIAL % node.name()
+    return engine.why_not(renderer, target)
+
+
+def _convert_one(node, renderer, target, word, swap, report):
+    """One node's twin beside it, or with `swap` in its place, current and selected."""
+    from amaze.render.material_conversion import engine
+    old_name, old_position = node.name(), node.position()    # read before a swap destroys the node
+    made = engine.convert(node, renderer, target, node.parent(),
+                          "%s_%s" % (old_name, word.lower()), report)
+    if made.builder is not None:
+        made.builder.setPosition(old_position)    # a scripted createNode lands at the origin
+        helpers.auto_place(made.builder)    # to a free tile beside it, moving no other node
+        swapped = swap and made.shader is not None    # no shader: the old node stays, as a plain convert leaves it
+        if swapped:
+            node.destroy()
+            made.builder.setName(old_name)    # exact: references by path reach the twin; a refusal undoes the whole step
+            made.builder.setPosition(old_position)
+        made.builder.setCurrent(True, True)    # current and selected, as a node from the Tab menu is
+    return made
+
+
 def convert(node, target, swap=False) -> None:
-    """Right-click `Convert to <target>`: the twin beside the node, or with `swap` in its place."""
+    """Right-click `Convert to <target>`: each chosen node's twin, or with `swap` in its place."""
     start()
     if node is None:
         return
@@ -137,37 +169,178 @@ def convert(node, target, swap=False) -> None:
     from amaze.render.material_conversion import engine
     from amaze.render.material_conversion.report import ConversionReport
     ui = getattr(hou, "ui", None)
-    renderer = node_renderer(node)
-    report = ConversionReport(node.name())
-    reason = engine.why_not(renderer, target)
-    if reason:    # before the build: a missing plugin makes it raise
-        if ui is not None:
-            ui.displayMessage(reason)
-        return
+    chosen = _chosen(node)
     word = renderers.get(target).engine    # the menu item's own word, Karma, where the library label says MaterialX
-    old_name, old_position = node.name(), node.position()    # read before a swap destroys the node
     label = ("Convert and Swap to %s" if swap else "Convert to %s") % word
-    with hou.undos.group(label):    # one undo step per menu command, as Houdini's own; it covers the destroy
-        made = engine.convert(node, renderer, target, node.parent(),
-                              "%s_%s" % (old_name, word.lower()), report)
-        if made.builder is not None:
-            made.builder.setPosition(old_position)    # a scripted createNode lands at the origin
-            helpers.auto_place(made.builder)    # to a free tile beside it, moving no other node
-            swapped = swap and made.shader is not None    # no shader: the old node stays, as a plain convert leaves it
-            if swapped:
-                node.destroy()
-                made.builder.setName(old_name)    # exact: references by path reach the twin; a refusal undoes the whole step
-                made.builder.setPosition(old_position)
-            made.builder.setCurrent(True, True)    # current and selected, as a node from the Tab menu is
-    if ui is None:    # no screen to say it on: the twin is the answer
+    skipped, reports, sources, twins = [], [], set(), []
+    with hou.undos.group(label):    # one undo step per menu command, as Houdini's own; it covers the destroys
+        for each in chosen:
+            renderer = node_renderer(each)
+            reason = _refusal(each, renderer, target)    # before the build: a missing plugin makes it raise
+            if reason:
+                skipped.append(reason if not renderer
+                               else messages.NODE_SKIPPED_LINE % (each.name(), reason))
+                continue
+            sources.add(renderers.normalized(renderer))
+            report = ConversionReport(each.name())
+            made = _convert_one(each, renderer, target, word, swap, report)
+            reports.append((made, report))
+            if made.builder is not None:
+                twins.append(made.builder)
+        for twin in twins:
+            twin.setSelected(True)    # setCurrent(True, True) cleared the twins made before it
+    if ui is None:    # no screen to say it on: the twins are the answer
         return
-    if made.shader is not None and report.is_clean():    # summary_lines always holds the name line, so cleanliness is asked
-        HoudiniSpeaker.status(messages.NODE_SWAPPED % (old_name, word) if swap
-                              else messages.NODE_CONVERTED % (old_name, word))
+    made_count = sum(1 for made, _report in reports if made.shader is not None)
+    if len(chosen) == 1 and skipped:    # one node refused: its sentence is the whole answer
+        ui.displayMessage(_refusal(node, node_renderer(node), target))
+    elif not skipped and made_count == len(chosen) \
+            and all(report.is_clean() for _made, report in reports):    # summary_lines always holds the name line
+        if len(chosen) > 1:
+            HoudiniSpeaker.status(messages.NODES_SWAPPED % (made_count, word) if swap
+                                  else messages.NODES_CONVERTED % (made_count, word))
+        else:
+            name = reports[0][1].mat_name    # the source's name, which a swapped twin now holds
+            HoudiniSpeaker.status(messages.NODE_SWAPPED % (name, word) if swap
+                                  else messages.NODE_CONVERTED % (name, word))
     else:
+        shown = " and ".join(renderers.label(source)
+                             for source in engine.targets() if source in sources)
+        lines = skipped + [line for _made, report in reports for line in report.summary_lines()]
         ui.displayMessage(messages.CONVERSION_SUMMARY % (
-            1 if made.shader is not None else 0, 1, renderers.label(renderer), word,
-            "\n".join(report.summary_lines())))
+            made_count, len(chosen), shown, word, "\n".join(lines)))
+
+
+VIEWPORT_PROPERTIES = (
+    "ogl_diff", "ogl_spec", "ogl_rough", "ogl_metallic", "ogl_emit", "ogl_alpha",
+    "ogl_normalmap", "ogl_roughmap", "ogl_metallicmap", "ogl_emissionmap", "ogl_opacitymap",
+    "ogl_numtex",
+)    # Houdini's own material properties ▸r/viewport-ogl-block
+
+VIEWPORT_CHANNELS = (
+    ("ogl_diff", ("base_color",), "ogl_tex1"),
+    ("ogl_spec", ("refl_color", "specular_color"), None),
+    ("ogl_rough", ("refl_roughness", "specular_roughness"), "ogl_roughmap"),
+    ("ogl_metallic", ("metalness", "base_metalness"), "ogl_metallicmap"),
+    ("ogl_emit", ("emission_color",), "ogl_emissionmap"),
+    ("ogl_alpha", ("opacity_color", "geometry_opacity"), "ogl_opacitymap"),
+)    # property, shader parm (Standard, then OpenPBR), map slot ▸r/redshift-nodes
+
+BUMP_INPUTS = ("bump_input", "geometry_normal")    # Standard Material's, then OpenPBR's
+
+HEIGHT_FIELD = "0"    # redshift::BumpMap inputType: a height field is no normal map
+
+
+def previewable(node) -> bool:
+    """Whether the right-click offers `Viewport Preview`: no dialog, no panel."""
+    return node_renderer(node) == "Redshift"
+
+
+def _wired(node, input_name):
+    """The node wired into `node`'s input called `input_name`, or None."""
+    names, inputs = node.inputNames(), node.inputs()
+    index = names.index(input_name) if input_name in names else len(inputs)
+    return inputs[index] if index < len(inputs) else None
+
+
+def _sampler(node):
+    """`node` when it is a Texture Sampler, else None."""
+    if node is not None and node.type().name() == "redshift::TextureSampler":
+        return node
+    return None
+
+
+def _normal_texture(shader):
+    """What the normal map slot reads: a Normal Map's own file, or the sampler under a Bump Map."""
+    for input_name in BUMP_INPUTS:
+        wired = _wired(shader, input_name)
+        if wired is None:
+            continue
+        kind = wired.type().name()
+        if kind == "redshift::NormalMap":
+            return wired
+        if kind == "redshift::BumpMap" and wired.parm("inputType").eval() != HEIGHT_FIELD:
+            return _sampler(_wired(wired, "input"))
+    return None
+
+
+def _viewport_block(builder) -> None:
+    """The OpenGL properties `builder` lacks, added to its OpenGL folder as the library's are."""
+    group = builder.parmTemplateGroup()
+    missing = [hou.properties.parmTemplate("material", name)
+               for name in VIEWPORT_PROPERTIES if group.find(name) is None]
+    if not missing:
+        return
+    if group.findFolder("OpenGL") is None:    # by label: the classic builder's folder has another name
+        group.append(hou.FolderParmTemplate("OpenGL", "OpenGL", folder_type=hou.folderType.Tabs))
+    for template in missing:
+        group.appendToFolder(group.findFolder("OpenGL"), template)
+    builder.setParmTemplateGroup(group)
+
+
+def _follow_file(builder, slot, texture) -> None:
+    """`builder`'s map `slot` a string reference to `texture`'s file."""
+    builder.parm(slot).setExpression('chs("%s/tex0")' % builder.relativePathTo(texture),
+                                     hou.exprLanguage.Hscript)
+
+
+def _follow(builder, shader) -> bool:
+    """Each OpenGL property a reference into `shader`, each map slot its sampler; False for none."""
+    plan = []
+    for prop, sources, slot in VIEWPORT_CHANNELS:
+        channel = next((shader.parmTuple(s) for s in sources
+                        if shader.parmTuple(s) is not None), None)
+        if channel is not None:
+            plan.append((prop, channel, slot))
+    if not plan:
+        return False
+    _viewport_block(builder)
+    path = builder.relativePathTo(shader)
+    for prop, channel, slot in plan:
+        for index, parm in enumerate(builder.parmTuple(prop)):
+            component = channel[min(index, len(channel) - 1)]    # Alpha reads a colour's first component
+            parm.setExpression('ch("%s/%s")' % (path, component.name()), hou.exprLanguage.Hscript)
+        sampler = _sampler(_wired(shader, channel.name())) if slot else None    # each parm is its own input
+        if sampler is not None:
+            if slot == "ogl_tex1" and builder.parm("ogl_numtex").eval() < 1:
+                builder.parm("ogl_numtex").set(1)    # the first diffuse texture layer
+            _follow_file(builder, slot, sampler)
+    normal = _normal_texture(shader)
+    if normal is not None:
+        _follow_file(builder, "ogl_normalmap", normal)
+    return True
+
+
+def viewport_preview(node) -> None:
+    """Right-click `Viewport Preview`: each chosen Redshift material shown by its shader's values."""
+    start()
+    if node is None:
+        return
+    from amaze.core import material
+    chosen = _chosen(node)
+    skipped, added = [], []
+    with hou.undos.group("Viewport Preview"):    # one undo step for the whole selection
+        for each in chosen:
+            shader = material.redshift_surface_shader(each) if previewable(each) else None
+            if not previewable(each):
+                skipped.append(messages.VIEWPORT_PREVIEW_NOT_REDSHIFT % each.name())
+            elif shader is None:
+                skipped.append(messages.VIEWPORT_PREVIEW_NO_SHADER % each.name())
+            elif not _follow(each, shader):
+                skipped.append(messages.VIEWPORT_PREVIEW_NO_CHANNELS
+                               % (each.name(), shader.type().description()))
+            else:
+                added.append(each)
+    ui = getattr(hou, "ui", None)
+    if ui is None:    # no screen to say it on: the block is the answer
+        return
+    if skipped:
+        ui.displayMessage(messages.VIEWPORT_PREVIEW_SKIPPED
+                          % (len(added), len(chosen), "\n".join(skipped)))
+    elif len(added) > 1:
+        HoudiniSpeaker.status(messages.VIEWPORT_PREVIEWS_ADDED % len(added))
+    else:
+        HoudiniSpeaker.status(messages.VIEWPORT_PREVIEW_ADDED % added[0].name())
 
 
 def _shelf_tool(*names):

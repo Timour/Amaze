@@ -224,7 +224,15 @@ Swap to Redshift** and **Convert and Swap to Karma** convert, delete the
 old material and give the new one its exact name and place, so every
 reference by path still finds it; one undo puts the old material back.
 Each entry is offered when the node's material has a route to that
-renderer and its plugin is loaded.
+renderer and its plugin is loaded. With several materials selected, an
+entry acts on all of them, in one undo step.
+
+**Amaze ▸ Viewport Preview**, on a Redshift material, adds Houdini's
+viewport properties to the material (Diffuse, Specular, Roughness,
+Metallic, Emission, Alpha and the map slots), each following the
+shader's parameter or texture, so the viewport shows the material. It
+acts on the selection, runs again without doubling anything, and takes
+one undo step. High Quality Lighting shows the full set.
 
 All conversions go through MaterialX. Redshift to Octane, for example,
 converts Redshift to MaterialX and then MaterialX to Octane. Octane

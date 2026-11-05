@@ -1,4 +1,4 @@
-"""The node right-click menu's Amaze submenu: the two converts, the two swaps, Save."""
+"""The node right-click menu's Amaze submenu: the converts, the swaps, Viewport Preview, Save."""
 
 import os
 import sys
@@ -34,6 +34,10 @@ SWAPS = (("amazeSwapToRedshift", "Convert and Swap to Redshift", "Redshift"),
          ("amazeSwapToKarma", "Convert and Swap to Karma", "Karma"))
 REDSHIFT = test_support.renderer_loaded("Redshift")
 REDSHIFT_TYPE = hou.vopNodeTypeCategory().nodeTypes().get("redshift_vopnet") is not None
+TERMINALS = ("redshift_material", "redshift_usd_material", "suboutput")
+VIEWPORT = ("ogl_diff", "ogl_spec", "ogl_rough", "ogl_metallic", "ogl_emit", "ogl_alpha",
+            "ogl_normalmap", "ogl_roughmap", "ogl_metallicmap", "ogl_emissionmap",
+            "ogl_opacitymap", "ogl_numtex")
 
 
 def _submenu():
@@ -67,17 +71,41 @@ def _materialx(test, name="menu_mtlx"):
     return made.builder
 
 
-def _redshift(test, name="menu_rs"):
-    """A classic Redshift builder holding a standard material wired to its terminal."""
-    source = hou.node("/mat").createNode("redshift_vopnet", name)
+def _redshift(test, name="menu_rs", builder="redshift_vopnet"):
+    """A Redshift builder, classic by default, holding a standard material wired to its terminal."""
+    source = hou.node("/mat").createNode(builder, name)
     test.addCleanup(_gone, source.path())
     for child in list(source.children()):
-        if child.type().name() != "redshift_material":
+        if child.type().name() not in TERMINALS:
             child.destroy()
     shader = source.createNode("redshift::StandardMaterial")
-    next(c for c in source.children() if c.type().name() == "redshift_material"
+    next(c for c in source.children() if c.type().name() in TERMINALS[:2]
          ).setNamedInput("Surface", shader, 0)
     return source
+
+
+def _textured(test, name="menu_preview", builder="rs_usd_material_builder"):
+    """`_redshift` with a diffuse and a roughness sampler and a normal map wired into the shader."""
+    source = _redshift(test, name, builder)
+    shader = next(c for c in source.children()
+                  if c.type().name() == "redshift::StandardMaterial")
+    wired = {}
+    for role, input_name, kind in (("diffuse", "base_color", "redshift::TextureSampler"),
+                                   ("rough", "refl_roughness", "redshift::TextureSampler"),
+                                   ("normal", "bump_input", "redshift::NormalMap")):
+        node = source.createNode(kind, "%s_tex" % role)
+        node.parm("tex0").set("/textures/%s.png" % role)
+        shader.setNamedInput(input_name, node, 0)
+        wired[role] = node
+    return source, shader, wired
+
+
+def _select(*chosen):
+    """Exactly `chosen` selected, as a drag-select in the network editor leaves them."""
+    for node in hou.selectedNodes():
+        node.setSelected(False)
+    for node in chosen:
+        node.setSelected(True)
 
 
 def _geo(test, name="menu_geo"):
@@ -125,6 +153,8 @@ class TheMenuIsOneAmazeSubmenu(unittest.TestCase):
             ("scriptItem", "amazeSwapToRedshift", "Convert and Swap to Redshift"),
             ("scriptItem", "amazeSwapToKarma", "Convert and Swap to Karma"),
             ("separatorItem", "amazeSeparator2", None),
+            ("scriptItem", "amazeViewportPreview", "Viewport Preview"),
+            ("separatorItem", "amazeSeparator3", None),
             ("scriptItem", "amazeSave", "Save")], children)
 
     def test_each_item_calls_its_door(self):
@@ -146,6 +176,13 @@ class TheMenuIsOneAmazeSubmenu(unittest.TestCase):
                               % target, item.findtext("scriptCode"))
         save = submenu.find("scriptItem[@id='amazeSave']")
         self.assertIn('rc_calls.save(kwargs.get("node", None))', save.findtext("scriptCode"))
+        preview = submenu.find("scriptItem[@id='amazeViewportPreview']")
+        self.assertIsNotNone(preview, "no amazeViewportPreview item")
+        self.assertIn('rc_calls.previewable(kwargs.get("node", None))', _expression(preview))
+        self.assertIn("try:", _expression(preview), "a broken install would hide the whole menu")
+        self.assertIn("importlib.reload(rc_calls)", preview.findtext("scriptCode"))
+        self.assertIn('rc_calls.viewport_preview(kwargs.get("node", None))',
+                      preview.findtext("scriptCode"))
 
     def test_no_label_is_computed(self):
         self.assertEqual([], list(ET.parse(MENU).getroot().iter("labelExpression")))
@@ -191,6 +228,28 @@ class TheMenuOffersWhatTheNodeCanBecome(unittest.TestCase):
         shown, converts = self._offered({})
         self.assertFalse(shown)
         self.assertEqual({"Redshift": False, "Karma": False}, converts)
+
+
+class TheMenuOffersViewportPreviewOnRedshift(unittest.TestCase):
+    """Viewport Preview is offered on a Redshift material alone, never added unasked."""
+
+    def _offered(self, kwargs):
+        item = _submenu().find("scriptItem[@id='amazeViewportPreview']")
+        self.assertIsNotNone(item, "no amazeViewportPreview item")
+        return _run(_expression(item), kwargs)
+
+    @unittest.skipUnless(REDSHIFT_TYPE, "the Redshift plugin is not loaded")
+    def test_a_redshift_material_offers_it(self):
+        self.assertTrue(self._offered({"node": _redshift(self, "menu_offer_rs")}))
+        self.assertTrue(self._offered({"node": _redshift(self, "menu_offer_usd",
+                                                         "rs_usd_material_builder")}))
+
+    def test_a_materialx_material_does_not(self):
+        self.assertFalse(self._offered({"node": _materialx(self, "menu_offer_mtlx")}))
+
+    def test_a_geo_and_no_node_do_not(self):
+        self.assertFalse(self._offered({"node": _geo(self, "menu_offer_geo")}))
+        self.assertFalse(self._offered({}))
 
 
 class AConvertBuildsTheTwinBesideTheNode(unittest.TestCase):
@@ -245,7 +304,7 @@ class AConvertBuildsTheTwinBesideTheNode(unittest.TestCase):
         hou.undos.clear()
         rc_calls.convert(geo, "Karma")
         self.assertEqual(before, set(geo.parent().children()), "a geo was converted")
-        self.assertEqual([engine.why_not("", "Karma")], self.said)
+        self.assertEqual([messages.NODE_NOT_A_MATERIAL % "menu_no_route"], self.said)
         self.assertEqual((), hou.undos.undoLabels())
 
     def test_no_node_does_nothing(self):
@@ -367,6 +426,199 @@ class ASwapPutsTheTwinInTheNodesPlace(unittest.TestCase):
         self.assertEqual(1, len(self.said), "no summary dialog, or more than one")
         self.assertTrue(self.said[0].startswith(messages.CONVERSION_SUMMARY.split("%d")[0]),
                         self.said[0])
+
+
+class ASelectionConvertsAsOne(unittest.TestCase):
+    """A right-click on a selected node converts the whole selection, as the save door saves it."""
+
+    def setUp(self):
+        _speakers(self)
+
+    def _made(self, parent, before):
+        made = [c for c in parent.children() if c not in before]
+        for node in made:
+            self.addCleanup(_gone, node.path())
+        return made
+
+    @unittest.skipUnless(REDSHIFT, "the Redshift plugin is not loaded")
+    def test_two_selected_materials_both_convert(self):
+        from amaze.utils import rc_calls
+        a, b = _materialx(self, "menu_sel_a"), _materialx(self, "menu_sel_b")
+        before = set(a.parent().children())
+        _select(a, b)
+        hou.undos.clear()
+        rc_calls.convert(b, "Redshift")
+        made = self._made(a.parent(), before)
+        self.assertEqual(["menu_sel_a_redshift", "menu_sel_b_redshift"],
+                         sorted(n.name() for n in made), "said %s" % self.said)
+        self.assertEqual([True, True], [n.isSelected() for n in made], "a twin is not selected")
+        self.assertEqual(1, sum(n.isCurrent() for n in made), "no twin, or two, is current")
+        self.assertEqual(("Convert to Redshift",), hou.undos.undoLabels())
+        self.assertEqual([], self.said)
+        self.assertEqual(['Amaze: ' + messages.NODES_CONVERTED % (2, "Redshift")], self.bar)
+
+    @unittest.skipUnless(REDSHIFT, "the Redshift plugin is not loaded")
+    def test_a_geo_in_the_selection_is_named_in_one_dialog(self):
+        from amaze.core import renderers
+        from amaze.utils import rc_calls
+        a, geo = _materialx(self, "menu_sel_mix"), _geo(self, "menu_sel_geo")
+        before = set(a.parent().children())
+        _select(a, geo)
+        hou.undos.clear()
+        rc_calls.convert(a, "Redshift")
+        made = self._made(a.parent(), before)
+        self.assertEqual(["menu_sel_mix_redshift"], [n.name() for n in made])
+        self.assertEqual(("Convert to Redshift",), hou.undos.undoLabels())
+        self.assertEqual([], self.bar)
+        self.assertEqual(1, len(self.said), "not one dialog: %s" % self.said)
+        self.assertTrue(self.said[0].startswith("Converted 1 of 2 %s material(s) to Redshift."
+                                                % renderers.label("Karma")), self.said[0])
+        self.assertIn(messages.NODE_NOT_A_MATERIAL % "menu_sel_geo", self.said[0])
+
+    @unittest.skipUnless(REDSHIFT, "the Redshift plugin is not loaded")
+    def test_a_node_outside_the_selection_converts_alone(self):
+        from amaze.utils import rc_calls
+        a, b = _materialx(self, "menu_out_a"), _materialx(self, "menu_out_b")
+        c = _materialx(self, "menu_out_c")
+        before = set(a.parent().children())
+        _select(a, b)
+        hou.undos.clear()
+        rc_calls.convert(c, "Redshift")
+        made = self._made(a.parent(), before)
+        self.assertEqual(["menu_out_c_redshift"], [n.name() for n in made])
+        self.assertEqual(['Amaze: ' + messages.NODE_CONVERTED % ("menu_out_c", "Redshift")],
+                         self.bar)
+
+    @unittest.skipUnless(REDSHIFT, "the Redshift plugin is not loaded")
+    def test_a_selection_swaps_in_one_undo_step(self):
+        from amaze.utils import rc_calls
+        a, b = _materialx(self, "menu_sw_a"), _materialx(self, "menu_sw_b")
+        old_type = a.type().name()
+        parent = a.parent()
+        before = sorted(c.name() for c in parent.children())
+        _select(a, b)
+        hou.undos.clear()
+        rc_calls.convert(a, "Redshift", swap=True)
+        self.assertEqual(before, sorted(c.name() for c in parent.children()),
+                         "the swap left a node behind or lost one")
+        twins = [hou.node("/mat/menu_sw_a"), hou.node("/mat/menu_sw_b")]
+        self.assertEqual(["Redshift", "Redshift"],
+                         [nodes.NodeHandler(None).get_renderer_from_node(t) for t in twins])
+        self.assertEqual([True, True], [t.isSelected() for t in twins], "a twin is not selected")
+        self.assertEqual(("Convert and Swap to Redshift",), hou.undos.undoLabels())
+        self.assertEqual(['Amaze: ' + messages.NODES_SWAPPED % (2, "Redshift")], self.bar)
+        hou.undos.performUndo()
+        self.assertEqual([old_type, old_type],
+                         [hou.node("/mat/menu_sw_a").type().name(),
+                          hou.node("/mat/menu_sw_b").type().name()],
+                         "one undo did not bring both back")
+        self.assertEqual(before, sorted(c.name() for c in parent.children()))
+
+
+@unittest.skipUnless(REDSHIFT_TYPE, "the Redshift plugin is not loaded")
+class ViewportPreviewFollowsTheShader(unittest.TestCase):
+    """Houdini's own OpenGL properties added to the builder, each a reference into the shader."""
+
+    def setUp(self):
+        _speakers(self)
+
+    def _preview(self, node):
+        from amaze.utils import rc_calls
+        hou.undos.clear()    # the fixture's own steps are not the preview's
+        rc_calls.viewport_preview(node)
+
+    def _assert_block(self, builder, shader, wired):
+        group = builder.parmTemplateGroup()
+        for name in VIEWPORT:
+            with self.subTest(name):
+                self.assertIsNotNone(group.find(name), "%s was not added" % name)
+                parm = builder.parm(name) or builder.parmTuple(name)[0]
+                self.assertEqual(("OpenGL",), parm.containingFolders())
+        names = [p.name() for p in builder.parms()]
+        self.assertEqual(sorted(set(names)), sorted(names), "a property was added twice")
+        s = shader.name()
+        for c in "rgb":
+            self.assertEqual('ch("%s/base_color%s")' % (s, c),
+                             builder.parm("ogl_diff" + c).expression())
+            self.assertEqual('ch("%s/refl_color%s")' % (s, c),
+                             builder.parm("ogl_spec" + c).expression())
+            self.assertEqual('ch("%s/emission_color%s")' % (s, c),
+                             builder.parm("ogl_emit" + c).expression())
+        self.assertEqual('ch("%s/refl_roughness")' % s, builder.parm("ogl_rough").expression())
+        self.assertEqual('ch("%s/metalness")' % s, builder.parm("ogl_metallic").expression())
+        self.assertEqual('ch("%s/opacity_colorr")' % s, builder.parm("ogl_alpha").expression())
+        self.assertGreaterEqual(builder.parm("ogl_numtex").eval(), 1)
+        for slot, role in (("ogl_tex1", "diffuse"), ("ogl_roughmap", "rough"),
+                           ("ogl_normalmap", "normal")):
+            self.assertEqual('chs("%s/tex0")' % wired[role].name(),
+                             builder.parm(slot).expression(), slot)
+            self.assertEqual("/textures/%s.png" % role, builder.parm(slot).eval(), slot)
+        shader.parm("base_colorr").set(0.25)
+        self.assertAlmostEqual(0.25, builder.parm("ogl_diffr").eval())
+
+    def test_a_standard_material_gains_the_block(self):
+        builder, shader, wired = _textured(self, "menu_preview_usd")
+        self._preview(builder)
+        self.assertEqual(("Viewport Preview",), hou.undos.undoLabels())    # before the block's own probe sets a value
+        self._assert_block(builder, shader, wired)
+        self.assertEqual([], self.said)
+        self.assertEqual(['Amaze: ' + messages.VIEWPORT_PREVIEW_ADDED % "menu_preview_usd"],
+                         self.bar)
+
+    def test_running_it_again_only_rewrites_the_references(self):
+        builder, shader, wired = _textured(self, "menu_preview_again")
+        self._preview(builder)
+        count = len(builder.parms())
+        self._preview(builder)
+        self.assertEqual(count, len(builder.parms()), "the second run added parameters")
+        self._assert_block(builder, shader, wired)
+
+    def test_a_legacy_builder_reuses_its_own_properties(self):
+        builder, shader, wired = _textured(self, "menu_preview_legacy", "redshift_vopnet")
+        built_in = [p.name() for p in builder.parms() if p.name().startswith("ogl_")]
+        self._preview(builder)
+        self._assert_block(builder, shader, wired)
+        self.assertEqual([], [n for n in built_in if builder.parm(n).isSpare()],
+                         "a built-in property was replaced by a spare one")
+        self.assertTrue(builder.parm("ogl_metallic").isSpare())
+
+    def test_an_openpbr_material_follows_its_own_names(self):
+        builder = hou.node("/mat").createNode("rs_usd_material_builder", "menu_preview_pbr")
+        self.addCleanup(_gone, builder.path())
+        shader = next(c for c in builder.children()
+                      if c.type().name() == "redshift::OpenPBRMaterial")
+        self._preview(builder)
+        s = shader.name()
+        self.assertEqual('ch("%s/specular_colorg")' % s, builder.parm("ogl_specg").expression())
+        self.assertEqual('ch("%s/specular_roughness")' % s, builder.parm("ogl_rough").expression())
+        self.assertEqual('ch("%s/base_metalness")' % s, builder.parm("ogl_metallic").expression())
+        self.assertEqual('ch("%s/geometry_opacity")' % s, builder.parm("ogl_alpha").expression())
+
+    def test_a_selection_of_two_both_gain_it(self):
+        a, _sa, _wa = _textured(self, "menu_preview_a")
+        b, _sb, _wb = _textured(self, "menu_preview_b")
+        _select(a, b)
+        self._preview(a)
+        for builder in (a, b):
+            self.assertIsNotNone(builder.parm("ogl_roughmap"), builder.name())
+        self.assertEqual(("Viewport Preview",), hou.undos.undoLabels())
+        self.assertEqual(['Amaze: ' + messages.VIEWPORT_PREVIEWS_ADDED % 2], self.bar)
+
+    def test_a_materialx_material_in_the_selection_is_skipped(self):
+        a, _s, _w = _textured(self, "menu_preview_rs")
+        mtlx = _materialx(self, "menu_preview_mtlx")
+        _select(a, mtlx)
+        self._preview(a)
+        self.assertIsNotNone(a.parm("ogl_diffr"))
+        self.assertEqual([], [p.name() for p in mtlx.parms() if p.name().startswith("ogl_")])
+        self.assertEqual([], self.bar)
+        self.assertEqual([messages.VIEWPORT_PREVIEW_SKIPPED % (
+            1, 2, messages.VIEWPORT_PREVIEW_NOT_REDSHIFT % "menu_preview_mtlx")], self.said)
+
+    def test_no_node_does_nothing(self):
+        self._preview(None)
+        self.assertEqual(([], []), (self.said, self.bar))
+        self.assertEqual((), hou.undos.undoLabels())
 
 
 if __name__ == "__main__":

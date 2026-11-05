@@ -453,6 +453,26 @@ NODE_CONVERTED = 'Converted "%s" to %s.'
 
 NODE_SWAPPED = 'Converted "%s" to %s in its place.'
 
+NODES_CONVERTED = 'Converted %d materials to %s.'
+
+NODES_SWAPPED = 'Converted %d materials to %s in their place.'
+
+NODE_NOT_A_MATERIAL = '"%s" is not a material Amaze can convert.'
+
+NODE_SKIPPED_LINE = '"%s":\n  [skipped] %s'
+
+VIEWPORT_PREVIEW_ADDED = 'Viewport preview added to "%s".'
+
+VIEWPORT_PREVIEWS_ADDED = 'Viewport preview added to %d materials.'
+
+VIEWPORT_PREVIEW_SKIPPED = 'Viewport preview added to %d of %d. Skipped:\n\n%s'
+
+VIEWPORT_PREVIEW_NOT_REDSHIFT = '"%s" is not a Redshift material.'
+
+VIEWPORT_PREVIEW_NO_SHADER = '"%s" holds no Redshift surface shader.'
+
+VIEWPORT_PREVIEW_NO_CHANNELS = '"%s": the viewport cannot follow a %s.'
+
 NODE_ASSETS_IMPORT_FAILURES = 'Some node assets could not be imported:\n\n%s'
 
 MATERIALS_SAVE_FAILURES = 'Some materials could not be saved:\n\n%s'
