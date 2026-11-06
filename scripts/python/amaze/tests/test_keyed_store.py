@@ -778,47 +778,22 @@ class TheRegistryIsTheOneEnumeration(StoreCase):
             "Repair surveys it without being able to name it")
 
     def test_the_audit_tools_list_agrees_with_the_registry(self):
-        """The audit keeps its OWN literal so it runs without the package; this test is what makes drift RED. ▸p/store-declarations"""
-        import ast
+        """The convention the audit tool loads keeps its own literal; this makes drift RED."""
+        from amaze.core import library_files
 
-        root = os.path.dirname(os.path.dirname(os.path.dirname(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
-        source = open(os.path.join(root, "tools", "library-audit.py"),
-                      encoding="utf-8").read()
-        tree = ast.parse(source)
-        listed = None
-        for node in ast.walk(tree):
-            if (isinstance(node, ast.Assign) and node.targets
-                    and getattr(node.targets[0], "id", "") == "SIDE_TABLES"):
-                listed = set(ast.literal_eval(node.value))
-        self.assertIsNotNone(listed, "library-audit.py no longer names "
-                                     "SIDE_TABLES, so this check is vacuous")
         self.assertEqual(
-            set(keyed_store.filenames()), listed,
-            "the audit tool and the registry disagree about which keyed "
-            "files a library contains")
+            set(keyed_store.filenames()), set(library_files.SIDE_TABLES),
+            "the naming convention and the registry disagree about which "
+            "keyed files a library contains")
 
     def test_the_audit_tools_DATABASE_list_agrees_with_the_package(self):
-        """The same guard its neighbour has, for the list beside it - a fifth database must not fail `--strict`."""
-        import ast
+        """The same guard for the list beside it: a fifth database must not fail `--strict`."""
+        from amaze.core import database, library_files
 
-        from amaze.core import database
-
-        root = os.path.dirname(os.path.dirname(os.path.dirname(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
-        source = open(os.path.join(root, "tools", "library-audit.py"),
-                      encoding="utf-8").read()
-        listed = None
-        for node in ast.walk(ast.parse(source)):
-            if (isinstance(node, ast.Assign) and node.targets
-                    and getattr(node.targets[0], "id", "") == "DATABASES"):
-                listed = set(ast.literal_eval(node.value))
-        self.assertIsNotNone(listed, "library-audit.py no longer names "
-                                     "DATABASES, so this check is vacuous")
         self.assertEqual(
-            set(database._SECTION_LABELS), listed,
-            "the audit tool and the package disagree about which lists "
-            "a library contains")
+            set(database._SECTION_LABELS), set(library_files.LISTS),
+            "the naming convention and the package disagree about which "
+            "lists a library contains")
 
     def test_a_side_table_can_be_counted_by_the_restore_picker(self):
         """A 40-note file counted as "1 settings", so the restore refusal comparing record counts never fired."""

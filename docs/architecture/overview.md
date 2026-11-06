@@ -1264,6 +1264,11 @@ core/quarantine.py        where a library-internal removal puts what it
                           takes: machine-local, dated, expiring. Pure
                           stdlib, because the Houdini-free restore tool
                           calls it too
+core/library_files.py     the naming convention: every name a library
+                          file may have, and what anything else is -
+                          scratch, a pre-adopt backup, a duplicate,
+                          unknown. Pure stdlib; the engine reads it and
+                          tools/library-audit.py loads it by path
 helpers/restore.py        the only code that READS the .bak copies and
                           the only code that puts one back - one
                           implementation behind Repair and the

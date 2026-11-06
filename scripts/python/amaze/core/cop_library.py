@@ -1,6 +1,6 @@
 """Models for the Nodes section: node-network assets of any context. ▸p/nodes-section"""
 
-from amaze.core import library, category
+from amaze.core import library, category, renderers
 
 
 class CopCategories(category.Categories):
@@ -20,10 +20,10 @@ class CopLibrary(library.AssetLibrary):
 
     ROW_NOUN = "node setup"    # the manual's name for a row of this section
 
-    RENDERABLE = ("SOP", "COP", "")    # contexts whose tiles can hold a render; "" is a pre-context COP ▸p/nodes-section
+    RENDERABLE = renderers.RENDERABLE_CONTEXTS    # the one set, which Check Library reads too
 
     def can_preview(self, row: int) -> bool:
-        """Only a RENDERABLE context can hold a picture; any other node asset shows its node icon."""
+        """Only a renderable context can hold a picture; any other node asset shows its node icon."""
         if not 0 <= row < len(self._assets):
             return False
-        return str(self._assets[row].renderer or "").upper() in self.RENDERABLE
+        return renderers.can_hold_a_render(self._assets[row].renderer)

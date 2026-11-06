@@ -1,10 +1,13 @@
 """Repair: never deletes, only reports and moves. ▸p/db-restore"""
 
+import filecmp
 import json
 import os
+import time
 
 from amaze import branding
 from amaze.core import database, debug, keyed_store, material, renderers
+from amaze.core import library_files as naming
 from amaze.core.material import BUILDER_SUFFIX, STAMP_SUFFIX
 from amaze.helpers import hostos, restore as restore_lib, wording
 from amaze.prefs import prefs as prefs_module
@@ -37,31 +40,62 @@ def configured_library(preferences=None) -> str:
     return str(getattr(preferences, "dir", "") or "")
 
 
-def survey(directory: str, asset_dir: str = "mat/",
+CAPTURES_DIR = naming.CAPTURE_FOLDER + "/"
+
+SCRATCH_MIN_AGE = 60 * 60    # a younger scratch may be another session's live write
+
+UNCATEGORISED = "Uncategorized"
+
+_UNLISTABLE = (    # (folder, the kinds in it that belong to an asset by id)
+    (naming.ASSET_FOLDER, (naming.ASSET, naming.BUILDER, naming.STAMP, naming.COMPANION)),
+    (naming.RENDER_FOLDER, (naming.RENDER, naming.TILE_ICON)),
+    (naming.CAPTURE_FOLDER, (naming.CAPTURE,)))
+
+
+def survey(preferences_or_directory, asset_dir: str = "mat/",
            img_dir: str = "img/") -> dict:
-    """Read-only, gathered once; while `complete` is False nothing is unclaimed."""
+    """Everything Check Library reports, from one walk; with preferences the Files section too."""
+    preferences = None
+    directory = preferences_or_directory
+    if not isinstance(preferences_or_directory, (str, os.PathLike)):
+        preferences = preferences_or_directory
+        directory = str(preferences.dir or "")
+        asset_dir, img_dir = preferences.asset_dir, preferences.img_dir
+    directory = str(directory)
+    from amaze.core import quarantine as holding
+    holding.prune_quarantine(directory)
+    listing = _walk(directory)
+    root_names = listing["names"].get("")
+
     lists = []
     ids = set()
     complete = True
     for filename in DATABASES + side_tables():
-        entry = _survey_one(directory, filename)
+        entry = _survey_one(directory, filename, root_names)
         lists.append(entry)
         ids |= entry["ids"]
         if entry["state"] in ("unreadable", "absent-but-known"):
             complete = False
+
+    keys = {naming.ASSET_FOLDER: asset_dir, naming.RENDER_FOLDER: img_dir,
+            naming.CAPTURE_FOLDER: CAPTURES_DIR}
     unaccounted = {}
     unreadable_folders = []
-    for folder, extensions, tail in (
-            (asset_dir, ASSET_SIDECARS, "_cop"),
-            (img_dir, (".png",), "_icon")):
-        names = unlisted_in(directory, folder, extensions, tail, ids)
-        if names is None:
-            unreadable_folders.append(folder)
-            unaccounted[folder] = []
+    for folder, kinds in _UNLISTABLE:
+        names = listing["names"].get(folder)
+        if names is None and (folder != naming.CAPTURE_FOLDER
+                              or folder in listing["unreadable"]):
+            debug.event("repair", "folder could not be listed",
+                        path=os.path.join(directory, folder))
+            unreadable_folders.append(keys[folder])
+            unaccounted[keys[folder]] = []
             complete = False
-        else:
-            unaccounted[folder] = names
-    return {
+            continue
+        unaccounted[keys[folder]] = sorted(
+            name for name, (kind, owner) in (names or {}).items()
+            if kind in kinds and owner not in ids)
+
+    findings = {
         "directory": directory,
         "asset_dir": asset_dir,
         "img_dir": img_dir,
@@ -70,25 +104,212 @@ def survey(directory: str, asset_dir: str = "mat/",
         "complete": complete,
         "unreadable_folders": unreadable_folders,
         "unaccounted": unaccounted,
+        "preferences": preferences,
     }
+    findings["stamps"] = _stamps_of_unlisted_pairs(findings, listing)
+    findings.update(_listed_rows_checked(lists, listing))
+    findings.update(_out_of_place(directory, listing))
+    findings.update(_files_section(preferences))
+    findings["shrunk"] = [
+        (entry["filename"], entry["info"]["count"] or 0, newest)
+        for entry, newest in ((entry, _newest_copy_holds(entry)) for entry in lists
+                              if entry["filename"] in DATABASES
+                              and entry["state"] in ("ok", "empty"))
+        if newest is not None and database.held_much_less(entry["info"]["count"] or 0, newest)]
+    findings["holding"] = holding.held(directory)
+    return findings
 
 
-def _survey_one(directory: str, filename: str) -> dict:
-    """One list: its state, what it holds, and what copies sit beside it."""
+def _walk(directory: str) -> dict:
+    """The library in one walk: {names: {folder: {name: (kind, detail)}}, out_of_place, unreadable}."""
+    names = {}
+    out_of_place = []
+    unreadable = []
+    for relative, kind, detail, info in naming.walk(directory):
+        if kind == naming.UNREADABLE:
+            unreadable.append(relative)
+            debug.event("repair", "folder could not be listed",
+                        path=os.path.join(directory, relative), error=detail)
+            continue
+        parts = naming.split(relative)
+        names.setdefault(naming.join(parts[:-1]), {})[parts[-1]] = (kind, detail)
+        if kind == naming.FOLDER:
+            names.setdefault(relative, {})    # entered: an empty one is listed, and empty
+        elif kind in naming.OUT_OF_PLACE:
+            out_of_place.append((relative, kind, detail, info))
+    if "" not in unreadable:
+        names.setdefault("", {})
+    for relative in unreadable:
+        names.pop(relative, None)
+    return {"names": names, "out_of_place": out_of_place, "unreadable": unreadable}
+
+
+def _stamps_of_unlisted_pairs(findings: dict, listing: dict) -> dict:
+    """{id: record or None} for each unlisted complete pair: the only stamps a survey opens."""
+    names = listing["names"].get(naming.ASSET_FOLDER) or {}
+    folder = os.path.join(findings["directory"], findings["asset_dir"])
+    return {asset_id: (read_stamp(os.path.join(folder, asset_id + STAMP_SUFFIX))
+                       if asset_id + STAMP_SUFFIX in names else None)
+            for asset_id in complete_pairs(findings)}
+
+
+def _listed_rows_checked(lists: list, listing: dict) -> dict:
+    """Per Material and Node list: rows whose files are gone, renders missing, no category."""
+    assets = listing["names"].get(naming.ASSET_FOLDER)
+    renders = listing["names"].get(naming.RENDER_FOLDER)
+    missing_files, missing_renders, uncategorised = {}, {}, {}
+    for entry in lists:
+        filename = entry["filename"]
+        if filename not in database.ASSET_FILE_OWNERS:
+            continue
+        gone, unrendered, loose = [], [], []
+        for row in entry.get("rows", ()):
+            asset_id = database.row_id(row)
+            named = (asset_id, str(row.get("name") or asset_id))
+            if not _categories_of(row):
+                loose.append(named)
+            if assets is None or not material.is_safe_asset_id(asset_id):
+                continue
+            if asset_id + ".mat" not in assets or asset_id + ".interface" not in assets:
+                gone.append(named)
+            elif (renders is not None and asset_id + ".png" not in renders
+                  and (filename == "library.json"
+                       or renderers.can_hold_a_render(row.get("renderer")))):
+                unrendered.append(named)
+        missing_files[filename] = gone
+        missing_renders[filename] = unrendered
+        uncategorised[filename] = loose
+    return {"missing_files": missing_files, "missing_renders": missing_renders,
+            "uncategorised": uncategorised}
+
+
+def _categories_of(row: dict) -> list:
+    """A row's categories as a list, blanks dropped; a legacy comma string is split."""
+    found = row.get("categories")
+    if isinstance(found, str):
+        found = found.split(",") if found else []
+    return [one.strip() for one in (found or []) if isinstance(one, str) and one.strip()]
+
+
+def _out_of_place(directory: str, listing: dict) -> dict:
+    """Leftovers to sweep, duplicates held back, and the files and folders no name fits."""
+    leftovers, held_back, unknown, unknown_folders = [], [], [], []
+    now = time.time()
+    for relative, kind, detail, info in listing["out_of_place"]:
+        size, when = (info.st_size, info.st_mtime) if info is not None else (0, 0.0)
+        if kind == naming.SCRATCH:
+            if info is not None and now - when >= SCRATCH_MIN_AGE:
+                leftovers.append((relative, kind, size, when))
+        elif kind == naming.PRE_ADOPT_COPY:
+            leftovers.append((relative, kind, size, when))
+        elif kind == naming.DUPLICATE:
+            why = _why_a_duplicate_stays(directory, relative, detail, listing)
+            if why:
+                held_back.append((relative, detail, size, when, why))
+            else:
+                leftovers.append((relative, kind, size, when))
+        elif detail == "folder":
+            files, total = _folder_size(os.path.join(directory, relative))
+            unknown_folders.append((relative, files, total, when))
+        else:
+            unknown.append((relative, size, when))
+    return {"leftovers": leftovers, "held_back": held_back, "unknown": unknown,
+            "unknown_folders": unknown_folders}
+
+
+def _why_a_duplicate_stays(directory: str, relative: str, original: str, listing=None) -> str:
+    """Empty when the duplicate may go, else `alone` or `differs`."""
+    parts = naming.split(original)
+    if listing is not None:
+        present = parts[-1] in listing["names"].get(naming.join(parts[:-1]), {})
+    else:
+        present = os.path.isfile(os.path.join(directory, *parts))
+    if not present:
+        return "alone"
+    if naming.classify(original)[0] in naming.COPIES:
+        return ""
+    try:
+        same = filecmp.cmp(os.path.join(directory, *naming.split(relative)),
+                           os.path.join(directory, *parts), shallow=False)
+    except OSError:
+        same = False
+    return "" if same else "differs"
+
+
+def _folder_size(path: str) -> tuple:
+    count = total = 0
+    for here, _dirs, files in os.walk(path):
+        for name in files:
+            try:
+                total += os.path.getsize(os.path.join(here, name))
+                count += 1
+            except OSError:
+                pass
+    return count, total
+
+
+def _files_section(preferences) -> dict:
+    """The Files section's folders not on this computer, on a drive not connected, and stars gone."""
+    found = {"dead_folders": [], "unmounted_folders": [], "dead_stars": []}
+    if preferences is None:
+        return found
+    from amaze.core import locations
+    for path in locations.registered_paths(preferences):
+        if os.path.isdir(path):
+            continue
+        if hostos.volume_unreachable(path):    # unreachable is not gone: a blinking network share
+            found["unmounted_folders"].append(path)
+        else:
+            found["dead_folders"].append(path)
+    for path in locations.favourite_paths(preferences):
+        if os.path.exists(path) or hostos.volume_unreachable(path):
+            continue
+        if not os.path.isdir(os.path.dirname(path)):    # its folder is not here, set aside or unsynced
+            continue
+        found["dead_stars"].append(path)
+    return found
+
+
+def _newest_copy_holds(entry: dict):
+    """What the newest saved copy beside a list holds, the tier order `database` reads, or None."""
+    copies = dict(entry["snapshots"])
+    for tier in restore_lib.TIERS:
+        snap = copies.get(tier)
+        if snap is not None:
+            return None if snap["error"] else snap["count"]
+    return None
+
+
+def _snapshots_among(path: str, names: dict) -> list:
+    """`restore.snapshots` answered from the folder's listing: undo copies newest first, then tiers."""
+    base = os.path.basename(path)
+    folder = os.path.dirname(path)
+    prefix = base + "." + restore_lib.UNDO_TIER
+    found = [(name[len(base) + 1:], os.path.join(folder, name))
+             for name in sorted((name for name in names if name.startswith(prefix)),
+                                reverse=True)]
+    return found + [(tier, path + "." + tier) for tier in restore_lib.TIERS
+                    if base + "." + tier in names]
+
+
+def _survey_one(directory: str, filename: str, names=None) -> dict:
+    """One list: its state, what it holds, and what copies sit beside it; `names` lists the folder."""
     path = os.path.join(directory, filename)
     facts, document = restore_lib.surveyed(path)    # ONE parse for both - the state below reads `facts`, the ids read `document`
+    copies = (restore_lib.snapshots(path) if names is None
+              else _snapshots_among(path, names))
     entry = {
         "filename": filename,
         "label": database.section_label(filename),
         "path": path,
         "info": facts,
         "ids": set(),
+        "rows": [],
         "trace": "",
-        "snapshots": [(tier, restore_lib.info(snap))
-                      for tier, snap in restore_lib.snapshots(path)],
+        "snapshots": [(tier, restore_lib.info(snap)) for tier, snap in copies],
     }
     if not facts["exists"]:
-        entry["trace"] = database.absent_but_known(directory, filename)
+        entry["trace"] = database.absent_but_known(directory, filename, names)
         entry["state"] = "absent-but-known" if entry["trace"] else "absent"
         return entry
     if facts["error"]:
@@ -112,6 +333,7 @@ def _survey_one(directory: str, filename: str) -> dict:
     for row in (document.get("assets") or []):
         if isinstance(row, dict):
             entry["ids"].add(database.row_id(row))
+            entry["rows"].append(row)
     entry["state"] = "empty" if not facts["count"] else "ok"
     return entry
 
@@ -219,18 +441,29 @@ def rebuild_from_stamps(directory: str, asset_dir: str = "mat/",
     }
 
 
-def repair_index(directory: str, asset_dir: str = "mat/") -> tuple:
-    """Newest snapshot that parses, else a rebuild from stamps; (ok, how)."""
-    target = os.path.join(directory, "library.json")
-    for tier in restore_lib.TIERS:
+def _copies_by_what_they_hold(target: str) -> list:
+    """The tiers of saved copies that parse, newest first; those holding nothing after the rest."""
+    found = []
+    for order, tier in enumerate(restore_lib.TIERS):
         source = "%s.%s" % (target, tier)
+        document, error = restore_lib.read_document(source)
+        if error or database.wrong_shape(document):
+            continue
         try:
-            with open(source, "rb") as handle:
-                snapshot_bytes = handle.read()
+            when = os.path.getmtime(source)
         except OSError:
             continue
-        if not hostos.parses_as_json(snapshot_bytes):
-            continue
+        holds = bool(document.get("assets"))
+        found.append((not holds, -when, order, tier))
+    return [tier for *_key, tier in sorted(found)]
+
+
+def repair_index(directory: str, asset_dir: str = "mat/", guard: bool = True) -> tuple:
+    """The newest copy holding materials, else the newest that parses, else a rebuild; (ok, how)."""
+    if guard:
+        _refuse_a_houdini_that_holds_the_library()
+    target = os.path.join(directory, "library.json")
+    for tier in _copies_by_what_they_hold(target):
         try:
             outcome = restore_lib.put_back(target, tier)
         except restore_lib.RestoreRefused as refusal:
@@ -239,9 +472,7 @@ def repair_index(directory: str, asset_dir: str = "mat/") -> tuple:
             continue
         debug.event("repair", "index restored from a snapshot",
                     tier=tier, undo=outcome.get("undo", ""))
-        refreshed, gone = _rows_against_their_stamps(target, os.path.join(directory, asset_dir))
-        newer = _materials_newer_than_the_copy(directory, asset_dir)
-        return True, _put_back_sentence(refreshed, newer, gone)
+        return True, _after_a_put_back(directory, asset_dir, "library.json")["said"]
     document = rebuild_from_stamps(directory, asset_dir)
     if document["unreadable"]:  # an unparsed list claims nothing ▸p/clean-library-sweep
         debug.event("repair", "rebuild refused - a sibling list is "
@@ -311,11 +542,21 @@ def _rows_against_their_stamps(target: str, folder: str) -> tuple:
     return taken, sorted(gone)
 
 
-def _put_back_sentence(refreshed: int, newer: int, gone: list) -> str:
+def _after_a_put_back(directory: str, asset_dir: str, filename: str) -> dict:
+    """A Material or Node list just put back: newer stamps taken, rows saved after it added back."""
+    target = os.path.join(directory, filename)
+    refreshed, gone = _rows_against_their_stamps(target, os.path.join(directory, asset_dir))
+    newer = _rows_newer_than_the_copy(directory, asset_dir, filename)
+    return {"refreshed": refreshed, "newer": newer, "gone": gone,
+            "said": _put_back_sentence(refreshed, newer, gone, filename)}
+
+
+def _put_back_sentence(refreshed: int, newer: int, gone: list,
+                       filename: str = "library.json") -> str:
     """What the put-back did, in the status line's words: counts, then the rows whose files are gone."""
     def counted(count, after):
         return "the %d %s %s after it %s" % (
-            count, database.section_noun("library.json", count), after,
+            count, database.section_noun(filename, count), after,
             "was" if count == 1 else "were")
 
     done = []
@@ -333,17 +574,22 @@ def _put_back_sentence(refreshed: int, newer: int, gone: list) -> str:
     return how
 
 
-def _materials_newer_than_the_copy(directory: str, asset_dir: str) -> int:
-    """The materials a put-back copy predates, added from their stamps; how many came back."""
+def _rows_newer_than_the_copy(directory: str, asset_dir: str, filename: str) -> int:
+    """The rows a put-back copy predates, added from their stamps; how many came back."""
     findings = survey(directory, asset_dir)
-    ids = [asset_id for asset_id, _record in materials_on_record(findings)]
-    if not ids or why_nothing_can_be_added(findings, "library.json"):
+    if filename == "library.json":
+        ids = [asset_id for asset_id, _record in materials_on_record(findings)]
+    else:    # a node's stamp names its context where a material's names a renderer
+        ids = [asset_id for asset_id, record in _stamps(findings).items()
+               if record is not None and record.get("renderer")
+               and not renderers.get(record.get("renderer"))]
+    if not ids or why_nothing_can_be_added(findings, filename):
         return 0
     try:
-        return len(_add_rows(findings, "library.json", ids)["added"])
+        return len(_add_rows(findings, filename, ids)["added"])
     except (OSError, ValueError) as exc:    # the copy is back either way; these stay for Repair
-        debug.event("repair", "materials newer than the copy not added",
-                    error=str(exc))
+        debug.event("repair", "rows newer than the copy not added",
+                    file=filename, error=str(exc))
         return 0
 
 
@@ -511,12 +757,203 @@ def report_lines(findings: dict) -> list:
         lines.append("Every file in the library's own folders is accounted "
                      "for by a section.")
 
+    lines.extend(_check_lines(findings))
+
     if troubled:
         lines.append("")
         for entry in troubled:
             lines.append(_snapshot_line(entry))
 
+    if "holding" in findings:
+        lines.append("")
+        lines.append(_holding_line(findings["holding"]))
     return lines
+
+
+_SHOWN = 8    # names in a sentence before "and N more"
+_SHOWN_LINES = 20    # lines of their own before "and N more"
+
+
+def _named(names: list) -> str:
+    names = list(names)
+    more = len(names) - _SHOWN
+    return wording.and_list(names[:_SHOWN] + (["%d more" % more] if more > 0 else []))
+
+
+def _counted(count: int, filename: str) -> str:
+    return "%d %s" % (count, database.section_noun(filename, count))
+
+
+def _per_section(found: dict) -> str:
+    """`3 materials and 1 node`, a count per list in its own noun, empty lists left out."""
+    return wording.and_list([_counted(len(rows), filename)
+                             for filename, rows in found.items() if rows])
+
+
+def _every_section() -> str:
+    """`material and node`: the nouns of the lists that own asset files."""
+    return wording.and_list([database.section_noun(filename, 1)
+                             for filename in database.ASSET_FILE_OWNERS])
+
+
+def _size(count: int) -> str:
+    if count < 1024 * 1024:
+        return "%d KB" % max(1, round(count / 1024.0)) if count else "0 KB"
+    return "%.1f MB" % (count / 1048576.0)
+
+
+def _day(when: float) -> str:
+    return time.strftime("%Y-%m-%d", time.localtime(when)) if when else "an unknown date"
+
+
+def _limited(lines: list) -> list:
+    more = len(lines) - _SHOWN_LINES
+    return lines[:_SHOWN_LINES] + (["  and %d more" % more] if more > 0 else [])
+
+
+def _check_lines(findings: dict) -> list:
+    """The sections only Check Library asks about; one line each saying so when all is well."""
+    if "leftovers" not in findings:
+        return []
+    said = []
+    missing = findings.get("missing_files") or {}
+    for filename, rows in missing.items():
+        if rows:
+            said.append("%s %s on the %s list, but %s files are missing: %s. A file "
+                        "that has not finished syncing looks the same as one that is gone."
+                        % (_counted(len(rows), filename), "is" if len(rows) == 1 else "are",
+                           database.section_label(filename),
+                           "its" if len(rows) == 1 else "their",
+                           _named(name for _id, name in rows)))
+    renders = findings.get("missing_renders") or {}
+    if any(renders.values()):
+        total = sum(len(rows) for rows in renders.values())
+        said.append("No thumbnail image yet for %s - select %s in Amaze and use Update "
+                    "Render when convenient, since a render takes time."
+                    % (_per_section(renders), "it" if total == 1 else "them"))
+    said.extend(_leftover_lines(findings))
+    said.extend(_unknown_lines(findings))
+    loose = findings.get("uncategorised") or {}
+    if any(loose.values()):
+        total = sum(len(rows) for rows in loose.values())
+        said.append("%s %s no category, so %s can be put in %s."
+                    % (_per_section(loose), "has" if total == 1 else "have",
+                       "it" if total == 1 else "they", UNCATEGORISED))
+    said.extend(_files_section_lines(findings))
+    for filename, holds, newest in findings.get("shrunk", ()):
+        said.append("Your %s list holds %s, but its newest saved copy holds %d. If you "
+                    "did not remove them yourself, that copy can be put back."
+                    % (database.section_label(filename), _counted(holds, filename), newest))
+    if not said:
+        said = ["Every %s on the lists has its files, and every one that can have a "
+                "render has one." % _every_section(),
+                "Every %s has a category." % _every_section(),
+                "Nothing is left over from a save that did not finish, and every file "
+                "in the library folder has a name Amaze knows."]
+        if findings.get("preferences") is not None:
+            said.append("Every folder in the Files section is on this computer, and "
+                        "every starred file is still there.")
+    lines = []
+    for line in said:
+        lines.extend(["", line])
+    return lines
+
+
+_LEFTOVER_KINDS = (    # (kind, one, more)
+    (naming.SCRATCH, "file left by a save that did not finish",
+     "files left by saves that did not finish"),
+    (naming.PRE_ADOPT_COPY, "backup kept from before an earlier texture update",
+     "backups kept from before an earlier texture update"),
+    (naming.DUPLICATE, "second copy a sync service made of a file still here",
+     "second copies a sync service made of files still here"),
+)
+
+
+def _leftover_lines(findings: dict) -> list:
+    said = []
+    leftovers = findings.get("leftovers") or []
+    if leftovers:
+        parts = []
+        for kind, one, more in _LEFTOVER_KINDS:
+            count = sum(1 for entry in leftovers if entry[1] == kind)
+            if count:
+                parts.append("%d %s" % (count, one if count == 1 else more))
+        said.append("Amaze made %s here that nothing needs any more: %s. Moving them "
+                    "aside takes them out of the library: %s."
+                    % (files(len(leftovers)), wording.and_list(parts),
+                       _named("`%s`" % entry[0] for entry in leftovers)))
+    for relative, original, size, when, why in findings.get("held_back") or []:
+        if why == "alone":
+            said.append("`%s` looks like a second copy of `%s`, which is not here, so "
+                        "it is left where it is." % (relative, original))
+        else:
+            said.append("`%s` is a second version of `%s`, from %s (%s), and the two "
+                        "differ, so it is left where it is." % (
+                            relative, original, _day(when), _size(size)))
+    return said
+
+
+def _unknown_lines(findings: dict) -> list:
+    entries = []
+    for relative, files_in, size, when in findings.get("unknown_folders") or []:
+        entries.append((relative, "  `%s/` - a folder of %s, %s, from %s" % (
+            relative, files(files_in), _size(size), _day(when))))
+    for relative, size, when in findings.get("unknown") or []:
+        entries.append((relative, "  `%s` - %s, from %s" % (relative, _size(size), _day(when))))
+    if not entries:
+        return []
+    head = ("This is not a file Amaze knows, so it is left where it is:" if len(entries) == 1
+            else "These %d are not files Amaze knows, so they are left where they are:"
+            % len(entries))
+    return [head + "\n" + "\n".join(_limited([line for _relative, line in sorted(entries)]))]
+
+
+def _files_section_lines(findings: dict) -> list:
+    said = []
+    dead = findings.get("dead_folders") or []
+    if dead:
+        said.append("%s in the Files section %s not on this computer. Setting %s aside "
+                    "keeps %s comments, icons and favorites, and they come back when "
+                    "the folder is added again:\n  %s"
+                    % ("This folder" if len(dead) == 1 else "These %d folders" % len(dead),
+                       "is" if len(dead) == 1 else "are", "it" if len(dead) == 1 else "them",
+                       "its" if len(dead) == 1 else "their", "\n  ".join(sorted(dead))))
+    unmounted = findings.get("unmounted_folders") or []
+    if unmounted:
+        said.append("%s on a drive that is not connected, so %s left as %s - %s back "
+                    "when the drive is." % (
+                        "1 folder is" if len(unmounted) == 1
+                        else "%d folders are" % len(unmounted),
+                        "it is" if len(unmounted) == 1 else "they are",
+                        "it is" if len(unmounted) == 1 else "they are",
+                        "it will be" if len(unmounted) == 1 else "they will be"))
+    stars = findings.get("dead_stars") or []
+    if stars:
+        said.append("%s gone from %s folder:\n  %s" % (
+            "This starred file is" if len(stars) == 1
+            else "These %d starred files are" % len(stars),
+            "its" if len(stars) == 1 else "their", "\n  ".join(sorted(stars))))
+    return said
+
+
+def _holding_line(held: dict) -> str:
+    """The holding folder's line: what it holds, when the oldest day goes, and where it is."""
+    if not held["files"]:
+        return ("Amaze's holding folder on this computer is empty. Anything moved "
+                "aside goes there and is kept for %d days: %s"
+                % (_quarantine_days(), held["path"]))
+    first = next((expires for _day_name, expires, _n, _b in held["days"] if expires), "")
+    return ("Amaze's holding folder on this computer holds %s (%s), moved aside on "
+            "%s. Each day's files are kept for %d days%s: %s"
+            % (files(held["files"]), _size(held["bytes"]),
+               "1 day" if len(held["days"]) == 1 else "%d days" % len(held["days"]),
+               _quarantine_days(),
+               ", and the oldest go on %s" % first if first else "", held["path"]))
+
+
+def _quarantine_days() -> int:
+    from amaze.core import quarantine as holding
+    return holding.QUARANTINE_DAYS
 
 
 def files(count: int) -> str:
@@ -616,42 +1053,131 @@ def movable(findings: dict) -> dict:
         for folder, names in findings["unaccounted"].items()})
 
 
-def quarantine(findings: dict) -> dict:
-    """Move unclaimed files aside, never a material Add Back names; refuses on any bad list."""
-    _refuse_a_houdini_that_holds_the_library()
-    if not findings["complete"]:
+MOVABLE = ("unlisted", "leftovers", "unknown")
+
+
+def move_aside(findings: dict, what, guard: bool = True) -> dict:
+    """Move into the holding folder what `what` names, one of MOVABLE or several; never deletes."""
+    if guard:
+        _refuse_a_houdini_that_holds_the_library()
+    asked = (what,) if isinstance(what, str) else tuple(what)
+    for one in asked:
+        if one not in MOVABLE:
+            raise ValueError("there is nothing called %r to move aside" % one)
+    directory = findings["directory"]
+    if "unlisted" in asked and not findings["complete"]:
         raise ValueError("one of the library's lists cannot be read, so "
                          "these files may belong to it")
-    findings = movable(findings)
     from amaze.core import quarantine as holding
-    root = holding.quarantine_folder(findings["directory"])
-    moved, failed = [], []
-    for folder, names in findings["unaccounted"].items():
-        if not names:
-            continue
-        for name in names:
-            source = os.path.join(findings["directory"], folder, name)
-            if holding.quarantine_file(findings["directory"], source):
-                moved.append(name)
-            else:
-                failed.append(name)
-    debug.event("repair", "unclaimed files moved aside", folder=root,
-                moved=len(moved), failed=len(failed),
-                moved_files=moved, failed_files=failed)
+    root = holding.quarantine_folder(directory)
+    moved, failed, record = [], [], []
+
+    def take(relative, shown):
+        source = os.path.join(directory, *naming.split(relative))
+        landed = holding.quarantine_file(directory, source) if os.path.lexists(source) else ""
+        (moved if landed else failed).append(shown)
+        if landed:
+            record.append([source, landed])
+
+    if "unlisted" in asked:
+        for folder, names in movable(findings)["unaccounted"].items():
+            for name in names:
+                take(folder.rstrip("/\\") + "/" + name, name)
+    if "leftovers" in asked:
+        for relative, kind, _size, _when in findings.get("leftovers", ()):
+            if kind == naming.DUPLICATE and _why_a_duplicate_stays(
+                    directory, relative, naming.classify(relative)[1]):
+                failed.append(relative)    # it changed since the check: a second version now
+                continue
+            take(relative, relative)
+    if "unknown" in asked:
+        for relative, _size, _when in findings.get("unknown", ()):
+            take(relative, relative)
+        for relative, _files, _size, _when in findings.get("unknown_folders", ()):
+            take(relative, relative)
+    holding.prune_quarantine(directory)
+    debug.event("repair", "files moved aside", what=list(asked), folder=root,
+                moved=len(moved), failed=len(failed), files=record,
+                failed_files=failed)
     return {"folder": root, "moved": moved, "failed": failed}
 
 
+def quarantine(findings: dict) -> dict:
+    """`move_aside(findings, "unlisted")`, the shelf tool's button until Check Library replaces it."""
+    return move_aside(findings, "unlisted")
 
-def reattach(findings: dict, filename: str, only=None) -> dict:
+
+def set_aside_folders(findings: dict, guard: bool = True) -> list:
+    """Drop the Files section's pointer to each folder not on this computer; its files are untouched."""
+    if guard:
+        _refuse_a_houdini_that_holds_the_library()
+    preferences = findings["preferences"]
+    done = []
+    for path in findings.get("dead_folders", ()):
+        if os.path.isdir(path) or hostos.volume_unreachable(path):
+            continue    # it came back since the check
+        preferences.remove_file_folder(path)
+        done.append(path)
+    debug.event("repair", "folders set aside", folders=done)
+    return done
+
+
+def drop_dead_stars(findings: dict, guard: bool = True) -> list:
+    """Unstar each starred file gone from a folder that is still here, in one write."""
+    if guard:
+        _refuse_a_houdini_that_holds_the_library()
+    from amaze.core import locations
+    gone = [path for path in findings.get("dead_stars", ())
+            if not os.path.exists(path) and os.path.isdir(os.path.dirname(path))]
+    if gone:
+        locations.set_favourites(findings["preferences"], {path: False for path in gone})
+    debug.event("repair", "stars on files that are gone dropped", files=gone)
+    return gone
+
+
+def rescue_uncategorised(findings: dict, guard: bool = True) -> dict:
+    """Put each row with no category in Uncategorized, list by list; {filename: how many}."""
+    if guard:
+        _refuse_a_houdini_that_holds_the_library()
+    done = {}
+    for filename, rows in findings.get("uncategorised", {}).items():
+        wanted = {asset_id for asset_id, _name in rows}
+        if not wanted:
+            continue
+        path = os.path.join(findings["directory"], filename)
+        document, error = restore_lib.read_document(path)
+        if error or database.wrong_shape(document):
+            raise ValueError("that list cannot be read, so nothing was changed in it")
+        count = 0
+        for row in document.get("assets") or []:
+            if (isinstance(row, dict) and database.row_id(row) in wanted
+                    and not _categories_of(row)):
+                row["categories"] = [UNCATEGORISED]
+                count += 1
+        if not count:
+            continue
+        categories = document.setdefault("categories", ["_All"])
+        if UNCATEGORISED not in categories:
+            categories.append(UNCATEGORISED)
+        hostos.snapshot_before_write(path)
+        _write_json(path, document)
+        done[filename] = count
+    debug.event("repair", "rows with no category put in one", lists=done)
+    return done
+
+
+def reattach(findings: dict, filename: str, only=None, guard: bool = True) -> dict:
     """Add the unclaimed pairs, or the ids in `only`, to `filename` from their stamps ▸p/recovery-stamp"""
-    _refuse_a_houdini_that_holds_the_library()
+    if guard:
+        _refuse_a_houdini_that_holds_the_library()
     return _add_rows(findings, filename,
                      complete_pairs(findings) if only is None else list(only))
 
 
-def add_materials_back(findings: dict) -> dict:
+def add_materials_back(findings: dict, guard: bool = True) -> dict:
     """Put every material `materials_on_record` finds on the Material list; raises as `reattach`."""
-    _refuse_a_houdini_that_holds_the_library()
+    if guard:
+        _refuse_a_houdini_that_holds_the_library()
     return _add_rows(findings, "library.json",
                      [asset_id for asset_id, _record in materials_on_record(findings)])
 
@@ -660,14 +1186,24 @@ def materials_on_record(findings: dict) -> list:
     """The unlisted pairs whose stamp names a renderer Amaze knows, as `(id, record)`, by id."""
     if "asset_dir" not in findings:
         return []
-    folder = os.path.join(findings["directory"], findings["asset_dir"])
+    stamps = _stamps(findings)
     found = []
     for asset_id in complete_pairs(findings):
-        path = os.path.join(folder, asset_id + STAMP_SUFFIX)
-        record = read_stamp(path) if os.path.exists(path) else None
+        record = stamps.get(asset_id)
         if record is not None and renderers.get(record.get("renderer")):    # a node's names a context
             found.append((asset_id, record))
     return found
+
+
+def _stamps(findings: dict) -> dict:
+    """The stamps of the unlisted pairs, read once per survey; a hand-made findings reads them here."""
+    if "stamps" not in findings:
+        folder = os.path.join(findings["directory"], findings["asset_dir"])
+        findings["stamps"] = {}
+        for asset_id in complete_pairs(findings):
+            path = os.path.join(folder, asset_id + STAMP_SUFFIX)
+            findings["stamps"][asset_id] = read_stamp(path) if os.path.exists(path) else None
+    return findings["stamps"]
 
 
 def why_nothing_can_be_added(findings: dict, filename: str = "") -> str:
@@ -807,15 +1343,21 @@ def target_of(findings: dict, filename: str) -> str:
     return os.path.join(findings["directory"], filename)
 
 
-def put_back(findings: dict, filename: str, tier: str) -> dict:
-    """One saved copy back, through the shared restore; raises `RestoreRefused`."""
-    _refuse_a_houdini_that_holds_the_library(
-        lambda phrase: restore_lib.RestoreRefused(
-            "Nothing was put back: %s." % phrase))
+def put_back(findings: dict, filename: str, tier: str, guard: bool = True) -> dict:
+    """One saved copy back, then for a Material or Node list what `repair_index` does after; `said`."""
+    if guard:
+        _refuse_a_houdini_that_holds_the_library(
+            lambda phrase: restore_lib.RestoreRefused(
+                "Nothing was put back: %s." % phrase))
     target = target_of(findings, filename)
     done = restore_lib.put_back(target, tier, allow_loss=True)
     debug.event("repair", "saved copy put back", file=filename, tier=tier,
                 undo=done["undo"])
+    done["said"] = ""
+    if (filename in database.ASSET_FILE_OWNERS
+            and target == os.path.join(findings["directory"], filename)):
+        done.update(_after_a_put_back(findings["directory"],
+                                      findings.get("asset_dir") or "mat/", filename))
     return done
 
 

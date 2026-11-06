@@ -2583,7 +2583,7 @@ class ASuspiciousShrinkIsSaidOutLoudTest(_Case):
         self.assertEqual(1, len(notes), notes)
         self.assertIn("1", notes[0])
         self.assertIn("40", notes[0])
-        self.assertIn("Repair", notes[0],
+        self.assertIn("Check Library", notes[0],
                       "the note does not name the way out")
         with open(self.path, "rb") as fh:
             self.assertEqual(before, fh.read(),

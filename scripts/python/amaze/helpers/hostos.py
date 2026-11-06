@@ -432,10 +432,16 @@ def existed_before(path: str, markers: tuple = ()) -> str:
     return found[0] if found else ""
 
 
-def existed_before_all(path: str, markers: tuple = ()) -> list:
-    """Every surviving trace: the .bak tiers sorted, then .unreadable, then the markers."""
+def existed_before_all(path: str, markers: tuple = (), names=None) -> list:
+    """Every trace a file was here: bak tiers, unreadable, markers; `names` answers from a listing."""
     if not path:
         return []
+    if names is not None:
+        base = os.path.basename(path)
+        traces = sorted(name for name in names if name.startswith(base + ".bak-"))
+        if base + ".unreadable" in names:
+            traces.append(base + ".unreadable")
+        return traces or [marker for marker in markers if marker and marker in names]
     traces = sorted(glob.glob(glob.escape(path) + ".bak-*"))  # a library path may hold [ ] ? ▸r/glob-brackets
     unreadable = path + ".unreadable"
     if os.path.exists(unreadable):
@@ -450,13 +456,63 @@ def existed_before_all(path: str, markers: tuple = ()) -> list:
 HISTORY_DAYS = 90  # daily history entries kept per file
 
 
+LIBRARY_ID_KEY = "library_id"    # in the policy.json beside a file; `library_policy.library_id` mints it
+
+_LIBRARY_IDS = globals().get("_LIBRARY_IDS", {})    # folder -> its library id, "" for none: one read each
+_FOLLOWED = globals().get("_FOLLOWED", set())    # history folders already moved to their id this session
+
+_LIBRARY_ID_SHAPE = re.compile(r"^[0-9a-f]{32}$")
+
+
+def is_library_id(value) -> bool:
+    return isinstance(value, str) and bool(_LIBRARY_ID_SHAPE.match(value))
+
+
+def library_id_beside(for_path: str) -> str:
+    """The library id the policy.json beside `for_path` holds, or ""; read once per folder."""
+    folder = os.path.dirname(os.path.abspath(for_path))
+    if folder not in _LIBRARY_IDS:
+        found = ""
+        try:
+            with open(os.path.join(folder, "policy.json"), encoding="utf-8-sig") as handle:
+                document = json.load(handle)
+            value = document.get(LIBRARY_ID_KEY) if isinstance(document, dict) else None
+            if is_library_id(value):
+                found = value
+        except (OSError, ValueError):
+            found = ""
+        _LIBRARY_IDS[folder] = found
+    return _LIBRARY_IDS[folder]
+
+
+def forget_library_id(folder: str) -> None:
+    """Read the policy.json in `folder` again at the next ask; call after writing it."""
+    _LIBRARY_IDS.pop(os.path.abspath(folder), None)
+
+
 def history_root(for_path: str) -> str:
-    """The machine-local history directory for a file's library, outside the synced library."""
-    library = os.path.dirname(os.path.abspath(for_path))  # keyed by a digest, with a readable prefix
+    """The machine-local history folder of a file's library, by its id when it has one, else by path."""
+    library = os.path.dirname(os.path.abspath(for_path))
     key = canonical_path_key(library)
     digest = hashlib.sha256(key.encode("utf-8")).hexdigest()[:10]
     label = safe_filename(os.path.basename(library) or "library")[:24]
-    return os.path.join(config_root(), "history", "%s-%s" % (label, digest))
+    by_path = os.path.join(config_root(), "history", "%s-%s" % (label, digest))
+    library_id = library_id_beside(for_path)
+    if not library_id:
+        return by_path
+    by_id = os.path.join(config_root(), "history", "library-" + library_id)
+    if by_path not in _FOLLOWED:
+        _FOLLOWED.add(by_path)
+        if os.path.isdir(by_path) and not os.path.exists(by_id):
+            try:
+                check_sandbox(by_id)
+                os.rename(by_path, by_id)
+                _record("history", "history folder now follows the library id",
+                        source=by_path, target=by_id)
+            except OSError as exc:
+                _record("history", "history folder not moved to the library id",
+                        source=by_path, target=by_id, error=str(exc))
+    return by_id
 
 
 def record_history(path: str, days: int = HISTORY_DAYS) -> str:

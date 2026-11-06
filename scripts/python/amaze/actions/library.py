@@ -114,6 +114,7 @@ def update(preferences) -> bool:
         return False    # no file keys yet: a capture moved now would miss its tile
     if captures.machine_capture_count():    # no question: installing this Amaze was the choice
         captures.adopt_machine_captures(preferences)
+    library_policy.library_id(library_dir)    # minted once: the holding folder follows a moved library
     if library_policy.library_version(library_dir) < library_policy.LIBRARY_VERSION:
         library_policy.set_library_version(library_dir, library_policy.LIBRARY_VERSION)
         return True

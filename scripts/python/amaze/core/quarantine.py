@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 import os
 import shutil
 import time
@@ -16,7 +17,7 @@ QUARANTINE_DAYS = 30
 
 
 def _quarantine_root(library_dir: str) -> str:
-    """This library's quarantine, every day of it, in the machine-local history folder."""
+    """This library's quarantine, every day of it, in its history folder: by library id, else by path."""
     return os.path.join(hostos.history_root(
         os.path.join(library_dir, "library.json")), QUARANTINE_PREFIX)
 
@@ -52,6 +53,37 @@ def prune_quarantine(library_dir: str, days: int = QUARANTINE_DAYS) -> int:
             debug.event("cleanup", "could not expire a quarantine day",
                         folder=folder, error=str(exc))
     return removed
+
+
+def held(library_dir: str, days: int = QUARANTINE_DAYS) -> dict:
+    """{path, files, bytes, days}; each day is (day, first day it may be removed, files, bytes)."""
+    root = _quarantine_root(library_dir)
+    found = {"path": root, "files": 0, "bytes": 0, "days": []}
+    try:
+        names = sorted(os.listdir(root))
+    except OSError:
+        return found
+    for name in names:
+        folder = os.path.join(root, name)
+        if not os.path.isdir(folder):
+            continue
+        count = total = 0
+        for here, _dirs, files in os.walk(folder):
+            for one in files:
+                try:
+                    total += os.path.getsize(os.path.join(here, one))
+                    count += 1
+                except OSError:
+                    pass
+        try:
+            expires = (datetime.date.fromisoformat(name)
+                       + datetime.timedelta(days=days + 1)).isoformat()    # `prune_quarantine`'s cutoff
+        except ValueError:
+            expires = ""
+        found["days"].append((name, expires, count, total))
+        found["files"] += count
+        found["bytes"] += total
+    return found
 
 
 def quarantine_size(library_dir: str) -> tuple:

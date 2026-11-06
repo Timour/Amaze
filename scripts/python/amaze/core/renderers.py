@@ -37,6 +37,13 @@ ALL = (KARMA, REDSHIFT, OCTANE)
 HUB = KARMA
 RENDER_TAB = (REDSHIFT, KARMA, OCTANE)
 
+RENDERABLE_CONTEXTS = ("SOP", "COP", "")    # node contexts whose tiles can hold a render; "" is a pre-context COP ▸p/nodes-section
+
+
+def can_hold_a_render(context) -> bool:
+    """Whether a Node row of this context can have a render; every Material row can."""
+    return str(context or "").upper() in RENDERABLE_CONTEXTS
+
 
 def get(stored):
     """The Renderer a stored value names, older spellings included; None for one Amaze lacks."""

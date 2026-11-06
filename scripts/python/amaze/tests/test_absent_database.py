@@ -1346,6 +1346,7 @@ class TheFourListsAreEnumeratedOnce(unittest.TestCase):
 
     MAY_ENUMERATE = {  # every module that may spell all four in one literal - a list, not a count, because the exemption is what has to be argued for; `tools/library-audit.py` is the deliberate duplicate outside the package, since it must run where Houdini will not start
         os.path.join("core", "database.py"),
+        os.path.join("core", "library_files.py"),    # imports nothing: the audit tool loads it by path
     }
 
     def _package_sources(self):

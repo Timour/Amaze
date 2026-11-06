@@ -9,7 +9,7 @@ import uuid
 from typing import Self
 
 from amaze import branding
-from amaze.core import debug
+from amaze.core import debug, library_files
 from amaze.helpers import hostos, restore, wording
 from amaze import messages
 
@@ -107,11 +107,24 @@ _EXISTED_MARKERS = {
 }
 
 
-def absent_but_known(directory: str, filename: str) -> str:
-    """One trace proving an absent database file once existed in `directory`, or "" when it is new."""
-    return hostos.existed_before(
-        os.path.join(directory, filename), _EXISTED_MARKERS.get(filename, ())
-    )
+def absent_but_known(directory: str, filename: str, names=None) -> str:
+    """One trace that an absent list once existed here, or empty; `names` answers from a listing."""
+    found = hostos.existed_before_all(
+        os.path.join(directory, filename), _EXISTED_MARKERS.get(filename, ()), names)
+    return found[0] if found else ""
+
+
+def held_much_less(holds: int, newest_copy_holds: int) -> bool:
+    """A list holding under half of what its newest saved copy holds: worth saying out loud."""
+    return newest_copy_holds >= 2 and holds < newest_copy_holds / 2
+
+
+def shrunk_sentence(filename: str, holds: int, newest_copy_holds: int) -> str:
+    return ("Your %s list holds %d %s, but its newest saved copy holds %d. If "
+            "you did not remove them yourself, run Check Library before you "
+            "change anything - it can put that copy back."
+            % (section_label(filename), holds, section_noun(filename, holds),
+               newest_copy_holds))
 
 
 def absent_traces(directory: str, filename: str) -> list:
@@ -187,25 +200,11 @@ def ids_claimed_by(directory: str, filenames: tuple = ()) -> tuple:
 
 def asset_id_for_file(name: str, extensions: tuple,
                       tail: str = "") -> str | None:
-    """The asset id a library file belongs to, or None; a stem not purely alphanumeric is None."""
-    matched = next((e for e in extensions
-                    if name.lower().endswith(e.lower())), None)
-    if matched is None:
-        return None
-
-    stem = name[: -len(matched)]
-    if tail and stem.endswith(tail):
-        stem = stem[: -len(tail)]
-    if "." in stem:
-        debug.event("cleanup", "file not classified - extra suffix",
-                    file=name, stem=stem[:60])
-        return None
-
-    if not stem.isalnum():
-        debug.event("cleanup", "file not classified - left alone",
-                    file=name, stem=stem[:60])
-        return None
-    return stem
+    """The asset id a library file belongs to, or None; `library_files.asset_id` holds the rule."""
+    found = library_files.asset_id(name, extensions, tail)
+    if found is None and name.lower().endswith(tuple(e.lower() for e in extensions)):
+        debug.event("cleanup", "file not classified - left alone", file=name[:80])
+    return found
 
 
 def _merge_record(mine: dict, theirs: dict, base, filename: str,
@@ -546,18 +545,14 @@ class DatabaseConnector:
             if wrong_shape(snapshot):
                 return
             backed = len(snapshot.get("assets") or [])
-            if backed >= 2 and here < backed / 2:
-                sentence = (
-                    "Your %s lists %d %s, but the most recent saved copy "
-                    "holds %d - if you did not remove them yourself, run "
-                    "Repair Library before cleaning anything."
-                    % (section_label(self._filename), here,
-                       section_noun(self._filename, here), backed))
+            if held_much_less(here, backed):
+                sentence = shrunk_sentence(self._filename, here, backed)
                 type(self)._integrity_notes.setdefault(
                     self._filename, []).append(sentence)
                 debug.event("database", "suspicious shrink at load",
                             file=self._filename, holds=here,
                             newest_snapshot=backed)
+                debug.alert(sentence, key="shrunk:" + full)
         except (OSError, ValueError, TypeError):
             return                          # the note must never cost a load
 

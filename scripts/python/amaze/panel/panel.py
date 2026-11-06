@@ -281,7 +281,7 @@ class AmazePanel(QtWidgets.QWidget):
         if choice != 0:
             debug.event("session", "index repair declined")
             return False
-        ok, how = repair.repair_index(folder, self.prefs.asset_dir)
+        ok, how = repair.repair_index(folder, self.prefs.asset_dir, guard=False)
         if not ok:
             ui.displayMessage(
                 messages.REPAIR_COULD_NOT_FIX_THE_LIST_SWITCHING % how if switching

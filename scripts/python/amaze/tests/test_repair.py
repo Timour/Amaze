@@ -761,6 +761,37 @@ class AMissingListComesBackFromItsFilesTest(_Case):
         self.assertIn("Woven", self._read(self.index)["categories"],
                       "the newer record's category is missing from the list")
 
+    def test_the_shelf_s_put_back_keeps_materials_saved_after_the_copy(self):
+        """The shelf's Put a Saved Copy Back does what the panel's repair does after the copy lands."""
+        self._lose_the_list()
+        self._saved("OLDONE01", "Old One", "Karma")
+        self._write(self.index + ".bak-1", dict(
+            self.EMPTY, assets=[{"id": "OLDONE01", "name": "Old One",
+                                 "categories": ["Fabric"], "renderer": "Karma"}]))
+        with open(self.index, "w", encoding="utf-8") as handle:
+            handle.write('{"assets": [')
+        done = repair.put_back(self._survey(), "library.json", "bak-1")
+        ids = [row["id"] for row in self._read(self.index)["assets"]]
+        self.assertEqual(sorted(["OLDONE01", "FABRIC01", "FABRIC02", "VELVET01"]),
+                         sorted(ids), "the shelf's put-back left the materials saved "
+                                      "after the copy for a second run")
+        self.assertIn("the 3 materials saved after it were added back", done["said"])
+
+    def test_the_shelf_s_put_back_takes_a_row_edited_after_the_copy_from_its_stamp(self):
+        for asset_id, name, renderer in self.LOST:
+            self._saved(asset_id, name, renderer)
+        stamped = os.path.join(self.mat_dir, "FABRIC01" + material.STAMP_SUFFIX)
+        stamp = dict(self._read(stamped), categories=["Woven"])
+        self._write(stamped, stamp)
+        self._write(self.index + ".bak-1", dict(
+            self.EMPTY, assets=[dict(stamp, name="Herringbone", categories=["Before"])]))
+        with open(self.index, "w", encoding="utf-8") as handle:
+            handle.write('{"assets": [')
+        repair.put_back(self._survey(), "library.json", "bak-1")
+        rows = {row["id"]: row for row in self._read(self.index)["assets"]}
+        self.assertEqual(stamp, rows["FABRIC01"],
+                         "the copy's older record came back over the newer one its stamp holds")
+
     def test_a_row_whose_files_and_record_are_gone_is_named(self):
         self._saved("VELVET01", "Crushed Velvet", "Octane")
         gone = {"id": "GONE0001", "name": "Deleted Since", "categories": ["Fabric"],
@@ -1720,6 +1751,64 @@ class TheRealLibraryRehearsalTest(unittest.TestCase):
                          "put back")
 
 
+class TheRealLibrarysWholeShapeTest(unittest.TestCase):
+    """Check Library on the real library's whole shape: lists and stamps copied, the rest empty."""
+
+    def setUp(self):
+        from amaze.core import library_files
+        live = test_support.live_library_to_rehearse_on(self)
+        self.dir = tempfile.mkdtemp(prefix="amaze_check_real_") + os.sep
+        self.addCleanup(shutil.rmtree, self.dir, True)
+        source_root = os.path.normpath(live.dir)
+        self.files = 0
+        for folder, dirs, names in os.walk(source_root):
+            relative = os.path.relpath(folder, source_root)
+            here = os.path.normpath(os.path.join(self.dir, relative))
+            os.makedirs(here, exist_ok=True)
+            if relative == library_files.PACKAGE_FOLDER:
+                dirs[:] = []    # a permanent store the check never enters
+                continue
+            for name in names:
+                source = os.path.join(folder, name)
+                target = os.path.join(here, name)
+                if name == library_files.POLICY:
+                    continue    # its library id would share this copy's holding folder
+                if relative == "." or name.endswith(material.STAMP_SUFFIX):
+                    shutil.copy2(source, target)    # what the survey reads
+                else:
+                    open(target, "wb").close()
+                    stat = os.stat(source)
+                    os.utime(target, (stat.st_atime, stat.st_mtime))
+                self.files += 1
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+
+    def test_unlisted_files_leftovers_and_unknowns_are_told_apart(self):
+        started = time.perf_counter()
+        findings = repair.survey(self.dir, "mat/", "img/")
+        took = time.perf_counter() - started
+        sys.stderr.write("\n  Check Library's survey of the real library's shape: "
+                         "%.0f ms over %d files\n" % (took * 1000, self.files))
+        self.assertTrue(findings["complete"])
+        self.assertEqual(0, repair.unaccounted_total(findings),
+                         "files no section lists: %r" % {
+                             folder: names[:5]
+                             for folder, names in findings["unaccounted"].items()})
+        leftovers = {entry[0] for entry in findings["leftovers"]}
+        unknown = ({entry[0] for entry in findings["unknown"]}
+                   | {entry[0] for entry in findings["unknown_folders"]})
+        if not leftovers or not unknown:
+            self.skipTest("premise gone: the real library no longer holds both "
+                          "leftovers and unknown files")
+        self.assertEqual(set(), leftovers & unknown,
+                         "one file was called both a leftover and unknown")
+        self.assertLessEqual({entry[1] for entry in findings["leftovers"]},
+                             {"scratch", "pre-adopt", "duplicate"})
+        text = "\n".join(repair.report_lines(findings))
+        self.assertIn("nothing needs any more", text)
+        self.assertIn("not files Amaze knows", text)
+
+
 class TestRecoveredRowsAreVisible(unittest.TestCase):
     """A recovered row carries an empty renderer, and the proxy has to show it."""
 
@@ -1766,7 +1855,7 @@ class TestRecoveredRowsAreVisible(unittest.TestCase):
 
 
 class TestLibraryManifest(unittest.TestCase):
-    """What a library may contain; `tools/library-audit.py` is the statement."""
+    """What a library may contain; `core/library_files.py` is the statement, the audit tool reads it."""
 
     def _audit_module(self):
         import importlib.util
@@ -1778,7 +1867,11 @@ class TestLibraryManifest(unittest.TestCase):
 
     def test_every_kind_of_file_is_classified(self):
         """Product data from `database.DATABASES` and every restore tier are ok; the rest is reported."""
+        from amaze.core import library_files
         audit = self._audit_module()
+        self.assertEqual(os.path.realpath(library_files.__file__),
+                         os.path.realpath(audit._CONVENTION),
+                         "the audit tool reads a convention other than the package's")
         checked = tuple(database.DATABASES) + (
             "policy.json",
             "library.json.bak-1", "library.json.bak-2", "library.json.bak-3",
@@ -1789,7 +1882,7 @@ class TestLibraryManifest(unittest.TestCase):
             os.path.join("img", "abc.png"),
             os.path.join("matX", "pack", "tex.exr"))
         for rel in checked:
-            self.assertEqual("ok", audit.classify(rel), rel)
+            self.assertIn(library_files.classify(rel)[0], library_files.KNOWN, rel)
         for rel, kind in (
                 (os.path.join("img", "140024152983962990.png.lock"), "scratch"),
                 (os.path.join("mat", "abc.writing"), "scratch"),
@@ -1799,7 +1892,7 @@ class TestLibraryManifest(unittest.TestCase):
                 (os.path.join("mat", "notes.txt"), "unknown"),
                 ("notes.md", "unknown"),
                 (".DS_Store", "os-noise")):
-            self.assertEqual(kind, audit.classify(rel), rel)
+            self.assertEqual(kind, library_files.classify(rel)[0], rel)
 
 
 class TheRebuildDrillTest(unittest.TestCase):
@@ -1884,7 +1977,7 @@ class TheRebuildDrillTest(unittest.TestCase):
                 os.remove(path)
 
         ok, sentence = repair.repair_index(self.prefs.dir,
-                                           self.prefs.asset_dir)
+                                           self.prefs.asset_dir, guard=False)
         self.assertTrue(ok, sentence)
         with open(os.path.join(self.prefs.dir, "library.json"),
                   encoding="utf-8") as handle:
@@ -2011,7 +2104,7 @@ class TheRebuildDrillTest(unittest.TestCase):
             if os.path.exists(path):
                 os.remove(path)
         ok, sentence = repair.repair_index(self.prefs.dir,
-                                           self.prefs.asset_dir)
+                                           self.prefs.asset_dir, guard=False)
         self.assertFalse(
             ok, "the index was rebuilt while a sibling could not be read, so "
                 "that sibling's assets are now rows in this list")
@@ -2033,7 +2126,7 @@ class TheRebuildDrillTest(unittest.TestCase):
             handle.write(damaged)
 
         ok, sentence = repair.repair_index(self.prefs.dir,
-                                           self.prefs.asset_dir)
+                                           self.prefs.asset_dir, guard=False)
         self.assertTrue(ok, sentence)
 
         kept = target + ".unreadable"

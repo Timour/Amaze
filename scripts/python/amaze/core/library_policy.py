@@ -2,6 +2,7 @@
 
 import json
 import os
+import uuid
 
 from amaze.core import debug
 from amaze.helpers import hostos
@@ -112,6 +113,31 @@ def set_library_version(library_dir: str, version: int) -> bool:
     return _write(library_dir, {VERSION_KEY: int(version)})
 
 
+ID_KEY = hostos.LIBRARY_ID_KEY    # a uuid4 hex: the history and holding folders follow the library by it
+
+
+def library_id(library_dir: str) -> str:
+    """The library's id, minted into its policy once; "" when the policy will not read or write."""
+    path = path_for(library_dir)
+    if not path:
+        return ""
+    if os.path.lexists(path):
+        try:
+            with open(path, encoding="utf-8-sig") as handle:
+                loaded = json.load(handle)
+        except (OSError, ValueError):
+            return ""    # never written over to mint an id
+        if not isinstance(loaded, dict):
+            return ""
+        found = loaded.get(ID_KEY)
+        if hostos.is_library_id(found):
+            return found
+    elif hostos.existed_before(path):
+        return ""    # a policy that has not arrived yet: minting would write a new one over it
+    minted = uuid.uuid4().hex
+    return minted if _write(library_dir, {ID_KEY: minted}) else ""
+
+
 def _write(library_dir: str, changes: dict) -> bool:
     """Merge `changes` into the library's policy file; whether it was written."""
     path = path_for(library_dir)
@@ -142,6 +168,7 @@ def _write(library_dir: str, changes: dict) -> bool:
         debug.note("could not write the library policy (%s)" % exc,
                    path=path)
         return False
+    hostos.forget_library_id(library_dir)    # the history folder asks again, and follows a new id
     if created:
         hostos.seed_restore_floor(path)
     debug.event("policy", "written", path=path, **changes)
