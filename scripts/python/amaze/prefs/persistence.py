@@ -2,7 +2,7 @@
 
 import os
 
-from amaze.core import debug, keyed_store, renderers, users
+from amaze.core import debug, keyed_store, renderers, section_list, users
 from amaze.helpers import hostos
 
 
@@ -78,12 +78,8 @@ def _normalised_dir(path) -> str:
 
 
 def _default_sections() -> list:
-    """Every registered section key, in tab order, derived from the panel's own registry."""
-    try:
-        from amaze.panel import sections
-        return [key for key, _label in sections.all_sections()]
-    except Exception:                                    # noqa: BLE001
-        return ["material", "gradient", "cop", "code", "file"]  # prefs must load even when the panel package cannot import
+    """Every section key, in tab order, from the one list."""
+    return section_list.keys()
 
 
 def _through_setter(target, name, value, default):

@@ -52,12 +52,14 @@ A **Section** is one tab. It is a small object that tells the **Panel**
 how to drive the shared widgets for its kind of asset. The Panel owns the
 widgets and the data; a Section only says *what to do with them*.
 
-**File:** `panel/sections.py`. **Registry:** `SECTION_CLASSES`. Adding a
-section = a new class there, and nothing else: `sections.all_sections()`
-derives `((key, label), ...)` from the classes, and everything that
-lists the sections reads that one function - the tab strip, the
-Show/Hide toggles, and the pref that persists them. `panel.ALL_SECTIONS`
-is its cached result, not a second list to keep in step.
+**File:** `panel/sections.py`. **Registry:** `SECTION_CLASSES`, built in
+the order of `core/section_list.py`, the one `((key, label), ...)` list,
+which needs neither the panel nor Houdini to read. Adding a section = a
+new class in `sections.py` and its line in the list; a class takes its
+label from the list, and everything that lists the sections reads the
+list - the tab strip, the Show/Hide toggles, and the pref that persists
+them. `panel.ALL_SECTIONS` is the same tuple, not a second list to keep
+in step.
 
 Read a KEY as an identifier, never as a name: keys are load-bearing in
 saved preferences and in every asset record, and the retired

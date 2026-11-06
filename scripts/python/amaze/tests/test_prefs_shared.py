@@ -22,11 +22,6 @@ from amaze.core import keyed_store, renderers  # noqa: E402
 from amaze.prefs import prefs as prefs_mod   # noqa: E402
 from amaze.tests import test_support         # noqa: E402
 
-try:
-    import hou
-except ImportError:
-    hou = None
-
 
 class SharedPrefsCase(unittest.TestCase):
     """Two machine-homes and one library, like the real pair of Macs."""
@@ -224,7 +219,6 @@ class AnUnchangedSaveDoesNotTouchTheStore(SharedPrefsCase):
                          "push")
 
 
-@unittest.skipUnless(hou, "Houdini is not loaded")
 class TheTestLibrarySwitchKeepsEachLibrarysSettings(SharedPrefsCase):
     """Test Library moves what `dir` answers, through the Preferences switch a user flips."""
 
@@ -319,7 +313,6 @@ class TheTestLibrarySwitchKeepsEachLibrarysSettings(SharedPrefsCase):
             "changes, so it goes on showing the previous library's value")
 
 
-@unittest.skipUnless(hou, "Houdini is not loaded")
 class EveryRowFollowsAUserOrLibraryChange(SharedPrefsCase):
     """Preferences shows the user and library NOW in use, so a switch toggled next edits theirs."""
 
@@ -514,7 +507,6 @@ class AMachineRunningBeforeAChangeTakesIt(SharedPrefsCase):
         self.assertEqual(512, self.stored("rendersize"),
                          "B wrote back the value it pushed before A's change")
 
-    @unittest.skipUnless(hou, "Houdini is not loaded")
     def test_preferences_shows_the_peers_value(self):
         from amaze.dialogs import prefs_dialog
         a, b = self.both_open()

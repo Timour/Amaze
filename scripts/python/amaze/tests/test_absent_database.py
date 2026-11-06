@@ -731,8 +731,8 @@ class SectionLabelsMatchThePanelTest(unittest.TestCase):
     """database.py's own copy of the section labels must never drift from the panel's."""
 
     def test_every_label_matches_the_one_source(self):  # core must not import the UI package, hence the copy; a copy that can drift silently is worse than the coupling it avoids
-        from amaze.panel import sections
-        labels = dict(sections.all_sections())
+        from amaze.core import section_list
+        labels = dict(section_list.SECTIONS)
         for filename, key in (("library.json", "material"),
                               ("cops.json", "cop"),
                               ("code.json", "code"),
