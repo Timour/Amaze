@@ -3,6 +3,7 @@
 ## 1.32.1
 
 - The GitHub check covers ten more test modules, and the tests that need Houdini are skipped where it is absent. Nothing changes in use.
+- The theme module loads without Houdini and falls back to the built-in colours and scale, as it already did without a Houdini UI.
 
 ## 1.32.0
 
