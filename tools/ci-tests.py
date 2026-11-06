@@ -7,8 +7,8 @@ import subprocess
 import sys
 
 PINNED = {  # PROVEN green without Houdini, 2026-08-29; may only grow
-    "test_addons", "test_category", "test_comment_budget", "test_conversion",
-    "test_dead_cover", "test_event_pumps", "test_file_lock", "test_grid_order",
+    "test_addons", "test_category", "test_cleanup_counts", "test_comment_budget",
+    "test_conversion", "test_dead_cover", "test_event_pumps", "test_file_lock", "test_grid_order",
     "test_harness_reset", "test_impact_map", "test_keyed_store", "test_layers",
     "test_library_prefs", "test_log_export", "test_messages", "test_peer_read",
     "test_prefs_per_user", "test_prefs_shared", "test_restore_drill", "test_role_numbers",
