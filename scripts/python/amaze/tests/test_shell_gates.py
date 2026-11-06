@@ -151,6 +151,7 @@ class GateFixture(unittest.TestCase):
         _write(os.path.join(self.hfs, "bin", "hython"),    # a stand-in for the gate scripts: a real Houdini costs 1.3s a sync
                '#!/bin/bash\nexec "%s" "$@"\n'
                % (plain if os.path.isfile(plain) else "python3"), executable=True)
+        _write(os.path.join(self.repo, ".gitignore"), "__pycache__/\n")    # a bytecode cache must not read as a dirty tree ▸p/bytecode-cache-dirty-tree
         _write(os.path.join(self.repo, "OPmenu.xml"), "<menuDocument/>\n")
         _write(os.path.join(self.repo, "python_panels", "amaze.pypanel"),
                "<pythonPanelDocument/>\n")
