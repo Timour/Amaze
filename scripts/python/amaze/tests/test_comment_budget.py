@@ -2,6 +2,7 @@
 
 import ast
 import os
+import re
 import shutil
 import tempfile
 import unittest
@@ -14,10 +15,17 @@ for _ in range(5):
 
 COMMENT_LINES = 12
 DOCSTRING_LINES = 20
+COMMENT_CHARS = 100
 
 SCANNED = (".py", ".sh", ".shelf", ".xml")
 
 BUDGET = 0
+LONG_BUDGET = 3427
+
+LONG = re.compile("|".join((
+    r"(?m)^[ \t]*(?:#|//).{%d,}",
+    r"[ \t](?:#|(?<![:\w])//).{%d,}",
+    r'^[ \t]*["]{3}[^\n]{%d,}')) % ((COMMENT_CHARS,) * 3))
 
 
 def _blocks(path):
@@ -75,6 +83,29 @@ def over_the_cap():
     return found
 
 
+def _long(path):
+    """(length, line, what) for every comment or docstring opening in one file over the cap."""
+    with open(path, encoding="utf-8") as handle:
+        source = handle.read()
+    found = []
+    for match in LONG.finditer(source):
+        text = match.group(0).strip()
+        what = "docstring" if text.startswith('"""') else "comment"
+        found.append((len(text), source.count("\n", 0, match.start()) + 1, what))
+    return found
+
+
+def over_the_length():
+    """Every comment in the package over the cap, longest first."""
+    found = []
+    for path in _scanned():
+        for size, line, what in _long(path):
+            found.append((size, "%s:%d" % (
+                os.path.relpath(path, _ROOT), line), what))
+    found.sort(reverse=True)
+    return found
+
+
 class TheCommentBudget(unittest.TestCase):
 
     def test_no_block_is_added_that_the_sweep_has_not_cut(self):
@@ -101,3 +132,28 @@ class TheCommentBudget(unittest.TestCase):
         self.assertEqual(["comment", "docstring f"],
                          sorted(what for _size, _line, what in _blocks(planted)),
                          "the scan missed a planted block, so it cannot fail when one is added")
+
+    def test_no_comment_is_added_over_the_cap(self):
+        found = over_the_length()
+        verdict = ("a long comment was added - say what it DOES and what to "
+                   "watch when calling it, and put the rest in the wiki"
+                   if len(found) > LONG_BUDGET else
+                   "the sweep advanced - lower LONG_BUDGET to %d" % len(found))
+        self.assertEqual(
+            LONG_BUDGET, len(found),
+            "%d comments over %d characters, pinned at %d: %s.\n%s"
+            % (len(found), COMMENT_CHARS, LONG_BUDGET, verdict,
+               "\n".join("  %4d  %s  %s" % row for row in found[:10])))
+
+    def test_the_scan_can_find_a_long_comment(self):
+        """It must see a planted long comment and docstring, and pass one at the cap."""
+        folder = tempfile.mkdtemp(prefix="amaze_budget_")
+        self.addCleanup(shutil.rmtree, folder, True)
+        planted = os.path.join(folder, "planted.py")
+        with open(planted, "w", encoding="utf-8") as handle:
+            handle.write("x = 1  # %s\n" % ("c" * COMMENT_CHARS))
+            handle.write('def f():\n    """%s"""\n' % ("d" * COMMENT_CHARS))
+            handle.write("y = 2  # %s\n" % ("c" * (COMMENT_CHARS - 2)))
+        self.assertEqual(["comment", "docstring"],
+                         sorted(what for _size, _line, what in _long(planted)),
+                         "the scan missed a planted long comment, so it cannot fail when one is added")
