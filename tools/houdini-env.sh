@@ -2,7 +2,6 @@
 # SOURCED, never executed: the one place that knows where Houdini is and
 # how to mirror a directory. Every caller sources this - a private copy
 # is a platform that silently has no suite, no ship step and no gate.
-# Prose archived: AmazeNotes/code-prose.md ▸ houdini-env.sh
 
 # Git Bash and MSYS2 report MINGW64_NT-*; Cygwin reports CYGWIN_NT-*.
 amaze_is_windows() {
@@ -16,7 +15,7 @@ amaze_is_windows() {
 # name. NOT `ls -d <glob>` - that exits non-zero on no match and kills
 # the caller under pipefail.
 amaze_houdini_roots() {
-    # zsh ABORTS on an unmatched glob where bash carries it as a literal, and this file is sourced from interactive zsh too - nonomatch, function-scoped, gives every shell the bash reading (measured 2026-08-21: `/opt/hfs*` killed the sourcing shell on a Mac).
+    # nonomatch, function-scoped: zsh aborts on an unmatched glob, and zsh sources this file too.
     [ -n "${ZSH_VERSION:-}" ] && setopt localoptions nonomatch 2>/dev/null
     local d found=""
     if amaze_is_windows; then
@@ -102,15 +101,8 @@ amaze_plain_python() {
     return 1
 }
 
-# Package files that may define $AMAZE, most authoritative LAST, and ONE
-# list for every platform - per-OS branches are how the Linux pref-dir
-# glob ended up inside the Windows branch. A glob that misses simply
-# matches no file: Documents is the Windows stray,
-# ~/houdini* is the pref dir on BOTH Windows (via Git Bash $HOME) and
-# Linux and outranks it, and the /Applications and ~/Library pair is
-# macOS - ~/Library goes LAST because it is the only glob that can
-# match beside ~/houdini* on one machine, and there (macOS) it is the
-# real pref dir while ~/houdini* can only be a stray (INSTALL.md).
+# Package files that may define $AMAZE, one list for every platform, most authoritative LAST.
+# Keep ~/Library last: on macOS it is the real pref dir and outranks a stray ~/houdini*.
 amaze_package_files() {
     [ -n "${ZSH_VERSION:-}" ] && setopt localoptions nonomatch 2>/dev/null
     local f

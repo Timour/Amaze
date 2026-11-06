@@ -1,4 +1,4 @@
-"""The Houdini-less test slice, one process per module: a pinned module going quiet is a failure, and a new green module must join the pin ▸p/prefs-hou-choke"""
+"""The Houdini-less test slice, one process per module, against a pinned list ▸p/prefs-hou-choke"""
 
 import glob
 import os

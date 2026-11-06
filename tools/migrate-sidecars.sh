@@ -1,12 +1,6 @@
 #!/bin/bash
-# Run migrate-sidecars.py under hython from any directory.
-#
-#   tools/migrate-sidecars.sh --dry-run     report, write nothing
-#   tools/migrate-sidecars.sh               write the sidecars
-#
-# RUN IT ON H21. Redshift only builds to 21.0.729, so under H22 every
-# rs_usd_material_builder .interface fails and the run silently skips
-# the 220 assets it exists for. AMAZE_HOUDINI pins the install.
+# Runs migrate-sidecars.py under hython from any directory; `--dry-run` reports and writes nothing.
+# Run it on a Houdini that loads Redshift, pinned by AMAZE_HOUDINI, or Redshift assets are skipped.
 set -euo pipefail
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 

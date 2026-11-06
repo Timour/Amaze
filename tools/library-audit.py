@@ -1,4 +1,4 @@
-"""What is allowed to exist inside a library directory: `tools/library-audit.py [LIBRARY]` reports, `--strict` exits 1 on anything unknown - pure stdlib on purpose, so it runs where Houdini will not start; SCRATCH is called out separately because a leftover `.writing` is always ours and always means a save died partway. ▸p/store-declarations"""
+"""Audit what a library folder holds; `--strict` exits 1 on anything unknown ▸p/store-declarations"""
 
 from __future__ import annotations
 
@@ -7,32 +7,32 @@ import os
 import re
 import sys
 
-DATABASES = ("library.json", "cops.json", "code.json", "gradients.json")    # with SIDE_TABLES and policy.json, everything loose a library may hold; DUPLICATES keyed_store's registry DELIBERATELY - this file may not import it, so a new store is added in BOTH places and this is the end that fails loudly ▸p/store-declarations
+DATABASES = ("library.json", "cops.json", "code.json", "gradients.json")    # mirrors keyed_store's registry: add a new store in both ▸p/store-declarations
 SIDE_TABLES = ("notes.json", "icons.json", "locations.json",
                "location_paths.json", "favourites.json", "users.json",
                "prefs.json")
 LOOSE_FILES = DATABASES + SIDE_TABLES + ("policy.json",)
 
-BACKUP = re.compile(r"^(%s)\.bak-(1|2|3|first)$"    # the PRODUCT's restore tier, not clutter: snapshot_before_write writes these, Repair and restore.put_back read them - built from LOOSE_FILES because every snapshotted file gets a tier, and keying on the narrower tuple is what made the wider one wrong
+BACKUP = re.compile(r"^(%s)\.bak-(1|2|3|first)$"    # the restore tier snapshot_before_write writes, for every loose file
                     % "|".join(re.escape(d) for d in LOOSE_FILES))
 
-UNDO_COPIES = re.compile(r"^(%s)\.bak-before-restore-\d{8}-\d{6}(-\d+)?$"    # helpers/restore.py's undo copies, one per restore; Repair's own undo sentence points the user at these
+UNDO_COPIES = re.compile(r"^(%s)\.bak-before-restore-\d{8}-\d{6}(-\d+)?$"    # helpers/restore.py's undo copies, one per restore
                          % "|".join(re.escape(d) for d in LOOSE_FILES))
 
-PRESERVED = re.compile(r"^(%s)\.unreadable(\.\d+)?$"    # hostos.preserve_unreadable keeps what it could not parse rather than letting the next write destroy the evidence
+PRESERVED = re.compile(r"^(%s)\.unreadable(\.\d+)?$"    # files hostos.preserve_unreadable kept because they did not parse
                        % "|".join(re.escape(d) for d in LOOSE_FILES))
 
-MARKERS = (".amaze_gradient_seed_v1", ".amaze_code_starter_v1",    # seed markers - the curated content was already offered here once, so a user who deleted it does not get it back on every launch
+MARKERS = (".amaze_gradient_seed_v1", ".amaze_code_starter_v1",    # seed markers: the curated content was already offered here once
            ".assetlib_gradient_seed_v1", ".assetlib_code_starter_v1")
 
-ASSET_DIRS = {    # asset payloads by directory; .builder.json is the builder sidecar (the parameter interface as data, so importing never executes a file) and .stamp.json the recovery stamp (the whole record, so the index can be rebuilt) - see overview.md
+ASSET_DIRS = {    # asset payloads by directory, with the builder sidecar and the recovery stamp
     "mat": (".mat", ".interface", ".builder.json", ".stamp.json"),
     "img": (".png", ".jpg", ".jpeg"),
 }
 
-PACKAGE_DIRS = ("matX",)    # a directory per MaterialX package, .mtlx + textures; texture extensions are open-ended by nature, so checked for SCRATCH only
+PACKAGE_DIRS = ("matX",)    # a directory per MaterialX package, checked for scratch only
 
-SCRATCH = re.compile(    # always ours, always a failed write - a fixed-name scratch that survives is the bug class this project has hit repeatedly
+SCRATCH = re.compile(    # always ours, always a write that died partway
     r"(\.writing|\.capturing|\.tmp|\.temp|\.new|\.partial|\.lock"
     r"|\.swp|~)$|^\.amaze_scratch", re.IGNORECASE)
 
@@ -62,7 +62,7 @@ def classify(relative: str) -> str:
     if top == "mat" and len(parts) == 4 and parts[1] == "versions":    # mat/versions/<id>/<n>.<kind> + versions.json: the version store
         if (name == "versions.json"
                 or name.endswith(ASSET_DIRS["mat"])
-                or name.endswith(ASSET_DIRS["img"])):    # the archive numbers the same kinds the base holds INCLUDING the thumbnail, which lives in img/ for the base - measured: four mat/versions PNGs reported as not-library-data
+                or name.endswith(ASSET_DIRS["img"])):    # a version also archives the thumbnail
             return "ok"
         return "unknown"
     if top in ASSET_DIRS and len(parts) == 2:

@@ -756,7 +756,7 @@ Engine** and the thumbnail runner (`render/thumbs.py`), its callers.
   Octane's Solaris builder and a classic `redshift_vopnet` into the Redshift
   USD builder for the render, which LOPs can read. The `/obj` Redshift scene
   of 1.0 to 1.29 is gone: a render inside Houdini could not be ended, and
-  twice froze a session until a force quit (devlog 756).
+  twice froze a session until a force quit (▸r/redshift-thumbnail-stall).
 - **One stage and ONE husk per batch, in the background.** `write_batch`
   writes the batch's stage once, every material its own prim, with the
   USD Render ROP's Run Command off; `render/husk_job.py` then runs ONE
@@ -766,7 +766,7 @@ Engine** and the thumbnail runner (`render/thumbs.py`), its callers.
   PNG as it lands. husk starts without the Houdini plugins of renderers
   it does not use; Octane restarts its delegate per frame or keeps the
   first material. Most of a thumbnail was husk starting, once per
-  material (research.md ▸r/husk-startup). Like the `/obj` scene, it
+  material (▸r/husk-startup). Like the `/obj` scene, it
   writes where the caller says: `png_path` is the caller's, per material.
 - **The background job** (`husk_job.jobs`): one husk at a time, the rest
   queued; `progressed` drives the panel's thin bar, the Cancel chip calls

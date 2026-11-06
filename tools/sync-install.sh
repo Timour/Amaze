@@ -85,15 +85,8 @@ if git -C "$repo" rev-parse --git-dir >/dev/null 2>&1 \
     echo "sync-install: wired the pre-push gate (core.hooksPath)"
 fi
 
-# THE INSTALL ONLY EVER RECEIVES COMMITTED CODE - it is the one tree a
-# live Houdini reads, beside real libraries. Committed, not pushed:
-# run-tests.sh syncs before it tests.
-#
-# BY CONTENT (`diff HEAD`), never `git status` - status compares stat
-# first and will list modified files with an empty diff, refusing a
-# clean repo. Untracked files are asked for separately and do count.
-#
-# Only a SCRATCH destination is exempt; the real path has no bypass.
+# The real install receives committed code only, checked by content with `diff HEAD`.
+# Untracked files count too; only a scratch destination is exempt.
 if [ -z "$scratch" ] \
    && git -C "$repo" rev-parse --git-dir >/dev/null 2>&1; then
     dirty="$(

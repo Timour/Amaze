@@ -20,7 +20,7 @@ COMMENT_CHARS = 100
 SCANNED = (".py", ".sh", ".shelf", ".xml")
 
 BUDGET = 0
-LONG_BUDGET = 1407
+LONG_BUDGET = 1375
 
 LONG = re.compile("|".join((
     r"(?m)^[ \t]*(?:#|//).{%d,}",

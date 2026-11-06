@@ -1,11 +1,7 @@
 #!/bin/bash
-# Runs the whole suite from any directory against the dev tree.
-# PROVE, THEN SHIP - the suite runs against a SCRATCH install and the
-# live sync happens only after a full green run. KEEP THAT ORDER.
-# Inside hython the package file OVERRIDES an exported $AMAZE, so
-# reaching scratch means skipping the package and rebuilding its two
-# effects by hand. A subset or module run never promotes.
-# Prose archived: AmazeNotes/code-prose.md ▸ run-tests.sh
+# Runs the suite from any directory against a scratch install; only a full green run syncs live.
+# The package overrides an exported $AMAZE in hython, so it is skipped and its effects set here.
+# A subset or module run never promotes.
 set -euo pipefail
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=tools/houdini-env.sh
@@ -27,9 +23,7 @@ export HOUDINI_PACKAGE_SKIPLIST="Amaze"
 # the native one answers different fonts and geometry, so an unguarded
 # module fails asserts in OTHER modules. ▸p/first-app-picks-the-platform
 export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-offscreen}"
-# `;` is portable; `:` is Unix-only and on Windows swallows the whole
-# string as one entry, so `&` never expands and `$HH` leaves the path
-# (research.md - the portable HOUDINI_PATH separator).
+# Keep `;` as the separator: `:` makes the whole string one entry on Windows.
 export HOUDINI_PATH="$scratch;&"
 
 # Ship the proven build. Green is necessary but not sufficient: the

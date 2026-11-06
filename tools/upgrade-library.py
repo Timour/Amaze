@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check and upgrade an Amaze library's schema: `upgrade-library.py <library-dir>` reports and writes nothing, `--rehearse` runs the whole upgrade on a throwaway COPY, and `--write` rehearses first, refuses unless every row survives, backs the databases up beside the library, upgrades in a FRESH process and proves the real run row by row against the rehearsal - exit 0 reported-or-proven, 1 rows moved, 2 refused."""
+"""upgrade-library.py <library-dir> [--rehearse|--write]: exit 0 ok, 1 rows moved, 2 refused."""
 import datetime
 import json
 import os
@@ -8,11 +8,11 @@ import subprocess
 import sys
 import tempfile
 
-LEGACY_CONTAINERS = ("snippets", "cops", "gradients")  # pre-assets row homes; this build's engine does not re-home them, so a document carrying rows there must refuse rather than stamp
+LEGACY_CONTAINERS = ("snippets", "cops", "gradients")  # pre-assets row homes; a document with rows there is refused
 
 
 def _names() -> tuple:
-    """The database roster, read from the product itself - a copy here goes silently stale the day a fifth section database lands, and this tool's whole job is completeness."""
+    """The database roster, read from the product's own connector."""
     return _connector().DATABASES
 
 
@@ -29,7 +29,7 @@ def _connector():
 
 
 def _read_raw(directory: str) -> dict:
-    """{filename: document} for every database present, read as plain json - a file that will not parse reads as {"version": None}, which every mode downstream refuses."""
+    """{filename: document} for every database present; an unparsable file reads as version None."""
     found = {}
     for name in _names():
         path = os.path.join(directory, name)
@@ -58,7 +58,7 @@ def _legacy_rows(document: dict) -> int:
 
 
 def _positional_diff(before: dict, after: dict) -> dict:
-    """lost / gained / changed between two documents, rows compared BY POSITION - migrations mutate rows in place and never reorder, so position is the identity that survives a migration ADDING the id field itself."""
+    """Lost, gained and changed rows between two documents, rows compared by position."""
     old = _dict_rows(before)
     new = _dict_rows(after)
     changed = []
@@ -79,7 +79,7 @@ def _positional_diff(before: dict, after: dict) -> dict:
 
 
 def _comparable(diffs: dict) -> dict:
-    """The diff with every NEW value reduced to its presence - a migration that MINTS a value (an id) generates it fresh each run, so the rehearsal proves which rows and fields move and what they held before, never the minted bytes."""
+    """The diff with every new value reduced to its presence, so minted values compare equal."""
     out = {}
     for name, diff in diffs.items():
         out[name] = {
@@ -113,7 +113,7 @@ def _print_diffs(diffs: dict) -> bool:
 
 
 def _preflight(docs: dict, code: int) -> dict:
-    """{filename: refusal sentence} for everything no mode may touch: unreadable, newer than the build, a chain gap, or rows stranded in a pre-assets container."""
+    """{filename: refusal sentence} for every database no mode may touch."""
     database = _connector()
     refusals = {}
     for name, doc in docs.items():
@@ -132,7 +132,7 @@ def _preflight(docs: dict, code: int) -> dict:
                               % missing)
             continue
         stranded = _legacy_rows(doc)
-        if stranded:   # whatever the stamp says: the app's own save re-stamps a legacy-shaped file to current while its migrations only touch `assets`, so a current version is no proof the rows were ever re-homed
+        if stranded:   # refused whatever the version stamp says
             refusals[name] = ("keeps %d rows under a pre-assets container "
                               "this build's engine cannot re-home - the "
                               "rows are stranded, whatever the version "
@@ -172,7 +172,7 @@ def report(directory: str) -> int:
 
 
 def _migrate_inplace(directory: str, skip_current: bool = True) -> dict:
-    """Load and save every database through the product's own connector, so the live migration chain runs with its own guards - {filename: refusal sentence}, empty when all landed. Meant to run in a FRESH process per phase: the connectors are per-filename singletons whose disk baselines must never carry from a rehearsal copy into the real library (▸p/one-file-one-table is the sibling rule)."""
+    """Migrate each database through its connector: {filename: refusal}; one fresh process per call."""
     database = _connector()
     code = database.SCHEMA_VERSION
     refusals = {}
@@ -223,7 +223,7 @@ def _phase_interpreter() -> str:
 
 
 def _phase(directory: str) -> dict:
-    """One migration pass in a FRESH python process, so nothing - connector singletons, disk baselines, loaded-id sets - carries between the rehearsal and the real run."""
+    """One migration pass in a fresh Python process: {filename: refusal sentence}."""
     result = subprocess.run(
         [_phase_interpreter(), os.path.abspath(__file__), directory, "--inner"],
         capture_output=True, text=True)
@@ -231,7 +231,7 @@ def _phase(directory: str) -> dict:
         return {"*": "the migration process died: %s"
                 % (result.stderr.strip()[-300:] or "no detail")}
     for line in reversed(result.stdout.splitlines()):
-        if line.startswith(_MARK):  # the host interpreter may print banners of its own around ours, so the payload line carries a marker instead of trusting position
+        if line.startswith(_MARK):  # the payload line carries a marker; other lines are banners
             try:
                 return json.loads(line[len(_MARK):])
             except ValueError:
@@ -249,7 +249,7 @@ def _inner(directory: str) -> int:
 
 
 def _rehearse(directory: str) -> tuple:
-    """The upgrade on a throwaway COPY of the four documents: (diffs, refusals) - what --write will do, proven before anything real is touched."""
+    """The upgrade on a throwaway copy of the databases: (diffs, refusals)."""
     work = tempfile.mkdtemp(prefix="amaze_upgrade_rehearsal_")
     copy = os.path.join(work, "lib")
     os.makedirs(copy)
@@ -267,7 +267,7 @@ def _rehearse(directory: str) -> tuple:
 
 
 def rehearse_only(directory: str) -> int:
-    """The whole upgrade on a throwaway copy of the four documents, the library itself untouched - what --write will do, shown first."""
+    """Show what --write will do, run on a throwaway copy; the library is untouched."""
     database = _connector()
     docs = _read_raw(directory)
     if not docs:
@@ -291,7 +291,7 @@ def rehearse_only(directory: str) -> int:
 
 
 def _landed_state(directory: str, code: int) -> None:
-    """After a failed real run: which databases actually climbed, so the recovery instruction is specific rather than a shrug."""
+    """Print which databases climbed to the code version after a failed real run."""
     for name, doc in sorted(_read_raw(directory).items()):
         version = doc.get("version")
         print("  %-15s now v%s  %s"
@@ -302,14 +302,14 @@ def _landed_state(directory: str, code: int) -> None:
 
 
 def write(directory: str) -> int:
-    """Upgrade in place: rehearse in one fresh process, refuse loudly, back up, run the real thing in another, and prove the real run matches the rehearsal."""
+    """Upgrade in place: rehearse, back up, migrate, and prove the real run matches the rehearsal."""
     database = _connector()
     code = database.SCHEMA_VERSION
     docs = _read_raw(directory)
     if not docs:
         print("no Amaze database found in %s" % directory)
         return 2
-    refusals = _preflight(docs, code)   # BEFORE the nothing-to-do answer: a current stamp with stranded legacy rows must refuse, never read as done
+    refusals = _preflight(docs, code)   # before the nothing-to-do answer, so stranded rows refuse
     if refusals:
         for name, why in sorted(refusals.items()):
             print("REFUSED: %s %s" % (name, why))
@@ -368,7 +368,7 @@ def write(directory: str) -> int:
 
 
 def main(argv) -> int:
-    if sys.version_info < (3, 11):   # the app modules this drives need 3.11 (database.py imports typing.Self), and without the guard a stock macOS python3 answers every mode with an ImportError traceback and exit 1 - the code the contract reserves for rows moved
+    if sys.version_info < (3, 11):   # the app modules this drives need Python 3.11
         print("REFUSED: this tool needs Python 3.11+ and this is %d.%d - "
               "run it with hython or a newer python3"
               % sys.version_info[:2])
