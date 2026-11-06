@@ -185,7 +185,7 @@ def location_kinds(preferences, location: str) -> frozenset:
     kinds = locations.record(preferences, location).get("kinds")
     if kinds is not None:
         return frozenset(kinds)
-    shown = set(locations.SHOWN_BY_DEFAULT)
+    shown = set(locations.PRE_SHOW_KINDS)
     if shows_all_files(preferences, location):
         shown.add(locations.KIND_OTHER)
     return frozenset(shown)

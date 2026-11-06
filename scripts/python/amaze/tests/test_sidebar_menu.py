@@ -47,8 +47,8 @@ def render(menu) -> list:
 
 
 LABEL = "Label > [Red, Yellow, Blue, Green, ----, Custom, Remove]"    # the colour submenu
-SHOW_NEW = ("Show > [Pathname[ ], Subfolder[ ], ----, Other Files[ ], ----, "
-            "Images[x], Geometry[x], HIP[x]]")    # a location added today
+SHOW_NEW = ("Show > [Pathname[ ], Subfolder[ ], ----, Other Files[x], ----, "
+            "Images[x], Geometry[x], HIP[x]]")    # a location added today: every kind on
 
 
 class TheTableIsWellFormED(unittest.TestCase):
@@ -267,7 +267,7 @@ class EachSubmenuRowWritesWhatItSays(unittest.TestCase):
     def test_each_show_tick_writes_its_own_field(self):
         context, path = self._on_row("file")
         prefs = self.panel.prefs
-        prefs.set_file_folder_kinds(path, locations.SHOWN_BY_DEFAULT)
+        prefs.set_file_folder_kinds(path, locations.PRE_SHOW_KINDS)    # Other Files off to start
         self._choose("Show", "Images")
         self._choose("Show", "Other Files")
         self.assertEqual({locations.KIND_GEO, locations.KIND_HIP,

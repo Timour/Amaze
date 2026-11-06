@@ -24,8 +24,9 @@ KIND_IMAGE = "image"  # the kinds a record's `kinds` field lists; stored in loca
 KIND_GEO = "geometry"
 KIND_HIP = "hip"
 KIND_OTHER = "other"
-SHOWN_BY_DEFAULT = (KIND_IMAGE, KIND_GEO, KIND_HIP)    # what Show ▸ ticks on a new location
-EVERY_KIND = SHOWN_BY_DEFAULT + (KIND_OTHER,)    # the Import location's ticks: a package carries any file
+PRE_SHOW_KINDS = (KIND_IMAGE, KIND_GEO, KIND_HIP)    # what a record saved before Show ▸ existed lists
+SHOWN_BY_DEFAULT = PRE_SHOW_KINDS + (KIND_OTHER,)    # what Show ▸ ticks on a new location: every kind
+EVERY_KIND = SHOWN_BY_DEFAULT    # the Import location's ticks: a package carries any file
 
 _deferred: set = globals().get("_deferred", set())  # libraries whose migration did not land this session
 

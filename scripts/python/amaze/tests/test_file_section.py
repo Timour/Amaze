@@ -3026,7 +3026,7 @@ class ShowTicksTest(unittest.TestCase):
 
     def test_a_location_saved_before_Show_keeps_what_it_showed(self):
         """No ticks: the three known kinds, plus Other Files where the old rule showed all files."""
-        known = set(locations_mod.SHOWN_BY_DEFAULT)
+        known = set(locations_mod.PRE_SHOW_KINDS)
         for show_unknown, override, expected in (
                 (True, None, known | {locations_mod.KIND_OTHER}),
                 (False, None, known),
@@ -3054,7 +3054,7 @@ class ShowTicksTest(unittest.TestCase):
 
 
 class ANewLocationStartsWithTheKnownKindsTest(unittest.TestCase):
-    """Add ticks Images, Geometry and HIP; a folder added again keeps its own ticks."""
+    """Add ticks every kind, Other Files included; a folder added again keeps its own ticks."""
 
     def test_add_ticks_every_kind(self):
         prefs, _library = _location_prefs(self, {})

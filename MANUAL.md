@@ -450,7 +450,7 @@ The sidebar's right-click menu:
   - **Subfolder** includes the folders inside it.
   - **Other Files**, **Images**, **Geometry** and **HIP** set the kinds
     of file listed. **Other Files** covers everything except images,
-    geometry and scenes.
+    geometry and scenes. All four are on for a new location.
 - **Label ▸** colours the location, as on a
   [category](#category-colors).
 
