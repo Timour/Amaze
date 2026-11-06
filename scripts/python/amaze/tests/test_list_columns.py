@@ -1,4 +1,4 @@
-"""List mode: badges become COLUMNS, and the slider stops pretending. A list row is one text line tall with a 16px thumbnail, and a 12px badge on a 16px picture covers most of what it annotates - so list mode draws no badges and the four facts they carry (Favorite, Version, Open, Notes) become columns; Version gains the room to say WHICH version. The marks are ticks, not the words true/false. Grid runs 64-512 with a magnet at 128; a list row does not scale, so the slider greys there. These tests PAINT - an earlier badge test asserted a method body mentioned a variable and stayed green through a sabotage that deleted the code using it (practice.md), so nothing here trusts a constant or a flag: a row is rendered and the pixels read back."""
+"""List mode: badges become columns, the slider greys; tests paint rows and read the pixels back."""
 
 import os
 import unittest
@@ -32,7 +32,7 @@ class ListRowPainting(unittest.TestCase):
     """Render one tile and read it back."""
 
     def setUp(self):
-        self.view = QtWidgets.QListView()  # a GRID view: this class rendered LIST rows until the table took list mode, and the delegate has no list branch left
+        self.view = QtWidgets.QListView()  # a grid view: list mode is the table, the delegate has no list branch
         self.delegate = test_support.tile_delegate(
             {"favourite": FAV_ROLE, "open": OPEN_ROLE, "comment": NOTE_ROLE,
              "versions": VERSIONS_ROLE},
@@ -53,7 +53,7 @@ class ListRowPainting(unittest.TestCase):
         return model.index(0, 0)
 
     def test_the_grid_still_gets_its_badges(self):
-        """The badges did not go away - they went out of LIST mode; without this, deleting the badge painters entirely would leave every test above green."""
+        """The badges left list mode only; deleting the badge painters must turn this red."""
         self.view.setViewMode(QtWidgets.QListView.ViewMode.IconMode)
         canvas = QtGui.QPixmap(160, 190)
         canvas.fill(QtCore.Qt.GlobalColor.black)
@@ -78,7 +78,7 @@ class ListRowPainting(unittest.TestCase):
 
 
 class TickIsDrawnNotTyped(unittest.TestCase):
-    """U+2713 is missing from fonts Houdini may fall back to, and a missing glyph is an empty box in a column whose whole job is to be a yes - the tick is two drawn lines instead."""
+    """U+2713 is missing from fonts Houdini may fall back to, so the tick is two drawn lines."""
 
     def test_the_tick_paints_without_any_font(self):
         canvas = QtGui.QPixmap(24, 24)
@@ -100,7 +100,7 @@ class TickIsDrawnNotTyped(unittest.TestCase):
 
 
 class SliderFollowsTheViewMode(unittest.TestCase):
-    """Grid scales 64-512 with a magnet at 128; a list row is one text line and does not scale, so the slider is greyed there."""
+    """Grid scales 64-512 with a magnet at 128; a list row does not scale, so the slider greys."""
 
     def test_the_magnet_pulls_a_near_miss_onto_128(self):
         """A magnet that grabs everything is a broken slider - 200 is a size someone chose."""
@@ -124,15 +124,15 @@ class SliderFollowsTheViewMode(unittest.TestCase):
 
 
 class TheRealPanelInListMode(unittest.TestCase):
-    """Against the SHIPPED panel: a view built by the test would pass with the panel broken (the lesson test_grid_scroll records)."""
+    """Against the shipped panel: a view built by the test would pass with the panel broken."""
 
     @classmethod
     def setUpClass(cls):
-        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))  # the ISOLATED panel - test_grid_scroll records why _protect_live_settings went
+        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))  # the isolated panel, never the live settings
 
     @classmethod
     def tearDownClass(cls):
-        pass  # fixture_panel registers stop_panel_workers and deleteLater through class_scope; a worker destroyed by Py_Finalize aborts hython and the push gate reads the exit as not green
+        pass  # class_scope stops the workers: one destroyed by Py_Finalize aborts hython
 
     def _mode(self, mode):
         self.panel.prefs.view_mode = mode
@@ -167,7 +167,7 @@ class TheRealPanelInListMode(unittest.TestCase):
             "a grid tile smaller than 64px is not a tile you can read")
 
     def test_the_slider_is_dead_in_list_mode(self):
-        """A list row is one text line - nothing to scale, so the control says so instead of moving a number nothing reads."""
+        """A list row is one text line with nothing to scale, so the slider is disabled there."""
         self._mode("grid")
         self.assertTrue(self.panel.click_slider.isEnabled(),
                         "the slider should work in grid mode")
@@ -179,7 +179,7 @@ class TheRealPanelInListMode(unittest.TestCase):
         self.addCleanup(self._mode, "grid")
 
     def test_list_rows_stay_at_the_smallest_size(self):
-        """Whatever the slider last held in grid, list paints its smallest row - list mode displays at the smallest scale only."""
+        """Whatever the slider last held in grid, list mode paints its smallest row."""
         self._mode("grid")
         self.panel.click_slider.setValue(512)
         QtWidgets.QApplication.processEvents()
@@ -191,7 +191,7 @@ class TheRealPanelInListMode(unittest.TestCase):
             "its own smallest size")
 
     def _columns(self):
-        """Every SHOWN column and its width, off the real table - it used to read ten `_list_*_w` attributes the panel pushed into the delegate; there is no push any more, a column is as wide as Qt measures its contents, so this asks the widget that knows."""
+        """Every shown column and its width, read off the real table as Qt measured it."""
         table = self.panel.thumbtable
         return {key: table.columnWidth(column)
                 for column, key in enumerate(grid_columns.KEYS)
@@ -203,7 +203,7 @@ class TheRealPanelInListMode(unittest.TestCase):
             QtWidgets.QApplication.processEvents()
 
     def test_narrowing_the_panel_never_drops_a_column(self):
-        """Rows collapsed whenever anything took panel width, the notes pane most of all: a row used to be defined as the width of the panel, so the fitting code squeezed columns and then deleted them from the right - nothing about a name or a tag list gets shorter because a pane moved."""
+        """A narrower panel, or an open notes pane, never squeezes or drops a column."""
         self._mode("list")
         self.panel.show()
         self.addCleanup(self.panel.hide)
@@ -225,7 +225,7 @@ class TheRealPanelInListMode(unittest.TestCase):
                 % (width, ", ".join(lost)))
 
     def test_the_layout_settles_instead_of_oscillating(self):
-        """The fear that kept the horizontal scrollbar off for so long, turned into a test: the loop needs the row width to depend on the viewport - it does not any more, so the geometry must hold still with no input."""
+        """With no input the geometry holds still: row width does not depend on the viewport."""
         self._mode("list")
         self.panel.show()
         self.addCleanup(self.panel.hide)
@@ -243,7 +243,7 @@ class TheRealPanelInListMode(unittest.TestCase):
             "%s" % (len(seen), seen))
 
     def test_no_column_is_narrower_than_what_it_paints(self):
-        """The truncation complaint, pinned: a Version column too narrow for an ordinary version name elides it. Two causes, both removed by construction - columns were MEASURED with the view's font and PAINTED with the delegate's, and the fit sampled rows so a column could be too narrow for a value the sample missed; Qt measures what it draws, in the font it draws it. Asserts the PROPERTY rather than the old floors: every visible cell fits."""
+        """Every visible cell fits its column: Qt measures every row in the font it paints with."""
         self._mode("list")
         self.addCleanup(self._mode, "grid")
         self.panel.sync_list_columns()
@@ -256,7 +256,7 @@ class TheRealPanelInListMode(unittest.TestCase):
         for column, key in enumerate(grid_columns.KEYS):
             if table.isColumnHidden(column):
                 continue
-            width = table.columnWidth(column)  # THE WHOLE COLUMN, no cell padding to subtract: neither Qt's stylesheet examples nor Houdini's base.qss pads an item, and the table wears Houdini's metrics
+            width = table.columnWidth(column)  # the whole column: neither the Qt stylesheet examples nor Houdini base.qss pad an item
             for row in range(min(proxy.rowCount(), 25)):
                 index = proxy.index(row, column)
                 text = index.data(QtCore.Qt.ItemDataRole.DisplayRole)
@@ -273,7 +273,7 @@ class TheRealPanelInListMode(unittest.TestCase):
         self.assertTrue(checked, "nothing was measured - not a test")
 
     def test_a_list_row_is_a_text_line_tall(self):
-        """A 30px row for one text line is not a list: the row now fits its 16px thumbnail and its text and nothing else - the flat 14px of padding that made it 30 is gone. MEASURED ON THE TABLE, which is what list mode shows: the old read was `_list_grid_size` off the QListView, which is hidden the whole time list mode is up, a number nothing on screen came from - the height that matters is the vertical header's section size."""
+        """A list row fits its 16px thumbnail and one text line, read off the table vertical header."""
         self._mode("list")
         self.addCleanup(self._mode, "grid")
         height = self.panel.thumbtable.verticalHeader().defaultSectionSize()
@@ -289,7 +289,7 @@ class TheRealPanelInListMode(unittest.TestCase):
             "the row is shorter than the text line it paints")
 
     def test_list_mode_shows_the_table_and_grid_mode_the_list(self):
-        """The premise every other list-mode test rests on: two views point at the same model and exactly one is up (grid.show_table) - nothing asserted which, so machinery that sized the HIDDEN one stayed green for as long as it existed. isHidden(), never isVisible(): neither view's window is shown in a headless run, so isVisible() is False for both and the question would answer itself."""
+        """Exactly one of the two views on the model is up; isHidden, as nothing is visible headless."""
         self._mode("list")
         self.addCleanup(self._mode, "grid")
         self.assertFalse(self.panel.thumbtable.isHidden(),
@@ -306,9 +306,9 @@ class TheRealPanelInListMode(unittest.TestCase):
 
 
 class FilteringNeverUnsortsTheList(unittest.TestCase):
-    """Pick a category, go back to All, and the list was no longer alphabetical: the proxy runs setDynamicSortFilter(False) for performance, and that switch turns off BOTH halves - no automatic re-sort after a filter change either, so rows returning to view came back in source order; one call site knew (the renderer filter called sort(0) itself), category, search and favourites did not. Tested at the PROXY, where the guarantee now lives - a panel test would prove one section and leave the other four to be found by hand."""
+    """Filters re-sort: setDynamicSortFilter(False) also stops the re-sort after a filter change."""
 
-    ROLE = 257  # the proxy matches on the role NUMBERS the sections share - 257 is CategoryRole, expecting the list of categories a material belongs to
+    ROLE = 257  # 257 is CategoryRole, a shared role number: the list of categories a row is in
 
     def _proxy(self, names_and_cats):
         from amaze.core import multifilterproxy_model
@@ -350,15 +350,15 @@ class FilteringNeverUnsortsTheList(unittest.TestCase):
 
 
 class CategoriesIsAButtonNotAMenuItem(unittest.TestCase):
-    """`Show Categories` left the View menu and became a chip in front of the gear - two controls for one preference is how a toggle ends up disagreeing with the thing it toggles, so the menu row went rather than being mirrored."""
+    """`Show Categories` is a chip, not a View menu row: two controls for one preference drift apart."""
 
     @classmethod
     def setUpClass(cls):
-        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))  # the ISOLATED panel - test_grid_scroll records why _protect_live_settings went
+        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))  # the isolated panel, never the live settings
 
     @classmethod
     def tearDownClass(cls):
-        pass  # fixture_panel registers stop_panel_workers and deleteLater through class_scope; a worker destroyed by Py_Finalize aborts hython and the push gate reads the exit as not green
+        pass  # class_scope stops the workers: one destroyed by Py_Finalize aborts hython
 
     def test_the_button_shows_and_hides_the_sidebar(self):
         panel = self.panel
@@ -375,7 +375,7 @@ class CategoriesIsAButtonNotAMenuItem(unittest.TestCase):
             "the preference did not follow the button")
 
     def test_the_chip_follows_the_action_too(self):
-        """The action is still the owner - anything that toggles it must leave the chip agreeing, or the row lies about the state."""
+        """The action is the owner: whatever toggles it must leave the chip agreeing."""
         panel = self.panel
         before = panel.action_catview.isChecked()
         self.addCleanup(panel.action_catview.setChecked, before)
@@ -391,19 +391,19 @@ class CategoriesIsAButtonNotAMenuItem(unittest.TestCase):
 
 
 class EveryChipUsesTheOneEngine(unittest.TestCase):
-    """Every chip goes through the one engine, never patch by patch: two chips had been built by hand from copies of a third and each copy had drifted - one whitened when checked, which no other chip does. The rule the existing chips already followed, now enforced: at rest the art is AS DRAWN, hover lightens, and a chip whose on-state is carried by COLOUR does not lighten at all, because lightening it erases the thing that says it is on."""
+    """One engine for every chip: as drawn at rest, lighter on hover, unless colour shows it is on."""
 
     LIT = None
 
     @classmethod
     def setUpClass(cls):
-        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))  # the ISOLATED panel - test_grid_scroll records why _protect_live_settings went
+        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))  # the isolated panel, never the live settings
         cls.LIT = QtGui.QColor(
             ui_helpers.IconMenuButton.LIT_BODY).name()
 
     @classmethod
     def tearDownClass(cls):
-        pass  # fixture_panel registers stop_panel_workers and deleteLater through class_scope; a worker destroyed by Py_Finalize aborts hython and the push gate reads the exit as not green
+        pass  # class_scope stops the workers: one destroyed by Py_Finalize aborts hython
 
     def _colours(self, pixmap):
         image = pixmap.toImage()
@@ -413,7 +413,7 @@ class EveryChipUsesTheOneEngine(unittest.TestCase):
                 if image.pixelColor(x, y).alpha() > 120}
 
     def test_no_chip_goes_white_when_it_is_ON(self):
-        """No chip is white in any state - none ever was at rest; two copies had invented it."""
+        """No chip is white in any state."""
         hover = ((False, True), (True, True))    # a colour-signalled chip never lightens
         for name, states in (("btn_categories", hover), ("btn_notes", hover),
                              ("cb_favsonly", hover), ("cb_viewmode", ())):
@@ -429,15 +429,15 @@ class EveryChipUsesTheOneEngine(unittest.TestCase):
 
 
 class TheOnlineWorld(unittest.TestCase):
-    """Online is its own world, parallel to the local sections - not a view mode over the Materials widgets, which is what it used to be. Its tab strip is the SOURCES in source order; the local sections have nothing to do with it (no File tab, and enabled_sections does not apply, because these are not sections), and the amber button is the whole signal that you are in it."""
+    """Online is its own world: its tabs are the sources in order, and the amber button marks it."""
 
     @classmethod
     def setUpClass(cls):
-        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))  # the ISOLATED panel - test_grid_scroll records why _protect_live_settings went
+        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))  # the isolated panel, never the live settings
 
     @classmethod
     def tearDownClass(cls):
-        pass  # fixture_panel registers stop_panel_workers and deleteLater through class_scope; a worker destroyed by Py_Finalize aborts hython and the push gate reads the exit as not green
+        pass  # class_scope stops the workers: one destroyed by Py_Finalize aborts hython
 
     def setUp(self):
         if self.panel._is_online():
@@ -487,22 +487,22 @@ class TheOnlineWorld(unittest.TestCase):
             "section you left from")
 
     def test_leaving_repoints_the_GRID_not_just_current_section(self):
-        """The section you land in is only half of coming back: entering repoints thumblist/cat_list at the online models, so leaving has to repoint them at the local ones - only Material did (exit_online_materials re-activated that one section by name, and the tab bar's setChecked emits nothing when the key has not changed), so the other sections came back with the ONLINE model still in the grid and the next double-click mapped an online proxy index through a local proxy. The sibling test above stayed green throughout, because current_section was never the thing that broke."""
+        """Leaving online repoints the grid and category list of every section at the local models."""
         from amaze.core import matx_sources
 
         def _no_network(url, *args, **kwargs):
             raise OSError("network blocked in tests")
 
-        real_request = matx_sources._request  # belt and braces: fixture_panel blocks the network too, and a real catalogue worker must never start here whatever the fixture does
+        real_request = matx_sources._request  # belt and braces: fixture_panel blocks the network too
         matx_sources._request = _no_network
         self.addCleanup(setattr, matx_sources, "_request", real_request)
 
         panel = self.panel
 
-        panel.section_tabs.setChecked("gradient")  # GRADIENT, not every section: activating all five against the real library once ran File's folder scan and conversion pass for ten minutes; Colors is the sharpest case anyway - its proxy is a different CLASS, so a grid left on the online model is unmistakable, and the sibling test below pins the call for every section cheaply
+        panel.section_tabs.setChecked("gradient")  # one section: its proxy is another class, so a grid left online is unmistakable
         QtWidgets.QApplication.processEvents()
 
-        def _restore_the_panel():  # class-scoped panel: a failure here leaves the grid on the online model and cascades into every later test in this class
+        def _restore_the_panel():  # class-scoped panel: a grid left on the online model would fail every later test
 
             if panel._is_online():
                 panel.leave_online_world()
@@ -552,7 +552,7 @@ class TheOnlineWorld(unittest.TestCase):
             "the signal that you are in the other world")
 
     def test_a_disabled_chip_is_half_there(self):
-        """The star is switched off online, and a chip that paints itself gets no dimming from Qt - so it looked live."""
+        """The star is off online, and a chip that paints itself gets no dimming from Qt."""
         self.assertEqual(
             0.5, ui_helpers.ChipToggleButton.DISABLED_OPACITY)
         panel = self.panel
@@ -576,7 +576,7 @@ class TheOnlineWorld(unittest.TestCase):
                         "Comments did not come back")
 
     def test_the_View_menu_is_down_to_the_one_shot_actions(self):
-        """Everything else in it became a button or a tab, and a menu row beside its own button is a second way to one thing - what is left are the ONE-SHOT actions, which are not state and have nothing to duplicate: the two importers and Generate Material; no submenu, three entries do not earn one."""
+        """The View menu holds only the one-shot actions: the two importers and Generate Material."""
         menu = self.panel.ui.findChild(QtWidgets.QMenu, "menuView")
         self.assertIsNotNone(menu)
         rows = [a.text() for a in menu.actions() if not a.isSeparator()]
@@ -597,21 +597,21 @@ class TheOnlineWorld(unittest.TestCase):
 
 
 class TheCategoryColumnPaintsITSOwnColour(unittest.TestCase):
-    """The one column whose ink is not the shared one: every other cell paints the palette's text colour, so the single colour which MEANS something does not compete with five that do not - Category carries the colour the user gave that category, the same colour the grid puts under those tiles, so the two views agree. The MODEL answers the raw colour (`test_grid_columns` pins that); this is the two things only the VIEW knows - whether the row is selected, and what it is being drawn on."""
+    """Category alone paints its own colour, the one the grid puts under its tiles; others share ink."""
 
     CATEGORY_INK = "#ff8800"  # no other part of the row uses it, and light enough to survive the legibility pass recognisably
     DARK_INK = "#2a2a2a"  # dark enough that writing it on the row would be unreadable - measured 1.03:1 against #333333
 
     def setUp(self):
         self.view = QtWidgets.QTableView()
-        palette = self.view.palette()  # a DARK ROW, like the panel's: on Qt's stock white palette the legibility pass has nothing to do and the test would pass on a premise the panel never has
+        palette = self.view.palette()  # a dark row like the panel: on the stock white palette the legibility pass does nothing
         palette.setColor(QtGui.QPalette.ColorRole.Base,
                          QtGui.QColor("#2d2d2d"))
         self.view.setPalette(palette)
         self.tiles = delegates.AssetItemDelegate(SUBTITLE_ROLE)
         self.delegate = delegates.CategoryCellDelegate(self.tiles)
 
-    def _ink(self, colour, selected=False):  # what the delegate decides the cell's text colour is
+    def _ink(self, colour, selected=False):  # the text colour the delegate picks for the cell
         model = QtGui.QStandardItemModel()
         item = QtGui.QStandardItem("Metal")
         if colour is not None:
@@ -632,7 +632,7 @@ class TheCategoryColumnPaintsITSOwnColour(unittest.TestCase):
 
     @staticmethod
     def _hueish(colour):
-        """Which channel dominates - enough to tell an orange category from grey without pinning the legibility pass's exact output, which adjusts lightness and keeps hue."""
+        """Which channel dominates: tells orange from grey without pinning the exact legibility output."""
         r, g, b = colour.red(), colour.green(), colour.blue()
         return r > g > b and (r - b) > 40
 
@@ -643,7 +643,7 @@ class TheCategoryColumnPaintsITSOwnColour(unittest.TestCase):
             "an uncoloured category asked for an ink of its own")
 
     def test_a_DARK_category_is_lightened_to_be_readable(self):
-        """The pass the grid gets for free and this did not: in grid mode the colour FILLS a band and an ink is picked against it; here the same colour becomes the PEN on the dark row, and #333333 measured 1.03:1."""
+        """A dark category colour is lightened as the pen on a dark row; #333333 measured 1.03:1."""
         base = self.view.palette().color(QtGui.QPalette.ColorRole.Base)
         painted = self._ink(self.DARK_INK)
         self.assertGreater(
@@ -653,7 +653,7 @@ class TheCategoryColumnPaintsITSOwnColour(unittest.TestCase):
             "a dark category was written on the dark row unchanged")
 
     def test_a_SELECTED_row_is_LEFT_TO_the_host(self):
-        """The delegate adds nothing of its own to a selected row: Houdini's `QAbstractItemView::item:selected` sets the text for every column and the panel inherits that sheet, so the one ink a selected row has is the host's - this used to force the palette here instead, a second opinion about the same pixel. Pinned against a PLAIN delegate rather than a colour: the colour arrives from a stylesheet hython does not load, so what can be checked headless is that this delegate does not diverge from the stock one when the row is selected."""
+        """A selected row is left to the host stylesheet: the delegate paints it like a plain one."""
         ours = self._ink(self.CATEGORY_INK, selected=True)
         stock = self.delegate
         try:
@@ -665,7 +665,7 @@ class TheCategoryColumnPaintsITSOwnColour(unittest.TestCase):
             plain.name(), ours.name(),
             "the category column overrides a selected row's ink again "
             "- the host owns it")
-        self.assertTrue(  # and the UNSELECTED row still gets its colour, or the comparison above passes for a delegate that does nothing at all
+        self.assertTrue(  # the unselected row still gets its colour, or a do-nothing delegate passes
             self._hueish(self._ink(self.CATEGORY_INK)),
             "an unselected category lost its own colour")
 

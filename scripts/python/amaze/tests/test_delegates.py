@@ -1,15 +1,15 @@
-"""Painting contracts for the tile/row delegates: Qt drives every visible item with ONE painter, so a delegate that mishandles it corrupts every tile painted after it in the same pass, and these pin the invariants that keep a delegate a good citizen of a shared painter."""
+"""Delegate painting contracts: Qt paints every visible item with one shared painter."""
 
 import os
 import sys
 import unittest
 from unittest import mock
 
-sys.path.insert(   # THREE dirnames up = scripts/python, holding the `amaze` package - the DEV tree, not the install on Houdini's path
+sys.path.insert(   # three dirnames up is scripts/python: the dev tree, not the install
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")   # BEFORE the app exists ▸p/first-app-picks-the-platform
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")   # before the app exists ▸p/first-app-picks-the-platform
 from PySide6 import QtCore, QtGui, QtWidgets
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
@@ -22,11 +22,11 @@ from amaze.tests import test_support  # noqa: E402 - redirects the debug log
 
 
 class _ExplodingModel(QtCore.QAbstractListModel):
-    """A model whose row 1 raises, the way a real row does when it vanishes between layout and paint: library.py indexes `_assets` with the view's row and has no bounds check, so a reload or a switch under a scrolled grid raises IndexError straight out of data()."""
+    """Row 1 raises, as a real row does when it vanishes between layout and paint."""
 
     def __init__(self, only_role=None):
         super().__init__()
-        self._only_role = only_role  # raise only for this role, to fail LATE in _paint (after pens and fonts are set) rather than on the first read
+        self._only_role = only_role  # raise only for this role, to fail late in _paint, after pens and fonts are set
 
     def rowCount(self, parent=None):
         return 3
@@ -183,7 +183,7 @@ class TheColourSwapIgnoresCase(unittest.TestCase):
 
 
 class TheSvgCacheTest(unittest.TestCase):
-    """Every icon used to be a fresh file read, XML parse and raster - 30-35 at construction alone, duplicates and hidden chrome included; here because a QPixmap needs a QApplication, which this module has and the database tests do not."""
+    """An icon is read, parsed and rastered once; here because a QPixmap needs a QApplication."""
 
     def setUp(self):
         from amaze.helpers import ui_helpers
@@ -212,7 +212,7 @@ class TheSvgCacheTest(unittest.TestCase):
                          "another size reused the 32px picture")
 
     def test_the_caller_never_receives_the_cached_pixmap_itself(self):
-        """QPixmap is mutable: hand out the cached object and a caller that paints into it poisons every later ask for that icon."""
+        """QPixmap is mutable: a caller painting into the cached object would poison every later ask."""
         first = self.ui_helpers.render_svg_pixmap(self.icon, 32)
         second = self.ui_helpers.render_svg_pixmap(self.icon, 32)
         self.assertIsNot(first, second)
@@ -297,7 +297,7 @@ class OneSvgPainterTest(unittest.TestCase):
 
 
 class PainterBalanceTest(unittest.TestCase):
-    """A delegate must hand the painter back exactly as it got it: with save() at the top of _paint and restore() at the bottom, a row raising in between skipped the restore, so the fallback row and every row after it in that pass inherited the leaked pen, font and clip while the save stack grew by one per failing tile - measured before the fix as Qt's own `QPainter::end: Painter ended with 1 saved states`."""
+    """A delegate hands the painter back as it got it, even when a row raises mid-paint."""
 
     def setUp(self):
         self.messages = []
@@ -311,7 +311,7 @@ class PainterBalanceTest(unittest.TestCase):
             QtCore.Qt.ItemDataRole.UserRole + 3, parent=self.view)
 
     def _paint_row(self, model, row):
-        """Paint one row and end the painter, returning the painter's (pen colour, font size) before and after."""
+        """Paint one row and end the painter; returns pen colour and font size before and after."""
         self.view.setModel(model)
         image = QtGui.QImage(400, 300, QtGui.QImage.Format.Format_ARGB32)
         painter = QtGui.QPainter(image)
@@ -328,7 +328,7 @@ class PainterBalanceTest(unittest.TestCase):
         try:
             self.delegate.paint(painter, option, model.index(row, 0))
         except Exception:
-            pass  # the fallback super().paint() re-reads the same bad row and raises too; what matters here is the state the painter is left in
+            pass  # the fallback super().paint() re-reads the bad row and raises too
 
         after = (painter.pen().color().name(), painter.font().pointSize())
         painter.end()
@@ -345,7 +345,7 @@ class PainterBalanceTest(unittest.TestCase):
             "stack; every row painted after it inherits the leaked state")
 
     def test_no_pen_or_font_leaks_however_late_the_failure(self):
-        """Raising on the LAST role _paint reads: measured, it reads exactly three - Decoration(1), Display(0), subtitle(259) - all BEFORE touching the painter, so a raising model cannot leave a pen or font behind however late it fails, and this pins that ordering, going red if an edit moves a model read after the first setPen."""
+        """Raising on the last role read: `_paint` reads every role before its first setPen."""
         model = _ExplodingModel(
             only_role=QtCore.Qt.ItemDataRole.UserRole + 3)
         before, after = self._paint_row(model, 1)
@@ -355,7 +355,7 @@ class PainterBalanceTest(unittest.TestCase):
 
 
 class _RectSpy(QtGui.QPainter):
-    """Records every fillRect, so the card's real extent is measured rather than inferred from pixels."""
+    """Records every fillRect, so the card extent is measured rather than inferred from pixels."""
 
     def __init__(self, device):
         super().__init__(device)
@@ -368,7 +368,7 @@ class _RectSpy(QtGui.QPainter):
 
 
 class CardFillsItsCellTest(unittest.TestCase):
-    """A tile with no subtitle must not have a shorter card: grid_cell_size always reserves both text heights while _paint sized the card from the text it was about to DRAW, so a material with an empty renderer label got a card - and a category colour band - 18px shorter than its own cell, bare grid background underneath, beside normal tiles at every slider size (measured at ts=128, cell height 180: card bottom 179 with a subtitle, 161 without). `grid_cell_size` reserves `fm_name.height() + fm_rend.height()` while `_paint` sized from `h_name + (h_rend if renderer else 0)`, and `library.renderer_label` answers "" for a renderer it does not know - which is how a real row reaches the short branch."""
+    """A tile with no subtitle fills its cell: `grid_cell_size` reserves both text heights."""
 
     SUBTITLE = QtCore.Qt.ItemDataRole.UserRole + 3
 
@@ -390,7 +390,7 @@ class CardFillsItsCellTest(unittest.TestCase):
     def _card_bottom(self, subtitle, thumbsize=128):
         view = QtWidgets.QListView()
         self.addCleanup(view.deleteLater)
-        view.setViewMode(QtWidgets.QListView.ViewMode.IconMode)  # IconMode is the GRID: a default QListView is in ListMode, and forgetting this measures the wrong branch entirely
+        view.setViewMode(QtWidgets.QListView.ViewMode.IconMode)  # IconMode is the grid; a default QListView is in ListMode
         model = self._Model(subtitle)
         view.setModel(model)
         delegate = delegates.AssetItemDelegate(self.SUBTITLE, parent=view)
@@ -426,7 +426,7 @@ class CardFillsItsCellTest(unittest.TestCase):
 
 
 class BandContrastTest(unittest.TestCase):
-    """A category colour must never make its own label unreadable: `text_on` picked its ink from a Rec. 601 luminance threshold at 140, putting the cut just inside the green ramp - #00ee00 measures 139.7 and took the LIGHT ink, near-white on bright green at 1.37:1, with 8.7%% of the RGB cube below 3:1."""
+    """A category colour never makes its own label unreadable; #00ee00 is the case to watch."""
 
     DELEGATE = delegates.AssetItemDelegate
 
@@ -448,10 +448,10 @@ class BandContrastTest(unittest.TestCase):
             "a category colour drops its label below 3:1 (%s at %.2f:1)"
             % (worst_color.name() if worst_color else "?", worst))
 
-    LEGACY_PRESETS = ("#ef8878", "#4af2a1", "#5cc9f5", "#e2b148")   # what tiles saved before 2026-08-27 hold; the LIVE palette is drawn and includes a pink that measures 4.29, so it is not this rule's corpus
+    LEGACY_PRESETS = ("#ef8878", "#4af2a1", "#5cc9f5", "#e2b148")   # what older saved tiles hold; the live palette is drawn, not this corpus
 
     def test_the_shipped_presets_are_unchanged(self):
-        """The rule change must not restyle what is already saved: the four legacy presets measured identically under both rules."""
+        """The contrast rule does not restyle what is saved: the four legacy presets keep their ink."""
         for value in self.LEGACY_PRESETS + ("#00ee00",):    # the green that exposed the old threshold
             color = QtGui.QColor(value)
             self.assertGreater(
@@ -460,7 +460,7 @@ class BandContrastTest(unittest.TestCase):
                 4.5, "preset %s lost contrast" % value)
 
     def test_a_dark_category_is_legible_in_list_mode(self):
-        """List mode paints the colour as the PEN on the row instead of filling a band and had no contrast rule at all - #333333 measured 1.03:1 against the row."""
+        """List mode paints the colour as the pen on the row; #333333 measured 1.03:1 against it."""
         row = QtGui.QColor("#2d2d2d")
         for value in ("#333333", "#262626", "#1a1a1a", "#000000"):
             adjusted = self.DELEGATE.readable_on(QtGui.QColor(value), row)
@@ -501,7 +501,7 @@ class PaintCostTest(unittest.TestCase):
         return _Counting()
 
     def test_the_category_colour_is_read_once_per_tile(self):
-        """The grid resolved it and then asked again for its band - 120 reads for 60 tiles against list mode's 60, each a full proxy-to-source round trip plus a QColor parse, costing 0.31ms of every 8.57ms repaint."""
+        """Each read is a proxy-to-source round trip plus a QColor parse, so the band reuses it."""
         reads = []
         model = self._counting_model(reads)
         view = QtWidgets.QListView()
@@ -531,7 +531,7 @@ class PaintCostTest(unittest.TestCase):
             % len(reads))
 
     def test_a_badge_is_rendered_at_device_resolution(self):
-        """It rasterised at the logical size and drew 1:1, so on Retina a 22x22 badge was upscaled onto a 44x44 area - soft on top of thumbnails `_icon_pixmap` renders at side*dpr."""
+        """A badge rasterises at side*dpr, as `_icon_pixmap` does, or Retina upscales it soft."""
         normal = delegates.AssetItemDelegate._badge_pixmap(
             "badge_favourite", 22, 1.0)
         retina = delegates.AssetItemDelegate._badge_pixmap(
@@ -545,7 +545,7 @@ class PaintCostTest(unittest.TestCase):
         self.assertNotEqual(normal.cacheKey(), retina.cacheKey())  # and the two must not share a cache entry
 
     def test_badge_placement_uses_logical_size(self):
-        """width() is PHYSICAL pixels once devicePixelRatio is set, so placing by it pushes the badge off the tile on Retina."""
+        """width() is physical pixels once devicePixelRatio is set, so placement uses logical size."""
         retina = delegates.AssetItemDelegate._badge_pixmap(
             "badge_favourite", 22, 2.0)
         if retina.isNull():
@@ -560,7 +560,7 @@ class PaintCostTest(unittest.TestCase):
 
 
 class BadgeFamilyTest(unittest.TestCase):
-    """The four tile badges are ONE drawn family: one art set (each glyph on its own dark disc), one rasteriser (`_badge_pixmap`), one size rule (`_badge_side`) and rendered AS DRAWN with no re-tinting - four accreted looks with three size formulas made the corners hard to read on busy thumbnails."""
+    """The four badges are one family: one art set, `_badge_pixmap`, `_badge_side`, no re-tint."""
 
     NAMES = ("badge_open", "badge_favourite", "badge_favourite_off", "badge_versions",
              "badge_comment", "badge_edit") + tuple(r.badge for r in renderers.ALL)
@@ -584,7 +584,7 @@ class BadgeFamilyTest(unittest.TestCase):
             "shrinks past legibility")
 
     def _asked_for(self, role_kw, value, icon_side):
-        """Wire ONE badge role, run the paint pass, record what it asks the rasteriser for - driving `_paint_badges` rather than a per-badge painter, so the loop is asserted to ask for the wired badge and NOTHING ELSE and a row reading the wrong role shows up as an extra request; behavioural rather than source-derived, and the dpr is recorded too, because recording only the side let a hardcoded 1.0 through and that rasterises at half size on a 2x display while every case stays green."""
+        """Wire one badge role, run `_paint_badges`, and record every rasteriser ask with its dpr."""
         asked = []
 
         def spy(name, side, dpr=1.0, opacity=None):
@@ -617,7 +617,7 @@ class BadgeFamilyTest(unittest.TestCase):
         return asked
 
     def test_every_corner_asks_for_its_own_art_at_the_family_size(self):
-        """All four painters, one engine: each corner requests ITS art by name, at `_badge_side`'s size, at the real dpr - a painter hand-rolling its own size or art goes red here."""
+        """Each corner asks for its own art by name, at the `_badge_side` size and the real dpr."""
         corner = delegates.AssetItemDelegate._badge_side(128)
         rest = amazetheme.BADGE_REST_OPACITY
         cases = (    # (badge, its value, art, size, opacity: None = as drawn)
@@ -715,12 +715,12 @@ class BadgeFamilyTest(unittest.TestCase):
 
 
 class SidebarIndentTest(unittest.TestCase):
-    """Every sidebar row reserves the colour strip's width, coloured or not: indenting only coloured rows sat a striped category's label 4px right of its plain neighbours, so the strip is a PLACEHOLDER on every row - coloured rows paint into it, plain rows leave it empty."""
+    """Every sidebar row reserves the colour strip width, coloured or not, so labels line up."""
 
     COLOR_ROLE = int(QtCore.Qt.ItemDataRole.UserRole) + 77
 
     def _option_for(self, colour):
-        """The style option the delegate hands the STYLE for one row - there is no `paint` override to record from, so the strip is a DECORATION declared here and laid out by Qt afterwards, which makes reading the option the same as reading what the row will be."""
+        """The style option the delegate hands the style for one row; the strip is its decoration."""
         role = self.COLOR_ROLE
 
         class _Row(QtCore.QAbstractListModel):
@@ -753,7 +753,7 @@ class SidebarIndentTest(unittest.TestCase):
         plain = self._option_for(None)
         strip = self._option_for("#e28248")
         bar = theme.ui_px(4)
-        self.assertEqual(   # Qt lays the label out after the decoration, so equal decoration widths ARE labels that start together
+        self.assertEqual(   # Qt lays the label out after the decoration, so equal widths align labels
             plain.decorationSize, strip.decorationSize,
             "the two rows reserve different widths, so their labels "
             "cannot start at the same x")
@@ -767,7 +767,7 @@ class SidebarIndentTest(unittest.TestCase):
                 HasDecoration,
                 "a row does not declare a decoration, so nothing is "
                 "reserved on it at all")
-        strip_px = strip.icon.pixmap(strip.decorationSize).toImage()  # anti-vacuity both directions: the coloured row's strip really carries the colour, the plain row's really is transparent
+        strip_px = strip.icon.pixmap(strip.decorationSize).toImage()  # anti-vacuity: the coloured strip carries the colour, the plain one is clear
         plain_px = plain.icon.pixmap(plain.decorationSize).toImage()
         self.assertEqual(
             QtGui.QColor("#e28248").rgb(),
@@ -822,7 +822,7 @@ class HiddenCountsAreStillFetched(unittest.TestCase):
 
 
 class OnePickerForTheWholeAppTest(unittest.TestCase):
-    """pick_color decides Houdini-vs-Qt at call time; headless has no hou.ui, so these exercise the decision and the Qt path while the native path stays a live check by design."""
+    """`pick_color` picks Houdini or Qt at call time; headless has no hou.ui, so the Qt path runs."""
 
     def test_headless_takes_the_qt_path_and_respects_cancel(self):
         from unittest.mock import patch
@@ -839,7 +839,7 @@ class OnePickerForTheWholeAppTest(unittest.TestCase):
         self.assertEqual("#589abb", picked.name())
 
     def test_no_direct_qcolordialog_call_sites_remain(self):
-        """Source-derived: one helper means behaviour decided in one place, and a site calling QColorDialog directly silently opts out of the native picker and the modal guard."""
+        """A direct QColorDialog call skips the native picker and the modal guard."""
         import os
         root = os.path.dirname(os.path.dirname(os.path.abspath(
             __import__("amaze.helpers.ui_helpers",
@@ -862,7 +862,7 @@ class OnePickerForTheWholeAppTest(unittest.TestCase):
 
 
 class TheSubtitleIsTheNAMEsSize(unittest.TestCase):
-    """A tile's sub-line takes the NAME's size, and is secondary by COLOUR alone: an ABSOLUTE 12pt floor on the sub-line against a name drawn at the option font's own size made the secondary text LARGER than the thing it describes - measured at a 9pt Houdini UI font on Windows, with a view not inheriting the panel's floored font, the name comes out 9pt and the subtitle 12pt, while a ~13pt macOS UI font never engages the floor, so the fields read as mismatched on Windows and fine on a Mac for the whole life of the code."""
+    """The sub-line takes the name size, secondary by colour alone, at every UI font size."""
 
     def test_the_two_sizes_match_at_every_ui_font(self):
         """Selection bolds both; it must not resize either."""
@@ -886,7 +886,7 @@ class TheSubtitleIsTheNAMEsSize(unittest.TestCase):
                                                "its size")
 
     def test_a_PIXEL_sized_option_font_still_derives(self):
-        """A view whose font is set in PIXELS answers -1 to `pointSizeF`, and Qt refuses that as a size - so the derivation is dropped, loudly, once per cache miss."""
+        """A pixel-sized font answers -1 to `pointSizeF`, which Qt refuses as a size ▸r/font-sizing"""
         delegates.AssetItemDelegate._font_cache.clear()
         self.addCleanup(delegates.AssetItemDelegate._font_cache.clear)
         base = QtGui.QFont("Source Sans 3")
@@ -910,7 +910,7 @@ class TheSubtitleIsTheNAMEsSize(unittest.TestCase):
 
 
 class TheFontCacheTellsFontsApart(unittest.TestCase):
-    """`fonts_for` hands back a SHARED font, so two option fonts that differ in anything Qt draws by - size, weight, style, family - must land on different cache entries, or a caller paints in the font cached for the first one. Watch the PIXEL-sized cases especially: they all answer `pointSizeF() == -1`, so nothing about their size survives into a key built from point size ▸r/font-sizing"""
+    """`fonts_for` shares fonts: fonts differing in anything drawn get their own entry ▸r/font-sizing"""
 
     def _isolated_cache(self):
         delegates.AssetItemDelegate._font_cache.clear()
@@ -950,7 +950,7 @@ class TheFontCacheTellsFontsApart(unittest.TestCase):
                         "cache entry - the key ignores style")
 
     def test_two_weights_do_not_collide(self):
-        """Asserted on the SUB-line: `setBold(True)` is `setWeight(Bold)` and overwrites a heavier weight outright (measured: Black 900 -> 700), so the name line cannot carry the option font's own weight and the unbolded sub-line is the only place it shows."""
+        """On the sub-line: `setBold(True)` sets weight 700, overwriting heavier weights on the name."""
         self._isolated_cache()
         regular = QtGui.QFont("Source Sans 3")
         regular.setPointSizeF(12.0)
@@ -964,7 +964,7 @@ class TheFontCacheTellsFontsApart(unittest.TestCase):
                          "cache entry - the key ignores weight")
 
     def test_it_is_still_a_CACHE(self):
-        """Telling fonts apart is worth nothing if it costs the HIT: two separately built but equal fonts must land on one entry, or every row rebuilds its fonts and metrics on every repaint while scrolling."""
+        """Two separately built but equal fonts land on one entry, or every repaint rebuilds them."""
         self._isolated_cache()
         first = delegates.AssetItemDelegate.fonts_for(
             self._at_pixel_size(11), False)

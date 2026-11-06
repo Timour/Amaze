@@ -1,4 +1,4 @@
-"""The Conversion Engine: the DECODE/FIT split and the guard. The split: resampling while converting is a property of an image too big for Qt's allocation limit, never of a foreign format - `sips -Z` on a Radiance .hdr returns EXIT 0 and a solid black PNG, which turned 178 HDR tiles black with not one line in the log. The guard: an engine verifies its own output, an adapter is never trusted. A test for the guard would pass with the fix reverted and a test for the fix would pass with the guard removed - both are here."""
+"""Conversion: only FIT resamples, as `sips -Z` blacks out a Radiance .hdr; output is verified."""
 
 import inspect
 import os
@@ -25,7 +25,7 @@ from amaze.tests import test_support  # noqa: E402
 
 
 def write_radiance_hdr(path, width=256, height=128):
-    """A real, readable Radiance .hdr - flat (uncompressed) RGBE. A FIXTURE, not a copy of the user's file: nothing in the suite may reach the machine's own images. The gradient matters - the failure this exists for produces a picture with no variation, so a flat fixture could not tell the two apart."""
+    """A readable uncompressed RGBE Radiance .hdr with a gradient, so a flat failure shows."""
     import math
 
     def rgbe(r, g, b):
@@ -72,7 +72,7 @@ OVERSIZED = (9000, 9000)  # 324MB decoded - big enough that the decode passes Qt
 
 
 def qt_refuses(target, declared=OVERSIZED, only_first=False):
-    """Make the Qt-native read refuse ONE file, declaring it oversized - how the FIT route is reached on purpose. Lowering `QImageReader.allocationLimit()` is NOT enough and the difference is a Qt version: on Qt 6.5.3 (H21) the limit applies to the WHOLE-image read only, so a scaled read of an oversized PNG simply loads, while Qt 6.8.3 (H22) refuses both - so this states the refusal and the declared size directly and the ENGINE's routing is under test on every Qt. `only_first=True` refuses the first file that is NOT `target` (a converter's own temp made to look oversized); `target=None` refuses everything."""
+    """Make the Qt read refuse one file as oversized; `only_first` hits the first non-target file."""
     real = conversion._read_qt
     state = {"chosen": None}
 
@@ -101,7 +101,7 @@ class _StubSignal:
 
 
 class _StubProcess:
-    """A killed child, scripted: dies inside the reap's half-second, or defers SIGKILL the way uninterruptible disk I/O does."""
+    """A scripted killed child: dies inside the reap, or defers SIGKILL as blocked disk I/O does."""
 
     def __init__(self, reaps=True, running=True):
         self._reaps = reaps
@@ -139,7 +139,7 @@ class _StubProcess:
 
 
 class TheGraveyardBoundsTheStall(unittest.TestCase):
-    """A killed child that defers SIGKILL must cost its caller half a second, not the destructor's thirty: parked in the module graveyard, it collects itself when the kernel lets go - 71 deferred children once turned a 134s suite into 1211s and starved the thumbnail workers, the shape behind the hanging File-tab thumbnails."""
+    """A child deferring SIGKILL costs half a second, not thirty: the graveyard collects it later."""
 
     def tearDown(self):
         conversion._ABANDONED.clear()
@@ -160,14 +160,14 @@ class TheGraveyardBoundsTheStall(unittest.TestCase):
         self.assertIn(child, conversion._ABANDONED)
         self.assertTrue(child.finished.slots,
                         "nothing collects the corpse later")
-        child._running = False  # the kernel finally releases it: the slot must remove it from the graveyard and delete the Qt object
+        child._running = False  # released: the slot removes it from the graveyard and deletes the Qt object
         child.finished.slots[0]()
         self.assertNotIn(child, conversion._ABANDONED)
         self.assertTrue(child.deleted)
 
     def test_a_child_dying_during_the_handover_is_still_collected(self):
         child = _StubProcess(reaps=False)
-        original_wait = child.waitForFinished  # dead by the time the post-connect check runs - finished already fired and never comes again
+        original_wait = child.waitForFinished  # dead before the post-connect check: finished has fired and never comes again
 
         def wait_then_die(ms):
             result = original_wait(ms)
@@ -181,7 +181,7 @@ class TheGraveyardBoundsTheStall(unittest.TestCase):
 
 
 class ACompletionReapedElsewhere(unittest.TestCase):
-    """Qt hears a child exit through SIGCHLD, so a handler that auto-reaps steals the notification: the child is gone in milliseconds, the wait burns its WHOLE timeout, then parks a phantom in the graveyard - the production signature was 18 real files logged as timed out that convert in ~1s by hand. The cure under test: a liveness watchdog inside the wait - a pid that no longer exists while the state still reads Running can only mean the exit was reaped elsewhere, and a zombie keeps its pid until reaped, so the check cannot fire early on a healthy child."""
+    """Qt hears exits via SIGCHLD; a gone pid while Running means reaped elsewhere, so stop waiting."""
 
     @unittest.skipUnless(os.name == "posix", "SIGCHLD is POSIX-only")
     def test_a_reaped_child_returns_within_the_watchdog(self):
@@ -192,7 +192,7 @@ class ACompletionReapedElsewhere(unittest.TestCase):
         libc = ctypes.CDLL(None)
         libc.signal.restype = ctypes.c_void_p
         libc.signal.argtypes = [ctypes.c_int, ctypes.c_void_p]
-        ok, err = conversion._run_process("/bin/echo", ["prime"],  # PRIME FIRST: Qt installs its child-exit handler on the first QProcess start, so a sabotage placed earlier is overwritten and the test passes for the wrong reason - unprimed, this ran green against the unfixed code
+        ok, err = conversion._run_process("/bin/echo", ["prime"],  # prime first: Qt installs its child-exit handler on the first QProcess start
                                           timeout_ms=15000)
         self.assertTrue(ok, "the priming call itself failed: %r" % err)
         parked_before = len(conversion._ABANDONED)
@@ -342,11 +342,11 @@ class ConversionCase(unittest.TestCase):
 class TheDecodeFitSplit(ConversionCase):
 
     def test_a_radiance_hdr_keeps_its_picture(self):
-        """The 178 black tiles, in one assertion - the OUTCOME. Held up by TWO independent things (the split and the verification), so putting `-Z` back on the FORMAT route leaves it GREEN: the engine refuses the black answer and iconvert carries the file - the design working, not a hole. What it pins is that a Radiance .hdr comes out of this engine with its picture, however achieved; each mechanism has its own test either side of this one, red on its own sabotage."""
+        """The outcome: a Radiance .hdr keeps its picture, held up by both the split and the guard."""
         if not hostos.is_macos():
             self.skipTest("sips is macOS-only; the FORMAT route here is "
                           "iconvert, which never had this failure")
-        hdr = write_radiance_hdr(self.path("sky.hdr"), 1024, 512)  # BIGGER than the thumbnail asked for, load-bearing: -Z 256 on a source already within 256px is a no-op and comes back correct; a 1024x512 fixture gives the same 1,675-byte black PNG the real library produced, a smaller one cannot reproduce this at all
+        hdr = write_radiance_hdr(self.path("sky.hdr"), 1024, 512)  # bigger than asked for: -Z 256 on a source within 256px is a no-op
         result = self.convert(hdr)
         self.assertTrue(
             result, "no thumbnail at all for a Radiance .hdr: %s"
@@ -358,7 +358,7 @@ class TheDecodeFitSplit(ConversionCase):
         self.assertFalse(result.uniform)
 
     def test_the_FORMAT_route_converts_and_does_not_resample(self):
-        """The split itself, read off the command line that runs: `-Z` resamples WHILE converting - mandatory on the FIT route (a full-size temp is refused all over again) and what destroyed HDR on the FORMAT route, where a full-size temp is perfectly loadable and Qt scales it. One flag, two contracts - the moment a shared helper became two functions."""
+        """The split, read off the command line: the FORMAT route never passes `-Z`; Qt scales it."""
         if not hostos.is_macos():
             self.skipTest("sips is macOS-only")
         hdr = write_radiance_hdr(self.path("sky.hdr"), 1024, 512)
@@ -380,7 +380,7 @@ class TheDecodeFitSplit(ConversionCase):
             "one thing that turns a Radiance .hdr black: %s" % (sips[0],))
 
     def test_the_FIT_route_does_resample(self):
-        """The other half: without this, deleting `-Z` everywhere passes the test above and quietly breaks every oversized image - the temp file is refused by Qt all over again."""
+        """The FIT route passes `-Z`, or Qt refuses the full-size temp all over again."""
         if not hostos.is_macos():
             self.skipTest("sips is macOS-only")
         png = write_png(self.path("big.png"), 1200, 1200)
@@ -405,7 +405,7 @@ class TheDecodeFitSplit(ConversionCase):
             % (sips[0],))
 
     def test_iconvert_is_not_offered_where_it_cannot_help(self):
-        """iconvert converts formats and has no resize option at all, so on the FIT route its full-size output is refused all over again - offering it there spends a Houdini process startup to fail."""
+        """iconvert has no resize option, so it is never offered on the FIT route."""
         fit = [name for name, _produce in conversion._FIT_ADAPTERS]
         self.assertNotIn("iconvert", fit)
         formats = [name for name, _p in conversion._FORMAT_ADAPTERS]
@@ -418,11 +418,11 @@ class TheDecodeFitSplit(ConversionCase):
                          "timeout first")
 
     def test_a_foreign_format_that_is_ALSO_oversized_gets_both_halves(self):
-        """The case a per-format fix cannot reach: a FORMAT converter writes a full-size temp (an 8K HDR converts to 268MB of PNG), which Qt refuses exactly like the source - the temp is then measured by the same rule and handed to the FIT route. Nothing about this is HDR-specific, which is the point."""
+        """A FORMAT temp too big for Qt is measured by the same rule and handed to the FIT route."""
         if not hostos.is_macos():
             self.skipTest("sips is macOS-only")
-        hdr = write_radiance_hdr(self.path("big_sky.hdr"), 1024, 512)  # decodes to 2.1MB, past the 1MB limit below - a smaller fixture converts to a temp Qt reads directly and proves nothing
-        with qt_refuses(hdr, only_first=True):  # the SOURCE is genuinely foreign (Qt reads no Radiance); what is staged is the converted TEMP coming back oversized, which is what an 8K HDR does for real
+        hdr = write_radiance_hdr(self.path("big_sky.hdr"), 1024, 512)  # decodes to 2.1MB, past the 1MB limit below
+        with qt_refuses(hdr, only_first=True):  # Qt reads no Radiance; only the converted temp is staged as oversized
             result = self.convert(hdr)
         self.assertTrue(
             result, "an oversized foreign format got nothing: %s"
@@ -454,12 +454,12 @@ class TheEngineVerifiesItsOwnOutput(ConversionCase):
 
     def setUp(self):
         super().setUp()
-        self.foreign = self.path("thing.xyz")  # a file Qt cannot read, so the FORMAT order runs; its content is irrelevant - the fake adapters produce the answers
+        self.foreign = self.path("thing.xyz")  # a file Qt cannot read, so the FORMAT order runs; fake adapters answer
         with open(self.foreign, "wb") as fh:
             fh.write(b"not an image Qt knows")
 
     def test_a_converter_that_returns_a_blank_is_not_believed(self):
-        """Exit 0 is not an answer to a correctness question. This is the guard, not the fix: with `-Z` back on the FORMAT route, sips would return exit 0 and a black picture, and this is what stops the tile going black anyway."""
+        """The guard: exit 0 with a blank picture is not believed."""
         with mock.patch.object(conversion, "_FORMAT_ADAPTERS", (
                 ("liar", _adapter_writing("#000000")),
                 ("honest", _adapter_writing_a_picture()),
@@ -477,7 +477,7 @@ class TheEngineVerifiesItsOwnOutput(ConversionCase):
         self.assertIn("identical", refusals["liar"])
 
     def test_a_genuinely_flat_image_is_still_DELIVERED(self):
-        """The guard must not become its own bug: a black texture exists, and refusing to show one trades 178 black tiles for 178 missing ones - a uniform answer is a suspicion, delivered when nothing does better."""
+        """A uniform answer is a suspicion, still delivered when nothing does better: black exists."""
         with mock.patch.object(conversion, "_FORMAT_ADAPTERS", (
                 ("first", _adapter_writing("#000000")),
                 ("second", _adapter_writing("#000000")),
@@ -493,7 +493,7 @@ class TheEngineVerifiesItsOwnOutput(ConversionCase):
             "the log cannot tell this from a normal conversion")
 
     def test_a_flat_image_Qt_ITSELF_read_is_not_second_guessed(self):
-        """Only converter output is judged: Qt reading a format Qt supports is the ground truth - no second decoder would do better, and two subprocesses per flat PNG in a library is a real cost for nothing."""
+        """Only converter output is judged: a Qt read of a format Qt supports is ground truth."""
         flat = write_png(self.path("flat.png"), 300, 300, flat="#101010")
         calls = []
 
@@ -530,7 +530,7 @@ class TheEngineVerifiesItsOwnOutput(ConversionCase):
 class ItAnswersWithAReasonNeverABareNone(ConversionCase):
 
     def test_a_cancelled_conversion_says_cancelled(self):
-        """A user browsing away is not a failure, and the difference decides whether the key is retried or marked missing forever."""
+        """Browsing away is not a failure: it decides whether the key is retried or marked missing."""
         foreign = self.path("thing.xyz")
         with open(foreign, "wb") as fh:
             fh.write(b"not an image")
@@ -563,7 +563,7 @@ class ItAnswersWithAReasonNeverABareNone(ConversionCase):
             "texture is 4GB of allocation in a live Houdini")
 
     def test_an_ordinary_oversized_image_is_still_converted(self):
-        """Guards the ceiling: set too low, everything is declined and the test above still passes - 268MB is an 8K displacement map, an ordinary VFX texture, not an exotic case."""
+        """Guards the ceiling from below: 268MB is an 8K displacement map, an ordinary texture."""
         self.assertGreater(
             conversion.MAX_RESCUE_MEGABYTES, 268,
             "the shipped ceiling is below an 8K displacement map")
@@ -609,7 +609,7 @@ class AnEXRIsMeasuredFromItsOwnHeader(ConversionCase):
 class TheSizeContract(ConversionCase):
 
     def test_nothing_leaves_the_engine_larger_than_asked_for(self):
-        """A FORMAT converter only converts - its temp file is full-size and something has to scale it: the engine's job, in one place, for every adapter."""
+        """A FORMAT temp is full-size; the engine scales it, in one place, for every adapter."""
         with mock.patch.object(conversion, "_FORMAT_ADAPTERS", (
                 ("big", lambda src, out, ctx: (
                     write_png(out, 900, 900) and (True, "")),),
@@ -628,7 +628,7 @@ class TheSizeContract(ConversionCase):
                          (result.image.width(), result.image.height()))
 
     def test_an_extreme_aspect_ratio_still_fits(self):
-        """A 2000x2 gradient strip - a real VFX texture - scales to 128x0, which Qt reports as an EMPTY size, so the scaled read is skipped and the decoder hands back all 2000 pixels; anything past about 1:15 at 128px lands here. The case that makes the size contract load-bearing rather than decorative."""
+        """A 2000x2 strip scales to 128x0, an empty size to Qt, so the scaled read is skipped."""
         strip = write_png(self.path("strip.png"), 2000, 2)
         result = self.convert(strip, size=128)
         self.assertTrue(result)
@@ -641,7 +641,7 @@ class TheSizeContract(ConversionCase):
 class TheTempFileLifetimeIsTheEngines(ConversionCase):
 
     def test_every_scratch_file_is_removed(self):
-        """Three hand-rolled copies of this before, one per converter, each with its own mkstemp and its own finally."""
+        """The engine owns every scratch file, for every converter."""
         made = []
         real = tempfile.mkstemp
 
@@ -662,18 +662,18 @@ class TheTempFileLifetimeIsTheEngines(ConversionCase):
                                    "%s" % left)
 
     def test_a_failed_conversion_does_not_re_enter_the_converters(self):
-        """A converter loads its own output, and a bad temp file must not loop back through the converter that produced it."""
+        """A bad temp file never loops back through the converter that produced it."""
         calls = []
 
         def counts(source, out_path, ctx):
             calls.append(source)
-            if len(calls) > 4:  # a bound, so a genuine loop ends the test instead of recursing until the interpreter stops it
+            if len(calls) > 4:  # a bound, so a genuine loop ends the test
                 return False, "enough"
             write_png(out_path, 400, 400)
             return True, ""
 
         png = write_png(self.path("big.png"), 1200, 1200)
-        with qt_refuses(None):  # everything refused, temps included - the adapter's own output comes back exactly as unreadable as the source, the only condition under which a re-entry is possible
+        with qt_refuses(None):  # everything refused, temps included: the only way a re-entry is possible
             with mock.patch.object(conversion, "_FIT_ADAPTERS",
                                    (("looper", counts),)):
                 self.convert(png)
@@ -684,7 +684,7 @@ class TheTempFileLifetimeIsTheEngines(ConversionCase):
 
 
 class TheCancelCallbackReachesEveryConverter(ConversionCase):
-    """The rescue was added after the cancel wiring and did not inherit it - without the callback, shutdown falls through to terminate(), which research.md records as orphaning the child and skipping the finally that removes the temp PNG."""
+    """Without the callback, terminate() orphans the child and skips the temp cleanup."""
 
     def test_the_subprocesses_receive_it(self):
         seen = []
@@ -704,7 +704,7 @@ class TheCancelCallbackReachesEveryConverter(ConversionCase):
             all(callable(c) for c in seen),
             "a converter ran with no cancel callback, so its 100ms "
             "watchdog was never armed: %s" % seen)
-        # ...and it must be THIS conversion's answer, not a stand-in.
+        # and it must be this conversion answer, not a stand-in
         answers = []
         with mock.patch.object(
                 conversion, "_run_process",
@@ -772,7 +772,7 @@ class OneLogLine(ConversionCase):
         return result, seen
 
     def test_an_ordinary_image_writes_nothing(self):
-        """A line per tile would flood the log rather than inform it - and a flood is what made the debug engine unreadable once."""
+        """A line per tile would flood the log rather than inform it."""
         png = write_png(self.path("ordinary.png"), 300, 300)
         _result, seen = self.events(png)
         self.assertEqual([], seen, "an ordinary PNG wrote to the log: %s"
@@ -793,7 +793,7 @@ class OneLogLine(ConversionCase):
         self.assertIn("identical", data.get("tried", ""))
 
     def test_the_line_names_the_NEED_that_was_measured(self):
-        """Which of the two problems this file had is the single most useful fact in the record, and it must be the MEASURED one - reconstructed at the end from a field empty on success, every rescued oversized image was filed as a format problem, the exact class of wrong-cause log line these events exist to end."""
+        """The line names the measured need, format or size, never one reconstructed afterwards."""
         png = write_png(self.path("big.png"), 1200, 1200)
         with qt_refuses(png):
             result, seen = self.events(png)
@@ -814,7 +814,7 @@ class OneLogLine(ConversionCase):
         self.assertEqual(conversion.FORMAT, seen[0][1].get("need"))
 
     def test_it_says_WHICH_failure_this_was_for_a_damaged_file(self):
-        """A corrupt file is not a big file: every failure here used to be logged as too big for Qt, truncated downloads included - sending whoever reads the log next to measure allocation limits for a file that is simply damaged."""
+        """A corrupt file is not a big file: the log says damaged, not too big for Qt."""
         broken = self.path("truncated.png")
         with open(broken, "wb") as fh:
             fh.write(b"\x89PNG\r\n\x1a\n" + b"\x00" * 40)
@@ -827,7 +827,7 @@ class OneLogLine(ConversionCase):
             "a damaged file was blamed on the allocation limit: %s" % whys)
 
     def test_and_says_the_allocation_limit_when_that_IS_the_cause(self):
-        """The other half - without it the test above passes by never mentioning the limit at all."""
+        """The other half: when the limit is the cause, the line says so."""
         png = write_png(self.path("huge.png"), 1200, 1200)
         with qt_refuses(png):
             with mock.patch.object(conversion, "_FIT_ADAPTERS", ()):
@@ -855,7 +855,7 @@ class OneLogLine(ConversionCase):
 
 
 class TheUniformCheck(ConversionCase):
-    """Exact equality, never a tolerance: a near-uniform photograph of a wall is a real picture and must not be thrown away."""
+    """Exact equality, never a tolerance: a near-uniform photograph of a wall is a real picture."""
 
     def test_only_an_exactly_flat_image_is_uniform(self):
         solid = QtGui.QImage(120, 120, QtGui.QImage.Format.Format_RGB32)
@@ -877,7 +877,7 @@ class TheUniformCheck(ConversionCase):
 
 
 class TheWatchdogNeverSignalsOnWindows(unittest.TestCase):
-    """`os.kill(pid, 0)` probes liveness on POSIX and TERMINATES on Windows, setting the exit code to the signal - so a 0 there kills the converter and reports success. ▸r/os-kill-windows"""
+    """`os.kill(pid, 0)` probes liveness on POSIX but terminates on Windows ▸r/os-kill-windows"""
 
     def test_the_source_gates_the_signal_on_the_platform(self):
         source = inspect.getsource(conversion)

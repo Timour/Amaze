@@ -1,4 +1,4 @@
-"""The library models: `MaterialLibrary` over mocked prefs/database/material in `TestMaterialLibrary`, and the rest against a real fixture library - merges, switches, schema stamps, favourites and the shared base's contract."""
+"""The library models: `MaterialLibrary` on mocks, the rest against a real fixture library."""
 
 import unittest
 from unittest.mock import Mock, MagicMock, patch
@@ -8,7 +8,7 @@ import shutil
 import sys
 import tempfile
 
-sys.path.insert(  # THREE dirnames up = scripts/python, the directory holding the `amaze` package - the DEV tree, not the install on Houdini's path ▸p/checkout-not-install
+sys.path.insert(  # three dirnames up is scripts/python: the dev tree, not the install ▸p/checkout-not-install
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
@@ -82,7 +82,7 @@ class TestMaterialLibrary(unittest.TestCase):
         self.mock_material.renderer = "karma"
         self.mock_material.date = "2026-02-08"
         self.mock_material.mat_id = "mat_001"
-        self.mock_material.about = ""    # a real record's default, spelled out: a bare Mock answers a truthy object here and the About sweep would take it for credit text
+        self.mock_material.about = ""    # a bare Mock is truthy here, and the About sweep would take it for credit text
         self.mock_material.get_as_dict.return_value = self.asset_data
         self.mock_material_cls.from_dict.return_value = self.mock_material
 
@@ -100,7 +100,7 @@ class TestMaterialLibrary(unittest.TestCase):
         """`preferences` is first and positional, so the plain call binds it. ▸p/duplication-third-verb"""
         from amaze.core import library
 
-        self.mock_prefs_cls.return_value = Mock()  # a DIFFERENT object than the one passed in: setUp wires Prefs() to return self.mock_prefs, which would leave this assertion comparing the mock to itself and passing under the very revert it names
+        self.mock_prefs_cls.return_value = Mock()  # not `self.mock_prefs`, else the assertion compares the mock to itself
 
         model = library.MaterialLibrary(self.mock_prefs)
 
@@ -113,7 +113,7 @@ class TestMaterialLibrary(unittest.TestCase):
         """Omitting it must raise, never default to the machine's own library."""
         from amaze.core import library
 
-        with patch("amaze.core.library.prefs.Prefs"):  # a restored fallback is caught here as a MOCK, so a FAILING run cannot reach the machine's own settings.json
+        with patch("amaze.core.library.prefs.Prefs"):  # a restored fallback gets a mock, so a failing run cannot reach the machine's settings
             with self.assertRaises(TypeError):
                 library.MaterialLibrary()
 
@@ -133,7 +133,7 @@ class TestMaterialLibrary(unittest.TestCase):
                 self.assertEqual(expected, self.library.data(index, role))
 
     def test_data_favorite_role(self):
-        """The role answers the ONE favourites door, keyed by the asset's id - never the shared record, never settings."""
+        """The role answers the one favourites door, keyed by asset id: never the shared record."""
         from amaze.core import library as library_mod
         index = self.library.index(0, 0)
         mat_id = self.library._assets[0].mat_id
@@ -196,7 +196,7 @@ class TestMaterialLibrary(unittest.TestCase):
 
         self.library.remove_asset(index)
 
-        removed = {call.args[0] for call in mock_remove.call_args_list}  # EVERY file the asset owns, derived from asset_files() rather than counted: a hard-coded count says nothing about WHICH file was missed, and goes stale each time an asset gains one
+        removed = {call.args[0] for call in mock_remove.call_args_list}  # every file the asset owns, from `asset_files()` rather than a count
         self.assertEqual(
             expected, removed,
             "remove_asset did not delete exactly the files asset_files() "
@@ -234,7 +234,7 @@ class TestMaterialLibrary(unittest.TestCase):
         mock_handler.save_node.assert_called_once()
 
     def test_add_asset_records_the_name_it_was_given(self):
-        """The save dialog names a single material; a multi-selection passes none, and every asset keeps the node's own name."""
+        """The dialog names a single material; a multi-selection passes none and keeps node names."""
         mock_node = Mock()
         mock_node.name.return_value = "NodeName"
 
@@ -259,7 +259,7 @@ class TestMaterialLibrary(unittest.TestCase):
             "a save that names nothing no longer falls back to the node")
 
     def test_add_asset_says_no_when_the_save_did_not_happen(self):
-        """THE RENDERER-STRING CONTRACT, which all three add_assets honour: a renderer name means the asset is IN the library, an empty string means it is not. Returning the renderer regardless of what save_node answered lets every call site read a failed save as a good one."""
+        """Every `add_asset` answers a renderer name only when saved, an empty string when not."""
         mock_node = Mock()
         mock_node.name.return_value = "RefusedMaterial"
 
@@ -457,7 +457,7 @@ class TheLibraryKeepsNoTagList(unittest.TestCase):
 
 
 class TheSentinelHasOneHome(unittest.TestCase):
-    """The mixed-selection sentinel is COMPARED against, so a drifted spelling silently overwrites a field. ONE definition, `material.MULTIPLE_VALUES`, and every other appearance imports it."""
+    """The mixed-selection sentinel is compared against: one `material.MULTIPLE_VALUES`, imported."""
 
     def test_the_literal_is_spelled_exactly_once(self):
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -481,7 +481,7 @@ class TheSentinelHasOneHome(unittest.TestCase):
 
 
 class MixedSelectionTest(unittest.TestCase):
-    """Editing a multi-selection must not refile everything. The details form applies one value per field to every selected asset, and set_assetdata reads the mixed-selection sentinel as leave-this-field-alone - so a field that does NOT show it moves every selected asset into the first one's value, and there is no undo for that."""
+    """A multi-selection edit leaves each field showing the sentinel alone; others apply to all."""
 
     SENTINEL = "Multiple Values..."
 
@@ -517,7 +517,7 @@ class MixedSelectionTest(unittest.TestCase):
 
 
 class SingleCategoryTest(unittest.TestCase):
-    """One asset, one category - the capability to hold several is gone from the SOURCE, not merely migrated out of the data, so no later per-category property has to invent a rule for which of several wins. Tags are the many-to-many axis. This file patches `material.Material` for the model tests, so the REAL class is imported by name below."""
+    """One asset, one category, in the source and not only the data; tags are the many-to-many."""
 
     @staticmethod
     def _asset():
@@ -647,7 +647,7 @@ class AnInlineSectionHasNoFilesToMissTest(unittest.TestCase):
 
 
 class ReloadChainTest(unittest.TestCase):
-    """Every amaze module the panel imports must also be in its reload chain - a module left OUT keeps its old code while everything around it is new. COMPLETENESS is the invariant, not whether the chain executes: it no longer runs by default, and a chain with a hole in it is worth nothing on the day someone turns it on. Derived from the source, so a new import cannot quietly skip it. ▸p/source-derived-tests"""
+    """Every amaze module the panel imports is in its reload chain. ▸p/source-derived-tests"""
 
     def test_every_imported_amaze_module_is_reloaded(self):
         import re
@@ -660,9 +660,9 @@ class ReloadChainTest(unittest.TestCase):
 
         reloaded = set(re.findall(
             r"(?:importlib\.reload|_reload)\((\w+)\)", source))
-        reloaded |= set(re.findall(r"(\w+)\.reload_engine\(\)", source))  # A PACKAGE CANNOT BE RELOADED BY RELOADING IT - importlib.reload re-runs only __init__.py, which hands back the cached submodules, so a package answers with its own entry point instead ▸r/package-reload
+        reloaded |= set(re.findall(r"(\w+)\.reload_engine\(\)", source))  # a package reloads through its own entry point ▸r/package-reload
         imported = set()
-        for match in re.finditer(  # PARENTHESISED imports span lines: a pattern stopping at the first newline contributes NOTHING for them, and this test passes happily while those modules sit outside the chain
+        for match in re.finditer(  # parenthesised imports span lines, so the pattern must cross newlines
                 r"^from amaze[\w.]* import \(([^)]*)\)", source, re.M | re.S):
             for name in match.group(1).split(","):
                 name = name.split(" as ")[-1].strip()    # `x as y` binds y, the name the chain reloads
@@ -682,7 +682,7 @@ class ReloadChainTest(unittest.TestCase):
 
 
 class ModelSignalTest(unittest.TestCase):
-    """Row mutations must announce themselves: views track rows by persistent index, so appending or removing without `begin/endInsertRows` leaves them dangling. `layoutChanged` is the WRONG signal for a changed row COUNT - it says the order may have changed, not the count. ▸r/model-contracts"""
+    """Row inserts and removals fire their own signals, not `layoutChanged`. ▸r/model-contracts"""
 
     def setUp(self):
         from amaze.core import category as category_mod
@@ -713,7 +713,7 @@ class ModelSignalTest(unittest.TestCase):
             "a category vanished with no rowsRemoved signal")
 
     def test_removing_a_name_that_is_not_there_is_a_no_op(self):
-        """`list.remove` raises ValueError for any name the sidebar displayed with its leading underscore stripped - and that escapes the panel slot AFTER the asset model has stripped the category from every Material in memory and BEFORE save() runs."""
+        """A displayed name with its leading underscore stripped must not raise out of the slot."""
         before = self.cats.rowCount()
         try:
             self.cats.remove_category("All")      # displayed for "_All"
@@ -736,7 +736,7 @@ class ModelSignalTest(unittest.TestCase):
 
 
 class SchemaStampTest(unittest.TestCase):
-    """A newer build's database must not be stamped BACKWARDS. `_migrate` refuses to touch a newer schema, and a save that then overwrites the version anyway leaves the newer build's data under an older number - so that machine re-runs its whole migration chain over already-migrated data."""
+    """A save never stamps a newer build's database with an older schema version."""
 
     def setUp(self):
         import json
@@ -786,7 +786,7 @@ class OpeningALibraryComposesOnePathPerAssetTest(unittest.TestCase):
 
 
 class ARetiredFieldDoesNotComeBackOnASaveTest(unittest.TestCase):
-    """End to end, through the model that actually writes the file. THE DOCUMENT IS STAMPED AT THE CURRENT SCHEMA ON PURPOSE and carries the retired fields anyway: stamped at 4 the migration strips them before `Material` sees a row, so `_KNOWN_KEYS` is never consulted and this passes with the mechanism DELETED. The case it is for is a row reaching `from_dict` still carrying a retired key - a peer's row, or one merged in raw, on a document no step will run over again. A key `_KNOWN_KEYS` does not name is carried verbatim by `_extra` and re-emitted on every save."""
+    """Stamped at the current schema so no migration strips the retired keys before `_KNOWN_KEYS`."""
 
     def setUp(self):
         from amaze.core import library as library_mod
@@ -828,7 +828,7 @@ class ARetiredFieldDoesNotComeBackOnASaveTest(unittest.TestCase):
 
 
 class AMaterialStarLivesInTheLibraryStoreTest(unittest.TestCase):
-    """Materials, Nodes and Code stars go through the ONE favourites door, keyed by asset id and tagged with their owner - so one user sees the same stars on every machine, and two users of one library each see their own. `material_favorites` in settings.json never travels and is a MIGRATION SOURCE only: a toggle must not touch it, and the role must answer the store."""
+    """A star goes to the library store per user; `material_favorites` is a migration source only."""
 
     def setUp(self):
         from amaze.core import keyed_store, library as library_mod
@@ -888,7 +888,7 @@ class AMaterialStarLivesInTheLibraryStoreTest(unittest.TestCase):
 
 
 class MaterialRoundTripTest(unittest.TestCase):
-    """The dict round-trip must not lose what it does not understand. A fixed key set in both directions drops whatever a NEWER build wrote on the first save by an older one, and raises KeyError out of the model's `__init__` on a MISSING key, so one damaged row means the panel cannot open at all. Both compound with the adopted-row path, which takes raw disk dicts."""
+    """The dict round-trip keeps unknown keys and survives a missing one."""
 
     def _material(self):
         from amaze.core.material import Material
@@ -935,7 +935,7 @@ class MaterialRoundTripTest(unittest.TestCase):
         self.assertEqual("real", asset.get_as_dict()["name"])
 
     def test_the_known_key_set_matches_what_is_emitted(self):
-        """`_KNOWN_KEYS` drives what counts as unknown, so drift from `get_as_dict` starts treating a real field as extra. RETIRED keys are the deliberate exception - understood precisely so they are DROPPED rather than carried - which makes the set what is emitted PLUS those."""
+        """`_KNOWN_KEYS` is what `get_as_dict` emits plus the retired keys, which are dropped."""
         Material = self._material()
         row = {
             "id": "x", "name": "n", "categories": [], "tags": [],
@@ -954,7 +954,7 @@ class MaterialRoundTripTest(unittest.TestCase):
 
 
 class UnreadableSiblingIsNotOverwrittenTest(unittest.TestCase):
-    """The other session's database must survive our next save. The stale-write guard fires exactly when the file changed underneath us - the two-machine / cloud-sync case - and hands to a merge whose one real failure mode is their file being mid-write. Letting save() carry on from there writes our copy over theirs, and `snapshot_before_write` is once-per-session, so a second save in the same session leaves no copy at all."""
+    """A sibling file changed underneath and unparseable survives our saves, with a copy kept."""
 
     def setUp(self):
         from amaze.core import database, library as library_mod
@@ -989,7 +989,7 @@ class UnreadableSiblingIsNotOverwrittenTest(unittest.TestCase):
             "no copy was kept, so there is nothing to recover from")
 
     def test_the_refusal_holds_for_the_REST_of_the_session(self):
-        """Refusing once is not enough: the next save would overwrite exactly what the first refusal preserved."""
+        """Refusing once is not enough: the next save would overwrite what the first preserved."""
         self._their_file_changed_and_is_unparseable()
         self.db.save()
         before = open(self.db_path, encoding="utf-8").read()
@@ -1008,7 +1008,7 @@ class UnreadableSiblingIsNotOverwrittenTest(unittest.TestCase):
 
 
 class TwoMachineMergeTest(unittest.TestCase):
-    """What another machine wrote must survive this machine's save. The stale-write merge adopts their rows into the FILE, and save() rebuilds assets[] from the MODEL - so a row adopted into one and not the other reaches disk, gets folded into the loaded-id set where no later merge re-adopts it, and is written out of existence by the next ordinary save with nothing on screen signalling the loss. The same shape threatens every top-level key, so the merge unions `category_colors` by key and carries anything it does not recognise through untouched - both asserted below."""
+    """Rows and top-level keys another machine wrote survive the merge and every later save."""
 
     def setUp(self):
         import json
@@ -1082,7 +1082,7 @@ class TwoMachineMergeTest(unittest.TestCase):
             "an unrecognised top-level key was dropped on save")
 
     def test_a_sparse_adopted_row_is_kept_not_dropped(self):
-        """A row carrying only an id still belongs to someone: `from_dict` fills defaults rather than raising, so it is adopted rather than lost. This build must not delete what it merely does not fully understand."""
+        """A row carrying only an id is adopted: `from_dict` fills defaults rather than raising."""
         data = self._disk()
         data["assets"].append({"id": "SPARSE_ROW"})
         self._write_disk(data)
@@ -1163,7 +1163,7 @@ class CheckLibraryRefusesOnIncompleteKnowledgeTest(unittest.TestCase):
 
 
 def _empty_library_dir(testcase) -> str:
-    """A valid but assetless library directory, auto-removed. NOT just an empty folder: `database.load` treats a MISSING library.json as a real error the caller must surface, so the switch would raise instead of exercising the reset."""
+    """A valid assetless library, auto-removed; a missing library.json would make the switch raise."""
     import json
     import shutil
     import tempfile
@@ -1176,7 +1176,7 @@ def _empty_library_dir(testcase) -> str:
 
 
 class LibrarySwitchTest(unittest.TestCase):
-    """Switching the library directory must RESET the model: `switch_model_data` replaces the whole row set in place, and without the bracket every attached proxy keeps its old row count and the selection keeps an index into rows that are gone - reachable from Preferences by pointing the library at a smaller one, and it segfaults rather than raising. ▸r/model-contracts. This file patches `material.Material` for the model tests, so the real modules are imported below by name."""
+    """A library switch resets the model, or a proxy keeps stale rows and segfaults. ▸r/model-contracts"""
 
     def setUp(self):
         from amaze.core import library as library_mod
@@ -1186,7 +1186,7 @@ class LibrarySwitchTest(unittest.TestCase):
         test_support.reset_database_singletons()
         self.model = library_mod.MaterialLibrary(preferences=self.prefs)
 
-        self.proxy = QtCore.QSortFilterProxyModel()  # the panel puts a proxy and a selection model on this, which is what makes a missing reset fatal rather than untidy
+        self.proxy = QtCore.QSortFilterProxyModel()  # a proxy and a selection model make a missing reset fatal, as in the panel
         self.proxy.setSourceModel(self.model)
         self.selection = QtCore.QItemSelectionModel(self.proxy)
 
@@ -1225,7 +1225,7 @@ class LibrarySwitchTest(unittest.TestCase):
             "the selection still points past the end of the new library")
 
     def test_a_raising_switch_still_closes_the_reset(self):
-        """`endResetModel` sits in a finally, so a failed switch cannot leave the model parked between begin and end. Asserted on the SIGNAL PAIR, never on rowCount - a model stuck mid-reset is invisible through the proxy, which keeps serving the old rows either way. ▸r/model-contracts"""
+        """A failed switch still ends the reset, asserted on the signal pair. ▸r/model-contracts"""
         from unittest.mock import patch
 
         began, ended = [], []
@@ -1261,7 +1261,7 @@ class LibrarySwitchTest(unittest.TestCase):
 
 
 class GradientSwitchTest(unittest.TestCase):
-    """Colors is library-backed too, and is the model easiest to leave out of a switch - a tab still holding the previous library's palettes would write all of them into the NEW library on the next colour edit. Two defences are asserted here: the model resets on a switch, and the inherited `db.serves()` guard refuses the save even if some path forgets to."""
+    """Colors resets on a switch, and `db.serves()` refuses a save aimed at another library."""
 
     def _model(self):
         from amaze.core import gradient_library
@@ -1293,14 +1293,14 @@ class GradientSwitchTest(unittest.TestCase):
             "the proxy is out of step with the gradient model")
 
     def test_a_save_aimed_at_ANOTHER_library_is_refused(self):
-        """The belt-and-braces half: even if some path forgets to switch this model, it must not write these colours into a library they did not come from. The guard IS `db.serves()` - one guard, inherited, rather than a private stand-in per model."""
+        """An unswitched model must not write its colours into another library: `db.serves()`."""
         model = self._model()
         from amaze.core import database
         connector = database.DatabaseConnector(model.DB_FILENAME)
         self.assertTrue(connector.serves(self.prefs.dir),
                         "premise: the connector serves this library")
 
-        self.prefs.dir = _empty_library_dir(self)  # move the library under the model WITHOUT switching it - the exact state a missing switch leaves behind
+        self.prefs.dir = _empty_library_dir(self)  # move the library under the model without switching it
         self.assertFalse(
             model.save(),
             "the gradient model saved colours from library A into "
@@ -1308,12 +1308,12 @@ class GradientSwitchTest(unittest.TestCase):
 
 
 class TheColorsSidebarFollowsTheLibraryTest(unittest.TestCase):
-    """The Colors SIDEBAR is a library-backed model too, and HALF-RIGHT is what let it survive being left out of a switch: the grid moved while the sidebar still named the old library's categories with the new library's counts beside them, every row zero. Clicking one filters by a category that does not exist; renaming one aims the command at the new library carrying the old label."""
+    """The Colors sidebar names the new library's categories after a switch, not the old ones."""
 
     RAMP = {"values": [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]]}  # a two-key ramp, the shape add_user_gradient reads
 
     def _library_with_category(self, prefs, name):
-        """A library directory holding one user palette in category `name`, written THROUGH THE PRODUCT'S OWN API - `add_user_gradient` mints the uid and saves, so the file on disk is the real one. Hand-writing gradients.json does not load at all, and a fixture writing a shape we never ship proves nothing about the shape we do (practice.md ▸ A FIXTURE MUST WRITE FILES THE WAY THE PRODUCT DOES)."""
+        """A library with one user palette in category `name`, written by `add_user_gradient`."""
         from amaze.core import gradient_library
 
         folder = _empty_library_dir(self)
@@ -1360,7 +1360,7 @@ class TheColorsSidebarFollowsTheLibraryTest(unittest.TestCase):
 
 
 class EveryLibraryModelClassCanSwitchTest(unittest.TestCase):
-    """Every class the panel builds a library-backed model from answers `switch_model_data`. This is the CLASS contract only - the list-shaped half is `test_area_bindings` ▸ EveryLibraryBackedModelIsDeclaredBySection, which walks the sections' declarations against a built panel in both directions and needs no list of its own."""
+    """Every library-backed model class answers `switch_model_data`; the list is `test_area_bindings`."""
 
     def test_every_library_model_class_answers_the_switch_verb(self):
         from amaze.core import (category, code_library, cop_library,
@@ -1408,7 +1408,7 @@ class CategorySwitchTest(unittest.TestCase):
 
 
 class FavouritesArePerUserTest(unittest.TestCase):
-    """A favourite that lives on the SHARED record means one user's star toggles another's in a multi-user library. Every section keeps them per-user instead."""
+    """Every section keeps favourites per user, never on the shared record."""
 
     def setUp(self):
         from amaze.core import library as library_mod
@@ -1440,7 +1440,7 @@ class FavouritesArePerUserTest(unittest.TestCase):
 class TheSharedBaseCarriesNothingRendererShaped(unittest.TestCase):
     """`AssetLibrary` is shared; `MaterialLibrary` holds a material's labels, the actions its verbs."""
 
-    RENDERER_SHAPED = (  # the renderer-shaped surface by name: declared ON MaterialLibrary and absent from the base's own namespace, checked with vars() rather than getattr, because inheritance answers getattr for every subclass
+    RENDERER_SHAPED = (  # checked with `vars()`, since inheritance answers `getattr` for every subclass
         "is_usd_material", "shader_type_label",
     )
     MATERIAL_VERBS = ("add_asset", "update_asset_content", "import_asset_to_scene",
@@ -1486,9 +1486,9 @@ class TheSharedBaseCarriesNothingRendererShaped(unittest.TestCase):
 
 
 class EveryAssetModelIsGivenItsLibrary(unittest.TestCase):
-    """Every ASSET model below takes `preferences` first and without a default, so none of them can reach the machine's own library by being called carelessly. Covers the five that inherit the constructor as well as the four that declare one. ▸p/duplication-third-verb"""
+    """Every asset model takes `preferences` first, with no default. ▸p/duplication-third-verb"""
 
-    MODELS = (  # the AssetLibrary/Categories family ONLY. `MatxOnlineLibrary` keeps `(parent=None, preferences=None)` and forwards parent to Qt, which refuses a non-QObject ▸r/model-parent; `FileFiles`/`FolderListModel` are already `(preferences, parent=None)` and NOTHING asserts that, so they are uncovered rather than exempt
+    MODELS = (  # the AssetLibrary and Categories family only ▸r/model-parent
         ("Categories", "amaze.core.category"),
         ("AssetLibrary", "amaze.core.library"),
         ("MaterialLibrary", "amaze.core.library"),
@@ -1501,7 +1501,7 @@ class EveryAssetModelIsGivenItsLibrary(unittest.TestCase):
     )
 
     def test_preferences_is_first_and_has_no_default(self):
-        """The contract, read off the signature rather than by constructing - a construction would need each model's whole fixture."""
+        """Read off the signature, since constructing needs each model's whole fixture."""
         import importlib
         import inspect
 
@@ -1522,7 +1522,7 @@ class EveryAssetModelIsGivenItsLibrary(unittest.TestCase):
 
 
 class RendererDetectionSeesNestedSubnetsTest(unittest.TestCase):
-    """Houdini's own manual tells artists to collapse blocks of a large network into subnets (help ▸ `vop/subnet`), so a Karma builder's mtlx nodes may sit any number of containers down."""
+    """A Karma builder's mtlx nodes may sit any number of subnets down (help `vop/subnet`)."""
 
     def test_mtlx_inside_a_nested_subnet_reads_as_karma(self):
         from amaze.render import nodes as nodes_mod
@@ -1535,7 +1535,7 @@ class RendererDetectionSeesNestedSubnetsTest(unittest.TestCase):
 
 
 class NoTagsIsAnEmptyListTest(unittest.TestCase):
-    """"No tags" is `[]` on disk at every door - the add, and the row read back and saved again. ▸p/no-tags-is-empty. This file patches `material.Material` for the model tests, so the real class and model are imported by name below."""
+    """No tags is `[]` on disk at every door: the add, and the row read back. ▸p/no-tags-is-empty"""
 
     def _saved_tags(self, prefs, name: str) -> list:
         with open(os.path.join(prefs.dir, "library.json"),
@@ -1544,7 +1544,7 @@ class NoTagsIsAnEmptyListTest(unittest.TestCase):
         return [row["tags"] for row in rows if row.get("name") == name]
 
     def test_a_material_added_with_no_tags_saves_an_empty_list(self):
-        """The whole trip: added with a blank Tags line, saved, read back by a fresh model the way the next Houdini session reads it, saved again untouched."""
+        """Added with blank Tags, saved, read back by a fresh model and saved again untouched."""
         from amaze.core import library as library_mod
         from amaze.tests import make_library_fixture
 
@@ -1571,7 +1571,7 @@ class NoTagsIsAnEmptyListTest(unittest.TestCase):
             "blank one")
 
     def test_a_row_read_back_with_no_tags_holds_an_empty_list(self):
-        """The door itself: `[]` off disk is falsy, which is what let the constructor's sentinel replace it."""
+        """`[]` off disk is falsy, and the constructor's sentinel must not replace it."""
         from amaze.core.material import Material
         self.assertEqual(
             [], Material.from_dict({"id": "x", "tags": []}).tags,
