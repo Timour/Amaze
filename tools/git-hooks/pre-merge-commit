@@ -1,17 +1,6 @@
 #!/bin/bash
-# Find the personal-data gate and run it. That is ALL this does.
-#
-# The rules, the pattern list and the reasons each rule is shaped as it
-# is live in the private notes repo, not here. What stays in this repo
-# is the lookup and one refusal.
-#
-# THE REFUSAL IS THE POINT. git runs no hook it cannot find and reports
-# nothing when it skips one, so a missing gate and a passing gate look
-# identical from the outside. This fails CLOSED instead.
-#
-# $AMAZE_PRIVATE_HOOKS overrides the location and is used AS GIVEN -
-# there is no fallback behind it, for the same reason the name list has
-# none: a fallback turns a wrong path into a silent pass.
+# Runs the maintainer's checks, kept outside this repository, and refuses when it cannot find them.
+# $AMAZE_PRIVATE_HOOKS overrides their location and is used as given, with no fallback.
 set -uo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo="$(cd "$here/../.." && pwd)"
@@ -19,11 +8,11 @@ name="$(basename "${BASH_SOURCE[0]}")"
 gate="${AMAZE_PRIVATE_HOOKS:-$repo/../AmazeNotes/tools/git-hooks}/$name"
 
 if [ ! -x "$gate" ]; then
-    echo "COMMIT REFUSED - the personal-data gate is not installed, so" >&2
-    echo "nothing is checking this commit." >&2
+    echo "COMMIT REFUSED - the maintainer checks are not installed here." >&2
+    echo "  They live outside this repository; this hook runs them when" >&2
+    echo "  present and refuses when it cannot find them." >&2
     echo "  Looked for: $gate" >&2
-    echo "  Clone the private notes repo beside this one, or point" >&2
-    echo "  \$AMAZE_PRIVATE_HOOKS at the hooks it carries - INSTALL.md 6a." >&2
+    echo "  A contributor commits with --no-verify or leaves core.hooksPath unset." >&2
     echo "  Deliberate bypass: git commit --no-verify" >&2
     exit 1
 fi

@@ -385,7 +385,7 @@ class PrePushGateTest(GateFixture):
         self._commit(os.path.join("scripts", "python", "amaze", "widget.py"))
         result = self.push("green", AMAZE_PRIVATE_HOOKS=empty)
         self.assertNotEqual(result.returncode, 0, self.both(result))
-        self.assertIn("process gate is not installed", self.both(result))
+        self.assertIn("maintainer checks are not installed", self.both(result))
         self.assertEqual([], self.suite_calls(),
                          "a missing gate must refuse, not pass silently")
 

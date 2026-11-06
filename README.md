@@ -60,6 +60,10 @@ Developed and tested on Houdini 22.0, macOS (Apple Silicon). Linux and Windows a
 
 Preferences are stored per user, outside this repository — updating with `git pull` never touches them.
 
+## For developers
+
+The tests run under hython: `tools/run-tests.sh` runs the whole suite, `tools/run-tests.sh --affected` the tests a change reaches, and `python3 tools/ci-tests.py` the slice that needs no Houdini. The git hooks under `tools/git-hooks` are the maintainer's and run once `core.hooksPath` points at them. A comment ending in an id such as `▸r/matlib-entries` or `▸p/store-guards` refers to the maintainer's notes, and a name such as `▸ P01` to the design file; both are kept outside this repository.
+
 ## Status
 
 Actively developed; what each version adds is in the [changelog](CHANGELOG.md). To report a bug, update to the latest release first, then [open an issue](https://github.com/Timour/Amaze/issues).

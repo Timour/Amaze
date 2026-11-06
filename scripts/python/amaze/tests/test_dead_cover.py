@@ -24,10 +24,10 @@ REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__))))))
 RUN_TESTS_SH = os.path.join(REPO, "tools", "run-tests.sh")
 
-H22 = ("/Applications/Houdini/Houdini22.0.403/Frameworks/Houdini.framework"
-       "/Versions/Current/Resources")
-H21 = ("/Applications/Houdini/Houdini21.0.729/Frameworks/Houdini.framework"
-       "/Versions/Current/Resources")
+H22_0 = ("/Applications/Houdini/Houdini22.0/Frameworks/Houdini.framework"
+         "/Versions/Current/Resources")
+H22_5 = ("/Applications/Houdini/Houdini22.5/Frameworks/Houdini.framework"
+         "/Versions/Current/Resources")
 
 
 class _FakeTest:
@@ -56,7 +56,7 @@ class _ReportsMixin(unittest.TestCase):
         self.dir = tempfile.mkdtemp(prefix="amaze_deadcover_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
 
-    def write_report(self, name, skipped, houdini=H22, tests_run=1784):
+    def write_report(self, name, skipped, houdini=H22_0, tests_run=1784):
         path = os.path.join(self.dir, name)
         with open(path, "w", encoding="utf-8") as handle:
             json.dump({"houdini": houdini, "testsRun": tests_run,
@@ -76,9 +76,9 @@ class TheIntersectionTest(_ReportsMixin):
     def test_a_test_skipped_on_only_one_host_is_not_named(self):
         a = self.write_report("a.json", [
             ["test_x.A.test_needs_redshift", "Redshift not installed"]],
-            houdini=H22)
+            houdini=H22_0)
         b = self.write_report("b.json", [
-            ["test_z.C.test_h22_only", "H22 only"]], houdini=H21)
+            ["test_z.C.test_h22_only", "H22 only"]], houdini=H22_5)
         code, output = self.run_check(a, b)
         self.assertEqual(code, 0, "a skip that is CORRECT on its host was "
                                   "reported as dead cover, and a checker "
@@ -89,16 +89,16 @@ class TheIntersectionTest(_ReportsMixin):
 
     def test_the_reason_from_every_host_is_shown(self):
         a = self.write_report("a.json", [
-            ["test_y.B.test_dead", "Redshift not installed"]], houdini=H22)
+            ["test_y.B.test_dead", "Redshift not installed"]], houdini=H22_0)
         b = self.write_report("b.json", [
-            ["test_y.B.test_dead", "no hou.ui headless"]], houdini=H21)
+            ["test_y.B.test_dead", "no hou.ui headless"]], houdini=H22_5)
         code, output = self.run_check(a, b)
         self.assertEqual(code, 1)
         self.assertIn("test_y.B.test_dead", output,
                       "the dead test was not NAMED, and a count is exactly "
                       "what the suite already gave us")
         for expected in ("Redshift not installed", "no hou.ui headless",
-                         "Houdini22.0.403", "Houdini21.0.729"):
+                         "Houdini22.0", "Houdini22.5"):
             self.assertIn(expected, output,
                           "each host's own reason and name must show - the "
                           "difference between them IS the diagnosis")
@@ -130,7 +130,7 @@ class TheHostNameTest(unittest.TestCase):
 
     def test_the_version_directory_is_what_gets_reported(self):
         self.assertEqual(
-            check_dead_cover.host_of({"houdini": H21}), "Houdini21.0.729")
+            check_dead_cover.host_of({"houdini": H22_5}), "Houdini22.5")
         self.assertEqual(
             check_dead_cover.host_of({"houdini": ""}), "(production build)")
 
@@ -154,7 +154,7 @@ class TheReportWriterTest(_ReportsMixin):
 
     def test_the_written_report_is_what_the_checker_reads(self):
         dead = ("test_y.B.test_dead", "dead everywhere")
-        for name, houdini in (("a.json", H22), ("b.json", H21)):
+        for name, houdini in (("a.json", H22_0), ("b.json", H22_5)):
             run_suite.write_skip_report(
                 _FakeResult([dead], tests_run=1784),
                 os.path.join(self.dir, name), houdini)
@@ -165,7 +165,7 @@ class TheReportWriterTest(_ReportsMixin):
                                   "pinned only against a hand-built "
                                   "fixture:\n%s" % output)
         self.assertIn("test_y.B.test_dead", output)
-        self.assertIn("Houdini21.0.729", output)
+        self.assertIn("Houdini22.5", output)
 
 
 class WhatUnittestItselfGuaranteesTest(unittest.TestCase):

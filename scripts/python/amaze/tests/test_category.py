@@ -326,5 +326,26 @@ class TheAllRowHasOneRule(unittest.TestCase):
         self.assertEqual([], offenders, "the All rule is written again at %s" % offenders)
 
 
+class TheFixtureRowCountTest(unittest.TestCase):
+
+    def _fixture_categories(self):
+        test_support.reset_database_singletons()
+        model = category.Categories(preferences=test_support.fixture_prefs(self))
+        self.addCleanup(test_support.reset_database_singletons)
+        return model
+
+    def test_a_removal_and_an_addition_move_the_row_count(self):
+        """The fixture has _All/Karma_Mats/usds; one removed leaves two, one added makes four."""
+        for why, change, rows in (
+                ("as loaded", lambda model: None, 3),
+                ("usds removed", lambda model: model.remove_category("usds"), 2),
+                ("one added",
+                 lambda model: model.check_add_category("brand_new_cat"), 4)):
+            with self.subTest(why):
+                cat_model = self._fixture_categories()
+                change(cat_model)
+                self.assertEqual(cat_model.rowCount(), rows)
+
+
 if __name__ == "__main__":
     unittest.main()
