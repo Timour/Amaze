@@ -97,9 +97,6 @@ _MIGRATIONS[7] = _migration_v7
 _INSTANCES: dict = globals().get("_INSTANCES", {})
 
 
-_INTEGRITY_NOTES: dict = globals().get("_INTEGRITY_NOTES", {})
-
-
 _EXISTED_MARKERS = {
     "code.json": (".amaze_code_starter_v1", ".assetlib_code_starter_v1"),
     "gradients.json": (".amaze_gradient_seed_v1",
@@ -120,11 +117,11 @@ def held_much_less(holds: int, newest_copy_holds: int) -> bool:
 
 
 def shrunk_sentence(filename: str, holds: int, newest_copy_holds: int) -> str:
-    return ("Your %s list holds %d %s, but its newest saved copy holds %d. If "
-            "you did not remove them yourself, run Check Library before you "
+    return ("Your %s list holds %d %s, but its newest saved copy holds %d %s. If "
+            "you did not remove them yourself, use Library ▸ Check Library… before you "
             "change anything - it can put that copy back."
             % (section_label(filename), holds, section_noun(filename, holds),
-               newest_copy_holds))
+               newest_copy_holds, section_noun(filename, newest_copy_holds)))
 
 
 def absent_traces(directory: str, filename: str) -> list:
@@ -518,18 +515,8 @@ class DatabaseConnector:
                 self._note_suspicious_shrink(full)
         return self._data
 
-    _integrity_notes: dict = _INTEGRITY_NOTES
-
-    @classmethod
-    def take_integrity_notes(cls) -> list:
-        """The pending findings, cleared on read."""
-        notes = [line for lines in cls._integrity_notes.values()
-                 for line in lines]
-        cls._integrity_notes.clear()
-        return notes
-
     def _note_suspicious_shrink(self, full: str) -> None:
-        """After a parse, note (never block) a document holding under half of its newest snapshot."""
+        """After a parse, alert (never block) a document holding under half of its newest snapshot."""
         try:
             here = len(self._data.get("assets") or [])
             newest = None
@@ -547,8 +534,6 @@ class DatabaseConnector:
             backed = len(snapshot.get("assets") or [])
             if held_much_less(here, backed):
                 sentence = shrunk_sentence(self._filename, here, backed)
-                type(self)._integrity_notes.setdefault(
-                    self._filename, []).append(sentence)
                 debug.event("database", "suspicious shrink at load",
                             file=self._filename, holds=here,
                             newest_snapshot=backed)

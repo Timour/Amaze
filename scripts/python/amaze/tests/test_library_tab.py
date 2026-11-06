@@ -128,7 +128,7 @@ class WhatActsOnALibraryWaitsForIt(unittest.TestCase):
         prefs = test_support.fixture_prefs(self)
         prefs.library_user = users.create(prefs, "Plum")
         dialog = _dialog(self, prefs)
-        buttons = (dialog._btn_clean_up, dialog._btn_reload, dialog._btn_show_folder,
+        buttons = (dialog._btn_check, dialog._btn_reload, dialog._btn_show_folder,
                    dialog._btn_edit_user, dialog._btn_delete_user)
         self.assertTrue(all(button.isEnabled() for button in buttons))
         other, _made = _library_with(self, "Plum")

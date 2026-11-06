@@ -429,16 +429,24 @@ class SecondaryDatabaseAbsenceTest(unittest.TestCase):
                           "an ordinary save was refused")
 
 
-class SiblingAbsenceStopsTheOrphanPassTest(unittest.TestCase):
-    """An absent-but-known sibling database stops the orphan pass, exactly as an unparseable one does."""
+def _survey(prefs):
+    from amaze.core import repair
+    return repair.survey(prefs.dir, prefs.asset_dir, prefs.img_dir)
 
-    ORPHAN = "ORPHANTEST1"  # deleting on incomplete knowledge is never the safe default: `_all_known_asset_ids` used to answer "absent is fine - it owns nothing", so pass 3 removed its files
+
+def _list_entry(findings, filename):
+    return next(entry for entry in findings["lists"] if entry["filename"] == filename)
+
+
+class SiblingAbsenceHoldsTheMoveAsideBackTest(unittest.TestCase):
+    """An absent-but-known list holds every unlisted file back, exactly as an unreadable one does."""
+
+    ORPHAN = "ORPHANTEST1"    # absent was once read as owning nothing, and its files went
 
     def setUp(self):
         self.prefs = test_support.fixture_prefs(self)
         test_support.reset_database_singletons()
         self.addCleanup(test_support.reset_database_singletons)
-        self.model = library_mod.MaterialLibrary(preferences=self.prefs)
         self.mat_dir = os.path.join(self.prefs.dir, self.prefs.asset_dir)
         self.orphan = os.path.join(self.mat_dir, self.ORPHAN + ".mat")
         with open(self.orphan, "w", encoding="utf-8") as handle:
@@ -447,66 +455,52 @@ class SiblingAbsenceStopsTheOrphanPassTest(unittest.TestCase):
         self.assertFalse(os.path.exists(self.cops),
                          "premise: the fixture has no cops.json")
 
-    def _cleanup(self):
-        with patch.object(hou, "ui", MagicMock(), create=True):  # create=True: hou.ui may not exist under hython at all, and a raw assignment leaks into later tests
-            self.model.cleanup_db()
-
-    def test_the_orphan_pass_is_skipped_when_a_sibling_is_absent_but_known(self):
+    def test_nothing_unlisted_moves_while_a_sibling_is_absent_but_known(self):
+        from amaze.core import repair
+        from amaze.dialogs import repair_dialog
         with open(self.cops + ".bak-1", "w", encoding="utf-8") as handle:
             json.dump({"assets": [{"id": self.ORPHAN}]}, handle)
-        self._cleanup()
-        self.assertTrue(
-            os.path.exists(self.orphan),
-            "Clean Library deleted a file while cops.json was merely "
-            "not-yet-arrived - this is how 21 files belonging to 8 live "
-            "COP assets were removed")
-        summary = " ".join(self.model.last_cleanup_summary)
-        self.assertIn("Amaze could not check", summary,
-                      "the refusal said nothing to the user")
-        self.assertIn("cops.json", summary,
-                      "the refusal does not name the sibling it is "
-                      "waiting for")
-        way_out = [line for line in self.model.last_cleanup_summary
-                   if "on purpose" in line]    # the SENTENCE: the joined summary passed with it deleted
-        self.assertTrue(
-            way_out,
-            "the summary reports the refusal and stops - a user who "
-            "deleted the database deliberately has the orphan pass "
-            "disabled for good with nothing saying how to re-enable it")
-        self.assertIn("cops.json.bak-1", way_out[0],
-                      "the way out does not name the trace to delete, "
-                      "so the user cannot act on it")
-        self.assertIn("Node", way_out[0],
-                      "the way out does not name the section that was "
-                      "removed, in the word the panel uses for it")
-        self.assertIn("saved copy", way_out[0],    # the trace named is usually what Repair restores from
-                      "nothing says the file it tells the user to delete "
-                      "is also what Repair would restore from")
-        self.assertIn("Repair", way_out[0],
-                      "the sentence does not offer the look-first step")
-        self.assertNotIn("not on disk", summary,
-                         "`not on disk` beside `could not be read` contradicts itself")
-        self.assertIn("not there yet", summary)
-        self.assertIn("Node", summary,    # the SECTION: "cops.json" appears nowhere in the interface
-                      "the summary names only the storage file, which "
-                      "the user has never seen")
+        findings = _survey(self.prefs)
+        self.assertEqual("absent-but-known", _list_entry(findings, "cops.json")["state"])
+        self.assertFalse(findings["complete"])
+        self.assertIn(self.ORPHAN + ".mat", findings["unaccounted"][self.prefs.asset_dir])
+        self.assertEqual(len(findings["leftovers"]), repair.files_to_move_aside(findings),
+                         "unlisted files were counted to move while cops.json had not arrived")
+        with self.assertRaises(ValueError):
+            repair.move_aside(findings, "unlisted")
+        self.assertTrue(os.path.exists(self.orphan),
+                        "a file was moved while cops.json was merely not-yet-arrived")
+        text = "\n".join(repair.report_lines(findings))
+        self.assertIn("Node: there is no list for it in the library folder, though Amaze "
+                      "can see there was one here before.", text,
+                      "the report does not name the section it is waiting for")
+        self.assertIn("run Check Library again", text)
+        self.assertIn("Amaze could not check the Node list either", text)
+        self.assertIn("Node: saved copies - from ", text,
+                      "nothing says the trace is a saved copy that can be put back")
+        self.assertNotIn("cops.json", text, "the report names the storage file, never seen")
+        self.assertNotIn("not on disk", text)
+        _labels, keys = repair_dialog._choices(findings, may_change=True)
+        self.assertIn("restore", keys, "the way out, putting the saved copy back, is not offered")
+        self.assertNotIn("quarantine", keys)
 
-    def test_the_orphan_pass_still_runs_for_a_genuinely_absent_sibling(self):
-        """The accept path: a library that never had a COP section still gets its orphans cleaned."""
-        self.assertEqual(
-            [], glob.glob(self.cops + ".bak-*"),
-            "premise: nothing may say cops.json was ever here")
-        self._cleanup()
-        self.assertFalse(
-            os.path.exists(self.orphan),
-            "the orphan pass was skipped although nothing suggests a "
-            "COP database ever existed - the guard fires always")
+    def test_the_move_still_runs_for_a_genuinely_absent_sibling(self):
+        """The accept path: a library that never had a Node list still gets its strays moved."""
+        from amaze.core import repair
+        self.assertEqual([], glob.glob(self.cops + ".bak-*"),
+                         "premise: nothing may say cops.json was ever here")
+        findings = _survey(self.prefs)
+        self.assertEqual("absent", _list_entry(findings, "cops.json")["state"])
+        self.assertTrue(findings["complete"])
+        repair.move_aside(findings, "unlisted")
+        self.assertFalse(os.path.exists(self.orphan),
+                         "the move was refused though nothing says a Node list was here")
 
 
-class OwnDatabaseAbsenceStopsItsOwnOrphanPassTest(unittest.TestCase):
-    """A model must not run its orphan pass while its OWN database is absent-but-known."""
+class ANodeListNotYetHereKeepsItsFilesTest(unittest.TestCase):
+    """Node files sit in the shared mat/ folder, so a missing Node list holds them all back."""
 
-    COP_ID = "COPOWNED1"  # `_all_known_asset_ids` skipped self.DB_FILENAME, so the check never ran for the model's own database; panel.cleanup_db() runs material then COP on ONE click, so the first refused correctly and the second deleted the same 23 files
+    COP_ID = "COPOWNED1"    # a node setup stores its .mat and .interface in mat/ like a material
 
     def setUp(self):
         self.prefs = test_support.fixture_prefs(self)
@@ -515,97 +509,84 @@ class OwnDatabaseAbsenceStopsItsOwnOrphanPassTest(unittest.TestCase):
         self.cops = os.path.join(self.prefs.dir, "cops.json")
         self.assertFalse(os.path.exists(self.cops),
                          "premise: the fixture has no cops.json")
-        self.mat_dir = os.path.join(self.prefs.dir, self.prefs.asset_dir)  # a COP asset stores "<id>.mat" + "<id>.interface" in the SHARED asset dir exactly like a material - which is why one section's cleanup can delete another's files; the "_cop" suffix pass 3 strips is something else, a COP companion saved beside a MATERIAL
+        self.mat_dir = os.path.join(self.prefs.dir, self.prefs.asset_dir)
         self.owned = os.path.join(self.mat_dir, self.COP_ID + ".mat")
-        self.owned_interface = os.path.join(
-            self.mat_dir, self.COP_ID + ".interface")
+        self.owned_interface = os.path.join(self.mat_dir, self.COP_ID + ".interface")
         for path in (self.owned, self.owned_interface):
             with open(path, "w", encoding="utf-8") as handle:
-                handle.write("owned by a COP asset that has not arrived\n")
+                handle.write("owned by a node setup that has not arrived\n")
 
-    def _model(self):
+    def _seed_a_new_node_list(self):
+        """A brand-new section seeds its list empty, as opening the Nodes tab does."""
         from amaze.core import cop_library
-        return cop_library.CopLibrary(preferences=self.prefs)
+        cop_library.CopLibrary(preferences=self.prefs)
+        self.assertTrue(os.path.isfile(self.cops), "premise: a new library seeds its database")
+        test_support.reset_database_singletons()    # an action refuses a library this process holds
 
-    def _cleanup(self, model):
-        with patch.object(hou, "ui", MagicMock(), create=True):
-            model.cleanup_db()
-
-    def test_a_model_does_not_delete_while_its_own_database_is_absent(self):
+    def test_the_node_files_stay_while_the_node_list_is_absent_but_known(self):
+        from amaze.core import repair
         with open(self.cops + ".bak-1", "w", encoding="utf-8") as handle:
             json.dump({"categories": ["_All"], "tags": [],
                        "assets": [{"id": self.COP_ID}]}, handle)
-        model = self._model()
-        self.assertEqual(  # ASSERT THE PREMISE: if the load ever stops being refused, this test silently becomes a test of nothing
-            [], list(model._assets),
-            "premise: the refused load must leave the model empty - "
-            "that emptiness is what made pass 3 unsafe")
-        self._cleanup(model)
-        self.assertTrue(
-            os.path.exists(self.owned) and os.path.exists(
-                self.owned_interface),
-            "the COP section's own Clean Library deleted files its own "
-            "absent database owns - this is the 23-file loss, moved from "
-            "one model to another rather than fixed")
-        summary = " ".join(model.last_cleanup_summary)
-        self.assertIn("Amaze could not check", summary,
+        findings = _survey(self.prefs)
+        self.assertFalse(findings["complete"])
+        with self.assertRaises(ValueError):
+            repair.move_aside(findings, ("unlisted", "leftovers"))
+        self.assertTrue(os.path.exists(self.owned) and os.path.exists(self.owned_interface),
+                        "files the absent Node list owns were moved")
+        self.assertIn("Amaze could not check the Node list either",
+                      "\n".join(repair.report_lines(findings)),
                       "files were spared but the user was told nothing")
-        self.assertIn("cops.json", summary,
-                      "the refusal does not name the database it is "
-                      "waiting for")
 
-    def test_a_model_with_its_own_database_present_still_cleans(self):
-        """The accept path: a healthy COP library must still have its orphans removed."""
+    def test_a_node_list_that_reads_keeps_its_files_and_the_rest_move(self):
+        """The accept path: a healthy Node list keeps its files and a stray still goes."""
+        from amaze.core import repair
         with open(self.cops, "w", encoding="utf-8") as handle:
             json.dump({"categories": ["_All"], "tags": [],
                        "assets": [{"id": self.COP_ID}]}, handle)
         genuine = os.path.join(self.mat_dir, "GENUINEORPHAN.mat")
         with open(genuine, "w", encoding="utf-8") as handle:
             handle.write("in no index at all\n")
-        model = self._model()
-        self.assertEqual([self.COP_ID], [str(a.mat_id) for a in model._assets],
-                         "premise: the COP database must have loaded")
-        self._cleanup(model)
-        self.assertTrue(os.path.exists(self.owned),
-                        "a file the COP database owns was deleted")
-        self.assertFalse(os.path.exists(genuine),
-                         "the orphan pass did not run for a healthy COP "
-                         "library - the guard fires always")
+        findings = _survey(self.prefs)
+        self.assertTrue(findings["complete"])
+        repair.move_aside(findings, "unlisted")
+        self.assertTrue(os.path.exists(self.owned), "a file the Node list owns was moved")
+        self.assertFalse(os.path.exists(genuine), "a stray was left beside a healthy Node list")
 
-    def test_a_brand_new_cop_section_still_cleans(self):
-        """No cops.json and no trace of one: load() seeds it and the pass runs normally."""
+    def test_a_brand_new_node_list_still_lets_a_stray_move(self):
+        """No cops.json and no trace of one: the new list is seeded and a stray still goes."""
+        from amaze.core import repair
         self.assertEqual([], glob.glob(self.cops + ".bak-*"),
                          "premise: nothing may say cops.json was here")
         for path in (self.owned, self.owned_interface):
-            os.remove(path)  # an empty list alone decides nothing - the FILES decide, so clear them (see the sibling test, same setup with them left in place)
-        leftover = os.path.join(  # the leftover proving the pass ran is an IMAGE, not a .mat, since DB-HARDENING step 10
-            self.prefs.dir, self.prefs.img_dir, "GONEMATERIAL9.png")
+            os.remove(path)
+        leftover = os.path.join(self.prefs.dir, self.prefs.img_dir, "GONEMATERIAL9.png")
         with open(leftover, "wb") as handle:
             handle.write(b"a thumbnail whose material is gone")
-        model = self._model()
-        self.assertTrue(os.path.isfile(self.cops),
-                        "premise: a new library seeds its database")
-        self._cleanup(model)
-        self.assertFalse(
-            os.path.exists(leftover),
-            "the orphan pass was skipped on a brand-new COP section")
+        self._seed_a_new_node_list()
+        findings = _survey(self.prefs)
+        self.assertIn("GONEMATERIAL9.png", findings["unaccounted"][self.prefs.img_dir])
+        repair.move_aside(findings, "unlisted")
+        self.assertFalse(os.path.exists(leftover), "a stray stayed beside a brand-new Node list")
 
-    def test_a_brand_new_cop_section_with_files_left_behind_does_not(self):
-        """The same brand-new section with unclaimed files still in the asset folder must NOT sweep."""
-        self.assertEqual([], glob.glob(self.cops + ".bak-*"),  # the case the trace-based guard could not see: no evidence to be suspicious with, so the files went - and nothing on disk tells an unarrived COP asset from a genuine leftover, so Amaze asks (Repair) instead of guessing
+    def test_a_brand_new_node_list_with_files_left_behind_is_asked_about(self):
+        """An empty list cannot tell an unarrived node from a leftover, so the report asks."""
+        from amaze.core import repair
+        from amaze.dialogs import repair_dialog
+        self.assertEqual([], glob.glob(self.cops + ".bak-*"),
                          "premise: nothing may say cops.json was here")
-        model = self._model()
-        self.assertTrue(os.path.isfile(self.cops),
-                        "premise: a new library seeds its database")
-        self._cleanup(model)
+        self._seed_a_new_node_list()
+        findings = _survey(self.prefs)
+        self.assertEqual("empty", _list_entry(findings, "cops.json")["state"])
+        text = "\n".join(repair.report_lines(findings))
+        self.assertIn("Node: the list is there and holds nothing.", text)
+        self.assertIn("Amaze will not decide on its own which it is", text)
+        self.assertIn(self.COP_ID + ".mat", text, "the files left behind are not named")
+        _labels, keys = repair_dialog._choices(findings, may_change=True)
+        self.assertIn("reattach", keys, "nothing offers to put the node files back on a list")
         for path in (self.owned, self.owned_interface):
-            self.assertTrue(
-                os.path.exists(path),
-                "%s was deleted on the strength of a list that was seeded "
-                "empty seconds earlier" % os.path.basename(path))
-        summary = " ".join(model.last_cleanup_summary)
-        self.assertIn("Repair", summary,
-                      "the sweep was held back with no way out named")
+            self.assertTrue(os.path.exists(path),
+                            "%s moved before anyone chose to move it" % os.path.basename(path))
 
 
 class WriteBlockBelongsToTheFileTest(unittest.TestCase):
@@ -1223,21 +1204,20 @@ class UnmountedVolumesAreNotGoneTest(unittest.TestCase):
             "unreachable")
 
 
-class AStampedAssetIsNotAnOrphanTest(unittest.TestCase):
-    """A file with a READABLE recovery stamp is not a leftover - it is an asset awaiting Repair."""
+class AStampedAssetIsNotAStrayTest(unittest.TestCase):
+    """A pair with a READABLE recovery stamp is not a leftover: it is an asset that can be put back."""
 
-    STAMPED = "STAMPEDASSET1"  # pass 3 calls a file unaccounted for when its id is in no database, which is exactly the shape of a REFUSED index write - the one case `repair.rebuild_from_stamps` exists for, rebuilding the row from the `<id>.stamp.json` sidecar
-    LEFTOVER = "LEFTOVER1"  # a damaged stamp is not protection: rebuild_from_stamps counts it `damaged`, so both tools agree by asking one reader
+    STAMPED = "STAMPEDASSET1"    # a refused index write leaves this shape: files and stamp, no row
+    LEFTOVER = "LEFTOVER1"    # the control: no stamp, so it must still move
 
     def setUp(self):
         self.prefs = test_support.fixture_prefs(self)
         test_support.reset_database_singletons()
         self.addCleanup(test_support.reset_database_singletons)
-        self.model = library_mod.MaterialLibrary(preferences=self.prefs)
         self.mat_dir = os.path.join(self.prefs.dir, self.prefs.asset_dir)
         self.img_dir = os.path.join(self.prefs.dir, self.prefs.img_dir)
         os.makedirs(self.img_dir, exist_ok=True)
-        self.files = {}  # a refused save leaves exactly this: the asset's files and its recovery stamp, and no row in any database
+        self.files = {}
         for suffix in (".mat", ".interface", material.STAMP_SUFFIX):
             path = os.path.join(self.mat_dir, self.STAMPED + suffix)
             self.files[suffix] = path
@@ -1249,96 +1229,62 @@ class AStampedAssetIsNotAnOrphanTest(unittest.TestCase):
         self.icon = os.path.join(self.img_dir, self.STAMPED + ".png")
         with open(self.icon, "wb") as handle:
             handle.write(b"\x89PNG\r\n")
-        self.leftover = os.path.join(self.mat_dir, self.LEFTOVER + ".mat")  # the control: no stamp beside it, so it must still be swept or the sweep has stopped working
+        self.leftover = os.path.join(self.mat_dir, self.LEFTOVER + ".mat")
         with open(self.leftover, "w", encoding="utf-8") as handle:
             handle.write("nothing owns this\n")
-        self.assertEqual(
-            [], [a for a in self.model._assets
-                 if str(a.mat_id) == self.STAMPED],
-            "premise: no row anywhere claims the stamped asset")
+        self.assertNotIn(self.STAMPED, _survey(self.prefs)["ids"],
+                         "premise: no row anywhere claims the stamped asset")
 
     def _write_stamp(self, record):
-        path = os.path.join(self.mat_dir,
-                            self.STAMPED + material.STAMP_SUFFIX)
+        path = os.path.join(self.mat_dir, self.STAMPED + material.STAMP_SUFFIX)
         with open(path, "w", encoding="utf-8") as handle:
             if isinstance(record, str):
                 handle.write(record)
             else:
                 json.dump(record, handle)
 
-    def _cleanup(self):
-        with patch.object(hou, "ui", MagicMock(), create=True):
-            self.model.cleanup_db()
+    def _move_aside(self):
+        from amaze.core import repair
+        findings = _survey(self.prefs)
+        self.assertTrue(findings["complete"], "premise: every list reads")
+        repair.move_aside(findings, "unlisted")
+        return findings
 
-    def test_a_stamped_unindexed_asset_survives_the_sweep(self):
-        self._cleanup()
+    def test_a_stamped_unlisted_asset_survives_the_move(self):
+        from amaze.core import repair
+        findings = self._move_aside()
+        self.assertEqual([self.STAMPED], repair.stamped_unlisted(findings))
         for suffix, path in sorted(self.files.items()):
-            self.assertTrue(
-                os.path.exists(path),
-                "Clean Library quarantined %s of an asset carrying a "
-                "readable recovery stamp - the one shape Repair exists "
-                "to rebuild, swept by the pass meant to tidy around it"
-                % suffix)
-        self.assertTrue(
-            os.path.exists(self.icon),
-            "the stamped asset survived in mat/ but its icon was "
-            "quarantined out of img/, so Repair restores a row whose "
-            "thumbnail is gone")
-        self.assertFalse(
-            os.path.exists(self.leftover),
-            "a file with no recovery stamp beside it survived the "
-            "sweep - Clean Library has stopped cleaning")
-        kept = [line for line in self.model.last_cleanup_summary
-                if "put back" in line]    # THE SENTENCE: the joined summary passes on other lines
-        self.assertTrue(
-            kept,
-            "the sweep spared files that can still be recovered and said "
-            "nothing, so a user with a refused save reads a clean report "
-            "and never learns Repair would put the materials back")
-        self.assertIn(
-            "Refused Save", kept[0],
-            "the sentence does not name what it kept in the words the "
-            "user has seen - the stamp carries the asset's name, so "
-            "there is no reason to show them an id")
-        for guess in ("material", "node", "snippet"):    # no list claims it: a section noun is a guess
-            self.assertNotIn(
-                guess, kept[0].lower(),
-                "the sentence guesses a section for something no list "
-                "claims - a lone stamp is just as likely to be a Code "
-                "snippet as a material")
-        self.assertNotIn(
-            self.STAMPED, kept[0],
-            "the sentence shows the raw id, which the user has never "
-            "seen anywhere in the panel")
-        route = [line for line in self.model.last_cleanup_summary
-                 if "Repair tool on the Amaze shelf" in line]
-        self.assertEqual(
-            1, len(route),
-            "the way out is missing or appears twice - one step for "
-            "however many findings, per _the_repair_route")
+            self.assertTrue(os.path.exists(path),
+                            "Move Aside took the %s of an asset with a readable stamp" % suffix)
+        self.assertTrue(os.path.exists(self.icon),
+                        "the stamped asset stayed but its thumbnail was moved out of img/")
+        self.assertFalse(os.path.exists(self.leftover),
+                         "a file with no stamp beside it stayed: Move Aside has stopped moving")
+        said = [part for part in " ".join(repair.report_lines(findings)).split(". ")
+                if "can still be put back" in part]
+        self.assertEqual(1, len(said), "the spared files are not named once: %s" % said)
+        for guess in ("material", "node", "snippet"):    # no list claims it: a section is a guess
+            self.assertNotIn(guess, said[0].lower(),
+                             "the sentence guesses a section for something no list claims")
+        self.assertNotIn(self.STAMPED, said[0], "the sentence shows the raw id")
 
     def test_a_damaged_stamp_is_not_protection(self):
-        """An unparseable stamp protects nothing - `rebuild_from_stamps` can restore nothing from it."""
-        self._write_stamp("{ this will not parse")  # treating it as protection would also make the two readers disagree, which is the defect sharing one reader avoids
-        self._cleanup()
-        self.assertFalse(
-            os.path.exists(self.files[".mat"]),
-            "a stamp that cannot be parsed protected its asset - "
-            "Repair cannot rebuild from it, so the file is kept for a "
-            "recovery that can never run")
+        """An unparseable stamp protects nothing: nothing can be put back from it."""
+        self._write_stamp("{ this will not parse")
+        self._move_aside()
+        self.assertFalse(os.path.exists(self.files[".mat"]),
+                         "a stamp that cannot be parsed kept its asset for a put back that never runs")
 
     def test_a_stamp_with_no_payload_beside_it_is_spared_too(self):
-        """A lone stamp is the NORMAL shape for a whole section, not a leftover."""
+        """A lone stamp is the normal shape for a Code snippet or a palette, not a leftover."""
         for suffix in (".mat", ".interface"):
-            os.remove(self.files[suffix])  # a snippet owns no .mat - Code keeps its text inline (measured: 24 stamps, 7 .mat files, code.json claims all 17 of the difference), so requiring a payload strips protection from every snippet exactly when its own list is what went missing
+            os.remove(self.files[suffix])    # Code and Colors keep their content inline
         stamp = self.files[material.STAMP_SUFFIX]
         self.assertTrue(os.path.exists(stamp), "premise: the stamp is there")
-        self._cleanup()
-        self.assertTrue(
-            os.path.exists(stamp),
-            "a lone stamp was swept - that is every Code snippet in the "
-            "shared folder, and sweeping it removes the only thing "
-            "Repair could rebuild the section from")
+        self._move_aside()
+        self.assertTrue(os.path.exists(stamp),
+                        "a lone readable stamp was moved aside, the only record of a snippet")
 
 
 class TheFourListsAreEnumeratedOnce(unittest.TestCase):

@@ -326,18 +326,18 @@ class TheEditorWindowKeepsVersions(unittest.TestCase):
 
 
 class TheSweepsLeaveCodeVersionsAlone(_Case):
-    """Clean Library and Repair list mat/ and img/ only. ▸r/version-store"""
+    """Check Library moves what the lists lack and leaves the code store. ▸r/version-store"""
 
-    def test_repair_moves_a_stray_and_leaves_the_code_store(self):
+    def test_check_library_moves_a_stray_and_leaves_the_code_store(self):
         self._save(self.model.NEW_VERSION, SECOND, "helper fast")
         stray = os.path.join(self.prefs.dir, self.prefs.asset_dir, "STRAYCODE.mat")
         with open(stray, "w", encoding="utf-8") as handle:
             handle.write("listed by nothing\n")
         before = sorted(os.listdir(self.store))
-        test_support.reset_database_singletons()    # Repair refuses a library this process holds
+        test_support.reset_database_singletons()    # an action refuses a library this process holds
         findings = repair.survey(self.prefs.dir, self.prefs.asset_dir, self.prefs.img_dir)
-        repair.quarantine(findings)
-        self.assertFalse(os.path.exists(stray), "premise: the quarantine did not run")
+        repair.move_aside(findings, "unlisted")
+        self.assertFalse(os.path.exists(stray), "premise: the move aside did not run")
         self.assertEqual(before, sorted(os.listdir(self.store)))
 
 

@@ -1702,23 +1702,36 @@ class QuarantineCrossesVolumes(unittest.TestCase):
                          "the source survived the move")
 
 
-class _CleanupCase(unittest.TestCase):
-    """A fixture library copy plus the Clean Library call site."""
+class _CheckCase(unittest.TestCase):
+    """A fixture library copy and the Check Library engine."""
 
     def setUp(self):
         self.prefs = test_support.fixture_prefs(self)
         test_support.reset_database_singletons()
         self.addCleanup(test_support.reset_database_singletons)
         from amaze.core import library as library_mod
+        from amaze.core import repair
         self.library_mod = library_mod
+        self.repair = repair
         self.mat_dir = os.path.join(self.prefs.dir, self.prefs.asset_dir)
         self.img_dir = os.path.join(self.prefs.dir, self.prefs.img_dir)
 
     def _model(self):
         return self.library_mod.MaterialLibrary(preferences=self.prefs)
 
-    def _cleanup(self, model):
-        model.cleanup_db()
+    def _survey(self):
+        return self.repair.survey(self.prefs.dir, self.prefs.asset_dir, self.prefs.img_dir)
+
+    def _text(self, findings):
+        return "\n".join(self.repair.report_lines(findings))
+
+    def _move_unlisted(self, findings):
+        """Move Aside of what no list holds, which refuses while the lists are incomplete."""
+        test_support.reset_database_singletons()    # an action refuses a library this process holds
+        return self.repair.move_aside(findings, "unlisted")
+
+    def _unlisted(self, findings, folder=None):
+        return findings["unaccounted"][folder or self.prefs.asset_dir]
 
     def _own_path(self):
         return os.path.join(self.prefs.dir, "library.json")
@@ -1732,7 +1745,7 @@ class _CleanupCase(unittest.TestCase):
             json.dump(document, handle, indent=4)
 
     def _files_for(self, asset_id):
-        """Both halves present, so only pass 3's judgement is under test."""
+        """Both halves present, so only the unlisted check is under test."""
         paths = [os.path.join(self.mat_dir, asset_id + ".mat"),
                  os.path.join(self.mat_dir, asset_id + ".interface")]
         for path in paths:
@@ -1741,7 +1754,7 @@ class _CleanupCase(unittest.TestCase):
         return paths
 
     def _drop_rows_with_no_files(self):
-        """Keep only rows with files, or pass 2 saves and the merge masks this."""
+        """Keep only rows with files, so the fixture's odd row says nothing here."""
         document = self._read_own()
         keep = [row for row in document["assets"]
                 if os.path.exists(os.path.join(
@@ -1750,21 +1763,9 @@ class _CleanupCase(unittest.TestCase):
         document["assets"] = keep
         self._write_own(document)
 
-    def _ids_known_at_the_decision(self, model):
-        """The in-memory ids at the moment the orphan pass actually asks."""
-        seen = {}
-        real = model._all_known_asset_ids
 
-        def spy():
-            seen["memory"] = {str(a.mat_id) for a in model.assets}
-            return real()
-
-        model._all_known_asset_ids = spy
-        return seen
-
-
-class CleanupReadsItsOwnDatabaseFromDiskTest(_CleanupCase):
-    """In-memory means as at our load, so the sweep re-reads its own index."""
+class TheSurveyReadsEveryListFromDiskTest(_CheckCase):
+    """An open model holds its list as at its load, so Check Library reads every list off disk."""
 
     NEWCOMER = "OTHERSESSION1"
 
@@ -1778,67 +1779,46 @@ class CleanupReadsItsOwnDatabaseFromDiskTest(_CleanupCase):
             "tags": [], "favorite": False, "renderer": "Karma",
         })
         self._write_own(document)
-        known = self._ids_known_at_the_decision(model)
-        self._cleanup(model)
-        # The premise at the moment of the decision, not before the call.
-        self.assertIn("memory", known,
-                      "premise: the orphan pass never ran at all")
-        self.assertNotIn(
-            self.NEWCOMER, known["memory"],
-            "premise: the model must still NOT know the row when the "
-            "orphan pass decides - if it does, this test is measuring the "
-            "adoption path instead of the disk read")
+        self.assertNotIn(self.NEWCOMER, {str(a.mat_id) for a in model.assets},
+                         "premise: the open model must not know the row another session wrote")
+        findings = self._survey()
+        self.assertIn(self.NEWCOMER, findings["ids"])
+        self._move_unlisted(findings)
         for path in owned:
             self.assertTrue(
                 os.path.exists(path),
-                "Clean Library deleted %s - a file belonging to a material "
-                "another session had already written to the index"
-                % os.path.basename(path))
+                "Check Library moved %s - a file belonging to a material another "
+                "session had already written to the list" % os.path.basename(path))
 
-    def test_a_row_this_session_added_is_still_protected(self):
-        """The union keeps both sides: a new row may not have reached disk."""
-        model = self._model()
-        owned = self._files_for("INMEMORY1")
-        document = self._read_own()
-        model._assets.append(self.library_mod.material.Material.from_dict({
-            "id": "INMEMORY1", "name": "mine", "categories": ["Wood"],
-            "tags": [], "favorite": False, "renderer": "Karma",
-        }))
-        self._write_own(document)
-        self._cleanup(model)
-        for path in owned:
-            self.assertTrue(
-                os.path.exists(path),
-                "a file belonging to a material held only in memory was "
-                "deleted - that is the material the user just saved")
-
-    def test_a_malformed_own_database_does_not_kill_the_sweep(self):
-        """A wrong-shaped own index must not kill the sweep mid-run."""
+    def test_a_malformed_own_database_does_not_kill_the_survey(self):
+        """A wrong-shaped list is reported unreadable and holds every move back."""
         for payload in ([], None, {"assets": None}):
             with self.subTest(payload=payload):
                 self.setUp()
-                model = self._model()
                 owned = self._files_for("SHAPED1")
                 with open(self._own_path(), "w", encoding="utf-8") as handle:
                     json.dump(payload, handle)
                 try:
-                    self._cleanup(model)
+                    findings = self._survey()
+                    text = self._text(findings)
                 except Exception as exc:                    # noqa: BLE001
-                    self.fail("cleanup_db raised on %r: %s: %s"
+                    self.fail("the survey raised on %r: %s: %s"
                               % (payload, type(exc).__name__, exc))
+                entry = next(one for one in findings["lists"]
+                             if one["filename"] == "library.json")
+                self.assertEqual("unreadable", entry["state"])
+                self.assertFalse(findings["complete"])
+                with self.assertRaises(ValueError):
+                    self._move_unlisted(findings)
                 for path in owned:
-                    self.assertTrue(
-                        os.path.exists(path),
-                        "files were swept while the index could not be "
-                        "read at all")
-                summary = " ".join(model.last_cleanup_summary)
-                self.assertIn("Amaze could not check", summary,
-                              "nothing was said about the sweep that did "
-                              "not run")
+                    self.assertTrue(os.path.exists(path),
+                                    "files were moved while the list could not be read at all")
+                self.assertIn("Amaze could not check the Material list", text,
+                              "nothing was said about the move that cannot run")
 
 
-class AnEmptySectionWithFilesLeftBehindStopsTheSweepTest(_CleanupCase):
-    """Listing nothing is not owning nothing; the unaccounted files separate them."""
+class AnEmptyListWithFilesLeftBehindIsAskedAboutTest(_CheckCase):
+    """Listing nothing is not owning nothing; the unlisted files are named and the user decides."""
 
     COP_ID = "COPOWNED1"
 
@@ -1848,296 +1828,202 @@ class AnEmptySectionWithFilesLeftBehindStopsTheSweepTest(_CleanupCase):
         self.code = os.path.join(self.prefs.dir, "code.json")
         self.owned = self._files_for(self.COP_ID)
 
-    def _empty_cops(self):
-        with open(self.cops, "w", encoding="utf-8") as handle:
-            json.dump({"version": 2, "categories": ["_All"], "tags": [],
-                       "assets": []}, handle)
+    def _list(self, path, ids=(), text=None, encoding="utf-8"):
+        with open(path, "w", encoding=encoding) as handle:
+            if text is not None:
+                handle.write(text)
+            else:
+                json.dump({"version": 2, "categories": ["_All"], "tags": [],
+                           "assets": [{"id": one} for one in ids]}, handle)
 
     def _no_backups_premise(self):
         """It must work with no copy of the emptied file anywhere."""
         self.assertEqual(
             [], [n for n in os.listdir(self.prefs.dir)
                  if n.startswith("cops.json.")],
-            "premise: no copy beside cops.json, or this test is not "
-            "measuring the case the trace-based guard could not see")
+            "premise: no copy beside cops.json, or this is not the case "
+            "a trace could not show")
 
-    def _skip_line(self, model):
-        lines = [line for line in model.last_cleanup_summary
-                 if line.startswith("Nothing was deleted: Amaze could not "
-                                    "check")]
-        return lines[0] if lines else ""
-
-    def test_an_empty_section_with_files_left_behind_stops_the_sweep(self):
-        self._empty_cops()
+    def test_an_empty_list_with_files_left_behind_is_named_and_nothing_moves_unasked(self):
+        from amaze.dialogs import repair_dialog
+        self._list(self.cops)
         self._no_backups_premise()
-        model = self._model()
-        self._cleanup(model)
+        findings = self._survey()
+        text = self._text(findings)
         for path in self.owned:
-            self.assertTrue(
-                os.path.exists(path),
-                "%s was deleted while the Nodes list held nothing and the "
-                "file itself was sitting in the asset folder unaccounted "
-                "for - this is the 21-file loss, through the door the "
-                "trace-based guard could not close"
-                % os.path.basename(path))
-        self.assertTrue(
-            self._skip_line(model),
-            "files were spared and the user was told nothing")
-        summary = " ".join(model.last_cleanup_summary)
-        self.assertNotIn("could not be read", summary,
-                         "could-not-be-read fights the could-not-check entry")
-        self.assertIn("could not check", summary)
-        why = [line for line in model.last_cleanup_summary
-               if line.startswith("Node (cops.json):")]
-        self.assertTrue(why,
-                        "the refusal names only the storage file, or says "
-                        "nothing about why this section could not be "
-                        "checked")
-        self.assertIn("2 files", why[0],
-                      "the refusal does not say how much is unaccounted "
-                      "for, so its severity cannot be judged")
-        self.assertIn("the mat folder", why[0],
-                      "the refusal does not name the folder to look in")
-        self.assertNotIn(
-            "mat/ folder", why[0],
-            "the folder is named with the path separator prefs stores it "
-            "with, which reads as a typo in a sentence")
-        route = [line for line in model.last_cleanup_summary
-                 if "Repair" in line]
-        self.assertTrue(route, "the refusal reports the problem and stops")
-        self.assertEqual(1, len(route),
-                         "one next step, said once - three lines saying it "
-                         "is three interruptions")
-        self.assertIn("Amaze shelf", route[0],
-                      "the way out does not say where the tool is")
-        self.assertIn("Shelves", route[0],
-                      "nothing says how to get the Amaze tab, and adding "
-                      "it is a per-machine step")
-        self.assertIn("quit Houdini", route[0],
-                      "the way out does not mention the restart Repair "
-                      "needs before it can put anything right")
-        self.assertIn("before you open Amaze", route[0],
-                      "nothing says Repair has to run before the panel is "
-                      "opened again")
-        lines = [line for line in model.last_cleanup_summary
-                 if line.startswith("Node:")]
-        self.assertTrue(lines, "the refusal states a fact and leaves the "
-                               "reader to guess what it means")
-        self.assertEqual(1, len(lines), "one section, one line")
-        self.assertIn("nothing was ever saved there", lines[0])
-        self.assertIn("failed to load", lines[0])
+            self.assertTrue(os.path.exists(path),
+                            "%s moved before anyone chose to move it" % os.path.basename(path))
+        self.assertNotIn("could not be read", text)
+        self.assertIn("Node: the list is there and holds nothing.", text)
+        self.assertIn("2 files in the mat folder", text,
+                      "the report does not say how many files, in which folder")
+        self.assertNotIn("mat/ folder", text,
+                         "the folder is named with the separator prefs stores it with")
+        explanations = [line for line in self.repair.report_lines(findings)
+                        if "looks the same whether" in line]
+        self.assertEqual(1, len(explanations), "the ambiguity is not said, or said twice")
+        self.assertIn("nothing was ever saved there", explanations[0])
+        self.assertIn("failed to load", explanations[0])
+        _labels, keys = repair_dialog._choices(findings, may_change=True)
+        self.assertIn("reattach", keys, "nothing offers to put the node files back on a list")
 
     def test_two_empty_sections_get_one_explanation_between_them(self):
         """Aggregate before interrupting: one explanation, not one per section."""
-        self._empty_cops()
+        self._list(self.cops)
         self._write_own({"version": 2, "categories": ["_All"], "tags": [],
                          "assets": []})
-        model = self._model()
-        self._cleanup(model)
-        explanations = [line for line in model.last_cleanup_summary
-                        if "looks the same whether" in line]
+        lines = self.repair.report_lines(self._survey())
+        explanations = [line for line in lines if "looks the same whether" in line]
         self.assertEqual(1, len(explanations),
                          "one dialog carried the same explanation twice")
-        self.assertIn("Material and Node", explanations[0],
-                      "the one line does not name both sections, so a "
-                      "reader cannot tell which are empty")
+        self.assertIn("Material: the list is there and holds nothing.", "\n".join(lines))
+        self.assertIn("Node: the list is there and holds nothing.", "\n".join(lines))
 
     def test_a_live_model_agreeing_it_is_empty_does_not_override_files(self):
-        """A model cannot talk unaccounted files out of existence; only the user can."""
+        """A model cannot talk unlisted files out of existence, and while it is open nothing moves."""
         from amaze.core import cop_library
 
-        self._empty_cops()
+        self._list(self.cops)
         cops_model = cop_library.CopLibrary(preferences=self.prefs)
         self.assertEqual(
             [], list(cops_model.assets),
             "premise: the live Nodes model must genuinely hold nothing")
         connector = database.DatabaseConnector._instances.get("cops.json")
         self.assertIsNotNone(connector, "premise: the Nodes section is open")
-        self.assertFalse(
-            getattr(connector, "_write_blocked", False),
-            "premise: its load was NOT refused - a refused load was "
-            "already rejected as confirmation, and this test is about the "
-            "load that succeeded and found nothing")
-        model = self._model()
-        self._cleanup(model)
+        self.assertFalse(getattr(connector, "_write_blocked", False),
+                         "premise: its load was not refused")
+        findings = self._survey()
+        self.assertIn(self.COP_ID + ".mat", self._unlisted(findings),
+                      "an open model that agrees its list is empty hid the files left behind")
+        with self.assertRaises(ValueError):
+            self.repair.move_aside(findings, "unlisted")
         for path in self.owned:
-            self.assertTrue(
-                os.path.exists(path),
-                "%s was deleted because the Nodes section's own model "
-                "agreed it was empty - which is what a failed load looks "
-                "like from inside the panel that failed it"
-                % os.path.basename(path))
+            self.assertTrue(os.path.exists(path),
+                            "%s moved while a model held the library" % os.path.basename(path))
 
     def test_the_union_of_every_section_decides_what_is_unaccounted_for(self):
-        """Orphanhood is relative to every list sharing the directory."""
-        self._empty_cops()
-        with open(self.code, "w", encoding="utf-8") as handle:
-            json.dump({"version": 2, "categories": ["_All"], "tags": [],
-                       "assets": [{"id": self.COP_ID}]}, handle)
-        model = self._model()
-        self._cleanup(model)
-        self.assertFalse(
-            self._skip_line(model),
-            "the sweep was held back although the only files in question "
-            "are accounted for by the Code list - the union was read as "
-            "one list instead of all of them")
+        """Being unlisted is relative to every list sharing the folder."""
+        self._list(self.cops)
+        self._list(self.code, ids=[self.COP_ID])
+        findings = self._survey()
+        self.assertNotIn(self.COP_ID + ".mat", self._unlisted(findings),
+                         "the union was read as one list instead of all of them")
+        self._move_unlisted(findings)
         for path in self.owned:
-            self.assertTrue(
-                os.path.exists(path),
-                "%s belongs to a listed asset and was deleted anyway"
-                % os.path.basename(path))
+            self.assertTrue(os.path.exists(path),
+                            "%s belongs to a listed asset and was moved anyway"
+                            % os.path.basename(path))
 
-    def test_an_unused_section_with_nothing_left_behind_still_sweeps(self):
-        """The accept path: the guard weighs the asset folder, never the images."""
-        self._empty_cops()
+    def test_an_unused_section_with_nothing_left_behind_still_moves_a_stray(self):
+        """The accept path: an empty unused Node list does not hold a stray thumbnail back."""
+        self._list(self.cops)
         for path in self.owned:
             os.remove(path)
-        model = self._model()
-        self.assertEqual(
-            [], model._files_no_section_accounts_for(
-                {str(a.mat_id) for a in model.assets}),
-            "premise: nothing in the asset folder may be unaccounted for, "
-            "or this is the refuse path wearing the accept path's name")
         leftover = os.path.join(self.img_dir, "GONEMATERIAL1.png")
         with open(leftover, "wb") as handle:
             handle.write(b"a thumbnail whose material is gone")
-        self._cleanup(model)
-        self.assertFalse(
-            self._skip_line(model),
-            "the sweep was held back for an ordinary unused Nodes section "
-            "- the guard fires always, which is an outage")
-        self.assertFalse(
-            os.path.exists(leftover),
-            "the sweep did not actually run: a file no section lists "
-            "survived a Clean Library that reported no refusal")
+        findings = self._survey()
+        self.assertEqual([], self._unlisted(findings),
+                         "premise: nothing in the asset folder may be unlisted")
+        self.assertTrue(findings["complete"])
+        self._move_unlisted(findings)
+        self.assertFalse(os.path.exists(leftover),
+                         "a file no section lists stayed beside an ordinary unused Node list")
 
     def test_an_empty_code_list_does_not_hold_the_asset_folder_back(self):
         """A section storing inline text owns nothing in the asset folder."""
-        with open(self.cops, "w", encoding="utf-8") as handle:
-            json.dump({"version": 2, "categories": ["_All"], "tags": [],
-                       "assets": [{"id": self.COP_ID}]}, handle)
-        with open(self.code, "w", encoding="utf-8") as handle:
-            json.dump({"version": 2, "categories": ["_All"], "tags": [],
-                       "assets": []}, handle)
+        self._list(self.cops, ids=[self.COP_ID])
+        self._list(self.code)
         genuine = os.path.join(self.mat_dir, "GENUINELEFTOVER3.mat")
         with open(genuine, "w", encoding="utf-8") as handle:
             handle.write("in no list at all\n")
-        model = self._model()
-        self._cleanup(model)
-        self.assertFalse(
-            self._skip_line(model),
-            "the sweep was held back by an empty Code list, which cannot "
-            "own a file in the asset folder - the guard fires where it "
-            "protects nothing")
-        self.assertFalse(os.path.exists(genuine),
-                         "the sweep reported no refusal and still did not "
-                         "run")
+        findings = self._survey()
+        self.assertTrue(findings["complete"], "an empty Code list held the move back")
+        self._move_unlisted(findings)
+        self.assertFalse(os.path.exists(genuine), "the stray stayed beside an empty Code list")
 
     def test_an_empty_code_list_is_still_read_into_the_union(self):
-        """The narrowing is about emptiness as evidence, not about reading."""
-        with open(self.cops, "w", encoding="utf-8") as handle:
-            json.dump({"version": 2, "categories": ["_All"], "tags": [],
-                       "assets": [{"id": self.COP_ID}]}, handle)
-        with open(self.code, "w", encoding="utf-8") as handle:
-            json.dump({"version": 2, "categories": ["_All"], "tags": [],
-                       "assets": [{"id": "CODEASSET1"}]}, handle)
+        """A Code list's ids count, so its tile icon is not unlisted."""
+        self._list(self.cops, ids=[self.COP_ID])
+        self._list(self.code, ids=["CODEASSET1"])
         icon = os.path.join(self.img_dir, "CODEASSET1_icon.png")
         with open(icon, "wb") as handle:
             handle.write(b"a Code tile's own icon")
-        model = self._model()
-        self._cleanup(model)
+        findings = self._survey()
+        self.assertNotIn("CODEASSET1_icon.png", self._unlisted(findings, self.prefs.img_dir))
+        self._move_unlisted(findings)
         self.assertTrue(os.path.exists(icon),
-                        "a Code asset's icon was deleted - the Code list's "
-                        "ids are not in the union any more")
+                        "a Code asset's icon was moved - the Code list's ids are not in the union")
 
-    def test_the_refusal_carries_no_parse_position(self):
+    def test_the_report_carries_no_parse_position(self):
         """No raw exception text on screen, no errno, no parse position."""
-        with open(self.cops, "w", encoding="utf-8") as handle:
-            handle.write('{"assets": [{"id": "COPOWNED1"}')      # truncated
-        model = self._model()
-        self._cleanup(model)
-        summary = " ".join(model.last_cleanup_summary)
+        self._list(self.cops, text='{"assets": [{"id": "COPOWNED1"}')      # truncated
+        text = self._text(self._survey())
         for jargon in ("Expecting", "line 1", "column", "char ", "Errno"):
-            self.assertNotIn(jargon, summary,
-                             "the refusal shows '%s', which is the parser "
+            self.assertNotIn(jargon, text,
+                             "the report shows '%s', which is the parser "
                              "talking to itself" % jargon)
-        self.assertIn("Node (cops.json)", summary,
-                      "the unreadable entry names the bare storage file "
-                      "while the others say Nodes (cops.json) - one dialog "
-                      "with two names for one thing")
+        self.assertIn("Node: the list is there and Amaze cannot read it.", text,
+                      "the unreadable list is not named by its section")
 
-    def test_a_healthy_library_still_sweeps(self):
-        """With every section listing its own assets, a leftover still goes."""
-        with open(self.cops, "w", encoding="utf-8") as handle:
-            json.dump({"version": 2, "categories": ["_All"], "tags": [],
-                       "assets": [{"id": self.COP_ID}]}, handle)
+    def test_a_healthy_library_still_moves_a_stray(self):
+        """With every section listing its own assets, a stray still goes."""
+        self._list(self.cops, ids=[self.COP_ID])
         genuine = os.path.join(self.mat_dir, "GENUINELEFTOVER1.mat")
         with open(genuine, "w", encoding="utf-8") as handle:
             handle.write("in no list at all\n")
-        model = self._model()
-        self._cleanup(model)
-        self.assertFalse(
-            os.path.exists(genuine),
-            "the sweep did not run on a library where every list reads "
-            "perfectly well")
-        for path in self.owned:
-            self.assertTrue(
-                os.path.exists(path),
-                "%s was deleted although the Nodes list that owns it reads "
-                "perfectly well" % os.path.basename(path))
-
-    def test_nothing_is_called_unaccounted_for_while_a_list_is_unreadable(self):
-        """A half-built union may not accuse anybody in a sentence to act on."""
-        self._empty_cops()
-        with open(self.code, "w", encoding="utf-8") as handle:
-            handle.write('{"assets": [{"id": "SOMETHING"}')      # truncated
-        model = self._model()
-        self._cleanup(model)
-        skip = self._skip_line(model)
-        self.assertTrue(skip, "the sweep must still be held back")
-        self.assertIn("code.json", skip,
-                      "the refusal does not name the list that would not "
-                      "parse")
-        self.assertNotIn(
-            "in the mat folder", " ".join(model.last_cleanup_summary),
-            "files were counted as unaccounted for against a union that "
-            "was known to be incomplete")
+        self._move_unlisted(self._survey())
+        self.assertFalse(os.path.exists(genuine),
+                         "nothing moved on a library where every list reads")
         for path in self.owned:
             self.assertTrue(os.path.exists(path),
-                            "%s was deleted" % os.path.basename(path))
+                            "%s was moved although the Nodes list that owns it reads"
+                            % os.path.basename(path))
 
-    def test_a_byte_order_mark_on_a_sibling_does_not_abort_the_sweep(self):
-        """This read decides whether deleting is safe, so it reads like the others."""
-        with open(self.cops, "w", encoding="utf-8-sig") as handle:
-            json.dump({"version": 2, "categories": ["_All"], "tags": [],
-                       "assets": [{"id": self.COP_ID}]}, handle)
+    def test_nothing_is_called_unlisted_for_sure_while_a_list_is_unreadable(self):
+        """A half-built union may name files but must say they may be the unread list's."""
+        self._list(self.cops)
+        self._list(self.code, text='{"assets": [{"id": "SOMETHING"}')      # truncated
+        findings = self._survey()
+        self.assertFalse(findings["complete"], "the move must still be held back")
+        text = self._text(findings)
+        self.assertIn("Code: the list is there and Amaze cannot read it.", text,
+                      "the report does not name the list that would not parse")
+        self.assertIn("Amaze could not check the Code list either, so some of those "
+                      "files may be its. Nothing will be moved while that is true.", text)
+        self.assertEqual(len(findings["leftovers"]), self.repair.files_to_move_aside(findings))
+        with self.assertRaises(ValueError):
+            self._move_unlisted(findings)
+        for path in self.owned:
+            self.assertTrue(os.path.exists(path), "%s was moved" % os.path.basename(path))
+
+    def test_a_byte_order_mark_on_a_sibling_does_not_hold_the_move_back(self):
+        """This read decides whether moving is safe, so it reads like the others."""
+        self._list(self.cops, ids=[self.COP_ID], encoding="utf-8-sig")
         with open(self.cops, "rb") as handle:
             self.assertTrue(handle.read(3) == b"\xef\xbb\xbf",
                             "premise: the sibling must really carry a BOM")
         genuine = os.path.join(self.mat_dir, "GENUINELEFTOVER2.mat")
         with open(genuine, "w", encoding="utf-8") as handle:
             handle.write("in no list at all\n")
-        model = self._model()
-        self._cleanup(model)
-        self.assertFalse(
-            self._skip_line(model),
-            "a byte-order mark on the Nodes file aborted the whole sweep")
-        self.assertFalse(os.path.exists(genuine),
-                         "the sweep did not run for a healthy library")
+        findings = self._survey()
+        self.assertTrue(findings["complete"], "a byte-order mark on the Nodes list held it all back")
+        self._move_unlisted(findings)
+        self.assertFalse(os.path.exists(genuine), "the stray stayed in a healthy library")
         for path in self.owned:
-            self.assertTrue(
-                os.path.exists(path),
-                "%s was deleted although the BOM'd list that owns it reads "
-                "perfectly well" % os.path.basename(path))
+            self.assertTrue(os.path.exists(path),
+                            "%s was moved although the list that owns it reads"
+                            % os.path.basename(path))
 
     def test_a_folder_that_cannot_be_listed_is_not_read_as_all_clear(self):
-        """Fail closed: an empty list is the answer that lets the sweep delete."""
-        model = self._model()
+        """Fail closed: an empty answer is the one that lets files move."""
         shutil.rmtree(self.mat_dir)
-        self.assertIsNone(
-            model._files_no_section_accounts_for({"WHATEVER"}),
-            "a folder that could not be listed was reported as holding "
-            "nothing unaccounted for")
+        findings = self._survey()
+        self.assertEqual([self.prefs.asset_dir], findings["unreadable_folders"],
+                         "a folder that could not be listed was reported as holding nothing")
+        self.assertFalse(findings["complete"])
+        with self.assertRaises(ValueError):
+            self._move_unlisted(findings)
 
     def test_the_guard_and_the_sweep_share_one_classifier(self):
         """A guard counting a different set than the sweep touches is a second opinion."""
@@ -2568,10 +2454,16 @@ class ASuspiciousShrinkIsSaidOutLoudTest(_Case):
 
     def setUp(self):
         super().setUp()
-        database.DatabaseConnector._integrity_notes.clear()
-        self.addCleanup(database.DatabaseConnector._integrity_notes.clear)
+        from amaze.core import debug
+        self.said = []
+        shown = mock.Mock()
+        shown.dialog.side_effect = self.said.append
+        for patcher in (mock.patch.object(debug, "_ui", shown),
+                        mock.patch.object(debug, "_alerted", set())):
+            patcher.start()
+            self.addCleanup(patcher.stop)
 
-    def test_a_halved_list_leaves_a_retrievable_note(self):
+    def test_a_halved_list_alerts_once_at_load(self):
         with open(self.path + ".bak-1", "w", encoding="utf-8") as fh:
             json.dump(self._document(count=40), fh)
         self._write(self._document(count=1))
@@ -2579,26 +2471,21 @@ class ASuspiciousShrinkIsSaidOutLoudTest(_Case):
             before = fh.read()
 
         self._load()
-        notes = database.DatabaseConnector.take_integrity_notes()
-        self.assertEqual(1, len(notes), notes)
-        self.assertIn("1", notes[0])
-        self.assertIn("40", notes[0])
-        self.assertIn("Check Library", notes[0],
-                      "the note does not name the way out")
+        self.assertEqual([database.shrunk_sentence(self.FILENAME, 1, 40)], self.said)
+        self.assertIn("Check Library", self.said[0], "the alert does not name the way out")
         with open(self.path, "rb") as fh:
             self.assertEqual(before, fh.read(),
                              "a report-only check modified the file")
-        self.assertEqual([], database.DatabaseConnector
-                         .take_integrity_notes(),
-                         "the same finding would be reported forever")
+        test_support.reset_database_singletons()
+        self._load()
+        self.assertEqual(1, len(self.said), "the same finding would be reported forever")
 
     def test_an_ordinary_ratio_says_nothing(self):
         with open(self.path + ".bak-1", "w", encoding="utf-8") as fh:
             json.dump(self._document(count=5), fh)
         self._write(self._document(count=4))
         self._load()
-        self.assertEqual([], database.DatabaseConnector
-                         .take_integrity_notes(),
+        self.assertEqual([], self.said,
                          "an unremarkable difference fired the alarm - "
                          "it will be ignored the day it matters")
 

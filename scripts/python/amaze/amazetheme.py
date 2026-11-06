@@ -313,7 +313,7 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
             ("QComboBox ▸ text", 153, 46, 99, 15, "Library folder name"),
             ("QPushButton ▸ text", 432, 46, 20, 15, "Add"),
             ("QPushButton", 148, 70, 63, 22, None),
-            ("QPushButton ▸ text", 156, 74, 46, 15, "Clean Up"),
+            ("QPushButton ▸ text", 163, 74, 33, 15, "Check"),
             ("QPushButton", 217, 70, 48, 22, None),
             ("QPushButton ▸ text", 224, 74, 35, 15, "Reload"),
             ("QPushButton", 271, 70, 76, 22, None),

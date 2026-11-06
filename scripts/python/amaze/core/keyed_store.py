@@ -180,8 +180,8 @@ register(
         "Your comments could not be read, so Amaze will not save over "
         "them.\n\n"
         "Any comment you write now will not be kept.\n\n"
-        "Close Houdini and put back a recent copy with the Repair tool "
-        "in the Amaze shelf."),
+        "Put back a recent copy with Library ▸ Check Library… "
+        "in Amaze."),
     refused_sentence=(
         "the notes file could not be read earlier this run, so what you "
         "wrote was not saved - writing now would replace every note "
@@ -212,8 +212,8 @@ register(
         "Your registered folders' paths could not be read, so Amaze "
         "will not save over them.\n\n"
         "Any folder you add or move now will not be kept.\n\n"
-        "Close Houdini and put back a recent copy with the Repair tool "
-        "in the Amaze shelf."),
+        "Put back a recent copy with Library ▸ Check Library… "
+        "in Amaze."),
     refused_sentence=(
         "the registered folders' paths could not be read earlier this "
         "run, so this change was not saved - writing now would replace "
@@ -233,8 +233,8 @@ register(
         "Your registered folders could not be read, so Amaze will not "
         "save over them.\n\n"
         "Any folder you add or rename now will not be kept.\n\n"
-        "Close Houdini and put back a recent copy with the Repair tool "
-        "in the Amaze shelf."),
+        "Put back a recent copy with Library ▸ Check Library… "
+        "in Amaze."),
     refused_sentence=(
         "the registered folders could not be read earlier this run, so "
         "this change was not saved - writing now would replace every "
@@ -255,8 +255,8 @@ register(
         "Your favorites could not be read, so Amaze will not save over "
         "them.\n\n"
         "Anything you star now will not be kept.\n\n"
-        "Close Houdini and put back a recent copy with the Repair tool "
-        "in the Amaze shelf."),
+        "Put back a recent copy with Library ▸ Check Library… "
+        "in Amaze."),
     refused_sentence=(
         "the favorites file could not be read earlier this run, so your "
         "star was not saved - writing now would replace every favorite "
@@ -277,8 +277,8 @@ register(
         "The list of people using this library could not be read, so "
         "Amaze will not save over it.\n\n"
         "Any user you add, rename or delete now will not be kept.\n\n"
-        "Close Houdini and put back a recent copy with the Repair tool "
-        "in the Amaze shelf."),
+        "Put back a recent copy with Library ▸ Check Library… "
+        "in Amaze."),
     refused_sentence=(
         "the list of people using this library could not be read "
         "earlier this run, so your change was not saved - writing now "
@@ -298,8 +298,8 @@ register(
         "The tile icons you chose could not be read, so Amaze will not "
         "save over them.\n\n"
         "Any icon you pick now will not be kept.\n\n"
-        "Close Houdini and put back a recent copy with the Repair tool "
-        "in the Amaze shelf."),
+        "Put back a recent copy with Library ▸ Check Library… "
+        "in Amaze."),
     refused_sentence=(
         "the tile icon file could not be read earlier this run, so your "
         "icon choice was not saved - writing now would replace every "
@@ -325,8 +325,8 @@ register(
         "The library's shared settings could not be read, so Amaze "
         "will not save over them.\n\n"
         "Any shared setting you change now will not be kept.\n\n"
-        "Close Houdini and put back a recent copy with the Repair tool "
-        "in the Amaze shelf."),
+        "Put back a recent copy with Library ▸ Check Library… "
+        "in Amaze."),
     refused_sentence=(
         "the library's shared settings could not be read earlier this "
         "run, so your change was not saved - writing now would replace "
@@ -365,8 +365,8 @@ register(
         "Your Amaze settings could not be read, so Amaze will not save "
         "over them.\n\n"
         "Any setting you change now will not be kept.\n\n"
-        "Your settings are also recorded in the debug log. Use the "
-        "Repair tool in the Amaze shelf to put them back."),
+        "Your settings are also recorded in the debug log. Use "
+        "Library ▸ Check Library… in Amaze to put them back."),
     refused_sentence=(
         "your settings could not be read earlier this run, so this "
         "change was not saved - writing now would replace the library "

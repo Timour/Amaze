@@ -2085,49 +2085,59 @@ class SectionListIsSingleSourcedTest(unittest.TestCase):
             "the HIP tab was deleted: %s" % offenders)
 
 
-class CleanupConfirmsBeforeDeletingTest(unittest.TestCase):
-    """Source-derived: Clean Library needs a GUI, but the ordering of its dialogs is readable in the source. The rule - dialogs CONFIRM AN ACTION BEFORE IT HAPPENS, never announce that one finished - and this method had it exactly inverted: no gate at all and two completion dialogs, on a method that unlinks files and drops folder pointers and favourites, with two one-click entry points reaching it."""
+class CheckLibraryConfirmsBeforeChangingTest(unittest.TestCase):
+    """Source-derived: every action Check Library runs is confirmed first, Cancel on Return and Esc."""
 
-    def _body(self):
-        path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "panel", "panel.py")
+    ACTIONS = ("repair.move_aside(", "repair.add_materials_back(", "repair.reattach(",
+               "repair.put_back(", "repair.set_aside_folders(", "repair.drop_dead_stars(",
+               "repair.rescue_uncategorised(")
+    GATES = ("_confirmed(", "**_copy_buttons(")
+
+    def _source(self, *parts):
+        path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), *parts)
         with open(path, encoding="utf-8") as handle:
-            code = handle.read()
-        start = code.find("    def cleanup_db(self)")
-        self.assertGreater(start, -1, "cleanup_db is gone")
-        end = code.find("\n    def ", start + 10)
-        return code[start:end if end > 0 else len(code)]
+            return handle.read()
+
+    def _bodies(self):
+        code = self._source("dialogs", "repair_dialog.py")
+        for chunk in code.split("\ndef ")[1:]:
+            name = chunk.split("(", 1)[0]
+            work = min((chunk.find(a) for a in self.ACTIONS if a in chunk), default=-1)
+            if work > -1:
+                yield name, chunk, work
 
     def test_it_confirms_before_doing_any_work(self):
-        body = self._body()
-        gate = body.find("buttons=")    # the labels are a named constant ▸p/messages-need-one-home
-        work = body.find("clean.clean_library(")    # the work itself is actions/clean.py's
-        self.assertGreater(gate, -1, "there is no confirm dialog")
-        self.assertGreater(work, -1)
-        self.assertLess(gate, work,
-                        "the confirmation comes AFTER the deleting")
+        bodies = list(self._bodies())
+        self.assertGreaterEqual(len(bodies), 7, "premise: the actions were not found")
+        for name, body, work in bodies:
+            with self.subTest(name=name):
+                gate = min((body.find(g) for g in self.GATES if g in body), default=-1)
+                self.assertGreater(gate, -1, "%s has no confirm" % name)
+                self.assertLess(gate, work, "%s confirms AFTER the change" % name)
 
     def test_the_gate_can_be_cancelled(self):
-        body = self._body()
-        gate = body.find("buttons=")    # the labels are a named constant ▸p/messages-need-one-home
-        work = body.find("clean.clean_library(")
-        self.assertGreater(work, gate, "the work is not found after the confirm dialog")
-        self.assertIn("return", body[gate:work],
-                      "the confirm dialog cannot actually stop it")
+        for name, body, work in self._bodies():
+            with self.subTest(name=name):
+                gate = min(body.find(g) for g in self.GATES if g in body)
+                self.assertIn("return", body[gate:work], "%s cannot be stopped" % name)
 
     def test_cancel_is_the_default_and_the_close_action(self):
-        """A destructive gate must not delete on Return or on Esc."""
-        body = self._body()
-        self.assertIn("default_choice=1", body)
-        self.assertIn("close_choice=1", body)
+        """A gate that moves files must not act on Return or on Esc."""
+        code = self._source("dialogs", "repair_dialog.py")
+        confirm = code[code.find("def _confirmed("):code.find("\ndef ", code.find("def _confirmed("))]
+        self.assertIn("default_choice=1", confirm)
+        self.assertIn("close_choice=1", confirm)
+        buttons = code[code.find("def _copy_buttons("):code.find("\ndef _put_copy_back(")]
+        self.assertIn('"default_choice": len(buttons) - 1', buttons)
+        self.assertIn('"close_choice": len(buttons) - 1', buttons)
 
     def test_it_does_not_announce_a_finish_with_nothing_to_say(self):
-        body = self._body()
-        self.assertNotIn(
-            "nothing to clean.\"", body,
-            "an empty result still pops a dialog - the grid already "
-            "shows that nothing changed")
+        self.assertNotIn("displayMessage(", self._source("actions", "check.py"))
+        code = self._source("dialogs", "repair_dialog.py")
+        door = code[code.find("def check_in_panel("):code.find("\ndef ", code.find("def check_in_panel("))]
+        self.assertTrue(door, "premise: the panel door is gone")
+        self.assertNotIn("displayMessage(", door,
+                         "the panel door speaks beyond the report and what each action did")
 
 
 if __name__ == "__main__":

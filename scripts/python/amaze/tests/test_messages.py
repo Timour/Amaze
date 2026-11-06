@@ -421,13 +421,24 @@ class ThePlaceholdersAgreeWithTheCallers(unittest.TestCase):
             + "\n  ".join(offenders))
 
 
-class TheCleanLibraryConfirmSaysWhereFilesGo(unittest.TestCase):
-    """Clean moves a file nothing uses into the holding folder; it does not delete it."""
+class CheckLibrarySaysWhereFilesGo(unittest.TestCase):
+    """Check Library moves a file into the holding folder; it does not delete it."""
 
-    def test_the_confirm_names_how_long_the_holding_folder_keeps_them(self):
+    def test_every_move_names_how_long_the_holding_folder_keeps_them(self):
         from amaze.core import quarantine
-        self.assertIn(
-            "%d days" % quarantine.QUARANTINE_DAYS,
-            messages.HELP_CLEAN_LIBRARY,
-            "the Clean Library confirmation does not say files are kept "
-            "in the holding folder, so it reads as a permanent delete")
+        kept = "%d days" % quarantine.QUARANTINE_DAYS
+        for name in ("HELP_CHECK_LIBRARY", "HELP_MOVE_FILES_ASIDE", "HELP_MOVE_UNKNOWN_ASIDE",
+                     "FILES_MOVED_ASIDE_DONE"):
+            with self.subTest(name=name):
+                self.assertIn(kept, getattr(messages, name),
+                              "it does not say files are kept in the holding folder, "
+                              "so it reads as a permanent delete")
+
+    def test_no_sentence_names_a_tool_that_is_gone(self):
+        from amaze import tooltips
+        for module in (messages, tooltips):
+            for name, text in vars(module).items():
+                if name.isupper() and isinstance(text, str):
+                    for gone in ("Clean Library", "Clean Up", "Repair tool", "run Repair",
+                                 "Repair Library", "Open Preferences to find"):
+                        self.assertNotIn(gone, text, "%s names %s" % (name, gone))

@@ -50,13 +50,13 @@ else:
     )]]></script>
   </tool>
 
-  <tool name="amaze_repair_library" label="Repair"
+  <tool name="amaze_repair_library" label="Check Library"
         icon="$AMAZE/scripts/python/amaze/ui/icon_repair.svg">
-    <helpText><![CDATA[Check and repair the Amaze library. If Amaze is open, restart Houdini and run Repair before opening it again: an open Amaze keeps saving over the library and would wipe out whatever Repair fixed.]]></helpText>
+    <helpText><![CDATA[Check the Amaze library when the Amaze panel will not open: what is wrong, and the fixes that apply. With Amaze open, use Library ▸ Check Library… in the panel instead.]]></helpText>
     <script scriptType="python"><![CDATA[import hou
 
 # Every check and sentence lives in the module. It must NOT import or
-# construct the panel - Repair exists for when the panel will not open.
+# construct the panel - it exists for when the panel will not open.
 try:
     from amaze.dialogs import repair_dialog
     from amaze.utils import rc_calls

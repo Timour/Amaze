@@ -297,7 +297,7 @@ class AmazePanel(QtWidgets.QWidget):
                 severity=hou.severityType.Warning,
                 title=messages.TITLE_AMAZE)
             return False
-        ui.setStatusMessage("Amaze: %s." % how)
+        ui.displayMessage(messages.LIBRARY_INDEX_REPAIRED % how, title=messages.TITLE_AMAZE)
         debug.event("session", "index repaired", how=how, dir=folder)
         return True
 
@@ -1135,8 +1135,8 @@ class AmazePanel(QtWidgets.QWidget):
         self.action_catview = self.ui.action_show_cat  # type: ignore
         self.action_catview.triggered.connect(self.toggle_catview)
 
-        self.action_cleanup_db = self.ui.action_cleanup_db  # type: ignore
-        self.action_cleanup_db.triggered.connect(self.cleanup_db)
+        self.action_check_library = self.ui.action_check_library  # type: ignore
+        self.action_check_library.triggered.connect(self.check_library)
 
         self.action_open_folder = self.ui.action_open_folder  # type: ignore
         self.action_open_folder.triggered.connect(self.open_usdlib_folder)
@@ -1941,39 +1941,22 @@ class AmazePanel(QtWidgets.QWidget):
         if ui is not None:
             ui.displayMessage(said)
 
-    def cleanup_db(self) -> None:
-        """Clean the whole library in one pass, after a confirm, with one combined report."""
+    def check_library(self) -> None:
+        """Library ▸ Check Library…: the report and its actions, every model read again after each."""
         ui = getattr(hou, "ui", None)
+        if ui is None:
+            return
         if not self.material_model:
-            if ui is not None:
-                ui.displayMessage(messages.NO_LIBRARY_OPEN)
+            ui.displayMessage(messages.NO_LIBRARY_OPEN)
             return
+        from amaze.dialogs import repair_dialog
+        repair_dialog.check_in_panel(self)
 
-        if ui is None or ui.displayMessage(
-            messages.CLEAN_LIBRARY_CONFIRM,
-            help=messages.HELP_CLEAN_LIBRARY,
-            buttons=messages.BUTTONS_CLEAN_LIBRARY,    # BEFORE: it moves files aside and drops dead locations, from two one-click doors
-            default_choice=1, close_choice=1,
-            severity=hou.severityType.Warning,
-            title=messages.TITLE_AMAZE,
-        ) != 0:
-            debug.event("cleanup", "cancelled at the confirm dialog")
-            return
-        from amaze.actions import clean
-        sections = clean.clean_library(
-            self.prefs, self.material_model, self.category_model,
-            getattr(self, "cop_model", None), getattr(self, "cop_category_model", None),
-            self.file_folders_model)
+    def stand_again(self) -> None:
+        """The shown section's highlight back on what its grid shows, after the rows were read again."""
         context = self._section()
         if context is not None:
-            context.stand_again()    # a location set aside slid the highlight off the grid's row
-
-        if sections:
-            if ui is not None:
-                ui.displayMessage(    # the RECORD: the grid cannot show a moved file or a dropped location
-                    messages.CLEANUP_SUMMARY % "\n\n".join(sections))
-        else:
-            debug.event("cleanup", "nothing to clean")    # no dialog - nothing changed, and the log keeps the record
+            context.stand_again()
 
     def open_usdlib_folder(self) -> None:
         """Open the Library Folder in the System explorer"""

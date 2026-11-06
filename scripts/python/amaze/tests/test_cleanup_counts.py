@@ -1,17 +1,14 @@
-"""Clean Up Library counts a missing render only where a tile can hold one, in the section's noun."""
+"""Check Library counts a missing render only where a tile can hold one, in the section's noun."""
 import json
 import os
 import unittest
-from unittest.mock import MagicMock, patch
 
-import hou
-
-from amaze.core import cop_library, library as library_mod
+from amaze.core import database, repair
 from amaze.tests import test_support
 
 
 class TheThumbnailCountKnowsItsSectionTest(unittest.TestCase):
-    """A LOP setup has no render to miss, a SOP setup does, and the count says node setup."""
+    """A LOP setup has no render to miss, a SOP setup does, and the count says node."""
 
     def setUp(self):
         self.prefs = test_support.fixture_prefs(self)
@@ -29,26 +26,27 @@ class TheThumbnailCountKnowsItsSectionTest(unittest.TestCase):
         return {"id": asset_id, "name": asset_id, "renderer": context,
                 "categories": ["Main"], "tags": []}
 
-    def _summary(self, model) -> str:
-        with patch.object(hou, "ui", MagicMock(), create=True):
-            model.cleanup_db()
-        return " ".join(model.last_cleanup_summary)
-
     def test_lop_setups_are_not_counted_and_a_sop_setup_is(self):
         rows = [self._row("LOPSETUP1", "LOP"), self._row("LOPSETUP2", "LOP"),
                 self._row("SOPSETUP1", "SOP")]
         with open(self.cops, "w", encoding="utf-8") as handle:
             json.dump({"categories": ["_All", "Main"], "tags": [], "assets": rows}, handle)
-        summary = self._summary(cop_library.CopLibrary(preferences=self.prefs))
-        self.assertIn("No thumbnail image yet for 1 node setup ", summary,
+        findings = repair.survey(self.prefs.dir, self.prefs.asset_dir, self.prefs.img_dir)
+        self.assertEqual(["SOPSETUP1"],
+                         [one for one, _name in findings["missing_renders"]["cops.json"]],
+                         "the two LOP setups were counted as missing a render")
+        thumbnails = [line for line in repair.report_lines(findings)
+                      if line.startswith("No thumbnail image yet")]
+        self.assertEqual(1, len(thumbnails), thumbnails)
+        self.assertIn("No thumbnail image yet for 1 node ", thumbnails[0],
                       "the two LOP setups were counted, or the noun is wrong")
-        self.assertNotIn("material", summary)
+        self.assertNotIn("material", thumbnails[0])
 
     def test_each_section_counts_in_its_own_noun(self):
-        self.assertEqual("material", library_mod.AssetLibrary.ROW_NOUN)
-        self.assertEqual("node setup", cop_library.CopLibrary.ROW_NOUN)
-        self.assertEqual("2 node setups", library_mod._count(2, cop_library.CopLibrary.ROW_NOUN))
-        self.assertEqual("1 material", library_mod._count(1, library_mod.AssetLibrary.ROW_NOUN))
+        self.assertEqual("material", database.section_noun("library.json", 1))
+        self.assertEqual("node", database.section_noun("cops.json", 1))
+        self.assertEqual("2 nodes", repair._counted(2, "cops.json"))
+        self.assertEqual("1 material", repair._counted(1, "library.json"))
 
 
 if __name__ == "__main__":

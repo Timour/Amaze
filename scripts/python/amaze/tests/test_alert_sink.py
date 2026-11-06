@@ -416,7 +416,7 @@ class TheTenSitesAreConvertedTest(unittest.TestCase):
                             "%s raises its alert with no key, so it "
                             "cannot be de-duplicated" % spec.filename)
             self.assertIn(
-                "Repair tool", spec.unreadable_alert,
+                "Check Library", spec.unreadable_alert,
                 "%s tells the user it will not save over their work "
                 "without saying how to get it back" % spec.filename)
         keys = {spec.alert_key for spec in keyed_store.stores()}
@@ -424,7 +424,7 @@ class TheTenSitesAreConvertedTest(unittest.TestCase):
         self.assertIn("icons-unreadable", keys)
         settings = keyed_store.store_for(keyed_store.SETTINGS)    # machine-local, so the loop skips it; EXPECTED can no longer see it either
         self.assertEqual("prefs-unreadable", settings.alert_key)
-        self.assertIn("Repair tool", settings.unreadable_alert)
+        self.assertIn("Check Library", settings.unreadable_alert)
 
         source = open(os.path.join(self.ROOT, "core", "keyed_store.py"),
                       encoding="utf-8").read()

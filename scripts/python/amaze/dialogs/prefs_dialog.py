@@ -541,7 +541,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         for widget in (self.cbb_library, self._btn_add_library,
                        self._btn_manage_libraries, self.cbb_library_user):
             widget.setEnabled(not testing)    # the test library brings its own user
-        for widget in (self._btn_clean_up, self._btn_reload, self._btn_show_folder):
+        for widget in (self._btn_check, self._btn_reload, self._btn_show_folder):
             widget.setEnabled(testing or is_open)    # on the test library, while it is on
         for widget in (self._btn_edit_user, self._btn_delete_user):
             widget.setEnabled(not testing and (uid == self.NEW_USER or (is_open and picked)))
@@ -581,8 +581,8 @@ class PrefsDialog(base_dialog.AssetDialog):
         form.addRow(self._label("Library"),
                     self._path_row(self.cbb_library, self._btn_add_library))
 
-        self._btn_clean_up = self._library_button(
-            "Clean Up", self._panel_call("cleanup_db"), tooltips.PREFS_CLEAN_UP_LIBRARY)
+        self._btn_check = self._library_button(
+            "Check", self._panel_call("check_library"), tooltips.PREFS_CHECK_LIBRARY)
         self._btn_reload = self._library_button(
             "Reload", self._panel_call("open"), tooltips.PREFS_RELOAD_LIBRARY)
         self._btn_show_folder = self._library_button(
@@ -591,7 +591,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         self._btn_manage_libraries = self._library_button(
             "Manage", self.manage_libraries, tooltips.PREFS_MANAGE_LIBRARIES)
         form.addRow(self._label(""), self._button_row(
-            self._btn_clean_up, self._btn_reload, self._btn_show_folder,
+            self._btn_check, self._btn_reload, self._btn_show_folder,
             self._btn_manage_libraries))
         self._lbl_library_format = QtWidgets.QLabel()    # filled by refresh_library_version
         form.addRow(self._label(""), self._lbl_library_format)

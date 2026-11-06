@@ -1197,10 +1197,9 @@ actions/addons.py         the add-on check and install the Add-On tab
                           runs: which store versions are newer, then
                           fetching and installing them, each answered
                           in one sentence
-actions/clean.py          Clean Up's work in one pass: each
-                          section's integrity pass, then dead folder
-                          pointers and File favorites; the panel asks
-                          before and shows the report after
+actions/check.py          Check Library in the panel: every model
+                          and the settings saved before an action,
+                          every model read again after it
 actions/code.py           the Code section's Houdini verbs: a Python
                           snippet run as one undo step with a shelf
                           click's kwargs, and a snippet set onto a

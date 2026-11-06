@@ -58,6 +58,22 @@ def _ui(**answers):
         selectFile=lambda *a, **k: answers.get("selectFile", ""))
 
 
+def _check_ui(*wanted_labels):
+    """`hou.ui` for Check Library: each box presses the next button naming this, else its close."""
+    wanted = list(wanted_labels)
+
+    def answer(*_args, **kwargs):
+        buttons = list(kwargs.get("buttons") or ())
+        hit = [at for at, label in enumerate(buttons) if wanted and wanted[0] in label]
+        if hit:
+            wanted.pop(0)
+            return hit[0]
+        return kwargs.get("close_choice", 0)
+
+    return types.SimpleNamespace(displayMessage=answer, setStatusMessage=lambda *a, **k: None,
+                                 selectFromList=lambda *a, **k: ())
+
+
 class _HighlightCase:
     """A shown fixture panel on section KEY, and the gestures that move its sidebar."""
 
@@ -243,9 +259,9 @@ class _AssetSidebarPaths(_HighlightCase):
 
         def clean_up():
             self.stand()
-            with mock.patch.object(hou, "ui", _ui(), create=True):
-                panel.cleanup_db()
-        self.check("Clean Up", clean_up, grid="Kept")
+            with mock.patch.object(hou, "ui", _check_ui("Uncategorized", "Put Them There"), create=True):
+                panel.check_library()
+        self.check("Check Library", clean_up, grid="")    # a re-read stands on the first row, as Reload does
 
         def tab_and_back():
             self.stand()
@@ -324,7 +340,7 @@ class CodeSidebarTest(_AssetSidebarPaths, unittest.TestCase):
 
 
 class FileSidebarTest(_HighlightCase, unittest.TestCase):
-    """Locations and their subfolders, the moves, and the Clean Up that sets a location aside."""
+    """Locations and their subfolders, the moves, and the Check Library that sets one aside."""
 
     KEY = "file"
 
@@ -470,7 +486,7 @@ class FileSidebarTest(_HighlightCase, unittest.TestCase):
         self.check("a library switch", self.switch_library)
 
     def test_a_location_set_aside_or_located_from_the_blank(self):
-        """Clean Up and the blank's Locate come through the panel's own doors."""
+        """Check Library and the blank's Locate come through the panel's own doors."""
         panel = self.panel
         made = tempfile.mkdtemp(prefix="amaze_gone_location_")
         self.addCleanup(shutil.rmtree, made, ignore_errors=True)
@@ -479,9 +495,9 @@ class FileSidebarTest(_HighlightCase, unittest.TestCase):
         def clean_up():
             self.stand(gone)
             shutil.rmtree(gone)
-            with mock.patch.object(hou, "ui", _ui(), create=True):
-                panel.cleanup_db()
-        self.check("Clean Up sets the browsed location aside", clean_up, grid="")
+            with mock.patch.object(hou, "ui", _check_ui("Set Aside", "Set Them Aside"), create=True):
+                panel.check_library()
+        self.check("Check Library sets the browsed location aside", clean_up)
 
         missing = tempfile.mkdtemp(prefix="amaze_missing_location_")
         self.add(missing)

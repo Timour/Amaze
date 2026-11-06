@@ -2766,14 +2766,30 @@ class ALocationWriteIsAnnouncedOnlyWhenItLandsTest(unittest.TestCase):
             "old rows until the views are told")
 
 
-class CleanupPrunesThroughTheModelTest(unittest.TestCase):
-    """Clean Library drops dead location pointers through the MODEL - the rows come straight out of prefs, so a bare prefs write changes the count with no structural signal (research.md ▸ A BARE layoutChanged.emit() SEGFAULTS H21 TOO); three locations with the live one BETWEEN the dead two, the setup a low-row-first removal fails on."""
+def _check_ui(*wanted_labels):
+    """`hou.ui` for Check Library: each box presses the next button naming this, else its close."""
+    wanted, shown = list(wanted_labels), []
+
+    def answer(text, *_args, **kwargs):
+        shown.append(text)
+        buttons = list(kwargs.get("buttons") or ())
+        hit = [at for at, label in enumerate(buttons) if wanted and wanted[0] in label]
+        if hit:
+            wanted.pop(0)
+            return hit[0]
+        return kwargs.get("close_choice", 0)
+
+    return mock.Mock(displayMessage=answer, selectFromList=lambda *a, **k: (), shown=shown)
+
+
+class CheckLibraryResetsTheFolderModelTest(unittest.TestCase):
+    """Dead locations leave the prefs, and the File model is reset before any box is shown."""
 
     @classmethod
     def setUpClass(cls):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
 
-    def test_dead_locations_go_through_beginRemoveRows(self):
+    def test_dead_locations_go_with_a_structural_signal(self):
         panel = self.panel
         model = panel.file_folders_model
         dead_a, alive, dead_b = [
@@ -2787,20 +2803,23 @@ class CleanupPrunesThroughTheModelTest(unittest.TestCase):
         for path in (dead_a, dead_b):
             shutil.rmtree(path)
 
-        removed = []
-        model.rowsRemoved.connect(
-            lambda _parent, first, last: removed.append((first, last)))
-        before = model.rowCount()
-        from amaze.actions import clean
-        clean.clean_folders_and_favorites(panel.prefs, panel.file_folders_model)
+        told = []
+        model.rowsRemoved.connect(lambda *_a: told.append("rows"))
+        model.modelReset.connect(lambda: told.append("reset"))
+        from amaze.dialogs import repair_dialog
+        real = repair_dialog._say
 
-        self.assertEqual(
-            2, len(removed),
-            "cleanup dropped %d location(s) with %d rowsRemoved - the "
-            "model's rows come straight from prefs, so a write there "
-            "with no structural signal leaves every attached view on a "
-            "stale row count"
-            % (before - model.rowCount(), len(removed)))
+        def say(text):
+            told.append("said")
+            real(text)
+
+        with mock.patch.object(hou, "ui", _check_ui("Set Aside", "Set Them Aside"), create=True), \
+                mock.patch.object(repair_dialog, "_say", say):
+            panel.check_library()
+
+        self.assertIn("said", told, "premise: nothing was set aside")
+        self.assertNotEqual("said", told[0], "the done box came up before the model was told, "
+                                             "so a view paints a stale row count under it")
         survivors = list(panel.prefs.file_folders)
         self.assertIn(    # the locations API answers CANONICAL absolutes, so the expectation converts too
             hostos.canonical_path_key(alive), survivors,
@@ -2812,11 +2831,10 @@ class CleanupPrunesThroughTheModelTest(unittest.TestCase):
                 "aimed at a row the first one had already shifted")
 
 
-class CleanUpLibraryReachesTheFoldersTest(unittest.TestCase):
-    """Clean Up Library's one pass ends with the folder pointers, not only the asset lists."""
+class CheckLibraryReachesTheFoldersTest(unittest.TestCase):
+    """Check Library reports the folder pointers too, not only the asset lists, and sets them aside."""
 
-    def test_a_dead_location_is_dropped_and_reported(self):
-        from amaze.actions import clean
+    def test_a_dead_location_is_named_set_aside_and_said(self):
         panel = test_support.fixture_panel(self)
         dead = tempfile.mkdtemp(prefix="amaze_dead_location_")
         self.addCleanup(shutil.rmtree, dead, ignore_errors=True)
@@ -2824,17 +2842,18 @@ class CleanUpLibraryReachesTheFoldersTest(unittest.TestCase):
         panel.file_folders_model.add_folder(dead)
         shutil.rmtree(dead)
 
-        sections = clean.clean_library(
-            panel.prefs, panel.material_model, panel.category_model,
-            panel.cop_model, panel.cop_category_model, panel.file_folders_model)
+        screen = _check_ui("Set Aside", "Set Them Aside")
+        with mock.patch.object(hou, "ui", screen, create=True):
+            panel.check_library()
 
         self.assertNotIn(hostos.canonical_path_key(dead), list(panel.prefs.file_folders),
-                         "Clean Up Library left a location whose folder is gone")
-        self.assertTrue([s for s in sections if s.startswith("Folders and favorites:")],
-                        "the report does not say which locations went")
+                         "Check Library left a location whose folder is gone")
+        self.assertIn(dead, screen.shown[0], "the report does not name the location")
+        self.assertTrue([text for text in screen.shown if text.startswith("Set aside 1 folder")],
+                        "nothing says the location was set aside")
 
 
-class CleanupPrunesOnlyFileFavouritesTest(unittest.TestCase):
+class CheckLibraryDropsOnlyFileStarsTest(unittest.TestCase):
     """The favourites store holds every section's stars; only a File one names a file to check."""
 
     def test_a_material_star_survives_and_a_dead_file_star_goes(self):
@@ -2849,17 +2868,19 @@ class CleanupPrunesOnlyFileFavouritesTest(unittest.TestCase):
         self.assertTrue(locations_mod.is_favourite(panel.prefs, dead),
                         "premise: the File star did not set")
 
-        from amaze.actions import clean
-        lines = clean.clean_folders_and_favorites(panel.prefs, panel.file_folders_model)
+        from amaze.core import repair
+        findings = repair.survey(panel.prefs)
+        lines = repair.report_lines(findings)
+        repair.drop_dead_stars(findings, guard=False)
 
         self.assertTrue(
             locations_mod.is_favourite(panel.prefs, mat_id),
-            "Clean Library removed a material's star - its bare asset id "
+            "Check Library removed a material's star - its bare asset id "
             "was checked as a file path, and no file is named like an id")
         self.assertNotIn(str(mat_id), "\n".join(lines),
                          "the report lists a material id as a gone file")
         self.assertFalse(locations_mod.is_favourite(panel.prefs, dead),
-                         "a favourite whose file is gone survived Clean")
+                         "a favourite whose file is gone survived Check Library")
 
     def test_the_offline_copy_lists_no_asset_star_as_a_file(self):
         shape = LocationsFollowTheLibraryTest.REAL_SHAPE
@@ -2880,7 +2901,7 @@ class CleanupPrunesOnlyFileFavouritesTest(unittest.TestCase):
             "the offline copy hands a material id to the File favourites")
 
 
-class CleanUpSetsAFolderMissingHereAsideTest(unittest.TestCase):
+class CheckLibrarySetsAFolderMissingHereAsideTest(unittest.TestCase):
     """A folder missing HERE may be on another machine: its pointer goes, its files' state waits."""
 
     ICON = {"name": "activity", "bg": "#ff8000"}
@@ -2919,21 +2940,26 @@ class CleanUpSetsAFolderMissingHereAsideTest(unittest.TestCase):
         return [hostos.canonical_path_key(p) for p in self.prefs.file_folders]
 
     def _clean_while_elsewhere(self):
-        from amaze.actions import clean
+        from amaze.core import repair
         os.rename(self.folder, self.folder + ".elsewhere")
-        return clean.clean_folders_and_favorites(self.prefs, self.model)
+        findings = dict(repair._files_section(self.prefs), preferences=self.prefs, leftovers=[])
+        lines = repair.report_lines(dict(findings, directory=self.prefs.dir, lists=[],
+                                         unreadable_folders=[], unaccounted={}, complete=True))
+        repair.set_aside_folders(findings, guard=False)
+        return lines
 
     def test_the_pointer_goes_and_what_its_files_carry_stays(self):
         lines = self._clean_while_elsewhere()
         self.assertNotIn(hostos.canonical_path_key(self.folder), self._registered(),
-                         "Clean Up kept the pointer of a folder that is not here")
+                         "Check Library kept the pointer of a folder that is not here")
         self.assertEqual(self.lid, locations_mod.location_id(self.prefs, self.folder),
                          "the location's identity went with its pointer")
         self.assertEqual((True, True, True), self._kept(),
                          "comment, icon and star of a file in it were deleted")
         said = [line for line in lines if os.path.basename(self.folder) in line]
         self.assertEqual(1, len(said), lines)
-        self.assertIn("set aside", said[0])
+        self.assertIn("aside", said[0])
+        self.assertIn("keeps its comments, icons and favorites", said[0])
         self.assertNotIn("removed", said[0])
 
     def test_the_folder_coming_back_brings_them_with_it(self):

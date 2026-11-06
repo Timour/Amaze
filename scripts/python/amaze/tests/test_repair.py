@@ -1,4 +1,4 @@
-"""Repair: the way out of Clean Library's refusal, and the route to it."""
+"""Check Library: the report, its actions, and the shelf tool that reaches them."""
 
 import ast
 import datetime
@@ -42,6 +42,7 @@ class _Case(unittest.TestCase):
     """A private copy of the fixture library and a clean registry."""
 
     COP_ID = "COPOWNED1"
+    KEPT = [{"id": "KEPTNODE1", "name": "Kept", "categories": ["Kept"]}]    # a Node list not empty
 
     def setUp(self):
         self.prefs = test_support.fixture_prefs(self)
@@ -79,6 +80,14 @@ class _Case(unittest.TestCase):
         with open(path, encoding="utf-8-sig") as handle:
             return json.load(handle)
 
+    def _without_the_legacy_row(self):
+        """The fixture's odd row with no files and no category taken out: a healthy library."""
+        index = os.path.join(self.dir, "library.json")
+        document = self._read(index)
+        document["assets"] = [row for row in document["assets"]
+                              if str(row.get("id")) != "-1"]
+        self._write(index, document)
+
     def _run(self, buttons, listed=None):
         ui = MagicMock()
         ui.displayMessage.side_effect = list(buttons)
@@ -92,13 +101,14 @@ class TheReportSaysWhatIsWrongTest(_Case):
     """A report nobody can act on is a log with a dialog around it."""
 
     def test_a_healthy_library_says_so_and_offers_nothing_to_fix(self):
+        self._without_the_legacy_row()
         findings = self._survey()
         self.assertTrue(findings["complete"])
         self.assertEqual(0, repair.unaccounted_total(findings))
         text = "\n".join(repair.report_lines(findings))
-        self.assertIn("the list reads fine", text)
-        self.assertIn("Every file in the library's own folders is "
-                      "accounted for", text)
+        self.assertIn("Every list reads fine: ", text)
+        self.assertIn("Every file in `mat/`, `img/` and `captures/` belongs to a "
+                      "material or node on the lists.", text)
         choices, actions = repair_dialog._choices(findings, may_change=True)
         self.assertEqual(["Close"], choices,
                          "Repair offered an action on a library with "
@@ -157,15 +167,16 @@ class TheReportSaysWhatIsWrongTest(_Case):
                          "adding files to a list was offered while another "
                          "list could not be read")
         with self.assertRaises(ValueError):
-            repair.quarantine(findings)
+            repair.move_aside(findings, "unlisted")
 
     def test_a_list_that_has_not_arrived_is_told_apart_from_a_new_one(self):
         """Absent is new only when nothing says the file was ever here."""
         blank = self._survey()
         nodes = [e for e in blank["lists"] if e["filename"] == "cops.json"][0]
         self.assertEqual("absent", nodes["state"])
-        self.assertIn("Node: nothing saved here yet.",
-                      "\n".join(repair.report_lines(blank)))
+        unsaved = "\n".join(repair.report_lines(blank)).split("Nothing is saved yet in ")
+        self.assertEqual(2, len(unsaved), "absent lists are not said once, together")
+        self.assertIn("Node", unsaved[1].split(".")[0])
 
         self._write(self.cops + ".bak-1", {"assets": [{"id": self.COP_ID}]})
         findings = self._survey()
@@ -177,7 +188,7 @@ class TheReportSaysWhatIsWrongTest(_Case):
         self.assertIn("Amaze can see there was one here before", text,
                       "the report does not say the list was here before")
         self.assertIn("still be on its way", text)
-        self.assertIn("run Repair again", text,
+        self.assertIn("run Check Library again", text,
                       "a list that may still be arriving is reported with "
                       "no next step")
         self.assertNotIn("cops.json.bak-1", text,
@@ -238,6 +249,7 @@ class TheReportSaysWhatIsWrongTest(_Case):
 
     def test_a_folder_it_could_not_read_is_not_called_accounted_for(self):
         """A neutral value makes a failure indistinguishable from an empty result."""
+        self._without_the_legacy_row()
         shutil.rmtree(self.mat_dir)
         findings = self._survey()
         self.assertEqual([self.prefs.asset_dir],
@@ -248,7 +260,7 @@ class TheReportSaysWhatIsWrongTest(_Case):
             "complete, so files could have been moved on a guess")
         text = "\n".join(repair.report_lines(findings))
         self.assertIn("could not look inside the mat folder", text)
-        self.assertNotIn("is accounted for by a section", text,
+        self.assertNotIn("belongs to a material or node on the lists", text,
                          "Repair reported a folder it could not read as "
                          "accounted for")
         choices, actions = repair_dialog._choices(findings, may_change=True)
@@ -256,11 +268,11 @@ class TheReportSaysWhatIsWrongTest(_Case):
                          "an action was offered while a whole folder was "
                          "unread")
         with self.assertRaises(ValueError):
-            repair.quarantine(findings)
+            repair.move_aside(findings, "unlisted")
 
     def test_the_two_buttons_say_how_many_files_each_one_acts_on(self):
         """Two buttons act on two different sets, so each says its own count."""
-        self._cops([])
+        self._cops(self.KEPT)
         self._pair()
         with open(os.path.join(self.mat_dir, "HALFONLY2.mat"), "w",
                   encoding="utf-8") as handle:
@@ -338,11 +350,11 @@ class MovingFilesAsideTest(_Case):
     """Quarantine: the strongest thing Repair may do."""
 
     def test_files_are_moved_not_deleted_and_keep_their_bytes(self):
-        self._cops([])
+        self._cops(self.KEPT)
         paths = self._pair()
         before = {os.path.basename(p): open(p, "rb").read() for p in paths}
         findings = self._survey()
-        result = repair.quarantine(findings)
+        result = repair.move_aside(findings, "unlisted")
         for path in paths:
             self.assertFalse(os.path.exists(path),
                              "%s was left where it was" % path)
@@ -361,9 +373,9 @@ class MovingFilesAsideTest(_Case):
     def test_the_folder_is_THE_quarantine_not_a_second_one(self):
         """One quarantine for both tools, machine-local, with the 30-day window."""
         from amaze.core import library as library_mod
-        self._cops([])
+        self._cops(self.KEPT)
         self._pair()
-        result = repair.quarantine(self._survey())
+        result = repair.move_aside(self._survey(), "unlisted")
         self.assertEqual(
             os.path.normpath(quarantine.quarantine_folder(self.dir)),
             os.path.normpath(result["folder"]),
@@ -375,14 +387,14 @@ class MovingFilesAsideTest(_Case):
 
     def test_a_second_round_the_same_day_keeps_the_first_copy(self):
         """`os.replace` overwrites, and the holding folder is named per day."""
-        self._cops([])
+        self._cops(self.KEPT)
         path = os.path.join(self.mat_dir, self.COP_ID + ".mat")
         with open(path, "w", encoding="utf-8") as handle:
             handle.write("ROUND ONE BYTES\n")
-        first = repair.quarantine(self._survey())
+        first = repair.move_aside(self._survey(), "unlisted")
         with open(path, "w", encoding="utf-8") as handle:
             handle.write("ROUND TWO BYTES\n")
-        second = repair.quarantine(self._survey())
+        second = repair.move_aside(self._survey(), "unlisted")
         self.assertEqual(first["folder"], second["folder"],
                          "premise: both rounds must land in the same dated "
                          "folder, or the collision cannot happen")
@@ -398,9 +410,9 @@ class MovingFilesAsideTest(_Case):
 
     def test_the_quarantine_folder_is_invisible_to_the_next_sweep(self):
         """A top-level folder is in neither list the next sweep walks."""
-        self._cops([])
+        self._cops(self.KEPT)
         self._pair()
-        result = repair.quarantine(self._survey())
+        result = repair.move_aside(self._survey(), "unlisted")
         again = self._survey()
         self.assertEqual(0, repair.unaccounted_total(again),
                          "the files aside are still counted as unclaimed, "
@@ -681,6 +693,8 @@ class AMissingListComesBackFromItsFilesTest(_Case):
         half = os.path.join(self.mat_dir, "HALFONLY1.mat")
         with open(half, "w", encoding="utf-8") as handle:
             handle.write("no .interface beside me\n")
+        self._write(self.index, dict(self.EMPTY, assets=[    # an empty list would hold them all
+            {"id": "KEEPER01", "name": "Keeper", "categories": ["Fabric"]}]))
         findings = self._survey()
         choices, actions = repair_dialog._choices(findings, may_change=True)
         self.assertIn("Move 1 File Aside", choices,
@@ -1071,10 +1085,10 @@ class TheGuardsTest(_Case):
         self.assertTrue(repair.session_has_a_library_open(), "premise")
         with self.assertRaises(restore_lib.RestoreRefused) as caught:
             repair.put_back(findings, "cops.json", "bak-1")
-        self.assertIn("quit Houdini", str(caught.exception),
+        self.assertIn("open Amaze and use Library ▸ Check Library…", str(caught.exception),
                       "the refusal does not say the step that works")
         with self.assertRaises(ValueError):
-            repair.quarantine(findings)
+            repair.move_aside(findings, "unlisted")
         with self.assertRaises(ValueError):
             repair.reattach(findings, "cops.json")
         self.assertEqual([], self._read(self.cops)["assets"],
@@ -1108,7 +1122,7 @@ class TheGuardsTest(_Case):
         self.assertIn(prefs.dir, said,
                       "the message does not name the folder it cannot "
                       "reach, so nobody can tell which drive to connect")
-        self.assertIn("connect it and run Repair again", said)
+        self.assertIn("connect it and run Check Library again", said)
         self.assertNotIn("has no library folder", said,
                          "an unreachable library is reported as no library "
                          "at all, which is a wrong diagnosis")
@@ -1141,11 +1155,8 @@ class TheWholeFlowTest(_Case):
             ui = self._run(buttons=[0])
         said = str(ui.displayMessage.call_args_list[0])
         self.assertIn("Amaze is open", said)
-        # Closing a tab does not empty the registry; only a restart does.
-        self.assertIn("Quit Houdini", said,
-                      "the refusal names a next step that cannot bring the "
-                      "buttons back")
-        self.assertNotIn("Close Amaze, then run Repair again", said)
+        self.assertIn(messages.CHECK_LIBRARY_IN_THE_PANEL, said,
+                      "the refusal does not send the user to the panel's own door")
         self.assertEqual(1, ui.displayMessage.call_count,
                          "it carried on past the refusal")
 
@@ -1162,7 +1173,7 @@ class TheWholeFlowTest(_Case):
         self.assertEqual(("Close",), shown[1]["buttons"],
                          "an action was offered to a session whose next "
                          "save would write over it")
-        self.assertIn("Quit Houdini", str(shown),
+        self.assertIn(messages.CHECK_LIBRARY_ONLY_A_REPORT, shown[0][0],
                       "nothing tells the user how to get the buttons back")
         for word in ("session", "index", "record", "row", "database",
                      "merge", "schema", "stale"):
@@ -1187,7 +1198,7 @@ class TheWholeFlowTest(_Case):
                       "the confirm gives both numbers and never says what "
                       "the change is")
         self.assertIn("not be there afterwards", confirm)
-        self.assertIn("run Repair again", confirm,
+        self.assertIn("run Check Library again", confirm,
                       "the confirm does not say how the restore could be "
                       "undone")
         self.assertEqual(["OLD1"],
@@ -1206,7 +1217,7 @@ class TheWholeFlowTest(_Case):
             "something")
 
     def test_the_quarantine_flow_moves_and_says_where(self):
-        self._cops([])
+        self._cops(self.KEPT)
         paths = self._pair()
         findings = self._survey()
         choices, actions = repair_dialog._choices(findings, may_change=True)
@@ -1292,7 +1303,8 @@ class TheSettingsComeBackTest(_Case):
         ui.displayMessage.return_value = 1    # declined
         with patch.object(hou, "ui", ui, create=True):
             repair_dialog._do_restore_settings(
-                findings, "bak-1", dict(findings["settings"]["snapshots"])["bak-1"])
+                findings, "bak-1", dict(findings["settings"]["snapshots"])["bak-1"],
+                guard=True, changed=lambda: None)
         self.assertIn("offers that copy back",
                       ui.displayMessage.call_args.kwargs["help"])
 
@@ -1418,34 +1430,29 @@ class TheSettingsComeBackTest(_Case):
         self.assertEqual(before, self._read(self.settings))
 
 
-class TheRouteFromCleanLibraryTest(_Case):
-    """The step a refusal names must actually work, so the route is tested."""
+class TheShelfToolAndWhatItReportsTest(_Case):
+    """The shelf tool is the way in when the panel will not open, so its route is tested."""
 
-    def _clean(self, model):
-        with patch.object(hou, "ui", MagicMock(), create=True):
-            model.cleanup_db()
+    def _list_entry(self, findings, filename):
+        return next(entry for entry in findings["lists"] if entry["filename"] == filename)
 
-    def _material_model(self):
-        from amaze.core import library as library_mod
-        return library_mod.MaterialLibrary(preferences=self.prefs)
-
-    def test_the_shelf_carries_a_tool_labelled_exactly_repair(self):
+    def test_the_shelf_carries_a_tool_labelled_check_library(self):
         root = ET.parse(SHELF).getroot()
         tools = {tool.get("name"): tool for tool in root.findall("tool")}
         self.assertIn("amaze_repair_library", tools,
-                      "Clean Library sends the user to a tool that is not "
-                      "on the shelf")
+                      "the shelf tool the panel cannot do without is not on the shelf")
         tool = tools["amaze_repair_library"]
-        self.assertEqual("Repair", tool.get("label"))
+        self.assertEqual("Check Library", tool.get("label"))
+        self.assertIn("Library ▸ Check Library…", tool.find("helpText").text,
+                      "the help does not name the panel's own door")
         shelves = {shelf.get("name"): [m.get("name") for m in
                                        shelf.findall("memberTool")]
                    for shelf in root.findall("toolshelf")}
         self.assertIn("amaze_repair_library", shelves.get("amaze", []),
-                      "the tool exists but is not on the Amaze shelf, so "
-                      "the tab the refusal names does not show it")
+                      "the tool exists but is not on the Amaze shelf")
         self.assertIn("Amaze", [shelf.get("label")
                                 for shelf in root.findall("toolshelf")],
-                      "the tab the refusal tells them to add has no label")
+                      "the Amaze shelf has no label")
 
     def test_the_tool_uses_the_committed_icon_in_the_family(self):
         """The two icons are compared to each other, never to a frozen number."""
@@ -1488,66 +1495,53 @@ class TheRouteFromCleanLibraryTest(_Case):
                          "the Repair tool reaches for the panel, which is "
                          "the one thing it must not need")
 
-    def test_the_refusal_names_repair_and_repair_then_clears_it(self):
+    def test_an_empty_list_is_named_and_its_files_wait_until_it_is_settled(self):
         """The whole route in one test, every step the real code."""
         self._cops([])
         paths = self._pair()
-        model = self._material_model()
-        self._clean(model)
-        summary = " ".join(model.last_cleanup_summary)
-        self.assertIn("Repair tool on the Amaze shelf", summary,
-                      "the refusal does not name the way out")
-        for path in paths:
-            self.assertTrue(os.path.exists(path),
-                            "Clean Library deleted the files it refused "
-                            "over")
-
-        test_support.reset_database_singletons()
-        findings = repair.survey(self.dir, self.prefs.asset_dir,
-                                 self.prefs.img_dir)
+        findings = self._survey()
+        text = "\n".join(repair.report_lines(findings))
+        self.assertIn("Node: the list is there and holds nothing.", text)
+        self.assertIn("COPOWNED1.mat", text, "the files left behind are not named")
         self.assertEqual(2, repair.unaccounted_total(findings),
-                         "Repair does not see what Clean Library refused "
-                         "over - the two tools disagree about the folder")
-        repair.quarantine(findings)
+                         "the report and the move disagree about the folder")
+        with self.assertRaises(ValueError):
+            repair.move_aside(findings, "unlisted")
+        for path in paths:
+            self.assertTrue(os.path.exists(path), "files an empty list may own were moved")
+        self.assertIn("reattach", repair_dialog._choices(findings, may_change=True)[1])
+        repair.reattach(findings, "cops.json")
 
-        test_support.reset_database_singletons()
-        again = self._material_model()
         leftover = os.path.join(self.img_dir, "GONEMATERIAL1.png")
         with open(leftover, "wb") as handle:
             handle.write(b"a thumbnail whose material is gone")
-        self._clean(again)
-        summary = " ".join(again.last_cleanup_summary)
-        self.assertNotIn(
-            "Amaze could not check", summary,
-            "Clean Library still refuses after Repair did everything it "
-            "offers - the way out does not work, which is the exact "
-            "failure this route was built to avoid")
-        self.assertFalse(os.path.exists(leftover),
-                         "the sweep reported no refusal and still did not "
-                         "run")
+        again = self._survey()
+        self.assertEqual(["GONEMATERIAL1.png"], again["unaccounted"][self.prefs.img_dir])
+        self.assertEqual([], again["unaccounted"][self.prefs.asset_dir],
+                         "files moved aside are still reported, so the way out does not work")
+        repair.move_aside(again, "unlisted")
+        self.assertFalse(os.path.exists(leftover), "the next round did not move the stray")
 
-    def test_a_later_leftover_goes_through_repair_too_while_a_list_is_empty(
-            self):
-        """The price of the strict guard: while a section lists nothing, Repair owns it."""
+    def test_a_later_leftover_waits_while_a_list_is_empty(self):
+        """An empty list may own a file in the asset folder, so it stays until the list is settled."""
         self._cops([])
-        model = self._material_model()
         later = os.path.join(self.mat_dir, "GENUINELEFTOVER2.mat")
         with open(later, "w", encoding="utf-8") as handle:
             handle.write("in no list at all\n")
-        self._clean(model)
-        self.assertIn("Repair tool on the Amaze shelf",
-                      " ".join(model.last_cleanup_summary))
-        self.assertTrue(os.path.exists(later),
-                        "Clean Library swept it after all, and this test no "
-                        "longer describes what the guard does")
-        test_support.reset_database_singletons()
-        result = repair.quarantine(self._survey())
+        findings = self._survey()
+        self.assertIn("GENUINELEFTOVER2.mat", findings["unaccounted"][self.prefs.asset_dir])
+        self.assertEqual(0, repair.files_to_move_aside(findings))
+        with self.assertRaises(ValueError):
+            repair.move_aside(findings, "unlisted")
+        self.assertTrue(os.path.exists(later))
+        self._cops(self.KEPT)
+        result = repair.move_aside(self._survey(), "unlisted")
         self.assertEqual(["GENUINELEFTOVER2.mat"], result["moved"])
         self.assertFalse(os.path.exists(later))
 
-    def test_repair_and_clean_library_count_the_same_files(self):
-        """One classifier, two tools: two numbers about one folder is a bug."""
-        self._cops([])
+    def test_the_button_count_and_the_move_agree(self):
+        """One classifier: the count on Move Files Aside is the files it moves."""
+        self._cops(self.KEPT)
         self._pair()
         for name, body in (("STRAY1.mat.writing", "x\n"), ("notes.txt", "x\n"),
                            ("STRAY2_cop.mat", "x\n"),
@@ -1556,16 +1550,8 @@ class TheRouteFromCleanLibraryTest(_Case):
             with open(os.path.join(self.mat_dir, name), "w",
                       encoding="utf-8") as handle:
                 handle.write(body)
-        model = self._material_model()
-        ids = {str(a.mat_id) for a in model.assets}
-        clean = model._files_no_section_accounts_for(ids)
-        mine = repair.survey(self.dir, self.prefs.asset_dir,
-                             self.prefs.img_dir)["unaccounted"][
-                                 self.prefs.asset_dir]
-        self.assertEqual(
-            sorted(clean), sorted(mine),
-            "Clean Library's empty-section guard and Repair disagree about "
-            "which files the sweep would move")
+        findings = self._survey()
+        mine = findings["unaccounted"][self.prefs.asset_dir]
         self.assertIn("STRAY2_cop.mat", mine,
                       "premise: a companion file must be in the set, or "
                       "this is not comparing the tail-stripping rule")
@@ -1573,29 +1559,37 @@ class TheRouteFromCleanLibraryTest(_Case):
                       "premise: a stray builder sidecar must be in the set")
         self.assertNotIn("STRAY1.mat.writing", mine,
                          "premise: a scratch file must be out of the set")
+        self.assertNotIn("notes.txt", mine, "premise: an unknown file is not unlisted")
+        counted = repair.files_to_move_aside(findings)
+        result = repair.move_aside(findings, ("unlisted", "leftovers"))
+        self.assertEqual(counted, len(result["moved"]),
+                         "the button counted one set of files and the move took another")
+        self.assertEqual([], result["failed"])
 
-    def test_an_unreadable_colors_list_holds_the_sweep_back(self):
+    def test_an_unreadable_colors_list_holds_the_move_back(self):
         """Colors claims ids like every other list, so a Colors file that will not parse stops it."""
         with open(os.path.join(self.dir, "gradients.json"), "w",
                   encoding="utf-8") as handle:
             handle.write('{"assets": [{"id": "c0de')
-        model = self._material_model()
-        self._clean(model)
-        self.assertIn("Color (gradients.json): Amaze cannot read it.",
-                      model.last_cleanup_summary)
+        findings = self._survey()
+        self.assertEqual("unreadable", self._list_entry(findings, "gradients.json")["state"])
+        self.assertFalse(findings["complete"])
+        self.assertIn("Color: the list is there and Amaze cannot read it. It has not been changed.",
+                      "\n".join(repair.report_lines(findings)))
 
-    def test_a_missing_colors_list_with_a_trace_holds_the_sweep_back(self):
+    def test_a_missing_colors_list_with_a_trace_holds_the_move_back(self):
         with open(os.path.join(self.dir, ".amaze_gradient_seed_v1"), "w",
                   encoding="utf-8") as handle:
             handle.write("seeded\n")
-        model = self._material_model()
-        self._clean(model)
-        self.assertIn("Color (gradients.json): it is not there yet - "
-                      ".amaze_gradient_seed_v1 beside it says it was here",
-                      " ".join(model.last_cleanup_summary))
+        findings = self._survey()
+        self.assertEqual("absent-but-known",
+                         self._list_entry(findings, "gradients.json")["state"])
+        self.assertFalse(findings["complete"])
+        self.assertIn("Color: there is no list for it in the library folder, though Amaze can "
+                      "see there was one here before.", "\n".join(repair.report_lines(findings)))
 
     def test_a_saved_palette_does_not_hold_back_an_empty_list(self):
-        """The Colors list claims a palette's stamp, as Repair's survey reads it."""
+        """The Colors list claims a palette's stamp, so it is neither unlisted nor moved."""
         from amaze.core import gradient_library
         self._cops([])
         palettes = gradient_library.GradientLibrary(self.prefs)
@@ -1607,19 +1601,14 @@ class TheRouteFromCleanLibraryTest(_Case):
                              + material.STAMP_SUFFIX)
         self.assertTrue(os.path.exists(stamp),
                         "premise: a saved palette writes a recovery stamp")
+        test_support.reset_database_singletons()    # an action refuses a library this process holds
+        findings = self._survey()
+        self.assertTrue(findings["complete"], "one saved palette held the whole move back")
         self.assertNotIn(os.path.basename(stamp),
-                         self._survey()["unaccounted"][self.prefs.asset_dir],
-                         "premise: Repair counts the stamp as listed")
-        model = self._material_model()
-        self._clean(model)
-        summary = " ".join(model.last_cleanup_summary)
-        self.assertNotIn(
-            "Amaze could not check", summary,
-            "one saved palette held the whole sweep back while the Nodes "
-            "list is empty")
-        self.assertNotIn("Ochre Probe", summary,
-                         "a palette the Colors list holds was reported as "
-                         "not listed in the library")
+                         findings["unaccounted"][self.prefs.asset_dir],
+                         "a palette the Colors list holds was called unlisted")
+        self.assertNotIn("Ochre Probe", "\n".join(repair.report_lines(findings)))
+        repair.move_aside(findings, "unlisted")
         self.assertTrue(os.path.exists(stamp))
 
 
@@ -1665,21 +1654,14 @@ class TheRealLibraryRehearsalTest(unittest.TestCase):
         return repair.survey(self.dir, self.prefs.asset_dir,
                              self.prefs.img_dir)
 
-    def _clean(self):
-        from amaze.core import library as library_mod
-        model = library_mod.MaterialLibrary(preferences=self.prefs)
-        with patch.object(hou, "ui", MagicMock(), create=True):
-            model.cleanup_db()
-        return model
-
     def _cop_ids(self):
         with open(os.path.join(self.live.dir, "cops.json"),
                   encoding="utf-8-sig") as handle:
             return {str(row.get("id"))
                     for row in json.load(handle).get("assets", [])}
 
-    def test_the_real_library_is_coherent_and_sweeps_clean(self):
-        """The accept path: if the guard fires here, Clean Library is broken."""
+    def test_the_real_library_is_coherent_and_nothing_moves(self):
+        """The accept path: if anything is unlisted here, the engine is broken."""
         findings = self._survey()
         self.assertTrue(findings["complete"])
         self.assertEqual(
@@ -1688,15 +1670,14 @@ class TheRealLibraryRehearsalTest(unittest.TestCase):
             % {folder: names[:5]
                for folder, names in findings["unaccounted"].items()})
         before = len(os.listdir(self.mat_dir))
-        model = self._clean()
-        self.assertNotIn("Amaze could not check",
-                         " ".join(model.last_cleanup_summary))
+        result = repair.move_aside(findings, "unlisted")
+        self.assertEqual([], result["moved"])
         self.assertEqual(before, len(os.listdir(self.mat_dir)),
-                         "Clean Library deleted files from a library where "
-                         "every one of them is listed")
+                         "files moved from a library where every one of them is listed")
 
-    def test_the_incident_itself_is_refused_and_repair_undoes_it(self):
-        """A list seeded over a sync placeholder: refused, named, and put back."""
+    def test_the_incident_itself_is_reported_and_put_back_undoes_it(self):
+        """A list seeded over a sync placeholder: named, nothing moved, and put back."""
+        from amaze.dialogs import repair_dialog
         owned = sorted(
             name for name in os.listdir(self.mat_dir)
             if database.asset_id_for_file(
@@ -1707,21 +1688,16 @@ class TheRealLibraryRehearsalTest(unittest.TestCase):
             json.dump({"version": 2, "categories": ["_All"], "tags": [],
                        "assets": []}, handle)
 
-        model = self._clean()
-        summary = " ".join(model.last_cleanup_summary)
-        self.assertIn("Amaze could not check", summary)
-        self.assertIn("Repair tool on the Amaze shelf", summary)
+        findings = self._survey()
+        text = "\n".join(repair.report_lines(findings))
+        self.assertIn("Node: the list is there and holds nothing.", text)
         for name in owned:
             self.assertTrue(
                 os.path.exists(os.path.join(self.mat_dir, name)),
-                "%s was deleted - this is the 21-file loss, reproduced from "
-                "the symptom rather than from the diff" % name)
-
-        findings = self._survey()
+                "%s moved before anyone chose to move it" % name)
         self.assertEqual(
             owned, findings["unaccounted"][self.prefs.asset_dir],
-            "Repair does not report the same asset files Clean Library "
-            "refused over")
+            "the report does not name the same asset files the empty list left behind")
         self.assertGreater(repair.unaccounted_total(findings), len(owned),
                            "the thumbnails those assets own are not "
                            "reported, so the report is narrower than the "
@@ -1729,10 +1705,10 @@ class TheRealLibraryRehearsalTest(unittest.TestCase):
         tiers = [tier for tier, _snap in restore_lib.snapshots(self.cops)]
         self.assertIn("bak-1", tiers,
                       "premise: the real cops.json has a saved copy")
-        test_support.reset_database_singletons()
+        _labels, keys = repair_dialog._choices(findings, may_change=True)
+        self.assertIn("restore", keys, "putting the saved copy back is not offered")
         repair.put_back(findings, "cops.json", "bak-1")
 
-        test_support.reset_database_singletons()
         after = self._survey()
         self.assertTrue(after["complete"])
         after_ids = after["ids"]
@@ -1744,11 +1720,9 @@ class TheRealLibraryRehearsalTest(unittest.TestCase):
             still_unlisted, after["unaccounted"][self.prefs.asset_dir],
             "putting the saved copy back did not account for the files "
             "its rows own, so the recovery does not recover")
-        model = self._clean()
-        self.assertNotIn("Amaze could not check",
-                         " ".join(model.last_cleanup_summary),
-                         "Clean Library still refuses after the list was "
-                         "put back")
+        self.assertNotIn("Node: the list is there and holds nothing.",
+                         "\n".join(repair.report_lines(after)),
+                         "the Node list is still reported empty after it was put back")
 
 
 class TheRealLibrarysWholeShapeTest(unittest.TestCase):
@@ -2266,14 +2240,13 @@ class DeletingAnAssetActuallyDeletesItTest(unittest.TestCase):
                          "a later save brought the deleted material back")
 
 
-class DeadScratchesAreSweptWithAnAgeGateTest(unittest.TestCase):
+class DeadScratchesAreMovedWithAnAgeGateTest(unittest.TestCase):
     """The sweep is age-gated: a fresh scratch may be another session's write."""
 
     def setUp(self):
         self.prefs = test_support.fixture_prefs(self)
         test_support.reset_database_singletons()
         self.addCleanup(test_support.reset_database_singletons)
-        self.model = library_mod.MaterialLibrary(preferences=self.prefs)
         self.config = tempfile.mkdtemp(prefix="amaze_scr_cfg_")
         self.addCleanup(shutil.rmtree, self.config, True)
         real = hostos.config_root
@@ -2289,16 +2262,17 @@ class DeadScratchesAreSweptWithAnAgeGateTest(unittest.TestCase):
         os.utime(full, (old, old))
         return full
 
-    def test_an_old_scratch_is_quarantined_and_nothing_else_moves(self):
+    def test_an_old_scratch_is_moved_aside_and_nothing_else_moves(self):
         """A fresh scratch may be another session's live write, and moved means recoverable."""
         dead = self._scratch("a.mat.xyz123.writing", hours_old=5)
         live = self._scratch("b.mat.abc456.writing", hours_old=0)
         before = sorted(name for name in os.listdir(self.mat_dir)
                         if name != os.path.basename(dead))
-        names = []
-        moved = self.model._sweep_dead_scratches(self.mat_dir, names)
-        self.assertEqual(1, moved)
-        self.assertEqual(["a.mat.xyz123.writing"], names)
+        findings = repair.survey(self.prefs.dir, self.prefs.asset_dir, self.prefs.img_dir)
+        self.assertEqual([self.prefs.asset_dir + "a.mat.xyz123.writing"],
+                         [entry[0] for entry in findings["leftovers"]])
+        result = repair.move_aside(findings, "leftovers")
+        self.assertEqual([self.prefs.asset_dir + "a.mat.xyz123.writing"], result["moved"])
         self.assertFalse(os.path.exists(dead),
                          "a five-hour-old scratch survived - they "
                          "accumulate forever after every hard kill")

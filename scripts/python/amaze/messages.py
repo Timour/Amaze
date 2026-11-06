@@ -4,7 +4,7 @@ from __future__ import annotations
 
 LIBRARY_NOT_SAVED_ANOTHER_PANEL = 'The library was not saved because another Amaze panel is currently linked to a different library.\n\nClose the other panel, or reopen this one, and saving will resume normally.'
 
-SECTION_UNREADABLE_SAVING_DISABLED = 'Your saved %s could not be read, so Amaze has disabled saving to avoid overwriting them.\n\nTo resolve this, close Houdini and restore a recent backup using the Repair tool on the Amaze shelf.'
+SECTION_UNREADABLE_SAVING_DISABLED = 'Your saved %s could not be read, so Amaze has disabled saving to avoid overwriting them.\n\nTo resolve this, use Library ▸ Check Library… and put a saved copy back.'
 
 LIBRARY_FORMAT_AHEAD_READ_ONLY = 'This library was saved by a newer version of Amaze. To prevent data loss, it has been opened in read-only mode. Update Amaze to restore full functionality.'
 
@@ -16,7 +16,7 @@ PALETTE_NOT_DELETED = '"%s" was not deleted because Amaze could not update your 
 
 SAVE_DENIED_WITH_CAUSE = '%s\n\nThis happened because %s.'
 
-ASSET_FILES_WRITTEN_BUT_LIST_NOT_UPDATED = '"%s" was written to disk, but Amaze could not update the library index.\n\nThe item will not appear in the grid until the index is updated.\n\nTo resolve this, restart Houdini and run Repair Library from the Amaze shelf.'
+ASSET_FILES_WRITTEN_BUT_LIST_NOT_UPDATED = '"%s" was written to disk, but Amaze could not update the library index.\n\nThe item will not appear in the grid until the index is updated.\n\nTo resolve this, use Library ▸ Check Library… to add it back.'
 
 ASSET_NOT_SAVED_LIST_NOT_UPDATED = '"%s" was not saved because Amaze could not update the library index.\n\nRestart Houdini and try saving again.'
 
@@ -30,23 +30,23 @@ VERSION_SWITCH_DIVERGED = "The version switch did not finish: the material's fil
 
 UNSAFE_ARCHIVE_PATHS_SKIPPED = '%d file(s) in this download attempted to write outside your library folder and were skipped.\n\nNo data outside your library was affected. The remainder of the material was downloaded successfully.\n\nThis typically indicates a malformed package. If the material appears incorrect, delete it and download it again.'
 
-NO_LIBRARY_FOLDER_CONFIGURED = 'No library folder has been configured for Amaze.\n\nTo resolve this, open Amaze, select a library folder in Preferences, and then run Repair again.'
+NO_LIBRARY_FOLDER_CONFIGURED = 'No library folder has been configured for Amaze.\n\nTo resolve this, open Amaze, select a library folder in Preferences, and then run Check Library again.'
 
-LIBRARY_FOLDER_UNREACHABLE = 'Amaze cannot reach the library folder it is set to use:\n\n%s\n\nIf it is on a drive or in a synced folder, connect it and run Repair again. If you moved the library, open Amaze and point Preferences at the new location.'
+LIBRARY_FOLDER_UNREACHABLE = 'Amaze cannot reach the library folder it is set to use:\n\n%s\n\nIf it is on a drive or in a synced folder, connect it and run Check Library again. If you moved the library, open Amaze and point Preferences at the new location.'
 
-AMAZE_OPEN_STOPS_REPAIR = 'Amaze is open, so Repair stopped before reading anything.\n\nAn open Amaze saves the library while you work. Quit Houdini, start it again, and run Repair before you open Amaze.'
+CHECK_LIBRARY_IN_THE_PANEL = 'Amaze is open, so use Library ▸ Check Library… in the Amaze panel instead.'
 
 CHOSEN_SAVED_COPY_CANNOT_BE_READ = 'That copy of the %s list cannot be read.'
 
 CONFIRM_PUT_SAVED_COPY_BACK = 'Put the %s list back to the copy from %s?'
 
-SAVED_COPY_PUT_BACK_DONE = 'The %s list is back to the copy from %s.\n\nOpen Amaze to look at it. %s'
+SAVED_COPY_PUT_BACK_DONE = 'The %s list is back to the copy from %s.%s\n\n%s'
 
-SETTINGS_UNREADABLE_REPAIR_REPORT = 'Your Amaze settings could not be read, so Repair cannot tell which library to look at.\n\nSaved copies of your settings:\n%s'
+SETTINGS_UNREADABLE_REPAIR_REPORT = 'Your Amaze settings could not be read, so Check Library cannot tell which library to look at.\n\nSaved copies of your settings:\n%s'
 
-SETTINGS_MISSING_REPAIR_REPORT = 'Your Amaze settings file is missing, so Repair cannot tell which library to look at.\n\nSaved copies of your settings:\n%s'
+SETTINGS_MISSING_REPAIR_REPORT = 'Your Amaze settings file is missing, so Check Library cannot tell which library to look at.\n\nSaved copies of your settings:\n%s'
 
-SETTINGS_NO_LIBRARY_REPAIR_REPORT = 'Your Amaze settings have no library folder set, so Repair cannot tell which library to look at.\n\nSaved copies of your settings:\n%s'
+SETTINGS_NO_LIBRARY_REPAIR_REPORT = 'Your Amaze settings have no library folder set, so Check Library cannot tell which library to look at.\n\nSaved copies of your settings:\n%s'
 
 SETTINGS_COPY_LINE_UNREADABLE = '%s - this copy cannot be read'
 
@@ -58,11 +58,11 @@ CONFIRM_PUT_SETTINGS_BACK = 'Put your Amaze settings back to the copy from %s?'
 
 HELP_PUT_SETTINGS_BACK = 'Amaze then opens the library it was set to at that time, with the view it had.%s'
 
-SETTINGS_NOW_SAVED_FIRST = ' The settings you have now are saved beside them first - run Repair again and it offers that copy back.'
+SETTINGS_NOW_SAVED_FIRST = ' The settings you have now are saved beside them first - run Check Library again and it offers that copy back.'
 
 SETTINGS_PUT_BACK_DONE = 'Your Amaze settings are back to the copy from %s.\n\nOpen Amaze to use them.%s'
 
-SETTINGS_EARLIER_COPY_KEPT = ' The settings you had a moment ago are kept too: run Repair again and put back the copy from %s to return to them.'
+SETTINGS_EARLIER_COPY_KEPT = ' The settings you had a moment ago are kept too: run Check Library again and put back the copy from %s to return to them.'
 
 CONFIRM_MOVE_FILES_ASIDE = 'Move %s aside?'
 
@@ -70,15 +70,33 @@ NOTHING_MOVED_ASIDE_REASON = 'Amaze moved nothing: %s.'
 
 FILES_MOVED_ASIDE_SOME_FAILED = "%s moved into Amaze's holding folder on this computer, outside your library, where they are kept for 30 days.\n\n%s could not be moved and remain in place."
 
-FILES_MOVED_ASIDE_DONE = "%s moved into Amaze's holding folder on this computer, outside your library, where they are kept for 30 days.\n\nClean Library will now run again."
+FILES_MOVED_ASIDE_DONE = "%s moved into Amaze's holding folder on this computer, outside your library, where they are kept for 30 days."
+
+CONFIRM_MOVE_UNKNOWN_ASIDE = 'Move the files Amaze does not know aside?'
+
+CONFIRM_SET_ASIDE_FOLDERS = 'Set aside %s in the Files section?'
+
+CONFIRM_REMOVE_DEAD_STARS = 'Remove %s of files that are gone?'
+
+CONFIRM_PUT_IN_UNCATEGORIZED = 'Put %s in %s?'
+
+FOLDERS_SET_ASIDE_DONE = 'Set aside %s in the Files section. Adding a folder again brings back its comments, icons and favorites.%s'
+
+DEAD_STARS_ALSO_REMOVED = ' Removed %s of files that are gone as well.'
+
+DEAD_STARS_REMOVED_DONE = 'Removed %s of files that are gone.'
+
+PUT_IN_UNCATEGORIZED_DONE = 'Put %s in %s.'
 
 CONFIRM_ADD_UNLISTED_TO_SECTION = 'Add %d unlisted %s to %s?'
 
 SECTION_LIST_UNCHANGED_REASON = 'Amaze did not change the %s list: %s.'
 
-UNLISTED_FILES_ADDED_BACK_DONE = '%d %s were restored to %s.\n\nOpen Amaze to review them. Each one came back with the name, category, and tags recorded beside its files.'
+NOTHING_CHANGED_REASON = 'Amaze changed nothing: %s.'
 
-UNLISTED_FILES_ADDED_BACK_SOME_UNNAMED = '%d %s were restored to %s.\n\nOpen Amaze to review them. %d of them had no record beside the files: those are in the %s category, named after their file, and ready to be renamed.'
+UNLISTED_FILES_ADDED_BACK_DONE = '%d %s were restored to %s.\n\nEach one came back with the name, category, and tags recorded beside its files.'
+
+UNLISTED_FILES_ADDED_BACK_SOME_UNNAMED = '%d %s were restored to %s.\n\n%d of them had no record beside the files: those are in the %s category, named after their file, and ready to be renamed.'
 
 TILE_ICON_NOT_SAVED = 'Your tile icon could not be saved.\n\nNo other data has been lost — only this icon selection. The tile will retain its previous icon.\n\nThis occurred because %s.'
 
@@ -100,15 +118,17 @@ PICTURE_COPIED_BUT_UNREADABLE = 'That file was copied but could not be shown as 
 
 LIBRARY_INDEX_UNREADABLE = "The library index could not be read.\n\nRepair will restore the most recent backup. If no backup is available, the index will be rebuilt from each asset's embedded metadata. Category names are preserved, but their order and colors may change during a rebuild. The corrupted file is retained as a backup in either case.\n\nOpen Without Library leaves the folder unchanged."
 
-REPAIR_COULD_NOT_FIX_THE_LIST = 'Repair was unable to restore the index: %s.\n\nAmaze will open without a library. For more details, use the Repair tool on the Amaze shelf.'
+LIBRARY_INDEX_REPAIRED = 'The library index can be read again: %s.'
 
-INDEX_UNREADABLE_AFTER_REPAIR = 'The repaired index still could not be read.\n\nAmaze will open without a library. For more details, use the Repair tool on the Amaze shelf.'
+REPAIR_COULD_NOT_FIX_THE_LIST = 'Repair was unable to restore the index: %s.\n\nAmaze will open without a library. For more details, close Amaze and run Check Library on the Amaze shelf.'
+
+INDEX_UNREADABLE_AFTER_REPAIR = 'The repaired index still could not be read.\n\nAmaze will open without a library. For more details, close Amaze and run Check Library on the Amaze shelf.'
 
 LIBRARY_INDEX_UNREADABLE_SWITCHING = "The library index could not be read.\n\nRepair will restore the most recent backup. If no backup is available, the index will be rebuilt from each asset's embedded metadata. Category names are preserved, but their order and colors may change during a rebuild. The corrupted file is retained as a backup in either case.\n\nCancel leaves the folder unchanged and keeps the library you have open."
 
-REPAIR_COULD_NOT_FIX_THE_LIST_SWITCHING = 'Repair was unable to restore the index: %s.\n\nAmaze keeps the library you have open. For more details, use the Repair tool on the Amaze shelf.'
+REPAIR_COULD_NOT_FIX_THE_LIST_SWITCHING = 'Repair was unable to restore the index: %s.\n\nAmaze keeps the library you have open. For more details, close Amaze and run Check Library on the Amaze shelf.'
 
-INDEX_UNREADABLE_AFTER_REPAIR_SWITCHING = 'The repaired index still could not be read.\n\nAmaze keeps the library you have open. For more details, use the Repair tool on the Amaze shelf.'
+INDEX_UNREADABLE_AFTER_REPAIR_SWITCHING = 'The repaired index still could not be read.\n\nAmaze keeps the library you have open. For more details, close Amaze and run Check Library on the Amaze shelf.'
 
 LIBRARY_INDEX_READ_NOT_PERMITTED = 'this account is not allowed to read it:\n%s\n\nThe permissions on the file, or on a folder above it, have to let this account read it.'
 
@@ -118,7 +138,7 @@ LIBRARY_NOT_OPENED_SWITCHING = 'The library could not be opened because %s\n\nAm
 
 LIBRARY_LIST_NOT_LOADED = 'one of its lists could not be loaded (%s).'
 
-STARTER_SEED_REFUSED_DIRECTORY_HELD_LIBRARY = 'This folder looks like a library whose list has not arrived yet, so Amaze did not set up a new one over it.\n\nIf it lives in a synced folder, let the sync finish and reopen Amaze. If the list really is gone, run Repair Library from the Amaze shelf to rebuild it.'
+STARTER_SEED_REFUSED_DIRECTORY_HELD_LIBRARY = 'This folder looks like a library whose list has not arrived yet, so Amaze did not set up a new one over it.\n\nIf it lives in a synced folder, let the sync finish and reopen Amaze. If the list really is gone, close Amaze and run Check Library on the Amaze shelf to rebuild it.'
 
 NO_FOLDER_SELECTED_TO_RELOCATE = 'Select the registered folder to re-point first ("All" is not a real folder).'
 
@@ -141,8 +161,6 @@ GALLERY_IMPORT_FINISHED_RENDERING = 'Gallery import complete.\n\nImported: %d\nS
 GALLERY_IMPORT_INTERRUPTED = 'Gallery import stopped.\n\nImported: %d\nSkipped: %d\nFailed: %d\n\nTo render them, select the new materials and use Update Render.'
 
 NO_LIBRARY_OPEN = 'Open a library first.'
-
-CLEAN_LIBRARY_CONFIRM = 'Clean Library?'
 
 AMAZE_COULD_NOT = '%d of %d items could not be imported:\n\n%s'
 
@@ -330,9 +348,13 @@ LOG_SAVED_AS = 'Saved as:\n%s'
 
 LOG_NOT_CLEARED = 'the debug log could not be cleared (%s). It is still there, and Debug Mode keeps writing to it.'
 
-REPAIR_ONLY_A_REPORT_NOW = 'Repair can only tell you this much right now: Amaze has already read this library since Houdini started, and it would write what it remembers back over anything put right here. Quit Houdini, start it again, and run Repair before you open Amaze - then Repair can also add materials back, put a saved copy back, or move unlisted files aside for you.'
+CHECK_LIBRARY_ONLY_A_REPORT = 'Amaze has already read this library since Houdini started, so this is only a report: open Amaze and use Library ▸ Check Library… to act on it.'
 
-ADD_BACK_WRITES_A_NEW_LIST = ' There is no %s list in the library folder, so Repair writes a new one with these on it.'
+ADD_BACK_WRITES_A_NEW_LIST = ' There is no %s list in the library folder, so Amaze writes a new one with these on it.'
+
+PICK_AN_ACTION = 'What should Amaze do?'
+
+COLUMN_ACTION = 'Action'
 
 PICK_LIST_TO_PUT_BACK = "Which list should Amaze put back? Each line is that list's newest saved copy."
 
@@ -350,7 +372,7 @@ CURRENT_LIST_UNREADABLE = 'The list you have now cannot be read at the moment, s
 
 CURRENT_LIST_COMPARED = 'The list you have now holds %d. Putting this copy back takes you from %d to %d: anything saved to %s since %s is not in this copy and will not be there afterwards.'
 
-LIST_EARLIER_COPY_KEPT = 'The list you had a moment ago is still in the library folder: run Repair again and put back the copy from %s to return to it.'
+LIST_EARLIER_COPY_KEPT = 'The list you had a moment ago is still in the library folder: run Check Library again and put back the copy from %s to return to it.'
 
 NO_EARLIER_LIST = 'There was no list here before, so there is nothing to go back to.'
 
@@ -364,13 +386,27 @@ BUTTON_REPAIR_ADD_TO_SECTION = 'Add %s to a Section'
 
 BUTTON_REPAIR_MOVE_ASIDE = 'Move %s Aside'
 
+BUTTON_MOVE_ONE_UNKNOWN_ASIDE = 'Move 1 Unknown File Aside'
+
+BUTTON_MOVE_UNKNOWN_ASIDE = 'Move %d Unknown Files Aside'
+
+BUTTON_SET_ASIDE_FOLDERS = 'Set Aside %s'
+
+BUTTON_REMOVE_DEAD_STARS = 'Remove %s of Missing Files'
+
+BUTTON_PUT_IN_UNCATEGORIZED = 'Put %s in %s'
+
+BUTTON_SHOW_HOLDING_FOLDER = 'Show Holding Folder'
+
+BUTTON_CHOOSE_AN_ACTION = 'Choose an Action...'
+
 BUTTON_REPAIR_CLOSE = 'Close'
 
 
 
 TITLE_AMAZE = 'Amaze'
 
-TITLE_AMAZE_REPAIR = 'Amaze Repair'
+TITLE_CHECK_LIBRARY = 'Check Library'
 
 TITLE_LOG_NOT_SAVED = 'Amaze — Log not saved'
 
@@ -387,6 +423,12 @@ BUTTONS_PUT_COPY_BACK_OR_OLDER = ('Put This Copy Back', 'Older Copies...', 'Canc
 
 BUTTONS_MOVE_ASIDE = ('Move Them Aside', 'Cancel')
 
+BUTTONS_SET_ASIDE = ('Set Them Aside', 'Cancel')
+
+BUTTONS_REMOVE = ('Remove Them', 'Cancel')
+
+BUTTONS_PUT_THEM_THERE = ('Put Them There', 'Cancel')
+
 BUTTONS_ADD_BACK = ('Add Them Back', 'Cancel')
 
 BUTTONS_REPAIR_OR_OPEN_WITHOUT = ('Repair', 'Open Without Library')
@@ -394,8 +436,6 @@ BUTTONS_REPAIR_OR_OPEN_WITHOUT = ('Repair', 'Open Without Library')
 BUTTONS_REPAIR_OR_CANCEL = ('Repair', 'Cancel')
 
 BUTTONS_IMPORT = ('Import', 'Cancel')
-
-BUTTONS_CLEAN_LIBRARY = ('Clean Library', 'Cancel')
 
 BUTTONS_DELETE = ('Delete', 'Cancel')
 
@@ -416,7 +456,7 @@ BUTTONS_SAVE_VERSION_OR_NEW = ('Save Version', 'Save New', 'Cancel')
 BUTTONS_SAVE_NEW = ('Save New', 'Cancel')
 
 
-HELP_CLEAN_LIBRARY = "Files that nothing in your library uses move into Amaze's holding folder on this computer, outside your library, where they are kept for 30 days. Materials and saved networks whose files are missing stay, and the summary names them.\n\nFile locations whose folder is gone are removed, with their labels, colors, comments, favorites and icons. Favorites of missing files are removed too. This part cannot be undone. Locations and favorites on a drive that is not connected stay."
+HELP_CHECK_LIBRARY = "Check Library looks at every list and folder in your library and changes nothing until you press a button. Anything you move aside goes into Amaze's holding folder on this computer, outside your library, and is kept for 30 days."
 
 HELP_MATERIAL_VERSIONS = 'This applies to everyone who opens this library, on every machine, because it is stored with the library rather than in your preferences.\n\nWith it on, saving over an existing material keeps the previous version instead of replacing it, and the + in the code editor keeps versions of a snippet.'
 
@@ -426,9 +466,23 @@ HELP_LOG_SAVED = 'It contains your file paths, asset and material names - check 
 
 HELP_ADD_BACK = 'Each one comes back with the name, category and tags saved beside its files.%s'
 
-HELP_PUT_SAVED_COPY_BACK = "That copy is from %s and holds %d %s. %s\n\nYour %s' own files and thumbnails are not touched either way, and the list you have now is saved in the library folder first - run Repair again and it offers that copy back."
+HELP_PUT_SAVED_COPY_BACK = "That copy is from %s and holds %d %s. %s\n\nYour %s' own files and thumbnails are not touched either way, and the list you have now is saved in the library folder first - run Check Library again and it offers that copy back."
 
-HELP_MOVE_FILES_ASIDE = "The files no section lists: %s. They move into Amaze's own holding folder on this computer - outside your library, so they do not sync and do not travel. Nothing is deleted today: they are kept for 30 days and named in the report, and moving one back is copying it back.\n\nEverything showing in Amaze stays. Do this only if you have already tried putting a saved copy of a list back: if one of these files belongs to a material whose list was lost, restoring the list is what brings it back."
+HELP_MOVE_FILES_ASIDE = "%s They move into Amaze's own holding folder on this computer - outside your library, so they do not sync and do not travel. Nothing is deleted today: they are kept for 30 days and named in the report, and moving one back is copying it back.\n\nEverything showing in Amaze stays.%s"
+
+HELP_MOVE_UNLISTED = 'The files no section lists: %s.'
+
+HELP_MOVE_LEFTOVERS = 'The files Amaze left behind and no longer needs: %s.'
+
+HELP_MOVE_UNLISTED_LAST = ' Do this only if you have already tried putting a saved copy of a list back: if one of these files belongs to a material whose list was lost, restoring the list is what brings it back.'
+
+HELP_MOVE_UNKNOWN_ASIDE = "These are not files Amaze made or knows: %s. They move into Amaze's holding folder on this computer, outside your library, and are kept for 30 days."
+
+HELP_SET_ASIDE_FOLDERS = "Each folder's comments, icons and favorites are kept, and come back when the folder is added again. Its files are not touched.%s"
+
+HELP_DEAD_STARS_GO_TOO = ' Favorites of files that are gone from a folder still on this computer are removed too.'
+
+HELP_PUT_IN_UNCATEGORIZED = 'Each one has no category now, so it shows only under All.'
 
 HELP_ADD_TO_SECTION = 'Each one keeps the name, category and tags recorded beside its files, and comes back where it was. Anything with no such record comes back in a new category called %s, named %s plus the start of its file name, with no renderer badge until you save it again - rename those afterwards.\n\nIf there is a saved copy of the %s list from before they went missing, putting that back instead is still the closest match. Nothing here is deleted or overwritten either way.'
 
@@ -472,8 +526,6 @@ NODE_ASSETS_IMPORT_FAILURES = 'Some node assets could not be imported:\n\n%s'
 MATERIALS_SAVE_FAILURES = 'Some materials could not be saved:\n\n%s'
 
 MATERIALS_IMPORT_FAILURES = 'Some materials could not be imported:\n\n%s'
-
-CLEANUP_SUMMARY = 'Library cleanup:\n\n%s'
 
 LOADER_SOP_HAS_NO_FILE_PARM = 'The "%s" SOP has no file parameter to set.'
 

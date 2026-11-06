@@ -610,7 +610,6 @@ class PutBackTest(_Library):
 class TheShrinkIsSaidAtLoadTest(_Library):
 
     def test_a_shrunk_list_alerts_when_it_loads(self):
-        self.addCleanup(database.DatabaseConnector._integrity_notes.clear)    # Clean Up's queue
         document = self._read(self.index)
         self._write(self.index + ".bak-1", document)
         self._write(self.index, dict(document, assets=document["assets"][:1]))
@@ -619,6 +618,341 @@ class TheShrinkIsSaidAtLoadTest(_Library):
             database.DatabaseConnector("library.json").load(self.dir)
         self.assertEqual(1, len(said), "a list holding under half of its newest copy opened in silence")
         self.assertIn("%d" % len(document["assets"]), said[0])
+
+
+class MoveAsideSparesWhatCanBePutBackTest(_Library):
+    """A pair whose stamp reads is put back by Add Back or Add to a Section, never moved aside."""
+
+    def _pair(self, asset_id, stamp=None):
+        for suffix in (".mat", ".interface"):
+            self._file("mat/" + asset_id + suffix)
+        if stamp is not None:
+            self._file("mat/%s%s" % (asset_id, material.STAMP_SUFFIX), json.dumps(
+                dict(stamp, id=asset_id)))
+
+    def test_material_and_node_pairs_with_a_stamp_stay_and_the_rest_go(self):
+        self._pair("MATSTAMP1", {"name": "Brick", "renderer": "Karma", "categories": ["a"]})
+        self._pair("NODESTAMP1", {"name": "Scatter", "renderer": "SOP", "categories": ["a"]})
+        self._pair("NOSTAMP1")
+        self._file("mat/HALFONLY1.mat")
+        findings = self._survey()
+        aside = repair.movable(findings)
+        self.assertEqual(sorted(["NOSTAMP1.mat", "NOSTAMP1.interface", "HALFONLY1.mat"]),
+                         sorted(aside["unaccounted"]["mat/"]),
+                         "Move Files Aside counts a pair that can still be put back")
+        self.assertEqual(3, repair.files_to_move_aside(findings))
+        self.assertIn("can still be put back", "\n".join(repair.report_lines(findings)))
+        repair.move_aside(findings, ("unlisted", "leftovers"))
+        for kept in ("MATSTAMP1.mat", "NODESTAMP1.mat", "NODESTAMP1.interface"):
+            self.assertTrue(os.path.exists(os.path.join(self.mat_dir, kept)),
+                            "%s was moved aside though it could be put back" % kept)
+        self.assertFalse(os.path.exists(os.path.join(self.mat_dir, "NOSTAMP1.mat")))
+
+    def test_a_readable_stamp_alone_stays(self):
+        self._file("mat/SNIPPET1.stamp.json", json.dumps({"id": "SNIPPET1", "name": "A"}))
+        findings = self._survey()
+        self.assertEqual(0, repair.files_to_move_aside(findings))
+        repair.move_aside(findings, "unlisted")
+        self.assertTrue(os.path.exists(os.path.join(self.mat_dir, "SNIPPET1.stamp.json")),
+                        "the only record of a snippet or a palette was moved aside")
+
+
+class AListInTroubleHoldsItsFilesTest(_Library):
+    """A list that holds nothing, or has not arrived, may own what no list names."""
+
+    def _cops(self, assets):
+        self._write(os.path.join(self.dir, "cops.json"),
+                    {"version": 8, "categories": ["_All"], "tags": [], "assets": assets})
+
+    def test_an_empty_node_list_beside_unlisted_files_moves_none_of_them(self):
+        self._cops([])
+        for suffix in (".mat", ".interface"):
+            self._file("mat/NODELOST1" + suffix)
+        findings = self._survey()
+        self.assertTrue(findings["complete"], "premise: an empty list reads")
+        self.assertEqual(0, repair.files_to_move_aside(findings))
+        with self.assertRaises(ValueError):
+            repair.move_aside(findings, "unlisted")
+        self.assertTrue(os.path.exists(os.path.join(self.mat_dir, "NODELOST1.mat")))
+        self.assertIn("None of them will be moved aside", "\n".join(repair.report_lines(findings)))
+
+    def test_a_list_still_on_its_way_holds_back_adding_to_another(self):
+        self._write(os.path.join(self.dir, "cops.json.bak-1"), {"assets": [{"id": "X"}]})
+        for suffix in (".mat", ".interface"):
+            self._file("mat/NODELOST2" + suffix)
+        findings = self._survey()
+        self.assertTrue(repair.why_nothing_can_be_added(findings))
+        self.assertTrue(repair.why_nothing_can_be_added(findings, "library.json"))
+        with self.assertRaises(ValueError):
+            repair.reattach(findings, "library.json")
+
+
+class EachButtonOnlyWithItsFindingTest(_Library):
+    """A button that changes nothing is an invitation to break something."""
+
+    def _keys(self):
+        from amaze.dialogs import repair_dialog
+        return repair_dialog._every_choice(self._survey(), True)[1]
+
+    def test_a_healthy_library_offers_nothing(self):
+        self.assertEqual([], self._keys())
+
+    def test_each_finding_brings_its_own_button(self):
+        cases = (
+            ("quarantine", lambda: self._file("mat/%s.mat.pre-adopt" % self.first_id)),
+            ("unknown", lambda: self._file("img/comments.txt")),
+            ("holding", lambda: repair.move_aside(self._survey(), "leftovers")),
+        )
+        for key, plant in cases:
+            with self.subTest(key=key):
+                plant()
+                self.assertIn(key, self._keys())
+        document = self._read(self.index)
+        document["assets"][0]["categories"] = []
+        self._write(self.index, document)
+        self.assertIn("uncategorised", self._keys())
+        for suffix in (".mat", ".interface"):
+            self._file("mat/NOSTAMP2" + suffix)
+        self.assertIn("reattach", self._keys())
+
+    def test_past_five_one_button_lists_them_all(self):
+        from amaze.dialogs import repair_dialog
+        findings = self._survey()
+        many = (["a"] * 6, ["k%d" % n for n in range(6)])
+        with patch.object(repair_dialog, "_every_choice", return_value=many):
+            labels, keys = repair_dialog._choices(findings, True)
+        self.assertEqual(["choose", None], keys)
+
+
+class _Screen:
+    """A stand-in for `hou.ui`: each box answers the next named button it shows, else its close."""
+
+    def __init__(self, *answers, listed=(0,)):
+        self.answers, self.listed, self.shown = list(answers), listed, []
+
+    def displayMessage(self, text, *args, **kwargs):
+        buttons = tuple(kwargs.get("buttons") or ())
+        self.shown.append((text, buttons))
+        hit = [at for at, label in enumerate(buttons) if self.answers and (
+            label == self.answers[0] or (self.answers[0].endswith("*")
+                                         and label.startswith(self.answers[0][:-1])))]
+        if hit:
+            self.answers.pop(0)
+            return hit[0]
+        return kwargs.get("close_choice", 0)
+
+    def selectFromList(self, *args, **kwargs):
+        return self.listed
+
+    def setStatusMessage(self, *args, **kwargs):
+        pass
+
+    def texts(self):
+        return "\n".join(text for text, _buttons in self.shown)
+
+
+class CheckLibraryInThePanelTest(unittest.TestCase):
+    """Library ▸ Check Library… acts on the open library, and every model reads what the file holds."""
+
+    def setUp(self):
+        import hou
+        from amaze import messages
+        self.hou, self.messages = hou, messages
+        self.panel = test_support.fixture_panel(self)
+        self.dir = self.panel.prefs.dir
+        self.index = os.path.join(self.dir, "library.json")
+
+    def _read(self, path):
+        with open(path, encoding="utf-8-sig") as handle:
+            return json.load(handle)
+
+    def _check(self, screen):
+        with patch.object(self.hou, "ui", screen, create=True):
+            self.panel.check_library()
+        return screen
+
+    def _models_hold_the_file(self):
+        rows = self._read(self.index)["assets"]
+        model = self.panel.material_model
+        self.assertEqual({str(row["id"]): row.get("categories") for row in rows},
+                         {str(asset.mat_id): list(asset.categories) for asset in model.assets})
+        self.assertEqual(self._read(self.index)["categories"],
+                         list(self.panel.category_model._categories))
+
+    def test_put_in_uncategorized_acts_and_every_model_reads_it_back(self):
+        label = next(text for text in self._labels() if text.endswith("in Uncategorized"))
+        screen = self._check(_Screen(label, self.messages.BUTTONS_PUT_THEM_THERE[0]))
+        self.assertIn("Uncategorized", self._read(self.index)["categories"], screen.shown[1:])
+        self._models_hold_the_file()
+        self.assertIn("Uncategorized", screen.texts())
+        self.assertEqual(self.messages.BUTTON_REPAIR_CLOSE, screen.shown[-1][1][-1],
+                         "the report was not shown again after the action")
+
+    def _labels(self):
+        from amaze.dialogs import repair_dialog
+        return repair_dialog._every_choice(repair.survey(self.panel.prefs), True)[0]
+
+    def test_a_put_back_acts_and_every_model_reads_it_back(self):
+        document = self._read(self.index)
+        with open(self.index + ".bak-1", "w", encoding="utf-8") as handle:
+            json.dump(dict(document, assets=document["assets"][:2]), handle, indent=4)
+        screen = self._check(_Screen(self.messages.BUTTON_REPAIR_PUT_COPY_BACK,
+                                     self.messages.BUTTONS_PUT_COPY_BACK[0]))
+        self.assertIn("added back", screen.texts())
+        self._models_hold_the_file()
+        self.assertIn("is back to the copy from", screen.texts())
+
+    def test_a_second_pane_open_does_not_stop_it(self):
+        from amaze.dialogs import repair_dialog
+        stray = os.path.join(self.dir, "mat", "STRAY0001.mat.pre-adopt")
+        with open(stray, "w", encoding="utf-8") as handle:
+            handle.write("x")
+        self.assertTrue(repair.session_has_a_library_open(), "premise")
+        with patch.object(repair_dialog, "open_panel_tab", return_value=object()):
+            self._check(_Screen("Move 1 File Aside", self.messages.BUTTONS_MOVE_ASIDE[0]))
+        self.assertFalse(os.path.exists(stray), "a second pane stopped Check Library")
+
+    def test_a_row_not_yet_saved_keeps_its_files_through_move_files_aside(self):
+        with open(os.path.join(self.dir, "cops.json"), "w", encoding="utf-8") as handle:
+            json.dump({"version": 8, "categories": ["_All"], "tags": [], "assets": [
+                {"id": "KEPTNODE1", "name": "Kept", "categories": ["Kept"]}]}, handle)
+        self.panel.open()    # a Node list that is not empty lets unlisted files move
+        model = self.panel.material_model
+        files = [os.path.join(self.dir, "mat", "UNSAVED01" + suffix)
+                 for suffix in (".mat", ".interface")]
+        files.append(os.path.join(self.dir, "img", "UNSAVED01.png"))
+        for path in files:
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write("x")
+        model._append_record(model._asset_from_row(
+            {"id": "UNSAVED01", "name": "Unsaved", "categories": ["Karma_Mats"]}))
+        stray = os.path.join(self.dir, "mat", "STRAY0002.mat.pre-adopt")
+        with open(stray, "w", encoding="utf-8") as handle:
+            handle.write("x")
+        self.assertNotIn("UNSAVED01", [str(row["id"]) for row in self._read(self.index)["assets"]],
+                         "premise: the row is already on disk")
+        self._check(_Screen("Move *", self.messages.BUTTONS_MOVE_ASIDE[0]))
+        self.assertFalse(os.path.exists(stray), "premise: nothing was moved")
+        for path in files:
+            self.assertTrue(os.path.exists(path), "the files of a row not yet saved were moved "
+                                                  "aside: %s" % os.path.basename(path))
+
+    def test_close_changes_nothing_and_reads_nothing_again(self):
+        with patch.object(self.panel, "open_library") as reopened:
+            screen = self._check(_Screen())
+        self.assertEqual(1, len(screen.shown))
+        reopened.assert_not_called()
+
+    def test_the_shelf_sends_an_open_pane_to_the_menu(self):
+        from amaze.dialogs import repair_dialog
+        screen = _Screen()
+        with patch.object(repair_dialog, "open_panel_tab", return_value=object()), \
+                patch.object(self.hou, "ui", screen, create=True):
+            repair_dialog.run(preferences=self.panel.prefs)
+        self.assertEqual([self.messages.CHECK_LIBRARY_IN_THE_PANEL], [t for t, _b in screen.shown])
+        self.assertIn("Library ▸ Check Library…", screen.shown[0][0])
+
+    def test_the_automatic_repair_says_what_it_did_in_a_box(self):
+        document = self._read(self.index)
+        with open(self.index + ".bak-1", "w", encoding="utf-8") as handle:
+            json.dump(document, handle, indent=4)
+        with open(self.index, "w", encoding="utf-8") as handle:
+            handle.write("{ broken")
+        screen = _Screen("Repair")
+        with patch.object(self.hou, "ui", screen, create=True):
+            self.assertTrue(self.panel._repaired(self.dir))
+        said = self.messages.LIBRARY_INDEX_REPAIRED.split("%s")[0]
+        self.assertTrue(any(text.startswith(said) for text, _b in screen.shown),
+                        "the repair said its outcome nowhere a person reads: %s" % screen.shown)
+
+
+class ThePutBackSaysWhatCameAfterTest(_Library):
+    """The put-back's done box carries the sentence that names what was added back after the copy."""
+
+    def test_the_done_box_names_the_materials_added_back(self):
+        import hou
+        from amaze import messages
+        from amaze.dialogs import repair_dialog
+        document = self._read(self.index)
+        self._write(self.index + ".bak-1", document)
+        for suffix in (".mat", ".interface"):
+            self._file("mat/NEWER002" + suffix)
+        self._file("mat/NEWER002.stamp.json", json.dumps(
+            {"id": "NEWER002", "name": "Saved Later", "renderer": "Karma",
+             "categories": ["Later"]}))
+        with open(self.index, "w", encoding="utf-8") as handle:
+            handle.write("{ broken")
+        screen = _Screen(messages.BUTTON_REPAIR_PUT_COPY_BACK, messages.BUTTONS_PUT_COPY_BACK[0])
+        findings = self._survey()
+        with patch.object(hou, "ui", screen, create=True):
+            repair_dialog.act(findings, repair_dialog.report(findings))
+        self.assertIn("1 material saved after it was added back", screen.texts())
+
+
+class TheReportSaysProblemsFirstTest(_Library):
+    """Problems first, one line for every list that reads fine, the holding folder last."""
+
+    def test_every_list_that_reads_fine_shares_one_line_in_its_own_nouns(self):
+        findings = self._survey()
+        lines = [line for line in repair.report_lines(findings) if line]
+        fine = [line for line in lines if "reads fine" in line or "read fine" in line]
+        self.assertEqual(1, len(fine), "one line per list that reads fine: %s" % fine)
+        count = len(self._read(self.index)["assets"])
+        self.assertIn("%d materials" % count, fine[0])
+        for entry in findings["lists"]:
+            self.assertFalse(any(line.startswith(entry["label"] + ":") for line in lines),
+                             "a list that reads fine got a line of its own: %s" % entry["label"])
+
+    def test_the_folders_line_names_the_folders_and_what_they_hold(self):
+        text = "\n".join(repair.report_lines(self._survey()))
+        self.assertNotIn("accounted for by a section", text)
+        for folder in ("`mat/`", "`img/`", "`captures/`"):
+            self.assertIn(folder, text)
+        self.assertIn("material or node", text)
+
+    def test_a_problem_comes_before_every_all_well_line(self):
+        os.remove(os.path.join(self.mat_dir, self.first_id + ".mat"))
+        with open(os.path.join(self.dir, "cops.json"), "w", encoding="utf-8") as handle:
+            handle.write("{ broken")
+        lines = [line for line in repair.report_lines(self._survey()) if line]
+        broken = next(at for at, line in enumerate(lines) if "cannot read it" in line)
+        missing = next(at for at, line in enumerate(lines) if "files are missing" in line)
+        fine = next(at for at, line in enumerate(lines) if "read fine" in line)
+        self.assertLess(broken, fine)
+        self.assertLess(missing, fine)
+        self.assertIn("holding folder on this computer", lines[-1])
+
+
+class OnePutBackForMaterialsAndNodesTest(_Library):
+    """The Node list's put-back adds back what was saved after the copy, by the Material list's path."""
+
+    def test_the_node_list_s_put_back_adds_the_nodes_saved_after_the_copy(self):
+        cops = os.path.join(self.dir, "cops.json")
+        self._write(cops + ".bak-1", {"version": 8, "categories": ["_All"], "tags": [],
+                                      "assets": []})
+        for suffix in (".mat", ".interface"):
+            self._file("mat/NEWNODE1" + suffix)
+        self._file("mat/NEWNODE1.stamp.json", json.dumps(
+            {"id": "NEWNODE1", "name": "Saved Later", "renderer": "SOP",
+             "categories": ["Later"]}))
+        self._file("cops.json", "{ broken")
+        done = repair.put_back(self._survey(), "cops.json", "bak-1")
+        self.assertEqual(["NEWNODE1"], [row["id"] for row in self._read(cops)["assets"]])
+        self.assertIn("added back", done["said"])
+
+    def test_each_list_reads_its_own_pairs_through_one_function(self):
+        for asset_id, renderer in (("MATSTAMP2", "Karma"), ("NODESTAMP2", "SOP")):
+            for suffix in (".mat", ".interface"):
+                self._file("mat/" + asset_id + suffix)
+            self._file("mat/%s.stamp.json" % asset_id, json.dumps(
+                {"id": asset_id, "name": asset_id, "renderer": renderer}))
+        findings = self._survey()
+        self.assertEqual(["MATSTAMP2"],
+                         [one for one, _r in repair.on_record(findings, "library.json")])
+        self.assertEqual(["NODESTAMP2"],
+                         [one for one, _r in repair.on_record(findings, "cops.json")])
+        self.assertEqual(repair.on_record(findings, "library.json"),
+                         repair.materials_on_record(findings))
 
 
 class TheAuditToolTest(unittest.TestCase):

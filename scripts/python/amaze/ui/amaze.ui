@@ -699,7 +699,7 @@
     <addaction name="action_open" />
     <addaction name="separator" />
     <addaction name="action_prefs" />
-    <addaction name="action_cleanup_db" />
+    <addaction name="action_check_library" />
     <addaction name="separator" />
     <addaction name="action_open_folder" />
     <addaction name="separator" />
@@ -729,9 +729,9 @@
     <string>About</string>
    </property>
   </action>
-  <action name="action_cleanup_db">
+  <action name="action_check_library">
    <property name="text">
-    <string>Cleanup Library</string>
+    <string>Check Library…</string>
    </property>
   </action>
   <action name="action_open_folder">

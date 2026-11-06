@@ -72,7 +72,7 @@ class TheGuardedPanelRefusesHeadlessTest(unittest.TestCase):
         panel = self.panel
         geo = hou.node("/obj").createNode("geo", "headless_convert_geo")    # no conversion route: the refusal is said
         self.addCleanup(geo.destroy)
-        doors = (("cleanup_db", lambda: panel.cleanup_db()),
+        doors = (("check_library", lambda: panel.check_library()),
                  ("open_usdlib_folder", lambda: panel.open_usdlib_folder()),
                  ("_active_network_pwd", lambda: self.assertIsNone(panel._active_network_pwd())),
                  ("_locate_folder_user", lambda: panel._locate_folder_user(None)),
@@ -110,10 +110,10 @@ class TheGuardStillOpensTheDialogTest(unittest.TestCase):
         self.shown.append(text)
         return 1
 
-    def test_cleanup_db_still_says_it_when_there_is_a_screen(self):
+    def test_check_library_still_says_it_when_there_is_a_screen(self):
         self.panel.material_model = None
         with mock.patch.object(hou, "ui", self._ui(), create=True):
-            self.panel.cleanup_db()
+            self.panel.check_library()
         self.assertEqual(1, len(self.shown),
                          "the guard swallowed the dialog in a session that "
                          "HAS a ui, which a headless-only test cannot see")
@@ -157,32 +157,32 @@ class EveryDoorFindsTheSameVisibleNetworkEditor(unittest.TestCase):
                 panel.prefs).get_active_network_editor())
 
 
-class TheCleanSummaryHeadingIsTrueOfEveryLine(unittest.TestCase):
-    """Clean moves, keeps and removes, so its summary may not open by calling all of that removed."""
+class TheCheckReportHeadingIsTrueOfEveryLine(unittest.TestCase):
+    """The report reads before anything changes, so it may not open by calling anything removed."""
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
         self.shown = []
 
-    def _answer(self, text, *_args, **_kwargs):
+    def _answer(self, text, *_args, **kwargs):
         self.shown.append(text)
-        return 0    # the confirm's first button, Clean Library
+        return kwargs.get("close_choice", 0)    # Close, and Cancel on any confirm
 
     def test_the_heading_claims_nothing_its_lines_deny(self):
         mats = os.path.join(self.panel.prefs.dir, self.panel.prefs.asset_dir)
-        with open(os.path.join(mats, "LEFTOVERHERE1.mat"), "w",
-                  encoding="utf-8") as handle:
-            handle.write("in no list at all\n")    # beside an empty Node list: the sweep stops
+        left = os.path.join(mats, "LEFTOVERHERE1.mat")
+        with open(left, "w", encoding="utf-8") as handle:
+            handle.write("in no list at all\n")    # beside an empty Node list: nothing moves
         screen = types.SimpleNamespace(displayMessage=self._answer)
         with mock.patch.object(hou, "ui", screen, create=True):
-            self.panel.cleanup_db()
-        summary = self.shown[-1]
-        self.assertIn("Nothing was deleted", summary,
-                      "premise: this run's sweep did not stop")
-        heading = summary.split("\n", 1)[0].lower()
+            self.panel.check_library()
+        report = self.shown[-1]
+        self.assertIn("LEFTOVERHERE1.mat", report, "premise: the report did not name the file")
+        self.assertTrue(os.path.exists(left), "the report moved what it names")
+        heading = report.split("\n", 1)[0].lower()
         for claim in ("removed", "deleted", "finished"):
             self.assertNotIn(claim, heading,
-                             "the summary opens with %r above lines that "
+                             "the report opens with %r above lines that "
                              "say otherwise" % claim)
 
 

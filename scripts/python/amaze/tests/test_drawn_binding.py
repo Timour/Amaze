@@ -35,7 +35,7 @@ def _houdini_ui_font():
 PREFS_FRAMES = ("P01", "P02", "P03a", "P03b", "P04", "P05", "P06")
 
 PINNED_BUTTONS = {    # every text button Preferences takes from the document, written out here so a lost pin fails rather than quietly widening to the host font
-    "P01": ("Add", "Clean Up", "Reload", "Show Folder", "Manage", "Rename",
+    "P01": ("Add", "Check", "Reload", "Show Folder", "Manage", "Rename",
             "Delete", "Default", "Delete Local Cache", "Apply", "Accept"),
     "P05": ("Check for Updates",),
     "P06": ("Check for Updates", "Report a Bug...", "Open Log",
@@ -794,7 +794,7 @@ class MovingADrawnNodeMovesTheWidget(unittest.TestCase):
             dialog = prefs_dialog.PrefsDialog(prefs, panel=None)
             self.addCleanup(dialog.deleteLater)
             button = [b for b in dialog.findChildren(QtWidgets.QPushButton)
-                      if b.text() == "Clean Up"][0]
+                      if b.text() == "Check"][0]
             self.assertEqual(
                 theme.ui_px(63 + 5), pinned(self, button)[0],
                 "the drawn rect was widened and the built button did not "
