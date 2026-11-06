@@ -122,7 +122,7 @@ def build_usd_scaffold(preferences, renderer="Karma"):
     view = ocio["view"]
     space = ocio["space"]
 
-    with hou.undos.disabler():    # THE WHOLE BUILD, not just the container: each createNode, parm set and flag here is its own undo entry and destroying the net afterwards removes none of them, so a thumbnail spent the artist's next Ctrl+Z on scaffold noise instead of their own last edit ▸r/undo-groups
+    with hou.undos.disabler():    # the whole build, not just the container ▸r/undo-groups
         net = hou.node("/obj").createNode("lopnet")
         try:
             ref = net.createNode("reference::2.0")
@@ -146,7 +146,7 @@ def build_usd_scaffold(preferences, renderer="Karma"):
 
             render_props, rop = RENDER_SETTINGS[renderer](net, preferences)
         except Exception:
-            net.destroy()    # a half-built scaffold is never handed back, and the destroy is under the same disabler as the create
+            net.destroy()    # a half-built scaffold is never handed back
             raise
     return {
         "renderer": renderer,

@@ -1,4 +1,4 @@
-"""EVERY MESSAGE AMAZE SHOWS IN A DIALOG, in ONE document - `hou.ui.displayMessage` and `debug.alert` alike, so a wording change is one edit here and never a hunt through eighteen modules. Keyed by NAME, never by a line number, because a line number rots on the next edit - grep the name for its call sites. In a BUTTON SET the FIRST word is the accepting one. ▸p/messages-need-one-home ▸archive/messages.py"""
+"""Every dialog message; a button set puts the accepting one first. ▸p/messages-need-one-home"""
 
 from __future__ import annotations
 

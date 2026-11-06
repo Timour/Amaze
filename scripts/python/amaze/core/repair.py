@@ -171,7 +171,7 @@ def stamped_assets(directory: str, asset_dir: str = "mat/",
 
 def rebuild_from_stamps(directory: str, asset_dir: str = "mat/",
                         index_filename: str = "library.json") -> dict:
-    """One index rebuilt from the stamps `index_filename` claims; `damaged` names the stamps that would not read, `unreadable` the sibling lists that would not parse - a caller with a non-empty `unreadable` may not write the result. ▸p/clean-library-sweep"""
+    """One index rebuilt from stamps; never write it while `unreadable` is set. ▸p/clean-library-sweep"""
     folder = os.path.join(directory, asset_dir)
     assets, damaged = [], []
     categories = []
@@ -243,7 +243,7 @@ def repair_index(directory: str, asset_dir: str = "mat/") -> tuple:
         newer = _materials_newer_than_the_copy(directory, asset_dir)
         return True, _put_back_sentence(refreshed, newer, gone)
     document = rebuild_from_stamps(directory, asset_dir)
-    if document["unreadable"]:  # a list that will not parse claims NOTHING, so every asset it owns reads as unclaimed and lands here as ours ▸p/clean-library-sweep
+    if document["unreadable"]:  # an unparsed list claims nothing ▸p/clean-library-sweep
         debug.event("repair", "rebuild refused - a sibling list is "
                     "unreadable", files=document["unreadable"])
         return False, ("%s cannot be read, so a rebuild cannot tell its "
@@ -253,7 +253,7 @@ def repair_index(directory: str, asset_dir: str = "mat/") -> tuple:
         return False, ("no saved copy parses and no recovery stamps "
                        "were found")
     try:
-        hostos.preserve_unreadable(target, why="library index")  # the snapshot tier declines a file that will not parse, so this copy is the only one kept ▸p/db-restore
+        hostos.preserve_unreadable(target, why="library index")  # the only copy kept of an unparsable file ▸p/db-restore
         hostos.snapshot_before_write(target)
         hostos.write_json_atomic(target, {
             "version": database.SCHEMA_VERSION,
@@ -793,7 +793,7 @@ def _files_of(findings: dict, ids) -> list:
 
 
 def _write_json(path: str, document) -> None:
-    """Scratch-and-promote without the snapshot: a recovery tool keeps the copies. `scratch_beside` discards on ANY raise - the hand-rolled version discarded only on a write-time OSError, so a raising promote left a `.repairing` file for the orphan scan to misread."""
+    """Scratch-and-promote without the snapshot: a recovery tool keeps the copies."""
     with hostos.scratch_beside(path, suffix=".repairing") as scratch:
         with open(scratch, "w", encoding="utf-8", newline="\n") as handle:
             json.dump(document, handle, indent=4)

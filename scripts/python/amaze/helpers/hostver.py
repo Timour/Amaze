@@ -1,4 +1,4 @@
-"""The host-capability engine: every question about whether this environment behaves differently lives HERE - sibling of `hostos.py`, which owns OS facts. Nothing else may compare `hou.applicationVersion()` against a number, and callers ask for the ANSWER, never the version. A capability is a BASE value plus OPINIONS, each carrying its conditions and its evidence; read ▸p/host-opinions before adding one."""
+"""Host capabilities: ask for the answer here, never compare versions. ▸p/host-opinions"""
 
 import hou
 
@@ -6,7 +6,7 @@ from amaze.helpers import hostos
 
 
 class Env(object):
-    """The environment an opinion is judged against - `scale` is passed in by the caller rather than re-derived, so the value that DECIDES is the value that gets APPLIED."""
+    """The environment an opinion is judged against; pass the `scale` you will apply."""
 
     def __init__(self, houdini=None, macos=None, windows=None,
                  linux=None, scale=None):
@@ -26,7 +26,7 @@ class Env(object):
 
 
 class Opinion(object):
-    """One layer's claim about a capability - `conditions` is an ordered tuple of (description, predicate) pairs, ALL of which must hold, named rather than folded into one lambda so explain() can report which one vetoed."""
+    """One claim about a capability; `conditions` are (description, predicate) pairs, all must hold."""
 
     def __init__(self, value, conditions, evidence, strength=0):
         self.value = value
@@ -35,7 +35,7 @@ class Opinion(object):
         self.strength = strength
 
     def applies_to(self, env):
-        """(applied, vetoed_by) - EVERY condition that failed, joined, because reporting only the first invites the reader to think fixing the named one would change the answer."""
+        """(applied, vetoed_by), with every failed condition joined in vetoed_by."""
         failed = []
         for description, predicate in self.conditions:
             try:
@@ -71,7 +71,7 @@ class Capability(object):
         return value
 
     def explain(self, env):
-        """Every opinion, whether it applied, and what vetoed it - for the debug log, so a report from a machine nobody here can reproduce arrives with its composition already resolved."""
+        """Every opinion, whether it applied, and what vetoed it, for the debug log."""
         considered = []
         for opinion in self.opinions:
             applied, vetoed = opinion.applies_to(env)
@@ -100,7 +100,7 @@ _SCALED = ("a scaled display (dpr != 1)",
            lambda env: bool(env.scale) and env.scale != 1.0)
 
 
-OBJ_PICK_DEVICE_PIXELS = Capability(  # whether GeometryViewport.queryNodeAtPixel wants DEVICE pixels rather than the documented logical point
+OBJ_PICK_DEVICE_PIXELS = Capability(  # whether queryNodeAtPixel wants device pixels, not logical points
     base=False,
     base_evidence=(
         "The documented behaviour and what SideFX ships today: the "
@@ -143,7 +143,7 @@ OBJ_PICK_DEVICE_PIXELS = Capability(  # whether GeometryViewport.queryNodeAtPixe
 )
 
 
-NEW_COPS = Capability(  # whether the EXR->PNG conversion can use the new COPs (copnet) with full OCIO rather than a cop2net with restricted parameters
+NEW_COPS = Capability(  # whether EXR->PNG can use the new COPs (copnet) with full OCIO
     base=True,
     base_evidence=(
         "21.x and 22.x ship copnet with full OCIO, in continuous use for "
@@ -176,7 +176,7 @@ def houdini_version():
 
 
 def obj_pick_wants_device_pixels(device_scale):
-    """Whether GeometryViewport.queryNodeAtPixel wants DEVICE pixels - the affected builds do not apply the device pixel ratio themselves, so they want the point already multiplied by it, same bottom-left GL origin either way; see OBJ_PICK_DEVICE_PIXELS for the evidence and explain_pick() for a machine's resolution."""
+    """Whether queryNodeAtPixel wants the point multiplied by the device pixel ratio."""
     return OBJ_PICK_DEVICE_PIXELS.resolve(Env(scale=device_scale))
 
 

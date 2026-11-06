@@ -1,4 +1,4 @@
-"""Shared VEX/C-like syntax colouring - the ONE palette and tokenizer used by both the Code section's tile preview and the editor dialog, so the two always match. Every value below is a named constant, tune freely. ▸p/vex-block-comments"""
+"""VEX syntax colouring shared by the Code tile preview and the editor. ▸p/vex-block-comments"""
 
 import re
 
@@ -89,7 +89,7 @@ _FORMATS = {}    # one shared QTextCharFormat per colour, keyed on `rgba()`, bui
 
 
 class VexHighlighter(QtGui.QSyntaxHighlighter):
-    """Applies the shared palette to a QPlainTextEdit - `spans` sees ONE line, so a `/*` block spanning lines is carried across on the block state. ▸p/vex-block-comments"""
+    """The shared palette on a QPlainTextEdit, `/*` blocks across lines. ▸p/vex-block-comments"""
 
     IN_BLOCK_COMMENT = 1
 

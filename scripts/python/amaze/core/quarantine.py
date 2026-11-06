@@ -1,4 +1,4 @@
-"""Where a library-internal removal puts what it takes. NOTHING HERE IMPORTS hou AND NOTHING MAY - the pure-stdlib restore tool reaches this, and an import that raises there is swallowed with nothing recorded. `core/library.py` re-exports every name below, and the folder is machine-local and OUTSIDE the library, because a sweep's worst case is a stale sibling arriving over sync. ▸archive/quarantine.py"""
+"""Where a library-internal removal puts what it takes, machine-local; never import hou here."""
 
 from __future__ import annotations
 
@@ -22,13 +22,13 @@ def _quarantine_root(library_dir: str) -> str:
 
 
 def quarantine_folder(library_dir: str) -> str:
-    """One folder per day, so a second run the same day adds rather than scatters. Held for `QUARANTINE_DAYS` - a sweep nobody noticed inside the window was not wrong about anything needed, and keeping it longer costs disk forever."""
+    """Today's quarantine folder, one per day, held for `QUARANTINE_DAYS`."""
     return os.path.join(_quarantine_root(library_dir),
                         time.strftime("%Y-%m-%d"))
 
 
 def prune_quarantine(library_dir: str, days: int = QUARANTINE_DAYS) -> int:
-    """Removes quarantine days older than `days`, BY THE DATE IN THE NAME - mtime records the last touch, which a backup pass rewrites. The removal here is PERMANENT and sanctioned: this folder IS the trash, and a second one would only mean the same files sit in two places forever."""
+    """Permanently remove quarantine days older than `days`, by the date in the folder name."""
     root = _quarantine_root(library_dir)
     cutoff = time.strftime(
         "%Y-%m-%d", time.localtime(time.time() - days * 86400))
@@ -68,7 +68,7 @@ def quarantine_size(library_dir: str) -> tuple:
 
 
 def quarantine_file(library_dir: str, path: str) -> str:
-    """Moves one file into today's quarantine. `os.replace` first, atomic where it works - but a rename cannot cross volumes and the library may be on a drive of its own, so the fallback copies then unlinks: a torn copy lands on the QUARANTINE side and the source survives. Answers the new path, or `""`, and the caller must then treat the file as still present."""
+    """Move one file into today's quarantine; the new path, or "" and the file is still present."""
     return quarantine_as(library_dir, path, os.path.relpath(path, library_dir))
 
 

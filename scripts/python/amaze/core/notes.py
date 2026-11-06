@@ -1,4 +1,4 @@
-"""The notes store: a notebook page per asset, in the library - one notes.json beside the index, keyed `<section>:<asset id>` for the asset sections and `file:<path>` for File rows. A note is `{"items": [...]}`, an ORDERED flow of `{"t": "text", "text": str}`, `{"t": "todo", "label": str, "done": bool}` and `{"t": "image", "src": str, "text": str}` (the older `{"text", "todos"}` shape converts on read); writing an EMPTY page removes the key, which is how a note is deleted. An ADAPTER over the Keyed Store Engine: it owns the note's SHAPE and nothing else (▸p/store-guards). A File key is the RAW `os.path.join`, NOT canonicalised - canonicalising would orphan every entry written before the 2026-07-31 merge."""
+"""The notes store: one page per asset in notes.json, keyed by `note_key`. ▸p/store-guards"""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ def note_key(section: str, ident) -> str:
 
 
 def normalise(value) -> dict:
-    """A well-formed page, or {} for junk/empty - tolerant on purpose: a hand-edited or older-build entry keeps whatever parts parse, including the first build's `{"text", "todos"}` shape, which becomes text-then-todos in the flow."""
+    """A well-formed page, `{items: [...]}`, or {} for junk or empty; keeps what parses."""
     if not isinstance(value, dict):
         return {}
     raw_items = value.get("items", None)
@@ -43,7 +43,7 @@ def normalise(value) -> dict:
         elif kind == "image":
             src = item.get("src", "")
             if not isinstance(src, str) or not src.strip():
-                continue    # an image pointing nowhere draws nothing, so it is junk like a blank to-do ▸p/comment-images
+                continue    # an image with no src is dropped ▸p/comment-images
             fallback = item.get("text", "")
             items.append({"t": "image", "src": src.strip(),
                           "text": fallback if isinstance(fallback, str)
@@ -54,13 +54,13 @@ def normalise(value) -> dict:
                 items.append({"t": "text", "text": text})
     if not items:
         return {}
-    page = {k: v for k, v in value.items()  # unknown page-level fields ride along (a newer build's addition); "text" and "todos" do not - they were CONSUMED into items above, and carrying them too would duplicate the page on the next read
+    page = {k: v for k, v in value.items()  # unknown page-level fields ride along
             if k not in ("items", "text", "todos")}
     page["items"] = items
     return page
 
 
-SPEC = keyed_store.bind(NOTES_FILE, normalise)  # the engine DECLARES this store; this attaches the one thing it cannot know - what a well-formed page is
+SPEC = keyed_store.bind(NOTES_FILE, normalise)  # the keyed store, with this module's page shape
 
 
 def _store(preferences, library: str = ""):
@@ -68,7 +68,7 @@ def _store(preferences, library: str = ""):
 
 
 def notes(preferences) -> dict:
-    """Every note in this library, keyed by note_key() - a COPY, because a caller holding the live cache could mutate the table without writing anything."""
+    """A copy of every note in this library, keyed by note_key()."""
     return _store(preferences).all()
 
 
@@ -78,17 +78,17 @@ def note_for(preferences, key: str) -> dict:
 
 
 def has_note(preferences, key: str) -> bool:
-    """Whether this asset carries anything - the tile badge's question, asked per tile per repaint; a membership test, no copy."""
+    """Whether this asset has a note; a membership test, cheap enough per repaint."""
     return _store(preferences).has(key)
 
 
 def set_note(preferences, key: str, items: list, library: str = "") -> bool:
-    """Store one asset's page (an ordered item flow); an empty page removes the key. Returns whether the write actually happened - a read-only library must not take notes it will lose at restart. The failure reporting is the ENGINE's: the words on the store's Spec (`denied_alert`), the policy in `_commit`."""
+    """Store one asset's page; an empty page removes the key. Whether the write happened."""
     return bool(_store(preferences, library).set(key, {"items": items}))
 
 
 def set_notes(preferences, pages: dict):
-    """Store MANY pages in one write, `{key: items}` - a sweep calling `set_note` per key rotates a snapshot per key and pushes the restore tier's real history out with copies of the same minute; the engine already had the batched shape (`keyed_store.update`) and this exposes it."""
+    """Store many pages, `{key: items}`, in one write; use it for a sweep, not `set_note`."""
     return _store(preferences).update(
         {key: {"items": items} for key, items in (pages or {}).items()})
 
@@ -97,7 +97,7 @@ IMAGE_DIR = "img/comments"    # ▸p/comment-images
 
 
 def adopt_image(preferences, source: str) -> str:
-    """Copy `source` into the library and return its LIBRARY-RELATIVE path, or "" when it cannot be read - the note stores that path, never the pixels. ▸p/comment-images"""
+    """Copy `source` into the library; its library-relative path, or "". ▸p/comment-images"""
     import os
     import shutil
     import uuid
@@ -113,7 +113,7 @@ def adopt_image(preferences, source: str) -> str:
     target = os.path.join(library, *relative.split("/"))
     try:
         os.makedirs(folder, exist_ok=True)
-        with hostos.scratch_beside(target) as scratch:    # the same promote-on-complete every library write uses, so a half-copied picture is never left where a note points ▸p/asset-write-unit
+        with hostos.scratch_beside(target) as scratch:    # promoted only when complete ▸p/asset-write-unit
             shutil.copyfile(source, scratch)
     except OSError as exc:
         debug.event("notes", "image not adopted",

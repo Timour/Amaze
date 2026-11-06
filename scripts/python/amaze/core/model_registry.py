@@ -1,4 +1,4 @@
-"""ONE set of source models per library per process - `models_for(prefs)` answers the same objects for every panel on that library; proxies, selection models and delegates stay PER PANEL and are not built here. ▸p/one-model-set"""
+"""One set of source models per library per process; proxies stay per panel. ▸p/one-model-set"""
 
 from __future__ import annotations
 
@@ -42,7 +42,7 @@ def models_for(preferences) -> dict:
 
 
 def rebind(preferences, model) -> None:
-    """File the set holding `model` under `preferences.dir` after a switch moved it - left under the old key, the next panel opening on this library is built a second set. Identified by the MODEL, never by the Prefs object: the shared models carry whichever panel looked them up last."""
+    """File the set holding `model` under `preferences.dir` after a library switch moved it."""
     key = _key(preferences)
     for old, models in list(_models.items()):
         if old != key and any(held is model for held in models.values()):
@@ -79,7 +79,7 @@ def apply_merged(db, also=None) -> list:
 
 
 def refresh_all() -> list:
-    """Take what another machine wrote into every shared model and every open store, and answer what moved. For a DOOR a person opens - a panel becoming visible, a dialog - since each one costs a read. ▸r/peer-read"""
+    """Read other machines' writes into every shared model and store; what moved. ▸r/peer-read"""
     from amaze.core import database, debug
 
     moved = []

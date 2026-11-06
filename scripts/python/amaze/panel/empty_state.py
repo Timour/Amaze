@@ -1,4 +1,4 @@
-"""THE EMPTY STATE ENGINE - which blank the grid is showing: a SIBLING of the two grid views whose visibilities `grid.apply_grid_face` owns (nothing here positions anything), words in the UI text register, and every `SHARED` row is (headline, sentence, button label, verb) with a blank verb meaning no button (devlog 480)."""
+"""The empty state: which blank the grid shows, and its words; `grid.apply_grid_face` shows it."""
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from amaze import amazetheme
@@ -24,7 +24,7 @@ def _elide(text: str) -> str:
 
 
 def verdict(panel) -> tuple:
-    """(blank, detail) for the current section, or (None, "") - read off the VIEW, whose proxy answers both counts."""
+    """(blank, detail) for the current section, or (None, ""), read off the visible view."""
     view = grid.visible_view(panel)
     if view is None:
         return (None, "")
@@ -60,7 +60,7 @@ def verdict(panel) -> tuple:
 
 
 def _favourites_only(panel) -> bool:
-    """Is the toolbar's favourites star down? Read defensively, like the search box above - a deleted chip answers RuntimeError."""
+    """Is the toolbar's favourites star down? False when the chip is gone."""
     chip = getattr(panel, "cb_favsonly", None)
     if chip is None:
         return False
@@ -80,7 +80,7 @@ def _any_favourite(source) -> bool:
 
 
 def unreadable_folder(panel) -> str:
-    """The first STILL-REGISTERED folder the File model could not read, or "" - without it a dead drive looks like an empty one, and without the registration test a folder that was located or removed goes on being complained about, since only a scan of it can clear the flag."""
+    """The first still-registered folder the File model could not read, or ""."""
     if getattr(panel, "current_section", "") != "file":
         return ""
     model = getattr(panel, "file_files_model", None)
@@ -92,14 +92,14 @@ def unreadable_folder(panel) -> str:
                else getattr(model, "_folder", ""))
     for folder in sorted(folders):
         if current and folder != current:
-            continue    # the blank describes the folder being LOOKED AT - a dead folder elsewhere must not hijack a healthy folder's no-match
+            continue    # only the folder being looked at counts
         if sidebar is None or sidebar.row_of(folder) is not None:
             return folder
     return ""
 
 
 def quote_for(panel, blank: str) -> tuple:
-    """(line, attribution) drawn under a section's FIRST-RUN sentence, or ("", "") - a section declares its own in `QUOTE`, and no other blank carries one."""
+    """(line, attribution) from the section's `QUOTE` for the first-run blank, else two empty strings."""
     if blank != NOTHING_YET:
         return ("", "")
     section = panel._section() if hasattr(panel, "_section") else None
@@ -110,7 +110,7 @@ def quote_for(panel, blank: str) -> tuple:
 
 
 def words_for(panel, blank: str, detail: str) -> tuple:
-    """(headline, sentence, button label, verb) with %s filled in - UNREACHABLE quotes a path whole, the rest take the section's noun."""
+    """(headline, sentence, button label, verb) with %s filled in; a blank verb means no button."""
     section = panel._section() if hasattr(panel, "_section") else None
     table = dict(SHARED)
     declared = getattr(section, "EMPTY", None) or {}
@@ -130,7 +130,7 @@ def words_for(panel, blank: str, detail: str) -> tuple:
 
 
 class EmptyPage(QtWidgets.QWidget):
-    """The words. NO geometry code, deliberately - no `setGeometry`, no event filter, no `paintEvent`, and never `WA_TransparentForMouseEvents`. ▸r/transparent-for-mouse (devlog 480)"""
+    """The words, with no geometry code of its own. ▸r/transparent-for-mouse"""
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -146,7 +146,7 @@ class EmptyPage(QtWidgets.QWidget):
         for label in (self._head, self._text):
             label.setWordWrap(True)
             label.setAlignment(QtCore.Qt.AlignmentFlag.AlignHCenter
-                               | QtCore.Qt.AlignmentFlag.AlignTop)    # the label fills the pane and CENTRES ITS OWN TEXT - neither layout route works ▸r/label-centres-itself
+                               | QtCore.Qt.AlignmentFlag.AlignTop)    # the label centres its own text ▸r/label-centres-itself
             outer.addWidget(label)
             outer.addSpacing(theme.ui_px(8))
 
@@ -223,7 +223,7 @@ def refresh(panel) -> None:
 
 
 def track(panel) -> None:
-    """Watch the model, so all six paths that change the row count reach `refresh` without naming themselves (devlog 480)."""
+    """Watch the model, so every change to the row count reaches `refresh`."""
     view = grid.visible_view(panel)
     model = view.model() if view is not None else None
     if model is None:

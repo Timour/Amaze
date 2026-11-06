@@ -1,4 +1,4 @@
-"""The texture store: every file a saved material references is adopted into `<library>/matX/` and referenced as `$AMAZELIB/...`, so the library is self-contained; the panel publishes the variable, Copy To resolves it back to plain absolute paths for scenes. `hou` is imported INSIDE the node-walking functions only, because the path half serves a caller that stays hou-free. ▸r/texture-refs"""
+"""The texture store: referenced files adopted into `matX/` as `$AMAZELIB/...`. ▸r/texture-refs"""
 
 import filecmp
 import os
@@ -10,11 +10,11 @@ from amaze.helpers import hostos
 
 TOKEN_VAR = "AMAZELIB"
 TOKEN_PREFIX = "$" + TOKEN_VAR + "/"
-STORE_DIR_NAME = "matX"    # the same folder matx_import extracts online packages into - one store, however a texture arrived
+STORE_DIR_NAME = "matX"    # shared with matx_import's online packages
 
 
 def publish_env(prefs) -> None:
-    """Set $AMAZELIB to the library directory, so Houdini itself resolves store references in thumbnails and previews."""
+    """Set $AMAZELIB to the library directory, so Houdini resolves store references."""
     import hou
     directory = str(getattr(prefs, "dir", "") or "")
     if directory:
@@ -26,13 +26,13 @@ def store_dir(prefs) -> str:
 
 
 def asset_folder(name: str, asset_id: str) -> str:
-    """The store folder a save adopts into - readable name first, identity after, the package_dirname convention."""
+    """The store folder a save adopts into: `<name>__<id prefix>`."""
     return "%s__%s" % (hostos.safe_filename(str(name) or "asset"),
                        str(asset_id)[:12])
 
 
 def tokenize(path: str, prefs) -> str:
-    """The `$AMAZELIB/...` spelling of a path under the library - any other path comes back unchanged."""
+    """The `$AMAZELIB/...` spelling of a path under the library; any other comes back unchanged."""
     library = os.path.normpath(str(getattr(prefs, "dir", "") or ""))
     if not path or not library or path.startswith("$"):
         return path
@@ -44,7 +44,7 @@ def tokenize(path: str, prefs) -> str:
 
 
 def resolve(path: str, prefs) -> str:
-    """The absolute spelling of a `$AMAZELIB/...` path in THIS library - any other path comes back unchanged."""
+    """The absolute spelling of a `$AMAZELIB/...` path in this library; any other is unchanged."""
     if not str(path or "").startswith(TOKEN_PREFIX):
         return path
     return os.path.join(os.path.normpath(str(prefs.dir)),
@@ -52,7 +52,7 @@ def resolve(path: str, prefs) -> str:
 
 
 def file_parms(node) -> list:
-    """Every FileReference string parm on the node and everything under it - Redshift's tex0 and mtlximage's file both declare the type (▸r/texture-refs)."""
+    """Every FileReference string parm on the node and everything under it. ▸r/texture-refs"""
     import hou
     parms = []
     for owner in [node] + list(node.allSubChildren()):
@@ -80,7 +80,7 @@ def references(node) -> list:
 
 
 def adopt_file(source: str, prefs, folder: str) -> str:
-    """One file into `matX/<folder>/textures/` - already-inside paths respell without copying - answering the `$AMAZELIB/...` token, or "" for a file that does not exist."""
+    """Copy one file into `matX/<folder>/textures/`; its token, or "" for a missing file."""
     token = tokenize(source, prefs)
     if token.startswith(TOKEN_PREFIX):
         return token
@@ -97,7 +97,7 @@ def adopt_file(source: str, prefs, folder: str) -> str:
 
 
 def adopt(node, prefs, folder: str) -> list:
-    """Copy every outside file the node references into `matX/<folder>/textures/` and rewrite the parms to `$AMAZELIB/...` - answering the token inventory; a reference to a file that does not exist is logged and left standing, so the breakage stays visible."""
+    """Adopt every outside file the node references, rewrite its parms; the token list."""
     import hou
     inventory = []
     for parm, raw in references(node):
@@ -109,13 +109,13 @@ def adopt(node, prefs, folder: str) -> list:
             debug.event("texstore", "referenced file missing",
                         parm=parm.path(), raw=raw)
             continue
-        if _set(parm, token):    # a refused rewrite (locked parm) stays OUT of the inventory - the row must not promise a token the network does not carry
+        if _set(parm, token):    # a refused rewrite stays out of the inventory
             _remember(inventory, token)
     return inventory
 
 
 def resolve_parms(node, prefs) -> int:
-    """Rewrite every `$AMAZELIB/...` reference under the node to this library's absolute path - the scene-side door, so scenes carry no Amaze dependency - answering how many changed."""
+    """Rewrite every `$AMAZELIB/...` reference under the node to an absolute path; the count."""
     changed = 0
     for parm, raw in references(node):
         if raw.startswith(TOKEN_PREFIX):
@@ -125,7 +125,7 @@ def resolve_parms(node, prefs) -> int:
 
 
 def _landing(destination: str, source: str) -> str:
-    """Where `source` lands in the store: its basename, bumped only when a DIFFERENT file already holds the name."""
+    """Where `source` lands: its basename, bumped when a different file holds the name."""
     name = hostos.safe_filename(os.path.basename(source))
     target = os.path.join(destination, name)
     stem, ext = os.path.splitext(name)
@@ -142,7 +142,7 @@ def _set(parm, value: str) -> bool:
     try:
         parm.set(value)
         return True
-    except (hou.OperationFailed, hou.PermissionError) as exc:    # locked or keyframed - the reference stands as it was; PermissionError is a SIBLING ▸r/hou-errors
+    except (hou.OperationFailed, hou.PermissionError) as exc:    # locked or keyframed: the reference stands ▸r/hou-errors
         debug.event("texstore", "parm not rewritten", parm=parm.path(),
                     error=str(exc))
         return False

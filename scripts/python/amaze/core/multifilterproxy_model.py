@@ -6,7 +6,7 @@ from amaze.core import grid_proxy
 
 
 def split_search(text) -> tuple:
-    """(needle, tags_only) from the filter box - the ONE home of the colon rules: a LEADING ":" means tags only, a bare ":" is the moment before the tag, not a search. Both the local sections and the online model split through here."""
+    """(needle, tags_only) from the filter box; a leading colon means tags only."""
     needle = (text or "").strip().lower()
     if needle.startswith(":"):
         return needle[1:].strip(), True
@@ -19,7 +19,7 @@ class MultiFilterProxyModel(grid_proxy.GridProxyModel):
     def __init__(self, parent: QtCore.QObject | None = None) -> None:
         super().__init__(parent)
         self._filters = {}
-        self._folded = {}  # role -> the lowered spelling of a STRING filter, folded ONCE at set time - filterAcceptsRow ran .lower() per row per keystroke; the favourites role compares raw and stays out
+        self._folded = {}  # role -> a string filter lowered once at set time
 
     def watched_roles(self):
         """What this proxy reads: the roles it filters on now, and the name."""
@@ -27,7 +27,7 @@ class MultiFilterProxyModel(grid_proxy.GridProxyModel):
 
     def setFilter(self, filter_role, filter_value):
         """Filter on one role; an empty string clears it. ▸r/filter-role-numbers"""
-        if filter_value == "":    # exact match, not falsy: False is a real FavoriteRole value, and storing dead entries costs a data() call per row per filter forever
+        if filter_value == "":    # exact match, not falsy: False is a real FavoriteRole value
             self.removeFilter(filter_role)
             return
         if filter_role in self._filters \
@@ -40,7 +40,7 @@ class MultiFilterProxyModel(grid_proxy.GridProxyModel):
         self.refilter()
 
     def filter_value(self, filter_role):
-        """What this proxy filters `filter_role` on, or None when it does not - the one reader, so a caller comparing the grid's category against the sidebar need not reach into the store."""
+        """What this proxy filters `filter_role` on, or None when it does not."""
         return self._filters.get(filter_role)
 
     def removeFilter(self, filter_role):
@@ -49,10 +49,10 @@ class MultiFilterProxyModel(grid_proxy.GridProxyModel):
         if filter_role in self._filters.keys():
             del self._filters[filter_role]
             self._folded.pop(filter_role, None)
-            self.refilter()    # immediately, or rows stay hidden by the REMOVED filter until something else invalidates the proxy
+            self.refilter()    # at once, or rows stay hidden by the removed filter
 
     def _name_matches(self, needle: str, index) -> bool:
-        """Does this row answer the search text? The ONE test a section may widen rather than copy the whole filter walk; `needle` arrives already lower-folded."""
+        """Does this row answer the search text? A section may override it; `needle` is lowered."""
         name = index.data(QtCore.Qt.ItemDataRole.DisplayRole) or ""
         return needle in name.lower()
 

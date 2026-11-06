@@ -14,12 +14,12 @@ from amaze.core import asset_files, debug, users
 from amaze.core.material import BUILDER_SUFFIX
 from amaze.helpers import hostos
 
-_STEM_NUMBER = re.compile(r"(?:^|-)(\d+)$")    # a stem is `<writer>-<n>`, or bare `<n>` whenever `writer_tag` answers empty (no user picked, unreadable prefs, a name with nothing alphanumeric left) - the trailing number IS the version number either way
+_STEM_NUMBER = re.compile(r"(?:^|-)(\d+)$")    # a stem is `<writer>-<n>` or bare `<n>`; the trailing number is the version
 
-_KINDS = ((".mat", True), (".interface", False),    # the kinds a version archives - a missing .builder.json or .png is fine (older assets, no capture), a missing .mat is not a version
+_KINDS = ((".mat", True), (".interface", False),    # the kinds a version archives; only .mat is required
           (BUILDER_SUFFIX, False), (".png", False))
 
-SOURCE_KINDS = {    # `asset_files()` kind -> the archive suffix it fills; a kind absent here (cop, stamp, tile icon) is not versioned, and library.py keys its pre-edit hold on this by filename suffix - `<id>_cop.mat` once collided with `<id>.mat` and archived the companion as Version 1's material
+SOURCE_KINDS = {    # `asset_files()` kind -> archive suffix; a kind absent here is not versioned
     "mat": ".mat",
     "interface": ".interface",
     "builder": BUILDER_SUFFIX,
@@ -134,7 +134,7 @@ def _write_ledger(preferences, mat_id: str, ledger: dict,
     path = _ledger_path(preferences, mat_id, section)
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        if os.path.exists(path):    # the snapshot tier every other store has, guarded so the session's once-per-file slot is not spent on the ledger's own birth
+        if os.path.exists(path):    # snapshot an existing ledger before it is overwritten
 
             hostos.snapshot_before_write(path)
         hostos.write_json_atomic(path, ledger, indent=1)
@@ -188,7 +188,7 @@ def _base_paths(preferences, mat_id: str, section: Section = MATERIAL) -> dict:
 
 
 def writer_tag(preferences) -> str:
-    """The signature version FILES carry - the UID identifies, the NAME signs: the library user's name with only alphanumerics kept, and empty when no library user exists yet (never the OS account, never the machine name), so `_stem` emits the bare `<n>` form rather than inventing a signature."""
+    """The library user's name, alphanumerics only, that signs version files; "" with no user."""
     try:
         uid = users.current(preferences)
     except (AttributeError, OSError):
@@ -204,7 +204,7 @@ def _stem(tag: str, number: int) -> str:
 
 
 def _row_stem(row: dict) -> str:
-    """The stem a ledger row's files use - recorded at write time, or the bare number for rows whose writer signed nothing."""
+    """The stem a ledger row's files use: the recorded one, else the bare number."""
     return str(row.get("file") or int(row.get("n", 0)))
 
 
@@ -224,7 +224,7 @@ def _archive_paths(preferences, mat_id: str, stem,
 
 
 def _copy_set(sources: dict, targets: dict, kinds: tuple = _KINDS) -> bool:
-    """Copy every present kind as ONE unit - all bytes first, then the renames, each destination moved aside first so a failure part way puts back the ones already moved; the residual is only a crash between two renames. practice.md ▸ THE LIST IS WRITTEN FIRST holds the held-file reproduction."""
+    """Copy every present kind as one unit, rolled back on failure. ▸p/list-written-first-answer"""
     staged = []
     displaced = []
     created = []
@@ -254,7 +254,7 @@ def _copy_set(sources: dict, targets: dict, kinds: tuple = _KINDS) -> bool:
             staged.append((scratch, target))
 
         for scratch, target in staged:
-            if os.path.exists(target):    # the destination moves aside FIRST, so this kind can be put back if a later one cannot be written
+            if os.path.exists(target):    # moved aside first, so a rollback can put it back
                 aside = hostos.unique_scratch(target, ".rollback",
                                               create=False)
                 hostos.replace_file(target, aside)
@@ -283,7 +283,7 @@ def _copy_set(sources: dict, targets: dict, kinds: tuple = _KINDS) -> bool:
         for aside, target in reversed(displaced):
             try:
                 hostos.replace_file(aside, target)
-            except OSError as undo_exc:    # nothing more can be done, and it must not be silent - the only shape that still leaves the base mixed
+            except OSError as undo_exc:    # the base is left mixed; logged, never silent
                 debug.event("versions", "ROLLBACK FAILED - the base is "
                             "mixed", target=target, error=str(undo_exc))
         displaced = []
@@ -306,9 +306,9 @@ def create_version(preferences, mat_id: str, name: str = "",
         return 0
     number = max([int(v.get("n", 0)) for v in ledger["versions"]] or [0]) + 1
     sources = source_paths or _base_paths(preferences, mat_id, section)
-    tag = writer_tag(preferences)    # the stem carries the WRITER and the row records the stem it wrote, so readers never re-derive it
+    tag = writer_tag(preferences)    # the row records the stem it wrote
     stem = _stem(tag, number)
-    while any(os.path.exists(path) for path    # THE NUMBER IS ALLOCATED AGAINST THE FOLDER, NOT ONLY THE LEDGER: two machines of one artist share the tag, the ledger is last-write-wins across a sync, and stepping past a stem already on disk is what stops one version's payload silently replacing another's ▸r/version-store
+    while any(os.path.exists(path) for path    # steps past a stem already on disk ▸r/version-store
               in _archive_paths(preferences, mat_id, stem, section).values()):
         debug.event("versions", "version stem already on disk - taking "
                                 "the next number", mat_id=str(mat_id),
@@ -319,7 +319,7 @@ def create_version(preferences, mat_id: str, name: str = "",
                      _archive_paths(preferences, mat_id, stem, section),
                      section.kinds):
         return 0
-    author = ""    # THE NAME, NOT THE UID, FROZEN here rather than resolved at read time: the stem beside it froze the same name, and a row that outlives its user record still says who wrote it
+    author = ""    # the writer's name, frozen into the row at write time
     try:
         writer = users.current(preferences)
         if writer:

@@ -1,5 +1,4 @@
-"""LOP material assignment - the USD half of a viewport drop: find what is bound under a prim, rebind it, name the assign after the geometry it drives, remove a material nothing references. NOTHING HERE IMPORTS Qt OR TOUCHES THE PANEL, which is what makes it testable headlessly. ▸archive/lop_assign.py
-"""
+"""LOP material assignment for a viewport drop: find, rebind and remove bindings; no Qt here."""
 
 import hou
 
@@ -8,7 +7,7 @@ from amaze.helpers import helpers, wording
 
 
 def name_new_assign(lopnet, before, assign_path) -> None:
-    """Names a freshly created assignmaterial after WHAT IT ASSIGNS, so a stack of them reads as the geometry rather than assignmaterial1/2/3. ONLY the node just created is renamed - a reused assign keeps the name it earned."""
+    """Name the one assignmaterial not in `before` after the path it assigns; others keep theirs."""
     new = [
         n for n in lopnet.children()
         if n.type().name() == "assignmaterial" and n not in before
@@ -28,7 +27,7 @@ def name_new_assign(lopnet, before, assign_path) -> None:
 
 
 def bound_materials_under(stage, primpath):
-    """`[(material_prim_path, [bound_prim_paths])]` governing the picked prim - the nearest self-or-ancestor direct binding it inherits, plus every direct binding in the subtree below."""
+    """`[(material, [prims])]`: the nearest inherited direct binding plus every one below."""
     try:
         from pxr import Usd
     except Exception:
@@ -46,7 +45,7 @@ def bound_materials_under(stage, primpath):
             prims_of[mat].append(path)
 
     def direct(prim):
-        """Materials bound ON this prim by EITHER binding style - a plain `material:binding`, or a collection binding whose targets are `[collection, material]`. Reading only the first leaves a collection-bound material with no Swap entry. A partial failure KEEPS what it found, or it reads as a prim with nothing bound."""
+        """Materials bound on this prim, plain or collection binding; a failure keeps what it found."""
         found = []
         try:
             for rel in prim.GetRelationships():
@@ -84,7 +83,7 @@ def bound_materials_under(stage, primpath):
 
 
 def swap_assignments(stock, lopnet, liblop, anchor, targets, vop):
-    """Rebinds every prim in `targets` to `vop`'s material, then drops each old material that nothing references any more. Answers None on success, or a REASON STRING - no dialogs here, the panel owns the UI."""
+    """Rebind `targets` to `vop`'s material, drop unreferenced old ones; None, or a reason string."""
     try:
         matpath = str(stock.getMaterialPrimPathForNode(liblop, vop))
     except Exception as exc:
@@ -136,7 +135,7 @@ def _bound_on_stage(node, matprimpath) -> bool:
 
 def remove_unreferenced_material(lopnet, liblop,
                                   matprimpath) -> bool:
-    """Deletes a material's definition IF no assignmaterial entry still uses it - never one still assigned elsewhere, and an empty primpattern is not a use. EXPLICIT entries are removed; PATTERN entries are never touched, and never RESOLVED to check, because a wildcard resolves to a real child and reads as a sharer. Failures here land part way through a scene edit, so they say why."""
+    """Delete a material's explicit entries and VOP when nothing still uses it; whether it went."""
     matsparm = liblop.parm("materials")
     if matsparm is None:
         return False
@@ -220,7 +219,7 @@ def remove_unreferenced_material(lopnet, liblop,
 
 
 def drop_choices(stage, primpath):
-    """What a viewport drop can offer, as `(kind, label, payload)` data for the panel to build a menu from. SWAP entries come first - rebinding what is already on the prim beats stacking a new assignment and leaving dead materials. Assign entries walk self-then-ancestors."""
+    """A drop's menu as `(kind, label, payload)`: swaps first, then assigns up the ancestors."""
     choices = []
     if not primpath or stage is None:
         return choices

@@ -24,7 +24,7 @@ def _bind() -> None:
 
 
 def reload_engine() -> None:
-    """Re-execute this package's modules leaf first and re-bind; reloading the package alone refreshes nothing. ▸r/package-reload"""
+    """Re-execute this package's modules leaf first and re-bind them. ▸r/package-reload"""
     for module in _LEAF_FIRST:
         importlib.reload(module)
     _bind()

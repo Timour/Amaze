@@ -1,4 +1,4 @@
-"""The PhysicallyBased material icon, DRAWN from the material's measured numbers because a value-only source ships no textures to render. Two live swatches - base colour and transparency - are string-substituted into the template SVG, so re-exporting the template is all a design change needs. Substitution keys on the placeholder FILLS, never element ids, which vary between exports. ▸archive/matx_icon.py"""
+"""The PhysicallyBased material icon, drawn from measured values into the template SVG."""
 
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ def _template(source: str = "") -> str:
 
 
 def _srgb_hex(color) -> str:
-    """Linear colour to an sRGB hex string. The stored values are LINEAR and some exceed 1, so BOTH the clamp and the transfer function are required - scaling straight to 0-255 renders every swatch far too dark."""
+    """Linear colour, possibly above 1, to a clamped sRGB hex string."""
     if not color:
         return "#808080"
     out = []
@@ -58,7 +58,7 @@ def _fill(svg: str, placeholder: str, paint: str) -> str:
 
 
 def icon_svg(values: dict, source: str = "") -> str:
-    """The template with both swatches filled in. Keyed on the placeholder FILLS rather than element ids, so one substitution serves any template the designer exports, and the authoring `visibility=hidden` must go or the swatch never draws."""
+    """The template with both swatches filled in, keyed on the placeholder fills."""
     svg = _template(source)
     svg = _fill(svg, _BASE_PLACEHOLDER, 'fill="%s"' % _srgb_hex(values.get("color")))
     alpha = TRANSMISSIVE_ALPHA if values.get("transmission") else 1.0
@@ -68,7 +68,7 @@ def icon_svg(values: dict, source: str = "") -> str:
 
 
 def render(values: dict, size: int, source: str = "") -> QtGui.QImage:
-    """A square icon for one material's measured values, rendered straight from the SVG onto a transparent image - never through `QIcon`, whose engine has lost the alpha before."""
+    """A square icon for one material's values, rendered from the SVG onto a transparent image."""
     image = QtGui.QImage(
         size, size, QtGui.QImage.Format.Format_ARGB32_Premultiplied
     )

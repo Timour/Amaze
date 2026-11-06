@@ -1,4 +1,4 @@
-"""Single source of truth for the app's DISPLAY name, tagline and two version stamps - a rename reaches everything the user sees through Python, but NOT `assetlib_id` or the .pypanel label. ▸p/branding-stamps"""
+"""The app's display name, tagline and two version stamps. ▸p/branding-stamps"""
 
 APP_NAME = "Amaze"    # change this to rename the app
 
@@ -6,5 +6,5 @@ APP_TAGLINE = "Browse it, save it, drag it."    # one-line subtitle, shown under
 
 APP_VERSION = "1.31.0"    # the RELEASED version, MAJOR.MINOR.PATCH ▸p/version-scheme
 
-LIBRARY_FORMAT = 3    # the ON-DISK stamp: an older build opening a library stamped ahead of this latches read-only. Bump ONLY when the on-disk shape changes ▸p/branding-stamps
+LIBRARY_FORMAT = 3    # the on-disk stamp; bump only when the on-disk shape changes ▸p/branding-stamps
 

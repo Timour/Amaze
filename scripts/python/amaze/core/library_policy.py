@@ -1,4 +1,4 @@
-"""Settings belonging to the LIBRARY rather than the person, in their own file beside `library.json`. FAILS CLOSED: anything unreadable reads as the most restrictive setting, never the most permissive - `I could not check` must not mean `go ahead`. ▸archive/library_policy.py"""
+"""Settings of the library, not the person; anything unreadable reads as the most restrictive."""
 
 import json
 import os
@@ -25,7 +25,7 @@ def path_for(library_dir: str) -> str:
 
 
 def read(library_dir: str) -> dict:
-    """The library's policy over the defaults. NEVER RAISES - it is consulted while opening the panel and saving a material, so every damaged shape degrades to the restrictive reading instead."""
+    """The library's policy over the defaults; never raises, damage reads as restrictive."""
     settings = dict(DEFAULTS)
     path = path_for(library_dir)
     if not path:
@@ -113,7 +113,7 @@ def set_library_version(library_dir: str, version: int) -> bool:
 
 
 def _write(library_dir: str, changes: dict) -> bool:
-    """Merges `changes` into the library's policy. `created` is asked BEFORE the write and seeds the restore floor after it - without that floor, `read()` cannot tell a library that never had a policy from one whose file is momentarily missing."""
+    """Merge `changes` into the library's policy file; whether it was written."""
     path = path_for(library_dir)
     if not path or not os.path.isdir(library_dir):
         debug.event("policy", "not written - no library directory",

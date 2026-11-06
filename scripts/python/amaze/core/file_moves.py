@@ -51,7 +51,7 @@ def same_drive(path: str, folder: str) -> bool:
 
 
 def _patiently(call, *args):
-    """`call(*args)`, retried while Windows answers the file is held, then once more raising - `hostos.replace_file`'s waits."""
+    """`call(*args)`, retried while Windows says the file is held, then once more, raising."""
     for wait in HELD_WAITS:
         try:
             return call(*args)

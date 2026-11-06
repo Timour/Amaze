@@ -77,7 +77,7 @@ def start() -> None:
 
 
 def _find_panel():
-    """The app panel's root widget, or None - with the user told to open it first where there is a screen to tell, and the FIRST pane tab matching a known label winning. ▸r/status-bar"""
+    """The first app panel's root widget, or None after telling the user to open one. ▸r/status-bar"""
     ui = getattr(hou, "ui", None)
     if ui is None:
         return None

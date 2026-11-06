@@ -1,4 +1,4 @@
-"""Gallery Import: Houdini .gal gallery entries -> Amaze library, each run through the SAME save funnel a hand-saved material takes. ▸r/gallery-entries"""
+"""Gallery Import: .gal entries into the library, each through the normal save. ▸r/gallery-entries"""
 
 import os
 
@@ -6,11 +6,11 @@ import hou
 
 from amaze.core import debug
 
-_MATERIAL_CATEGORIES = ("Vop", "Lop")    # everything else in a gallery is reported as SKIPPED, never silently ignored ▸r/gallery-entries
+_MATERIAL_CATEGORIES = ("Vop", "Lop")    # anything else is skipped ▸r/gallery-entries
 
 
 def default_gallery_dir() -> str:
-    """Where Houdini keeps the user's own galleries - the sensible place to open a file dialog, since most users have never seen the path."""
+    """Where Houdini keeps the user's own galleries, for a file dialog to open at."""
     pref_dir = hou.getenv("HOUDINI_USER_PREF_DIR") or ""
     if pref_dir:
         candidate = os.path.join(pref_dir, "gallery")
@@ -21,20 +21,20 @@ def default_gallery_dir() -> str:
 
 
 def entries_from_file(gallery_path: str) -> list:
-    """Material entries from ONE .gal file, as (entry, type_name, category_label) - the file is left registered exactly as it was found, on every path out. ▸r/gallery-entries"""
+    """(entry, type_name, category) per material in one .gal, its registration kept. ▸r/gallery-entries"""
     gallery_path = os.path.abspath(os.path.expanduser(gallery_path))
     was_installed = False
     try:
         hou.galleries.removeGallery(gallery_path)
         was_installed = True
     except (AttributeError, hou.Error):
-        pass          # not previously registered - nothing to restore; `hou.OperationFailed` is a SUBCLASS of hou.Error and naming it added nothing ▸r/gallery-entries
+        pass          # not previously registered ▸r/gallery-entries
     try:
         hou.galleries.installGallery(gallery_path)
     except (AttributeError, hou.Error) as exc:
         debug.event("gallery", "install failed",
                     file=gallery_path, error=str(exc))
-        if was_installed:    # PUT IT BACK: removeGallery already succeeded, and the finally below never runs on this path ▸r/gallery-entries
+        if was_installed:    # put the user's gallery back ▸r/gallery-entries
             try:
                 hou.galleries.installGallery(gallery_path)
             except (AttributeError, hou.Error) as restore_exc:
@@ -72,7 +72,7 @@ def _best_type(entry):
 
 
 def _category_of(entry) -> str:
-    """The Amaze category for an entry: the LAST component of its own gallery category, as the palette already organised them, or `Gallery` when it carries none."""
+    """The last component of the entry's gallery category, or `Gallery` when it has none."""
     try:
         cats = entry.categories()
     except hou.Error:
@@ -110,10 +110,10 @@ def import_entries(save, entries, staging_parent=None,
                         debug.event("gallery", "entry not instantiable",
                                     entry=entry.name(), type=type_name)
                         continue
-                    node = entry.createChildNode(parent)    # documented `-> Node` and measured so on 25 real entries: it returns a node or RAISES, never None ▸r/gallery-entries
+                    node = entry.createChildNode(parent)    # a node, or raises ▸r/gallery-entries
                     node.setGenericFlag(hou.nodeFlag.Material, True)
                     if not save(node, category, "gallery", False, **asked):
-                        summary["failed"] += 1    # a refused save lands in failed, never imported: the summary is all the user reads after a bulk run ▸r/gallery-entries
+                        summary["failed"] += 1    # a refused save counts as failed ▸r/gallery-entries
                         debug.event("gallery", "entry was not saved",
                                     entry=entry.name(), type=type_name)
                         continue
@@ -122,7 +122,7 @@ def import_entries(save, entries, staging_parent=None,
                         "categories"
                     ].get(category, 0) + 1
                     landed.append(node.userData("assetlib_id") or "")    # the save's own stamp
-                except (AttributeError, hou.Error) as exc:    # AttributeError too: if a build ever DID hand back None, one entry fails instead of the whole run aborting ▸r/gallery-entries
+                except (AttributeError, hou.Error) as exc:    # one entry fails, not the run ▸r/gallery-entries
                     summary["failed"] += 1
                     debug.event("gallery", "entry import failed",
                                 entry=entry.name(), type=type_name,

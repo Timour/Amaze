@@ -1,5 +1,4 @@
-"""Reader for the tensor-file container measured BSDFs ship in - a magic, a version pair, a field count, then one descriptor per field followed by the raw arrays. Parsing it here turns a measurement into shading numbers without the publisher's own API. ▸archive/bsdf_reader.py
-"""
+"""Reader for the tensor-file container measured BSDFs ship in."""
 import struct
 
 DTYPES = {1: ('B', 1), 2: ('b', 1), 3: ('H', 2), 4: ('h', 2), 5: ('I', 4),

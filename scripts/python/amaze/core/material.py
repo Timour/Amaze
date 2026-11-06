@@ -16,7 +16,7 @@ CM_TO_SCENE_UNITS = 0.01    # a measured scattering radius is in cm, a scene in 
 
 
 def is_surface_shader_type(type_name: str) -> bool:
-    """Whether a Redshift node TYPE NAME looks like a surface material - the ONE spelling of the heuristic the converter and the shaderball share, so a renamed default shader is fixed in one place."""
+    """Whether a Redshift node type name looks like a surface material."""
     return "Material" in type_name or "PBR" in type_name
 
 
@@ -45,7 +45,7 @@ TERMINAL_INPUTS = {
 
 
 def terminal_input(named_inputs: dict, role: str):
-    """The node wired into a Redshift terminal's `role` input, or None - the two terminal forms spell inputs differently (`Bump Map` vs `BumpMap`), so callers ask by ROLE; KeyError on a role TERMINAL_INPUTS does not name, deliberately."""
+    """The node wired into a Redshift terminal's `role` input, or None; KeyError on an unknown role."""
     for spelling in TERMINAL_INPUTS[role]:
         wired = named_inputs.get(spelling)
         if wired is not None:
@@ -60,7 +60,7 @@ _SAFE_ASSET_ID = re.compile(r"[0-9A-Za-z._-]{1,64}\Z")
 
 
 def is_safe_asset_id(raw) -> bool:
-    """True when this id can compose into a filename - ids are read verbatim out of library.json (a traversal there picks which file the loader opens), and legacy 18-digit timestamp ids plus the fixture's "-1" must pass, so the rule bans separators and traversal, never unfamiliar shapes."""
+    """True when this id can compose into a filename: no separators, no traversal."""
     text = str(raw)
     if text in (".", ".."):
         return False
@@ -72,14 +72,14 @@ STAMP_SUFFIX = ".stamp.json"    # a recovery stamp, write-only: only repair.py o
 
 
 def payload_path(preferences, asset_id, suffix: str) -> str:
-    """THE ONE COMPOSITION of `mat/<id><suffix>` (suffix: `preferences.ext`, ".interface", ".builder.json", "_cop" + ext), with the containment check - `is_safe_asset_id` is the door at the record, this is the door at the path, and every caller shares the trailing-separator invariant through here."""
+    """The path `mat/<id><suffix>`, refused if it escapes the asset folder."""
     from amaze.helpers import hostos
     assets = os.path.join(preferences.dir, preferences.asset_dir)
     return hostos.contained_join(assets, str(asset_id) + suffix)
 
 
 class Material:
-    """One asset record. `_RETIRED_KEYS` are keys this build understands but no longer writes - named so they are recognised and DROPPED, because an unknown key rides `_extra` verbatim and the next save would put a retired one straight back, undoing the schema step that stripped it. `MULTIPLE_VALUES` is the mixed-selection sentinel, COMPARED against, so it stays the one spelling (test_library.TheSentinelHasOneHome)."""
+    """One asset record; keys in `_RETIRED_KEYS` are dropped on load, unknown keys kept."""
 
     def __init__(
         self,
@@ -99,7 +99,7 @@ class Material:
         self.date = date
         self._usd = usd
 
-        # cats and tags assign THROUGH their setters - the one place each that collapses a legacy multi-category row and drops a blank tag; new ids are uuid4 hex, legacy timestamp ids live forever (scene nodes and filenames carry them).
+        # cats and tags go through their setters; a new id is uuid4 hex
         self.categories = cats if cats else ""
         self.tags = tags
         self._mat_id = uuid.uuid4().hex if mat_id == "" else mat_id
@@ -121,7 +121,7 @@ class Material:
 
     @classmethod
     def from_dict(cls, material_dict: dict) -> Material:
-        """A row into a Material - .get() with defaults throughout, because one damaged row must not cost the whole library its open; `favorite` is deliberately not read back (per-user now, schema 5 strips it), and everything unrecognised rides `_extra` verbatim so an older build cannot strip a newer one's fields on its next save."""
+        """A row into a Material, defaults for missing fields, unknown keys kept in `_extra`."""
         name = material_dict.get("name", "")
         cats = material_dict.get("categories", [])
         tags = material_dict.get("tags", [])
@@ -240,7 +240,7 @@ class Material:
 
     @property
     def fav(self) -> bool:
-        """In-memory fallback only - the record's favourite field is dead, stars live per-user in favourites.json."""
+        """In-memory fallback only; stars live per-user in favourites.json."""
         return self._fav
 
     @fav.setter
@@ -267,7 +267,7 @@ class Material:
 
     @property
     def tags(self) -> list[str]:
-        """The tag list, `[]` for none; assigning takes a comma-separated string or a list, stripped, blanks dropped. ▸p/no-tags-is-empty"""
+        """The tag list, `[]` for none; takes a comma string or a list. ▸p/no-tags-is-empty"""
         return self._tags
 
     @tags.setter
@@ -286,7 +286,7 @@ class Material:
 
     @property
     def categories(self) -> list[str]:
-        """An asset has ONE category, stored as a ≤1-entry list so the schema is unchanged; several collapse to the FIRST, and tags are the many-to-many axis (overview.md ▸ Models & storage)."""
+        """The one category as a list of at most one entry; several collapse to the first."""
         return self._cats
 
     @categories.setter
@@ -309,7 +309,7 @@ class Material:
         self, name: str | None, cats: str, tags: str, fav: bool, renderer: str | None,
         about: str | None = None, license: str | None = None,
     ) -> None:
-        """Apply edited fields and stamp the date. `fav` is accepted for arity and IGNORED - the live star is per-user via preferences, and writing the record field here seeded favourite adoption on unmigrated machines (overview.md ▸ Housekeeping semantics). For about/license, None leaves the field unchanged, "" clears it."""
+        """Apply edited fields and stamp the date; `fav` is ignored, None keeps about/license."""
         self.categories = cats
         self.tags = tags
         if renderer:

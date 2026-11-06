@@ -1,4 +1,4 @@
-"""The save dialog every section saves through - name, category and tags, built from the house form rows so it shares the shell and the drawn width. ▸p/save-dialog-rows"""
+"""The save dialog every section saves through: name, category and tags. ▸p/save-dialog-rows"""
 
 from amaze import amazetheme
 from amaze import branding
@@ -28,13 +28,13 @@ class SaveDialog(base_dialog.AssetDialog):
         language: str = "",
         language_sections=(),
     ) -> None:
-        """`name` prefills the Name row; `name_enabled=False` greys it, which is the multi-selection save - one field cannot name several assets, so each keeps its node-derived name. `default_cat` pre-selects the category active in the panel, and `title` overrides the house one."""
+        """`name` prefills the Name row, `name_enabled=False` greys it for a multi-save."""
         super().__init__(title or ("Save to " + branding.APP_NAME),
                          parent=parent)
 
         self.categories = ""
         self.tags = ""
-        self.fav = False    # there is no Favorite row: the attribute stays because the COP save reads it, and it was already always False ▸p/save-dialog-rows
+        self.fav = False    # always False; the COP save reads it ▸p/save-dialog-rows
         self.name = name or ""
         self.language = ""
         self._section_keys = [key for key, _ in sections]

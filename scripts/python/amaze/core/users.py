@@ -1,4 +1,4 @@
-"""Who uses this library: a `uuid4` UID with a `name` beside it - everything a user owns is tagged with the UID and never the typed name, so a rename relinks the label and moves nothing (ROADMAP line 21 carries what is user-scoped and what is not)."""
+"""Who uses this library: a `uuid4` UID with a `name`; what a user owns is tagged with the UID."""
 
 from __future__ import annotations
 
@@ -10,11 +10,11 @@ USERS_FILE = "users.json"
 
 RESOLVED = "resolved"    # the pointer names someone this library knows...
 MINT = "mint"            # ...the library has nobody yet...
-ASK = "ask"              # ...or it HAS people and this machine is none of them - the state that earns its cost, stopping a second machine minting a second identity for one person (ROADMAP line 21)
+ASK = "ask"              # ...or it has people and this machine is none of them
 
 
 def normalise(value) -> dict:
-    """A well-formed record, or {} for junk: a user with no name cannot be shown in a picker, so it reads as absent."""
+    """A well-formed record, or {} for junk; a user with no name reads as absent."""
     if not isinstance(value, dict):
         return {}
     name = value.get("name", "")
@@ -76,7 +76,7 @@ def create(preferences, name: str) -> str:
 
 
 def delete(preferences, uid) -> bool:
-    """Remove a user AND everything tagged theirs - favourites and registered folders, one guarded write per store - then the record, which a refused sweep KEEPS (the user stays visible and the deletion retryable, never half-invisible); a machine pointing at them clears its pointer, any other falls to ASK on its next open (settled 2026-08-22)."""
+    """Remove a user and everything tagged theirs; a refused sweep keeps the record, answers False."""
     uid = str(uid)
     store = _store(preferences)
     if not store.get(uid):
@@ -94,7 +94,7 @@ def delete(preferences, uid) -> bool:
 
 
 def rename(preferences, uid, name: str) -> bool:
-    """Relink a UID's name. Nothing tagged is touched - one field write, where a name-keyed store would need `keyed_store.rekey`."""
+    """Relink a UID's name; nothing tagged is touched."""
     uid = str(uid)
     name = str(name or "").strip()
     store = _store(preferences)

@@ -1,4 +1,4 @@
-"""Every hover text Amaze shows, in ONE document - one edit here rewords the control wherever it is built. ▸p/messages-need-one-home"""
+"""Every hover text Amaze shows, in one document. ▸p/messages-need-one-home"""
 
 from __future__ import annotations
 

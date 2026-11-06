@@ -1,5 +1,4 @@
-"""Locations under All, each unfolding to its subfolders, read on a worker. ▸p/folder-sidebar
-"""
+"""Locations under All, each unfolding to its subfolders, read on a worker. ▸p/folder-sidebar"""
 
 import functools
 import os
@@ -11,7 +10,7 @@ from amaze.helpers import hostos
 
 
 def walk_following_links(root: str):
-    """`os.walk` following symlinked folders, each real one once; a caller may prune or sort `dirnames` in place. Only a link is resolved: a plain folder's real path is its parent's plus its name. ▸r/platform-files"""
+    """`os.walk` following symlinked folders, each once; prune `dirnames` in place. ▸r/platform-files"""
     try:
         stack = [(root, os.path.realpath(root))]
     except OSError:
