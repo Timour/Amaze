@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.31.2
+
+- The test fixture for the git hooks ignores Python's bytecode cache, so the GitHub check passes.
+
 ## 1.31.1
 
 - Every comment and docstring in the source is one line, saying what the thing does and what to watch when calling it. Nothing changes in use.
