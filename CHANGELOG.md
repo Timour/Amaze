@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.32.0
+
+- The File section makes previews for usdz, gltf, glb, dxf and iges geometry and for psd, pic, gif and tx images.
+- A new location lists Other Files as well; its Show menu starts with every kind on.
+- Clean Up Library counts a missing render only for materials and node setups that can have one, and says node setups where it means them.
+
 ## 1.31.2
 
 - The test fixture for the git hooks ignores Python's bytecode cache, so the GitHub check passes.
