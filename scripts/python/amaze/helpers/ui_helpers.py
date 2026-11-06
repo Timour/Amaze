@@ -1,4 +1,4 @@
-"""Shared UI elements: the drag tag, the ui/ asset and SVG readers, and the hand-painted widgets the panel is built from."""
+"""Shared UI elements: the drag tag, the ui/ asset and SVG readers, and hand-painted widgets."""
 
 import contextlib
 import os
@@ -14,18 +14,18 @@ from amaze.helpers import theme
 
 @contextlib.contextmanager
 def relayout(*models):
-    """Wrap a WHOLESALE change to one or more models' contents; NOT a structural insert or removal, whose own begin/end contract this would layer over and hand the proxy dangling persistent indexes at the closing signal - a native segfault (sections.py `delete_rows`)."""
+    """Wrap a wholesale change to models' contents; never a structural insert or removal (segfault)."""
     live = [model for model in models if model is not None]
     for model in live:
         model.layoutAboutToBeChanged.emit()
     try:
-        yield              # the pair MUST close even when the body raises, or every attached view stays mid-layout-change for the rest of the session with its persistent indexes never restored
+        yield              # the pair closes even when the body raises
     finally:
         for model in reversed(live):   # reverse order, so the innermost model is released first - the mirror of how they were announced
             model.layoutChanged.emit()
 
 
-DRAG_TAG_STYLE = (     # the drag name tag, shared by BOTH the self-managed drag's floating label (cop/color/code) and the native drags' pixmap (materials), so every drag looks identical though the mechanisms differ
+DRAG_TAG_STYLE = (     # the drag name tag, shared by the self-managed and the native drags
     "background-color: #2d2d2d; color: #e6e6e6;"
     " border: 1px solid #555555; padding: %dpx %dpx;"
     % (theme.ui_px(2), theme.ui_px(8))
@@ -33,7 +33,7 @@ DRAG_TAG_STYLE = (     # the drag name tag, shared by BOTH the self-managed drag
 
 
 def name_tag_pixmap(name: str) -> QtGui.QPixmap:
-    """The drag tag as a PIXMAP - the drag picture for the native drags, matching the self-managed system's floating label through the shared `DRAG_TAG_STYLE`."""
+    """The drag tag as a pixmap, the drag picture for the native drags."""
     label = QtWidgets.QLabel(str(name))
     label.setStyleSheet(DRAG_TAG_STYLE)
     label.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -42,7 +42,7 @@ def name_tag_pixmap(name: str) -> QtGui.QPixmap:
     return label.grab()
 
 
-_svg_image_cache: dict = {}    # rendered ui/ SVGs keyed by (name, side); a stored False means tried and failed, so a missing asset is not re-rendered every batch
+_svg_image_cache: dict = {}    # rendered ui/ SVGs keyed by (name, side); a stored False means tried and failed
 
 
 def svg_image(name: str, side: int = 512):
@@ -60,7 +60,7 @@ def svg_image(name: str, side: int = 512):
             else:
                 debug.event("ui", "ui asset missing", name=name, path=path)
         except Exception as exc:                          # noqa: BLE001
-            debug.event("ui", "ui asset not rendered",     # event, not note: these are shipped SVGs, whatever wanted one still draws without it, and there is nothing a user could do about it
+            debug.event("ui", "ui asset not rendered",     # event, not note: the caller still draws without it
                         name=name, error=str(exc))
         cached = image if image is not None else False
         _svg_image_cache[key] = cached
@@ -68,7 +68,7 @@ def svg_image(name: str, side: int = 512):
 
 
 def forget_svg_images() -> None:
-    """Drop the rendered-SVG cache - the NAMED test-isolation seam, so no test reaches into the module dict and pins its spelling."""
+    """Drop the rendered-SVG cache; the test-isolation seam."""
     _svg_image_cache.clear()
 
 
@@ -88,7 +88,7 @@ def paint_svg(device, svg) -> bool:
 
 
 def live_current_index(view):
-    """A view's current index, RE-DERIVED from its live model, or None - never hand a STORED index back through a proxy, because `isValid()` says nothing about whether the proxy's row mapping still contains it. ▸r/model-contracts"""
+    """A view's current index, re-derived from its live model, or None. ▸r/model-contracts"""
     if view is None:
         return None
     model = view.model()
@@ -97,7 +97,7 @@ def live_current_index(view):
     index = view.currentIndex()
     if not index.isValid():
         return None
-    if index.model() is not model:   # it may predate a model swap entirely (a section switch rebuilds these views); mapping it through the CURRENT proxy is the bug the drag path hit, where an online index read through the material proxy dragged whichever local material sat at that row
+    if index.model() is not model:   # it may predate a model swap; never map it through the current proxy
         return None
     parent = index.parent()    # a tree row keeps its parent: the same row number elsewhere is another row
     try:
@@ -110,15 +110,15 @@ def live_current_index(view):
 
 
 def tooltip_text(text: str, max_px: int = 800) -> str:
-    """A tooltip that never draws wider than `max_px` REAL screen pixels - Qt renders a PLAIN-text tooltip as one line however long, and a width-capped table is the one rich-text width control QTextDocument honours; the cap is in DEVICE pixels, a ruler on a screenshot."""
+    """A tooltip never drawn wider than `max_px` device pixels."""
     import html
 
-    cap = max(1, int(max_px / theme.screen_ratio()))    # the primary screen deliberately: a tooltip is built at setToolTip time, before which monitor it will pop on is knowable ▸r/screen-dpr
+    cap = max(1, int(max_px / theme.screen_ratio()))    # the primary screen: the target monitor is unknown at setToolTip time ▸r/screen-dpr
     metrics = QtGui.QFontMetrics(QtWidgets.QToolTip.font())
     if metrics.horizontalAdvance(text) <= cap:
-        return html.escape(text) if _might_be_rich(text) else text    # Qt AUTO-DETECTS rich text, so remote catalogue text renders as markup unless this branch escapes too ▸r/tooltip-autodetect
+        return html.escape(text) if _might_be_rich(text) else text    # Qt auto-detects rich text, so this branch escapes too ▸r/tooltip-autodetect
 
-    body = html.escape(text).replace("\n", "<br>")   # rich text eats newlines, and the multi-paragraph tooltips keep their breaks or become one undifferentiated wall
+    body = html.escape(text).replace("\n", "<br>")   # rich text eats newlines
     return '<qt><table width="%d"><tr><td>%s</td></tr></table></qt>' % (
         cap, body)
 
@@ -128,7 +128,7 @@ def _might_be_rich(text: str) -> bool:
     return QtGui.Qt.mightBeRichText(str(text or ""))
 
 
-_SVG_CACHE: dict = globals().get("_SVG_CACHE", {})   # rasterised SVGs keyed by (path, size, tint), read back out of `globals()` because panel.py reloads this module on every panel open and a plain literal would throw the cache away exactly when a reopen is paying for it
+_SVG_CACHE: dict = globals().get("_SVG_CACHE", {})   # rasterised SVGs keyed by (path, size, tint), kept across module reloads
 
 
 _PAINT_OPACITY = re.compile(r'((?:fill|stroke)-opacity)(="|:)[0-9.]+')
@@ -142,7 +142,7 @@ def at_opacity(text: str, opacity) -> str:
 
 
 def render_svg_pixmap(path, size, color_replacements=None, opacity=None):
-    """An SVG rendered onto a transparent square QPixmap, with literal colour strings swapped first; a missing file gives a blank pixmap, and what comes back is always a COPY, because QPixmap is mutable and a caller that paints into it would poison every later ask for the same icon."""
+    """An SVG on a transparent square QPixmap, colours swapped first; always a copy, blank if missing."""
     tint = tuple(sorted((color_replacements or {}).items()))
     key = (path, int(size), tint, opacity)
     cached = _SVG_CACHE.get(key)
@@ -162,7 +162,7 @@ def render_svg_pixmap(path, size, color_replacements=None, opacity=None):
 
 
 def device_pixmap(path, side, dpr, color_replacements=None, opacity=None):
-    """One SVG rasterised at DEVICE resolution with the ratio stamped, so it draws `side` logical pixels wide and stays sharp on a Retina screen. Pass the ratio of the widget being painted, never the primary's. ROUND, do not truncate: `QPixmap` truncates a float size, which loses a device pixel at every fractional ratio. ▸r/screen-dpr"""
+    """One SVG at device resolution, `side` logical px; pass the painted widget's ratio. ▸r/screen-dpr"""
     pixmap = render_svg_pixmap(
         path, max(1, int(round(side * dpr))), color_replacements, opacity)
     pixmap.setDevicePixelRatio(dpr)
@@ -170,14 +170,14 @@ def device_pixmap(path, side, dpr, color_replacements=None, opacity=None):
 
 
 def menu_icon(name: str, widget=None):
-    """A menu row's ui/<name>.svg icon, as the Filter menu draws it: every menu's icons come from here."""
+    """A menu row's ui/<name>.svg icon; every menu's icons come from here."""
     return QtGui.QIcon(device_pixmap(
         amaze.package_file("ui", name + ".svg"),
         theme.ui_px(amazetheme.MENU_ICON), theme.screen_ratio(widget)))
 
 
 class DesignedComboBox(QtWidgets.QComboBox):
-    """A combo whose POPUP is the width of the box, not of its longest item. Qt sizes the popup to its widest entry and neither `sizeAdjustPolicy`, a fixed view width nor a stylesheet changes it; reimplementing `showPopup` is the documented hook ▸r/combo-popup-width"""
+    """A combo whose popup is the width of the box, not its longest item. ▸r/combo-popup-width"""
 
     def showPopup(self) -> None:
         super().showPopup()
@@ -187,11 +187,11 @@ class DesignedComboBox(QtWidgets.QComboBox):
             QtCore.QPoint(0, self.height())))
 
 
-_DRAWN_PINS: set = set()    # every drawn node a pin has read, so the completeness walk can name the ones nothing reads ▸p/one-design-document
+_DRAWN_PINS: set = set()    # every drawn node a pin has read, for the completeness walk ▸p/one-design-document
 
 
 def drawn_pins() -> frozenset:
-    """Every `(frame, kind, x, y)` a pin has read - the NAMED seam the completeness walk reads, so no test reaches into the module dict."""
+    """Every `(frame, kind, x, y)` a pin has read; the seam the completeness walk reads."""
     return frozenset(_DRAWN_PINS)
 
 
@@ -201,20 +201,20 @@ def forget_drawn_pins() -> None:
 
 def _wear_drawn(widget, frame_key: str, kind: str, box, height: bool,
                 grow: bool = False) -> None:
-    """Wear one drawn box and record WHICH node it was, keyed by the position that identifies it in the frame."""
+    """Wear one drawn box and record which node it was, keyed by its position in the frame."""
     if grow:
         widget.setMinimumWidth(theme.ui_px(box[2]))    # a floor: a wider font grows it, never clips it
     else:
         widget.setFixedWidth(theme.ui_px(box[2]))
     if height:
         widget.setFixedHeight(theme.ui_px(box[3]))
-    widget.drawn_box = tuple(box)    # WHERE it is drawn, for a caller placing several pinned widgets in one row - a plain attribute, the way `snap_marks` rides a slider
+    widget.drawn_box = tuple(box)    # where it is drawn, for a caller placing several pinned widgets in one row
     _DRAWN_PINS.add((frame_key, kind, box[0], box[1]))
 
 
 def pin_drawn(widget, frame_key: str, kind: str, text: str,
               height: bool = True, nth: int = 0, grow: bool = False) -> None:
-    """Size `widget` to the box the design draws for `<kind> ▸ <text>` in `frame_key`, so a node resized in Figma resizes the widget. `text=None` addresses the frame's plain `<kind>` rects instead, `nth` picks among the boxes when there is more than one, and `height=False` takes the WIDTH alone, which is what a label wants - the drawn 15 is its text, not a box to sit in. A label the document does not draw pins NOTHING and records the miss - a renamed drawn label costs one widget's size, never the dialog. ▸p/one-design-document"""
+    """Size `widget` to the drawn box for `<kind> ▸ <text>` in `frame_key`. ▸p/one-design-document"""
     found = amazetheme.drawn_repeats(frame_key, kind, text)
     if nth >= len(found):
         debug.event("ui", "no drawn box for this widget",
@@ -225,7 +225,7 @@ def pin_drawn(widget, frame_key: str, kind: str, text: str,
 
 def pin_drawn_stem(widget, frame_key: str, kind: str, stem: str,
                    height: bool = True) -> None:
-    """Pin from the ONE drawn node whose text OPENS with `stem` - P06 draws the version line with a version number in it, and the widget goes on to carry whatever the updater answers, so the words before the sample are all that identifies the node. Nothing, or more than one, pins nothing and records it."""
+    """Pin from the one drawn node whose text opens with `stem`; none or several pins nothing."""
     found = [box for (drawn_kind, text), box
              in amazetheme.drawn_boxes(frame_key).items()
              if drawn_kind == kind and text and text.startswith(stem)]
@@ -237,7 +237,7 @@ def pin_drawn_stem(widget, frame_key: str, kind: str, stem: str,
 
 
 def drawn_kind(widget, frame_key: str) -> str:
-    """The kind `frame_key` draws this widget as - its own class name, or the nearest base the frame has rects for, so a `DesignedComboBox` answers the drawn `QComboBox`."""
+    """The kind `frame_key` draws this widget as: its class name, or the nearest drawn base."""
     boxes = amazetheme.drawn_boxes(frame_key)
     for cls in type(widget).__mro__:
         if (cls.__name__, None) in boxes:
@@ -247,7 +247,7 @@ def drawn_kind(widget, frame_key: str) -> str:
 
 def pin_drawn_series(widgets, frame_key: str, kind: str,
                      height: bool = True) -> None:
-    """Pin widgets of one kind from the frame's rects of that kind, DRAWN order against CREATION order - a field, a combo or a swatch carries no label of its own to pin by, and matching one to its row's label is not reliable. The two counts differing is recorded: the frame draws something nothing builds, or the other way about."""
+    """Pin widgets of one kind from the frame's rects of that kind, drawn order against creation order."""
     drawn = amazetheme.drawn_repeats(frame_key, kind, None)
     widgets = tuple(widgets)
     if len(drawn) != len(widgets):
@@ -287,31 +287,31 @@ def header_band(parent, text: str, height: int = amazetheme.HEADER_BAND_H,
     return band
 
 
-DISABLED_OPACITY = 0.5   # what a self-painted widget's disabled state looks like: Qt does not dim a pixmap a widget paints itself, so every full paintEvent override here must apply it by hand - overview.md §2 states the behaviour
+DISABLED_OPACITY = 0.5   # a self-painted widget's disabled opacity; every paintEvent override applies it by hand
 
 
 def apply_disabled_opacity(painter, widget) -> None:
-    """Dim what follows when `widget` is disabled - one rule, so the three self-painted widgets cannot disagree about it again."""
+    """Dim what follows when `widget` is disabled - the one rule for every self-painted widget."""
     if not widget.isEnabled():
         painter.setOpacity(DISABLED_OPACITY)
 
 
 class ClickSlider(QtWidgets.QSlider):
-    """A slider that updates continuously, jumps to the click, and locks onto a SNAP_MARK within SNAP_RADIUS of it - a magnet zone per mark, not a grid; it paints its own groove and handle, because QSlider's sub-page/add-page stylesheet selectors render unpredictably across styles and platforms."""
+    """A self-painted slider that jumps to the click and locks onto a SNAP_MARK within SNAP_RADIUS."""
 
-    LEFT_COLOR = QtGui.QColor(amazetheme.SLIDER_LEFT)   # also the project accent default, which `set_accent_color` overrides from prefs at runtime regardless
+    LEFT_COLOR = QtGui.QColor(amazetheme.SLIDER_LEFT)   # the accent default; `set_accent_color` overrides it from prefs
     LEFT_WIDTH = theme.ui_px(3)
-    RIGHT_COLOR = QtGui.QColor(theme.color_hex("field"))   # was #434343, byte-identical to this role, so the groove follows the Houdini theme like the rest of the panel
+    RIGHT_COLOR = QtGui.QColor(theme.color_hex("field"))   # the groove follows the Houdini theme
     RIGHT_WIDTH = theme.ui_px(3)
     HANDLE_COLOR = QtGui.QColor(amazetheme.SLIDER_HANDLE)
-    HANDLE_DIAMETER = theme.ui_px(11)   # 11 not 10: Qt centres an ellipse pen on the geometric edge, so the border eats inward into the fill by half its width rather than sitting outside it
+    HANDLE_DIAMETER = theme.ui_px(11)   # 11: Qt centres an ellipse pen on the edge, so the border eats half its width inward
     HANDLE_BORDER_COLOR = QtGui.QColor(theme.color_hex("surface"))   # was #2d2d2d, the toolbar row's own grey, so the handle border reads as punched out of the bar
     HANDLE_BORDER_WIDTH = theme.ui_px(1)
     DEFAULT_VALUE = 128        # a size, unscaled, and one of the SNAP_MARKS so a drag can land on it
     SNAP_MARKS = (64, 128, 192, 256, 320, 384, 448, 512)
     SNAP_RADIUS = 5
     TICK_COLOR = QtGui.QColor(theme.color_hex("text_dim"))   # was #696969, byte-identical to this role
-    TICK_PIXEL_SIZE = theme.ui_px(1)   # the snap-mark tick is pixel art, not a smooth ellipse - exactly 5 squares of this size (centre, up, down, left, right), never a thicker diamond
+    TICK_PIXEL_SIZE = theme.ui_px(1)   # the snap-mark tick is pixel art: 5 squares of this size, centre and four neighbours
     TICK_PATTERN = (
         ".X.",
         "XXX",
@@ -320,8 +320,8 @@ class ClickSlider(QtWidgets.QSlider):
 
     def __init__(self) -> None:
         super(ClickSlider, self).__init__()
-        self.left_color = QtGui.QColor(self.LEFT_COLOR)   # instance-level so Preferences > Appearance > Accent Color overrides the class default per panel without needing a subclass
-        self.snap_marks = tuple(self.SNAP_MARKS)   # instance-level too: the marks and their tick dots belong to the toolbar's size slider, and the Preferences parameter rows set this to () for a plain slider with no dots and no magnet zones
+        self.left_color = QtGui.QColor(self.LEFT_COLOR)   # instance-level, so the Accent Color pref overrides it per panel
+        self.snap_marks = tuple(self.SNAP_MARKS)   # instance-level too; () gives a plain slider with no dots and no magnet zones
         self.stepped = False
         self._wheel_rest = 0
         self.actionTriggered.connect(self._step_action)
@@ -380,7 +380,7 @@ class ClickSlider(QtWidgets.QSlider):
         self.update()
 
     def _x_for_value(self, value: float) -> float:
-        """X for any value, INSET by the handle radius at both ends so a circle centred here stays fully inside the widget; shared with `_handle_x` so the tick marks line up with where the handle would sit."""
+        """X for any value, inset by the handle radius at both ends; shared with `_handle_x`."""
         span = self.maximum() - self.minimum()
         fraction = 0.0 if span == 0 else (value - self.minimum()) / span
         radius = self.HANDLE_DIAMETER / 2
@@ -392,7 +392,7 @@ class ClickSlider(QtWidgets.QSlider):
         return self._x_for_value(self.value())
 
     def _value_at_x(self, x: float) -> float:
-        """Inverse of `_x_for_value`, with the SAME radius inset - the two must agree, or a click at either edge sets the value while the handle paints a radius away from it."""
+        """Inverse of `_x_for_value`, with the same radius inset."""
         radius = self.HANDLE_DIAMETER / 2
         usable = max(self.width() - 2 * radius, 0)
         fraction = 0.0 if usable == 0 else (x - radius) / usable
@@ -400,7 +400,7 @@ class ClickSlider(QtWidgets.QSlider):
         return self.minimum() + fraction * (self.maximum() - self.minimum())
 
     def _snap(self, value: float) -> int:
-        """Lock onto the nearest SNAP_MARK within SNAP_RADIUS, else leave the value freely dragged - rounded whole and clamped to the slider's own range."""
+        """Lock onto the nearest SNAP_MARK within SNAP_RADIUS, else round and clamp the dragged value."""
         if self.stepped and self.snap_marks:
             return self.nearest_mark(value, self.snap_marks)
         for mark in self.snap_marks:
@@ -409,7 +409,7 @@ class ClickSlider(QtWidgets.QSlider):
         return int(max(self.minimum(), min(self.maximum(), round(value))))
 
     def _draw_pixel_dot(self, painter: QtGui.QPainter, cx: float, cy: float) -> None:
-        """Draw TICK_PATTERN centred at (cx, cy) as discrete filled squares - no antialiasing, so it reads as crisp pixel art rather than a smooth circle."""
+        """Draw TICK_PATTERN centred at (cx, cy) as filled squares, without antialiasing."""
         rows = self.TICK_PATTERN
         size = self.TICK_PIXEL_SIZE
         h = len(rows)
@@ -428,7 +428,7 @@ class ClickSlider(QtWidgets.QSlider):
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:
         painter = QtGui.QPainter(self)
         painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
-        apply_disabled_opacity(painter, self)   # this override means QSlider's own disabled rendering never runs, and without it a slider greyed in LIST mode paints exactly as in GRID - reading as "the tiles are at their smallest" rather than as switched off
+        apply_disabled_opacity(painter, self)   # QSlider's own disabled rendering never runs here
 
         mid_y = self.height() / 2
         handle_x = self._handle_x()
@@ -462,7 +462,7 @@ class ClickSlider(QtWidgets.QSlider):
         painter.end()
 
     def _apply_mouse_value(self, x: float) -> None:
-        """Shared body of click and drag: snap the value under the cursor and jump straight there, with the step sized to the distance so it is one jump and not an animation - and the configured steps RESTORED after, or a handle press (distance 0) leaves the wheel and arrow keys dead ▸r/slider-steps."""
+        """Click and drag: snap the value under the cursor and jump there, steps restored. ▸r/slider-steps"""
         value = self._snap(self._value_at_x(x))
         single, page = self.singleStep(), self.pageStep()
         try:
@@ -478,7 +478,7 @@ class ClickSlider(QtWidgets.QSlider):
     def mousePressEvent(self, e: QtGui.QMouseEvent):
         if e.button() == QtCore.Qt.LeftButton:
             e.accept()
-            self._apply_mouse_value(e.position().toPoint().x())   # ROUNDED, not the raw QPointF: `_snap` turns x into a whole slider value, and handing it the sub-pixel float moves which mark a click at a magnet-zone edge lands on
+            self._apply_mouse_value(e.position().toPoint().x())   # rounded, never the raw sub-pixel QPointF
         else:
             return super().mousePressEvent(e)
 
@@ -489,17 +489,17 @@ class ClickSlider(QtWidgets.QSlider):
 
 
 class ThinProgressBar(QtWidgets.QWidget):
-    """A minimal hand-painted progress bar - no text, just a filled strip against a track; deliberately not QProgressBar plus a stylesheet, which this project's Qt/macOS combination has repeatedly proven unreliable at honouring on built-in widgets."""
+    """A minimal hand-painted progress bar - no text, just a filled strip against a track."""
 
     FILL_COLOR = ClickSlider.LEFT_COLOR
-    TRACK_COLOR = QtGui.QColor(amazetheme.SLIDER_TRACK)   # its OWN constant, not ClickSlider.RIGHT_COLOR: that coupling meant a slider-only colour tweak silently recoloured this track too
+    TRACK_COLOR = QtGui.QColor(amazetheme.SLIDER_TRACK)   # its own constant, not ClickSlider.RIGHT_COLOR
     BAR_HEIGHT = theme.ui_px(4)
 
     def __init__(self) -> None:
         super().__init__()
         self._done = 0
         self._total = 0
-        self.fill_color = QtGui.QColor(self.FILL_COLOR)   # instance-level so Preferences > Appearance > Accent Color overrides the class default per panel without needing a subclass
+        self.fill_color = QtGui.QColor(self.FILL_COLOR)   # instance-level, so the Accent Color pref overrides it per panel
         self.setFixedHeight(self.BAR_HEIGHT)
 
     def set_accent_color(self, color: QtGui.QColor) -> None:
@@ -523,7 +523,7 @@ class ThinProgressBar(QtWidgets.QWidget):
 
 
 class GridHeaderView(QtWidgets.QHeaderView):
-    """The Grid table's header: the sort arrow costs the column that HAS one and not the other nine, because `setSortIndicatorShown(True)` otherwise reserves room in EVERY section; what is taken back is exactly what the base added, which is the IDENTITY `test_grid_columns` pins rather than an arithmetic formula of Qt's."""
+    """The Grid table's header: the sort arrow takes room only in the column that has one."""
 
     def sectionSizeFromContents(self, logicalIndex):
         size = super().sectionSizeFromContents(logicalIndex)
@@ -539,15 +539,15 @@ class GridHeaderView(QtWidgets.QHeaderView):
 
 
 def _event_point(event) -> QtCore.QPointF:
-    """A mouse event's widget-local position for a QRectF hit test - the QPointF that Qt 6's deprecated `pos()` produced, ROUNDED to whole pixels, so a chip answers a cursor exactly where it always did."""
-    return QtCore.QPointF(event.position().toPoint())   # `toPoint` rounds half AWAY FROM ZERO, which is exactly what `pos()` returned; passing the raw sub-pixel `position()` through instead flips a hit at a chip edge, and `int()` truncates rather than rounds
+    """A mouse event's widget-local position for a QRectF hit test, rounded to whole pixels."""
+    return QtCore.QPointF(event.position().toPoint())   # `toPoint` rounds half away from zero, as `pos()` did
 
 
 class SectionTabBar(QtWidgets.QWidget):
-    """The full-width section tab strip below the toolbar: a rounded-top tray holding one text tab per section, the selected one filled with a chip and a thin ring - hand-painted, because stylesheet-driven buttons never reliably hold their geometry on macOS native chrome, and its half-pixel constants are painted through QRectF so they land on physical pixel boundaries at 2x."""
+    """The full-width section tab strip below the toolbar, hand-painted, one text tab per section."""
 
-    segmentClicked = QtCore.Signal(str)   # the key of the tab that just became checked, emitted only on an ACTUAL change, matching QAbstractButton.setChecked()'s own behaviour
-    cancelClicked = QtCore.Signal()   # the Cancel chip at the strip's right end; shown exactly while the conversion bar is - panel.set_conversion_bar_visible is the one driver
+    segmentClicked = QtCore.Signal(str)   # the key of the tab that just became checked, emitted only on an actual change
+    cancelClicked = QtCore.Signal()   # the Cancel chip; panel.set_conversion_bar_visible is the one driver
 
     CANCEL_LABEL = "Cancel"
 
@@ -563,13 +563,13 @@ class SectionTabBar(QtWidgets.QWidget):
     CHIP_GAP = theme.ui_px(_DRAWN["chip_gap"])
     CHIP_INSET = theme.ui_px(_DRAWN["chip_inset"])
 
-    STRIP_COLOR = theme.color("surface")   # theme-derived, identical to the old literal constants under Houdini's default theme and following any other one automatically; matches the toolbar row
+    STRIP_COLOR = theme.color("surface")   # theme-derived; matches the toolbar row
     TRAY_COLOR = theme.color("surface_low")   # matches the category backdrop, so the tray reads as connected to the sidebar below
     CHIP_FILL = theme.color("tab_chip")    # an ACCENT shade: Houdini's own example panel drives its checked/tab states from accent variants
     CHIP_RING = theme.color("tab_ring")
     TEXT_SELECTED = theme.color("text_bright")
     TEXT_UNSELECTED = theme.color("text")
-    TEXT_HOVER = QtGui.QColor(amazetheme.TAB_TEXT_HOVER)   # not in the design, which draws no tab hover state - a modest text-whitening matching the toolbar icons' hover colour
+    TEXT_HOVER = QtGui.QColor(amazetheme.TAB_TEXT_HOVER)   # tab hover text, matching the toolbar icons' hover colour
 
     def __init__(self, segments: list) -> None:
         """segments: list of (key, label) pairs, left to right."""
@@ -587,7 +587,7 @@ class SectionTabBar(QtWidgets.QWidget):
         )
 
     def setChecked(self, key: str, emit: bool = True) -> None:
-        """Select a tab, emitting `segmentClicked` only on an actual change; `emit=False` sets the initial checked state at construction, before panel.py's `setup()` has built the models the handlers depend on."""
+        """Select a tab, emitting `segmentClicked` only on a change; `emit=False` sets the initial state."""
         if key != self._checked_key:
             self._checked_key = key
             self.update()
@@ -595,7 +595,7 @@ class SectionTabBar(QtWidgets.QWidget):
                 self.segmentClicked.emit(key)
 
     def _chip_rects(self) -> list:
-        """[((key, label), QRectF), ...] - the chip-sized rect for every tab, and the hit target for the unselected ones that paint text only; measured against the CURRENT font, so the panel's font stamp is respected whatever the construction order."""
+        """[((key, label), QRectF), ...]: each tab's chip rect and hit target, in the current font."""
         metrics = self.fontMetrics()
         tray_top = self.height() - self.TRAY_HEIGHT
         chip_y = tray_top + (self.TRAY_HEIGHT - self.CHIP_HEIGHT) / 2.0
@@ -616,7 +616,7 @@ class SectionTabBar(QtWidgets.QWidget):
         return None
 
     def set_cancel_visible(self, visible: bool) -> None:
-        """Show or hide the Cancel chip. Call through panel.set_conversion_bar_visible, the chip's one driver - except _build_section_tabs, which re-applies the bar's CURRENT state to a freshly built strip."""
+        """Show or hide the Cancel chip; call through panel.set_conversion_bar_visible."""
         visible = bool(visible)
         if visible != self._cancel_visible:
             self._cancel_visible = visible
@@ -628,11 +628,11 @@ class SectionTabBar(QtWidgets.QWidget):
         return self._cancel_visible
 
     def _cancel_rect(self, rects=None):
-        """The Cancel chip's rect at the strip's right end, level with the tabs - or None while hidden, or while the strip is too narrow for the chip to clear the last tab (a hit there would be ambiguous, so neither paint nor press resolves)."""
+        """The Cancel chip's rect, or None while hidden or when the strip is too narrow for it."""
         if not self._cancel_visible:
             return None
         metrics = self.fontMetrics()
-        chip_y = (self.height() - self.CHIP_HEIGHT) / 2.0   # the STRIP's full height, not the tray's: the chip floats outside the tray, so the row is its visual reference - tray-centered it reads low
+        chip_y = (self.height() - self.CHIP_HEIGHT) / 2.0   # centred on the strip's full height, not the tray's
         width = metrics.horizontalAdvance(self.CANCEL_LABEL) \
             + 2 * self.CHIP_PAD_X
         x = self.width() - self.TRAY_LEFT - self.CHIP_INSET - width
@@ -670,7 +670,7 @@ class SectionTabBar(QtWidgets.QWidget):
         if key != self._hover_key or over_cancel != self._cancel_hover:
             self._hover_key = key
             self._cancel_hover = over_cancel
-            if key is not None or over_cancel:   # a pointing hand over an actual TAB or the Cancel chip only, since this strip spans the whole panel width and most of it is empty
+            if key is not None or over_cancel:   # a pointing hand over a tab or the Cancel chip only
                 self.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
             else:
                 self.unsetCursor()
@@ -738,7 +738,7 @@ class SectionTabBar(QtWidgets.QWidget):
 
 
 def draw_chip(painter, rect, fill, ring, inner_border=None):
-    """Draw the design's rounded button chip - fill, a light outer ring, and optionally a darker one just inside it, which is what separates the clicked state from hover; shared by IconMenuButton and ChipToggleButton so the two hover looks cannot drift apart."""
+    """Draw the design's rounded button chip: fill, a light outer ring, optionally a darker inner one."""
     ring_w = theme.ui_px(1)
     draw_ring(painter, rect, ring, ring_w, theme.ui_px(5), fill)
     if inner_border is not None:
@@ -757,7 +757,7 @@ def draw_ring(painter, rect, ink, width, radius,
 
 
 class ToggleSwitch(QtWidgets.QCheckBox):
-    """A pill toggle switch, drop-in for QCheckBox - same signals, same checked API, same row layout - hand-painted, with its colours from the theme roles the design's swatches map to and its sizes in DESIGN px, scaled here."""
+    """A hand-painted pill toggle switch, a drop-in for QCheckBox with the same signals and API."""
 
     TRACK_W = 23    # 46x30 rendered px, halved by the 2x rule - the design's fatter revision over the first 52x26 pass
     TRACK_H = 15
@@ -773,7 +773,7 @@ class ToggleSwitch(QtWidgets.QCheckBox):
         w = (
             theme.ui_px(self.TRACK_W)
             + (theme.ui_px(self.GAP) + fm.horizontalAdvance(self.text())
-               + theme.ui_px(2)     # the trailing slack is the TEXT's; a textless switch is drawn flush at the column edge, where 2px of hint puts the painted track left of the drawn pill
+               + theme.ui_px(2)     # the trailing slack is the text's; a textless switch is drawn flush
                if self.text() else 0)
         )
         h = max(theme.ui_px(self.TRACK_H) + theme.ui_px(4),
@@ -806,7 +806,7 @@ class ToggleSwitch(QtWidgets.QCheckBox):
         track = QtCore.QRectF(half, y + half, tw - ring_w, th - ring_w)
         radius = track.height() / 2.0
         if self.isChecked():
-            knob = theme.color("star")   # Houdini's own toggle switches use the theme HIGHLIGHT for the on state: knob at full strength, track a deep-dimmed version of the same colour
+            knob = theme.color("star")   # the theme highlight: knob at full strength, track a dimmed version of it
             fill = QtGui.QColor(knob).darker(260)
         else:
             fill = theme.color("field")
@@ -840,7 +840,7 @@ def icon_rect(button, side: int) -> QtCore.QRect:
 
 
 class IconMenuButton(QtWidgets.QWidget):
-    """The toolbar's icon button that pops a QMenu, fully hand-painted because Houdini's own button chrome shows NO visible open state in this panel; hover and open are tracked explicitly and cleared on the menu's `aboutToHide`, which is what avoids Qt's stuck-highlight-after-popup quirk."""
+    """The toolbar's hand-painted icon button that pops a QMenu, its hover cleared on `aboutToHide`."""
 
     IDLE_BODY = amazetheme.MENU_IDLE_BODY
     LIT_BODY = amazetheme.MENU_LIT_BODY
@@ -855,7 +855,7 @@ class IconMenuButton(QtWidgets.QWidget):
     HOVER_CHIP_FILL = QtGui.QColor(amazetheme.MENU_HOVER_CHIP_FILL)
     HOVER_CHIP_RING = QtGui.QColor(amazetheme.MENU_HOVER_CHIP_RING)
     TEXT_COLOR = QtGui.QColor(amazetheme.MENU_TEXT)
-    RENDER_SCALE = 4    # icons render at 4x the icon size, so painting scales a sharp pixmap DOWN on a retina display rather than a soft one up
+    RENDER_SCALE = 4    # icons render at 4x the icon size and paint scaled down
 
     def __init__(
         self,
@@ -863,7 +863,7 @@ class IconMenuButton(QtWidgets.QWidget):
         svg_path: str,
         icon_size: int | None = None,     # DESIGN px, scaled here; None is B01's ▸r/toolbar-from-frame
         button_size: int | None = None,
-        on_click=None,           # with menu=None this is a plain ACTION button and a click calls this instead of popping a menu - the gear goes straight into Preferences, and its icon carries no menu triangle
+        on_click=None,           # with menu=None a click calls this instead of popping a menu; no menu triangle
         fallback_label: str = "",
         name: str = "",          # its object name, which B01 draws it under
     ) -> None:
@@ -900,7 +900,7 @@ class IconMenuButton(QtWidgets.QWidget):
                 self.PUNCH_OUT: self.OPEN_PUNCH_OUT,
             },
         )
-        self._fallback_text = (   # a missing asset degrades to the menu title, or the given label, drawn as text so the button stays usable
+        self._fallback_text = (   # a missing asset degrades to the menu title or the given label, drawn as text
             "" if (svg_path and os.path.exists(svg_path))
             else (menu.title() if menu is not None else fallback_label)
         )
@@ -925,7 +925,7 @@ class IconMenuButton(QtWidgets.QWidget):
 
     def _on_menu_closed(self) -> None:
         self._open = False
-        self._hovered = self.rect().contains(   # the cursor is read DIRECTLY, because Qt does not reliably resend hover/leave events across a popup closing
+        self._hovered = self.rect().contains(   # the cursor is read directly: Qt drops hover/leave events across a popup closing
             self.mapFromGlobal(QtGui.QCursor.pos())
         )
         self.update()
@@ -956,7 +956,7 @@ class IconMenuButton(QtWidgets.QWidget):
         painter.setRenderHint(
             QtGui.QPainter.RenderHint.SmoothPixmapTransform, True
         )
-        apply_disabled_opacity(painter, self)   # a bare QWidget gets no disabled treatment from Qt either, and the panel dims this chip alongside the star and Comments so the three read as one row
+        apply_disabled_opacity(painter, self)   # a bare QWidget gets no disabled treatment from Qt either
         if self._open:
             draw_chip(   # the design's CLICKED chip: blue fill, light outer ring, darker border ring just inside it
                 painter, self.rect(), self.CHIP_FILL, self.CHIP_RING,
@@ -986,7 +986,7 @@ class IconMenuButton(QtWidgets.QWidget):
 
 
 class ChipToggleButton(QtWidgets.QToolButton):
-    """A checkable icon button carrying IconMenuButton's own hover chip, so the two match across the toolbar; it subclasses QToolButton to keep the toggled/setChecked wiring but paints entirely itself, and plain enter/leave hover tracking is safe here because no popup is involved."""
+    """A self-painted checkable QToolButton carrying IconMenuButton's own hover chip."""
 
     RENDER_SCALE = 4
 
@@ -1005,14 +1005,14 @@ class ChipToggleButton(QtWidgets.QToolButton):
         self._hovered = False
         self._pms = {}
 
-    DISABLED_OPACITY = DISABLED_OPACITY   # kept as a class attribute because a test pins it HERE, but the value is the module-level rule every self-painted widget shares - one value, not three
+    DISABLED_OPACITY = DISABLED_OPACITY   # the module-level value, also exposed on the class
 
     def set_art(self, off_path, on_path=None, lighten_on_hover=True,
                 recolour=None, recolour_on=None):
-        """THE one way a chip gets its four states, and the house rule is that AT REST BOTH STATES ARE THE ART AS DRAWN - the picture says on or off and nothing re-tints to say it again, while hover lightens; pass `lighten_on_hover=False` where the on-state is carried by COLOUR rather than shape, `on_path=None` for one drawing serving both, and `recolour` for art that serves two places at once."""
+        """The one way a chip gets its four states: the art as drawn at rest, lightened on hover."""
         size = self._icon_size * self.RENDER_SCALE
         base = dict(recolour or {})
-        on_map = dict(recolour_on) if recolour_on else base   # the ON state may recolour differently: that is how a chip says "you are in this state" with a colour instead of a second drawing, one file and a tint where the star uses two files
+        on_map = dict(recolour_on) if recolour_on else base   # the on state may recolour differently from the off state
         lit = dict(base)
         lit[IconMenuButton.IDLE_BODY] = IconMenuButton.LIT_BODY
 
@@ -1060,7 +1060,7 @@ class ChipToggleButton(QtWidgets.QToolButton):
                 painter, self.rect(), IconMenuButton.HOVER_CHIP_FILL,
                 IconMenuButton.HOVER_CHIP_RING,
             )
-        apply_disabled_opacity(painter, self)   # a DISABLED chip is half there; without this the star switched off for the online browser painted exactly like a live one and read as simply not working
+        apply_disabled_opacity(painter, self)   # a disabled chip paints dimmed
         pm = self._pms.get((self.isChecked(), self._hovered))
         if pm is not None:
             painter.drawPixmap(icon_rect(self, self._icon_size), pm)
@@ -1070,7 +1070,7 @@ class ChipToggleButton(QtWidgets.QToolButton):
 
 
 class SideIconPinner(QtCore.QObject):
-    """Keep an icon QLabel pinned to one edge of a line edit, inset and vertically centred - it reacts to the line edit's own Resize events, because the edit is only max-width and a one-time `move()` would not stay correct across a panel resize."""
+    """Keep an icon QLabel pinned to one edge of a line edit, inset, centred, following its resizes."""
 
     def __init__(
         self,
@@ -1103,18 +1103,18 @@ class SideIconPinner(QtCore.QObject):
         self._icon_label.move(max(x, 0), max(y, 0))
 
 def load_ui(path: str, *custom_widgets):
-    """THE `.ui` loader - raises OSError NAMING the file when it cannot be opened or does not parse, where Qt raises a filename-less RuntimeError. ▸r/ui-loader"""
+    """The `.ui` loader: raises OSError naming a file that will not open or parse. ▸r/ui-loader"""
     from PySide6 import QtUiTools
 
     loader = QtUiTools.QUiLoader()
     for widget in custom_widgets:
         loader.registerCustomWidget(widget)    # the .ui names these, so they must be registered BEFORE the load
     handle = QtCore.QFile(path)
-    if not handle.open(QtCore.QFile.OpenModeFlag.ReadOnly):    # measured False for a missing file; without this the load below raises without naming it ▸r/ui-loader
+    if not handle.open(QtCore.QFile.OpenModeFlag.ReadOnly):    # False for a missing file ▸r/ui-loader
         raise OSError("the interface file could not be opened: %s" % path)
     try:
         built = loader.load(handle)
-    except RuntimeError as exc:    # a malformed .ui RAISES rather than returning None, and the message carries no filename ▸r/ui-loader
+    except RuntimeError as exc:    # a malformed .ui raises, with no filename in the message ▸r/ui-loader
         raise OSError("the interface file did not parse: %s (%s)"
                       % (path, exc))
     finally:
@@ -1125,7 +1125,7 @@ def load_ui(path: str, *custom_widgets):
 
 
 def pick_color(initial, parent=None, title="Select Color"):
-    """One colour picker for the whole app - Houdini's when it can be shown, Qt's when it cannot, returning a QColor or None; a NATIVE modal raised while a Qt exec loop is active lands UNDER it, invisible, so `activeModalWidget()` decides at call time and no call site needs to know."""
+    """One colour picker for the app, Houdini's or else Qt's under a Qt modal; a QColor or None."""
     if isinstance(initial, str):
         initial = QtGui.QColor(initial) if initial else QtGui.QColor()
 
@@ -1167,7 +1167,7 @@ def pick_color(initial, parent=None, title="Select Color"):
 
 
 class HeldPane(QtWidgets.QWidget):
-    """A splitter side pane that OWNS its width: the construction's law is ONE flexible pane, the grid, so a stretch-0 pane gets exactly what its sizeHint asks for - the remembered dragged width when there is one, the design width otherwise; it lives here rather than in panel.py so both panes share it without importing the panel that holds them."""
+    """A splitter side pane that owns its width: the remembered dragged width, else the design width."""
 
     def __init__(self, preferences, pref_key, default_px, parent=None):
         super().__init__(parent)

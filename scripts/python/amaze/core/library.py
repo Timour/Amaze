@@ -1,4 +1,4 @@
-"""The shared asset model every library-backed section runs on, plus `MaterialLibrary` - the renderer-shaped half only Materials needs."""
+"""The shared asset model every library section runs on, plus `MaterialLibrary`."""
 
 import functools
 import os
@@ -25,7 +25,7 @@ from amaze.prefs import prefs
 
 
 def _count(count: int, noun: str) -> str:
-    """"1 material" / "3 materials" - a count with a noun that agrees with it, because "material(s)" is the plural of a program, not of English."""
+    """"1 material" / "3 materials" - a count with a noun that agrees with it."""
     return "%d %s" % (count, noun if count == 1 else noun + "s")
 
 
@@ -131,7 +131,7 @@ stamps = workers.install(__name__ + ".stamps", _StampEngine, QtCore.QCoreApplica
 
 
 class _StampWriter:
-    """Rewrites the stamps that no longer match their record - call only after a SUCCESSFUL index write, since a stamp shadows what reached disk. ▸p/recovery-stamp"""
+    """Rewrites stale stamps; call only after a successful index write. ▸p/recovery-stamp"""
 
     def __init__(self, library):
         self._library = library
@@ -201,7 +201,7 @@ class _StampWriter:
 
 class AssetLibrary(grid_engine.GridEngine,
                    QtCore.QAbstractTableModel):
-    """The SHARED asset model - records, categories, tags, tile icons, saves, deletes, thumbnail plumbing and the connector's guards - that every library-backed section runs on. Nothing renderer-shaped lives here; that is `MaterialLibrary`. overview.md ▸ Models & storage carries the map."""
+    """The shared asset model every library section runs on; nothing renderer-shaped lives here."""
 
     COLUMN_ROLES = {
         "name": QtCore.Qt.ItemDataRole.DisplayRole,
@@ -213,14 +213,14 @@ class AssetLibrary(grid_engine.GridEngine,
         "tags": "TagRole",
         "license": "LicenceRole",
         "date": "DateRole",
-        "id": "IdRole",    # the two read-only rows the Material Info dialog used to carry, now list-mode columns ▸p/d03-retired
+        "id": "IdRole",    # list-mode columns ▸p/d03-retired
     }
     GRID_ROWS = ("_assets", "_mat_paths", "_row_keys")
     VERSION_SECTION = versions.MATERIAL    # where this model's versions live ▸r/version-store
     TILE_FACE = ""      # the section's generic face, `ui/<TILE_FACE>.svg` from its T frame ▸r/tile-faces
-    NOTES_SECTION = "" # this model's notes-store key prefix - notes.note_key(NOTES_SECTION, id); every subclass names its own
+    NOTES_SECTION = "" # this model's notes-store key prefix; every subclass names its own
 
-    IdRole = QtCore.Qt.ItemDataRole.UserRole  # 256. THE FAMILY'S Qt ROLES ARE CLASS ATTRIBUTES, never assigned in __init__: an instance attribute SHADOWS a subclass's class attribute, and the base's __init__ runs last, so it would win every shared name (practice.md ▸ AN INSTANCE ATTRIBUTE SHADOWS THE CLASS ONE). test_role_numbers holds the whole table
+    IdRole = QtCore.Qt.ItemDataRole.UserRole  # 256. Roles are class attributes, never set in __init__, where they shadow a subclass's
     CategoryRole = QtCore.Qt.ItemDataRole.UserRole + 1  # 257 - 257-260 are what MultiFilterProxyModel switches on BY NUMBER
     FavoriteRole = QtCore.Qt.ItemDataRole.UserRole + 2  # 258
     RendererRole = QtCore.Qt.ItemDataRole.UserRole + 3  # 259
@@ -228,39 +228,39 @@ class AssetLibrary(grid_engine.GridEngine,
     DateRole = QtCore.Qt.ItemDataRole.UserRole + 5  # 261
     RendererLabelRole = QtCore.Qt.ItemDataRole.UserRole + 6  # 262
     LicenceRole = QtCore.Qt.ItemDataRole.UserRole + 7  # 263
-    CategoryColorRole = QtCore.Qt.ItemDataRole.UserRole + 8  # 264, read by the one tile delegate - this asset's category colour, "" for none, out of the SAME data dict the Categories model writes, so the grid repaints from a sidebar edit with nothing wired between them
+    CategoryColorRole = QtCore.Qt.ItemDataRole.UserRole + 8  # 264: this asset's category colour, "" for none, from the dict the Categories model writes
     VersionsRole = QtCore.Qt.ItemDataRole.UserRole + 9  # 265 - how many versions; the delegate draws the chevrons badge at > 1
-    NotesRole = QtCore.Qt.ItemDataRole.UserRole + 10  # 266, read by the one tile delegate - whether this asset carries a note, answered live from the notes store
-    ActiveVersionRole = QtCore.Qt.ItemDataRole.UserRole + 11  # 267 - the ACTIVE version's name, "" when there are none; list mode has room to say which one you are looking at
+    NotesRole = QtCore.Qt.ItemDataRole.UserRole + 10  # 266: whether this asset carries a note, read live from the notes store
+    ActiveVersionRole = QtCore.Qt.ItemDataRole.UserRole + 11  # 267: the active version's name, "" when there are none
 
     CropRole = QtCore.Qt.ItemDataRole.UserRole + 12  # 268 - a capture is viewport-shaped, so it fills the tile
 
-    DB_FILENAME = ""  # which json file in the library dir backs this model; every subclass names its own, and "" breaks loudly rather than binding a nameless model to somebody's database
+    DB_FILENAME = ""  # the json file in the library dir backing this model; every subclass names its own
 
     def __init__(self, preferences: prefs.Prefs) -> None:
         super().__init__()
-        self.preferences = preferences  # REQUIRED, and SHARED with the panel: per-model instances each re-read settings.json and drift after any save ▸p/duplication-third-verb
+        self.preferences = preferences  # required, and shared with the panel ▸p/duplication-third-verb
 
         self._data = database.open_document(self)
 
-        self._assets = [self._asset_from_row(d)  # non-dict rows are SKIPPED, never allowed to abort the model: one junk row must not cost the whole library
+        self._assets = [self._asset_from_row(d)  # non-dict rows are skipped
                         for d in self._data["assets"]
                         if isinstance(d, dict)]
         _StampWriter.forget_library(self.preferences)
         self._remember_content_state()
 
 
-        self._thumb_rows = {}  # engine deliveries arrive BY KEY; this maps them back to the row to repaint, and is rebuilt with the asset list
-        thumbnails.signals.ready.connect(self._on_thumb_key_ready)  # through the RELAY, not the engine: the engine singleton is replaced on every module reload and would leave this model wired to a dead one
+        self._thumb_rows = {}  # maps engine deliveries, by key, back to the row to repaint
+        thumbnails.signals.ready.connect(self._on_thumb_key_ready)  # through the relay, never the engine singleton, which a module reload replaces
         captures.signals.landed.connect(self._on_capture_landed)    # from any panel or the shelf
         self.rebuild_thumbs()
         self.order_rows()    # in the grid's order before any view has the rows
         self.adopt_retired_text_into_notes()
 
-    RETIRED_TEXT_FIELDS = ("about", "description")    #: record fields whose text is a COMMENT now, because the dialog that showed each one is gone ▸p/d03-retired
+    RETIRED_TEXT_FIELDS = ("about", "description")    #: record fields whose text is now a comment ▸p/d03-retired
 
     def adopt_retired_text_into_notes(self) -> int:
-        """Move every retired text field into its asset's COMMENT and clear it. Returns how many fields moved: ONE pass over the assets already in memory, reaching the notes store only for a row that still carries one. ▸p/d03-retired"""
+        """Move each retired text field into its asset's comment; returns how many. ▸p/d03-retired"""
         if not self.NOTES_SECTION:
             return 0
         from amaze.core import notes
@@ -299,7 +299,7 @@ class AssetLibrary(grid_engine.GridEngine,
 
     @staticmethod
     def _asset_from_row(row: dict):
-        """One stored row becomes one record - THE reader every load path shares (construction, a library switch, an adopted peer row), so a subclass with a rule about its rows states it once."""
+        """One stored row becomes one record - the reader every load path shares."""
         return material.Material.from_dict(row)
 
     def _tile_image_path(self, row: int, spec=None) -> str:
@@ -338,9 +338,9 @@ class AssetLibrary(grid_engine.GridEngine,
                 return
 
     def switch_model_data(self):
-        """Point this model at the library Preferences names; stamp checks stop, thumbnail loads need not."""
+        """Point this model at the library Preferences names; stamp checks stop."""
         stamps.cancel()    # a check still running holds the records of the library left behind
-        self.beginResetModel()  # NOT bookkeeping - replacing the row set without it leaves proxies on their old count and the selection on an index into rows that are gone, so the next gesture acts on the wrong row ▸r/model-contracts
+        self.beginResetModel()  # required: without it proxies and selection keep stale rows ▸r/model-contracts
         try:
             self._data = database.open_document(self, reload=True)
 
@@ -353,7 +353,7 @@ class AssetLibrary(grid_engine.GridEngine,
             self._drop_content_label_caches()
             self.rebuild_thumbs()
             self.order_rows()
-        finally:  # not a trailing call: a raising load must not leave the model stuck mid-reset, which freezes every view on it
+        finally:  # a raising load must not leave the model stuck mid-reset
             self.endResetModel()
 
     def flags(
@@ -363,7 +363,7 @@ class AssetLibrary(grid_engine.GridEngine,
         return default | QtCore.Qt.ItemFlag.ItemIsDragEnabled
 
     def rebuild_thumbs(self):
-        """Rebuild the row->path and key->row maps. No loading happens here - the engine loads on first view (data()), so opening a big library costs only the visible screen."""
+        """Rebuild the row->path and key->row maps; no loading happens here."""
         specs = [self.tile_icon(row) for row in range(self.rowCount())]    # one store read per row
         self._mat_paths = [self._tile_image_path(row, spec)
                            for row, spec in enumerate(specs)]
@@ -375,7 +375,7 @@ class AssetLibrary(grid_engine.GridEngine,
         self._thumb_rows = {key: row for row, key in enumerate(self._row_keys)}
 
     def _add_thumb_paths(self, row: int, base_changed: bool = True):
-        """Refresh ONE row's thumbnail maps and repaint it - never a whole-model rebuild, which made a multi-select icon pass O(rows^2) in store lookups. Serves add_asset, render_thumbnail and update_asset_content alike."""
+        """Refresh one row's thumbnail maps and repaint it, never a whole-model rebuild."""
         if not 0 <= row < self.rowCount():
             return
         mat_id = self._assets[row].mat_id
@@ -403,14 +403,14 @@ class AssetLibrary(grid_engine.GridEngine,
             row, [QtCore.Qt.ItemDataRole.DecorationRole])
 
     def _on_thumb_key_ready(self, key) -> None:
-        """The engine delivered (or failed) a key - repaint its row if it belongs to this model. Key-based, so reloads and reorders cannot misroute an image; a key from another library simply is not in this model's map."""
+        """The engine delivered (or failed) a key: repaint its row if it belongs to this model."""
         row = self._thumb_rows.get(key)
         if row is None or not 0 <= row < self.rowCount():
             return
         self.row_changed(row, [QtCore.Qt.ItemDataRole.DecorationRole])
 
     def category_color(self, row: int) -> str:
-        """The colour set on this asset's category, "" for none. One category per asset, so there is no rule about which of several wins."""
+        """The colour set on this asset's category, "" for none."""
         if not 0 <= row < len(self._assets):
             return ""
         cats = self._assets[row].categories
@@ -422,7 +422,7 @@ class AssetLibrary(grid_engine.GridEngine,
         return str(table.get(cats[0], "") or "")
 
     def _thumb_key(self, row: int, spec=None):
-        """Shared-RAM-cache key for one row's picture: stable across reloads and collision-free across the models sharing the budget. EVERY input to the picture belongs in it - the library, the icon choice, the line weight - because nothing clears the app-wide cache on a library switch."""
+        """Shared-RAM-cache key for one row's picture; every input to the picture belongs in it."""
         home = hostos.canonical_path_key(str(self.preferences.dir or ""))
         if spec is None:
             spec = self.tile_icon(row)
@@ -468,7 +468,7 @@ class AssetLibrary(grid_engine.GridEngine,
         return str(self._assets[row].name or "")
 
     def set_tile_name(self, row: int, name: str, save: bool = True) -> bool:
-        """Rename one asset - the one rename path every library section shares. A narrow write: the name field alone changes, then the ordinary save chain runs. A blank or unchanged name is a no-op."""
+        """Rename one asset, then the save chain; a blank or unchanged name is a no-op."""
         name = (name or "").strip()
         if not 0 <= row < len(self._assets) or not name:
             return False
@@ -480,7 +480,7 @@ class AssetLibrary(grid_engine.GridEngine,
         return True
 
     def add_tile_tags(self, row: int, line: str, save: bool = True) -> bool:
-        """ADD the tags in a comma-separated line to what this asset already has, keeping its own and dropping duplicates - the multi-selection write, where `set_tile_tags` would flatten every row to one line. A blank line adds nothing."""
+        """Add a comma-separated line of tags to this asset's own, dropping duplicates."""
         if not 0 <= row < len(self._assets):
             return False
         asset = self._assets[row]
@@ -498,14 +498,14 @@ class AssetLibrary(grid_engine.GridEngine,
         return True
 
     def tile_category(self, row: int) -> str:
-        """This asset's category - what the Customize dialog's Category dropdown shows. One category per asset, so there is no rule about which of several wins."""
+        """This asset's category, as the Customize dialog's Category dropdown shows it."""
         if not 0 <= row < len(self._assets):
             return ""
         cats = self._assets[row].categories or []
         return str(cats[0]) if cats else ""
 
     def set_tile_category(self, row: int, name: str, save: bool = True) -> bool:
-        """MOVE one asset to `name`, replacing whatever it had - a narrow write beside `set_tile_name`, then the ordinary save chain. Unlike name and tags this one runs over a whole selection, so a blank is a no-op rather than a clear."""
+        """Move one asset to category `name`, then the save chain; a blank is a no-op."""
         name = (name or "").strip()
         if not 0 <= row < len(self._assets) or not name:
             return False
@@ -517,25 +517,25 @@ class AssetLibrary(grid_engine.GridEngine,
         return True
 
     def tile_tags(self, row: int) -> str:
-        """This asset's tags as ONE comma-separated line - what the Customize dialog's Tags field shows and edits."""
+        """This asset's tags as one comma-separated line, as the Customize dialog's Tags field shows."""
         if not 0 <= row < len(self._assets):
             return ""
         return ", ".join(self._assets[row].tags or [])
 
     def set_tile_tags(self, row: int, line: str, save: bool = True) -> bool:
-        """REPLACE one asset's tags from a comma-separated line: what is in the field becomes the tags, so an empty line clears them. A narrow write beside `set_tile_name`, then the ordinary save chain."""
+        """Replace one asset's tags from a comma-separated line; an empty line clears them."""
         if not 0 <= row < len(self._assets):
             return False
         asset = self._assets[row]
         before = [tag for tag in (asset.tags or []) if tag]
-        asset.tags = line or ""    # the RECORD's own setter splits and drops the blanks - the one splitter, never a second copy of it here
+        asset.tags = line or ""    # the record's own setter splits and drops the blanks
         if [tag for tag in (asset.tags or []) if tag] == before:
             return False
         self._edited(asset, save)
         return True
 
     def tile_icon(self, row: int) -> dict:
-        """This row's chosen icon, {} when it shows its render. `icons.json` is the ONE home, keyed by asset id; same name as the file sections' version so one panel handler serves every tile in the app."""
+        """This row's chosen icon, {} when it shows its render; `icons.json` is keyed by asset id."""
         if 0 <= row < len(self._assets):
             return tile_icons.override_for(
                 self.preferences, str(self._assets[row].mat_id))
@@ -561,7 +561,7 @@ class AssetLibrary(grid_engine.GridEngine,
         return stored
 
     def tile_key(self, row: int) -> str:
-        """WHAT THIS ROW IS KEYED BY for tile icons - the asset's own id, "" for a row that does not exist. Hold this, never a row NUMBER: a reset re-numbers everything and kills every persistent index, and the non-modal Customize dialog outlives exactly that."""
+        """The key for this row's tile icons: the asset id, "" for no row. Hold this, never a row number."""
         if not 0 <= row < len(self._assets):
             return ""
         return str(self._assets[row].mat_id)
@@ -574,7 +574,7 @@ class AssetLibrary(grid_engine.GridEngine,
         return self.set_tile_icons([row], spec) == 0
 
     def set_tile_icons(self, rows, spec) -> int:
-        """Give every row in `rows` the icon `spec` in ONE store write; answers how many were not written."""
+        """Give every row in `rows` the icon `spec` in one store write; returns how many failed."""
         valid = [row for row in rows if 0 <= row < len(self._assets)]
         if not valid:
             return len(rows)
@@ -607,7 +607,7 @@ class AssetLibrary(grid_engine.GridEngine,
         """Nothing to commit: `set_tile_icons` wrote the icon store, and no record field moved."""
 
     def rerender_tile_icons(self) -> int:
-        """Recompose every icon in this library - for when the LOOK changed (the line-weight preference) rather than the choice."""
+        """Recompose every icon in this library, for when the look changed rather than the choice."""
         made = 0
         for row, asset in enumerate(self._assets):
             spec = self.tile_icon(row)
@@ -664,10 +664,10 @@ class AssetLibrary(grid_engine.GridEngine,
         return True
 
     def renderer_label(self, asset) -> str:
-        return str(asset.renderer or "").strip()  # the tile subtitle / Type column for one asset: the KIND field as it stands (a node context, a code language). MaterialLibrary overrides with the renderer-shaped dressing; the base knows no renderer
+        return str(asset.renderer or "").strip()  # the tile subtitle: the kind field as it stands; MaterialLibrary overrides it
 
     def _drop_content_label_caches(self, mat_id=None) -> None:
-        """Evict whatever per-id labels a subclass derives from asset CONTENT - called by the shared reload and version-switch paths, which cannot know what a subclass caches. The base derives none."""
+        """Evict per-id labels a subclass derives from asset content. The base derives none."""
 
     def row_data(self, row: int, role: int) -> Any:
         asset = self._assets[row]
@@ -733,7 +733,7 @@ class AssetLibrary(grid_engine.GridEngine,
         return None
 
     def save(self) -> bool:
-        """Write the index to disk as json. True ONLY when it reached the file - honour that answer, because add_asset writes the payload files before this runs and a caller that cannot tell a refused save from a completed one reports success for an asset the library does not list."""
+        """Write the index to disk as json; True only when it reached the file, so honour the answer."""
         db = database.connector_for_save(self, "save")
         if db is None:  # another pane moved the shared connector: this model holds the old library's rows
             return False
@@ -769,7 +769,7 @@ class AssetLibrary(grid_engine.GridEngine,
                 [self.CategoryColorRole])
 
     def _adopt_fields(self, fields: list) -> None:
-        """Apply `(id, field, value)` a peer changed onto the records holding them, through the ONE row reader, and tell the views. The record OBJECT is kept - dialogs and delegates hold references to it, so its state is refreshed rather than the record replaced."""
+        """Apply peer `(id, field, value)` changes onto the records in place, and tell the views."""
         if not isinstance(fields, list) or not fields:  # a list, by contract, like `_adopt_rows`
             return
         wanted: dict = {}
@@ -827,7 +827,7 @@ class AssetLibrary(grid_engine.GridEngine,
                         error=str(exc))
 
     def _adopt_rows(self, rows: list) -> None:
-        """Insert rows another session added, with the row signals a view needs. A row this build cannot parse is skipped rather than allowed to abort the model - it stays on disk untouched."""
+        """Insert rows another session added, with the row signals; an unparseable row is skipped."""
         if not isinstance(rows, list):  # a list, by contract
             return
         parsed = []
@@ -852,7 +852,7 @@ class AssetLibrary(grid_engine.GridEngine,
         self.resort()    # now: the save that adopted them may still hold its own rows
 
     def _drop_rows(self, rows: list) -> None:
-        """Remove rows another session deleted, with the row signals a view needs. Nothing on disk is touched - the deleting session already unlinked the files."""
+        """Remove rows another session deleted, with the row signals; nothing on disk is touched."""
         if not isinstance(rows, list):  # a list, by contract
             return
         ids = {str(row.get("id", "")) for row in rows
@@ -861,7 +861,7 @@ class AssetLibrary(grid_engine.GridEngine,
         if not ids:
             return
         removed = False
-        for index in range(len(self._assets) - 1, -1, -1):  # ONE pass, highest row first so indices stay valid - a per-row find_asset_row_by_id scan was O(dropped x library)
+        for index in range(len(self._assets) - 1, -1, -1):  # one pass, highest row first so indices stay valid
             if str(self._assets[index].mat_id) not in ids:
                 continue
             _StampWriter.forget(self.preferences, self._assets[index].mat_id)
@@ -892,7 +892,7 @@ class AssetLibrary(grid_engine.GridEngine,
 
     def set_assetdata(self, index: QtCore.QModelIndex, name, cats, tags, fav,
                       about=None, license=None, save=True) -> None:
-        """Write one row's editable fields and save. about/license default to None = leave unchanged; save=False defers the index write to the CALLER, so a multi-select loop saves once after the last row rather than serialising the whole document per row."""
+        """Write one row's editable fields; None leaves a field unchanged, save=False defers the write."""
 
         asset = self._assets[index.row()]
 
@@ -905,7 +905,7 @@ class AssetLibrary(grid_engine.GridEngine,
         else:
             tags = ", ".join(asset.tags)
 
-        if fav is not None:  # THE STAR IS THE USER'S: it goes to the library's favourites store under its owner, never onto the shared record, and None leaves it alone
+        if fav is not None:  # the star goes to the favourites store under its owner, never onto the record
             if bool(fav) != locations.is_favourite(
                     self.preferences, asset.mat_id):
                 locations.set_favourite(
@@ -918,7 +918,7 @@ class AssetLibrary(grid_engine.GridEngine,
             self.row_changed(index.row())  # full-row repaint: name, categories, tags and star may all change
 
     def collapse_multicategory(self) -> int:
-        """Drop every asset to its FIRST category, and return how many were collapsed. Idempotent, so it is safe on every load, and it saves only when something actually changed."""
+        """Drop every asset to its first category; returns how many collapsed. Idempotent."""
         changed = 0
         for asset in self._assets:
             if len(asset.categories) > 1:
@@ -928,10 +928,10 @@ class AssetLibrary(grid_engine.GridEngine,
             self.save()
         return changed
 
-    CONTENT_SURVIVES_A_REFUSED_INDEX_WRITE = True  # what a refused index write leaves behind for THIS model: an asset section writes its payload files before the list, so Repair can put the row back, where Code stores its snippet inline and there is nothing to recover. Subclasses override
+    CONTENT_SURVIVES_A_REFUSED_INDEX_WRITE = True  # whether Repair can recover what a refused index write leaves; subclasses override
 
     def report_refused_index_write(self, asset) -> None:
-        """Say that the content was written and the list was not - call it from EVERY add_asset, which is why it is hoisted here rather than left on one subclass. The files are deliberately left where they are: content without a row is the safe direction of this failure, and Repair Library recovers exactly that shape."""
+        """Report content written but the list not; call it from every add_asset. Files stay put."""
         name = asset.name or "The asset"
         debug.event("save", "asset content written but the index write "
                     "was refused", name=name, mat_id=asset.mat_id,
@@ -950,7 +950,7 @@ class AssetLibrary(grid_engine.GridEngine,
         return asset_files.asset_files_for(self.preferences, mat_id)
 
     def _hold_pre_edit_files(self, mat_id: str) -> dict:
-        """Copy the asset's CURRENT files aside for the version store: {archive suffix: held path}, per `versions.SOURCE_KINDS`. Read the source dict by KIND, never by filename suffix - `<id>_cop.mat` shares ".mat" with the material and `<id>_icon.png` shares ".png" with the render, so a suffix key lets whichever comes later overwrite the real payload. Kinds SOURCE_KINDS does not name are not versioned."""
+        """Copy the asset's current files aside for the version store: {archive suffix: held path}."""
         import tempfile as _tempfile
         keep = _tempfile.mkdtemp(prefix="amaze_preedit_")
         held, copied = {}, False
@@ -969,14 +969,14 @@ class AssetLibrary(grid_engine.GridEngine,
         return held
 
     def asset_directories(self, mat_id: str) -> dict:
-        """{kind: absolute path} for every DIRECTORY asset `mat_id` owns - the version store, today. Kept apart from asset_files() because every caller of THAT one unlinks or copyfiles what it gets and neither works on a directory; remove_asset must still take these, or a deleted asset leaves its version store behind under an id no list names any more. Same containment rule as asset_files()."""
+        """{kind: absolute path} for every directory asset `mat_id` owns, the version store today."""
         mat_id = str(mat_id)
         if not material.is_safe_asset_id(mat_id):
             return {}
         try:
             return {"versions": versions.versions_dir(
                 self.preferences, mat_id, self.VERSION_SECTION)}
-        except hostos.PathEscape as exc:  # "owns no directory we can name" - it must not raise out of remove_asset, where failing to sweep is a leak but raising after the list was written is a broken library
+        except hostos.PathEscape as exc:  # owns no directory we can name; must not raise out of remove_asset
             debug.event("library", "version store path refused",
                         mat_id=mat_id, error=str(exc))
             return {}
@@ -1077,7 +1077,7 @@ class AssetLibrary(grid_engine.GridEngine,
         return -1
 
     def find_asset_row_by_name(self, name: str) -> int:
-        """Row of the asset whose (possibly sanitized) name matches, but only if the match is UNIQUE - with duplicates there is no safe answer, so -1, and the caller treats the save as a new asset."""
+        """Row of the asset whose (possibly sanitized) name matches uniquely, else -1."""
         from amaze.helpers import wording
         matches = []
         for row, asset in enumerate(self._assets):
@@ -1094,7 +1094,7 @@ class AssetLibrary(grid_engine.GridEngine,
                 versions.active_version(self.preferences, mat_id, self.VERSION_SECTION))
 
     def switch_version(self, row: int, number: int) -> bool:
-        """Make version `number` the active one for the asset at `row`. Everything downstream of the base files gets told here - the content baseline (or the next Update Existing reads our own switch as another session's write and refuses), the per-id label caches, the thumbnail and the tile."""
+        """Make version `number` active for the asset at `row`, and tell everything downstream."""
         if not 0 <= row < len(self._assets):
             return False
         mat = self._assets[row]
@@ -1109,7 +1109,7 @@ class AssetLibrary(grid_engine.GridEngine,
         return True
 
     def rename_version(self, row: int, number: int, name: str) -> bool:
-        """Rename one version, and TELL the view - list mode paints the active version's name in its own column, so a rename that does not evict the cache and emit leaves the row showing the old name until something unrelated repaints it."""
+        """Rename one version, evict the cache and tell the view."""
         if not 0 <= row < len(self._assets):
             return False
         mat = self._assets[row]
@@ -1131,7 +1131,7 @@ class AssetLibrary(grid_engine.GridEngine,
     _SCRATCH_MIN_AGE = 60 * 60
 
     def _sweep_dead_scratches(self, folder: str, quarantined: list) -> int:
-        """Move scratch files older than an hour into the quarantine. A scratch is always ours and always means a save died partway, but a fresh one may be another session's live write - so age gates it, by MTIME deliberately, since a scratch carries no date in its name and its mtime IS its write time."""
+        """Move scratch files older than an hour, by mtime, into the quarantine."""
         moved = 0
         try:
             names = os.listdir(folder)
@@ -1166,14 +1166,14 @@ class AssetLibrary(grid_engine.GridEngine,
             return None
 
     def _remember_content_state(self) -> None:
-        """Baseline for the content stale-write guard - what every asset's .mat looked like when THIS session read the library - and the blank slate for the two per-id version caches, which are cleared TOGETHER because they come from the same ledger. A stat each, not a hash: nothing rewrites a .mat byte-identically, so the false-conflict case the fingerprint guard exists for cannot arise here."""
+        """Baseline the content stale-write guard and clear the two per-id version caches."""
         self._content_state = {
             str(asset.mat_id): self._content_stat(asset.mat_id)
             for asset in self._assets
         }
-        self._version_count_cache = {}  # per id, so the delegate's paint pass never opens the ledger: a repaint runs per visible tile per frame. Invalidated point-wise on the writes that change a count
+        self._version_count_cache = {}  # per id, so a paint pass never opens the ledger; invalidated per write
         self._active_version_cache = {}
-        try:  # ONE listdir seeds both caches for every asset with NO versions folder, the overwhelming case; assets WITH one stay lazy and their first ask still reads the ledger
+        try:  # one listdir seeds both caches for assets with no versions folder
             have = set(os.listdir(versions.store_root(
                 self.preferences, self.VERSION_SECTION)))
         except OSError:
@@ -1193,7 +1193,7 @@ class AssetLibrary(grid_engine.GridEngine,
         from amaze.helpers import wording
         summary = []
 
-        assets_dir = os.path.join(  # THE ASSET FOLDER MUST BE READABLE BEFORE ANY OF THIS - never delete on incomplete knowledge, and the FOLDER is knowledge as much as a sibling list is
+        assets_dir = os.path.join(  # the asset folder must be readable before anything is deleted
             self.preferences.dir, self.preferences.asset_dir)
         if not os.path.isdir(assets_dir):
             debug.event("cleanup", "refused - the asset folder is not readable",
@@ -1206,12 +1206,12 @@ class AssetLibrary(grid_engine.GridEngine,
             self.last_cleanup_summary = [message]
             return 0
 
-        summary.extend(database.DatabaseConnector.take_integrity_notes())  # load-time findings go BEFORE the sweep's own numbers: a list that shrank past half since its newest snapshot reads exactly like a healthy one unless somebody says both numbers out loud
+        summary.extend(database.DatabaseConnector.take_integrity_notes())  # load-time findings go before the sweep's own numbers
 
         rows_to_remove = []  # --- Pass 1: scan assets, with no mutation during iteration ---
         missing_thumbs = 0
         quarantined = []
-        quarantined_paths = []  # [source, destination] per moved file, for the ONE closing record, which is complete on purpose ▸p/clean-library-sweep
+        quarantined_paths = []  # [source, destination] per moved file, for the one closing record ▸p/clean-library-sweep
         for row, asset in enumerate(self._assets):
             owned = self.asset_files(asset.mat_id)
             interface_path = owned["interface"]
@@ -1235,7 +1235,7 @@ class AssetLibrary(grid_engine.GridEngine,
                     mat_id=str(asset.mat_id), name=asset.name,
                 )
 
-        if rows_to_remove:  # --- Pass 2: REPORTED, NEVER REMOVED - a row holds tags, a description and a date that exist nowhere else (the note and the star have their own stores), and nothing mutates the row set before the sweep runs ---
+        if rows_to_remove:  # --- Pass 2: reported, never removed ---
             names = sorted(str(self._assets[row].name) or "(unnamed)"
                            for row in rows_to_remove)
             summary.append(
@@ -1251,18 +1251,18 @@ class AssetLibrary(grid_engine.GridEngine,
                        " and %d more" % (len(names) - 8)
                        if len(names) > 8 else "")))
         if missing_thumbs:
-            summary.append(  # only quote a label that EXISTS - grep the package before naming a control here ▸p/quoted-strings-go-stale
+            summary.append(  # quote only a label that exists ▸p/quoted-strings-go-stale
                 "No thumbnail image yet for %s - select %s in Amaze and use "
                 "Update Render when convenient, since a render takes "
                 "time." % (_count(missing_thumbs, "material"),
                            "it" if missing_thumbs == 1 else "them"))
 
         known_ids, unreadable, absent_traces, empty_sections = \
-            (  # --- Pass 3: files in the shared folders that NO section lists - orphanhood is relative to every sibling list, so the union has to be finished before anything is called unclaimed ---
+            (  # --- Pass 3: files in the shared folders that no section lists ---
                 self._all_known_asset_ids())
         lone_count = 0
         if unreadable:
-            summary.append(  # "could not be CHECKED", never "could not be read": three ways land here and only one is a failed read, and the reason goes on its own line per section
+            summary.append(  # "could not be checked", never "could not be read"
                 "Nothing was deleted: Amaze could not check %s, so files "
                 "that belong to it look exactly like files nothing needs "
                 "any more."
@@ -1273,7 +1273,7 @@ class AssetLibrary(grid_engine.GridEngine,
             for line in self._what_an_empty_section_means(empty_sections):
                 summary.append(line)
             if absent_traces:
-                summary.append(  # NAME THE WAY OUT AND WHAT IT COSTS: the trace is usually a .bak, which is what Repair would put the section back FROM, so this must not send anyone to delete it unwarned
+                summary.append(  # name the way out and its cost: the trace is usually the .bak Repair restores from
                     "If you deleted %s on purpose, remove %s from the "
                     "library folder as well - while it is there, Amaze "
                     "reads the section as one that has not finished "
@@ -1291,20 +1291,20 @@ class AssetLibrary(grid_engine.GridEngine,
             unreadable_abort = True
         else:
             unreadable_abort = False
-        for folder in (  # dead scratches first: a hard kill mid-write leaves a fresh `<name>.<rand>.writing` each time and the classifier rightly refuses to read them as assets, so nothing else would ever take them
+        for folder in (  # dead scratches first, which nothing else takes
                 os.path.join(self.preferences.dir,
                              self.preferences.asset_dir),
                 os.path.join(self.preferences.dir,
                              self.preferences.img_dir)):
             lone_count += self._sweep_dead_scratches(folder, quarantined)
 
-        from amaze.core import repair  # imported HERE: repair imports this module, and a top-level import would also put stamps in the core's import surface ▸p/recovery-stamp
+        from amaze.core import repair  # imported here: repair imports this module ▸p/recovery-stamp
         mats_path = os.path.join(self.preferences.dir, self.preferences.asset_dir)
-        mat_names = [] if unreadable_abort else os.listdir(mats_path)  # ONE listing, shared by the stamp scan and the sweep below: a second listing a moment later can disagree, and it is wrong in both directions ▸p/clean-library-sweep
+        mat_names = [] if unreadable_abort else os.listdir(mats_path)  # one listing, shared by the stamp scan and the sweep ▸p/clean-library-sweep
         awaiting_repair = {} if unreadable_abort else repair.stamped_assets(
             self.preferences.dir, self.preferences.asset_dir,
             names=mat_names)
-        spared = set()  # AWAITING REPAIR IS NOT LEFT OVER - files with a readable stamp and no row are the one shape Repair exists for, and a stamp with no .mat beside it is normal (Code keeps its text inline)
+        spared = set()  # files awaiting repair are not left over
 
         def take_unclaimed(folder, names, extensions, tail) -> int:
             """Quarantine the files here no list claims, sparing an id awaiting Repair; answers how many."""
@@ -1333,11 +1333,11 @@ class AssetLibrary(grid_engine.GridEngine,
             else os.listdir(images),
             (".png",), "_icon")
         if quarantined_paths:
-            debug.event("cleanup", "files quarantined",  # ONE record carrying EVERY move: it is the only trace of where a file went, so a sample is useless the moment somebody needs one back
+            debug.event("cleanup", "files quarantined",  # one record carrying every move
                         moved=len(quarantined_paths),
                         files=quarantined_paths)
         if lone_count:
-            shown = sorted(quarantined)[:8]  # NAMES, not a bare count, and say where they went: nothing is deleted, so the honest sentence is the one that tells you where to look if the sweep was wrong
+            shown = sorted(quarantined)[:8]  # names, not a bare count, and where they went
             held, held_bytes = quarantine.quarantine_size(self.preferences.dir)
             summary.append(
                 "Moved %s that no section listed out of your library: %s.\n"
@@ -1359,7 +1359,7 @@ class AssetLibrary(grid_engine.GridEngine,
             quarantine.prune_quarantine(self.preferences.dir)
 
         if spared:
-            shown_kept = sorted(  # SAY WHAT WAS KEPT, by NAME rather than by a section count - the shared folder holds materials, nodes and snippets, so a count noun would be a guess in the one sentence that has to be trustworthy. This is why the stamp reader hands back the record, not just the id
+            shown_kept = sorted(  # what was kept, by name
                 str(awaiting_repair.get(mat_id, {}).get("name") or mat_id)
                 for mat_id in spared)
             summary.append(
@@ -1370,10 +1370,10 @@ class AssetLibrary(grid_engine.GridEngine,
                        if len(spared) > 8 else ""),
                    "is" if len(spared) == 1 else "are",
                    "it" if len(spared) == 1 else "they"))
-            if not unreadable_abort:  # ONE repair route in a summary, never two - the refusal branch above already appended it for its own causes
+            if not unreadable_abort:  # one repair route in a summary, never two
                 summary.append(self._the_repair_route())
 
-        mark_rescued = 0  # --- Pass 4: rescue assets with no valid category, and normalise legacy whitespace-mangled category data ---
+        mark_rescued = 0  # --- Pass 4: rescue assets with no valid category, normalise whitespace-mangled ones ---
         rescued_count = 0
         for asset in self._assets:
             cats = asset.categories
@@ -1395,7 +1395,7 @@ class AssetLibrary(grid_engine.GridEngine,
                 % _count(rescued_count, "material")
             )
 
-        if mark_rescued:  # mark_rescued alone: pass 2 only reports, so rows_to_remove mutates nothing and saving on it would write an index with nothing to write
+        if mark_rescued:  # pass 2 only reports, so only a rescue needs a save
             self.save()
 
         self.last_cleanup_summary = list(summary)
@@ -1403,7 +1403,7 @@ class AssetLibrary(grid_engine.GridEngine,
         return mark_rescued
 
     def _what_an_empty_section_means(self, empty_sections: list) -> list:
-        """ONE line for ALL the sections that list nothing, saying why Amaze will not decide on its own - the refusal above states the fact, and this states what the reader cannot know from it: that the two explanations look identical from here. One line rather than one each, or two empty sections produce two near-identical thirty-word sentences in one dialog."""
+        """One line for all the sections that list nothing, saying why Amaze will not decide alone."""
         from amaze.helpers import wording
         if not empty_sections:
             return []
@@ -1415,7 +1415,7 @@ class AssetLibrary(grid_engine.GridEngine,
                 % sections]
 
     def _the_repair_route(self) -> str:
-        """The ONE next step for every way this sweep can be held back, appended once however many causes there were. The sentence must carry three things or it is a dead end: send the reader to Repair, say how to get the shelf TAB (registered is not displayed, so a fresh machine has the tools without one), and say to RESTART - this is only reachable from the panel, so this Houdini has already read the library and its connector would write that document back over anything put right."""
+        """The one next step for every way this sweep is held back: Repair, the shelf tab, a restart."""
         return (
             "Run the Repair tool on the Amaze shelf to see what is wrong: "
             "it names the lists that will not load, the files nothing "
@@ -1426,37 +1426,37 @@ class AssetLibrary(grid_engine.GridEngine,
             "right-click the shelf tabs, choose Shelves, then Amaze.")
 
     def _files_no_section_accounts_for(self, known_ids: set):
-        """Names of the files in the asset folder that NO section lists, or None when the folder could not be read at all. PASS A FINISHED UNION as `known_ids` - orphanhood is relative to every list sharing the directory, and a half-built one reports a live COP asset's files as unclaimed. None rather than [] on a failed listing, because an empty list reads as a clean folder, and that reading is what lets the sweep run. ▸p/clean-library-sweep"""
+        """Unlisted files, None if unreadable; pass a finished `known_ids`. ▸p/clean-library-sweep"""
         from amaze.core import repair    # here: repair imports this module
         return repair.unlisted_in(self.preferences.dir,
                                   self.preferences.asset_dir,
                                   repair.ASSET_SIDECARS, "_cop", known_ids)
 
     def _all_known_asset_ids(self) -> tuple:
-        """(ids, unreadable, absent_traces, empty_sections) for EVERY database file in the library dir, read straight off disk, so one library's cleanup never deletes files belonging to another. `unreadable` is (section name, why) as two halves because the caller writes them into two different sentences; `absent_traces` maps a database that is merely NOT THERE YET to the trace that says so, and `empty_sections` the ones that parse fine and list nothing while files sit unaccounted for - separate because the way out is a different sentence for each. code.json belongs here even though snippets keep their text inline: a Code asset with a tile icon owns a PNG in the shared image folder. ▸p/clean-library-sweep"""
+        """(ids, unreadable, absent_traces, empty_sections) for each database. ▸p/clean-library-sweep"""
         ids = {str(a.mat_id) for a in self._assets}
         unreadable = []
         absent_traces = {}
         lists_nothing = []
-        claimed, unreadable_files = database.ids_claimed_by(  # THE READ IS NOT THIS METHOD'S - "which ids does each database claim" has one home, and a second copy is how two readers of these shared folders come to disagree about who owns a file. What stays here is the POLICY
+        claimed, unreadable_files = database.ids_claimed_by(  # the read lives in database.ids_claimed_by; the policy stays here
             self.preferences.dir, database.DATABASES)
         for file_ids in claimed.values():    # Colors too: a palette's stamp sits in mat/, as Repair counts it
             ids |= file_ids
         for filename in database.ID_CLAIMING_DATABASES:
             full = os.path.join(self.preferences.dir, filename)
-            own = filename == self.DB_FILENAME  # THIS model's own database is checked like any other: its in-memory ids are only there because a load put them there, and a REFUSED load leaves _assets honestly empty
+            own = filename == self.DB_FILENAME  # this model's own database is checked like any other
             if filename in unreadable_files:
-                unreadable.append((database.section_name(filename),  # a sibling that EXISTS and will not parse is the dangerous case; no parse position on screen, since this is interpolated into the message the user acts on and the log already has the reason
+                unreadable.append((database.section_name(filename),  # a sibling that exists and will not parse; no parse position on screen
                                    "Amaze cannot read it"))
                 debug.event("cleanup", "sibling database unreadable",
                             file=full, own=own)
                 continue
             if filename not in claimed:
-                evidence = database.absent_but_known(  # ABSENT IS FINE ONLY WHEN NOTHING BESIDE IT SAYS IT WAS HERE; otherwise it has not arrived yet and the files it owns are indistinguishable from leftovers
+                evidence = database.absent_but_known(  # absent is fine only when nothing beside it says it was here
                     self.preferences.dir, filename)
                 if not evidence:
                     continue
-                unreadable.append(  # "not there yet", never "not on disk": the shared sentence ends in "could not be read", which that would fight
+                unreadable.append(  # "not there yet", never "not on disk"
                     (database.section_name(filename),
                      "it is not there yet - %s beside it says it was here"
                      % evidence))
@@ -1464,15 +1464,15 @@ class AssetLibrary(grid_engine.GridEngine,
                 debug.event("cleanup", "database absent but known",
                             file=full, evidence=evidence, own=own)
                 continue
-            file_ids = claimed[filename]  # UNION, never replace: the model's own disk rows are not its in-memory ones, since another session can have added rows and a row this session added may not have reached disk
-            if not file_ids and filename in database.ASSET_FILE_OWNERS:  # a list that holds nothing is NOT authoritatively empty; the dangerous condition is emptiness AND unaccounted files, decided below once every sibling is read. ASSET_FILE_OWNERS narrows it to the lists that could own one
+            file_ids = claimed[filename]  # union, never replace: disk rows and in-memory rows differ
+            if not file_ids and filename in database.ASSET_FILE_OWNERS:  # an empty list is not authoritatively empty; decided below once every sibling is read
                 lists_nothing.append(filename)
 
         empty_sections = []
-        folder = str(self.preferences.asset_dir).rstrip("/\\")  # the folder as the user sees it in Finder; prefs stores it with the separator, and "the mat/ folder" in a sentence reads as a typo
+        folder = str(self.preferences.asset_dir).rstrip("/\\")  # the folder as the user sees it, without the trailing separator
         if lists_nothing and not unreadable:
             unaccounted = self._files_no_section_accounts_for(ids)
-            if unaccounted is None:  # nearly unreachable, since cleanup_db checks the folder first - but a failed listing must never arrive here reading as an empty one, which is what lets the sweep run
+            if unaccounted is None:  # a failed listing must never read as an empty one
                 empty_sections = list(lists_nothing)
                 for filename in lists_nothing:
                     unreadable.append(
@@ -1495,7 +1495,7 @@ class AssetLibrary(grid_engine.GridEngine,
                 debug.event("cleanup", "section lists nothing and nothing is "
                             "unaccounted for - sweeping",
                             sections=list(lists_nothing))
-        elif lists_nothing:  # already refusing for another reason, so the union is incomplete and nothing may be called unaccounted for from it; recorded, because this is the combination that hides one problem behind another
+        elif lists_nothing:  # already refusing, so nothing may be called unaccounted for; recorded
             debug.event("cleanup", "section lists nothing, not checked "
                         "further - already held back",
                         sections=list(lists_nothing),
@@ -1503,7 +1503,7 @@ class AssetLibrary(grid_engine.GridEngine,
         return ids, unreadable, absent_traces, empty_sections
 
     def toggle_fav(self, row: int) -> None:
-        """Flip this row's star. Goes to the library's favourites store under its owner, never onto the shared record, so one user's stars cannot collide with another's - and with no user picked it refuses silently. A row outside the model writes nothing: -1 is what an invalid index answers and it would otherwise star the LAST asset."""
+        """Flip this row's star in the owner's favourites store; no user or bad row writes nothing."""
         self.toggle_favs([row])
 
     def toggle_favs(self, rows) -> None:
@@ -1535,7 +1535,7 @@ class MaterialLibrary(AssetLibrary):
 
     def __init__(self, preferences) -> None:
         super().__init__(preferences)
-        self._usd_cache = {}  # both are derived by READING the saved files, so they are cached per material id rather than paid on every repaint
+        self._usd_cache = {}  # both derived by reading the saved files, so cached per material id
         self._shader_type_cache = {}
 
     def _on_thumbnail_written(self, asset_id: str) -> None:
@@ -1545,7 +1545,7 @@ class MaterialLibrary(AssetLibrary):
             self._add_thumb_paths(row)
 
     def _drop_content_label_caches(self, mat_id=None) -> None:
-        if not hasattr(self, "_usd_cache"):  # USD-ness and shader type, this model's two content-derived labels: evicted whole on a reload, per id on a version switch or content update. The guard is because the base constructor reloads before this subclass's __init__ has made the caches
+        if not hasattr(self, "_usd_cache"):  # the base constructor reloads before this subclass's __init__ makes the caches
             return
         if mat_id is None:
             self._usd_cache = {}
@@ -1555,7 +1555,7 @@ class MaterialLibrary(AssetLibrary):
             self._shader_type_cache.pop(mat_id, None)
 
     def is_usd_material(self, asset) -> bool:
-        """True if the material is a USD-builder type, detected from its .interface file and cached per material id."""
+        """True if the material is a USD-builder type, from its .interface file, cached per id."""
         mid = asset.mat_id
         if mid in self._usd_cache:
             return self._usd_cache[mid]
