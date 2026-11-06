@@ -18,6 +18,8 @@ class CopLibrary(library.AssetLibrary):
 
     DB_FILENAME = "cops.json"    # its own database; the asset files share the material folders
 
+    ROW_NOUN = "node setup"    # the manual's name for a row of this section
+
     RENDERABLE = ("SOP", "COP", "")    # contexts whose tiles can hold a render; "" is a pre-context COP ▸p/nodes-section
 
     def can_preview(self, row: int) -> bool:

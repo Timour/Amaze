@@ -219,6 +219,7 @@ class AssetLibrary(grid_engine.GridEngine,
     VERSION_SECTION = versions.MATERIAL    # where this model's versions live ▸r/version-store
     TILE_FACE = ""      # the section's generic face, `ui/<TILE_FACE>.svg` from its T frame ▸r/tile-faces
     NOTES_SECTION = "" # this model's notes-store key prefix; every subclass names its own
+    ROW_NOUN = "material"    # what a message calls one row of this section; counts pluralise it
 
     IdRole = QtCore.Qt.ItemDataRole.UserRole  # 256. Roles are class attributes, never set in __init__, where they shadow a subclass's
     CategoryRole = QtCore.Qt.ItemDataRole.UserRole + 1  # 257 - 257-260 are what MultiFilterProxyModel switches on BY NUMBER
@@ -1228,7 +1229,7 @@ class AssetLibrary(grid_engine.GridEngine,
                     mat=mat_ok,
                 )
                 rows_to_remove.append(row)
-            elif not os.path.exists(img_path):
+            elif self.can_preview(row) and not os.path.exists(img_path):    # a LOP setup has no render to miss
                 missing_thumbs += 1
                 debug.event(
                     "cleanup", "thumbnail missing on disk",
@@ -1245,7 +1246,7 @@ class AssetLibrary(grid_engine.GridEngine,
                 "finished syncing looks the same as one that is gone. "
                 "If they really are gone, select them in Amaze "
                 "and use Delete."
-                % (_count(len(rows_to_remove), "material"),
+                % (_count(len(rows_to_remove), self.ROW_NOUN),
                    "their" if len(rows_to_remove) > 1 else "its",
                    wording.and_list(names[:8]) + (
                        " and %d more" % (len(names) - 8)
@@ -1254,7 +1255,7 @@ class AssetLibrary(grid_engine.GridEngine,
             summary.append(  # quote only a label that exists ▸p/quoted-strings-go-stale
                 "No thumbnail image yet for %s - select %s in Amaze and use "
                 "Update Render when convenient, since a render takes "
-                "time." % (_count(missing_thumbs, "material"),
+                "time." % (_count(missing_thumbs, self.ROW_NOUN),
                            "it" if missing_thumbs == 1 else "them"))
 
         known_ids, unreadable, absent_traces, empty_sections = \
@@ -1392,7 +1393,7 @@ class AssetLibrary(grid_engine.GridEngine,
         if rescued_count:
             summary.append(
                 "Moved %s with no category into 'Uncategorized'."
-                % _count(rescued_count, "material")
+                % _count(rescued_count, self.ROW_NOUN)
             )
 
         if mark_rescued:  # pass 2 only reports, so only a rescue needs a save
