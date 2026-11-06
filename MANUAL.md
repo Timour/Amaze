@@ -54,7 +54,7 @@ The **Amaze shelf** has five tools:
 |---|---|
 | **Amaze** | Opens the panel. |
 | **Capture** | Captures the Scene View as the open scene's picture. |
-| **Repair** | Repairs a damaged library. See [Housekeeping](#housekeeping-and-troubleshooting). |
+| **Check Library** | Checks the library when the Amaze panel will not open. See [Housekeeping](#housekeeping-and-troubleshooting). |
 | **Updates** | Checks for a newer Amaze and installs it after confirmation. |
 | **Reload** | Installs new asset files from the packages on the Houdini path and reloads all loaded asset definitions without a restart. |
 
@@ -696,8 +696,9 @@ recent first. Picking one shows its users and its format; **Apply**
 opens it with the user picked, and **Accept** does the same and closes
 Preferences. Until then the open library stays open. **Add** puts a
 library folder in the list, or an empty folder for a new library. The
-list holds 20 libraries; **Manage** takes libraries off it. **Clean
-Up**, **Reload** and **Show Folder** act on the open library.
+list holds 20 libraries; **Manage** takes libraries off it. **Check**,
+**Reload** and **Show Folder** act on the open library. **Check** opens
+[Check Library](#housekeeping-and-troubleshooting).
 
 **Format** is the library's version. Version 2 keeps scene captures in
 the library. For a library from an older Amaze, the line beside
@@ -802,32 +803,110 @@ newest beta when on, the newest release when off.
 
 ## Housekeeping and troubleshooting
 
-**Clean Up** (Preferences ▸ Library) scans the library in one
-pass for entries with missing files, uncategorized assets, category
-names to normalise, registered folders that are not on this computer
-and favorites that point at files gone from their folder, and reports
-the result in one summary.
+**Check** (Preferences ▸ Library) opens Check Library on the open
+library. It reads every list and folder in the library and shows a
+report, with a button for each fix that applies. The report covers:
 
-Entries with missing files are reported and kept, since a file that is
-still syncing looks the same as a deleted one; **Delete** removes them.
-Files that no asset list uses are moved to Amaze's holding folder on
-this computer, outside the library, named in the summary and kept for
-30 days. A registered folder that is not on this computer is set aside:
-it leaves the sidebar, and its comments, tile icons and favorites are
-kept until the folder is added again. Folders on drives that are not
-mounted are skipped.
+- **The lists.** Each section keeps a list of what it holds, and the
+  comments, tile icons, favorites, File locations, users and shared
+  settings each have one too. The report gives what each list holds,
+  and names a list that is empty, cannot be read or is missing, with
+  its saved copies. A section's list that holds under half of what its
+  newest saved copy holds is named as well.
+- **Missing files and renders.** A material or node setup on a list
+  whose `.mat` or `.interface` file is not in the library is named and
+  stays on the list; **Delete** removes it. Materials and node setups
+  that can have a render and have none are counted; **Update Render**
+  renders them.
+- **Unlisted files.** Files in the `mat`, `img` and `captures` folders
+  that no list claims.
+- **Leftovers.** Files Amaze made that nothing needs any more: scratch
+  files left by a save that did not finish, once they are an hour old;
+  the `.pre-adopt` backups kept from before an earlier texture update;
+  and second copies a sync service made of a file still in the library,
+  such as `notes.json 2.bak-3`. A second copy of a list or an asset file
+  counts only when its contents match the original's. One that differs
+  is named with its date and size and left in place, and so is a second
+  copy whose original is not there.
+- **Unknown files.** Files and folders with a name Amaze does not
+  write, each named with its folder, size and date.
+- **No category.** Materials and node setups with no category, which
+  show only under All.
+- **The File section.** File locations whose folder is not on this
+  computer, and starred files gone from a folder that is. Locations on
+  a drive that is not connected are named and left as they are.
+- **The holding folder.** Its path, what it holds, and when its oldest
+  files go.
 
-**Repair**, on the Amaze shelf, repairs a library when Clean Up refuses
-or the panel does not open. It reads the library, reports the
-problems and offers the fixes that apply. It puts materials that no
-list names back into Materials, with the name, category and tags
-stored beside each one, and writes a new list when the old one is
-missing. It puts a damaged list back to one of its dated copies,
-leaving out copies that hold nothing. When `settings.json`, the
-settings file that names the library, is unreadable or missing, Repair
-lists its dated copies and restores one. It moves files that belong to
-nothing to Amaze's holding folder on this computer, where they are kept
-for 30 days.
+The fixes, each shown only when it applies:
+
+- **Add *N* Materials Back** puts unlisted materials back on the
+  Material list, with the name, category and tags saved beside each one.
+  It writes a new Material list when there is none.
+- **Put a Saved Copy Back** puts a list back to its newest saved copy.
+  The confirmation says how many items the copy holds and how many the
+  list holds now, and **Older Copies...** lists the earlier copies. The
+  list you have now is kept in the library folder, and the next check
+  offers it back. For the Material and Node lists, items saved after the
+  copy come back from the record saved beside their files, and items
+  changed after it are brought up to date.
+- **Add *N* Files to a Section** adds unlisted pairs of `.mat` and
+  `.interface` files to the section you pick, Material or Node. Each one
+  keeps the name, category and tags recorded beside its files; one with
+  no such record comes back in a category called Recovered, named
+  Recovered plus the start of its file name.
+- **Move *N* Files Aside** moves the unlisted files and the leftovers
+  into the holding folder. Unlisted files stay while a list that may
+  own them cannot be read or holds nothing, and so do files whose saved
+  record can still put them back on a list.
+- **Move *N* Unknown Files Aside** moves the unknown files and folders
+  into the holding folder, after a confirmation that names each one.
+- **Set Aside *N* Folders** takes the File locations whose folder is not
+  on this computer out of the sidebar. Their comments, tile icons and
+  favorites are kept and come back when the folder is added again.
+  Favorites of starred files that are gone are removed with them; when
+  no location is set aside, **Remove *N* Favorites of Missing Files**
+  removes those alone.
+- **Put *N* in Uncategorized** puts the materials and node setups with
+  no category in Uncategorized.
+- **Show Holding Folder** opens the holding folder.
+
+With more than five fixes, **Choose an Action...** lists them instead.
+Each fix asks for confirmation. After it, Amaze reads the library again,
+so the panel shows the change without a restart, and the report opens
+again with what is left. **Close** ends the check.
+
+Moved files go to Amaze's holding folder on this computer, outside the
+library, in one folder per day. Each day's files are kept for 30 days,
+and every check removes the days older than that. To put a file back,
+copy it from the holding folder into the library. The holding folder
+follows the library by an id stored in the library's `policy.json`, so
+a library moved to a new folder keeps it.
+
+**Check Library**, on the Amaze shelf, runs the same check when the
+Amaze panel will not open. With an Amaze panel open, it says to use the
+panel instead. When this Houdini session has already read the library,
+it shows the report without the fixes. When `settings.json`, the
+settings file that names the library, cannot be read, is missing or
+names no library, it lists the file's saved copies and puts the one you
+pick back.
+
+When the Material list cannot be read as a library opens, Amaze asks
+first. **Repair** puts back the newest saved copy that holds materials,
+else the newest that reads. With no such copy, it rebuilds the list
+from the record saved beside each material; category names are kept,
+and their order and colors may change. The unreadable file is kept beside the list. **Open Without
+Library** leaves the folder unchanged. A message then says what Repair
+did, or why it could not.
+
+`tools/library-audit.py`, in the Amaze folder, lists what a library
+folder holds that does not belong there, by kind: scratch, pre-adopt
+backups, second copies, unknown files, and folders that cannot be read.
+It changes nothing and runs with Python 3 alone, without Houdini:
+`python3 tools/library-audit.py <library folder>`. `--strict` makes it
+exit with 1 when it finds anything, and `--quiet` prints only what it
+finds. It also looks inside the `matX` package folder, which Check
+Library leaves alone.
 
 Every write takes a snapshot of the asset list first, with rolling
 backups and a first-run copy, and writes from a second Houdini session

@@ -397,14 +397,16 @@ store that keeps per-key choices beside the thing they belong to.
   keyspace, label, noun, …)` declares it; the adapter attaches its
   normaliser with `bind()`. **Registration is how a store comes into
   existence**, so `stores()` is the ONE enumeration for every consumer
-  that may import the package — **Repair and the restore picker.**
-  **`tools/library-audit.py` is NOT one of them and never can be**: it
-  is deliberately pure stdlib, with no Houdini and no import from the
-  package, so it runs on a machine where Houdini will not start or
-  against a library copied onto a stick. It keeps its own hardcoded
-  list, so **a new store has to be added in two places**, and the audit
-  is the one that fails loudly — `--strict` reports an undeclared file
-  as UNKNOWN and exits 1.
+  that may import the package — **Check Library and the restore
+  picker.** **`tools/library-audit.py` is NOT one of them and never can
+  be**: it is deliberately pure stdlib, with no Houdini and no import
+  from the package, so it runs on a machine where Houdini will not start
+  or against a library copied onto a stick. It loads
+  `core/library_files.py` by file path, and that module's
+  `SIDE_TABLES` names the stores again, so **a new store has to be added
+  in two places**. A test holds the two equal (`test_check_engine`,
+  `test_keyed_store`), and the audit still fails loudly where they
+  drift — `--strict` reports an undeclared file as UNKNOWN and exits 1.
 - **Adapters:** the **Comments store** (`core/notes.py` → `notes.json`),
   the **Tile Icon store** (`core/tile_icons.py` → `icons.json`), the
   **User store** (`core/users.py` → `users.json`), the **Shared
@@ -551,10 +553,12 @@ a list someone can write short, and both callers that held one already
 had been. Whether a store SURVIVES a location removal is
 `survives_forget` on its spec — a product decision said once (a Remove
 from the sidebar clears the comments, tile icons and stars under it,
-and the identity row dies with the pointer). Clean Up never removes: a
-folder absent from this machine is SET ASIDE, the pointer only
-(`FolderTreeModel.set_aside_folder`), so the per-file state waits for
-the folder to return and re-attaches by id.
+and the identity row dies with the pointer). Check Library never
+removes: a folder absent from this machine is SET ASIDE, the pointer
+only (`repair.set_aside_folders` → `prefs.remove_file_folder`, the call
+`FolderTreeModel.set_aside_folder` makes too), so the per-file state
+waits for the folder to return and re-attaches by id. A folder on a
+volume that is not mounted is not set aside at all.
 
 `<file>.json.bak-first` arrives on the FIRST write —
 `hostos.seed_restore_floor` mints the write-once floor from the file
@@ -979,14 +983,16 @@ reproduces byte-identically without executing a line.
 A directory per asset id, and a file trio per version named for its
 writer and an increasing number. A snippet's version is one text file:
 code goes through the same engine, `core/versions.py` taking the section,
-with the same `versions.json`. Clean Library and Repair list only `mat/`
-and `img/`, so `code/` is outside both, in this build and in every
-earlier one tried back to 1.0.34. Settled ahead of the build so that
-Clean Library's classifier can be written against a shape that is
-known rather than guessed: it whitelists only recognised stems, so
-anything it does not recognise is skipped and logged, never swept.
-Without a decided name, the first Clean Library run after Versions
-ships would have read every version file as an orphan.
+with the same `versions.json`. Check Library walks every folder,
+`code/` and both `versions/` trees included, and
+`core/library_files.py` names a version file as one whose stem is
+`<writer>-<n>` or `<n>` with a version suffix, in a folder named for an
+alphanumeric id. Only the unlisted asset files of `mat/`, `img/` and
+`captures/` are counted against the lists; a version file is a known
+name and never one of them. Settled ahead of the Versions build so
+that the classifier could be written against a shape that is known
+rather than guessed: without a decided name, the first sweep after
+Versions shipped would have read every version file as an orphan.
 
 `<writer>` is the artist's own **Library User** — the `library_user`
 preference — never a harvested machine or account name.
@@ -1021,11 +1027,33 @@ Two things about it that are easy to get wrong:
 Behaviour the hardening campaign changed, stated here because these are
 contracts other code and the docs lean on:
 
-- **Clean Library never deletes.** Missing-file rows are reported and
-  kept; unclaimed files move to a machine-local quarantine
-  (`config_root()/history/<library>/quarantine/<date>/`), named in the
-  summary, expiring permanently after 30 days - the window IS the
-  guardrail. Dead scratches sweep the same way, age-gated an hour.
+- **Check Library never deletes.** Missing-file rows are reported and
+  kept. Every move is into the holding folder, the machine-local
+  quarantine `config_root()/history/library-<library id>/quarantine/<date>/`,
+  keyed by the `library_id` in the library's `policy.json`
+  (`library_policy.library_id` mints it once, at open; a library with
+  no id yet is keyed by its path, and `hostos.history_root` renames that
+  path-keyed folder to the id-keyed one the first time it sees the id).
+  A day expires permanently after 30 days (`quarantine.QUARANTINE_DAYS`),
+  and every check expires it: `repair.survey` runs `prune_quarantine`
+  first. The window IS the guardrail.
+- **One engine, two doors.** `repair.survey` walks the library once
+  (`library_files.walk`, one `os.scandir` per folder) and every report,
+  button and count reads that one dict. The panel door
+  (Preferences ▸ Library ▸ Check → `panel.check_library` →
+  `repair_dialog.check_in_panel`) saves every model first
+  (`check.let_go`), acts with `guard=False`, and reads every model again
+  after each action (`check.read_again`), so nothing waits for a
+  restart. The shelf door (`repair_dialog.run`) acts with `guard=True`,
+  refuses while an Amaze pane is open, and only reports once this
+  session holds a list.
+- **The default Move Aside takes only what Amaze made**: unlisted asset
+  files, scratch past an hour (`repair.SCRATCH_MIN_AGE`), `.pre-adopt`
+  backups, and a sync service's duplicate of a backup tier, undo copy or
+  preserved copy, or of a live file whose bytes equal the original's. A
+  duplicate that differs, or whose original is absent, is named and
+  left. An unknown file or folder moves only by its own button and its
+  own confirm.
 - **Favourites are per-user IN THE LIBRARY** (`favourites.json`,
   `<uid>|<key>` — 2026-08-13): every section's star goes through the
   one favourites door, so the same user sees the same stars on every
@@ -1047,27 +1075,41 @@ contracts other code and the docs lean on:
 
 ### What a library directory may contain
 
-The complete list. Anything else is either a failed write or not
-library data, and `tools/library-audit.py` reports it (`--strict` exits
-non-zero, so it can gate).
+**`core/library_files.py` is its one home**: every name below, with
+the exact patterns, is stated there once, and `library_files.classify`
+answers what any path is. The table is the reading guide, not a second
+copy. Anything else is one of four kinds, and the classifier says
+which: **scratch** (a write of ours that died partway: `.writing`,
+`.capturing`, `.tmp`, `.lock` and the other tails in `SCRATCH_TAILS`,
+or an `.amaze_scratch*` name), **pre-adopt** (`mat/<id>.mat.pre-adopt`,
+`mat/<id>.builder.json.pre-adopt`), **duplicate** (a known name with
+` <n>` before its last suffix, a sync service's second copy) or
+**unknown**. OS noise (`.DS_Store`, `Thumbs.db`, `._*` and the rest of
+`OS_NOISE`) is left alone and not reported. Check Library reports all
+four; `tools/library-audit.py` loads the same module by path and
+reports them too (`--strict` exits non-zero, so it can gate).
 
 | entry | what it is |
 |---|---|
-| `library.json` `cops.json` `code.json` `gradients.json` | the four databases, all four through `DatabaseConnector` since 2026-08-09 — same shape, rows under `assets` keyed by `id`. Enumerated ONCE in `database.SECTION_DATABASES` (filename, panel label, section noun, in panel order); `database.DATABASES` and Repair derive from it, and `tools/library-audit.py` keeps a deliberate copy because it must run where Houdini will not start |
+| `library.json` `cops.json` `code.json` `gradients.json` | the four databases, all four through `DatabaseConnector` since 2026-08-09 — same shape, rows under `assets` keyed by `id`. Enumerated ONCE in `database.SECTION_DATABASES` (filename, panel label, section noun, in panel order); `database.DATABASES` and Check Library derive from it, and `library_files.LISTS` keeps a deliberate copy, held equal by a test, because the audit tool must run where Houdini will not start |
 | `users.json` | **who uses this library** — a `uuid4` UID per person with a `name` beside it. Everything a user owns is tagged with the UID, so a rename relinks one label and moves nothing. The name is an alias for the UID, never the key, and names are unique in a library. Nothing makes a user silently: a user is picked or created on Preferences ▸ Library and made on Apply, and a library opens at start only when this computer's pointer names one of its users. Created, renamed and DELETED from the Preferences User row (2026-08-22): a deletion sweeps everything tagged theirs through the engine's `retire_owner` — every user-tagged store, one guarded write each — then the record; a machine still signed in as them opens no library at its next start and asks to pick a user |
 | `notes.json` `icons.json` `locations.json` `favourites.json` `prefs.json` | the keyed side tables (per-asset comment pages; chosen tile icons; the File section's registered locations — per-user since ROADMAP line 22 stage C, `<uid>|<path>`, each user's own sidebar; every section's starred rows, `<uid>|<path-or-asset-id>`; the library's shared settings — one record per preference key, everyone's answer, ROADMAP line 22). Not DatabaseConnector documents, but written here and snapshotted here like the rest. A location record is `{registered, name, color, show_all, recursive}` keyed by path — `registered` is a FIELD, so the sidebar list is derived rather than kept beside it, and a location carrying no decoration is still visible. Path-shaped keys are stored PORTABLE (2026-08-06): `$AMAZE/...` under the install tree, `~/...` under home, absolute only past both — `hostos.storage_path_key` converts at the store boundary, every legacy spelling is absorbed on load (first in wins, logged), and the locations API answers canonical absolutes so scans and sidebars never see the variable form |
-| `policy.json` | per-library write policy |
-| `<file>.json.bak-1/-2/-3/-first` | **the restore tier** — written by `snapshot_before_write`, read by Repair Library, recovered by `restore.put_back`. Every file above that is snapshotted has one, not only the four databases |
-| `<file>.json.bak-before-restore-<stamp>` | the undo copy each restore mints, bounded at `restore.KEEP_UNDO_COPIES`; the copy Repair's own undo sentence points at |
+| `location_paths.json` | the location-identity table: one row per registered folder, its id → its current path |
+| `policy.json` | per-library write policy, and the `library_id` the holding folder and the daily history follow |
+| `<file>.json.bak-1/-2/-3/-first` | **the restore tier** — written by `snapshot_before_write`, read by Check Library, recovered by `restore.put_back`. Every file above that is snapshotted has one, not only the four databases |
+| `<file>.json.bak-before-restore-<stamp>` | the undo copy each restore mints, bounded at `restore.KEEP_UNDO_COPIES`; the copy Check Library's own undo sentence points at |
 | `<file>.json.unreadable` | a file that would not parse, preserved instead of overwritten |
-| `.amaze_gradient_seed_v1` `.amaze_code_starter_v1` | seed markers: "curated content was offered here once" |
+| `.amaze_gradient_seed_v1` `.amaze_code_starter_v1` | seed markers that the curated content was offered here once; the `.assetlib_` spellings of both are the older markers |
 | `mat/<id>.mat` `mat/<id>.interface` | material payloads |
 | `mat/<id>.builder.json` | builder sidecar: the container's own parameter interface and values, as DATA |
-| `mat/<id>.stamp.json` | recovery stamp: the asset's whole record, write-only, read solely by a rebuild after `library.json` is lost |
+| `mat/<id>.stamp.json` | recovery stamp: the asset's whole record, read only by `core/repair.py`: a rebuild after `library.json` is lost, an unlisted pair being added back, and the rows a put-back brings up to date |
+| `mat/<id>_cop.mat` | a node asset's companion network |
 | `mat/versions/<id>/<n>.*` + `versions.json` | the version store: each version's archived payload (the same kinds as the base, thumbnail included), and the ledger naming them and the active one. The BASE files are always the active version's - losing this folder costs history, never the material. Deleting the asset takes the folder with it: `asset_directories()` names it and `remove_asset` sweeps it, because once the id leaves every list nothing can decide the folder is safe to take |
 | `code/versions/<id>/<n>.txt` + `versions.json` | a snippet's versions: each one's text, and the same ledger. The snippet's text in `code.json` is always the active version's; deleting the snippet takes the folder with it |
 | `img/<id>.png` | tile renders |
-| `matX/<package>/…` | MaterialX packages and their textures |
+| `img/<id>_icon.png` | a chosen tile icon's picture |
+| `captures/<id>.png` `captures/file_<40 hex>.png` | scene captures: an asset tile's, and a File row's by the SHA-1 of its key |
+| `matX/<package>/…` | MaterialX packages and their textures; Check Library does not enter it, the audit tool reports scratch there only |
 
 **The `.bak-*` files are not clutter.** They are how a damaged library
 gets back, every shipping library has them, and a library without them
@@ -1078,6 +1120,9 @@ the recovery, which is the opposite of tidy.
 `.capturing`, `.lock` or `.tmp` is always ours and always means a save
 died partway — reported separately from a merely unknown file, because
 an unknown file might be the user's and a leftover scratch never is.
+Check Library's default Move Aside takes a scratch once it is an hour
+old, so a live write in another session is left alone; an unknown file
+moves only by its own button.
 
 ## 7. The Renderer terms
 
@@ -1157,10 +1202,13 @@ core/workers.py           how every engine stops its QThreads (one shared
                           window, then terminate, then parked for good) and
                           hands itself over on a reload; base layer
 core/grid_engine.py       GRID ENGINE (every grid model's cells and row order)
-core/library.py           Library Model (Materials) + base for Cop/Code
+core/library.py           Library Model (Materials) + base for Cop/Code;
+                          no cleanup of its own - Check Library is
+                          core/repair.py's
 core/model_registry.py    the ONE source-model set per library; panels are views
 core/material.py          Material record
-core/renderers.py         the renderer table: names, icons, switches, samples, converters
+core/renderers.py         the renderer table: names, icons, switches, samples, converters,
+                          and RENDERABLE_CONTEXTS, the node contexts whose tile can hold a render
 core/category.py          Categories Model + Sidebar Proxy
 core/multifilterproxy_model.py   Filter Proxy
 core/matx_translate.py    Adapter: online .mtlx -> clean VOP
@@ -1197,9 +1245,11 @@ actions/addons.py         the add-on check and install the Add-On tab
                           runs: which store versions are newer, then
                           fetching and installing them, each answered
                           in one sentence
-actions/check.py          Check Library in the panel: every model
-                          and the settings saved before an action,
-                          every model read again after it
+actions/check.py          Check Library's panel door: `let_go` saves
+                          every model and the settings before the
+                          check acts, `read_again` re-reads the
+                          settings and every model after each action
+                          (the Reload path without its save)
 actions/code.py           the Code section's Houdini verbs: a Python
                           snippet run as one undo step with a shelf
                           click's kwargs, and a snippet set onto a
@@ -1242,13 +1292,17 @@ core/scene_files.py       which file names are Houdini scenes (.hip,
 core/material_files.py    what a saved material's files say, read as
                           text: its builder type and its shader type
 core/captures.py          the capture store: <library>/captures, any tile
-core/repair.py            REPAIR: what is wrong with this library and
-                          what is safe to do - Clean Library's opposite
-                          number, and the only module that opens a
-                          recovery stamp; no `hou`, no dialog
-dialogs/repair_dialog.py  Repair's questions and answers - the shelf
-                          tool's `run`, the buttons, each confirm and
-                          report; never needs the pane
+core/repair.py            CHECK LIBRARY's engine: one `survey` from one
+                          walk, the one `report_lines`, and every
+                          action (add back, put back, `repair_index`,
+                          `move_aside`, set aside, uncategorised), each
+                          taking `guard`; the only module that opens a
+                          recovery stamp; no `hou`, no Qt, no dialog
+dialogs/repair_dialog.py  Check Library's report, buttons, confirms
+                          and answers for both doors: the shelf tool's
+                          `run`, the panel's `check_in_panel`; past
+                          `MOST_BUTTONS` actions, Choose an Action;
+                          never imports the pane
 core/updater.py           is a newer Amaze released, and can this one
                           become it - asked only on request, never at
                           launch (shelf tool + the About tab button)
@@ -1259,18 +1313,24 @@ core/versions.py          the version store of materials and code - the
                           base is always the ACTIVE version's, each
                           version also has an archived copy, and
                           versions.json is the ledger
-core/quarantine.py        where a library-internal removal puts what it
-                          takes: machine-local, dated, expiring. Pure
-                          stdlib, because the Houdini-free restore tool
-                          calls it too
-core/library_files.py     the naming convention: every name a library
-                          file may have, and what anything else is -
-                          scratch, a pre-adopt backup, a duplicate,
-                          unknown. Pure stdlib; the engine reads it and
-                          tools/library-audit.py loads it by path
+core/quarantine.py        the holding folder: where a library-internal
+                          removal puts what it takes - machine-local,
+                          one folder a day, keyed by the library id,
+                          expiring after QUARANTINE_DAYS; `held` is what
+                          the report's last line says. Pure stdlib,
+                          because the Houdini-free restore tool calls
+                          it too
+core/library_files.py     the naming convention, its one home: every
+                          name a library file may have, and what
+                          anything else is - scratch, a pre-adopt
+                          backup, a duplicate, unknown - plus `walk`,
+                          one scandir per folder. Pure stdlib; the
+                          engine imports it, database.asset_id_for_file
+                          delegates to it, tools/library-audit.py loads
+                          it by path
 helpers/restore.py        the only code that READS the .bak copies and
                           the only code that puts one back - one
-                          implementation behind Repair and the
+                          implementation behind Check Library and the
                           Houdini-free tools/restore.py
 core/gallery_import.py    Houdini .gal gallery entries -> library assets
 core/matx_icon.py         the PhysicallyBased icon, for value-only

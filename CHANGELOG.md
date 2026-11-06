@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.33.0
+
+- Check Library replaces Clean Up and the shelf's Repair. Preferences ▸ Library ▸ Check opens it on the open library: one report on the lists, the folders and the File section, with a button for each fix that applies. Each fix asks first, and the panel shows the change at once, with no restart.
+- The shelf tool is now called Check Library and runs the same check when the panel will not open. With the panel open, it says to use the panel.
+- The report names materials and node setups whose files are missing, those with no render, files no list claims, materials and node setups with no category, File locations not on this computer and favorites of files that are gone.
+- Check Library finds files Amaze made that nothing needs any more: scratch from a save that did not finish, the backups kept from before an earlier texture update, and a sync service's second copies, such as `notes.json 2.bak-3`. Move N Files Aside moves them. A second copy of a list or an asset file goes only when it matches the original; one that differs is named and left.
+- Files and folders whose names Amaze does not write are named with their size and date, and move only with Move N Unknown Files Aside, after their own confirmation.
+- Every file moved goes to Amaze's holding folder on this computer and is kept there for 30 days; every check removes the days older than that. The report ends with the holding folder's path and what it holds, and Show Holding Folder opens it.
+- The holding folder follows the library by an id stored in the library, so a library moved to a new folder keeps it.
+- Putting a saved copy of the Material or Node list back also adds back what was saved after the copy, in the panel and in the shelf tool alike.
+- When the Material list cannot be read as a library opens, Repair puts back the newest saved copy that holds materials, and a message says what it did.
+- A list that holds under half of what its newest saved copy holds is reported when the library opens.
+- `tools/library-audit.py` reads the same naming rules as Check Library and names each misplaced file by its kind.
+
 ## 1.32.1
 
 - The GitHub check covers ten more test modules, and the tests that need Houdini are skipped where it is absent. Nothing changes in use.
