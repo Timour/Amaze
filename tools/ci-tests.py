@@ -7,12 +7,13 @@ import subprocess
 import sys
 
 PINNED = {  # PROVEN green without Houdini, 2026-08-29; may only grow
-    "test_category", "test_comment_budget", "test_conversion",
-    "test_dead_cover", "test_event_pumps", "test_harness_reset",
-    "test_library_prefs", "test_log_export", "test_messages",
-    "test_prefs_per_user", "test_prefs_shared", "test_shaderball_assets",
-    "test_shell_gates", "test_shell_gates_more", "test_tooltips", "test_ui_labels",
-    "test_unbound_names", "test_upgrade_tool",
+    "test_addons", "test_category", "test_comment_budget", "test_conversion",
+    "test_dead_cover", "test_event_pumps", "test_file_lock", "test_grid_order",
+    "test_harness_reset", "test_impact_map", "test_keyed_store", "test_layers",
+    "test_library_prefs", "test_log_export", "test_messages", "test_peer_read",
+    "test_prefs_per_user", "test_prefs_shared", "test_restore_drill", "test_role_numbers",
+    "test_screen_dpr", "test_shaderball_assets", "test_shell_gates", "test_shell_gates_more",
+    "test_tooltips", "test_ui_labels", "test_unbound_names", "test_upgrade_tool",
 }
 
 HERE = os.path.dirname(os.path.abspath(__file__))

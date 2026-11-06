@@ -16,6 +16,11 @@ sys.path.insert(
 from amaze.core import database
 from amaze.tests import test_support
 
+try:
+    import hou
+except ImportError:
+    hou = None
+
 
 class ConnectorResetDetachesNothingTest(unittest.TestCase):
     """The reset must clear the shared registry, not replace it."""
@@ -96,6 +101,7 @@ class ConnectorResetDetachesNothingTest(unittest.TestCase):
             "- which is how a test once mutated the real library")
 
 
+@unittest.skipUnless(hou, "Houdini is not loaded")
 class PinEnvSetsOnlyWhatTheProductReadsAsUnset(unittest.TestCase):
     """`pin_env` gives a variable its value where the product's gate would refuse it, then restores it."""
 
@@ -127,6 +133,7 @@ class PinEnvSetsOnlyWhatTheProductReadsAsUnset(unittest.TestCase):
         self.assertEqual(("/its/own",) * 3, self._through_a_pin("/its/own"))
 
 
+@unittest.skipUnless(hou, "Houdini is not loaded")
 class RendererLoadedAsksTheProductsProbe(unittest.TestCase):
     """`renderer_loaded` reads the conversion engine's answer, so `plugins_loaded` reaches it."""
 
@@ -138,6 +145,7 @@ class RendererLoadedAsksTheProductsProbe(unittest.TestCase):
                     {key: test_support.renderer_loaded(key) for key in ("Redshift", "Octane")})
 
 
+@unittest.skipUnless(hou, "Houdini is not loaded")
 class SceneCleanupsTakeWhatATestBuilt(unittest.TestCase):
 
     def test_drop_node_takes_the_node_and_a_second_drop_is_quiet(self):
