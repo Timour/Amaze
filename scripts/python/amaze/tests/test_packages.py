@@ -1,4 +1,4 @@
-"""The `.amazepkg` format: export collects an asset's REAL file family plus its note page, plain files ride with their kind, the zip lands guarded and whole, and the reader refuses a format newer than it speaks."""
+"""The `.amazepkg` format: export collects the file family, import lands it, newer formats refused."""
 
 import io
 import json
@@ -30,7 +30,7 @@ def _bytes(path: str) -> bytes:
 
 
 def _out_path(testcase, name="export.amazepkg"):
-    """A destination inside the suite's sandboxed tempdir - the guarded writer refuses anywhere else under the runner."""
+    """A destination in the sandboxed tempdir; the guarded writer refuses anywhere else in a run."""
     folder = tempfile.mkdtemp(prefix="amaze_pkg_")
     testcase.addCleanup(
         __import__("shutil").rmtree, folder, ignore_errors=True)
@@ -38,14 +38,14 @@ def _out_path(testcase, name="export.amazepkg"):
 
 
 class PackageExportTest(unittest.TestCase):
-    """Collect and write against the REAL fixture library - the six built materials carry genuine payload families."""
+    """Collect and write against the fixture library, whose six materials carry real file families."""
 
     @classmethod
     def setUpClass(cls):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
 
     def _material_with_files(self):
-        """The first fixture material whose payload family EXISTS on disk - the fixture's row 0 is a deliberate empty-id row that owns nothing."""
+        """The first fixture material with files on disk; row 0 is a deliberate empty-id row."""
         model = self.panel.material_model
         for asset in model.assets:
             if any(os.path.exists(p)
@@ -159,7 +159,7 @@ class PackageExportTest(unittest.TestCase):
 
 
 class PackageReaderTest(unittest.TestCase):
-    """The reading half batch 2 builds on: the manifest comes back verbatim, and a NEWER format is refused by name."""
+    """The reading half: the manifest comes back verbatim, and a newer format is refused by name."""
 
     def _package(self, manifest) -> str:
         folder = tempfile.mkdtemp(prefix="amaze_pkg_read_")
@@ -196,7 +196,7 @@ class PackageReaderTest(unittest.TestCase):
 
 
 class ExportMenuTest(unittest.TestCase):
-    """The doors: every asset section and the File grid offer Export Package, the sidebar offers Export Category, and the ACT verbs write headless with no hou.ui in the way."""
+    """The doors: Export Package on every section, Export Category on the sidebar, headless verbs."""
 
     @classmethod
     def setUpClass(cls):
@@ -281,7 +281,7 @@ class ExportMenuTest(unittest.TestCase):
 
 
 class PackageImportTest(unittest.TestCase):
-    """The import half: fresh imports mint NEW ids and land in the `Import` category, restore mode unions adopt-only by the package's ORIGINAL ids, plain files land in the library's own import folder, and a package missing a member is refused whole."""
+    """Import: fresh mints new ids into `Import`, restore unions by original id, gaps refuse whole."""
 
     @classmethod
     def setUpClass(cls):
@@ -342,7 +342,7 @@ class PackageImportTest(unittest.TestCase):
         with_new_id = _out_path(self, "minted.amazepkg")
         item = packages.collect_asset(model, original.mat_id)
         record = dict(item["record"], id="f" * 32)
-        record.pop("curated", None)    # a USER asset: fixture palettes are born tagged since the seeder stamps, and a tagged record would union by the tag instead of the id this test pins
+        record.pop("curated", None)    # a user asset: a seeded tag would union by the tag, not the id this pins
         item = dict(item, record=record)
         packages.write_package(with_new_id, [item])
         held = test_support.asset_ids(model)
@@ -685,7 +685,7 @@ class _Cats:
 
 
 class CuratedKeysTest(unittest.TestCase):
-    """The stable identity under the defaults: every seeded row carries a `curated` tag (riding `_extra`, no schema work), and restore unions by the TAG where one exists - the same palette in two libraries has two ids but one tag."""
+    """Every seeded row carries a `curated` tag, and restore unions by that tag where one exists."""
 
     def _fresh_prefs(self, marker):
         p = test_support.fixture_prefs(self)
@@ -797,7 +797,7 @@ class CuratedKeysTest(unittest.TestCase):
 
 
 def _canned_amaze_source(tree, bundles):
-    """An AmazeSource whose two network doors are canned: `tree` rows and {url: local zip path} - counters on the class."""
+    """An AmazeSource with canned `tree` rows and {url: local zip}, counting calls on the class."""
     from amaze.core import matx_sources
 
     class Source(matx_sources.AmazeSource):
@@ -826,7 +826,7 @@ def _bytes_or_none(path):
 
 def _manifest_zip(testcase, entries, members=None,
                   name="pkg.amazepkg", fmt=None) -> str:
-    """A local package from raw manifest entries plus optional {arcname: bytes} members; `fmt` overrides the manifest format number."""
+    """A local package from raw manifest entries and {arcname: bytes}; `fmt` overrides the format."""
     from amaze.core import packages
     folder = tempfile.mkdtemp(prefix="amaze_store_pkg_")
     testcase.addCleanup(
@@ -888,7 +888,7 @@ def _palette_entry(n, tag=None):
 
 
 class AmazeSourceTest(unittest.TestCase):
-    """The store source, per-TILE: every entry in every package of a folder is one record, palette colours ride the record for client-side swatches, material thumbnails are named members, a NEWER-format package is refused whole, and Refresh drops every cache."""
+    """The store source: one record per package entry, newer formats refused, Refresh drops caches."""
 
     URL = "https://raw.githubusercontent.com/Timour/AmazePackages/main/"
 
@@ -1006,9 +1006,9 @@ class AmazeSourceTest(unittest.TestCase):
 
 
 class RangedFileTest(unittest.TestCase):
-    """zipfile over ranged reads: a block-cached RangedFile reads a MULTI-block zip whole and cheap, and _open_package's suffix-range seeding survives contact with a Range-speaking server."""
+    """zipfile over ranged reads: RangedFile reads a multi-block zip whole, with suffix-range seeding."""
 
-    PAYLOAD = bytes(range(256)) * 800    # 204,800 bytes - four blocks, so boundary crossings and the block cache are real, not vacuously green on a one-block fixture
+    PAYLOAD = bytes(range(256)) * 800    # 204,800 bytes, four blocks, so boundary crossings and the block cache are exercised
 
     def test_a_zip_reads_whole_and_cheap_through_ranges(self):
         from amaze.core import matx_sources
@@ -1280,7 +1280,7 @@ class RangedFileTest(unittest.TestCase):
 
 
 class OnlinePackageImportTest(unittest.TestCase):
-    """Selected TILES import - only their members, fresh into Import or restore adopt-only - and a corrupt member counts refused without abandoning the batch (CRC is corruption detection; authenticity rides TLS)."""
+    """Selected tiles import only their members; a corrupt member counts refused, the batch goes on."""
 
     @classmethod
     def setUpClass(cls):
@@ -1310,7 +1310,7 @@ class OnlinePackageImportTest(unittest.TestCase):
         before = model.rowCount()
         held = test_support.asset_ids(model)
         with mock.patch.object(self.panel.matx_online_model, "_sources",
-                               [source]):    # the REAL _online_source_for runs - mocking it once hid a door that refused every amazepkg record over resolutions
+                               [source]):    # the real `_online_source_for` runs, so its door is exercised too
             ok, reason = self.panel.import_online_material(chosen)
         self.assertTrue(ok, reason)
         self.assertEqual(before + 1, model.rowCount(),
@@ -1507,14 +1507,14 @@ class OnlinePackageImportTest(unittest.TestCase):
                                [source]):
             ok, reason = self.panel.import_online_material(record)
         self.assertFalse(ok, "a corrupt payload imported as good")
-        self.assertIn("did not read back whole", reason,    # the COUNTED refusal, not a crash: an unbound `debug` in the handler once produced the same False through the catch-all
+        self.assertIn("did not read back whole", reason,    # the counted refusal, not a crash caught by the catch-all
                       reason)
         self.assertEqual(before, material_model.rowCount(),
                          "the refused tile still changed the library")
 
 
 class TexturePackingTest(unittest.TestCase):
-    """Format 2: an asset's adopted textures travel in the package - packed from the row's token inventory, landed at the same tokens in the receiving library, and a token that escapes the library is refused."""
+    """Format 2: adopted textures travel and land at the same tokens; an escaping token is refused."""
 
     @classmethod
     def setUpClass(cls):
@@ -1569,7 +1569,7 @@ class TexturePackingTest(unittest.TestCase):
         adopted = texstore.resolve(
             (row.get_as_dict().get("textures") or [""])[0],
             model.preferences)
-        os.remove(adopted)    # the package must be the only source, as in a foreign library - same-library resolve would green this vacuously
+        os.remove(adopted)    # the package must be the only source, as in a foreign library
         before = model.rowCount()
         held = test_support.asset_ids(model)
         summary = self.panel.import_package_file(out)
@@ -1615,7 +1615,7 @@ class TexturePackingTest(unittest.TestCase):
 
 
 class OnlineKindFilterTest(unittest.TestCase):
-    """The online eye: All / Materials / Colors / Nodes / Code narrows the grid by tile KIND - non-Amaze sources count as Materials, the choice holds for the session."""
+    """The online eye narrows the grid by tile kind; other sources count as Materials, per session."""
 
     @classmethod
     def setUpClass(cls):
@@ -1709,7 +1709,7 @@ class OnlineKindFilterTest(unittest.TestCase):
 
 
 class OnlineTilePaintingTest(unittest.TestCase):
-    """The browser's tile pictures without full downloads: palette swatches DRAWN from the record's colours, material thumbnails fetched per member through a callable preview job."""
+    """Tile pictures without downloads: swatches drawn from colours, thumbnails fetched per member."""
 
     def test_a_swatch_is_the_color_sections_own_face(self):
         from amaze.core import gradient_library

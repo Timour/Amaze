@@ -29,10 +29,10 @@ from amaze.core import library as library_mod             # noqa: E402
 from amaze.helpers import hostos                          # noqa: E402
 from amaze.tests import test_support                      # noqa: E402
 
-SCHEMA = database.SCHEMA_VERSION  # read, never typed - a literal goes stale at the next bump and turns the fixture into a silent test of the migration (practice.md ▸ A TEST OF A DROP-ON-READ RULE MUST BEAT THE MIGRATION TO THE ROW)
+SCHEMA = database.SCHEMA_VERSION  # read, never typed: a literal goes stale at the next bump and tests the migration instead
 
 
-class _Prefs:  # never a real Prefs: one built under hython resolves $AMAZE to the live install, and that is how a test overwrote the real settings once
+class _Prefs:  # never a real Prefs: one built under hython resolves $AMAZE to the live install
     """The attributes the family model reads."""
 
     asset_dir = "mat/"
@@ -96,7 +96,7 @@ class TheUnreadableIndexDialogTest(unittest.TestCase):  # sabotage: drop `_build
         test_support.settle_stamps()    # the stamps a save did not change are written on a worker
         premise = os.path.join(
             first.prefs.dir, first.prefs.asset_dir)
-        mine = {str(a.mat_id) for a in first.material_model.assets}  # MATERIAL stamps only: mat/ is shared with Nodes and Code, so "does ANY stamp exist" was satisfied by the shipped Code starter alone
+        mine = {str(a.mat_id) for a in first.material_model.assets}  # material stamps only: mat/ is shared with Nodes and Code
         stamps = [name for name in os.listdir(premise)
                   if name.endswith(".stamp.json")
                   and name[: -len(".stamp.json")] in mine]
@@ -318,7 +318,7 @@ class SecondaryDatabaseAbsenceTest(unittest.TestCase):
         self.dir = tempfile.mkdtemp(prefix="amaze_absent_db_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
         self.path = os.path.join(self.dir, "cops.json")
-        test_support.reset_database_singletons()  # one connector per FILENAME, cached process-wide - a leftover answers from another test's _data and carries its _write_blocked latch
+        test_support.reset_database_singletons()  # one connector per filename, cached process-wide; a leftover carries its _write_blocked latch
         self.addCleanup(test_support.reset_database_singletons)
 
     def _connector(self, filename="cops.json"):
@@ -345,7 +345,7 @@ class SecondaryDatabaseAbsenceTest(unittest.TestCase):
             "an empty cops.json was created over a database that a .bak "
             "beside it says was here - this is the 8-records-to-0 bug")
         self.assertEqual([], data["assets"])
-        self.assertTrue(getattr(db, "_write_blocked", False),  # getattr, not attribute access: a missing latch must read as a FAILED guard with this message, not an AttributeError
+        self.assertTrue(getattr(db, "_write_blocked", False),  # getattr: a missing latch must fail with this message, not an AttributeError
                         "writes were not blocked, so the next save "
                         "recreates the file the load refused to")
         db.save()                       # the save the panel does anyway
@@ -383,10 +383,10 @@ class SecondaryDatabaseAbsenceTest(unittest.TestCase):
                       "the note does not say which trace it went on")
         self.assertIn("restart", said.lower(),
                       "the note does not tell the user what to do")
-        self.assertIn("remove cops.json.bak-1 as well", said,  # the FILE to remove, not just the words "on purpose" - a mangled sentence still contained that phrase and passed; the refusal lasts as long as the trace, so without this the guard is a dead end
+        self.assertIn("remove cops.json.bak-1 as well", said,  # the file to remove, not just the words; the refusal lasts as long as the trace
                       "the note does not say how to proceed if the "
                       "database was removed deliberately")
-        if not hostos.is_windows():  # Windows suppresses every print on purpose (any print pops the Houdini Console over the user's scene), so there the log record above is the whole channel
+        if not hostos.is_windows():  # Windows suppresses prints (each pops the Houdini Console), so the log record is all there is
             self.assertIn("cops.json", printed,
                           "nothing reached the user - only the log, "
                           "which is off unless Debug Mode is on")
@@ -424,7 +424,7 @@ class SecondaryDatabaseAbsenceTest(unittest.TestCase):
                 "tags": []})
         db.save()
         with open(self.path, encoding="utf-8") as handle:
-            self.assertIn("COP1",  # reached disk is the claim, not "and nothing else did" - set() unions, so a row this caller did not mention stays
+            self.assertIn("COP1",  # reached disk is the claim: set() unions, so a row this caller did not mention stays
                           [a["id"] for a in json.load(handle)["assets"]],
                           "an ordinary save was refused")
 
@@ -593,7 +593,7 @@ class WriteBlockBelongsToTheFileTest(unittest.TestCase):
     """A refusal must not follow the user into a different library."""
 
     def setUp(self):
-        self.root = tempfile.mkdtemp(prefix="amaze_absent_switch_")  # one connector per FILENAME for the whole process, repointable at any time (panel.switch_model_data -> library.reload_with_path -> db.reload_with_path); that reset _data and not _write_blocked, so a hiccup in A left healthy B silently unsaveable
+        self.root = tempfile.mkdtemp(prefix="amaze_absent_switch_")  # one connector per filename, repointable; a switch must reset _write_blocked with _data
         self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
         test_support.reset_database_singletons()
         self.addCleanup(test_support.reset_database_singletons)
@@ -654,7 +654,7 @@ class ARefusedSaveSaysSoTest(unittest.TestCase):
     """A dropped save has to be audible."""
 
     def setUp(self):
-        self.dir = tempfile.mkdtemp(prefix="amaze_absent_quiet_")  # save() reported the refusal with debug.event, which is Debug-Mode gated and never prints; load() can now latch _write_blocked from a sync hiccup at panel open, so this is the ordinary path
+        self.dir = tempfile.mkdtemp(prefix="amaze_absent_quiet_")  # a refused save must print, not only debug.event, which Debug Mode gates
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
         self.path = os.path.join(self.dir, "cops.json")
         with open(self.path + ".bak-1", "w", encoding="utf-8") as handle:
@@ -711,7 +711,7 @@ class ARefusedSaveSaysSoTest(unittest.TestCase):
 class SectionLabelsMatchThePanelTest(unittest.TestCase):
     """database.py's own copy of the section labels must never drift from the panel's."""
 
-    def test_every_label_matches_the_one_source(self):  # core must not import the UI package, hence the copy; a copy that can drift silently is worse than the coupling it avoids
+    def test_every_label_matches_the_one_source(self):  # core must not import the UI package, hence the copy
         from amaze.core import section_list
         labels = dict(section_list.SECTIONS)
         for filename, key in (("library.json", "material"),
@@ -746,7 +746,7 @@ class SectionLabelsMatchThePanelTest(unittest.TestCase):
 class GradientAbsenceTest(unittest.TestCase):
     """gradients.json absent + its SEED MARKER alone must refuse, with no `.bak` anywhere."""
 
-    def setUp(self):  # every test here asserts no `.bak` first: the real library's gradients.json has none, so a backup-leaning guard passes its own tests and leaves the bug where it was
+    def setUp(self):  # each test asserts no `.bak` first: a real gradients.json has none
         test_support.reset_database_singletons()
         self.addCleanup(test_support.reset_database_singletons)
         self.dir = tempfile.mkdtemp(prefix="amaze_absent_grad_")
@@ -803,7 +803,7 @@ class GradientAbsenceTest(unittest.TestCase):
         if not os.path.exists(gradient_library._def_path("sanzo_wada.json")):
             self.skipTest("curated defs unreachable ($AMAZE not resolved) "
                           "- seeding cannot be exercised here")
-        with open(self.path + ".bak-1", "w", encoding="utf-8") as handle:  # driven from .bak evidence deliberately: with the marker present the seed returns on the marker check and this passes without the latch being consulted at all
+        with open(self.path + ".bak-1", "w", encoding="utf-8") as handle:  # driven from .bak: with the marker present the seed returns before the latch
             json.dump({"version": SCHEMA, "categories": [],
                        "assets": []}, handle)
         self.assertFalse(os.path.exists(self.marker),
@@ -828,7 +828,7 @@ class GradientAbsenceTest(unittest.TestCase):
         self.assertIn(gradient_library.GradientLibrary._SEED_MARKER, said,
                       "the note does not say which trace it went on")
         self.assertIn("nothing will be saved", said.lower())
-        self.assertIn(self.path, said,  # ONE text, printed AND recorded: on Windows note() suppresses the print, so the record must carry the actionable half too - the two used to differ and the log kept only "saving disabled"
+        self.assertIn(self.path, said,  # one text, printed and recorded: on Windows note() suppresses the print
                       "the record does not say where the file belongs")
         self.assertIn(
             "remove " + gradient_library.GradientLibrary._SEED_MARKER
@@ -836,7 +836,7 @@ class GradientAbsenceTest(unittest.TestCase):
             "the record does not say how to proceed if gradients.json "
             "was removed deliberately - the refusal lasts as long as the "
             "marker does, so this is the only way out of it")
-        if not hostos.is_windows():  # same guard as the database refusal test - the asymmetry was real: one test asserted a print the other platform never makes
+        if not hostos.is_windows():  # same guard as the database refusal test: Windows never prints
             self.assertIn("gradients.json", printed,
                           "nothing reached the user - the print is the "
                           "channel a user without Debug Mode has")
@@ -897,7 +897,7 @@ class GradientAbsenceTest(unittest.TestCase):
         lib.add_user_gradient("edited", "", {"values": [], "keys": []})
         with open(self.path, encoding="utf-8") as handle:
             names = [g["name"] for g in json.load(handle)["assets"]]
-        self.assertIn("edited", names, "an ordinary save was refused")  # assertIn, not an exact list: the connector UNIONS, so a row the caller did not mention is kept - this is about the save landing at all
+        self.assertIn("edited", names, "an ordinary save was refused")  # assertIn, not an exact list: the connector unions rows the caller did not mention
 
 
 class AbsentIsNotBrokenElsewhereTest(unittest.TestCase):
@@ -905,7 +905,7 @@ class AbsentIsNotBrokenElsewhereTest(unittest.TestCase):
 
     def test_a_first_launch_can_still_save_its_preferences(self):
         """A first launch with no settings.json must still persist the library folder it picks."""
-        from amaze.prefs import prefs as prefs_mod  # FileNotFoundError IS an OSError, so the unreadable-settings handler latched _load_failed and save() refused for the whole session
+        from amaze.prefs import prefs as prefs_mod  # FileNotFoundError is an OSError, so a missing file must not latch _load_failed
 
         settings_dir = tempfile.mkdtemp(prefix="amaze_absent_prefs_")
         self.addCleanup(shutil.rmtree, settings_dir, ignore_errors=True)
@@ -929,14 +929,14 @@ class AbsentIsNotBrokenElsewhereTest(unittest.TestCase):
                         "the first preference save never reached disk")
         with open(written, encoding="utf-8") as handle:
             stored = json.load(handle).get("directory", "")
-        self.assertEqual(  # expanduser + normcase on BOTH sides, never a substring: Prefs stores the library home-collapsed ("~/..."), and on Windows the temp dir IS under $HOME so the raw path never appears, while on macOS tempfile lands under /var/folders outside $HOME and the same code stores it verbatim
+        self.assertEqual(  # expanduser + normcase on both sides, never a substring: Prefs may store it as ~/...
             os.path.normcase(os.path.normpath(library_dir)),
             os.path.normcase(os.path.normpath(os.path.expanduser(stored))),
             "the chosen library was not persisted")
 
     def test_deleting_the_broken_file_UNLATCHES_the_session(self):
         """Deleting the unreadable file mid-session must clear the latch, as a healthy read does."""
-        from amaze.prefs import prefs as prefs_mod  # load() runs again when Preferences closes and re-derives the latch on every read; only the SUCCESS path used to clear it, so the fresh start could never persist
+        from amaze.prefs import prefs as prefs_mod  # load() runs again when Preferences closes and re-derives the latch on every read
 
         settings_dir = tempfile.mkdtemp(prefix="amaze_absent_prefs_gone_")
         self.addCleanup(shutil.rmtree, settings_dir, ignore_errors=True)
@@ -965,7 +965,7 @@ class AbsentIsNotBrokenElsewhereTest(unittest.TestCase):
 
     def test_the_snippet_marker_is_not_written_without_its_database(self):
         """A seed marker must never outlive a failed save - it is code.json's ONLY trace."""
-        from amaze.core import code_library  # database.save() reports an OSError to the user instead of raising, so a save held off by a full disk or a sync lock reaches the marker write looking successful
+        from amaze.core import code_library  # database.save() reports an OSError rather than raising, so the marker write must check
 
         prefs = test_support.fixture_prefs(self)
         test_support.reset_database_singletons()
@@ -1056,7 +1056,7 @@ class ExistedBeforeTest(unittest.TestCase):
 
     def test_a_directory_with_glob_characters_is_not_a_pattern(self):
         """A user-chosen directory name must not be read as a glob pattern - that fails OPEN."""
-        odd = os.path.join(self.dir, "lib [v2]")  # WORLD FACT: `[` makes a glob pattern that matches nothing at all, so the evidence check silently found none
+        odd = os.path.join(self.dir, "lib [v2]")  # `[` makes a glob pattern that matches nothing, so the evidence check found none
         os.makedirs(odd)
         path = os.path.join(odd, "cops.json")
         open(path + ".bak-1", "w").close()
@@ -1067,7 +1067,7 @@ class TheLibraryFoldersAreEnsuredNotAssumed(unittest.TestCase):
     """`img/` and `mat/` are each ENSURED, never assumed from the presence of the other."""
 
     def setUp(self):
-        self.dir = tempfile.mkdtemp(prefix="amaze_libdirs_")  # one guard asked only about img/: with mat/ present the second bare os.mkdir raised FileExistsError, which _build catches as OSError, finds library.json healthy and re-raises - the panel refuses to open on a library that is fine
+        self.dir = tempfile.mkdtemp(prefix="amaze_libdirs_")  # each folder ensured: a bare os.mkdir on an existing mat/ raised FileExistsError
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
 
     class _Prefs:
@@ -1152,7 +1152,7 @@ class UnmountedVolumesAreNotGoneTest(unittest.TestCase):
     @staticmethod
     def _absent_volume_path():
         """A path whose VOLUME is absent, in this platform's own spelling."""
-        if sys.platform == "win32":  # WORLD FACT: on Windows os.path.abspath("/Volumes/...") resolves to C:\\Volumes\\... - a perfectly mounted drive - so the macOS spelling reported the guard broken when it was right
+        if sys.platform == "win32":  # on Windows abspath of /Volumes/... resolves to C:\\Volumes\\..., a mounted drive
             for letter in "ZYXWVU":
                 if not os.path.exists(letter + ":\\"):
                     return letter + ":\\NoSuchShare-xyzzy\\textures"
@@ -1290,7 +1290,7 @@ class AStampedAssetIsNotAStrayTest(unittest.TestCase):
 class TheFourListsAreEnumeratedOnce(unittest.TestCase):
     """`database.DATABASES` is the ONE enumeration of the four database filenames."""
 
-    MAY_ENUMERATE = {  # every module that may spell all four in one literal - a list, not a count, because the exemption is what has to be argued for; `tools/library-audit.py` is the deliberate duplicate outside the package, since it must run where Houdini will not start
+    MAY_ENUMERATE = {  # modules that may spell all four in one literal, named rather than counted
         os.path.join("core", "database.py"),
         os.path.join("core", "library_files.py"),    # imports nothing: the audit tool loads it by path
     }
@@ -1305,7 +1305,7 @@ class TheFourListsAreEnumeratedOnce(unittest.TestCase):
 
     def test_the_table_names_every_database_that_ships(self):
         """Derived from the LIBRARY CLASSES - the one place a filename is a declaration, not a repetition."""
-        from amaze.core import code_library, cop_library  # a fifth section arriving with its own list must not leave the table quietly short, which is exactly how gradients.json went missing from _EXISTED_MARKERS and made Repair and the colours loader disagree about the same file
+        from amaze.core import code_library, cop_library  # a fifth section with its own list must not leave the table quietly short
 
         declared = {
             library_mod.MaterialLibrary.DB_FILENAME,

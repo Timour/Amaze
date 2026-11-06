@@ -1,4 +1,4 @@
-"""Renderer and thumbnail paths; several read the SOURCE, because every copy behaves correctly until one drifts."""
+"""Renderer and thumbnail paths; several read the source, since copies agree until one drifts."""
 
 import ast
 import json
@@ -161,7 +161,7 @@ class TheThumbnailPathIsComposedInOnePlace(unittest.TestCase):
 
 
 class TheCacheKeyCarriesTheLibrary(unittest.TestCase):
-    """The RAM cache key carries the library, so two libraries holding one asset id do not share an image."""
+    """The RAM cache key carries the library, so two libraries with one asset id share no image."""
 
     def setUp(self):
         test_support.reset_database_singletons()
@@ -193,7 +193,7 @@ class TheCacheKeyCarriesTheLibrary(unittest.TestCase):
 
 
 class ThumbnailsLeaveNothingOnTheUndoStack(unittest.TestCase):
-    """A thumbnail leaves nothing on the undo stack, or Ctrl+Z resurrects the scaffold instead of the user's own edit."""
+    """A thumbnail leaves nothing on the undo stack, or Ctrl+Z restores the scaffold, not the edit."""
 
     def test_a_pair_on_the_live_stack_really_does_come_back(self):
         """The measured consequence the source check below is anchored in."""
@@ -262,7 +262,7 @@ class ThumbnailsLeaveNothingOnTheUndoStack(unittest.TestCase):
             "scaffold: %s" % unguarded)
 
     def test_every_scene_container_is_DESTROYED_off_the_stack(self):
-        """A destroy is itself undoable, so a guarded CREATE with a bare DESTROY still hands Ctrl+Z the whole scaffold back."""
+        """A destroy is undoable, so a guarded create with a bare destroy still lets Ctrl+Z restore it."""
         source = source_of("render/thumbs.py")
         tree = ast.parse(source)
         lines = source.splitlines()
@@ -293,7 +293,7 @@ class ThumbnailsLeaveNothingOnTheUndoStack(unittest.TestCase):
 
 
 class AKarmaThumbnailLeavesTheSceneAsItFoundIt(unittest.TestCase):
-    """A Karma thumbnail borrows the artist's scene: nothing of its own on their undo stack, their selection back where it was, and the samples preference on the dial the engine it selects actually reads. ▸r/undo-groups"""
+    """A Karma thumbnail leaves no undo, restores the selection, and sets the samples the engine reads."""
 
     OCIO = {"display": "sRGB - Display", "view": "ACES 1.0 - SDR Video",
             "space": "ACEScg"}
@@ -636,7 +636,7 @@ class UpdatePreviewWritesTheManifestOnce(unittest.TestCase):
             return real_write(path, data, **kw)
 
         hostos.write_json_atomic = spy
-        for n in range(25):  # the product's batch spelling (file_library.rerender_thumbnails): per-row evictions, one flush after
+        for n in range(25):  # as `rerender_thumbnails` batches: per-row evictions, one flush after
             cache.invalidate("/img/%d.png" % n, flush=False)
         cache.save()
 
@@ -648,7 +648,7 @@ class UpdatePreviewWritesTheManifestOnce(unittest.TestCase):
             "is the whole of Update Render" % len(writes))
 
     def test_a_file_nothing_can_read_is_not_retried_forever(self):
-        """A failed conversion is remembered, keyed to the file's CURRENT mtime and size, so a replaced file converts and Rerender clears it."""
+        """A failed conversion is remembered by mtime and size; a replaced file converts, Rerender clears."""
         cache = texture_library.ThumbnailCache(size=256)
         folder = tempfile.mkdtemp(prefix="amaze_failmem_")
         self.addCleanup(shutil.rmtree, folder, ignore_errors=True)
@@ -742,7 +742,7 @@ class ARerenderNeverEntersTheUsersLopContext(unittest.TestCase):
 
 
 class BothRedshiftTerminalsAreLookedFor(unittest.TestCase):
-    """Both Redshift terminal node types are looked for; testing the first literal alone loses displacement on the USD flavour silently."""
+    """Both Redshift terminal node types are looked for, or the USD flavour loses displacement."""
 
     def _sources(self):
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -778,7 +778,7 @@ class BothRedshiftTerminalsAreLookedFor(unittest.TestCase):
 
 
 class ANodeRefusalIsCaughtAsHouError(unittest.TestCase):
-    """Every `createNode` catches `hou.Error`: `PermissionError` is a sibling of `OperationFailed`, so the narrower clause lets a locked-asset refusal through. ▸r/hou-errors"""
+    """Every `createNode` catches `hou.Error`; `OperationFailed` misses a lock. ▸r/hou-errors"""
 
     def test_no_createNode_is_guarded_by_OperationFailed_alone(self):
         self.assertTrue(issubclass(hou.PermissionError, hou.Error))
@@ -831,7 +831,7 @@ class BundledFilesAreFoundThroughOneLookup(unittest.TestCase):
                         "the starter library is not where this says")
 
     def test_no_source_file_concatenates_the_install_variable(self):
-        """The unsafe join must be unwritable; the concatenation is often on the NEXT line, so this reads the pair."""
+        """The unsafe join must be unwritable; the concatenation is often on the next line, so read both."""
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         offenders = []
         for folder, _dirs, files in os.walk(root):
@@ -862,7 +862,7 @@ class BundledFilesAreFoundThroughOneLookup(unittest.TestCase):
             % offenders)
 
     def test_no_bundled_file_is_located_by_rebuilding_the_install_path(self):
-        """Any join whose parts spell the install-relative package path is the hand-built lookup, however the root was obtained. ▸p/source-derived-tests"""
+        """Any join spelling the install-relative package path is the hand-built lookup, whatever the root."""
         import ast
 
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -919,7 +919,7 @@ class BundledFilesAreFoundThroughOneLookup(unittest.TestCase):
             "the badge was drawn from the tree $AMAZE names, not the loaded package")
 
     def test_a_bundled_lookup_survives_an_UNSET_install_variable(self):
-        """With $AMAZE unset a bundled lookup still finds the file, or the toolbar icons vanish while the badge SVGs draw."""
+        """With $AMAZE unset a bundled lookup still finds the file, or the toolbar icons vanish."""
         import amaze
         from amaze.core import gradient_library
 
@@ -938,7 +938,7 @@ class BundledFilesAreFoundThroughOneLookup(unittest.TestCase):
 
 
 class MantraIsNotASupportedRenderer(unittest.TestCase):
-    """Mantra is not a supported renderer: scanned as a VALUE and an IDENTIFIER across eight modules, since a partial removal still reads as support. ▸p/source-derived-tests"""
+    """Mantra is unsupported: no module names it as a value or an identifier. ▸p/source-derived-tests"""
 
     def test_no_source_file_supports_mantra(self):
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -953,7 +953,7 @@ class MantraIsNotASupportedRenderer(unittest.TestCase):
                 path = os.path.join(folder, name)
                 with open(path, encoding="utf-8") as handle:
                     lines = handle.read().splitlines()
-                # PROSE MAY NAME IT; CODE MAY NOT - hence docstring state.
+                # Prose may name it, code may not, hence docstring state.
                 in_doc = False
                 for number, line in enumerate(lines, 1):
                     bare = line.strip()
@@ -976,7 +976,7 @@ class MantraIsNotASupportedRenderer(unittest.TestCase):
 
 
 class TheAfterSaveThumbnailIsOneBlock(unittest.TestCase):
-    """Four copies of the after-save thumbnail block is how two of them lost the traceback the debug log is read for."""
+    """The after-save thumbnail block is one helper, so no copy loses the traceback the log needs."""
 
     @staticmethod
     def _scopes_containing(needle):
@@ -1003,7 +1003,7 @@ class TheAfterSaveThumbnailIsOneBlock(unittest.TestCase):
         return nodes, nodes.NodeHandler(prefs)
 
     def test_one_scope_decides_whether_to_render(self):
-        """Every save asks the preference in the same place; four copies is four chances for one to answer differently."""
+        """Every save asks the preference in the same place, so no copy can answer differently."""
         scopes = self._scopes_containing("render_on_import")
         self.assertEqual(
             ["after_save_thumbnail"], scopes,
@@ -1012,7 +1012,7 @@ class TheAfterSaveThumbnailIsOneBlock(unittest.TestCase):
             % (len(scopes), scopes))
 
     def test_no_save_path_catches_its_own_thumbnail_failure(self):
-        """One block catches what the render raises; four catches is how two of them came to record less than the other two."""
+        """One block catches what the render raises, so every save records the same."""
         source = source_of("render/nodes.py")
         lines = source.splitlines()
         offenders = []
@@ -1033,7 +1033,7 @@ class TheAfterSaveThumbnailIsOneBlock(unittest.TestCase):
             "going through the one block: %s" % offenders)
 
     def test_a_thumbnail_that_raises_is_recorded_with_its_traceback(self):
-        """A failure records the traceback AND the asset id and node path, which is what the log is read for."""
+        """A failure records the traceback, the asset id and the node path, which the log is read for."""
         nodes, handler = self._handler()
 
         def boom():
@@ -1048,7 +1048,7 @@ class TheAfterSaveThumbnailIsOneBlock(unittest.TestCase):
             {"asset_id": "abc123", "node": "/mat/x"}, caught.call_args.kwargs)
 
     def test_a_thumbnail_that_reports_failure_is_recorded_as_one(self):
-        """False means it tried and failed - a structured save record, on every renderer rather than only on Karma."""
+        """False means it tried and failed: a structured save record, on every renderer."""
         nodes, handler = self._handler()
         with mock.patch.object(nodes.debug, "event") as recorded, \
                 mock.patch.object(nodes.debug, "note"):
@@ -1058,7 +1058,7 @@ class TheAfterSaveThumbnailIsOneBlock(unittest.TestCase):
         self.assertEqual("save", recorded.call_args.args[0])
 
     def test_a_context_with_no_picture_is_not_a_failure(self):
-        """render_network_thumbnail answers None where a context has nothing to draw - Lop, Dop - and that must not read as a failed render."""
+        """None from `render_network_thumbnail` (Lop, Dop: nothing to draw) is no failed render."""
         nodes, handler = self._handler()
         with mock.patch.object(nodes.debug, "event") as recorded, \
                 mock.patch.object(nodes.debug, "exception") as caught, \
@@ -1070,7 +1070,7 @@ class TheAfterSaveThumbnailIsOneBlock(unittest.TestCase):
             (recorded.call_count, caught.call_count, said.call_count))
 
     def test_the_preference_is_honoured_and_an_update_overrides_it(self):
-        """Render Thumbs on Import off means no render on a save, and an explicit update re-renders regardless."""
+        """Render Thumbs on Import off means no render on save; an explicit update re-renders anyway."""
         nodes, handler = self._handler(render_on_import=0)
         ran = []
         handler.after_save_thumbnail(

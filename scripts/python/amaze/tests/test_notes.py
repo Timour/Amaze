@@ -1,4 +1,4 @@
-"""Comments at three altitudes: store guards, the NotesPanel editor, and the panel + NotesRole badge wiring."""
+"""Comments: store guards, the NotesPanel editor, and the panel + NotesRole badge wiring."""
 
 import glob
 import json
@@ -26,7 +26,7 @@ from amaze.tests import test_support  # noqa: E402 - redirects the log
 
 
 def _plus_menu(widget, label):
-    """One entry of the + button's own menu, read off the button - `click()` would open it for real and block on the popup. ▸r/menu-lifetime"""
+    """One entry of the + button's menu, read off it: `click()` would block. ▸r/menu-lifetime"""
     actions = widget.add_button.menu().actions()
     for action in actions:
         if action.text() == label:
@@ -259,7 +259,7 @@ class PanelWidgetTest(unittest.TestCase):
         cursor = edit.textCursor()
         cursor.movePosition(QtGui.QTextCursor.MoveOperation.End)
         edit.setTextCursor(cursor)
-        for _ in range(2):                    # eat "x", then merge - Qt stamps the merged block with the NEXT block's userState (▸r/qt-text-checklists)
+        for _ in range(2):                    # eat x, then merge: Qt keeps the next block's userState ▸r/qt-text-checklists
             event = QtGui.QKeyEvent(
                 QtCore.QEvent.Type.KeyPress,
                 QtCore.Qt.Key.Key_Backspace,
@@ -607,7 +607,7 @@ class ModelRoleTest(unittest.TestCase):
         self.assertTrue(model.data(index, model.NotesRole))
 
     def test_the_badge_renders_the_family_art_as_drawn(self):
-        """The tile gets the ARTWORK's own colours, no re-tint in code. Keyed on the DOMINANT paint, never a fixed alpha: the disc ships at whatever opacity the design chooses, and the highest-alpha pixels are the glyph's antialiased edge rather than the art."""
+        """The tile gets the artwork's own colours, keyed on the dominant paint, not a fixed alpha."""
         from amaze.panel import delegates
         from amaze import amazetheme
         declared = test_support.art_colours("badge_comment")
@@ -636,7 +636,7 @@ class ModelRoleTest(unittest.TestCase):
 
 
 def _curated_notes() -> int:
-    """How many curated combinations ship colour text - DERIVED from the def files, so adding a set cannot make the seed test pass by counting nothing."""
+    """How many curated combinations ship colour text, derived from the def files."""
     from amaze.core import gradient_library
     found = 0
     for curated in gradient_library.CURATED_SETS:
@@ -661,7 +661,7 @@ class GradientNotesTest(unittest.TestCase):
         from amaze.core import gradient_library
         self.model = gradient_library.GradientLibrary(
             preferences=self.prefs)
-        self.model.seed_curated_palettes(  # SEED, don't skip: the PANEL seeds these, a bare model has none - every test here skipped as dead cover before
+        self.model.seed_curated_palettes(  # seed, never skip: the panel seeds these and a bare model has none
             gradient_library.GradientCategories(preferences=self.prefs))
         self.assertTrue(
             self.model.rowCount(),
@@ -670,7 +670,7 @@ class GradientNotesTest(unittest.TestCase):
             "is what hid them before")
 
     def test_the_seed_writes_its_colour_text_to_the_store_not_the_row(self):
-        """The retired `note` field must not be written at all: a seeder that writes it and a sweep that removes it are one file arguing with itself."""
+        """The retired `note` field is never written, so the sweep has nothing to undo."""
         carried = [row for row in (self.model._data.get("assets") or [])
                    if isinstance(row, dict) and "note" in row]
         self.assertEqual([], carried,
@@ -729,7 +729,7 @@ class GradientNotesTest(unittest.TestCase):
                         "the badge cannot see a gradient's note")
 
     def test_an_unstamped_gradient_reads_no_note_without_saving(self):
-        """data() is a paint path: no note for an identity-less record, and no stamping - a stamp is a save, and a save per repaint is a write storm."""
+        """data() is a paint path: no note without identity, and no stamp, which would be a save."""
         row = self.model.rowCount() - 1
         self.model._assets[row]._mat_id = ""  # no public door makes this state (birth mints, load backfills) - which is the design being pinned
         index = self.model.index(row, 0)
@@ -796,7 +796,7 @@ class PanelWiringTest(unittest.TestCase):
         self.assertNotIn(
             QtGui.QColor(uih.IconMenuButton.LIT_BODY).name(), seen,
             "the closed chip went white")
-        self.assertNotIn(  # and NOT the pane's own blue: a tint map keyed on a colour the art lacks does nothing - how it shipped blue in all four states
+        self.assertNotIn(  # and not the pane's own blue: a tint keyed on a colour the art lacks does nothing
             art_name, seen,
             "the chip is painting the Comments blue - the tint map is "
             "keyed on a colour this art does not contain, so it is "
@@ -839,7 +839,7 @@ class PanelWiringTest(unittest.TestCase):
             "a maximum width crept in - 450 is the LAUNCH width only")
 
     def test_a_drag_remembers_and_the_pane_asks_for_it_back(self):
-        """A splitter drag records the width; the sizeHint asks it back (landing end-to-end is test_comments_area's pin)."""
+        """A splitter drag records the width; the sizeHint asks it back."""
         panel = self.panel
         panel.toggle_notes_panel()
         self.addCleanup(panel.toggle_notes_panel)
@@ -849,7 +849,7 @@ class PanelWiringTest(unittest.TestCase):
         pane = panel.notes_panel
         splitter = pane.parentWidget()
         index = splitter.indexOf(pane)
-        splitter.resize(1200, 500)  # headless never laid out; no geometry = a pin that pins nothing (how the accent wiring died unnoticed)
+        splitter.resize(1200, 500)  # headless never lays out, and with no geometry this pin would pin nothing
         seed = [200] * splitter.count()
         seed[index] = 400
         splitter.setSizes(seed)
@@ -974,12 +974,12 @@ def _painted_badges(delegate, index, side=96):
 class VersionsBadgeHoverTest(unittest.TestCase):
     """A button badge answers hover - versions is the original case."""
 
-    ROLE = QtCore.Qt.ItemDataRole.UserRole + 77  # these DRIVE the delegate rather than reading panel.py - the icon_side lesson (practice.md, 2026-07-29)
+    ROLE = QtCore.Qt.ItemDataRole.UserRole + 77  # these drive the delegate rather than reading panel.py
 
     def _delegate(self):
         delegate = test_support.tile_delegate(
             {"versions": self.ROLE}, QtCore.Qt.ItemDataRole.UserRole + 78)
-        delegate.set_badge_click("versions", lambda index: None)    # a badge with no click wired is not a button, and button_badge_at answers for buttons only - production always wires versions where the role exists
+        delegate.set_badge_click("versions", lambda index: None)    # button_badge_at answers only for badges with a click wired
         return delegate
 
     def _index(self, versions):
@@ -1061,14 +1061,14 @@ class VersionsBadgeHoverTest(unittest.TestCase):
                              "%s: a button names its action and an indicator "
                              "says nothing" % badge.name)
         help_body = inspect.getsource(delegates.AssetItemDelegate.helpEvent)
-        self.assertIn("ui_helpers.tooltip_text", help_body)  # through the shared cap: a raw plain-text tooltip renders as one endless line (research.md)
+        self.assertIn("ui_helpers.tooltip_text", help_body)  # through the shared cap: a raw plain-text tooltip renders as one endless line
         self.assertTrue(
             ui_helpers.tooltip_text(tooltips.BADGE_VERSIONS),
             "the shared tooltip helper returned nothing")
 
 
 class StarButtonPaintTest(unittest.TestCase):
-    """The star paints in three states - dim rest, brighter hover, amber favourite - and ONLY where its click is wired, so the online grid keeps its empty corner."""
+    """The star paints rest, hover and favourite states, only where its click is wired."""
 
     FAV = QtCore.Qt.ItemDataRole.UserRole + 79
 
@@ -1124,7 +1124,7 @@ class StarButtonPaintTest(unittest.TestCase):
 
 
 class AnUndoNeverEatsALoadedNote(unittest.TestCase):
-    """Loading a note is not an edit: left on the undo stack it comes apart under one Ctrl+Z, and the debounced save writes the emptied page over the real one. ▸r/programmatic-load-is-undoable"""
+    """Loading a note is not an edit and stays off the undo stack. ▸r/programmatic-load-is-undoable"""
 
     def setUp(self):
         keyed_store.release()
@@ -1168,7 +1168,7 @@ class AnUndoNeverEatsALoadedNote(unittest.TestCase):
 
 
 class APictureIsATHIRDItemType(unittest.TestCase):
-    """A picture block is its own block carrying `STATE_IMAGE` and one image fragment, the same shape a to-do uses. ▸p/comment-images"""
+    """A picture is its own block with `STATE_IMAGE` and one image fragment. ▸p/comment-images"""
 
     def setUp(self):
         from amaze.panel import notes_panel
@@ -1199,7 +1199,7 @@ class APictureIsATHIRDItemType(unittest.TestCase):
                          "the picture came back pointing somewhere else")
 
     def test_the_item_carries_a_fallback_for_builds_without_pictures(self):
-        """An older build sends an unknown type down the TEXT branch, so the item ships the words it should show there. ▸p/comment-images"""
+        """Older builds read unknown types as text, so the item ships its words. ▸p/comment-images"""
         src = self._a_picture_in_the_library("holiday.png")
         self.edit.load_items([{"t": "image", "src": src}])
         item = self.edit.serialize()[0]
@@ -1261,7 +1261,7 @@ class APictureIsATHIRDItemType(unittest.TestCase):
 
 
 class ThePictureButtonIsActuallyRun(unittest.TestCase):
-    """A Qt slot no test clicks is where a missing name hides - `_add_image_clicked` shipped calling a method that did not exist, and only clicking it found that. ▸p/mock-hides-the-door"""
+    """Clicks the Qt slot, since a missing name hides in one never run. ▸p/mock-hides-the-door"""
 
     def setUp(self):
         from amaze.core import notes as notes_mod
@@ -1282,7 +1282,7 @@ class ThePictureButtonIsActuallyRun(unittest.TestCase):
         return _plus_menu(self.widget, label)
 
     def test_the_plus_offers_both_item_types(self):
-        """ONE + button whose menu lists the types, so a third joins the table without another button. ▸p/comment-images"""
+        """One + button whose menu lists the types, so new types need no new button. ▸p/comment-images"""
         labels = [a.text() for a in self.widget.add_button.menu().actions()]
         self.assertEqual(["Bullet point", "Image"], labels)
         from amaze.panel import notes_panel
@@ -1295,7 +1295,7 @@ class ThePictureButtonIsActuallyRun(unittest.TestCase):
             self.widget.add_button.popupMode())
 
     def test_typing_after_a_picture_is_KEPT(self):
-        """The cursor still carries the image char format after an insert, so typing landed inside the picture's own block and serialize threw the words away. ▸p/comment-images"""
+        """Typing after an image insert must not land in the picture block. ▸p/comment-images"""
         picked = self._a_picture_on_disk()
         with self._fake_ui(picked):
             self._menu_entry("Image").trigger()
@@ -1309,7 +1309,7 @@ class ThePictureButtonIsActuallyRun(unittest.TestCase):
                       " ".join(i.get("text", "") for i in items))
 
     def test_a_right_click_in_the_glyph_zone_toggles_nothing(self):
-        """A right-click aiming for the context menu must not flip the item done and schedule a save of the flip."""
+        """A right-click for the context menu must not flip the item done or save."""
         self._menu_entry("Bullet point").trigger()
         edit = self.widget.text_edit
         edit.textCursor().insertText("a task")
@@ -1347,7 +1347,7 @@ class ThePictureButtonIsActuallyRun(unittest.TestCase):
                              "bold with its tags swallowed")
 
     def test_typing_INSIDE_a_picture_block_is_kept(self):
-        """Clicking just right of a picture puts the caret in the picture's own block, and userState stays STATE_IMAGE - the words typed there must still reach the store. ▸p/comment-images"""
+        """Words typed in a picture block, state STATE_IMAGE, still reach the store. ▸p/comment-images"""
         picked = self._a_picture_on_disk()
         with self._fake_ui(picked):
             self._menu_entry("Image").trigger()
@@ -1412,7 +1412,7 @@ class ThePictureButtonIsActuallyRun(unittest.TestCase):
                          "there ▸r/select-file-write")
 
     def test_it_does_not_raise_where_there_is_no_hou_ui(self):
-        """Headless has none, and an unguarded reach would turn the click into an AttributeError. ▸p/refusal-sink"""
+        """Headless has none, so an unguarded reach raises AttributeError. ▸p/refusal-sink"""
         self.assertFalse(hasattr(hou, "ui"),
                          "this host HAS hou.ui, so the guard is untested here")
         self._menu_entry("Image").trigger()      # must not raise
@@ -1420,7 +1420,7 @@ class ThePictureButtonIsActuallyRun(unittest.TestCase):
 
 
 class APictureIsCOPIEDIntoTheLibrary(unittest.TestCase):
-    """The note stores a path, never pixels - `notes.json` is a keyed store that syncs and merges. ▸p/comment-images"""
+    """The note stores a path, never pixels: `notes.json` syncs and merges. ▸p/comment-images"""
 
     def setUp(self):
         from amaze.core import notes as notes_mod
@@ -1482,7 +1482,7 @@ class APictureIsCOPIEDIntoTheLibrary(unittest.TestCase):
 
 
 class AboutBecomesAComment(unittest.TestCase):
-    """The About credit block retired with the Material Info dialog; its text is a comment now, and every existing library carries some. ▸p/d03-retired"""
+    """The retired About credit text lives on as a comment in every library. ▸p/d03-retired"""
 
     def setUp(self):
         keyed_store.release()
@@ -1515,7 +1515,7 @@ class AboutBecomesAComment(unittest.TestCase):
                          "now disagree")
 
     def test_it_does_not_run_twice_over_the_same_credit(self):
-        """Every library open calls it, so a second pass must add nothing - and it must survive the same library being swept on another machine through the synced store."""
+        """Every library open calls it: a second pass, here or on another machine, adds nothing."""
         model = self._model()
         if not model.rowCount():
             self.skipTest("fixture library has no rows")

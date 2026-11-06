@@ -1,4 +1,4 @@
-"""The panel, the thumbnail renderer and the drag engine reach the host's dialogs only through a guard, so a refusal raised with no screen present stays a refusal. ▸r/status-bar"""
+"""Panel, thumbnail renderer and drag engine reach host dialogs through a guard ▸r/status-bar"""
 
 import ast
 import os
@@ -6,7 +6,7 @@ import types
 import unittest
 from unittest import mock
 
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")   # BEFORE the app exists: the first module to build the QApplication picks the Qt platform for the whole hython, and on the native one the host style lays widgets outside their layout cells - which fails OTHER modules' geometry asserts, three modules later ▸p/first-app-picks-the-platform
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")   # before the app exists ▸p/first-app-picks-the-platform
 from PySide6 import QtCore, QtWidgets  # noqa: E402
 
 import hou  # noqa: E402
@@ -26,7 +26,7 @@ GUARDED = ("panel/panel.py", "render/thumbs.py", "core/dragengine.py",
 
 
 def raw_reaches(relpath):
-    """(line, call) for every host dialog spelled straight into the source of `relpath`. The guarded spelling reads the name through `getattr` and does not match."""
+    """(line, call) for every host dialog spelled straight into `relpath`; `getattr` does not match."""
     path = os.path.join(_PACKAGE, relpath)
     with open(path, encoding="utf-8") as handle:
         tree = ast.parse(handle.read(), filename=path)
@@ -89,7 +89,7 @@ class TheGuardedPanelRefusesHeadlessTest(unittest.TestCase):
 
 
 class TheGuardStillOpensTheDialogTest(unittest.TestCase):
-    """The accept path: a guard proven to fire is half a guard until something proves it fires only when it should."""
+    """The accept path: the guard fires only when there is no screen."""
 
     def setUp(self):
         self.shown = []
@@ -187,7 +187,7 @@ class TheCheckReportHeadingIsTrueOfEveryLine(unittest.TestCase):
 
 
 class TheThumbnailRefusalNeedsNoScreenTest(unittest.TestCase):
-    """`create_thumbnail` refuses an asset that will not import, and that runs inside a headless batch render."""
+    """`create_thumbnail` refuses an asset that will not import, inside a headless batch render."""
 
     def setUp(self):
         self.assertFalse(hasattr(hou, "ui"))
@@ -224,7 +224,7 @@ class TheThumbnailRefusalNeedsNoScreenTest(unittest.TestCase):
 
 
 class TheCursorLookupRefusesHeadlessTest(unittest.TestCase):
-    """The picking door answers None instead of crashing in the fallback that the shelter above it walks straight into."""
+    """The picking door answers None headless instead of crashing in its fallback."""
 
     def setUp(self):
         self.assertFalse(hasattr(hou, "ui"),
@@ -244,7 +244,7 @@ class TheCursorLookupRefusesHeadlessTest(unittest.TestCase):
 
 
 class TheCursorLookupStillReadsTheScreenTest(unittest.TestCase):
-    """The accept path: a lookup that answered None in a session that HAS a ui would break every drop, silently."""
+    """The accept path: with a ui the lookup still answers, or every drop breaks silently."""
 
     def test_the_stock_hit_test_answers_first(self):
         tab = object()
@@ -271,7 +271,7 @@ class TheCursorLookupStillReadsTheScreenTest(unittest.TestCase):
 
 
 class ThePanelLookupRefusesHeadlessTest(unittest.TestCase):
-    """The right-click entry points answer None instead of crashing, and the four callers already skip on None."""
+    """The right-click entry points answer None headless; the four callers already skip on None."""
 
     def setUp(self):
         self.assertFalse(hasattr(hou, "ui"),
@@ -292,7 +292,7 @@ class ThePanelLookupRefusesHeadlessTest(unittest.TestCase):
 
 
 class ThePanelLookupStillReadsTheScreenTest(unittest.TestCase):
-    """The accept path: a lookup that always answered None would break every right-click save in a real session."""
+    """The accept path: with a screen the lookup still reads, or every right-click save breaks."""
 
     def test_the_pane_tabs_are_still_read_when_there_is_a_screen(self):
         reads = []
@@ -380,7 +380,7 @@ class TheRootOfADiskIsNoLibraryTest(unittest.TestCase):
 
 
 class EveryDialogRidesTheHouseShellTest(unittest.TestCase):
-    """ROADMAP R51: ONE shell owner. Every QDialog subclass in dialogs/ either rides AssetDialog or names its recorded reason in a HOUSE_STRAY class attribute - the four one-off dialogs hand-copied the shell line by line before this pin existed."""
+    """One shell owner: every dialogs/ QDialog rides AssetDialog or names a HOUSE_STRAY reason."""
 
     def test_every_dialog_class_is_based_or_excused(self):
         import importlib
@@ -415,7 +415,7 @@ class EveryDialogRidesTheHouseShellTest(unittest.TestCase):
 
 
 class TheMaterialDoorFollowsTheClickTest(unittest.TestCase):
-    """ROADMAP R50: right-click Save on a material saves the CLICKED node - the flow stays selection-based because multi-selection saves are a feature, so the door bridges the click into the selection the way its three siblings pass the node straight through."""
+    """Right-click Save on a material saves the clicked node, bridged into the selection."""
 
     def setUp(self):
         mat = hou.node("/mat")
@@ -430,7 +430,7 @@ class TheMaterialDoorFollowsTheClickTest(unittest.TestCase):
         self.addCleanup(patcher.stop)
 
     def test_an_unselected_clicked_node_becomes_the_selection(self):
-        self.b.setSelected(True, clear_all_selected=True)   # the premise is set EXPLICITLY - createNode selects what it creates, so trusting the post-create state would test the wrong selection
+        self.b.setSelected(True, clear_all_selected=True)   # the premise set explicitly: createNode selects what it creates
         rc_calls.save(self.a)
         self.assertTrue(self.a.isSelected(),
                         "the clicked node never entered the selection")
@@ -456,7 +456,7 @@ class TheMaterialDoorFollowsTheClickTest(unittest.TestCase):
 
 
 class EveryDialogKnowsWhichWindowOpenedIt(unittest.TestCase):
-    """A parented dialog inherits its parent's SCREEN; a parentless one goes to the primary. With the panel torn off to another monitor that is the wrong one. ▸r/dialog-parents"""
+    """A dialog built with a parent opens on its parent's screen, not the primary ▸r/dialog-parents"""
 
     DIALOGS = {"NameDialog", "CategoryDialog",
                "SaveDialog", "CodeDialog", "ManageLibrariesDialog",
@@ -514,7 +514,7 @@ class EveryDialogKnowsWhichWindowOpenedIt(unittest.TestCase):
             % ", ".join(offenders))
 
     def test_every_dialog_class_accepts_a_parent(self):
-        """`NameDialog` could not take one at all - it called `super().__init__(title)` and dropped the argument."""
+        """Every dialog class accepts a parent and passes it on to `super().__init__`."""
         import inspect
         from amaze.dialogs import (base_dialog, code_dialog, gradient_dialog,
                                    icon_dialog, library_dialog, save_dialog)
@@ -529,7 +529,7 @@ class EveryDialogKnowsWhichWindowOpenedIt(unittest.TestCase):
                 "%s cannot be given a parent at all" % cls.__name__)
 
     def test_a_parent_really_does_decide_the_screen(self):
-        """The premise, measured - if Qt ever stops inheriting the parent's screen, threading parents stops buying anything."""
+        """The premise, measured: a parented dialog inherits its parent's screen in Qt."""
         host = QtWidgets.QWidget()
         self.addCleanup(host.deleteLater)
         parented = QtWidgets.QDialog(host)
@@ -540,7 +540,7 @@ class EveryDialogKnowsWhichWindowOpenedIt(unittest.TestCase):
 
 
 class TheSaveDialogIsTheOneSaveEngine(unittest.TestCase):
-    """ROADMAP R56: every section saves through ONE dialog - Name, Category, Tags. The Name row is always built; a multi-selection GREYS it rather than dropping it, as D02 already does."""
+    """Every section saves through one dialog; a multi-selection greys the Name row, never drops it."""
 
     def _dialog(self, **kwargs):
         from amaze.dialogs import save_dialog
@@ -594,7 +594,7 @@ class TheSaveDialogIsTheOneSaveEngine(unittest.TestCase):
 
 
 class TheSaveFamilyIsTheDrawnWidth(unittest.TestCase):
-    """The save dialogs are ONE drawn width, and the measurement is taken AFTER `show()` - `SetFixedSize` re-applies the layout's own hint on every activation, so a width that is right at construction can still be wrong on screen. ▸r/fixed-size-constraint"""
+    """The save dialogs share one drawn width, measured after `show()` ▸r/fixed-size-constraint"""
 
     def _shown(self, dialog):
         self.addCleanup(dialog.deleteLater)
@@ -604,7 +604,7 @@ class TheSaveFamilyIsTheDrawnWidth(unittest.TestCase):
         return dialog
 
     def _dialogs(self):
-        """D09 is THE save frame: every section rides it, so the greyed and the titled forms are the same three rows. ▸p/one-design-document"""
+        """D09 is the save frame: greyed and titled forms share its three rows ▸p/one-design-document"""
         from amaze import branding
         from amaze.dialogs import gradient_dialog, save_dialog
         return (
@@ -622,7 +622,7 @@ class TheSaveFamilyIsTheDrawnWidth(unittest.TestCase):
         )
 
     def test_every_dialog_in_the_package_can_actually_be_BUILT(self):
-        """Constructing each one, which no test did before - `CodeDialog` referenced a design constant that had been renamed and nothing noticed, because every dialog test until now read source or signatures instead of building the widget."""
+        """Every dialog in the package can be constructed, not only read as source."""
         from amaze import amazetheme
         from amaze.dialogs import (base_dialog, code_dialog, gradient_dialog,
                                    icon_dialog, save_dialog)
@@ -651,7 +651,7 @@ class TheSaveFamilyIsTheDrawnWidth(unittest.TestCase):
         self.assertGreaterEqual(
             code.width(), theme.ui_px(amazetheme.D11_FORM_WIDTH),
             "the code dialog opens narrower than its drawn floor")
-        self.assertLess(    # the drawn 2x2: the editor spans the FULL width under both halves, so it starts left of the indented Name field
+        self.assertLess(    # the drawn 2x2: the editor spans the full width, left of the indented Name field
             code._editor.mapTo(code, QtCore.QPoint(0, 0)).x(),
             code._line_name.mapTo(code, QtCore.QPoint(0, 0)).x(),
             "the editor sits in the field column, not across the dialog")
@@ -701,7 +701,7 @@ class TheSaveFamilyIsTheDrawnWidth(unittest.TestCase):
             "frame draws")
 
     def test_the_code_dialog_band_names_the_SNIPPET(self):
-        """Its window title is a verb, so the band takes the name field - and says `Untitled` while there is none."""
+        """The window title is a verb, so the band shows the name field, or `Untitled` while empty."""
         from amaze import amazetheme
         from amaze.dialogs import code_dialog
         for tag, name, expect in (
@@ -714,7 +714,7 @@ class TheSaveFamilyIsTheDrawnWidth(unittest.TestCase):
                                  "the band's tab does not name the snippet")
 
     def test_the_family_renders_ONE_width_whatever_that_width_is(self):
-        """The structural property, and it is stronger than the value: four dialogs reading ONE constant must AGREE, so a broken mechanism shows up as one wrong number rather than four different ones. Four different widths is proof the constant never reached them. ▸p/shared-means-it-fails-together"""
+        """Four dialogs reading one constant render one width ▸p/shared-means-it-fails-together"""
         seen = {}
         for label, dialog in self._dialogs():
             seen[label] = self._shown(dialog).width()
@@ -756,7 +756,7 @@ class TheSaveFamilyIsTheDrawnWidth(unittest.TestCase):
                         % (label, type(field).__name__, field.width(), want))
 
     def test_the_width_survives_a_second_layout_pass(self):
-        """A `show()` is not the last activation a dialog sees - a re-show, a font change or a re-polish activates the layout again."""
+        """The width survives a later activation: a re-show, a font change or a re-polish."""
         from amaze import amazetheme
         from amaze.dialogs import save_dialog
         from amaze.helpers import theme

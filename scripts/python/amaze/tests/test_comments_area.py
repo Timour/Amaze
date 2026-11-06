@@ -1,4 +1,4 @@
-"""The Comments area: a context says what its own subject is - `takes_comments` answers CAN this context ever carry one (the toolbar chip, with nothing selected), `comment_subject(index)` answers what the subject is RIGHT NOW, and only a context can map its own index."""
+"""The Comments area: a context names its own subject, via `takes_comments` and `comment_subject`."""
 
 import os
 import sys
@@ -51,7 +51,7 @@ class TheSubjectIsRightForEachContext(unittest.TestCase):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
 
     def _subject_for_last_row(self, key):
-        """The subject for a row whose PROXY position differs from its source position (the last row filtered to proxy row 0) - with the two orders agreeing, an unmapped index looks correct and the test cannot fail."""
+        """The subject for a row whose proxy position differs from its source position."""
         panel = self.panel
         panel.section_tabs.setChecked(key)
         QtWidgets.QApplication.processEvents()
@@ -102,12 +102,12 @@ class TheSubjectIsRightForEachContext(unittest.TestCase):
         self.assertEqual(index.data(model.RendererLabelRole) or "", subject.type)
 
     def test_a_file_subject_is_keyed_by_the_SELECTED_rows_PATH(self):
-        """`file_key(row)` is a row-number read against the SOURCE model, so the index has to be mapped first - the header's name comes from the index instead, and the two disagree the moment the mapping is dropped."""
+        """`file_key(row)` reads the source model, so the index is mapped first; the header must agree."""
         subject, _index = self._subject_for_last_row("file")
         self.assertIsNotNone(
             subject, "no subject for a File row - the fixture location "
                      "is empty, so this cannot test anything")
-        tail = subject.key[len("file:"):]    # the location-keyed ident, `loc:<id>/<relative>` - a moved location orphans no comment, and one file gets one key however its location is spelled
+        tail = subject.key[len("file:"):]    # `loc:<id>/<relative>`, so a moved location orphans no comment
         self.assertTrue(
             subject.key.startswith("file:") and tail.startswith("loc:")
             and "/" in tail,
@@ -164,7 +164,7 @@ class TheSubjectIsRightForEachContext(unittest.TestCase):
                                      "to test one row")
 
     def test_the_online_world_has_no_subject_at_all(self):
-        """An online record is not a library asset: nothing to write a comment against, and the pane must clear rather than keep pointing at whatever was selected before."""
+        """An online record takes no comment, so the pane clears rather than keep the last subject."""
         panel = self.panel
         self.addCleanup(self._leave_online)
         panel.section_tabs.setChecked("material")
@@ -261,7 +261,7 @@ class NothingSelectedDimsThePane(unittest.TestCase):
 
 
 class TheCommentsPaneHOLDSItsOwnWidth(unittest.TestCase):
-    """The construction's law: ONE flexible pane (the grid), and a side pane asks for a width and keeps it - measured at panel widths 1400px down to 620px, the splitter honours the sizeHint before `shown` ever fires."""
+    """One flexible pane, the grid; a side pane asks for a width and keeps it."""
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
@@ -305,7 +305,7 @@ class TheCommentsPaneHOLDSItsOwnWidth(unittest.TestCase):
 
 
 class TheHeaderFollowsTheAssetItNames(unittest.TestCase):
-    """A comment is keyed by IDENTITY, which a rename does not change - so the pane is pointed at the same key it already holds, the one case `set_subject` returns early on, and the header kept the OLD name for as long as the pane stayed open."""
+    """A rename keeps the comment key, yet the header must show the new name."""
 
     def setUp(self):
         test_support.reset_database_singletons()
@@ -320,7 +320,7 @@ class TheHeaderFollowsTheAssetItNames(unittest.TestCase):
         self.assertEqual("New Name", self.pane.name_label.text())
 
     def test_an_edit_IN_PROGRESS_survives_the_header_update(self):
-        """set_subject is called on every click, and reloading the stored page there would throw away whatever is being typed - the header may follow a rename; the PAGE must not be reloaded with it."""
+        """`set_subject` runs on every click, so a rename moves the header but never reloads the page."""
         self.pane.text_edit.setPlainText("half a sentence")
         self.pane.set_subject(sections.CommentSubject("material:asset-1", "New Name", "Karma"))
         self.assertEqual("half a sentence",
@@ -328,7 +328,7 @@ class TheHeaderFollowsTheAssetItNames(unittest.TestCase):
 
 
 class APendingEditIsNotLostOnTheWayOUT(unittest.TestCase):
-    """600ms of typed text lives only in the widget until the debounce fires - every way the pane can go away has to write it first."""
+    """Typed text waits 600ms for the debounce, so every way the pane goes away writes it first."""
 
     def setUp(self):
         test_support.reset_database_singletons()
@@ -339,7 +339,7 @@ class APendingEditIsNotLostOnTheWayOUT(unittest.TestCase):
 
     def _pending_edit(self, key="material:asset-1", shown=True):
         if shown:
-            self.pane.show()    # a hide event only arrives at a widget that was showing; without this hide() is a no-op and the test passes for no reason
+            self.pane.show()    # a hide event only arrives at a widget that was showing
             QtWidgets.QApplication.processEvents()
         self.pane.set_subject(sections.CommentSubject(key, "Rusty", "Karma"))
         self.pane.text_edit.setPlainText("typed but not yet saved")
@@ -359,16 +359,16 @@ class APendingEditIsNotLostOnTheWayOUT(unittest.TestCase):
         self.assertTrue(self._stored(key), "the page is empty on disk")
 
     def test_CLOSING_a_pane_that_was_never_SHOWN_writes_it(self):
-        """Deliberately without the show: a close then delivers no hide event, so hideEvent is not the thing being tested here."""
+        """Without the show, a close delivers no hide event, so this tests the close path alone."""
         key = self._pending_edit(shown=False)
         self.pane.close()
         QtWidgets.QApplication.processEvents()
         self.assertTrue(self._stored(key), "the page is empty on disk")
 
     def test_the_pane_is_wired_to_the_APPLICATION_quitting(self):
-        """Houdini shutting down reaches no widget event of ours, so the pane rides `aboutToQuit` - checked by DISCONNECTING rather than emitting, because a real `aboutToQuit` in this one-process suite would shut the thumbnail engine down under every test that follows; that flush() writes is pinned above, what is left is that quitting reaches it."""
+        """Houdini quitting sends no widget event, so `aboutToQuit` reaches `flush`; checked, not emitted."""
         app = QtWidgets.QApplication.instance()
-        was_connected = app.aboutToQuit.disconnect(self.pane.flush)    # the RETURN VALUE is the answer - disconnect() warns and returns False for a connection never made, it does not raise (probed), so a try/except would pass either way
+        was_connected = app.aboutToQuit.disconnect(self.pane.flush)    # disconnect() returns False for a connection never made, it does not raise
         if was_connected:
             app.aboutToQuit.connect(self.pane.flush)
         self.assertTrue(
@@ -377,7 +377,7 @@ class APendingEditIsNotLostOnTheWayOUT(unittest.TestCase):
             "quits - the last 600ms of typing goes with the session")
 
     def test_a_pane_with_nothing_pending_writes_nothing(self):
-        """flush() runs on every teardown path AND every subject switch, so it has to be free when there is nothing to write - otherwise every click rewrites a page."""
+        """`flush()` runs on every teardown and subject switch, so it writes nothing when nothing changed."""
         self.pane.set_subject(sections.CommentSubject("material:asset-2", "Rusty", "Karma"))
         before = self._stored("material:asset-2")
         self.pane.close()
@@ -455,7 +455,7 @@ class ALibrarySwitchLeavesTheNoteWhereItWasTyped(unittest.TestCase):
 
 
 class ThePANEL_BEING_DESTROYED_writesAPendingEdit(unittest.TestCase):
-    """The teardown a child cannot see for itself - measured: closing a window sends its children hide events, deleting a parent sends them NOTHING, and deletion is how a Houdini pane tab goes away. Its own panel, because the test ends by destroying it."""
+    """Deleting a parent sends its children no hide event, and a Houdini pane tab closes by deletion."""
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
@@ -472,7 +472,7 @@ class ThePANEL_BEING_DESTROYED_writesAPendingEdit(unittest.TestCase):
         test_support.stop_panel_workers(self.panel)
         self.panel.deleteLater()
         QtWidgets.QApplication.sendPostedEvents(
-            None, QtCore.QEvent.Type.DeferredDelete)    # processEvents() alone never delivers this: Qt holds DeferredDelete until the posting event loop returns, and a test has no such loop - sending it explicitly reproduces what Houdini's loop does when the tab closes
+            None, QtCore.QEvent.Type.DeferredDelete)    # processEvents() never delivers DeferredDelete; sending it does what a tab close does
         QtWidgets.QApplication.processEvents()
 
         self.assertTrue(

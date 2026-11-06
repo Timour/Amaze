@@ -1,4 +1,4 @@
-"""Shared test plumbing: every door here keeps a test away from the user's REAL library, settings, caches and log - the leak each door closed is recorded once, in the wiki. ▸p/harness-isolation"""
+"""Test plumbing keeping tests off the real library, settings, caches and log. ▸p/harness-isolation"""
 
 import atexit
 import contextlib
@@ -34,7 +34,7 @@ def settle(done, timeout=3.0) -> None:
 
 
 def _adopt_suite_root() -> str:
-    """Make `<test_dir>/suite/` THE tempdir for this whole process - settings' own Test Library folder is where suite debris belongs, and pointing `TMPDIR` there at IMPORT carries every consumer at once: the per-module `mkdtemp`s, the write sandbox and the fixture isolation asserts all define scratch as `tempfile.gettempdir()`. Answers "" on a machine that designates no folder, and tempfile's default stands. ▸p/suite-debris-home"""
+    """Point `TMPDIR` at `<test_dir>/suite/` at import, when a folder is set. ▸p/suite-debris-home"""
     try:
         with open(os.path.join(hostos.real_config_root(), "settings.json"),
                   encoding="utf-8") as handle:
@@ -57,7 +57,7 @@ SUITE_ROOT = _adopt_suite_root()
 
 
 def scratch_dir(prefix: str) -> str:
-    """Every directory this module mints comes from HERE - the adopted tempdir, so test libraries land under the machine's designated Test Library folder wherever one exists. ▸p/suite-debris-home"""
+    """Every directory this module mints, under the adopted tempdir. ▸p/suite-debris-home"""
     return tempfile.mkdtemp(prefix=prefix)
 
 
@@ -82,11 +82,11 @@ from amaze.prefs import prefs                           # noqa: E402
 
 FIXTURE_DIR = os.path.join(os.path.dirname(__file__), "assets", "library")
 
-FIXTURE_USER = "0f1e2d3c4b5a69788796a5b4c3d2e1f0"    # WHO a fixture library belongs to - a CONSTANT shaped like a minted UID, comparable across runs and printable in a failure. ▸p/harness-isolation
+FIXTURE_USER = "0f1e2d3c4b5a69788796a5b4c3d2e1f0"    # the fixture library's owner: a constant shaped like a minted UID
 
 
 def isolate_debug_log() -> str:
-    """Send this process's debug log to a throwaway file - reuses a runner-set `$AMAZE_LOG_DIR`, sets it otherwise, and REFUSES to run when the redirect lands inside the real log dir. ▸p/harness-isolation"""
+    """Send the debug log to a throwaway file, never the real log dir. ▸p/harness-isolation"""
     directory = os.environ.get("AMAZE_LOG_DIR", "").strip()
     if not directory:
         directory = scratch_dir("amaze_test_log_")
@@ -107,7 +107,7 @@ TEST_LOG = isolate_debug_log()    # redirected at IMPORT, deliberately not left 
 
 
 def isolate_cache_root() -> str:
-    """Send this process's thumbnail cache to a throwaway directory, through the ENVIRONMENT so a panel's hostos reload keeps it - and refuse to run when `cache_root()` still answers the real one. ▸p/harness-isolation"""
+    """Send the thumbnail cache to a throwaway dir via the environment. ▸p/harness-isolation"""
     directory = os.environ.get(hostos.CACHE_DIR_ENV, "").strip()
     if not directory:
         directory = scratch_dir("amaze_test_cache_")
@@ -127,11 +127,11 @@ TEST_CACHE = isolate_cache_root()    # redirected at IMPORT for the same reason 
 
 
 def reset_database_singletons() -> None:
-    """Drop every cached DatabaseConnector so the next construction loads from the test's own path - CLEARED in place, never rebound, and the identity check is load-bearing. ▸p/mutate-not-rebind, ▸p/harness-isolation"""
+    """Drop every cached DatabaseConnector, cleared in place, never rebound. ▸p/mutate-not-rebind"""
     from amaze.core import model_registry
     stop_stamp_checks()    # a stamp check of the last test's library would write into the next
     database.DatabaseConnector._instances.clear()
-    model_registry.release()    # the models alias the connector's document, so a dropped connector with a kept model hands the next panel rows from the previous test
+    model_registry.release()    # models alias the connector's document, so a kept model would leak old rows
     if database.DatabaseConnector._instances is not database._INSTANCES:
         raise RuntimeError(
             "the connector registry is no longer database._INSTANCES - "
@@ -155,21 +155,21 @@ def stop_stamp_checks() -> None:
     library.stamps.shutdown()
 
 
-FILES_FIXTURE_DIR = os.path.join(os.path.dirname(__file__), "assets", "files")    # the committed File-section fixture: one tiny file per KIND, built by make_file_fixtures.py, all synthetic
+FILES_FIXTURE_DIR = os.path.join(os.path.dirname(__file__), "assets", "files")    # one tiny synthetic file per kind, built by make_file_fixtures.py
 
 
 def posix_relpath(path: str, start: str) -> str:
-    """A RELATIVE path in the one spelling the product and the docs use - forward slashes on every OS, where `os.path.relpath` answers in the host's dialect. ▸p/harness-isolation"""
+    """A relative path with forward slashes on every OS. ▸p/harness-isolation"""
     return os.path.relpath(path, start).replace(os.sep, "/")
 
 
 def posix_path(path: str) -> str:
-    """An ABSOLUTE path spelled the way the stores spell it, trailing separator intact - the product's OWN round trip through `storage_path_key`/`expand_storage_path`, never a re-derivation. ▸p/harness-isolation"""
+    """An absolute path as the stores spell it, via the product's own round trip. ▸p/harness-isolation"""
     return hostos.expand_storage_path(hostos.storage_path_key(path))
 
 
 def fresh_files_folder(testcase) -> str:
-    """A throwaway COPY of the committed File-section fixture - what a fixture panel registers as its file location, so no test ever scans a real machine's own folders. ▸p/harness-isolation"""
+    """A throwaway copy of the File-section fixture, for a fixture panel. ▸p/harness-isolation"""
     tmp = scratch_dir("amaze_test_files_")
     testcase.addCleanup(shutil.rmtree, tmp, True)
     dest = os.path.join(tmp, "files")
@@ -190,7 +190,7 @@ def pin_scene_folder(testcase) -> str:
 
 
 def fresh_library(testcase, source=None) -> str:
-    """A throwaway COPY of the committed fixture library, auto-removed after the test, in the `prefs.dir` convention WHOLE - forward slashes AND trailing separator. Tests may mutate and save freely. ▸p/harness-isolation"""
+    """A throwaway fixture library copy, spelled as `prefs.dir`, free to mutate. ▸p/harness-isolation"""
     tmp = scratch_dir("amaze_test_lib_")
     testcase.addCleanup(shutil.rmtree, tmp, True)
     testcase.addCleanup(stop_stamp_checks)    # runs first: no check writes into a copy being removed
@@ -217,12 +217,12 @@ def _keep_seeded(library: str) -> None:
 
 
 def seeded_library(testcase) -> str:
-    """`fresh_library`, already seeded once a fixture panel has run: a switch onto it skips the curated palettes, 8.5 of a switch's 8.8 s on Windows."""
+    """`fresh_library`, already seeded, so a switch onto it skips the curated palettes."""
     return fresh_library(testcase, _SEEDED[0] if _SEEDED else None)
 
 
 class _RecordedLog:
-    """The records a `captured_log()` block wrote, read back per RECORD - deliberately no joined-text accessor, and drained before the block's tempdir goes. ▸p/harness-isolation"""
+    """The records a `captured_log()` block wrote, read per record. ▸p/harness-isolation"""
 
     def __init__(self, path: str) -> None:
         self.path = path
@@ -288,7 +288,7 @@ def refused_at_open(path, error=None):
 
 @contextlib.contextmanager
 def captured_log():
-    """Capture what `debug` RECORDS inside the block, not what it prints - Debug Mode on for the duration, its own throwaway file, mode and the shared log restored even on exception. ▸p/harness-isolation"""
+    """Capture what `debug` records in the block; state restored on exit. ▸p/harness-isolation"""
     directory = scratch_dir("amaze_test_capture_")
     path = os.path.join(directory, "captured.jsonl")
     recorded = _RecordedLog(path)
@@ -419,7 +419,7 @@ def plain_python() -> str:
 
 
 def live_library_to_rehearse_on(testcase):
-    """The machine's configured REAL library (`real_dir`, never the Test Mode overlay) or a skip - recovery rehearsals recover the owner's own snapshots or they prove nothing. ▸p/harness-isolation"""
+    """The configured real library (`real_dir`, never the overlay), or a skip. ▸p/harness-isolation"""
     live = prefs.Prefs()
     live.path = hostos.real_config_root()    # the user's own settings, read only - the sandbox refuses a write
     live.load()
@@ -440,7 +440,7 @@ def live_library_to_rehearse_on(testcase):
 
 
 def fixture_prefs(testcase):
-    """Preferences pointing at a fresh fixture copy, BOTH paths redirected (.dir and .path), the fixture user POINTED rather than minted so the library stays byte-identical - inject into model constructors. ▸p/harness-isolation"""
+    """Preferences with .dir and .path on a fresh fixture copy, user pointed. ▸p/harness-isolation"""
     p = prefs.Prefs()
     p.dir = fresh_library(testcase)
     p.path = scratch_dir("amaze_fixture_prefs_")
@@ -450,7 +450,7 @@ def fixture_prefs(testcase):
 
 
 def class_scope(testcase_class):
-    """A stand-in for `self` when a fixture is built once per CLASS - routes the helpers' `addCleanup` registrations to `addClassCleanup`."""
+    """A per-class stand-in for `self`, routing `addCleanup` to `addClassCleanup`."""
     class _Scope:
         @staticmethod
         def addCleanup(function, *args, **kwargs):
@@ -475,7 +475,7 @@ def with_fixture_user(library) -> str:
 
 
 def fixture_panel(testcase, render_geometry=False):
-    """A REAL AmazePanel over a private fixture library: `hostos.config_root` redirected (AFTER importing panel.py, which reloads hostos), saves disabled, network blocked, workers stopped on cleanup, and the isolation ASSERTED rather than assumed. ▸p/harness-isolation"""
+    """A real AmazePanel over a private fixture library, isolation asserted. ▸p/harness-isolation"""
     from amaze.panel import panel as panel_mod       # reloads hostos
     from amaze.helpers import hostos as hostos_mod
     from amaze.core import matx_library, matx_sources
@@ -509,7 +509,7 @@ def fixture_panel(testcase, render_geometry=False):
               encoding="utf-8") as handle:
         json.dump({"directory": library,
                    "enabled_sections": list(ALL_SECTION_KEYS),
-                   "library_user": FIXTURE_USER,    # IN THE SETTINGS FILE - the panel builds its OWN Prefs and load()s, so a user on some other Prefs object never reaches it
+                   "library_user": FIXTURE_USER,    # in the settings file: the panel builds and loads its own Prefs
                    "file_folders": [files],
                    "file_location_records": {
                        files: {"registered": True}},
@@ -522,7 +522,7 @@ def fixture_panel(testcase, render_geometry=False):
     reset_database_singletons()
     panel = panel_mod.AmazePanel()
     testcase.addCleanup(dispose_panel, panel)
-    testcase.addCleanup(stop_panel_workers, panel)    # AFTER deleteLater so it runs BEFORE it (cleanups are LIFO) - hython never emits aboutToQuit, so unstopped engines abort the process at Py_Finalize
+    testcase.addCleanup(stop_panel_workers, panel)    # after deleteLater, so it runs first: hython never emits aboutToQuit
 
     checked = [("settings", panel.prefs.path),
                ("library", panel.prefs.dir),
@@ -548,7 +548,7 @@ def fixture_panel(testcase, render_geometry=False):
 
 
 def reopened_panel(testcase):
-    """A SECOND panel over the SAME already-redirected fixture scope - valid only after `fixture_panel` in this scope, asserted rather than trusted, and with NO demands on what loaded (broken-open panels are the point). ▸p/harness-isolation"""
+    """A second panel over the same scope, only after `fixture_panel`. ▸p/harness-isolation"""
     from amaze.helpers import hostos as hostos_mod
     from amaze.panel import panel as panel_mod
 
@@ -583,7 +583,7 @@ def apply_library(testcase, panel, folder, user: str = "", dialog=None) -> bool:
 
 
 def fixture_unconfigured_panel(testcase):
-    """A REAL AmazePanel with NO library configured - the first-run state - with `fixture_panel`'s guards plus the LEGACY path blanked, so `load()` cannot migrate the real settings into the "unconfigured" panel. ▸p/harness-isolation"""
+    """A real AmazePanel with no library, the legacy path blanked too. ▸p/harness-isolation"""
     from amaze.panel import panel as panel_mod       # reloads hostos
     from amaze.helpers import hostos as hostos_mod
     from amaze.core import matx_sources
@@ -622,7 +622,7 @@ def fixture_unconfigured_panel(testcase):
 
 
 def dispose_panel(panel) -> None:
-    """The fixture's own deleteLater, tolerating a panel the test has already destroyed - teardown tests delete their own panel."""
+    """The fixture's deleteLater, tolerating a panel the test already destroyed."""
     try:
         panel.deleteLater()
     except RuntimeError:
@@ -657,7 +657,7 @@ def stop_panel_workers(panel) -> None:
 
 
 def toolbar_row(panel) -> list:
-    """The toolbar row as it reads LEFT TO RIGHT - widgets by `objectName` (the one identity they all carry, stable across renames; an unnamed widget RAISES), a fixed gap as `"gap"`, the expanding item as `"stretch"`. ▸p/harness-isolation"""
+    """The toolbar row left to right, by `objectName`; unnamed widgets raise. ▸p/harness-isolation"""
     layout = panel.toolbar_layout
     row = []
     for index in range(layout.count()):
@@ -696,7 +696,7 @@ def tile_delegate(roles, subtitle_role=None, **kwargs):
 
 
 def art_colours(name: str) -> set:
-    """Every colour an SVG in ui/ actually declares - badge tests assert the SHAPE of the family from these, never literal hexes, because the art is redrawn whenever the design moves. ▸p/harness-isolation"""
+    """Every colour an SVG in ui/ declares, so tests avoid literal hexes. ▸p/harness-isolation"""
     import os
     import re
 
@@ -706,5 +706,5 @@ def art_colours(name: str) -> set:
     with open(path, encoding="utf-8") as handle:
         body = handle.read().lower()
     found = set(re.findall(r'(?:fill|stroke)="(#[0-9a-f]{3,8})"', body))
-    found |= set(re.findall(r'(?<![-\w])(?:fill|stroke)\s*:\s*(#[0-9a-f]{3,8})', body))    # style-declared paints too - a style attribute outranks the presentation attribute beside it (r/svg-style-wins), so an Inkscape export declares its real colours here
+    found |= set(re.findall(r'(?<![-\w])(?:fill|stroke)\s*:\s*(#[0-9a-f]{3,8})', body))    # style-declared paints too: style outranks the presentation attribute ▸r/svg-style-wins
     return {c for c in found if c != "none"}

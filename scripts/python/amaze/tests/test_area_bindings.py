@@ -1,4 +1,4 @@
-"""THE NET for batches 4 to 9: what every context binds into each area, asserted by ACTIVATING a real context and reading the widgets back, and named by panel ATTRIBUTE rather than by class. ▸p/area-bindings"""
+"""Each context's bindings per area, read back by attribute after activation. ▸p/area-bindings"""
 
 import os
 import sys
@@ -18,7 +18,7 @@ sys.path.insert(
 from amaze.tests import test_support  # noqa: E402
 
 
-BINDINGS = {   # context key -> what it binds into each area, by ATTRIBUTE NAME, read off the six activation bodies as they stand today (panel.py `_activate_*` and `FolderSection.activate`): when a batch moves one of those, this table is what says the move kept its meaning, so a CHANGE here must be a deliberate line in that batch and never a repair to make the suite green again
+BINDINGS = {   # context key -> what it binds into each area, by attribute name; a change must be deliberate
     "material": {
         "grid": "material_sorted_model",
         "selection": "material_selection_model",
@@ -29,7 +29,7 @@ BINDINGS = {   # context key -> what it binds into each area, by ATTRIBUTE NAME,
         "grid": "gradient_sorted_model",
         "selection": "gradient_selection_model",
         "delegate": "gradient_delegate",
-        "sidebar": "gradient_category_sorted_model",  # CHANGED 2026-08-14, deliberately: Color's sidebar goes through the same CategoriesSidebarProxy as the asset sections (unsorted - the manual order round), where it was the bare model and the last odd-one-out pipeline
+        "sidebar": "gradient_category_sorted_model",  # Color's sidebar goes through the same CategoriesSidebarProxy as the asset sections
     },
     "cop": {
         "grid": "cop_sorted_model",
@@ -40,7 +40,7 @@ BINDINGS = {   # context key -> what it binds into each area, by ATTRIBUTE NAME,
     "code": {
         "grid": "code_sorted_model",
         "selection": "code_selection_model",
-        "delegate": "code_delegate",  # CHANGED 2026-10-13, deliberately: its tile adds Run and Edit
+        "delegate": "code_delegate",  # its own delegate: its tile adds Run and Edit
         "sidebar": "code_category_sorted_model",
     },
     "file": {
@@ -51,7 +51,7 @@ BINDINGS = {   # context key -> what it binds into each area, by ATTRIBUTE NAME,
     },
 }
 
-ONLINE_BINDINGS = {   # the Online world is a PARALLEL WORLD, not a section, but it drives the same four widgets, so it is pinned beside them - and CHANGED IN BATCH 5, on purpose and by this line: the delegate was `thumb_delegate`, borrowed from Materials, which gave the online grid a Version, Licence and Comments column no online record can ever fill, where it has its own now carrying only the roles matx_library actually has
+ONLINE_BINDINGS = {   # a parallel world driving the same four widgets, with a delegate carrying only its own roles
     "grid": "matx_sorted_model",
     "selection": "matx_selection_model",
     "delegate": "matx_delegate",
@@ -60,7 +60,7 @@ ONLINE_BINDINGS = {   # the Online world is a PARALLEL WORLD, not a section, but
 
 
 class EveryLibraryBackedModelIsDeclaredBySection(unittest.TestCase):
-    """WHICH MODELS A LIBRARY SWITCH REPOINTS is derived from the sections, the way `tile_delegates()` derives - so a ninth model joins by existing rather than by being remembered. - It was three hand-written lists in panel.py, each naming seven models where there are eight. `GradientCategories` - the Colors SIDEBAR - was in none of them, so after a library switch it kept library A's category names with library B's counts beside them. - The guard this replaces counted `switch_model_data()` calls in panel.py source, and could not see the eighth model at all: GradientCategories exposed `refresh()` instead, so the pattern did not match and the model was invisible to it. A source scan keyed on a SPELLING goes quiet rather than red for anything that does not use that spelling. - Both directions are asserted, because they fail differently: a declaration naming something the panel cannot repoint, and a repointable model no section declares (the eighth model's own shape - the one that catches the next one)."""
+    """Models a library switch repoints are derived from the sections; asserted in both directions."""
 
     @classmethod
     def setUpClass(cls):
@@ -113,7 +113,7 @@ class EveryLibraryBackedModelIsDeclaredBySection(unittest.TestCase):
 
 
 class AreaBindingCase(unittest.TestCase):
-    """One panel for the whole class - it is expensive, and every test here only reads what activation bound."""
+    """One panel for the whole class; every test here only reads what activation bound."""
 
     @classmethod
     def setUpClass(cls):
@@ -142,7 +142,7 @@ class AreaBindingCase(unittest.TestCase):
         }
 
     def _restore(self):
-        """Put the shared panel back in a local world. - One panel serves the whole class, so a test that ENTERS the online world and leaves it there hands the next one a fixture it never asked for. On the base rather than on one class: two classes here go online now."""
+        """Put the shared panel back in a local world, so no test inherits the online one."""
         panel = self.panel
         if panel._is_online():
             panel.leave_online_world()
@@ -152,7 +152,7 @@ class AreaBindingCase(unittest.TestCase):
         QtWidgets.QApplication.processEvents()
 
 
-BADGE_ROLES = {   # which badge each context's tiles carry and the role its own model must answer for it - THIS is the list that used to be invisible, a delegate built without a role painting nothing silently, so a section that forgot a badge was indistinguishable from a section that has no such badge; a model that CAN answer a badge's role beside a section that does not wire it is a defect the test below fails on, and the two deliberate exceptions are named with their reason because a bare exception list is how the first one got forgotten
+BADGE_ROLES = {   # badge per context and the role its model must answer; exceptions carry their reason
     "open": "OpenSceneRole",
     "favourite": "FavoriteRole",
     "versions": "VersionsRole",
@@ -166,15 +166,15 @@ EXPECTED_BADGES = {
     "material": {"favourite", "versions", "comment", "renderer"},
     "cop": {"favourite", "comment"},  # NOT versions: VersionsRole is inherited, and no Node asset keeps any
     "code": {"favourite", "execute", "versions", "edit", "comment"},
-    "file": {"favourite", "open", "comment"},  # File has the OPEN badge, which nothing else does: only a scene can be the one Houdini currently has open
+    "file": {"favourite", "open", "comment"},  # only File has the open badge: only a scene can be the one Houdini has open
     "gradient": {"favourite", "comment"},
 }
 
-ONLINE_BADGES = {"favourite"}   # the online world is READ-ONLY and is not a section: nothing there can be starred, commented or versioned and its model answers no such role, pinned so that giving it one is a deliberate line here
+ONLINE_BADGES = {"favourite"}   # the online world is read-only: nothing there can be starred, commented or versioned
 
 
 class EveryContextCarriesTheBadgesItsModelCanAnswer(AreaBindingCase):
-    """A badge is a fact the section HAS, not a role someone remembered to pass (2026-08-05). - The art and the paint path became one family on 2026-08-01; the WIRING stayed four hand-written argument lists, and a missing entry failed silently. This is the half that makes the omission loud."""
+    """A badge is a fact the section has, so a badge left unwired fails loudly here."""
 
     def test_each_section_carries_exactly_the_badges_it_should(self):
         for key, expected in EXPECTED_BADGES.items():
@@ -188,7 +188,7 @@ class EveryContextCarriesTheBadgesItsModelCanAnswer(AreaBindingCase):
                     % key)
 
     def test_a_model_that_can_answer_a_badge_has_it_wired(self):
-        """The gate. A section whose model grows one of these roles and whose delegate is not updated fails HERE, rather than shipping a badge that never appears."""
+        """A section whose model answers a badge role but whose delegate omits it fails here."""
         from amaze.panel import delegates
         for key, expected in EXPECTED_BADGES.items():
             panel = self.activate(key)
@@ -219,7 +219,7 @@ class EveryContextCarriesTheBadgesItsModelCanAnswer(AreaBindingCase):
             "the online grid carries a badge no online record can fill")
 
     def test_the_table_and_the_expectations_name_the_same_badges(self):
-        """Re-keyed with the table, not against a literal: a badge added to `delegates.BADGES` and to no section at all would otherwise pass every assertion above by being invisible to them."""
+        """Keyed off `delegates.BADGES`, so a badge added to no section cannot pass unseen."""
         from amaze.panel import delegates
         self.assertEqual(
             {badge.name: badge.role for badge in delegates.BADGES}, BADGE_ROLES,
@@ -249,7 +249,7 @@ class TheGridIsBoundToItsOwnContext(AreaBindingCase):
 class TheSidebarIsBoundToItsOwnContext(AreaBindingCase):
 
     def test_the_sidebar_has_a_row_selected_after_every_activation(self):
-        """cat_list has no persistent selection model, so setModel() always leaves it with nothing selected - every activation has to choose a row or the grid opens blank with nothing highlighted."""
+        """`cat_list` keeps no selection across setModel(), so every activation must choose a row."""
         for key in BINDINGS:
             with self.subTest(section=key):
                 panel = self.activate(key)
@@ -265,10 +265,10 @@ class TheSidebarIsBoundToItsOwnContext(AreaBindingCase):
 
 class TheToolbarFollowsTheContext(AreaBindingCase):
 
-    CONVERTS = "file"   # the one section that OWNS the conversion bar - it is the only one that converts anything, so the only one allowed to leave it up
+    CONVERTS = "file"   # the only section that converts, so the only one allowed to leave the bar up
 
     def test_the_conversion_progress_bar_belongs_to_no_section(self):
-        """It sits above the grid, and whichever section owned it last may have left it visible - so every activation hides it. - FILE IS EXCLUDED, and finding out why is the point. This asserted all five and was green for the module run and RED in the full suite on H22 only: File activates, queues its conversions, and `_on_texture_progress` legitimately puts the bar back up. Run alone the fixture images were already cached and nothing showed. An assertion that depends on whether work happened to be in flight is not an invariant - File gets its own test below."""
+        """Every activation hides the conversion bar; File is excluded, as its own work may show it."""
         for key in BINDINGS:
             if key == self.CONVERTS:
                 continue
@@ -277,13 +277,13 @@ class TheToolbarFollowsTheContext(AreaBindingCase):
                 panel.texture_progress.setVisible(True)
                 panel._section().activate()
                 QtWidgets.QApplication.processEvents()
-                self.assertTrue(   # isHidden(), NOT isVisible(): the fixture panel is never shown, so isVisible() is False for every widget in it whatever activation did and an assertFalse on it is green by construction, which is what the first version of this test was - isHidden() asks the only question that has an answer here, was this widget explicitly hidden
+                self.assertTrue(   # isHidden(), not isVisible(): the panel is never shown, so isVisible() is always False
                     panel.texture_progress.isHidden(),
                     "%s activated and left another section's conversion "
                     "bar on screen" % key)
 
     def test_the_File_section_may_only_show_it_for_its_OWN_work(self):
-        """The half the loop above cannot assert. File is allowed to leave the bar up - but only while it genuinely has conversions outstanding, never as a leftover from the section before it."""
+        """File may leave the bar up only while it has conversions of its own outstanding."""
         panel = self.activate(self.CONVERTS)
         QtWidgets.QApplication.processEvents()
         if panel.texture_progress.isHidden():
@@ -298,7 +298,7 @@ class TheToolbarFollowsTheContext(AreaBindingCase):
             "the section before rather than raising it for its own work")
 
     def test_capture_is_offered_on_every_tab(self):
-        """NAMED, not looked up with a fallback. The first version of this asked for `btn_capture`, got None and SKIPPED - a pin that can skip is not a pin, and it would have skipped just as quietly on the day a batch renamed the real one."""
+        """Named, not looked up with a fallback: a pin that can skip is not a pin."""
         button = self.panel.btn_hip_capture
         for key in BINDINGS:
             with self.subTest(section=key):
@@ -308,7 +308,7 @@ class TheToolbarFollowsTheContext(AreaBindingCase):
 
 
 class TheCommentsPaneFollowsTheContext(AreaBindingCase):
-    """Comments is the fourth area, not an exception - and its subject is per-context: an asset id for the asset sections, a raw path for File rows, a uid for a gradient."""
+    """Comments subject per context: asset id, raw path for File rows, uid for a gradient."""
 
     def test_every_section_answers_with_a_subject_or_with_nothing(self):
         for key in BINDINGS:
@@ -328,7 +328,7 @@ class TheCommentsPaneFollowsTheContext(AreaBindingCase):
 
 
 class TheOnlineWorldBindsTheSameFourAreas(AreaBindingCase):
-    """A PARALLEL world, not a view mode - but it drives the same four widgets, which is why it is pinned beside the sections. Batch 5 turns it into a context object with a delegate of its own; this table is what says that move kept its meaning."""
+    """The online world is parallel, not a view mode, but drives the same four widgets."""
 
     def test_entering_binds_the_online_models_and_leaving_puts_back_yours(self):
         panel = self.activate("gradient")
@@ -377,7 +377,7 @@ class TheOnlineWorldBindsTheSameFourAreas(AreaBindingCase):
                                       for row in range(online.rowCount())})
 
     def test_its_delegate_carries_no_role_the_online_model_lacks(self):
-        """THE ONLINE DEAD-COLUMNS DEFECT, dissolved rather than fixed. - `_update_list_columns` decides a column EXISTS from the ACTIVE delegate's roles. Borrowing the Materials delegate therefore gave the online grid a Version column reading "none" on every row, plus Licence and Comments columns that nothing online can fill - the same defect shape as Node and Code borrowing it, one world over. The cure is not a branch that hides them: it is a delegate that never had the roles."""
+        """Columns follow the active delegate's roles, so the online one carries only online roles."""
         delegate = self.panel.matx_delegate
         model = self.panel.matx_online_model
         for role in ("_versions_role", "_licence_role", "_notes_role",
@@ -386,12 +386,12 @@ class TheOnlineWorldBindsTheSameFourAreas(AreaBindingCase):
                 getattr(delegate, role, None),
                 "the online delegate carries %s, so the grid paints a "
                 "column no online record can fill" % role)
-        self.assertEqual(model.CategoryRole, delegate._category_role)  # ...and the roles it DOES carry are really the online model's, so this cannot pass by carrying nothing at all
+        self.assertEqual(model.CategoryRole, delegate._category_role)  # ...and the roles it carries are the online model's, so it cannot pass by carrying none
         self.assertEqual(model.FavoriteRole, delegate._favorite_role)
         self.assertEqual(model.TagRole, delegate._tag_role)
 
     def test_entering_and_leaving_go_through_ONE_path(self):
-        """Entering used to call its own activation directly and skip everything `_on_tab_toggled` does afterwards - so the Capture button kept the state the section you left had given it, and the Comments pane went on pointing at the local asset."""
+        """Entering and leaving run everything `_on_tab_toggled` does, so Capture and Comments follow."""
         panel = self.activate("file")
         self.addCleanup(self._restore)
         self.assertTrue(panel.btn_hip_capture.isEnabled(),
@@ -406,17 +406,17 @@ class TheOnlineWorldBindsTheSameFourAreas(AreaBindingCase):
             "is in the library to keep one")
         self.assertFalse(panel.btn_hip_capture.isHidden(),
                          "Capture left the toolbar online; it greys there")
-        self.assertFalse(   # NOT `assertIsNone(panel._notes_subject())`: the fixture blocks the network, so the online grid has no rows, nothing is selected, and the lookup returns None before it ever reaches the question - that assertion was green with the whole mechanism removed, and these two are what it was trying to say
+        self.assertFalse(   # not `assertIsNone(panel._notes_subject())`: with no online rows it is None regardless
             panel.online_context.takes_comments,
             "the online world claims a comment can be written against "
             "an online record, which has no library asset to carry it")
 
 
 class TheOnlineWorldIsASKEDLikeAnySection(AreaBindingCase):
-    """Six panel paths tested which WORLD they were in, and the online context already answered every one of them (part-four audit A12). - `_section()` hands back the OnlineContext while the online world shows, and that context already declared `search_hint`, `filter_text`, `filter_favorites` and the base's empty `SIDEBAR_MENU` - so four of the six branches guarded behaviour the context was carrying anyway, and deleting them changes nothing. The other two held a body nothing else could reach; those move onto the context, beside the verbs they belong with. - NAMED, NEVER COUNTED (test_grid_menu's law): a count says there is one too many without saying which. ELEVEN `_is_online()` reads survive deliberately and none of them is a section question - which tab strip to build, which world a progress bar is drawing over, whether the Online chip is lit, which world the debug log is recording. Those ask about the WORLD, which is the one thing a context cannot answer for itself."""
+    """Panel paths ask the online context like any section; `_is_online()` is left for world questions."""
 
     def test_the_context_declares_every_verb_the_branches_relied_on(self):
-        """What each deleted branch now lands on - deleting a branch is only safe while the context still answers it, so this is the other half of the pin, and without it retiring a verb from OnlineContext would leave the panel silently doing nothing at all."""
+        """Every verb a deleted branch relied on is still declared by the online context."""
         from amaze.panel import sections
         online = sections.OnlineContext
         self.assertEqual(
@@ -436,7 +436,7 @@ class TheOnlineWorldIsASKEDLikeAnySection(AreaBindingCase):
                 "world silently does nothing" % verb)
 
     def test_the_sidebar_still_filters_the_catalogue_when_online(self):
-        """The moved body, RUN rather than read. - A source scan cannot see that `select_category` was moved onto a context the sidebar never reaches - and the fixture blocks the network, so this drives the category models directly rather than asserting on rows that will never arrive."""
+        """Runs the moved `select_category` body by driving the category models directly."""
         from amaze.core import matx_sources
 
         panel = self.activate("material")
@@ -444,7 +444,7 @@ class TheOnlineWorldIsASKEDLikeAnySection(AreaBindingCase):
         panel.enter_online_world()
         QtWidgets.QApplication.processEvents()
 
-        online = panel.matx_online_model  # SEEDED, never waited for: the fixture blocks the network so the catalogue is empty and there is no category to click, and a skipTest on that would be dead cover, a test that goes quiet the moment its fixture thins out - `_all` is the model's own cache, test_generator seeds it the same way, and the source is read back off the model rather than named because entering the world sets a source filter and a record outside it is filtered away before `categories()` ever sees it
+        online = panel.matx_online_model  # seeded via `_all`, the model's cache: the fixture blocks the network, so nothing arrives
         previous = online._all
         online._all = [matx_sources.MatxRecord(
             source=online._source_filter, uid="a12-probe",
@@ -459,7 +459,7 @@ class TheOnlineWorldIsASKEDLikeAnySection(AreaBindingCase):
             row, "the seeded category never reached the online sidebar, "
                  "so clicking it cannot prove anything")
         panel.online_context.select_category(source_model.index(row, 0))
-        self.assertEqual(   # `_filters` is the proxy's own store: MultiFilterProxyModel offers setFilter/removeFilter and no reader, so this is the only way to see WHICH value landed rather than just that the row count moved
+        self.assertEqual(   # `_filters` is the proxy's own store: MultiFilterProxyModel offers no filter reader
             "Metal",
             panel.matx_sorted_model._filters.get(online.CategoryRole),
             "selecting an online category did not narrow the catalogue, "
@@ -467,7 +467,7 @@ class TheOnlineWorldIsASKEDLikeAnySection(AreaBindingCase):
 
 
 class EveryTileDelegateIsSweptByEverySweep(AreaBindingCase):
-    """The Node/Code list-column defect, made unwritable. - `asset_delegate` was added deliberately - so Node and Code would stop painting a Version column reading "none" on every row - and joining it to the sweeps was left to whoever remembered. Nobody did. It was in NONE of the three hand-written lists that reach every tile delegate: the accent sweep at construction, the accent sweep in show_prefs, and `set_list_columns`. So Node and Code rows were laid out with column widths the panel had never told that delegate about, which showed up as the type column starting under the category column and running halfway into comments. - One accessor now, built FROM the sections, so a section that arrives with a delegate of its own joins by existing."""
+    """Tile delegates come from one accessor built from the sections, so every sweep reaches each."""
 
     def test_every_sections_delegate_is_in_the_one_list(self):
         panel = self.panel
@@ -510,7 +510,7 @@ class TheReleaseVerbsLiveOnTheirSections(unittest.TestCase):
     """Every release verb a drop rule names is callable on the section that declares it."""
 
     def test_every_rule_named_verb_is_defined_by_its_section(self):
-        """DERIVED, not a hand list: walk every DROP / DROP_BY_KIND declaration and the carrier-type verb, and require the named verb to be callable on the declaring section class. This is what makes the resolver's panel fallback removable - a rule whose verb resolves nowhere must fail HERE, at declaration altitude, not as a miss in a release handler."""
+        """Every DROP / DROP_BY_KIND named verb must be callable on its declaring section class."""
         from amaze.panel import sections
         missing = []
         for cls in sections.SECTION_CLASSES:

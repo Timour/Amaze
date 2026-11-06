@@ -1,4 +1,4 @@
-"""The save/load round-trip against REAL files - the one path that touches irreplaceable user data, where everything else in the suite mocks it. A real Karma material with distinctive values goes through the real funnel to disk, is re-read by a FRESH model, re-imported through the real importer, and read back off the shader. The failure half matters as much: a save that half-fails must never leave a phantom row. Runs on the committed fixture library via test_support.fixture_prefs, never the live one."""
+"""Save/load round-trip on real fixture files: values survive disk, a failed save leaves no row."""
 
 import os
 import stat
@@ -13,7 +13,7 @@ _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 import hou  # noqa: E402
 
-sys.path.insert(  # THREE dirnames: tests/ -> amaze/ -> python/, the directory holding the `amaze` package. FOUR lands on scripts/, where amaze is not importable, and the run silently tests the INSTALL instead ▸p/checkout-not-install
+sys.path.insert(  # three dirnames reach python/; four would test the install ▸p/checkout-not-install
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
@@ -29,7 +29,7 @@ from amaze.helpers import hostos  # noqa: E402
 from amaze.render import nodes  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
-SPEC = {  # distinctive, non-default values: the point is proving THESE numbers survive disk, not that a node with defaults reappears
+SPEC = {  # distinctive non-default values: the point is that these numbers survive disk
     "base_color": (0.123, 0.456, 0.789),
     "specular_roughness": 0.321,
     "metalness": 1.0,
@@ -49,7 +49,7 @@ def _build_material(parent: hou.Node, name: str) -> hou.Node:
                 shader.parm(parm).set(value)
         return shader
 
-    return nodes.build_karma_material(parent, name, produce).builder  # by NAME: the engine hands back a nodes.KarmaMaterial, and every helper that unpacked a bare pair had to be visited when it stopped being one
+    return nodes.build_karma_material(parent, name, produce).builder  # by name: the engine returns a nodes.KarmaMaterial, not a bare pair
 
 
 def _shader_of(builder: hou.Node):
@@ -128,7 +128,7 @@ class TestRoundTrip(unittest.TestCase):
             self.assertEqual("NEW MAT", handle.read())
 
     def test_saving_a_bare_shader_does_not_archive_the_connector(self):  # -- what a save must NOT archive --
-        """helpers.get_connected_nodes walks OUTPUTS as well as inputs, so from a bare shader inside a Karma builder it also collects the builder's own subnetconnector - and archiving that leaves the import with TWO nodes answering "surface", the real one unwired and the material rendering pitch black while the import reports success."""
+        """A bare shader's save must not archive the builder's connector, or the import renders black."""
         builder = _build_material(self.staging, "bare_probe")
         shader = _shader_of(builder)
         texture = builder.createNode("mtlximage")
@@ -176,7 +176,7 @@ class TestRoundTrip(unittest.TestCase):
     @unittest.skipUnless(test_support.renderer_loaded("Redshift"),
                          "the Redshift plugin is not loaded")
     def test_an_import_keeps_its_builder(self):
-        """A rebuilt container is KEPT and moved, not gutted - moving the loaded children OUT and destroying it dumps loose VOPs into /mat with no material node, which a later Rerender Thumbnail then half-cleans and leaves permanently."""
+        """A rebuilt container is kept and moved, not gutted into loose VOPs in /mat."""
         mat_ctx = hou.node("/mat") or hou.node("/").createNode("mat")
         source = mat_ctx.createNode("redshift_vopnet", "rs_src")
         source.setGenericFlag(hou.nodeFlag.Material, True)
@@ -213,7 +213,7 @@ class TestRoundTrip(unittest.TestCase):
                 pass
 
     def test_sop_imports_reuse_one_matnet(self):  # -- clutter and containment --
-        """_set_lop_import_path reuses a materiallibrary per the drop-placement law, and the SOP twin must do the same - creating a fresh matnet per import leaves matnet1, matnet2, matnet3 with one material each."""
+        """SOP imports reuse one matnet, as LOP imports reuse a materiallibrary, never one per import."""
         geo = hou.node("/obj").createNode("geo", "sop_reuse_probe")
         self.addCleanup(geo.destroy)
         for _ in range(3):
@@ -361,7 +361,7 @@ class TestRoundTrip(unittest.TestCase):
             self.assertTrue(os.path.exists(path), path)
             self.assertGreater(os.path.getsize(path), 0, path)
 
-        test_support.reset_database_singletons()  # PERSISTENCE: a fresh model over the same directory, so the row comes back from library.json rather than from memory
+        test_support.reset_database_singletons()  # persistence: a fresh model over the same dir, so the row comes from library.json
         reloaded = library_mod.MaterialLibrary(preferences=self.prefs)
         row = reloaded.find_asset_row_by_id(mat_id)
         self.assertNotEqual(row, -1, "saved row missing after reload")
@@ -393,7 +393,7 @@ class TestRoundTrip(unittest.TestCase):
                                        msg="%s did not survive" % parm)
 
     def test_reimport_is_repeatable(self):
-        """Importing the same asset twice must yield two independent working nodes - not a collision or a half-wired copy."""
+        """Importing the same asset twice yields two independent working nodes, not a collision."""
         builder = _build_material(self.staging, "twice_mat")
         held = test_support.asset_ids(self.model)
         material_actions.add_asset(self.model, builder, "RoundTrip", "", False)
@@ -415,7 +415,7 @@ class TestRoundTrip(unittest.TestCase):
                          "Windows - the failure this test injects does "
                          "not happen there")
     def test_failed_save_leaves_no_phantom_row(self):
-        """A save whose file write fails must not register the asset - a row without files is the phantom that looks fine in the grid until the day it is needed, where files without a row are the safe direction. Skipped on Windows because chmod cannot make a directory unwritable there, so the injected failure never happens; restoring that coverage needs a different injection, not a weaker assertion. ▸r/platform-files"""
+        """A save whose file write fails registers no row; skipped on Windows (no chmod) ▸r/platform-files"""
         rows_before = self.model.rowCount()
         index_path = os.path.join(self.prefs.dir, "library.json")
         index_before = open(index_path, "rb").read()
@@ -441,7 +441,7 @@ class TestRoundTrip(unittest.TestCase):
                           "failed save stamped the node as saved")
 
     def test_missing_mat_file_import_fails_cleanly(self):
-        """An index row whose .mat is gone - the phantom this suite exists to prevent - must refuse to import with a REASON, not a traceback, and leave no debris in /mat."""
+        """An index row whose .mat is gone refuses to import with a reason and leaves no debris in /mat."""
         builder = _build_material(self.staging, "vanishing_mat")
         held = test_support.asset_ids(self.model)
         material_actions.add_asset(self.model, builder, "RoundTrip", "", False)
@@ -461,7 +461,7 @@ class TestRoundTrip(unittest.TestCase):
 
 
 class TheRedshiftAndOctaneSaveIsOneSave(unittest.TestCase):
-    """The Redshift and Octane saves are ONE function, told which thumbnail to run BY NAME. NO TEST IN THE SUITE BUILDS A REDSHIFT OR OCTANE MATERIAL, so neither path runs - the gap is the FIXTURES, not the machine (▸r/renderer-plugins) - and a mistyped thumbnail name would surface for the first time on a real save, after the files were written. These two read the source instead. ▸p/source-derived-tests"""
+    """Redshift and Octane share one save that names its thumbnail ▸p/source-derived-tests"""
 
     def _shared_calls(self):
         import ast
@@ -480,7 +480,7 @@ class TheRedshiftAndOctaneSaveIsOneSave(unittest.TestCase):
         return found
 
     def test_every_thumbnail_named_there_actually_exists(self):
-        """WHAT WOULD BREAK THIS: renaming a `create_thumb_*` method, or a typo in the name passed to the shared save - neither of which raises until a real Redshift or Octane material is saved."""
+        """Every `create_thumb_*` name passed to the shared save exists; a typo raises only on a real save."""
         from amaze.render import thumbs as thumbs_mod
         named = [args[-1] for args in self._shared_calls() if args]
         self.assertTrue(named, "no thumbnail method names found to check")
@@ -532,7 +532,7 @@ class ARedshiftImportReadsItsInterfaceOnce(unittest.TestCase):
 
 
 class TestUnsafeAssetIds(unittest.TestCase):
-    """An id out of library.json becomes a FILENAME, so it decides which file the loader opens - and the app does not author the index alone, since a library can arrive edited, synced or damaged. Both halves are tested: the boundary check that rejects the shape, and the containment that catches an escape the shape check missed."""
+    """An id from library.json becomes a filename: the shape check and the containment are tested."""
 
     def test_the_real_shapes_are_accepted_and_traversal_is_refused(self):
         """Guards the guard: "32 hex only" would refuse the fixture's legacy timestamp ids and "-1"."""
@@ -589,7 +589,7 @@ class TestUnsafeAssetIds(unittest.TestCase):
             material.payload_path(_P, "../../.ssh/authorized_keys", ".mat")
 
     def test_an_import_with_a_traversal_id_is_refused(self):
-        """End to end through the real importer: the refusal names the material, nothing is created, and the file it would have read is never opened."""
+        """End to end: a traversal id is refused by name, nothing is created, the file is never opened."""
         prefs_obj = test_support.fixture_prefs(self)
         test_support.reset_database_singletons()
         self.addCleanup(test_support.reset_database_singletons)
@@ -616,7 +616,7 @@ class TestUnsafeAssetIds(unittest.TestCase):
 
 
 class TestInterfaceIsNeverExecuted(unittest.TestCase):
-    """`.interface` is asCode() output - Python whose only documented contract is that it RUNS - chosen by an id read verbatim out of library.json. It is read for its builder type by regex and nothing more; the container's own parameter interface comes from a PARSED sidecar. These prove the execution is gone, not merely guarded. ▸r/interface-contents"""
+    """`.interface` is code chosen by an id; it is read by regex, never executed ▸r/interface-contents"""
 
     def setUp(self):
         self.prefs = test_support.fixture_prefs(self)
@@ -640,7 +640,7 @@ class TestInterfaceIsNeverExecuted(unittest.TestCase):
                 "pathlib.Path(%r).write_text('executed')\n"
                 "hou_node = hou_parent.createNode('subnet')\n" % marker)
 
-        material_actions.import_asset_to_scene(self.model, self.model.index(row, 0), target="mat")  # succeed or refuse, either is fine - what must NOT happen is the payload running, and asserting "it still imports" would pass with exec() restored
+        material_actions.import_asset_to_scene(self.model, self.model.index(row, 0), target="mat")  # succeed or refuse; only the payload running fails, so do not assert it imports
         self.assertFalse(
             os.path.exists(marker),
             "the .interface file was EXECUTED - the import path is running "
@@ -672,7 +672,7 @@ class TestInterfaceIsNeverExecuted(unittest.TestCase):
                                "value")
 
     def test_a_promoted_RAMP_round_trips_through_its_components(self):
-        """A promoted ramp survives capture by a route worth pinning, because reading the code suggests otherwise: `json.dumps` sits OUTSIDE the per-parm guard and `hou.Ramp` is not serialisable, so capture LOOKS one dialled ramp away from raising `TypeError` past `save_asset_pair`. Measured 2026-08-10 that it is not - a ramp's container parm reports `isAtDefault()` True even once dialled, so `capture_builder` never evaluates it and walks the backing Float components instead. So this pins the round TRIP, not a refusal: the shape comes back from the dialog script and the values from the components."""
+        """A promoted ramp round-trips: shape from the dialog script, values from its Float components."""
         staging = hou.node("/obj").createNode("matnet")
         self.addCleanup(staging.destroy)
         builder = staging.createNode("subnet")
@@ -705,7 +705,7 @@ class TestInterfaceIsNeverExecuted(unittest.TestCase):
             "the ramp came back at its default value")
 
     def test_a_value_the_sidecar_cannot_serialise_costs_only_that_parm(self):
-        """The guard the measurement above says nothing reaches today: `json.dumps` runs over the whole document AFTER the loop, so a value it refuses raises `TypeError`, which `save_asset_pair` does not catch - and a sidecar that cannot be built must not cost the asset. No shipped parm type gets there; this pins the behaviour for the one that eventually does. ▸p/asset-write-unit"""
+        """A value the sidecar cannot serialise costs only that parm, never the asset ▸p/asset-write-unit"""
         staging = hou.node("/obj").createNode("matnet")
         self.addCleanup(staging.destroy)
         builder = staging.createNode("subnet")
@@ -731,7 +731,7 @@ class TestInterfaceIsNeverExecuted(unittest.TestCase):
             "the unserialisable parm was captured anyway")
 
     def test_an_absent_sidecar_is_not_an_error(self):
-        """Every asset saved before the format existed has none, and the loader degrades rather than refusing."""
+        """Assets saved before the sidecar format have none; the loader degrades rather than refusing."""
         self.assertEqual({}, nodes.read_builder_sidecar(
             os.path.join(self.prefs.dir, "does-not-exist.builder.json")))
         broken = os.path.join(self.prefs.dir, "broken.builder.json")
@@ -744,7 +744,7 @@ class TestInterfaceIsNeverExecuted(unittest.TestCase):
 
 
 class UpdateExistingIsGuardedAgainstTheOtherSessionTest(unittest.TestCase):
-    """Two sessions both doing a structural Update Existing to the same id silently last-write-wins the .mat/.interface pair - the one write that stays exclusive even after Versions, because content is outside the index merge entirely."""
+    """Two structural updates to one id from two sessions must not last-write-win the asset pair."""
 
     def setUp(self):
         test_support.pin_env(self, "OCIO", "/dev/null")    # save_node gates on $OCIO; nothing renders here
@@ -787,7 +787,7 @@ class UpdateExistingIsGuardedAgainstTheOtherSessionTest(unittest.TestCase):
         self.assertNotEqual(before, now, "premise check")
 
     def test_our_own_update_rebaselines(self):
-        """A session's own write must not trip its own guard - two updates in a row from one session are ordinary use."""
+        """A session's own write must not trip its own guard: two updates in a row are ordinary use."""
         row = next(r for r in range(self.model.rowCount())  # the stored value may be MaterialX
                    if renderers.is_karma(
                        self.model.assets[r].renderer))
@@ -826,7 +826,7 @@ class AStaleCompanionGoesWhateverTheExtension(unittest.TestCase):
 
 
 class StructureSignatureTest(unittest.TestCase):
-    """The Versions decision rule: same nodes, same wiring, only values differ -> a new version; anything else -> the structural path. The signature is what answers it, so its two directions ARE the feature's correctness. ▸p/structure-signature"""
+    """Versions rule: only values differ means a new version, else structural ▸p/structure-signature"""
 
     def setUp(self):
         self.prefs = test_support.fixture_prefs(self)
@@ -888,7 +888,7 @@ class StructureSignatureTest(unittest.TestCase):
 
 
 class AnUnreadablePayloadRefusesWithoutAScreenTest(unittest.TestCase):
-    """`load_items_strict` ABSORBS the unreadable file and returns a reason, so its callers' `except OSError` cannot fire - and the dialog inside one would be an AttributeError with no screen to raise it on. ▸r/status-bar"""
+    """An unreadable payload refuses with a reason, never a dialog with no screen ▸r/status-bar"""
 
     def setUp(self):
         self.prefs = test_support.fixture_prefs(self)
@@ -929,7 +929,7 @@ class AnUnreadablePayloadRefusesWithoutAScreenTest(unittest.TestCase):
                 self.assertIn("could not be read", str(caught.exception))
 
     def _an_oserror_reaches_no_screen(self, method: str):
-        """Force the OSError the callers guard against and let it arrive: whatever handles it must not be a dialog, because there is no screen to raise one on."""
+        """Force the OSError the callers guard and let it arrive: its handler must not be a dialog."""
         handler = nodes.NodeHandler(self.prefs)
         handler._builder_node = self.staging
         mat = material.Material(name="gone", mat_id="no-such-asset-id")

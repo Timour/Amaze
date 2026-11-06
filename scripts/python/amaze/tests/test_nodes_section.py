@@ -1,4 +1,4 @@
-"""Node networks saved and reloaded from ANY context, on real networks and a fixture library. AmazeNotes practice.md ▸p/nodes-section"""
+"""Node networks saved and reloaded from any context, on real networks ▸p/nodes-section"""
 
 import os
 import shutil
@@ -13,7 +13,7 @@ _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 import hou  # noqa: E402
 
-sys.path.insert(        # THREE dirnames: tests/ -> amaze/ -> python/. Four lands on scripts/, where the tests import the INSTALL - test_roundtrip.py
+sys.path.insert(        # three dirnames reach python/; four would test the install
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
@@ -37,7 +37,7 @@ def _sop_network(name: str) -> hou.Node:
 
 
 def _cop_node_type() -> str:
-    """Whatever this build calls a simple COP - type names moved with Copernicus, so ask rather than assume."""
+    """Whatever this build calls a simple COP: type names moved with Copernicus, so ask."""
     kinds = hou.copNodeTypeCategory().nodeTypes()
     for wanted in ("ramp", "gradient", "color", "constant", "noise"):
         if wanted in kinds:
@@ -48,7 +48,7 @@ def _cop_node_type() -> str:
 class NodesSectionTest(unittest.TestCase):
 
     def setUp(self):
-        test_support.reset_database_singletons()    # connectors cache per FILENAME, so without this every test after the first reads the previous test's cops.json
+        test_support.reset_database_singletons()    # connectors cache per filename, so each test would read the previous cops.json
         self.prefs = test_support.fixture_prefs(self)
         self.prefs.render_on_import = 0
         self.model = cop_library.CopLibrary(preferences=self.prefs)
@@ -71,7 +71,7 @@ class NodesSectionTest(unittest.TestCase):
 
 
     def test_the_import_seam_returns_what_it_created(self):
-        """(ok, reason, created): the seam every drop-position behaviour rides, so no caller diffs children."""
+        """(ok, reason, created): the seam every drop-position behaviour rides; no caller diffs children."""
         from amaze.helpers import helpers
 
         geo = _sop_network("seam_src")
@@ -95,12 +95,12 @@ class NodesSectionTest(unittest.TestCase):
         self.assertAlmostEqual(anchor.y(), sum(ys) / len(ys))
 
     def test_an_unsafe_id_is_refused_with_a_sentence(self):
-        """An id that cannot be a filename gets a sentence, not a traceback - practice.md ▸p/nodes-section."""
+        """An id that cannot be a filename gets a sentence, not a traceback ▸p/nodes-section."""
         geo = _sop_network("unsafe_src")
         self.assertEqual("SOP", node_actions.add_asset(
             self.model, geo, "", "", False, name="unsafe_sop"))
         geo.destroy()
-        self.model.assets[0]._mat_id = "../../../Documents/x"   # the private field: mat_id is read-only by design, and a hand-edited cops.json is the only way such an id reaches a row
+        self.model.assets[0]._mat_id = "../../../Documents/x"   # the private field: mat_id is read-only; a hand-edited cops.json reaches a row this way
 
         ok, reason, _created = node_actions.import_asset_to_scene(
             self.model, self.model.index(0, 0))
@@ -132,7 +132,7 @@ class NodesSectionTest(unittest.TestCase):
     def test_selection_of_one_node_returns(self):
         geo = _sop_network("sel_src")
         box = geo.node("the_box")
-        # A selection is passed as one of the SELECTED items, not the container - the network is reached through its parent.
+        # a selection passes a selected item, not the container; the network is its parent
         self.assertEqual("SOP", node_actions.add_asset(
             self.model, box, "", "", False, items=[box], name="sel_one"))
         geo.destroy()
@@ -170,7 +170,7 @@ class NodesSectionTest(unittest.TestCase):
         return ok, reason, [c for c in dest.children() if c not in before]
 
     def test_a_network_asset_lands_at_object_level_in_its_container(self):
-        """Every context with a home in /obj must get one - building the container IS the answer there, not the failure case."""
+        """Every context with a home in /obj gets a container there; building it is the answer."""
         sources = {
             "SOPnet": _sop_network("obj_sop"),
             "COPnet": hou.node("/obj").createNode("copnet", "obj_cop"),
@@ -205,7 +205,7 @@ class NodesSectionTest(unittest.TestCase):
         self.assertEqual({"objA", "objB"}, {n.name() for n in made})
 
     def test_object_nodes_are_refused_inside_a_sop_network(self):
-        """The trap: every context has a `subnet`, so a SOP subnet looks like a home for object-level nodes and is not one."""
+        """Every context has a `subnet`, but a SOP subnet is no home for object-level nodes."""
         first = hou.node("/obj").createNode("geo", "trapA")
         second = hou.node("/obj").createNode("geo", "trapB")
         node_actions.add_asset(self.model, first, "", "", False,
@@ -221,7 +221,7 @@ class NodesSectionTest(unittest.TestCase):
 
 
     def test_every_destination_and_context_pairing(self):
-        """The whole matrix - asking the registry for ANY type that fits answered /stage+SOP with `copytopoints`."""
+        """The whole destination by context matrix, each pairing named rather than looked up by fit."""
         obj = hou.node("/obj")
         dests = {
             "/obj": obj,
@@ -238,7 +238,7 @@ class NodesSectionTest(unittest.TestCase):
             ("/obj", "Cop"): "copnet",
             ("/obj", "Lop"): "lopnet",
             ("/obj", "Object"): "subnet",
-            ("/stage", "Sop"): "sopcreate",     # Solaris hosts SOPs in a SOP Create, the node that turns geometry into USD; a bare sopnet there is invisible to the stage
+            ("/stage", "Sop"): "sopcreate",     # Solaris hosts SOPs in a SOP Create; a bare sopnet there is invisible to the stage
             ("/stage", "Cop"): "copnet",
             ("/stage", "Lop"): "lopnet",
             ("/stage", "Object"): None,
@@ -270,7 +270,7 @@ class NodesSectionTest(unittest.TestCase):
         self.assertEqual(1, len(made))
         self.assertEqual("sopcreate", made[0].type().name())
 
-        target = cop_nodes.load_target_in(made[0], "Sop")      # DiveTarget and EditableNodes both read sopnet/create, two levels down - practice.md ▸p/nodes-section
+        target = cop_nodes.load_target_in(made[0], "Sop")      # DiveTarget and EditableNodes read sopnet/create, two levels down ▸p/nodes-section
         self.assertEqual("sopnet/create", target.path().split(
             made[0].path() + "/")[-1])
         landed = {n.name() for n in target.children()}
@@ -319,8 +319,8 @@ class NodesSectionTest(unittest.TestCase):
 
 
     def test_geometry_chains_onto_the_current_display_node(self):
-        """Geometry chains onto the display node like a light would, through the host's own createOutputNode()."""
-        panel = test_support.fixture_panel(self)    # the ISOLATED panel: its own settings, library and locations, because _protect_live_settings guarded only the settings FILE
+        """Geometry chains onto the display node like a light would, through createOutputNode()."""
+        panel = test_support.fixture_panel(self)    # the isolated panel: its own settings, library and locations
         try:
 
             stage = hou.node("/stage")
@@ -458,7 +458,7 @@ class TheRenderDecisionHasOneHome(unittest.TestCase):
         return outcome, sop, cop
 
     def test_both_spellings_of_each_context_reach_one_verb(self):
-        """Save reads a category name, Update Render a renderer tag (empty for pre-context assets): one normalisation."""
+        """Save reads a category name, Update Render a renderer tag, empty when old: one normalisation."""
         for context, thumb_node, sop_args, cop_args in (
                 ("Sop", "", ("asset1",), None),
                 ("SOP", "", ("asset1",), None),
@@ -480,7 +480,7 @@ class TheRenderDecisionHasOneHome(unittest.TestCase):
 
 
 class TheWireSpliceReadsThePlacementFunnel(unittest.TestCase):
-    """The splice asks the placement funnel, never a child diff - practice.md ▸p/nodes-section."""
+    """The splice asks the placement funnel, never a child diff ▸p/nodes-section."""
 
     def setUp(self):
         self.net = hou.node("/obj").createNode("geo")
@@ -502,7 +502,7 @@ class TheWireSpliceReadsThePlacementFunnel(unittest.TestCase):
                          "auto placement did not report what it placed")
 
     def test_the_splice_calls_the_hosts_own_function(self):
-        """`insertItemsIntoWire` is GUI-only, so this pins its CONTRACT headless - practice.md ▸p/nodes-section."""
+        """`insertItemsIntoWire` is GUI-only, so this pins its contract headless ▸p/nodes-section."""
         import sys
         import types
         from unittest import mock
@@ -571,7 +571,7 @@ class AutoPlacementLeavesTheSceneAlone(unittest.TestCase):
                          "nodes the artist placed moved")
 
     def test_the_app_never_calls_the_rearranging_form(self):
-        """A raw moveToGoodPosition() carries the defaults that move other nodes, so the app calls it in one place."""
+        """A raw moveToGoodPosition() defaults to moving other nodes, so the app calls it in one place."""
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         offenders = []
         for base, _dirs, files in os.walk(root):
@@ -609,7 +609,7 @@ class PlaceNodesTest(unittest.TestCase):
             msg="the relative layout was not preserved")
         self.assertAlmostEqual(
             1.0, second.position().y() - first.position().y())
-        half = helpers.centred_on(hou.Vector2(0.0, 0.0))    # setPosition sets a node's CORNER and the host subtracts getNewNodeHalfSize() at the mouse - practice.md ▸p/nodes-section
+        half = helpers.centred_on(hou.Vector2(0.0, 0.0))    # setPosition sets the corner; the host subtracts getNewNodeHalfSize() ▸p/nodes-section
         centroid_x = (first.position().x() + second.position().x()) / 2
         centroid_y = (first.position().y() + second.position().y()) / 2
         self.assertAlmostEqual(10.0 + half.x(), centroid_x)
@@ -628,7 +628,7 @@ class PlaceNodesTest(unittest.TestCase):
 
 
 class WhatCountsAsAFailure(unittest.TestCase):
-    """Three points where `render/nodes.py` decides whether something went wrong: a load that raised only WARNINGS, an asset name that is not a legal node name, and an `$OCIO` that exists but is empty. Each wrong answer reaches the artist as a refusal or a traceback."""
+    """Where `render/nodes.py` decides failure: a warned load, an illegal name, an empty `$OCIO`."""
 
     WARNING_TYPE = "amaze_warned_probe"
 
@@ -638,7 +638,7 @@ class WhatCountsAsAFailure(unittest.TestCase):
         self.addCleanup(test_support.clear_obj)
 
     def _asset_that_warns_on_load(self, name: str):
-        """An asset whose saved file holds an instance of an HDA that is then UNINSTALLED: Houdini rebuilds it as a substituted node type and raises `hou.LoadWarning` saying so, which is the manual's load-that-SUCCEEDED-with-warnings."""
+        """An asset holding an instance of an uninstalled HDA: the load succeeds with `hou.LoadWarning`."""
         otl = os.path.join(self.prefs.path, "amaze_warned_probe.hda")
         source = hou.node("/obj").createNode("geo", "warn_src")
         packaged = source.createNode("subnet", "packaged")
@@ -650,7 +650,7 @@ class WhatCountsAsAFailure(unittest.TestCase):
             self.prefs, mat.mat_id, self.prefs.ext)
         os.makedirs(os.path.dirname(payload), exist_ok=True)
         source.saveItemsToFile([instance], payload,
-                               save_hda_fallbacks=False)    # WITH fallbacks the definition rides along in the file and the load has nothing to warn about
+                               save_hda_fallbacks=False)    # with fallbacks the definition rides along and nothing warns
         source.destroy()
         hou.hda.uninstallFile(otl)
         return mat
@@ -668,7 +668,7 @@ class WhatCountsAsAFailure(unittest.TestCase):
         return hou.node("/obj").createNode("matnet", home).createNode("collect")
 
     def test_a_network_that_only_warned_is_not_thrown_away(self):
-        """`loadItemsFromFile` raises `hou.LoadWarning` when the load SUCCEEDED with warnings, so refusing it costs the artist a network Houdini has already rebuilt in front of them."""
+        """`loadItemsFromFile` raises `hou.LoadWarning` on a successful load; the network is kept."""
         mat = self._asset_that_warns_on_load("warned_direct")
         dest = hou.node("/obj").createNode("geo", "warn_dest")
         handler = nodes.NodeHandler(self.prefs)
@@ -691,7 +691,7 @@ class WhatCountsAsAFailure(unittest.TestCase):
             "%r" % recorded.call_args_list)
 
     def test_the_container_a_warned_load_filled_is_kept(self):
-        """The boxed path builds a container, fills it, and then destroyed it on the warning - the same successful load, thrown away along with its home."""
+        """The boxed path keeps the container a warned but successful load filled."""
         mat = self._asset_that_warns_on_load("warned_boxed")
         handler = nodes.NodeHandler(self.prefs)
 
@@ -706,7 +706,7 @@ class WhatCountsAsAFailure(unittest.TestCase):
                         "the container came back empty")
 
     def test_a_display_name_that_is_no_node_name_still_rebuilds(self):
-        """An asset's display name is the artist's own text and `hou.Node.setName` answers `Invalid name` for a space, so it reaches the node through `helpers.sanitize_usd_path` - the sanitiser every other name site in this package already uses."""
+        """`hou.Node.setName` refuses a space, so a display name passes `helpers.sanitize_usd_path`."""
         handler = nodes.NodeHandler(self.prefs)
         handler._hou_parent = hou.node("/obj").createNode(
             "matnet", "iface_home")
@@ -720,7 +720,7 @@ class WhatCountsAsAFailure(unittest.TestCase):
             "the display name did not reach the node through the sanitiser")
 
     def test_an_ocio_set_to_nothing_is_no_colour_config(self):
-        """`houdini.env`'s documented way to unset a default is `OCIO =`, which leaves the variable EXISTING and empty - so an `is None` gate reads it as configured and the save runs with no colour config at all."""
+        """`OCIO =` in houdini.env leaves the variable set and empty; an empty `$OCIO` is no config."""
         for ocio, saves in (("", False), ("/dev/null", True)):    # refusing empty must not refuse a set one
             with self.subTest(ocio=ocio):
                 handler = nodes.NodeHandler(self.prefs)

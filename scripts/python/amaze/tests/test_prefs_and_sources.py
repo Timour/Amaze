@@ -1,4 +1,4 @@
-"""Prefs, online sources, and the long tail - several of these read the SOURCE, and by AST rather than by text."""
+"""Prefs, online sources and the long tail; several read the source, by AST rather than by text."""
 
 import ast
 import contextlib
@@ -32,7 +32,7 @@ source_of = test_support.source_of
 
 
 def calls(relative, func_name, callee) -> bool:
-    """Does `func_name` CALL `callee`? By AST, never by text - prose naming a helper is not a call to it."""
+    """Does `func_name` call `callee`? By AST: prose naming a helper is not a call to it."""
     tree = ast.parse(source_of(relative))
     for node in ast.walk(tree):
         if not (isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
@@ -101,7 +101,7 @@ class TheRendererTableIsWrittenOnce(unittest.TestCase):
 class RendererDefaultsAgree(unittest.TestCase):
 
     def test_an_empty_directory_loads_the_documented_defaults(self):
-        """load() returns before its `.get()` defaults on a machine with no settings file, so __init__'s values are what that machine keeps."""
+        """With no settings file load() returns early, so the __init__ values are what is kept."""
         empty = tempfile.mkdtemp(prefix="amaze_prefs_defaults_")
         self.addCleanup(shutil.rmtree, empty, True)
         p = prefs_mod.Prefs()
@@ -117,7 +117,7 @@ class RendererDefaultsAgree(unittest.TestCase):
                 "permanently" % attr)
 
     def test_the_filter_menu_offers_renderers_on_a_new_machine(self):
-        """The user-visible half: all-off left the Materials Filter menu offering `All` over a library full of renderers."""
+        """A new machine's Materials Filter menu offers the renderers, not just `All`."""
         empty = tempfile.mkdtemp(prefix="amaze_prefs_menu_")
         self.addCleanup(shutil.rmtree, empty, True)
         p = prefs_mod.Prefs()
@@ -190,7 +190,7 @@ class SharedDefaultsLiveInOneTable(unittest.TestCase):
 
 class LoadNeverRaisesAndAlwaysValidates(unittest.TestCase):
 
-    POISON = {  # every key with a validating setter, against the value that breaks it; `null` is the shape a hand edit or a future build's type change produces
+    POISON = {  # every key with a validating setter, against the value that breaks it
         "scroll_speed": None,
         "ram_cache_mb": None,
         "texture_parallel_conversions": "eight",
@@ -309,7 +309,7 @@ class LoadNeverRaisesAndAlwaysValidates(unittest.TestCase):
 
 
 class ThePerUserBlocksRoundTripAndMerge(unittest.TestCase):
-    """The users dimension of settings.json: per-UID blocks, and the merge two panes of one session put them through."""
+    """Per-UID blocks in settings.json, and the merge two panes of one session put them through."""
 
     def _prefs_at(self, folder):
         p = prefs_mod.Prefs()
@@ -347,7 +347,7 @@ class ThePerUserBlocksRoundTripAndMerge(unittest.TestCase):
                          raw["bb22"])
 
     def test_junk_shapes_load_without_raising_and_die_on_save(self):
-        """load() may not raise, and refresh_data() rewrites the key from the attribute, so junk cannot ride the unknown-key courtesy forever."""
+        """load() may not raise, and refresh_data() rewrites the key from the attribute, dropping junk."""
         for junk in (5, "x", [1], {"a-uid": "not-a-dict"},
                      {"a-uid": None}):
             with self.subTest(users=junk):
@@ -424,7 +424,7 @@ class APointerMovedInOnePaneStaysMoved(unittest.TestCase):
 
 
 class TheTestLibrarySwitchIsAnOverlay(unittest.TestCase):
-    """One switch, one folder - and the contract that matters is the way BACK: the real library and cache paths stay untouched while it is on."""
+    """One switch, one folder; the real library and cache paths stay untouched while it is on."""
 
     REAL_LIB = "/Users/someone/Cloud/3D/Library/"
     REAL_CACHE = "/Users/someone/Library/Caches/Amaze"
@@ -472,7 +472,7 @@ class TheTestLibrarySwitchIsAnOverlay(unittest.TestCase):
         self.assertEqual(self.REAL_CACHE, p.cache_dir)
 
     def test_on_with_no_folder_chosen_changes_nothing(self):
-        """Half-configured, between ticking the box and picking a folder: answering `/lib/` would point the library at the filesystem root."""
+        """On with no folder yet: answering `/lib/` would point the library at the filesystem root."""
         p = self._prefs()
         p.test_mode = True
         self.assertEqual(self.REAL_LIB, p.dir)
@@ -497,7 +497,7 @@ class TheTestLibrarySwitchIsAnOverlay(unittest.TestCase):
             self.assertEqual(["_All"], json.load(handle)["categories"])
 
     def test_seeding_never_overwrites_what_is_already_there(self):
-        """Run twice, or run on a folder already holding saved test materials: the second pass must add nothing."""
+        """Run twice, or on a folder already holding test materials, the second pass adds nothing."""
         import json
         folder = tempfile.mkdtemp(prefix="amaze_testlib_reseed_")
         self.addCleanup(shutil.rmtree, folder, True)
@@ -516,7 +516,7 @@ class TheTestLibrarySwitchIsAnOverlay(unittest.TestCase):
                          "re-seeding erased the test library's content")
 
     def test_a_test_library_loads_where_no_real_one_was_ever_configured(self):
-        """load() has to ask `dir`, not the raw field behind it: on a machine that has never had a real library the two disagree completely."""
+        """load() asks `dir`, not the raw field: with no real library ever set, the two disagree."""
         folder = tempfile.mkdtemp(prefix="amaze_testlib_load_")
         self.addCleanup(shutil.rmtree, folder, True)
         settings = tempfile.mkdtemp(prefix="amaze_testlib_settings_")
@@ -621,7 +621,7 @@ class ContainmentAnswersAsRealpathDoes(unittest.TestCase):
 class OnlineDownloadsStayInsideTheLibrary(unittest.TestCase):
 
     def test_no_hand_rolled_containment_is_left(self):
-        """`contained_join` resolves REALPATHS, so a planted symlink cannot be the hop out - which a normpath comparison cannot see."""
+        """`contained_join` resolves realpaths, so a planted symlink cannot be the hop out."""
         body = source_of("core/matx_sources.py")
         self.assertNotIn(
             "os.path.normpath(os.path.join(dest_dir", body,
@@ -641,7 +641,7 @@ class OnlineDownloadsStayInsideTheLibrary(unittest.TestCase):
             "catalogue, so `../x` writes outside the cache root")
 
     def test_a_failed_package_lookup_is_not_cached(self):
-        """`_packages` swallows every per-package error and returns [], and an empty list is a PRESENT key - so a cached failure would outlive the network blip."""
+        """`_packages` returns [] on error, a present key, so caching it would outlive a network blip."""
         from amaze.core import matx_sources
 
         for answer, lookups in (([], 2),
@@ -675,7 +675,7 @@ class OnlineDownloadsStayInsideTheLibrary(unittest.TestCase):
 
 
 class RefreshDropsEveryCacheASourceKeeps(unittest.TestCase):
-    """Refresh is the user asking us to go and LOOK - a cache that survives it serves yesterday's site until restart."""
+    """Refresh drops every source cache, or the old site is served until restart."""
 
     def test_gpuopen_refresh_drops_the_category_map(self):
         from amaze.core import matx_sources
@@ -788,7 +788,7 @@ class TheCatalogueCacheLandsWhole(unittest.TestCase):
 
 
 class ARemapOnAColourChainStillRemaps(unittest.TestCase):
-    """mtlxremap and mtlxclamp are signature-polymorphic: wiring a color3 source flips the LIVE parm to the `_color3` variant, so the range values must go through `_set_poly_parm` or they land on the inert plain parm and the remap renders as a no-op."""
+    """A color3 source flips mtlxremap/mtlxclamp to `_color3` parms, so ranges go via `_set_poly_parm`."""
 
     def test_the_range_values_reach_the_live_parm_variant(self):
         from amaze.render import material_converter as mc
@@ -853,7 +853,7 @@ class ARemapOnAColourChainStillRemaps(unittest.TestCase):
 
 
 class VendorTransformsAreOpenPBRsAlone(unittest.TestCase):
-    """The fuzz^2.5 curve and the coat-roughness mix come from the OpenPBR translation graph - run on StandardMaterial or the classic shader they silently rewrite values the 1:1 maps copied correctly."""
+    """The fuzz^2.5 curve and coat-roughness mix are OpenPBR-only; elsewhere they corrupt 1:1 values."""
 
     def test_only_the_openpbr_door_runs_them(self):
         from amaze.render import material_converter as mc
@@ -905,7 +905,7 @@ class VendorTransformsAreOpenPBRsAlone(unittest.TestCase):
 
 
 class ConvertNodeCarriesTheTargetInput(unittest.TestCase):
-    """The dispatcher hands `target_input` to every converter whose signature takes it, so a texture nested behind one still converts with its role."""
+    """`target_input` reaches every converter taking it, so a nested texture keeps its role."""
 
     def test_a_converter_that_accepts_it_receives_it(self):
         from amaze.render import material_converter as mc
@@ -957,7 +957,7 @@ class ConvertNodeCarriesTheTargetInput(unittest.TestCase):
 
 
 class AHalfFetchedPackageIsNotReused(unittest.TestCase):
-    """The fetch lands in a scratch sibling and is renamed over only on success, so an occupied destination IS a complete package."""
+    """The fetch is renamed into place only on success, so an occupied destination is complete."""
 
     def _record(self):
         class Record:
@@ -1044,7 +1044,7 @@ class AHalfFetchedPackageIsNotReused(unittest.TestCase):
 
 
 class ANoVariantAssetRefusesWithAReason(unittest.TestCase):
-    """`StopIteration`'s str() is EMPTY, so an asset shipping no .mtlx variant has to name itself in the refusal or the message says nothing."""
+    """`StopIteration` has an empty str(), so an asset with no .mtlx variant names itself."""
 
     def test_fetch_with_no_variants_names_the_asset(self):
         from amaze.core import matx_sources
@@ -1065,7 +1065,7 @@ class ANoVariantAssetRefusesWithAReason(unittest.TestCase):
 
 
 class StagingLeavesNoUndoEntry(unittest.TestCase):
-    """A container is STAGING when one function creates it and destroys it in a `finally`, and both halves must then sit inside `hou.undos.disabler()`. ▸r/undo-groups"""
+    """Staging containers are made and destroyed under `hou.undos.disabler()`. ▸r/undo-groups"""
 
     FILES = ("core/matx_import.py", "core/gallery_import.py",  # every file that scaffolds a scene; `render/thumbs.py` holds more of it than any other
              "render/nodes.py", "render/material_converter.py",
@@ -1090,7 +1090,7 @@ class StagingLeavesNoUndoEntry(unittest.TestCase):
             for func in ast.walk(tree):
                 if not isinstance(func, ast.FunctionDef):
                     continue
-                creates = {}  # EVERY create for a name, not the last: one variable assigned in two branches let a guarded sibling vouch for an unguarded create
+                creates = {}  # every create for a name, not the last, so a guarded sibling cannot vouch for another
                 for node in ast.walk(func):
                     if (isinstance(node, ast.Assign)
                             and len(node.targets) == 1
@@ -1140,7 +1140,7 @@ class StagingLeavesNoUndoEntry(unittest.TestCase):
 class AGalleryIsLeftAsItWasFound(unittest.TestCase):
 
     def test_OperationFailed_really_is_covered_by_hou_Error(self):
-        """The premise for dropping it from the except tuple - if Houdini ever unhooks the two, the narrowed clause stops catching it. ▸r/gallery-entries"""
+        """The narrowed except clause relies on this subclassing. ▸r/gallery-entries"""
         self.assertTrue(
             issubclass(hou.OperationFailed, hou.Error),
             "hou.OperationFailed is no longer a hou.Error, so the "
@@ -1223,7 +1223,7 @@ class TheOsHandOffsNeverRaise(unittest.TestCase):
 
 
 class TheUserRowCreatesAndDeletes(unittest.TestCase):
-    """Preferences > User grew create and delete beside rename (settled 2026-08-22): the combo carries the picker's own create row, deletion sweeps everything tagged theirs, and the row goes blank on self-delete until somebody is picked."""
+    """Preferences > User creates, renames and deletes; deletion sweeps everything tagged theirs."""
 
     def test_the_user_row_offers_create_and_delete(self):
         from amaze.core import users
@@ -1330,7 +1330,7 @@ class TheUserRowCreatesAndDeletes(unittest.TestCase):
 
 
 class ACancelledTestFolderPickIsANoOp(unittest.TestCase):
-    """Turning Test Library on with no folder asks for one; cancelling the ask applied NOTHING, so the revert must not switch every model on its way back."""
+    """Cancelling the Test Library folder ask applied nothing, so the revert switches no model."""
 
     def test_the_revert_does_not_switch_the_library(self):
         from amaze.dialogs import prefs_dialog
@@ -1351,7 +1351,7 @@ class ACancelledTestFolderPickIsANoOp(unittest.TestCase):
 
 
 class TheOverwriteSwitchFollowsTheLibrary(unittest.TestCase):
-    """The switch is read from the policy file ONCE, at construction - a library switch under the open dialog must re-read it, or the switch shows the previous library's policy."""
+    """A library switch under the open dialog re-reads the overwrite policy for the new library."""
 
     def test_switching_libraries_rereads_the_overwrite_policy(self):
         from amaze.core import library_policy
@@ -1377,7 +1377,7 @@ class TheOverwriteSwitchFollowsTheLibrary(unittest.TestCase):
 
 
 class TheCacheWipeCannotBeSuppressed(unittest.TestCase):
-    """`hou.ui.displayConfirmation` defaults `suppress` to `hou.confirmType.OverwriteFile` - Houdini's GLOBAL do-not-ask-again flag for file overwrites - so left at the default this destructive wipe stops asking the moment that box is ticked anywhere in the application."""
+    """`displayConfirmation` defaults `suppress` to the global OverwriteFile do-not-ask flag."""
 
     def _asked_with(self, dlg):
         seen = {}
@@ -1464,7 +1464,7 @@ class PreferencesSpeakTheDrawnWords(unittest.TestCase):
 
 
 class ThePickersStartInAForwardSlashPath(unittest.TestCase):
-    """`hou.ui.selectFile` documents `start_directory` as forward slashes on Windows, and `os.path.join` there hands out backslashes - so an os.sep-flavoured path has to be canonicalised before it is passed."""
+    """`hou.ui.selectFile` wants forward slashes in `start_directory`, even on Windows."""
 
     def _started_in(self, method):
         seen = {}
@@ -1473,7 +1473,7 @@ class ThePickersStartInAForwardSlashPath(unittest.TestCase):
             seen.update(kwargs)
             return ""   # Cancel, so the method returns before writing a preference
 
-        # os.sep is the ONLY difference between the two platforms inside `hostos.canonical_path_key`, so patching it runs this host through the Windows reading of the same code.
+        # patching os.sep runs `hostos.canonical_path_key` through its Windows reading
         with mock.patch.object(os, "sep", "\\"), mock.patch.object(
                 hou, "ui",
                 types.SimpleNamespace(selectFile=select_file),
@@ -1490,11 +1490,11 @@ class ThePickersStartInAForwardSlashPath(unittest.TestCase):
     def test_the_cache_picker_starts_in_a_forward_slash_path(self):
         from amaze.tests import test_support
         p = test_support.fixture_prefs(self)
-        p.cache_dir = ""   # unset, which is the branch that falls through to the machine's own convention - the one `os.path.join` builds
+        p.cache_dir = ""   # unset: falls through to the machine's convention, built by `os.path.join`
         dlg = self._dialog(p)
         from amaze.dialogs import prefs_dialog
         native = "C:\\scratch\\AppData\\Local\\Amaze\\Cache"
-        with mock.patch.object(prefs_dialog.hostos, "cache_root",   # the dialog's OWN reference, since a fixture panel reloads hostos and this module's import can be the older object
+        with mock.patch.object(prefs_dialog.hostos, "cache_root",   # the dialog's own reference: a fixture panel reloads hostos
                                lambda: native):
             start = self._started_in(dlg.change_cache_path)
         self.assertEqual(
@@ -1505,7 +1505,7 @@ class ThePickersStartInAForwardSlashPath(unittest.TestCase):
     def test_the_test_folder_picker_starts_in_a_forward_slash_path(self):
         from amaze.tests import test_support
         p = test_support.fixture_prefs(self)
-        p.test_dir = "D:\\shots\\amaze_test"   # a stored absolute comes back from settings.json in the spelling it was written in, backslashes and all
+        p.test_dir = "D:\\shots\\amaze_test"   # a stored absolute comes back as written, backslashes and all
         dlg = self._dialog(p)
         start = self._started_in(dlg.change_test_path)
         self.assertEqual(

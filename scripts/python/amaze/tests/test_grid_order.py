@@ -1,4 +1,4 @@
-"""The Grid area's invariant: WHAT IS SHOWN AND IN WHAT ORDER, however the rows arrive - a filter change, a category or section switch, a reload, or an INSERT."""
+"""The Grid area's invariant: what is shown and in what order, however the rows arrive."""
 
 import os
 import sys
@@ -51,7 +51,7 @@ class _Case(unittest.TestCase):
         proxy = multifilterproxy_model.MultiFilterProxyModel()
         proxy.setSourceModel(source)
         proxy.setSortCaseSensitivity(QtCore.Qt.CaseInsensitive)
-        proxy.setDynamicSortFilter(False)      # what the panel does; it turns off the re-SORT as well as the re-filter, so a filter change leaves the survivors in SOURCE order and a changed row is not re-tested at all
+        proxy.setDynamicSortFilter(False)      # as the panel does; it also stops the re-sort, so survivors keep source order
         proxy.sort(0)
         return source, proxy
 
@@ -60,14 +60,14 @@ class _Case(unittest.TestCase):
                 for r in range(proxy.rowCount())]
 
     def settle(self):
-        """The re-sort is coalesced onto the event loop, so a test has to let the loop turn before reading the proxy."""
+        """The re-sort is coalesced onto the event loop, so let the loop turn before reading the proxy."""
         QtWidgets.QApplication.processEvents()
 
 
 class ANewRowLandsInOrder(_Case):
 
     def test_a_saved_asset_does_not_land_at_the_bottom(self):
-        """A row the library appends at the END of source order comes back in sorted position, not at the bottom."""
+        """A row appended at the end of source order comes back in sorted position, not at the bottom."""
         source, proxy = self.build(["alpha", "gamma", "delta"])
         self.assertEqual(["alpha", "delta", "gamma"], self.shown(proxy),
                          "the fixture is not sorted, so nothing below "
@@ -90,7 +90,7 @@ class ANewRowLandsInOrder(_Case):
             self.shown(proxy), "several saves in one turn landed out of order")
 
     def test_a_filtered_grid_still_lands_it_in_order(self):
-        """The two routes must not fight: a row arriving while a filter is on is still ordered AND still filtered, and the filter has to genuinely narrow or this proves nothing."""
+        """A row arriving under a narrowing filter is still ordered and still filtered."""
         source, proxy = self.build(["alpha", "zulu"])
         proxy.setFilter(QtCore.Qt.ItemDataRole.DisplayRole, "al")
         self.settle()
@@ -107,11 +107,11 @@ class ANewRowLandsInOrder(_Case):
 
 
 class AFilterChangeReordersWhatComesBack(_Case):
-    """A filter change re-tests the rows, and the ones it LEAVES have to come back in order rather than in source order."""
+    """A filter change re-tests the rows, and the ones it leaves come back sorted, not in source order."""
 
     def test_the_rows_a_filter_LEAVES_are_in_order(self):
         source, proxy = self.build(["zulu", "bravo", "alpha"])
-        proxy.setFilter(QtCore.Qt.ItemDataRole.DisplayRole, "a")   # nothing is appended here: the insert route re-sorts on its own, so a test that appends after filtering passes either way
+        proxy.setFilter(QtCore.Qt.ItemDataRole.DisplayRole, "a")   # nothing appended: the insert route re-sorts on its own
         self.assertEqual(
             ["alpha", "bravo"], self.shown(proxy),
             "the surviving rows are in source order, which is what "
@@ -122,7 +122,7 @@ class AFilterChangeReordersWhatComesBack(_Case):
 
 
 class TheResortIsCoalesced(_Case):
-    """`setDynamicSortFilter(False)` is set for performance, and a sort per inserted row would put that cost straight back."""
+    """`setDynamicSortFilter(False)` is for speed, so an insert must not cost a sort per row."""
 
     def test_swapping_one_filter_for_another_costs_ONE_pass(self):
         """A pass measures ~24ms. ▸p/filter-pass-cost"""
@@ -196,10 +196,10 @@ class _Flagged(grid_engine.GridEngine, QtCore.QAbstractTableModel):
         name = self._names[row]
         self._flags[name] = not self._flags[name]
         index = self.index(row, 0)
-        self.dataChanged.emit(index, index, [self.FlagRole])   # measured: `library.toggle_fav`, `FileFiles.toggle_favorite` and `Gradients.toggle_favorite` all emit exactly this
+        self.dataChanged.emit(index, index, [self.FlagRole])   # what every model's favourite toggle emits
 
     def colour_changed(self):
-        """What a sidebar colour pick emits: one role over every row, so the tiles repaint, and nothing filters or sorts on it."""
+        """What a sidebar colour pick emits: one role over every row, which nothing filters or sorts on."""
         self.dataChanged.emit(
             self.index(0, 0), self.index(self.rowCount() - 1, 0),
             [self.ColourRole])
@@ -221,14 +221,14 @@ class _Flagged(grid_engine.GridEngine, QtCore.QAbstractTableModel):
         self.endInsertRows()
 
     def thumbnail_arrived(self, row):
-        """The high-frequency emission this must NOT pay for: a thumbnail landing on a row changes nothing a filter reads."""
+        """A frequent emission that must cost nothing: a thumbnail landing changes nothing a filter reads."""
         index = self.index(row, 0)
         self.dataChanged.emit(index, index,
                               [QtCore.Qt.ItemDataRole.DecorationRole])
 
 
 class AChangedRowIsRETESTED(_Case):
-    """A row whose DATA changed is re-tested against the filter: with Favourites-only on, un-favouriting a tile has to take it out of the grid."""
+    """A row whose data changed is re-tested: un-favouriting under Favourites-only removes the tile."""
 
     def build_flagged(self, names, flagged):
         source = _Flagged(names, flagged)
@@ -265,7 +265,7 @@ class AChangedRowIsRETESTED(_Case):
 
 
 class TheCoalescerDoesNotWAKEItself(_Case):
-    """One pass per event-loop turn is the contract: the rows a pass brings back IN emit the proxy's own `rowsInserted`, which must not schedule a second pass."""
+    """One pass per loop turn: the `rowsInserted` a pass itself emits must not schedule another."""
 
     def build_flagged(self, names, flagged):
         source = _Flagged(names, flagged)
@@ -326,7 +326,7 @@ class TheCoalescerDoesNotWAKEItself(_Case):
 
 
 class ACOLOURChangeIsNotAReFilter(_Case):
-    """A sidebar colour pick emits its role over EVERY row - that is how the tiles repaint - and no grid proxy filters or sorts on a colour."""
+    """A sidebar colour pick emits its role over every row, and no grid proxy filters on a colour."""
 
     def build_flagged(self, names, flagged):
         source = _Flagged(names, flagged)
@@ -409,7 +409,7 @@ class TheRuleHasOneHome(unittest.TestCase):
 
 
 class _TenColumns(QtCore.QAbstractTableModel):
-    """The shape the grid models share: roles as instance attributes, read off the source by whoever needs the number."""
+    """The shape the grid models share: roles as instance attributes, read off the source."""
 
     FavoriteRole = QtCore.Qt.ItemDataRole.UserRole + 61
     KindRole = QtCore.Qt.ItemDataRole.UserRole + 70
@@ -433,7 +433,7 @@ class _TenColumns(QtCore.QAbstractTableModel):
 
 
 class PaintOnlyRolesCostNoPass(unittest.TestCase):
-    """A sidebar colour pick and a comment badge emit their role over EVERY row - that is how the tiles repaint - and no grid proxy filters or sorts on either."""
+    """A colour pick and a comment badge emit over every row, and no grid proxy filters on either."""
 
     def _proxies(self):
         from amaze.core import gradient_library, texture_library
@@ -550,7 +550,7 @@ class AnUnchangedFilterCostsNoPass(unittest.TestCase):
 
 
 class AFilterChangeIsOnePass(unittest.TestCase):
-    """`refilter()` sorts synchronously, and the rows it brings back IN emit the proxy's own `rowsInserted`, which lands in `_schedule_pass` and must not post a second pass."""
+    """`refilter()` sorts at once; its own `rowsInserted` must not make `_schedule_pass` post again."""
 
     def test_refilter_does_not_schedule_its_own_echo(self):
         from amaze.core import texture_library

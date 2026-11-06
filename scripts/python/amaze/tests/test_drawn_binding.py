@@ -1,11 +1,11 @@
-"""The dialogs READ the drawn document: a node moved or resized in Figma moves the real widget, and a drawn label that gets renamed costs one pin rather than the dialog. ▸p/one-design-document"""
+"""Dialogs read the drawn document: moving a node in Figma moves the widget ▸p/one-design-document"""
 
 import math
 import os
 import unittest
 from unittest import mock
 
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")   # BEFORE the app exists: the first module to build the QApplication picks the platform for the whole hython ▸p/first-app-picks-the-platform
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")   # before the app exists ▸p/first-app-picks-the-platform
 from PySide6 import QtCore, QtGui, QtWidgets  # noqa: E402
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
@@ -21,7 +21,7 @@ TEXT_SUFFIX = " ▸ text"
 
 
 def _houdini_ui_font():
-    """Houdini's own UI font at its 12 px, loaded from $HFS: the headless placeholder is Courier on Windows, 84 px for a label the font draws at 58. ▸r/windows-files"""
+    """Houdini's UI font at 12 px from $HFS; headless the placeholder is Courier ▸r/windows-files"""
     path = os.path.join(hou.getenv("HFS") or "", "houdini", "fonts",
                         "SideFX-SourceSansPro-Regular.ttf")
     families = QtGui.QFontDatabase.applicationFontFamilies(
@@ -34,7 +34,7 @@ def _houdini_ui_font():
 
 PREFS_FRAMES = ("P01", "P02", "P03a", "P03b", "P04", "P05", "P06")
 
-PINNED_BUTTONS = {    # every text button Preferences takes from the document, written out here so a lost pin fails rather than quietly widening to the host font
+PINNED_BUTTONS = {    # every text button Preferences takes from the document; a lost pin fails here
     "P01": ("Add", "Check", "Reload", "Show Folder", "Manage", "Rename",
             "Delete", "Default", "Delete Local Cache", "Apply", "Accept"),
     "P05": ("Check for Updates",),
@@ -49,9 +49,9 @@ PREFS_COMBOS = {    # (frame, attribute, drawn width) - the combos each tab buil
     "P04": (("_combo_path_style", 105), ("_combo_icon_weight", 145)),
 }
 
-UNPAIRED = {}    # a drawn `▸ text` node with no rect of its own kind around it; every one must be named, because the ordinary reading of a missing pair is a document edit that lost the rect
+UNPAIRED = {}    # a drawn `▸ text` node with no rect of its own kind around it; every one is named
 
-LABEL_RIGHT = {    # where a form label's drawn box ENDS - the label column's right edge, per frame. A QLabel ending anywhere else is a FIELD-side label and has to be pinned, which is what the P06 version line was not
+LABEL_RIGHT = {    # where a form label's drawn box ends, per frame; a QLabel ending elsewhere must be pinned
     "D02": (63,),               # the drawn field column less `D02_LABEL_GAP`
     "D11": (63, 378),           # each column's field, less the drawn label gap
     "P01": (amazetheme.PREFS_LABEL_RIGHT,),
@@ -91,7 +91,7 @@ def band_box(frame_key):
     return found[0] if found else ()
 
 
-DRAWN_EXEMPT = (    # (does this node need no pin, why) - EVERY drawn node off this table must pin a live widget through the binding
+DRAWN_EXEMPT = (    # (does this node need no pin, why): every other drawn node must pin a live widget
     (lambda f, n: n[0].endswith(TEXT_SUFFIX),
      "sample text drawn INSIDE a rect; the rect is what the widget wears"),
     (lambda f, n: n[0].startswith("QTabBar"),
@@ -163,7 +163,7 @@ DRAWN_EXEMPT = (    # (does this node need no pin, why) - EVERY drawn node off t
 
 
 def build_every_frame(case):
-    """One live dialog per drawn frame, so the binding's pins are the real ones - a frame nothing builds cannot be proven bound."""
+    """One live dialog per drawn frame, so the binding's pins are the real ones."""
     from amaze.dialogs import (base_dialog, code_dialog, icon_dialog,
                                library_dialog, prefs_dialog, save_dialog, versions_dialog)
     built = (
@@ -186,7 +186,7 @@ def build_every_frame(case):
 
 
 def text_nodes(kind_wanted):
-    """(frame, kind, text, box) for every drawn `<Kind> ▸ text` node of one kind, over the whole document - so a frame added later is covered without touching this file."""
+    """(frame, kind, text, box) for every drawn `<Kind> ▸ text` node of one kind, document-wide."""
     found = []
     for frame_key, frame in amazetheme.DIALOG_LAYOUT.items():
         for kind, x, y, w, h, text in frame["nodes"]:
@@ -227,7 +227,7 @@ def unfit_buttons(font):
 
 
 def pinned(case, widget):
-    """The widget's pinned (w, h) - asserting it IS pinned, since reading `width()` would answer whatever the last layout pass happened to give it."""
+    """The widget's pinned (w, h), asserting it is pinned: `width()` answers the last layout pass."""
     case.assertEqual(
         (widget.minimumWidth(), widget.minimumHeight()),
         (widget.maximumWidth(), widget.maximumHeight()),
@@ -236,7 +236,7 @@ def pinned(case, widget):
 
 
 class TheDocumentPairsEveryDrawnButton(unittest.TestCase):
-    """`drawn_boxes` is a pure derivation over `DIALOG_LAYOUT`: it pairs a drawn label with the rect around it, so nothing new has to be maintained beside the table."""
+    """`drawn_boxes` derives over `DIALOG_LAYOUT`, pairing each drawn label with its rect."""
 
     def setUp(self):
         amazetheme.forget_drawn_boxes()
@@ -294,7 +294,7 @@ class EveryDrawnButtonFitsItsLabel(unittest.TestCase):
 
 
 class TheToggleIsTheDrawnPill(unittest.TestCase):
-    """`ToggleSwitch`'s own numbers against the pills the document draws - the constants and the drawing agree, or the switch is a shape nobody designed."""
+    """`ToggleSwitch`'s own numbers agree with the pills the document draws."""
 
     def test_every_drawn_pill_is_the_track_the_widget_paints(self):
         seen = 0
@@ -311,7 +311,7 @@ class TheToggleIsTheDrawnPill(unittest.TestCase):
                                 "pills, so its silence means nothing")
 
     def test_the_drawn_text_starts_one_track_and_one_gap_along(self):
-        """The Preferences frames only: D02 draws its switch labels in their own column LEFT of the pill, where the widget carries no text of its own."""
+        """Preferences frames only: D02 draws its switch labels in a column left of the pill."""
         gap = (ui_helpers.ToggleSwitch.TRACK_W
                + ui_helpers.ToggleSwitch.GAP)
         seen = 0
@@ -334,7 +334,7 @@ class TheToggleIsTheDrawnPill(unittest.TestCase):
         self.assertGreaterEqual(seen, 10)
 
     def test_a_textless_switch_hints_exactly_the_track(self):
-        """The drawn D02 pills sit flush at the column's right edge, so the hint carries no slack after the track when there is no text to separate."""
+        """D02 pills sit flush right, so a textless switch hints no slack after the track."""
         switch = ui_helpers.ToggleSwitch()
         self.addCleanup(switch.deleteLater)
         self.assertEqual(
@@ -385,7 +385,7 @@ class PreferencesIsBuiltFromTheDocument(unittest.TestCase):
         return dialog.findChild(QtWidgets.QTabWidget)
 
     def test_the_declared_numbers_agree_with_each_other(self):
-        """The Preferences block states the drawing's geometry one number at a time; these are the two sums that have to hold, and the content column is now built from one of them."""
+        """The two sums the Preferences geometry must satisfy; the content column is built from one."""
         self.assertEqual(
             amazetheme.PREFS_FORM_WIDTH - 2 * amazetheme.PREFS_INSET,
             amazetheme.PREFS_CONTENT_WIDTH,
@@ -398,7 +398,7 @@ class PreferencesIsBuiltFromTheDocument(unittest.TestCase):
             "column, so one of the three is wrong")
 
     def test_every_pinned_widget_lands_on_its_drawn_x(self):
-        """SIZE was pinned and POSITION was not, so a row of pinned widgets ended near its drawn boxes rather than on them: the content column is held to the drawn width, and each gap is the drawn gap. Vertical is Qt's own and the host's tab bar moves it, so only x is checked here."""
+        """Every pinned widget lands on its drawn x; vertical is Qt's own, moved by the host's tab bar."""
         dialog = self._dialog()
         dialog.setFont(_houdini_ui_font())    # a row's x depends on its label's width, so measure the font the artist sees
         dialog.show()
@@ -444,7 +444,7 @@ class PreferencesIsBuiltFromTheDocument(unittest.TestCase):
                         % (frame_key, label))
 
     def test_the_update_button_is_one_geometry_in_both_readings(self):
-        """The button morphs between `Check for Updates` and `Install Update`; the document draws one box, so the geometry may not move with the word."""
+        """`Check for Updates` and `Install Update` share one drawn box, so the geometry never moves."""
         dialog = self._dialog()
         first = pinned(self, dialog._btn_update)
         dialog._set_update_button(True)
@@ -554,10 +554,10 @@ class PreferencesIsBuiltFromTheDocument(unittest.TestCase):
                          "the sub-tab strip is not the drawn gap below the main strip")
 
     def test_every_page_fits_inside_the_drawn_frame(self):
-        """The drawn frame is the contract, so a page that wants more is a CLIP - reported here with its arithmetic rather than absorbed by growing the window."""
+        """The drawn frame is the contract: a page wanting more is reported as a clip, not grown into."""
         dialog = self._dialog()
         tabs = self._pages(dialog)
-        bar = max(theme.ui_px(amazetheme.PREFS_TAB_BAR[3]),   # the LIVE strip when the host font draws it taller than the document does, or the budget is looser than the window ▸p/headless-host-font
+        bar = max(theme.ui_px(amazetheme.PREFS_TAB_BAR[3]),   # the live strip when the host font draws it taller ▸p/headless-host-font
                   tabs.tabBar().sizeHint().height())
         chrome = 2 * theme.ui_px(amazetheme.PREFS_DIALOG_MARGIN) + bar
         budget = theme.ui_px(amazetheme.PREFS_FRAME[1]) - chrome
@@ -579,7 +579,7 @@ class PreferencesIsBuiltFromTheDocument(unittest.TestCase):
 
 
 class EveryDrawnNodeIsBoundOrNamed(unittest.TestCase):
-    """THE COMPLETENESS PIN: every node in `DIALOG_LAYOUT` either pins a live widget through the binding, or stands on `DRAWN_EXEMPT` with its reason. Anything else is an element the design draws and the app does not read - which is what the P06 version line was until this walk named it. ▸p/one-design-document"""
+    """Every drawn node pins a live widget or is on `DRAWN_EXEMPT` ▸p/one-design-document"""
 
     def setUp(self):
         amazetheme.forget_drawn_boxes()
@@ -607,7 +607,7 @@ class EveryDrawnNodeIsBoundOrNamed(unittest.TestCase):
             "reason it needs no pin:\n  " + "\n  ".join(loose))
 
     def test_the_walk_really_sees_the_pins(self):
-        """A build that pinned nothing would pass the walk above by exempting the whole document. ▸p/vacuous-register"""
+        """A build that pinned nothing would pass by exempting everything ▸p/vacuous-register"""
         self.assertGreaterEqual(
             len(self.pins), 50,
             "the frames built almost no pins, so the completeness walk's "
@@ -770,7 +770,7 @@ class TheCodeDialogStandsOnItsFrame(unittest.TestCase):
 
 
 class MovingADrawnNodeMovesTheWidget(unittest.TestCase):
-    """THE POINT OF ALL OF IT: a rect resized in Figma, once the document is regenerated, resizes the real widget - proved by resizing one and building the dialog."""
+    """A rect resized in the regenerated document resizes the real widget once the dialog builds."""
 
     def setUp(self):
         amazetheme.forget_drawn_boxes()
@@ -831,7 +831,7 @@ class MovingADrawnNodeMovesTheWidget(unittest.TestCase):
         return dialog
 
     def test_a_wider_drawn_LABEL_builds_a_wider_label(self):
-        """A label, not a button: the P06 version line had no stated width at all, and its 322 was whatever the row happened to leave it."""
+        """A label, not a button: a wider drawn label builds a wider label."""
         frame = self._widened("P06", "QLabel", (148, 274), 5)
         with mock.patch.dict(amazetheme.DIALOG_LAYOUT, {"P06": frame}):
             amazetheme.forget_drawn_boxes()
@@ -992,7 +992,7 @@ class TheSaveFamilyWearsTheDrawnButtons(unittest.TestCase):
                     "is not flush right" % label)
 
     def test_a_style_that_lays_Cancel_first_is_put_right(self):
-        """THE ANTI-VACUOUS HALF: this host's style already draws OK first, so the forcing branch is never entered by the four dialogs above - a box laid out the other way proves it does what it says. ▸p/vacuous-register"""
+        """OK-first hosts never enter the forcing branch, so a reversed box proves it ▸p/vacuous-register"""
         from amaze.dialogs import base_dialog
         dialog = base_dialog.NameDialog()
         self.addCleanup(dialog.deleteLater)

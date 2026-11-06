@@ -1,4 +1,4 @@
-"""The updater, driven end to end with the single network door mocked - nothing here reaches GitHub, and the feed's real answers are reproduced as fixtures. ▸p/updater-shape ▸r/release-digest"""
+"""The updater end to end, its one network door mocked. ▸p/updater-shape ▸r/release-digest"""
 
 import errno
 import hashlib
@@ -86,7 +86,7 @@ class TheVersionComparisonTest(unittest.TestCase):
 class TheCheckTest(_FeedMixin):
 
     def test_no_release_yet_is_reported_gracefully(self):
-        """The ordinary answer until 1.0 is tagged: a measured 404 on a repo that itself answers 200. ▸p/updater-shape"""
+        """Before 1.0 is tagged: a 404 on a repo that itself answers 200. ▸p/updater-shape"""
         self.answer(raising=urllib.error.HTTPError(
             updater.RELEASES_URL, 404, "Not Found", {}, None))
         result = updater.check("1.0")
@@ -108,7 +108,7 @@ class TheCheckTest(_FeedMixin):
         self.assertEqual("https://example.invalid/z", result.url)
 
     def test_a_release_with_no_assets_still_has_a_download(self):
-        """Measured: `assets` is empty on plenty of real releases, so looking only there offers an update that cannot be fetched. ▸r/release-digest"""
+        """`assets` is empty on many real releases, so it cannot be the only place. ▸r/release-digest"""
         self.answer({"tag_name": "9.9", "assets": [],
                      "zipball_url": "https://example.invalid/src.zip"})
         self.assertTrue(updater.check("1.0").url,
@@ -196,7 +196,7 @@ class TheReleaseNamesItsLibraryVersion(_FeedMixin):
 
 
 class TheVersionIsThreePart(unittest.TestCase):
-    """MAJOR.MINOR.PATCH from 1.0.0 on: PATCH for a fix, MINOR for a capability, MAJOR when an existing library or workflow breaks. ▸p/version-scheme"""
+    """MAJOR.MINOR.PATCH: fix, capability, breaks a library or workflow. ▸p/version-scheme"""
 
     def test_the_app_version_has_all_three_parts(self):
         pieces = branding.APP_VERSION.split(".")
@@ -231,7 +231,7 @@ class TheDownloadTest(_FeedMixin):
         self.assertTrue(os.path.exists(path))
 
     def test_a_truncated_download_is_refused_and_removed(self):
-        """A short body ends the read loop NORMALLY, so without the length check a truncated archive is promoted as valid. ▸p/updater-shape"""
+        """A short body ends the read loop normally; the length check refuses it. ▸p/updater-shape"""
         self.answer(b"PK\x03\x04", headers={"Content-Length": "9999"})
         with self.assertRaises(OSError) as caught:
             updater.download("https://example.invalid/z", self.dir)
@@ -270,7 +270,7 @@ class TheDownloadTest(_FeedMixin):
                          streamed)
 
     def test_a_transfer_that_DIES_mid_read_leaves_nothing_behind(self):
-        """The structural half the length check cannot cover: a transfer that RAISES reaches no check at all. ▸p/updater-shape"""
+        """A transfer that raises reaches no length check at all. ▸p/updater-shape"""
         class _Dying(_Response):
             def read(self, *args):
                 if self.tell():
@@ -316,7 +316,7 @@ class TheSwapTest(unittest.TestCase):
         self.assertEqual("new", self._which(self.install))
 
     def test_no_copy_of_the_old_install_is_left_behind(self):
-        """Every previous version is on the releases page, so a copy beside a synced install is only someone else's disk - 49MB per update, forever."""
+        """No copy of the old version is kept beside the install; the releases page has it."""
         updater.apply_update(self.staged, self.install)
         beside = os.path.dirname(self.install)
         leftovers = [name for name in os.listdir(beside)
@@ -335,7 +335,7 @@ class TheSwapTest(unittest.TestCase):
         self.assertEqual("newer", self._which(self.install))
 
     def test_a_failed_swap_puts_the_old_install_back(self):
-        """THE WINDOW between the two renames is the only moment there is no install, and nothing covered it. ▸p/updater-shape"""
+        """Between the two renames there is no install at all. ▸p/updater-shape"""
         real = os.rename
         calls = []
 
@@ -365,7 +365,7 @@ class TheSwapTest(unittest.TestCase):
         self.assertEqual("old", self._which(self.install))
 
     def test_a_cache_on_ANOTHER_VOLUME_still_installs(self):
-        """`os.rename` raises EXDEV across a filesystem and only a copy crosses - the staged tree lives in the cache, which need not share a disk with the install. ▸r/cross-volume-move"""
+        """`os.rename` raises EXDEV across filesystems; only a copy crosses. ▸r/cross-volume-move"""
         real = os.rename
         calls = []
 
@@ -385,7 +385,7 @@ class TheSwapTest(unittest.TestCase):
             "a cache on another volume left the update uninstalled")
 
     def test_a_copy_that_dies_part_way_leaves_no_half_install(self):
-        """Once the install has been renamed aside its path is free, so a copy that fails part way populates it with a fragment. ▸r/cross-volume-move"""
+        """A copy failing part way leaves a fragment at the freed path. ▸r/cross-volume-move"""
         real = os.rename
         real_move = shutil.move
         calls = []
@@ -439,7 +439,7 @@ class TheNetworkDoorTest(unittest.TestCase):
             return handle.read()
 
     def test_the_updater_opens_no_url_of_its_own(self):
-        """Scanned as a CALL, not as the word - naming the door in prose made the first version match itself. ▸p/updater-shape"""
+        """Scanned as a call, not as the word. ▸p/updater-shape"""
         self.assertNotIn(
             "urlopen(", self._source(),
             "updater.py opens a URL directly, so the suite's block on "
@@ -447,7 +447,7 @@ class TheNetworkDoorTest(unittest.TestCase):
             "reach GitHub")
 
     def test_the_feed_is_only_consulted_when_asked(self):
-        """Nothing runs at import - a module-level call would check for updates on every panel open. ▸p/updater-shape"""
+        """Nothing runs at import, or every panel open would check for updates. ▸p/updater-shape"""
         source = self._source()
         module_level = [line for line in source.splitlines()
                         if line[:1].strip() and "check(" in line
@@ -459,7 +459,7 @@ class TheNetworkDoorTest(unittest.TestCase):
 
 
 class TheAboutTabCanActuallyRunAnInstall(unittest.TestCase):
-    """The Qt slot no behaviour test reached, driven at the seam with the updater's two halves stubbed. ▸p/updater-shape"""
+    """The Qt slot, driven at the seam with both updater halves stubbed. ▸p/updater-shape"""
 
     def setUp(self):
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -555,7 +555,7 @@ class TheAboutTabCanActuallyRunAnInstall(unittest.TestCase):
 
 
 class TheAboutTabOffersTheUpdateInOnePlace(unittest.TestCase):
-    """One permanent version line and one button that morphs: every answer has the same home, and no row appears or disappears to make room for it. ▸p/updater-shape"""
+    """One permanent version line and one morphing button; no row comes or goes. ▸p/updater-shape"""
 
     def setUp(self):
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -573,7 +573,7 @@ class TheAboutTabOffersTheUpdateInOnePlace(unittest.TestCase):
         return dialog
 
     def _form(self, dialog):
-        """The About form, reached through the version line - the dialog keeps no handle on it for a test to lean on."""
+        """The About form, reached through the version line; the dialog keeps no handle on it."""
         from PySide6 import QtWidgets
 
         return dialog._lbl_version.parentWidget().findChild(
@@ -763,7 +763,7 @@ class TheShelfToolAsksTheSameQuestion(unittest.TestCase):
 
 
 class AReleaseIsStagedIntoTheINSTALLShape(unittest.TestCase):
-    """The middle of the update, which shipped missing - a release zip is the whole repo and the install is four entries of it, so staging is a real step and not a rename. ▸p/updater-shape"""
+    """Staging: the install is four entries of a whole-repo release zip. ▸p/updater-shape"""
 
     def setUp(self):
         self.dir = tempfile.mkdtemp(prefix="amaze_update_")
@@ -771,11 +771,11 @@ class AReleaseIsStagedIntoTheINSTALLShape(unittest.TestCase):
 
     def _release_zip(self, root="owner-repo-abc1234", extras=True,
                      omit=()):
-        """A zip shaped like GitHub's zipball for a tag - `root` is a PREFIX, not a format slot, so an empty one must leave member names relative. ▸p/updater-shape"""
+        """A zip shaped like a GitHub tag zipball; an empty `root` leaves names relative. ▸p/updater-shape"""
         import zipfile
 
         path = os.path.join(self.dir, "release.zip")
-        prefix = (root + "/") if root else ""    # NOT `"%s/%s" %` - that writes `/scripts/...` for an empty root, an absolute path the containment check rightly refuses ▸p/updater-shape
+        prefix = (root + "/") if root else ""    # not a format string: an empty root would give an absolute `/scripts/...` path
         with zipfile.ZipFile(path, "w") as bundle:
             for entry in updater.INSTALL_ENTRIES:
                 if entry in omit:
@@ -810,7 +810,7 @@ class AReleaseIsStagedIntoTheINSTALLShape(unittest.TestCase):
         self.assertIn("Nothing has been changed", str(caught.exception))
 
     def test_a_member_that_escapes_the_staging_folder_is_refused(self):
-        """The archive comes from a URL the release feed named, so a member called `../../x` writes wherever it points. ▸p/updater-shape"""
+        """A member called `../../x` from a feed-named URL must not escape. ▸p/updater-shape"""
         import zipfile
 
         path = os.path.join(self.dir, "evil.zip")
@@ -832,7 +832,7 @@ class AReleaseIsStagedIntoTheINSTALLShape(unittest.TestCase):
         self.assertIn("not a zip archive", str(caught.exception))
 
     def test_a_flat_archive_works_too(self):
-        """An uploaded release asset need not wrap itself in a folder; only GitHub's generated zipball does. ▸p/updater-shape"""
+        """An uploaded asset need not wrap itself in a folder as the zipball does. ▸p/updater-shape"""
         staged = updater.stage_release(
             self._release_zip(root="", extras=False),
             os.path.join(self.dir, "staged"))
@@ -874,7 +874,7 @@ class AReleaseIsStagedIntoTheINSTALLShape(unittest.TestCase):
 
 
 class AReleaseIsCheckedBeforeItIsTrusted(_FeedMixin):
-    """What arrives over the wire is a file a remote catalogue named, and it is about to REPLACE the running install. ▸r/release-digest"""
+    """The download is about to replace the running install, so it is verified. ▸r/release-digest"""
 
     def setUp(self):
         self.dir = tempfile.mkdtemp(prefix="amaze_verify_")
@@ -894,7 +894,7 @@ class AReleaseIsCheckedBeforeItIsTrusted(_FeedMixin):
         self.assertEqual(len(self.body), result.size)
 
     def test_the_generated_zipball_carries_no_digest(self):
-        """GitHub publishes none for the archive it generates, so this path is honestly unverified rather than falsely reassuring."""
+        """GitHub publishes no digest for its generated archive, so this path stays unverified."""
         self.answer({"tag_name": "2.0", "assets": [],
                      "zipball_url": "https://x.invalid/src.zip"})
         result = updater.check("1.0")
@@ -910,7 +910,7 @@ class AReleaseIsCheckedBeforeItIsTrusted(_FeedMixin):
         self.assertTrue(os.path.exists(path))
 
     def test_a_SUBSTITUTED_file_of_the_right_length_is_refused(self):
-        """The length check cannot see this one: the bytes are a different file of exactly the declared size."""
+        """A different file of exactly the declared size, which the length check cannot see."""
         swapped = b"PK\x03\x04" + b"X" * (len(self.body) - 4)
         self.assertEqual(len(self.body), len(swapped))
         self.assertNotEqual(self.body, swapped)
@@ -932,7 +932,7 @@ class AReleaseIsCheckedBeforeItIsTrusted(_FeedMixin):
         self.assertIn("cannot compute", str(caught.exception))
 
     def test_a_body_that_never_ends_is_cut_at_the_ceiling(self):
-        """Without the ceiling this writes until the disk is full - the read loop's only other exit is the server choosing to stop."""
+        """Without the ceiling the read loop writes until the server stops or the disk fills."""
         class _Endless(_Response):
             def read(self, *args):
                 return b"\0" * 65536
@@ -962,7 +962,7 @@ class AReleaseIsCheckedBeforeItIsTrusted(_FeedMixin):
         self.assertIn("over 10 bytes", str(caught.exception))
 
     def test_an_archive_that_unpacks_to_gigabytes_is_refused(self):
-        """A zip bomb is small on the wire and enormous on disk, so only the header's declared expanded size sees it coming."""
+        """A zip bomb is caught by the header's declared expanded size."""
         import zipfile
         archive = os.path.join(self.dir, "bomb.zip")
         with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as bundle:
@@ -981,7 +981,7 @@ class AReleaseIsCheckedBeforeItIsTrusted(_FeedMixin):
                         "stand for a bomb")
 
     def test_an_ordinary_release_is_nowhere_near_the_ceilings(self):
-        """The ceilings are guards, not a budget the real release lives inside - 41MB tracked today against 256/512MB."""
+        """The ceilings are guards, far above the size of a real release."""
         self.assertGreater(updater.MAX_DOWNLOAD_BYTES, 200 * 1024 * 1024)
         self.assertGreaterEqual(updater.MAX_UNPACKED_BYTES,
                                 updater.MAX_DOWNLOAD_BYTES)

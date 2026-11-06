@@ -1,4 +1,4 @@
-"""The Grid area's MENU: one builder over a per-section entry table - the table says what the UI text register says, and the builder turns it into exactly the menu that shipped. THE PINNED MENUS BELOW ARE RECORDED OUTPUT of the six handlers this replaced, captured at 723a574 before a line was moved, not a transcription of intent - do not correct one to match a reading of the code. The single deliberate difference is the empty selection: the menu always opens and entries needing a selection grey out."""
+"""The Grid menu: one builder over per-section tables; pinned menus are recorded shipped output."""
 
 import ast
 import contextlib
@@ -37,7 +37,7 @@ MENU_CONTEXTS = ("MaterialSection", "GradientSection", "CopSection",  # every co
 
 
 def render(menu) -> list:
-    """One string per row: the label, an off marker when greyed, and a submenu's children inline - the same shape the recorder used against the six handlers, so the two are comparable."""
+    """One string per row: label, an off marker when greyed, and a submenu's children inline."""
     out = []
     for action in menu.actions():
         if action.isSeparator():
@@ -55,7 +55,7 @@ def render(menu) -> list:
 
 
 class TheTableIsWellFormED(unittest.TestCase):
-    """Reads the tables themselves - no panel, no Qt: every name in a row has to resolve on the class that declares it, because a misspelled name in a menu is invisible until somebody right-clicks that one section in Houdini (the old menus needed a REGEX test over panel.py for exactly that)."""
+    """Every name in a menu table resolves on the class that declares it; no panel, no Qt."""
 
     def test_every_context_that_shows_tiles_has_a_table(self):
         for name in MENU_CONTEXTS:
@@ -79,7 +79,7 @@ class TheTableIsWellFormED(unittest.TestCase):
                         % (name, entry.label, entry.verb))
 
     def test_every_named_FACT_exists_on_the_context(self):
-        """A name that resolves to nothing reads as False, so a missing `shown` silently deletes the entry and a missing `needs` silently greys it forever - both look like a design decision."""
+        """A missing name reads as False: a missing `shown` deletes the entry, a missing `needs` greys it."""
         for name in MENU_CONTEXTS:
             context = getattr(sections, name)
             for entry in context.GRID_MENU:
@@ -96,7 +96,7 @@ class TheTableIsWellFormED(unittest.TestCase):
                             "have" % (name, entry.label, fact))
 
     def test_a_submenu_row_declares_a_verb_to_carry_its_payload(self):
-        """A submenu's children all dispatch through the PARENT's verb with the child's payload - a parent with children and no verb builds rows that do nothing."""
+        """A submenu's children dispatch through the parent's verb, so a parent with children needs one."""
         for name in MENU_CONTEXTS:
             context = getattr(sections, name)
             for entry in context.GRID_MENU:
@@ -109,21 +109,21 @@ class TheTableIsWellFormED(unittest.TestCase):
 
 
 class NoMenuIsWrittenInThePanelAnyMore(unittest.TestCase):
-    """The source half: the six handlers are gone, and a seventh must not grow back beside the table - a menu written in panel.py is a menu nothing in this file can see."""
+    """The six panel handlers are gone, and no seventh menu may grow in panel.py beside the table."""
 
     def _panel_tree(self):
         with open(os.path.join(PACKAGE, "panel", "panel.py"),
                   encoding="utf-8") as handle:
             return ast.parse(handle.read())
 
-    MAY_BUILD_A_MENU = {  # the menus panel.py may still build - NAMED, not counted: a count says one too many without saying which, and deleting a hand menu has to come back here and delete its line
+    MAY_BUILD_A_MENU = {  # the menus panel.py may still build, named rather than counted
         "init_ui",                      # the toolbar's Filter menu
         "_material_lop_viewport_drop",  # the Drag & Drop Engine's
         "_build_menus",                 # the online eye's kind filter (All/Materials/Colors/Nodes/Code) - a toolbar menu, not a grid route
     }
 
     def test_ONE_builder_constructs_the_GRID_menu(self):
-        """A QMenu built for the grid anywhere but the builder is a second route through the area wearing the table's clothes."""
+        """A grid QMenu built anywhere but the builder is a second route around the table."""
         with open(os.path.join(PACKAGE, "panel", "grid.py"),
                   encoding="utf-8") as handle:
             self.assertIn("QtWidgets.QMenu(", handle.read(),
@@ -145,7 +145,7 @@ class NoMenuIsWrittenInThePanelAnyMore(unittest.TestCase):
 
 
 class TheBuilderTidiesItsOwnSeparators(unittest.TestCase):
-    """A table with conditional rows produces leading, doubled and trailing dividers - each hand-written menu avoided all three by luck that held while nobody added an entry."""
+    """A table with conditional rows yields leading, doubled and trailing dividers; the builder tidies."""
 
     def test_no_leading_doubled_or_trailing_divider_survives(self):
         for rows, tidy in (([None, "b"], ["b"]),
@@ -157,7 +157,7 @@ class TheBuilderTidiesItsOwnSeparators(unittest.TestCase):
 
 
 class TheMenusAreWhatSHIPPED(unittest.TestCase):
-    """The recorded output of the six handlers, driven through the one builder - captured from the shipped code at 723a574, so a failure here is the rewrite changing what a person sees, not a disagreement about what it should be. The EMPTY cases are the one deliberate change and are marked where they differ."""
+    """The six handlers' recorded output through the one builder; the empty cases are the one change."""
 
     @classmethod
     def setUpClass(cls):
@@ -177,7 +177,7 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
                 proxy.index(row, 0),
                 flags.ClearAndSelect if position == 0 else flags.Select)
         if rows:
-            selection.setCurrentIndex(proxy.index(rows[0], 0),  # NoUpdate: the view's own setCurrentIndex CLEARS the selection, which reduced every multi-selection here to one row and passed the one-selected menu
+            selection.setCurrentIndex(proxy.index(rows[0], 0),  # NoUpdate: the view's own setCurrentIndex clears the selection to one row
                                       flags.NoUpdate)
         self.assertEqual(
             len(rows), len(selection.selectedIndexes()),
@@ -240,7 +240,7 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
                       "the swatch rows do not carry their hex codes")
 
     def test_color_with_two_selected(self):
-        """The per-entry actions grey; Customize, Favorite and Delete act on the whole selection like every section."""
+        """The per-entry actions grey; Customize, Favorite and Delete act on the whole selection."""
         shown = self._show("gradient", (0, 1))
         self.assertEqual(
             ["Apply(off)", "----", "Capture(off)", "Customize", "Favorite",
@@ -253,7 +253,7 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
                                 "%r stayed live on a multi-selection" % row)
 
     def test_node_keeps_its_shape(self):
-        """The fixture has no Node assets, so this is the empty case - exactly the one that used to produce no menu at all."""
+        """The fixture has no Node assets, so this is the empty case, which once produced no menu."""
         self.assertEqual(
             ["Load(off)", "----", "Update Render(off)", "Capture(off)",
              "Customize(off)", "Favorite(off)", "Export Package(off)",
@@ -271,7 +271,7 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
                 self.assertEqual(expected, self._show("code", rows))
 
     def test_code_offers_NEW_FILE_over_an_empty_selection(self):
-        """The one entry in any section that acts on nothing, so the one that stays live when nothing is selected."""
+        """The one entry that acts on nothing, so the one live when nothing is selected."""
         shown = self._show("code")
         self.assertEqual("New File", shown[0])
         self.assertTrue(all(row.endswith("(off)") for row in shown[1:]
@@ -309,7 +309,7 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
                 self.assertEqual(expected, self._show("file", rows[:count]))
 
     def test_online_menu_over_an_empty_selection(self):
-        """Built directly rather than by entering the online world (that world reaches the network) - CHANGED 2026-08-03: it used to show Refresh alone, because both imports were built only `if records`; Refresh acts on nothing, so it is the one that stays live."""
+        """Built directly, as the online world reaches the network; only Refresh stays live when empty."""
         context = self.panel.online_context
         menu, _verbs = grid.build_grid_menu(self.panel, context, [], None)
         plugins = (off_unless_loaded("Redshift"), off_unless_loaded("Octane"))
@@ -320,7 +320,7 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
             render(menu))
 
     def test_online_imports_say_HOW_MANY_they_are_about_to_fetch(self):
-        """The count suffix, on a multi-selection only - rendered from the indexes the menu was built with, and the import runs on those same indexes; the old menu counted one read of the selection and imported from another."""
+        """On a multi-selection the imports show a count, from the same indexes the import runs on."""
         context = self.panel.online_context
         proxy = self.panel.matx_sorted_model
         pretend = [proxy.index(row, 0) for row in range(3)]
@@ -339,7 +339,7 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
 
 
 class TheRowTheMenuIsAboutIsAlwaysSELECTED(unittest.TestCase):
-    """Qt's current index and its selection move independently, so a current index OUTSIDE the selection is reachable - File's Load, Show Location and Capture Preview each read it raw, and an invalid-only fallback cannot see the case where it is valid and points at a row nobody selected."""
+    """A current index outside the selection is ignored: Qt moves the two independently."""
 
     @classmethod
     def setUpClass(cls):
@@ -354,7 +354,7 @@ class TheRowTheMenuIsAboutIsAlwaysSELECTED(unittest.TestCase):
         flags = QtCore.QItemSelectionModel.SelectionFlag
         selection = panel.thumblist.selectionModel()
         selection.select(proxy.index(2, 0), flags.ClearAndSelect)
-        selection.setCurrentIndex(proxy.index(0, 0), flags.NoUpdate)  # a VALID current index somewhere else entirely; the view's own setCurrentIndex would clear the selection and make the condition unreachable
+        selection.setCurrentIndex(proxy.index(0, 0), flags.NoUpdate)  # a valid current index elsewhere; the view's own setCurrentIndex would clear the selection
         self.assertEqual(
             [2], [i.row() for i in selection.selectedIndexes()],
             "the setup did not leave the current index outside the "
@@ -362,7 +362,7 @@ class TheRowTheMenuIsAboutIsAlwaysSELECTED(unittest.TestCase):
 
         seen = {}
 
-        def _capture(_panel, context, entries, indexes, current):  # patches build_menu, not build_grid_menu - the open path goes through the general builder since the sidebar menus joined it, and patching the grid wrapper caught nothing
+        def _capture(_panel, context, entries, indexes, current):  # patches build_menu, the general builder the open path uses, not the grid wrapper
             seen["current"] = current
             seen["indexes"] = list(indexes)
             return QtWidgets.QMenu(), {}
@@ -380,7 +380,7 @@ class TheRowTheMenuIsAboutIsAlwaysSELECTED(unittest.TestCase):
 
 
 class AMenuDoesNotOUTLIVEItsRightClick(unittest.TestCase):
-    """A QMenu is built with the panel as its PARENT, so nothing deletes it when it closes: twenty right-clicks in Materials left FORTY QMenus alive (the menu plus its Copy To submenu, every time) for the rest of the Houdini session, in all six handlers - one builder means one `deleteLater`."""
+    """A grid menu is deleted once closed: parented to the panel, nothing else would delete it."""
 
     @classmethod
     def setUpClass(cls):
@@ -403,7 +403,7 @@ class AMenuDoesNotOUTLIVEItsRightClick(unittest.TestCase):
                                lambda *a, **k: None):
             for _ in range(20):
                 panel._section().rc_menu()
-        QtWidgets.QApplication.sendPostedEvents(  # processEvents NEVER delivers DeferredDelete (research.md - Widget teardown); without this the count is unchanged either way and the test is vacuous
+        QtWidgets.QApplication.sendPostedEvents(  # processEvents never delivers DeferredDelete; without this the test is vacuous
             None, QtCore.QEvent.Type.DeferredDelete)
 
         self.assertEqual(
@@ -413,7 +413,7 @@ class AMenuDoesNotOUTLIVEItsRightClick(unittest.TestCase):
 
 
 class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
-    """The bug family the dict retires: a dismissed menu answers None and so does a conditional entry that was never built, so equality dispatch matched None == None and ran the Redshift converter on every dismissed right-click - the guard had to be remembered per entry, while a dict lookup on None finds nothing."""
+    """Dispatch is by dict lookup: a dismissed menu answers None and must run nothing."""
 
     @classmethod
     def setUpClass(cls):
@@ -510,7 +510,7 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
         self.assertEqual(["Convert to > [MaterialX(off), Redshift(off), Octane(off)](off)"], row)
 
     def test_convert_to_dispatches_by_the_child_picked(self):
-        """One verb, the payload names the renderer: Redshift reaches the Redshift door and nothing else, Karma the Karma one."""
+        """One verb, the payload names the renderer: each child reaches its own converter and no other."""
         panel = self.panel
         panel.section_tabs.setChecked("material")
         QtWidgets.QApplication.processEvents()
@@ -523,7 +523,7 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
                           mock.call("Karma")], convert.call_args_list)
 
     def test_online_import_carries_the_renderer_to_its_door(self):
-        """Drawn as C06a/C06b: the child picked under either Import entry reaches the panel door as `renderer`, and a bare call (the double-click door) still means Karma."""
+        """C06a/C06b: the Import child picked reaches the panel as `renderer`; a bare call means Karma."""
         panel = self.panel
         context = panel.online_context
         records = ["rec"]
@@ -784,7 +784,7 @@ class EveryVerbREACHESItsOwner(unittest.TestCase):
                     self.assertTrue(verb.called)
 
     def test_CUSTOMIZE_reaches_the_shared_handler_in_every_section(self):
-        """The typo class the old regex test guarded: the model pair was spelled out inside five menus and a wrong name there is invisible until somebody right-clicks that section - `tile_models()` on the context answers with models it actually has."""
+        """`tile_models()` answers the models each context has, so Customize reaches a real pair."""
         for key in ("material", "gradient", "code", "file"):
             with self.subTest(section=key):
                 with mock.patch.object(type(self.panel),

@@ -20,12 +20,12 @@ _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 import hou  # noqa: E402,F401
 from amaze.panel import sections  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
-from amaze.core import file_library, texture_library  # noqa: E402 - AFTER test_support, which redirects config_root and the cache; a module resolving a path at import time would reach the user's own files
+from amaze.core import file_library, texture_library  # noqa: E402 - after test_support, which redirects config_root and the cache
 from amaze.prefs import prefs as prefs_module  # noqa: E402
 
 
 class FilterMenuEngineTest(unittest.TestCase):
-    """One menu, one button, five sections - ONE engine: the panel carries a label to a section and a value back, and never learns what a value means."""
+    """One filter engine for five sections; the panel passes labels and values, never their meaning."""
 
     @classmethod
     def setUpClass(cls):
@@ -39,7 +39,7 @@ class FilterMenuEngineTest(unittest.TestCase):
         return [act.text() for act in self.panel.menu_filter.actions() if not act.isSeparator()]
 
     def test_every_section_fills_the_menu_with_its_own_entries(self):
-        """The design, tab by tab: four sections pin their lists exactly; Materials is prefs-gated so only its everything-entry is fixed."""
+        """Four sections pin their lists exactly; Materials is prefs-gated, so only its first is fixed."""
         expected = {
             "gradient": ["All", "1 color", "2 colors", "3 colors",
                          "4 colors", "5+ colors"],
@@ -80,7 +80,7 @@ class FilterMenuEngineTest(unittest.TestCase):
                          "the group holds actions the menu no longer shows")
 
     def test_a_pick_narrows_the_grid_and_all_puts_it_back(self):
-        """Driven through the real menu action, in the section whose rows the fixture can count: one language in, everything out."""
+        """Through the real menu action on countable rows: one language in, everything out."""
         self._labels_for("code")
         model = self.panel.code_model
         total = model.rowCount()
@@ -190,7 +190,7 @@ class FilterMenuEngineTest(unittest.TestCase):
                          "a saved Karma did not bring the MaterialX entry back")
 
     def test_a_choice_no_longer_offered_falls_back_to_all(self):
-        """A renderer switched off in Preferences takes its entry with it - the menu must not be left checked on nothing."""
+        """A renderer switched off in Preferences takes its entry, leaving nothing checked on nothing."""
         self._labels_for("material")
         if "Redshift" not in self.panel.filter_actions:
             self.skipTest("Redshift not enabled in this fixture")
@@ -215,7 +215,7 @@ class FilterMenuEngineTest(unittest.TestCase):
             "longer offers")
 
     def test_the_palette_sizes_actually_filter(self):
-        """Colors filters on a range, so the last entry is open: `5+ colors` has to keep a 9-color palette while `4 colors` does not."""
+        """Colors filters on a range: `5+ colors` keeps a 9-color palette while `4 colors` does not."""
         self._labels_for("gradient")
         model = self.panel.gradient_model
         proxy = self.panel.gradient_sorted_model
@@ -243,7 +243,7 @@ class FilterMenuEngineTest(unittest.TestCase):
                          "All does not put every palette back")
 
     def test_the_file_kinds_actually_filter(self):
-        """The File section's rows are one list of several KINDS, so its filter is the way back to one of them - driven on a real FileFiles over a real folder (the fixture panel has no folders registered); the proxy and the model are the shipped ones either way."""
+        """File rows mix several kinds and the filter picks one, on a real FileFiles over a real folder."""
         folder = tempfile.mkdtemp(prefix="amaze_filter_kinds_")
         self.addCleanup(shutil.rmtree, folder, ignore_errors=True)
         for name in ("a.png", "b.png", "c.obj", "d.hip", "e.txt"):
@@ -254,7 +254,7 @@ class FilterMenuEngineTest(unittest.TestCase):
         with open(os.path.join(home, "settings.json"), "w",
                   encoding="utf-8") as handle:
             json.dump({"file_folders": [folder]}, handle)
-        prefs = prefs_module.Prefs()  # the real Prefs: file_folders is read-only, and a stub would be a second copy of what FileFiles reads
+        prefs = prefs_module.Prefs()  # the real Prefs, as file_folders is read-only
         prefs.path = home
         prefs.load()
         model = file_library.FileFiles(prefs)
@@ -280,7 +280,7 @@ class FilterMenuEngineTest(unittest.TestCase):
 
 
 class RememberedFilterSettingsTest(unittest.TestCase):
-    """The settings file, a contract with data already on disk: one key per section, where there was one renderer for Materials alone."""
+    """The settings file is a contract with data on disk: one filter key per section."""
 
     def _prefs(self, settings):
         home = tempfile.mkdtemp(prefix="amaze_filter_settings_")
@@ -322,7 +322,7 @@ class RememberedFilterSettingsTest(unittest.TestCase):
 
 
 class TypingCostsOnePassNotOnePerKeystroke(unittest.TestCase):
-    """The box is DEBOUNCED and the remove/set pair behind it is BATCHED. Driven through `textEdited`, the signal a keystroke emits, counting `invalidateFilter`, the pass itself. ▸p/filter-pass-cost"""
+    """Debounced box, batched filter pair, counted by `invalidateFilter`. ▸p/filter-pass-cost"""
 
     @classmethod
     def setUpClass(cls):
@@ -337,7 +337,7 @@ class TypingCostsOnePassNotOnePerKeystroke(unittest.TestCase):
         _app.processEvents()
 
     def _type(self, word):
-        """What a keystroke does: the text lands in the box AND `textEdited` carries it. Qt emits `textEdited` for a typed change only, which is why the clear button hand-calls the filter."""
+        """A keystroke: the text lands and `textEdited` carries it; Qt emits it only for typed changes."""
         box = self.panel.line_filter
         for length in range(1, len(word) + 1):
             box.setText(word[:length])
@@ -356,7 +356,7 @@ class TypingCostsOnePassNotOnePerKeystroke(unittest.TestCase):
     @staticmethod
     @contextlib.contextmanager
     def _passes():
-        """Count the filter passes a block runs, on the CLASS: the pass is `invalidateFilter`, where the ~24ms goes, and a deferred `refilter` returns at once and would count as one."""
+        """Count the `invalidateFilter` passes a block runs, on the class, where the time goes."""
         from amaze.core import grid_proxy
         real = grid_proxy.GridProxyModel.invalidateFilter
         seen = []
@@ -388,7 +388,7 @@ class TypingCostsOnePassNotOnePerKeystroke(unittest.TestCase):
             "the settled word cost %d passes, not one" % settled)
 
     def test_swapping_a_name_search_for_a_tag_search_costs_ONE_pass(self):
-        """The gesture that pays for `one_pass`: a `:` drops the name filter and sets the tag filter, and each of those refilters on its own. Typing a word from empty does not - a removeFilter with nothing to remove returns without a pass."""
+        """A `:` drops the name filter and sets the tag filter, two refilters `one_pass` makes one."""
         self._type("metal")
         self._settle()
         with self._passes() as seen:
@@ -430,7 +430,7 @@ class TypingCostsOnePassNotOnePerKeystroke(unittest.TestCase):
         """A debounce that dropped the last keystroke would cost more than the passes it saves."""
         self._type("metal")
         self._settle()
-        stored = getattr(    # the proxy's own store: MultiFilterProxyModel offers setFilter/removeFilter and no reader, so this is the only way to see WHICH value landed
+        stored = getattr(    # the proxy's own store, as MultiFilterProxyModel has no reader
             self.panel.material_sorted_model, "_filters", {})
         self.assertEqual(
             "metal", stored.get(QtCore.Qt.ItemDataRole.DisplayRole),

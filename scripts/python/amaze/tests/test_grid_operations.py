@@ -1,4 +1,4 @@
-"""The Grid area's OPERATIONS: one selection, one owner per verb. - BATCH 6 of the four-areas restructure, the second half of it. The area owns what is shown and in what order (test_grid_order.py) and it owns THE SELECTION AND WHAT IS DONE TO IT - which is where the copies were: - * Favourite was written FIVE times, once inside each section's right-click handler, each mapping the selection through its own proxy and calling a differently-named model method (`toggle_fav(index)` for the asset sections, `toggle_favorite(row)` for File and Color); * three of the five wrapped the call in `layoutAboutToBeChanged` / `layoutChanged` on the SOURCE model to force the grid to re-map, and two did not - so on File and Color, un-favouriting a tile with Favourites-only on left it in the grid with its star off. The invariant belongs to the proxy (core/grid_proxy.py) and now lives there, which is what lets every caller stop carrying it; * Update Render was written three times and MISSING from a fourth. - A verb the Grid offers is now one method on the Section: the panel hands over the selection and never knows which model method a section calls or what a row is keyed by."""
+"""The Grid area's operations: each verb is one Section method that is handed the selection."""
 
 import ast
 import json
@@ -30,7 +30,7 @@ PACKAGE =os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def menu_verbs_calling(*attributes):
-    """Every `menu_*` verb in sections.py that calls one of these methods, as "name:line". - These scans used to walk the six `_rc_menu` handlers in panel.py. Those are gone (batch 6), so the same scan over the same file would now find nothing and pass whatever the code did - the vacuous shape practice.md names. A copy of one of these verbs would be written as a `menu_*` method beside the table, so that is what is read."""
+    """Every `menu_*` verb in sections.py that calls one of these methods, as name:line."""
     with open(os.path.join(PACKAGE, "panel", "sections.py"),
               encoding="utf-8") as handle:
         tree = ast.parse(handle.read())
@@ -51,14 +51,14 @@ def menu_verbs_calling(*attributes):
 class EveryContextOwnsTheVerbsItOffers(unittest.TestCase):
 
     def test_a_context_with_no_tiles_answers_harmlessly(self):
-        """The online world has rows but no favourite state - the star is disabled there, and the verb must be a no-op rather than an error if anything ever reaches it."""
+        """Online rows have no favourite state, so the verb is a no-op there, never an error."""
         context = sections.OnlineContext.__new__(sections.OnlineContext)
         self.assertFalse(sections.OnlineContext.takes_favourites)
         context.toggle_favourite([])          # must not raise
 
 
 class OnlyASectionThatRENDERSOffersUpdatePreview(unittest.TestCase):
-    """Update Render was written three times, and the fourth section with a `render_thumbnail` method was offered it for exactly one commit before a live test showed the entry doing nothing at all - which was the correct outcome, and the more interesting fact. - A preview is either RENDERED or DERIVED. Materials and Node assets render: a real renderer runs over saved files and can produce a different picture than last time. Code and Color are derived - a snippet is painted from its own text under a CONTENT-ADDRESSED key (`_preview_key` = code hash + language), a palette from its ramp - so an edit repaints them by itself and a re-render repaints the identical image. - Having the method is not the test. Being able to produce a DIFFERENT picture is."""
+    """Update Render only where a preview is rendered (Materials, Nodes), never derived (Code, Color)."""
 
     def test_only_a_section_that_renders_puts_it_in_a_menu(self):
         """The flag says who can re-render, the menu gate reads it, and File asks the selection."""
@@ -81,25 +81,25 @@ class OnlyASectionThatRENDERSOffersUpdatePreview(unittest.TestCase):
                     "selection" % name)
 
     def _preview_gate(self, name):
-        """Update Render is ONE row of the shared tail, in every section's table, so a label check says nothing and what decides is the row's `shown` GATE - whether that answer survives into a real menu is driven end to end in test_grid_menu.py."""
+        """Update Render is one row of the shared tail, so the row's `shown` gate is what decides."""
         entry = next(e for e in sections.GRID_MENU_TAIL
                      if e.label == "Update Render")
         self.assertTrue(
             entry.shown,
             "Update Render is unconditional in the shared tail, so "
             "every section offers it whatever it can do")
-        context = getattr(sections, name)(None)  # a panel-less instance: the gate reads facts about the SECTION, and the one override that reads models answers False for an absent one rather than raising
+        context = getattr(sections, name)(None)  # a panel-less instance: the gate reads the section, and False for an absent model
         return getattr(context, entry.shown)([], None)
 
 
 class DeleteIsONEShapeWithFourSetsOfWORDS(unittest.TestCase):
-    """Delete was written four times, and every copy had the same shape: count the DISTINCT source rows, ask with a sentence that says what goes and how many, remove HIGHEST ROW FIRST because a removal shifts everything below it, then refresh the sidebar because a category may just have emptied. - Only the sentence is really per-section - a material's files, a node asset's networks, a snippet's applied code, a palette's applied ramps. The descending order is the part a fifth copy would get wrong, silently: ascending removal deletes the wrong rows and only for multi-selections."""
+    """Delete counts distinct rows, asks, removes highest row first, then refreshes the sidebar."""
 
-    DELETING = ("MaterialSection", "CopSection", "CodeSection",   # the contexts whose Delete removes a LIBRARY record - File is deliberately absent, its rows being files on disk and the section having no Delete at all
+    DELETING = ("MaterialSection", "CopSection", "CodeSection",   # Delete removes a library record; File has no Delete, its rows are files
                 "GradientSection")
 
     def test_the_FILE_section_offers_no_delete_at_all(self):
-        """A File row is somebody's photograph or scene on disk. The section browses locations; it does not own what is in them."""
+        """A File row is a file on disk; the section browses locations and owns nothing in them."""
         self.assertFalse(sections.FileSection.deletes_rows)
 
     def test_each_context_says_what_deleting_COSTS(self):
@@ -142,7 +142,7 @@ class DeleteIsONEShapeWithFourSetsOfWORDS(unittest.TestCase):
 
 
 class TheCUSTOMIZEDialogSurvivesAModelRESET(unittest.TestCase):
-    """The audit's find, and a REGRESSION this session introduced. - `QPersistentModelIndex` tracks rows across inserts and removals - but `endResetModel()` invalidates EVERY one of them even when nothing was removed. `FileFiles._load()` is a full reset, and the File section reaches it on any ordinary refresh: closing Preferences does it twice, and so does Show All Files on the sidebar menu. - So the dialog that used to paint the WRONG tile started painting NOTHING - the icon and, on a single selection, the new tile name both dropped silently. IDENTITY, not a Qt index and not a row number: every model family already keys its icons by something stable (an asset id, a file path, a palette uid) and now says so through `tile_key(row)`."""
+    """A model reset voids every persistent index, so tiles are found by `tile_key(row)` identity."""
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
@@ -195,7 +195,7 @@ class TheCUSTOMIZEDialogSurvivesAModelRESET(unittest.TestCase):
                     "re-ordered under the open dialog")
 
     def test_every_tile_model_says_what_its_rows_are_KEYED_by(self):
-        """The three families, one question. Without it the panel has to know that a material is an id, a file is a path and a palette is a uid."""
+        """The three families, one question: an id, a path or a uid, without the panel knowing which."""
         for attr in ("material_model", "cop_model", "code_model",
                      "file_files_model", "gradient_model"):
             with self.subTest(model=attr):
@@ -216,7 +216,7 @@ class TheCUSTOMIZEDialogSurvivesAModelRESET(unittest.TestCase):
 
 
 class NoMENUKnowsHowToFavourite(unittest.TestCase):
-    """The five copies, as a source fact - a sixth section would have been a sixth copy, and the two that forgot the repaint show how that ends."""
+    """No menu verb favourites, deletes or relayouts rows itself, read from the source."""
 
     def test_no_right_click_handler_favourites_or_deletes_rows_itself(self):
         offenders = menu_verbs_calling("toggle_fav", "toggle_favorite",
@@ -262,14 +262,14 @@ class NoMENUKnowsHowToFavourite(unittest.TestCase):
 
 
 class FavouritingWorksInEverySection(unittest.TestCase):
-    """Through the real panel and the real models: the verb has to actually flip the star in all three archetypes, or one of them has been quietly wired to nothing."""
+    """Through the real panel and models, the verb flips the star in all three archetypes."""
 
     @classmethod
     def setUpClass(cls):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
 
     def _first_row(self, key, displaced=False):
-        """`displaced` filters the grid down to the LAST row, so the row under test sits at proxy 0 and somewhere else in the source. A verb that acts on the proxy's row number then acts on the wrong asset - and without it the two numbers agree and no assertion can tell (the sabotage round said exactly that)."""
+        """`displaced` filters to the last row, so proxy 0 is another source row and catches a mix-up."""
         panel = self.panel
         panel.section_tabs.setChecked(key)
         QtWidgets.QApplication.processEvents()
@@ -326,7 +326,7 @@ class FavouritingWorksInEverySection(unittest.TestCase):
                                  "%s's favourite did not toggle back" % key)
 
     def test_the_PANEL_hands_the_verb_to_whichever_context_is_showing(self):
-        """The entry point every menu calls. It used to BE the material implementation - `toggle_fav()` reached for `material_model` by name - so a panel-level verb that quietly keeps doing that works perfectly in Materials and does nothing anywhere else. Checked in a section that is NOT Materials, for that reason."""
+        """The entry point every menu calls, checked outside Materials so it cannot assume that model."""
         _context, proxy, index = self._first_row("gradient")
         role = self._favourite_role(self.panel, "gradient")
         before = bool(index.data(role))
@@ -342,7 +342,7 @@ class FavouritingWorksInEverySection(unittest.TestCase):
         QtWidgets.QApplication.processEvents()
 
     def test_unfavouriting_LEAVES_a_favourites_only_grid(self):
-        """The live defect, in the sections that had it: the star goes out and the tile stays, with the filter saying favourites."""
+        """With Favourites-only on, un-favouriting a tile takes it out of the grid."""
         for key in ("file", "gradient"):
             with self.subTest(section=key):
                 context, proxy, index = self._first_row(key)
@@ -418,7 +418,7 @@ class AStarOverASelectionWritesOnce(unittest.TestCase):
 
 
 class ANonModalDialogHoldsIDENTITYNotRowNumbers(unittest.TestCase):
-    """Customize opens NON-MODALLY - it has to, because its Custom Color button opens Houdini's own picker and a native modal lands UNDER a Qt exec loop (research.md). So the library can move while the dialog is open: a save appends, a delete shifts every row after it, a reload rebuilds the lot. - The handler captured plain ROW NUMBERS at open. Delete a tile while the dialog is up, press OK, and the icon lands on whatever now sits at that row - a different asset, silently."""
+    """Customize is non-modal, so the library can move under it; OK applies to the tile, not a row."""
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
@@ -435,7 +435,7 @@ class ANonModalDialogHoldsIDENTITYNotRowNumbers(unittest.TestCase):
         return dialog
 
     def test_a_single_selection_opens_showing_that_tile_s_own_tags(self):
-        """Through the PANEL's door, not the dialog's constructor: the constructor is already covered, and an empty field on a tagged tile is the failure being defended against."""
+        """Through the panel's door, not the dialog's constructor: a tagged tile opens with its tags."""
         self.model.set_tile_tags(2, "granite, polished")
         dialog = self._open_for(2)
         self.assertEqual("granite, polished", dialog.tags_edit.text(),
@@ -468,7 +468,7 @@ class ANonModalDialogHoldsIDENTITYNotRowNumbers(unittest.TestCase):
             "the rows shifted under a non-modal dialog")
 
     def test_a_selection_that_is_GONE_applies_to_nothing(self):
-        """Delete the very tile being customised and the choice has no subject left. Applying it to the row number would paint the asset that moved into its place."""
+        """Deleting the tile being customised leaves the choice no subject; no other asset is painted."""
         dialog = self._open_for(1)
         survivor_ids = [str(a.mat_id) for a in self.model.assets]
         del survivor_ids[1]
@@ -490,7 +490,7 @@ class ANonModalDialogHoldsIDENTITYNotRowNumbers(unittest.TestCase):
 
 
 class TheStarBadgeClickActsOnTheSELECTION(unittest.TestCase):
-    """The tile's star button flips every SELECTED row when the clicked tile is one of them, and just its own tile when it is not (settled 2026-08-21) - and only delegates whose grid can serve the flip wire the click at all."""
+    """The star flips the whole selection if its tile is selected, else just its own tile."""
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
