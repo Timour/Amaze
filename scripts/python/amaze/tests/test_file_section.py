@@ -1,4 +1,4 @@
-"""The File section merge's OWN inventions - the one-time prefs migration into the file_* quartet, the tab introducing itself once, `kind_for` routing, Copy Path's Houdini spelling, the OS-icon fallback, the per-kind double-click dispatch, and the hip drag (loads outside the panel, silent inside); the wider machinery stays pinned in test_hip_section, test_folder_sections, test_tile_icons and test_drag_gesture."""
+"""File section: prefs migration, tab intro, `kind_for` routing, Copy Path, OS icon, hip drag."""
 
 import json
 import os
@@ -33,7 +33,7 @@ from amaze.tests import test_support  # noqa: E402 - redirects the log
 
 
 def _prefs_with_settings(testcase, settings: dict, tag_favourites=True):
-    """A Prefs whose settings.json holds exactly `settings`, loaded - `library_user` goes IN the file because load() reads it back off disk (assigned-after is overwritten), and the favourites copy is tagged at this one door; `tag_favourites=False` deliberately writes the PRE-TAG shape an upgrading machine's settings.json actually holds."""
+    """A Prefs loaded from `settings`; `library_user` goes in the file, as load() reads it off disk."""
     home = tempfile.mkdtemp(prefix="amaze_file_prefs_")
     testcase.addCleanup(shutil.rmtree, home, ignore_errors=True)
     settings = dict(settings)
@@ -54,7 +54,7 @@ def _prefs_with_settings(testcase, settings: dict, tag_favourites=True):
 
 
 def _location_prefs(testcase, settings, tag_favourites=True):
-    """A Prefs over a fresh temp library, with `settings` loaded - the library is assigned into the settings BEFORE load(), because the first locations read runs the migration and a library assigned after is too late; the redirect assert below stops every test here from writing whatever library the settings actually name."""
+    """A Prefs over a fresh temp library, set before load() because the first read migrates."""
     library = tempfile.mkdtemp(prefix="amaze_loc_library_")
     testcase.addCleanup(shutil.rmtree, library, ignore_errors=True)
     data = dict(settings)
@@ -65,7 +65,7 @@ def _location_prefs(testcase, settings, tag_favourites=True):
                                  tag_favourites=tag_favourites)
     library = prefs.dir    # load() normalises the path; compare the resolved form
     testcase.assertTrue(
-        os.path.normcase(os.path.normpath(library)).startswith(    # normcase+normpath BOTH sides: prefs.dir answers the Houdini spelling, gettempdir() the platform's own
+        os.path.normcase(os.path.normpath(library)).startswith(    # normcase+normpath both sides: prefs.dir is Houdini-spelled, gettempdir() native
             os.path.normcase(os.path.normpath(tempfile.gettempdir()))),
         "the fixture is pointed at %r" % (library,))
     return prefs, library
@@ -92,7 +92,7 @@ class TheFileTabIntroducesItselfOnceTest(unittest.TestCase):
 
 
 class LocationsFollowTheLibraryTest(unittest.TestCase):
-    """The locations and File favourites move into the library and settings.json keeps the copy - REAL_SHAPE is shaped on the real settings measured 2026-08-05, deliberately keeping two locations carrying nothing but registration and one `show_all: False` override, the two cases a decoration-table composition or a falsy-dropping normaliser silently loses."""
+    """Locations and File favourites move into the library; settings.json keeps the copy."""
 
     REAL_SHAPE = {
         "directory": "",
@@ -149,7 +149,7 @@ class LocationsFollowTheLibraryTest(unittest.TestCase):
         self.assertTrue(prefs.data.get(locations_mod.MIGRATED_KEY))
 
     def test_a_copy_written_before_the_tag_loses_its_stars(self):
-        """An UNTAGGED entry in the settings copy is dropped, never adopted - deliberately ONE rule for an ownerless favourite, in the copy exactly as in the library store."""
+        """An untagged entry in the settings copy is dropped, never adopted, as in the library store."""
         prefs, _lib = self._prefs(
             dict(self.REAL_SHAPE, file_favorites=["/tex/hdr/017.hdr"]),
             tag_favourites=False)
@@ -158,7 +158,7 @@ class LocationsFollowTheLibraryTest(unittest.TestCase):
                          "whoever opened the library")
 
     def test_the_locations_land_even_when_the_favourites_have_no_owner(self):
-        """One migration half cannot refuse on behalf of the other: a favourites half that finds nobody defers ALONE, the locations still land, and the marker stays unset so the deferral retries."""
+        """A favourites half that defers alone still lets the locations land, with the marker unset."""
         from unittest import mock
         from amaze.core import keyed_store
         real_update = keyed_store.Store.update
@@ -168,7 +168,7 @@ class LocationsFollowTheLibraryTest(unittest.TestCase):
                 return keyed_store.Written(False, keyed_store.REASON_NO_USER)
             return real_update(store, values)
 
-        with mock.patch.object(keyed_store.Store, "update",    # patched from the START: the fixture's own first locations read can migrate, and deleting the files after would hit the .bak tier's BLIND refusal instead of the branch under test
+        with mock.patch.object(keyed_store.Store, "update",    # patched from the start: the fixture's first locations read can migrate
                                refuse_favourites):
             prefs, library = self._prefs()
             result = locations_mod.migrate(prefs)    # marker unset, so this re-runs and answers with the state
@@ -188,7 +188,7 @@ class LocationsFollowTheLibraryTest(unittest.TestCase):
             "keys stop being read and the stars are gone for good")
 
     def test_the_copies_ride_the_block_and_the_five_are_gone(self):
-        """The copies persist under the active user's block, and the retired decoration-table spellings are never written again."""
+        """The copies persist under the active user's block; the retired spellings are never written."""
         prefs, _lib = self._prefs()
         prefs.save()
         with open(os.path.join(prefs.path, "settings.json"),
@@ -208,7 +208,7 @@ class LocationsFollowTheLibraryTest(unittest.TestCase):
                              "%s is still written flat" % retired)
 
     def test_the_second_machine_keeps_its_own_folders_and_gains_the_others(self):
-        """A second machine's settings.json never travels, so its keys are folders nothing has carried anywhere: the merge is ADOPT-ONLY - it keeps its own, gains the first machine's, and a store taken as-is would have emptied that sidebar with the only record of the loss just overwritten."""
+        """A second machine's merge is adopt-only: it keeps its own folders and gains the first's."""
         first, library = self._prefs()          # the machine that got there first
         self.assertEqual(6, len(first.file_folders))
 
@@ -222,7 +222,7 @@ class LocationsFollowTheLibraryTest(unittest.TestCase):
                 "/tex/img/": {"registered": True},
             },
         })
-        self.assertIn("/laptop/only/", second.file_folders,    # no explicit migrate(): the FIRST LOCATIONS READ runs it - asserting the END state, not a return value
+        self.assertIn("/laptop/only/", second.file_folders,    # no explicit migrate(): the first locations read runs it
                       "the second machine's own registered folder was "
                       "discarded when it met a library that already had "
                       "locations in it")
@@ -240,7 +240,7 @@ class LocationsFollowTheLibraryTest(unittest.TestCase):
             "a folder both machines had registered arrived twice")
 
     def test_a_lost_store_or_an_unreachable_library_serves_the_copy(self):
-        """DECIDED: the last known list still shows, marked - the browser you want when a drive is gone."""
+        """A lost store or an unreachable library still shows the last known list, marked."""
         for lost in (True, False):
             with self.subTest(lost_store=lost):
                 prefs, library = self._prefs()
@@ -268,7 +268,7 @@ class LocationsFollowTheLibraryTest(unittest.TestCase):
                                      sorted(prefs.file_favorites))
 
     def test_a_library_with_no_store_at_all_is_re_seeded(self):
-        """The FRESH shape - a new or replaced library, nothing says a store was ever here - re-seeds from the copy, or a migrated machine would show an empty sidebar over a writable library forever."""
+        """A library with no store at all re-seeds from the copy, or the sidebar stays empty forever."""
         prefs, _library = self._prefs()
         fresh = tempfile.mkdtemp(prefix="amaze_loc_newlib_")
         self.addCleanup(shutil.rmtree, fresh, ignore_errors=True)
@@ -285,7 +285,7 @@ class LocationsFollowTheLibraryTest(unittest.TestCase):
             "next write would start from nothing")
 
     def test_removing_every_folder_still_sticks(self):
-        """`keep_last_known` writes the copy FROM the store, so removing the last location empties both - a rule that re-seeded on an empty store alone would make removing every folder impossible."""
+        """`keep_last_known` writes the copy from the store, so removing the last location empties both."""
         prefs, _library = self._prefs()
         for path in list(prefs.file_folders):
             prefs.remove_file_folder(path)
@@ -295,7 +295,7 @@ class LocationsFollowTheLibraryTest(unittest.TestCase):
                          "came back from the copy")
 
     def test_a_migration_that_does_not_reproduce_refuses_to_mark(self):
-        """A store whose normaliser cannot hold what went in leaves the marker UNSET so the old keys stay the truth and the next launch retries - the acceptance test is the end state, not that the write ran."""
+        """A store that cannot hold what went in leaves the marker unset, so the next launch retries."""
         prefs, _lib = self._prefs({
             "file_folders": ["/a/"],
             "file_favorites": [],
@@ -303,7 +303,7 @@ class LocationsFollowTheLibraryTest(unittest.TestCase):
         prefs.data[locations_mod.MIGRATED_KEY] = False
         locations_mod.forget()
         real_normalise = locations_mod.SPEC.normalise
-        locations_mod.SPEC.normalise = lambda value: {}    # a quietly-dropping normaliser is the real failure shape: tile_icons.normalise really drops an unshipped icon
+        locations_mod.SPEC.normalise = lambda value: {}    # a quietly-dropping normaliser is the real failure shape
         try:
             result = locations_mod.migrate(prefs)
         finally:
@@ -316,7 +316,7 @@ class LocationsFollowTheLibraryTest(unittest.TestCase):
                          "match, so the old keys will never be read again")
 
     def test_with_no_library_at_all_a_write_still_lands(self):
-        """The File section still works with no library configured - and an empty `dir` must never turn into a store written beside the current directory."""
+        """With no library configured a write still lands, and never beside the current directory."""
         prefs = _prefs_with_settings(self, {"file_folders": ["/a/"],
                                             "file_favorites": []})
         self.assertEqual("", prefs.dir)
@@ -330,11 +330,11 @@ class LocationsFollowTheLibraryTest(unittest.TestCase):
 
 
 class LocationsArePerUserTest(unittest.TestCase):
-    """The locations are user-tagged: each user of a shared library registers their own folders, pre-tag rows adopt into whoever opens the library, and a machine with nobody picked serves its settings copy instead of an empty sidebar while the ASK dialog waits."""
+    """Locations are per user: pre-tag rows adopt into the opener; nobody picked serves the copy."""
 
     OTHER = "0f0e0d0c0b0a09080706050403020100"
 
-    PRE_TAG_ROWS = {    # a pre-tag locations.json - what an upgrading machine's library holds on first open (name, show_all and recursive; colour is exercised in REAL_SHAPE)
+    PRE_TAG_ROWS = {    # a pre-tag locations.json, as an upgrading machine's library holds it
         "/tex/img/": {"registered": True, "recursive": True},
         "/tex/bokeh/": {"registered": True, "name": "Bokeh files"},
         "/models/obj/": {"registered": True, "show_all": False},
@@ -349,7 +349,7 @@ class LocationsArePerUserTest(unittest.TestCase):
     }
 
     def _upgrading(self, library_user=test_support.FIXTURE_USER):
-        """A machine that migrated before the tag: marker set, library holding an untagged store, the copy in step with it."""
+        """A machine migrated before the tag: marker set, untagged store, the copy in step with it."""
         settings = dict(self.SETTINGS, library_user=library_user)
         prefs, library = _location_prefs(self, settings)
         with open(os.path.join(library, "locations.json"), "w",
@@ -488,7 +488,7 @@ class LocationsArePerUserTest(unittest.TestCase):
 
 
 class KindRouterTest(unittest.TestCase):
-    """kind_for is the router every per-type behaviour hangs off, fed by the three sections' own recognisers - one source each."""
+    """`kind_for` routes every per-type behaviour, fed by the three sections' own recognisers."""
 
     def test_each_kind_routes_to_its_section_of_origin(self):
         for name, kind in (
@@ -512,7 +512,7 @@ class KindRouterTest(unittest.TestCase):
 
 
 class ScenePathsAreSpelledPerPreferenceTest(unittest.TestCase):
-    """Every path Amaze writes INTO THE SCENE goes through _scene_path (the Write Paths As preference) - the texture funnel, the geometry loader and the drag payload all once wrote raw absolutes; the texture-funnel case is pinned in DropFilePathOnNodeTest."""
+    """Every path written into the scene goes through `_scene_path`, the Write Paths As preference."""
 
     @classmethod
     def setUpClass(cls):
@@ -538,7 +538,7 @@ class ScenePathsAreSpelledPerPreferenceTest(unittest.TestCase):
             "the geometry import writes the raw absolute path")
 
     def test_the_drag_payload_is_the_spelled_text_and_nothing_else(self):
-        """ONE flavour, the spelled text: a file URL is an OS open-this handle Houdini honoured - released outside a field it OFFERED to clear the scene, and inside one it BEAT the spelled text, which is why drops wrote absolute paths."""
+        """The drag carries the spelled text only: Houdini reads a file URL as an open-this handle."""
         home = self._home()
         raw = home + "/textures/amaze_spelling.png"
         mime = self.panel.thumblist._file_drag_mime(self.panel, raw)
@@ -574,7 +574,7 @@ class AGeometryImportFrontsWhatItMade(unittest.TestCase):
 
 
 class DropFilePathOnNodeTest(unittest.TestCase):
-    """The release-on-a-node verb: the node's FIRST file parameter takes the SPELLED path, and a node with no file parameter refuses with a dialog-free False so the gesture can show its own miss - dispatch pinned in test_drag_gesture."""
+    """The node's first file parameter takes the spelled path; one without refuses with False."""
 
     @classmethod
     def setUpClass(cls):
@@ -609,7 +609,7 @@ class DropFilePathOnNodeTest(unittest.TestCase):
 
 
 class CreationRuleTest(unittest.TestCase):
-    """A release on empty network space (and a no-selection double-click) creates the payload's carrier wherever the network can hold one and refuses with False where it cannot - the type existing in the network's child category IS the capability test."""
+    """Empty space creates the carrier where the network's child category has the type, else False."""
 
     @classmethod
     def setUpClass(cls):
@@ -708,7 +708,7 @@ class CreationRuleTest(unittest.TestCase):
             lambda: self.panel.__dict__.pop("_view_create_networks", None))
 
     def test_a_positioned_carrier_never_auto_places(self):
-        """A given position IS the placement - moveToGoodPosition may shove unconnected siblings aside, so it runs only as the no-position fallback."""
+        """A given position is the placement; moveToGoodPosition runs only as the no-position fallback."""
         from unittest import mock
         net = self._matnet()
         spot = hou.Vector2(-3.5, -2.25)
@@ -727,7 +727,7 @@ class CreationRuleTest(unittest.TestCase):
                          "point")
 
     def test_the_release_position_stays_in_its_own_space(self):
-        """A release over a container resolves INSIDE it while the cursor stays in the OUTER editor's plane, so the resolver answers only when the editor under the cursor shows the destination network itself."""
+        """Over a container, the position resolves only when the editor under the cursor shows it."""
         from unittest import mock
         import types
         inside = self._matnet()
@@ -747,7 +747,7 @@ class CreationRuleTest(unittest.TestCase):
         self.assertEqual((9.0, 9.0), (got.x(), got.y()))
 
     def test_a_creation_never_steals_the_selection(self):
-        """Houdini tags newborns selected and current, which scrolled the editor and hijacked the NEXT double-click - a door leaves the artist's selection exactly as it was."""
+        """Houdini selects newborns and makes them current; a creation leaves the selection as it was."""
         sop = self._geo()
         self._with_view_networks([sop])
         index = self.panel.code_sorted_model.index(0, 0)
@@ -823,7 +823,7 @@ class CreationRuleTest(unittest.TestCase):
             self.panel.click_on_row(CrashingSection(), index)
 
     def test_the_ghost_promises_what_the_drop_delivers(self):
-        """The outline draws the carrier the space door WOULD create, read from the same declaration the creator builds from - two separate answers would let the ghost promise a wrangle and deliver nothing."""
+        """The ghost draws the carrier the space door would create, read from the same declaration."""
         from amaze.panel import dragdrop_widgets, sections as sections_mod
         sop = self._geo()
         vop = self._matnet()
@@ -833,7 +833,7 @@ class CreationRuleTest(unittest.TestCase):
         if str(getattr(asset, "renderer", "")).lower() != "vex":
             self.skipTest("the first snippet is not VEX")
         rule = sections_mod.SECTION_INDEX["code"].DROP
-        promised = dragdrop_widgets.GridGestureMixin._ghost_type(    # the index is HANDED IN as the live drag hands it - a fixture-planted attribute once proved a ghost production never had
+        promised = dragdrop_widgets.GridGestureMixin._ghost_type(    # the index is handed in, as the live drag hands it
             self.panel, rule, "code", sop, index)
         self.assertTrue(self.panel.sections["code"].create_code_node_in(index, sop))
         made = [c for c in sop.children() if "wrangle" in c.type().name()]
@@ -846,7 +846,7 @@ class CreationRuleTest(unittest.TestCase):
             "a network with no carrier still got a promise")
 
     def test_every_borrowed_overlay_is_given_back(self):
-        """The overlay is ONE slot per editor, so a ghost left behind sticks to the artist's network - dragengine.end() clears it on release, cancel and the leave the host treats as a suspend."""
+        """The overlay is one slot per editor; dragengine.end() clears it on release, cancel and leave."""
         from amaze.core import dragengine
         given_back = []
 
@@ -863,7 +863,7 @@ class CreationRuleTest(unittest.TestCase):
                          "the engine still believes it owns an overlay")
 
     def test_the_editor_is_put_back_in_its_own_network(self):
-        """An import tags its nodes current and an unpinned editor follows the selection, so it DIVES - restoring the current node alone does not undo that, so the editor's PWD is remembered and restored too."""
+        """An import makes an unpinned editor dive, so the editor's PWD is remembered and restored."""
         from unittest import mock
         import types
         from amaze.helpers import helpers
@@ -1026,7 +1026,7 @@ class CreationRuleTest(unittest.TestCase):
                     % (route, selected))
 
     def test_a_locked_asset_is_skipped_and_the_editable_one_takes_it(self):
-        """A SOP Create is a locked HDA whose `create` subnet is the one node marked editable - the walk skips the locked levels (saying why in the log), lands there, and never unlocks the asset."""
+        """The walk skips a locked HDA's levels to its editable `create` subnet and unlocks nothing."""
         stage = hou.node("/stage")
         sc = stage.createNode("sopcreate")
         self.addCleanup(sc.destroy)
@@ -1049,7 +1049,7 @@ class CreationRuleTest(unittest.TestCase):
                         "the asset was UNLOCKED to make room - never")
 
     def test_a_geo_double_click_fills_the_selected_node(self):
-        """The matrix aims a double-click at the selection first - a selected node with a file parameter takes the spelled path, exactly as the image branch beside it."""
+        """A double-click aims at the selection first: a node with a file parameter takes the path."""
         import types
         from amaze.core import file_library
         from amaze.helpers import helpers
@@ -1075,7 +1075,7 @@ class CreationRuleTest(unittest.TestCase):
             "filling it")
 
     def test_an_invisible_selection_cannot_hijack_the_click_door(self):
-        """An import leaves its nodes SELECTED, so the next double-click once applied to a selection the user could not see and refused - the door considers only selection inside the visible editors' networks."""
+        """The click door considers only selection inside the visible editors' networks."""
         sop = self._geo()
         elsewhere = self._matnet()
         stray = elsewhere.createNode("mtlxstandard_surface")
@@ -1110,7 +1110,7 @@ class CreationRuleTest(unittest.TestCase):
             helpers.find_file_parm(children[0]).rawValue())
 
     def test_the_click_doors_find_the_network_that_supports_the_payload(self):
-        """ONE resolver walks the visible networks and the first that can hold the carrier wins - the drag and the click once resolved with two different heads and disagreed."""
+        """One resolver walks the visible networks; the first that can hold the carrier wins."""
         vop = self._matnet()
         sop = self._geo()
         self._with_view_networks([vop, sop])
@@ -1200,7 +1200,7 @@ class HoudiniPathTest(unittest.TestCase):
         self.assertTrue(all(widget.isEnabled() for widget in resting))
 
     def test_default_puts_the_cache_path_back(self):
-        """The Cache Path row's Default button CLEARS the preference rather than writing today's default as a literal path, so the cache keeps following this machine's own convention."""
+        """Default on the Cache Path row clears the preference, so the cache follows this machine."""
         from amaze.dialogs import prefs_dialog
         from amaze.helpers import hostos as hostos_mod
 
@@ -1281,11 +1281,11 @@ class HoudiniPathTest(unittest.TestCase):
 
 
 class _Prefs:
-    """Only what FileFiles reads, OVER THE REAL LOCATION STORE - `file_folders` and the decoration tables are derived, not held, and a stub carrying them as plain attributes would accept every write, answer none, and let the tests pass their own values back to themselves while the code read an empty store."""
+    """Only what FileFiles reads, over the real location store; derived tables are not held."""
 
     def __init__(self, folders=()):
         self.dir = tempfile.mkdtemp(prefix="amaze_file_lib_")
-        self.library_user = test_support.FIXTURE_USER    # a user-tagged store with no user describes the ASK window, not a working machine - every register would refuse
+        self.library_user = test_support.FIXTURE_USER    # a user-tagged store with no user would refuse every register
         self.file_show_unknown = True
         self.path_style = "home"
         self.last_file_folder = ""
@@ -1394,7 +1394,7 @@ class _Prefs:
 
 
 class FileKeyIsCanonicalTest(unittest.TestCase):
-    """file_key is the identity everything keyed about a file hangs on (comment, icon override, drag bookkeeping), so the same file produces the SAME key however its location was spelled - the detour registration is not exotic: `hou.text.expandString` substitutes verbatim, so real `$AMAZE`-relative locations carry `../../..` in every key."""
+    """`file_key` is one spelling per file however its location is spelled, `..` detours included."""
 
     def _model_over(self, folder):
         from amaze.helpers import hostos  # noqa: F401 - guard below
@@ -1448,7 +1448,7 @@ class FileKeyIsCanonicalTest(unittest.TestCase):
 
 
 class OsIconTest(unittest.TestCase):
-    """A file Amaze does not recognise still gets a picture: the OS's own icon on a transparent tile-sized canvas, never scaled past 2x its native size (the recorded probe's caveat)."""
+    """An unrecognised file gets the OS icon on a tile-sized canvas, never scaled past 2x."""
 
     def _model_with(self, *names):
         tmp = tempfile.mkdtemp(prefix="amaze_osicon_")
@@ -1552,7 +1552,7 @@ class TheCachePngIsWrittenOffTheGuiThreadTest(unittest.TestCase):
 
 
 class _RecordingPanel:
-    """A stand-in `self` for the live click door - click_on_row and _apply_click_rule run for real, and the panel PLUMBING each section verb reaches for records instead of touching a scene."""
+    """A stand-in `self` for the click door: the real dispatch runs, the panel plumbing records."""
 
     file_files_model = file_library.FileFiles
 
@@ -1595,7 +1595,7 @@ class _FakeIndex:
 
 
 class DoubleClickDispatchTest(unittest.TestCase):
-    """Each kind reaches its own verb THROUGH THE LIVE DOOR over a real FileSection with nothing selected - breaks when a DROP_BY_KIND row loses its verb, names a different one, or the door's precedence stops reaching the no-node route."""
+    """Each kind reaches its own `DROP_BY_KIND` verb through the live door over a real FileSection."""
 
     def test_every_kind_reaches_its_own_verb(self):
         from amaze.panel import panel as panel_mod
@@ -1658,7 +1658,7 @@ class HipDragLoadsNothingTest(unittest.TestCase):
         return h
 
     def _release_at_global(self, h, global_point):
-        """The inside/outside decision reads event.globalPosition(), and a locally-constructed QMouseEvent defaults that to the REAL cursor - so the test says the global point explicitly."""
+        """A built QMouseEvent defaults globalPosition() to the real cursor, so the test sets it."""
         event = QtGui.QMouseEvent(
             QtCore.QEvent.Type.MouseButtonRelease,
             QtCore.QPointF(10, 10),
@@ -1682,7 +1682,7 @@ class HipDragLoadsNothingTest(unittest.TestCase):
 
 
 class TooltipWidthTest(unittest.TestCase):
-    """Tooltips cap at 800 REAL screen pixels and wrap - a plain-text tooltip renders as one line however long, and a logical-px cap doubles on a Retina screen."""
+    """Tooltips cap at 800 real screen pixels and wrap; a logical cap doubles on a Retina screen."""
 
     def _with_dpr(self, dpr):
         """Pin the screen ratio the cap divides by, restored after."""
@@ -1699,7 +1699,7 @@ class TooltipWidthTest(unittest.TestCase):
                 self.assertEqual(text, ui_helpers.tooltip_text(text))
 
     def test_markup_in_a_SHORT_tooltip_draws_as_text_not_as_html(self):
-        """A catalogue entry's title is remote text, and Qt auto-detects rich text - so a short one used to reach the tooltip as live markup. ▸r/tooltip-autodetect"""
+        """Qt auto-detects rich text; short remote markup draws as text. ▸r/tooltip-autodetect"""
         from PySide6 import QtGui
         from amaze.helpers import ui_helpers
         hostile = '<img src="http://evil.invalid/beacon.png">'
@@ -1732,7 +1732,7 @@ class TooltipWidthTest(unittest.TestCase):
                       "rich text ate the paragraph break")
 
     def test_the_cap_is_real_pixels_not_logical(self):
-        """On a 2x screen a ~720-logical-px sentence slips a logical cap of 800 and draws ~1450 real pixels wide - in real pixels the cap is 400 logical there, and it wraps."""
+        """On a 2x screen the 800 real-pixel cap is 400 logical, so a 720-logical sentence wraps."""
         from amaze.helpers import ui_helpers
         self._with_dpr(2.0)
         reported = ("Show files Amaze cannot thumbnail in the File "
@@ -1781,10 +1781,10 @@ class EveryDelegateCapsTheWordsItsItemsSay(unittest.TestCase):
 
 
 class StarRowsLeftPreferencesTest(unittest.TestCase):
-    """The badge family renders the favourite star AS DRAWN, so the star-colour rows left the dialog, the keys left the store, and the notes accent pinned to the theme's star token."""
+    """The badges draw the star as drawn, so the star-colour rows and keys left the preferences."""
 
     def test_stale_star_keys_drop_and_future_keys_survive_a_save(self):
-        """save()'s unknown-key courtesy rightly KEEPS a newer build's keys but would re-adopt retired ones from disk on every write - the hole _RETIRED_KEYS closes; both behaviours proven on one file."""
+        """save() keeps a newer build's unknown keys but drops the retired ones in `_RETIRED_KEYS`."""
         import json
         p = test_support.fixture_prefs(self)
         p.save()
@@ -1817,7 +1817,7 @@ class StarRowsLeftPreferencesTest(unittest.TestCase):
 
 
 class PrefsComboFocusTest(unittest.TestCase):
-    """Every Preferences dropdown refuses focus - Houdini's stylesheet paints a focused combo navy with a blue ring, permanently singling out whichever was last clicked; the dialog's NoFocus sweep once ran before the tab widget joined the tree and fixed nothing."""
+    """Every Preferences dropdown refuses focus: Houdini's stylesheet paints a focused combo navy."""
 
     def test_every_prefs_combo_refuses_focus(self):
         from amaze.dialogs import prefs_dialog
@@ -1839,7 +1839,7 @@ class PrefsComboFocusTest(unittest.TestCase):
             "singles out the last-clicked one: %s" % wrong)
 
     def test_every_dialog_tooltip_goes_through_the_cap(self):
-        """Source-derived: a bare multi-line setToolTip is the exact shape that regresses into the screen-wide bar."""
+        """Source-derived: a bare multi-line setToolTip regresses into the screen-wide bar."""
         import re
         package = os.path.dirname(
             os.path.dirname(os.path.abspath(__file__)))
@@ -1859,7 +1859,7 @@ class PrefsComboFocusTest(unittest.TestCase):
 
 
 class LocationManagementTest(unittest.TestCase):
-    """The four confirmed location asks: removal sweeps the folder's cached thumbnails, recursion is per location, the default name is the Houdini-collapsed path itself, and a location can be renamed - with Locate carrying both along."""
+    """Removal sweeps thumbnails, recursion is per location, names default to the path and rename."""
 
     def _folders_model(self, *paths):
         prefs = _Prefs(list(paths))
@@ -2034,7 +2034,7 @@ class LocationManagementTest(unittest.TestCase):
                          "the recursion flag did not follow the move")
 
     def test_locate_moves_the_pointer_and_the_favourites(self):
-        """Locate's two writes nothing else asserts: the registered pointer moves IN ITS OWN ROW (no sidebar reorder) and every favourite under the old path is rewritten onto the new one - both fail as silent no-ops, so only the END STATE can see them."""
+        """Locate moves the pointer in its own row and rewrites every favourite under the old path."""
         first = self._tmpdir()
         old = self._tmpdir()
         new = self._tmpdir()
@@ -2059,14 +2059,14 @@ class LocationManagementTest(unittest.TestCase):
         self.assertEqual([first, new_key], list(prefs.file_folders),
                          "the registered pointer did not move, or the row "
                          "changed position")
-        self.assertEqual(sorted(["/elsewhere/other.exr",    # sorted: the favourites are a keyed store, order is the file's, and nothing reads this list except as membership
+        self.assertEqual(sorted(["/elsewhere/other.exr",    # sorted: the favourites are a keyed store, read only as membership
                                  new_key + "keep.exr"]),
                          sorted(prefs.file_favorites),
                          "a favourite under the moved location was left "
                          "pointing at the old path")
 
     def test_removal_sweeps_the_cache_but_not_captures(self):
-        """End to end against a real cache layout: the removed folder's thumbnails go, a file another location still covers stays, an unreadable manifest is left alone, and the hip capture store is never touched."""
+        """Removal sweeps the folder's thumbnails but keeps covered files, bad manifests and captures."""
         import hashlib
         from amaze.helpers import hostos as hostos_mod
 
@@ -2169,9 +2169,9 @@ class LocationManagementTest(unittest.TestCase):
             "sweep")
 
     def test_remove_folder_drops_the_per_location_state(self):
-        """ALL FOUR per-location surfaces read AFTERWARDS - a spy on which setters ran could not see the mechanism running two short, which it did."""
+        """All four per-location surfaces are read afterwards, not spied on as setters."""
         tmp = self._tmpdir()
-        kept = self._tmpdir()    # TWO locations, assertions read the SURVIVOR: with one, retired-record and wiped-everything are the same observation
+        kept = self._tmpdir()    # two locations, so the assertions read the survivor
         model, prefs = self._folders_model(tmp, kept)
         for path, name, colour, show, in ((tmp, "Custom", "#ff8000", True),
                                           (kept, "Kept", "#0080ff", False)):
@@ -3100,10 +3100,10 @@ class ANewLocationStartsWithTheKnownKindsTest(unittest.TestCase):
 
 
 class ReviewFixesTest(unittest.TestCase):
-    """The adversarial review round on the merge diff: five confirmed defects, one pin each."""
+    """Five confirmed merge defects, one pin each."""
 
     def test_sidebar_count_agrees_with_the_grid(self):
-        """The sidebar once counted subdirectories the grid never lists - 3 files + 2 subfolders reads 3, not 5."""
+        """The sidebar counts no subdirectories, as the grid lists none: 3 files and 2 folders read 3."""
         tmp = tempfile.mkdtemp(prefix="amaze_count_")
         self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
         for name in ("a.png", "b.txt", "c.obj"):
@@ -3119,7 +3119,7 @@ class ReviewFixesTest(unittest.TestCase):
                          "shows (subdirectories)")
 
     def test_hidden_directories_are_pruned_from_the_recursive_scan(self):
-        """The skip-hidden rule covers directories too, or Include Subfolders on a project folder floods the grid and the count with .git internals."""
+        """The skip-hidden rule prunes directories too, or a recursive scan floods with .git internals."""
         tmp = tempfile.mkdtemp(prefix="amaze_hidden_")
         self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
         with open(os.path.join(tmp, "real.txt"), "w") as handle:
@@ -3144,7 +3144,7 @@ class ReviewFixesTest(unittest.TestCase):
                          "directory contents")
 
     def test_the_section_toggle_keeps_keys_it_does_not_know(self):
-        """The Show/Hide rebuild keeps keys outside this build's registry - dropping them deletes an older build's tabs by side effect."""
+        """The Show/Hide rebuild keeps keys outside this registry, or an older build's tabs are lost."""
         from amaze.dialogs import prefs_dialog
 
         class _P:
@@ -3170,7 +3170,7 @@ class ReviewFixesTest(unittest.TestCase):
         self.assertTrue(stub._prefs.saved)
 
     def test_rerender_counts_distinct_keys_and_registers_them(self):
-        """Two rows, one physical file, one key: the progress total counts distinct KEYS, and the freshly built key lands in _key_rows or its delivery repaints nothing and the disk cache is never written."""
+        """Progress counts distinct keys, and each fresh key lands in `_key_rows` or nothing repaints."""
         from unittest import mock
         from amaze.core import thumbnails
         prefs = _Prefs([])
@@ -3317,7 +3317,7 @@ class GeometryThatRendersNothingIsRememberedTest(unittest.TestCase):
 
 
 class LocationColorTest(unittest.TestCase):
-    """Locations carry colours like categories do: the sidebar answers the SAME role the asset sidebars answer so one delegate paints both, and the tile reads the colour of the location its file came from."""
+    """Locations carry colours on the asset sidebars' role; the tile reads its location's colour."""
 
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="amaze_loccol_")
@@ -3347,7 +3347,7 @@ class LocationColorTest(unittest.TestCase):
                          files.data(index, files.CategoryColorRole))
 
     def test_the_role_number_matches_the_other_sections(self):
-        """One delegate reads ONE number for every section - asserted against the LITERAL UserRole + 8, because MaterialLibrary sets its role in __init__ and a compare-to-Material check quietly compares FileFiles to itself."""
+        """One delegate reads one role number, asserted against the literal UserRole + 8."""
         from PySide6 import QtCore as _Qt
         from amaze.core import gradient_library as grad_mod
         expected = int(_Qt.Qt.ItemDataRole.UserRole) + 8
@@ -3358,7 +3358,7 @@ class LocationColorTest(unittest.TestCase):
 
 
 class ShowAllFilesTest(unittest.TestCase):
-    """The per-location Show All Files override: one location can show its unknown files while the global preference hides them, and the sidebar count agrees with the grid either way."""
+    """Per-location Show All Files shows what the global preference hides, and the count agrees."""
 
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="amaze_showall_")
@@ -3396,7 +3396,7 @@ class ShowAllFilesTest(unittest.TestCase):
 
 
 class ABarePrefsLoadWritesNothingButItsOwnFile(unittest.TestCase):
-    """`load()` may never write the library - the recovery-rehearsal helper loads LIVE settings by contract, and a load-time migration hook once moved a real machine's stars into the real library from a suite run; library-writing migrations run from product surfaces only."""
+    """`load()` never writes the library; library-writing migrations run from product surfaces only."""
 
     def test_load_leaves_the_library_untouched(self):
         locations_mod.forget()
@@ -3425,7 +3425,7 @@ class ABarePrefsLoadWritesNothingButItsOwnFile(unittest.TestCase):
 
 
 class AStarSurvivesTheMoveThroughTheModelDoors(unittest.TestCase):
-    """The whole journey: star a scanned row, Locate the folder somewhere else, re-scan - the star is keyed to the location's id, so it never notices the path changed."""
+    """Star a row, Locate the folder, re-scan: the star is keyed to the location id and stays lit."""
 
     def test_the_star_is_still_lit_at_the_new_path(self):
         old = tempfile.mkdtemp(prefix="amaze_move_")
@@ -3457,7 +3457,7 @@ class AStarSurvivesTheMoveThroughTheModelDoors(unittest.TestCase):
 
 
 class AssetFavouritesMigrateIntoTheLibraryTest(unittest.TestCase):
-    """`material_favorites` moves into the favourites store under the active user, SELF-MARKING: the key's presence is the to-do, it pops only after every id reads back out of the store, a deferral (no library, no user, Test Mode) leaves it authoritative, and the union is adopt-only."""
+    """`material_favorites` moves into the store under the active user and pops once all read back."""
 
     def setUp(self):
         from amaze.core import keyed_store
@@ -3554,7 +3554,7 @@ class AssetFavouritesMigrateIntoTheLibraryTest(unittest.TestCase):
 
 
 class TheUserPickerFollowsTheLibrary(unittest.TestCase):
-    """The users live IN the library, so switching libraries makes the open picker a list of the previous library's people - it showed them until Preferences was closed and reopened."""
+    """Switching libraries reloads the open user picker with the new library's users."""
 
     def _dialog_on_a_second_library(self):
         """A dialog open on library A, plus a ready library B whose only user has a name A does not have."""
@@ -3586,7 +3586,7 @@ class TheUserPickerFollowsTheLibrary(unittest.TestCase):
                          "the library's only user was not picked")
 
     def test_every_method_that_swaps_the_library_reloads_the_picker(self):
-        """By AST over the whole dialog, so a THIRD way onto another library added later is caught too - not just the two known ones."""
+        """By AST over the whole dialog, so any method that swaps the library is caught."""
         import ast
         import inspect
         from amaze.dialogs import prefs_dialog
