@@ -1,4 +1,4 @@
-"""Harvests the online VALUES sources into shipped tables, so a tile paints in its real colour with no download and the generator has a corpus offline. Only the RGL table's INFERRED metal flag is recomputed here - its measured half comes from the BSDF files.  `hython tests/harvest_online.py [--reclassify]`  ▸archive/harvest_online.py"""
+"""Harvests the online value sources into shipped tables, so a tile paints with no download."""
 
 import argparse
 import json
@@ -33,7 +33,7 @@ PB_FIELDS = (
 
 
 def harvest_physicallybased() -> dict:
-    """The whole PhysicallyBased dataset, trimmed to shading fields. Reads the LIVE API, never the source's loader, which prefers the shipped table and would read back the file this is about to write - and keys each entry as the API keys it."""
+    """The PhysicallyBased dataset from the live API, not the loader, which reads the shipped table."""
     items = matx_sources.get_json(
         matx_sources.PhysicallyBasedSource.API + "/materials"
     )
@@ -55,7 +55,7 @@ def harvest_physicallybased() -> dict:
 
 
 def reclassify_rgl() -> int:
-    """Recomputes the RGL table's INFERRED metal flag from the current keyword rule, never touching the measured numbers. Answers how many changed."""
+    """Recomputes the RGL table's inferred metal flag, measured numbers untouched; returns the count."""
     path = os.path.join(RES_DIR, matx_sources.RGLSource.TABLE_FILE)
     with open(path, encoding="utf-8") as handle:
         doc = json.load(handle)

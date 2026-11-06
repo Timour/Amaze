@@ -72,7 +72,7 @@ class AStarNeverLandsOnARowThatWasNotAskedFor(unittest.TestCase):
 class ABatchRefusesARowItCannotRender(unittest.TestCase):
 
     def test_a_row_past_the_end_is_not_rendered(self):
-        """`isValid()` cannot answer this: a plain QModelIndex is not invalidated when the rows behind it go away."""
+        """`isValid()` cannot answer this: a plain QModelIndex survives the rows behind it going away."""
         model = library.MaterialLibrary.__new__(library.MaterialLibrary)
         model.preferences = test_support.fixture_prefs(self)
         model._assets = [_Asset("id0")]

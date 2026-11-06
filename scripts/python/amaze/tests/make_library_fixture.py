@@ -1,4 +1,4 @@
-"""Build the tracked library fixture - six materials, their thumbnails and library.json - as `USER=amaze hython make_library_fixture.py`, the neutral account being something Houdini resolves at startup and this script cannot set for itself (▸r/author-stamp); the output is COMMITTED so the suite generates nothing at test time, and this exits 1 naming the file if anything it wrote carries an account name, a machine name or a home directory."""
+"""Build the committed fixture: `USER=amaze hython make_library_fixture.py`. ▸r/author-stamp"""
 import json
 import os
 import shutil
@@ -20,7 +20,7 @@ OUT = os.path.join(HERE, "assets", "library")
 
 CATEGORIES = ["_All", "Karma_Mats", "usds"]
 
-MATERIALS = (   # (id, name, category, base colour) - ids, names and the TWO-category spread are the corpus the suite already cites, so this is a drop-in replacement; a single populated category would leave `usds` empty and category removal, per-category filtering and the hide-empty sidebar running against a degenerate library. The colours differ only so six tiles are tellable apart by eye, nothing asserts on them
+MATERIALS = (   # (id, name, category, base colour); two populated categories, so `usds` is not empty
     ("139888336268658010", "Metal", "Karma_Mats", (0.56, 0.57, 0.58)),
     ("139888336377945550", "Bricks", "Karma_Mats", (0.52, 0.24, 0.18)),
     ("139888336889814930", "gold", "usds", (1.00, 0.77, 0.34)),
@@ -29,7 +29,7 @@ MATERIALS = (   # (id, name, category, base colour) - ids, names and the TWO-cat
     ("139888337459841200", "plastic", "usds", (0.20, 0.42, 0.72)),
 )
 
-DATE = "2026-01-27 20:07:06"   # a FIXED date: a generated timestamp would rewrite every row on every run and the rows are what the suite reads
+DATE = "2026-01-27 20:07:06"   # fixed, so a rerun does not rewrite every row the suite reads
 
 
 def sentinel_row() -> dict:
@@ -46,7 +46,7 @@ def asset_row(asset_id: str, name: str, category: str) -> dict:
 
 
 def build_material(parent: hou.Node, name: str, colour) -> hou.Node:
-    """One Karma builder holding one mtlxstandard_surface, built and wired by the app's own two functions so the saved shape is the shape the app writes. `parent` must be /mat: under /stage the builder is a LOP subnet and no mtlx VOP type is valid inside it."""
+    """One Karma builder holding one mtlxstandard_surface; `parent` must be /mat, not /stage."""
     builder = nodes_mod.make_karma_builder(parent, name)
     shader = builder.createNode("mtlxstandard_surface", name + "_surface")
     shader.parmTuple("base_color").set(colour)
@@ -65,7 +65,7 @@ def save_pair(builder: hou.Node, asset_id: str, folder: str) -> None:
 
 
 def make_thumbnail(path: str, colour) -> None:
-    """A 256x256 swatch. Deterministic and depicting nothing - the grid only has to have a real image to paint, and a Karma render here would make this script depend on a working renderer."""
+    """A deterministic 256x256 swatch, so the script needs no working renderer."""
     from PySide6 import QtGui
     image = QtGui.QImage(256, 256, QtGui.QImage.Format.Format_ARGB32)
     top = QtGui.QColor.fromRgbF(*colour)
@@ -99,7 +99,7 @@ def main() -> int:
                     thumb]
         print("%s  %s" % (asset_id, name))
 
-    document = {"version": database.SCHEMA_VERSION,   # STAMPED CURRENT, which the corpus this replaces was not: with no key the loader reads 1, finds no `_MIGRATIONS` step for it (the chain starts at 4) and latches `_migration_incomplete`, so every test ran against a library in a broken-chain state no real one is in. The chain has its own tests in test_upgrade_tool - it does not want incidental cover here
+    document = {"version": database.SCHEMA_VERSION,   # stamped current: an unversioned file reads as 1 and latches `_migration_incomplete`
                 "format": branding.LIBRARY_FORMAT,
                 "categories": CATEGORIES, "tags": [],
                 "assets": [sentinel_row()]

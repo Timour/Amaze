@@ -1,5 +1,4 @@
-"""The suite must not read the machine's own files - PROVEN, not assumed, because a run that quietly scans a real photograph archive modifies nothing, fails nothing and says nothing. Two independent checks: a SOURCE one, that no test builds a panel directly, and a RUNTIME one, that every directory the models would scan is inside the temp dir. ▸archive/test_no_live_data.py
-"""
+"""The suite reads no machine files: no test builds its own panel, every scanned dir is temp."""
 
 import contextlib
 import io
@@ -32,7 +31,7 @@ def _test_modules():
 
 
 class NoTestBuildsItsOwnPanel(unittest.TestCase):
-    """Building the panel class directly reads the machine's real settings, and through them the real library. Asserted as an empty SET, never a count, or the check goes vacuous the day the constructor is renamed."""
+    """Building the panel directly reads the real settings and library; asserted as an empty set."""
 
     ALLOWED = {"test_support.py"}
 
@@ -113,7 +112,7 @@ class TheSnapshotToolFingerprintsALibrary(unittest.TestCase):
 
 
 class TheSUITETestsTheCheckoutAndNotTheInstall(unittest.TestCase):
-    """Which COPY of the package is under test. hython's own path holds the INSTALLED one, and the FIRST import to reach `amaze` binds it for the whole process - so a single module without the checkout in front tests the last sync and reads as a pass."""
+    """The first import binds `amaze` for the process, so the checkout must come before the install."""
 
     def test_the_amaze_package_is_the_one_beside_these_tests(self):
         import amaze

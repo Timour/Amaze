@@ -50,7 +50,7 @@ class LiveCurrentIndexTest(unittest.TestCase):
         model = QtGui.QStandardItemModel(3, 5)
         view = QtWidgets.QTableView()
         view.setModel(model)
-        view.setCurrentIndex(model.index(1, 3))  # a click lands on the CELL, and grid_columns answers roles only on the owning column ▸r/row-selection
+        view.setCurrentIndex(model.index(1, 3))  # a click lands on a cell; roles answer on the owning column only ▸r/row-selection
         live = ui_helpers.live_current_index(view)
         self.assertIsNotNone(live)
         self.assertEqual(1, live.row())
@@ -67,7 +67,7 @@ class LiveCurrentIndexTest(unittest.TestCase):
         other_source = _model(["Wood", "Stone"])
         other = QtCore.QSortFilterProxyModel()
         other.setSourceModel(other_source)
-        view.setModel(other)  # a section switch replaces the model outright; the drag path hit this once
+        view.setModel(other)  # a section switch replaces the model outright
         self.assertIsNot(stale.model(), view.model())
         self.assertIsNone(
             ui_helpers.live_current_index(view),
@@ -136,7 +136,7 @@ class WorksOnAPlainPythonModelTest(unittest.TestCase):
     def test_a_plain_python_model_does_not_raise(self):
         view = self._view(["All", "HDR", "IMG"])
         view.setCurrentIndex(view.model().index(1, 0))
-        live = ui_helpers.live_current_index(view)   # raised TypeError: a bare columnCount() works on a C++ proxy and not on a Python model ▸r/model-contracts
+        live = ui_helpers.live_current_index(view)   # a bare columnCount() works on a C++ proxy, not a Python model ▸r/model-contracts
         self.assertIsNotNone(live, "a valid index on a plain list model "
                                    "was refused")
         self.assertEqual("HDR", live.data())

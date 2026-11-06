@@ -1,5 +1,4 @@
-"""The shader-ball scene must COMPOSE, not merely exist - a broken reference kills every Karma thumbnail silently, and a crate is BINARY, so a text grep reports it as referenced by nothing. NEVER GUARD THIS WITH A FILE SIZE: it passes for a huge file with the camera deleted. Paths are read out of the engine, never repeated. ▸archive/test_shaderball_assets.py
-"""
+"""The shader-ball scene must compose: one broken reference silently kills every Karma thumbnail."""
 
 import os
 import re
@@ -23,7 +22,7 @@ class ShaderBallAssetsTest(unittest.TestCase):
     ENTRY = "shaderBallScene_Simple.usd"
 
     def _addressed_paths(self):
-        """Every scene prim path the engine names - DERIVED, never listed, because a scene missing one renders nothing while reporting success."""
+        """Every scene prim path the engine names, derived not listed: a missing one renders nothing."""
         with open(self.ENGINE, encoding="utf-8") as handle:
             source = handle.read()
         found = sorted(set(re.findall(r'"(/shaderBallScene[^"]*)"', source)))

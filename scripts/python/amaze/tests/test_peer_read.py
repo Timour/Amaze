@@ -52,7 +52,7 @@ class PeerReadTest(unittest.TestCase):
         self.assertEqual(first.fingerprint, again.fingerprint)
 
     def test_a_same_size_edit_is_caught(self):
-        """Same byte count, different content - and NOT a discriminator here, since APFS moves the mtime so a stat passes it too; the identical-bytes case above is the one that separates them. ▸r/peer-read"""
+        """Same size, different content; not a discriminator, as APFS moves the mtime too. ▸r/peer-read"""
         self._write({"a": 1})
         first = self._read()
         self._write({"a": 2})

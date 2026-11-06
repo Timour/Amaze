@@ -1,5 +1,4 @@
-"""The `.mtlx` to VOP translator and what flattening must not lose. A MaterialX node name is scoped to its NODEGRAPH, so two graphs may each hold an `image1` - keyed by the bare name the last wins, both outputs resolve to it, and one texture is silently orphaned. ▸archive/test_matx_translate.py
-"""
+"""The `.mtlx` to VOP translator: names are graph-scoped, so two graphs may each keep an `image1`."""
 
 import functools
 import os
@@ -108,7 +107,7 @@ class TwoNodegraphsKeepTheirOwnNodes(unittest.TestCase):
             self.path, self.builder, "two_graphs")
 
     def test_each_surface_input_wires_to_its_own_graph(self):
-        """Two surface inputs must not land on one node. Compared as PATHS - `hou.Node` hands back a fresh wrapper per call, so an identity check cannot fail."""
+        """Two surface inputs must not land on one node; paths compared, as `hou.Node` wrappers are fresh."""
         self.assertIsNotNone(self.shader, "no surface shader was built")
         base = self.shader.input(self.shader.inputIndex("base_color"))
         spec = self.shader.input(self.shader.inputIndex("specular_color"))
@@ -124,7 +123,7 @@ class TwoNodegraphsKeepTheirOwnNodes(unittest.TestCase):
 
 
 class AColourConstantKeepsItsColour(unittest.TestCase):
-    """A MaterialX `constant` of a tuple type lands in the VOP parm named for that type - `value_color3`, `value_vector3` - and the bare `value` is the float signature's. ▸r/mtlx-vop-tuple-parms"""
+    """A tuple `constant` sets the parm named for its type, `value_color3`. ▸r/mtlx-vop-tuple-parms"""
 
     @classmethod
     def setUpClass(cls):
@@ -162,7 +161,7 @@ class AColourConstantKeepsItsColour(unittest.TestCase):
 
 
 class ATextureReferenceStaysInsideThePackage(unittest.TestCase):
-    """A `file` value comes out of a DOWNLOADED document, and this is the one place in the online path where such a string becomes a filesystem path. Nothing is overwritten, but the resolved path lands in a parm, so the material reads a file the download never fetched and then ships that path onward."""
+    """A `file` value from a downloaded document must not become a path the download never fetched."""
 
     def setUp(self):
         self.dir = tempfile.mkdtemp(prefix="amaze_mtlx_")
@@ -191,7 +190,7 @@ class ATextureReferenceStaysInsideThePackage(unittest.TestCase):
 
 
 class OnlyHttpsIsFetched(unittest.TestCase):
-    """Every URL the online path opens comes out of a remote document, and the default opener installs a FileHandler."""
+    """Every URL opened online comes from a remote document; the default opener has a FileHandler."""
 
     def test_only_an_https_url_is_kept(self):
         from amaze.core import matx_sources
@@ -203,7 +202,7 @@ class OnlyHttpsIsFetched(unittest.TestCase):
                 self.assertEqual(kept, matx_sources._checked_url(given))
 
     def test_a_redirect_may_not_downgrade_the_scheme(self):
-        """Redirects are the NORMAL path here, and the stock handler follows http and ftp whatever the original scheme was. Driven with a real request, or removing the guard errors inside urllib and reads as a broken test rather than an unguarded redirect."""
+        """The stock handler redirects to http and ftp from any scheme; a real request drives the guard."""
         import email.message
         import urllib.request
         from amaze.core import matx_sources

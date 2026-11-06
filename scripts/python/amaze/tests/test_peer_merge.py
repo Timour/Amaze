@@ -1,4 +1,4 @@
-"""Two machines editing one library: a field a peer changed must survive, and a real conflict must be told to the user rather than silently won."""
+"""Two machines, one library: a peer edit survives, a true conflict is told, never silently won."""
 
 import json
 import os
@@ -60,7 +60,7 @@ class _Case(unittest.TestCase):
 
 
 class APeerFieldEditSurvivesOurSave(_Case):
-    """The merge knew eight field names; everything else was overwritten."""
+    """A peer edit to any field survives our save, not only to a known few."""
 
     def test_a_peer_edit_to_code_is_not_destroyed(self):
         self._write(self._document())
@@ -110,7 +110,7 @@ class TheAuditsNamedScenarios(_Case):
                          "the other machine's rename was lost")
 
     def test_2d_a_category_the_other_machine_removed_stays_removed(self):
-        """Categories union, so a removal used to come straight back."""
+        """Categories union, so a removal must not come straight back."""
         document = self._document()
         document["categories"] = ["_All", "Wood", "Metal"]
         self._write(document)
@@ -164,7 +164,7 @@ class TheAuditsNamedScenarios(_Case):
 
 
 class APeerFieldRemovalIsHonoured(_Case):
-    """The same rule the category list follows: gone from disk, in our base, untouched by us, is THEIR removal."""
+    """Like the category list: gone from disk, in our base, untouched by us, is their removal."""
 
     def test_their_removal_stands_unless_we_changed_the_field(self):
         absent = object()
@@ -188,7 +188,7 @@ class APeerFieldRemovalIsHonoured(_Case):
 
 
 class ACategoryColourIsJudgedAgainstWhatWeLoaded(_Case):
-    """Colours merge per category name against the table as we last read it - ours won every name."""
+    """Colours merge per category name against the table as we last read it."""
 
     def _coloured(self, colours):
         document = self._document()
@@ -302,7 +302,7 @@ class _PanelCase(unittest.TestCase):
 
 
 class AnAdoptedFieldReachesTheModel(_PanelCase):
-    """H6's other half: the connector names the field, the MODEL must apply it."""
+    """The connector names the field; the model must apply it."""
 
     def test_a_peer_field_edit_is_in_the_model_after_our_save(self):
         self.assertTrue(self.model.save(), "premise: the first save failed")
@@ -454,10 +454,10 @@ class AColourTakenInIsPainted(unittest.TestCase):
 
 
 class TheBaselineIsWhatIsOnDisk(_Case):
-    """3a: the loser of a same-tick save recorded the bytes it serialised."""
+    """The loser of a same-tick save records the bytes it serialised."""
 
     def test_a_clobbered_save_does_not_read_as_a_peer_deleting_our_row(self):
-        """Our write lands, another machine's rename overwrites it in the same instant, and our next save must not read our own missing row as their deletion. ▸p/merge-needs-a-base"""
+        """A peer rename overwriting our write is not their deletion of our row ▸p/merge-needs-a-base"""
         from amaze.helpers import hostos
 
         self._write(self._document())

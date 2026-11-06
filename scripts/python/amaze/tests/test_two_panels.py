@@ -1,4 +1,4 @@
-"""Two Amaze panels open at once must not damage the library - every case is a reproduction from the two-panel audit, asserting what SHOULD happen. ▸p/one-model-set"""
+"""Two Amaze panels open at once must not damage the library. ▸p/one-model-set"""
 
 import json
 import os
@@ -21,13 +21,13 @@ def _document(panel, filename="library.json"):
 
 
 def _rows(panel, filename="library.json"):
-    """Disk rows by id as a STRING - the fixture carries an int id and `Material.mat_id` always answers a str."""
+    """Disk rows by id as a string; the fixture carries an int id, `Material.mat_id` a str."""
     return {str(row.get("id")): row
             for row in _document(panel, filename)["assets"]}
 
 
 def _second_panel(testcase):
-    """A panel CO-EXISTING with the fixture panel - the singletons are left standing, so both hold the connector the way two pane tabs do."""
+    """A panel beside the fixture panel; both hold the connector the way two pane tabs do."""
     return test_support.reopened_panel(testcase)
 
 
@@ -116,7 +116,7 @@ class TwoPanelsShareOneLibraryTest(unittest.TestCase):
                         "the other panel was left detached by the switch")
 
     def test_h9_a_panel_opened_after_a_switch_joins_the_same_models(self):
-        """Without the re-file, the models sit under the OLD path and the next panel builds a second set over one library."""
+        """Without the re-file the models sit under the old path; the next panel builds a second set."""
         other = test_support.fresh_library(self)
         self.a.prefs.dir = other
         self.a.switch_all_models()
@@ -129,7 +129,7 @@ class TwoPanelsShareOneLibraryTest(unittest.TestCase):
             "set of models - which is the divergence phase 1 removed")
 
     def test_a_closed_panel_leaves_no_listener_on_the_shared_models(self):
-        """Qt takes a parented proxy with its widget - unparented, a closed pane tab goes on receiving the shared model's signals forever. ▸p/one-model-set"""
+        """Qt takes a parented proxy with its widget; unparented, a closed tab hears signals forever."""
         import shiboken6
 
         doomed = [self.b.material_sorted_model, self.b.material_selection_model,
@@ -150,7 +150,7 @@ class TwoPanelsShareOneLibraryTest(unittest.TestCase):
                         "the surviving panel lost its rows when the other closed")
 
     def test_a_pending_resort_dies_with_the_panel_that_asked_for_it(self):
-        """The grid proxies coalesce a re-sort onto the next event-loop turn; a panel closed inside that window leaves the call queued against a proxy Qt is about to delete."""
+        """A re-sort is coalesced to the next loop turn; closing the panel first must not leave it queued."""
         from PySide6 import QtCore
 
         proxy = self.b.material_sorted_model
@@ -171,7 +171,7 @@ class TwoPanelsShareOneLibraryTest(unittest.TestCase):
                          "on a proxy Qt had already destroyed")
 
     def test_a_category_removed_in_one_panel_tells_the_other_sidebar(self):
-        """Both sidebars alias ONE list, so the row vanishes from the second panel with no signal and its view repaints only by accident. ▸p/one-model-set"""
+        """Both sidebars alias one list: a row leaves the second panel with no signal. ▸p/one-model-set"""
         categories = self.a.category_model
         before = categories.rowCount()
         self.assertTrue(before > 1,

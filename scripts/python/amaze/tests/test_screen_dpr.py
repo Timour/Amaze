@@ -14,7 +14,7 @@ APP_WIDE = ("devicePixelRatio", "primaryScreen")   # both answer for the app, ne
 EXEMPT = {
     ("helpers/ui_helpers.py", "_screen_dpr"),      # a tooltip is built before anyone knows which monitor it pops on
     ("utils/rc_calls.py", "describe"),    # records the value in the log, draws nothing
-    ("helpers/theme.py", "screen_ratio"),          # THE shared reader: primary is its documented no-widget fallback
+    ("helpers/theme.py", "screen_ratio"),          # the shared reader: primary is its documented no-widget fallback
 }
 
 IN_SCOPE = (
@@ -25,7 +25,7 @@ IN_SCOPE = (
     "helpers/ui_helpers.py",
 )
 
-REMAINING = set()                                 # roadmap line 30's A7, one file per commit; this may only SHRINK - and it is EMPTY since `_device_ratio` was deleted rather than made widget-aware
+REMAINING = set()                                 # app-wide reads still to fix; it may only shrink
 
 
 def _scope_of(tree, line):
@@ -42,7 +42,7 @@ def _scope_of(tree, line):
 
 
 def _reads_in(source, relative):
-    """[(scope, line, attr)] for every app-wide ratio read in `source`, EXEMPT removed; split out so the scanner can be pointed at a SYNTHETIC read and proved able to see one."""
+    """[(scope, line, attr)] of app-wide ratio reads in `source`, EXEMPT removed."""
     tree = ast.parse(source, filename=relative)
     found = []
     for node in ast.walk(tree):
@@ -64,7 +64,7 @@ def _app_wide_reads(relative):
 class TheRatioFollowsTheWindow(unittest.TestCase):
 
     def test_no_drawing_path_reads_an_app_wide_ratio(self):
-        """`app.devicePixelRatio()` is the MAX over screens and `primaryScreen()` is the primary only - neither moves with the window, so a pixmap drawn from either is wrong on the other monitor. ▸r/screen-dpr"""
+        """The app ratio is the max over screens, the primary is one screen; neither follows the window."""
         live = set()
         for relative in IN_SCOPE:
             for scope, line, attr in _app_wide_reads(relative):
@@ -83,7 +83,7 @@ class TheRatioFollowsTheWindow(unittest.TestCase):
             "ratchet cannot slip back: %s" % fixed)
 
     def test_the_scan_can_find_a_read(self):
-        """A guard that matches nothing passes forever - so feed the scanner a read it MUST see, rather than asking the clean tree for one it no longer has."""
+        """A guard that matches nothing passes forever, so the scanner is fed a read it must see."""
         planted = ("class Widget:\n"
                    "    def paintEvent(self):\n"
                    "        r = QtGui.QGuiApplication.primaryScreen()\n")

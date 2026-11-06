@@ -1,5 +1,4 @@
-"""One colour gesture for the Sidebar, three answers behind it: the GESTURE belongs to the area, what a colour IS belongs to the context, and the three stores stay three stores. ▸archive/test_sidebar_colour.py
-"""
+"""One colour gesture per area; the context says what a colour is; the three stores stay three."""
 
 import os
 import sys
@@ -32,7 +31,7 @@ class EveryContextSaysWhatAColourIs(unittest.TestCase):
 
 
 class TheColourReachesBOTHPlacesItIsPainted(unittest.TestCase):
-    """A sidebar colour is painted TWICE - on the row and on every tile filed under it - so a gesture that repaints one of them looks like it did nothing."""
+    """A sidebar colour paints the row and every tile under it; a gesture must repaint both."""
 
     @classmethod
     def setUpClass(cls):
@@ -48,11 +47,11 @@ class TheColourReachesBOTHPlacesItIsPainted(unittest.TestCase):
         self.assertGreater(model.rowCount(), 1,
                            "the %s sidebar has only All, so there is "
                            "nothing to colour" % key)
-        row = getattr(model, "_offset", lambda: 1)()    # File's first location sits under the scene row
+        row = getattr(model, "_offset", lambda: 1)()    # File puts a scene row first
         return panel._section(), model, model.index(row, 0)
 
     def test_the_sidebar_is_TOLD_so_the_row_actually_repaints(self):
-        """Reading the role back proves nothing - these models answer live from the store, so a gesture that wrote and told nobody reads correct and shows nothing. The SIGNAL is the repaint."""
+        """These models answer live from the store, so only a change signal proves the row repaints."""
         for key in ("material", "gradient", "file"):
             with self.subTest(section=key):
                 context, model, index = self._sidebar_row(key)
@@ -61,7 +60,7 @@ class TheColourReachesBOTHPlacesItIsPainted(unittest.TestCase):
                 told = []
                 for signal in (model.dataChanged, model.modelReset,
                                model.layoutChanged):
-                    def heard(*_args, s=signal, told=told):    # bound now: no other sidebar fills it
+                    def heard(*_args, s=signal, told=told):    # bound now: no other fills it
                         told.append(s)
                     signal.connect(heard)
                     self.addCleanup(signal.disconnect, heard)
@@ -94,7 +93,7 @@ class TheColourReachesBOTHPlacesItIsPainted(unittest.TestCase):
                     "the %s row still wears the cleared colour" % key)
 
     def test_an_UNDERSCORE_category_is_coloured_by_its_stored_name(self):
-        """A colour written under the DISPLAYED name is one nothing reads, plus an orphan key that reattaches if the name comes back. Driven THROUGH the panel's gesture, which is where the name is read - calling the context directly never exercises it."""
+        """Colour is keyed by the stored name, not the displayed one; driven through the panel gesture."""
         panel = self.panel
         panel.section_tabs.setChecked("material")
         QtWidgets.QApplication.processEvents()

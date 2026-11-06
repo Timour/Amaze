@@ -1,5 +1,4 @@
-"""A test skipped on EVERY Houdini protects nothing and reads as coverage - this pins the intersection in both polarities, the refusals, and the wiring. ▸archive/test_dead_cover.py
-"""
+"""A test skipped on every Houdini protects nothing: pins the intersection, refusals and wiring."""
 
 import ast
 import io
@@ -214,11 +213,11 @@ class TheWiringTest(unittest.TestCase):
 
 
 class EverythingLoadsOnADirectRunTest(unittest.TestCase):
-    """`unittest.main()` collects what is defined ABOVE it, then exits - so a class below the call is never collected on a direct run, and the run prints a confident green over half a file."""
+    """`unittest.main()` collects only what is defined above it, so a class below it never runs."""
 
     @staticmethod
     def _defined_below_main(source):
-        """Module-level definitions below the `unittest.main()` call. AST, never grep - a comment mentioning the call must not count as one."""
+        """Module-level definitions below the `unittest.main()` call, by AST so a comment cannot count."""
         tree = ast.parse(source)
         main_lines = [node.lineno for node in ast.walk(tree)
                       if isinstance(node, ast.Call)

@@ -1,4 +1,4 @@
-"""No user-facing string names a retired control - string LITERALS only, across the package and MANUAL.md. Add a rename to RETIRED; leave out any name that still has a live reading ▸p/quoted-strings-go-stale"""
+"""No literal in the package or MANUAL.md names a retired control ▸p/quoted-strings-go-stale"""
 
 import ast
 import os
@@ -14,21 +14,21 @@ from amaze.tests import test_support  # noqa: F401
 PACKAGE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(PACKAGE)))
 
-RETIRED = {    # retired label -> what the app calls it now, which the failure message quotes; three near-misses are deliberately absent ▸p/quoted-strings-go-stale
+RETIRED = {    # retired label -> current name, quoted on failure ▸p/quoted-strings-go-stale
     "Rerender Thumbnail": "Update Render",
     "Render Thumbnail": "Update Render",
-    "Update Preview": "Update Render",    # 1.9.0: a render beside a capture
+    "Update Preview": "Update Render",    # a render beside a capture
     "Delete Entry": "Delete",
     "Edit Info": "Info",
     "Toggle Favorite": "Favorite",
     "Edit Icon": "Customize",
     "New Snippet": "New File",
     "Apply to Selected Node": "Apply",
-    "Import to MAT": "Copy To /mat",    # CASE is what separates this from the live "Import to Materials" - lower-case it and the match swallows an entry that still exists
+    "Import to MAT": "Copy To /mat",    # case matters: lower-cased, it matches a live entry
     "Import to LOP": "Copy To /stage",
 }
 
-DEFERRED = set()    # (module, label) waived while its file is too expensive to open; empty since A11 stage C paid panel.py's sweep ▸p/line-keyed-register
+DEFERRED = set()    # (module, label) pairs waived for now ▸p/line-keyed-register
 
 
 def _literals(path):

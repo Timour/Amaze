@@ -1,4 +1,4 @@
-"""The design lives in ONE document: no second home for a colour, a dialog size or a drawn word. ▸p/one-design-document"""
+"""No second home for a colour, a dialog size or a drawn word ▸p/one-design-document"""
 import ast
 import os
 import re
@@ -12,7 +12,7 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 HEX = re.compile(r'"#[0-9a-fA-F]{3,8}"')
 
-DRAWS_CHROME = (    # the files that paint the panel and its dialogs; a colour here is a DESIGN colour and belongs in the one document
+DRAWS_CHROME = (    # files that paint the panel and dialogs; their colours belong in the document
     "helpers/ui_helpers.py",
     "panel/panel.py",
     "panel/delegates.py",
@@ -37,7 +37,7 @@ def _literal_hexes(path):
     found = []
     for number, line in enumerate(source.splitlines(), 1):
         if line.lstrip().startswith("#"):
-            continue        # a hex QUOTED in a comment explains, it does not paint
+            continue        # a hex quoted in a comment explains, it does not paint
         code = line.split("    # ")[0]
         for hit in HEX.findall(code):
             found.append((number, hit, line.strip()))
@@ -86,7 +86,7 @@ DIALOG_DIR = os.path.join(_ROOT, "dialogs")
 
 
 class NoDialogSetsItsOwnWidth(unittest.TestCase):
-    """A width every dialog reads from ONE place fails the SAME way in all of them; four dialogs rendering four different widths is proof the constant never reached any of them. So the width is the shell's to apply and no dialog may set its own. ▸p/shared-means-it-fails-together"""
+    """No dialog sets its own width; the shell applies it ▸p/shared-means-it-fails-together"""
 
     def _self_sizing_calls(self, path):
         with open(path, encoding="utf-8") as handle:
@@ -135,7 +135,7 @@ class NoDialogSetsItsOwnWidth(unittest.TestCase):
         offenders = []
         for name in sorted(os.listdir(DIALOG_DIR)):
             if not name.endswith(".py") or name == "base_dialog.py":
-                continue        # the shell is the ONE place a width is applied
+                continue        # the shell is the one place a width is applied
             for line, call in self._self_sizing_calls(
                     os.path.join(DIALOG_DIR, name)):
                 offenders.append("dialogs/%s:%d  self.%s(...)"
@@ -148,7 +148,7 @@ class NoDialogSetsItsOwnWidth(unittest.TestCase):
             + "\n  ".join(offenders))
 
     def test_no_dialog_sizes_itself_from_its_own_geometry(self):
-        """A geometry call may name the document's constant, never read the widget back; `sizeHint` is the layout's answer, so it is not a self-reader ▸p/sized-from-nothing"""
+        """Geometry never reads the widget back; `sizeHint` is the layout answer ▸p/sized-from-nothing"""
         offenders = []
         for name in sorted(os.listdir(DIALOG_DIR)):
             if not name.endswith(".py"):
@@ -187,7 +187,7 @@ class NoDialogSetsItsOwnWidth(unittest.TestCase):
                         "the scanner misreads a sample written to test it")
 
     def test_every_dialog_width_is_a_named_constant(self):
-        """A FORM_WIDTH assigned a bare number is a second home for a size, however few characters it is."""
+        """A FORM_WIDTH assigned a bare number is a second home for a size, however short."""
         offenders = []
         for name in sorted(os.listdir(DIALOG_DIR)):
             if not name.endswith(".py"):

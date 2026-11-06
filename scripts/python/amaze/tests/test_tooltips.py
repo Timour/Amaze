@@ -1,4 +1,4 @@
-"""Every hover text lives in `tooltips.py`, so a rewording is one edit in one file. ▸p/messages-need-one-home"""
+"""Every hover text lives in `tooltips.py`, so a rewording is one edit. ▸p/messages-need-one-home"""
 
 import ast
 import os
@@ -22,7 +22,7 @@ def _sources():
 
 
 def _spelled_out(node):
-    """The literals a call hands the helper, read through a conditional and through a format template; a computed string answers nothing."""
+    """The literals a call hands the helper, through conditionals and format templates."""
     if isinstance(node, ast.Constant):
         return [node.value] if isinstance(node.value, str) else []
     if isinstance(node, ast.IfExp):
@@ -49,7 +49,7 @@ def _offenders():
             func = node.func
             name = func.attr if isinstance(func, ast.Attribute) \
                 else getattr(func, "id", "")
-            if name not in ("tooltip_text", "setToolTip") or not node.args:   # setToolTip too: a raw literal there bypasses tooltip_text and escaped the first sweep
+            if name not in ("tooltip_text", "setToolTip") or not node.args:   # setToolTip too: a raw literal there bypasses tooltip_text
                 continue
             for text in _spelled_out(node.args[0]):
                 found.append("%s:%d  %r" % (

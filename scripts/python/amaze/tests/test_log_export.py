@@ -1,4 +1,4 @@
-"""Exporting the debug log for support - a deliberate act every time, never a background mirror, and its refusals are most of what is pinned here. ▸p/log-export"""
+"""Exporting the debug log for support: a deliberate act, never a background mirror. ▸p/log-export"""
 
 import os
 import sys
@@ -56,7 +56,7 @@ class TestExportSucceeds(unittest.TestCase):
         self.assertIn("hou", name)
 
     def test_a_second_export_never_overwrites_the_first(self):
-        """The stamp resolves only to the second, so a double-click would otherwise destroy the export just made."""
+        """The stamp resolves to the second, so a quick second export must not overwrite the first."""
         log = _Log(self)
         first = debug.export_log(log.dest)
         second = debug.export_log(log.dest)
@@ -142,7 +142,7 @@ class TestOsFacts(unittest.TestCase):
 
 
 class NoteRespectsTheConsoleRuleTest(unittest.TestCase):
-    """`debug.note` is the only safe sink on Windows and once printed unconditionally, so the one path meant to obey the rule broke it. ▸r/qt-windows-macos"""
+    """`debug.note` must not print on Windows, where it is the only safe sink. ▸r/qt-windows-macos"""
 
     def _capture(self, windows):
         import io
@@ -179,10 +179,10 @@ class NoteRespectsTheConsoleRuleTest(unittest.TestCase):
 
 
 class CapturedLogHelperTest(unittest.TestCase):
-    """`test_support.captured_log()` - a capture helper returning nothing or anything silently inverts every assertion built on it, and it must leave Debug Mode as it found it. ▸p/captured-log-helper"""
+    """`captured_log()` captures for real and restores Debug Mode ▸p/captured-log-helper"""
 
     def test_it_captures_a_note(self):
-        """Read after the block ends: the first version lost its tempdir at exit."""
+        """The capture is read after the block ends, once its tempdir is gone."""
         with test_support.captured_log() as log:
             debug.note("a captured diagnostic")
             debug.event("test", "an internal detail")

@@ -1,4 +1,4 @@
-"""A structural fingerprint of the CONSTRUCTED panel - widgets, layouts, models, menus, connected signals and the panel's own attributes, canonically. Two snapshots comparing equal mean a refactor was code motion.  `hython tests/ui_snapshot.py --out after.json --compare before.json`  ▸archive/ui_snapshot.py"""
+"""A structural fingerprint of the built panel: equal snapshots mean a refactor was code motion."""
 
 import argparse
 import contextlib
@@ -33,7 +33,7 @@ _WIDGET_PROPS = (
 
 
 def _plain(value):
-    """Anything Qt hands back as something JSON can hold and compare - never an address, never an unordered set. PySide enums raise on `int()`, and falling back to the type name makes every mode compare equal."""
+    """Anything Qt returns, as JSON that compares: never an address, never an unordered set."""
     if isinstance(value, (bool, int, float, str)) or value is None:
         return value
     if isinstance(value, QtCore.QSize):
@@ -64,7 +64,7 @@ def _plain(value):
 
 
 def _path(widget) -> str:
-    """A stable identity - the chain of object names, or class name plus SIBLING INDEX where unnamed. The index is load-bearing: most of the tree is unnamed, and identical paths collapse onto one entry, so deleting a widget changes nothing in the snapshot."""
+    """Object names, or class plus sibling index where unnamed; without it paths collapse."""
     parts = []
     node = widget
     while node is not None:
@@ -84,7 +84,7 @@ def _path(widget) -> str:
 
 
 def _connected_signals(obj) -> list:
-    """Every signal with at least one receiver - the check that matters, because a dropped `connect()` leaves the widget tree identical and the panel dead."""
+    """Each signal with a receiver: a dropped `connect()` leaves the tree intact, the panel dead."""
     out = []
     meta = obj.metaObject()
     for i in range(meta.methodCount()):

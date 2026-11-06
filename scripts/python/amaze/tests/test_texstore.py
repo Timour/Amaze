@@ -1,4 +1,4 @@
-"""The texture store: every file a material references is adopted INTO the library and referenced as `$AMAZELIB/...`, so the library is self-contained and survives moves, renames and other machines - the export door packs what the inventory names, and Copy To hands scenes plain absolute paths."""
+"""The texture store: referenced files are adopted into the library as `$AMAZELIB/...` paths."""
 
 import json
 import os
@@ -56,7 +56,7 @@ class TokenPathsTest(unittest.TestCase):
 
 
 class ReferenceScanTest(unittest.TestCase):
-    """references() walks a network's FileReference parms - the probe showed Redshift tex0 and mtlximage file both declare the type."""
+    """references() walks FileReference parms, the type Redshift tex0 and mtlximage file declare."""
 
     def test_only_a_set_file_parm_is_a_reference_and_it_is_found_raw(self):
         from amaze.core import texstore
@@ -70,7 +70,7 @@ class ReferenceScanTest(unittest.TestCase):
 
 
 class AdoptTest(unittest.TestCase):
-    """adopt() copies referenced files INTO the library and rewrites the parms to $AMAZELIB - the inventory it returns is what the export packs."""
+    """adopt() copies files in and rewrites parms to $AMAZELIB; the export packs its inventory."""
 
     def _outside_texture(self):
         outside = tempfile.mkdtemp(prefix="amaze_outside_")
@@ -157,7 +157,7 @@ class AdoptTest(unittest.TestCase):
 
 
 class ResolveParmsTest(unittest.TestCase):
-    """resolve_parms() is the scene-side door: $AMAZELIB leaves the building as a plain absolute path, so scenes carry no Amaze dependency."""
+    """resolve_parms() is the scene-side door: $AMAZELIB leaves as a plain absolute path."""
 
     def test_token_parms_become_absolute_and_others_are_untouched(self):
         from amaze.core import texstore
@@ -177,7 +177,7 @@ class ResolveParmsTest(unittest.TestCase):
 
 
 class SaveDoorTest(unittest.TestCase):
-    """Save to Amaze adopts: the STAGED copy is rewritten and its files copied in - the user's scene node is never touched, and the row carries the token inventory."""
+    """Save to Amaze adopts on the staged copy, never the scene node; the row carries the inventory."""
 
     @classmethod
     def setUpClass(cls):
@@ -258,7 +258,7 @@ class SaveDoorTest(unittest.TestCase):
 
 
 class PanelEnvTest(unittest.TestCase):
-    """The panel publishes $AMAZELIB at startup, so Houdini resolves store references without any door's help."""
+    """The panel publishes $AMAZELIB at startup, so Houdini resolves store references unaided."""
 
     @classmethod
     def setUpClass(cls):

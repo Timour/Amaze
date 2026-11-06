@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Did a test run write to the REAL debug log? Byte size alone cannot answer it - a Houdini may be open and logging, which is not a leak - so only the bytes APPENDED during the run are parsed and each record is attributed to the process that wrote it. Pure stdlib, no Houdini import. Exit 0 clean, 1 leak, 2 could not be read.  `check_log_leak.py <byte-offset-before-the-run>`  ▸archive/check_log_leak.py"""
+"""Did a run append non-GUI records to the real debug log? Exit 0 clean, 1 leak, 2 unreadable."""
 
 import json
 import os
@@ -9,7 +9,7 @@ HEADLESS = ("hython", "hbatch", "hescape")
 
 
 def real_log_path() -> str:
-    """The log this machine's Amaze actually writes, through the same engine the app uses - never a second copy of the per-OS convention."""
+    """The log this machine's Amaze writes, via the app's own engine, never a copy of the OS rule."""
     here = os.path.dirname(os.path.abspath(__file__))
     package_root = os.path.dirname(os.path.dirname(here))   # tests/ -> amaze/ -> python/
     sys.path.insert(0, package_root)
@@ -19,7 +19,7 @@ def real_log_path() -> str:
 
 
 def leaked_sessions(path: str, offset: int):
-    """Sessions that appended after `offset` and were NOT a GUI Houdini. A session with no header anywhere started writing elsewhere and switched mid-run - a leak shape a product check alone misses."""
+    """Sessions appending after `offset` that were not a GUI Houdini; no header counts as a leak."""
     products = {}
     with open(path, encoding="utf-8", errors="replace") as handle:
         for line in handle:

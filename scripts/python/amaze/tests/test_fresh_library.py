@@ -58,7 +58,7 @@ class TheTestLibraryDoorMakesAWholeLibrary(unittest.TestCase):
 
 
 class TheStarterCarriesNoPhantomAsset(unittest.TestCase):
-    """The shipped starter held one blank record inherited from the fork, and every library made from it opened with a phantom asset that nothing removed and every save re-emitted."""
+    """A fresh library opens with no phantom blank record for every save to re-emit."""
 
     def test_the_shipped_starter_seeds_no_assets(self):
         """The starter `prepare()` seeds holds no asset; a guard under its own name."""
@@ -122,7 +122,7 @@ class TheShippedStarterDoorBirthsAStampedIndex(unittest.TestCase):
 
 
 class TheAssetWriterMakesItsFolderInsideTheLibraryOnly(unittest.TestCase):
-    """The scoped defensive writer: a missing library folder is made, a destination outside the library is refused rather than manufactured."""
+    """The scoped writer makes a missing library folder, refuses a destination outside it."""
 
     def setUp(self):
         from amaze.render import nodes
@@ -159,7 +159,7 @@ class TheAssetWriterMakesItsFolderInsideTheLibraryOnly(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(self.outside, "elsewhere")))
 
     def test_a_handler_with_no_library_creates_nothing(self):
-        """The `__new__` fixture shape has no root to contain against, so it must make no folder rather than guess one."""
+        """The `__new__` fixture shape has no root to contain against, so it must make no folder."""
         handler = self.nodes.NodeHandler.__new__(self.nodes.NodeHandler)
         target = os.path.join(self.root, "unmade")
         with self.assertRaises(FileNotFoundError):
@@ -170,7 +170,7 @@ class TheAssetWriterMakesItsFolderInsideTheLibraryOnly(unittest.TestCase):
 
 
 class TheBuilderFieldDiesAtSchemaSeven(unittest.TestCase):
-    """The 6 -> 7 step strips the record's `builder` - written by every save since the fork, read by nothing since 2026-08-14, so it comes off the format; the record class must retire the key too, or `_extra` carries it back on the next save."""
+    """The 6 -> 7 step strips `builder`, and the record class retires it, or `_extra` carries it back."""
 
     FILENAME = "library.json"
 
@@ -217,7 +217,7 @@ class TheBuilderFieldDiesAtSchemaSeven(unittest.TestCase):
         self.assertEqual(1, row.get("usd"))
 
     def test_a_v4_document_climbs_the_whole_chain(self):
-        """`code.json` in the real library is a schema-4 document, so the chain must still carry one all the way up."""
+        """The real `code.json` is a schema-4 document, so the chain must still carry one all the way up."""
         self._write({
             "version": 4, "categories": ["_All"], "tags": [],
             "assets": [{"id": "A0", "name": "old", "favorite": True,
@@ -232,7 +232,7 @@ class TheBuilderFieldDiesAtSchemaSeven(unittest.TestCase):
         self.assertEqual("old", row.get("name"))
 
     def test_the_record_class_retires_builder_everywhere(self):
-        """`from_dict` -> `get_as_dict` must DROP the key - unknown instead of retired, it rides `_extra` verbatim and the next save undoes the migration."""
+        """`from_dict` -> `get_as_dict` must drop the key, or `_extra` rides it back on the next save."""
         mat = material.Material.from_dict(
             {"id": "B7", "name": "n", "builder": 1})
         self.assertNotIn(

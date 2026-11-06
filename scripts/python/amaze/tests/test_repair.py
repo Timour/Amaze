@@ -1103,7 +1103,7 @@ class TheGuardsTest(_Case):
             repair_dialog.run(preferences=_NoLibraryPrefs())
             said = " ".join(str(call) for call in hou.ui.displayMessage
                             .call_args_list)
-        self.assertIn("no library folder", said.lower())    # case-insensitive: the WORDING is the design's to change, and only the sense is this test's ▸p/messages-need-one-home
+        self.assertIn("no library folder", said.lower())    # case-insensitive: only the sense is tested, not the wording ▸p/messages-need-one-home
         self.assertIn("Preferences", said,
                       "the user is not told where to set one")
 
@@ -1228,7 +1228,7 @@ class TheWholeFlowTest(_Case):
         told = str(ui.displayMessage.call_args_list[-1])
         self.assertIn("holding folder", told,
                       "the user is not told where the files went")
-        self.assertIn("30 days", told,    # the RETENTION, not the words: a destructive-sounding step must promise the files are kept, and saying so positively is the wording rule ▸p/messages-need-one-home
+        self.assertIn("30 days", told,    # the retention, not the words: the step must promise files are kept ▸p/messages-need-one-home
                       "the user is not told the files are kept")
 
 
@@ -1635,7 +1635,7 @@ class TheRealLibraryRehearsalTest(unittest.TestCase):
         for folder in (live.asset_dir, live.img_dir):
             os.makedirs(os.path.join(self.dir, folder), exist_ok=True)
             for entry in os.listdir(os.path.join(live.dir, folder)):
-                if entry.endswith(".stamp.json"):    # stamps ride WHOLE: the census spares by READING them, and a 0-byte stand-in reads as unreadable and gets swept
+                if entry.endswith(".stamp.json"):    # stamps stay whole: the census reads them, and a 0-byte stand-in reads as unreadable
                     shutil.copy2(os.path.join(live.dir, folder, entry),
                                  os.path.join(self.dir, folder, entry))
                 else:
@@ -2292,7 +2292,7 @@ class DeadScratchesAreMovedWithAnAgeGateTest(unittest.TestCase):
 
 
 class AFailedPromoteLeavesNoScratchTest(unittest.TestCase):
-    """A raising promote must not litter the library - an unowned scratch is how live assets get reported as orphans."""
+    """A raising promote must not litter the library, or live assets get reported as orphans."""
 
     def test_write_json_discards_its_scratch_when_the_promote_raises(self):
         folder = tempfile.mkdtemp(prefix="amaze_repair_scratch_")
@@ -2312,7 +2312,7 @@ class AFailedPromoteLeavesNoScratchTest(unittest.TestCase):
 
 
 class TheSurveyReadsEachFileOnce(_Case):
-    """The survey wants a file's facts AND its rows, and `restore.surveyed` hands back both from one parse."""
+    """`restore.surveyed` hands back a file's facts and its rows from one parse."""
 
     def test_a_list_is_parsed_once_not_twice(self):
         from amaze.helpers import restore as restore_lib

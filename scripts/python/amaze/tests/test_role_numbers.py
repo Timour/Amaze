@@ -1,4 +1,4 @@
-"""The family's Qt role NUMBERS are one declaration, read off the CLASS. The shared proxy matches on hard-coded numbers and silently ignores a filter on any other role, and an instance attribute assigned in `__init__` shadows a subclass's class attribute - which is how two role tables agree today and drift later. Qt reserves nothing above UserRole, so the agreement is ours to hold. Six of these numbers are load-bearing LITERALS elsewhere, which is why the table pins values rather than only cross-model equality. ▸archive/test_role_numbers.py"""
+"""The family's Qt role numbers are one declaration read off the class, pinned by value."""
 
 import inspect
 import re
@@ -51,7 +51,7 @@ FAMILY_MODULES = (
 
 
 class TheRolesLiveOnTheClass(unittest.TestCase):
-    """Reading a role off the CLASS is the anti-shadowing contract - an inherited class attribute has no instance write left to shadow it."""
+    """Reading a role off the class is the anti-shadowing contract."""
 
     def test_the_engine_declares_every_family_role_on_the_class(self):
         for name, number in FAMILY_ROLES.items():
@@ -66,7 +66,7 @@ class TheRolesLiveOnTheClass(unittest.TestCase):
                 % (name, int(value), number))
 
     def test_every_family_model_agrees_by_number(self):
-        """A model may declare a SUBSET, but every family name it does answer must carry the family's number."""
+        """A model may declare a subset, but each family name it answers carries the family's number."""
         for model in FAMILY_MODELS:
             for name, number in FAMILY_ROLES.items():
                 value = getattr(model, name, None)
@@ -80,7 +80,7 @@ class TheRolesLiveOnTheClass(unittest.TestCase):
                     % (model.__name__, name, int(value), number))
 
     def test_a_models_own_roles_stay_off_the_family_numbers(self):
-        """A section's private role must not sit on a family number, or asking a palette for its favourite answers its colours."""
+        """A section's private role must not sit on a family number."""
         family_numbers = set(FAMILY_ROLES.values())
         for model in FAMILY_MODELS:
             for name in dir(model):
@@ -95,7 +95,7 @@ class TheRolesLiveOnTheClass(unittest.TestCase):
                     % (model.__name__, name, int(value)))
 
     def test_no_family_module_assigns_a_role_on_the_instance(self):
-        """The MECHANISM, not today's values - an instance role assignment anywhere in a family module recreates the shadowing trap, so the pattern itself is refused."""
+        """An instance role assignment in any family module is refused: it recreates the shadowing."""
         pattern = re.compile(r"self\.\w*Role\s*=[^=]")
         for module in FAMILY_MODULES:
             source = inspect.getsource(module)

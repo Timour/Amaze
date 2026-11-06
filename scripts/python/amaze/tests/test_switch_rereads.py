@@ -1,4 +1,4 @@
-"""A library switch drops the keyed-store tables, so the panel never serves rows the disk no longer holds: an open store reads its file ONCE, and without the drop a session that switched away and back would show the first library's old notes, icons and folders until Houdini restarted, hiding edits sync landed behind the cache."""
+"""A library switch drops the keyed-store tables, as an open store reads its file only once."""
 
 import contextlib
 import json
@@ -36,7 +36,7 @@ class SwitchRereadsCase(unittest.TestCase):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
 
     def test_switch_rereads_stores_from_disk(self):
-        """An edit that lands on disk BEHIND the cache (the other machine, via sync) is visible after the next pass through switch_all_models."""
+        """An edit that lands on disk behind the cache shows after the next `switch_all_models`."""
         panel = self.panel
         prefs = panel.prefs
         self.addCleanup(keyed_store.release)
@@ -112,7 +112,7 @@ class ASwitchReadsTheSettingsOnce(unittest.TestCase):
 
 
 class TheRegisteredFoldersFollowTheLibrary(unittest.TestCase):
-    """Every registered File location vanished from the pane after a library switch: the rows were never lost, the File section simply declared no `library_model_attrs` and nothing repainted. ▸p/folders-follow-the-library"""
+    """File rows repaint after a switch via `library_model_attrs`. ▸p/folders-follow-the-library"""
 
     @classmethod
     def setUpClass(cls):
@@ -127,7 +127,7 @@ class TheRegisteredFoldersFollowTheLibrary(unittest.TestCase):
             "switch, so the pane keeps showing the previous library's")
 
     def test_every_declared_model_can_actually_switch(self):
-        """Declaring the attribute is only half - `switch_all_models` calls `switch_model_data()` on each, so a model without one turns the switch into an AttributeError."""
+        """`switch_all_models` calls `switch_model_data()` on each declared model, so each needs one."""
         panel = self.panel
         missing = []
         for model in panel.library_models():
@@ -137,7 +137,7 @@ class TheRegisteredFoldersFollowTheLibrary(unittest.TestCase):
                          % ", ".join(missing))
 
     def test_the_folder_model_resets_so_the_view_repaints(self):
-        """The folders read THROUGH to prefs, so the rows are right the moment the store is dropped - what was missing is the reset that tells the view."""
+        """The folders read through to prefs; the switch must still reset the model to tell the view."""
         panel = self.panel
         model = panel.file_folders_model
         self.assertIsNotNone(model)

@@ -1,4 +1,4 @@
-"""Every dialog message lives in `messages.py`, and its placeholders match what its callers pass. ▸p/messages-need-one-home"""
+"""Dialog messages live in `messages.py` and match their callers ▸p/messages-need-one-home"""
 import ast
 import os
 import re
@@ -283,7 +283,7 @@ def _spelled_messages(tree, where: str = "panel") -> list:
 
 
 class NoDialogSpellsItsOwnMessage(unittest.TestCase):
-    """A message written at the call site is a second home for words the design owns, and the one place a Figma edit cannot reach."""
+    """A message written at the call site is a second home for words, out of reach of a Figma edit."""
 
     def test_no_message_literal_survives_at_a_call_site(self):
         offenders = []
@@ -352,7 +352,7 @@ class NoDialogSpellsItsOwnMessage(unittest.TestCase):
 
 
 class ThePlaceholdersAgreeWithTheCallers(unittest.TestCase):
-    """Editing wording in one file is easy; editing OUT a `%s` a caller still supplies raises `TypeError` in front of the user, and only on the branch that shows it."""
+    """Removing a `%s` a caller still supplies raises `TypeError` in front of the user."""
 
     def _formatted(self):
         """{constant name: how many args the callers pass}, from `X % (...)`."""

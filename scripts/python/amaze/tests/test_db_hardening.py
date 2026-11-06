@@ -913,7 +913,7 @@ class TheSchemaStampMustNotLieTest(_Case):
         self.assertEqual(2, data["version"], "premise: we stopped at 2")
         peer = self._document(2, version=2)
         peer["version"] = 3
-        peer["assets"][0]["moods"] = []      # what step 2 would have added, on ONE row only: the merge is field-wise over EVERY field now, so a row the peer migrated hands us its new field and the row that must stay at the old shape is one the peer left alone
+        peer["assets"][0]["moods"] = []      # one row only: the merge is field-wise, so only a row the peer left alone keeps the old shape
         self._write(peer)
         db.set({"assets": data["assets"], "categories": data["categories"]})
         db.save()
@@ -2658,7 +2658,7 @@ class ASnapshotOfTheWrongShapeDoesNotCostTheLoad(_Case):
 class ALibrarySwitchDropsTheOldBaseline(_Case):
 
     def test_the_switch_does_not_merge_the_new_file_with_itself(self):
-        """The normalisation save inside load() must not run against the PREVIOUS library's disk stat - the merge then unions the new file with itself and re-appends what the normalisation just stripped."""
+        """The normalisation save in load() must not use the previous library's disk stat."""
         self._write(self._document(count=1))
         db, _ = self._load()
 
@@ -2814,7 +2814,7 @@ class TheMembershipBaselineFollowsEverySave(_Case):
             "the next save rebuilds assets[] without it")
 
     def test_a_row_the_peer_deleted_stays_deleted(self):
-        """The third direction: in our memory AND the baseline but gone from disk means the peer deleted it - and its files are already unlinked, so writing it back mints a fileless ghost on both machines."""
+        """In memory and baseline but gone from disk: a peer deleted it, and writing it back mints a ghost."""
         self._write(self._document(count=2))
         db, _ = self._load()
 

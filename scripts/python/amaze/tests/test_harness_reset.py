@@ -1,5 +1,4 @@
-"""The harness has to be able to go red. The connector registry lives OUTSIDE the class body, so a reset must CLEAR it, never rebind - a rebind detaches the class from the global and the pre-reset connector walks back in on the next reload, latches and all. ▸archive/test_harness_reset.py
-"""
+"""Proves a reset clears the shared connector registry and never rebinds it."""
 
 import importlib
 import json
@@ -34,12 +33,12 @@ class ConnectorResetDetachesNothingTest(unittest.TestCase):
 
     @staticmethod
     def _attach_and_clear():
-        """Puts the registry back the way PRODUCTION holds it - the class attribute IS the module global. Deliberately not the function under test, and reset BEFORE latching, or the latched connector lands in a private dictionary the reload never sees and everything passes with the fix removed."""
+        """Restores the production registry, where the class attribute is the module global."""
         database.DatabaseConnector._instances = database._INSTANCES
         database._INSTANCES.clear()
 
     def _latched(self):
-        """A connector latched the way PRODUCTION latches it - set by hand it would prove nothing about the real one."""
+        """A connector latched the way production latches it, not set by hand."""
         with open(self.path + ".bak-1", "w", encoding="utf-8") as handle:
             json.dump({"categories": ["_All"], "tags": [],
                        "assets": [{"id": "OLD1"}]}, handle)
@@ -52,7 +51,7 @@ class ConnectorResetDetachesNothingTest(unittest.TestCase):
         return db
 
     def test_a_reset_connector_does_not_come_back_after_a_reload(self):
-        """THE ONE THAT GOES RED - a reload happens on every panel open and re-reads the global, so a reset that emptied a detached copy lets the latched connector walk straight back in."""
+        """A reload re-reads the global, so a reset that emptied a detached copy lets the latch back."""
         latched = self._latched()
         test_support.reset_database_singletons()
         self.assertIs(
@@ -76,7 +75,7 @@ class ConnectorResetDetachesNothingTest(unittest.TestCase):
             "wrong reason")
 
     def test_a_reset_really_drops_a_healthy_connector_too(self):
-        """The accept path - the point of the reset is that the next construction reads the test's OWN fixture path."""
+        """The accept path: after a reset the next construction reads the new fixture path."""
         with open(self.path, "w", encoding="utf-8") as handle:
             json.dump({"categories": ["_All"], "tags": [],
                        "assets": [{"id": "FIRST1"}]}, handle)
@@ -103,7 +102,7 @@ class ConnectorResetDetachesNothingTest(unittest.TestCase):
 
 @unittest.skipUnless(hou, "Houdini is not loaded")
 class PinEnvSetsOnlyWhatTheProductReadsAsUnset(unittest.TestCase):
-    """`pin_env` gives a variable its value where the product's gate would refuse it, then restores it."""
+    """`pin_env` sets a variable where the product gate would refuse it, then restores it."""
 
     NAME = "AMAZE_PIN_ENV_PROBE"
 

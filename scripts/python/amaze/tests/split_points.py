@@ -1,4 +1,4 @@
-"""Where a long method can be split without moving state - the boundaries no LOCAL variable crosses. ITS CUTS ARE NECESSARY, NEVER SUFFICIENT: `self` counts as always-available, so an ordering constraint carried through an attribute is invisible to it, and promoting a local to an attribute converts a constraint it CAN see into one it cannot. Pair it with ui_snapshot.  `hython tests/split_points.py panel/panel.py init_ui [--allow NAME]`  ▸archive/split_points.py"""
+"""Cut points in a method that no local crosses; necessary, not sufficient, as `self` is ignored."""
 
 import argparse
 import ast
@@ -8,7 +8,7 @@ import sys
 
 
 def module_level_names(tree) -> set:
-    """Every name a method can use without it being a local - imports, module constants, module-level defs and classes, and builtins."""
+    """Every name a method can use without a local: imports, module names, defs, classes, builtins."""
     names = set(dir(builtins))
     for node in tree.body:
         if isinstance(node, (ast.Import, ast.ImportFrom)):

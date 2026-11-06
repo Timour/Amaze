@@ -1,4 +1,4 @@
-"""The gate: no module may USE a sibling or stdlib module it never imported - read from the SOURCE, because neither `py_compile` nor a green suite can see it. ▸p/code-motion"""
+"""No module may use a sibling or stdlib module it never imported, read from source. ▸p/code-motion"""
 
 import ast
 import os
@@ -11,7 +11,7 @@ _AMAZE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def _watched_module_names() -> set:
-    """Every module name this gate will hold a file to: the amaze package's own, plus the standard library's. ▸p/code-motion"""
+    """Every module name this gate holds a file to: the amaze package's and stdlib's. ▸p/code-motion"""
     names = set(sys.stdlib_module_names)
     for root, dirs, files in os.walk(_AMAZE):
         dirs[:] = [d for d in dirs if d != "__pycache__"]
@@ -22,7 +22,7 @@ def _watched_module_names() -> set:
 
 
 def _source_files() -> list:
-    """The shipped modules - tests excluded, since a test binds names through the harness and is not what ships. ▸p/code-motion"""
+    """The shipped modules; tests bind names through the harness and are excluded. ▸p/code-motion"""
     found = []
     for root, dirs, files in os.walk(_AMAZE):
         dirs[:] = [d for d in dirs if d not in ("__pycache__", "tests")]
@@ -33,7 +33,7 @@ def _source_files() -> list:
 
 
 def _bound_names(tree: ast.AST) -> set:
-    """Every name this module gives a meaning to by ANY route - import, local, parameter, def or class, function-local imports included. ▸p/code-motion"""
+    """Every name this module binds by any route, function-local imports included. ▸p/code-motion"""
     bound = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -203,7 +203,7 @@ class AFunctionImportsWhatItReads(unittest.TestCase):
 
 
 class TheProjectsOldNameIsGoneFromTheCode(unittest.TestCase):
-    """`$ASSETLIB` was the plugin root before the rename to Amaze; every install now sets `$AMAZE`, so no source may still read the old spelling. ▸p/updater-shape"""
+    """Every install sets `$AMAZE`, so no source may still read `$ASSETLIB`. ▸p/updater-shape"""
 
     def test_no_shipped_file_names_the_old_apps(self):
         """Pre-1.0 names are gone: compatibility starts at Amaze 1.0. ▸p/compat-starts-at-1-0"""

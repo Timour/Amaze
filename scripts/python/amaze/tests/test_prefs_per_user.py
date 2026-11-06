@@ -1,5 +1,4 @@
-"""Per-device view state is one USER's on this machine: FLAT WHILE NOBODY, BLOCK ONCE SOMEBODY. The flat keys stay the load fallback because they are the migration source. Switching snapshots the OLD user's block, then applies the NEW one over the defaults - and a user with no block here keeps what is on screen. ▸archive/test_prefs_per_user.py
-"""
+"""Per-device view state is one user's: flat while nobody, a block once somebody is chosen."""
 
 import json
 import os
@@ -80,7 +79,7 @@ class TwoUsersKeepTheirOwnViewState(PerUserCase):
         self.assertEqual(96, users[UID_B].get("thumbsize"))
 
     def test_a_switch_resets_what_their_block_does_not_carry(self):
-        """A key missing from the incoming block means that user never moved it, so inheriting the PREVIOUS user's value bleeds one arrangement into another."""
+        """A key the incoming block lacks must not inherit the previous user's value."""
         self.write_settings({
             "library_user": UID_A,
             "users": {
@@ -147,7 +146,7 @@ class AFlatFileMigratesOnTheFirstSaveWithAUser(PerUserCase):
 class NobodyPickedKeepsTheFlatShape(PerUserCase):
 
     def test_a_userless_save_writes_flat_and_mints_no_block(self):
-        """A session that cancelled the ASK dialog keeps full persistence in the old shape - nothing filed under nobody, nothing lost."""
+        """A session that cancelled the ask dialog keeps the old flat persistence; nothing is lost."""
         self.write_settings({"view_mode": "list", "thumbsize": 300})
         p = self.prefs()
         p.load()
@@ -166,7 +165,7 @@ class NobodyPickedKeepsTheFlatShape(PerUserCase):
 class ASwitchToAnUnknownUserKeepsTheCurrentState(PerUserCase):
 
     def test_a_first_pick_inherits_what_is_on_screen(self):
-        """A user with no block on this machine starts from the arrangement in front of them, which covers both the mint and a second machine's first pick."""
+        """A user with no block on this machine starts from the arrangement on screen."""
         self.write_settings({
             "library_user": UID_A,
             "users": {UID_A: {"thumbsize": 256, "view_mode": "list"}},
@@ -237,7 +236,7 @@ class ABlocksUnknownKeysSurviveTheRebuild(PerUserCase):
 
 
 class TheCopiesFollowTheirUser(PerUserCase):
-    """The last-known File copies mirror per-user stores, so they live with the user's other state - in the block once somebody, flat while nobody."""
+    """The last-known File copies are per-user state: in the block once somebody, flat while nobody."""
 
     FLAT = {
         "library_user": UID_A,
@@ -734,7 +733,7 @@ class EachBlockKnowsItsLibrary(PerUserCase):
 class TheTableAgreesWithInit(PerUserCase):
 
     def test_every_table_default_matches_a_fresh_prefs(self):
-        """The table and `__init__` each state the defaults, so their agreement is DERIVED rather than trusted."""
+        """The table and `__init__` each state the defaults, so their agreement is derived, not trusted."""
         p = self.prefs()
         for stored, (prop, attr, default) in \
                 persistence.USER_KEYS.items():

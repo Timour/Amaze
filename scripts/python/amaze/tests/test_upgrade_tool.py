@@ -1,4 +1,4 @@
-"""tools/upgrade-library.py - the deliberate driver for the migration engine: report touches nothing, --write rehearses on a copy in one FRESH process and runs the real thing in another, refuses loudly (chain gap, newer document, unreadable file, legacy container, lost rows), backs up before acting, and proves the real run against the rehearsal with minted values matched by presence."""
+"""`tools/upgrade-library.py`: report touches nothing; `--write` rehearses on a copy, then runs."""
 
 import contextlib
 import importlib.util
@@ -30,7 +30,7 @@ class UpgradeToolCase(unittest.TestCase):
     def setUp(self):
         self.tool = _load_tool()
         self.real_phase = self.tool._phase
-        self.tool._phase = self.tool._migrate_inplace  # in-process by default - a subprocess here is a multi-second hython boot per phase; the two tests whose SUBJECT is the process isolation restore the real one
+        self.tool._phase = self.tool._migrate_inplace  # in-process by default; a subprocess is a multi-second hython boot per phase
         self.dir = tempfile.mkdtemp(prefix="amaze_upgrade_case_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
 

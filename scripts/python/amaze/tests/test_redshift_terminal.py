@@ -1,5 +1,4 @@
-"""The renders-black invariant on Redshift, which ends a material in a terminal NODE rather than a named connector - so a Karma-shaped check answers False for every Redshift asset. The plugin cases skip where Redshift is absent; the spelling cases never do. ▸archive/test_redshift_terminal.py
-"""
+"""Renders-black on Redshift, which ends a material in a terminal node, not a named connector."""
 
 import os
 import sys
@@ -24,7 +23,7 @@ from amaze.tests import test_support  # noqa: E402 - redirects the log
 @unittest.skipUnless(test_support.renderer_loaded("Redshift"),
                      "the Redshift plugin is not loaded (H22 has no build)")
 class RedshiftMaterialsHoldTheTerminalInvariant(unittest.TestCase):
-    """ROADMAP 19. Both polarities, so a green cannot mean `always True`."""
+    """Both polarities, so a green cannot mean `always True`."""
 
     def setUp(self):
         self.parent = hou.node("/mat") or hou.node("/").createNode("mat")
@@ -39,7 +38,7 @@ class RedshiftMaterialsHoldTheTerminalInvariant(unittest.TestCase):
                   % [c.type().name() for c in self.builder.children()])
 
     def test_a_stock_redshift_material_reads_as_wired(self):
-        """A freshly created vopnet ships wired, and used to read False."""
+        """A freshly created vopnet ships wired."""
         self.assertTrue(
             nodes.surface_terminal_wired(self.builder),
             "a stock redshift_vopnet must not report as renders-black")
@@ -56,12 +55,12 @@ class RedshiftMaterialsHoldTheTerminalInvariant(unittest.TestCase):
 
 
 class TheTwoTerminalsDoNotSpellTheirInputsAlike(unittest.TestCase):
-    """`inputNames()` names the terminal inputs; `inputLabels()` answers the generic ones. The two Redshift terminals SPELL A BUMP DIFFERENTLY, so asking for one form drops it on every material of the other. Needs no plugin - the roles are a table."""
+    """The two Redshift terminals spell bump differently, so both forms are tried; needs no plugin."""
 
     SENTINEL = object()
 
     def test_each_terminals_spelling_is_found_and_nothing_wired_is_none(self):
-        """The USD bump spelling was red before the table existed."""
+        """Each terminal spelling is found; an unwired role answers None."""
         for inputs, role in (({"BumpMap": self.SENTINEL}, "bump"),
                              ({"Bump Map": self.SENTINEL}, "bump"),
                              ({"Displacement": self.SENTINEL}, "displacement")):
@@ -76,7 +75,7 @@ class TheTwoTerminalsDoNotSpellTheirInputsAlike(unittest.TestCase):
 
 
 class NoTerminalInputIsLookedUpByHand(unittest.TestCase):
-    """The spellings have ONE home, and the hand-written form is made to stop working so it cannot come back."""
+    """The spellings have one home; the hand-written lookup is made to fail so it cannot come back."""
 
     def test_the_package_asks_through_terminal_input(self):
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -104,7 +103,7 @@ class NoTerminalInputIsLookedUpByHand(unittest.TestCase):
 @unittest.skipUnless(test_support.renderer_loaded("Redshift"),
                      "the Redshift plugin is not installed")
 class TheSpellingTableIsWhatThePluginSays(unittest.TestCase):
-    """The table is a MEASUREMENT, so the plugin gets to refute it - runs on any host carrying Redshift."""
+    """The table is a measurement, so the plugin gets to refute it on any host carrying Redshift."""
 
     def _terminal(self, parent, builder_type, terminal_type):
         builder = parent.createNode(builder_type)
@@ -138,7 +137,7 @@ class TheSpellingTableIsWhatThePluginSays(unittest.TestCase):
         self.assertIn("Displacement", names)
 
     def test_the_generic_Input_N_strings_are_the_LABELS(self):
-        """The misreading that sent batch 4 after the wrong half."""
+        """`inputNames()` holds the real names; the generic Input N strings are the labels."""
         terminal = self._classic()
         self.assertEqual("Surface", terminal.inputNames()[0])
         self.assertEqual("Input 1", terminal.inputLabels()[0])

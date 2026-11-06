@@ -1,4 +1,4 @@
-"""The Sidebar's MENU pins - `Section.SIDEBAR_MENU` through the same `panel/grid.py` builder as `GRID_MENU`; the shapes were RECORDED from the three panel.py handlers they replaced before those were deleted, so a rendering difference is a regression against shipped behaviour, not a style call."""
+"""Sidebar menu pins: `Section.SIDEBAR_MENU` goes through the same builder as `GRID_MENU`."""
 
 import json
 import os
@@ -76,7 +76,7 @@ class TheTableIsWellFormED(unittest.TestCase):
 
 
 class TheSidebarMenusAreWhatSHIPPED(unittest.TestCase):
-    """Recorded from the three handlers before they were deleted."""
+    """Each sidebar menu keeps its shipped shape; a difference is a regression, not a style call."""
 
     @classmethod
     def setUpClass(cls):
@@ -168,7 +168,7 @@ class TheSidebarMenusAreWhatSHIPPED(unittest.TestCase):
 
 
 class ADismissedSidebarMenuRunsNOTHING(unittest.TestCase):
-    """Dismissal fires no verb - dispatch is a dict, so the None-collision the old handlers guarded by hand cannot come back."""
+    """Dismissal fires no verb: dispatch is a dict, so a None pick cannot reach a verb."""
 
     @classmethod
     def setUpClass(cls):
@@ -351,7 +351,7 @@ class TheChipsSitWhereTheDesignDrawsThem(unittest.TestCase):
 
 
 class StructuralSignalsStayOutsideRelayout(unittest.TestCase):
-    """`ui_helpers.relayout` is for DATA changes only: a layout-change pair around begin/endInsert/RemoveRows hands attached proxies dangling persistent indexes at the closing signal - a native H21 segfault (research.md, 2026-08-04)."""
+    """`ui_helpers.relayout` is for data changes only, never around row inserts or removals."""
 
     ROW_WRITERS = (    # each inserts or removes rows, or saves - and a save adopts a peer's rows
         "save", "add_asset", "import_record", "update_asset",

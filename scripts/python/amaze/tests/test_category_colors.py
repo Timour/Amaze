@@ -1,5 +1,4 @@
-"""A category carries a colour and the grid paints it under every tile in that category - unambiguous only because an asset has exactly ONE category. The colour is keyed by NAME, so a rename must carry it and a removal must take it, or an orphan key reattaches when the name returns. ▸archive/test_category_colors.py
-"""
+"""Category colours are keyed by name: a rename carries the colour and a removal takes it."""
 
 import os
 import sys
@@ -52,7 +51,7 @@ class CategoryColorTest(unittest.TestCase):
                          "an asset with no category took a colour")
 
     def test_the_colour_reaches_the_grid(self):
-        """The asset model and the category model share one connector's data, so the grid sees the sidebar's edit with nothing wired between them."""
+        """Asset and category models share one connector's data, so the grid sees the sidebar's edit."""
         self.cats.set_color("Metal", "#4af2a1")
         self.assertEqual("#4af2a1", self.model.category_color(self.row))
         self.assertEqual("#4af2a1", self.model.data(

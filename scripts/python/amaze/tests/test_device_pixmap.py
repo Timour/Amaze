@@ -1,4 +1,4 @@
-"""The render-and-stamp contract: `ui_helpers.device_pixmap` rasterises at a ROUNDED `side * dpr` and stamps the ratio, and the sites that draw an SVG at device resolution go through it rather than hand-rolling the pair. Watch when calling: offscreen Qt invents one screen at dpr 1.0, so every ratio here is passed in rather than read from a screen, and `PENDING` names the sites not yet adopted."""
+"""`device_pixmap` renders at a rounded `side * dpr` and stamps it; offscreen Qt is always dpr 1."""
 
 import os
 import sys
@@ -21,7 +21,7 @@ from amaze.tests import test_support  # noqa: E402 - redirects the log
 SQUARE = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">'
           '<rect width="10" height="10" fill="currentColor"/></svg>')
 
-PENDING = ()   # every site draws through the helper; the assertion is EXACT both ways, so a new hand-rolled site reddens and so does a stale entry here
+PENDING = ()   # exact both ways: a new hand-rolled site reddens, and so does a stale entry
 
 
 def _svg(testcase):
@@ -53,7 +53,7 @@ class ADevicePixmapIsRoundedAndStamped(unittest.TestCase):
 class TheFourSitesDrawThroughIt(unittest.TestCase):
 
     def test_no_site_hand_rolls_the_contract_any_more(self):
-        """`setDevicePixelRatio` beside a `render_svg_pixmap` is the shape this helper replaced; `device_pixmap` is the ONE home and is exempt by name, and `PENDING` carries the sites not yet adopted."""
+        """`render_svg_pixmap` beside `setDevicePixelRatio` outside `device_pixmap` is hand-rolling."""
         import ast
         import re
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

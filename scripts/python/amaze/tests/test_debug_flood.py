@@ -470,7 +470,7 @@ class TestExcepthookSurvivesReload(unittest.TestCase):
         debug._install_excepthook()
 
     def test_the_flood_counters_survive_a_reopen_together(self):
-        """All three or none: a count reset against a persisted `recorded` writes a NEGATIVE suppressed figure into the log."""
+        """All three or none: a count reset against a kept `recorded` logs a negative suppressed count."""
         self.addCleanup(debug._crash_counts.clear)
         self.addCleanup(debug._crash_recorded.clear)
         debug._crash_counts["k"] = 100
@@ -482,7 +482,7 @@ class TestExcepthookSurvivesReload(unittest.TestCase):
             "the flood accounting disagrees with itself")
 
     def test_a_crash_still_records_after_a_reopen(self):
-        """The sentinel is planted BEFORE the first install, or it overwrites the self-reference this detects."""
+        """The sentinel is planted before the first install, or it overwrites the self-reference."""
         forwarded = []
         sys.excepthook = lambda *a: forwarded.append(a)
         debug._excepthook_installed = False

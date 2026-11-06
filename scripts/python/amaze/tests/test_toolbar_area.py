@@ -1,5 +1,4 @@
-"""The Toolbar area: one table, one fact per control. A control's rule is ONE entry naming the control, the fact about the context, and whether that fact governs enabled-ness or visibility. NO toolbar path asks which WORLD it is in. ▸archive/test_toolbar_area.py
-"""
+"""The toolbar is one table: each control names one context fact and whether it enables or shows."""
 
 import os
 import sys
@@ -123,7 +122,7 @@ class TheToolbarFollowsTheContextLive(unittest.TestCase):
                               "nothing")
         for control, fact, verb in AmazePanel.TOOLBAR_CONTROLS:
             with self.subTest(control=control):
-                if control == "btn_filter":    # the one exception since 2026-08-24: online the eye carries the KIND filter, so the sync block re-enables it after its table row disables
+                if control == "btn_filter":    # the one exception: online the eye carries the kind filter, re-enabled by the sync block
                     self.assertTrue(
                         self._state(control, verb),
                         "the eye is dead in the online world - the "

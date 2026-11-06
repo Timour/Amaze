@@ -1,4 +1,4 @@
-"""The sinks that SPEAK: `alert` once per condition, `refuse` once per gesture. ▸o/debug-engine ▸p/refusal-sink"""
+"""The sinks that speak: `alert` once per condition, `refuse` once per gesture. ▸p/refusal-sink"""
 
 import ast
 import os
@@ -167,13 +167,13 @@ class RefuseIsTheGestureSinkTest(unittest.TestCase):
 
 
 class TheDamageDoorMarksItsRefusalsTest(unittest.TestCase):
-    """Every literal refusal the import door authors, classified. ▸p/refusal-sink ▸p/source-derived-tests"""
+    """Every literal refusal the import door authors, classified. ▸p/refusal-sink"""
 
     ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     DOORS = ("_payload_or_refusal", "_import_asset_to_scene_inner",
              "_import_cop_asset_inner", "_load_saved")
 
-    DAMAGE = {    # opening words -> is the LIBRARY broken? A forwarded reason (a bare name) is absent: it keeps its origin's marking
+    DAMAGE = {    # opening words -> library broken? A forwarded reason keeps its origin marking
         '"%s": asset file is missing on disk.': True,
         '"%s": %s.': True,    # the Node door's empty or unreadable file, its reason composed in
         '"%s" cannot be imported: its id is not a usable file': True,
@@ -389,9 +389,9 @@ class TheTenSitesAreConvertedTest(unittest.TestCase):
 
     ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-    EXPECTED = {    # file -> conditions it must raise; an EMPTY tuple means the condition moved to the keyed-store registry and the test below asserts it there - dropping the entry goes VACUOUS ▸p/source-derived-tests
+    EXPECTED = {    # file -> conditions; empty: moved to the registry ▸p/source-derived-tests
         os.path.join("core", "gradient_library.py"): (
-            "colors-not-saved",),    # the trailing comma is load-bearing: a bare string is walked one CHARACTER at a time
+            "colors-not-saved",),    # the trailing comma is load-bearing: a bare string is walked one character at a time
         os.path.join("core", "database.py"): ("unreadable-",),
         os.path.join("core", "tile_icons.py"): ("icons-not-saved",),
         os.path.join("core", "notes.py"): (),

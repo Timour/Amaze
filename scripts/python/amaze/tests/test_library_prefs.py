@@ -1,5 +1,4 @@
-"""The Shared Settings store, `prefs.json`. THE SHAPE RULE: a value is a RECORD, never a bare scalar - the engine reads a falsy normalise result as the delete contract, so a bare False, 0 or empty string reads back as absent, and all three are legitimate settings. ▸archive/test_library_prefs.py
-"""
+"""The Shared Settings store `prefs.json`: a value is a record, as a falsy bare value reads absent."""
 
 import json
 import os
@@ -17,7 +16,7 @@ from amaze.tests import test_support               # noqa: F401
 
 
 class _Prefs:
-    """Only what a store reads - where the library is and WHO this is. The user rides along although this store is untagged, or the stub passes exactly until someone tags the spec."""
+    """Only what a store reads: where the library is and who this is, the user even while untagged."""
 
     def __init__(self, directory, library_user=""):
         self.dir = directory
@@ -75,7 +74,7 @@ class TheStoreIsDeclared(SharedSettingsCase):
 
 
 class FalsyScalarsSurviveTheRoundTrip(SharedSettingsCase):
-    """The reason values are records - every entry here is a legitimate setting, and every one is falsy."""
+    """Why values are records: every entry here is a legitimate setting, and every one is falsy."""
 
     CASES = (False, 0, "", 0.0)
 
@@ -94,7 +93,7 @@ class FalsyScalarsSurviveTheRoundTrip(SharedSettingsCase):
                                  "the delete contract ate it")
 
     def test_an_equal_value_rewrite_keeps_the_first_type(self):
-        """Engine behaviour pinned so a change is loud - `set()` answers UNCHANGED for an equal value, and 0 equals False, so the first-written type wins."""
+        """`set()` answers unchanged for an equal value and 0 == False, so the first-written type wins."""
         library_prefs.set_value(self.prefs, "flip", False)
         library_prefs.set_value(self.prefs, "flip", 0)
         got = library_prefs.value_of(self.prefs, "flip", "MISSING")
@@ -123,7 +122,7 @@ class TheDoorIsTyped(SharedSettingsCase):
             {"rendersize": 512}, library_prefs.all_values(self.prefs))
 
     def test_a_non_scalar_raises_at_the_door(self):
-        """The normaliser would junk it and the write would report success for a value that reads back absent, so the door refuses loudly."""
+        """The normaliser would junk it and the write would report success, so the door refuses loudly."""
         for junk in ({"a": 1}, [1, 2], None):
             with self.subTest(value=junk):
                 with self.assertRaises(TypeError):
@@ -151,7 +150,7 @@ class ClearIsALoudDelete(SharedSettingsCase):
 
 
 class ANewerBuildsRecordSurvives(SharedSettingsCase):
-    """A record this build cannot read is FOREIGN - held aside verbatim and written back, never stripped, because an older build must not erase what a newer one wrote."""
+    """A record this build cannot read is held aside verbatim and written back, never stripped."""
 
     def test_the_unreadable_record_is_written_back_verbatim(self):
         os.makedirs(self.dir, exist_ok=True)
@@ -188,7 +187,7 @@ class ANewerBuildsRecordSurvives(SharedSettingsCase):
 
 
 class ItWorksWithNobodyPicked(SharedSettingsCase):
-    """The store is untagged, so a machine with no user still reads and writes it - shared settings are not anybody's."""
+    """The store is untagged, so a machine with no user still reads and writes it."""
 
     def test_read_and_write_with_a_blank_user(self):
         blank = _Prefs(self.dir, library_user="")

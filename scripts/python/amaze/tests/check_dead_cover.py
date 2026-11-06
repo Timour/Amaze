@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""Which tests skipped on EVERY Houdini the suite ran against - a test that skips everywhere protects nothing and reads as coverage. A step over TWO runs, because one cannot know it. REFUSING IS A RESULT: a missing, unreadable or empty report means that run did not finish, and comparing the survivors would name dead cover on the strength of one version. Exit 0 none, 1 named, 2 cannot tell. ▸archive/check_dead_cover.py
-"""
+"""Tests skipped on every Houdini run, from two or more reports; a bad report refuses (exit 2)."""
 
 import json
 import os
@@ -10,7 +9,7 @@ MINIMUM_REPORTS = 2
 
 
 def load(path: str):
-    """One run's report, or a sentence saying why there is not one - a run that executed nothing vouches for nothing, which is how a crashed suite reads as having skipped nothing."""
+    """One run's report, or why not; a run that executed nothing vouches for nothing."""
     if not os.path.exists(path):
         return None, ("no report at %s - that run never reached the end "
                       "of run_suite.py, so it crashed or was killed" % path)
@@ -39,7 +38,7 @@ def host_of(report) -> str:
 
 
 def dead_everywhere(reports):
-    """Test ids that skipped in EVERY report, with each run's reason - an INTERSECTION, because skipping on one host is ordinary and only skipping on all of them is dead."""
+    """Ids skipped in every report, with each run's reason; skipping on one host is ordinary."""
     per_run = []
     for report in reports:
         per_run.append({test_id: reason for test_id, reason in report["skipped"]})

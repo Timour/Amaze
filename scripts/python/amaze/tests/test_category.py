@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 import os
 import sys
 
-sys.path.insert(  # THREE dirnames up = scripts/python, the directory holding the `amaze` package - the DEV tree, not the install on Houdini's path ▸p/checkout-not-install
+sys.path.insert(  # scripts/python: the dev tree, not the install ▸p/checkout-not-install
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
@@ -58,7 +58,7 @@ class TestCategories(unittest.TestCase):
         model = self.category_module.Categories(self.mock_prefs_instance)
 
         self.assertIs(self.mock_prefs_instance, model.preferences)
-        self.mock_prefs_instance.load.assert_not_called()  # a load here reverts the panel's unsaved edits
+        self.mock_prefs_instance.load.assert_not_called()  # a load here reverts unsaved panel edits
         self.mock_db_instance.load.assert_called_once_with("/mock/path")
         self.assertEqual(model._categories, ["Cat1", "_Hidden", "Cat2"])
         self.assertEqual(model.CatSortRole, 256)
@@ -97,7 +97,7 @@ class TestCategories(unittest.TestCase):
         self.assertEqual(result, "Cat1")
 
     def test_a_junk_row_does_not_abort_the_counts(self):
-        """The model side skips non-dict rows; the sidebar's count pass walks the SAME document and must keep the same guard."""
+        """The sidebar count pass skips non-dict rows the same way the model side does."""
         self.mock_db_instance.load.return_value = {
             "categories": ["Cat1"],
             "assets": [
@@ -168,7 +168,7 @@ class TestCategories(unittest.TestCase):
             ("Multiple Values...", (), False),
             ("NewCat", ("NewCat",), True),
             ("Cat1", (), False),
-            ("Wood, Oak", ("Wood, Oak",), True),    # one asset, one category: a comma is part of the name
+            ("Wood, Oak", ("Wood, Oak",), True),    # a comma is part of the one name
             ("  SpacedCat  ", ("SpacedCat",), True),
             ("   ", (), False),
         )
@@ -187,14 +187,14 @@ class TestCategories(unittest.TestCase):
 
         model.save()
 
-        self.mock_db_instance.set.assert_called_with(  # save() writes the COLOURS alongside the names: same json, so a colour travels with the library it belongs to
+        self.mock_db_instance.set.assert_called_with(  # colours travel with the names
             {"categories": ["Cat1", "_Hidden", "Cat2"], "category_colors": {}}
         )
         self.mock_db_instance.save.assert_called_once()
 
 
 class NormalizeBracketsItsResetTest(unittest.TestCase):
-    """normalize_categories REPLACES the row set, so it must bracket the change - and the honest observable is the SIGNAL PAIR, never the row count, because a model left mid-reset is invisible through a proxy. ▸r/model-contracts"""
+    """`normalize_categories` brackets its row swap in a reset pair. ▸r/model-contracts"""
 
     def _model(self, entries):
         from amaze.core import category as category_mod
@@ -225,7 +225,7 @@ class NormalizeBracketsItsResetTest(unittest.TestCase):
         self.assertEqual([], seen, "a no-op reset the whole model")
 
     def test_the_model_stays_ALIASED_to_the_connectors_list(self):
-        """`Categories.__init__` aliases `_categories` to the connector's own `_data["categories"]`, and the two-writer merge APPENDS a peer machine's new categories to that list IN PLACE - so a normalize that REBINDS instead of mutating detaches the model, the merge updates a list nobody shows, and the next save writes the document without the adopted names."""
+        """A normalize mutates the list the connector shares, or a merge into it never reaches the model."""
         from amaze.core import category as category_mod
         from amaze.core import database
         from amaze.tests import test_support

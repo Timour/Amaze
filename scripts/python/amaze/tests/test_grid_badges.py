@@ -111,7 +111,7 @@ class _StarRows(QtCore.QAbstractListModel):
 
 
 class TheStarBadgeIsAButtonInBOTHItsStates(unittest.TestCase):
-    """The always-visible star: a click toggles a plain tile AND a favourite one - and a delegate with no click wired (the online grid) offers no button over the same pixels."""
+    """The star toggles a plain tile and a favourite one; with no click wired it is no button."""
 
     def setUp(self):
         self.clicked = []
@@ -130,7 +130,7 @@ class TheStarBadgeIsAButtonInBOTHItsStates(unittest.TestCase):
             self.model.index(0, 0))
 
     def test_a_click_stars_a_tile_that_is_NOT_yet_a_favourite(self):
-        """The new half: the badge answers while its role is FALSY - the resting star is a button, not an indicator that happens to be dim."""
+        """The badge answers while its role is falsy: the resting star is a button, not a dim indicator."""
         option = _view_option(self.view)
         self.assertTrue(self._click_the_star(self.delegate, option),
                         "the resting star did not take the click")
@@ -145,7 +145,7 @@ class TheStarBadgeIsAButtonInBOTHItsStates(unittest.TestCase):
         self.assertEqual(1, len(self.clicked))
 
     def test_an_UNWIRED_delegate_offers_no_star_button(self):
-        """The online grid: same role wired, no click - a click there must fall through to plain selection, because a button that does nothing is a lie."""
+        """The online grid: role wired, no click, so a click falls through to plain selection."""
         bare = test_support.tile_delegate({"favourite": FAVORITE_ROLE}, SUBTITLE_ROLE)
         self.view.setItemDelegate(bare)
         option = _view_option(self.view)

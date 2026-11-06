@@ -1,5 +1,4 @@
-"""The Sidebar area: a row acts on the name it STORES, never the one it displays. DisplayRole strips a leading underscore - the mechanism that makes `_All` sort first and read as All - so a caller reading `index.data()` gets a name no asset carries, and the grid empties with the row still highlighted. ▸archive/test_sidebar_area.py
-"""
+"""A sidebar row acts on the name it stores, not the one DisplayRole shows without its underscore."""
 
 import os
 import sys
@@ -22,7 +21,7 @@ from amaze.tests import test_support  # noqa: E402
 
 
 class _Recorder:
-    """Stands in for the grid proxy, remembering the filter it was given. The REAL Categories model sits beside it - the underscore strip lives in its `data()`, so a stub model would test the stub."""
+    """Stands in for the grid proxy, recording its filter; the real Categories model sits beside it."""
 
     def __init__(self):
         self.filters = []
@@ -49,7 +48,7 @@ class _CatList:
 
 
 class _Panel:
-    """The real name reader, borrowed rather than reimplemented, since a copy would pin the copy. Wired to the PROXY as in production - the reader falls back to DisplayRole when a model has no source, so a stub would pass while the defect stood."""
+    """The real name reader, wired to the proxy as in production, since it falls back to DisplayRole."""
 
     from amaze.panel.panel import AmazePanel as _Real
     _raw_category_name = _Real._raw_category_name
@@ -59,7 +58,7 @@ class _Panel:
 
 
 class _Section(sections.AssetSection):
-    """An AssetSection whose stack is the recorder above - `select_category` is inherited, and it is the method under test."""
+    """An AssetSection over the recorder above; its inherited `select_category` is under test."""
 
     def __init__(self, categories, proxy, sidebar_proxy):
         self._categories = categories
@@ -90,7 +89,7 @@ class ARowActsOnTheNameItStores(unittest.TestCase):
         self.section = _Section(self.categories, self.proxy, self.sidebar)
 
     def _row_for(self, stored):
-        """The sidebar row holding `stored`, as a PROXY index - what a click actually hands over. Fails rather than skips when it cannot be made, because a pin that can skip is not a pin."""
+        """The proxy index of the row holding `stored`, as a click hands it; fails rather than skips."""
         row = self.categories._row_of(stored)
         if row is None:
             self.categories.check_add_category(stored)
@@ -120,7 +119,7 @@ class ARowActsOnTheNameItStores(unittest.TestCase):
 
 
 class WhatMayBeDroppedOnASidebarRowIsTheCONTEXTsAnswer(unittest.TestCase):
-    """What a sidebar row accepts is the CONTEXT's answer, never a branch on a section key - a tuple of keys is a list someone has to remember to update when a section arrives."""
+    """What a sidebar row accepts is the context's answer, never a branch on a section key."""
 
     def test_every_context_answers_whether_it_takes_drops(self):
         """Category sections take tiles; File's folders and the online sources take none."""

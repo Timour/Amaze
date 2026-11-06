@@ -1,4 +1,4 @@
-"""Run unittest, report, LEAVE via sys.exit ▸r/windows-exit; the path insert lives here and nowhere else ▸p/checkout-not-install"""
+"""Run unittest, report, exit via `sys.exit` ▸r/windows-exit; the only path insert is here."""
 import json
 import os
 import sys
@@ -14,7 +14,7 @@ SKIP_REPORT_VAR = "AMAZE_SKIP_REPORT"
 
 
 def write_skip_report(result, path: str, houdini: str = "") -> None:
-    """Record what this run skipped, for the dead-cover check. `houdini` is passed in, never read from the environment here. ▸p/skip-report"""
+    """Record what this run skipped, for the dead-cover check; `houdini` is passed in. ▸p/skip-report"""
     report = {
         "houdini": houdini,
         "testsRun": result.testsRun,

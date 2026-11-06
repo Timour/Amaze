@@ -1,4 +1,4 @@
-"""The gate scripts' slower cases - each runs a hook in a throwaway git repo - kept out of the default run and run when tools/ changes. ▸p/gate-fixture-safety"""
+"""The gate scripts' slower cases, each a hook in a throwaway git repo. ▸p/gate-fixture-safety"""
 
 import json
 import os
@@ -19,7 +19,7 @@ from amaze.tests.test_shell_gates import (
 
 
 class SyncInstallGateTest(GateFixture):
-    """`sync-install.sh`'s slower cases; the refusals that keep the real install safe stay in the default run."""
+    """`sync-install.sh`'s slower cases; refusals guarding the real install stay in the default run."""
 
     def test_green_suite_ships_and_says_so(self):
         result = self.sync("green")
@@ -71,7 +71,7 @@ class SyncInstallGateTest(GateFixture):
             "it refused and overwrote the directory anyway")
 
     def test_a_committed_change_ships_without_being_pushed(self):
-        """COMMITTED, not PUSHED - the runner syncs before it tests, so requiring a push would make the suite unrunnable before pushing."""
+        """Committed, not pushed: the runner syncs before it tests, so a push cannot be required."""
         _write(os.path.join(self.repo, "scripts", "python", "amaze",
                             "widget.py"), "# edited\n")
         self._git("add", "-A")
@@ -117,7 +117,7 @@ class SyncInstallGateTest(GateFixture):
                          "the suite ran despite AMAZE_SYNC_NO_VERIFY")
 
     def test_it_wires_the_push_gate_in_a_fresh_clone(self):
-        """A fresh clone has no hook until this wires it, and losing that silently re-opens the hole the push gate closes."""
+        """A fresh clone has no hook until this wires it; losing that silently reopens the push gate."""
         self.assertEqual(
             subprocess.run(("git", "-C", self.repo, "config", "--get",
                             "core.hooksPath"), capture_output=True, text=True,
@@ -320,7 +320,7 @@ class PrePushSelectionTest(GateFixture):
 class RunTestsWrapperTest(GateFixture):
 
     def test_it_syncs_then_runs_the_suite_exactly_once(self):
-        """Without `AMAZE_SYNC_NO_VERIFY` the suite runs twice on every push, which is how a gate earns being bypassed."""
+        """Without `AMAZE_SYNC_NO_VERIFY` the suite runs twice on every push."""
         result = self._run(os.path.join("tools", "run-tests.sh"), "green",
                            cwd=self.tmp)
         self.assertEqual(result.returncode, 0, self.both(result))

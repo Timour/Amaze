@@ -193,7 +193,7 @@ class TheNodeDropLandsWhereItWasReleased(_ReleaseCase):
 
 
 class MaterialNetworkGateTest(unittest.TestCase):
-    """A material release in a network editor lands ONLY where the network accepts a VOP - the one gate `accepts_context` shared with the Node section - and a wrong network is a strict miss creating NOTHING."""
+    """A material release lands only where the network accepts a VOP; elsewhere it creates nothing."""
 
     @classmethod
     def setUpClass(cls):

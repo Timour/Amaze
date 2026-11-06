@@ -1,4 +1,4 @@
-"""The fixture generator's identity guard, driven against every way an earlier version of it passed something it should have caught. ▸p/guard-must-be-independent"""
+"""The fixture identity guard catches every known leak shape ▸p/guard-must-be-independent"""
 
 import os
 import shutil
@@ -63,7 +63,7 @@ class GuardCase(unittest.TestCase):
 class TheGuardCatchesWhatEarlierVersionsPassed(GuardCase):
 
     def test_every_shape_an_earlier_version_passed_is_caught(self):
-        """Each row once passed the guard; each is now caught, then redacted clean."""
+        """Each leak shape is caught, then redacted clean."""
         for why, payload, account, host in (
                 ("the real shape", b"  author builduser@buildbox.local\n",
                  "builduser", "BuildBox"),
@@ -91,7 +91,7 @@ class TheGuardCatchesWhatEarlierVersionsPassed(GuardCase):
                     "a machine-local path passed the guard: %r" % payload)
 
     def test_an_opaque_format_is_a_finding_not_a_pass(self):
-        """A byte scan cannot see inside a compressed payload, so silence there is unproven rather than clean."""
+        """A byte scan cannot see inside a compressed payload, so silence there is unproven, not clean."""
         self.pin("builduser", "BuildBox")
         path = self.write(b"scf1" + b"\0" * 40, suffix=".bgeo.sc")
         found = gen.complaints(path)
@@ -138,7 +138,7 @@ class TheStandInKeepsTheLengthAndChangesTheValue(unittest.TestCase):
 
 
 class SuiteDebrisLandsInTheDesignatedFolder(unittest.TestCase):
-    """The Test Library preference EXISTS so test libraries have one home (settled 2026-08-23) - a machine that designates one gets every suite directory under `<test_dir>/suite/`, visible and deletable, never scattered."""
+    """With a Test Library folder set, every suite directory lands under `<test_dir>/suite/`."""
 
     def test_the_fixture_library_lands_under_the_test_folder(self):
         from amaze.helpers import hostos
@@ -153,7 +153,7 @@ class SuiteDebrisLandsInTheDesignatedFolder(unittest.TestCase):
             "folder: %s" % path)
 
     def test_every_support_scratch_comes_from_the_one_maker(self):
-        """A second bare `mkdtemp` in test_support is the leak coming back - every directory it mints goes through `scratch_dir`."""
+        """Every test_support directory comes from `scratch_dir`; a second bare `mkdtemp` is a leak."""
         import inspect
         body = inspect.getsource(test_support)
         calls = body.count("tempfile.mkdtemp(")

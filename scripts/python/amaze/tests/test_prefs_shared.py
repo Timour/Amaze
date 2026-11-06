@@ -1,5 +1,4 @@
-"""Shared settings live with the library: a move of `dir` adopts them. ▸archive/test_prefs_shared.py
-"""
+"""Shared settings live with the library: a move of `dir` adopts them."""
 
 import json
 import os
@@ -76,7 +75,7 @@ class AChangeReachesTheNextMachine(SharedPrefsCase):
 
 
 class TheFlatSpellingsRetire(SharedPrefsCase):
-    """`settings.json` keeps bootstrap and the copy - the old flat keys are dropped by the same save that writes their values to safety."""
+    """`settings.json` keeps bootstrap and the copy; the save that moves the flat keys drops them."""
 
     def test_settings_json_carries_the_copy_not_the_flat_keys(self):
         a = self.machine(self.home_a)
@@ -96,7 +95,7 @@ class TheFlatSpellingsRetire(SharedPrefsCase):
                       "library is found at all")
 
     def test_an_old_flat_file_loads_and_the_first_save_moves_it(self):
-        """The migration - flat values are the load fallback, and one ordinary save carries them into the store and the copy."""
+        """The migration: flat values are the load fallback; one save carries them to store and copy."""
         with open(os.path.join(self.home_a, "settings.json"), "w",
                   encoding="utf-8") as handle:
             json.dump({"directory": self.lib + "/",
@@ -121,7 +120,7 @@ class TheFlatSpellingsRetire(SharedPrefsCase):
 
 
 class TheCopyServesAnUnreachableLibrary(SharedPrefsCase):
-    """The library is the truth and the copy opens the panel when the share is down - losing the copy is the one outcome it exists to prevent."""
+    """The library is the truth; the copy opens the panel when the share is down and must survive."""
 
     def test_values_survive_the_library_being_gone(self):
         a = self.machine(self.home_a)
@@ -171,7 +170,7 @@ class TheCopyServesAnUnreachableLibrary(SharedPrefsCase):
 
 
 class TheLibraryIsAdoptedWhenItArrives(SharedPrefsCase):
-    """`dir` can be set long after settings load, and that moment must ADOPT, or the first save pushes this machine's defaults over everyone's answers."""
+    """Setting `dir` after load must adopt, or the first save pushes local defaults over the shared."""
 
     def test_pointing_dir_at_a_library_adopts_without_a_load(self):
         a = self.machine(self.home_a)
@@ -187,7 +186,7 @@ class TheLibraryIsAdoptedWhenItArrives(SharedPrefsCase):
                          "settings on its first save")
 
     def test_junk_in_the_store_does_not_poison_a_clamped_setting(self):
-        """The store's normaliser types the RECORD, never the value's meaning - a hand-edit can put a string where a size belongs, so the adopt must route through the same validation load uses."""
+        """A hand-edit can put a string where a size belongs, so the adopt validates as load does."""
         with open(os.path.join(self.lib, "prefs.json"), "w",
                   encoding="utf-8") as handle:
             json.dump({"prefs": {
@@ -204,7 +203,7 @@ class TheLibraryIsAdoptedWhenItArrives(SharedPrefsCase):
 
 
 class AnUnchangedSaveDoesNotTouchTheStore(SharedPrefsCase):
-    """`save()` runs from ordinary sidebar use, so the push must collapse to nothing when no shared key moved."""
+    """`save()` runs from ordinary sidebar use, so the push is a no-op when no shared key moved."""
 
     def test_a_second_save_with_nothing_changed_leaves_the_file_alone(self):
         a = self.machine(self.home_a)

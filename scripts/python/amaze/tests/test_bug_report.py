@@ -1,4 +1,4 @@
-"""The Report a Bug button: the repo's new-issue page with the three machine facts pre-filled - GitHub's documented query parameters carry them, so no token, no server, and nothing is sent by opening the page."""
+"""Report a Bug opens the new-issue page, machine facts in query parameters; nothing is sent."""
 
 import os
 import platform
@@ -20,7 +20,7 @@ from amaze.tests import test_support  # noqa: E402
 
 class TheBugReportCarriesTheMachine(unittest.TestCase):
     def test_the_url_is_the_new_issue_page_with_the_three_facts(self):
-        """Amaze version, Houdini build and OS - the three facts a report is useless without, correct for THIS machine, on their own lines, through the same `QUrl` the click hands the OS."""
+        """Amaze, Houdini and OS versions for this machine, one per line, through the click's `QUrl`."""
         from PySide6 import QtCore
         from amaze.core import updater
         from amaze.dialogs import prefs_dialog
@@ -32,7 +32,7 @@ class TheBugReportCarriesTheMachine(unittest.TestCase):
                     % (branding.APP_VERSION,
                        hou.applicationVersionString(),
                        platform.platform()))
-        self.assertIn("%0A", parts.query,    # urlsplit STRIPS raw newlines silently, so only the encoded form proves the lines survived
+        self.assertIn("%0A", parts.query,    # urlsplit strips raw newlines; only the encoded form proves them
                       "the newlines were lost in the encoding")
         self.assertEqual(
             expected, urllib.parse.parse_qs(parts.query)["body"][0])
@@ -44,7 +44,7 @@ class TheBugReportCarriesTheMachine(unittest.TestCase):
             "QUrl hands the OS something other than what was built")
 
     def test_the_button_opens_exactly_that_url(self):
-        """Through the real button, so the wiring is what is proven - only the browser door itself is stubbed."""
+        """Through the real button, so the wiring is proven; only the browser door is stubbed."""
         from amaze.dialogs import prefs_dialog
         prefs = test_support.fixture_prefs(self)
         dlg = prefs_dialog.PrefsDialog(prefs, panel=None)

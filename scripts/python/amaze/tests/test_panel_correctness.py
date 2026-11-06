@@ -269,7 +269,7 @@ def _material(test, name):
 
 
 class TheSaveDialogOffersEveryCategory(unittest.TestCase):
-    """The dropdown's list comes from the one category-names home - a name-anchored filter once dropped every category merely STARTING with the pseudo-category's name."""
+    """The dropdown's list comes from the one category-names home, not a name-anchored filter."""
 
     def test_a_category_starting_with_All_is_offered(self):
         from unittest import mock
@@ -299,7 +299,7 @@ class TheSaveDialogOffersEveryCategory(unittest.TestCase):
 
 
 class TheMaterialSaveOffersANameOnlyWhenOneWillDo(unittest.TestCase):
-    """ROADMAP R56: one save engine. A single material may be renamed on the way in; several share one dialog, so the field greys and each keeps its node's name."""
+    """One material may be renamed on the way in; several keep their node names, the field greyed."""
 
     def _asked(self, selection):
         """(name, name_enabled) the save dialog was built with."""
@@ -338,7 +338,7 @@ class TheMaterialSaveOffersANameOnlyWhenOneWillDo(unittest.TestCase):
 
 
 class AClickLeavesTheConfiguredStepsAlone(unittest.TestCase):
-    """The jump-sized step is for one jump - left in place, a press on the handle (distance 0) zeroes both steps and kills the wheel and arrow keys over the slider."""
+    """A jump step left in place lets a handle press zero both steps, killing wheel and arrow keys."""
 
     def test_a_handle_press_does_not_zero_the_steps(self):
         slider = ui_helpers.ClickSlider()
@@ -450,7 +450,7 @@ class ASelfPaintedWidgetDimsWhenDisabled(unittest.TestCase):
             "withholds mouse events, and reads as broken")
 
     def test_a_disabled_toggle_switch_neither_shines_nor_beckons(self):
-        """The Customize dialog greys its Light Icon switch - painted at full strength with a pointing hand, it reads as a live control that ignores clicks."""
+        """The Customize dialog greys its Light Icon switch, so it does not read as a live control."""
         switch = ui_helpers.ToggleSwitch("Light Icon")
         switch.resize(switch.sizeHint())
 
@@ -1116,10 +1116,10 @@ class TheGridCannotBeSqueezedOutOfExistence(unittest.TestCase):
 
 
 class ABlockCommentSurvivesTheLineBreak(unittest.TestCase):
-    """`spans()` sees ONE line, so a `/* */` crossing lines used to leave every line after the opener highlighted as code. ▸p/vex-block-comments"""
+    """A `/* */` spanning lines must not leave later lines highlighted. ▸p/vex-block-comments"""
 
     def _painted(self, lines):
-        """Run the highlighter over `lines`, returning [(text, [(start, length, colour)])] and the block state each line ends in."""
+        """Highlight `lines`: [(text, [(start, length, colour)])] and each line's closing block state."""
         from amaze.helpers import vex_syntax
 
         painted = []

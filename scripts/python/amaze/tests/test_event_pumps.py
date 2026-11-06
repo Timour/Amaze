@@ -1,4 +1,4 @@
-"""The gate: a shipped event pump must exclude user input - a bare `processEvents()` delivers the user's next click into the middle of the loop that pumped it, and the loop's pre-collected rows then point at the wrong assets. Read from the SOURCE, because re-entrancy needs a user to demonstrate."""
+"""Gate, read from source: a shipped `processEvents` must exclude user input, or a click re-enters."""
 
 import ast
 import os
@@ -10,7 +10,7 @@ _AMAZE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def _source_files() -> list:
-    """The shipped modules - tests excluded, since a test pumps its own quiet loop where there is no user to exclude."""
+    """The shipped modules; tests are excluded, as a test pumps a loop with no user in it."""
     found = []
     for root, dirs, files in os.walk(_AMAZE):
         dirs[:] = [d for d in dirs if d not in ("__pycache__", "tests")]
