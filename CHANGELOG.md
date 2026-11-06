@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.32.1
+
+- The GitHub check covers ten more test modules, and the tests that need Houdini are skipped where it is absent. Nothing changes in use.
+
 ## 1.32.0
 
 - The File section makes previews for usdz, gltf, glb, dxf and iges geometry and for psd, pic, gif and tx images.
