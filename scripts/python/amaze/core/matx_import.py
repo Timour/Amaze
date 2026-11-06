@@ -1,4 +1,4 @@
-"""Turn an online MaterialX record into a real library material. - Two paths, matching the two source KINDS: - * **package** - download the .mtlx + textures into <library>/matX/<name>/, then TRANSLATE the .mtlx into clean VOP nodes (core/matx_translate, built on Houdini's MaterialX Python API): fresh mtlximage / mtlxstandard_surface / ... nodes with real `file` inputs, flat in the builder, exactly like a hand-built material. (This replaced the old editmaterial LOP approach, which promoted every parameter and dropped the texture `file` inputs from the USD export - the black-material bug.) - * **values** - no download at all. Build an mtlxstandard_surface directly from the measured parameters (a tier-A preset material). - Everything temporary lives in /obj or /stage and is destroyed in a finally, so a failed import never leaves scene debris - the same discipline as the thumbnail and import paths."""
+"""Turn an online MaterialX record, a package or measured values, into a library material."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from amaze.helpers import helpers, hostos, wording
 from amaze.render import nodes as nodes_mod
 from amaze.render.material_conversion import engine as conversion_engine
 
-MATX_DIRNAME = "matX"   # folder inside the library holding downloaded MaterialX sources - PERMANENT, not staging: the imported network's mtlximage nodes point at these texture files
+MATX_DIRNAME = "matX"   # library folder of downloaded MaterialX sources; imported materials read it
 
 
 def matx_dir(library_dir: str) -> str:
@@ -22,7 +22,7 @@ def matx_dir(library_dir: str) -> str:
 
 
 def _credit_text(record, source) -> str:
-    """The about/homage block for a downloaded material: source, author, and a link back to where it came from. Editable afterwards in the Material Info dialog."""
+    """The credit block for a downloaded material: source, author and a link back to it."""
     lines = ['"%s" from the %s library.' % (record.title, record.source)]
     if record.author:
         lines.append("Created by %s." % record.author)
@@ -39,7 +39,7 @@ def _credit_text(record, source) -> str:
 
 
 def _values_to_standard_surface(values: dict, builder: hou.Node) -> hou.Node:
-    """PhysicallyBased measured values -> mtlxstandard_surface constants. - Only maps what the source actually measures; anything absent is left at the shader default rather than invented. - Units, verified against the PhysicallyBased schema (github.com/AntonPalmqvist/physically-based-api) and the MtlX Standard Surface, so the physical values land at the right scale: - * color / specularColor linear rec709 RGB -> as-is * metalness / roughness 0..1 -> as-is * ior dielectric refractive index -> as-is * subsurfaceRadius mean free path, CENTIMETRES -> x CM_TO_SCENE_UNITS (via subsurface_scale; radius is a distance) * transmissionDepth Beer-Lambert depth, METRES -> as-is (OpenPBR convention; scene default is metres) * transmissionDispersion Abbe number (Diamond 55.3) -> as-is * thinFilmThickness NANOMETRES (Pearl 420) -> as-is * thinFilmIor refractive index -> as-is * complexIor handled elsewhere: a material carrying n,k is routed to _values_to_conductor_surface (a real conductor BSDF) instead of this function"""
+    """Measured values as an mtlxstandard_surface; absent values keep the default ▸r/rgl-values."""
     shader = builder.createNode("mtlxstandard_surface")
 
     def _set(parm_name, value):
@@ -50,14 +50,14 @@ def _values_to_standard_surface(values: dict, builder: hou.Node) -> hou.Node:
     _set("specular_roughness", values.get("roughness"))
     _set("specular_IOR", values.get("ior"))
     _set("specular_color", values.get("specularColor"))
-    _set("transmission", values.get("transmission"))   # transmission (Glass, Water, liquid Honey...): a transmissive material tints the light passing THROUGH it by its own color, Standard Surface's transmission_color is that tint and defaults to white, so without this honey renders as clear as water - and in this dataset transmission is only ever 1, so any transmissive material also gets its base color as the transmission tint
+    _set("transmission", values.get("transmission"))   # a transmissive material is tinted by its base color
     if values.get("transmission"):
         _set("transmission_color", values.get("color"))
     _set("transmission_depth", values.get("transmissionDepth"))
     _set("transmission_dispersion", values.get("transmissionDispersion"))
-    radius = values.get("subsurfaceRadius")   # subsurface scattering (crystallized Honey, Petroleum, Milk, Marble, Skin...) is NOT transmissive - the source gives a per-channel subsurfaceRadius instead, and subsurface_radius alone does nothing until the subsurface WEIGHT is on and it has a color, so enable it fully and tint it with the material's own color
+    radius = values.get("subsurfaceRadius")   # a radius turns subsurface fully on, tinted by base color
     if radius:
-        _set("subsurface", 1)   # subsurface_radius is a DISTANCE (mean free path) in the same scene units as everything else rather than a 0-1 tint, PhysicallyBased gives it in centimetres and subsurface_scale converts to the scene's metres (see CM_TO_SCENE_UNITS): physically grounded, keeping each material's own scattering distance (petroleum scatters further than honey), though SSS is still scene-scale dependent so on an unusually large or small object the user can scale subsurface_scale on the shader
+        _set("subsurface", 1)
         _set("subsurface_color", values.get("color"))
         _set("subsurface_radius", radius)             # physical cm values
         _set("subsurface_scale", material.CM_TO_SCENE_UNITS)   # cm -> scene metres
@@ -71,13 +71,13 @@ def _values_to_standard_surface(values: dict, builder: hou.Node) -> hou.Node:
             metalness=values.get("metalness"),
             roughness=values.get("roughness"),
         )
-    _set("thin_film_thickness", values.get("thinFilmThickness"))   # thin film IS safe to copy here, unlike the Redshift converter where it was a non-zero DEFAULT sitting on every metal and painted them iridescent - here it is measured, and only on the two materials that genuinely are thin-film, Pearl (420nm) and Soap Bubble (500nm)
+    _set("thin_film_thickness", values.get("thinFilmThickness"))
     _set("thin_film_IOR", values.get("thinFilmIor"))
-    return shader   # complexIor is handled on a SEPARATE path (a conductor BSDF, see _values_to_conductor_surface): this function only builds the dielectric/artistic-metal standard_surface case
+    return shader
 
 
 def _values_to_conductor_surface(values: dict, builder: hou.Node) -> hou.Node:
-    """A measured metal (PhysicallyBased complexIor) as a PHYSICALLY correct conductor rather than an artistic standard_surface metal. - complexIor is [nR, kR, nG, kG, nB, kB] - the refractive index n and extinction k per channel. mtlxconductor_bsdf takes exactly those (`ior` = n, `extinction` = k) and computes the real complex-Fresnel reflectance, wired into an mtlxsurface terminal. This is the true metal response (e.g. gold's colour comes out of its n,k, not a painted swatch), which is why the 30 metals are routed here."""
+    """A measured metal, complexIor [nR, kR, nG, kG, nB, kB], as a conductor BSDF in an mtlxsurface."""
     ci = values.get("complexIor") or []
     conductor = builder.createNode("mtlxconductor_bsdf")
 
@@ -95,10 +95,10 @@ def _values_to_conductor_surface(values: dict, builder: hou.Node) -> hou.Node:
         _set_tuple("extinction", (ci[1], ci[3], ci[5]))   # k per channel
     roughness = values.get("roughness")
     if roughness is not None:
-        _set_tuple("roughness", (roughness, roughness))   # conductor_bsdf roughness is a vector2 (anisotropic) and the source gives one scalar, so set both axes to it
+        _set_tuple("roughness", (roughness, roughness))   # a vector2: the one scalar on both axes
 
     surface = builder.createNode("mtlxsurface")
-    surface.setNamedInput("bsdf", conductor, 0)   # conductor.out (BSDF) -> surface.bsdf; the funnel wires this mtlxsurface into the builder's suboutput surface terminal
+    surface.setNamedInput("bsdf", conductor, 0)   # the caller wires this mtlxsurface to the terminal
 
     if debug.is_on():
         debug.event(
@@ -114,24 +114,24 @@ def _values_to_conductor_surface(values: dict, builder: hou.Node) -> hou.Node:
 
 
 def record_name(record) -> str:
-    """The NODE/USD name one online record builds under. - The title after USD sanitization, sidestepping Windows reserved device names (CON, NUL, COM1...). Fine for a node - Houdini uniquifies node names itself. NOT sufficient for a directory: package_dirname() exists because two different records can share a title, and a directory name carries no uniquifier of its own."""
+    """The node and USD name a record builds under; not unique, so never a directory name."""
     return hostos.safe_filename(
         wording.sanitize_usd_path(record.title) or "Material")
 
 
 def package_dirname(record) -> str:
-    """The matX/<name> directory one record's package extracts into. - IDENTITY, not just a title. Two sources both offer a "Red Brick"; extracting the second into the first's directory interleaves two packages' textures, and the .mtlx that survives references a mixture. The source and uid are what make a record itself, so they are in the name - readable title first, identity after."""
+    """The matX/<name> directory a record's package extracts into: title, then source and uid."""
     tail = hostos.safe_filename(
         "%s-%s" % (record.source or "src", record.uid or "0"))
     return "%s__%s" % (record_name(record), tail)
 
 
 def _producer_for(record, source, resolution, preferences, progress=None):
-    """Resolve one record to a `produce` callback for the Karma material engine: returns (produce, note, error). - This is the half of an online import that reaches the NETWORK - the download, the .mtlx repair, the measured values. It is deliberately separate from what the caller then does with the material (save it to the library, or build it straight into the scene), so both destinations share exactly one download path and one shader translation."""
+    """Download and resolve a record to a Karma `produce` callback: (produce, note, error)."""
     name = record_name(record)
-    if record.kind == "values":   # this branch downloads too, now that the live catalogue lists materials the shipped table has never seen: an RGL uid absent from the table fetches its measured BSDF here, and a 404, a timeout or a corrupt file used to raise straight through import_record and build_in_scene as a traceback instead of a download failure
+    if record.kind == "values":   # may download too: a measurement the shipped table lacks
         try:
-            fetched_values = source.fetch(record, None, None, progress)   # PROGRESS REACHES HERE TOO: this branch downloads when the shipped table does not know the material, and it was the one fetch call passing no callback, so the bar was shown by the site that asked the source properly and then never moved
+            fetched_values = source.fetch(record, None, None, progress)
         except Exception as exc:                        # noqa: BLE001
             debug.exception("measurement download", exc, uid=record.uid)
             return (None, "", "Could not read the measurement for %s: %s"
@@ -139,17 +139,17 @@ def _producer_for(record, source, resolution, preferences, progress=None):
         values = fetched_values.get("values", {})
         if not values.get("color"):
             return (None, "", "%s has no usable measurement" % record.title)
-        note = fetched_values.get("note", "")   # some values sources derive their numbers rather than publishing them (RGL reads a measured BSDF) - the note explains how, and belongs on the material
+        note = fetched_values.get("note", "")   # how derived numbers were derived; goes on the material
 
         def produce(builder):
-            if values.get("complexIor"):   # measured metals (complexIor n,k) go through a real conductor BSDF; everything else is a standard_surface
+            if values.get("complexIor"):   # measured metals become a conductor BSDF
                 return _values_to_conductor_surface(values, builder)
             return _values_to_standard_surface(values, builder)
 
         return (produce, note, "")
 
     dest = os.path.join(matx_dir(preferences.dir), package_dirname(record))
-    if os.path.isdir(dest) and os.listdir(dest):   # REFUSE AN OCCUPIED DESTINATION: with identity in the name, an existing directory means THIS record was already downloaded, and extracting over it replaces texture files a saved material may be referencing at render time
+    if os.path.isdir(dest) and os.listdir(dest):   # already downloaded: reused, never extracted over
         debug.event("import", "package already on disk - reusing",
                     dest=dest)
         found = matx_sources._find_mtlx(dest)    # the one home for "the first .mtlx under a directory", shared with the fresh-fetch path
@@ -160,7 +160,7 @@ def _producer_for(record, source, resolution, preferences, progress=None):
                               ".mtlx - remove %s and try again"
                     % (record.title, dest))
     else:
-        scratch = dest + ".downloading"   # FETCH INTO A SCRATCH SIBLING, PROMOTE ON SUCCESS: fetch used to write straight into dest, so a download dying part-way left a non-empty directory that the reuse check above reads as already downloaded - torn textures reused on every later import, or a permanent refusal when the .mtlx never arrived; the rename is what makes an occupied destination MEAN a complete package, and a surviving scratch is ours by construction (library-audit reports it as leftover) and is swept on the next attempt
+        scratch = dest + ".downloading"   # fetched here, renamed to dest only once complete
         shutil.rmtree(scratch, ignore_errors=True)
         try:
             fetched = source.fetch(record, resolution, scratch,
@@ -169,7 +169,7 @@ def _producer_for(record, source, resolution, preferences, progress=None):
             debug.exception("download", exc, url=record.payload, dest=dest)
             shutil.rmtree(scratch, ignore_errors=True)
             return (None, "", "Download failed: %s" % exc)
-        scratch_mtlx = (fetched or {}).get("mtlx")   # VERIFIED BEFORE IT IS PROMOTED: the rename is what makes an occupied destination MEAN a complete package, and it ran BEFORE the .mtlx check below, so an archive that extracted files without one still took the destination and the reuse check at the top of this function then refused that record permanently until the folder was deleted by hand - checked while the files are still in the scratch, so a failure leaves `dest` untouched and the next attempt is an ordinary download
+        scratch_mtlx = (fetched or {}).get("mtlx")   # checked before the rename, so a failure leaves dest
         if not scratch_mtlx or not os.path.exists(scratch_mtlx):
             shutil.rmtree(scratch, ignore_errors=True)
             debug.event("import", "download held no .mtlx - scratch "
@@ -178,7 +178,7 @@ def _producer_for(record, source, resolution, preferences, progress=None):
             return (None, "", "No .mtlx document in the downloaded package")
         if os.path.isdir(scratch):
             if os.path.isdir(dest):
-                shutil.rmtree(dest, ignore_errors=True)   # this branch means dest was absent or EMPTY - an empty husk cannot be renamed onto, and holds nothing
+                shutil.rmtree(dest, ignore_errors=True)   # dest is empty here
             os.rename(scratch, dest)
         fetched = {   # the fetch answered scratch paths; the files live at dest now
             key: (dest + value[len(scratch):]
@@ -195,7 +195,7 @@ def _producer_for(record, source, resolution, preferences, progress=None):
                     material=name, repairs=repairs)
         unresolved = [r for r in repairs if not r["fixed_to"]]
         if unresolved:
-            debug.note(   # THE consequence sentence for a half-repaired material: repair_mtlx_references states only the cause, because this is the line with the count and the material's name and both are notes, so naming the black render in both printed the same bad news twice for one import
+            debug.note(   # the one consequence sentence; repair_mtlx_references states the cause
                 "%d of the textures for %s were not downloaded and "
                 "could not be matched, so those inputs render black. "
                 "The rest of the material came through."
@@ -284,10 +284,10 @@ def build_in_scene(record, source, resolution, destination, preferences,
                     % (name, destination.path()))
         builder = moved[0]
         helpers.auto_place(builder)
-        if destination.type().name() == "materiallibrary":   # registered exactly as an import is: a library whose wildcard was narrowed or disabled would otherwise take the material as a node that renders nowhere
+        if destination.type().name() == "materiallibrary":   # registered, or it may render nowhere
             nodes_mod.register_in_materiallibrary(destination, builder)
         try:
-            comment = _credit_text(record, source)   # credit travels WITH the material: a scene import has no library row to carry its licence, so the node comment does, and a later Save to Amaze has something to inherit
+            comment = _credit_text(record, source)   # the node comment carries credit and licence
             if record.licence:
                 comment += "\nLicence: %s" % record.licence
             if note:
@@ -331,7 +331,7 @@ def import_record(record, source, resolution, library, preferences,
         if error:
             return (False, error)
         picture = hosted_picture(record, source, renderer)
-        save(   # BY ID, never by position: add_asset stamps the node with its library id and its save can ADOPT another session's row, appended after ours via the merge, so a grown row count can be true for the wrong reason and the LAST row can be somebody else's material - the id is the identity and the length was only ever a proxy for it
+        save(   # the new row is found by its stamped id, never by position
             builder,
             record.category,
             ",".join(record.tags or []),
@@ -344,20 +344,20 @@ def import_record(record, source, resolution, library, preferences,
         stamped = builder.userData("assetlib_id") or ""
         row = library.find_asset_row_by_id(stamped) if stamped else -1
         if row == -1:
-            return (False, "%s could not be saved to your library, so "   # add_asset only appends when the save chain succeeded, and crediting the last row regardless would rewrite the renderer, credits and license of whatever UNRELATED material happens to be last in the library - the sentence also stops sending the user to the console, since nothing on this branch ever wrote there (add_asset's save chain reports through the log) and with the prints gone that instruction opened an empty window
+            return (False, "%s could not be saved to your library, so "
                            "it was not added. Your scene is unchanged."
                            % name)
         try:
-            credited = library.assets[row]   # add_asset() derives the renderer from the NODE and a builder full of mtlx* nodes reads as Karma, which is exactly right since online imports ARE Karma materials rather than a renderer of their own - what is left is crediting the creators
-            credited.about = _credit_text(record, source)    # written to the record and moved into the asset's COMMENT by the sweep below, which is where the credit lives now ▸p/d03-retired
+            credited = library.assets[row]
+            credited.about = _credit_text(record, source)    # moved into the COMMENT below ▸p/d03-retired
             credited.license = record.licence or ""
             extra = credited._extra
-            extra["source"] = record.source or ""    # WHERE it came from and WHICH one, on the row itself: until 2026-09-04 only the package folder name carried them, and only for downloads after 2026-08-05
+            extra["source"] = record.source or ""    # where it came from and which one, on the row
             extra["online_uid"] = str(record.uid or "")    # not `uid`: that spelling is the pre-connector id, which packages.py strips on import
             if measurement_note:
                 credited.description = measurement_note
             library.save()
-            library.adopt_retired_text_into_notes()    # the credit lands in the COMMENT through the one door that moves it, so an import and an old library reach the same place ▸p/d03-retired
+            library.adopt_retired_text_into_notes()    # the one door into the COMMENT ▸p/d03-retired
         except Exception as exc:
             debug.exception("credit the import", exc)
             debug.event("import", "credit not written", error=str(exc))

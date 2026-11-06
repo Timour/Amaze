@@ -1,4 +1,4 @@
-"""Is there a newer Amaze, and can this one become it? Asked only when the user asks - nothing here is fetched at launch and nothing polls. ▸p/updater-shape ▸r/tls-http"""
+"""Find and install a newer Amaze, only when asked ▸p/updater-shape ▸r/tls-http"""
 
 import hashlib
 import json
@@ -11,7 +11,7 @@ import urllib.request
 from amaze import branding
 from amaze.core import debug
 
-RELEASES_URL = "https://api.github.com/repos/Timour/Amaze/releases/latest"    # unauthenticated, rate-limited per IP; no timeout or user-agent constants belong beside it ▸p/updater-shape
+RELEASES_URL = "https://api.github.com/repos/Timour/Amaze/releases/latest"    # unauthenticated, rate-limited per IP ▸p/updater-shape
 NEW_ISSUE_URL = "https://github.com/Timour/Amaze/issues/new"    # the repo URLs live HERE; pre-fillable with `?body=` ▸r/github-issue-url
 LIBRARY_POLICY_URL = "https://raw.githubusercontent.com/Timour/Amaze/%s/scripts/python/amaze/core/library_policy.py"    # a release's own code
 
@@ -30,7 +30,7 @@ class Update:
         self.version = version
         self.url = url
         self.sentence = sentence
-        self.digest = digest    # `sha256:<hex>` when an UPLOADED asset was chosen; "" for the generated zipball, which GitHub publishes no digest for ▸r/release-digest
+        self.digest = digest    # `sha256:<hex>` for an uploaded asset, "" for the zipball ▸r/release-digest
         self.size = size        # the asset's declared byte count, 0 when unknown
         self.library_version = library_version    # what the release updates libraries to; 0 unread
         self.library_since = library_since or version    # the first Amaze that reads that version
@@ -63,7 +63,7 @@ def is_newer(candidate: str, current: str) -> bool:
 
 
 def _open(url):
-    """THE package's single `urlopen`, not a second one - a private door here would be unblocked in the suite. ▸p/updater-shape"""
+    """The package's single `urlopen`; never add another ▸p/updater-shape"""
     from amaze.core import matx_sources
     return matx_sources._request(url)
 
@@ -88,7 +88,7 @@ def check(current: str = "") -> Update:
         return Update(NO_RELEASE, sentence=(
             "The newest release did not say which version it is, so it "
             "cannot be compared with the %s you are running." % current))
-    url, digest, size = "", "", 0    # an uploaded zip if there is one - it is the only kind carrying a digest - else the archive GitHub generates ▸r/release-digest
+    url, digest, size = "", "", 0    # an uploaded zip if any, else the zipball ▸r/release-digest
     for asset in payload.get("assets") or []:
         if str(asset.get("name") or "").endswith(".zip"):
             url = str(asset.get("browser_download_url") or "")
@@ -152,12 +152,12 @@ def _unreachable_sentence(exc) -> str:
             "again; nothing has been changed.")
 
 
-MAX_DOWNLOAD_BYTES = 256 * 1024 * 1024    # what a release may weigh on the wire, and below once unpacked - the tracked tree is ~41MB, so both are headroom, not a budget ▸r/release-digest
+MAX_DOWNLOAD_BYTES = 256 * 1024 * 1024    # the most a release may weigh downloaded ▸r/release-digest
 MAX_UNPACKED_BYTES = 512 * 1024 * 1024
 
 
 def _verify_digest(path: str, digest: str) -> None:
-    """Refuse `path` unless it hashes to `digest` (`sha256:<hex>`) - an absent or unknown algorithm REFUSES rather than passing. ▸r/release-digest"""
+    """Refuse `path` unless it hashes to `digest` (`sha256:<hex>`); no digest refuses ▸r/release-digest"""
     algorithm, _, expected = str(digest or "").partition(":")
     if not expected:
         raise OSError(
@@ -181,7 +181,7 @@ def _verify_digest(path: str, digest: str) -> None:
 
 
 def download(url: str, into: str, digest: str = "", size: int = 0) -> str:
-    """Stream a release to `into`, returning the file written - raises OSError with a finished sentence on any of short, empty, oversized, wrong-sized or wrong-hashed, and promotes nothing unless all pass. ▸r/release-digest ▸p/updater-shape"""
+    """Stream a release to `into`: the file, or OSError ▸r/release-digest ▸p/updater-shape"""
     from amaze.core import matx_sources
     from amaze.helpers import hostos
 
@@ -216,17 +216,17 @@ def download(url: str, into: str, digest: str = "", size: int = 0) -> str:
     return target
 
 
-INSTALL_ENTRIES = ("scripts", "python_panels", "toolbar", "OPmenu.xml")    # what the INSTALL holds, so what a staged update must contain - stated again in `tools/sync-install.sh`, and `test_updater` fails when the two drift ▸p/updater-shape
+INSTALL_ENTRIES = ("scripts", "python_panels", "toolbar", "OPmenu.xml")    # what a staged update must contain; also in sync-install.sh ▸p/updater-shape
 
 
 def _archive_root(names) -> str:
-    """The single top-level folder a zipball wraps everything in, or "" when the archive is flat - read from the members, since a hand-attached zip may be either. ▸p/updater-shape"""
+    """The single top-level folder of an archive, or "" when it is flat ▸p/updater-shape"""
     tops = {name.split("/", 1)[0] for name in names if name.strip("/")}
     return tops.pop() if len(tops) == 1 else ""
 
 
 def stage_release(archive: str, into: str) -> str:
-    """Extract `archive` and build the directory `apply_update` swaps in, returning the staged path - members are contained and the expanded size is capped before anything is written. ▸p/updater-shape ▸r/release-digest"""
+    """Extract `archive`, contained and capped: the staged path ▸p/updater-shape ▸r/release-digest"""
     import zipfile
 
     from amaze.helpers import hostos
@@ -242,7 +242,7 @@ def stage_release(archive: str, into: str) -> str:
             for name in names:
                 hostos.contained_join(unpacked, name)    # refused rather than skipped: a release that cannot be unpacked whole is not one to install half of
             expanded = sum(info.file_size for info in bundle.infolist())
-            if expanded > MAX_UNPACKED_BYTES:    # the header's own claim, read BEFORE extracting - a few compressed MB can declare gigabytes ▸r/release-digest
+            if expanded > MAX_UNPACKED_BYTES:    # checked before extracting ▸r/release-digest
                 raise OSError(
                     "the release archive unpacks to more than a release "
                     "should (%d bytes). Nothing has been changed."
@@ -285,11 +285,11 @@ def stage_release(archive: str, into: str) -> str:
 
 def fetch_and_stage(url: str, workspace: str,
                     digest: str = "", size: int = 0) -> str:
-    """Download a release and stage it, in one call - `digest` and `size` are the feed's, carried on the `Update`, and skipping them leaves the download unverified. ▸r/release-digest"""
+    """Download and stage a release; without `digest` and `size` it is unverified ▸r/release-digest"""
     archive = download(url, workspace, digest=digest, size=size)
     try:
         return stage_release(archive, os.path.join(workspace, "staged"))
-    finally:    # the archive is a means, not a result - keeping it leaves a repo-sized zip in the cache after every update
+    finally:    # the archive is always removed
         try:
             os.remove(archive)
         except OSError:
@@ -302,11 +302,11 @@ def install_root() -> str:
         import hou
     except ImportError:
         return os.environ.get("AMAZE", "")
-    return hou.getenv("AMAZE") or ""    # inside Houdini `hou` is the ONLY authority; an environment fallback here would install into whatever $AMAZE happened to hold
+    return hou.getenv("AMAZE") or ""    # from hou only, never the environment
 
 
 def install(found, into: str = "") -> None:
-    """Fetch, verify, stage and swap in the release `found` names - every failure raises OSError carrying a FINISHED sentence, and nothing is changed unless the swap completes. ▸p/updater-shape"""
+    """Fetch, verify, stage and swap in `found`; OSError on failure, changing nothing ▸p/updater-shape"""
     from amaze import messages
     from amaze.helpers import hostos
 
@@ -321,12 +321,12 @@ def install(found, into: str = "") -> None:
                                  digest=getattr(found, "digest", ""),
                                  size=getattr(found, "size", 0))
         return apply_update(staged, into)
-    finally:    # the workspace is a means, not a result, and a failed install leaves a repo-sized tree in the cache without this
+    finally:    # the workspace is always removed
         shutil.rmtree(workspace, ignore_errors=True)
 
 
 def apply_update(staged: str, install: str) -> None:
-    """Put `staged` where `install` is. The old install is moved aside only for the length of the swap and then DELETED - every previous version is on the releases page, and a copy left beside a synced install is 49MB of someone else's disk, per update, forever."""
+    """Put `staged` where `install` is; the old install is deleted once the swap completes."""
     if not os.path.isdir(staged):
         raise OSError("the staged update is not there: %s" % staged)
     aside = install.rstrip("/\\") + ".replacing"
@@ -339,7 +339,7 @@ def apply_update(staged: str, install: str) -> None:
         try:
             os.rename(staged, install)
         except OSError:
-            shutil.move(staged, install)    # the cache and the install can be on DIFFERENT volumes, where rename raises EXDEV and only a copy crosses ▸r/cross-volume-move
+            shutil.move(staged, install)    # works across volumes ▸r/cross-volume-move
     except OSError:
         shutil.rmtree(install, ignore_errors=True)    # a half-copied install is not one to leave in place
         os.rename(aside, install)    # PUT IT BACK - the window between the two renames is the only moment this is not whole

@@ -33,7 +33,7 @@ def houdini_path(path: str, style: str = "home") -> str:
 
 
 def node_pattern_match(pattern: str, name: str) -> bool:
-    """Houdini node-pattern match (`*`, `mat_*`) for matnode-style parm values - hou.text.patternMatch, with the pre-hou.text fallback."""
+    """Houdini node-pattern match (`*`, `mat_*`) for matnode-style parm values."""
     try:
         return bool(hou.text.patternMatch(pattern, name))
     except AttributeError:
@@ -41,7 +41,7 @@ def node_pattern_match(pattern: str, name: str) -> bool:
 
 
 def node_errors(node) -> dict:
-    """Houdini's own cook errors/warnings for a node - the message that actually explains a failed render; here because the thumbnail runner and the preview engine both need it and the preview engine may not import the runner."""
+    """Houdini's own cook errors and warnings for a node, as {"errors", "warnings"}; {} for None."""
     if node is None:
         return {}
     out = {}
@@ -54,7 +54,7 @@ def node_errors(node) -> dict:
 
 
 def find_file_parm(node: hou.Node) -> hou.Parm | None:
-    """The node's first file-reference parm, or None - detected via Houdini's own parm-type system (any string parm whose stringType() is FileReference), so Karma, Redshift, Octane, COP file nodes and custom HDAs all qualify with no per-node-type table; first in parm-definition order wins."""
+    """The node's first FileReference string parm in definition order, or None; any node type."""
     return _first_parm_where(
         node,
         lambda t: (t.type() == hou.parmTemplateType.String
@@ -62,14 +62,14 @@ def find_file_parm(node: hou.Node) -> hou.Parm | None:
 
 
 def _first_parm_where(node: hou.Node, matches) -> hou.Parm | None:
-    """The node's first parm whose TEMPLATE satisfies `matches`, or None - the one walk both generic parm finders share, parm-definition order deciding ties."""
+    """The node's first parm, in definition order, whose template satisfies `matches`, or None."""
     for parm in node.parms():
         if matches(parm.parmTemplate()):
             return parm
     return None
 
 
-CODE_PARM_NAMES = ("snippet", "vexpression", "kernelcode", "python", "code")  # code-parm names, most common first - detection is by KNOWN name because a code parm is just a multiline String with no distinguishing template flag
+CODE_PARM_NAMES = ("snippet", "vexpression", "kernelcode", "python", "code")  # code parms are known by name only, most common first
 
 CODE_PARM_LANGUAGE = {
     "snippet": "VEX",
@@ -81,7 +81,7 @@ CODE_PARM_LANGUAGE = {
 
 
 def find_code_parm(node: hou.Node) -> hou.Parm | None:
-    """The node's code/snippet parm (a wrangle's `snippet`, an OpenCL `kernelcode`, a Python SOP's `python`, ...), or None - checked in CODE_PARM_NAMES order so a node exposing several picks the most snippet-like first."""
+    """The node's code parm, the first of CODE_PARM_NAMES it has, or None."""
     for name in CODE_PARM_NAMES:
         parm = node.parm(name)
         if parm is not None:
@@ -99,7 +99,7 @@ def code_parm_language(parm: hou.Parm) -> str:
 def pick_cop_display_child(
     net: hou.Node, children: list | None = None
 ) -> hou.Node | None:
-    """The child that best represents a COP network's picture - shared by the live pick at save time (render/nodes.py) and the loaded-copy fallback at render time (render/thumbs.py) so the two cannot drift; `children` restricts the pick to a subset (a selection save). Order, shaped by three live misses: the display-flagged child (displayNode() plus the per-child generic flag, which Copernicus networks need), then among OUT_* children the COLOR-named one (first-out-wins once rendered the normal map), then any OUT_* child, an output-TYPE child, a terminal child, the last child."""
+    """The child that best shows a COP network's picture, among `children` when given; None if none."""
     kids = list(children) if children is not None else list(net.children())
     if not kids:
         return None
@@ -137,7 +137,7 @@ def pick_cop_display_child(
 
 
 def find_color_ramp_parm(node: hou.Node) -> hou.Parm | None:
-    """The node's first COLOR ramp parm, or None - same generic-detection philosophy as find_file_parm, so MaterialX/Karma, Redshift, COP and custom-HDA ramps all qualify; first in parm-definition order wins."""
+    """The node's first colour ramp parm in definition order, or None; any node type."""
     return _first_parm_where(
         node,
         lambda t: (t.type() == hou.parmTemplateType.Ramp
@@ -156,7 +156,7 @@ _RAMP_BASIS = {
 
 
 def ramp_to_data(ramp: hou.Ramp) -> dict:
-    """Serializes a hou.Ramp to plain JSON-able data (basis names, key positions, values) so a saved gradient re-applies exactly as it was on the source node."""
+    """A hou.Ramp as JSON-able data: basis names, key positions and values."""
     reverse = {v: k for k, v in _RAMP_BASIS.items()}
     return {
         "bases": [reverse.get(b, "Linear") for b in ramp.basis()],
@@ -166,14 +166,14 @@ def ramp_to_data(ramp: hou.Ramp) -> dict:
 
 
 def data_to_ramp(data: dict) -> hou.Ramp:
-    """Inverse of ramp_to_data, and total: an unknown basis degrades to Linear, and missing or mismatched keys/values give a black COLOUR ramp rather than an InvalidSize or a float one. ▸r/ramp-and-walk-edges"""
+    """Inverse of ramp_to_data, never raising: bad data gives a colour ramp ▸r/ramp-and-walk-edges"""
     bases = [
         _RAMP_BASIS.get(name, hou.rampBasis.Linear)
         for name in data.get("bases", [])
     ]
     keys = list(data.get("keys", []))
     values = [tuple(v) for v in data.get("values", [])]
-    width = min(len(keys), len(values))    # hou.Ramp raises InvalidSize when the three disagree, and a hand-edited or truncated gradient file is exactly where they do
+    width = min(len(keys), len(values))    # hou.Ramp raises InvalidSize when the lengths disagree
     if not width:
         return hou.Ramp([hou.rampBasis.Linear], [0.0], [(0.0, 0.0, 0.0)])
     keys, values = keys[:width], values[:width]
@@ -191,8 +191,8 @@ def _hex_to_rgb(hex_color: str) -> tuple:
 
 
 def build_stepped_ramp(hex_colors: list) -> hou.Ramp:
-    """A constant-basis (stepped) color ramp from a list of hex strings - discrete bands, so the palette's colors stay readable."""
-    if not hex_colors:    # `max(len, 1)` made the bases and keys length 1 against no values at all, which is an InvalidSize - the same empty palette build_basis_ramp already survives ▸r/ramp-and-walk-edges
+    """A stepped, constant-basis colour ramp from a list of hex strings."""
+    if not hex_colors:    # an empty palette gives one black key ▸r/ramp-and-walk-edges
         return hou.Ramp([hou.rampBasis.Constant], [0.0], [(0.0, 0.0, 0.0)])
     n = len(hex_colors)
     bases = [hou.rampBasis.Constant] * n
@@ -205,7 +205,7 @@ RAMP_BASES = tuple(_RAMP_BASIS)  # the Apply as submenu's entries, in Houdini's 
 
 
 def build_basis_ramp(hex_colors: list, basis: str) -> hou.Ramp:
-    """A colour ramp from hex strings, every key on ONE basis - unknown names degrade to Linear, the same rule data_to_ramp follows."""
+    """A colour ramp from hex strings, every key on one basis; an unknown name means Linear."""
     b = _RAMP_BASIS.get(basis, hou.rampBasis.Linear)
     n = len(hex_colors)
     if n <= 1:
@@ -217,7 +217,7 @@ def build_basis_ramp(hex_colors: list, basis: str) -> hou.Ramp:
 
 
 def get_connected_nodes(node: hou.Node) -> list[hou.Node]:
-    """Input and output nodes for `node` in one list - both walks include the starting node, so the concatenation is deduped by path, preserving discovery order."""
+    """Input and output nodes of `node`, itself included, deduped by path in discovery order."""
     in_nodes = get_connected_input_nodes([node], selected=[])
     out_nodes = get_connected_output_nodes([node], selected=[])
     seen = set()
@@ -233,9 +233,9 @@ def get_connected_nodes(node: hou.Node) -> list[hou.Node]:
 def _walk_connected(
     nodes: list[hou.Node], selected: list[hou.Node], step: str
 ) -> list[hou.Node]:
-    """Every node reachable from `nodes` by following `step` ("inputs" or "outputs") into `selected`, seeds included - ONE walker for both directions, visited-set bounded (a diamond graph re-walked once per path, exponentially, before). Not `inputAncestors()`: that EXCLUDES the seed, follows REFERENCE inputs, and HOM 22 has no output-side equivalent - checked."""
+    """Every node reached from `nodes` by `step` ("inputs"/"outputs"), seeds included, into `selected`."""
     visited = set()
-    stack = [n for n in reversed(list(nodes)) if n is not None]    # ITERATIVE: one frame per node in a chain hit Python's recursion limit on a long series, and the visited set bounds re-walking, not depth ▸r/ramp-and-walk-edges
+    stack = [n for n in reversed(list(nodes)) if n is not None]    # iterative ▸r/ramp-and-walk-edges
     while stack:
         node = stack.pop()
         if node is None or node.path() in visited:
@@ -347,7 +347,7 @@ def _put_editors_back(editors, pass_name: str) -> None:
             try:
                 if (current is not None and pwd is not None
                         and current != pwd
-                        and current.parent() == pwd):  # current FIRST, and only when it lives INSIDE the restored network: an idle editor answers currentNode() with the network ITSELF, and making a network current sends the editor to its PARENT - the very dive this undoes (measured live)
+                        and current.parent() == pwd):  # current first, and only from inside pwd, or the editor dives
                     pane_tab.setCurrentNode(current)
             except (AttributeError, hou.OperationFailed,
                     hou.ObjectWasDeleted):
@@ -365,7 +365,7 @@ def _put_editors_back(editors, pass_name: str) -> None:
                     pass_name=pass_name, moves=moved)
 
 
-_last_placed: list = []  # what the last placement put down - every door lands nodes through place_nodes or auto_place, so this is the one funnel that knows; the wire splice reads it instead of diffing a network's children (practice.md ▸ DONT PATCH, DONT HAND-ROLL)
+_last_placed: list = []  # what the last place_nodes or auto_place put down
 
 
 def placed_nodes() -> list:
@@ -384,7 +384,7 @@ def _remember_placed(nodes) -> None:
 
 
 def auto_place(node) -> None:
-    """Place a freshly created node WITHOUT rearranging the network - the no-drop-point half of the placement rule. `moveToGoodPosition()` defaults to moving inputs, outputs AND unconnected neighbours (measured: an untouched box slid from y=0.0 to 0.894); the three flags off leave them put, matching Houdini's own tab-menu flow, and a source scan in test_nodes_section keeps this the only caller."""
+    """Place a new node with no drop point, leaving every other node where it is."""
     if node is None:
         return
     _remember_placed([node])
@@ -396,7 +396,7 @@ def auto_place(node) -> None:
 
 
 def centred_on(position):
-    """The POSITION to set so a node's body sits centred on `position` - `setPosition` anchors a corner, so a raw drop point puts the node beside the cursor; Houdini's own placement subtracts `getNewNodeHalfSize()` (a constant Vector2(0.5, 0.15)) and the ghost draws centred, so both agree with the host."""
+    """The setPosition value that centres a node's body on `position`; None for None."""
     if position is None:
         return None
     try:
@@ -408,7 +408,7 @@ def centred_on(position):
 
 
 def place_nodes(nodes, position) -> None:
-    """Move created nodes as a GROUP so their centroid lands at `position`, preserving their relative layout - the ONE placement rule of the interaction system, fed by the import seam's created list; None position or nothing created leaves the import's own placement standing."""
+    """Move created nodes as a group so their centroid lands at `position`; None leaves them."""
     from amaze.core import debug
     nodes = [node for node in nodes if node is not None]
     if not nodes:
@@ -416,7 +416,7 @@ def place_nodes(nodes, position) -> None:
     _remember_placed(nodes)
     position = centred_on(position)
     if position is None:
-        debug.event("interact", "placed by the import, no drop point",  # logged because a node that missed the drop point and a node never given one are different faults wearing the same symptom
+        debug.event("interact", "placed by the import, no drop point",
                     nodes=len(nodes), first=nodes[0].path())
         return
     centroid_x = sum(n.position().x() for n in nodes) / len(nodes)
@@ -431,7 +431,7 @@ def place_nodes(nodes, position) -> None:
         except (hou.OperationFailed, hou.ObjectWasDeleted):
             pass
     try:
-        after_x = sum(n.position().x() for n in nodes) / len(nodes)  # what was asked and what landed, one record: only the achieved centroid tells a wrong-space position, a later mover and a refused setPosition apart (practice.md: coordinates and outcome in the SAME record)
+        after_x = sum(n.position().x() for n in nodes) / len(nodes)  # the achieved centroid, logged beside the asked one
         after_y = sum(n.position().y() for n in nodes) / len(nodes)
     except hou.ObjectWasDeleted:
         return

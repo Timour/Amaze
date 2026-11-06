@@ -27,7 +27,7 @@ _path = os.path.join(DEFAULT_DIR, DEFAULT_NAME)
 _session = ""
 _seq = 0
 _excepthook_installed = globals().get("_excepthook_installed", False)
-_crash_counts: dict = globals().get("_crash_counts", {})    # reload-persistent like its two companions below, or the three flood counters disagree after a dev reload and `suppressed` goes negative
+_crash_counts: dict = globals().get("_crash_counts", {})    # survives reload, like the two counters below
 
 FLOOD_VERBATIM = 5
 FLOOD_MARKER_EVERY = 1000
@@ -91,7 +91,7 @@ def _record_crash(kind: str, exc_type_name: str, tb_text: str, msg: str,
 
 
 def _flush_repeat(key: str) -> None:
-    """A key's EXACT total, categorised by the key so a flood of ordinary events is not filed as a crash."""
+    """A key's exact total, filed by the key so ordinary events never count as crashes."""
     count = _crash_counts.get(key)
     if not count:
         return
@@ -139,7 +139,7 @@ def begin_pass(name: str) -> None:
 
 
 def pass_budget(name: str, cap: int) -> bool:
-    """True while this pass may still record a per-item diagnostic; call `begin_pass` to refresh the allowance."""
+    """True while this pass may still record a per-item diagnostic; `begin_pass` refreshes it."""
     if _pass_spent.get(name, 0) >= cap:
         return False
     _pass_spent[name] = _pass_spent.get(name, 0) + 1
@@ -171,7 +171,7 @@ def guarded(where: str):
 
 
 def probe() -> dict:
-    """Live engine state; a `module_id` disagreeing with the session header means two module objects. ▸r/module-reload"""
+    """Live engine state; a `module_id` unlike the header's means two modules ▸r/module-reload"""
     return {
         "module_id": id(sys.modules.get(__name__)),
         "module_name": __name__,
@@ -182,11 +182,11 @@ def probe() -> dict:
 
 
 class ExportRefused(Exception):
-    """The export could not be made, WITH the reason - never a bare False an empty log would also return."""
+    """The export could not be made; carries the reason."""
 
 
 def export_log(dest_dir: str) -> str:
-    """Snapshot the log into `dest_dir` as `amaze-<machine>-<os>-hou<version>-<stamp>.jsonl`; raises ExportRefused with a reason to show."""
+    """Snapshot the log into `dest_dir` as amaze-...-<stamp>.jsonl; raises ExportRefused."""
     source = log_path()
     if not dest_dir:
         raise ExportRefused("No destination folder was chosen.")
@@ -237,7 +237,7 @@ def log_path() -> str:
 
 
 def _blank_slate(forget_alerts: bool = False) -> None:
-    """The state a NEW file starts from; alerts are the user's, so only a clear drops them. ▸p/log-blank-slate"""
+    """The state a new file starts from; only a clear drops alerts ▸p/log-blank-slate"""
     global _session, _seq, _rotation_blocked
     _session = ""
     _seq = 0
@@ -267,7 +267,7 @@ def is_on() -> bool:
 
 
 def install() -> None:
-    """Arm the crash recorder once at panel construction; it captures UNCAUGHT exceptions whatever Debug Mode says."""
+    """Arm the crash recorder once; it captures uncaught exceptions whatever Debug Mode says."""
     global _installed
     if _installed:
         return
@@ -276,7 +276,7 @@ def install() -> None:
 
 
 def _ensure_session() -> None:
-    """Start a session and write its header if none has begun, so even a crash-only log carries the environment."""
+    """Start a session and write its header, if none has begun."""
     global _session
     if not _session:
         _session = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -285,7 +285,7 @@ def _ensure_session() -> None:
 
 
 def configure(enabled: bool, path: str = "") -> None:
-    """The user's VERBOSE switch, with a changed path starting a new file; crash capture is separate and always on."""
+    """The user's verbose switch; a changed path starts a new file. Crash capture stays on."""
     global _enabled, _path
     was_on = _enabled
     enabled = bool(enabled)
@@ -304,7 +304,7 @@ def configure(enabled: bool, path: str = "") -> None:
 
 
 def redirect(path: str) -> None:
-    """Move the log to another FILE without touching Debug Mode, for a process that must not write the real one."""
+    """Move the log to another file without touching Debug Mode."""
     global _path
     _path = str(path)
     _blank_slate()
@@ -322,7 +322,7 @@ def _rotate() -> None:
         return
     except OSError:
         pass
-    # A Windows reader's handle blocks the rename, a deny-write one blocks the truncate too. ▸r/failed-write
+    # A Windows reader's handle blocks the rename; a deny-write one blocks this too ▸r/failed-write
     try:
         shutil.copyfile(_path, _path + ".1")
         open(_path, "w", encoding="utf-8", newline="\n").close()
@@ -340,7 +340,7 @@ def _write(record: dict) -> None:
 
 
 def _write_locked(record: dict) -> None:
-    """The write itself, called with `_write_lock` held; `encoding=` is load-bearing on Windows. ▸r/platform-files"""
+    """The write itself; call with `_write_lock` held ▸r/platform-files"""
     record["t"] = round(
         datetime.datetime.now().timestamp(), 3
     )
@@ -360,7 +360,7 @@ _write_lock = globals().get("_write_lock") or threading.Lock()
 
 
 def _maybe_rotate_inline() -> None:
-    """Enforce MAX_BYTES DURING a session, not only at its start - a long Houdini session is when it matters."""
+    """Enforce MAX_BYTES during a session, not only at its start."""
     if _seq % _SIZE_CHECK_EVERY:
         return
     try:
@@ -371,7 +371,7 @@ def _maybe_rotate_inline() -> None:
 
 
 def _stringify(value):
-    """Anything not JSON-native (hou.Node, QImage, Sdf.Path...) becomes its repr rather than killing the write."""
+    """Anything not JSON-native (hou.Node, QImage, Sdf.Path...) as its repr."""
     try:
         return str(value)
     except Exception:
@@ -389,7 +389,7 @@ def _app_version() -> str:
 
 
 def _write_session_header() -> None:
-    """The environment, once per session: build, Python, platform, Houdini, all three UI scales, renderer plugins."""
+    """The environment, once per session: build, Python, platform, Houdini, UI scales, renderers."""
     info = {
         "module_id": id(sys.modules.get(__name__)),
         "amaze_version": _app_version(),
@@ -406,7 +406,7 @@ def _write_session_header() -> None:
 
 
 def prefs_snapshot(preferences) -> None:
-    """The COMPLETE settings state, always on: it is the RESTORE SOURCE when settings.json is lost, so it mirrors rather than samples."""
+    """The complete settings state, always on; the restore source when settings.json is lost."""
     if preferences is None:
         return
     _ensure_session()
@@ -433,7 +433,7 @@ def prefs_snapshot(preferences) -> None:
 
 
 def event(category: str, message: str, /, **data) -> None:
-    """A structured entry, silent with Debug Mode off; the `/` keeps `category`/`message` free for **data to reuse."""
+    """A structured entry, silent with Debug Mode off; **data may reuse category and message."""
     if not _enabled or _rotation_blocked:
         return
     keep, count = _flood_check("event:%s" % category, message, "")
@@ -452,7 +452,7 @@ def ledger(category: str, message: str, /, **data) -> None:
 
 
 def note(message: str, /, **data) -> None:
-    """Print `Amaze: ...` AND record it - but never print on Windows, where any print pops the Console open. ▸r/platform-files"""
+    """Print `Amaze: ...` and record it; never prints on Windows ▸r/platform-files"""
     if _enabled and not _rotation_blocked:
         _write({"cat": "note", "msg": message, "data": data})
     try:
@@ -475,7 +475,7 @@ def hand_over(ui) -> None:
 
 
 def alert(message: str, /, key: str = "", **data) -> bool:
-    """Interrupt ONCE per key for something rare and important, True when it showed; a formatted message MUST pass a stable `key`. ▸p/dialogs-are-a-bill ▸p/queue-time-needs"""
+    """Show once per key, True if shown; pass a stable `key` ▸p/dialogs-are-a-bill ▸p/queue-time-needs"""
     stable = key or message
     if _enabled and not _rotation_blocked:
         _write({"cat": "alert", "msg": message,
@@ -493,13 +493,13 @@ def alert(message: str, /, key: str = "", **data) -> bool:
 
 
 class Damage(str):
-    """A refusal sentence meaning the LIBRARY is broken, which `refuse` gives a dialog where a plain str gets the status line. `%` on one answers a plain str, so wrap at the point of return with the formatting already inside. ▸p/refusal-sink"""
+    """A refusal meaning the library is broken; `%` drops it, so wrap formatted text ▸p/refusal-sink"""
 
     __slots__ = ()
 
 
 def refuse(reason: str, /, **data) -> bool:
-    """Say a gesture did not land, True when it spoke; a `Damage` reason opens a deferred dialog and any other goes to the status line. It REPEATS - the user gestured again - and it never raises, sitting inside the handlers that absorb a failed gesture. ▸p/refusal-sink"""
+    """Say a gesture did not land, True when it spoke; repeats and never raises ▸p/refusal-sink"""
     damage = isinstance(reason, Damage)
     if _enabled and not _rotation_blocked:
         _write({"cat": "refuse", "msg": str(reason),
@@ -525,7 +525,7 @@ def status(message: str, /) -> bool:
 
 
 def exception(where: str, exc: BaseException | None = None, /, **data) -> None:
-    """A full traceback for a HANDLED exception, Debug-Mode gated; an UNCAUGHT one goes through `install()` regardless."""
+    """A full traceback for a handled exception, Debug-Mode gated."""
     if not _enabled or _rotation_blocked:
         return
     text = traceback.format_exc() if exc is None else "".join(
@@ -559,7 +559,7 @@ def timed(category: str, message: str, /, **data):
 
 
 def material_snapshot(shader, builder=None) -> dict:
-    """A shading network's effective inputs and what drives each; pass `builder` to flag a promoted parm that DIFFERS."""
+    """A shading network's inputs and what drives each; `builder` flags promoted parms that differ."""
     if shader is None:
         return {}
     info = {}
@@ -567,7 +567,7 @@ def material_snapshot(shader, builder=None) -> dict:
         info["shader"] = shader.name()
         info["shader_type"] = shader.type().name()
         inputs = {}
-        for name, source in zip(shader.inputNames(), shader.inputs()):  # lengths differ BY CONTRACT - inputNames() is every declared input, inputs() only the connected ones - so the zip truncates to the connected prefix, which is the dump this wants ▸r/inputs-contract
+        for name, source in zip(shader.inputNames(), shader.inputs()):  # zip stops at the connected prefix ▸r/inputs-contract
             parm = shader.parmTuple(name) or shader.parm(name)
             entry = {"driven_by": source.name() if source else None}
             if parm is not None:
@@ -633,7 +633,7 @@ def node_snapshot(node, depth: int = 1) -> dict:
 
 
 def _install_excepthook() -> None:
-    """Capture PROPAGATING exceptions; its flags and `_previous_excepthook` must survive reload or the hook chains to itself. ▸r/module-reload"""
+    """Capture propagating exceptions; its state survives reload ▸r/module-reload"""
     global _excepthook_installed, _previous_excepthook
     if _excepthook_installed:
         return

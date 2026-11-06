@@ -1,4 +1,4 @@
-"""The ONE thumbnail system every section flows through: keyed (never row-numbered) images in one byte-capped LRU with absent/pending/done/missing states, missing sticky until `discard()`; the providers (FILE, CONVERT ▸o/conversion, RENDER, PAINT) are the only per-source code - this engine keeps the cache and the loaders, it is not the decoder."""
+"""The thumbnail engine: keyed images in one byte-capped LRU; missing sticks until `discard()`."""
 
 import functools
 import os
@@ -28,7 +28,7 @@ class _FileLoader(QtCore.QThread):
         return [(item[0], item[-1]) for item in self._items]
 
     def cancel(self) -> None:
-        """Stop after the current file - shutdown needs this: waiting for a full batch of disk reads would stall a panel reopen."""
+        """Stop after the current file."""
         self._canceled = True
 
     def run(self) -> None:
@@ -70,7 +70,7 @@ class _ConvertLoader(QtCore.QThread):
         super().__init__()
         self._items = items  # [(key, full_path, size, dest, token)]; dest "" asks for no PNG
         self._hfs = hfs
-        self._canceled = False    # the ONE stop flag, `_prune_threads`' read and the run loop's alike - _FileLoader keeps the identical contract
+        self._canceled = False    # the one stop flag, read by `_prune_threads` and the run loop
 
     requests = _FileLoader.requests
 
@@ -78,11 +78,11 @@ class _ConvertLoader(QtCore.QThread):
         self._canceled = True
 
     def _cancelled(self) -> bool:
-        """Polled by `conversion._run_process`'s 100ms watchdog from inside the nested event loop where this worker lives - wired, cancel() gets the worker out within 100ms with its own child killed and temp file removed, and interruption counts too since shutdown() requests it on every thread."""
+        """True once canceled or interrupted; polled every 100ms by `conversion._run_process`."""
         return self._canceled or self.isInterruptionRequested()
 
     def run(self) -> None:
-        """One call to the Conversion Engine per item, and nothing else - the engine owns decoder policy, this worker owns staying off the UI thread and stopping when told."""
+        """One Conversion Engine call per item, off the UI thread, until canceled."""
         from amaze.core import conversion
         for key, full_path, size, dest, token in self._items:
             if self._canceled:
@@ -92,7 +92,7 @@ class _ConvertLoader(QtCore.QThread):
                     full_path, size, cancelled=self._cancelled,
                     hfs=self._hfs)
                 image = result.image
-            except Exception as exc:                          # noqa: BLE001 - a backstop only: convert_image answers with a reason rather than raising, and a raise here would take the rest of the batch with it
+            except Exception as exc:                          # noqa: BLE001 - a backstop only
                 debug.event(
                     "texture", "thumbnail failed", file=full_path, error=str(exc)
                 )
@@ -110,7 +110,7 @@ class _ConvertLoader(QtCore.QThread):
 
 class ThumbnailEngine(QtCore.QObject):
     converted = QtCore.Signal(object, str)    # (key, png): a conversion's PNG is filed where it was asked
-    ready = QtCore.Signal(object)    # a key's image arrived (repaint it) - or its load failed, and data() will now see is_missing() and paint a placeholder
+    ready = QtCore.Signal(object)    # a key's image arrived or failed: repaint it
     convert_attempted = QtCore.Signal(object)    # a convert item was attempted, success or failure - drives the texture progress bar
 
     def __init__(self, budget_mb: int = 256) -> None:
@@ -124,9 +124,9 @@ class ThumbnailEngine(QtCore.QObject):
         self._dispatch_scheduled = False
         self._convert_queue = []  # [(key, full_path, size, dest, token)]
         self._convert_scheduled = False
-        self._convert_hfs = ""    # convert options, pushed by the texture model per batch so Preferences changes apply without a restart
+        self._convert_hfs = ""    # convert options, pushed by the texture model per batch
         self._convert_parallel = 4
-        self._threads = []    # threads stay referenced until finished - dropping a running QThread's only Python reference frees the C++ object mid-run ▸r/model-contracts
+        self._threads = []    # threads stay referenced until finished ▸r/model-contracts
 
     def set_budget_mb(self, budget_mb) -> None:
         try:
@@ -161,7 +161,7 @@ class ThumbnailEngine(QtCore.QObject):
         self._evict()
 
     def request_file(self, key, path):
-        """The FILE provider: the cached image, or queue a background load and answer None (the caller paints its placeholder) - one paint pass's requests coalesce into a single loader batch via the zero-timer, and this is called from data(), so it stays cheap."""
+        """The cached image, or None with a background load queued; cheap enough for data()."""
         image = self._cache_get(key)
         if image is not None:
             return image
@@ -176,7 +176,7 @@ class ThumbnailEngine(QtCore.QObject):
         return None
 
     def peek(self, key):
-        """Cache lookup only, no request on miss - convert-sourced rows use this, their generation queued eagerly per folder rather than driven by paints."""
+        """The cached image or None, with no request on a miss."""
         return self._cache_get(key)
 
     def is_pending(self, key) -> bool:
@@ -190,13 +190,13 @@ class ThumbnailEngine(QtCore.QObject):
         return self._states.get(key) == "pending" and self._generations.get(key, 0) == token
 
     def deposit(self, key, image) -> None:
-        """Main-thread providers hand finished images straight in (geometry's render pass, colors' synchronous paints): cached under the budget, marked done, announced like any other delivery."""
+        """Cache a finished image from the main thread, mark it done and announce it."""
         self._cache_put(key, image)
         self._states[key] = "done"
-        QtCore.QTimer.singleShot(0, lambda k=key: self.ready.emit(k))    # DEFERRED: several models deposit from inside data(), and a synchronous emit reaches dataChanged FROM INSIDE a view's own fetch - re-entrant by construction
+        QtCore.QTimer.singleShot(0, lambda k=key: self.ready.emit(k))    # deferred: safe from inside data()
 
     def discard(self, key) -> None:
-        """Forget a key entirely (image AND state) - a rerender or overwrite calls this so the next repaint reloads the fresh file, and a previously-missing key gets its retry."""
+        """Forget a key's image and state, so the next repaint reloads it."""
         old = self._lru.pop(key, None)
         if old is not None:
             self._bytes -= old[1]
@@ -215,7 +215,7 @@ class ThumbnailEngine(QtCore.QObject):
         self._convert_parallel = max(1, min(8, int(parallel)))
 
     def request_convert(self, key, full_path, size, dest="") -> None:
-        """Queue an image for background generation through the Conversion Engine - eagerly per folder, so the expensive one-time work runs on open with the progress bar; NO extension is passed, because which decoder a file needs is measured from the file, never guessed from its name here."""
+        """Queue an image for background generation through the Conversion Engine."""
         if self._states.get(key) == "pending":
             return
         self._states[key] = "pending"
@@ -226,7 +226,7 @@ class ThumbnailEngine(QtCore.QObject):
             QtCore.QTimer.singleShot(0, self._dispatch_converts)
 
     def cancel_pending_converts(self) -> None:
-        """A folder switch abandons its unfinished conversions (a revisit re-queues): undelivered keys reset to unrequested, never to missing, and a canceled loader's late delivery is dropped by the state check in _on_loaded."""
+        """Abandon unfinished conversions; their keys reset to unrequested, never to missing."""
         for item in self._convert_queue:
             if self._current(item[0], item[-1]):
                 self._states.pop(item[0], None)
@@ -239,20 +239,20 @@ class ThumbnailEngine(QtCore.QObject):
                         self._states.pop(key, None)
 
     def _dispatch_converts(self) -> None:
-        """Split the queued batch round-robin across N concurrent loaders (Preferences > Parallel Conversions) - each iconvert pays a fixed Houdini-process startup cost, so N at once cuts wall-clock roughly by N."""
+        """Split the queue round-robin across the Parallel Conversions count of loaders."""
         self._convert_scheduled = False
         items = self._convert_queue
         self._convert_queue = []
         if not items:
             return
         parallel = self._convert_parallel
-        live = sum(    # a LIVE cap, not per-dispatch: counting nothing let a rerender during a running batch double the subprocesses, 8 loaders against a preference of 4
+        live = sum(    # the cap counts loaders already running
             1 for t in self._threads
             if isinstance(t, _ConvertLoader) and not workers.finished(t)
         )
         free = parallel - live
         if free <= 0:
-            self._convert_queue = items + self._convert_queue    # back on the queue, retried when a slot frees - ONE FRAME, not 0ms, which would spin this handler every event-loop turn while a 30s iconvert holds the slot
+            self._convert_queue = items + self._convert_queue    # retried one frame later
             if not self._convert_scheduled:
                 self._convert_scheduled = True
                 QtCore.QTimer.singleShot(16, self._dispatch_converts)
@@ -264,7 +264,7 @@ class ThumbnailEngine(QtCore.QObject):
             loader.loaded.connect(self._on_loaded)
             loader.failed.connect(self._on_failed)
             loader.attempted.connect(self._on_convert_attempted)
-            loader.finished.connect(    # the loader passed EXPLICITLY: _prune_threads may only judge the thread that actually finished, and binding beats sender() across a queued connection
+            loader.finished.connect(    # the finished loader is passed explicitly
                 functools.partial(self._prune_threads, loader))
             self._threads.append(loader)
             loader.start()
@@ -273,7 +273,7 @@ class ThumbnailEngine(QtCore.QObject):
         if self._generations.get(key, 0) == token:    # a superseded attempt is not this request's
             self.convert_attempted.emit(key)
 
-    FILE_LOADER_LIMIT = 4    # concurrent _FileLoader threads - uncapped, one loader per event-loop turn measured 22 concurrent QThreads from a 300-request scroll, and every extra thread widens the sibling-prune exposure
+    FILE_LOADER_LIMIT = 4    # concurrent _FileLoader threads at most
 
     def _dispatch_files(self) -> None:
         self._dispatch_scheduled = False
@@ -289,7 +289,7 @@ class ThumbnailEngine(QtCore.QObject):
             self._file_queue = items + self._file_queue    # back on the queue: it drains into free slots instead of spawning a thread per turn
             if not self._dispatch_scheduled:
                 self._dispatch_scheduled = True
-                QtCore.QTimer.singleShot(16, self._dispatch_files)    # ONE FRAME, not zero - a 0ms re-arm spins on the paint thread for as long as the cap stays full, measured ~7.5s of pure spin on a 300-tile scroll
+                QtCore.QTimer.singleShot(16, self._dispatch_files)    # one frame, never zero
             return
         loader = _FileLoader(items)
         loader.loaded.connect(self._on_loaded)
@@ -328,12 +328,12 @@ class ThumbnailEngine(QtCore.QObject):
         self.converted.emit(key, dest)
 
     def shutdown(self) -> None:
-        """Stop every worker and WAIT for it - a QThread freed while run() executes takes the process down (▸r/model-contracts), which is what a panel reopen's reload used to do. Safe to call twice, and safe when nothing is running."""
+        """Stop every worker and wait for it; safe twice and when idle ▸r/model-contracts"""
         workers.stop(self._threads, "thumbnails")
         self._threads = []
-        self._lru.clear()    # the cache dies with the engine - a reopen replaces the singleton, and holding the old images pinned a full budget per reopen
+        self._lru.clear()    # the cache dies with the engine
         self._bytes = 0
-        self._states = {}    # cleared, or a shut-down engine keeps one entry per key it ever saw for as long as the handover below references it
+        self._states = {}
         self._generations = {}
         self._file_queue = []
         self._convert_queue = []
@@ -344,7 +344,7 @@ class ThumbnailEngine(QtCore.QObject):
         """A finished loader's own unanswered keys are asked for again; a sibling's are left alone."""
         if finisher is None:
             finisher = self.sender()    # fallback for a direct call; the connect sites pass the loader explicitly
-        self._threads = [t for t in self._threads    # drops the finisher and the C++-deleted; a finished SIBLING is deliberately kept until its own signal, since Qt may still hold its queued deliveries
+        self._threads = [t for t in self._threads    # a finished sibling stays until its own signal
                          if t is not finisher and not workers.gone(t)]
         if finisher is None:
             return
@@ -378,7 +378,7 @@ class _EngineSignals(QtCore.QObject):
 
 signals = globals().get("signals")
 if signals is None or not hasattr(signals, "converted"):
-    signals = _EngineSignals()    # rebuilt when absent, or when an older relay lacks a signal added since - degrading rather than raising inside the reload chain and leaving the panel unopenable
+    signals = _EngineSignals()    # rebuilt when absent or missing a signal
 
 if _previous_engine is not None:
     for _sig, _relay in (("ready", signals.ready),

@@ -1,4 +1,4 @@
-"""Models for the Code section - reusable code snippets (VEX wrangles, OpenCL kernels, Python SOP scripts): a material-style library over its own code.json, CodeLibrary/CodeCategories subclassing the material machinery. Storage is INLINE text, not a node archive - the snippet lives in the Material.code field, persisted through get_as_dict/from_dict like any other field, so code.json is fully self-contained and there are no <id>.mat/.png files at all. Thumbnails are PAINTED, not rendered: a monospace preview of the first lines of code via the unified engine's PAINT path (thumbnails.engine.deposit), keyed by the code's content so an edit mints a fresh preview. The renderer field holds the LANGUAGE ("VEX"/"OpenCL"/"Python"), which becomes the tile subtitle and the search/filter dimension. Import applies the code to a node's snippet parm (or copies it), instead of building a scene."""
+"""The Code section's library: snippets inline in code.json, the `renderer` field their language."""
 
 import os
 import json
@@ -11,16 +11,16 @@ import amaze
 from amaze import amazetheme
 from amaze.core import debug, library, category, material, thumbnails, tile_icons, versions
 
-_STARTER_DEF = "res/def/starter_snippets.json"  # example snippets shipped with the plugin, seeded ONCE per library into an "Examples" category (see seed_starter_snippets)
-_STARTER_MARKER = ".amaze_code_starter_v1"  # the marker file name is versioned, so a future batch can seed again without re-adding snippets the user may have deleted from the first
+_STARTER_DEF = "res/def/starter_snippets.json"  # shipped example snippets, seeded once per library
+_STARTER_MARKER = ".amaze_code_starter_v1"  # versioned: a new name seeds again
 
-PREVIEW_SIZE = 512  # preview tile size, painted once per snippet content and cached in the shared engine: 2x the 256 on-tile size (font/margin doubled to match) so the sharp-edged text stays crisp when the DPI-aware delegate paints it at a Retina display's physical resolution - a 256px canvas got upscaled and looked blurry
-PREVIEW_FONT_PX = 48  # font size on the PREVIEW_SIZE canvas: 48 on 512 is the same visual size as 24 on a 256 canvas, i.e. identical layout at 2x resolution
+PREVIEW_SIZE = 512  # preview canvas, twice the on-tile size so text stays crisp on Retina
+PREVIEW_FONT_PX = 48  # font size on the PREVIEW_SIZE canvas
 PREVIEW_MARGIN = 20  # text inset, also 2x the 256-canvas value so the layout is unchanged
 
 
 def paint_code_preview(code: str) -> QtGui.QImage:
-    """The Code section's tile face for a snippet: a syntax-colored monospace preview on a PREVIEW_SIZE square, soft-wrapping long source lines and stopping at the bottom margin - shared with the online browser's amazepkg snippet tiles."""
+    """A snippet's tile face: a syntax-coloured, soft-wrapped monospace preview, PREVIEW_SIZE square."""
     from amaze.helpers import vex_syntax
     image = QtGui.QImage(
         PREVIEW_SIZE, PREVIEW_SIZE, QtGui.QImage.Format.Format_RGB32
@@ -42,7 +42,7 @@ def paint_code_preview(code: str) -> QtGui.QImage:
         y = margin + metrics.ascent()
         bottom = PREVIEW_SIZE - margin
         char_w = max(1, metrics.horizontalAdvance("m"))  # monospace, so one column width fits every glyph
-        cols = max(1, (PREVIEW_SIZE - 2 * margin) // char_w)  # long source lines wrap onto more visual rows (soft-wrap) instead of truncating at the right edge
+        cols = max(1, (PREVIEW_SIZE - 2 * margin) // char_w)  # long lines wrap rather than truncate
         default = vex_syntax.DEFAULT
         for line in str(code or "").split("\n"):
             if y > bottom:
@@ -109,7 +109,7 @@ class CodeCategories(category.Categories):
 
 
 class CodeLibrary(library.AssetLibrary):
-    """The Code section's asset model - the shared engine over code.json, storing snippet text inline and painting a preview."""
+    """The Code section's asset model over code.json, snippet text inline, previews painted."""
 
     NOTES_SECTION = "code"
     TILE_FACE = "face_code"    # T05
@@ -118,7 +118,7 @@ class CodeLibrary(library.AssetLibrary):
     VERSION_SECTION = versions.CODE    # code/versions/<id>/, the text handed in as a file
     NEW_VERSION = 0    # save_version's number for a version the editor has not saved yet
 
-    CONTENT_SURVIVES_A_REFUSED_INDEX_WRITE = False  # snippets are stored INLINE, so a refused list write leaves nothing on disk to recover and Repair has nothing to put back - the message must say the snippet was not saved, rather than the base class's "the files are there"
+    CONTENT_SURVIVES_A_REFUSED_INDEX_WRITE = False  # inline: a refused write leaves nothing to recover
 
     def add_asset(
         self,
@@ -129,7 +129,7 @@ class CodeLibrary(library.AssetLibrary):
         tags: str,
         fav: bool,
     ) -> str:
-        """Register a code snippet. Returns the language string on success (the renderer-string contract add_asset has), "" on failure (empty code)."""
+        """Register a code snippet: its language on success, "" for empty code."""
         return (language or "Code") if self.add_snippet(code, name, language, cats, tags) else ""
 
     def add_snippet(self, code: str, name: str, language: str, cats: str, tags: str) -> str:
@@ -277,7 +277,7 @@ class CodeLibrary(library.AssetLibrary):
         return super().row_data(row, role)
 
     def seed_starter_snippets(self, category_model) -> None:
-        """Seed an "Examples" category of snippets into this library, ONCE. Guarded by a versioned marker file in the library dir so deleting a seeded snippet doesn't bring it back, and existing user snippets are left alone. Best-effort: any failure (missing/broken def file, no library dir) is printed and swallowed so it can never block panel startup."""
+        """Seed an "Examples" category of snippets once per library, by a marker file; never raises."""
         try:
             lib_dir = self.preferences.dir
             if not lib_dir:
@@ -312,22 +312,22 @@ class CodeLibrary(library.AssetLibrary):
                 self._append_record(mat)
                 added += 1
             if added:
-                self.adopt_retired_text_into_notes()    # the curated snippets ship a description, which is a COMMENT now - moved here so it lands this session rather than on the next open ▸p/d03-retired
-                if not self.save():  # the marker below may only be written if the snippets actually REACHED disk: save() reports its refusals (a held file, a blocked write, a refused merge) by returning False rather than raising, and the exists() gate further down cannot see those, because in every one of them code.json is still sitting there from before
+                self.adopt_retired_text_into_notes()    # descriptions move to the COMMENT ▸p/d03-retired
+                if not self.save():  # no marker unless the snippets reached disk
                     debug.event("session", "starter snippets not marked "
                                 "- the save did not reach disk")
                     return  # withhold instead: nothing was persisted, so re-seeding next launch cannot duplicate anything
-                category_model.check_add_category(cat)  # register the category so it appears in the sidebar - the category list is a separate model over the SAME shared code.json db dict, see core/database.py
+                category_model.check_add_category(cat)  # so the category shows in the sidebar
         except Exception as exc:  # noqa: BLE001 - never block startup
-            debug.event("session", "starter snippet seeding failed",  # event, not note: this failure is internal, a raw exception on a first-run nicety with nothing the user can do about it
+            debug.event("session", "starter snippet seeding failed",  # an event: nothing for the user to do
                         error=str(exc))
             return
-        if not os.path.exists(os.path.join(lib_dir, self.DB_FILENAME)):  # the marker is NOT written when code.json is not on disk: it is what the absent-database guard reads as "this database was here", and code.json is the one with no .bak on the real library, so the marker is its ONLY trace
+        if not os.path.exists(os.path.join(lib_dir, self.DB_FILENAME)):  # no marker without code.json on disk
             debug.event("session", "snippet seed marker withheld - the "
                         "database is not on disk", file=lib_dir)
-            return  # database.save() reports an OSError to the user instead of raising, so a save held off by a full disk or a cloud-sync lock lands here looking successful; a marker with no database behind it then refuses code.json on every future launch and blocks writes for the session, curable only by deleting a dotfile, while retrying the seed cannot duplicate anything because nothing reached disk
+            return
         try:
-            with open(marker, "w", encoding="utf-8", newline="\n") as handle:  # written OUTSIDE the try that wraps the save, and even when nothing was added, so a broken or empty def file is not retried on every launch
+            with open(marker, "w", encoding="utf-8", newline="\n") as handle:  # written even when nothing was added
                 handle.write("seeded\n")
         except OSError as exc:
             debug.exception("snippet seed marker", exc, marker=marker)
@@ -338,7 +338,7 @@ class CodeLibrary(library.AssetLibrary):
                 "starts. Nothing you saved yourself is affected, and "
                 "you can delete any duplicates from the Examples "
                 "category." % exc)
-            self._seed_marker_failed = True  # a RECORD, not a guard: nothing reads this attribute, and the marker file is the only thing the seed loop above reads, so nothing here prevents the re-seed - which is why the message says it will happen
+            self._seed_marker_failed = True  # a record only; the next launch seeds again
             return
         if added:
             debug.event(
@@ -347,7 +347,7 @@ class CodeLibrary(library.AssetLibrary):
 
     @staticmethod
     def _preview_key(asset):
-        """Content-addressed: the code text + language, so an edit mints a new key (and the old preview ages out of the shared LRU)."""
+        """The preview key from the code text and language, so an edit mints a new one."""
         return ("code", asset.mat_id, hash(asset.code), asset.renderer)
 
     def _decoration_image(self, row: int):

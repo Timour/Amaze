@@ -193,9 +193,9 @@ def ensure_asset_folder(preferences, path: str) -> None:
     root = preferences.dir
     try:
         inside = os.path.relpath(folder, root)
-    except ValueError:  # a different drive, a UNC share, or an empty path - every case relpath refuses is one that could not be inside the root anyway ▸r/relpath-valueerror
+    except ValueError:  # another drive, a UNC share or an empty path: never inside ▸r/relpath-valueerror
         raise hostos.PathEscape("%r does not stay inside %r" % (folder, root))
-    hostos.contained_join(root, inside)  # realpath-based and tolerant of a missing base, so it answers for a library folder that is not there yet
+    hostos.contained_join(root, inside)  # also answers for a library folder not created yet
     os.makedirs(folder, exist_ok=True)
 
 
@@ -357,7 +357,7 @@ def op_path_parms(nodes):
 
 
 def clear_inherited_stamps(container: hou.Node, include_self=False) -> int:
-    """Strip `assetlib_id` from everything a load brought IN, returning how many were cleared - pass `include_self` for a loose node that IS the loaded item rather than a container the caller stamps afterwards. ▸r/inherited-stamps"""
+    """Strip `assetlib_id` from what a load brought in; returns the count ▸r/inherited-stamps"""
     cleared = 0
     items = list(container.allSubChildren())
     if include_self:
@@ -397,7 +397,7 @@ def load_items_strict(node: hou.Node, file_name: str) -> str:
         return problem
     try:
         node.loadItemsFromFile(file_name)
-    except hou.LoadWarning as warning:    # BEFORE hou.Error below - it is a subclass, and the broad handler would swallow the recoverable case
+    except hou.LoadWarning as warning:    # before hou.Error, its base class
         text = str(warning)
         if "Bad node type" in text:
             return text.strip().splitlines()[-1].strip()
@@ -407,7 +407,7 @@ def load_items_strict(node: hou.Node, file_name: str) -> str:
         return ("its material file could not be loaded (%s) - %s"
                 % (file_name, str(failure).strip()
                    or "Houdini gave no reason"))
-    clear_inherited_stamps(node)    # the file carries the stamps its inner nodes had when it was SAVED, and a later Save to Amaze on one of them would offer to update that unrelated entry ▸r/inherited-stamps
+    clear_inherited_stamps(node)    # the file's inner nodes carry stale stamps ▸r/inherited-stamps
     return ""
 
 
@@ -586,7 +586,7 @@ class NodeHandler:
 
     def save_asset_pair(self, interface_path, mat_path, interface_text,
                         write_mat, builder_node=None, asset_id="") -> None:
-        """Write an asset's files as ONE unit - unique scratches, promoted only once every one of them is written, because mat/ has no .bak tier to come back from. ▸p/asset-write-unit"""
+        """Write an asset's files as one unit, promoted once all are written ▸p/asset-write-unit"""
         builder_path = builder_text = ""
         if builder_node is not None and asset_id:
             try:
@@ -600,9 +600,9 @@ class NodeHandler:
 
         tmp_interface = tmp_mat = tmp_builder = ""
         try:
-            preferences = getattr(self, "_preferences", None)  # getattr, because a NodeHandler built through __new__ is a SANCTIONED fixture shape at six sites in test_atomic_write; with no library root there is no containment to prove, so nothing is created
+            preferences = getattr(self, "_preferences", None)  # may be absent; then nothing is created
             for destination in (interface_path, mat_path, builder_path):
-                if destination and preferences is not None:  # a creation door that never reached ensure_library_dirs leaves no mat/, and mkstemp then raises FileNotFoundError with nothing on screen
+                if destination and preferences is not None:  # mat/ may not exist yet
                     ensure_asset_folder(preferences, destination)
             tmp_interface = hostos.unique_scratch(interface_path)
             tmp_mat = hostos.unique_scratch(mat_path)
@@ -632,7 +632,7 @@ class NodeHandler:
 
     def after_save_thumbnail(self, update: bool, label: str, asset_id,
                              node_path: str, render) -> None:
-        """Render a saved asset's thumbnail. A failure costs the thumbnail, never the asset; `render()` answers True, False, or None where this context has no picture to draw. ▸p/after-save-thumbnail"""
+        """Render a saved asset's thumbnail: True, False, or None ▸p/after-save-thumbnail"""
         if self.supplied_thumbnail and self._supply_thumbnail(asset_id):
             return
         if not update and not (self.render_after_save and self._preferences.render_on_import):
@@ -727,7 +727,7 @@ class NodeHandler:
         elif "mtlxstandard_surface" in node.type().name():
             self._renderer = "Karma"
         elif node.type().name() == "subnet":
-            for n in node.allSubChildren():  # the WHOLE interior: the manual tells artists to collapse blocks of a big network into subnets (help ▸ vop/subnet), so one level missed exactly the materials built its way
+            for n in node.allSubChildren():  # the whole interior, subnets included
                 if "mtlx" in n.type().name():
                     self._renderer = "Karma"
                     break
@@ -746,7 +746,7 @@ class NodeHandler:
         if saved_as_octane_builder(mat.renderer, saved_type):    # lives in both, as Karma's does
             return {"mat", "lop"}
         if "Redshift" in mat.renderer and node_type_available(
-                "rs_usd_material_builder"):    # a legacy container is rebuilt into the USD one on its way into a LOP library (load_items_file), so every Redshift material is LOP-capable while the plugin offers that container
+                "rs_usd_material_builder"):    # a legacy container is rebuilt as the USD one in a LOP library
             return {"mat", "lop"}
         if "Octane" in mat.renderer and node_type_available(
                 "octane_solaris_material_builder"):    # the classic one is rebuilt, as Redshift's is
@@ -794,7 +794,7 @@ class NodeHandler:
         target: str = "auto",
         context_node: hou.Node | None = None,
     ):
-        """Import a material - target "auto" reads the active editor, "mat"/"lop" force one, context_node overrides both; answers (ok, reason) and the ORDER of the refusals below is load-bearing. ▸p/material-import-door"""
+        """Import a material to "auto", "mat", "lop" or context_node: (ok, why) ▸p/material-import-door"""
         from amaze.helpers import helpers
         payload, refusal = self._payload_or_refusal(mat)
         if refusal:
@@ -1135,7 +1135,7 @@ class NodeHandler:
             apply_builder(
                 builder, read_builder_sidecar(self._builder_sidecar(mat)))
 
-        builder.setName(      # a display name is the artist's text and `setName` takes node names only, answering `Invalid name` for a space
+        builder.setName(      # `setName` takes node names only, so a display name is sanitized
             wording.sanitize_usd_path(mat.name), unique_name=True)
         builder.setGenericFlag(hou.nodeFlag.Material, True)
 
@@ -1147,7 +1147,7 @@ class NodeHandler:
             self._preferences, mat.mat_id, self._preferences.ext
         )
 
-        problem = load_items_strict(self._builder_node, file_name)  # absorbs the unreadable file and NAMES it; a caller that re-catches OSError here catches nothing and loses the reason
+        problem = load_items_strict(self._builder_node, file_name)  # names an unreadable file; it raises no OSError
         from amaze.helpers import helpers
         if problem:
             raise hou.OperationFailed(problem)
@@ -1215,7 +1215,7 @@ class NodeHandler:
         helpers.auto_place(self._builder_node)
 
     def load_items_file_mtlx(self, mat: material.Material) -> None:
-        """Karma's load: keep the wrap so every library material has ONE container shape, and pick the terminal by output data type rather than by name. ▸r/node-items"""
+        """Karma's load: the wrap is kept and the terminal picked by output data type ▸r/node-items"""
         loaded = self._load_into_holder(mat)
         from amaze.helpers import helpers
         if len(loaded) == 1 and loaded[0].type().name() == "subnet":
@@ -1306,7 +1306,7 @@ class NodeHandler:
             hostos.discard_scratch(pending[0])
 
     def prepare_cop_companion(self, nodes, asset_id: str, net_name: str) -> dict:
-        """Save any COP networks the material references via op: paths as a companion file and answer the rewrite map; the file is written here and PROMOTED with the pair, never before it. ▸p/asset-write-unit"""
+        """Save referenced op: COP networks as a companion file: the rewrite map ▸p/asset-write-unit"""
         self._cop_info = {}
         self._discard_pending_cop_promote()
         refs = self._collect_cop_refs(nodes)
@@ -1349,7 +1349,7 @@ class NodeHandler:
                 for orig, copy in zip(items, copies):
                     if isinstance(orig, hou.Node):
                         rename_map[orig.path()] = copy.name()
-            ensure_asset_folder(self._preferences, file_name)  # the companion is staged BEFORE save_asset_pair runs, so it reaches mkstemp first ▸p/asset-write-unit
+            ensure_asset_folder(self._preferences, file_name)  # staged before save_asset_pair runs ▸p/asset-write-unit
             scratch = hostos.unique_scratch(file_name)
             self._pending_cop_promote = (scratch, file_name)
             try:
@@ -1593,7 +1593,7 @@ class NodeHandler:
                 held = {item.path() for item in dest.allItems()}    # notes, boxes and dots too
                 try:
                     dest.loadItemsFromFile(file_name)
-                except hou.LoadWarning as warning:    # BEFORE hou.Error below - it is a subclass, and this one means the load SUCCEEDED with warnings (a substituted node type, a missing texture) ▸r/node-items
+                except hou.LoadWarning as warning:    # before hou.Error: loaded, with warnings ▸r/node-items
                     debug.event("import", "network load warning (non-fatal)",
                                 file=file_name, node=dest.path(),
                                 warning=str(warning)[:300])
@@ -1615,7 +1615,7 @@ class NodeHandler:
                             except hou.ObjectWasDeleted:
                                 pass
                     return (False, debug.Damage(nothing_loaded(mat.name, file_name)))
-                for loaded in new_children:    # ONLY what this load added - sweeping `dest` would clear the stamps on the user's own nodes ▸r/inherited-stamps
+                for loaded in new_children:    # only what this load added ▸r/inherited-stamps
                     clear_inherited_stamps(loaded, include_self=True)
                 if new_children:
                     try:
@@ -1664,7 +1664,7 @@ class NodeHandler:
             target = cop_nodes.load_target_in(container, context)    # ▸r/hda-wrappers
             held = set(target.children())
             target.loadItemsFromFile(file_name)
-        except hou.LoadWarning as warning:    # BEFORE hou.Error below, same reason: the load succeeded, so destroying the container it filled throws away a rebuild that worked
+        except hou.LoadWarning as warning:    # before hou.Error: the load succeeded
             debug.event("import", "network load warning (non-fatal)",
                         file=file_name, node=container.path(),
                         warning=str(warning)[:300])
@@ -1694,8 +1694,8 @@ class NodeHandler:
         """Save Node wrapper for different Material Types"""
         from amaze.helpers import helpers
         self.texture_inventory = []    # filled by the staged save paths; add_asset/update copy it onto the row
-        ui = getattr(hou, "ui", None)  # both refusals below return False on their own, so a missing screen costs the SENTENCE and never the refusal ▸r/status-bar
-        if not hou.getenv("OCIO"):    # not `is None`: `OCIO =` in `houdini.env` is the documented way to unset a default and it leaves the variable EXISTING and empty
+        ui = getattr(hou, "ui", None)  # without a UI the refusals below still return False ▸r/status-bar
+        if not hou.getenv("OCIO"):    # an empty OCIO counts as unset
             if ui is not None:
                 ui.displayMessage(messages.OCIO_NOT_SET)
             return False
@@ -1860,7 +1860,7 @@ class NodeHandler:
         path_map = self.prepare_cop_companion((node,), str(asset_id), node.name())
         with hou.undos.disabler():    # ALWAYS staged now: adoption rewrites parms, and that must land on a copy, never the scene node
             tmp_parent = hou.node("/obj").createNode("matnet")
-        try:    # everything after the create is inside the try, or an adoption OSError leaves an un-undoable copy of the network in /obj, saved into the hip
+        try:    # all after the create, so the copy is always removed
             save_node = hou.copyNodesTo((node,), tmp_parent)[0]
             if path_map:
                 self.rewrite_cop_refs((save_node,), path_map)
@@ -1868,7 +1868,7 @@ class NodeHandler:
                 save_node, self._preferences,
                 texstore.asset_folder(node.name(), asset_id))
 
-            items = save_node.allItems()    # NOT children(): a network DOT is not a child, so a children() save drops every wire routed through one - and boxes and sticky notes with them ▸r/node-items
+            items = save_node.allItems()    # not children(), which misses dots, boxes and stickies ▸r/node-items
 
             self.save_asset_pair(
                 parms_file_name, file_name, save_node.asCode(),

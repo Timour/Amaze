@@ -1,4 +1,4 @@
-"""What counts as an image, the shared thumbnail disk cache, and the folder-section filter proxy. The Images section merged into the File section 2026-07-31 (core/file_library.py), taking its models with it; what stays here is what that model and its tests consume: IMAGE_EXTENSIONS, ThumbnailCache (one class, every folder-section prefix - texture_thumbnails_* and geo_thumbnails_* both), and TextureFilterProxyModel, the name+favorite filter the File grid runs through."""
+"""What counts as an image, the shared thumbnail disk cache, and the File grid's filter proxy."""
 
 import hashlib
 import json
@@ -21,13 +21,13 @@ IMAGE_EXTENSIONS = (
     ".tga",
     ".bmp",
     ".hdr",
-    ".rat",  # Houdini's own texture format - probed 2026-07-31: iconvert round-trips it and sips fails CLEANLY on it (exit 13, no file), so the sips->iconvert fallback fires instead of serving garbage
-    ".dng",  # camera raw in the one container macOS decodes natively - probed 2026-08-07 on a real Sigma DNG: sips converts in ~2.3s, Pillow declines fast, so the FORMAT order reaches sips cleanly
+    ".rat",  # Houdini's own texture format; iconvert reads it
+    ".dng",  # camera raw; sips reads it on macOS
 )
 
 
 def matched_extension(name: str) -> str:
-    """The IMAGE_EXTENSIONS entry the filename ends with, or '' - three kinds, one question, one shape (an `endswith(tuple)` answers yes/no but never WHICH, which forced a splitext fallback on this one kind)."""
+    """The IMAGE_EXTENSIONS entry the filename ends with, or ''."""
     return hostos.matched_extension(name, IMAGE_EXTENSIONS)
 
 
@@ -42,7 +42,7 @@ def live_caches(cache_dir: str) -> list:
 
 
 def _cache_dir_for(size: int, prefix: str = "texture_thumbnails") -> str:
-    # local-machine-only cache with the resolution baked into the dir name, so a RenderSize change cannot serve stale images; hostos owns the root and the legacy-dir migrations
+    # a machine-local cache, one directory per prefix and render size
     return os.path.join(hostos.cache_root(), f"{prefix}_{size}")
 
 
@@ -78,7 +78,7 @@ class ThumbnailCache:
         self._adopt_from_disk()
 
     def _load_manifest(self) -> dict:
-        """The manifest, or {} - a file that EXISTS but will not parse latches `_unreadable`, because reading it as empty and writing over it turns one truncated write into permanent loss of the whole map (every PNG orphaned, ~6.2s per EXR to re-convert; tile_icons is the reference policy)."""
+        """The manifest, or {}; one that exists but will not parse sets `_unreadable`, blocking saves."""
         self._unreadable = False
         self._disk_state = None
         if not os.path.exists(self.manifest_path):
@@ -102,7 +102,7 @@ class ThumbnailCache:
             return {}
 
     def _adopt_from_disk(self) -> None:
-        """Fold in entries another writer added since this object read - adoption can only ADD (an entry is per-file and self-describing): a key this session does not hold is another writer's and is kept, a key both hold takes ours, because ours was just measured against the file on disk. Without it, two tabs flushing left the later writer's 40 entries and orphaned the earlier one's 300 PNGs."""
+        """Fold in entries another writer added since this read; only adds, and a shared key keeps ours."""
         answer = hostos.peer_read(self.manifest_path,    # ▸r/peer-read
                                   getattr(self, "_disk_state", None))
         self._disk_state = answer.fingerprint    # the read just made, never a second one
@@ -123,11 +123,11 @@ class ThumbnailCache:
         if not self._dirty:
             return
         if getattr(self, "_unreadable", False):
-            return  # REFUSE OVER OVERWRITE: preserve what is there rather than replacing a map we could not read with a partial one
+            return  # never overwrite a manifest that could not be read
         if not self.ensure_dir():
             return
         try:
-            self._adopt_from_disk()  # temp-then-replace through the atomic writer, whose UNIQUE scratch name matters here: two sessions share this exact path (the dir derives from size+prefix, nothing per-process), and a fixed scratch name measured 790 unparseable reads plus 794 that parsed holding both writers' content; indent=None keeps a cache file's bytes as they were
+            self._adopt_from_disk()  # sessions share this path; the atomic writer keeps it whole
             self._disk_state = hostos.write_json_atomic(    # what we wrote, never a re-read
                 self.manifest_path, self._manifest, indent=None)
             self._dirty = False
@@ -141,7 +141,7 @@ class ThumbnailCache:
 
     @staticmethod
     def _key(full_path: str) -> str:
-        """How the manifest spells a source file - ONE answer at every door in (the load side keeps entries verbatim, so an older raw-spelled key stays until re-written); a raw Windows-flavoured key misses a wanted set spelled with forward slashes, reads stale, and the folder re-converts every visit."""
+        """How the manifest spells a source file; every way in goes through this."""
         return hostos.canonical_path_key(full_path)
 
     def _cache_path(self, full_path: str) -> str:
@@ -165,7 +165,7 @@ class ThumbnailCache:
         return True
 
     def valid_path(self, full_path: str, stat=None) -> str | None:
-        """The cached PNG's path if the manifest entry still matches the source file (same mtime/size) - a stat, no decode; the engine's background loader does the reading."""
+        """The cached PNG's path while its entry matches the source's mtime and size, else None."""
         full_path = self._key(full_path)
         entry = self._manifest.get(full_path)
         if not entry:
@@ -182,7 +182,7 @@ class ThumbnailCache:
         return cache_path
 
     def ensure_dir(self) -> bool:
-        """Recreate the cache directory if it has gone away - it genuinely does: clear() sweeps every prefix directory but recreates only its own, while a memoised cache object keeps pointing at the swept path for the rest of the session; one stat on the happy path, and it heals an externally deleted cache too."""
+        """Recreate the cache directory if it has gone; False when it cannot be made."""
         if os.path.isdir(self.cache_dir):
             return True
         try:
@@ -197,8 +197,8 @@ class ThumbnailCache:
             return False
 
     def put(self, full_path: str, image: QtGui.QImage) -> None:
-        """Persist a freshly generated thumbnail and record it in the manifest - does not flush to disk, call save() when convenient."""
-        full_path = self._key(full_path)  # canonicalised HERE, at the write door itself - it used to hold only because every caller happened to do it first
+        """Write a new thumbnail and record it in the manifest; call save() to flush."""
+        full_path = self._key(full_path)
         try:
             st = os.stat(full_path)
         except OSError:
@@ -206,7 +206,7 @@ class ThumbnailCache:
         if not self.ensure_dir():
             return
         try:
-            written = image.save(self._cache_path(full_path), "PNG")  # QImage.save answers False rather than raising - falling through here once recorded manifest entries for files never written, re-rendering every visit forever
+            written = image.save(self._cache_path(full_path), "PNG")  # False on failure, rather than raising
         except Exception as exc:
             debug.note(  # the BASENAME stays in this sentence: it is the user's own image, in the folder they are looking at
                 "the thumbnail for %s could not be saved (%s), so it "
@@ -224,7 +224,7 @@ class ThumbnailCache:
         self._dirty = True
 
     def remember_failure(self, full_path: str) -> None:
-        """Record that NOTHING could read this file as it stands - keyed to the file as it is now, so replacing it converts normally and `invalidate` (Rerender Thumbnail) is the deliberate retry; without it an undecodable file re-queues and pays every adapter's timeout on each visit, forever."""
+        """Record that nothing could read this file as it is now; `invalidate` retries it."""
         full_path = self._key(full_path)
         try:
             st = os.stat(full_path)
@@ -238,7 +238,7 @@ class ThumbnailCache:
         self._dirty = True
 
     def known_failure(self, full_path: str, stat=None) -> bool:
-        """True when this exact file has already defeated every converter - the skip that keeps a folder open fast."""
+        """True when this exact file has already defeated every converter."""
         entry = self._manifest.get(self._key(full_path))
         if not entry or not entry.get("failed"):
             return False
@@ -252,12 +252,12 @@ class ThumbnailCache:
                 and entry.get("size") == st.st_size)
 
     def reconcile(self, folder: str, current_names: list) -> None:
-        """Drop cache entries for this folder whose source file is gone or changed, so the cache stays 1:1 with the folder's contents."""
+        """Drop this folder's cache entries whose source file is gone or changed."""
         self.reconcile_many({folder: current_names})
 
     def reconcile_many(self, by_folder: dict, stat=None) -> None:
-        """Reconcile SEVERAL directories in one pass over the manifest, one flush - the per-directory walk was O(subdirs x manifest) with a full JSON rewrite per stale find (measured: 300 subdirs against 40,000 entries, 3.13s of dict iteration inside the folder open)."""
-        wanted = {}  # BOTH sides through canonical_path_key: scan dirpaths arrive os.sep-flavoured (and Locate Folder forces a trailing slash the walk preserves), so an uncanonicalised dirname never matches a wanted key and nothing reconciles again for that folder
+        """Reconcile several directories in one pass over the manifest, with one flush."""
+        wanted = {}  # both sides through canonical_path_key
         for folder, names in by_folder.items():
             key = hostos.canonical_path_key(folder)
             wanted[key] = {hostos.canonical_path_key(
@@ -294,7 +294,7 @@ class ThumbnailCache:
         self.save()
 
     def invalidate(self, full_path: str, flush: bool = True) -> None:
-        """Evict a single cache entry ("Rerender Thumbnail") - drops a still-valid entry on request, unlike reconcile(). `flush=False` for a LOOP, one save() after: an unconditional flush measured 25 rows as 25 full manifest serialisations (fsync each) on the main thread."""
+        """Evict one cache entry, valid or not; in a loop pass `flush=False` and save() once after."""
         full_path = self._key(full_path)
         if full_path not in self._manifest:
             return
@@ -310,7 +310,7 @@ class ThumbnailCache:
             self.save()
 
     def clear(self) -> None:
-        """Delete every cached thumbnail file and reset the manifest, in memory and on disk - sweeps every texture_thumbnails_* AND geo_thumbnails_* directory, because the geometry section keys its dirs by shading mode + background + resolution and combinations tried once would sit orphaned forever."""
+        """Delete every texture and geometry thumbnail directory and reset the manifest."""
         parent = os.path.dirname(self.cache_dir)
         try:
             for name in os.listdir(parent):
@@ -356,7 +356,7 @@ class TextureFilterProxyModel(grid_proxy.GridProxyModel):
         return watched
 
     def set_kind_filter(self, kind) -> None:
-        """Show only rows of one KIND - a locations.KIND_* value, or None for every kind (KIND_OTHER included); the kind is what the File section IS since the 2026-07-31 merge, and this is how the toolbar gets back to one of them."""
+        """Show only rows of one locations.KIND_* value, or of every kind for None."""
         if (kind or "") == self._kind_filter:
             return
         self._kind_filter = kind or ""
@@ -372,7 +372,7 @@ class TextureFilterProxyModel(grid_proxy.GridProxyModel):
         if self._favorites_only and not index.data(model.FavoriteRole):
             return False
         if self._kind_filter:
-            kind_role = getattr(model, "KindRole", None)  # a model without the role answers None rather than raising, which would silently accept every row - no role, no kind, no match
+            kind_role = getattr(model, "KindRole", None)  # no role, no match
             if kind_role is None:
                 return False
             if index.data(kind_role) != self._kind_filter:

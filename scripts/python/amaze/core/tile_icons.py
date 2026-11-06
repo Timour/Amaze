@@ -19,9 +19,9 @@ CANVAS = 512
 ICON_SCALE = 12.5  # 24-unit grid on CANVAS: 250px of ink; a change re-renders every tile
 STROKE_UNITS = 0.8  # the thin stroke - the one number that is a LOOK rather than a measurement
 FEATHER_STROKE_UNITS = 2.0  # Feather's own default weight, the other half of the Look preference
-INK_SPAN = 250.0      # the rule the numbers above satisfy: no icon's ink past this on a 512 tile, asserted by the tests against rendered pixels (Feather's 20 drawn units at ICON_SCALE)
+INK_SPAN = 250.0      # no icon's ink spans more pixels than this on a 512 tile
 
-INKS = {  # ink colours stored as TOKENS, not hex: re-tuning either one re-renders every tile that uses it instead of stranding the old literal; light exists for dark backgrounds
+INKS = {  # ink colours, stored by token name; light is for dark backgrounds
     "dark": "#262626",
     "light": "#d0ced0",
 }
@@ -88,15 +88,15 @@ def repaint_custom(model) -> int:
         model.row_changed(row, [QtCore.Qt.ItemDataRole.DecorationRole])
     return len(rows)
 
-PRESETS = (  # FOUR presets plus the current-colour chip (the picker) - the D02 swatches, hex-for-hex from the drawing ▸p/one-design-document
+PRESETS = (  # four presets beside the picker chip, the D02 swatches ▸p/one-design-document
     ("Red", "#e0523a"),
     ("Green", "#a4c18a"),
     ("Amber", "#f6ca6d"),
     ("Blue", "#b0d1df"),
 )
 
-_COMPOSED_MAX_BYTES = 64 * 1024 * 1024  # (name, bg, size, stroke, ink) -> QImage, capped in BYTES not entries: 240 entries measured 63MB at rendersize 256, 252MB at 512, 1007MB at 1024
-_COMPOSED_MAX = 240  # a COUNT ceiling too - tiny icons must not grow an unbounded dict inside the byte budget; LRU not FIFO, because insertion-order eviction threw the hottest icons first and every repaint re-composed them (0.38ms at 256, 1.37ms at 1024, per tile)
+_COMPOSED_MAX_BYTES = 64 * 1024 * 1024  # the LRU of (name, bg, size, stroke, ink) -> QImage, in bytes
+_COMPOSED_MAX = 240  # and in entries
 _composed: "OrderedDict" = OrderedDict()
 _composed_bytes = 0
 
@@ -130,7 +130,7 @@ def icon_path(name: str) -> str:
 
 
 def _icon_body(name: str) -> str:
-    """The drawing commands inside a Feather SVG, without its own wrapper - the wrapper's 24px size and 2-unit stroke are what this module replaces with the template's."""
+    """The drawing commands inside a Feather SVG, without its own <svg> wrapper."""
     try:
         with open(icon_path(name), encoding="utf-8") as handle:
             text = handle.read()
@@ -141,7 +141,7 @@ def _icon_body(name: str) -> str:
 
 
 def _ink_span_px(body: str, scale: float, stroke: float) -> float:
-    """How wide this icon actually draws in pixels at a given scale - its PATH extent with the stroke taken back off, measured by rendering because a path's bounding box is not in the file; Feather spans 20 units except the "-off" variants' corner-to-corner 22 (research.md ▸ Qt image measurement)."""
+    """How wide this icon's path draws in pixels at `scale`, stroke excluded, measured by rendering."""
     svg = (
         '<svg viewBox="0 0 %d %d" xmlns="http://www.w3.org/2000/svg">'
         '<g transform="translate(%s %s) scale(%s)" fill="none" '
@@ -154,7 +154,7 @@ def _ink_span_px(body: str, scale: float, stroke: float) -> float:
     image = QtGui.QImage(CANVAS, CANVAS, QtGui.QImage.Format.Format_ARGB32)
     if not ui_helpers.paint_svg(image, svg.encode("utf-8")):
         return 0.0
-    box = QtGui.QRegion(  # createAlphaMask, NOT createMaskFromColor - the other polarity returns the whole canvas as "ink" and silently halves every icon; verified against an exhaustive alpha scan (research.md ▸ Qt image measurement)
+    box = QtGui.QRegion(  # createAlphaMask, never createMaskFromColor, whose polarity is inverted
         QtGui.QBitmap.fromImage(image.createAlphaMask())
     ).boundingRect()
     if box.isEmpty():
@@ -163,7 +163,7 @@ def _ink_span_px(body: str, scale: float, stroke: float) -> float:
 
 
 def _fit(name: str, stroke_units: float):
-    """(scale, stroke) for this icon: the template's, reduced only if its ink would exceed INK_SPAN - the stroke divided by the same factor so shrunk icons keep their chosen pixel weight rather than thinning out."""
+    """(scale, stroke) for this icon: the template's, both shrunk together past INK_SPAN."""
     key = (name, float(stroke_units))
     cached = _fits.get(key)
     if cached is not None:
@@ -181,12 +181,12 @@ def _fit(name: str, stroke_units: float):
 
 def compose_svg(name: str, background: str, stroke_units: float = 0.0,
                 ink: str = DEFAULT_INK) -> str:
-    """The template, rebuilt around one icon - kept as SVG text rather than painted by hand because that is what the template IS: the same document with the symbol swapped."""
+    """The template SVG text, rebuilt around one icon."""
     body = _icon_body(name)
     if not body:
         return ""
     scale, stroke = _fit(name, stroke_units or STROKE_UNITS)
-    offset = CANVAS / 2.0 - 12.0 * scale  # the template's 106 IS "centre the 24-unit grid": half the canvas back off half the grid, derived so a fitted icon stays centred without a second constant
+    offset = CANVAS / 2.0 - 12.0 * scale  # centres the 24-unit grid on the canvas
     return (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<svg viewBox="0 0 %d %d" xmlns="http://www.w3.org/2000/svg">\n'
@@ -233,12 +233,12 @@ def compose(name: str, background: str, size: int = CANVAS,
 
 def write(path: str, name: str, background: str, size: int = CANVAS,
           stroke_units: float = 0.0, ink: str = DEFAULT_INK) -> bool:
-    """Compose and save; False (recorded in the debug log) on any failure - a tile icon is a nicety, never a reason a save fails."""
+    """Compose and save; False, logged, on any failure, and never a raise."""
     image = compose(name, background, size, stroke_units, ink)
     if image is None:
-        debug.event("icons", "no such tile icon", icon=name)  # internal failures (unknown icon, failed delete) log as events because the tile keeps the icon it had; the user-visible refusal of a store write is the keyed-store engine's report (Spec.denied_alert)
+        debug.event("icons", "no such tile icon", icon=name)  # an event: the tile keeps its icon
         return False
-    why = ""  # one report for two failures, each saying only what it knows: the OSError path carries an errno (research.md ▸ {#r/failed-write} - a read-only FILE does not stop a write, rename asks the DIRECTORY); Qt's save answers a bare False, so that one claims no cause
+    why = ""  # the OSError cause when there is one; Qt's False names none ▸r/failed-write
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         if not image.save(path, "PNG"):
@@ -258,12 +258,12 @@ def write(path: str, name: str, background: str, size: int = CANVAS,
 
 
 def is_valid_colour(value: str) -> bool:
-    """A colour the composer can actually use - checked before storing, because a bad value would otherwise reach every future compose()."""
+    """True for a colour the composer can use; check before storing one."""
     return bool(value) and QtGui.QColor.isValidColorName(str(value))
 
 
 def normalise(spec) -> dict:
-    """A stored icon choice cleaned to {"name", "bg", "ink"} or {} - anything unusable costs a fallback tile rather than the grid (this reads data a user or a future version may have written); a choice saved before ink existed gets the default it rendered with, and unknown fields ride along so a newer build's addition survives this build rewriting the entry."""
+    """A stored icon choice as {"name", "bg", "ink"} or {}; unknown fields are kept."""
     if not isinstance(spec, dict):
         return {}
     name = str(spec.get("name", "") or "").strip()
@@ -284,7 +284,7 @@ def normalise(spec) -> dict:
 
 
 def stroke_for(preferences) -> float:
-    """The line weight to draw with, from Preferences - Look: two looks rather than a free number (the template's thin stroke and Feather's own default), because which reads better is only obvious at tile size, so both ship and the choice is the user's."""
+    """The line weight from Preferences - Look: the thin stroke or Feather's own."""
     try:
         weight = str(getattr(preferences, "icon_line_weight", "") or "")
     except Exception:                                       # noqa: BLE001
@@ -299,12 +299,12 @@ def _image_parts(preferences, asset_id, icon: bool) -> tuple:
 
 
 def thumbnail_path(preferences, asset_id: str) -> str:
-    """`<library>/img/<id>.png` - the ONE composition of a library thumbnail's path (nine hand-concatenations in render/thumbs.py once disagreed with `asset_files()` whenever `prefs.dir` was assigned without its trailing separator: the render reported success while every reader looked at `<lib>/img/` and the tile read Missing Thumbnail forever); contained, like every id-derived path, because the id comes verbatim out of library.json and nothing validates it on load."""
+    """`<library>/img/<id>.png`, the one composition of a thumbnail path, contained to the library."""
     return hostos.contained_join(*_image_parts(preferences, asset_id, False))
 
 
 def icon_image_path(preferences, asset_id: str) -> str:
-    """Where a tile's composed icon lives: beside its thumbnail with a suffix so the render underneath survives - composed exactly like `thumbnail_path` and for both of its reasons, and CONTAINED because this is the path `render_for` writes and `clear_for` runs os.remove on."""
+    """A tile's composed icon path, beside its thumbnail with a suffix, contained like it."""
     return hostos.contained_join(*_image_parts(preferences, asset_id, True))
 
 
@@ -316,7 +316,7 @@ def tile_read_path(preferences, asset_id: str, icon: bool) -> str:
 
 
 def render_size(preferences) -> int:
-    """The pixel size an icon composes at - the preference when it parses, CANVAS otherwise; the ONE size read for every compose."""
+    """The pixel size every icon composes at: the preference when it parses, else CANVAS."""
     try:
         return int(getattr(preferences, "rendersize", CANVAS)) or CANVAS
     except (TypeError, ValueError):
@@ -324,7 +324,7 @@ def render_size(preferences) -> int:
 
 
 def compose_for(preferences, spec):
-    """One normalised spec composed in memory at the preferences' size - the one call the models share, so an icon looks the same in every section."""
+    """One normalised spec composed in memory at the preferences' size, for every section."""
     spec = normalise(spec)
     if not is_custom(spec):
         return None
@@ -333,7 +333,7 @@ def compose_for(preferences, spec):
 
 
 def render_for(preferences, asset_id: str, spec) -> str:
-    """Compose an asset's icon onto disk and return the path, or "" if there is no icon to make - deleting the file when the icon is cleared is the caller's job (it knows whether a render exists)."""
+    """Compose an asset's icon to disk: its path, or "" with no icon; the caller deletes cleared ones."""
     spec = normalise(spec)
     if not is_custom(spec):
         return ""
@@ -355,16 +355,16 @@ def clear_for(preferences, asset_id: str) -> None:
 
 
 def forget_composed() -> None:
-    """Drop the composed-image caches - the LOOK changed (line weight), so every remembered picture is now the wrong one."""
+    """Drop the composed-image caches; call when the line weight changes."""
     global _composed_bytes
     _composed.clear()
     _composed_bytes = 0
     _fits.clear()
 
 
-OVERRIDES_FILE = "icons.json"  # declared into the keyed-store engine, which IS the absent-but-known guard the file never had of its own (measured 2026-08-03: absent with no .bak tier, so the first icon ever picked was the one write with no evidence behind it)
+OVERRIDES_FILE = "icons.json"  # kept by the keyed-store engine
 
-SPEC = keyed_store.bind(OVERRIDES_FILE, normalise)  # the ONE home for EVERY tile's icon choice since schema 5 stripped the record's icon field: library assets key by asset id, File rows (no record of their own) by absolute path - so it travels with the library, and a clear here is the whole delete (library.py's set_override site says the same)
+SPEC = keyed_store.bind(OVERRIDES_FILE, normalise)  # every tile's icon, by asset id or file path
 
 
 def _store(preferences):
@@ -376,7 +376,7 @@ def override_for(preferences, key: str) -> dict:
 
 
 def set_override(preferences, key: str, spec) -> bool:
-    """Store (or with an empty spec, forget) one key's icon - the failure reporting lives on the ENGINE (`Spec.denied_alert` + `_commit`'s errno mapping), which ended this module and notes.py carrying the same ten lines twice and the panel naming a wrong cause for a file that simply would not parse."""
+    """Store one key's icon, or forget it with an empty spec; the engine reports failures."""
     return bool(_store(preferences).set(key, spec))
 
 
