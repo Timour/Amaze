@@ -1,4 +1,4 @@
-"""The OS-integration engine, and the package's atomic writes: nothing else in the codebase may test sys.platform, name an OS path convention, or reach for Houdini's bundled binaries. ▸r/platform-files"""
+"""OS integration and atomic writes: the only module that tests sys.platform. ▸r/platform-files"""
 
 import atexit
 import contextlib
@@ -38,7 +38,7 @@ def _home(*parts: str) -> str:
     return os.path.join(os.path.expanduser("~"), *parts)
 
 
-_HOME_PREFIX_RE = re.compile(r"^(?:[A-Za-z]:)?/(?:Users|home)/[^/]+(?=/)")  # where each OS puts a user's home, and THE ONLY place in the package that may know it
+_HOME_PREFIX_RE = re.compile(r"^(?:[A-Za-z]:)?/(?:Users|home)/[^/]+(?=/)")  # where each OS puts a user's home
 
 
 _DRIVE_RE = re.compile(r"^[A-Za-z]:[\\/]")    # `C:\` or `C:/`, the Windows absolute
@@ -47,7 +47,7 @@ _UNC_RE = re.compile(r"^[\\/]{2}[^\\/]")    # a Windows share, `\\server` or `//
 
 
 def foreign_path(path: str) -> bool:
-    """Whether `path` is spelled for a DIFFERENT platform than the one running - a shared library carries both spellings, and `os.path` silently answers nonsense about the other one rather than refusing."""
+    """Whether `path` is spelled for another platform; `os.path` answers nonsense about one."""
     raw = str(path or "")
     if not raw:
         return False
@@ -73,15 +73,15 @@ def volume_unreachable(path: str) -> bool:
 
 
 def rehome(path: str) -> str:
-    """A foreign absolute path re-pointed at THIS machine's home, or the path unchanged when the rewrite does not exist here."""
+    """A foreign absolute path moved under this machine's home, or unchanged if that is not here."""
     clean = (path or "").replace("\\", "/")
-    match = _HOME_PREFIX_RE.match(clean)  # a home outside /Users or /home - a redirected Windows profile, a studio /export/home/<name>, a macOS network home - is not recognised, so the path stays dead and the sidebar shows it missing
+    match = _HOME_PREFIX_RE.match(clean)  # only homes under /Users or /home are recognised
     home = os.path.expanduser("~").replace("\\", "/").rstrip("/")
     if not match or not home:
         return path
     candidate = home + clean[match.end():]
     if not os.path.exists(candidate):
-        return path  # the pattern matches ANY two components under /home, so this check is what stops a briefly unreachable shared mount being rewritten into this user's home - it stops it most of the time, not always
+        return path  # usually, not always, keeps an unreachable shared mount under /home as is
     return candidate
 
 
@@ -95,12 +95,12 @@ def _ensure_dir(new_dir: str) -> str:
     return new_dir
 
 
-_cache_override = globals().get("_cache_override", "")  # user-chosen cache location (Preferences > Library > Local Cache), "" meaning this OS's own convention. Read through `globals()` so it SURVIVES the module reload panel.py does on every panel open - a plain `= ""` cleared it before the panel re-set it, so every module that freezes a cache path at IMPORT captured the default root for the session
+_cache_override = globals().get("_cache_override", "")  # user-chosen cache root, "" for the OS default; survives a reload
 
-CACHE_DIR_ENV = "AMAZE_CACHE_DIR"  # environment override, which BEATS a cleared user preference - the suite needs a cache root that survives a panel construction (a panel reload calls set_cache_override("") for fixture prefs), and a render node may want its cache on local scratch
+CACHE_DIR_ENV = "AMAZE_CACHE_DIR"  # environment override; beats a cleared user preference
 
 
-_cache_generation = globals().get("_cache_generation", 0)  # bumped whenever the cache root moves; a caller that MEMOISES a derived path stores this number with its memo and re-resolves when it changes. A counter rather than a callback registry: hostos is the bottom of the import graph and must not know its callers
+_cache_generation = globals().get("_cache_generation", 0)  # bumped when the cache root moves; re-resolve a memo on change
 
 
 def cache_generation() -> int:
@@ -115,7 +115,7 @@ def set_cache_override(path: str) -> None:
 
 
 def cache_root() -> str:
-    """The per-user cache directory: the user's override when set, then $AMAZE_CACHE_DIR, else this OS's convention."""
+    """The per-user cache directory: the user's override, then $AMAZE_CACHE_DIR, else the OS's."""
     for candidate in (_cache_override,
                       os.environ.get(CACHE_DIR_ENV, "").strip(),
                       _sandboxed_root("cache")):
@@ -178,7 +178,7 @@ def real_log_root() -> str:
 
 
 def os_tag() -> str:
-    """Short, filename-safe name for this OS, for NAMING exported files - a branch belongs in one of the is_* predicates above or in a hostver capability, never here."""
+    """Short filename-safe name for this OS, for naming exported files; never branch on it."""
     if is_macos():
         return "macos"
     if is_windows():
@@ -189,7 +189,7 @@ def os_tag() -> str:
 
 
 def machine_name() -> str:
-    """This computer's name reduced to filename-safe characters and capped at 32, for telling two machines' exported logs apart."""
+    """This computer's name, filename-safe and capped at 32 characters, for naming exported logs."""
     raw = ""
     for source in (lambda: platform.node(),
                    lambda: os.environ.get("COMPUTERNAME", ""),
@@ -202,29 +202,29 @@ def machine_name() -> str:
             break
     raw = raw.split(".")[0]
     cleaned = re.sub(r"[^A-Za-z0-9_-]+", "-", raw).strip("-")
-    return cleaned[:32] or os_tag()  # the OS tag rather than "" - a filename that collides silently is worse than one that is merely vague
+    return cleaned[:32] or os_tag()  # the OS tag when nothing survives
 
 
 def open_path(path: str) -> None:
-    """Open a file or folder with the system's default handler, falling back to revealing it in the file browser when nothing is associated. Never raises."""
+    """Open a file or folder with its default app, else reveal it in the file browser. Never raises."""
     if is_macos():
-        if _call(["open", path]) != 0:  # macOS and Linux report `no application for this type` as a non-zero EXIT CODE and do not raise; Windows raises instead
+        if _call(["open", path]) != 0:  # no handler is a non-zero exit code here, not a raise
             reveal_path(path)
     elif is_windows():
         try:
             os.startfile(os.path.normpath(path))  # type: ignore[attr-defined]
         except OSError:
-            reveal_path(path)  # `os.startfile` raises for an extension with no associated app - a .jsonl log or a .mat on a stock machine - which read as the button doing nothing
+            reveal_path(path)  # `os.startfile` raises for an extension with no associated app
     else:
         if _call(["xdg-open", path]) != 0:
             reveal_path(path)
 
 
 def _call(argv: list) -> int:
-    """`subprocess.call` that really cannot raise: the program's exit code, or 1 when the program itself is missing."""
+    """`subprocess.call` that cannot raise: the exit code, or 1 when the program is missing."""
     try:
         return subprocess.call(argv)
-    except OSError as exc:  # `subprocess.call` DOES raise when the PROGRAM is missing (FileNotFoundError, verified on an emptied PATH) - `xdg-open` is genuinely absent on a Linux box without xdg-utils, and an uncaught raise inside a Qt slot is swallowed by PySide, leaving a button that does nothing with no trace anywhere
+    except OSError as exc:
         try:
             from amaze.core import debug  # imported HERE, not at module level: debug imports hostos, so the other direction would be circular
 
@@ -235,30 +235,30 @@ def _call(argv: list) -> int:
 
 
 def reveal_path(path: str) -> None:
-    """Show a file selected in the system file browser, or the folder itself for a directory - the right verb for a file no app is associated with."""
+    """Show a file selected in the system file browser, or a directory itself."""
     path = os.path.normpath(path)
     if is_macos():
         _call(["open", "-R", path])
     elif is_windows():
-        _call(["explorer", "/select," + path])  # ONE argument, no space: `["explorer", "/select,", path]` produces `explorer /select, C:\\...`, and Explorer's syntax has no separator there, so it ignores the parameter and opens a default window
+        _call(["explorer", "/select," + path])  # one argument, no space, or Explorer ignores /select
     else:
         target = path if os.path.isdir(path) else os.path.dirname(path)
         _call(["xdg-open", target])
 
 
-_session_snapshots = globals().get("_session_snapshots", {})  # {path: monotonic seconds of the last snapshot}. TIME, not a once-per-session set, or the rolling .bak-N ring captures at most ONE state per launch and a day of work has a single restore point. Read through `globals()` so it survives panel.py's reload, or three panel reopens rotate every good .bak-N out
+_session_snapshots = globals().get("_session_snapshots", {})  # {path: monotonic time of last snapshot}
 if isinstance(_session_snapshots, set):
     _session_snapshots = {path: 0.0 for path in _session_snapshots}  # a reload can hand the OLD build's set to this build's dict logic
 
-SNAPSHOT_INTERVAL = 30 * 60  # seconds between snapshots of one file: fine-grained enough that an afternoon leaves several restore points, coarse enough that a save storm (an import loop, Render All) cannot chew all three slots inside a minute
+SNAPSHOT_INTERVAL = 30 * 60  # seconds between snapshots of one file
 
 
 def preserve_unreadable(path: str, why: str = "") -> str:
-    """Copy a file we could not parse to `<path>.unreadable` WRITE-ONCE, returning that copy's path or "" - which is exactly what a caller may claim to the user, since the path may be this call's copy or an earlier one's. Says nothing itself."""
+    """Copy an unparseable file to `<path>.unreadable`, write-once; the copy's path or ""."""
     if not path or not os.path.isfile(path):
         return ""
     try:
-        if os.path.getsize(path) == 0:  # a 0-byte SOURCE is never preserved: a sync placeholder is ordinary, so the one rescue copy stays free for real damage
+        if os.path.getsize(path) == 0:  # a 0-byte file is a sync placeholder, never preserved
             _record("rescue", "nothing preserved - the file is 0 bytes, "
                     "which is a sync placeholder rather than damaged "
                     "content, so the one rescue copy is left free for the "
@@ -272,7 +272,7 @@ def preserve_unreadable(path: str, why: str = "") -> str:
         existing = os.path.getsize(keep) if os.path.exists(keep) else -1
     except OSError:
         existing = -1
-    if existing > 0:  # write-once, like `.bak-first`, EXCEPT that a 0-byte `.unreadable` is replaced - the SECOND failure is usually a write we caused, so the first copy is the one holding the original
+    if existing > 0:  # write-once, except that a 0-byte `.unreadable` is replaced
         _record("rescue", "a copy of an earlier unreadable file is already "
                 "beside it and is never overwritten - the SECOND failure is "
                 "usually a write we caused, so the first copy is the one "
@@ -292,7 +292,7 @@ def preserve_unreadable(path: str, why: str = "") -> str:
 def _record(kind: str, message: str, **data) -> None:
     """`debug.event` that cannot take the caller down with it."""
     try:
-        from amaze.core import debug  # imported inside the function, not at module level: debug imports hostos, so the other direction would be circular
+        from amaze.core import debug  # imported here: debug imports hostos
         debug.event(kind, message, **data)
     except Exception:                                    # noqa: BLE001
         pass
@@ -301,7 +301,7 @@ def _record(kind: str, message: str, **data) -> None:
 def parses_as_json(raw: bytes) -> bool:
     """Whether `raw` is a document this package could load - the health test the backup tiers gate on."""
     try:
-        json.loads(raw.decode("utf-8-sig"))  # utf-8-sig, matching every reader of a library-owned JSON file: a BOM is an ordinary artifact of a Windows editor or a sync client's conflict helper and must not make a healthy file look like garbage. A reader that diverges from this makes the helper call a file healthy that its own loader then refuses
+        json.loads(raw.decode("utf-8-sig"))  # utf-8-sig, as every reader of a library JSON file
     except (UnicodeDecodeError, ValueError):
         return False
     return True
@@ -327,7 +327,7 @@ def file_fingerprint(raw: bytes) -> tuple:
 
 
 def fingerprint_of(path: str):
-    """`file_fingerprint` of what is at `path`, or None when it cannot be read - for a caller that wants the IDENTITY and not the document, so it does not pay for a parse. ▸r/peer-read"""
+    """`file_fingerprint` of the file at `path`, or None when unreadable; no parse. ▸r/peer-read"""
     try:
         with open(path, "rb") as handle:
             return file_fingerprint(handle.read())
@@ -336,7 +336,7 @@ def fingerprint_of(path: str):
 
 
 def peer_read(path: str, fingerprint=None) -> PeerFile:
-    """Whether another writer changed `path` since `fingerprint`, with the document when they did - the verdict is CONTENT, never a stat, and it costs a read per call, so price it per door and not per lookup. ▸r/peer-read"""
+    """Whether `path` changed since `fingerprint`, with the document; one read per call. ▸r/peer-read"""
     try:
         with open(path, "rb") as handle:
             raw = handle.read()
@@ -357,12 +357,12 @@ def peer_read(path: str, fingerprint=None) -> PeerFile:
     return PeerFile(PEER_CHANGED, loaded, current)
 
 
-LOCK_TRIES = 20             # ~1s at 50ms; `msvcrt.LK_LOCK` blocks up to 10s and `LK_NBLCK` gives up at once, so neither is used
+LOCK_TRIES = 20             # ~1s at 50ms
 LOCK_WAIT = 0.05
 
 
 def lock_path(path: str) -> str:
-    """Where the lock for `path` lives: this machine's cache, never beside the file - the library folder holds library data and a stray there is what three suite guards refuse."""
+    """Where the lock for `path` lives: this machine's cache, never beside the file."""
     digest = hashlib.sha256(
         canonical_path_key(path).encode("utf-8")).hexdigest()[:16]
     folder = os.path.join(cache_root(), "locks")
@@ -371,12 +371,12 @@ def lock_path(path: str) -> str:
 
 
 def _take_lock(handle) -> None:
-    """One non-blocking exclusive attempt; OSError when somebody else holds it, or when this filesystem cannot lock at all."""
+    """One non-blocking exclusive attempt; OSError when held, or when the filesystem cannot lock."""
     try:
         import fcntl
     except ImportError:
         import msvcrt
-        handle.seek(0)    # SYMMETRIC with _drop_lock: msvcrt.locking works at the CURRENT position, and an "a+" handle is not always at 0 - lock and unlock at different bytes never releases
+        handle.seek(0)    # msvcrt locks at the current position; _drop_lock must use the same byte
         msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
         return
     fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -395,7 +395,7 @@ def _drop_lock(handle) -> None:
 
 @contextlib.contextmanager
 def file_lock(path: str):
-    """Hold an exclusive lock for `path` while the body runs, yielding whether it was taken. THIS MACHINE ONLY - the lock lives in its cache, so two machines on one library are not serialised by it. NEVER raises and never skips the body: it narrows a window, and the merge is the real guard. ▸p/merge-needs-a-base"""
+    """Lock `path` on this machine for the body, yielding whether it was taken. ▸p/merge-needs-a-base"""
     handle = None
     held = False
     try:
@@ -427,16 +427,16 @@ def file_lock(path: str):
 
 
 def existed_before(path: str, markers: tuple = ()) -> str:
-    """Name of ONE surviving trace proving `path` was here before, or "" when nothing says it ever was - so an absent database is only treated as new when no trace contradicts that."""
+    """Name of one trace proving `path` existed before, or "" when nothing says it did."""
     found = existed_before_all(path, markers)
     return found[0] if found else ""
 
 
 def existed_before_all(path: str, markers: tuple = ()) -> list:
-    """EVERY surviving trace, not just the first - the list a refusal must name, since a real database carries four and naming one at a time spends a recovery copy per run. Order: the .bak tiers sorted, then .unreadable, then the markers."""
+    """Every surviving trace: the .bak tiers sorted, then .unreadable, then the markers."""
     if not path:
         return []
-    traces = sorted(glob.glob(glob.escape(path) + ".bak-*"))  # glob, not a fixed .bak-1..3 list, because `keep` is a parameter of snapshot_before_write; `escape` because a library directory is user-chosen and may contain [ ] ? ▸r/glob-brackets
+    traces = sorted(glob.glob(glob.escape(path) + ".bak-*"))  # a library path may hold [ ] ? ▸r/glob-brackets
     unreadable = path + ".unreadable"
     if os.path.exists(unreadable):
         traces.append(unreadable)
@@ -444,15 +444,15 @@ def existed_before_all(path: str, markers: tuple = ()) -> list:
         return [os.path.basename(trace) for trace in traces]
     directory = os.path.dirname(path)
     return [marker for marker in markers
-            if marker and os.path.exists(os.path.join(directory, marker))]  # BOTH kinds of trace are needed: the copies this module writes cover a file that has been overwritten, and the caller's seed markers cover a database saved once and never rewritten - a .bak-only test fails OPEN on exactly those
+            if marker and os.path.exists(os.path.join(directory, marker))]  # markers cover a file saved once
 
 
-HISTORY_DAYS = 90  # daily history entries kept per file; a database is ~40 KB gzipped, so 90 days of four databases is well under 15 MB and the limit is about tidiness, not space
+HISTORY_DAYS = 90  # daily history entries kept per file
 
 
 def history_root(for_path: str) -> str:
-    """The MACHINE-LOCAL history directory for a file's library - deliberately not beside the file, because the `.bak-*` tiers live inside the synced library they exist to protect it against."""
-    library = os.path.dirname(os.path.abspath(for_path))  # keyed by a digest of the canonical path so two libraries cannot collide, with a readable prefix so the folder can be identified by eye
+    """The machine-local history directory for a file's library, outside the synced library."""
+    library = os.path.dirname(os.path.abspath(for_path))  # keyed by a digest, with a readable prefix
     key = canonical_path_key(library)
     digest = hashlib.sha256(key.encode("utf-8")).hexdigest()[:10]
     label = safe_filename(os.path.basename(library) or "library")[:24]
@@ -460,7 +460,7 @@ def history_root(for_path: str) -> str:
 
 
 def record_history(path: str, days: int = HISTORY_DAYS) -> str:
-    """Keep ONE gzipped copy of `path` per calendar day, machine-local, returning the entry's path or "" when nothing was written (today already recorded, the file absent or unreadable, or its content not parsing). Never blocks or fails a write."""
+    """Keep one gzipped copy of `path` per day, machine-local; the entry's path or "" if none."""
     try:
         if not os.path.exists(path):
             return ""
@@ -473,7 +473,7 @@ def record_history(path: str, days: int = HISTORY_DAYS) -> str:
             return ""                      # today is already recorded
         with open(path, "rb") as handle:
             current = handle.read()
-        if not parses_as_json(current):  # the same rule the .bak tier follows: restore refuses to put a non-parsing copy back, so recording one spends the day's slot on garbage while the good state ages out behind it
+        if not parses_as_json(current):  # a copy that does not parse is never recorded
             _record("history", "no history entry - the file does not parse",
                     path=path)
             return ""
@@ -490,7 +490,7 @@ def record_history(path: str, days: int = HISTORY_DAYS) -> str:
 
 
 def _prune_history(folder: str, name: str, days: int) -> None:
-    """Keep the newest `days` entries for one file, sorted by NAME not mtime - the name carries the date the copy is OF, while a restore or a file copy rewrites mtime."""
+    """Keep the newest `days` entries for one file, ordered by the date in the name, not mtime."""
     try:
         entries = sorted(n for n in os.listdir(folder)
                          if n.startswith(name + ".") and n.endswith(".gz"))
@@ -504,10 +504,10 @@ def _prune_history(folder: str, name: str, days: int) -> None:
 
 
 def seed_restore_floor(path: str) -> bool:
-    """Mint the write-once `.bak-first` from a file that has just been CREATED, returning whether a floor was written - the one cure for a store written exactly once, which otherwise has no trace at all for `existed_before` to find."""
+    """Mint the write-once `.bak-first` from a just-created file; whether a floor was written."""
     first = path + ".bak-first"
     if not path or os.path.exists(first):
-        return False  # write-once is preserved here: an existing floor is never replaced, unlike snapshot_before_write's unreadable-floor repair
+        return False  # an existing floor is never replaced
     try:
         with open(path, "rb") as handle:
             current = handle.read()
@@ -515,7 +515,7 @@ def seed_restore_floor(path: str) -> bool:
         _record("backup", "no restore floor seeded - the new file could "
                 "not be read back", path=path, error=str(exc))
         return False
-    if not parses_as_json(current):  # a permanent floor made of garbage is worse than no floor, since the rolling ring ages every good state out behind it
+    if not parses_as_json(current):  # a floor is never made from content that does not parse
         _record("backup", "no restore floor seeded - what was just "
                 "written does not parse", path=path, bytes=len(current))
         return False
@@ -532,30 +532,30 @@ def seed_restore_floor(path: str) -> bool:
 
 
 def snapshot_before_write(path: str, keep: int = 3) -> None:
-    """At most once per SNAPSHOT_INTERVAL per file, copy the CURRENT on-disk version to a rolling `.bak-N` beside it (bak-1 newest) plus a permanent `.bak-first`, and record the day's history entry. Best-effort: a failed snapshot never blocks the write."""
+    """Snapshot `path` to a rolling `.bak-N` and a permanent `.bak-first`; never blocks the write."""
     check_sandbox(path)
-    record_history(path)  # BEFORE the throttle marker: the daily entry is keyed by date, not by session, so it must get its chance on the first save of TODAY even in a session that started yesterday
+    record_history(path)  # before the throttle: history is keyed by date, not by session
     last = _session_snapshots.get(path)
     if last is not None and time.monotonic() - last < SNAPSHOT_INTERVAL:
         return
     if not os.path.exists(path):
-        return  # do NOT set the marker for a file that does not exist yet - the first save of a fresh install CREATES it, and marking here left the file with no restore point for its whole first session
+        return  # no marker for a file not yet created, so its first save gets a snapshot
     _session_snapshots[path] = time.monotonic()
     try:
-        with open(path, "rb") as handle:  # `with`, not a bare open: on Windows a handle still held is precisely what makes the os.replace below raise PermissionError, the case replace_file has to retry around
+        with open(path, "rb") as handle:
             current = handle.read()
     except OSError as exc:
-        _session_snapshots.pop(path, None)  # DISCARD THE MARKER - this branch is the transient one (a sync-client hold, a share that dropped for a second), so keeping it would spend the whole interval's one chance on a failure that has already passed
+        _session_snapshots.pop(path, None)  # drop the marker: a read failure is transient
         _record("backup", "no snapshot taken - the file could not be read",
                 path=path, error=str(exc))
         return
-    if not parses_as_json(current):  # PARSE BEFORE ROTATING: `.bak-first` is written once and never rotated, so one half-synced launch would mint the permanent floor from garbage and the rolling ring would then age the good states out behind it
-        _session_snapshots.pop(path, None)  # discard for the same reason as above; a later healthy save must not find the file already snapshotted
+    if not parses_as_json(current):  # never rotate in content that does not parse
+        _session_snapshots.pop(path, None)  # drop the marker so a later healthy save is snapshotted
         _record("backup", "no snapshot taken - the file on disk does not "
-                "parse", path=path, bytes=len(current))  # event, not note: every caller on this path already tells the user the file could not be read, and backup internals are not separately actionable
+                "parse", path=path, bytes=len(current))
         return
     try:
-        first = path + ".bak-first"  # an immutable first-seen copy, never rotated, because the rolling set can age a good state out in three panel opens
+        first = path + ".bak-first"  # a first-seen copy, never rotated
         if not os.path.exists(first):
             shutil.copy2(path, first)
         else:
@@ -565,7 +565,7 @@ def snapshot_before_write(path: str, keep: int = 3) -> None:
             except OSError:
                 floor_bytes = None
             if floor_bytes is not None and not parses_as_json(floor_bytes):
-                shutil.copy2(path, first)  # write-once EXCEPT against an unreadable floor: a healthy file may replace a broken floor, while a PARSEABLE floor with different content is never touched - that difference is the floor doing its job
+                shutil.copy2(path, first)  # only an unreadable floor is replaced
                 _record("backup", "an unreadable .bak-first was replaced "
                         "by the current healthy file", path=first)
         newest = path + ".bak-1"
@@ -583,44 +583,44 @@ def snapshot_before_write(path: str, keep: int = 3) -> None:
         shutil.copy2(path, newest)
     except OSError as exc:
         _record("backup", "no snapshot taken - the tier could not be "
-                "rotated", path=path, error=str(exc))  # nothing is lost - the floor above never rotates and `record_history` already ran - but the tier stopped advancing and only the log says so
+                "rotated", path=path, error=str(exc))
 
 
 def replace_file(src: str, dst: str) -> None:
-    """`os.replace` with a brief retry, then a final attempt that RAISES - so a persistent hold still reaches the caller's error path."""
+    """`os.replace` with a brief retry, then a final attempt that raises to the caller."""
     check_sandbox(dst)
     for wait in (0.05, 0.15, 0.35):
         try:
             os.replace(src, dst)
             return
-        except PermissionError:  # on Windows a momentarily-open destination (a cloud-sync scanner on the library dir, a viewer holding a thumbnail) raises where POSIX just swaps; the retries cover only the transient hold
+        except PermissionError:  # Windows raises for a destination held open for a moment
             time.sleep(wait)
     os.replace(src, dst)
 
 
-_MKSTEMP_MODE = 0o600  # what `tempfile.mkstemp` creates with - right for a scratch file in a world-writable /tmp, wrong for the file it is about to become. Named because promote_scratch has to recognise it on a DESTINATION too, see there
+_MKSTEMP_MODE = 0o600  # what `tempfile.mkstemp` creates with; promote_scratch recognises it
 
 
 def _default_file_mode() -> int:
-    """Permissions a file this module CREATES should get, derived from the process umask exactly as a plain `open(path, "w")` would be. ▸r/atomic-writes"""
-    mask = os.umask(0)  # `os.umask` is a get-and-set with no read-only form, so this opens a window in which another thread creating a file sees mask 0 - real (hostos is imported when the panel opens, long after Houdini started its thread pool), microseconds wide, and its worst outcome is one file MORE permissive than asked
+    """The mode a new file gets from the process umask, as `open(path, "w")` does. ▸r/atomic-writes"""
+    mask = os.umask(0)  # briefly sets mask 0 for every thread, so call it once
     os.umask(mask)
     return 0o666 & ~mask
 
 
-_DEFAULT_FILE_MODE = _default_file_mode()  # read ONCE at import rather than per save, to open the umask window once
+_DEFAULT_FILE_MODE = _default_file_mode()  # read once at import
 
 
 def unique_scratch(path: str, suffix: str = ".writing",
                    create: bool = True) -> str:
-    """A UNIQUELY-named scratch path beside `path`, created empty unless `create=False`. A fixed scratch name is one shared buffer: two writers of the same destination interleave into it and the result can parse while holding both their records. ▸r/atomic-writes"""
+    """A unique scratch path beside `path`, created empty unless `create=False`. ▸r/atomic-writes"""
     check_sandbox(path)
-    directory = os.path.dirname(path) or "."  # SAME DIRECTORY ALWAYS: `os.rename` cannot cross drives on any OS, so a scratch in the system temp dir turns every save into a cross-device failure
+    directory = os.path.dirname(path) or "."  # same directory always: a rename cannot cross drives
     handle, scratch = tempfile.mkstemp(
-        dir=directory, prefix=os.path.basename(path) + ".", suffix=suffix)  # `suffix` is appended LAST, so a prefix carrying an extension does not decide the on-disk format a writer picks from the name
+        dir=directory, prefix=os.path.basename(path) + ".", suffix=suffix)  # `suffix` goes last, so it sets the extension
     os.close(handle)
     if not create:
-        discard_scratch(scratch)  # the name only, for a writer that cannot be handed an existing file and cannot be probed headlessly to prove otherwise (`assetutils.saveThumbnailFromViewer` needs a live scene viewer); pre-creating reserves the inode, which is the bonus this gives up
+        discard_scratch(scratch)  # the name only, for a writer that cannot be handed an existing file
     return scratch
 
 
@@ -631,11 +631,11 @@ def render_scratch(path: str, tag: str = "rendering") -> str:
 
 
 def promote_scratch(scratch: str, path: str) -> None:
-    """fsync `scratch`, give it the permissions the destination should have, and swap it into place. Raises whatever `replace_file` raises. ▸r/atomic-writes"""
+    """fsync `scratch`, set the destination's mode and swap it into place; may raise. ▸r/atomic-writes"""
     check_sandbox(path)
-    handle = os.open(scratch, os.O_RDWR)  # O_RDWR, not O_RDONLY: on Windows `os.fsync` commits through a handle that must be WRITABLE, and this is called for files another process wrote (Houdini's own `saveItemsToFile`), so the descriptor cannot be kept from the write
+    handle = os.open(scratch, os.O_RDWR)  # on Windows `os.fsync` needs a writable handle
     try:
-        os.fsync(handle)  # BEFORE the swap, or the rename lands while the bytes are still only in the page cache and a power loss leaves an intact directory entry pointing at a partial file
+        os.fsync(handle)  # before the swap, so the rename never points at a partial file
     finally:
         os.close(handle)
     mode = _DEFAULT_FILE_MODE
@@ -644,7 +644,7 @@ def promote_scratch(scratch: str, path: str) -> None:
     except OSError:
         existing = -1
     if existing >= 0 and existing != _MKSTEMP_MODE:
-        mode = existing  # match the file being replaced so an existing library's permissions survive a save - EXCEPT 0600 exactly, which is what mkstemp creates with and therefore this package's own narrowing bug on disk; copying it would preserve owner-only forever and lock a colleague out of a shared library silently. Widening a deliberate `chmod 600` back to the umask default is the accepted residual, because the directions are not symmetric
+        mode = existing  # keep the replaced file's mode; a 0600 one widens to the umask default
     _set_mode(scratch, mode | stat.S_IWUSR)    # a read-only scratch is one Windows will not delete
     replace_file(scratch, path)
     if not mode & stat.S_IWUSR:
@@ -660,7 +660,7 @@ def _set_mode(path: str, mode: int) -> None:
 
 
 def is_link_like(entry) -> bool:
-    """Whether an `os.scandir` entry can lead somewhere its own name does not: a symlink, or on Windows any reparse point - a junction is not `is_symlink()`, and `os.walk` follows it whatever `followlinks` says. Read from the listing, so it opens nothing."""
+    """Whether an `os.scandir` entry is a symlink or, on Windows, any reparse point; opens nothing."""
     try:
         if entry.is_symlink():
             return True
@@ -673,7 +673,7 @@ def is_link_like(entry) -> bool:
 
 
 def check_deletable(path: str) -> None:
-    """Raise the OSError deleting `path` would raise because another program holds it open; POSIX deletes an open file, so only Windows can refuse."""
+    """Raise the OSError a delete would hit while another program holds `path`; Windows only."""
     if not is_windows():
         return
     import ctypes
@@ -694,7 +694,7 @@ def check_deletable(path: str) -> None:
 
 
 def remove_file(path: str) -> None:
-    """`os.unlink`, clearing a read-only flag first on Windows, which refuses to delete one where POSIX asks only the folder; the flag is put back when the delete fails anyway."""
+    """`os.unlink`, first clearing a read-only flag on Windows and restoring it if the delete fails."""
     if not is_windows():
         os.unlink(path)
         return
@@ -709,7 +709,7 @@ def remove_file(path: str) -> None:
 
 
 def discard_scratch(scratch: str) -> None:
-    """Remove a scratch file if it is still there. Never raises - but a scratch left behind is an unowned file a directory scan then has to learn to ignore, which is how live assets get reported as orphans."""
+    """Remove a scratch file if it is still there. Never raises."""
     if not scratch or not os.path.exists(scratch):
         return
     try:
@@ -726,20 +726,20 @@ def discard_scratch(scratch: str) -> None:
 
 @contextlib.contextmanager
 def scratch_beside(path: str, suffix: str = ".writing"):
-    """Yield a unique scratch beside `path`, fsync it and rename it over `path` on the way out; on ANY exception remove it and re-raise, so a raising writer cannot litter the library."""
+    """Yield a unique scratch beside `path`; promote it on exit, remove it on any exception."""
     scratch = unique_scratch(path, suffix)
     try:
         yield scratch
         promote_scratch(scratch, path)
     finally:
-        discard_scratch(scratch)  # not on OSError, not on a serialisation failure, not on KeyboardInterrupt - a successful promote has already renamed it away, so this is a no-op then. A caller promoting SEVERAL files as one unit (an asset's .mat and .interface) uses the primitives directly instead
+        discard_scratch(scratch)  # several files promoted as one unit use the primitives instead
 
 
 SANDBOX_VAR = "AMAZE_SANDBOX"  # the environment variable that arms the sandbox, below
 
 
 class SandboxRefused(RuntimeError):
-    """A write that would have left the sandbox - an exception rather than a refusal code, because a write that quietly does nothing is a probe reporting results it never produced. Nothing in the product sets the variable, so nothing in the product can raise this."""
+    """A write that would have left the sandbox; raised only while the sandbox is armed."""
 
 
 def sandboxed() -> bool:
@@ -767,7 +767,7 @@ def _sandboxed_root(kind: str) -> str:
 
 
 def check_sandbox(path: str) -> None:
-    """Raise `SandboxRefused` for a write that would land outside a temporary directory, when the sandbox is armed. Any script run by hand against a live machine arms it. ▸p/hand-run-script-is-unguarded"""
+    """Raise `SandboxRefused` for a write outside temp while armed. ▸p/hand-run-script-is-unguarded"""
     if not sandboxed():
         return
     resolved = os.path.realpath(path)
@@ -807,20 +807,20 @@ def write_json_atomic(path: str, data, indent: int = 4,
     return file_fingerprint("".join(recorded.pieces).encode("utf-8"))
 
 
-FAILED_UNREACHABLE = "unreachable"  # what a failed write WAS, in one word - the cause kept separate from the sentence so a caller can branch (log, retry, offer Repair) without matching on prose
+FAILED_UNREACHABLE = "unreachable"  # the cause of a failed write in one word, to branch on
 FAILED_READ_ONLY = "read-only"
 FAILED_FULL = "full"
 FAILED_HELD = "held"
 FAILED_UNKNOWN = "unknown"
 
-_FAILURE_CAUSES = {  # errno -> cause; an errno ABSENT here falls through to FAILED_UNKNOWN rather than being guessed from its name, and the wiki table is what says which of these were actually reproduced ▸r/failed-write
+_FAILURE_CAUSES = {  # errno -> cause; an unlisted errno is FAILED_UNKNOWN ▸r/failed-write
     errno.ENOENT: FAILED_UNREACHABLE,
     errno.ENOTDIR: FAILED_UNREACHABLE,
     errno.EACCES: FAILED_READ_ONLY,
     errno.EPERM: FAILED_READ_ONLY,
     errno.EROFS: FAILED_READ_ONLY,
     errno.ENOSPC: FAILED_FULL,
-    errno.EBUSY: FAILED_HELD,  # never reached on the platform it was added for - Windows spells a held file EACCES, see _HELD_WINERRORS
+    errno.EBUSY: FAILED_HELD,  # Windows reports a held file as EACCES, see _HELD_WINERRORS
     errno.ETXTBSY: FAILED_HELD,
 }
 
@@ -831,11 +831,11 @@ _HELD_WINERRORS = frozenset((  # native Windows codes for a held destination, wh
 
 
 def why_failed(exc: OSError, path: str = "") -> tuple:
-    """(cause, a complete sentence) for a write that raised - THE one owner for turning an `OSError` into something a user can act on, naming the object they have to fix and claiming no cause at all for an errno nobody measured. ▸r/failed-write"""
+    """(cause, sentence) for a write that raised, naming what the user must fix. ▸r/failed-write"""
     cause = _FAILURE_CAUSES.get(getattr(exc, "errno", None),
                                 FAILED_UNKNOWN)
     if getattr(exc, "winerror", None) in _HELD_WINERRORS:
-        cause = FAILED_HELD  # the native code OUTRANKS the errno, which is documented as an approximate POSIX translation of it and lands access-denied, sharing-violation and lock-violation all on EACCES - so without this a held file reads as a read-only folder
+        cause = FAILED_HELD  # the native code outranks the errno, which reads a held file as EACCES
     where = os.path.dirname(path) or path
     if cause == FAILED_UNREACHABLE:
         sentence = ("the folder it lives in cannot be reached right now"
@@ -864,11 +864,11 @@ def disk_state(path: str):
         stat = os.stat(path)
     except OSError:
         return None
-    return (stat.st_mtime_ns, stat.st_size)  # a tuple, not an mtime alone: a write inside the same nanosecond tick still changes the size, and a write that keeps the size still moves the mtime. Cheap, not sound
+    return (stat.st_mtime_ns, stat.st_size)  # mtime and size together: cheap, not sound
 
 
 def canonical_path_key(path: str) -> str:
-    """A filesystem path as a stable dictionary/prefs key: normalized, forward slashes on EVERY OS, because stored keys travel through JSON as forward slashes while `os.path.join` output is backslashed on Windows."""
+    """A path as a stable dict or prefs key: normalized, with forward slashes on every OS."""
     return os.path.normpath(path).replace(os.sep, "/")
 
 
@@ -878,19 +878,19 @@ def comparable_path(path: str) -> str:
 
 
 def _home_root() -> str:
-    """Home in canonical spelling - its own function so a test can pin it, where patching `expanduser` would patch the world."""
+    """Home in canonical spelling, its own function so a test can pin it."""
     return canonical_path_key(os.path.expanduser("~"))
 
 
 def storage_path_key(path: str) -> str:
-    """A path as the LIBRARY stores it: `$AMAZE/...` under the install tree, `~/...` under home, the canonical absolute when neither covers it - one entry that resolves on every machine sharing the library."""
+    """A path as the library stores it: `$AMAZE/...`, `~/...`, else the canonical absolute."""
     if not path:
-        return ""  # empty stays empty: `normpath("")` is `"."`, and a truthy `"."` key slips every `if not key` guard downstream
-    trailing = "/" if str(path).endswith(("/", "\\")) else ""  # a location's identity CARRIES its trailing separator everywhere the store is compared, and normpath strips it - so it is remembered here and put back on whatever spelling wins
+        return ""  # empty stays empty, never "."
+    trailing = "/" if str(path).endswith(("/", "\\")) else ""  # a trailing separator is kept
     path = canonical_path_key(path)
     amaze = os.environ.get("AMAZE", "")  # a Houdini package's `env` entries land in `os.environ`, so $AMAZE resolves here without `hou`
-    for var, root in (("$AMAZE", canonical_path_key(amaze) if amaze else ""),  # $AMAZE FIRST: the install lives under home on every current machine, so home-first would mean the $AMAZE spelling can never fire
-                      ("~", _home_root())):  # PYTHON's home, expanded by `expand_storage_path` and nothing else - and on Windows that is a DIFFERENT root from Houdini's `$HOME`, which defaults to Documents, so a path under Documents matches neither variable and stores as a machine-specific absolute ▸p/home-spelling-unproven
+    for var, root in (("$AMAZE", canonical_path_key(amaze) if amaze else ""),  # $AMAZE first: the install may live under home
+                      ("~", _home_root())):  # Python's home, not Houdini's $HOME ▸p/home-spelling-unproven
         if not root or root in ("/", "."):
             continue
         trimmed = root.rstrip("/")
@@ -904,14 +904,14 @@ def storage_path_key(path: str) -> str:
 
 
 def expand_storage_path(path: str) -> str:
-    """The inverse: a stored spelling back to THIS machine's canonical absolute, preserving a trailing separator."""
+    """The inverse: a stored spelling to this machine's canonical absolute, trailing separator kept."""
     if not path:
         return ""
     trailing = "/" if path.endswith("/") else ""
     if path == "$AMAZE" or path.startswith("$AMAZE/"):
         root = os.environ.get("AMAZE", "")
         if not root:
-            return path  # a `$AMAZE` spelling with no $AMAZE in the environment comes back UNTOUCHED - unresolvable is a fact the caller can see, not one to guess around
+            return path  # returned untouched when $AMAZE is not set
         expanded = canonical_path_key(
             root.rstrip("/\\") + path[len("$AMAZE"):])
     elif path == "~" or path.startswith("~/"):
@@ -924,13 +924,13 @@ def expand_storage_path(path: str) -> str:
 
 
 def matched_extension(name: str, extensions) -> str:
-    """The entry of `extensions` that `name` ends with, or "" - case-insensitively, because the filesystems this runs on are."""
+    """The entry of `extensions` that `name` ends with, or "", case-insensitively."""
     lowered = name.lower()
     best = ""
     for ext in extensions:
         ext = ext.lower()
         if lowered.endswith(ext) and len(ext) > len(best):
-            best = ext  # LONGEST WINS, so `x.bgeo.sc` reports `.bgeo.sc` and not `.bgeo`; the caller uses the answer as a label and as a cache key and the short one is wrong for both, so the order of the caller's tuple must not matter
+            best = ext  # the longest match wins, so `x.bgeo.sc` gives `.bgeo.sc`
     return best
 
 
@@ -967,7 +967,7 @@ def _under_real_base(real_base: str, parts):
 
 
 def contained_join(base: str, *parts: str) -> str:
-    """`os.path.join(base, *parts)`, raising `PathEscape` for anything that lands outside `base` - asset filenames are composed from an id that comes verbatim out of `library.json`, which the app does not author alone and cannot assume is honest."""
+    """`os.path.join(base, *parts)`, raising `PathEscape` for a result outside `base`."""
     composed = os.path.join(base, *parts)
     real_base = _real_base(base)
     real_composed = _under_real_base(real_base, parts) or os.path.realpath(composed)
@@ -984,8 +984,8 @@ _WIN_RESERVED_NAMES = re.compile(
 
 
 def safe_filename(name: str, fallback: str = "unnamed") -> str:
-    """A string made safe as a file or directory name on EVERY OS, falling back to `fallback` when nothing survives. Any content name (an online material title) passes through here before becoming a path."""
-    cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", str(name))  # the characters Windows forbids: angle brackets, colon, quote, slashes, pipe, question mark, asterisk, controls
+    """A string made safe as a file or directory name on every OS, else `fallback`."""
+    cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", str(name))  # the characters Windows forbids
     cleaned = cleaned.rstrip(". ")  # Windows silently DROPS a trailing dot or space, which changes the name behind the caller's back
     if not cleaned:
         return fallback
