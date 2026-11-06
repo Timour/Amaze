@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.32.2
+
+- The list of sections lives in a file of its own, and the Preferences window reads it there, so the window opens without Houdini and all of its tests run on GitHub. Nothing changes in use.
+
 ## 1.32.1
 
 - The GitHub check covers ten more test modules, and the tests that need Houdini are skipped where it is absent. Nothing changes in use.
