@@ -17,6 +17,19 @@ def _key(path: str) -> str:
     return hostos.canonical_path_key(path) if path else ""
 
 
+NON_COMMERCIAL = ("Apprentice", "ApprenticeHD", "Education")    # licences that write .hipnc
+
+
+def scene_extension() -> str:
+    """The scene extension this licence writes; Houdini's save writes any name given ▸r/scene-extension"""
+    category = hou.licenseCategory().name()
+    if category == "Indie":
+        return ".hiplc"
+    if category in NON_COMMERCIAL:
+        return ".hipnc"
+    return ".hip"
+
+
 def current_scene_path() -> str:
     """What Houdini currently has open, canonicalised."""
     try:

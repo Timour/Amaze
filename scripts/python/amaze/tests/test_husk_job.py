@@ -142,6 +142,18 @@ class TheCommandAndItsEnvironment(unittest.TestCase):
         octane = self._job("Octane").command()
         self.assertEqual("1", octane[octane.index("--restart-delegate") + 1])
 
+    def test_the_bar_climbs_over_the_batch_not_per_frame(self):
+        """husk counts each frame from 0 to 100; three frames must not run the bar up three times."""
+        job = self._job("Karma", 3)
+        seen = []
+        job.progressed.connect(lambda done, total: seen.append(done))
+        for line in ("%s 50%%" % husk_job.PROGRESS, "%s 1" % husk_job.DONE,
+                     "%s 0%%" % husk_job.PROGRESS, "%s 50%%" % husk_job.PROGRESS,
+                     "%s 2" % husk_job.DONE, "%s 100%%" % husk_job.PROGRESS):
+            job._handle(line)
+        self.assertEqual([16, 33, 50, 100], seen)
+        self.assertEqual(seen, sorted(seen), "the bar went backwards")
+
     def test_a_script_path_with_a_space_is_quoted(self):
         self.assertEqual('"/a b/p.py"', husk_job._script_arg("/a b/p.py"))
         self.assertEqual("/ab/p.py", husk_job._script_arg("/ab/p.py"))

@@ -224,12 +224,17 @@ class HuskJob(QtCore.QObject):
                 return
             self._handle(line)
 
+    def batch_percent(self, frame_percent: int) -> int:
+        """The whole batch's percent: the frames done, plus this frame's share of the rest."""
+        total = max(1, len(self.frames))
+        return min(100, int((len(self._done) * 100 + frame_percent) / total))
+
     def _handle(self, line: str) -> None:
         self._last_line = time.monotonic()
         self._tail.append(line)
-        if line.startswith(PROGRESS):
+        if line.startswith(PROGRESS):    # husk counts each frame from 0 to 100; the bar must not
             try:
-                self.progressed.emit(int(line.split()[1].rstrip("%")), 100)
+                self.progressed.emit(self.batch_percent(int(line.split()[1].rstrip("%"))), 100)
             except (IndexError, ValueError):
                 pass
         elif line.startswith(DONE):

@@ -444,6 +444,12 @@ NO_SCENE_VIEWER_FOR_THUMBNAIL = "Amaze renders thumbnails with a Scene Viewer's 
 
 THUMBNAIL_RENDERER_NOT_LOADED = '"%s" was not rendered because %s isn\'t loaded in this Houdini.'
 
+NEW_NAME_HAS_A_SLASH = '"%s" cannot be a name here: a slash divides folders.'
+NEW_FOLDER_TAKEN = 'A folder named %s is already in %s.'
+NEW_FOLDER_FAILED = 'The folder %s could not be made: %s'
+SAVE_SCENE_TAKEN = 'A file named %s is already in %s, so the scene was not saved.'
+SAVE_SCENE_FAILED = 'Houdini could not save the scene as %s: %s'
+
 LOG_NOT_SAVED_UNEXPECTED = 'The log could not be saved. Unexpected error: %s'
 
 

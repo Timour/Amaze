@@ -420,9 +420,15 @@ Browses folders on disk.
 - **Other files** show their system icon. **Copy Path** copies the path
   to the clipboard, written as set in [Write Paths As](#write-paths-as).
   A location lists these files when **Show ▸ Other Files** is on.
+- **New Folder** asks for a name and makes that folder in the folder you
+  are looking at. **Save Scene** asks for a name and saves the open scene
+  as a new file there, with the extension your licence writes, and that
+  file becomes the one you are working in. Both are greyed while All is
+  showing, since there is no one folder to make them in.
 
-The right-click menu: **Load**, **Copy Path**, **Show Location**,
-**Capture**, **Customize**, **Favorite** and **Export Package**.
+The right-click menu: **New Folder**, **Save Scene**, **Load**,
+**Copy Path**, **Show Location**, **Capture**, **Customize**,
+**Favorite** and **Export Package**.
 
 <img src="docs/images/menu_file_tile.png" width="210">
 

@@ -281,26 +281,27 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
 
     def test_file_menus_follow_the_kind_and_the_count_and_never_delete(self):
         """No Delete for any kind: these are the user's own files, and an os.remove once took some."""
+        top = ["New Folder", "Save Scene", "----"]    # the folder shown, whatever is selected
         for kind, count, expected in (
                 (locations.KIND_IMAGE, 1,
-                 ["Import", "Copy Path", "----", "Show Location",
-                  "Update Render", "Capture", "Customize", "Favorite",
-                  "Export Package"]),
+                 top + ["Import", "Copy Path", "----", "Show Location",
+                        "Update Render", "Capture", "Customize", "Favorite",
+                        "Export Package"]),
                 (locations.KIND_IMAGE, 2,    # an image loads onto ONE node parameter
-                 ["Import(off)", "Copy Path", "----", "Show Location(off)",
-                  "Update Render", "Capture(off)", "Customize", "Favorite",
-                  "Export Package"]),
+                 top + ["Import(off)", "Copy Path", "----", "Show Location(off)",
+                        "Update Render", "Capture(off)", "Customize", "Favorite",
+                        "Export Package"]),
                 (locations.KIND_GEO, 2,      # geometry imports the whole selection
-                 ["Import", "Copy Path", "----", "Show Location(off)",
-                  "Update Render", "Capture(off)", "Customize", "Favorite",
-                  "Export Package"]),
+                 top + ["Import", "Copy Path", "----", "Show Location(off)",
+                        "Update Render", "Capture(off)", "Customize", "Favorite",
+                        "Export Package"]),
                 (locations.KIND_HIP, 1,      # a scene captures only while it is the open one
-                 ["Load", "Copy Path", "----", "Show Location",
-                  "Capture(off)", "Customize", "Favorite",
-                  "Export Package"]),
+                 top + ["Load", "Copy Path", "----", "Show Location",
+                        "Capture(off)", "Customize", "Favorite",
+                        "Export Package"]),
                 (locations.KIND_OTHER, 1,    # what Houdini cannot open is absent, not greyed
-                 ["Copy Path", "----", "Show Location", "Capture", "Customize",
-                  "Favorite", "Export Package"])):
+                 top + ["Copy Path", "----", "Show Location", "Capture", "Customize",
+                        "Favorite", "Export Package"])):
             with self.subTest(kind=kind, selected=count):
                 rows = self._rows_of_kind(kind)
                 self.assertGreaterEqual(len(rows), count,

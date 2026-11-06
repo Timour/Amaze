@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.31.0
+
+- File: the right-click menu gets New Folder and Save Scene. New Folder asks for a name and makes that folder in the folder you are looking at. Save Scene asks for a name and saves the open scene as a new file there, with the extension your licence writes, and that file becomes the one you are working in. Both are greyed while All is showing.
+- The preview bar climbs once over a whole batch. It used to run from empty to full for every material in turn.
+
 ## 1.30.0
 
 - Redshift previews render in the background, in the same husk as Karma's and Octane's: one render per renderer for a whole selection, the progress bar above the grid, and Cancel stops it. A preview no longer runs inside Houdini. A classic Redshift material is rebuilt into the USD builder for its render, as it is for a LOP import.

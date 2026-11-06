@@ -22,7 +22,8 @@ sys.path.insert(
         os.path.dirname(os.path.abspath(__file__)))))
 
 from amaze.actions import files as files_actions  # noqa: E402
-from amaze.core import file_library  # noqa: E402
+from amaze import messages  # noqa: E402
+from amaze.core import debug, file_library, scene_captures  # noqa: E402
 from amaze.core import locations as locations_mod  # noqa: E402
 from amaze.core import tile_icons  # noqa: E402
 from amaze.helpers import helpers, hostos  # noqa: E402
@@ -3628,6 +3629,94 @@ class ReadinessIsAskedOncePerGeneration(unittest.TestCase):
         self.assertEqual({"registered": True, "name": "Peer"},
                          locations_mod.record(prefs, "/peer/folder/"),
                          "a row a refresh read waited for the next location write")
+
+
+class NewFolderAndSaveScene(unittest.TestCase):
+    """Both act on the folder shown, ask one name, and refuse a taken one or a slash."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
+
+    def setUp(self):
+        self.folder = test_support.scratch_dir("amaze_new_")
+        self.addCleanup(shutil.rmtree, self.folder, True)
+        self.section = self.panel.sections["file"]
+        self.files = self.panel.file_files_model
+        self.files.set_folder(self.folder)
+        self.refused = []
+        for owner, name, value in (
+                (debug, "refuse", lambda reason, **data: self.refused.append(str(reason))),
+                (self.panel, "ask_category_name", lambda title, default="": self.answer)):
+            patcher = mock.patch.object(owner, name, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.answer = ""
+
+    def _saving(self):
+        saved = []
+        patcher = mock.patch.object(hou.hipFile, "save", lambda path, *a, **k: saved.append(path))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return saved
+
+    def test_new_folder_makes_the_folder_in_the_one_shown(self):
+        self.answer = "Textures"
+        self.section.menu_new_folder([], None)
+        self.assertTrue(os.path.isdir(os.path.join(self.folder, "Textures")))
+        self.assertEqual([], self.refused)
+
+    def test_a_taken_folder_name_is_refused(self):
+        os.makedirs(os.path.join(self.folder, "Textures"))
+        self.answer = "Textures"
+        self.section.menu_new_folder([], None)
+        self.assertEqual([messages.NEW_FOLDER_TAKEN % ("Textures", self.folder)], self.refused)
+
+    def test_a_slash_in_a_name_is_refused_and_nothing_made(self):
+        self.answer = "a/b"
+        self.section.menu_new_folder([], None)
+        self.assertFalse(os.path.exists(os.path.join(self.folder, "a")))
+        self.assertEqual([messages.NEW_NAME_HAS_A_SLASH % "a/b"], self.refused)
+
+    def test_a_cancel_makes_nothing(self):
+        self.answer = None
+        before = set(os.listdir(self.folder))
+        self.section.menu_new_folder([], None)
+        self.assertEqual(before, set(os.listdir(self.folder)))
+        self.assertEqual([], self.refused)
+
+    def test_save_scene_saves_the_open_scene_under_the_name(self):
+        saved = self._saving()
+        self.answer = "shot"
+        self.section.menu_save_scene([], None)
+        self.assertEqual([os.path.join(self.folder, "shot" + scene_captures.scene_extension())],
+                         saved)
+        self.assertEqual([], self.refused)
+
+    def test_a_taken_scene_name_is_refused_and_nothing_saved(self):
+        name = "shot" + scene_captures.scene_extension()
+        open(os.path.join(self.folder, name), "w").close()
+        saved = self._saving()
+        self.answer = "shot"
+        self.section.menu_save_scene([], None)
+        self.assertEqual([], saved)
+        self.assertEqual([messages.SAVE_SCENE_TAKEN % (name, self.folder)], self.refused)
+
+    def test_both_grey_while_all_is_showing(self):
+        self.files.set_all_folders()
+        self.assertFalse(self.section.menu_new_enabled([], None))
+        self.files.set_folder(self.folder)
+        self.assertTrue(self.section.menu_new_enabled([], None))
+
+    def test_the_extension_follows_the_licence(self):
+        import types
+        for category, extension in (("Commercial", ".hip"), ("Indie", ".hiplc"),
+                                    ("Apprentice", ".hipnc"), ("ApprenticeHD", ".hipnc"),
+                                    ("Education", ".hipnc")):
+            with self.subTest(category=category):
+                fake = types.SimpleNamespace(name=lambda c=category: c)
+                with mock.patch.object(hou, "licenseCategory", lambda f=fake: f):
+                    self.assertEqual(extension, scene_captures.scene_extension())
 
 
 if __name__ == "__main__":

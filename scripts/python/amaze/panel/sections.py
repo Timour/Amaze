@@ -1384,6 +1384,66 @@ class FolderSection(Section):
         except Exception as exc:                         # noqa: BLE001
             debug.event("file", "reveal failed", error=str(exc))
 
+    def menu_new_enabled(self, indexes, current) -> bool:
+        """New Folder and Save Scene act on the folder shown: none while All is showing."""
+        return bool(self._shown_folder())
+
+    def _shown_folder(self) -> str:
+        files = self._p(self.files_attr)
+        return files.browsing() if files is not None else ""
+
+    def _new_name(self, title: str) -> str:
+        """The name the dialog gives: "" for a cancel, a cleared field, or a name with a slash."""
+        name = (self.panel.ask_category_name(title, "") or "").strip()
+        if name and ("/" in name or os.sep in name):
+            debug.refuse(messages.NEW_NAME_HAS_A_SLASH % name)
+            return ""
+        return name
+
+    def menu_new_folder(self, indexes, current, payload=None) -> None:
+        folder = self._shown_folder()
+        name = self._new_name("New Folder") if folder else ""
+        if not name:
+            return
+        path = os.path.join(folder, name)
+        if os.path.exists(path):
+            debug.refuse(messages.NEW_FOLDER_TAKEN % (name, folder))
+            return
+        try:
+            os.makedirs(path)
+        except OSError as exc:
+            debug.refuse(messages.NEW_FOLDER_FAILED % (name, exc))
+            return
+        debug.event("file", "folder made", path=path)
+        self._refresh_shown()
+
+    def menu_save_scene(self, indexes, current, payload=None) -> None:
+        """Save As of the open scene into the folder shown; the file becomes the open scene."""
+        from amaze.core import scene_captures
+        folder = self._shown_folder()
+        name = self._new_name("Save Scene") if folder else ""
+        if not name:
+            return
+        path = os.path.join(folder, name + scene_captures.scene_extension())
+        if os.path.exists(path):
+            debug.refuse(messages.SAVE_SCENE_TAKEN % (os.path.basename(path), folder))
+            return
+        try:
+            hou.hipFile.save(path)
+        except hou.Error as exc:
+            debug.refuse(messages.SAVE_SCENE_FAILED % (path, exc))
+            return
+        debug.event("hip", "scene saved as new", file=path)
+        self._refresh_shown()
+
+    def _refresh_shown(self) -> None:
+        """The grid lists the folder again; the sidebar re-reads it, so a new subfolder gets its row."""
+        folders, files = self._p(self.folders_attr), self._p(self.files_attr)
+        if files is not None:
+            files.refresh_current_folder()
+        if folders is not None:
+            folders.refresh_counts()
+
     def toggle_favourite(self, indexes) -> None:
         files, rows = self._model_and_rows(indexes)    # the model resolves each row to its path key
         if files is not None:
@@ -1555,6 +1615,9 @@ class FileSection(FolderSection):
     )
 
     GRID_MENU = UNDO_MOVE + (  # the selection's KINDS pick the actions; no Delete: the user's own files
+        MenuEntry("New Folder", verb="menu_new_folder", needs="menu_new_enabled"),
+        MenuEntry("Save Scene", verb="menu_save_scene", needs="menu_new_enabled"),
+        SEPARATOR,
         MenuEntry("Import", verb="menu_import", needs="menu_import_enabled",
                   shown="selection_has_importable"),
         MenuEntry("Load", verb="menu_load_scene", needs="one",
