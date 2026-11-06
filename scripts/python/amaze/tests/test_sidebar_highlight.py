@@ -18,7 +18,6 @@ import hou  # noqa: E402
 from amaze.core import category, database, file_moves, matx_sources, model_registry  # noqa: E402
 from amaze.helpers import ui_helpers  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
-from amaze.tests.test_file_section import _pump_until  # noqa: E402
 
 NOMOD = QtCore.Qt.KeyboardModifier.NoModifier
 LEFT, RIGHT = QtCore.Qt.MouseButton.LeftButton, QtCore.Qt.MouseButton.RightButton
@@ -48,7 +47,7 @@ def _row_key(panel, index) -> str:
 
 
 def _pump(seconds=0.05):
-    _pump_until(lambda: False, timeout=seconds)
+    test_support.pump_until(lambda: False, timeout=seconds)
 
 
 def _ui(**answers):
@@ -370,7 +369,7 @@ class FileSidebarTest(_HighlightCase, unittest.TestCase):
     def read(self, location, folder):
         """Unfold `location` until its row for `folder` is read."""
         self.folders.data(self.folders.index_of(location), COUNT)
-        self.assertTrue(_pump_until(lambda: self.folders.index_of(folder).isValid()),
+        self.assertTrue(test_support.pump_until(lambda: self.folders.index_of(folder).isValid()),
                         "premise: %s never arrived under its location" % folder)
         self.view.expand(self.folders.index_of(location))
         _pump()
@@ -384,7 +383,7 @@ class FileSidebarTest(_HighlightCase, unittest.TestCase):
         selection = self.panel.thumblist.selectionModel()
         selection.select(proxy.index(0, 0), QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
         self.assertTrue(self.panel._section().move_files_to(folder), "premise: no move started")
-        self.assertTrue(_pump_until(lambda: not file_moves.mover.busy()), "the move never landed")
+        self.assertTrue(test_support.pump_until(lambda: not file_moves.mover.busy()), "the move never landed")
 
     def remember_unread(self, name) -> str:
         """A new subfolder of the location, remembered, the File tab entered before its row is read."""
@@ -433,7 +432,7 @@ class FileSidebarTest(_HighlightCase, unittest.TestCase):
         def undo_from_the_sidebar():
             self.stand()
             self.menu(self.row(""), "Undo Move")
-            self.assertTrue(_pump_until(lambda: not file_moves.mover.busy()), "never moved back")
+            self.assertTrue(test_support.pump_until(lambda: not file_moves.mover.busy()), "never moved back")
         self.check("a right press, Undo Move", undo_from_the_sidebar, grid=loc)
 
         def drag_select():
@@ -516,7 +515,7 @@ class FileSidebarTest(_HighlightCase, unittest.TestCase):
             shutil.rmtree(self.nested)
             self.folders.refresh_counts()
             self.folders.data(self.folders.index_of(self.loc), COUNT)
-            self.assertTrue(_pump_until(lambda: not self.folders.index_of(self.nested).isValid()),
+            self.assertTrue(test_support.pump_until(lambda: not self.folders.index_of(self.nested).isValid()),
                             "premise: the removed subfolder's row stayed")
         self.check("a browsed subfolder removed on disk, then read again", removed_then_read,
                    grid=self.loc)

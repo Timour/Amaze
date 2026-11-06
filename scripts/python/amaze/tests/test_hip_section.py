@@ -1209,8 +1209,8 @@ class CaptureRefreshesTheTileTest(unittest.TestCase):
                           "%s does not listen for a capture" % module)
 
 
-class ReviewFixesTest(unittest.TestCase):
-    """One pin per defect that shipped uncaught by any existing test."""
+class CaptureBlankFrameAndRefusalPinsTest(unittest.TestCase):
+    """The blank-frame rule, an empty path, an unsaved scene, and a refusal naming the right scene."""
 
     def _png(self, colours):
         from PySide6 import QtGui

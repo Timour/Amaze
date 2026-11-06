@@ -68,8 +68,8 @@ class _Case(unittest.TestCase):
             return json.load(handle)
 
 
-class TheSmallBatchTest(_Case):
-    """The version-key guards, every-trace refusals, and the SVG cache."""
+class VersionKeyRefusalAndSearchPrefixTest(_Case):
+    """Version-key guards, one refusal for every trace, and the tags-only online search prefix."""
 
     def test_a_malformed_version_key_is_read_as_legacy(self):
         """`int(None)` raises `TypeError`, which no caller here catches."""

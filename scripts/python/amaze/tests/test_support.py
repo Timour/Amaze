@@ -33,6 +33,16 @@ def settle(done, timeout=3.0) -> None:
         time.sleep(0.01)
 
 
+def pump_until(done, timeout=10.0) -> bool:
+    """Run the event loop until done answers true or the time is up, and answer done."""
+    from PySide6 import QtWidgets
+    deadline = time.monotonic() + timeout
+    while not done() and time.monotonic() < deadline:
+        QtWidgets.QApplication.processEvents()
+        time.sleep(0.002)
+    return bool(done())
+
+
 def _adopt_suite_root() -> str:
     """Point `TMPDIR` at `<test_dir>/suite/` at import, when a folder is set. ▸p/suite-debris-home"""
     try:

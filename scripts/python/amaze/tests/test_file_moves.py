@@ -26,7 +26,7 @@ from amaze.core import locations as locations_mod  # noqa: E402
 from amaze.helpers import hostos  # noqa: E402
 from amaze.panel import sidebar  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
-from amaze.tests.test_file_section import _Prefs, _pump_until  # noqa: E402
+from amaze.tests.test_file_section import _Prefs  # noqa: E402
 from amaze.tests.test_folder_tree import _child, _shown  # noqa: E402
 
 OTHER_USER = "a1b2c3d4e5f60718293a4b5c6d7e8f90"    # a second minted-shaped uid
@@ -259,7 +259,7 @@ def _held(entered, release):
 def _let_go(worker, release, ended):
     """Free a held move, and unpark it only once its `finished` has landed here."""
     release.set()
-    if not _pump_until(lambda: bool(ended), timeout=30):
+    if not test_support.pump_until(lambda: bool(ended), timeout=30):
         raise AssertionError("the held move never ended")
     if worker in workers._unstoppable:
         workers._unstoppable.remove(worker)
@@ -305,7 +305,7 @@ class AReloadLeavesAMoveUnderWayAloneTest(unittest.TestCase):
         importlib.reload(file_moves)
         self.assertIs(before, file_moves.mover, "a reload replaced the engine running a move")
         release.set()
-        self.assertTrue(_pump_until(lambda: bool(landed) and not before.busy()),
+        self.assertTrue(test_support.pump_until(lambda: bool(landed) and not before.busy()),
                         "the move under way never landed")
         importlib.reload(file_moves)
         self.assertIsNot(before, file_moves.mover, "a reload kept an idle engine")
@@ -540,11 +540,11 @@ class TheFileTabMovesWhatLandsOnAFolderTest(unittest.TestCase):
         QtWidgets.QApplication.processEvents()
         self.section = self.panel.sections["file"]
         _shown(self.folders, self.loc)
-        self.assertTrue(_pump_until(
+        self.assertTrue(test_support.pump_until(
             lambda: self.folders.index_of(self.b).isValid()),
             "premise: the subfolders never arrived")
         self.section._browse(self.a)
-        self.assertTrue(_pump_until(lambda: self._tile("plate.exr") is not None),
+        self.assertTrue(test_support.pump_until(lambda: self._tile("plate.exr") is not None),
                         "premise: plate.exr never listed")
 
     def _tile(self, name):
@@ -572,7 +572,7 @@ class TheFileTabMovesWhatLandsOnAFolderTest(unittest.TestCase):
         with mock.patch.object(self.panel, "_category_under_cursor", return_value=None), \
                 mock.patch.object(self.panel, "_folder_under_cursor", return_value=folder):
             view._release(release)
-        self.assertTrue(_pump_until(lambda: not file_moves.mover.busy()),
+        self.assertTrue(test_support.pump_until(lambda: not file_moves.mover.busy()),
                         "the move never finished")
         QtWidgets.QApplication.processEvents()
 
@@ -580,7 +580,7 @@ class TheFileTabMovesWhatLandsOnAFolderTest(unittest.TestCase):
         self._release_over(self.b)
         self.assertEqual("plate", _read(self.landed))
         self.assertFalse(os.path.exists(self.plate))
-        self.assertTrue(_pump_until(lambda: self._tile("plate.exr") is None),
+        self.assertTrue(test_support.pump_until(lambda: self._tile("plate.exr") is None),
                         "the moved file is still listed where it was")
         self.assertEqual(messages.MOVE_DONE % ("1 file", "b"), self.said[-1])
 
@@ -598,7 +598,7 @@ class TheFileTabMovesWhatLandsOnAFolderTest(unittest.TestCase):
         self._release_over(self.b)
         self.assertTrue(self.section.can_undo_move([], None), "Undo Move is not offered")
         self.section.menu_undo_move([], None)
-        self.assertTrue(_pump_until(lambda: not file_moves.mover.busy()))
+        self.assertTrue(test_support.pump_until(lambda: not file_moves.mover.busy()))
         QtWidgets.QApplication.processEvents()
         self.assertEqual("plate", _read(self.plate))
         self.assertFalse(os.path.exists(self.landed))

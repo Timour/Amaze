@@ -1992,7 +1992,7 @@ class LocationManagementTest(unittest.TestCase):
         view.show()
         for _paint in range(3):
             view.grab()
-        self.assertTrue(_pump_until(lambda: not model._walking),
+        self.assertTrue(test_support.pump_until(lambda: not model._walking),
                         "the walks the paint asked for never landed")
         texts = []
         for row in range(model.rowCount()):
@@ -2235,15 +2235,6 @@ def _under(path, root) -> bool:
     return path == root or path.startswith(root.rstrip(os.sep) + os.sep)
 
 
-def _pump_until(done, timeout=10.0) -> bool:
-    """Run the event loop until `done()` answers true, or the time is up."""
-    deadline = time.monotonic() + timeout
-    while not done() and time.monotonic() < deadline:
-        _app.processEvents()
-        time.sleep(0.002)
-    return bool(done())
-
-
 class CountsWalkOffTheGuiThreadTest(unittest.TestCase):
     """The File sidebar's counts walk on a worker; a paint answers what is known now."""
 
@@ -2262,7 +2253,7 @@ class CountsWalkOffTheGuiThreadTest(unittest.TestCase):
         for n in recursive:
             prefs.set_file_folder_recursive(roots[n], True)
         model = file_library.FileFolders(prefs)
-        self.addCleanup(lambda: _pump_until(
+        self.addCleanup(lambda: test_support.pump_until(
             lambda: not getattr(model, "_walking", None)))
         return model, roots
 
@@ -2334,7 +2325,7 @@ class CountsWalkOffTheGuiThreadTest(unittest.TestCase):
         with mock.patch("os.scandir", listing):
             for row in range(1, model.rowCount()):
                 model.data(model.index(row, 0), model.COUNT_ROLE)
-            landed = _pump_until(
+            landed = test_support.pump_until(
                 lambda: all(model._counts.get(p) == 1 for p in others), timeout=5.0)
             self.assertTrue(entered.is_set(), "premise: the held walk never ran on a worker")
             self.assertIsNone(model._counts.get(held_key),
@@ -2352,7 +2343,7 @@ class CountsWalkOffTheGuiThreadTest(unittest.TestCase):
         listing, entered, release = self._held_listing(roots[0])
         with mock.patch("os.scandir", listing):
             model.data(model.index(1, 0), model.COUNT_ROLE)
-            self.assertTrue(_pump_until(entered.is_set),
+            self.assertTrue(test_support.pump_until(entered.is_set),
                             "the walk never ran on a worker")
             self.assertTrue(model.remove_folder(1), "premise: the remove refused")
             release.set()
@@ -2377,7 +2368,7 @@ class CountsWalkOffTheGuiThreadTest(unittest.TestCase):
         listing, entered, release = self._held_listing(root)
         with mock.patch("os.scandir", listing):
             model.data(model.index(1, 0), model.COUNT_ROLE)
-            self.assertTrue(_pump_until(entered.is_set),
+            self.assertTrue(test_support.pump_until(entered.is_set),
                             "the walk never ran on a worker")
             prefs.set_file_folder_show_all(root, True)
             model.refresh_counts()
@@ -2418,7 +2409,7 @@ class CountsWalkOffTheGuiThreadTest(unittest.TestCase):
             target=lambda: model.data(model.index(1, 0), model.COUNT_ROLE))
         asker.start()
         asker.join(10)
-        self.assertTrue(_pump_until(lambda: model._counts.get(model._folders()[0]) == 5),
+        self.assertTrue(test_support.pump_until(lambda: model._counts.get(model._folders()[0]) == 5),
                         "a count asked from another thread never landed")
         self.assertEqual([5, 5], _landed_counts(model),
                          "the sidebar stopped counting after an ask from another thread")
@@ -2445,13 +2436,13 @@ class CountsWalkOffTheGuiThreadTest(unittest.TestCase):
 
         with mock.patch("os.scandir", slow):
             model.data(model.index(1, 0), model.COUNT_ROLE)
-            self.assertTrue(_pump_until(entered.is_set),
+            self.assertTrue(test_support.pump_until(entered.is_set),
                             "the walk never ran on a worker")
             running = list(folders_mod.counter._threads)
             started = time.monotonic()
             folders_mod.counter.shutdown()
             elapsed = time.monotonic() - started
-        _pump_until(lambda: not model._walking)
+        test_support.pump_until(lambda: not model._walking)
         self.assertTrue(running, "premise: no walk was running")
         self.assertLess(elapsed, 1.0, "shutdown waited %.2fs on a walk" % elapsed)
         self.assertFalse(any(t.isRunning() for t in running),
@@ -2480,10 +2471,11 @@ class CountsWalkOffTheGuiThreadTest(unittest.TestCase):
         with mock.patch("os.scandir", listing):
             for row in range(1, model.rowCount()):
                 model.data(model.index(row, 0), model.COUNT_ROLE)
-            self.assertTrue(_pump_until(lambda: len(walked) == model.COUNT_WORKERS),
+            self.assertTrue(test_support.pump_until(lambda: len(walked) == model.COUNT_WORKERS),
                             "premise: the workers never all started")
             folders_mod.counter.shutdown()
-            _pump_until(lambda: False, timeout=0.3)    # every stopped walk's end is handled
+            test_support.pump_until(
+                lambda: False, timeout=0.3)    # every stopped walk's end is handled
             started = list(walked)
         self.assertEqual(model.COUNT_WORKERS, len(started),
                          "the stopped walks started the queued ones after the shutdown")
@@ -3099,8 +3091,8 @@ class ANewLocationStartsWithTheKnownKindsTest(unittest.TestCase):
                          "adding a folder again reset what it shows")
 
 
-class ReviewFixesTest(unittest.TestCase):
-    """Five confirmed merge defects, one pin each."""
+class FileSectionScanAndRerenderPinsTest(unittest.TestCase):
+    """Sidebar counts, hidden-directory pruning, the section toggle, and rerender progress."""
 
     def test_sidebar_count_agrees_with_the_grid(self):
         """The sidebar counts no subdirectories, as the grid lists none: 3 files and 2 folders read 3."""

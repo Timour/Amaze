@@ -29,7 +29,6 @@ sys.path.insert(
         os.path.dirname(os.path.abspath(__file__)))))
 
 from amaze.tests import test_support  # noqa: E402
-from amaze.tests.test_file_section import _pump_until  # noqa: E402
 from amaze.tests.test_packages import _ranged_server, _Served  # noqa: E402
 
 FIXTURES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "simready")
@@ -1052,7 +1051,7 @@ class TheOnlineQuitStopsEveryWorkerAtOnce(unittest.TestCase):
             model._preview(matx_sources.MatxRecord(
                 source=source.name, uid="Quit/%03d" % n, title="Quit", category="Quit",
                 payload={"preview": {"offset": 0, "size": 1, "crc": 7}}))
-        self.assertTrue(_pump_until(ready), "premise: the downloads never started")
+        self.assertTrue(test_support.pump_until(ready), "premise: the downloads never started")
         threads, ended = list(model._preview_workers), []
         for thread in threads:
             thread.finished.connect(lambda: ended.append(True))
@@ -1063,7 +1062,7 @@ class TheOnlineQuitStopsEveryWorkerAtOnce(unittest.TestCase):
         """Free what still reads, then unpark each worker once its `finished` has landed here."""
         from amaze.core import workers
         release()
-        self.assertTrue(_pump_until(lambda: len(ended) == len(threads), timeout=40),
+        self.assertTrue(test_support.pump_until(lambda: len(ended) == len(threads), timeout=40),
                         "a download never ended")
         for thread in threads:
             if thread in workers._unstoppable:
@@ -1134,11 +1133,12 @@ class TheOnlineQuitStopsEveryWorkerAtOnce(unittest.TestCase):
         with mock.patch.object(model, "_sources", [Slow(n) for n in range(40)]), \
                 mock.patch.object(model, "_save_cache", saved.append):
             model.reload(force=True)
-            self.assertTrue(_pump_until(lambda: listed), "premise: the listing never started")
+            self.assertTrue(test_support.pump_until(lambda: listed), "premise: the listing never started")
             started = time.monotonic()
             model.shutdown()
             elapsed = time.monotonic() - started
-            _pump_until(lambda: False, timeout=0.3)    # whatever the worker sent lands now
+            test_support.pump_until(
+                lambda: False, timeout=0.3)    # whatever the worker sent lands now
         self.assertLess(elapsed, 1.0, "the quit waited %.1fs on a listing between sources" % elapsed)
         self.assertEqual([], saved, "a listing cut short replaced the cached catalogue")
 

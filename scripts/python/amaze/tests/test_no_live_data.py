@@ -18,7 +18,7 @@ _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 import hou                                                     # noqa: E402,F401
 
-import test_support                                            # noqa: E402
+from amaze.tests import test_support                           # noqa: E402
 
 
 HERE = os.path.dirname(os.path.abspath(__file__))

@@ -10,7 +10,7 @@ _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 import hou  # noqa: E402
 
-import test_support  # noqa: E402
+from amaze.tests import test_support  # noqa: E402
 from amaze.core import gradient_library  # noqa: E402
 from amaze.helpers import theme, ui_helpers  # noqa: E402
 from amaze.core import grid_columns

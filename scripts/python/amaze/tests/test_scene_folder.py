@@ -16,7 +16,6 @@ from amaze.core import category  # noqa: E402
 from amaze.helpers import hostos  # noqa: E402
 from amaze.panel import sidebar  # noqa: E402
 from amaze.tests import test_support  # noqa: E402 - arms the sandbox
-from amaze.tests.test_file_section import _pump_until  # noqa: E402
 from amaze.tests.test_folder_tree import _shown  # noqa: E402
 
 
@@ -110,7 +109,7 @@ class TheSceneRowInTheFileTab(_SceneCase):
         self.assertTrue(self.folders.is_scene_row(sidebar.top_level(view.currentIndex())),
                         "the sidebar stands outside the scene row")
         self.folders.data(self._row(), category.SIDEBAR_COUNT_ROLE)    # a paint asks; headless, ask as it would
-        self.assertTrue(_pump_until(
+        self.assertTrue(test_support.pump_until(
             lambda: view.currentIndex().data(self.folders.BrowseRole) == sub),
             "the sidebar never stood on the remembered scene subfolder")
 
@@ -154,12 +153,12 @@ class TheSceneRowFollowsTheScene(_SceneCase):
         old = _hip()
         os.makedirs(old + "plates")
         _shown(self.folders, old)
-        self.assertTrue(_pump_until(lambda: self.folders.rowCount(self._row()) == 1),
+        self.assertTrue(test_support.pump_until(lambda: self.folders.rowCount(self._row()) == 1),
                         "premise: the scene folder's subfolder never arrived")
         self._stand(self.folders.index(0, 0, self._row()))
         self.assertEqual(old + "plates", self.files.browsing(), "premise: not on the subfolder")
         moved = self._save()
-        _pump_until(lambda: False, timeout=0.05)
+        test_support.pump_until(lambda: False, timeout=0.05)
         self.assertEqual(moved, self.files.browsing(), "the grid stayed in the old scene folder")
         self.assertEqual(self._row(), self.panel.cat_list.currentIndex(),
                          "the sidebar does not stand on the scene row")
@@ -169,7 +168,7 @@ class TheSceneRowFollowsTheScene(_SceneCase):
         self.assertEqual(self.loc, self.files.browsing(), "premise: not on the location")
         moved = self._save()
         self.assertEqual(moved, self.folders.scene_folder(), "premise: the row did not move")
-        _pump_until(lambda: False, timeout=0.05)
+        test_support.pump_until(lambda: False, timeout=0.05)
         self.assertEqual(self.loc, self.files.browsing(), "the grid left its location")
         self.assertEqual(self.loc, self.panel.cat_list.currentIndex().data(self.folders.PathRole))
 
