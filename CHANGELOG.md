@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.31.1
+
+- Every comment and docstring in the source is one line, saying what the thing does and what to watch when calling it. Nothing changes in use.
+- The tools and hooks read without the maintainer's notes, and the README has a For developers section.
+
 ## 1.31.0
 
 - File: the right-click menu gets New Folder and Save Scene. New Folder asks for a name and makes that folder in the folder you are looking at. Save Scene asks for a name and saves the open scene as a new file there, with the extension your licence writes, and that file becomes the one you are working in. Both are greyed while All is showing.
