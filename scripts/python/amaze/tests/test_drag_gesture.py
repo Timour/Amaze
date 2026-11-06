@@ -1,4 +1,4 @@
-"""The drag gesture replayed headlessly - real `QMouseEvent`s against the real view, asserting the STATE MACHINE, because a gesture ending with `_dragging` still True eats the next click. The drop ACTION is stubbed; the gesture is what is under test. ▸archive/test_drag_gesture.py"""
+"""Drag gesture replayed with real mouse events; a gesture left `_dragging` eats the next click."""
 
 import os
 import random
@@ -25,7 +25,7 @@ from amaze.tests import test_support  # noqa: E402,F401 - import redirects the d
 
 
 class _StubPanel(QtWidgets.QWidget):
-    """Everything the gesture asks its panel for, recorded. `_find_panel` duck-types on `import_asset` to recognise it, and the release VERBS are not here - they are the section's."""
+    """Records what the gesture asks its panel; `_find_panel` duck-types on `import_asset`."""
 
     def __init__(self, section="material"):
         super().__init__()
@@ -211,7 +211,7 @@ class TestGestureArming(unittest.TestCase):
                 self.assertIsNone(h.view._drag_index)
 
     def test_press_while_dragging_keeps_the_live_state(self):
-        """A stray right or middle press mid-gesture must not clear the drag, or the drop is lost and the sidebar stays glowing."""
+        """A stray right or middle press mid-gesture must not clear the drag and lose the drop."""
         h = _Harness(self)
         h.press()
         h.view._dragging = True
@@ -274,7 +274,7 @@ class TestGestureRelease(unittest.TestCase):
             "after the user had switched sections")
 
     def test_a_LOCKED_asset_is_reported_not_crashed(self):
-        """Houdini REFUSING is not a bug: a locked asset raises `hou.PermissionError`, and uncaught that reads as a slot crash and a drop that silently did nothing. It gets the gesture's own refusal - the tag flies back - and Houdini's sentence on the status bar. No dialog. ▸p/dialogs-are-a-bill"""
+        """A locked asset raises `hou.PermissionError`: a refusal on the status bar, no crash, no dialog."""
         h = self._armed()
         said = []
 
@@ -445,7 +445,7 @@ class ADropOnAWireIsOneUndoStep(unittest.TestCase):
 
 
 class FileRowsReleaseOnNodes(unittest.TestCase):
-    """Image, unknown and geometry rows ride the same gesture and a release on a node hands over the spelled path - geometry falls back to its import, image and unknown MISS."""
+    """File rows released on a node hand over the spelled path; geometry falls back to import."""
 
     def _drag(self, harness):
         harness.press()
@@ -465,7 +465,7 @@ class FileRowsReleaseOnNodes(unittest.TestCase):
 
 
 class TheBehaviourTableCells(unittest.TestCase):
-    """One cell per release situation - `(section, row kind, what is under the release)` and its expected dispatch, over every aim state."""
+    """One cell per `(section, row kind, what is under the release)` and its expected dispatch."""
 
     CELLS = (
         ("material aims itself", "material", None,
@@ -606,7 +606,7 @@ class TheResolversSayTheyMissed(unittest.TestCase):
 
 
 class TheParameterPaneHandOff(unittest.TestCase):
-    """A File gesture crossing into a Parameters pane becomes the ONE real `QDrag` - a field is a Qt widget and only mime fills it. Every other section stays self-managed."""
+    """A File gesture over a Parameters pane becomes a real `QDrag`, since only mime fills a field."""
 
     class _Pane:
         def type(self):
@@ -681,7 +681,7 @@ class TheParameterPaneHandOff(unittest.TestCase):
 
 
 class GuardedSlotsTest(unittest.TestCase):
-    """Every overridden Qt handler must carry `debug.guarded`, or an exception in it vanishes with no record and no traceback. Checked on `__wrapped__`, never by grepping the source, which matches the decorator named in prose. It does NOT survive a SIGSEGV. ▸r/qt-windows-macos"""
+    """Every overridden Qt handler carries `debug.guarded`, read off `__wrapped__`. ▸r/qt-windows-macos"""
 
     HANDLERS = (
         "mousePressEvent", "mouseMoveEvent", "mouseReleaseEvent",
@@ -689,7 +689,7 @@ class GuardedSlotsTest(unittest.TestCase):
     )
 
     def _widget_classes(self):
-        """This project's widget classes - a QWidget OR any class defining a Qt handler, because the gesture lives on a MIXIN a QWidget-only scan would miss."""
+        """Widget classes: any QWidget or class defining a Qt handler, so the gesture mixin is caught."""
         from amaze.helpers import ui_helpers
 
         found = []
@@ -746,7 +746,7 @@ class GuardedSlotsTest(unittest.TestCase):
 
 
 class TheGestureRunsOnBOTHViews(unittest.TestCase):
-    """The gesture is a MIXIN over `QAbstractItemView` so both views get it without a second copy. A real `QDrag` is not an option - it traps the gesture in a nested run loop where per-move viewport picking cannot run."""
+    """One gesture mixin over `QAbstractItemView`; a `QDrag` would block per-move viewport picking."""
 
     VIEWS = ("DragDropListView", "DragDropTableView")
 
@@ -783,7 +783,7 @@ class TheGestureRunsOnBOTHViews(unittest.TestCase):
                          "row that draws its own dividers")
 
     def test_the_debug_helper_survives_a_view_with_no_gridSize(self):
-        """The one `QListView`-only call in the gesture: a table has no grid size, and this runs inside the scroll path under Debug Mode."""
+        """A table has no grid size, and this debug helper runs in the scroll path under Debug Mode."""
         view = dragdrop_widgets.DragDropTableView()
         self.addCleanup(view.deleteLater)
         self.assertFalse(hasattr(view, "gridSize"))

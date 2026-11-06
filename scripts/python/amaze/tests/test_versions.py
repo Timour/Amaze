@@ -1,4 +1,4 @@
-"""The version store: the base files stay the truth, the archive is a copy of it, and losing versions/ entirely costs nothing but history."""
+"""The version store: the base files are the truth, and losing versions/ costs only history."""
 
 import json
 import os
@@ -45,7 +45,7 @@ class _Case(unittest.TestCase):
 
 
 class PreEditHoldsTheRightFilesTest(_Case):
-    """The first Update on an asset archives the PRE-EDIT state as Version 1, from a held-aside copy of the asset's files, keyed by `versions.SOURCE_KINDS` and never by filename suffix."""
+    """The pre-edit hold is keyed by `versions.SOURCE_KINDS`, never by filename suffix."""
 
     def test_the_material_wins_over_its_companions(self):
         from amaze.core import library as library_mod
@@ -121,7 +121,7 @@ class APreEditHoldLeavesNoFolderBehind(_Case):
 
 
 class SwitchRollsBackOnALedgerRefusal(_Case):
-    """switch_active promotes the archive over the base and THEN writes the ledger, so a refused ledger write must roll the promotion back rather than leave the base holding a version the ledger does not name."""
+    """switch_active writes the ledger after the promotion, so a refused write rolls the base back."""
 
     def test_the_base_returns_when_the_ledger_will_not_write(self):
         from unittest import mock
@@ -143,7 +143,7 @@ class SwitchRollsBackOnALedgerRefusal(_Case):
 
 
 class AFailedRollbackSpeaksTest(_Case):
-    """Disk holding one version while the list names another is the you-think-you-saved case, so a rollback that ALSO fails interrupts instead of logging."""
+    """A rollback that also fails alerts the user instead of only logging."""
 
     def test_the_user_hears_when_the_rollback_also_fails(self):
         from unittest import mock
@@ -273,7 +273,7 @@ class TheBaseModelSwitchesInItsOwnSection(_Case):
 
 
 class TheArchiveIsEachVersionsDurableThumbnail(_Case):
-    """A version is minted at SAVE time, before that save's render lands, so a fresh archive slot starts holding the previous version's picture; record_render runs wherever a row's PNG is declared fresh and copies it into the ACTIVE slot, so each version keeps its own picture until the version goes."""
+    """record_render copies a fresh PNG into the active slot only, so each version keeps its picture."""
 
     def _png_paths(self):
         img_dir = os.path.join(self.prefs.dir, self.prefs.img_dir)
@@ -475,7 +475,7 @@ class StoreTest(_Case):
 
 
 class VersionFilesCarryTheirWriterTest(_Case):
-    """The archive stem is <writer>-<n>, the writer is `library_user`, and the ledger row records the stem it wrote; what keeps two writers apart is stepping past a stem already on disk."""
+    """The archive stem is writer-n; two writers stay apart by stepping past a stem on disk."""
 
     def test_the_stem_carries_the_writer(self):
         from amaze.core import users
@@ -490,7 +490,7 @@ class VersionFilesCarryTheirWriterTest(_Case):
             os.path.exists(os.path.join(folder, "Crimson-1.mat")))
 
     def test_two_writers_same_number_never_collide(self):
-        """TWO DIFFERENT PEOPLE, which under the UID scheme means two real user records - the second writer is not a machine that retyped a name, it is somebody the library knows about."""
+        """Two real user records writing the same version number never collide on disk."""
         from amaze.core import users
         self.prefs.library_user = users.create(self.prefs, "Crimson")
         versions.create_version(self.prefs, self.mat_id)
@@ -502,7 +502,7 @@ class VersionFilesCarryTheirWriterTest(_Case):
         self._rewrite_base(b"MACHINE B EDIT")
         self.prefs.library_user = users.create(self.prefs, "Cobalt")
         versions.create_version(self.prefs, self.mat_id)
-        with open(ledger_path, "w", encoding="utf-8") as fh:  # the other machine never saw B's ledger write: put A's back, exactly what a sync's last-write-wins does
+        with open(ledger_path, "w", encoding="utf-8") as fh:  # a sync's last-write-wins: put A's ledger back
             fh.write(frozen)
         folder = versions.versions_dir(self.prefs, self.mat_id)
         self.assertTrue(
@@ -512,7 +512,7 @@ class VersionFilesCarryTheirWriterTest(_Case):
             "the second writer's file survived the ledger overwrite")
 
     def test_a_stray_archive_is_adopted_on_read(self):
-        """The sync-survival half: a version file the ledger does not know - the row lost to last-write-wins - comes back as a row on the next read, writer parsed from its stem."""
+        """A version file the ledger does not know becomes a row on read, writer parsed from its stem."""
         self.prefs.library_user ="Crimson"
         versions.create_version(self.prefs, self.mat_id)
         folder = versions.versions_dir(self.prefs, self.mat_id)
@@ -531,7 +531,7 @@ class VersionFilesCarryTheirWriterTest(_Case):
                          self._base_bytes())
 
     def test_legacy_bare_numbers_still_switch(self):
-        """The shape every pre-signing library holds today - 1.mat, 2.mat, rows with no stem - which readers accept forever."""
+        """Pre-signing archives, 1.mat with rows lacking a stem, still switch; readers accept them."""
         self.prefs.library_user ="Crimson"
         versions.create_version(self.prefs, self.mat_id)
         folder = versions.versions_dir(self.prefs, self.mat_id)
@@ -557,7 +557,7 @@ class VersionFilesCarryTheirWriterTest(_Case):
                             self._base_bytes())
 
     def test_one_listdir_seeds_the_tile_caches(self):
-        """One listdir at model build answers for every asset WITHOUT a versions folder - the overwhelming case - so asking both version roles across the whole model reads the ledger only for assets that really have one."""
+        """One listdir at model build answers for unversioned assets; only versioned ones read a ledger."""
         from unittest import mock
         from amaze.core import library as library_mod
 
@@ -597,7 +597,7 @@ class VersionFilesCarryTheirWriterTest(_Case):
 
 
 class TheWholeLoopThroughTheModelTest(unittest.TestCase):
-    """Parameter-only save -> versions appear; switch -> the base holds the old bytes and the next Update Existing is not refused; the badge role counts."""
+    """A parameter-only save mints versions; a switch rebaselines, so Update Existing is not refused."""
 
     def setUp(self):
         from amaze.core import library as library_mod
@@ -621,7 +621,7 @@ class TheWholeLoopThroughTheModelTest(unittest.TestCase):
                         self.model.assets[r].renderer))
 
     def test_parameter_only_update_creates_versions(self):
-        # A REAL parameter-only edit - import, tweak one float, update; a fresh network would be structural.
+        # A real parameter-only edit: import, tweak one float, update.
         row = self._karma_row()
         mat = self.model.assets[row]
         ok, reason, _created = material_actions.import_asset_to_scene(self.model,
@@ -685,7 +685,7 @@ class TheWholeLoopThroughTheModelTest(unittest.TestCase):
 
 
 class DeletingAUser(unittest.TestCase):
-    """Deleting a user removes the record AND everything tagged theirs - favourites and registered folders - and only theirs (settled 2026-08-22: sweep, blank pointer on self-delete, last-user deletion allowed)."""
+    """Deleting a user removes the record and their tagged favourites and folders, and only theirs."""
 
     def setUp(self):
         self.prefs = test_support.fixture_prefs(self)

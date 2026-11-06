@@ -1,4 +1,4 @@
-"""The two host engines own their branches - enforced by SOURCE-DERIVED tests (driving the property would need three operating systems and two Houdini installs), with comments and strings tokenized out first so a rule documented in prose cannot fail the rule it documents."""
+"""The two host engines own their branches, checked on source with comments and strings removed."""
 
 import os
 import sys
@@ -15,7 +15,7 @@ _PKG = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def _code_only(path):
-    """The file's source with comments and strings removed, tokens reassembled BY LINE - joined any other way, a line-wise search for `applicationVersion()[` can never match and every test built on it passes vacuously (the inline sabotage test below is what keeps this honest)."""
+    """Source without comments and strings, rejoined by line so a line-wise search can still match."""
     with open(path, "rb") as fh:
         try:
             toks = list(tokenize.tokenize(fh.readline))
@@ -36,7 +36,7 @@ def _code_only(path):
         for piece in rows[row]:
             if line and (line[-1].isalnum() or line[-1] == "_") and \
                     (piece[0].isalnum() or piece[0] == "_"):
-                line += " "  # a space only between two word-ish tokens: `import os` survives while `hou.applicationVersion()[0]` stays intact
+                line += " "  # a space only between two word-ish tokens
             line += piece
         out.append(line)
     return "\n".join(out)
@@ -75,7 +75,7 @@ class TestHostEngineOwnership(unittest.TestCase):
         return found
 
     def test_no_module_branches_on_the_houdini_version(self):
-        """Every version difference goes through hostver as a named capability - a raw comparison at a call site is invisible to anyone not running that version."""
+        """Every version difference goes through hostver as a named capability, never a raw compare."""
         offenders = self._offenders(
             "hostver.py",
             ("applicationVersion()[", "applicationVersion ()["))
@@ -95,7 +95,7 @@ class TestHostEngineOwnership(unittest.TestCase):
             % "\n  ".join(offenders))
 
     def test_the_scan_survives_the_owner_being_excluded(self):
-        """Sabotage, inline: run the scan WITHOUT the exclusion and hostver.py itself must show up, or the walk finds nothing and every green above means nothing."""
+        """Sabotage: without the exclusion the scan must find hostver.py, or the greens mean nothing."""
         hits = self._offenders("no_such_file.py", ("applicationVersion()[",))
         self.assertTrue(
             any("hostver.py" in h for h in hits),
@@ -112,7 +112,7 @@ class TestHostVerAnswers(unittest.TestCase):
         self.assertIsInstance(hostver.has_new_cops(), bool)
 
     def test_a_broken_hou_does_not_take_the_app_down(self):
-        """houdini_version() is read on every capability Env, drags included; if hou raises, the gesture must degrade, not crash the panel."""
+        """houdini_version() feeds every capability Env; if hou raises, a gesture degrades, not crashes."""
         import hou
         from amaze.helpers import hostver
         real = hou.applicationVersion
@@ -166,7 +166,7 @@ class TestOpinionComposition(unittest.TestCase):
         self.assertEqual("strong", cap.resolve(self._env()))
 
     def test_explain_names_the_condition_that_vetoed(self):
-        """A report from an unreproducible machine arrives with its composition resolved - which condition vetoed, not just that one did."""
+        """explain() names which condition vetoed, not just that one did."""
         hv = self._hv()
         report = hv.OBJ_PICK_DEVICE_PIXELS.explain(
             self._env(macos=False, windows=True))
@@ -193,7 +193,7 @@ class TestOpinionComposition(unittest.TestCase):
                     "%s got the answer it was never measured to need" % env)
 
     def test_a_raising_predicate_vetoes_instead_of_propagating(self):
-        """A capability is consulted inside a mouse handler - a broken predicate degrades to the base, never kills the gesture."""
+        """Consulted inside a mouse handler, a broken predicate degrades to the base, never kills it."""
         hv = self._hv()
 
         def _boom(env):
@@ -207,7 +207,7 @@ class TestOpinionComposition(unittest.TestCase):
         self.assertIn("raised", report["opinions"][0]["vetoed_by"])
 
     def test_every_opinion_and_base_carries_real_evidence(self):
-        """A version branch without evidence is a guess that outlives the guess - enforced, not requested."""
+        """Every base and opinion carries evidence; a version branch without it is a guess."""
         hv = self._hv()
         caps = [(n, getattr(hv, n)) for n in dir(hv)
                 if n.isupper() and isinstance(getattr(hv, n), hv.Capability)]
@@ -229,7 +229,7 @@ class TestOpinionComposition(unittest.TestCase):
 
 
 class AFailedWriteSaysWhichFailure(unittest.TestCase):
-    """`hostos.why_failed` answers with the errno, never a guess - the errnos below are the measured ones (research.md ▸ {#r/failed-write}), and the point is that a wrong guessed cause sends the user to an object that was never involved."""
+    """`hostos.why_failed` answers from the measured errno, never a guessed cause. ▸r/failed-write"""
 
     def _cause(self, number):
         from amaze.helpers import hostos
@@ -269,11 +269,11 @@ class AFailedWriteSaysWhichFailure(unittest.TestCase):
         from amaze.helpers import hostos
 
         exc = OSError(errno.EACCES, os.strerror(errno.EACCES))
-        exc.winerror = winerror  # the constructor DROPS a winerror off Windows (probed: the attribute does not exist), so the shape is built by hand or this test cannot run on the machines that have it
+        exc.winerror = winerror  # OSError drops a winerror off Windows, so set it by hand
         return hostos.why_failed(exc, "/lib/notes.json")
 
     def test_a_held_file_is_recognised_in_its_WINDOWS_spelling(self):
-        """Windows is the ONLY platform where a held destination is real, and there it arrives as EACCES - so an EBUSY-only branch is dead exactly where it was needed."""
+        """A held destination is real only on Windows, and there it arrives as EACCES, not EBUSY."""
         from amaze.helpers import hostos
 
         for winerror, cause in ((32, hostos.FAILED_HELD), (33, hostos.FAILED_HELD),

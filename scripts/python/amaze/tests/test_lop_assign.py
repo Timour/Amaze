@@ -1,4 +1,4 @@
-"""LOP material assignment, tested headlessly: the USD half of a viewport drop, built directly out of real stages, real bindings and real assignmaterial nodes rather than reached by dragging a tile onto a Solaris viewport - which is worth the trouble because the debug log counts drag as the app's single largest activity."""
+"""LOP material assignment headless: the USD half of a viewport drop, on real stages and bindings."""
 
 import os
 import shutil
@@ -21,7 +21,7 @@ from amaze.tests import test_support  # noqa: E402,F401 - import redirects the d
 
 
 class _Scene:
-    """A LOP network with two spheres, a material library holding two materials, and a binding on the first sphere."""
+    """A LOP network: two spheres, a library of two materials, a binding on the first sphere."""
 
     def __init__(self, testcase):
         self.lopnet = hou.node("/stage").createNode("lopnet")
@@ -209,7 +209,7 @@ class TestNameNewAssign(unittest.TestCase):
 
 
 class TestDropChoices(unittest.TestCase):
-    """What the viewport drop menu offers - the decision the panel used to make inline while building QMenu actions, checkable only by dragging onto a viewport and reading the popup."""
+    """What the viewport drop menu offers, decided apart from building the `QMenu`."""
 
     def test_unbound_prim_offers_assign_up_the_ancestor_chain(self):
         scene = _Scene(self)
@@ -222,7 +222,7 @@ class TestDropChoices(unittest.TestCase):
                         labels[0])
 
     def test_bound_prim_offers_swap_first(self):
-        """Swap before assign: rebinding what is already there beats piling another assignment on top and leaving a dead material."""
+        """Swap before assign: rebinding beats piling another assignment on top of a dead material."""
         scene = _Scene(self)
         scene.bind("/sphere_a", "/materials/mat_a")
         choices = lop_assign.drop_choices(scene.stage(), "/sphere_a")
@@ -242,14 +242,14 @@ class TestDropChoices(unittest.TestCase):
                 self.assertTrue(str(payload).startswith("/"))
 
     def test_no_prim_or_no_stage_offers_nothing(self):
-        """A drop on empty viewport space must produce no menu at all - an empty list is what makes the caller bail before popping one."""
+        """A drop on empty viewport space gets an empty list, so the caller pops no menu."""
         scene = _Scene(self)
         self.assertEqual(lop_assign.drop_choices(scene.stage(), ""), [])
         self.assertEqual(lop_assign.drop_choices(None, "/sphere_a"), [])
 
 
 class TestCollectionBindings(unittest.TestCase):
-    """Houdini's assignmaterial writes ONE OF TWO binding styles - a plain material:binding relationship or a collection binding (material:binding:collection:<name>) - and reading only the first left a collection-assigned material with no Swap entry, so the drop menu offered nothing for one object while working on its neighbour; built like a real scene, SOP-created, so the prims are /thing_object1/mesh_0 rather than hand-authored xforms."""
+    """assignmaterial writes a plain or a collection binding; both must offer Swap. SOP-built prims."""
 
     def _sop_scene(self, bind_method):
         lopnet = hou.node("/stage").createNode("lopnet")
@@ -285,7 +285,7 @@ class TestCollectionBindings(unittest.TestCase):
 
 
 class TestAssignNodeLookup(unittest.TestCase):
-    """A viewport drop must not bind into a node nothing displays: find_assignmaterial once returned the first assignmaterial in CREATION order, so a leftover disconnected one won over the live node and the binding landed where nothing shows it - material imported, menu accepted, viewport unchanged, no error and no icon (first_materiallibrary has always filtered to the display chain for the same reason)."""
+    """A viewport drop binds into the assign node on the display chain, never a disconnected one."""
 
     def setUp(self):
         from amaze.core import dragengine
@@ -295,7 +295,7 @@ class TestAssignNodeLookup(unittest.TestCase):
         self.addCleanup(self.lopnet.destroy)
         self.sphere = self.lopnet.createNode("sphere")
 
-        self.stale = self.lopnet.createNode("assignmaterial", "stale_assign")  # a leftover from an earlier session: created FIRST, wired to nothing, which is what the old creation-order lookup went by
+        self.stale = self.lopnet.createNode("assignmaterial", "stale_assign")  # created first, wired to nothing
         self.live = self.lopnet.createNode("assignmaterial", "live_assign")
         self.live.setInput(0, self.sphere)
         self.live.setDisplayFlag(True)
@@ -325,7 +325,7 @@ class TestAssignNodeLookup(unittest.TestCase):
 
 
 class TestLockedContextIsRefused(unittest.TestCase):
-    """Dropping into a locked asset must return a reason, not raise: _drop_context_under_cursor falls back to the network editor's pwd(), which is the locked node when the editor is dived into one, and update_context may CREATE a container to reach the destination - raising hou.PermissionError, a SIBLING of OperationFailed rather than a subclass, straight out of the release slot."""
+    """A drop into a locked asset returns a reason; `hou.PermissionError` is not an OperationFailed."""
 
     def test_the_import_reports_instead_of_raising(self):
         from amaze.render import nodes as nodes_mod
@@ -344,7 +344,7 @@ class TestLockedContextIsRefused(unittest.TestCase):
                                       "locked asset")
 
         handler.update_context = refuse
-        asset = None   # an asset whose FILES exist: the import refuses a missing or empty payload before reaching update_context, so a file-less fixture row would never reach the case under test
+        asset = None   # files must exist, or the import refuses before `update_context`
         for candidate in model.assets:
             payload = os.path.join(
                 prefs.dir, prefs.asset_dir, str(candidate.mat_id) + prefs.ext)

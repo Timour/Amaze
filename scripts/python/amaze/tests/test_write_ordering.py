@@ -1,4 +1,4 @@
-"""Write ordering - the list first, the files second, and the answer honoured: every test pins a defect reproduced before it was fixed, all one shape, and a reader who breaks one of them should see the others. practice.md ▸ THE LIST IS WRITTEN FIRST"""
+"""Write ordering: the list first, the files second, and a refused write destroys nothing."""
 
 import json
 import os
@@ -55,7 +55,7 @@ class _LibraryCase(unittest.TestCase):
         return self.model.find_asset_row_by_id(self.mat_id)
 
     def _refuse_the_index_write(self):
-        """Point the shared connector at ANOTHER library - the refusal that cannot heal itself: save() returns False at the serves() gate, where setting `_write_blocked` by hand would not work because the merge clears that latch on a healthy file."""
+        """Point the shared connector at another library, so save() is refused at the serves() gate."""
         other = tempfile.mkdtemp(prefix="amaze_other_library_")
         self.addCleanup(shutil.rmtree, other, True)
         shutil.copytree(self.prefs.dir, other, dirs_exist_ok=True)
@@ -107,7 +107,7 @@ class RemoveAssetHonoursTheIndexWrite(_LibraryCase):
             "forget mark was never taken back")
 
     def test_a_refused_write_leaks_no_row_into_the_other_library(self):
-        """The restore's set() lands on the shared connector, which a refusal at the serves() gate means is bound to ANOTHER pane's library - the put-back row must not be absorbed into that library's live document."""
+        """The put-back row must not land in the other library the shared connector is bound to."""
         other = tempfile.mkdtemp(prefix="amaze_other_library_")
         self.addCleanup(shutil.rmtree, other, True)
         shutil.copytree(self.prefs.dir, other, dirs_exist_ok=True)
@@ -154,7 +154,7 @@ class RemoveAssetHonoursTheIndexWrite(_LibraryCase):
 
 class AnIdThatCannotNameAFileOwnsNothing(_LibraryCase):
 
-    ESCAPING = "../../../Documents/thesis"    # read verbatim out of library.json by Material.from_dict, which validates nothing - a hand-edited, tampered or badly-merged index
+    ESCAPING = "../../../Documents/thesis"    # Material.from_dict reads ids verbatim, unvalidated
 
     def test_an_escaping_id_owns_nothing_and_a_real_one_stays_inside(self):
         self.assertEqual({}, self.model.asset_files(self.ESCAPING))
@@ -197,7 +197,7 @@ class SwitchingVersionsIsAllOrNothing(unittest.TestCase):
             return 2 if "VERSION-2" in fh.read(64) else 1
 
     def test_a_held_file_leaves_the_base_on_one_version(self):
-        """The realistic failure - a sync client holds one file: measured before the fix, .mat on version 1, .interface on version 2, the ledger naming a third state, and nothing able to see the disagreement."""
+        """A sync client holding one file must not leave .mat and .interface on different versions."""
         real_promote = hostos.promote_scratch
 
         def held_interface(scratch, target):
@@ -220,7 +220,7 @@ class SwitchingVersionsIsAllOrNothing(unittest.TestCase):
             "one version's network behind another's parameters")
 
     def test_an_unarchived_base_is_archived_before_the_switch(self):
-        """A STRUCTURAL update rewrites the base without minting a version (the no-mint rule) - so at switch time the base can hold the only copy of that content, and promoting an archive over it destroys it. The docstring's promise: the base is archived first."""
+        """A structural update mints no version, so the base may be the only copy: archive it first."""
         for kind in (".mat", ".interface"):
             with open(self.base[kind], "w", encoding="utf-8") as fh:
                 fh.write("STRUCTURAL %s" % kind)
@@ -243,7 +243,7 @@ class SwitchingVersionsIsAllOrNothing(unittest.TestCase):
             "update - no archive holds it: %s" % archived)
 
     def test_a_failed_switch_removes_the_kinds_it_created(self):
-        """The rollback restores displaced targets - a kind promoted onto a target that did NOT previously exist must be taken back too, or the base pairs one version's material with another's interface."""
+        """The rollback also removes a kind promoted onto a target that did not exist before."""
         os.remove(self.base[".interface"])
 
         real_promote = hostos.promote_scratch
@@ -285,7 +285,7 @@ class AnAbsentPolicyIsNotAPermissiveOne(unittest.TestCase):
             "a library that never had a policy must not be treated as a "
             "restrictive one - that would make every new library refuse "
             "Update Existing")
-        library_policy.set_allow_overwrite(self.dir, True)    # twice, so snapshot_before_write has something to copy - what the real library looks like; a one-write library has no trace and the permissive default is then correct
+        library_policy.set_allow_overwrite(self.dir, True)    # twice, so snapshot_before_write leaves a trace
         library_policy.set_allow_overwrite(self.dir, False)
         traces = [n for n in os.listdir(self.dir)
                   if n.startswith("policy.json.")]
@@ -394,7 +394,7 @@ class TheThumbnailManifestKeepsAnotherWritersWork(unittest.TestCase):
                          "were dropped by our save")
 
     def test_reconcile_matches_a_folder_stored_with_a_trailing_slash(self):
-        """Locate Folder GUARANTEES the trailing slash the manifest's canonicalised keys lack - the two never matched, so a relocated folder was never reconciled again."""
+        """Locate Folder stores a trailing slash the manifest keys lack; reconcile must still match."""
         images = os.path.join(self.root, "images")
         os.makedirs(images)
         live = os.path.join(images, "keep.png")
@@ -419,7 +419,7 @@ class TheThumbnailManifestKeepsAnotherWritersWork(unittest.TestCase):
 
 
 class TheUndoCopyBoundHoldsWithoutHoudini(unittest.TestCase):
-    """The retirement of old undo copies once reached quarantine_file through a hou-importing module, so from the terminal tool the bound retired nothing - pinned in two halves: the bound RETIRES, and the module it retires through stays free of hou."""
+    """The undo-copy bound retires, and the module it retires through stays free of hou."""
 
     def test_the_bound_retires_the_oldest_copies(self):
         root = tempfile.mkdtemp(prefix="amaze_restore_case_")
@@ -446,7 +446,7 @@ class TheUndoCopyBoundHoldsWithoutHoudini(unittest.TestCase):
         self.assertTrue(retired, "nothing was reported as retired")
 
     def test_the_retirement_does_not_go_through_a_hou_importing_module(self):
-        """The regression guard a behaviour test cannot be: under hython the hou import succeeds, so pointing the retirement back at it would leave the test above green and the terminal tool broken again."""
+        """Under hython the hou import succeeds, so only a source check keeps the terminal tool free of it."""
         source = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
             "helpers", "restore.py")
@@ -472,7 +472,7 @@ class TheUndoCopyBoundHoldsWithoutHoudini(unittest.TestCase):
 class UndoCopiesAreOrderedByTheirName(unittest.TestCase):
 
     def test_the_picker_and_the_retirement_agree(self):
-        """mtime says when a file was TOUCHED; the name says which state it holds, and a backup pass rewrites the former."""
+        """Undo copies sort by name, the state they hold, never by mtime, which a backup pass rewrites."""
         root = tempfile.mkdtemp(prefix="amaze_undo_order_")
         self.addCleanup(shutil.rmtree, root, True)
         target = os.path.join(root, "library.json")
@@ -482,7 +482,7 @@ class UndoCopiesAreOrderedByTheirName(unittest.TestCase):
             name = "%s.bak-before-restore-%s" % (target, stamp)
             with open(name, "w", encoding="utf-8") as fh:
                 fh.write(stamp)
-        os.utime("%s.bak-before-restore-%s" % (target, stamps[0]),    # the oldest STATE, touched most recently - what any backup pass or transport produces
+        os.utime("%s.bak-before-restore-%s" % (target, stamps[0]),    # the oldest state, touched most recently
                  (2 ** 31 - 1, 2 ** 31 - 1))
 
         found = restore_mod.snapshots(target)

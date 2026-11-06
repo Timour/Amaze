@@ -1,4 +1,4 @@
-"""The viewport pick's coordinate space, per Houdini build: queryNodeAtPixel does not apply the device pixel ratio before 22.0.391 (SideFX's changelog scopes the breakage to macOS retina displays), so those builds want the point already multiplied by it - same origin and convention as 22.0.393, one factor apart. Two lessons ride with the behaviour: ONE PROBE SAMPLE IS NOT AN ANSWER, since an earlier single record put the cursor near a corner rather than on the sphere and a candidate hitting looks identical to a candidate being right; and A VIEWPORT REPORTS DEVICE PIXELS WHILE QT REPORTS LOGICAL ONES, which the stubs below model, because a stub reporting logical sizes agrees with the bug instead of catching it."""
+"""Viewport pick space: before H22 on macOS, queryNodeAtPixel wants the point times the dpr."""
 
 import os
 import sys
@@ -21,7 +21,7 @@ from amaze.tests import test_support  # noqa: E402,F401 - redirects the log
 
 
 class _Viewport:
-    """One viewport that records the pixel it was asked about, reporting its size the way Houdini does - FOUR values in DEVICE pixels, a 481x279 widget at dpr 2.0 giving (0, 0, 962, 558) - because a stub reporting logical values carries the same assumption that produced the bug."""
+    """Records each pixel asked; size() is four values in device pixels, as Houdini reports it."""
 
     def __init__(self, w=481, h=279, scale=2.0, hit=None):
         self._device = (0, 0, int(w * scale), int(h * scale))
@@ -58,7 +58,7 @@ class _Viewer:
 
 
 class _Version:
-    """Pin hou.applicationVersion for the duration of a test - real builds, because the gate keys on the build number: 21.0.780 measured, 22.0.393 working, 22.0.390 the build immediately before the Retina picking fix."""
+    """Pin hou.applicationVersion to real builds for a test; the gate keys on the build number."""
 
     BUILDS = {21: (21, 0, 780), 22: (22, 0, 393)}
 
@@ -72,7 +72,7 @@ class _Version:
 
 
 class _Platform:
-    """Pin the OS for the duration of a test - the workaround is macOS-only, matching the scope of the vendor changelog, and Windows reports scale factors too (150% being its common default), so without a platform condition the workaround fires there and breaks picking on a viewport that never had the bug."""
+    """Pin the OS for a test; the workaround is macOS-only, and Windows reports scale factors too."""
 
     def __init__(self, testcase, name):
         for attr, value in (("is_macos", name == "macos"),
@@ -102,7 +102,7 @@ class TestPickCoordinateSpace(unittest.TestCase):
         return vp.asked[0]
 
     def test_the_whole_h22_series_behaves_like_the_h22_we_measured(self):
-        """The breakpoint sits at 22.0.0, NOT at the changelog's 22.0.391 - asserting otherwise was an INFERENCE from the changelog written down as a measurement, and no 22.0.x below 393 has ever run here; the asymmetry is the argument, since leaving a host bug unworked-around on an untested build costs a bug the user would have had anyway, while applying an untested workaround to a build that works breaks something that was fine."""
+        """The breakpoint is 22.0.0, not the changelog's 22.0.391: no H22 build below 393 was measured."""
         for build in ((22, 0, 0), (22, 0, 390), (22, 0, 391),
                       (22, 0, 393), (22, 0, 394)):
             self.assertEqual(
@@ -117,11 +117,11 @@ class TestPickCoordinateSpace(unittest.TestCase):
                 "pixel ratio itself" % (build,))
 
     def test_the_origin_is_not_touched(self):
-        """The scale is the whole workaround: a y-flip creeping back in alongside it puts the pick a viewport away, which is what the previous attempt did and it looked identical to the bug it was meant to fix."""
+        """The scale is the whole workaround: a y-flip alongside it puts the pick a viewport away."""
         for gl_y in (0, 2, 140, 277, 279):
             vp = _Viewport(h=self.HEIGHT, scale=self.SCALE)
             _Version(self, 21)
-            _Platform(self, "macos")  # the OS is pinned for the same reason the BUILD is: this asserts the workaround FIRES, and it is macOS-only, so without the pin the test reads the real host and can only pass on a Mac - which is how it failed on its first Windows run
+            _Platform(self, "macos")  # pinned: this asserts the macOS-only workaround fires
             dragengine._pick(_Viewer(vp), "obj", 100, gl_y,
                              self.SCALE, self.HEIGHT)
             self.assertEqual(
@@ -130,11 +130,11 @@ class TestPickCoordinateSpace(unittest.TestCase):
                 % (gl_y, vp.asked[0][1]))
 
     def test_a_display_without_scaling_is_untouched(self):
-        """dpr 1.0: no missing factor to restore, so the workaround must not fire even on an affected build."""
+        """dpr 1.0: no missing factor to restore, so the workaround must not fire even on an old build."""
         self.assertEqual((441, 2), self._pick_with(21, scale=1.0))
 
     def test_windows_never_gets_the_macos_workaround(self):
-        """The vendor bug is scoped to macOS retina displays while Windows reports scale factors too (150% on a 4K laptop panel), so gating on the Houdini version alone applied the workaround there and broke picking on a viewport that never had the bug - and that shipped, briefly."""
+        """The vendor bug is macOS-only; a scaled Windows or Linux display must not get the workaround."""
         for os_name in ("windows", "linux"):
             self.assertEqual(
                 (441, 2), self._pick_with(21, os_name=os_name),
@@ -145,7 +145,7 @@ class TestViewportResolutionStillWorks(unittest.TestCase):
 
     def test_a_hit_is_reported_as_the_node_path(self):
         _Version(self, 21)
-        _Platform(self, "macos")  # macOS, because the fake viewport only answers at the SCALED point (882, 4): elsewhere the workaround does not fire, the pick asks at (441, 2), and the correct miss reads here as a lost hit
+        _Platform(self, "macos")  # the fake viewport only answers at the scaled point (882, 4)
         vp = _Viewport(hit=(882, 4))
         found = dragengine._pick(_Viewer(vp), "obj", 441, 2, 2.0, 279)
         self.assertEqual("/obj/sphere_object1", found)
@@ -155,7 +155,7 @@ class TestViewportResolutionStillWorks(unittest.TestCase):
             "a miss is not an empty answer")
 
     def test_a_raising_viewport_says_why_instead_of_going_quiet(self):
-        """A bare `return ""` here made the original bug invisible - a miss and a raised exception produced the same log line."""
+        """A miss and a raised exception must not produce the same log line."""
         _Version(self, 21)
 
         class _Boom(_Viewport):

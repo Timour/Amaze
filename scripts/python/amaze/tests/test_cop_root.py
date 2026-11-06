@@ -106,14 +106,14 @@ class ACompanionLandsBesideItsMaterial(unittest.TestCase):
 
 
 class ACompanionThatOnlyWarnedIsKept(unittest.TestCase):
-    """`hou.LoadWarning` is raised on a load that SUCCEEDED, and this restore runs BEFORE the material - so destroying the network it filled leaves every `op:` reference in the material pointing at nothing."""
+    """`hou.LoadWarning` comes from a load that succeeded; the companion stays for the `op:` paths."""
 
     def setUp(self):
         self.handler = nodes.NodeHandler.__new__(nodes.NodeHandler)
         self.handler._created_cop_net = None
 
     def test_LoadWarning_really_is_caught_by_the_broad_clause(self):
-        """The premise: without its own branch above, `except (OSError, hou.Error)` swallows the warning - so the fix is an ordering fix, not an added class."""
+        """Premise: without its own branch above, `except (OSError, hou.Error)` swallows the warning."""
         try:
             raise hou.LoadWarning("Bad node type found: probe")
         except (OSError, hou.Error) as caught:
@@ -124,7 +124,7 @@ class ACompanionThatOnlyWarnedIsKept(unittest.TestCase):
             "ordering this fix depends on has changed")
 
     def test_the_handler_catches_the_warning_before_hou_Error(self):
-        """Source-derived, because the ORDER is the fix: `except hou.LoadWarning` has to sit above `except hou.Error`, or the subclass never gets its own branch."""
+        """Source-derived: `except hou.LoadWarning` sits above `except hou.Error`, its base class."""
         import inspect
         source = inspect.getsource(nodes.NodeHandler.restore_cop_companion)
         warning_at = source.find("except hou.LoadWarning")
@@ -140,7 +140,7 @@ class ACompanionThatOnlyWarnedIsKept(unittest.TestCase):
 
 
 class AWholeNetworkSaveKeepsItsDots(unittest.TestCase):
-    """A network DOT is not a child, so a save built from `children()` drops it and every wire routed through it - the material comes back with missing inputs. ▸r/node-items"""
+    """A dot is not a child, so a save from `children()` drops it and its wires. ▸r/node-items"""
 
     def setUp(self):
         self.parent = hou.node("/obj").createNode("matnet")
@@ -156,13 +156,13 @@ class AWholeNetworkSaveKeepsItsDots(unittest.TestCase):
         return builder, dot
 
     def test_the_dot_is_not_a_child_but_is_an_item(self):
-        """The premise, measured rather than assumed - if Houdini ever makes dots children, the fix below stops being needed."""
+        """Premise, measured: a dot is an item of the network but not one of its children."""
         builder, dot = self._wired_through_a_dot()
         self.assertNotIn(dot, builder.children())
         self.assertIn(dot, builder.allItems())
 
     def test_the_staged_save_asks_for_every_item(self):
-        """Source-derived: the whole-network save must hand `saveItemsToFile` the items, never the children."""
+        """Source-derived: the whole-network save hands `saveItemsToFile` the items, not the children."""
         import inspect
         source = inspect.getsource(
             nodes.NodeHandler._save_staged_with_cop_companion)
@@ -233,7 +233,7 @@ class ALooseSurfaceSaveKeepsAWireThroughADot(unittest.TestCase):
 
 
 class AnImportCarriesNoOneElsesStamp(unittest.TestCase):
-    """`assetlib_id` on an INNER node survives save and reload, so an imported copy would offer to update whichever library entry that inner node was once saved as. ▸r/inherited-stamps"""
+    """An inner `assetlib_id` survives save and reload; an import clears it. ▸r/inherited-stamps"""
 
     def setUp(self):
         self.parent = hou.node("/obj").createNode("matnet")
@@ -253,7 +253,7 @@ class AnImportCarriesNoOneElsesStamp(unittest.TestCase):
         return path
 
     def test_the_premise_a_stamp_survives_the_round_trip(self):
-        """Measured rather than assumed - if Houdini ever stops carrying userData through a save, the sweep stops being needed."""
+        """Premise, measured: userData on an inner node survives a save and reload."""
         path = self._saved_with_a_stale_inner_stamp()
         raw = self.parent.createNode("subnet", "raw")
         raw.loadItemsFromFile(path)
@@ -288,7 +288,7 @@ class AnImportCarriesNoOneElsesStamp(unittest.TestCase):
             "the fixture is not actually nested, so this proves nothing")
 
     def test_a_loose_node_has_its_OWN_stamp_cleared_too(self):
-        """A network-destination import drops loose nodes into the user's own network, and each carries whatever stamp it was saved with."""
+        """A network-destination import drops loose nodes, each carrying the stamp it was saved with."""
         loose = self.parent.createNode("subnet", "loose")
         loose.setUserData("assetlib_id", "STALE-TOP")
         inner = loose.createNode("null", "inner")
@@ -300,7 +300,7 @@ class AnImportCarriesNoOneElsesStamp(unittest.TestCase):
         self.assertIsNone(inner.userData("assetlib_id"))
 
     def test_a_container_keeps_its_own_stamp_by_default(self):
-        """The container sites stamp it themselves right after, so the default must not reach it - and must not touch the user's other nodes."""
+        """The container sites stamp it right after; the default leaves it and other nodes alone."""
         keeper = self.parent.createNode("subnet", "keeper")
         keeper.setUserData("assetlib_id", "THE-REAL-ONE")
         inner = keeper.createNode("null", "inner")

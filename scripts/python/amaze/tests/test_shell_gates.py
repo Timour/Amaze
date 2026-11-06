@@ -1,4 +1,4 @@
-"""The shell gates, tested like code because they are code - never on an exit status, always on the words and a terminal marker, and `$AMAZE` is never left empty here. ▸p/gate-fixture-safety ▸archive/test_shell_gates.py"""
+"""Shell gates are judged on words and an end marker, never exit status. ▸p/gate-fixture-safety"""
 
 import ast
 import os
@@ -123,7 +123,7 @@ def _write(path, text, executable=False):
 
 
 class GateFixture(unittest.TestCase):
-    """A throwaway repo, install and fake `$HFS`, with the real gate scripts copied in and a stub runner. ▸p/gate-fixture-safety"""
+    """A throwaway repo and install, real gate scripts, a stub runner. ▸p/gate-fixture-safety"""
 
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="amaze_gates_")
@@ -161,7 +161,7 @@ class GateFixture(unittest.TestCase):
         _write(os.path.join(self.repo, "scripts", "python", "amaze",
                             "widget.py"), "VALUE = 1\n")
 
-        self.private_hooks = os.path.join(self.tmp, "private-hooks")   # a permissive stand-in for the private repo's process gate, so these tests keep pinning the suite gate; its refusals have their own tests
+        self.private_hooks = os.path.join(self.tmp, "private-hooks")   # a permissive process gate; its refusals have their own tests
         os.makedirs(self.private_hooks)
         _write(os.path.join(self.private_hooks, "pre-push-gate"),
                "#!/bin/sh\nexit 0\n", executable=True)
@@ -210,7 +210,7 @@ class GateFixture(unittest.TestCase):
                   self.branch)
 
     def _commit(self, *relative_paths):
-        """Unpushed commits touching exactly these paths - git answers FORWARD slashes on every platform, `os.path.join` does not."""
+        """Unpushed commits touching exactly these paths; git answers forward slashes on every OS."""
         for relative in relative_paths:
             _write(os.path.join(self.repo, relative), "touched\n")
         self._git("add", "-A")
@@ -256,7 +256,7 @@ class GateFixture(unittest.TestCase):
 
     def ref_line(self, local_sha, local_ref=None, remote_ref=None,
                  remote_sha=None):
-        """One line of git's pre-push stdin - the hook gates on THIS, not HEAD, so a test that fakes it proves nothing."""
+        """One line of git's pre-push stdin; the hook gates on this, not on HEAD."""
         branch_ref = "refs/heads/%s" % self.branch
         return "%s %s %s %s\n" % (local_ref or branch_ref, local_sha,
                                   remote_ref or branch_ref,
@@ -328,7 +328,7 @@ class FixtureFidelityTest(GateFixture):
 class SyncInstallGateTest(GateFixture):
 
     def test_an_uncommitted_file_is_refused_before_anything_ships(self):
-        """The install only ever receives COMMITTED code, untracked included - the mirror copies `scripts/` wholesale."""
+        """The install only receives committed code, untracked included: the mirror copies `scripts/`."""
         _write(os.path.join(self.repo, "scripts", "python", "amaze",
                             "stray.py"), "# this was never committed\n")
 
@@ -356,7 +356,7 @@ class SyncInstallGateTest(GateFixture):
         self.assertIn("REAL install", self.both(result))
 
     def test_a_missing_install_is_refused_before_anything_is_copied(self):
-        """`$AMAZE` pointing nowhere stops at the guard. `$AMAZE` EMPTY is never exercised - it falls back to the package file, which names the REAL install."""
+        """`$AMAZE` pointing nowhere stops at the guard; empty is never run, it names the real install."""
         missing = os.path.join(self.tmp, "not_an_install")
         result = self.sync("green", AMAZE=missing)
         self.assertEqual(result.returncode, 1, self.both(result))
@@ -410,14 +410,14 @@ class PrePushGateTest(GateFixture):
 
 
 class TargetedRunTest(unittest.TestCase):
-    """`start_test.sh <module>` runs THAT module, driven against the argument prologue, which exits before Houdini is looked for so these cost no interpreter start."""
+    """`start_test.sh <module>` runs that module; its argument prologue exits before Houdini starts."""
 
     def _script(self):
         return os.path.join(
             os.path.dirname(os.path.abspath(__file__)), "start_test.sh")
 
     def _run(self, *args):
-        """The timeout is LOAD-BEARING: without it a regressed argument check starts the whole suite recursively from inside itself."""
+        """The timeout matters: a regressed argument check starts the whole suite recursively."""
         try:
             return subprocess.run(["bash", self._script(), *args],
                                   capture_output=True, text=True,
@@ -437,7 +437,7 @@ class TargetedRunTest(unittest.TestCase):
                 self.assertIn("no such test module", result.stderr)
 
     def test_the_refusal_costs_no_interpreter_start(self):
-        """The argument check sits ABOVE the Houdini lookup, or a typo costs a Houdini start to be told it was a typo."""
+        """The argument check sits above the Houdini lookup, so a typo costs no Houdini start."""
         with open(self._script(), encoding="utf-8") as handle:
             source = handle.read()
         check = source.find("no such test module")
@@ -450,7 +450,7 @@ class TargetedRunTest(unittest.TestCase):
             "typo now pays for an interpreter start to be refused")
 
     def test_a_real_module_name_reaches_the_runner(self):
-        """Read from the source, never executed - running it costs a full Houdini start. Pins that the RESOLVED module list is what the runner is handed."""
+        """Read from source, never executed: the runner is handed the resolved module list."""
         with open(self._script(), encoding="utf-8") as handle:
             source = handle.read()
         self.assertIn("run_suite.py\" $run_modules", source,
@@ -531,7 +531,7 @@ class TestEveryTestFileIsInTheGate(unittest.TestCase):
             "add them to MODULES in start_test.sh: %s" % missing)
 
     def test_the_runner_names_no_file_that_is_gone(self):
-        """A deleted file left in `MODULES` fails the import and takes the whole gate down, reading as a broken suite rather than a stale list."""
+        """A deleted file left in `MODULES` fails the import and takes the whole gate down."""
         stale = sorted(self._listed() - self._on_disk() - self.NOT_SUITES)
         self.assertEqual(
             [], stale,
@@ -733,7 +733,7 @@ class TheSuiteRunsOnTheProductionBuild(unittest.TestCase):
 
 
 class EveryToolSpeaksTheResolver(unittest.TestCase):
-    """Every `tools/*.sh` reaching for hython sources the one resolver, and the two recorded trap spellings are banned from the directory."""
+    """Every `tools/*.sh` using hython sources the one resolver; two trap spellings are banned."""
 
     def test_no_tool_carries_the_recorded_traps(self):
         tools = os.path.join(REPO, "tools")

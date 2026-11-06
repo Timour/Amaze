@@ -1,4 +1,4 @@
-"""Selecting a tile never moves the grid: Qt's autoScroll re-scrolls on EVERY currentChanged, a click on a half-cut tile included, which shows as the grid nudging under the cursor. The behavioural test drives the real panel's real view through the path a click takes (a current-index change on the view's own selection model), because a COPY of the setting proves nothing about the shipped view, and the second test pins the property through the grid/list switch - setViewMode() has silently re-applied the movement mode and disarmed dragging before, so construction-time setting needs proof it survives a flip."""
+"""Selecting a tile never moves the grid: Qt autoScroll re-scrolls on every currentChanged."""
 
 import os
 import sys
@@ -21,7 +21,7 @@ from amaze.tests import test_support  # noqa: E402 - redirects the log
 
 
 class TheWheelIsONEEngineForBothViews(unittest.TestCase):
-    """One scroll path, two views, both axes - the handler was Y-ONLY once, letting X fall through to Qt's per-item stepping, so sideways ran accelerated beside up and down once list rows grew wider than the panel, and no test in this suite constructed a QWheelEvent at all before 2026-08-04. Built on BARE views: with no panel above them the handler falls back to `SCROLL_SPEED`, so the arithmetic is a fixed number rather than this machine's `scroll_speed` preference, and the numbers below are the contract. Step 2a of the table migration."""
+    """One scroll path, two views, both axes; bare views fall back to a fixed `SCROLL_SPEED`."""
 
     VIEWS = ("DragDropListView", "DragDropTableView")
 
@@ -74,7 +74,7 @@ class TheWheelIsONEEngineForBothViews(unittest.TestCase):
                     "one notch is not WHEEL_NOTCH_PX at the user's speed")
 
     def test_a_SIDEWAYS_gesture_never_moves_the_view_DOWN(self):
-        """The axis is a choice of scrollbar and only that - visible on the table, since a single-column list has no horizontal range, but pinned on BOTH because falling through to the vertical bar is what a Y-only handler did."""
+        """The axis picks the scrollbar and only that, pinned on both views."""
         for name in self.VIEWS:
             with self.subTest(view=name):
                 view = self._view(name)
@@ -97,14 +97,14 @@ class TheWheelIsONEEngineForBothViews(unittest.TestCase):
 
 
 class SelectingNeverScrollsTheGridTest(unittest.TestCase):
-    """Built against the REAL panel: the property pinned belongs to the shipped thumblist, and a view built by the test would pass with the panel broken."""
+    """Built against the real panel, so the property pinned is on the shipped thumblist."""
 
     @classmethod
     def setUpClass(cls):
-        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))  # the ISOLATED panel: own settings, own library, own caches, no network and NO registered file locations - this is what `_protect_live_settings` stopped being enough for on 2026-08-02, a guard over the settings file and the log alone still letting the panel open the real library, and fixture_panel asserts every path is inside the tempdir before returning
+        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))  # an isolated panel, every path in the tempdir
 
     def test_selecting_a_half_cut_tile_leaves_the_view_where_it_was(self):
-        """A small viewport, a tile that does not fully fit, current moved onto it - the scrollbar must not move; with autoScroll back on Qt scrolls right here and this reads a changed value."""
+        """Current moved onto a half-cut tile in a small viewport leaves the scrollbar where it was."""
         view = self.panel.thumblist
         model = view.model()
         if model is None or model.rowCount() < 2:
@@ -140,14 +140,14 @@ class SelectingNeverScrollsTheGridTest(unittest.TestCase):
             "the grid moved under the selection - the jump is back")
 
     def test_the_view_stays_put_through_the_view_mode_switch(self):
-        """setViewMode() re-applies state behind the caller's back and disarmed dragging once, so both modes must leave the no-self-scrolling contract standing."""
+        """`setViewMode()` re-applies view state, so both modes must keep the view from self-scrolling."""
         kept = self.panel.prefs.view_mode
         self.addCleanup(setattr, self.panel.prefs, "view_mode", kept)
         self.addCleanup(self.panel.apply_view_mode)
         for mode in ("grid", "list"):
             self.panel.prefs.view_mode = mode
             self.panel.apply_view_mode()
-            view = grid.visible_view(self.panel)  # THE VIEW THAT IS UP, not `thumblist` outright, which is the HIDDEN one in list mode - this loop asked the same widget twice while the table it never looked at had autoScroll ON
+            view = grid.visible_view(self.panel)  # the view that is up; `thumblist` is hidden in list mode
             self.assertFalse(
                 view.hasAutoScroll(),
                 "view mode %r turned autoScroll back on - selecting a "

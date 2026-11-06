@@ -1,5 +1,4 @@
-"""The thumbnail engine must not be collected mid-flight. Reopening the panel RELOADS this module and replaces the `engine` singleton, so anything holding the last reference to a running QThread frees it inside its own `run()` - which takes the process down rather than raising. ▸archive/test_thumbnail_shutdown.py
-"""
+"""A reload replaces the `engine` singleton; freeing a running QThread kills the process."""
 
 import gc
 import glob
@@ -30,7 +29,7 @@ from amaze.tests import test_support  # noqa: E402 - import redirects the debug 
 
 
 def _sample_images(count=40):
-    """Real image files - without genuine work the thread finishes before the reload and proves nothing."""
+    """Real image files, so the thread is still working when the reload comes."""
     from amaze.prefs import prefs as prefs_mod
     library = prefs_mod.Prefs()
     library.load()
@@ -63,7 +62,7 @@ class TestThumbnailShutdown(unittest.TestCase):
         engine.shutdown()
 
     def test_module_reload_does_not_orphan_running_threads(self):
-        """The panel-reopen sequence end to end - the handover must stop the old engine's threads BEFORE the collector can reach them."""
+        """Panel reopen end to end: the handover stops the old threads before the collector runs."""
         self._queue(thumbnails.engine, "reload")
         before = thumbnails.engine
         running = [t for t in before._threads if t.isRunning()]
@@ -101,7 +100,7 @@ class TestThumbnailShutdown(unittest.TestCase):
 
 
 class TestPruneWaitsForItsOwnDeliveries(unittest.TestCase):
-    """The 2026-08-29 live loss: the finisher's OWN deliveries can still be queued when its finished-prune runs on a stalled main thread, so the verdict waits one event-loop turn and a real image beats it."""
+    """The deliveries of a loader may still be queued at its prune, so the verdict waits one loop turn."""
 
     def setUp(self):
         self.engine = thumbnails.ThumbnailEngine()
@@ -304,7 +303,7 @@ class TestAConvertIsMissingOnlyWhenItFails(unittest.TestCase):
 
 
 class TestPruneJudgesOnlyItsOwnLoader(unittest.TestCase):
-    """A loader may condemn only its OWN pending keys - the deliveries-before-finished guarantee is PER-THREAD, so judging a sibling drops real images whose signals are still queued, and it sticks because a missing key never falls back to the disk cache."""
+    """A loader condemns only its own keys: deliveries precede finished per thread, not across."""
 
     class _FinishedLoader:
         """Finished, but with its deliveries not yet handled - the state the race turns on."""
@@ -333,7 +332,7 @@ class TestPruneJudgesOnlyItsOwnLoader(unittest.TestCase):
             self.second, self.engine._threads,
             "a finished sibling must stay referenced until its own "
             "finished signal - Qt may still hold queued deliveries from it")
-        _app.processEvents()   # the verdict is one turn deferred now, so the judging is asserted through the turn
+        _app.processEvents()   # the verdict is one turn deferred
         self.assertIsNone(self.engine._states.get("a1"),
                           "the finisher's own unanswered key must be asked for again")
         self.assertEqual(
@@ -349,7 +348,7 @@ class TestPruneJudgesOnlyItsOwnLoader(unittest.TestCase):
 
 
 class TestConvertCancellation(unittest.TestCase):
-    """A worker inside a long iconvert must let go when asked. The `cancelled` callback has to be PASSED - unwired, cancel only takes effect between items, so shutdown waits out the process and then terminates it, orphaning a Houdini subprocess per stuck worker."""
+    """A worker inside a long iconvert lets go when asked, through the passed `cancelled` callback."""
 
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="amaze_cancel_")
@@ -369,7 +368,7 @@ class TestConvertCancellation(unittest.TestCase):
             handle.write(b"\x76\x2f\x31\x01" + b"\0" * 400)
 
     def _children(self):
-        """The pids running THIS test's fake iconvert - `pgrep -P` alone asks only whether there is A child, which another module's leftover satisfies, and that is a false green."""
+        """The pids running the fake iconvert of this test, not any child `pgrep -P` would find."""
         found = subprocess.run(
             ["pgrep", "-P", str(os.getpid())],
             capture_output=True, text=True)
@@ -554,7 +553,7 @@ class OneHandoverForEveryEngine(unittest.TestCase):
 
 
 class TestDeliveriesSurviveAReload(unittest.TestCase):
-    """Two pane tabs is a supported layout. Models connect at CONSTRUCTION and the engine singleton is replaced on every reload, so an existing tab is left wired to a dead engine - its tiles sit on placeholders until the next scroll."""
+    """Models connect at construction; after a reload an open tab still hears the new engine."""
 
     def test_a_model_still_hears_the_engine_after_a_reload(self):
         from amaze.core import library as library_mod

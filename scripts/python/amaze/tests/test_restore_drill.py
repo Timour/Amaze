@@ -1,4 +1,4 @@
-"""The restore drill - the real `tools/restore.py` driven against a COPY of the real library through the failure shapes that happen, because a restore nobody has rehearsed is a belief rather than a capability. NEVER touches the live library. ▸archive/test_restore_drill.py"""
+"""Drills `tools/restore.py` on a copy, never the live library. ▸archive/test_restore_drill.py"""
 
 import json
 import os
@@ -71,7 +71,7 @@ class TestRestoreDrill(unittest.TestCase):
                 "the restore is not actually reversible")
 
     def _undo_named_in(self, stdout):
-        """The undo copy read out of the restore's OWN output, so a name printed but not written - or written but not printed - fails here."""
+        """The undo copy as named in the restore's own output; printed and written must agree."""
         lines = [line for line in stdout.splitlines()
                  if line.startswith("current state saved to ")]
         self.assertEqual(1, len(lines),
@@ -80,7 +80,7 @@ class TestRestoreDrill(unittest.TestCase):
         return os.path.join(self.tmp, lines[0].rsplit(None, 1)[-1])
 
     def test_the_undo_is_restorable_and_the_swap_goes_both_ways(self):
-        """THE UNDO IS DRIVEN, never merely inspected - a preserved copy is not a restorable one, and checking only its bytes hid a restore that overwrote its own source."""
+        """The undo is driven, not inspected: restoring it brings back the replaced state."""
         self.assertEqual(500, self._assets(), "premise")
         first = _run("restore", "--allow-loss", self.target, "bak-3")
         self.assertEqual(first.returncode, 0, first.stderr)
@@ -106,7 +106,7 @@ class TestRestoreDrill(unittest.TestCase):
             "one-way door with two names")
 
     def test_a_second_restore_does_not_delete_the_first_ones_undo(self):
-        """Two restores in a row must leave the starting state somewhere on disk - a shared undo name makes the second one a delete."""
+        """Two restores in a row leave the starting state on disk; a shared undo name would delete it."""
         self.assertEqual(500, self._assets(), "premise")
         first = _run("restore", "--allow-loss", self.target, "bak-3")       # 495
         self.assertEqual(first.returncode, 0, first.stderr)
@@ -124,7 +124,7 @@ class TestRestoreDrill(unittest.TestCase):
         self.assertEqual(495, self._assets(second_undo))
 
     def test_a_snapshot_with_a_byte_order_mark_is_still_restorable(self):
-        """THE TOOL MUST AGREE WITH THE APP ABOUT WHAT IS READABLE, or the recovery tool refuses the one shape the app already filed as healthy."""
+        """The tool reads a BOM snapshot as the app does, so a snapshot the app filed healthy restores."""
         with open(self.target + ".bak-1", "w", encoding="utf-8-sig") as handle:
             json.dump({"assets": self.good["assets"][:497], "tags": []},
                       handle)
@@ -151,7 +151,7 @@ class TestRestoreDrill(unittest.TestCase):
         self.assertEqual(self._assets(), 495)
 
     def test_half_synced_file_is_refused_not_restored(self):
-        """A cloud client can truncate the SNAPSHOT, and restoring garbage over a live index turns one problem into two."""
+        """A snapshot truncated by a cloud client is refused, never restored over a live index."""
         with open(self.target + ".bak-1", "r+", encoding="utf-8") as handle:
             handle.truncate(120)
         result = _run("restore", "--allow-loss", self.target, "bak-1")
@@ -199,7 +199,7 @@ class TestDrillAgainstRealSnapshots(unittest.TestCase):
 
 
 class TestUnreadableSettingsArePreserved(unittest.TestCase):
-    """An unparseable `settings.json` must SURVIVE the session: `load()` returning False leaves pure defaults and the panel opens anyway, so an unconditional save overwrites the real settings with them."""
+    """An unparseable `settings.json` is kept aside before any save writes defaults over it."""
 
     def setUp(self):
         from amaze.prefs import prefs as prefs_mod
@@ -266,7 +266,7 @@ class TestUnreadableSettingsArePreserved(unittest.TestCase):
                         "the refusal latched on a perfectly good load")
 
     def test_a_file_created_this_session_still_gets_a_snapshot(self):
-        """Marking a path done BEFORE checking it exists burns the once-per-session marker on the save that CREATES the file, leaving every later save unprotected."""
+        """The save that creates the file must not burn the once-per-session snapshot marker."""
         self._write_real_settings()          # creates the file
         first = self._prefs()
         first.load()
@@ -280,7 +280,7 @@ class TestUnreadableSettingsArePreserved(unittest.TestCase):
 
 
 class PrefsValidationTest(unittest.TestCase):
-    """`load()` must go through the SETTERS that validate these tokens - assigning straight onto the attributes leaves an invalid value in memory, and the combos then display something other than what is stored."""
+    """`load()` goes through the validating setters, so the combos show what is stored."""
 
     def setUp(self):
         from amaze.prefs import prefs as prefs_mod
@@ -319,7 +319,7 @@ class PrefsValidationTest(unittest.TestCase):
 
 
 class ARestoreThatLosesRecordsMustBeMeantTest(unittest.TestCase):
-    """A snapshot that PARSES is not one worth restoring - a bare `[]` over a full library exits 0 with no warning, which is the tool doing the damage it undoes."""
+    """A snapshot that parses but loses records is refused unless `--allow-loss` is given."""
 
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="amaze_loss_")
@@ -353,7 +353,7 @@ class ARestoreThatLosesRecordsMustBeMeantTest(unittest.TestCase):
 
 
 class TheUndoFamilyIsBoundedTest(unittest.TestCase):
-    """Unique undo names trade overwriting for accumulation, so past the newest N they MOVE to the machine-local quarantine - never deleted, each holds a state that exists nowhere else."""
+    """Past the newest N, undo copies move to the machine-local quarantine, never deleted."""
 
     def setUp(self):
         sys.path.insert(0, os.path.join(REPO, "scripts", "python"))
@@ -408,7 +408,7 @@ class TheUndoFamilyIsBoundedTest(unittest.TestCase):
 
 
 class PrefsLoadNeverRaisesTest(unittest.TestCase):
-    """An exception in `load()` kills the panel during construction with no interface and no message, because `panel.py` re-raises."""
+    """`load()` never raises: `panel.py` re-raises, killing the panel with no message."""
 
     def _prefs_with(self, payload):
         import json
@@ -449,7 +449,7 @@ class PrefsLoadNeverRaisesTest(unittest.TestCase):
             "reaches the sidebar as bogus folders")
 
     def test_a_byte_order_mark_does_not_cost_the_session(self):
-        """EVERY reader of `settings.json` takes utf-8-sig, or one file gets two verdicts - the panel opens empty and refuses saves while the snapshot machinery files the same bytes as known-good."""
+        """Every reader of `settings.json` takes utf-8-sig, so one file never gets two verdicts."""
         import codecs
         import json as json_mod
         from amaze.prefs import prefs as prefs_mod
@@ -470,7 +470,7 @@ class PrefsLoadNeverRaisesTest(unittest.TestCase):
 
 
 class PrefsRefusesToOverwriteTest(unittest.TestCase):
-    """REFUSE OVER OVERWRITE, the clause settings.json was missing."""
+    """A save after a failed load is refused, never written over the unread file."""
 
     def _broken(self):
         from amaze.prefs import prefs as prefs_mod

@@ -1,4 +1,4 @@
-"""Karma -> Redshift: the mirror of Convert to Karma. A saved Karma material's MaterialX network becomes a Redshift material builder whose shader carries the same numbers, whose textures are the SAME files, and whose terminal is wired. ▸r/redshift-nodes"""
+"""Karma to Redshift: the same numbers, the same texture files, a wired terminal. ▸r/redshift-nodes"""
 
 import functools
 import os
@@ -37,7 +37,7 @@ NORMAL = "$AMAZELIB/matX/Test__pkg/textures/test_normal.png"
 
 
 def _karma_material(parent, name="karma_source"):
-    """A real Karma material through the real engine: a standard surface with a colour map, a roughness map through the UV chain, and a normal map."""
+    """A real Karma material: a colour map through a UV chain, a roughness map and a normal map."""
     def produce(builder):
         shader = builder.createNode("mtlxstandard_surface")
         for parm, value in SPEC.items():
@@ -101,10 +101,10 @@ class AKarmaMaterialBecomesARedshiftOne(unittest.TestCase):
                 if c.type().name() == type_name]
 
     def _inputs(self, node):
-        return {c.outputName(): c.inputNode() for c in node.inputConnections()}    # `outputName` is the DESTINATION's input connector; `inputName` names the source's output, `out` on every VOP ▸r/node-connection-names
+        return {c.outputName(): c.inputNode() for c in node.inputConnections()}    # `outputName` names the destination's input ▸r/node-connection-names
 
     def test_the_container_is_a_redshift_builder_the_library_reads_as_redshift(self):
-        self.assertEqual("rs_usd_material_builder", self.builder.type().name())    # Redshift's Solaris container, so the twin can be copied into a LOP material library as well as /mat
+        self.assertEqual("rs_usd_material_builder", self.builder.type().name())    # Redshift's Solaris container, usable in /mat and a LOP library
         handler = nodes.NodeHandler.__new__(nodes.NodeHandler)
         self.assertEqual("Redshift", handler.get_renderer_from_node(self.builder))
         self.assertEqual([], self.report.skipped, self.report.summary_lines())
@@ -184,7 +184,7 @@ class WhatHasNoRedshiftShapeIsReportedNotInvented(unittest.TestCase):
 @unittest.skipUnless(test_support.renderer_loaded("Redshift"),
                      "the Redshift plugin is not loaded")
 class AConstantOnAWireLandsAsAValue(unittest.TestCase):
-    """Downloaded materials expose their dials as mtlxconstant nodes WIRED into inputs (a Tint into the colour multiply, a UV scale into the texcoord multiply). Redshift's math nodes default to zero, so a dropped constant renders black - one twin did, 2026-09-04. ▸r/redshift-nodes"""
+    """Wired mtlxconstant dials land as values; Redshift math nodes default to zero. ▸r/redshift-nodes"""
 
     TINT = (0.5, 0.25, 1.0)
     UV = 5.0
@@ -261,7 +261,7 @@ class AConstantOnAWireLandsAsAValue(unittest.TestCase):
 @unittest.skipUnless(test_support.renderer_loaded("Redshift"),
                      "the Redshift plugin is not loaded")
 class TheLibraryDoorMakesANewRedshiftEntry(unittest.TestCase):
-    """`actions.materials.convert` to Redshift: the saved Karma material is read back from disk, converted, and registered BESIDE the source, never in its place."""
+    """Convert to Redshift reads the saved Karma material and registers the twin beside it."""
 
     @classmethod
     def setUpClass(cls):
@@ -405,7 +405,7 @@ class ABlendWithNoBaseIsReportedNotCrashed(unittest.TestCase):
 @unittest.skipUnless(test_support.renderer_loaded("Redshift"),
                      "the Redshift plugin is not loaded")
 class ALegacyRedshiftMaterialGoesIntoSolaris(unittest.TestCase):
-    """A material saved in the classic `redshift_vopnet` container used to be refused by Copy To /stage. Now the import door rebuilds it into the `rs_usd_material_builder` on the way in, the saved files untouched, so every Redshift material is LOP-capable."""
+    """Import rebuilds a classic `redshift_vopnet` as `rs_usd_material_builder`; files untouched."""
 
     def setUp(self):
         from amaze.core import library as library_mod
@@ -477,7 +477,7 @@ class ALegacyRedshiftMaterialGoesIntoSolaris(unittest.TestCase):
 @unittest.skipUnless(test_support.renderer_loaded("Redshift"),
                      "the Redshift plugin is not loaded")
 class AFirstEditionTwinGoesIntoSolaris(unittest.TestCase):
-    """The twins 1.0.33 saved were a `redshift_vopnet` holding a USD terminal and no classic one. The upgrade used to look for the classic terminal alone, so such a twin arrived in the LOP library with its shader wired to a SECOND USD terminal and the one feeding the suboutput empty (seen 2026-09-04)."""
+    """A `redshift_vopnet` with only a USD terminal imports with one terminal feeding the suboutput."""
 
     def setUp(self):
         from amaze.core import library as library_mod
@@ -534,7 +534,7 @@ class AFirstEditionTwinGoesIntoSolaris(unittest.TestCase):
 @unittest.skipUnless(test_support.renderer_loaded("Redshift"),
                      "the Redshift plugin is not loaded")
 class AnOpenPBRKarmaMaterialConvertsByItsOwnNames(unittest.TestCase):
-    """An mtlxopen_pbr_surface spells its inputs the way the RS OpenPBR material does; the table's standard-surface column read nothing off it, so weights, metalness and textures stayed at defaults while the report said fully converted (audit 2026-09-04)."""
+    """An mtlxopen_pbr_surface converts by its own input names to the RS OpenPBR material."""
 
     def test_values_and_a_texture_cross(self):
         from amaze.render import redshift_converter
@@ -570,7 +570,7 @@ class AnOpenPBRKarmaMaterialConvertsByItsOwnNames(unittest.TestCase):
 @unittest.skipUnless(test_support.renderer_loaded("Redshift"),
                      "the Redshift plugin is not loaded")
 class AWireThroughADotSurvivesTheSolarisRebuild(unittest.TestCase):
-    """moveNodesTo carries nodes only, so a wire through a network dot would die with the old container; the dots are bypassed first. ▸r/node-items"""
+    """moveNodesTo carries nodes only, so dots are bypassed before the rebuild. ▸r/node-items"""
 
     def test_the_dot_routed_input_arrives_wired(self):
         from amaze.render import redshift_converter
@@ -598,7 +598,7 @@ class AWireThroughADotSurvivesTheSolarisRebuild(unittest.TestCase):
 
 
 class _ValuesSource:
-    """A values source with nothing to download: `fetch` answers the record's own payload, the way the measured-dataset sources do."""
+    """A values source with nothing to download: `fetch` answers the record's own payload."""
 
     name = "PhysicallyBased"
 
@@ -609,7 +609,7 @@ class _ValuesSource:
 @unittest.skipUnless(test_support.renderer_loaded("Redshift"),
                      "the Redshift plugin is not loaded")
 class AnOnlineMaterialCanLandAsRedshift(unittest.TestCase):
-    """`matx_import.import_record(..., renderer="Redshift")`: the online record is built as the Karma network it always was, converted, and the Redshift twin is what the library registers."""
+    """An online record builds as Karma, converts, and the library registers the Redshift twin."""
 
     @classmethod
     def setUpClass(cls):
@@ -656,7 +656,7 @@ class AnOnlineMaterialCanLandAsRedshift(unittest.TestCase):
                          tuple(round(v, 3) for v in shaders[0].parmTuple("base_color").eval()))
 
     def test_a_measured_metal_lands_as_a_redshift_metal(self):
-        """A complex-IOR measurement builds a MaterialX conductor with no standard surface; Redshift has no complex IOR, so the twin is a Standard Material at metalness 1 whose base colour is the measured normal-incidence reflectance. ▸r/redshift-nodes"""
+        """A complex-IOR metal becomes metalness 1, base colour its F0 reflectance. ▸r/redshift-nodes"""
         from amaze.core import matx_import, matx_sources
         gold = matx_sources.MatxRecord(
             source="PhysicallyBased", uid="probe-gold", title="Probe Gold",
@@ -687,7 +687,7 @@ class AnOnlineMaterialCanLandAsRedshift(unittest.TestCase):
             self.assertAlmostEqual(want, got, places=4)
 
     def test_the_row_records_its_source_and_id(self):
-        """Where a row came from and which record it is, on the row itself - until 2026-09-04 only the package folder name carried them, and only for downloads after 2026-08-05."""
+        """The row itself records its online source and record id."""
         from amaze.core import matx_import
         record = self._record()
         held = test_support.asset_ids(self.model)

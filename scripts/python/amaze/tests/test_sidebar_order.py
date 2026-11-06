@@ -34,7 +34,7 @@ def _categories(testcase, entries):
 
 
 class SortByNameTest(unittest.TestCase):
-    """The menu's one-off Sort by name: everything below All lands alphabetically, saved at once - and the user drags on from there, so it is not a mode."""
+    """The one-off Sort by name: everything below All lands alphabetically and is saved; not a mode."""
 
     def test_the_categories_land_alphabetically_below_All(self):
         model = _categories(self, ["_All", "b", "Zed", "a"])
@@ -51,21 +51,21 @@ class SortByNameTest(unittest.TestCase):
         save.assert_not_called()
 
     def test_All_keeps_row_zero_even_under_a_name_that_beats_it(self):
-        """The head/rest split, pinned: `abc` sorts before `All`, so a plain sorted() over the whole list would push the All row out of row 0 - the one place the database loader and move_category both refuse to allow."""
+        """The head/rest split: `abc` sorts before `All`, yet All must keep row 0."""
         model = _categories(self, ["_All", "abc", "b"])
         with mock.patch.object(model, "save"):
             model.sort_categories()
         self.assertEqual(["_All", "abc", "b"], model._categories)
 
     def test_a_category_sorts_where_its_LABEL_reads(self):
-        """The sidebar strips a leading underscore for display, so `_WIP` reads WIP and belongs after Apple - sorting the stored spelling put it first."""
+        """The sidebar shows `_WIP` as WIP, so it sorts after Apple, not by its stored spelling."""
         model = _categories(self, ["_All", "Apple", "_WIP"])
         with mock.patch.object(model, "save"):
             model.sort_categories()
         self.assertEqual(["_All", "Apple", "_WIP"], model._categories)
 
     def test_a_non_string_row_does_not_raise(self):
-        """`_categories` comes straight off library.json and normalize_categories only runs from Clean Library, so the sort must survive what the file can hold."""
+        """`_categories` comes raw off library.json, so the sort survives whatever the file holds."""
         model = _categories(self, ["_All", "b", 3])
         with mock.patch.object(model, "save"):
             model.sort_categories()
@@ -73,7 +73,7 @@ class SortByNameTest(unittest.TestCase):
 
 
 class TheSortVerbKeepsTheSidebarStandingSomewhere(unittest.TestCase):
-    """Sort by name lands through a model RESET, which clears the selection and the current index with signals blocked - so the verb has to put the user back where they were, or the grid stays filtered with nothing highlighted."""
+    """Sort by name resets the model, clearing the selection; the verb restores the current row."""
 
     @classmethod
     def setUpClass(cls):
@@ -93,7 +93,7 @@ class TheSortVerbKeepsTheSidebarStandingSomewhere(unittest.TestCase):
 
     def test_the_row_you_were_standing_on_stays_under_you(self):
         section, source = self._section()
-        source.beginResetModel()    # a whole-row-set replacement outside a reset pair leaves the proxy and the selection describing rows that are gone, and a bare layoutChanged is not that pair - it segfaults H21 natively in QItemSelectionModel::select ▸r/model-contracts
+        source.beginResetModel()    # replacing every row needs a reset pair ▸r/model-contracts
         try:
             source._categories[:] = ["_All", "b", "a"]
         finally:
@@ -124,7 +124,7 @@ class TheSortVerbKeepsTheSidebarStandingSomewhere(unittest.TestCase):
 
 
 class DeletingTheLastOfACategoryStandsTheSidebarOnAll(unittest.TestCase):
-    """With empty categories hidden, deleting a category's last asset hides its row - and the grid was left filtered on a category the sidebar no longer shows, its blank reading `"Marble" is empty` under a row that had moved. The delete has to land the sidebar somewhere it can show."""
+    """Deleting the last asset of a hidden-when-empty category lands the sidebar on All."""
 
     @classmethod
     def setUpClass(cls):
@@ -135,7 +135,7 @@ class DeletingTheLastOfACategoryStandsTheSidebarOnAll(unittest.TestCase):
         panel = self.panel
         section = panel.sections["material"]
         proxy, source = section._sidebar_categories()
-        source.set_renderer_filter("karma")    # hiding only happens under a renderer filter: All shows every category, empty ones included, so they can be deleted
+        source.set_renderer_filter("karma")    # empty categories hide only under a renderer filter
         proxy.hide_empty = True
         panel._refresh_sidebar_categories()
         self.assertTrue(

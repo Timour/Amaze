@@ -1,4 +1,4 @@
-"""The Cancel chip on the Section Tab Strip: shows exactly while the conversion bar shows (one visibility door), its verb is the folder switch's pair in the folder switch's order (flush FIRST, then cancel), and a cancelled folder re-queues on revisit rather than being remembered as missing."""
+"""The Cancel chip shows with the conversion bar, flushes then cancels; cancelled work re-queues."""
 
 import ast
 import os
@@ -7,7 +7,7 @@ import sys
 import tempfile
 import unittest
 
-sys.path.insert(    # THREE dirnames up = scripts/python, the directory holding the `amaze` package - the DEV tree, not the install on Houdini's path
+sys.path.insert(    # three dirnames up: the dev tree, not the install
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
@@ -62,7 +62,7 @@ class TheCancelVerb(unittest.TestCase):
                 "still %r" % (key, thumbnails.engine._states.get(key)))
 
     def test_the_bar_is_settled_not_stranded(self):
-        """A cancel has no reload behind it to reset the counters the way a folder switch does, so it must settle the bar itself or the bar waits forever for attempts that were just cancelled."""
+        """No reload resets the counters after a cancel, so the cancel settles the bar itself."""
         self._loaded_keys()
         seen = []
         self.model.progress_changed.connect(
@@ -114,7 +114,7 @@ class TheCancelChip(unittest.TestCase):
         self.assertEqual([], self.fired)
 
     def test_the_chip_centers_on_the_strip_not_the_tray(self):
-        """The chip floats OUTSIDE the tray, so the row's full height is its visual reference - tray-centered it sits 2.5px low against the strip."""
+        """The chip floats outside the tray, so it centers on the full row height."""
         self.tabs.set_cancel_visible(True)
         rect = self.tabs._cancel_rect()
         self.assertIsNotNone(rect)
@@ -140,7 +140,7 @@ class TheChipFollowsTheBar(unittest.TestCase):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
 
     def _file_section_quiet(self):
-        """Enter the File section and settle any batch the fixture itself queued, so the bar below is driven by this test alone."""
+        """Enter the File section and settle any batch the fixture queued."""
         panel = self.panel
         if panel._is_online():
             panel.leave_online_world()
@@ -160,7 +160,7 @@ class TheChipFollowsTheBar(unittest.TestCase):
         self.assertFalse(panel.section_tabs.cancel_visible())
 
     def test_the_chip_survives_a_strip_rebuild(self):
-        """The strip is torn down and rebuilt on an enabled_sections change or a world flip - mid-batch the new strip must show the chip the old one was showing, READ from the bar itself, never re-derived."""
+        """A rebuilt strip reads the chip state from the bar itself, never re-derived."""
         panel = self._file_section_quiet()
         panel._on_file_folder_progress(1, 10)
         panel._build_section_tabs()
@@ -183,7 +183,7 @@ class TheChipFollowsTheBar(unittest.TestCase):
             "are one condition and may never disagree")
 
     def test_the_chip_press_reaches_the_engine(self):
-        """The whole chain: press -> hit -> signal -> panel -> model -> engine, with the flush ahead of the cancel."""
+        """Press, hit, signal, panel, model, engine, with the flush ahead of the cancel."""
         panel = self._file_section_quiet()
         panel._on_file_folder_progress(1, 10)
         panel.section_tabs.resize(600, panel.section_tabs.HEIGHT)
@@ -207,7 +207,7 @@ class TheChipFollowsTheBar(unittest.TestCase):
             "flush-first pair")
 
     def test_the_bar_has_one_visibility_door(self):
-        """Source-derived: the bar's setVisible may appear ONCE in the package, inside the door - a second site is a place the chip and the bar can be made to disagree."""
+        """Source-derived: the bar `setVisible` appears once in the package, inside the door."""
         package_root = os.path.dirname(os.path.dirname(
             os.path.abspath(file_library.__file__)))
         sites = []

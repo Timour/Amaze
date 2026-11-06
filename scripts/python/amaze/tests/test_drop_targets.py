@@ -1,4 +1,4 @@
-"""What a release over a network editor may wire itself to - every scripted sequence's measurements are ▸r/drop-targets."""
+"""What a release over a network editor may wire itself to. ▸r/drop-targets"""
 
 import os
 import sys
@@ -22,7 +22,7 @@ from amaze.tests import test_support  # noqa: E402,F401
 
 
 class ScriptedEditor(object):
-    """Answers exactly what it is told to, and keeps the box it was asked with so a test can pin the RADIUS."""
+    """Answers what it is told and keeps the box it was asked with, so a test can pin the radius."""
 
     def __init__(self, triples, rects, scale=100.0):
         self._triples = triples
@@ -109,7 +109,7 @@ class TestTheConnectorQuestion(DropTargetTest):
                     wanted, dragengine.connector_under_cursor(editor, point))
 
     def test_on_the_body_a_neighbours_stub_does_not_win(self):
-        # released dead centre, a neighbour's input sorting first must not get wired: containment outranks the whole list ▸r/drop-targets
+        # released dead centre, containment outranks a neighbour sorting first ▸r/drop-targets
         body = self.node("crowded_body")
         neighbour = self.node("crowded_neighbour")
         point = hou.Vector2(0.0, 0.0)
@@ -178,7 +178,7 @@ class TestWhatJustLandedIsNeverTheTarget(DropTargetTest):
 
 
 class TestTheWiringSurvivesAStaleConnectorIndex(DropTargetTest):
-    """A connector index is picked during the hover and spent at the RELEASE, so the network has a whole gesture in which to lose it - `setInput` answers a gone index with `hou.InvalidInput`, and a drop that lets that out dies mid-gesture instead of landing quietly. ▸r/drop-targets"""
+    """A connector index gone by the release raises `hou.InvalidInput`; the drop lands unwired."""
 
     def test_a_live_index_still_wires(self):
         # the degrade tests below mean nothing unless this path really reaches `setInput`
@@ -216,7 +216,7 @@ class TestTheWiringSurvivesAStaleConnectorIndex(DropTargetTest):
 
 
 class TestTheGhostTick(DropTargetTest):
-    """The outline follows every move; the expensive target questions run on the engine's tick - a saturated loop reads as an outline that freezes and then leaps. ▸p/drag-move-cost"""
+    """The outline follows every move; costly target questions run on the tick. ▸p/drag-move-cost"""
 
     def setUp(self):
         super().setUp()
@@ -233,7 +233,7 @@ class TestTheGhostTick(DropTargetTest):
                         "a fresh gesture's first move must resolve")
         self.assertFalse(dragengine.ghost_tick(editor, now=t0 + 0.001),
                          "the second move re-asked inside the interval")
-        self.assertTrue(dragengine.ghost_tick(    # 1.01: float subtraction lands a hair under the interval at the exact boundary, and the pin is the cadence, not the boundary
+        self.assertTrue(dragengine.ghost_tick(    # 1.01: float subtraction lands a hair under the exact boundary
             editor, now=t0 + dragengine.PICK_INTERVAL * 1.01))
         self.assertTrue(
             dragengine.ghost_tick(
@@ -257,7 +257,7 @@ class TestTheGhostTick(DropTargetTest):
 
     def test_forbidden_drop_on_wire_skips_the_hit_test(self):
         editor = ScriptedEditor([], {})
-        stub = types.ModuleType("nodegraphprefs")    # a real module object, NOT SimpleNamespace: shiboken's import hook reads `__name__` on H21 and an AttributeError there is swallowed by the gate's own fallback, so the fake silently stopped faking ▸r/module-fakes-need-a-name
+        stub = types.ModuleType("nodegraphprefs")    # a real module, not SimpleNamespace ▸r/module-fakes-need-a-name
         stub.allowDropOnWireNetworkSpecific = lambda _e, _i: False
         with mock.patch.dict(sys.modules, {"nodegraphprefs": stub}):
             found = dragengine.wire_under_cursor(
@@ -320,7 +320,7 @@ class TestTheGhostTick(DropTargetTest):
 class TestTheReachIsTheHostsOwn(DropTargetTest):
 
     def test_it_asks_at_the_drop_radius(self):
-        # the connector snap radius reaches twice the drop radius and put a neighbour's stub in the answer ▸r/drop-targets
+        # the connector snap radius is twice the drop radius and reaches a neighbour ▸r/drop-targets
         target = self.node("radius_probe")
         editor = ScriptedEditor([(target, "output", 0)],
                                 {target: _rect(0.0, 0.0)})
@@ -345,7 +345,7 @@ class TestTheReachIsTheHostsOwn(DropTargetTest):
 
 
 class TestThePreviewSurvivesItsOwnNames(unittest.TestCase):
-    """A rename left `splice_preview` citing a module global that no longer exists, and NameError is not in its catch list - a drag over a wire raised."""
+    """`splice_preview` resolves every module global it names; a NameError escapes its catch list."""
 
     def test_the_splice_preview_reaches_its_shapes(self):
         class _Editor:
@@ -440,7 +440,7 @@ class TheReleaseLandsWhereTheOutlineSnapped(unittest.TestCase):
 
 
 class ATrackedMissIsAnAnswer(unittest.TestCase):
-    """The tracker's genuine miss must reach the clear branch, not re-run the lookup the tracker exists to avoid - once per tick for a whole hover over dead space."""
+    """A tracked miss reaches the clear branch instead of re-running the lookup every tick."""
 
     def _hover(self, *args, **kwargs):
         calls = []

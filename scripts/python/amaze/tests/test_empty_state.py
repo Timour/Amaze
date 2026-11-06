@@ -1,10 +1,10 @@
-"""The empty grid: which blank, whose words, and a button that works - every test aimed at a defect that SHIPPED, the first build passing thirteen and reverting the same day (devlog 480)."""
+"""The empty grid: which blank, whose words, and a button that works."""
 import os
 import shutil
 import unittest
 from unittest import mock
 
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")   # BEFORE the app exists: the first module to build the QApplication picks the Qt platform for the whole hython, and on the native one the class font hash answers QListView 12pt against QTableView 13pt - which fails ANOTHER module's font assert ▸p/first-app-picks-the-platform
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")   # the first QApplication picks the platform ▸p/first-app-picks-the-platform
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from amaze import amazetheme
@@ -12,7 +12,7 @@ from amaze.panel import dragdrop_widgets, empty_state, grid, sections
 from amaze.panel import panel as panel_module
 from amaze.tests import test_support
 
-_app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])    # a widget cannot be built before this exists, and a SUBSET run has no earlier module to have made one
+_app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])    # a subset run may have no earlier module that made one
 
 
 def faces(panel) -> list:
@@ -107,7 +107,7 @@ class TheEngineSaysWhichBlank(unittest.TestCase):
         self.panel = test_support.fixture_panel(self)
 
     def test_a_search_that_matches_nothing_is_not_an_empty_library(self):
-        """THE ONE THE ORIGINAL SKIPPED ITSELF ON - its premise was a `skipTest`, so a filter that failed to bite reported success, and it is an ASSERT here."""
+        """A search matching nothing is its own blank; the filter biting is asserted, never skipped."""
         view = grid.visible_view(self.panel)
         if view.model() is None or not view.model().rowCount():
             self.skipTest("the fixture library has no rows to filter")
@@ -134,7 +134,7 @@ class TheEngineSaysWhichBlank(unittest.TestCase):
 
 
 class TheFavouritesBlankIsItsOwnBlank(unittest.TestCase):
-    """The favourites star over nothing starred used to fall through to the category blank, which quoted an empty category name."""
+    """The favourites star over nothing starred has its own blank, not the category one."""
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
@@ -205,7 +205,7 @@ class TheFavouritesBlankIsItsOwnBlank(unittest.TestCase):
             "the favourites blank would claim no favourites exist")
 
     def test_unstarring_a_multi_selection_lands_on_the_selected_rows(self):
-        """Under favourites-only, the first flip REMOVES its row from the proxy, so proxy indexes mapped inside the loop land on the wrong rows - every selected row must be mapped to source BEFORE any flip."""
+        """Under favourites-only a flip drops its proxy row, so map every row to source before any flip."""
         self._unstar_everything()
         self.panel.grid_toggle_favourite([self.proxy.index(0, 0),
                                           self.proxy.index(1, 0)])
@@ -226,7 +226,7 @@ class TheFavouritesBlankIsItsOwnBlank(unittest.TestCase):
 
 
 class TheButtonCanBeClicked(unittest.TestCase):
-    """DEFECT 2 - a re-set `WA_TransparentForMouseEvents` is caught only by the FIRST of these three, `childAt` and a directly-sent event both bypassing the parent's transparency, so each guards a different failure. ▸r/transparent-for-mouse (devlog 480)"""
+    """Attribute, hit test and real events each guard a different failure. ▸r/transparent-for-mouse"""
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
@@ -268,7 +268,7 @@ class TheButtonCanBeClicked(unittest.TestCase):
 
 
 class TheTextWraps(unittest.TestCase):
-    """DEFECT 1 - no reverted test measured a rendered label at all."""
+    """The rendered label is measured, not assumed."""
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
@@ -277,7 +277,7 @@ class TheTextWraps(unittest.TestCase):
             self.skipTest("no grid pane layout in this fixture")
 
     def test_the_sentence_fills_the_pane_and_is_centred(self):
-        """Both halves, each with its own way of going wrong - at its sizeHint the text clips, capped by a maximum it sits left - measured on a DETACHED page, since `resize` on a managed layout child is undone by the next `activate()`. ▸r/label-centres-itself"""
+        """Fills and centres, on a detached page: activate() undoes a resize. ▸r/label-centres-itself"""
         for width in (900, 500, 250):
             with self.subTest(width=width):
                 page = empty_state.EmptyPage()
@@ -326,7 +326,7 @@ class OnlyOneFaceIsUp(unittest.TestCase):
 
 
 class TheQuoteRidesTheFirstRunBlankOnly(unittest.TestCase):
-    """A section may hang a quotation under its first-run sentence; nothing else carries one, and the page must clear it when moving to a blank that has none."""
+    """Only a first-run blank carries a quotation, and the page clears it on any other blank."""
 
     def test_a_declared_quote_is_a_line_and_an_attribution(self):
         for key, cls in sections.SECTION_INDEX.items():
@@ -351,7 +351,7 @@ class TheQuoteRidesTheFirstRunBlankOnly(unittest.TestCase):
         page = empty_state.page(panel)
         page.say(panel, empty_state.NOTHING_YET, "")
         page.say(panel, empty_state.NO_MATCH, "brick")
-        self.assertTrue(page._quote.isHidden(),    # isHidden, never isVisible: a child of a never-shown parent answers False either way ▸r/qt-text-checklists
+        self.assertTrue(page._quote.isHidden(),    # isHidden: isVisible is False under a never-shown parent ▸r/qt-text-checklists
                         "the quotation stayed up over a blank that "
                         "declares none")
         self.assertEqual("", page._quote.text())
@@ -566,7 +566,7 @@ class AnEmptyLocationIsThePlainGrid(unittest.TestCase):
 
 
 class TheUnreachableBlankPointsAtSomethingReal(unittest.TestCase):
-    """Only a SCAN of a folder clears its unreadable flag, so a folder that was located or removed would go on being named forever."""
+    """Only a scan clears a folder's unreadable flag, so the blank names only a registered folder."""
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
@@ -592,7 +592,7 @@ class TheUnreachableBlankPointsAtSomethingReal(unittest.TestCase):
                          "the blank cannot name the folder it is about")
 
     def test_a_dead_folder_does_not_hijack_another_folders_blank(self):
-        """The blank describes the folder being LOOKED AT - standing in a healthy folder, an empty result must not be blamed on a dead folder elsewhere."""
+        """The blank describes the folder looked at, never a dead folder elsewhere."""
         folders = self.panel.file_folders_model
         registered = folders._folders()
         if not registered:
@@ -610,9 +610,9 @@ class TheUnreachableBlankPointsAtSomethingReal(unittest.TestCase):
             "folder the user is not even looking at")
 
     def test_the_locate_button_moves_the_folder_the_message_names(self):
-        """The blank can be up while the sidebar sits on All, so the verb must SELECT the named folder before handing over to the shared picker."""
+        """With the sidebar on All, the verb selects the named folder before the shared picker runs."""
         folders = self.panel.file_folders_model
-        target = test_support.fresh_files_folder(self)    # a SECOND registered folder, so a verb that simply used whatever was current would still be caught
+        target = test_support.fresh_files_folder(self)    # a second folder, so using the current one is caught
         folders.add_folder(target)
         self.addCleanup(folders.remove_folder, folders.row_of(target))
         self.assertIsNotNone(folders.row_of(target),
