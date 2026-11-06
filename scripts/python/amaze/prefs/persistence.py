@@ -1,4 +1,4 @@
-"""The preferences document: the save/load round trip, the path encoding, and the shared keys' trips to the library. ▸p/store-guards"""
+"""The preferences document: save/load, path encoding, shared keys to the library. ▸p/store-guards"""
 
 import os
 
@@ -8,7 +8,7 @@ from amaze.helpers import hostos
 
 def _settings_value(value):
     """A settings value as the store sees one: anything json can hold."""
-    return value  # returning None is how a normaliser says no, so a stored null reads as an ABSENT key and that key's default wins
+    return value  # None means no: a stored null reads as an absent key and its default wins
 
 
 SPEC = keyed_store.bind(keyed_store.SETTINGS, _settings_value)  # settings.json is a registered store; only the normaliser lives here
@@ -24,11 +24,11 @@ def _encode_path(path):
 
 
 def _decode_path(path):
-    """A stored spelling back to this machine's path through `hostos.expand_storage_path` - the declared inverse of the encoder above - plus the re-home step for a foreign absolute that no longer exists."""
+    """A stored spelling back to this machine's path, re-homing a foreign absolute that is gone."""
     if not isinstance(path, str) or not path:
         return path
     if path.startswith("$AMAZE") or path.startswith("~"):
-        return hostos.expand_storage_path(path)    # ONE grammar with every other reader (locations.py decodes the same spellings) - two expansions disagreeing at the edges made one stored value resolve to two strings
+        return hostos.expand_storage_path(path)    # the one grammar every reader shares
     clean = path.replace("\\", "/")
     rehomed = hostos.rehome(clean)  # asks the disk only for a path under some home folder
     if rehomed != clean and not os.path.exists(clean):
@@ -39,7 +39,7 @@ def _decode_path(path):
 
 
 def _decode_paths(paths):
-    """Decode a list of stored paths: a non-list answers [] and non-strings are dropped, because load() may not raise."""
+    """Decode a list of stored paths: a non-list answers [] and non-strings are dropped."""
     if not isinstance(paths, (list, tuple)):
         return []
     return [_decode_path(p) for p in paths if isinstance(p, str)]
@@ -87,7 +87,7 @@ def _default_sections() -> list:
 
 
 def _through_setter(target, name, value, default):
-    """Assign `value` through `name`'s validating setter, falling back to `default` when the setter rejects it."""
+    """Assign `value` through `name`'s validating setter, or `default` when the setter rejects it."""
     try:
         setattr(target, name, value)
     except (TypeError, ValueError):
@@ -140,9 +140,9 @@ SHARED_KEYS.update({  # every walker and __init__ read this one table ▸p/prefs
 SHARED_KEYS.update({r.samples: (r.samples, "_" + r.samples, r.samples_default)
                     for r in renderers.ALL})
 
-_INTRODUCED_SECTIONS = ("file",)  # sections younger than settings: absent from a saved list without its seen flag means the list predates the section, not a deliberate OFF
+_INTRODUCED_SECTIONS = ("file",)  # sections younger than settings, switched on once when a saved list predates them
 
-USER_KEYS = {  # one user's view state on THIS machine, under `users.<uid>`; stored key -> (property, attribute, default), the default being what a user switch resets to
+USER_KEYS = {  # per-user view state under `users.<uid>`: stored key -> (property, attribute, default)
     "view_mode": ("view_mode", "_view_mode", "grid"),
     "sidebar_width": ("sidebar_width", "_sidebar_width", 0),
     "notes_panel_width":
@@ -161,9 +161,9 @@ USER_KEYS = {  # one user's view state on THIS machine, under `users.<uid>`; sto
         ("file_show_unknown", "_file_show_unknown", True),
     "debug_mode": ("debug_mode", "_debug_mode", False),
     "addon_betas": ("addon_betas", "_addon_betas", False),
-}  # five more per-user keys ride beside every walk of this table, each with a nuance a uniform walk cannot carry
+}  # five more per-user keys are handled by hand beside every walk of this table
 
-USER_RETIRED = tuple(USER_KEYS) + (  # the per-user spellings that leave the flat document once a user exists to carry them; the three File copies mirror per-user state and ride here too
+USER_RETIRED = tuple(USER_KEYS) + (  # per-user spellings that leave the flat document once a user exists
     "thumbsize", "thumbsize_list", "last_file_folder",
     "section_filters", "enabled_sections",
     "file_folders", "file_favorites", "file_location_records") + tuple(
@@ -171,12 +171,12 @@ USER_RETIRED = tuple(USER_KEYS) + (  # the per-user spellings that leave the fla
 
 
 class _Persistence:
-    """The save/load half of `Prefs`, mixed in - it has no state of its own and nothing outside `Prefs` may use it."""
+    """The save/load half of `Prefs`, mixed in; stateless, and for `Prefs` alone."""
 
     def _settings_store(self, reread: bool = False):
         """This machine's settings, through the store - THIS object's own handle, never the shared cache."""
         store = getattr(self, "_settings_handle", None)
-        if store is None or store.path != os.path.join(  # the configuration directory is read off this object, so a handle minted against another one is a handle on the wrong file
+        if store is None or store.path != os.path.join(  # a handle minted for another configuration directory is re-minted
                 str(self.path), keyed_store.SETTINGS):
             store = keyed_store.own_store(SPEC, self)
             self._settings_handle = store
@@ -193,16 +193,16 @@ class _Persistence:
             return False  # a Prefs that cannot say where its configuration lives has no store to ask, so nothing is latched
 
     def save(self) -> None:
-        """Sanitize and save the preferences to disk as json, refusing when the store could not read the existing file."""
+        """Sanitize and save the preferences as json; refuses when the store could not read the file."""
         store = self._settings_store()
         if not store.writable:
             debug.event("prefs", "save refused - settings.json could not "
                         "be read this session", path=self.path)
-            return  # asked BEFORE the push: an object holding pure defaults must not write them into everyone's `prefs.json` either
+            return  # asked before the push, so pure defaults never reach the shared `prefs.json`
         self._push_shared()  # the shared keys go to the LIBRARY first, so the document composed below only ever carries the copy
         self.refresh_data()
         retire = list(self._RETIRED_KEYS)
-        if self._library_user:  # the per-user spellings retire only once a user exists to carry them, so a userless session keeps the old flat shape
+        if self._library_user:  # a userless session keeps the flat shape
             retire.extend(USER_RETIRED)
         composed = self.data    # the commit may merge another pane's values over it
         if store.replace(composed, retire=retire,
@@ -217,7 +217,7 @@ class _Persistence:
             uid: dict(block) for uid, block in stored.items()
             if isinstance(uid, str) and isinstance(block, dict)
         } if isinstance(stored, dict) else {}
-        block = (self._users_blocks.get(self._library_user, {})  # the three File copies sit inside the block once somebody is picked and flat while nobody is, and both shapes are live
+        block = (self._users_blocks.get(self._library_user, {})  # the File copies sit in the block once a user is picked, flat until then
                  if self._library_user else {})
 
         def committed(key):
@@ -241,7 +241,7 @@ class _Persistence:
             if key in self.data and self.data[key] != composed.get(key):    # the merge took theirs
                 setattr(self, setter, decode(self.data[key]))
 
-    _RETIRED_KEYS = (  # keys this build deliberately removed, said out loud because the store's unknown-key courtesy would otherwise re-adopt them off disk on every save
+    _RETIRED_KEYS = (  # keys this build removed; the store would otherwise carry them over on every save
         "star_color_mode", "star_custom_color",
         "texture_folders", "texture_favorites", "last_texture_folder",
         "texture_include_subfolders",
@@ -250,10 +250,10 @@ class _Persistence:
         "hip_folders", "hip_favorites", "last_hip_folder",
         "hip_include_subfolders",
         "file_section_migrated",
-        "version_author",  # load() adopts the value into `library_user` first, so naming it here drops the key without dropping the name
+        "version_author",  # load() adopts the value into `library_user` first
     )
 
-    _RETIRED_KEYS = _RETIRED_KEYS + tuple(SHARED_KEYS) + (  # the shared spellings retire with their values safe: the same save writes the `shared_settings` copy and pushes to the library
+    _RETIRED_KEYS = _RETIRED_KEYS + tuple(SHARED_KEYS) + (  # flat shared spellings; the same save writes `shared_settings` and the library
         "file_folder_names", "file_folder_colors",
         "file_folder_show_all", "file_recursive_folders",
         "file_include_subfolders")
@@ -275,7 +275,7 @@ class _Persistence:
                 continue    # changed here since adopted or pushed: the next push carries it
             value = values[stored]
             if prop is None:
-                if isinstance(value, str):  # the layout quartet is read-only properties over strings the connector composes paths from, so only a string may land
+                if isinstance(value, str):  # the layout quartet takes strings only
                     setattr(self, attr, value)
             else:
                 _through_setter(self, prop, value,
@@ -290,7 +290,7 @@ class _Persistence:
         """The shared keys THIS session changed, into the library's store in ONE write."""
         directory = self.dir
         if not directory or not os.path.isdir(directory):
-            return  # with no library directory the store would write a relative path into the CWD, and a latched store must keep its evidence
+            return  # no library directory: write nothing, never a relative path
         from amaze.core import library_prefs
         if not library_prefs.takes_writes(self):
             return
@@ -304,7 +304,7 @@ class _Persistence:
             self._adopt_shared(follow=True)    # the commit may have merged a peer's keys in
 
     def _user_state_document(self) -> dict:
-        """The current per-user state as its stored keys - ONE composer for the block branch, the flat branch and the switch snapshot."""
+        """The current per-user state as its stored keys."""
         out = {stored: getattr(self, attr)
                for stored, (_prop, attr, _default) in USER_KEYS.items()}
         out["thumbsize"] = self._thumbsize
@@ -313,7 +313,7 @@ class _Persistence:
         out["section_filters"] = dict(self._section_filters)
         out["enabled_sections"] = list(self._enabled_sections)
         out.update(self._sections_seen)
-        out["file_folders"] = _encode_paths(self._file_folders)  # the last-known copies, written from the private fields: the public accessors read the library and would re-enter locations.py mid-save
+        out["file_folders"] = _encode_paths(self._file_folders)  # from the private fields; the public accessors would re-enter locations.py
         out["file_favorites"] = _encode_paths(self._file_favorites)
         out["file_location_records"] = {
             _encode_path(k): dict(v)
@@ -321,14 +321,14 @@ class _Persistence:
         return out
 
     def _apply_user_block(self, block: dict, data: dict) -> None:
-        """The per-user reads, one body for load() and the user switch: block first, flat as the migration-source fallback, the default last."""
+        """Apply the per-user state: the user's block first, then the flat keys, then the default."""
         def stored_value(key, default):
             return block.get(key, data.get(key, default))
 
         for stored, (prop, _attr, default) in USER_KEYS.items():
             _through_setter(self, prop, stored_value(stored, default),
                             default)
-        try:  # the 64-512 clamp holds on every apply: an older build on the other machine may write a size under the risen grid floor
+        try:  # the 64-512 clamp holds on every apply
             self._thumbsize = max(64, min(512, int(
                 stored_value("thumbsize", 128) or 128)))
         except (TypeError, ValueError):
@@ -344,7 +344,7 @@ class _Persistence:
                 str(key): str(label) for key, label in stored.items()
             }
         else:
-            self._section_filters = {}  # settings written before the filter menu served every section: the one remembered renderer becomes Materials' filter, read and never written
+            self._section_filters = {}  # older settings: the one remembered renderer becomes Materials' filter
             previous = data.get("last_renderer", "")
             if previous:
                 self._section_filters["material"] = str(previous)
@@ -355,11 +355,11 @@ class _Persistence:
         self._file_location_records = _decode_records(    # the copy served while the library is out of reach
             stored_value("file_location_records", None))
         stored = stored_value("enabled_sections", None)
-        self._enabled_sections = (  # a list, or the default: `None`, a str, an int and a dict each used to raise out of load() and kill the panel outright
+        self._enabled_sections = (  # a list, or the default for any other stored type
             [s for s in stored if isinstance(s, str)]
             if isinstance(stored, (list, tuple)) else _default_sections())
         self._sections_seen = {}
-        for introduced in _INTRODUCED_SECTIONS:  # a section that did not exist when this state was written cannot have been deliberately disabled, so introduce it once; turning it off afterwards sticks
+        for introduced in _INTRODUCED_SECTIONS:  # a section newer than this state is switched on once; off afterwards sticks
             seen_key = "enabled_sections_seen_%s" % introduced
             if introduced not in self._enabled_sections and \
                     not stored_value(seen_key, False):
@@ -367,8 +367,8 @@ class _Persistence:
             self._sections_seen[seen_key] = True
 
     def _switch_user_state(self, old: str, new: str) -> None:
-        """Change WHOSE view state the attributes describe: snapshot the old user's block, then apply the new one's."""
-        if old:  # the invariant every walk of USER_KEYS leans on: the flat attributes always describe the CURRENT user
+        """Switch the view state to another user: snapshot the old user's block, apply the new one's."""
+        if old:  # the flat attributes always describe the current user
             block = dict(self._users_blocks.get(old, {}))
             block.update(self._user_state_document())
             self._users_blocks[old] = block
@@ -376,7 +376,7 @@ class _Persistence:
             return
         block = self._users_blocks.get(new)
         if block is None:
-            return  # a user with no block on this machine inherits what is on screen, which is what keeps the arrangement across a first mint
+            return  # a user with no block on this machine inherits what is on screen
         self._apply_user_block(dict(block), {})
 
     def forget_user(self, uid) -> None:
@@ -434,18 +434,18 @@ class _Persistence:
                                  if uid not in doomed}
 
     def refresh_data(self) -> dict:
-        """Rebuild self.data as the EXACT dict save() serializes, and return it - one producer, which the debug session snapshot also records."""
+        """Rebuild self.data as the exact dict save() serializes, and return it."""
         self._directory = _normalised_dir(self._directory)
         self.data["directory"] = _encode_path(self._directory)
         self.data["libraries"] = _encode_paths(self.libraries)
-        self.data["shared_settings"] = {  # the last-known COPY, one dict under one key, serving the next session when the library is unreachable; the truth goes through `_push_shared`
+        self.data["shared_settings"] = {  # the last-known copy, for a session whose library is unreachable
             stored: getattr(self, attr)
             for stored, (_prop, attr, _default) in SHARED_KEYS.items()}
         self.data["library_user"] = self._library_user
         self.data["cache_dir"] = _encode_path(self._cache_dir)
         self.data["test_mode"] = self._test_mode
         self.data["test_dir"] = _encode_path(self._test_dir)
-        if self._library_user:  # the per-user state lands in the user's block over what it already carried, so a newer build's block keys survive; flat while nobody is picked
+        if self._library_user:  # into the user's block, keeping keys it already carried; flat while nobody is picked
             block = dict(self._users_blocks.get(self._library_user, {}))
             block.update(self._user_state_document())
             self._users_blocks[self._library_user] = block
@@ -457,26 +457,26 @@ class _Persistence:
         return self.data
 
     def load(self) -> bool:
-        """Load the preferences from disk as json, answering False when there is nothing usable - and NEVER raising, because panel._build re-raises."""
-        store = self._settings_store(reread=True)  # re-read on purpose: panel.py calls this again when Preferences closes and on a library switch, and the job is to answer with what is on DISK
+        """Load the preferences from disk; False when nothing is usable, and it never raises."""
+        store = self._settings_store(reread=True)  # re-read, so the answer is what is on disk now
         if store.state == keyed_store.FRESH:
             debug.event("prefs", "no settings.json yet - opening "
                         "unconfigured", path=self.path)
-            return False  # absent is not broken, and this fires on a fresh install; a latch here would mean the library the user then picks is never persisted
+            return False  # absent is a fresh install, not broken: no latch
         if not store.writable:
             debug.event("prefs", "settings unreadable - opening without a "
                         "library", path=self.path, trace=store.trace)
-            return False  # the store has kept the `.unreadable` copy and told the user; refusing to write for the session is the other half
+            return False  # the store kept the `.unreadable` copy; writes are refused for the session
         data = store.everyones()
-        self.data = dict(data)  # a copy, not the parse result: refresh_data() mutates this and it must not stay aliased into the store's document
-        shared = data.get("shared_settings")  # every shared read below takes the copy first and the flat spelling second, that flat one being the migration source the next save pops
+        self.data = dict(data)  # a copy: refresh_data() mutates it, and the store's document must not change
+        shared = data.get("shared_settings")  # shared reads below take this copy first and the flat spelling second
         if not isinstance(shared, dict):
             shared = {}
         self._library_user = str(data.get("library_user", "") or "").strip()  # WHO, before any per-user read: the identity picks which `users.<uid>` block they load from
         if not self._library_user:
-            self._library_user = str(  # adopted from the retired `version_author`, so an install that has been signing versions keeps that name and its stems still match (▸p/identity-is-chosen)
+            self._library_user = str(  # adopted from the retired `version_author` ▸p/identity-is-chosen
                 data.get("version_author", "") or "").strip()
-        stored = data.get("users")  # per-UID blocks of this machine's per-user keys; a junk shape is dropped rather than raised, and dies on the next save
+        stored = data.get("users")  # per-UID blocks of per-user keys; a junk shape is dropped, never raised
         self._users_blocks = {
             uid: dict(block) for uid, block in stored.items()
             if isinstance(uid, str) and isinstance(block, dict)
@@ -500,8 +500,8 @@ class _Persistence:
             self._directory = ""
         self._directory = _normalised_dir(self._directory)    # a folder saved without its slash glues onto file names
         self._settle_user_blocks()
-        self._adopt_shared()  # a pure READ: no migration runs here, so no caller of load() writes the library - the product surfaces run those instead
-        library = self.dir  # the overlay-aware property, never the raw field: with Test Mode on they name different folders, and on a fresh machine the raw one is empty
+        self._adopt_shared()  # a pure read: load() never writes the library
+        library = self.dir  # the overlay-aware property, never the raw field
         if library and os.path.exists(library):
             return True
         return False

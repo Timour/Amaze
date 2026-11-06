@@ -1,4 +1,4 @@
-"""Five tabs built in code, no .ui file: every control writes into the prefs object IMMEDIATELY, the dialog persists on close, and there is no Cancel."""
+"""Five tabs built in code; every control writes the prefs at once and the dialog saves on close."""
 
 import os
 import platform
@@ -30,15 +30,15 @@ LINK_COLOR = amazetheme.LINK_COLOR   # About-tab links ▸p/one-design-document
 
 PREFS_FRAMES = ("P01", "P02", "P03a", "P03b", "P04", "P05", "P06")   # the drawn frame per page, in tab order; a sub-tab is a page ▸p/one-design-document
 
-VERSION_STEM = branding.APP_NAME + " v"   # what the drawn version line opens with; the number after it is a sample, and the widget goes on to carry the updater's answers
+VERSION_STEM = branding.APP_NAME + " v"   # what the drawn version line opens with
 FORMAT_STEM = amazetheme.LABEL_LIBRARY_FORMAT.split("%")[0]    # P01's drawn Format line opens with it
 APPLY_LINE_STEM = amazetheme.LABEL_UPGRADES_LIBRARY.split("%")[0]    # and the line beside Apply
 
-_logo_cache = None   # rendered once and reused as a QTextDocument resource, so the About page can reference it as an img src
+_logo_cache = None   # rendered once, reused as a QTextDocument resource for the About page
 
 
 def _logo_image(widget=None):
-    """The Amaze wordmark cropped to its ink, since the artboard is mostly transparent; pass the WIDGET it will be drawn into. ▸r/screen-dpr"""
+    """The Amaze wordmark cropped to its ink; pass the widget it is drawn into. ▸r/screen-dpr"""
     global _logo_cache
     dpr = theme.screen_ratio(widget)   # keyed by DPR: rendered for one density and reused on another draws at half resolution
     if isinstance(_logo_cache, dict) and _logo_cache.get("dpr") == dpr:
@@ -66,7 +66,7 @@ def _logo_image(widget=None):
 
 
 def bug_report_url() -> str:
-    """The repo's new-issue page with this machine's three facts in GitHub's documented `body` query parameter - the URL only pre-fills a page in the user's browser, nothing is sent by building or opening it."""
+    """The repo's new-issue URL with this machine's three facts pre-filled in its `body` parameter."""
     from amaze.core import updater
 
     body = ("Amaze: %s\nHoudini: %s\nOS: %s\n\nWhat happened:\n"
@@ -107,7 +107,7 @@ def _show_quietly(widget, value) -> None:
 
 def _chooser_path(path: str) -> str:
     """A folder spelled for `selectFile` and for prefs: forward slashes, trailing one only at a root."""
-    return hostos.canonical_path_key(path) if path else ""   # empty stays empty: `canonical_path_key("")` is `"."`, which would open the chooser on the process working directory
+    return hostos.canonical_path_key(path) if path else ""   # empty stays empty: `canonical_path_key("")` is `"."`
 
 
 def _same_folder(one: str, other: str) -> bool:
@@ -123,9 +123,9 @@ def _ink(label, color: str) -> None:
 
 
 def _content_holder(inner) -> QtWidgets.QWidget:
-    """`inner` (a layout) inside a widget pinned to the drawn content column, so what the page is handed above that width stays empty at the right rather than moving every control. ▸r/tabwidget-adds-eight"""
+    """`inner` (a layout) inside a widget pinned to the drawn content column. ▸r/tabwidget-adds-eight"""
     holder = QtWidgets.QWidget()
-    inner.setContentsMargins(0, 0, 0, 0)    # a layout given to a WIDGET takes the style's own margin, where one added to another layout takes none - the page already carries the drawn margin
+    inner.setContentsMargins(0, 0, 0, 0)    # the page already carries the drawn margin
     holder.setLayout(inner)
     holder.setFixedWidth(theme.ui_px(amazetheme.PREFS_CONTENT_WIDTH))
     return holder
@@ -181,7 +181,7 @@ class _PageLines(QtWidgets.QWidget):
 
 
 class PrefsDialog(base_dialog.AssetDialog):
-    """Preferences on the house shell - live-apply, so no OK/Cancel and the inherited `canceled` is never read; resizable, tabs as the content."""
+    """Preferences on the house shell: live-apply, no OK/Cancel, resizable, tabs as the content."""
 
     FORM_WIDTH = amazetheme.PREFS_FORM_WIDTH
 
@@ -192,10 +192,10 @@ class PrefsDialog(base_dialog.AssetDialog):
         self._prefs = prefs
         keyed_store.refresh_all(prefs)    # a DOOR: every list below reads what peers wrote ▸r/peer-read
         prefs.follow_shared()    # and so do the shared settings this session left alone
-        # the panel owns the library operations and this only forwards; None in tests keeps the other tabs constructable
+        # the panel owns the library operations and this only forwards; None in tests is allowed
         self._panel = panel
         self._file_files_model = file_files_model
-        self._tab_built: dict = {}    # each tab's widgets per KIND in CREATION order, which is what the frame's drawn rects of that kind answer
+        self._tab_built: dict = {}    # each tab's widgets per kind in creation order, matched to the frame's drawn rects
         self._sliders: dict = {}      # the slider `_field_slider_row` built beside each spin box
         self._path_rows: list = []    # every field-and-buttons row, re-spaced once its widgets wear their drawn widths
 
@@ -214,17 +214,17 @@ class PrefsDialog(base_dialog.AssetDialog):
         self.finish(ok_cancel=False,   # a tabbed window keeps its air - the house margin is for compact forms
                     margins=amazetheme.PREFS_DIALOG_MARGIN)
 
-        for combo in self.findChildren(QtWidgets.QComboBox):   # combos never TAKE focus, and this MUST run after setLayout since findChildren walks only the CURRENT tree
+        for combo in self.findChildren(QtWidgets.QComboBox):   # combos never take focus; runs after setLayout so findChildren sees them
             combo.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
         self._pin_pages_to_document()
-        self.resize(   # BOTH numbers come from the document: `self.width()` stood here and is Qt's unshown-widget default of 640x480, so the drawn width was never `FORM_WIDTH` ▸p/one-design-document
+        self.resize(   # both numbers come from the document ▸p/one-design-document
             theme.ui_px(amazetheme.PREFS_FRAME[0]),
             theme.ui_px(amazetheme.PREFS_FRAME[1]),
         )
 
 
     def _tab_page(self):
-        """(page widget, its form layout): every tab is one form with the shared right-aligned label column, top-aligned so short tabs keep their row spacing."""
+        """(page widget, its form layout): one top-aligned form with the shared label column."""
         page = QtWidgets.QWidget()
         outer = QtWidgets.QVBoxLayout(page)
         _m = theme.ui_px(amazetheme.PREFS_PAGE_MARGIN)
@@ -549,7 +549,7 @@ class PrefsDialog(base_dialog.AssetDialog):
             widget.setEnabled(not testing and picked and may_apply)
 
     def set_allow_overwrite(self, checked: bool) -> None:
-        """Write the overwrite policy to the LIBRARY; turning it ON is the direction that exposes other people's work, so that is the direction confirmed."""
+        """Write the overwrite policy to the library; turning it on asks for confirmation first."""
         library_dir = self._prefs.dir
         if checked and not library_policy.allow_overwrite(library_dir):
             answer = hou.ui.displayMessage(  # type: ignore
@@ -694,7 +694,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         page, form = self._tab_page()
 
         self.line_rendersize = QtWidgets.QSpinBox()
-        # range BEFORE value: a fresh QSpinBox clamps to Qt's default 0-99, so setValue(256) landed as 99 and persisted
+        # range before value: a fresh QSpinBox clamps to 0-99
         self.line_rendersize.setRange(*prefs_mod.RENDERSIZE_RANGE)
         self.line_rendersize.setValue(self._prefs.rendersize)
         self.line_rendersize.valueChanged.connect(self.set_rendersize)
@@ -836,7 +836,7 @@ class PrefsDialog(base_dialog.AssetDialog):
     def _build_sections_page(self) -> QtWidgets.QWidget:
         page, form = self._tab_page()
         self._section_boxes = {}
-        for key, label in sections_module.all_sections():   # from the sections THEMSELVES; a hardcoded copy never learned about "hip", so that tab had no switch and was deleted by toggling any other
+        for key, label in sections_module.all_sections():   # read from the registered sections, never a hardcoded list
             box = ui_helpers.ToggleSwitch(label)
             box.setToolTip(ui_helpers.tooltip_text(
                 tooltips.PREFS_SECTION_SWITCH))
@@ -931,7 +931,7 @@ class PrefsDialog(base_dialog.AssetDialog):
                 QtGui.QTextDocument.ResourceType.ImageResource,
                 QtCore.QUrl("amaze_logo"), logo,
             )
-        browser.document().setDefaultStyleSheet(   # links a step darker than body text; Qt's default blue pulls the eye to the credits rather than the page
+        browser.document().setDefaultStyleSheet(   # links a step darker than body text, not Qt's default blue
             "a { color: %s; text-decoration: underline; }" % LINK_COLOR
         )
         browser.setHtml(
@@ -981,7 +981,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         inner.addWidget(browser, 1)
 
         form = self._make_form()
-        self._lbl_version = QtWidgets.QLabel(   # EVERY update answer lands here, not in a popup: this dialog is non-modal by design ▸r/houdini-colour-picker
+        self._lbl_version = QtWidgets.QLabel(   # every update answer lands here, not in a popup ▸r/houdini-colour-picker
             "Amaze version " + branding.APP_VERSION)
         self._lbl_version.setWordWrap(True)
         form.addRow(self._label(""), self._lbl_version)
@@ -1031,7 +1031,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         self._path_rows.append(debug_row)    # the three log buttons take the drawn 8 and 6, not one gap twice
 
         self._add_divider(form)
-        self._cbx_test_mode = ui_helpers.ToggleSwitch("Test Library")   # under Debug Mode but NOT attached to it; both paths are overlays and locations stay isolated both ways
+        self._cbx_test_mode = ui_helpers.ToggleSwitch("Test Library")   # under Debug Mode but independent of it
         self._cbx_test_mode.setChecked(self._prefs.test_mode)
         self._cbx_test_mode.setToolTip(ui_helpers.tooltip_text(
             tooltips.PREFS_TEST_LIBRARY))
@@ -1243,7 +1243,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         self.fill_addon_rows()
 
     def _pin_pages_to_document(self) -> None:
-        """Take every widget on every tab from the frame drawn for that tab, so a node resized in Figma resizes the widget. The editor INSIDE a spin box is left alone - the document draws that box 2 taller and insets its editor by 1. ▸p/one-design-document"""
+        """Size every widget on every tab from the frame drawn for that tab. ▸p/one-design-document"""
         for frame_key in PREFS_FRAMES:
             page = self.frame_page(frame_key)
             drawn_again: dict = {}    # P01 draws `...` twice, so the second browse button takes the second box
@@ -1267,7 +1267,7 @@ class PrefsDialog(base_dialog.AssetDialog):
             self._space_pinned_row(row)
 
     def _space_pinned_row(self, row) -> None:
-        """Give the row the DRAWN gap between each pair, so every widget lands on its drawn x. The frame draws them uneven - P01's cache row leaves 4 then 2 - and one shared spacing puts each widget near its box instead of on it."""
+        """Give the row the drawn gap between each pair, so every widget lands on its drawn x."""
         layout = row.layout()
         items = [layout.itemAt(i) for i in range(layout.count())]
         plan = []
@@ -1287,7 +1287,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         for position, gap in reversed(plan):    # from the END, so the positions ahead of each insert are still the ones planned
             layout.insertSpacing(position, theme.ui_px(gap))
 
-    LABEL_COL = amazetheme.PREFS_LABEL_COL   # ONE fixed label-column width for every row on every tab, matching Houdini's own panes, which CLIP a long label rather than widen
+    LABEL_COL = amazetheme.PREFS_LABEL_COL   # one fixed label-column width for every row on every tab; a long label clips
 
     def _label(self, text: str) -> QtWidgets.QLabel:
         lbl = QtWidgets.QLabel(text)
@@ -1299,7 +1299,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         return lbl
 
     def _data_combo(self, items, attr) -> QtWidgets.QComboBox:
-        """Combo whose entries carry a token in itemData; selecting one writes `self._prefs.<attr>` and saves."""
+        """Combo whose entries carry a token in itemData; a pick writes `self._prefs.<attr>` and saves."""
         combo = QtWidgets.QComboBox()
         for label, token in items:
             combo.addItem(label, token)
@@ -1316,7 +1316,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         return combo
 
     def _path_row(self, line_edit, browse_btn, *extra) -> QtWidgets.QWidget:
-        """A path field, its browse button, and any button after it; the cache row carries a Default beside the browse. The gaps land in `_space_pinned_row`, once every widget in it wears its drawn width."""
+        """A path field, its browse button, and any button after it; gaps land in `_space_pinned_row`."""
         row = QtWidgets.QWidget()
         h = QtWidgets.QHBoxLayout(row)
         h.setContentsMargins(0, 0, 0, 0)
@@ -1357,7 +1357,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         return _call
 
     def _add_divider(self, form: QtWidgets.QFormLayout) -> None:
-        """A 1px group divider as a spanning row; groups carry no title text, like Houdini's own parameter panes."""
+        """A 1px group divider as a spanning row; groups carry no title text."""
         box = QtWidgets.QWidget()
         v = QtWidgets.QVBoxLayout(box)
         v.setContentsMargins(0, theme.ui_px(amazetheme.PREFS_DIVIDER_ABOVE),
@@ -1375,7 +1375,7 @@ class PrefsDialog(base_dialog.AssetDialog):
     def _field_slider_row(
         self, spinbox: QtWidgets.QSpinBox, lo: int, hi: int
     ) -> QtWidgets.QWidget:
-        """Houdini-style numeric row: number field + ClickSlider kept in sync both ways, terminating because setValue with an unchanged value emits nothing."""
+        """Houdini-style numeric row: a number field and a ClickSlider kept in sync both ways."""
         spinbox.setRange(lo, hi)
         spinbox.setButtonSymbols(
             QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons
@@ -1399,7 +1399,7 @@ class PrefsDialog(base_dialog.AssetDialog):
 
     @staticmethod
     def _make_form() -> QtWidgets.QFormLayout:
-        """A QFormLayout configured like the panel's details view, so every group in this dialog reads as the same kind of row."""
+        """A QFormLayout configured like the panel's details view."""
         form = QtWidgets.QFormLayout()
         form.setLabelAlignment(
             QtCore.Qt.AlignmentFlag.AlignRight
@@ -1409,14 +1409,14 @@ class PrefsDialog(base_dialog.AssetDialog):
         form.setFieldGrowthPolicy(
             QtWidgets.QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow
         )
-        form.setHorizontalSpacing(   # EXPLICIT: a style computes label-to-field spacing per widget-type pair, drifting the shared column between tabs
+        form.setHorizontalSpacing(   # explicit, so the shared label column stays put between tabs
             theme.ui_px(amazetheme.PREFS_LABEL_GAP))
         form.setVerticalSpacing(theme.ui_px(amazetheme.PREFS_ROW_GAP))
         return form
 
 
     def change_cache_path(self) -> None:
-        """Pick a custom thumbnail-cache location; an empty selection keeps the current one and existing caches regenerate at the new location on demand."""
+        """Pick a custom thumbnail-cache location; an empty selection keeps the current one."""
         start = _chooser_path(self._prefs.cache_dir or hostos.cache_root())
         path = hou.ui.selectFile(
             start_directory=start, file_type=hou.fileType.Directory
@@ -1429,14 +1429,14 @@ class PrefsDialog(base_dialog.AssetDialog):
         self.line_cache.setText(self._prefs.cache_dir)
 
     def reset_cache_path(self) -> None:
-        """Put the cache back to this machine's own location by CLEARING the preference, never by writing today's default as a literal path; nothing is deleted."""
+        """Put the cache back to this machine's own location by clearing the preference; deletes nothing."""
         self._prefs.cache_dir = ""
         self._prefs.save()
         hostos.set_cache_override("")
         self.line_cache.setText(hostos.cache_root())
 
     def change_test_path(self) -> None:
-        """Pick the folder holding the test lib and cache, SEEDED on the way in: a directory with no index does not load, so an empty folder would answer with a traceback."""
+        """Pick the folder holding the test lib and cache; an empty folder is seeded with an index."""
         start = _chooser_path(self._prefs.test_dir or self._prefs.dir)
         path = hou.ui.selectFile(
             start_directory=start, file_type=hou.fileType.Directory
@@ -1462,7 +1462,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         return users.name_for(self._prefs, uid) if uid else ""
 
     def set_test_mode(self, on: bool) -> None:
-        """Switch the library and cache onto the test folder, or back; turning it on with no folder asks for one first, since the overlay ignores a blank one."""
+        """Switch the library and cache onto the test folder, or back; with no folder it asks for one."""
         name = self._user_name()    # read in the library being left
         self._prefs.save()    # before the switch: unsaved edits belong to the library they were made in
         self._prefs.test_mode = bool(on)
@@ -1480,7 +1480,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         self._apply_test_mode(name)
 
     def _apply_test_mode(self, name: str = "") -> None:
-        """Point the running session at whichever library now applies; the cache is NOT touched, so thumbnails already generated stay valid."""
+        """Point the running session at whichever library now applies; leaves the cache alone."""
         self._sync_test_mode_rows()
         debug.event("prefs", "test library switched",
                     on=self._prefs.test_mode, folder=self._prefs.test_dir,
@@ -1541,15 +1541,15 @@ class PrefsDialog(base_dialog.AssetDialog):
             self._recompose_tile_icons()
 
     def _sync_overwrite_switch(self) -> None:
-        """Re-read the overwrite switch from the library NOW bound - policy.json travels with the library, not with these preferences."""
+        """Re-read the overwrite switch from the library now bound, whose policy.json holds it."""
         _show_quietly(self._cbx_allow_overwrite,
                       library_policy.allow_overwrite(self._prefs.dir))
 
     def clear_texture_cache(self) -> None:
-        """Delete every cached image and geometry thumbnail; they regenerate on the next browse. Scene CAPTURES are untouched - hand-framed, not regenerable, and stored under config_root for that reason."""
+        """Delete every cached image and geometry thumbnail; scene captures are left alone."""
         if not hou.ui.displayConfirmation(
             messages.CONFIRM_CLEAR_THUMBNAIL_CACHE,
-            suppress=hou.confirmType.NoConfirmType,   # NOT the default, which is `hou.confirmType.OverwriteFile` - Houdini's GLOBAL do-not-ask-again flag for file overwrites, so one tick of that box anywhere would let this delete every thumbnail unasked
+            suppress=hou.confirmType.NoConfirmType,   # not the default `OverwriteFile`, Houdini's global do-not-ask-again flag
         ):
             return
         if self._file_files_model is not None:
@@ -1570,16 +1570,16 @@ class PrefsDialog(base_dialog.AssetDialog):
 
     @debug.guarded("prefs.report_bug")
     def report_bug(self) -> None:
-        """Open the pre-filled new-issue page; openUrl answers only whether the OS ACCEPTED the hand-off, and `_open_url` records a refusal. ▸r/github-issue-url"""
+        """Open the pre-filled new-issue page; `_open_url` records a refusal. ▸r/github-issue-url"""
         _open_url(bug_report_url())
 
     def _installable(self):
-        """The release the last check found, when it named a file to fetch; None when there is nothing to install."""
+        """The release the last check found with a file to fetch; None when there is nothing to install."""
         result = self._last_update
         return result if result and getattr(result, "url", "") else None
 
     def _set_update_button(self, offer: bool) -> None:
-        """The one button in its two readings; the tooltip moves with the label, since nothing being downloaded stops being true in the second."""
+        """Set the one button to one of its two readings; the tooltip moves with the label."""
         self._btn_update.setText(
             "Install Update" if offer else "Check for Updates")
         ui_helpers.pin_drawn(   # ONE drawn box for both readings: the word moves, the geometry does not
@@ -1599,7 +1599,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         return updater.updates_library(self._last_update, self._prefs.dir)
 
     def _press_update(self) -> None:
-        """Check, then install: the button only reaches the install once a check has found one, so the press that downloads is never the press that looked."""
+        """Check, then install: the install runs only on a press after a check has found a release."""
         if self._installable() is None:
             self.check_for_updates()
         else:
@@ -1607,7 +1607,7 @@ class PrefsDialog(base_dialog.AssetDialog):
 
     @debug.guarded("prefs.check_for_updates")
     def check_for_updates(self) -> None:
-        """Ask the release feed and say the answer in the version line; it BLOCKS, which is why the button says so - a worker thread would be more machinery than the wait it saves."""
+        """Ask the release feed and say the answer in the version line; blocks until it answers."""
         from amaze.core import updater
 
         self._btn_update.setEnabled(False)
@@ -1618,7 +1618,7 @@ class PrefsDialog(base_dialog.AssetDialog):
             self._last_update = updater.check()
         finally:
             self._btn_update.setEnabled(True)
-            self._set_update_button(   # offered only when the release NAMED a file; one with no archive is offered nowhere rather than offered and then failing
+            self._set_update_button(   # offered only when the release names a file
                 self._installable() is not None)
         self._lbl_version.setText(updater.offer_line(self._last_update, self._prefs.dir))
 
@@ -1653,7 +1653,7 @@ class PrefsDialog(base_dialog.AssetDialog):
             self._set_update_button(self._installable() is not None)
 
     def set_debug_mode(self, checked: bool) -> None:
-        """Takes effect IMMEDIATELY: the engine is reconfigured here as well as on close, so a session can be captured without restarting Houdini."""
+        """Takes effect at once: the engine is reconfigured here as well as on close."""
         self._prefs.debug_mode = checked
         debug.configure(checked)
         if checked:
@@ -1676,8 +1676,8 @@ class PrefsDialog(base_dialog.AssetDialog):
             debug.event("prefs", "could not open log", error=str(exc))
 
     def save_debug_log(self) -> None:
-        """Export the log to a folder the user picks - a DELIBERATE act every time, never a setting, because the file carries their paths and asset names."""
-        start = self._prefs.dir or os.path.expanduser("~")   # `.dir` is the attribute Prefs actually has; a wrong name raises inside a Qt slot, which PySide swallows
+        """Export the log to a folder the user picks each time; the file carries paths and asset names."""
+        start = self._prefs.dir or os.path.expanduser("~")   # `.dir`: a wrong name raises inside a Qt slot, which PySide swallows
         folder = QtWidgets.QFileDialog.getExistingDirectory(
             self, "Save Amaze log to folder", start)
         if not folder:
@@ -1706,13 +1706,13 @@ class PrefsDialog(base_dialog.AssetDialog):
             hostos.reveal_path(target)
 
     def clear_debug_log(self) -> None:
-        # through the ENGINE, not os.remove behind its back: it owns the session header and the flood counters
+        # through the engine, never os.remove: it owns the session header and the flood counters
         ok, reason = debug.clear_log()
         if not ok:
             debug.note(messages.LOG_NOT_CLEARED % reason)
 
     def set_rendersize(self):
-        """RenderSize is ALSO the resolution texture and geometry thumbnails generate at; their caches are keyed by it."""
+        """Set RenderSize, also the thumbnail resolution; the thumbnail caches are keyed by it."""
         self._prefs.rendersize = self.line_rendersize.value()
 
     def _offer_renderer(self, switch, checked) -> None:
@@ -1730,7 +1730,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         self._prefs.scroll_speed = value / 100.0
 
     def set_ram_cache_mb(self, value: int) -> None:
-        """NO save() here, closeEvent persists it: a slider fires valueChanged per mouseMoveEvent, so one drag fsynced settings.json hundreds of times. The live budget still updates immediately."""
+        """Update the live budget at once; no save() here, closeEvent persists it."""
         self._prefs.ram_cache_mb = value
 
     def _recompose_tile_icons(self, _index=None) -> None:
@@ -1746,7 +1746,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         self._prefs.save()
 
     def _on_section_toggled(self, _checked: bool) -> None:
-        """Rebuild enabled_sections in ALL_SECTIONS order, never leaving zero enabled; keys THIS build does not register are carried over untouched, or another build's tabs are deleted by side effect."""
+        """Rebuild enabled_sections in ALL_SECTIONS order, never zero; unregistered keys carry over."""
         order = [k for k, _lbl in sections_module.all_sections()]
         enabled = [k for k in order
                    if k in self._section_boxes
@@ -1776,11 +1776,11 @@ class PrefsDialog(base_dialog.AssetDialog):
 
 
     def closeEvent(self, arg__1: QCloseEvent) -> None:
-        """Save on ANY close path, then finish() the dialog: a plain close only HIDES a QDialog and skips `finished(int)`, which is the non-modal owner's apply hook."""
+        """Save on any close path, then finish() so `finished(int)` reaches the owner's apply hook."""
         self._prefs.save()
         arg__1.accept()
         self.done(0)
 
     def reject(self) -> None:
-        """Esc behaves exactly like the close button: QDialog's reject() hides the window WITHOUT a close event, so Esc would skip the save and the panel's load() would revert the session."""
+        """Esc behaves exactly like the close button, save included."""
         self.close()

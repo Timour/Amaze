@@ -1,4 +1,4 @@
-"""Online sources, one adapter per library, plain stdlib HTTP + JSON (no `hou`): a `package` source ships `.mtlx` + textures translated into VOPs, a `values` source ships measured shader parameters, and the `amazepkg` source lists every entry of every store package as its own tile, read remotely by ranged requests; categories are each source's own, capitalised, unsuffixed (`_cat`). Network hardening: ▸r/matx-network-hardening."""
+"""Online material sources, one adapter per library, stdlib HTTP only. ▸r/matx-network-hardening"""
 
 from __future__ import annotations
 
@@ -38,11 +38,11 @@ def _res_rank(label: str) -> int:
         return -1
 
 
-COLOUR_MAP_STEMS = ("col1", "coll1", "albedo")    # what Poly Haven has shipped a colour map as where its own document says `diff` - read off downloaded packages, one per name ▸r/matx-source-quirks
+COLOUR_MAP_STEMS = ("col1", "coll1", "albedo")    # Poly Haven colour maps named `diff` ▸r/matx-source-quirks
 
 
 def pick_resolution(available, preferred: str) -> str | None:
-    """Exact match, else the NEXT HIGHEST available, else the highest below - a preference is a floor, never a hard failure; None only when nothing is available."""
+    """Exact match, else the next highest, else the highest below; None only when none exist."""
     if not available:
         return None
     ranked = sorted(
@@ -64,7 +64,7 @@ _SSL_CONTEXT = None    # built once - assembling an SSL context parses the whole
 
 
 def _ssl_context():
-    """A context that actually VERIFIES under Houdini - built on the certifi bundle Houdini ships, because its Python has NO system CA chain and the default context fails every https verification. ▸r/matx-network-hardening"""
+    """A verifying SSL context on Houdini's certifi bundle, built once. ▸r/matx-network-hardening"""
     global _SSL_CONTEXT
     if _SSL_CONTEXT is None:
         try:
@@ -72,16 +72,16 @@ def _ssl_context():
 
             _SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
         except Exception as exc:
-            debug.note("no certifi - using the system CA store", error=str(exc))    # a host WITH one verifies fine; one without fails LOUDLY instead of succeeding unverified
+            debug.note("no certifi - using the system CA store", error=str(exc))    # never unverified
             _SSL_CONTEXT = ssl.create_default_context()
     return _SSL_CONTEXT
 
 
-ALLOWED_SCHEMES = ("https",)    # every URL here comes out of a REMOTE JSON document, and urlopen's default opener would fetch file:// - ▸r/matx-network-hardening
+ALLOWED_SCHEMES = ("https",)    # remote JSON supplies every URL here ▸r/matx-network-hardening
 
 
 def _checked_url(url: str) -> str:
-    """`url` when it is one we may fetch, else "" - answered once, so the first request and every redirect are held to it."""
+    """`url` when it is one we may fetch, else ""; the first request and every redirect ask it."""
     scheme = urllib.parse.urlparse(str(url or "")).scheme.lower()
     if scheme in ALLOWED_SCHEMES:
         return str(url)
@@ -106,12 +106,12 @@ def _request(url: str, headers=None):
     req = urllib.request.Request(
         url, headers=dict({"User-Agent": USER_AGENT}, **(headers or {})))
     try:
-        opener = urllib.request.build_opener(    # an opener for the redirect handler alone; the scheme checks keep the default FileHandler unreachable rather than removed - ▸r/matx-network-hardening
+        opener = urllib.request.build_opener(    # https only, redirects too ▸r/matx-network-hardening
             urllib.request.HTTPSHandler(context=_ssl_context()),
             _HttpsOnlyRedirects())
         return opener.open(req, timeout=TIMEOUT)
     except urllib.error.URLError as exc:
-        # NO UNVERIFIED RETRY - a downgrade keyed off ssl.SSLError fires on certificate failure itself; the isinstance below only chooses the SENTENCE. ▸r/matx-network-hardening
+        # never retried unverified; the check below only picks the message ▸r/matx-network-hardening
         reason = getattr(exc, "reason", exc)
         if isinstance(reason, ssl.SSLError):
             host = urllib.parse.urlsplit(url).netloc
@@ -135,7 +135,7 @@ def get_json(url: str):
 
 
 def repair_mtlx_references(mtlx_path: str, dest_dir: str) -> list:
-    """Repoint a downloaded .mtlx at the files actually fetched and report every change - a manifest and its document can disagree on a texture's container, and a missing texture renders BLACK with nothing said. ▸r/matx-source-quirks"""
+    """Repoint a downloaded .mtlx at the files fetched; a list of every change. ▸r/matx-source-quirks"""
     repairs = []
     try:
         with open(mtlx_path, "r", encoding="utf-8") as handle:
@@ -144,7 +144,7 @@ def repair_mtlx_references(mtlx_path: str, dest_dir: str) -> list:
         return repairs
 
     referenced = set(
-        re.findall(r'value="([^"]+\.[A-Za-z][A-Za-z0-9]{1,3})"', text)    # the extension must START with a letter, or value="0.01" reads as file "0" ext "01"
+        re.findall(r'value="([^"]+\.[A-Za-z][A-Za-z0-9]{1,3})"', text)    # extension starts with a letter
     )
     if not referenced:
         return repairs
@@ -163,7 +163,7 @@ def repair_mtlx_references(mtlx_path: str, dest_dir: str) -> list:
             continue
         stem = os.path.splitext(os.path.basename(ref))[0]
         have = on_disk.get(stem)
-        if not have and "_diff_" in stem:    # the document says `diff` where the shipped colour map is named for its variant - one role, several stems ▸r/matx-source-quirks
+        if not have and "_diff_" in stem:    # one colour role, several stems ▸r/matx-source-quirks
             for other in COLOUR_MAP_STEMS:
                 have = on_disk.get(stem.replace("_diff_", "_%s_" % other))
                 if have:
@@ -181,10 +181,10 @@ def repair_mtlx_references(mtlx_path: str, dest_dir: str) -> list:
                 handle.write(text)
         except OSError as exc:
             debug.event("online", "mtlx repair could not be written",
-                        path=mtlx_path, error=str(exc))    # a swallowed write failure once logged the repair as done while every texture rendered black
+                        path=mtlx_path, error=str(exc))
             debug.note(
                 "the texture paths inside the downloaded material "
-                "could not be updated (%s)." % exc, path=mtlx_path)    # the CAUSE only - the caller reports the consequence with the count and name this line does not have
+                "could not be updated (%s)." % exc, path=mtlx_path)    # the cause; the caller reports the rest
             for entry in repairs:
                 entry["fixed_to"] = None
                 entry["error"] = str(exc)
@@ -319,7 +319,7 @@ class MatxRecord:
         self.source = source
         self.uid = uid
         self.title = title
-        self.author = _as_text(author)    # sources send a LIST, a dict of names or a citation string - normalised once so nothing downstream cares
+        self.author = _as_text(author)    # a list, a dict of names or a string, as one string
         self.category = category      # capitalised, unsuffixed (see _cat)
         self.tags = tags or []
         self.preview_url = preview_url
@@ -361,7 +361,7 @@ class MatxSource:
     PREVIEWS = ""    # Amaze's own renders of this source, a hosted zip ▸r/simready-release
 
     def page_url(self, record) -> str:
-        """A link back to where this material came from, for crediting the creators - the exact page where the scheme is known, else the library's home."""
+        """A link to where this material came from: its own page where known, else the library's."""
         return ""
 
     def list_materials(self, search="", offset=0, limit=60) -> list:
@@ -374,21 +374,21 @@ class MatxSource:
         return []
 
     def fetch(self, record, resolution, dest_dir, progress=None) -> dict:
-        """Package sources download+extract and answer {"mtlx": path}, value sources {"values": {...}}; the Amaze source does not fetch - its tiles import by ranged member reads (`read_thumb_to`, `packages.import_entries`). progress(frac) gets 0..1 for THIS record's whole download when given."""
+        """Fetch one record: {"mtlx": path} or {"values": {...}}; progress(0..1) over its download."""
         raise NotImplementedError
 
     def _cat(self, name):
-        """One clean Capitalised category from whatever shape a source sends (a string, a list, absent), unsuffixed - the source is already the View > Online Materials entry you came in through."""
+        """One capitalised category from a string, a list or nothing; "Uncategorized" for none."""
         if isinstance(name, (list, tuple)):
             name = name[0] if name else None
         name = (str(name).strip() if name else "") or "Uncategorized"
         return " ".join(w[:1].upper() + w[1:] for w in name.split())
     def refresh(self):
-        """Drop this source's cache so the next listing rebuilds - Refresh is the user asking us to go and LOOK; table-shipping sources drop their table cache too, so the next load re-queries the live site."""
+        """Drop this source's caches so the next listing rebuilds; never fetches; subclasses call it."""
         self._previews = None    # the hosted pictures' places, owned here: a subclass calls super()
 
     def needs_download(self, record) -> bool:
-        """True when importing fetches bytes - package sources always, a values source only when its shipped table does not know the material."""
+        """True when importing `record` downloads bytes."""
         return getattr(record, "kind", "") != "values"
 
     def with_previews(self, records) -> list:
@@ -435,7 +435,7 @@ class MatxSource:
 
 
 class GPUOpenSource(MatxSource):
-    """AMD GPUOpen MaterialX Library - true .mtlx + texture packages in resolution variants labelled like `1k 8b`, MIT Public Domain."""
+    """AMD GPUOpen MaterialX Library: .mtlx and texture packages per resolution, like `1k 8b`."""
 
     name = "GPUOpen"
     licence = "MIT Public Domain"
@@ -450,13 +450,13 @@ class GPUOpenSource(MatxSource):
         self._categories = None
 
     def refresh(self):
-        self._categories = None    # the next listing re-reads the site's category map - never fetch HERE, refresh() runs on the UI thread
+        self._categories = None    # never fetch here: refresh() runs on the UI thread
         super().refresh()
 
     def _category_map(self):
         if self._categories is not None:
             return self._categories
-        cats = {}    # built LOCALLY, published only on success - caching {} on failure held every material in Uncategorized for the session. ▸r/matx-source-quirks
+        cats = {}    # cached only on success ▸r/matx-source-quirks
         try:
             data = get_json(self.API + "/categories/?limit=100")
             for c in data.get("results", []):
@@ -498,7 +498,7 @@ class GPUOpenSource(MatxSource):
                     category=self._cat(cat),
                     tags=[],
                     preview_url=(
-                        "%s/renders/%s/download_thumbnail/"    # the verified endpoint ("/thumbnail/" 404s), a documented 302 the opener follows
+                        "%s/renders/%s/download_thumbnail/"    # a 302 the opener follows
                         % (self.API, renders[0])
                         if renders else ""
                     ),
@@ -517,7 +517,7 @@ class GPUOpenSource(MatxSource):
             try:
                 p = get_json("%s/packages/%s/" % (self.API, pid))
             except Exception as exc:                        # noqa: BLE001
-                failures.append(str(exc))    # say WHY: an unreachable host and a truly package-less material once produced the identical message
+                failures.append(str(exc))
                 continue
             label = p.get("label") or ""
             if _res_rank(label) > 0:
@@ -526,24 +526,24 @@ class GPUOpenSource(MatxSource):
             debug.event("online", "package lookup failed",
                         source=self.name, title=record.title,
                         errors=failures[:3])
-            debug.note(    # one sentence shape for both unreachable-host notes in this file: the site's NAME, and the HTTP text in the data
+            debug.note(    # the site's name in the sentence, the HTTP text in the data
                 "could not reach %s, so no download sizes are listed "
                 "for %s. Try again in a moment."
                 % (self.name, record.title), errors=failures[:3])
         return found
 
     def _resolved_packages(self, record):
-        """This record's packages, looked up once and cached ON SUCCESS ONLY - caching an empty answer pins a network failure on the material until the next Refresh rebuilds the records. ▸r/matx-source-quirks"""
+        """This record's packages, looked up once, cached on success only. ▸r/matx-source-quirks"""
         cached = record.payload.get("_resolved")
         if cached:
             return cached
-        found = self._packages(record)    # not setdefault: its default evaluates eagerly, which was no cache at all
+        found = self._packages(record)
         if found:
             record.payload["_resolved"] = found
         return found
 
     def resolutions(self, record):
-        pkgs = self._resolved_packages(record)    # each resolution exists twice (8- and 16-bit) - the UI offers resolutions, not bit depths
+        pkgs = self._resolved_packages(record)    # 8- and 16-bit collapse to one resolution
         seen = []
         for res, _pid, _url in pkgs:
             if res not in seen:
@@ -568,10 +568,10 @@ class GPUOpenSource(MatxSource):
             if progress and total:
                 progress(read / total)
 
-        download(chosen, zip_path, on_bytes=on_bytes)    # cleanup below sits IN A FINALLY: a BadZipFile (a captive portal's HTML with a correct length, past the truncation guard) once left the DESTINATION reading as already-downloaded-but-mtlx-less forever - ▸r/matx-source-quirks
+        download(chosen, zip_path, on_bytes=on_bytes)    # the zip is discarded even on failure ▸r/matx-source-quirks
         try:
             with zipfile.ZipFile(zip_path) as zf:
-                safe = []    # member paths come from the NETWORK, and extractall honours ../ and absolute paths - ▸r/matx-network-hardening
+                safe = []    # members that stay inside dest_dir ▸r/matx-network-hardening
                 skipped = []
                 for member in zf.namelist():
                     try:
@@ -590,7 +590,7 @@ class GPUOpenSource(MatxSource):
 
 
 class PolyHavenSource(MatxSource):
-    """Poly Haven textures, CC0 - a real .mtlx per resolution plus an explicit manifest of its textures rather than a zip, so we fetch the document and each include."""
+    """Poly Haven textures, CC0: a .mtlx per resolution, fetched with each texture it includes."""
 
     name = "PolyHaven"
     licence = "CC0"
@@ -644,7 +644,7 @@ class PolyHavenSource(MatxSource):
                 key=_res_rank,
             )
         except Exception as exc:                            # noqa: BLE001
-            # say WHY, as at _packages: an empty list must mean only "the API says there are no mtlx variants". ▸r/matx-source-quirks
+            # a failure is said aloud; [] alone means no mtlx variants ▸r/matx-source-quirks
             debug.event("online", "resolution lookup failed",
                         source=self.name, title=record.title,
                         url=self.API, error=str(exc))
@@ -657,7 +657,7 @@ class PolyHavenSource(MatxSource):
     def fetch(self, record, resolution, dest_dir, progress=None):
         mtlx_all = self._files(record).get("mtlx") or {}
         if not mtlx_all:
-            raise RuntimeError(    # explicit: StopIteration's str() is EMPTY, so the caller's "Download failed: %s" printed nothing after the colon
+            raise RuntimeError(
                 "no .mtlx variants listed for " + record.title)
         entry = mtlx_all.get(resolution) or next(iter(mtlx_all.values()))
         doc = entry.get("mtlx") if isinstance(entry, dict) else None
@@ -667,11 +667,11 @@ class PolyHavenSource(MatxSource):
         mtlx_path = os.path.join(
             dest_dir, os.path.basename(urllib.parse.urlparse(doc["url"]).path)
         )
-        files = [(doc["url"], mtlx_path)]    # the .mtlx plus each referenced texture; progress folds the current file's bytes into "file i of n"
+        files = [(doc["url"], mtlx_path)]    # the .mtlx plus each referenced texture
         unsafe = []
         for rel, info in (doc.get("include") or {}).items():
             try:
-                target = hostos.contained_join(dest_dir, rel)    # the manifest's relative paths come straight from API JSON - ▸r/matx-network-hardening
+                target = hostos.contained_join(dest_dir, rel)    # remote paths ▸r/matx-network-hardening
             except hostos.PathEscape:
                 unsafe.append(rel)
                 continue
@@ -689,10 +689,10 @@ class PolyHavenSource(MatxSource):
 
 
 class PhysicallyBasedSource(MatxSource):
-    """PhysicallyBased - MEASURED reference values, no textures: tier A preset materials (an mtlxstandard_surface set to real aluminium, real gold), the whole dataset ~69 KB of JSON."""
+    """PhysicallyBased: measured reference values, no textures, as preset standard surfaces."""
 
     name = "PhysicallyBased"
-    licence = "CC0 1.0 - physicallybased.info (Anton Palmqvist)"    # stated by the project itself; the vague "see source reference" this replaced was stored verbatim on every import
+    licence = "CC0 1.0 - physicallybased.info (Anton Palmqvist)"    # as the project states it
     kind = "values"
     API = "https://api.physicallybased.info"
     PREVIEWS = ("https://github.com/Timour/AmazePackages/releases/download/"
@@ -701,17 +701,17 @@ class PhysicallyBasedSource(MatxSource):
     def page_url(self, record) -> str:
         return "https://physicallybased.info/"
 
-    TABLE_FILE = "physicallybased_materials.json"    # the shipped dataset browsing reads - instant and offline; the live API is the fallback, never a blocking fetch behind a click
+    TABLE_FILE = "physicallybased_materials.json"    # the shipped dataset, read offline
 
     def __init__(self):
         self._all = None
 
     def refresh(self):
-        self._all = None    # the next load (worker thread) goes to the API - never fetch HERE, refresh() runs on the UI thread
+        self._all = None    # never fetch here: refresh() runs on the UI thread
         super().refresh()
 
     def _usable(self, payload) -> bool:
-        """Is a live response worth preferring over the shipped table - REACHABLE is not CORRECT, so it must look like the dataset: a list of name+colour entries, not dramatically smaller than what ships. ▸r/matx-source-quirks"""
+        """Does a live response look like the dataset, half the shipped size or more? ▸r/matx-source-quirks"""
         if not isinstance(payload, list) or not payload:
             return False
         good = [
@@ -727,13 +727,13 @@ class PhysicallyBasedSource(MatxSource):
                 shipped = len(json.load(handle).get("materials", {}))
         except (OSError, ValueError):
             shipped = 0
-        return len(good) >= max(1, shipped // 2)    # a real shrink happens (withdrawn materials); losing MOST of the set means it is not the dataset
+        return len(good) >= max(1, shipped // 2)
 
     def _table_path(self) -> str:
         return amaze.package_file("res", self.TABLE_FILE)
 
     def _load(self):
-        """The dataset - LIVE when reachable and usable, the shipped table when not; only the catalogue WORKER calls this, so the request never touches the UI thread and the table keeps browsing offline."""
+        """The dataset, live when usable, else the shipped table; call from a worker thread only."""
         if self._all is not None:
             return self._all
         try:
@@ -752,7 +752,7 @@ class PhysicallyBasedSource(MatxSource):
         try:
             with open(self._table_path(), encoding="utf-8") as handle:
                 table = json.load(handle).get("materials", {})
-            self._all = [    # the table is keyed by name; the class expects the API's list-of-dicts shape, name included
+            self._all = [    # the name-keyed table in the API's list-of-dicts shape
                 dict(entry, name=name)
                 for name, entry in sorted(table.items())
             ]
@@ -761,9 +761,9 @@ class PhysicallyBasedSource(MatxSource):
         except (OSError, ValueError) as exc:
             debug.event("online", "PhysicallyBased table unreadable",
                         error=str(exc))
-            live = get_json(self.API + "/materials")    # the transient-first-failure re-fetch, THROUGH _usable, never around it - ▸r/matx-source-quirks
+            live = get_json(self.API + "/materials")    # one re-fetch, through _usable ▸r/matx-source-quirks
             if not self._usable(live):
-                raise ValueError(    # not cached: _all stays None, so a later refresh tries again instead of serving a refusal for the session
+                raise ValueError(    # not cached: a later call tries again
                     "the PhysicallyBased response is not the dataset, "
                     "and the shipped table could not be read"
                 )
@@ -790,7 +790,7 @@ class PhysicallyBasedSource(MatxSource):
                     source=self.name,
                     uid=m.get("name"),
                     title=m.get("name") or "Untitled",
-                    author="Anton Palmqvist",    # NOT m["reference"] - that field is a render URL and once showed as "by https://raw.githubusercontent.com/..."
+                    author="Anton Palmqvist",    # m["reference"] is a render URL, not an author
                     category=self._cat(m.get("category")),
                     tags=m.get("tags") or [],
                     preview_url="",
@@ -809,7 +809,7 @@ class PhysicallyBasedSource(MatxSource):
 
 
 class RGLSource(MatxSource):
-    """EPFL RGL - MEASURED materials, CC0: each ships as a measured BSDF (`tensor_file`), base colour and roughness are DERIVED from it, metalness is the one keyword-based inference (recorded in the import note), and everything else stays at shader default rather than invented. The maths and its earned word-lists: ▸r/rgl-values"""
+    """EPFL RGL measured BSDFs, CC0: colour and roughness derived, metalness inferred. ▸r/rgl-values"""
 
     name = "RGL"
     licence = "CC0 1.0 - EPFL Realistic Graphics Lab"
@@ -819,28 +819,28 @@ class RGLSource(MatxSource):
     PREVIEWS = ("https://github.com/Timour/AmazePackages/releases/download/"
                 "rgl-previews/rgl-previews.zip")
 
-    METAL_WORDS = (    # a measured BSDF cannot state conductor-ness, so the inference is keyword-based, word-boundary, and reported
+    METAL_WORDS = (    # whole words that infer a metal
         "metal", "metallic", "aluminium", "aluminum", "copper", "steel",
         "brass", "bronze", "chrome", "gold", "golden", "silver", "nickel",
         "iron", "titanium", "tin", "zinc", "foil",
     )
 
-    DIELECTRIC_WORDS = (    # these OVERRULE a metal match outright - the earned cases live at ▸r/rgl-values
+    DIELECTRIC_WORDS = (    # these overrule a metal match ▸r/rgl-values
         "vinyl", "wrap", "wrapping", "fabric", "felt", "silk", "velvet",
         "wool", "cotton", "leather", "wood", "ceramic",
         "paint", "primer", "lacquer", "varnish",
     )
 
-    DARKEST_CONDUCTOR = 0.25    # well below the darkest measured metal (Silicon 0.426), well above the dark "metallic" coatings that trip the keywords (0.09)
+    DARKEST_CONDUCTOR = 0.25    # a peak colour below this is never a metal ▸r/rgl-values
 
-    TABLE_FILE = "rgl_materials.json"    # values harvested once from every published measurement - browsing shows real colour instantly, importing needs no download
+    TABLE_FILE = "rgl_materials.json"    # measured values shipped for every published material
 
     def refresh(self):
         self._names = None
         super().refresh()
 
     def needs_download(self, record) -> bool:
-        return str(getattr(record, "uid", "")) not in self.table()    # an unknown-to-the-table material still costs a multi-hundred-KB BSDF - that one DOES need the bar
+        return str(getattr(record, "uid", "")) not in self.table()    # an unknown one fetches its BSDF
 
     def __init__(self):
         self._names = None
@@ -862,7 +862,7 @@ class RGLSource(MatxSource):
         return "%s/%s" % (self.SITE, record.uid)
 
     def _catalogue(self):
-        """Material names, the shipped table UNIONED with the live site - new publications simply appear, only the catalogue WORKER thread calls this, and unreachable means the table alone answers so offline browsing keeps working."""
+        """Material names: the shipped table plus the live site when reachable; worker thread only."""
         if self._names is None:
             names = sorted(self.table().keys())
             try:
@@ -870,7 +870,7 @@ class RGLSource(MatxSource):
                 live = set(re.findall(
                     r"/media/materials/([a-z0-9_]+)/", html
                 ))
-                names = sorted(set(names) | live)    # UNION, not replace - the table's entries carry measured values the scrape does not
+                names = sorted(set(names) | live)    # union, not replace
                 debug.event("online", "RGL catalogue",
                             table=len(self.table()), live=len(live),
                             new=len(live - set(self.table())),
@@ -903,7 +903,7 @@ class RGLSource(MatxSource):
                     preview_url="",       # the tile is drawn, not fetched
                     licence=self.licence,
                     kind="values",
-                    payload={"values": self._values_for(uid), "uid": uid},    # real measured values, so the tile shows the material's own colour; unknown materials carry {} and fill in on import
+                    payload={"values": self._values_for(uid), "uid": uid},    # {} until imported if unknown
                 )
             )
         return self.with_previews(out)
@@ -912,21 +912,21 @@ class RGLSource(MatxSource):
         return []
 
     def fetch(self, record, resolution, dest_dir, progress=None):
-        uid = record.payload.get("uid") or record.uid    # the measurement is a means, not an asset - values sources are called with dest_dir=None, so it lands in the local cache and is reused on the next import
+        uid = record.payload.get("uid") or record.uid    # dest_dir=None caches the BSDF locally
         entry = self.table().get(uid)
         if entry:
-            values = self._values_for(uid)    # already measured at harvest time - no download, no wait
+            values = self._values_for(uid)    # from the table, no download
             return {"values": values,
                     "note": self._note(entry.get("description", ""), values)}
         folder = dest_dir or os.path.join(hostos.cache_root(), "rgl")
         try:
             os.makedirs(folder, exist_ok=True)
         except OSError:
-            folder = dest_dir or tempfile.gettempdir()    # NOT "." - a CWD target dropped .bsdf files wherever Houdini started and made the reuse check depend on it
-        target = hostos.contained_join(    # uid comes from the REMOTE catalogue - safe_filename + contained_join, ▸r/matx-network-hardening
+            folder = dest_dir or tempfile.gettempdir()
+        target = hostos.contained_join(    # uid is remote ▸r/matx-network-hardening
             folder, "%s_rgb.bsdf" % hostos.safe_filename(str(uid)))
         if os.path.exists(target) and not self._is_measurement(target):
-            debug.event("online", "cached RGL measurement is not a "    # a cached error page would otherwise poison this material permanently
+            debug.event("online", "cached RGL measurement is not a "
                         "tensor_file - refetching", uid=uid, path=target)
             try:
                 os.remove(target)
@@ -935,7 +935,7 @@ class RGLSource(MatxSource):
         unread = "%s did not return a measurement (the download is not a tensor_file)" % uid
         fresh = not os.path.exists(target)
         if fresh:
-            on_bytes = None    # a 0..1 FRACTION per fetch's contract - a string here met a numeric clamp as a TypeError, hidden while no caller passed the callback
+            on_bytes = None    # reports a 0..1 fraction to progress
             if progress is not None:
                 def on_bytes(read, total):
                     progress(min(1.0, read / total) if total else 0.0)
@@ -963,7 +963,7 @@ class RGLSource(MatxSource):
         return {"values": values, "note": note, "files": [target]}
 
     def _values_for(self, uid: str) -> dict:
-        """Shading values for one material from the shipped table, in the shape the shader builder and the tile painter expect."""
+        """Shading values for one material from the shipped table, {} for an unknown one."""
         entry = self.table().get(uid)
         if not entry:
             return {}
@@ -979,7 +979,7 @@ class RGLSource(MatxSource):
     @classmethod
     def infer_metal(cls, uid: str, description: str = "",
                     color=None) -> bool:
-        """Metal or dielectric from the name, the measurement description and - when known - what it actually reflects; the MEASUREMENT overrules the words, because no bare conductor is dark. ▸r/rgl-values"""
+        """Metal from name and description; a dark measured `color` overrules the words. ▸r/rgl-values"""
         if color and max(color) < cls.DARKEST_CONDUCTOR:
             return False
         words = set(re.findall(
@@ -1009,7 +1009,7 @@ class RGLSource(MatxSource):
                values.get("metalness"))
         )
 
-    BSDF_MAGIC = b"tensor_file\0"    # every RGL measurement is a Mitsuba tensor_file; anything else is an error page or a truncated download
+    BSDF_MAGIC = b"tensor_file\0"    # every RGL measurement starts with this
 
     @classmethod
     def _is_measurement(cls, path: str) -> bool:
@@ -1022,7 +1022,7 @@ class RGLSource(MatxSource):
 
     @classmethod
     def values_from_bsdf(cls, path: str, uid: str = ""):
-        """(values, note) for one measured file - the whole extraction, a classmethod so it tests without the network; the derivations: ▸r/rgl-values"""
+        """(values, note) for one measured file, no network needed. ▸r/rgl-values"""
         from amaze.core import bsdf_reader
 
         data, _version, fields = bsdf_reader.read(path)
@@ -1038,9 +1038,9 @@ class RGLSource(MatxSource):
         for channel in range(channels):
             start = channel * plane
             chunk = rgb[start:start + plane]
-            colour.append(round(max(0.0, sum(chunk) / len(chunk)), 5))    # clamped at zero: noise around black measures slightly negative, and that is not a colour - figures at ▸r/rgl-values
+            colour.append(round(max(0.0, sum(chunk) / len(chunk)), 5))    # clamped at zero ▸r/rgl-values
 
-        ndf, ndf_shape = bsdf_reader.values(data, fields["ndf"])    # roughness: GGX alpha from the NDF's half-width, alpha = tan(theta_half) / 0.6436 - ▸r/rgl-values
+        ndf, ndf_shape = bsdf_reader.values(data, fields["ndf"])    # GGX alpha from the NDF ▸r/rgl-values
         columns = ndf_shape[-1]
         alphas = []
         for start in range(0, len(ndf), columns):    # a profile per direction; isotropic repeats one
@@ -1096,14 +1096,14 @@ RANGED_BLOCK = 1 << 16
 
 
 class RangedFile:
-    """A seekable read-only file over `get_range(start, end) -> bytes`, block-cached so zipfile's seeks cost a handful of requests - integrity per member is the zip's own CRC under TLS."""
+    """A seekable, read-only, block-cached file over `get_range(start, end) -> bytes`."""
 
     def __init__(self, size: int, get_range, notify=None):
         self.size = int(size)
         self._get = get_range
         self._blocks = {}
         self._pos = 0
-        self.notify = notify    # notify(blocks_held, blocks_total) after every fetched block - what keeps a UI pumping through a long transfer instead of freezing
+        self.notify = notify    # notify(blocks_held, blocks_total) after every fetched block
 
     @property
     def notify(self):
@@ -1245,7 +1245,7 @@ def read_member(bundle, remote, name: str, on_bytes=None) -> bytes:
 
 
 class AmazeSource(MatxSource):
-    """Amaze packages from the official store, per TILE: the store is folders of `.amazepkg` and nothing else, each package a small remote database read with ranged requests - the folder is the category, every ENTRY in every package is one record (palette colours and the manifest entry ride the payload; a plain-file entry becomes a bare tile that lands in the library's import folder), and importing reads only the chosen tiles' members."""
+    """The Amaze store: every entry of every `.amazepkg` one tile, its folder the category."""
 
     name = "Amaze"
     licence = ""
@@ -1256,13 +1256,13 @@ class AmazeSource(MatxSource):
 
     def __init__(self):
         self._lock = threading.Lock()    # the reader caches are shared with worker threads
-        self.refresh()    # the ONE list of this source's caches lives there - a sixth cache declared here but not there would survive the user's explicit Refresh
+        self.refresh()    # declares every cache; add new ones there
 
     PACKAGES_ROOT = "packages"    # categories live UNDER this folder, so the repo root stays free for infrastructure
 
     @classmethod
     def _tree_rows(cls, nodes) -> list:
-        """(category, filename, url, size) for every `packages/<category>/<file>.amazepkg` blob - anything shaped otherwise is invisible."""
+        """(category, filename, url, size) for each `packages/<category>/<file>.amazepkg` blob."""
         rows = []
         for node in nodes:
             path = str(node.get("path") or "")
@@ -1279,7 +1279,7 @@ class AmazeSource(MatxSource):
     def _tree(self) -> list:
         rows = self._tree_rows(get_json(self.TREE_URL).get("tree", ()))
         self._sizes = {url: size for _f, _n, url, size in rows}
-        return [(folder, name, url) for folder, name, url, _s in rows]    # canned test sources override this whole method with 3-tuples, so sizes stay an optional accelerant
+        return [(folder, name, url) for folder, name, url, _s in rows]    # an override may skip _sizes
 
     def _open_package(self, url: str):
         """A zipfile over ranged reads of the hosted package, cached until Refresh - one per url."""
@@ -1289,7 +1289,7 @@ class AmazeSource(MatxSource):
         if bundle is None:    # the network runs outside the lock; the first to finish is kept
             checked = _checked_url(url)
             known = getattr(self, "_sizes", {}).get(url)
-            if known and known <= RANGED_BLOCK:    # the tree already named the size - one plain fetch, no probe-416-refetch round-trip
+            if known and known <= RANGED_BLOCK:    # known small: one plain fetch
                 with _request(checked) as response:
                     tail = response.read()
                 size = len(tail)
@@ -1306,7 +1306,7 @@ class AmazeSource(MatxSource):
                 except urllib.error.HTTPError as exc:
                     if exc.code != 416:
                         raise
-                    with _request(checked) as response:    # the suffix exceeded the object and the CDN answered 416, not the RFC's whole file (▸r/github-ranged-store) - a package this small IS its own tail
+                    with _request(checked) as response:    # 416: the whole package is its tail ▸r/github-ranged-store
                         tail = response.read()
                     size = len(tail)
 
@@ -1342,7 +1342,7 @@ class AmazeSource(MatxSource):
             self._manifests = {}
             self._bundles = {}
             self._remotes = {}    # url -> the RangedFile under each bundle, which import_reader copies
-        self._sizes = {}    # url -> byte size off the tree listing; a package known smaller than one block fetches whole in ONE plain request
+        self._sizes = {}    # url -> byte size off the tree listing
 
     def list_materials(self, search="", offset=0, limit=60) -> list:
         if self._paths is None:
@@ -1543,7 +1543,7 @@ class SimReadySource(MatxSource):
         return {"mtlx": mtlx}
 
 
-SOURCES = (AmazeSource, GPUOpenSource, PolyHavenSource,    # menu order, Amaze FIRST; ambientCG deliberately absent - probed: JPG/PNG zips only, no .mtlx, so it would be a FOURTH source kind (a standard_surface from conventionally-named maps), a v2
+SOURCES = (AmazeSource, GPUOpenSource, PolyHavenSource,    # menu order, Amaze first
            SimReadySource, PhysicallyBasedSource, RGLSource)
 
 

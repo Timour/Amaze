@@ -1,4 +1,4 @@
-"""Registered FILE LOCATIONS and File FAVOURITES, as library stores. Content facts follow the library; only the POINTER to it stays in settings.json, which also keeps a last-known copy so the list still shows when the library is unreachable - write that copy FROM the store, never back into it. Order lives in the local list, not the store (`sort_keys=True` loses it). Records are PER-USER (`user_tagged`); with a library present and no user picked, reads serve the copy and writes refuse. ▸o/keyed-store"""
+"""Registered file locations and File favourites as per-user library stores. ▸o/keyed-store"""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ IDS_FILE = keyed_store.LOCATION_PATHS
 
 LOC_PREFIX = keyed_store.LOC_PREFIX
 
-MIGRATED_KEY = "file_locations_migrated"  # set once the six settings.json keys proved to have landed in the library; `_store_was_lost` clears it on purpose, so the migration is also the recovery path for a deleted or restored-away locations.json
+MIGRATED_KEY = "file_locations_migrated"  # set once the settings keys proved landed in the library
 
 FIELDS = ("registered", "name", "color", "show_all", "recursive",
           "kinds", "pathname")  # the record's fields, each with its own branch in normalise()
@@ -27,14 +27,14 @@ KIND_OTHER = "other"
 SHOWN_BY_DEFAULT = (KIND_IMAGE, KIND_GEO, KIND_HIP)    # what Show ▸ ticks on a new location
 EVERY_KIND = SHOWN_BY_DEFAULT + (KIND_OTHER,)    # the Import location's ticks: a package carries any file
 
-_deferred: set = globals().get("_deferred", set())  # libraries whose migration was tried this session and did not land; survives module reloads for the same reason the registry does
+_deferred: set = globals().get("_deferred", set())  # libraries whose migration did not land this session
 
 
 def normalise(value) -> dict:
-    """A well-formed location record, or {} for junk - `show_all` is the one field whose FALSE is a real value (an override of the global Show Unknown Files preference), so falsy fields are not blanket-dropped."""
+    """A well-formed location record, or {} for junk; `show_all` keeps False, unknown fields pass."""
     if not isinstance(value, dict):
         return {}
-    known = FIELDS  # the ONE list of the record's fields; unknown fields ride along - a newer build's field must survive an older build's rewrite - and a field added to FIELDS needs its own branch below or its write vanishes here
+    known = FIELDS  # a field added to FIELDS needs its own branch below or its write vanishes
     record = {k: v for k, v in value.items() if k not in known}
     if value.get("registered"):
         record["registered"] = True
@@ -57,14 +57,14 @@ def normalise(value) -> dict:
 
 
 def normalise_favourite(value) -> dict:
-    """A star - stored as a record rather than a bare true so the file has somewhere to grow and reads like every other store in the engine."""
+    """A star, stored as the record {"favourite": True}, or {} for none."""
     if not value:
         return {}
     return {"favourite": True}
 
 
 def normalise_location_path(value) -> dict:
-    """An identity row, or {} for junk - the path is the row's one required field, kept VERBATIM (trailing separator included, the spelling the location registered with); comparisons normalise, the store does not."""
+    """An identity row, or {} for junk; its required path is kept verbatim, trailing separator too."""
     if not isinstance(value, dict):
         return {}
     path = value.get("path")
@@ -86,24 +86,24 @@ IDS_SPEC = keyed_store.bind(IDS_FILE, normalise_location_path)
 
 
 def library_present(preferences) -> bool:
-    """Is the library folder actually there to be read? Asked of the FILESYSTEM, not the store: a store opened against an unmounted directory reports FRESH-absent, indistinguishable from a brand new library - answering that no folders exist at exactly the moment the truth is that they cannot be seen."""
+    """Is the library folder there to be read? Asked of the filesystem, not the store."""
     directory = str(getattr(preferences, "dir", "") or "")
     return bool(directory) and os.path.isdir(directory)
 
 
 def isolated(preferences) -> bool:
-    """Test Mode: this library keeps its OWN locations and the settings copy is neither read into it nor written from it - the copy is a MIGRATION SEED, and a test library allowed to touch it would arm a future repair of the REAL library with test data (measured 2026-08-08 on the first switch). A fresh test library starts with no locations, which is the honest answer."""
+    """Test Mode: this library keeps its own locations; the settings copy is never read or written."""
     return bool(getattr(preferences, "test_mode", False)
                 and getattr(preferences, "test_dir", ""))
 
 
 def showing_last_known(preferences) -> bool:
-    """Is the File section showing the settings.json copy rather than the library's own answer - the tests' spelling of the unreachable state (product paths branch on `_ready` internally), which is its reason to stay."""
+    """Is the File section showing the settings.json copy rather than the library's own answer?"""
     return not _ready(preferences)
 
 
 def _awaiting_user(preferences) -> bool:
-    """The store is per-user and nobody has been picked, so it cannot answer WHOSE locations these are - reads then serve the settings copy (the sidebar keeps its last-known list through the ASK dialog) and writes are refused, because a copy-written folder would silently vanish the moment a user is picked."""
+    """The store is per-user and nobody is picked: reads serve the settings copy, writes refuse."""
     if not SPEC.user_tagged:
         return False
     try:
@@ -138,28 +138,28 @@ def _ready(preferences) -> bool:
 
 
 def _ready_now(preferences) -> bool:
-    """Is the library's own answer the one to use? Present, writable, not awaiting a user, migrated, and the untagged rows adopted - the migration is attempted HERE as well as at load because `dir` can be set long after settings were read, and the copy stays the truth until it has landed."""
+    """Is the library's own answer the one to use? May run the migration and the adoption."""
     if not library_present(preferences):
         return False
     if not _store(preferences).writable:
         return False
     if not _ids_store(preferences).writable:
-        return False  # the identity table is what every `loc:` key resolves through - unreadable, the copy serves, exactly what its own alert promises
+        return False  # every `loc:` key resolves through the identity table
     if isolated(preferences):
-        _adopt_untagged(preferences)  # NO MIGRATION under Test Mode - falling through would seed it from the real library's copy; the untagged-row adoption DOES run, moving rows inside this library's own file
-        _convert_once(preferences)   # the conversion moves rows inside this library's own files, so it is adoption-shaped, not migration-shaped
+        _adopt_untagged(preferences)  # no migration under Test Mode; adoption only
+        _convert_once(preferences)
         return True
     if _awaiting_user(preferences):
-        return False  # not parked: the check is one attribute read, and the ASK dialog can land a user mid-session - the very next read serves the store
+        return False  # not parked: a user picked mid-session is served on the next read
     data = getattr(preferences, "data", None)
     if isinstance(data, dict) and data.get(MIGRATED_KEY, False) \
             and _store_was_lost(preferences):
-        debug.event("file", "the location store is empty but the copy is "  # SELF-HEALING (2026-08-05): a restored snapshot or hand-deleted locations.json on an already-migrated machine re-enters the migration, which re-seeds from the copy; the union rule handles anything another machine added since
+        debug.event("file", "the location store is empty but the copy is "  # a lost store re-migrates from the copy
                             "not - migrating again",
                     known=len(getattr(preferences, "last_known_folders", ())))
         data.pop(MIGRATED_KEY, None)
     if isinstance(data, dict) and not data.get(MIGRATED_KEY, False):
-        key = str(getattr(preferences, "dir", ""))  # once per library per session: this is reached from the paint path, and a migration that cannot land must not be retried per tile
+        key = str(getattr(preferences, "dir", ""))  # one migration try per library per session
         if key in _deferred:
             return False
         migrate(preferences)
@@ -167,24 +167,24 @@ def _ready_now(preferences) -> bool:
             _deferred.add(key)
             return False
     if not _adopt_untagged(preferences):
-        return False  # pre-tag rows still await their owner: the copy keeps serving and the rows stay in the file for a session that can adopt
+        return False  # untagged rows still await their owner; the copy keeps serving
     _convert_once(preferences)
     return True
 
 
 def _convert_once(preferences) -> None:
-    """The conversion, once per library per session - a legacy row arriving mid-session converts on the next open or switch, and a registration flip clears the memo so the ownership boundaries re-settle."""
+    """`convert_to_ids` once per library per session; clearing `_converted` re-arms it."""
     key = str(getattr(preferences, "dir", ""))
     if key not in _converted:
         _converted.add(key)
         convert_to_ids(preferences)
 
 
-_orphans_deferred: set = globals().get("_orphans_deferred", set())  # (dir, uid) pairs whose untagged-row adoption could not land this session - keyed on the USER too, so picking somebody in the ASK dialog or Preferences retries immediately
+_orphans_deferred: set = globals().get("_orphans_deferred", set())  # (dir, uid) pairs whose adoption did not land this session
 
 
 def _adopt_untagged(preferences) -> bool:
-    """File the rows from before locations were per-user under the current user, and PROVE it landed. SELF-MARKING: the file's own untagged rows are the to-do list - the engine keeps them aside at load and `adopt_orphans` writes their tagged spellings in the single commit that retires the untagged ones. Adopt-only; runs from `_ready`, which beats every ordinary write to the rows. Answers whether the store's own answer may be SERVED; False keeps the copy serving, the rows intact."""
+    """File untagged rows under the current user and prove it; False keeps the copy serving."""
     store = _store(preferences)
     if not store.orphan_count():
         return True
@@ -206,7 +206,7 @@ def _adopt_untagged(preferences) -> bool:
         return False
     missing = [p for p in waiting if not store.has(p)]
     if missing:
-        _orphans_deferred.add(key)  # comparing, not counting the write (practice.md ▸ A migration must COMPARE): a row that did not read back parks the adoption and the copy keeps serving
+        _orphans_deferred.add(key)  # a row that did not read back parks it ▸p/migration-compare-assume
         debug.event("file", "the location adoption did not reproduce",
                     missing=len(missing))
         return False
@@ -216,7 +216,7 @@ def _adopt_untagged(preferences) -> bool:
 
 
 def _store_was_lost(preferences) -> bool:
-    """Readable, already migrated, and NO FILE ON DISK while the copy holds records - a store that has genuinely never existed here (a library replaced or re-pointed). Not merely an empty table: removing the last location leaves a real `{}` file, and an empty-table rule fired DURING that removal from inside `_sync_mirror` and put the last folder straight back (measured). A deleted-but-proven file answers BLIND and `_ready` refuses before reaching here. Asks the RECORDS, not the folder list - the migration's own input derives from records, and a different surface once livelocked two derivations of one fact."""
+    """No store file on disk while the copy holds records; an empty `{}` file is not lost."""
     store = _store(preferences)
     if store.count() or os.path.exists(store.path):
         return False
@@ -236,7 +236,7 @@ def _ids_store(preferences):
     return keyed_store.open_store(IDS_SPEC, preferences)
 
 
-_id_map: tuple = globals().get("_id_map", ("", -1, {}))  # (dir, generation, {normalised path: smallest id at it}) - the paint path asks per row, and a per-call walk of the table deepcopies it per tile
+_id_map: tuple = globals().get("_id_map", ("", -1, {}))  # (dir, generation, {normalised path: smallest id at it})
 
 
 def _id_table(preferences) -> dict:
@@ -254,14 +254,14 @@ def _id_table(preferences) -> dict:
 
 
 def location_id(preferences, path: str, mint: bool = False) -> str:
-    """The id of the location at `path`, "" when it has none - `mint=True` creates one. The table is untagged and shared, so two users asking about one folder get ONE identity; two machines minting offline converge on the smaller id at conversion."""
+    """The id of the location at `path`, "" for none; `mint=True` creates one, shared by all users."""
     global _generation
     wanted = hostos.storage_path_key(str(path))
     best = _id_table(preferences).get(keyed_store.path_identity(wanted), "")
     if best or not mint:
         return best
     lid = uuid.uuid4().hex
-    if not _ids_store(preferences).set(lid, {"path": wanted}):    # the VERBATIM spelling, trailing separator included - the sidebar hands back what was registered, and only comparisons normalise
+    if not _ids_store(preferences).set(lid, {"path": wanted}):    # the verbatim spelling, trailing separator included
         return ""
     _generation += 1
     return lid
@@ -273,7 +273,7 @@ def location_path_for(preferences, locid: str) -> str:
 
 
 def _path_of_key(preferences, key: str) -> str:
-    """The STORAGE-spelling path behind a record key - resolved through the identity table for a `loc:` key, the key itself for a legacy path."""
+    """The storage-spelling path behind a record key: a `loc:` key resolved, a legacy path as is."""
     key = str(key)
     if key.startswith(LOC_PREFIX):
         return location_path_for(preferences, key[len(LOC_PREFIX):])
@@ -281,7 +281,7 @@ def _path_of_key(preferences, key: str) -> str:
 
 
 def _legacy_spelling(preferences, ident: str) -> str:
-    """A `loc:<id>/<relative>` ident spelled as the STORAGE path it means today, "" for anything else - the read fallback for rows an older build wrote and the copy's own spelling."""
+    """A `loc:<id>/<relative>` ident as the storage path it means today, "" for anything else."""
     ident = str(ident)
     if not ident.startswith(LOC_PREFIX):
         return ""
@@ -322,7 +322,7 @@ def owner_of(preferences, path: str) -> str:
 
 
 def file_ident(preferences, full_path: str) -> str:
-    """`loc:<id>/<relative>` for a file inside a registered location - the INNERMOST when locations nest - or "" for a file no location owns; the ONE key-maker every per-file store shares, so a moved folder orphans nothing."""
+    """`loc:<id>/<relative>` under the innermost registered location, or ""; every per-file key."""
     if not _ready(preferences):
         return ""
     return _ident_under(_id_table(preferences),
@@ -330,7 +330,7 @@ def file_ident(preferences, full_path: str) -> str:
 
 
 def record(preferences, path: str) -> dict:
-    """Everything this location keeps, as one record - a field that is not set simply is not in it. Keyed by the location's ID; a legacy path row an older build wrote answers until the conversion re-homes it."""
+    """Everything this location keeps, as one record; a field not set is absent."""
     if not _ready(preferences):
         return _copy_record(preferences, path)
     store = _store(preferences)
@@ -343,7 +343,7 @@ def record(preferences, path: str) -> dict:
 
 
 def paths(preferences) -> list:
-    """Every path the store mentions, registered or not - as absolutes; the portable spelling is the file's business."""
+    """Every path the store mentions, registered or not, as absolutes."""
     if not _ready(preferences):
         return [hostos.expand_storage_path(hostos.storage_path_key(p))
                 for p in _copy_paths(preferences)]
@@ -381,7 +381,7 @@ def _registered_stored(preferences) -> list:
     for key, rec in _store(preferences).all().items():
         if not rec.get("registered"):
             continue
-        path = _path_of_key(preferences, key)    # a `loc:` record resolves through the identity table, so a moved path shows moved with no record touched
+        path = _path_of_key(preferences, key)
         if path:
             live.add(path)
     ordered = [path for path in known if path in live]
@@ -390,8 +390,8 @@ def _registered_stored(preferences) -> list:
 
 
 def move_registered(preferences, path: str, row: int) -> bool:
-    """Move one registered location to another sidebar row, IN MEMORY only - the order is the settings copy's alone (the store is a sorted dict), so a move rewrites the copy via `hold_folder_order`, adopted whole so a store-only path riding at the end gets a real position the first time the user orders anything; deliberately NO save, `commit_registered_order` persists once on release."""
-    current = registered_paths(preferences)  # BOTH sides in storage spelling before comparison - a raw caller path against a canonical answer read one legal spelling as "not registered" and the move returned False silently (every native os.path.join spelling on Windows)
+    """Move a registered location to another sidebar row in memory; `commit_registered_order` saves."""
+    current = registered_paths(preferences)  # both sides compared in storage spelling
     keys = [hostos.storage_path_key(p) for p in current]
     wanted = hostos.storage_path_key(path)
     if wanted not in keys:
@@ -409,12 +409,12 @@ def move_registered(preferences, path: str, row: int) -> bool:
 
 
 def commit_registered_order(preferences) -> None:
-    """Persist the order `move_registered` staged - one write per gesture, on release; the copy already holds the order, so this is the plain settings save, and the next `_sync_mirror` rebuilds from this copy, which is how the order survives every later store write."""
+    """Persist the order `move_registered` staged; call once per gesture, on release."""
     preferences.save()
 
 
 def _copy_tag(preferences) -> str:
-    """The tag this machine's COPY entries carry, "" when the store is not user-tagged - the copy is keyed the way the store is, or the two disagree the moment the flag moves; both ends of the copy live in this module, so the tag does too."""
+    """The user tag this machine's copy entries carry, "" when the store is not user-tagged."""
     if not FAVOURITES_SPEC.user_tagged:
         return ""
     try:
@@ -424,7 +424,7 @@ def _copy_tag(preferences) -> str:
 
 
 def _copy_favourites(preferences) -> list:
-    """THIS user's favourites out of the settings.json copy, UNTAGGED - without the scoping the copy answered for everybody, lighting another user's star on a machine with nobody picked while the store itself correctly wrote nothing."""
+    """This user's favourites out of the settings.json copy, untagged; [] with nobody picked."""
     raw = [p for p in (getattr(preferences, "last_known_favourites", ())
                        or ()) if isinstance(p, str) and p]
     if not FAVOURITES_SPEC.user_tagged:
@@ -441,7 +441,7 @@ def _copy_favourites(preferences) -> list:
 
 
 def _tag_for_copy(preferences, favourites):
-    """What to hand `keep_last_known`: tagged when the store is, everyone ELSE's entries kept verbatim - None when there is nobody to attribute to, which the caller treats as leave-it-alone."""
+    """The star list for `keep_last_known`, others' entries kept; None with nobody to attribute to."""
     if not FAVOURITES_SPEC.user_tagged:
         return list(favourites)
     tag = _copy_tag(preferences)
@@ -476,7 +476,7 @@ def favourite_paths(preferences) -> list:
 
 
 def is_favourite(preferences, path: str) -> bool:
-    """The star's question, asked per row per repaint - a membership test, no copy; the key is a `loc:` ident for owned File rows, a path for unowned ones and a bare asset id everywhere else. A star an older build keyed by path answers through the legacy spelling until the conversion re-homes it."""
+    """Is this `loc:` ident, path or asset id starred? Cheap enough to ask per row per repaint."""
     migrate_asset_favourites(preferences)
     if not _ready(preferences):
         wanted = hostos.storage_path_key(path)
@@ -486,13 +486,13 @@ def is_favourite(preferences, path: str) -> bool:
     if store.has(path):
         return True
     key = str(path)
-    other = (_legacy_spelling(preferences, key)    # asked by ident, a legacy row may still hold the star; asked by path, the converted row does - the door answers for BOTH spellings so no caller has to know which build wrote it
+    other = (_legacy_spelling(preferences, key)    # answers for both the ident and the path spelling
              if key.startswith(LOC_PREFIX)
              else file_ident(preferences, key))
     return bool(other) and store.has(other)
 
 
-_generation = 0  # bumped on every record write - the cache token for the paint path: a colour set through ANY prefs surface must show on the very next data() read with no notification channel, and this is the one write door
+_generation = 0  # bumped on every record write; the paint path's cache token
 
 
 def generation() -> int:
@@ -501,45 +501,45 @@ def generation() -> int:
 
 
 def touch() -> None:
-    """Location state was edited OUTSIDE this module's doors (the engine's `retire_prefix`) - move the generation so the cached resolvers notice."""
+    """Bump the generation after location state was edited outside this module."""
     global _generation
     _generation += 1
 
 
 def set_record(preferences, path: str, value) -> keyed_store.Written:
-    """Write one location's whole record; an EMPTY record forgets the location across every field at once, registration included - the one call a removal and a relocation both go through. WITH NO LIBRARY IT WRITES THE COPY: the File section works with no library configured, and the copy is the only truth available - the migration carries it in the moment a library appears."""
+    """Write one location's whole record; an empty one forgets it. With no library, writes the copy."""
     global _generation
     _generation += 1
     path = hostos.storage_path_key(path)  # STORAGE spelling from here down, so the store and the copy hold the same portable form
     if not _ready(preferences):
         if library_present(preferences) and _awaiting_user(preferences):
-            return keyed_store.Written(  # library there, store per-user, nobody picked: refused like a favourite's - the folder never appears, which is the report; a copy-only folder would show now and silently vanish when a user is picked
+            return keyed_store.Written(  # library there, nobody picked: refused
                 False, keyed_store.REASON_NO_USER, "", (path,))
         return _write_copy(preferences, path, value)
-    lid = location_id(preferences, path, mint=bool(value))    # a record's home is its location's ID; a forget writes wherever the record lives today - a mint the record write then refuses leaves an inert identity row, reused on the retry
+    lid = location_id(preferences, path, mint=bool(value))    # a forget writes wherever the record lives today
     key = (LOC_PREFIX + lid) if lid else path
     before = _store(preferences).get(key).get("registered")
     written = _store(preferences).set(key, value or {})
     if written and bool(before) != bool((value or {}).get("registered")):
-        _converted.discard(str(getattr(preferences, "dir", "")))    # a registration flip moves the innermost-owner boundaries, and the next read re-settles the keys on them
+        _converted.discard(str(getattr(preferences, "dir", "")))    # the next read re-settles owners
     _sync_mirror(preferences)
     return written
 
 
 def register(preferences, path: str) -> keyed_store.Written:
-    """Register a location pointer - keeps whatever the record already carries, so re-adding a folder another machine labelled does not throw the label away."""
+    """Register a location pointer, keeping whatever the record already carries."""
     current = record(preferences, path)
     current["registered"] = True
     return set_record(preferences, path, current)
 
 
 def unregister(preferences, path: str) -> keyed_store.Written:
-    """Forget a location entirely - everything ELSE keyed under it (favourites, comments, tile icons) goes through the engine's `retire_prefix`, which the File model calls; this is the pointer."""
+    """Forget a location's pointer; rows keyed under it go through the engine's `retire_prefix`."""
     return set_record(preferences, path, {})
 
 
 def set_field(preferences, path: str, field: str, value) -> keyed_store.Written:
-    """One field of one location, read-modify-write through the record - named so setting the colour cannot become writing a record holding only a colour, which is how a registration would disappear behind a sidebar colour pick."""
+    """Set one field of one location, read-modify-write through the whole record."""
     if field not in FIELDS:
         raise ValueError("%r is not a location field" % (field,))
     current = record(preferences, path)
@@ -595,8 +595,8 @@ def _repoint(preferences, old: str, new: str) -> keyed_store.Written:
             elif path.startswith(old_edge):
                 rows[other] = dict(row, path=new_edge + path[len(old_edge):])
         written = ids.update(rows)
-        _generation += 1    # AFTER the row edit - the resolver in `location_id` above rebuilt the cached map at the pre-edit table, and a bump only before the write leaves that stale map current
-        _converted.discard(str(getattr(preferences, "dir", "")))    # a Locate onto a path another location already owns mints a rival pair - the next read collapses it
+        _generation += 1    # after the row edit, so the cached map rebuilds
+        _converted.discard(str(getattr(preferences, "dir", "")))    # the next read collapses rivals
         _sync_mirror(preferences)
         return written
     written = _store(preferences).rekey({old: new})
@@ -715,7 +715,7 @@ def _write_copy_favourites(preferences,
 
 
 def _sync_mirror(preferences) -> None:
-    """Refresh the settings.json copy from what the library now says, and persist it - ONE direction only: a mirror that can write is a second truth, and two truths over one fact is the whole defect this module exists to end. Declines under Test Mode (the copy is the seed a future repair of the REAL library reads) and with nobody picked (a scoped read answers {}, which is "no answer", not "no locations" - blanking the copy with it would lose the fallback while it is serving)."""
+    """Refresh and save the settings copy from the library, one way; skipped in Test Mode or no user."""
     if not library_present(preferences):
         return
     if isolated(preferences):
@@ -731,7 +731,7 @@ def _sync_mirror(preferences) -> None:
         return
     mine = None
     if favourites.writable:
-        spelled = []    # the copy serves while the library is unreachable, when no identity table can resolve an ident - so it holds PATHS
+        spelled = []    # the copy holds paths, not idents
         for key in sorted(favourites.all()):
             spelled.append(_legacy_spelling(preferences, key) or key)
         mine = _tag_for_copy(preferences, spelled)
@@ -748,7 +748,7 @@ def _sync_mirror(preferences) -> None:
 
 
 def _from_settings(preferences) -> tuple:
-    """What the migration carries in: THE COPY, never the accessors - `file_folder_names` and its siblings are derived from this module now, so reading them would ask the migration's own output what the migration should write, re-entering `_ready` on the way."""
+    """What the migration carries in, read from the copy, never the derived accessors."""
     records = {}
     for path, value in (getattr(preferences, "last_known_records", None)
                         or {}).items():
@@ -760,7 +760,7 @@ def _from_settings(preferences) -> tuple:
 
 
 def migrate(preferences) -> dict:
-    """Move the six settings.json keys into the two library stores and PROVE it landed before saying so - the acceptance test is the END STATE (practice.md ▸ A migration must COMPARE): every record read back and compared BOTH ways, a disagreement leaving the marker unset and the old keys intact. Answers a dict because the not-done outcomes differ: `deferred` (no library or user yet) and `refused` (did not land). A success reports how many of this machine's locations JOINED ones already there, because on the second machine that union is the visible outcome."""
+    """Move the settings keys into the library, proven; a `state` dict. ▸p/migration-compare-assume"""
     if getattr(preferences, "data", None) is None:
         return {"state": "deferred", "why": "no settings"}
     if preferences.data.get(MIGRATED_KEY, False):
@@ -774,9 +774,9 @@ def migrate(preferences) -> dict:
 
     mine, my_favs = _from_settings(preferences)
 
-    existing = store.all()  # THE UNION, ADOPT-ONLY (the engine's own rule): settings.json never travels, so this machine's keys are its OWN folders, not a stale copy of the other machine's - taking the store as-is would empty a sidebar, and the honest cost is both machines converging on the union, which Remove Folder can undo where a silent discard could not
+    existing = store.all()  # adopt-only union: this machine's folders join the store's
     wanted = dict(existing)
-    for path, record in mine.items():  # STORAGE spelling before the union and the compare: the copy's legacy spellings can never reproduce against the store's portable form, and converting here also collapses the copy's own duplicates, first in winning
+    for path, record in mine.items():  # storage spelling before the union; the first duplicate wins
         path = hostos.storage_path_key(path)
         if path not in wanted:
             wanted[path] = record
@@ -786,7 +786,7 @@ def migrate(preferences) -> dict:
 
     written = store.update(wanted)
     if not written and written.reason == keyed_store.REASON_NO_USER:
-        debug.event("file", "locations waiting for a user",  # BOTH halves belong to a person since the per-user tag: with nobody picked the whole migration waits, marker unset, old keys still the truth
+        debug.event("file", "locations waiting for a user",  # marker unset, old keys still the truth
                     locations=len(wanted))
         return {"state": "deferred", "why": "no user yet"}
     written_favs = favourites.update({p: True for p in wanted_favs})
@@ -796,7 +796,7 @@ def migrate(preferences) -> dict:
         return {"state": "refused", "why": written.reason}
     if not written_favs:
         if written_favs.reason == keyed_store.REASON_NO_USER:
-            debug.event("file", "locations moved, favourites waiting "  # a belt for a user cleared between the two writes: marker unset, a later session finishes the favourites
+            debug.event("file", "locations moved, favourites waiting "  # marker unset; a later session finishes
                         "for a user", locations=len(wanted),
                         favourites=len(wanted_favs))
             return {"state": "deferred", "why": "no user yet"}
@@ -811,7 +811,7 @@ def migrate(preferences) -> dict:
     missing_favs = [p for p in wanted_favs if p not in landed_favs]
     extra_favs = [p for p in landed_favs if p not in wanted_favs]
     if missing or extra or missing_favs or extra_favs:
-        debug.event("file", "location migration did not reproduce",  # NOT MARKED: the old keys are still written and read, so the section keeps working off them and the next launch tries again
+        debug.event("file", "location migration did not reproduce",  # not marked; the next launch retries
                     missing=len(missing), extra=len(extra),
                     missing_favourites=len(missing_favs),
                     extra_favourites=len(extra_favs))
@@ -826,20 +826,20 @@ def migrate(preferences) -> dict:
                 joined=adopted, already_there=len(existing))
     return {"state": "migrated", "locations": len(wanted),
             "favourites": len(wanted_favs),
-            "joined": adopted, "already_there": len(existing)}  # `joined`: how many of this machine's locations joined ones the other machine already put there - a visible product outcome, the second sidebar growing by the first's folders
+            "joined": adopted, "already_there": len(existing)}  # `joined`: this machine's locations new to the store
 
 
-_converted: set = globals().get("_converted", set())  # libraries whose legacy keys were converted to ids this session; reload-stable like its siblings, cleared by forget()
+_converted: set = globals().get("_converted", set())  # libraries converted to ids this session
 
 
 def _file_key_specs():
-    """The four stores holding location-keyed rows, through their BINDING modules - a registry spec whose binder never imported carries no normaliser, and opening it raw crashes the load."""
+    """The four stores holding location-keyed rows, imported through their binding modules."""
     from amaze.core import notes, tile_icons
     return (SPEC, FAVOURITES_SPEC, notes.SPEC, tile_icons.SPEC)
 
 
 def convert_to_ids(preferences) -> None:
-    """Re-home every location-keyed row onto its CURRENT owner - legacy path keys onto ids, rival ids (two machines minting offline) onto the smaller survivor, idents onto the innermost location when a nested registration moved the boundary. One guarded write per store, every user's rows; a key whose destination already holds a DIFFERENT value stays where it is, logged, never silently overwritten."""
+    """Re-home every location-keyed row onto its current owner; a clashing destination is kept."""
     global _generation
     ids = _ids_store(preferences)
     store = _store(preferences)
@@ -917,7 +917,7 @@ def convert_to_ids(preferences) -> None:
             rel = bare[len(base) + 1:] if len(bare) > len(base) else ""
             moves[stored] = (tag + prefix + LOC_PREFIX + lid
                              + ("/" + rel if rel else ""))
-        clashing = {}    # a destination already holding a DIFFERENT value is preserved, not overwritten - the source stays too, and its rival id is spared the retire
+        clashing = {}    # a destination holding a different value: both stay, the rival id too
         for old, new in list(moves.items()):
             standing = table.get(new)
             if new in table and standing != table.get(old):
@@ -986,21 +986,21 @@ def rehome_covered(preferences, path: str) -> bool:
     return landed
 
 
-_asset_deferred: set = globals().get("_asset_deferred", set())  # (dir, uid) pairs whose asset-favourites migration could not land this session - keyed on the USER too, so picking one in the ASK dialog or Preferences retries immediately; reload-stable like its two siblings above
+_asset_deferred: set = globals().get("_asset_deferred", set())  # (dir, uid) pairs whose asset-star migration did not land
 
 
 def migrate_asset_favourites(preferences) -> dict:
-    """Move `material_favorites` (the Materials/Nodes/Code stars that lived in settings.json and never travelled) into the favourites store under the active user, and PROVE it landed before the key is dropped. SELF-MARKING: the settings key IS the to-do list, popped only after every id reads back, so a deferral or refusal leaves the old key authoritative. Adopt-only union like `migrate`. Runs from the favourite doors as well as load, because `dir` and the user can both be set long after settings were read."""
+    """Move `material_favorites` into the favourites store, proven before the key pops; a dict."""
     data = getattr(preferences, "data", None)
     if not isinstance(data, dict):
         return {"state": "deferred", "why": "no settings"}
     raw = [str(x) for x in (data.get("material_favorites") or ())
            if str(x).strip()]
     if not raw:
-        data.pop("material_favorites", None)  # an empty list is finished business - drop the key so the unknown-key courtesy stops carrying it forever
+        data.pop("material_favorites", None)
         return {"state": "done"}
     if isolated(preferences):
-        return {"state": "deferred", "why": "test mode"}  # these are the real library's stars; landing them in a test library would pop the key and lose them for the real one
+        return {"state": "deferred", "why": "test mode"}  # these stars belong to the real library
     key = (str(getattr(preferences, "dir", "")),
            str(getattr(preferences, "library_user", "") or ""))
     if key in _asset_deferred:
@@ -1024,7 +1024,7 @@ def migrate_asset_favourites(preferences) -> dict:
         return {"state": "refused", "why": written.reason}
     missing = [sid for sid in raw if not store.has(sid)]
     if missing:
-        _asset_deferred.add(key)  # NOT POPPED: the old key is still the truth and the next session tries again - comparing, not counting the write
+        _asset_deferred.add(key)  # not popped: the old key stays the truth
         debug.event("file", "asset favourite migration did not "
                             "reproduce", missing=len(missing))
         return {"state": "refused", "why": "the store does not match"}
@@ -1038,7 +1038,7 @@ def migrate_asset_favourites(preferences) -> dict:
 
 
 def forget() -> None:
-    """Drop the cached tables AND the deferred sets - the library switch's own door (`switch_all_models` calls this), because a switch is exactly the change that earns an unreachable library another migration try; also the test seam."""
+    """Drop the cached tables and the deferred sets; call on a library switch."""
     global _ready_memo
     _deferred.clear()
     _asset_deferred.clear()

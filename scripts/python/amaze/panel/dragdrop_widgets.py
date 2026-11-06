@@ -11,7 +11,7 @@ from amaze.render import cop_nodes
 
 
 def _find_panel(widget: QtWidgets.QWidget):
-    """The panel above `widget`, or None - found by capability, never by a fixed parentWidget() depth, which breaks silently every time the hierarchy is restructured."""
+    """The panel above `widget`, or None; found by capability, never by a fixed parent depth."""
     w = widget.parentWidget()
     while w is not None:
         if hasattr(w, "import_asset"):
@@ -21,9 +21,9 @@ def _find_panel(widget: QtWidgets.QWidget):
 
 
 class GridGestureMixin:
-    """The grid's SELF-MANAGED press-move-release gesture, a mixin over `QAbstractItemView` so grid and table share it. A real `QDrag` cannot serve: its nested run loop starves the per-move viewport picking. ▸r/pick-boundary ▸r/native-drag-paint"""
+    """The self-managed drag gesture, mixed into both views. ▸r/pick-boundary ▸r/native-drag-paint"""
 
-    ARMED_SECTIONS = ("material", "gradient", "cop", "code", "file")    #: every section that can arm a drag; what a RELEASE does is declared per section (sections.DropRule) and walked by _apply_drop_rule
+    ARMED_SECTIONS = ("material", "gradient", "cop", "code", "file")    #: every section that can arm a drag; a release is declared per section (sections.DropRule)
 
     def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
         self._drag_start = None    # None whenever no left-button press is in progress
@@ -34,13 +34,13 @@ class GridGestureMixin:
         self._preview = None
         super().__init__(parent)
 
-    SCROLL_SPEED = 0.75    #: fallback only, used when no panel/prefs is reachable; Qt's own wheel handling overshoots here so pixel deltas are applied by hand
+    SCROLL_SPEED = 0.75    #: fallback only, used when no panel/prefs is reachable
     INDICATOR_MS = 167    #: how long an outcome icon stays on screen (ms) ▸r/qt-windows-macos
-    WHEEL_NOTCH_PX = theme.ui_px(60)    #: classic wheel px per notch, through the UI scale so a notch moves the same VISUAL distance on scaled displays
+    WHEEL_NOTCH_PX = theme.ui_px(60)    #: classic wheel px per notch, through the UI scale
 
     @debug.guarded("DragDropListView.wheelEvent")
     def wheelEvent(self, event: QtGui.QWheelEvent) -> None:
-        """One scroll engine, both axes - the axis is only a choice of scrollbar, so the pixel deltas, notch conversion and `scroll_speed` read are shared rather than reimplemented."""
+        """One scroll engine for both axes; the axis only picks the scrollbar."""
         pixels = event.pixelDelta()
         angle = event.angleDelta()
         horizontal = abs(pixels.x()) > abs(pixels.y()) if (    # a trackpad reports both axes so the dominant one wins; a classic wheel reports only one
@@ -68,7 +68,7 @@ class GridGestureMixin:
     SCROLL_DIAG_LIMIT = 12    #: how many scroll diagnostics one session may write (never a flood)
 
     def _log_scroll_geometry(self, panel, bar, before, delta) -> None:
-        """Record the geometry a scroll actually sees - list mode, Debug Mode, at most SCROLL_DIAG_LIMIT times a session. Every view-only call in it MUST be `hasattr`-guarded: the body sits inside a bare `except`, so on a table an AttributeError silently produces no diagnostic at all."""
+        """Log the geometry a scroll sees, in Debug Mode, at most SCROLL_DIAG_LIMIT times a session."""
         if not debug.is_on():
             return
         if getattr(panel, "prefs", None) is None or \
@@ -109,13 +109,13 @@ class GridGestureMixin:
         section = (
             getattr(panel, "current_section", None) if panel is not None else None
         )
-        online = bool(panel is not None and panel._is_online())    # an online row is a catalogue entry with no node and no file, and arming here drags whichever LOCAL asset sits at that row
-        point = event.position().toPoint()    # WHOLE PIXELS, converted once and kept: `position()` answers a QPointF, while `indexAt`, the stored start point and the threshold in `mouseMoveEvent` are all integer geometry - a QPointF reaching them makes the drag arm at a different distance
+        online = bool(panel is not None and panel._is_online())    # an online row is a catalogue entry with no node and no file
+        point = event.position().toPoint()    # whole pixels, converted once: everything downstream is integer geometry
         if (
             event.button() == QtCore.Qt.MouseButton.LeftButton
             and not online
             and section in self.ARMED_SECTIONS
-            and self.indexAt(point).isValid()    # only over a real item: empty grid space armed a ghost drag whose invalid index reached the release handlers
+            and self.indexAt(point).isValid()    # only over a real item
         ):
             self._drag_start = point
             self._drag_section = section
@@ -143,7 +143,7 @@ class GridGestureMixin:
 
     @debug.guarded("DragDropListView.mouseMoveEvent")
     def mouseMoveEvent(self, event: QtGui.QMouseEvent) -> None:
-        """The gesture stays in our hands so WE resolve the target at release; a File row crossing a Parameters pane hands off to a real QDrag, because only mime fills a field. Never call super() during the gesture, even before the threshold - that lets the view fall back to rubber-band selection. ▸r/pick-boundary"""
+        """Drive the gesture; a File row crossing a Parameters pane hands off to a QDrag. ▸r/pick-boundary"""
         if self._drag_start is not None:
             moved = (event.position().toPoint()
                      - self._drag_start).manhattanLength()
@@ -156,8 +156,8 @@ class GridGestureMixin:
                 if self._promote_to_field_drag():
                     return
                 self._move_preview()
-                if self._drag_panel is not None:    # a self-managed gesture has no Qt drag events, so the drop-target feedback is driven from the cursor position
-                    pane_tab, pane_kind, _fresh = (    # ONE tracked pane answer per move for every consumer below - the raw lookup measured ~3ms under drag load ▸p/drag-move-cost
+                if self._drag_panel is not None:    # drop-target feedback is driven from the cursor position
+                    pane_tab, pane_kind, _fresh = (    # one tracked pane answer per move for every consumer below ▸p/drag-move-cost
                         dragengine.pane_under_cursor_tracked())
                     self._drag_panel._update_category_drag_hover_global()
                     dragengine.hover_update(
@@ -165,14 +165,14 @@ class GridGestureMixin:
                         pane_tab, pane_kind
                     )
                     self._ghost_update(self._drag_panel, pane_tab,
-                                       pane_kind)    # the outline, cleared by dragengine.end() on every exit path including the leave the host treats as a suspend
+                                       pane_kind)    # the outline, cleared by dragengine.end() on every exit path
             return
         super().mouseMoveEvent(event)
 
     def _overlay_label(self, text: str = "") -> QtWidgets.QLabel:
         """Frameless, always-on-top, click-through label - the shared window setup for cursor overlays."""
         label = QtWidgets.QLabel(text)
-        label.setWindowFlags(    # WindowTransparentForInput is the OS-level click-through; WA_TransparentForMouseEvents below is Qt routing only and does not cover a topmost native window under the cursor ▸r/qt-windows-macos
+        label.setWindowFlags(    # WindowTransparentForInput is the OS-level click-through ▸r/qt-windows-macos
             QtCore.Qt.WindowType.ToolTip
             | QtCore.Qt.WindowType.FramelessWindowHint
             | QtCore.Qt.WindowType.WindowStaysOnTopHint
@@ -182,7 +182,7 @@ class GridGestureMixin:
         label.setAttribute(
             QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents
         )
-        label.setAttribute(    # showing an overlay must never touch activation: on macOS an activating show()/close() over the viewport churned focus at release and flickered the selector prompt
+        label.setAttribute(    # showing the overlay never touches activation
             QtCore.Qt.WidgetAttribute.WA_ShowWithoutActivating
         )
         return label
@@ -195,7 +195,7 @@ class GridGestureMixin:
         return QtCore.QModelIndex(held)
 
     def _begin_drag(self) -> None:
-        """Start the shared self-managed drag: a floating name tag following the cursor, one gesture for every ARMED_SECTIONS row, File included - a File row only leaves it if the cursor later crosses a Parameters pane."""
+        """Start the self-managed drag for any ARMED_SECTIONS row: a name tag following the cursor."""
         from amaze.core import dragengine
         self._dragging = True
         dragengine.begin(self._drag_section or "")
@@ -218,7 +218,7 @@ class GridGestureMixin:
             )
 
     def _finish_preview(self, outcome) -> None:
-        """Tag teardown by outcome: the tag ALWAYS goes instantly, a MISS adds a red X at the cursor, and a landed drop shows nothing because the result in the scene is its own feedback."""
+        """Tag teardown by outcome: the tag goes at once and a miss adds a red X at the cursor."""
         preview = self._preview
         self._preview = None
         if preview is not None:
@@ -229,7 +229,7 @@ class GridGestureMixin:
             self._show_drop_indicator("icon_drop_miss.svg", "#ff3319")
 
     def _show_drop_indicator(self, icon_file: str, color: str) -> None:
-        """A small icon at the cursor for INDICATOR_MS - the drop outcome, announced where the user is looking."""
+        """Show the drop outcome as a small icon at the cursor for INDICATOR_MS."""
         panel = self._drag_panel
         if panel is None:
             return
@@ -240,7 +240,7 @@ class GridGestureMixin:
         )
         if pm.isNull():
             return
-        label = getattr(self, "_indicator_label", None)    # ONE persistent window per view: building and destroying a native window per drop was itself a visible hitch at release
+        label = getattr(self, "_indicator_label", None)    # one persistent window per view, reused for every drop
         if label is None:
             label = self._overlay_label()
             label.setAttribute(
@@ -253,7 +253,7 @@ class GridGestureMixin:
         label.move(pos.x() - size // 2, pos.y() - size // 2)
         label.show()
 
-        import time as _time    # no fade by design: full opacity for INDICATOR_MS then hidden, never destroyed; the serial stops a stale timer cutting short a NEWER drop's icon
+        import time as _time    # the serial stops a stale timer hiding a newer drop's icon
         shown_at = _time.time()
         self._indicator_serial = getattr(self, "_indicator_serial", 0) + 1
         my_serial = self._indicator_serial
@@ -274,7 +274,7 @@ class GridGestureMixin:
         QtCore.QTimer.singleShot(self.INDICATOR_MS, _done)
 
     def _promote_to_field_drag(self) -> bool:
-        """The parameter-field hand-off: a FILE row crossing into a Parameters pane becomes the one real QDrag, because only mime fills a field. After it the drag is Qt's, so a release back over a network editor gets Houdini's stock answer. It is a hand-off and not a miss, so the tag goes quietly and no indicator is shown."""
+        """Hand a File row crossing a Parameters pane to a real QDrag; from then on the drag is Qt's."""
         from amaze.core import dragengine
         if self._drag_section != "file":
             return False
@@ -298,14 +298,14 @@ class GridGestureMixin:
 
     @staticmethod
     def _file_drag_mime(panel, path: str) -> QtCore.QMimeData:
-        """One mime for a file-path drag: the spelled TEXT and NOTHING else. NEVER add the URL flavour - Houdini reads a file URL as an open-this handle, so a release outside a field offered to CLEAR THE SCENE, and inside one it won over the text and filled an absolute path while Write Paths As said $HOME."""
+        """One mime for a file-path drag: the spelled text and no URL. ▸r/drag-file-url"""
         mime_data = QtCore.QMimeData()
         mime_data.setText(helpers.houdini_path(
             path, getattr(panel.prefs, "path_style", "home")))
         return mime_data
 
     def _run_file_path_drag(self) -> None:
-        """The one real `QDrag`, carrying the spelled path as TEXT (`_file_drag_mime`, which is the whole mime) under the shared name-tag pixmap - "native" is the drop mechanism only, the picture stays the same everywhere."""
+        """The one real `QDrag`: `_file_drag_mime` under the shared name-tag pixmap."""
         index = self._drag_row()    # the PRESSED row: currentIndex() can name another
         if index is None:
             return
@@ -325,7 +325,7 @@ class GridGestureMixin:
     def mouseReleaseEvent(self, event: QtGui.QMouseEvent) -> None:
         try:
             self._release(event)
-        finally:    # FINALLY, never after the try: `guarded()` re-raises, and a crashing drop that skipped this left the press state armed - the next bare hover move then launched a drag the user never began, carrying the OLD section into the wrong model
+        finally:    # `guarded()` re-raises, so the press state is disarmed here
             self._drag_start = None
             self._drag_section = None
             self._drag_panel = None
@@ -335,7 +335,7 @@ class GridGestureMixin:
     def _release(self, event: QtGui.QMouseEvent) -> None:
         from amaze.core import dragengine
         from amaze.helpers import helpers
-        if self._dragging and event.button() != QtCore.Qt.MouseButton.LeftButton:    # a right/middle release mid-drag CANCELS: unfiltered, backing out performed a real import wherever the cursor was. Tear down rather than bare-return, which leaves the tag floating and the gesture live
+        if self._dragging and event.button() != QtCore.Qt.MouseButton.LeftButton:    # a right or middle release mid-drag cancels and tears down
             if self._preview is not None:
                 self._preview.hide()
             self._dragging = False
@@ -347,7 +347,7 @@ class GridGestureMixin:
             return
         if self._dragging:
             if self._preview is not None:
-                self._preview.hide()    # hidden before ANY release work, so no menu or import runs under a floating label; the widget stays alive because the outcome decides its teardown
+                self._preview.hide()    # hidden before any release work; the outcome decides its teardown
             self._dragging = False
             dragengine.end()    # restores the hover highlight, on EVERY exit path
             panel = self._drag_panel
@@ -365,7 +365,7 @@ class GridGestureMixin:
                         outcome = True
                     elif folder is not None:    # File: the tiles' files move into that folder, on disk
                         outcome = panel.move_files_active(folder)
-                    else:    # THE BEHAVIOUR TABLE: each section declares its doors and one walk serves them all; no rule for this row, or a release over nothing, is silent but for the miss indicator
+                    else:    # walk the section's declared doors; no rule or no target shows only the miss
                         rule = self._drop_rule(panel, section, idx)
                         if rule is not None:
                             helpers.forget_placed()
@@ -376,17 +376,17 @@ class GridGestureMixin:
                                     rule, panel, live, idx, event)
                                 if outcome:
                                     self._splice_if_on_a_wire(panel, event)
-            except hou.PermissionError as refusal:    # ONLY this class: a locked network is the app working and being told no, where any other exception is a defect that must still crash where it can be seen
+            except hou.PermissionError as refusal:    # only this class: a locked network refuses; anything else still raises
                 debug.exception("drop refused", refusal,
                                 section=self._drag_section)
-                debug.refuse(str(refusal),    # Houdini's own sentence is already a good one; `outcome` stays False so the miss indicator carries the rest ▸p/refusal-sink
+                debug.refuse(str(refusal),    # Houdini's own sentence; `outcome` stays False so the miss shows ▸p/refusal-sink
                              section=self._drag_section)
             finally:
                 self._finish_preview(outcome)
 
     @staticmethod
     def _ghost_type(panel, rule, section, dest, index=None) -> str:
-        """WHICH carrier the space door would create in `dest`, read from the declaration the creator itself builds from so the outline cannot promise a node the drop would not make; "" is no carrier and draws a plain box. `index` is HANDED IN - it lives on the gesture widget, never on the panel, and reading it off the panel raised into the except below on every drag."""
+        """Which carrier the space door would create in `dest`; "" is none and draws a plain box."""
         cls = sections.SECTION_INDEX.get(section)
         name = rule.carrier_type or getattr(cls, "carrier_type", "")
         verb = getattr(cls, "carrier_type_verb", "")
@@ -399,7 +399,7 @@ class GridGestureMixin:
         return name or ""
 
     def _ghost_update(self, panel, pane_tab, pane_type) -> None:
-        """Per move: the outline where the payload would land, asking the SAME questions the release will, so what is drawn is what will happen - the pane arrives TRACKED from the caller, the outline's POSITION follows every move, and the target questions run on the engine's tick (a full per-move resolution saturated the loop at the mouse's own rate, ▸p/drag-move-cost). Over a node the editor's own drop-target highlight owns it and no ghost is drawn. ▸r/node-graph"""
+        """Per move: the outline where the payload would land; pass the tracked pane. ▸p/drag-move-cost"""
         from amaze.core import dragengine
         section = self._drag_section
         idx = self._drag_row()
@@ -411,7 +411,7 @@ class GridGestureMixin:
             dragengine.ghost_clear()
             return
         preview = getattr(self, "_preview", None)
-        if preview is not None:    # the cursor tag hides over a network editor: the outline is the feedback there, and the tag returns the moment the cursor leaves
+        if preview is not None:    # the cursor tag hides over a network editor, where the outline is the feedback
             preview.setVisible(
                 pane_type != hou.paneTabType.NetworkEditor)
         try:
@@ -421,7 +421,7 @@ class GridGestureMixin:
                 return
             if getattr(rule, "context", "") and not \
                     cop_nodes.accepts_context(pane_tab.pwd(),
-                                                rule.context):    # the network refuses this payload, so no outline promises a landing - the same declaration the release verb reads
+                                                rule.context):    # the network refuses this payload, so no outline is drawn
                 dragengine.ghost_clear()
                 return
             spot = pane_tab.cursorPosition()
@@ -430,7 +430,7 @@ class GridGestureMixin:
                     rule.on_node
                     and panel._node_under_cursor(pane_tab, pane_type)
                     is not None)
-                target = (None, "", -1)    # a wire under the cursor is an INSERT, asked only where the payload could BE a link in a chain: a created carrier or an imported network
+                target = (None, "", -1)    # a wire under the cursor is an insert, asked only where the payload can join a chain
                 type_name = ""
                 if not blocked:
                     if rule.on_space or rule.resolve:
@@ -451,7 +451,7 @@ class GridGestureMixin:
 
     @staticmethod
     def _drop_rule(panel, section, idx):
-        """This row's declared behaviour, by section KEY - only the key-to-class lookup lives here, the resolution being `sections.drop_rule`, which the click walker reads too."""
+        """This row's declared drop behaviour by section key, resolved by `sections.drop_rule`."""
         return sections.drop_rule(
             sections.SECTION_INDEX.get(section), panel, idx)
 
@@ -470,13 +470,13 @@ class GridGestureMixin:
             net = panel._network_under_release()
             if net is None:
                 return section.drop_takes_nothing()
-            create = sections.drop_verb(section, rule.on_space)    # the position is GATED: coordinates cross into the destination only when the release editor is showing that network itself
+            create = sections.drop_verb(section, rule.on_space)    # the position is used only when the release editor shows that network
             return bool(create(idx, net, panel._release_position_in(net)))
         return section.drop_takes_nothing()
 
     @staticmethod
     def _splice_if_on_a_wire(panel, event) -> None:
-        """A release over a WIRE inserts what landed into that chain, read from the placement funnel (`helpers.place_nodes`/`auto_place`) rather than a diff of the network's children, so one question answers for every door including ones added later."""
+        """Insert what landed into the wire under the release, as the placement funnel reports it."""
         from amaze.core import dragengine
         from amaze.helpers import helpers
         landed = helpers.placed_nodes()
@@ -485,7 +485,7 @@ class GridGestureMixin:
         editor = dragengine.pane_tab_under_cursor()
         net = panel._network_under_release()
         spot = panel._release_position_in(net) if net is not None else None
-        wire, _name, _index = dragengine.wire_under_cursor(    # WHAT LANDED IS NEVER ITS OWN TARGET: it is placed before either question is asked, so it sits under the cursor and would answer about itself
+        wire, _name, _index = dragengine.wire_under_cursor(    # what landed is excluded: it sits under the cursor already
             editor, spot, exclude=landed)
         if wire is not None:
             dragengine.splice_into_wire(wire, landed, editor)
@@ -496,7 +496,7 @@ class GridGestureMixin:
 
 
 def _node_paths_from_mime(mime) -> list:
-    """Node paths in a drag, tried in every format Houdini uses - node-path mime, item-path list, then text. Read text() ALONE and H21 parses to "", because only H22 populates it; multi-node drags separate with tabs/newlines."""
+    """Node paths in a drag: node-path mime, then item-path list, then text. ▸r/drop-mime"""
     raw = ""
     for attr in ("nodePath", "itemPath"):
         try:
@@ -518,11 +518,11 @@ def _node_paths_from_mime(mime) -> list:
 
 
 class DragDropCentralWidget(QtWidgets.QWidget):
-    """Receives a node dragged IN from a network editor: a drop here is a save to the library, and only that - every drag OUT is a gesture on the view."""
+    """Receives a node dragged in from a network editor and saves it to the library."""
 
     @debug.guarded("DragDropCentralWidget.dragEnterEvent")
     def dragEnterEvent(self, event: QtGui.QDragEnterEvent) -> None:
-        """Accept any drag carrying a resolvable node path that did not start inside the panel. The acceptance must be EXPLICIT here: `acceptDrops` in the .ui alone gets a drop delivered on H22 and never on H21."""
+        """Accept any drag carrying a resolvable node path that did not start inside the panel."""
         src = event.source()
         if src is not None and _find_panel(src) is not None:
             return
@@ -531,7 +531,7 @@ class DragDropCentralWidget(QtWidgets.QWidget):
 
     @debug.guarded("DragDropCentralWidget.dropEvent")
     def dropEvent(self, event: QtGui.QDropEvent) -> None:
-        src = event.source()    # a drop that ORIGINATED in the panel is ignored: a material dragged out of our own grid also carries a valid node path, its /mat copy
+        src = event.source()    # a drop that started in the panel is ignored, though it carries a node path
         if src is not None and _find_panel(src) is not None:
             return
         mime = event.mimeData()
@@ -551,7 +551,7 @@ class DragDropCentralWidget(QtWidgets.QWidget):
         panel = _find_panel(self)
         if panel is None:
             return
-        section = panel._section()    # DEFERRED out of the drop: a modal opened while the native gesture is completing takes the drag's own release on its default button ▸r/qt-windows-macos
+        section = panel._section()    # deferred out of the drop, so no modal opens mid-gesture ▸r/qt-windows-macos
 
         @debug.guarded("dropEvent.deferred_save")
         def _route(panel=panel, section=section, node=nodes[0]):
@@ -563,7 +563,7 @@ class DragDropCentralWidget(QtWidgets.QWidget):
 
 
 class CategoryDropFilter(QtCore.QObject):
-    """Makes the category sidebar a DROP TARGET, recategorising what lands on it. It accepts only drags that started in our own grid, so a node dragged in from Houdini still reaches the save handler, and it consumes the drop so that handler never sees this one."""
+    """Makes the category sidebar a drop target for drags from the grid, recategorising them."""
 
     def __init__(self, cat_list, panel) -> None:
         super().__init__(cat_list)
@@ -599,27 +599,27 @@ class CategoryDropFilter(QtCore.QObject):
 
 
 class DragDropListView(GridGestureMixin, QtWidgets.QListView):
-    """The GRID: one tile per item, IconMode or ListMode. Kept as its own name because every caller, test and `.ui` refers to it."""
+    """The grid: one tile per item, IconMode or ListMode."""
 
 
 class DragDropTableView(GridGestureMixin, QtWidgets.QTableView):
-    """LIST MODE as a real table, sharing the gesture AND the model, proxy and selection model with the grid - two views over one selection is what keeps this from doubling every area binding. It inherits the host stylesheet rather than styling itself."""
+    """List mode as a table, sharing the gesture, model, proxy and selection model with the grid."""
 
     def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
         super().__init__(parent)
         self.setShowGrid(False)
-        self.setAlternatingRowColors(True)    # banded rows in the HOST's colour: Houdini's sheet carries alternate-background-color and Qt only uses it when the view asks
+        self.setAlternatingRowColors(True)    # banded rows in the host stylesheet's alternate-background-color
         self.setWordWrap(False)
         self.setCornerButtonEnabled(False)
         self.verticalHeader().setVisible(False)
         self.setSelectionBehavior(
             QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
-        self.setSelectionMode(    # said rather than inherited: QTableView defaults to Extended where QListView defaults to Single, and the two views must not differ
+        self.setSelectionMode(    # set explicitly so both views match
             QtWidgets.QAbstractItemView.SelectionMode.ExtendedSelection)
         self.setVerticalScrollMode(
             QtWidgets.QAbstractItemView.ScrollMode.ScrollPerPixel)
         self.setHorizontalScrollMode(
             QtWidgets.QAbstractItemView.ScrollMode.ScrollPerPixel)
-        self.setAutoScroll(False)    # SELECTING A TILE MUST NEVER MOVE THE GRID: autoScroll defaults ON and re-scrolls on every currentChanged, so clicking a half-cut row jumped the view under the cursor
+        self.setAutoScroll(False)    # selecting a row never scrolls the view
         self.setEditTriggers(
             QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)

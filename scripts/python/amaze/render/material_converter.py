@@ -1,4 +1,4 @@
-"""Redshift -> Karma/MaterialX conversion: best-effort node-graph translation, node type by node type - anything without a mapping is reported in the ConversionReport, never silently dropped or guessed at. ▸r/rs-conversion"""
+"""Redshift -> Karma/MaterialX conversion; anything unmapped goes in the report. ▸r/rs-conversion"""
 
 import inspect
 
@@ -32,7 +32,7 @@ def _octane_type_available() -> bool:
 
 
 def find_redshift_shader(vopnet: hou.Node) -> hou.Node | None:
-    """The surface shader inside a reconstructed redshift_vopnet: what feeds the output node's Surface input, falling back to shaderball_scene.py's name scan when no output node or an unwired Surface."""
+    """The surface shader inside a rebuilt redshift_vopnet: what feeds Surface, else a name scan."""
     terminal = material.redshift_terminal(vopnet)
     inputs = terminal.inputs() if terminal is not None else ()
     if inputs and inputs[0] is not None:
@@ -41,9 +41,9 @@ def find_redshift_shader(vopnet: hou.Node) -> hou.Node | None:
     return material.redshift_surface_shader(vopnet)
 
 
-_UBER_CONVERTERS = {}    # Redshift material shader -> its converter; populated at the bottom once every converter it names exists, and convert_material_shader reading it is what lets a blended material recurse into its parts
+_UBER_CONVERTERS = {}    # Redshift material shader -> its converter; filled at the bottom
 
-STANDARD_MATERIAL_PARM_MAP = [    # redshift::StandardMaterial -> mtlxstandard_surface, verified against Houdini's own bxdf/standard_surface.mtlx nodedef; a wrong or missing name no-ops via _copy_constant_parm
+STANDARD_MATERIAL_PARM_MAP = [    # redshift::StandardMaterial -> mtlxstandard_surface; a bad name no-ops
     ("base_color", "base_color"),
     ("base_color_weight", "base"),
     ("diffuse_roughness", "diffuse_roughness"),
@@ -60,7 +60,7 @@ STANDARD_MATERIAL_PARM_MAP = [    # redshift::StandardMaterial -> mtlxstandard_s
     ("ms_amount", "subsurface"),
     ("ms_color", "subsurface_color"),
     ("ms_radius", "subsurface_radius"),
-    ("ms_radius_scale", "subsurface_scale"),    # the radius is a DISTANCE and this its scalar multiplier - dropped, a converted subsurface material renders at scale 1 and washes out
+    ("ms_radius_scale", "subsurface_scale"),    # the radius distance's scalar multiplier
     ("sheen_weight", "sheen"),
     ("sheen_color", "sheen_color"),
     ("sheen_roughness", "sheen_roughness"),
@@ -76,7 +76,7 @@ STANDARD_MATERIAL_PARM_MAP = [    # redshift::StandardMaterial -> mtlxstandard_s
 ]
 
 
-OPENPBR_MATERIAL_PARM_MAP = [    # redshift::OpenPBRMaterial (the spec's own names, read from a real saved .mat block) -> mtlxstandard_surface, kept consistent with the library's existing Karma materials; inputs handled elsewhere are in _OPENPBR_HANDLED_INPUTS
+OPENPBR_MATERIAL_PARM_MAP = [    # redshift::OpenPBRMaterial -> mtlxstandard_surface
     ("base_weight", "base"),
     ("base_color", "base_color"),
     ("base_diffuse_roughness", "diffuse_roughness"),
@@ -91,10 +91,10 @@ OPENPBR_MATERIAL_PARM_MAP = [    # redshift::OpenPBRMaterial (the spec's own nam
     ("transmission_depth", "transmission_depth"),
     ("transmission_scatter", "transmission_scatter"),
     ("transmission_scatter_anisotropy", "transmission_scatter_anisotropy"),
-    ("transmission_dispersion_scale", "transmission_dispersion"),    # the vendor graph copies the WEIGHT, never the abbe number - mapping abbe (default 20) force-enabled visible dispersion on every converted transmissive material
+    ("transmission_dispersion_scale", "transmission_dispersion"),    # the weight, never the abbe number
     ("subsurface_weight", "subsurface"),
     ("subsurface_color", "subsurface_color"),
-    ("subsurface_radius", "subsurface_scale"),    # crossed on purpose, matching the vendor graph: RS radius is a FLOAT distance and radius_scale a COLOR3 - straight-across collapsed the scatter colour to its red component
+    ("subsurface_radius", "subsurface_scale"),    # crossed on purpose: RS radius is a float distance
     ("subsurface_radius_scale", "subsurface_radius"),
     ("subsurface_scatter_anisotropy", "subsurface_anisotropy"),
     ("fuzz_weight", "sheen"),
@@ -106,11 +106,11 @@ OPENPBR_MATERIAL_PARM_MAP = [    # redshift::OpenPBRMaterial (the spec's own nam
     ("coat_ior", "coat_IOR"),
     ("coat_roughness_anisotropy", "coat_anisotropy"),
     ("emission_color", "emission_color"),    # thin film handled separately (gate + unit) by _convert_thin_film
-    ("emission_luminance", "emission"),    # OpenPBR emission is a luminance (nits), Standard Surface's a 0-1 weight - a direct copy is right for the common non-emissive case, and genuinely emissive materials are flagged in the report
+    ("emission_luminance", "emission"),    # nits copied onto a 0-1 weight; right when non-emissive
     ("geometry_opacity", "opacity"),
 ]
 
-CLASSIC_MATERIAL_PARM_MAP = [    # redshift::Material (the CLASSIC shader, predating StandardMaterial) -> mtlxstandard_surface, verified against the live plugin's own parameter list (Redshift 2026 / H21); the unmappable parms are reported via _CLASSIC_REPORT_ONLY, never guessed at
+CLASSIC_MATERIAL_PARM_MAP = [    # redshift::Material, the classic shader -> mtlxstandard_surface
     ("diffuse_color", "base_color"),
     ("diffuse_weight", "base"),
     ("diffuse_roughness", "diffuse_roughness"),
@@ -129,7 +129,7 @@ CLASSIC_MATERIAL_PARM_MAP = [    # redshift::Material (the CLASSIC shader, preda
     ("refr_roughness", "transmission_extra_roughness"),
     ("refr_abbe", "transmission_dispersion"),
     ("refr_thin_walled", "thin_walled"),
-    ("ms_amount", "subsurface"),    # the classic shader's multiple-scattering layer 1 is the closest single-layer equivalent - layers 2/3 are reported
+    ("ms_amount", "subsurface"),    # multiple-scattering layer 1 only; layers 2 and 3 are reported
     ("ms_color0", "subsurface_color"),
     ("ms_radius0", "subsurface_scale"),
     ("ms_radius_scale", "subsurface_radius"),
@@ -144,7 +144,7 @@ CLASSIC_MATERIAL_PARM_MAP = [    # redshift::Material (the CLASSIC shader, preda
 
 _CLASSIC_HANDLED_INPUTS = {"bump_input"}    # classic-shader inputs handled outside the parm map
 
-_CLASSIC_REPORT_ONLY = (    # classic parms whose non-default value changes the look but has no faithful Standard Surface target - reported so a conversion is never silently wrong
+_CLASSIC_REPORT_ONLY = (    # classic parms with no Standard Surface target, reported when not default
     ("transl_weight", 0.0, "back-lighting/translucency"),
     ("overall_color", (1.0, 1.0, 1.0), "the overall tint multiplier"),
     ("ms_weight1", 0.0, "subsurface layer 2"),
@@ -164,7 +164,7 @@ _OPENPBR_HANDLED_INPUTS = {
 }
 
 def _convert_thin_film(rs_node: hou.Node, mtlx: hou.Node, report) -> None:
-    """Redshift thin film, respecting the GATE and the UNIT a naive copy ignored - which baked a warm iridescent tint onto every converted metal (#179)."""
+    """Copy Redshift thin film onto `mtlx`, honouring each shader's gate and thickness unit."""
     def _v(name):
         p = rs_node.parm(name)
         try:
@@ -180,15 +180,15 @@ def _convert_thin_film(rs_node: hou.Node, mtlx: hou.Node, report) -> None:
             except hou.Error:
                 pass
 
-    weight = _v("thin_film_weight")          # OpenPBR only: it gates thin film by weight (default 0), where mtlxstandard_surface has no gate - thickness > 0 switches it on
+    weight = _v("thin_film_weight")          # OpenPBR only: thin film is gated by weight
     if weight is not None:                    # -> this is an OpenPBR shader
         if weight > 1e-6:
-            _put("thin_film_thickness", (_v("thin_film_thickness") or 0.0) * 1000.0)    # OpenPBR thickness is MICROMETRES, mtlx wants NANOMETRES
+            _put("thin_film_thickness", (_v("thin_film_thickness") or 0.0) * 1000.0)    # um to nm
             ior = _v("thin_film_ior")
             if ior is not None:
                 _put("thin_film_IOR", ior)
         return
-    thickness_nm = _v("thinfilm_thickness")   # StandardMaterial: no weight parm (thickness > 0 IS the gate) and already in nanometres - straight across
+    thickness_nm = _v("thinfilm_thickness")   # StandardMaterial: thickness > 0 is the gate, in nm
     if thickness_nm is not None and thickness_nm > 1e-6:
         _put("thin_film_thickness", thickness_nm)
         ior = _v("thinfilm_ior")
@@ -199,7 +199,7 @@ def _convert_thin_film(rs_node: hou.Node, mtlx: hou.Node, report) -> None:
 def _copy_constant_parm(
     src_node: hou.Node, src_name: str, dst_node: hou.Node, dst_name: str
 ) -> None:
-    """Copy a plain value across WIDTH-AWARE - the two shaders disagree on tuple widths, and a mismatched set() raises hou.InvalidSize (a hou.Error, which a ValueError clause misses): a scalar broadcasts, a vector collapses to its first component, anything still off no-ops."""
+    """Copy a plain value across tuple widths: a scalar broadcasts, a vector takes its first value."""
     src_parm = src_node.parmTuple(src_name)
     dst_parm = dst_node.parmTuple(dst_name)
     if src_parm is None or dst_parm is None:
@@ -225,7 +225,7 @@ TANGENT_SPACE_NORMAL = "1"    # redshift::BumpMap `inputType` is a STRING menu, 
 
 
 def _named_inputs(node: hou.Node) -> dict:
-    """{input_name: connected_node} for a VOP node, via the None-padded inputs()/inputNames() positional zip - padding confirmed against H21's own HOM docs; inputConnections() gave back nonsense for these node types and is avoided on purpose."""
+    """{input_name: connected_node} for a VOP node, zipping inputs() with inputNames()."""
     input_nodes = node.inputs()
     input_names = node.inputNames()
     result = {}
@@ -236,7 +236,7 @@ def _named_inputs(node: hou.Node) -> dict:
 
 
 def _effective_signature(node: hou.Node) -> str:
-    """The signature the node is on NOW - wiring an input flips it, so it must be read after the connections are made, never assumed."""
+    """The node's current signature; wiring flips it, so read it after the connections."""
     parm = node.parm("signature")
     if parm is None:
         return "default"
@@ -247,7 +247,7 @@ def _effective_signature(node: hou.Node) -> str:
 
 
 def _set_poly_parm(node: hou.Node, base_name: str, values, signature: str) -> bool:
-    """Set a parm on a signature-polymorphic MaterialX node (mtlxmultiply, mtlxremap, ...): one parm variant per signature with the tuple width to match, and after a signature switch the SUFFIXED variant is the one that renders - setting only the plain name succeeds silently while changing nothing visible. Nudges the signature parm first, then tries suffixed before plain."""
+    """Set a parm on a signature-polymorphic MaterialX node: the suffixed variant first, then plain."""
     if not isinstance(values, (tuple, list)):
         values = (values,)
     try:
@@ -278,8 +278,8 @@ def _set_multiply_in2(multiply: hou.Node, scale: tuple) -> bool:
 def _get_or_create_uv_chain(
     dest_parent: hou.Node, scale: tuple, report: ConversionReport
 ) -> hou.Node:
-    """UV chain for converted textures: one shared mtlxtexcoord per material feeding one mtlxmultiply per DISTINCT scale value - the common case is one multiply serving every image, which doubles as the dial that scales all the material's textures together."""
-    tag = f"{scale[0]:.6g},{scale[1]:.6g}"    # the multiply records its scale in user data, and matching on THAT (not parm values, whose width varies by signature) is what makes reuse detection reliable
+    """The UV multiply for `scale`: one shared mtlxtexcoord, one mtlxmultiply per distinct scale."""
+    tag = f"{scale[0]:.6g},{scale[1]:.6g}"    # reuse matches on this user-data tag, not parm values
     for child in dest_parent.children():
         if (
             child.type().name() == "mtlxmultiply"
@@ -296,7 +296,7 @@ def _get_or_create_uv_chain(
     multiply = dest_parent.createNode("mtlxmultiply")
     multiply.setNamedInput("in1", texcoord, 0)
     multiply.setUserData(_UV_SCALE_TAG, tag)
-    if not _set_multiply_in2(multiply, scale) and tuple(scale) != (1.0, 1.0):    # a failed set on a non-default scale renders at the wrong tiling - surfaced; on 1,1 it is harmless, in2 defaults to 1
+    if not _set_multiply_in2(multiply, scale) and tuple(scale) != (1.0, 1.0):    # in2 defaults to 1
         report.approximate(
             f"couldn't set UV scale {tag} on the texture-scale multiply - "
             "set its second input by hand"
@@ -304,7 +304,7 @@ def _get_or_create_uv_chain(
     return multiply
 
 
-_COLOUR_INPUTS = frozenset({    # the standard-surface inputs that carry COLOUR (sRGB read, color3 signature); everything else a texture can feed is scalar DATA read Raw - the per-map colour-space rule, verified against SideFX's own StandardSurface .mtlx
+_COLOUR_INPUTS = frozenset({    # standard-surface inputs read as sRGB colour; the rest read Raw
     "base_color",
     "specular_color",
     "coat_color",
@@ -348,7 +348,7 @@ def convert_texture_sampler(
     report: ConversionReport,
     target_input: str = "",
 ) -> hou.Node:
-    """redshift::TextureSampler -> mtlximage plus the shared UV chain carrying the sampler's own `scale`; `target_input` picks the colour space per _COLOUR_INPUTS, and normal maps go through convert_bump_map, which sets Vector3/Raw itself."""
+    """redshift::TextureSampler -> mtlximage plus its UV chain; `target_input` picks the colour space."""
     mtlx = dest_parent.createNode("mtlximage")
     path_parm = rs_node.parm("tex0")
     if path_parm is not None:
@@ -381,7 +381,7 @@ def convert_texture_sampler(
 def convert_maxon_noise(
     rs_node: hou.Node, dest_parent: hou.Node, report: ConversionReport
 ) -> hou.Node:
-    """redshift::MaxonNoise -> a generic MaterialX fractal-noise stand-in: the Maxon library has no MaterialX equivalent, so every use is flagged as approximated, never claimed faithful."""
+    """redshift::MaxonNoise -> a generic MaterialX fractal noise, always reported as approximated."""
     position = dest_parent.createNode("mtlxposition")
     fractal = dest_parent.createNode("mtlxfractal3d")
     fractal.setNamedInput("position", position, 0)
@@ -395,7 +395,7 @@ def convert_maxon_noise(
 def convert_bump_map(
     rs_node: hou.Node, dest_parent: hou.Node, report: ConversionReport
 ) -> hou.Node | None:
-    """The RS output node's "Bump Map" input -> mtlxnormalmap feeding the shader's normal input: the texture goes STRAIGHT into "in" with no conversion node between - library content wires real normal maps through BumpMap nodes whatever inputType says, so trusting it minted a nonsensical normal->normal conversion."""
+    """The RS "Bump Map" input -> mtlxnormalmap, its texture wired straight into "in"."""
     nm = dest_parent.createNode("mtlxnormalmap")
     if rs_node.type().name() == "redshift::BumpMap":
         tex_src = _named_inputs(rs_node).get("input")
@@ -411,7 +411,7 @@ def convert_bump_map(
         )
         return nm
     converted = convert_node(tex_src, dest_parent, report)
-    if converted is not None:    # a normal map is DATA: Vector3 + Raw, no sRGB transform - SideFX's own guidance and their chess_set .mtlx both say so
+    if converted is not None:    # a normal map is data: Vector3, Raw
         _apply_image_colorspace(
             converted, "normal", report, f'"{rs_node.name()}"'
         )
@@ -428,7 +428,7 @@ def convert_bump_map(
 def convert_displacement(
     rs_node: hou.Node, dest_parent: hou.Node, report: ConversionReport
 ) -> hou.Node | None:
-    """The RS output node's "Displacement" input -> mtlxdisplacement; redshift::Displacement takes its texture on `texMap` (confirmed from saved library data) and its Change Range remap is rebuilt as mtlxremap when in use."""
+    """The RS "Displacement" input -> mtlxdisplacement, a Change Range rebuilt as mtlxremap."""
     disp = dest_parent.createNode("mtlxdisplacement")
     remap_values = None
     if rs_node.type().name() == "redshift::Displacement":
@@ -454,13 +454,13 @@ def convert_displacement(
             remap_values = ranges
         tex_src = _named_inputs(rs_node).get("texMap")
     else:
-        tex_src = rs_node    # something else wired straight into the output's Displacement input - converted directly as the displacement source
+        tex_src = rs_node    # anything else wired into Displacement converts directly
     if tex_src is None:
         return disp
     converted = convert_node(tex_src, dest_parent, report)
     if converted is None:
         return disp
-    if remap_values is not None:    # a non-default Change Range maps exactly onto mtlxremap (oldrange -> inlow/inhigh, newrange -> outlow/outhigh), inserted only when in use; a failed set falls back to the honest adjust-by-hand note
+    if remap_values is not None:    # oldrange -> inlow/inhigh, newrange -> outlow/outhigh
         remap = dest_parent.createNode("mtlxremap")
         ok = True
         for base, key in (
@@ -491,7 +491,7 @@ def convert_displacement(
     return disp
 
 
-_RAMP_MAPPING_OUTPUT = {"0": 1, "1": 0}  # RSRamp inputMapping -> the mtlxseparate2 output index that drives it (Vertical -> V = outy = 1, Horizontal -> U = outx = 0); menu values confirmed on the real parm
+_RAMP_MAPPING_OUTPUT = {"0": 1, "1": 0}  # RSRamp inputMapping -> mtlxseparate2 output: Vertical V, Horizontal U
 _RAMP_MAPPING_LABELS = {
     "0": "Vertical",
     "1": "Horizontal",
@@ -504,7 +504,7 @@ _RAMP_MAPPING_LABELS = {
 def _build_ramp_uv_driver(
     rs_node: hou.Node, dest_parent: hou.Node, report: ConversionReport
 ):
-    """The value driving an RSRamp with nothing wired into `input`, rebuilt as mtlxtexcoord -> mtlxseparate2 -> the inputMapping channel, honouring inputInvert - without it the ramp reads flat. Returns (node, output_index), or None if the chain couldn't be built."""
+    """The UV driver for an unwired RSRamp as (node, output_index), or None if it cannot be built."""
     mapping = ""
     parm = rs_node.parm("inputMapping")
     if parm is not None:
@@ -549,7 +549,7 @@ def _build_ramp_uv_driver(
 def convert_ramp(
     rs_node: hou.Node, dest_parent: hou.Node, report: ConversionReport
 ) -> hou.Node | None:
-    """redshift::RSRamp -> kma_rampconst, the real Karma ramp node - t input drives the lookup, the gradient copies as a hou.Ramp onto vramp/framp with its colours intact. NOT hmtlxrampc: voptoolutils' KARMAMTLX_TAB_MASK excludes `^hmtlxramp*`, so Karma degrades it to a float evaluation - colour knots in, greyscale out; and kma_rampconst only exists inside a real Karma Material Builder, which is why the converter builds there (nodes.make_karma_builder)."""
+    """redshift::RSRamp -> kma_rampconst; `dest_parent` must be a real Karma Material Builder."""
     ramp = None
     src_parm = rs_node.parm("ramp")
     if src_parm is not None:
@@ -587,7 +587,7 @@ def convert_ramp(
                     "be copied - rebuild the ramp by hand"
                 )
         try:
-            if any(b != hou.rampBasis.Linear for b in ramp.basis()):    # both Houdini MaterialX ramp nodes are LINEAR-ONLY (SideFX docs for kma_rampconst and hmtlxrampc both say so)
+            if any(b != hou.rampBasis.Linear for b in ramp.basis()):    # the Karma ramp is linear-only
                 report.approximate(
                     f'"{rs_node.name()}" (RSRamp) uses non-linear knot '
                     "interpolation - the Karma ramp only supports Linear, "
@@ -596,7 +596,7 @@ def convert_ramp(
         except (hou.Error, AttributeError):
             pass
 
-    src_in = _named_inputs(rs_node).get("input")    # whatever drives the lookup: a wired input converts directly, otherwise the UV-derived driver chain - without one the ramp reads flat
+    src_in = _named_inputs(rs_node).get("input")    # a wired input converts; else the UV driver
     driver = None
     if src_in is not None:
         converted = convert_node(src_in, dest_parent, report)
@@ -618,7 +618,7 @@ def convert_ramp(
             "wire the ramp's t input by hand or it reads flat"
         )
 
-    source = rs_node.parm("inputSource")    # the "Alt" input source has no MaterialX equivalent; UV Map and Auto both mean the UV-driven chain above
+    source = rs_node.parm("inputSource")    # "Alt" has no MaterialX equivalent; UV Map and Auto use UV
     try:
         if source is not None and str(source.eval()) == "1":
             report.approximate(
@@ -630,7 +630,7 @@ def convert_ramp(
     return node
 
 
-_LAYER_BLEND_NODES = {    # RSColorLayer blend mode -> the MaterialX node that performs it, every one shipping in H21 AND H22 (verified in both); modes with no equivalent are absent on purpose and reported
+_LAYER_BLEND_NODES = {    # RSColorLayer blend mode -> the MaterialX node that performs it
     "0": None,               # Normal - the layer colour itself
     "2": "mtlxplus",         # Add
     "3": "mtlxminus",        # Subtract
@@ -645,7 +645,7 @@ _LAYER_BLEND_NODES = {    # RSColorLayer blend mode -> the MaterialX node that p
     "15": "mtlxdivide",      # Divide
 }
 
-_LAYER_BLEND_UNSUPPORTED = {    # modes standard MaterialX has no node for - named in the report so the difference is visible instead of silent
+_LAYER_BLEND_UNSUPPORTED = {    # modes MaterialX has no node for, named in the report
     "1": "Average", "9": "Hardlight", "10": "Softlight",
     "14": "Exclusion",
 }
@@ -669,7 +669,7 @@ def convert_color_layer(
     rs_node: hou.Node, dest_parent: hou.Node, report: ConversionReport,
     target_input: str = "",
 ) -> hou.Node | None:
-    """redshift::RSColorLayer -> a MaterialX blend chain, rebuilt literally: per layer the mode's blend node combines the running result with the layer colour and an mtlxmix folds it back by the mask; an inexpressible mode is reported and treated as Normal, the mode it degrades to most predictably."""
+    """redshift::RSColorLayer -> a blend and a mask mix per layer; a mode with no node acts as Normal."""
     current = _layer_input(rs_node, "base_color")
     if current is None:
         base = rs_node.parmTuple("base_color")
@@ -756,7 +756,7 @@ def convert_fresnel(
     rs_node: hou.Node, dest_parent: hou.Node, report: ConversionReport,
     target_input: str = "",
 ) -> hou.Node | None:
-    """redshift::Fresnel -> a MaterialX facing-ratio blend, the term rebuilt rather than approximated by a constant: with an IOR the Schlick form F = F0 + (1-F0)(1-cos)^5, F0 = ((ior-1)/(ior+1))^2, and in curve-falloff mode the exponent is the node's own curve value."""
+    """redshift::Fresnel -> a facing-ratio blend: Schlick with an IOR, else the node's curve exponent."""
     facing = rs_node.parmTuple("facing_color")
     perp = rs_node.parmTuple("perp_color")
     facing_node = _layer_input(rs_node, "facing_color")
@@ -832,14 +832,14 @@ def convert_math_range(
     rs_node: hou.Node, dest_parent: hou.Node, report: ConversionReport,
     target_input: str = "",
 ) -> hou.Node | None:
-    """redshift::RSMathRange -> mtlxremap one-to-one (input/old/new ranges onto in/inlow/inhigh/outlow/outhigh); Redshift clamps by default and MaterialX's remap does not, so a clamp is appended when it is on."""
+    """redshift::RSMathRange -> mtlxremap one-to-one, plus an mtlxclamp when its clamp is on."""
     remap = dest_parent.createNode("mtlxremap")
     pairs = (
         ("input", "in"), ("old_min", "inlow"), ("old_max", "inhigh"),
         ("new_min", "outlow"), ("new_max", "outhigh"),
     )
     inputs = _named_inputs(rs_node)
-    for rs_name, mtlx_name in pairs:    # wiring FIRST, values after: a wired colour source flips the remap's signature, and the values must land on the variant that renders
+    for rs_name, mtlx_name in pairs:    # wiring first: it flips the signature the values land on
         src = inputs.get(rs_name)
         if src is None:
             continue
@@ -891,7 +891,7 @@ def convert_node(
     report: ConversionReport,
     target_input: str = "",
 ) -> hou.Node | None:
-    """Dispatch one connected input node to its converter, or report it as unsupported - None on no mapping, and callers leave the destination unwired rather than crash. `target_input` (the standard-surface input the result will feed) goes to EVERY converter whose signature declares it, read from the signature so nested samplers keep their colour-space hint."""
+    """Convert one input node, or report it and answer None; `target_input` passes to takers."""
     conv = NODE_CONVERTERS.get(rs_node.type().name())
     if conv is None:
         report.skip(
@@ -907,7 +907,7 @@ def convert_node(
     return conv(rs_node, dest_parent, report)
 
 
-_UNCONVERTIBLE_INPUTS = {    # upstream nodes whose lack of a MaterialX equivalent is a PROPERTY, not a gap to close later - each with the reason in the user's terms; anything absent falls back to the generic no-mapping-yet skip
+_UNCONVERTIBLE_INPUTS = {    # input nodes MaterialX can never express, each with the reason shown
     "redshift::Flakes":
         "the metallic-flake generator (car paint) perturbs the "
         "specular normal with its own procedural flake distribution - "
@@ -932,7 +932,7 @@ _UNCONVERTIBLE_INPUTS = {    # upstream nodes whose lack of a MaterialX equivale
 }
 
 
-_OUT_OF_SCOPE_SHADERS = {    # Redshift shaders that are NOT surface materials - a conversion attempt would fail or invent a look, so each is refused with the reason; measured across a 400-material library these are the bulk of what cannot convert
+_OUT_OF_SCOPE_SHADERS = {    # Redshift shaders that are not surface materials, refused with the reason
     "redshift::ToonMaterial":
         "a non-photorealistic Toon material - MaterialX Standard "
         "Surface has no cel/outline model, so there is nothing "
@@ -958,7 +958,7 @@ _OUT_OF_SCOPE_SHADERS = {    # Redshift shaders that are NOT surface materials -
 
 
 def out_of_scope_reason(vopnet: hou.Node) -> str:
-    """When no convertible surface terminal was found: the reason in the user's terms, derived from what the network actually contains - empty when it holds nothing recognisable."""
+    """Why a network with no convertible surface cannot convert, in the user's terms, or ""."""
     present = {c.type().name() for c in vopnet.allSubChildren()}
     for type_name, reason in _OUT_OF_SCOPE_SHADERS.items():
         if type_name in present:
@@ -993,7 +993,7 @@ def convert_classic_material(
                 % (parm_name, ", ".join("%.3g" % float(v) for v in value),
                    what)
             )
-    for parm_name, default, what in (    # Fresnel/BRDF modes change the specular response - only the default combination maps 1:1 onto Standard Surface's GGX + IOR model
+    for parm_name, default, what in (    # only the default Fresnel/BRDF modes map onto GGX + IOR
         ("refl_fresnel_mode", "3", "reflection Fresnel mode"),
         ("refl_brdf", "0", "reflection BRDF"),
         ("coat_brdf", "0", "coat BRDF"),
@@ -1009,7 +1009,7 @@ def convert_classic_material(
 
 
 def _apply_glossiness_inversion(rs_node, mtlx, report) -> None:
-    """Redshift's *_isGlossiness toggles make a roughness parm carry GLOSSINESS (1-roughness) - copied raw, a glossiness-workflow material converts INVERTED, shiny reads matte. Verified on the live plugin, all three default off."""
+    """Invert each roughness whose *_isGlossiness toggle is on; a textured one is reported."""
     for toggle, mtlx_name in (
         ("refl_isGlossiness", "specular_roughness"),
         ("coat_isGlossiness", "coat_roughness"),
@@ -1045,7 +1045,7 @@ def _input_index(node, name) -> int:
 
 
 def _apply_vendor_transforms(rs_node, mtlx, report) -> None:
-    """The two non-linear transforms SideFX's own translation graph applies that a straight copy omits (open_pbr_to_standard_surface.mtlx): sheen roughness = fuzz_roughness^2.5, and specular roughness mixed toward coat_roughness by coat weight - constants only, a textured input is reported instead of baked."""
+    """OpenPBR's sheen^2.5 and coat-weighted specular roughness, on constants; textured: reported."""
     sheen = mtlx.parm("sheen_roughness")
     if sheen is not None and _input_index(mtlx, "sheen_roughness") >= 0 \
             and mtlx.input(_input_index(mtlx, "sheen_roughness")) is None:
@@ -1094,7 +1094,7 @@ def convert_standard_material(
 def convert_openpbr_material(
     rs_node: hou.Node, dest_parent: hou.Node, report: ConversionReport
 ) -> hou.Node:
-    """redshift::OpenPBRMaterial -> mtlxstandard_surface, the spec's parm names translated per OPENPBR_MATERIAL_PARM_MAP."""
+    """redshift::OpenPBRMaterial -> mtlxstandard_surface, per OPENPBR_MATERIAL_PARM_MAP."""
     return _convert_uber_shader(
         rs_node, dest_parent, report,
         OPENPBR_MATERIAL_PARM_MAP, _OPENPBR_HANDLED_INPUTS,
@@ -1106,7 +1106,7 @@ def convert_color_correction(
     rs_node: hou.Node, dest_parent: hou.Node, report: ConversionReport,
     target_input: str = "",
 ) -> hou.Node | None:
-    """redshift::RSColorCorrection -> mtlxhsvadjust (amount = [hue shift, saturation gain, value gain]) + mtlxcontrast + mtlxrange's gamma; only contrast needs interpreting - Redshift's neutral is 0.5 where MaterialX's is amount 1.0 around a 0.5 pivot - so it maps linearly and is REPORTED as approximated."""
+    """redshift::RSColorCorrection -> hsvadjust, contrast and range nodes; contrast is approximated."""
     source = _named_inputs(rs_node).get("input")
     if source is not None:
         current = convert_node(source, dest_parent, report, target_input)
@@ -1167,7 +1167,7 @@ def convert_particle_attribute(
     rs_node: hou.Node, dest_parent: hou.Node, report: ConversionReport,
     target_input: str = "",
 ) -> hou.Node | None:
-    """redshift::ParticleAttributeLookup -> mtlxgeompropvalue: both read a named geometry attribute at shading time, so the name carries straight across."""
+    """redshift::ParticleAttributeLookup -> mtlxgeompropvalue, the attribute name carried across."""
     attribute = rs_node.parm("attribute")
     name = str(attribute.eval()).strip() if attribute is not None else ""
     if not name:
@@ -1176,7 +1176,7 @@ def convert_particle_attribute(
         )
         return None
     lookup = dest_parent.createNode("mtlxgeompropvalue")
-    signature = lookup.parm("signature")    # colour attributes read as colour; anything else as float, which is what the remaining lookups in practice are (pscale, age, id)
+    signature = lookup.parm("signature")    # Cd and diffuse read as colour, the rest as float
     if signature is not None:
         try:
             signature.set("color3" if name in ("Cd", "diffuse") else "default")
@@ -1206,7 +1206,7 @@ def _shader_converter(type_name: str):
 def convert_material_shader(
     rs_node: hou.Node, dest_parent: hou.Node, report: ConversionReport
 ) -> hou.Node | None:
-    """Any Redshift MATERIAL node -> its MaterialX equivalent: the three uber shaders convert directly, and the blender/layer nodes recurse through here per combined material, so a blend of blends converts as deeply as it nests."""
+    """Any Redshift material node -> its MaterialX equivalent; blends recurse through here."""
     type_name = rs_node.type().name()
     converter = _shader_converter(type_name)
     if converter is not None:
@@ -1219,7 +1219,7 @@ def convert_material_shader(
 
 
 def _blend_weight(rs_node, input_name, parm_name, dest_parent, report):
-    """A blend mask as the FLOAT mtlxmix wants: Redshift blends by a COLOUR, so a connected one reduces through mtlxluminance and a constant by its own luminance - reported when not grey, which is where the two models part."""
+    """A colour blend mask as mtlxmix's float, by luminance: (node, None) or (None, weight)."""
     src = _named_inputs(rs_node).get(input_name)
     if src is not None:
         converted = convert_node(src, dest_parent, report, "")
@@ -1247,7 +1247,7 @@ def convert_material_blend(
     rs_node: hou.Node, dest_parent: hou.Node, report: ConversionReport,
     target_input: str = "",
 ) -> hou.Node | None:
-    """redshift::MaterialBlender / redshift::MaterialLayer -> a chain of mtlxmix nodes over converted materials - mtlxmix mixes SURFACES natively (verified in both Houdini versions); additive layers are reported, since the surface mix interpolates and does not sum."""
+    """redshift::MaterialBlender or MaterialLayer -> an mtlxmix chain; additive layers are reported."""
     inputs = _named_inputs(rs_node)
     base_src = inputs.get("baseColor")
     if base_src is None:
@@ -1320,9 +1320,9 @@ def _convert_uber_shader(
     handled_inputs: set,
     vendor_transforms: bool = False,
 ) -> hou.Node:
-    """Build the mtlxstandard_surface equivalent of rs_node using parm_map: a mapped input with a live connection converts recursively, otherwise the constant copies across; handled_inputs are connected inputs dealt with elsewhere, so they are not reported as unmapped. vendor_transforms is OpenPBR's alone - its fuzz curve applied to Standard/classic sheen silently rewrites a value the 1:1 map copied correctly."""
+    """rs_node as mtlxstandard_surface per parm_map; `vendor_transforms` is for OpenPBR only."""
     mtlx = dest_parent.createNode("mtlxstandard_surface")
-    name_to_node = _named_inputs(rs_node)    # NOT inputConnections(): its outputNode() reported rs_node itself with output-sounding names for this node type; and the output index everywhere below is hardcoded 0, the primary output every proven wiring call in this codebase assumes
+    name_to_node = _named_inputs(rs_node)
     debug.event("convert", "shader connected inputs",
                 node=rs_node.path(), inputs=list(name_to_node.keys()))
     for rs_name, mtlx_name in parm_map:
@@ -1339,7 +1339,7 @@ def _convert_uber_shader(
                     f'"{rs_name}" -> "{mtlx_name}": conversion built '
                     "successfully but couldn't be wired to the shader input"
                 )
-    mapped = {rs_name for rs_name, _ in parm_map}    # a connected input the map does not cover is REPORTED - the skip notes above fire only for mapped inputs, and a live connection once converted to nothing silently
+    mapped = {rs_name for rs_name, _ in parm_map}    # a connected input the map misses is reported
     for name in name_to_node:
         if name in mapped or name in handled_inputs:
             continue
@@ -1347,7 +1347,7 @@ def _convert_uber_shader(
             f'shader input "{name}" is connected but has no conversion '
             "mapping yet - left at the MaterialX default"
         )
-    _convert_thin_film(rs_node, mtlx, report)    # fidelity passes shared by every Redshift uber shader, verified against the vendor translation graph and the live plugin's own parameters
+    _convert_thin_film(rs_node, mtlx, report)    # passes shared by every Redshift uber shader
     _apply_glossiness_inversion(rs_node, mtlx, report)
     if vendor_transforms:
         _apply_vendor_transforms(rs_node, mtlx, report)
@@ -1359,12 +1359,12 @@ def convert_redshift_material(
     source_mat,
     prefs_dir_parent: hou.Node,
 ) -> tuple[hou.Node | None, ConversionReport]:
-    """Reconstruct source_mat at a scratch location, convert its shader network, and return (shader, displacement, report) - the SAME adapter API as the online translator, so the engine wires each into the builder's own terminal; an unhandled shader type is reported and skipped, returning (None, None, report)."""
+    """Rebuild source_mat in scratch and convert it: (shader, displacement, report), None if not."""
     report = ConversionReport(source_mat.name)
     debug.event("convert", "start", material=source_mat.name,
                 renderer=source_mat.renderer, mat_id=source_mat.mat_id)
 
-    if not _redshift_type_available():    # preflight: reconstruction needs the Redshift plugin loaded, or createNode("redshift_vopnet") raises `Invalid node type name` mid-way - a cryptic crash reported clearly here instead
+    if not _redshift_type_available():    # the rebuild needs the Redshift plugin loaded
         report.skip(
             "Redshift isn't loaded this session, so the source material "
             "can't be read (the converter reconstructs the Redshift "
@@ -1438,7 +1438,7 @@ def convert_redshift_container(vopnet, prefs_dir_parent, report):
     return mtlx, mtlx_disp    # no collect node: the builder's surface connector refuses one
 
 
-NODE_CONVERTERS.update({    # registered here, not in the literal above: these converters lean on the material entry point, so the table completes once everything it names exists
+NODE_CONVERTERS.update({    # registered once everything they name exists
     "redshift::RSColorCorrection": convert_color_correction,
     "redshift::ParticleAttributeLookup": convert_particle_attribute,
 })

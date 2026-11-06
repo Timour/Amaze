@@ -1,4 +1,4 @@
-"""The item delegates: how a tile and a sidebar row are PAINTED - pure Qt reading roles off whatever model is attached, which is why every role arrives as a constructor argument rather than through an import, and why one delegate serves every section."""
+"""The item delegates that paint tiles and sidebar rows, every role passed in by the caller."""
 
 import os
 
@@ -11,7 +11,7 @@ from amaze.core import category, debug, renderers
 from amaze.helpers import theme, ui_helpers
 
 
-QtGui.QPixmapCache.setCacheLimit(65536)   # APP-WIDE, for the whole of Houdini, which is why it is set once here and not in `__init__` - that runs one per section and again on every reload; 64MB covers a full screen of scaled tiles several times over
+QtGui.QPixmapCache.setCacheLimit(65536)   # 64MB, app-wide for all of Houdini; set once, here
 
 class Badge:
     """One tile badge by its ID: the role it reads, the verb it runs, its arts and its words."""
@@ -79,7 +79,7 @@ BADGE = {badge.name: badge for badge in BADGES}
 
 
 def role_color(index, role):
-    """The QColor a row carries on `role`, or None for no role, no value, or a value QColor cannot read - so a caller paints only what it can paint and a damaged colour string is ignored rather than drawn as black."""
+    """The QColor a row carries on `role`, or None for no role, no value or an unreadable one."""
     if role is None:
         return None
     value = index.data(role)
@@ -129,7 +129,7 @@ def os_file_icon(path: str, side: int) -> QtGui.QImage:
 
 
 class GridCellDelegate(QtWidgets.QStyledItemDelegate):
-    """Every cell of the Grid's TABLE, and deliberately nothing else: the panel applies `hou.qt.styleSheet()` to its own root and every child inherits Houdini's item rules, so the table wears the host's selection band rather than a second opinion about it. ▸r/pluto-theme"""
+    """Every cell of the Grid's table, drawn by the host style, text at TEXT_INSET. ▸r/pluto-theme"""
 
     TEXT_INSET = theme.ui_px(amazetheme.drawn_list()["text_inset"])    # paint draws the cell, then its text here ▸r/list-from-frame
 
@@ -172,7 +172,7 @@ class GridCellDelegate(QtWidgets.QStyledItemDelegate):
 
 
 class TickCellDelegate(GridCellDelegate):
-    """A yes/no cell: a tick, or nothing. The mark is DRAWN rather than typed, so it needs no font and survives a machine whose fallback font lacks the glyph."""
+    """A yes/no cell: a drawn tick, or nothing."""
 
     def __init__(self, source_delegate, role, colour, parent=None):
         super().__init__(parent)
@@ -182,24 +182,24 @@ class TickCellDelegate(GridCellDelegate):
 
     def initStyleOption(self, option, index):
         super().initStyleOption(option, index)
-        option.text = ""    # no TEXT: `DisplayRole` still carries the raw yes/no because the SORT compares it, and this is cleared HERE rather than in `paint`, which re-runs `initStyleOption` on its own copy and would put the word back
+        option.text = ""    # no text; `DisplayRole` keeps the yes/no for the sort
 
     _LIST = amazetheme.drawn_list()    # the tick box is L01's ▸r/list-from-frame
     SIDE = theme.ui_px(_LIST["tick_side"])    # the mark's own side; a tick column is this plus PAD each side
     PAD = theme.ui_px(_LIST["tick_pad"])
 
     def _box(self, rect):
-        """The tick's square at the cell's LEFT edge, where every other column and its own heading start - centring it (tried, reverted 2026-08-04) made the two mark columns read as a different table from the eight beside them."""
+        """The tick's square at the cell's left edge, where the other columns start."""
         side = max(min(rect.height() - theme.ui_px(6), self.SIDE), 1)
         return QtCore.QRect(rect.left() + self.PAD, rect.top(),
                             side, rect.height())
 
     def sizeHint(self, option, index):
-        return QtCore.QSize(self.SIDE + 2 * self.PAD,           # as wide as the MARK, not as wide as the value behind it: the base measures `DisplayRole`, which still carries a word this cell never draws. Under `ResizeToContents` the heading still wins (measured: heading 80px, this hint 22px), so this states how wide the drawing is rather than deciding a width
+        return QtCore.QSize(self.SIDE + 2 * self.PAD,           # as wide as the mark, not the word
                             super().sizeHint(option, index).height())
 
     def paint(self, painter, option, index):
-        super().paint(painter, option, index)   # THE CELL first - selection band, alternating colour, hover, and no text because `initStyleOption` emptied it. Painting only the mark left a selected row's highlight stopping dead at this column and starting again after it
+        super().paint(painter, option, index)   # the cell first: band, alternate colour, hover
         if self._role is None:
             return
         if not index.siblingAtColumn(0).data(self._role):
@@ -209,7 +209,7 @@ class TickCellDelegate(GridCellDelegate):
 
 
 class CategoryCellDelegate(GridCellDelegate):
-    """The category column's INK - the two facts the model is not in a position to know: a selected row has ONE ink (a `ForegroundRole` otherwise outranks the selected-text colour and sits in its own colour on the highlight), and a dark colour on a dark row is not readable, so the raw value goes through the tiles' contrast rule against the palette's actual base."""
+    """The category column's ink: the selected ink when selected, else its colour made readable."""
 
     def __init__(self, tiles, parent=None):
         super().__init__(parent)
@@ -229,7 +229,7 @@ class CategoryCellDelegate(GridCellDelegate):
 
 
 class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
-    """Paints one grid tile or list row as thumbnail + name line + greyed subtitle, generic over which role feeds the subtitle so every section reuses it unchanged; any failure falls back to the default painting, so a bad row degrades to a plain name rather than breaking the view."""
+    """Paints a tile as thumbnail, name and subtitle; a failure falls back to the default painting."""
 
     _TILE = amazetheme.drawn_tile()    # every spacing below is the T01 frame's ▸r/tile-from-frame
     PAD = theme.ui_px(_TILE["pad"])
@@ -240,24 +240,24 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
                     if "centre" not in (place[0], place[2]))    # the corner badges' drawn size
     DRAWN_THUMB = theme.ui_px(_TILE["thumb"])    # the thumbnail side the T frames draw
     TEXT_COLOR = QtGui.QColor(amazetheme.TILE_TEXT)
-    THUMB_BG_COLOR = theme.color("surface_low")    # the dark ground behind the thumbnail area, so a non-square image still shows a tile boundary instead of blending into the panel. Its OWN constant: it was tied to `ClickSlider.RIGHT_COLOR` once, and tuning the slider silently recoloured every tile
+    THUMB_BG_COLOR = theme.color("surface_low")    # the dark card behind the thumbnail and text
 
-    GRID_NAME_COLOR = theme.color("text")           # GRID tiles are quieter than list mode - the name in the neutral grey the design system already uses for unselected tabs
+    GRID_NAME_COLOR = theme.color("text")           # the grid tile's name, in the neutral grey
     GRID_SUBTITLE_COLOR = theme.color("text_dim")   # and the subtitle a dimmer grey, never the accent
     GRID_TEXT_INSET = theme.ui_px(_TILE["text_inset"])
     GRID_BOTTOM_PAD = theme.ui_px(_TILE["bottom_pad"])
     GRID_IMG_TEXT_GAP = theme.ui_px(_TILE["img_text_gap"])
 
-    CATEGORY_COLOR = QtGui.QColor(amazetheme.LIST_INK)    # list mode's Category column where the category carries no colour of its own - a fixed yellow competing with the user's choice says the wrong thing about which one means something
-    LIST_INK = QtGui.QColor(amazetheme.LIST_INK)          # LIST MODE'S ONE INK: a table is read down its columns, so everything paints in this except Category, which paints in its own category's colour
-    SELECTED_TEXT = QtGui.QColor(amazetheme.LIST_SELECTED_TEXT)     # selection turns EVERY column black - the palette's highlightedText was not reliably dark against the amber highlight
+    CATEGORY_COLOR = QtGui.QColor(amazetheme.LIST_INK)    # the Category column for a category with no colour
+    LIST_INK = QtGui.QColor(amazetheme.LIST_INK)          # list mode's one ink, all but Category
+    SELECTED_TEXT = QtGui.QColor(amazetheme.LIST_SELECTED_TEXT)     # every column's ink on a selected row
 
-    _badge_cache = {}    # rendered badge per (art, size, dpr) - every tile badge comes through here, one SVG rasterisation each for the whole app
+    _badge_cache = {}    # rendered badge per (art, size, dpr, opacity), app-wide
     _font_cache = {}     # (`QFont.key()`, selected) -> (name_font, rend_font, fm, fm)
 
     @classmethod
     def grid_cell_size(cls, ts, base_font):
-        """The grid cell (`gridSize`) matching `_paint`'s square layout: a width-filling square image, the image-to-text gap, both text lines and the bottom pad - sizing the cell to the layout is what keeps tiles tight instead of a small image adrift in a tall block."""
+        """The `gridSize` matching `_paint`'s layout: square image, gap, two text lines, bottom pad."""
         pad = cls.PAD
         width = ts + cls.WIDTH_EXTRA
         icon_side = max(width - 2 * pad, 1)
@@ -272,12 +272,12 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         )
         return QtCore.QSize(width, height)
 
-    BAND_TEXT_DARK = QtGui.QColor(amazetheme.BAND_TEXT_DARK)     # text on a coloured band, not the palette's greys: those are tuned for the dark card, and a category colour can be any lightness at all
+    BAND_TEXT_DARK = QtGui.QColor(amazetheme.BAND_TEXT_DARK)     # the two inks for text on a coloured band
     BAND_TEXT_LIGHT = QtGui.QColor(amazetheme.BAND_TEXT_LIGHT)
 
     @staticmethod
     def _relative_luminance(color):
-        """WCAG relative luminance - the sRGB-linearised one the contrast formula is defined against, not Rec. 601's perceptual approximation."""
+        """WCAG relative luminance of a QColor, sRGB-linearised."""
         channels = []
         for value in (color.red(), color.green(), color.blue()):
             channel = value / 255.0
@@ -298,7 +298,7 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
 
     @classmethod
     def text_on(cls, background):
-        """Whichever of the two band inks reads better on this colour, chosen by MEASURED contrast: a Rec. 601 threshold put the cut inside the green ramp and 8.7% of the RGB cube landed below 3:1, worst 1.54:1, where measuring has no bad case (worst 3.62:1) and moves none of the four shipped presets."""
+        """Whichever of the two band inks has the higher WCAG contrast on `background`."""
         if cls.contrast_ratio(background, cls.BAND_TEXT_DARK) >= \
                 cls.contrast_ratio(background, cls.BAND_TEXT_LIGHT):
             return cls.BAND_TEXT_DARK
@@ -306,35 +306,35 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
 
     @classmethod
     def readable_on(cls, color, background, floor=4.5):
-        """The colour lightened or darkened just enough to be legible on `background`, hue kept so it still identifies the category - for LIST mode, where the category is drawn as coloured TEXT on the row rather than as a filled band, and a dark category colour measured 1.03:1 against the row while reading fine in grid mode."""
+        """`color` lightened or darkened until it reaches `floor` contrast on `background`, hue kept."""
         if cls.contrast_ratio(color, background) >= floor:
             return color
-        toward_light = cls._relative_luminance(background) < 0.5   # walk lightness AWAY from the background until it clears
+        toward_light = cls._relative_luminance(background) < 0.5   # walk away from the background
         best = color
         for _step in range(20):
             best = best.lighter(115) if toward_light else best.darker(115)
             if cls.contrast_ratio(best, background) >= floor:
                 return best
-        return cls.CATEGORY_COLOR    # saturated colours can hit the ceiling before the floor - pure blue never gets bright enough - so fall back to the neutral
+        return cls.CATEGORY_COLOR    # a colour that never clears falls back to the neutral
 
     def _band_color(self, index):
-        """The category colour for this row, or None to leave the card as it is; invalid values are ignored rather than painted."""
+        """The category colour for this row, or None to leave the card as it is."""
         return role_color(index, self._category_color_role)
 
     @classmethod
     def fonts_for(cls, option_font, selected):
-        """Cached `(name_font, subtitle_font, name_metrics, subtitle_metrics)` for an option font and selection state - building fonts and metrics per row per repaint is measurable churn while scrolling, and nothing here is mutated after creation (`painter.setFont` copies), so the sidebar delegate shares the cache safely."""
-        key = (option_font.key(), selected)    # `QFont.key()` is Qt's OWN key for a font cache and carries everything the font draws by - family, point size AND pixel size, weight, style, stretch. Nothing narrower will do: `pointSizeF()` answers -1 for every PIXEL-sized font, so a key built from it reads 9px and 13px as one font and serves the second caller the first one's size ▸r/font-sizing
+        """Cached (name_font, subtitle_font, name_metrics, subtitle_metrics); never mutate them."""
+        key = (option_font.key(), selected)    # `QFont.key()`: pixel-sized fonts too ▸r/font-sizing
         cached = cls._font_cache.get(key)
         if cached is None:
             name_font = QtGui.QFont(option_font)
             rend_font = QtGui.QFont(option_font)
-            name_font.setBold(True)    # the NAME is what you are looking for and the type under it is context, so bold separates them by WEIGHT and the two lines keep one baseline rhythm
-            points = theme.point_size(name_font)    # None where the option font is sized in PIXELS: it answers -1, Qt refuses that, and the copy above already carries the size anyway ▸r/font-sizing
+            name_font.setBold(True)    # the name is bold, the subtitle regular
+            points = theme.point_size(name_font)    # None for a pixel-sized font ▸r/font-sizing
             if points is not None:
-                rend_font.setPointSizeF(points)    # the sub-line reads as secondary through the grey COLOUR, never by size - it DERIVES the name's size, because an absolute 12pt floor here against a 9pt name drew a subtitle LARGER than the thing it describes wherever Houdini's UI font is small (measured on Windows 2026-08-04); the panel already floors its own font, and two independent floors agreeing by coincidence was the whole defect
+                rend_font.setPointSizeF(points)    # the subtitle takes the name's size
             if selected:
-                name_font.setBold(True)    # black-on-yellow reads too thin at regular weight, so bold everything on the highlight
+                name_font.setBold(True)    # everything is bold on the highlight
                 rend_font.setBold(True)
             cached = (
                 name_font,
@@ -357,18 +357,18 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         tile_model=None,
         on_badge=None,
     ):
-        """Every role is optional and None means the delegate simply does not paint that thing, which is how one delegate serves sections that answer different questions."""
+        """Every role is optional; None means the delegate does not paint that thing."""
         super().__init__(parent)
-        self._active_version_role = active_version_role    # the active version's NAME, for list mode's Version column - the count above answers whether there are versions, this answers which one you are looking at
-        self._crop_role = crop_role            # a PER-ROW crop decision: a truthy value fills the tile and crops rather than letterboxing, so a File row's wide viewport capture fills its tile while image and geometry rows in the same view letterbox. None = never crop
+        self._active_version_role = active_version_role    # the active version's name, list mode
+        self._crop_role = crop_role            # per row: truthy fills and crops the tile; None never crops
         self._subtitle_role = subtitle_role
-        self._category_role = category_role    # list mode's Category column source - the asset's category, the containing folder, or a palette's curated set. None = the column stays empty
-        self._tag_role = tag_role              # list mode's last two columns; a section with neither passes None and simply does not get them
+        self._category_role = category_role    # list mode's Category column; None leaves it empty
+        self._tag_role = tag_role              # list mode's tag and licence columns; None omits them
         self._licence_role = licence_role
-        self._date_role = date_role            # list mode's last two columns, the pair the Material Info dialog used to show read-only ▸p/d03-retired
+        self._date_role = date_role            # list mode's date and id columns ▸p/d03-retired
         self._id_role = id_role
-        self._category_color_role = category_color_role    # a category can carry a colour, which paints the text band under the tile. None = this section has no category colours (folders and palette groups do not)
-        self._badge_clicks = {}       # badge name -> the panel's handler; wiring one is what MAKES that badge a button, so the online delegate's star stays an indicator that never draws its off state. Per instance, never a class default: a shared dict would wire every delegate at once
+        self._category_color_role = category_color_role    # paints the band under the tile; None: none
+        self._badge_clicks = {}       # badge name -> handler; wiring one makes that badge a button
         self._button_hover = None     # (badge name, QPersistentModelIndex) while the cursor is on a button badge
         self._button_down = False     # and whether the left button is held on it
         self._tile = tuple(BADGE[name].name for name in tile_badges)    # the section's badge IDs
@@ -381,7 +381,7 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
 
     @staticmethod
     def _to_pixmap(icon):
-        """The model returns a QImage for the thumbnail (0 before it renders); normalise to a QPixmap for painting, or None when there is nothing."""
+        """A thumbnail QImage, QPixmap or QIcon as a QPixmap, or None when there is nothing."""
         if isinstance(icon, QtGui.QPixmap):
             return icon if not icon.isNull() else None
         if isinstance(icon, QtGui.QImage):
@@ -395,14 +395,14 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
 
     @staticmethod
     def _cover_pixmap(source, target, dpr, key):
-        """Fill a square tile and CROP the overflow instead of letterboxing - a viewport capture is wide, so fitting it inside a square leaves dead bands and the image reads as small. Only rows that ask for it get this; everything else renders square thumbnails, where cover and contain are the same thing and the crop would be pure risk."""
+        """`source` filling a `target` square, the overflow centre-cropped, cached under `key`."""
         scaled = source.scaled(
             target,
             target,
             QtCore.Qt.AspectRatioMode.KeepAspectRatioByExpanding,
             QtCore.Qt.TransformationMode.SmoothTransformation,
         )
-        x = max(0, (scaled.width() - target) // 2)     # CENTRE-crop: an off-centre one would quietly cut the subject out of every wide capture
+        x = max(0, (scaled.width() - target) // 2)     # centre-crop
         y = max(0, (scaled.height() - target) // 2)
         cropped = scaled.copy(x, y, target, target)
         cropped.setDevicePixelRatio(dpr)
@@ -411,7 +411,7 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
 
     @staticmethod
     def _icon_pixmap(icon, side, dpr=1.0, cover=False):
-        """A scaled tile pixmap cached per (source image, target size, dpr), rendered at the display's PHYSICAL resolution with its ratio stamped so it paints crisp on Retina while callers still position it in logical units (▸`_logical_size`); without the cache every visible tile smooth-scales again on EVERY repaint, and scrolling repaints the viewport continuously."""
+        """A cached tile pixmap at device resolution, ratio stamped; position it by `_logical_size`."""
         target = max(1, round(side * dpr))
         if isinstance(icon, QtGui.QImage) and not icon.isNull():
             key = "amaze_%s_%s_%s_%s" % (      # a re-rendered thumbnail is a new key ▸r/tile-image-cache
@@ -434,7 +434,7 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
 
     @staticmethod
     def _scale_and_cache(pixmap, key, target, dpr, cover):
-        """The cache-miss tail both decoration branches share: cover-crop or aspect-fit scale, ratio stamped, inserted under `key`."""
+        """Cover-crop or aspect-fit `pixmap` to `target`, ratio stamped, cached under `key`."""
         if cover:
             return AssetItemDelegate._cover_pixmap(pixmap, target, dpr, key)
         scaled = pixmap.scaled(
@@ -449,7 +449,7 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
 
     @staticmethod
     def _logical_size(pixmap):
-        """Device-independent (logical) w, h of a possibly-Retina pixmap - what the centring maths must use, since `width()`/`height()` return PHYSICAL pixels once `devicePixelRatio` is set."""
+        """The logical (w, h) of a pixmap whose `devicePixelRatio` may be set."""
         r = pixmap.devicePixelRatio() or 1.0
         return round(pixmap.width() / r), round(pixmap.height() / r)
 
@@ -463,7 +463,7 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
             if os.path.exists(path):
                 pixmap = ui_helpers.device_pixmap(path, side, dpr, opacity=opacity)
             else:
-                pixmap = QtGui.QPixmap()    # a NULL pixmap, never a sized transparent one, or a missing badge paints a blank square over the thumbnail
+                pixmap = QtGui.QPixmap()    # null, so a missing badge paints nothing
             cls._badge_cache[key] = pixmap
         return pixmap
 
@@ -510,11 +510,11 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
 
     @staticmethod
     def _paint_tick(painter, rect, color):
-        """A tick, DRAWN rather than typed: U+2713 is missing from several fonts Houdini may fall back to, and a missing glyph is an empty box in a column whose entire job is to be a yes."""
+        """Draw a tick in `color` centred in `rect`, the badge art's own shape; nothing under 4px."""
         side = min(rect.width(), rect.height())
         if side < 4:
             return
-        scale = side / 44.0    # the badge art's own check in its 44-unit box (M 34 14.94 L 18.88 30.06 L 12 23.19), kept in proportion so the drawn tick and the SVG one are the same shape
+        scale = side / 44.0    # the badge art's check in its 44-unit box
         cx = rect.center().x() - side / 2.0
         cy = rect.center().y() - side / 2.0
         path = QtGui.QPainterPath()
@@ -532,7 +532,7 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         painter.restore()
 
     def set_badge_click(self, name, callback) -> None:
-        """Wire `name`'s badge to the panel's handler, making it a BUTTON: the delegate DETECTS the hit; what a click means is the panel's."""
+        """Wire `name`'s badge to `callback(index)`, making it a button."""
         self._badge_clicks[name] = callback
 
     def set_button_hover(self, name, index, down=False) -> bool:
@@ -610,7 +610,7 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         return super().helpEvent(event, view, option, index)
 
     def editorEvent(self, event, model, option, index):
-        """The interactive spots on a tile: a click inside a button badge - versions on an asset that has them, the star in either of its states."""
+        """A left click released on a button badge runs its handler and is consumed."""
         if (event.type() == QtCore.QEvent.Type.MouseButtonRelease
                 and event.button() == QtCore.Qt.MouseButton.LeftButton):
             badge = self.button_badge_at(
@@ -655,13 +655,13 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
             mark = self._badge_pixmap(art, side, dpr, opacity)
             if mark.isNull():
                 continue
-            mark_w, mark_h = self._logical_size(mark)    # LOGICAL size: `width()` is PHYSICAL pixels once the ratio is stamped, which would push a badge off the tile on a Retina display
+            mark_w, mark_h = self._logical_size(mark)    # logical, not physical, pixels
             x, y, _w, _h = self._badge_at(badge.name, area_x, area_y, icon_side,
                                           mark_w, mark_h)
             painter.drawPixmap(x, y, mark)
 
     def sizeHint(self, option, index):
-        """Mirror the `gridSize` the view was given, exactly, so layout and paint rect always agree - without this Qt falls back to a heuristic partly keyed on whether `DecorationRole` currently holds an icon, and a section whose thumbnail arrives late paints a tiny image adrift in a mostly empty tile."""
+        """The view's own `gridSize`, exactly, when it has one; else the base hint."""
         try:
             grid = option.widget.gridSize()
             if grid.isValid() and grid.height() > 0 and grid.width() > 0:
@@ -671,7 +671,7 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         return super().sizeHint(option, index)
 
     def paint(self, painter, option, index):
-        """The save/restore pair lives HERE, wrapped in a `finally`, and NOT at the top and bottom of `_paint`: Qt drives every visible item with ONE painter, so a row that raised in between skipped the restore and left the shared painter's save stack growing by one per failing tile. `_paint` reads all three of its model roles before it touches the painter - pinned by a test, because if a model read ever moves below the first `setPen` the imbalance becomes a real colour leak into every row after it."""
+        """`_paint` inside a balanced save/restore; a failure falls back to the default painting."""
         try:
             painter.save()
             try:
@@ -698,7 +698,7 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         renderer = index.data(self._subtitle_role) or ""
 
         try:
-            dpr = option.widget.devicePixelRatioF()    # tile images render at the display's PHYSICAL resolution, or sharp-edged content like the code preview is visibly upscaled on Retina
+            dpr = option.widget.devicePixelRatioF()    # tile images render at device resolution
         except Exception:
             dpr = 1.0
 
@@ -708,25 +708,25 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         h_name = fm_name.height()
         h_rend = fm_rend.height()
 
-        raw_category = self._band_color(index)    # resolved ONCE - a full proxy-to-source round trip plus a QColor parse, and the grid used to ask again for its band: measured 120 reads for 60 tiles, 0.31ms of every 8.57ms repaint, with the first result discarded
+        raw_category = self._band_color(index)    # read once per tile
 
         pad = self.PAD
         text_x = rect.left() + pad + self.GRID_TEXT_INSET
         text_w = max(rect.width() - 2 * pad - self.GRID_TEXT_INSET, 1)
-        block_h = h_name + h_rend    # the FULL two-line block whether or not there is a subtitle: `grid_cell_size` always reserves both, so sizing the card from the DRAWN text left a tile with no renderer label 18px shorter than its own cell, card and colour band both stopping short over bare grid background
-        name_dy = 0 if renderer else h_rend // 2    # a single line is then centred in the block it fills, rather than clinging to the top of it
+        block_h = h_name + h_rend    # both lines, subtitle or not, as `grid_cell_size` reserves
+        name_dy = 0 if renderer else h_rend // 2    # a lone name is centred in the block
         icon_side = max(rect.width() - 2 * pad, 1)
         icon_x = rect.left() + pad
         icon_y = rect.top() + pad
         text_top = icon_y + icon_side + self.GRID_IMG_TEXT_GAP
-        card_bottom = text_top + block_h + self.GRID_BOTTOM_PAD    # the dark backing covers the WHOLE tile, image area and text block alike, down to the card's bottom edge - one continuous card, with both gaps at 16R so it reads square rather than tall
+        card_bottom = text_top + block_h + self.GRID_BOTTOM_PAD    # one card under image and text
         painter.fillRect(
             QtCore.QRect(
                 icon_x, icon_y, icon_side, card_bottom - icon_y
             ),
             self.THUMB_BG_COLOR,
         )
-        band_color = raw_category    # the band under the image takes its CATEGORY's colour where one is set, painted OVER the card rather than instead of it, so the image area is untouched and an uncoloured category costs nothing
+        band_color = raw_category    # the category colour, painted over the card below the image
         if band_color is not None and not selected:
             band_top = icon_y + icon_side
             painter.fillRect(
@@ -737,7 +737,7 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
                 band_color,
             )
         if selected:
-            zone_top = icon_y + icon_side    # the card fill just covered the highlight the base pass painted; restore it on the TEXT zone only, so a selected tile keeps its yellow band and black text with the thumbnail intact
+            zone_top = icon_y + icon_side    # the highlight goes back on the text zone only
             painter.fillRect(
                 QtCore.QRect(
                     icon_x,
@@ -760,7 +760,7 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         name_pen = self.SELECTED_TEXT if selected else self.GRID_NAME_COLOR
         subtitle_pen = None
         if band_color is not None and not selected:
-            name_pen = self.text_on(band_color)    # a user-chosen colour can be any lightness and the normal text is pale, so both lines flip together and the pair stays readable
+            name_pen = self.text_on(band_color)    # both lines take the band's readable ink
             subtitle_pen = name_pen
         painter.setPen(name_pen)
         painter.drawText(
@@ -789,17 +789,17 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
 
 
 class SidebarItemDelegate(QtWidgets.QStyledItemDelegate):
-    """Paints the category/folder sidebar's rows - name, entry count, and the colour bar down a coloured category's left edge - by DECLARING them in `initStyleOption` and letting the host's style draw the row, which is what keeps its selection, hover and alternating colour identical to the Grid table's."""
+    """Paints sidebar rows (name, count, colour bar) through `initStyleOption` and the host style."""
 
     PAD = theme.ui_px(6)
-    _swatch_cache = {}   # QIcon per (side, rgba-or-None) - initStyleOption runs per row per paint AND per size hint, and it built a fresh QPixmap+QIcon every call; bounded to sides x set colours, the `_badge_cache` shape
+    _swatch_cache = {}   # decoration QIcon per (side, rgba or None, arrow, ratio)
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.show_counts = True    # counts on individual categories can be toggled off in Preferences; All always shows its total
+        self.show_counts = True    # False hides each category's count; All always shows its total
         self.drag_index = QtCore.QPersistentModelIndex()    # the row a drag would land on; none when invalid
         self._drag_color = QtGui.QColor(amazetheme.TILE_SUBTITLE)    # until the panel sets the accent
-        self.color_role = None     # role carrying a category's colour, or None for sidebars that have none (folders, palette groups)
+        self.color_role = None     # the role carrying a category's colour, or None for none
 
     def set_drag_color(self, color: QtGui.QColor) -> None:
         self._drag_color = QtGui.QColor(color)
@@ -870,7 +870,7 @@ class SidebarItemDelegate(QtWidgets.QStyledItemDelegate):
                             self.ARROW_BOX, decoration.height())
 
     def initStyleOption(self, option, index):
-        """Everything the STYLE needs to draw the row itself, set up as ordinary view-item fields so nothing is painted by hand; `option.text` is DISPLAY ONLY and never touches `DisplayRole`, which stays the clean name because category matching, restore-by-text and the filters all key off it."""
+        """The row as view-item fields for the style to draw; `option.text` never touches DisplayRole."""
         super().initStyleOption(option, index)
         name = str(index.data(QtCore.Qt.ItemDataRole.DisplayRole) or "")
         count = index.data(category.SIDEBAR_COUNT_ROLE)    # asked even when hidden, though each All now counts on its own
@@ -882,7 +882,7 @@ class SidebarItemDelegate(QtWidgets.QStyledItemDelegate):
             font = QtGui.QFont(option.font)
             font.setBold(True)
             option.font = font
-        side = max(QtGui.QFontMetrics(option.font).height(), 1)    # FROM THE FONT, never from `option.rect`: that rect is not the row here - Qt passes a much larger one when asking for a size hint - so deriving the decoration from it grew the row's hint until one selected row filled the whole sidebar with its band
+        side = max(QtGui.QFontMetrics(option.font).height(), 1)    # from the font, never `option.rect`
         swatch = self._swatch_color(index)
         arrow = self._arrow(index)
         key = (side, swatch.rgba() if swatch is not None else None, arrow,
@@ -896,4 +896,4 @@ class SidebarItemDelegate(QtWidgets.QStyledItemDelegate):
         option.features |= (
             QtWidgets.QStyleOptionViewItem.ViewItemFeature.HasDecoration)
         if self.drop_target(index):
-            option.backgroundBrush = QtGui.QBrush(self._drag_color)    # drop-target feedback through the option the style READS, rather than a fill painted over the top of what it drew
+            option.backgroundBrush = QtGui.QBrush(self._drag_color)    # drop-target feedback

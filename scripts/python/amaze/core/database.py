@@ -28,7 +28,7 @@ _MIGRATIONS = {}
 
 
 def _migration_v4(data: dict) -> None:
-    """v4 to v5: strips `favorite` and `icon` from every asset row; both keys must also stay in the record's retired-key set, else the unknown-key courtesy carries them and the next save re-emits them."""
+    """v4 to v5: strips `favorite` and `icon`; both keys must stay in the record's retired-key set."""
     rows = data.get("assets")
     if not isinstance(rows, list):
         return
@@ -43,7 +43,7 @@ _MIGRATIONS[4] = _migration_v4
 
 
 def _migration_v5(data: dict) -> None:
-    """v5 to v6: strips `favorite` again - Colors rows never pass through `Material`, so schema-5 files kept regrowing it; the key must also stay in the retired-key set or the next save re-emits it."""
+    """v5 to v6: strips `favorite` again; the key must stay in the retired-key set."""
     rows = data.get("assets")
     if not isinstance(rows, list):
         return
@@ -57,7 +57,7 @@ _MIGRATIONS[5] = _migration_v5
 
 
 def _migration_v6(data: dict) -> None:
-    """v6 to v7: strips `builder` from every asset row - written by every save since the fork and read by nothing since 2026-08-14; the key must also stay in the record class retired-key set or the next save re-emits it."""
+    """v6 to v7: strips `builder` from every asset row; the key must stay in the retired-key set."""
     rows = data.get("assets")
     if not isinstance(rows, list):
         return
@@ -80,7 +80,7 @@ def _minted_id(row: dict, index: int) -> str:
 
 
 def _migration_v7(data: dict) -> None:
-    """v7 to v8: mints an `id` for every asset row that has neither `id` nor the legacy `uid`, IN PLACE - a row without one mints a fresh identity on every load, so the notes and tile icon stored against it orphan, and an ordinary save cannot repair it because the connector unions BY id and keeps the id-less original."""
+    """v7 to v8: mints an `id`, in place, for every asset row with neither `id` nor legacy `uid`."""
     rows = data.get("assets")
     if not isinstance(rows, list):
         return
@@ -108,14 +108,14 @@ _EXISTED_MARKERS = {
 
 
 def absent_but_known(directory: str, filename: str) -> str:
-    """Name of one trace proving an absent database file once existed in `directory`, or empty when it truly is new; shared with the `library.py` cleanup so no two callers can answer the newness of one file differently."""
+    """One trace proving an absent database file once existed in `directory`, or "" when it is new."""
     return hostos.existed_before(
         os.path.join(directory, filename), _EXISTED_MARKERS.get(filename, ())
     )
 
 
 def absent_traces(directory: str, filename: str) -> list:
-    """Every trace proving the file was here - a refusal must name them all so its instruction works in one pass."""
+    """Every trace proving the file was here, for a refusal that names them all."""
 
     return hostos.existed_before_all(
         os.path.join(directory, filename), _EXISTED_MARKERS.get(filename, ())
@@ -152,12 +152,12 @@ def category_label(stored) -> str:
 
 
 def row_id(row: dict) -> str:
-    """The id a stored row claims, `mat_id` as the fallback spelling - the ONE home for reading a row's identity, shared with repair's survey."""
+    """The id a stored row claims, `mat_id` as the fallback spelling."""
     return str(row.get("id", row.get("mat_id", "")))
 
 
 def ids_claimed_by(directory: str, filenames: tuple = ()) -> tuple:
-    """Returns `(by_file, unreadable)`: asset ids claimed per readable database in `directory`, plus filenames that exist but will not read; absent files appear in neither (newness is `absent_but_known` policy) - the one home for id ownership over the shared asset folders."""
+    """`(by_file, unreadable)`: ids claimed per readable database, and files that will not read."""
     by_file, unreadable = {}, []
     for filename in (filenames or ID_CLAIMING_DATABASES):
         full = os.path.join(directory, filename)
@@ -187,7 +187,7 @@ def ids_claimed_by(directory: str, filenames: tuple = ()) -> tuple:
 
 def asset_id_for_file(name: str, extensions: tuple,
                       tail: str = "") -> str | None:
-    """The asset id a file in the library folders belongs to, or None when it is not such a file; the one classifier for both the delete guard and the sweep, strict only in the refusing direction - a stem not purely alphanumeric once `tail` and the extension come off (a sync-client conflicted-copy rename, for example) is logged and left alone, because the sweep deletes what this returns."""
+    """The asset id a library file belongs to, or None; a stem not purely alphanumeric is None."""
     matched = next((e for e in extensions
                     if name.lower().endswith(e.lower())), None)
     if matched is None:
@@ -210,13 +210,13 @@ def asset_id_for_file(name: str, extensions: tuple,
 
 def _merge_record(mine: dict, theirs: dict, base, filename: str,
                   adopted: list) -> None:
-    """Field-wise three-way merge for a record both sessions hold - EVERY field, judged against `base`, the row as of our last load or successful save. Only a field both sides moved away from the base is a conflict; that one keeps the local value and tells the user. `base` None means we cannot say who moved, and every difference is treated as a conflict."""
+    """Field-wise three-way merge against `base`; a conflict keeps mine, and `base` None conflicts all."""
     based = isinstance(base, dict)
     for field in set(mine) | set(theirs):
         if field == "id":
             continue
         if field not in theirs:
-            if based and field in base and mine.get(field) == base.get(field):    # gone from theirs, in our base, untouched by us: their REMOVAL, the same rule the category list follows
+            if based and field in base and mine.get(field) == base.get(field):    # gone from theirs, in our base, untouched by us: their removal
                 del mine[field]
                 debug.event("database", "dropped a field another session "
                             "removed", file=filename,
@@ -247,7 +247,7 @@ def _merge_record(mine: dict, theirs: dict, base, filename: str,
 
 
 def wrong_shape(document) -> str:
-    """Empty string when `document` is shaped like a database, else a log phrase; valid json is not a valid database, and the merge and the cleanup must share this one answer - container keys only (`assets`, `categories`, `tags`, `gradients`), never individual rows, so one bad row cannot cost a session its writes."""
+    """Empty string when `document` is shaped like a database, else a log phrase; rows unchecked."""
     if not isinstance(document, dict):
         return "top level is %s, not an object" % type(document).__name__
 
@@ -259,7 +259,7 @@ def wrong_shape(document) -> str:
 
 
 def wrong_table_shape(document, key: str) -> str:
-    """Empty string when `document` is `{key: {...}}`, else a log phrase; the `wrong_shape` twin for the mapping-payload side tables - a null or list payload otherwise reaches `.items()` and raises AttributeError, which the `(OSError, ValueError)` database guards never catch."""
+    """Empty string when `document` is `{key: {...}}`, else a log phrase; for the side tables."""
     if not isinstance(document, dict):
         return "top level is %s, not an object" % type(document).__name__
     value = document.get(key, {})
@@ -279,20 +279,20 @@ def _declared(filename: str, field: str) -> str:
 
 
 def section_name(filename: str) -> str:
-    """The section label with its filename, like `Nodes (cops.json)` - the filename stays because it is what the user will look for on disk."""
+    """The section label with its filename, like `Nodes (cops.json)`."""
 
     label = _SECTION_LABELS.get(filename) or _declared(filename, "label")
     return "%s (%s)" % (label, filename) if label else filename
 
 
 def section_label(filename: str) -> str:
-    """The bare tab name, like `Nodes`, for a sentence that sends the reader to a control; both forms come from the one table, and a message must keep one name per thing."""
+    """The bare tab name, like `Nodes`, for a sentence that sends the reader to a control."""
     return (_SECTION_LABELS.get(filename)
             or _declared(filename, "label") or filename)
 
 
 def section_noun(filename: str, count: int = 2) -> str:
-    """The word a section count counts, like `material` or `nodes`, singular or plural by `count`; from the same table as the labels so the noun cannot drift, because a bare number in a recovery dialog is unanswerable."""
+    """The word a section count counts, like `material` or `nodes`, singular or plural by `count`."""
     noun = (_SECTION_HOLDS.get(filename)
             or _declared(filename, "noun") or "saved thing")
     return noun if count == 1 else noun + "s"
@@ -367,7 +367,7 @@ def colours_moved(model, db) -> bool:
 
 
 class DatabaseConnector:
-    """Saves a json database to disk with one live connection per database file, instances keyed by `filename`; `_instances` and `_integrity_notes` bind to module-level dicts because `panel.py` reloads this module on every panel open and a re-executed class body would otherwise strand live models on a dead registry."""
+    """Saves a json database to disk, one live connection per file, instances keyed by `filename`."""
 
     _instances: dict = _INSTANCES
 
@@ -388,7 +388,7 @@ class DatabaseConnector:
             inst._dropped = []
             inst._colours_adopted = 0    # a count, so every model on the file sees each one
 
-            # `_forgotten` records explicit deletes because `_absorb_rows` can only keep rows; the version, format and write latches below are read by `save()` and reset by `reload_with_path`, so they are set plainly here, never left as getattr defaults.
+            # explicit deletes, then the latches `save()` reads and `reload_with_path` resets
             inst._forgotten = set()
 
             inst._loaded_version = SCHEMA_VERSION
@@ -420,13 +420,13 @@ class DatabaseConnector:
         if read is None and answer.document is not None:
             self._migrate_peer(answer.document)    # in our shape, as a merge sees theirs
         document = (answer.document if answer.document is not None
-                    else (self._data or {}))    # unreadable or absent: our memory is the only baseline available, and the stale-write guard has its own refusal for that
+                    else (self._data or {}))    # unreadable or absent: our memory is the baseline
         self._disk_stat = answer.fingerprint
         self._loaded_rows = {
             str(a.get("id")): copy.deepcopy(a)
             for a in document.get("assets", [])
             if isinstance(a, dict)
-        }    # the merge BASE: a field differing from this is an edit, and only a field BOTH sides moved is a conflict
+        }    # the merge base: a field differing from this is an edit
         self._loaded_ids = set(self._loaded_rows)
         self._loaded_containers = {
             key: list(document.get(key, []) or [])
@@ -437,7 +437,7 @@ class DatabaseConnector:
             dict(colours) if isinstance(colours, dict) else {})    # and for the colour table, per name
 
     def _migrate(self, data: dict) -> None:
-        """Apply `_MIGRATIONS` in order and stamp the reached version - on `data` as an ARGUMENT, so a raising step cannot leave the connector holding a half-migrated document; a newer-schema document is left untouched, a chain gap latches `_migration_incomplete` (save() holds the stamp back on it), and the format latch - write permission, never healing mid-session - is read here too, per library, never remembered across a repoint."""
+        """Migrate `data` in place and stamp it; a newer schema is left alone, a gap latches."""
         try:
             version = int(data.get("version", 1))
         except (TypeError, ValueError):
@@ -481,7 +481,7 @@ class DatabaseConnector:
         self._loaded_version = version
 
     def load(self, path: str) -> dict:
-        """Load from disk. A secondary database absent WITH traces refuses for the session (absent_but_known - absence alone is not newness), absent without them seeds empty; a missing PRIMARY index raises to the caller; a path change reroutes to `reload_with_path`, never repointing `_path` under the cached document; reads are `utf-8-sig` (a BOM is a routine sync artifact) while writes stay plain utf-8; the parse commits to `_data` only AFTER `_migrate`, so a raising step leaves it falsy and the next load retries; a parsed non-database raises ValueError - refuse over overwrite, the same outcome a truncated file gets."""
+        """Load from disk; a missing primary index or a parsed non-database raises."""
         if (self._data and self._path
                 and hostos.canonical_path_key(self._path)
                 != hostos.canonical_path_key(path)):
@@ -523,14 +523,14 @@ class DatabaseConnector:
 
     @classmethod
     def take_integrity_notes(cls) -> list:
-        """The pending findings, cleared on read - they describe load moments superseded once the next load runs."""
+        """The pending findings, cleared on read."""
         notes = [line for lines in cls._integrity_notes.values()
                  for line in lines]
         cls._integrity_notes.clear()
         return notes
 
     def _note_suspicious_shrink(self, full: str) -> None:
-        """After a successful parse: report (never block, never repair) a document holding under half of its newest snapshot - `wrong_shape` is ASKED, not caught, because a mis-shaped snapshot raising here would cost the load this note promises never to cost."""
+        """After a parse, note (never block) a document holding under half of its newest snapshot."""
         try:
             here = len(self._data.get("assets") or [])
             newest = None
@@ -562,7 +562,7 @@ class DatabaseConnector:
             return                          # the note must never cost a load
 
     def _refuse_absent(self, full: str, traces) -> None:
-        """Absent-but-known: hold an empty library in memory so the panel still builds, and latch `_write_blocked` - the ONE flag save() consults, because it is the SECOND save that overwrites what the first preserved; the note names the full path, the way out, and EVERY trace (following one at a time spent a recovery copy per launch)."""
+        """Absent-but-known: hold an empty library in memory and latch `_write_blocked` for the session."""
         self._data = {"categories": ["_All"], "assets": []}
         self._write_blocked = True
         debug.note(
@@ -579,7 +579,7 @@ class DatabaseConnector:
             file=full, evidence=", ".join(traces))
 
     def _normalize_all_category(self) -> None:
-        """Keep the categories invariant at load: `_All` present at row 0 and legacy plain `All` rewritten, mutating the list in place because models alias it (see `set`)."""
+        """Put `_All` at row 0 and rewrite a legacy `All`, mutating the list in place."""
         cats = self._data.get("categories")
         if not isinstance(cats, list):
             return
@@ -599,7 +599,7 @@ class DatabaseConnector:
             self._rebind_model_queues()    # a model builds from `_data`, which holds what this merged
 
     def set(self, assets: dict) -> None:
-        """Set data without saving and never rebind the containers - models alias them - so contents change in place and incoming values are copied first because a caller may hand back the very objects being cleared."""
+        """Set data without saving, in place; models alias the containers, so they are never rebound."""
         for key in ("categories",):
             if key in assets:
                 incoming = list(assets[key] or [])
@@ -614,14 +614,14 @@ class DatabaseConnector:
             colours.update(incoming_colours)
 
     def serves(self, library_dir: str) -> bool:
-        """True while this connector still points at `library_dir`; the registry is keyed by filename alone so one instance serves every pane, and callers must ask this before writing - a library switch in one pane rebinds the connector under all of them."""
+        """True while this connector still points at `library_dir`; ask before writing."""
         if not self._path or not library_dir:
             return True                    # nothing loaded yet to disagree
         return (hostos.canonical_path_key(self._path)
                 == hostos.canonical_path_key(library_dir))
 
     def _absorb_rows(self, incoming: list) -> None:
-        """Union incoming rows by id in place: the caller wins for rows it holds, rows it never saw are kept, and only an explicit `forget` mark deletes - absence never means delete."""
+        """Union incoming rows by id in place; only a `forget` mark deletes, absence never does."""
         current = self._data.setdefault("assets", [])
         by_id, order = {}, []
         for row in current:
@@ -642,19 +642,19 @@ class DatabaseConnector:
         self._forgotten.clear()
 
     def forget(self, mat_id: str) -> None:
-        """Mark a row for deletion on the next `set`: `_absorb_rows` can only keep rows, so an omitted row would otherwise be re-adopted from the connector copy."""
+        """Mark a row for deletion on the next `set`; omitting a row does not delete it."""
         self._forgotten.add(str(mat_id))
         debug.event("database", "row marked for removal",
                     file=self._filename, mat_id=str(mat_id))
 
     def unforget(self, mat_id: str) -> None:
-        """Clear a `forget` mark after a refused save: only `_absorb_rows` consumes marks, so a caller that restores a row must clear the mark too or the next save deletes the restored row."""
+        """Clear a `forget` mark; a caller restoring a row after a refused save must call this."""
         self._forgotten.discard(str(mat_id))
         debug.event("database", "row removal taken back",
                     file=self._filename, mat_id=str(mat_id))
 
     def save(self) -> bool:
-        """Wrap `_save_inner` so the `finally` emits exactly one record per call, the raising path included, with the library directory logged only as a digest (paths are personal data)."""
+        """Run `_save_inner` and log exactly one record per call, the library directory as a digest."""
         self._save_outcome = "unrecorded"
         try:
             return self._save_inner()
@@ -666,7 +666,7 @@ class DatabaseConnector:
                          outcome=self._save_outcome, dir_key=digest)
 
     def _refuse_unreadable_peer(self, full: str) -> bool:
-        """Refuse the save when the peer copy at `full` would not parse: preserve it, latch `_write_blocked` for the session, report once in full, and set `_block_reported` so `_save_inner` does not repeat it."""
+        """Refuse the save over an unparseable peer copy at `full`; latch `_write_blocked`, report once."""
         kept = hostos.preserve_unreadable(
             full, why="another session's database would not parse")
         self._write_blocked = True
@@ -685,16 +685,16 @@ class DatabaseConnector:
         return False
 
     def _save_inner(self) -> bool:
-        """Merge concurrent changes, then write through a sibling temp file and atomic replace; True only when the bytes reached disk - every refusal path (empty document, write latch, unreadable peer, format ahead, held file) returns False, and version and format stamps never downgrade nor claim a migration that did not run."""
+        """Merge concurrent changes, then replace the file atomically; True only when bytes reached disk."""
         if not self._data:
             self._save_outcome = "empty-document"
             return False
         full = self._path + self._filename
-        with hostos.file_lock(full):    # AFTER the refusals that write nothing, since taking it makes a sidecar; narrows the read-merge-replace window against another Amaze, and a refused lock still writes because the merge is the real guard
+        with hostos.file_lock(full):    # after the refusals, as it makes a sidecar; a refused lock still writes
             return self._merge_and_write(full)
 
     def _merge_and_write(self, full: str) -> bool:
-        """The window a save actually holds: merge what a peer wrote, then replace the file. Callers hold the lock. ▸p/merge-needs-a-base"""
+        """Merge what a peer wrote, then replace the file; callers hold the lock. ▸p/merge-needs-a-base"""
         seen = self._stat_file()    # one read decides AND merges
         current_stat = seen.fingerprint
         if self._disk_stat is not None and current_stat not in (
@@ -702,7 +702,7 @@ class DatabaseConnector:
         ):
             was_ahead = getattr(self, "_format_ahead", False)
             if not self._merge_from_disk(full, already_read=seen):
-                if not (getattr(self, "_format_ahead", False) and not was_ahead):    # only a latch THIS merge set explains its own refusal; as a bare flag it swallowed a genuinely unreadable peer
+                if not (getattr(self, "_format_ahead", False) and not was_ahead):    # only a latch this merge set explains its own refusal
                     return self._refuse_unreadable_peer(full)
         if getattr(self, "_write_blocked", False):
             if not getattr(self, "_block_reported", False):
@@ -779,7 +779,7 @@ class DatabaseConnector:
             return True
 
     def refresh(self) -> bool:
-        """Fold in what another machine wrote since we last read the file, WITHOUT writing - the same merge a save runs, so the caller drains `take_adopted`, `take_dropped` and `take_adopted_fields` exactly as it does after `save()`. True when the document moved. ▸r/peer-read"""
+        """Merge a peer's writes without saving; drain the `take_*` queues after. ▸r/peer-read"""
         if not self._data or not self._path:
             return False
         full = self._path + self._filename
@@ -792,26 +792,26 @@ class DatabaseConnector:
         return True
 
     def take_adopted(self) -> list:
-        """Rows adopted from a peer save, handed over exactly once - drained so a second call cannot re-insert the same rows."""
+        """Rows adopted from a peer save, handed over exactly once."""
         rows = self._adopted
         self._adopted = []
         return rows
 
     def take_adopted_fields(self) -> list:
-        """`(id, field, value)` for every field a peer changed on a row we also hold, handed over exactly once - a model that does not apply these writes its own stale value back on its next save."""
+        """`(id, field, value)` per field a peer changed on a row we hold, handed over exactly once."""
         fields = self._adopted_fields
         self._adopted_fields = []
         return fields
 
     def take_dropped(self) -> list:
-        """Rows a peer's save deleted from disk, handed over exactly once - the model must drop them too, or its next save writes them back."""
+        """Rows a peer's save deleted, handed over exactly once; the model must drop them too."""
         rows = self._dropped
         self._dropped = []
         return rows
 
     @staticmethod
     def _migrate_peer(disk: dict) -> None:
-        """Bring a PEER document up to our shape, in place - shape only: no stamping, no latching, no reporting, because those verdicts belong to the file THIS connector loaded."""
+        """Bring a peer document up to our shape in place, without stamping, latching or reporting."""
         try:
             version = int(disk.get("version", 1))
         except (TypeError, ValueError):
@@ -824,7 +824,7 @@ class DatabaseConnector:
             version += 1
 
     def _merge_from_disk(self, full: str, already_read=None) -> bool:
-        """Three-way merge against a database another session changed underneath us - membership baseline is the ids as of OUR last load or successful save (`_remember_disk_state` refreshes both together): a disk id missing from memory is OUR deletion if it was in the baseline, THEIR addition if not; categories and tags union; conflicting records take memory (the active editor)."""
+        """Three-way merge against a database another session changed; conflicts keep memory."""
         answer = already_read or hostos.peer_read(full)    # ▸r/peer-read
         if answer.verdict != hostos.PEER_CHANGED:
             debug.event("database", "merge read failed",
@@ -890,7 +890,7 @@ class DatabaseConnector:
         disk_ids = {str(theirs.get("id"))
                     for theirs in disk.get("assets", [])
                     if isinstance(theirs, dict)}
-        dropped_rows = []    # the third direction: in our memory AND the baseline but gone from disk is THE PEER'S DELETION, and its files are already unlinked - kept, the row is a fileless ghost on both machines
+        dropped_rows = []    # in memory and the baseline but gone from disk: the peer deleted it
         current = self._data.setdefault("assets", [])
         for row in list(current):
             if not isinstance(row, dict):
@@ -983,7 +983,7 @@ class DatabaseConnector:
         self._write_blocked = True
 
     def reload_with_path(self, path: str) -> dict:
-        """Point this connector at a DIFFERENT library and read it - every latch and stamp belongs to the FILE, not the session, so all are reset for `load()` to re-derive from the new path; a failed load restores the previous library state and re-raises."""
+        """Point this connector at another library and load it; a failed load restores and re-raises."""
         previous = (self._data, self._path, self._disk_stat,
                     set(self._loaded_ids),
                     dict(self._loaded_rows),
