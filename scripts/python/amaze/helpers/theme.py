@@ -4,7 +4,10 @@ import json
 
 from PySide6 import QtGui
 
-import hou
+try:
+    import hou
+except ImportError:
+    hou = None
 
 
 def _read_ui_scale(widget=None) -> float:

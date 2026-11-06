@@ -14,7 +14,7 @@ from amaze.actions import materials as material_actions
 from amaze.actions import nodes as node_actions
 from amaze.core import (category, debug, file_library, file_moves,
                         grid_columns, library_policy, locations, multifilterproxy_model,
-                        renderers, scene_captures, notes)
+                        renderers, scene_captures, notes, section_list)
 from amaze.helpers import hostos, ui_helpers, wording
 from amaze import messages
 from amaze.panel import grid, sidebar
@@ -71,7 +71,7 @@ class Section:
     """Base protocol: built with the panel, reads its models by attribute name. ▸o/section-api"""
 
     key = ""
-    label = ""            # the tab's human label; the ONE (key, label) list
+    label = ""            # the tab's human label, read from section_list by key
 
     takes_comments = True    # a comment needs a library asset; online has none
     takes_favourites = True  # online rows answer False, so the star empties it
@@ -703,7 +703,7 @@ class AssetSection(Section):
 
 class MaterialSection(AssetSection):
     key = "material"
-    label = "Material"
+    label = section_list.label(key)
     empty_noun = "material"
     EMPTY = amazetheme.EMPTY_MATERIAL    # no button: save_asset needs a selected node and says so when there is none ▸p/one-design-document
     QUOTE = amazetheme.QUOTE_MATERIAL
@@ -864,7 +864,7 @@ class CopSection(AssetSection):
                 "scene are not affected." % count)
 
     key = "cop"
-    label = "Node"
+    label = section_list.label(key)
     empty_noun = "node asset"
     EMPTY = amazetheme.EMPTY_NODE    # no button, for the same reason as Material
     QUOTE = amazetheme.QUOTE_NODE
@@ -959,7 +959,7 @@ class CodeSection(AssetSection):
                 "applied to a node is not affected." % count)
 
     key = "code"
-    label = "Code"
+    label = section_list.label(key)
     empty_noun = "snippet"
     EMPTY = amazetheme.EMPTY_CODE    # New File acts on nothing, so it always works
     GRID_MENU = (    # Apply and Edit act on one snippet; New File acts on nothing and stays live
@@ -1603,7 +1603,7 @@ class FileSection(FolderSection):
     """One folder list, every file shown, each row behaving as its kind. ▸o/section-api"""
 
     key = "file"
-    label = "File"
+    label = section_list.label(key)
     filter_tooltip = "Show one kind of file."
     empty_noun = "file"
     EMPTY = amazetheme.EMPTY_FILE    # a button: registering a folder needs nothing selected
@@ -2010,7 +2010,7 @@ class GradientSection(AssetSection):
                 "applied to a node are not affected." % count)
 
     key = "gradient"
-    label = "Color"
+    label = section_list.label(key)
     empty_noun = "palette"
     EMPTY = amazetheme.EMPTY_COLOR    # no button: the gesture belongs to the network editor
     QUOTE = amazetheme.QUOTE_COLOR
@@ -2200,16 +2200,10 @@ class GradientSection(AssetSection):
         return 2
 
 
-SECTION_CLASSES = (    # the section registry in tab order; adding a section is one class here
+SECTION_INDEX = {cls.key: cls for cls in (    # the registry keyed for lookup; a new section is a class here and a line in section_list
+    MaterialSection, GradientSection, CopSection, CodeSection, FileSection)}
 
-    MaterialSection,
-    GradientSection,
-    CopSection,
-    CodeSection,
-    FileSection,
-)
-
-SECTION_INDEX = {cls.key: cls for cls in SECTION_CLASSES}    # the registry keyed for lookup, class-level so declarations read without a panel
+SECTION_CLASSES = tuple(SECTION_INDEX[key] for key in section_list.keys())    # in tab order, which section_list holds
 
 
 def drop_rule(section, panel, index):
@@ -2233,11 +2227,6 @@ def save_guess(keys, nodes, prefer: str = "") -> str:
     if prefer in keys:    # a drop onto the open section means that section
         return prefer
     return min(keys, key=lambda key: SECTION_INDEX[key].save_rank(nodes))
-
-
-def all_sections() -> tuple:
-    """((key, label), ...) in tab order - the one source everything listing the sections reads."""
-    return tuple((cls.key, cls.label) for cls in SECTION_CLASSES)
 
 
 def build_sections(panel) -> dict:

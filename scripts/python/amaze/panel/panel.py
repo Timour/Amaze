@@ -21,7 +21,7 @@ from amaze.actions import nodes as node_actions
 from amaze.core import grid_columns, grid_engine
 from amaze.panel import (dragdrop_widgets, empty_state, grid, notes_panel,
                          sections, sidebar)
-from amaze.core import debug, keyed_store, locations
+from amaze.core import debug, keyed_store, locations, section_list
 from amaze.core import versions
 from amaze.core import notes
 from amaze.core import captures, scene_captures
@@ -73,6 +73,7 @@ _reload(locations)      # right after the engine it binds two stores into - and 
 _reload(hostos)    # before library: the models import the shared thumbnail engine
 _reload(wording)    # before library, nodes and sections, which name things through it
 _reload(debug)
+_reload(section_list)    # before sections, prefs and the dialog, which read the list
 _reload_loaded("amaze.core.dragengine")
 _reload_loaded("amaze.core.lop_assign")
 _reload_loaded("amaze.core.workers")    # before the engines that stop their threads through it
@@ -1996,7 +1997,7 @@ class AmazePanel(QtWidgets.QWidget):
                 removed.append(path)
         return removed
 
-    ALL_SECTIONS = sections.all_sections()    # (key, label) in order; keys are stored, never rename one
+    ALL_SECTIONS = section_list.SECTIONS    # (key, label) in order; keys are stored, never rename one
 
     def _online_segments(self) -> list:
         """The online strip: one tab per source, in source order; enabled_sections does not apply."""

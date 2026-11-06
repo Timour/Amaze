@@ -4,8 +4,6 @@ import os
 import platform
 import urllib.parse
 
-import hou
-
 from PySide6 import QtWidgets, QtCore, QtGui
 from PySide6.QtGui import QCloseEvent
 
@@ -13,7 +11,7 @@ import amaze
 from amaze import amazetheme
 from amaze import branding
 from amaze.core import (debug, keyed_store, library_policy, renderers,
-                        texture_library, users)
+                        section_list, texture_library, users)
 from amaze.actions import library as library_actions
 from amaze.dialogs import base_dialog, library_dialog, user_dialog
 from amaze.helpers import hostos
@@ -22,7 +20,6 @@ from amaze.helpers import theme
 from amaze.helpers import ui_helpers
 from amaze import messages
 from amaze import tooltips
-from amaze.panel import sections as sections_module
 from amaze.prefs import prefs as prefs_mod
 
 
@@ -67,6 +64,7 @@ def _logo_image(widget=None):
 
 def bug_report_url() -> str:
     """The repo's new-issue URL with this machine's three facts pre-filled in its `body` parameter."""
+    import hou
     from amaze.core import updater
 
     body = ("Amaze: %s\nHoudini: %s\nOS: %s\n\nWhat happened:\n"
@@ -374,6 +372,10 @@ class PrefsDialog(base_dialog.AssetDialog):
         self.rename_library_user(dialog.name)
 
     def _say_name_taken(self, name: str) -> None:
+        try:
+            import hou
+        except ImportError:
+            hou = None
         ui = getattr(hou, "ui", None)
         if ui is not None:
             ui.displayMessage(messages.USER_NAME_TAKEN % name.strip(),
@@ -401,6 +403,7 @@ class PrefsDialog(base_dialog.AssetDialog):
             self._sync_rows()
 
     def _ask_delete_library_user(self) -> None:
+        import hou
         uid = self.cbb_library_user.currentData()
         if uid == self.NEW_USER:
             self._new_user = ""
@@ -422,6 +425,10 @@ class PrefsDialog(base_dialog.AssetDialog):
 
     def add_library(self) -> None:
         """A library folder, or an empty one for a new library, into the Library list; Apply opens it."""
+        try:
+            import hou
+        except ImportError:
+            hou = None
         ui = getattr(hou, "ui", None)
         if ui is None:
             return
@@ -550,6 +557,7 @@ class PrefsDialog(base_dialog.AssetDialog):
 
     def set_allow_overwrite(self, checked: bool) -> None:
         """Write the overwrite policy to the library; turning it on asks for confirmation first."""
+        import hou
         library_dir = self._prefs.dir
         if checked and not library_policy.allow_overwrite(library_dir):
             answer = hou.ui.displayMessage(  # type: ignore
@@ -836,7 +844,7 @@ class PrefsDialog(base_dialog.AssetDialog):
     def _build_sections_page(self) -> QtWidgets.QWidget:
         page, form = self._tab_page()
         self._section_boxes = {}
-        for key, label in sections_module.all_sections():   # read from the registered sections, never a hardcoded list
+        for key, label in section_list.SECTIONS:   # the one list, never a copy of it
             box = ui_helpers.ToggleSwitch(label)
             box.setToolTip(ui_helpers.tooltip_text(
                 tooltips.PREFS_SECTION_SWITCH))
@@ -1417,6 +1425,7 @@ class PrefsDialog(base_dialog.AssetDialog):
 
     def change_cache_path(self) -> None:
         """Pick a custom thumbnail-cache location; an empty selection keeps the current one."""
+        import hou
         start = _chooser_path(self._prefs.cache_dir or hostos.cache_root())
         path = hou.ui.selectFile(
             start_directory=start, file_type=hou.fileType.Directory
@@ -1437,6 +1446,7 @@ class PrefsDialog(base_dialog.AssetDialog):
 
     def change_test_path(self) -> None:
         """Pick the folder holding the test lib and cache; an empty folder is seeded with an index."""
+        import hou
         start = _chooser_path(self._prefs.test_dir or self._prefs.dir)
         path = hou.ui.selectFile(
             start_directory=start, file_type=hou.fileType.Directory
@@ -1547,6 +1557,7 @@ class PrefsDialog(base_dialog.AssetDialog):
 
     def clear_texture_cache(self) -> None:
         """Delete every cached image and geometry thumbnail; scene captures are left alone."""
+        import hou
         if not hou.ui.displayConfirmation(
             messages.CONFIRM_CLEAR_THUMBNAIL_CACHE,
             suppress=hou.confirmType.NoConfirmType,   # not the default `OverwriteFile`, Houdini's global do-not-ask-again flag
@@ -1747,7 +1758,7 @@ class PrefsDialog(base_dialog.AssetDialog):
 
     def _on_section_toggled(self, _checked: bool) -> None:
         """Rebuild enabled_sections in ALL_SECTIONS order, never zero; unregistered keys carry over."""
-        order = [k for k, _lbl in sections_module.all_sections()]
+        order = section_list.keys()
         enabled = [k for k in order
                    if k in self._section_boxes
                    and self._section_boxes[k].isChecked()]

@@ -14,9 +14,14 @@
 - A list that holds under half of what its newest saved copy holds is reported when the library opens.
 - `tools/library-audit.py` reads the same naming rules as Check Library and names each misplaced file by its kind.
 
+## 1.32.2
+
+- The list of sections lives in a file of its own, and the Preferences window reads it there, so the window opens without Houdini and all of its tests run on GitHub. Nothing changes in use.
+
 ## 1.32.1
 
 - The GitHub check covers ten more test modules, and the tests that need Houdini are skipped where it is absent. Nothing changes in use.
+- The theme module loads without Houdini and falls back to the built-in colours and scale, as it already did without a Houdini UI.
 
 ## 1.32.0
 

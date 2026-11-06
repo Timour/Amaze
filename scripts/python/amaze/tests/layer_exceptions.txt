@@ -4,6 +4,5 @@
 core/matx_icon.py imports helpers/ui_helpers.py
 core/texstore.py uses hou
 core/tile_icons.py imports helpers/ui_helpers.py
-prefs/persistence.py imports panel/sections.py
 render/nodes.py talks displayMessage x5
 render/thumbs.py talks displayMessage x3

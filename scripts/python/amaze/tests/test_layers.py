@@ -31,6 +31,7 @@ MODULE_LAYER = {    # one row per module in core/, helpers/ and the top level
     "amaze": "base", "branding": "base", "messages": "base", "tooltips": "base",
     "amazetheme": "base", "core": "base", "helpers": "base", "core.debug": "base",
     "helpers.hostos": "base", "core.renderers": "base", "core.library_files": "base",
+    "core.section_list": "base",
     "helpers.wording": "base", "core.workers": "base",
     "core.database": "library", "core.keyed_store": "library", "helpers.restore": "library",
     "core.quarantine": "library", "core.material": "library", "core.locations": "library",

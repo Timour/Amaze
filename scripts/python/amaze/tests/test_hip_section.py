@@ -19,7 +19,7 @@ _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 import hou  # noqa: E402,F401
 from amaze.actions import files as files_actions  # noqa: E402
-from amaze.core import captures, file_library, locations, scene_captures, scene_files, thumbnails  # noqa: E402
+from amaze.core import captures, file_library, locations, scene_captures, scene_files, section_list, thumbnails  # noqa: E402
 from amaze.helpers import hostos, ui_helpers  # noqa: E402
 from amaze.panel import sections  # noqa: E402
 from amaze.tests import test_support  # noqa: E402,F401
@@ -2041,17 +2041,17 @@ class SectionListIsSingleSourcedTest(unittest.TestCase):
     """Every list of sections must come from ONE place: three copies existed - the tab strip and two inside the Preferences dialog - and the two in Preferences never learned the new key, so toggling ANY section rebuilt enabled_sections from a six-entry list and dropped the tab: vanished, persisted, no switch to turn it back on, and a migration flag that would not re-add it."""
 
     def test_every_registered_section_is_offered(self):
-        listed = [k for k, _lbl in sections.all_sections()]
+        listed = section_list.keys()
         registered = [c.key for c in sections.SECTION_CLASSES]
         self.assertEqual(registered, listed)
         self.assertIn("file", listed)
 
     def test_every_section_has_a_label(self):
-        for key, label in sections.all_sections():
+        for key, label in section_list.SECTIONS:
             self.assertTrue(label, "section %r has no label" % key)
 
     def test_no_hardcoded_section_list_is_INCOMPLETE(self):
-        """Source-derived, aimed at the actual defect: a literal list is not itself the bug (`_default_sections` needs one as its fallback) - the bug is a list that OMITS a registered section, and two of those lived in the Preferences dialog. Any section list in the tree must name every section."""
+        """Source-derived, aimed at the actual defect: a literal list is not itself the bug - the bug is a list that OMITS a registered section, and two of those lived in the Preferences dialog. Any section list in the tree must name every section."""
         import re
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         keys = {c.key for c in sections.SECTION_CLASSES}
