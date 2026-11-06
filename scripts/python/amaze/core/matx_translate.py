@@ -1,4 +1,4 @@
-"""Clean .mtlx -> VOP translator on Houdini's MaterialX Python API: parses the document and builds fresh FLATTENED `mtlx*` VOP nodes (real `file` inputs, nothing promoted, no nested nodegraph) - the old editmaterial approach promoted every input and dropped file inputs from the USD export, the black-material bug. Returns (shader, displacement) or (None, None) with a printed reason."""
+"""A .mtlx to flat `mtlx*` VOP nodes translator, on Houdini's MaterialX Python API."""
 
 from __future__ import annotations
 
@@ -10,11 +10,11 @@ from amaze.core import debug
 from amaze.helpers import hostos
 
 
-_TYPE_OVERRIDES = {  # categories whose VOP type isn't simply mtlx<category>; everything else maps by that rule with a ::2.0 fallback
+_TYPE_OVERRIDES = {  # categories whose VOP type is not mtlx<category> or its ::2.0
     "surfacematerial": None,       # the material prim - the builder IS this
 }
 
-_TYPE_TO_SIGNATURE = {  # mtlx `type` -> mtlximage `signature`: the per-map colour-space rule at its source - a color3 image reads sRGB, a float/vector3 image reads raw; the .mtlx's own type is authoritative
+_TYPE_TO_SIGNATURE = {  # mtlx `type` -> mtlximage `signature`; a color3 image reads sRGB, others raw
     "color3": "color3",
     "color4": "color4",
     "float": "default",
@@ -46,10 +46,10 @@ def _signature(mnode) -> str | None:
 
 
 def _resolve_file(value: str, mtlx_dir: str, prefix: str) -> str:
-    """Resolve a .mtlx file value (document-relative, plus any active fileprefix) to an absolute path - CONTAINED IN THE PACKAGE: `value` comes out of a DOWNLOADED document and this is the one place in the online path where such a string becomes a filesystem path, so an uncontainable value answers an empty path and is logged, never raised; a texture that does not load is the safe end of a bad reference."""
+    """A .mtlx file value as a path inside `mtlx_dir`; "" when it escapes, logged, never raised."""
     if not value:
         return value
-    value = value.replace("\\", "/")    # a package authored on Windows writes `textures\map.png`, and on a Unix host that backslash is one character of the file name
+    value = value.replace("\\", "/")    # a Windows-authored `textures\map.png` must resolve on Unix
     candidates = [os.path.join(mtlx_dir, prefix, value) if prefix else None,
                   os.path.join(mtlx_dir, value)]
     contained = []
@@ -78,7 +78,7 @@ def _set_value(node: hou.Node, parm_name: str, mtlx_type: str, value_str: str):
         if mtlx_type in ("color3", "vector3", "color4", "vector4",
                          "vector2"):    # one body for every tuple width - the truncation to len(pt) is what sizes it
             parts = [float(v) for v in value_str.split(",")]
-            pt = node.parmTuple("%s_%s" % (parm_name, mtlx_type))    # the TYPED slot: on a multi-signature VOP the bare name is the float signature's single parm, and a tuple written there keeps its first component and leaves the colour at black ▸r/mtlx-vop-tuple-parms
+            pt = node.parmTuple("%s_%s" % (parm_name, mtlx_type))    # the typed slot first ▸r/mtlx-vop-tuple-parms
             if pt is None or len(pt) < len(parts):
                 pt = node.parmTuple(parm_name)
             if pt is not None:
@@ -91,7 +91,7 @@ def _set_value(node: hou.Node, parm_name: str, mtlx_type: str, value_str: str):
             p = node.parm(parm_name)
             if p is not None:
                 p.set(value_str)
-        elif mtlx_type == "boolean":  # not scalar-parseable: float of a word raises, and the except below would silently drop the input at its default
+        elif mtlx_type == "boolean":  # "true"/"1" is on, anything else off
             p = node.parm(parm_name)
             if p is not None:
                 p.set(1 if value_str.strip().lower() in ("true", "1") else 0)
@@ -99,7 +99,7 @@ def _set_value(node: hou.Node, parm_name: str, mtlx_type: str, value_str: str):
             p = node.parm(parm_name)
             if p is not None:
                 p.set(float(value_str))
-    except (hou.Error, ValueError) as exc:  # NOT silent: a wrong-shaped input leaves the parm at its DEFAULT and the material renders wrong with nothing to look at - collected and summarised by the caller, like unresolved textures
+    except (hou.Error, ValueError) as exc:  # collected in _DROPPED for the caller to report
         _DROPPED.append("%s.%s (%s)" % (node.name(), parm_name, exc))
 
 
@@ -107,7 +107,7 @@ _DROPPED: list = []  # inputs _set_value dropped during the current build; build
 
 
 def _named_few(items, limit: int = 6) -> str:
-    """The first few names, then an honest count of the rest - a bare truncation reads as a list that lost its end."""
+    """The first few names, then a count of the rest."""
     names = [str(item) for item in items]
     shown = ", ".join(names[:limit])
     if len(names) <= limit:
@@ -116,7 +116,7 @@ def _named_few(items, limit: int = 6) -> str:
 
 
 def build_material(mtlx_path: str, builder: hou.Node, name: str):
-    """Translate a .mtlx into clean VOP nodes inside `builder`; returns (surface_shader, displacement_shader), either may be None."""
+    """Translate a .mtlx into VOP nodes inside `builder`; (shader, displacement), either may be None."""
     _DROPPED.clear()  # an early return below must not carry entries into the next material's report
     try:
         import MaterialX as mx
@@ -131,7 +131,7 @@ def build_material(mtlx_path: str, builder: hou.Node, name: str):
     try:
         mx.readFromXmlFile(doc, mtlx_path)
     except Exception as exc:
-        debug.note(  # the path goes in the DATA, not the sentence: a file inside the download folder the user has never opened
+        debug.note(  # the path goes in the data, not the sentence
             "the downloaded MaterialX file for this material could "
             "not be read (%s), so nothing was built. Your scene is "
             "unchanged." % exc, path=mtlx_path)
@@ -139,7 +139,7 @@ def build_material(mtlx_path: str, builder: hou.Node, name: str):
 
     mtlx_dir = os.path.dirname(mtlx_path)
 
-    all_mtlx_nodes = []  # (mtlx_node, active_file_prefix), FLATTENED: top-level nodes plus every nodegraph's nodes, wrappers dropped with outputs resolved to the feeding node; keyed by getNamePath() everywhere, because a bare name is unique only inside its nodegraph (research.md - a MaterialX node name is scoped to its nodegraph)
+    all_mtlx_nodes = []  # (mtlx_node, active_file_prefix), every graph flattened; key by getNamePath()
 
     for node in doc.getNodes():
         if node.getCategory() == "surfacematerial":
@@ -204,7 +204,7 @@ def build_material(mtlx_path: str, builder: hou.Node, name: str):
             "Everything else in the material was built."
             % (len(skipped), "" if len(skipped) == 1 else "s",
                _named_few(skipped)))
-    if _DROPPED:  # debug.event is gated on Debug Mode (off by default), so note() is the visible half - it prints with Debug Mode off, and on Windows its log record is the whole channel because any print pops the Houdini Console
+    if _DROPPED:  # note() is the half the user sees with Debug Mode off
         debug.event("import", "mtlx inputs dropped", inputs=list(_DROPPED))
         debug.note(
             "left %d MaterialX input%s at the default value: %s. The "
@@ -215,7 +215,7 @@ def build_material(mtlx_path: str, builder: hou.Node, name: str):
         _DROPPED.clear()
 
     def _source_node(mnode, inp):
-        """The mtlx node feeding this input, RESOLVED IN ITS OWN SCOPE through MaterialX's own lookups, never by joining strings: a `nodename` names a sibling inside the same parent, a `nodegraph`/`output` pair names a node inside that graph."""
+        """The mtlx node feeding this input, looked up in its own scope by MaterialX, or None."""
         direct = inp.getNodeName()
         if direct:
             parent = mnode.getParent()

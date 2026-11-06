@@ -1,4 +1,4 @@
-"""Reads the `.bak` copies and puts one back - the only code that does either, and it never deletes. STDLIB ONLY, because the terminal tool imports it on a machine where Houdini will not start. ▸archive/restore.py"""
+"""Reads the `.bak` copies and puts one back; never deletes, stdlib only. ▸archive/restore.py"""
 
 import datetime
 import json
@@ -15,7 +15,7 @@ _LIST_KEYS = ("assets", "snippets", "cops", "gradients")
 
 
 def _mapping_payloads():
-    """`(payload, noun)` for each registered side table, whose payload is a MAPPING - `_LIST_KEYS` cannot match one, so a miss counts the whole document as settings."""
+    """`(payload, noun)` for each registered side table, whose payload is a mapping."""
     try:
         from amaze.core import keyed_store
     except Exception:                                     # noqa: BLE001
@@ -24,7 +24,7 @@ def _mapping_payloads():
 
 
 class RestoreRefused(Exception):
-    """A restore asked for and not done - `str()` is a complete sentence fit for a dialog, the technical half rides in `.detail`."""
+    """A restore not done; `str()` is a sentence for a dialog, the technical half is `.detail`."""
 
     def __init__(self, message: str, detail: str = ""):
         super().__init__(message)
@@ -32,7 +32,7 @@ class RestoreRefused(Exception):
 
 
 def read_document(path: str):
-    """`(document, error)`, error `""` on success. utf-8-SIG: plain utf-8 here reads a BOM'd file as invalid JSON and refuses to put back a copy the app itself calls healthy."""
+    """`(document, error)`, error `""` on success; reads utf-8-sig, so a BOM is accepted."""
     return read_payload(path)[1:]
 
 
@@ -50,7 +50,7 @@ def read_payload(path: str):
 
 
 def count_in(document):
-    """`(how many, what they are)`, or `(None, "")` when the document is not one of Amaze's lists - a dict with no list key counts by key as settings."""
+    """`(how many, what they are)`, `(None, "")` for a non-dict; a dict with no list is settings."""
     if not isinstance(document, dict):
         return None, ""
     for key in _LIST_KEYS:
@@ -63,7 +63,7 @@ def count_in(document):
 
 
 def surveyed(path: str):
-    """`(facts, document)` from ONE parse, for a caller that wants both - `info()` is this with the document dropped."""
+    """`(facts, document)` from one parse; `info()` is this without the document."""
     if not os.path.exists(path):
         return ({"path": path, "name": os.path.basename(path),
                  "exists": False, "size": 0, "when": "", "count": None,
@@ -84,12 +84,12 @@ def surveyed(path: str):
 
 
 def info(path: str) -> dict:
-    """What a file is. `count` is None when it would not open - NEVER 0, or `holds nothing` and `would not open` become the same answer."""
+    """What a file is; `count` is None, never 0, when it would not open."""
     return surveyed(path)[0]
 
 
 def describe(path: str) -> str:
-    """One terminal-width line: size, date, and what a list holds. The Repair dialog writes its own from `info()`."""
+    """One terminal-width line: size, date, and what a list holds."""
     facts = info(path)
     if not facts["exists"]:
         return "missing"
@@ -103,7 +103,7 @@ def describe(path: str) -> str:
 
 
 def snapshots(target: str) -> list:
-    """`(tier, path)` for every copy beside `target`, undo copies first and EVERY one of them. Sorted BY THE STAMP IN THE NAME - `shutil.copy2` preserves a misleading mtime, and this must agree with what retirement keeps."""
+    """`(tier, path)` for every copy beside `target`, all undo copies first, newest stamp first."""
     name = os.path.basename(target)
     folder = os.path.dirname(target) or "."
     prefix = name + "." + UNDO_TIER
@@ -121,7 +121,7 @@ def snapshots(target: str) -> list:
 
 
 def _fresh_undo_path(target: str) -> str:
-    """A stamped undo path no earlier restore owns. REUSING A NAME IS THE ONE THING THIS MUST NEVER DO - overwriting an undo copy deletes a state that exists nowhere else."""
+    """A stamped undo path no file holds yet; it never reuses a name."""
     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     base = "%s.%s-%s" % (target, UNDO_TIER, stamp)
     candidate, number = base, 2
@@ -135,7 +135,7 @@ KEEP_UNDO_COPIES = 5
 
 
 def _retire_old_undo_copies(target: str, keep: int = KEEP_UNDO_COPIES):
-    """MOVES undo copies past the newest `keep` into the quarantine, never deletes, ordered by the stamp in the NAME. Imports `core.quarantine`, never `core.library`, which imports `hou` and would raise on every terminal-tool run."""
+    """Move undo copies past the newest `keep` into the quarantine; never import `hou` here."""
     name = os.path.basename(target)
     folder = os.path.dirname(target) or "."
     prefix = name + "." + UNDO_TIER + "-"
@@ -161,7 +161,7 @@ def _retire_old_undo_copies(target: str, keep: int = KEEP_UNDO_COPIES):
 
 
 def put_back(target: str, tier: str, allow_loss: bool = False) -> dict:
-    """Copies one snapshot over `target`, saving the current state to an undo copy first; answers `{"tier", "undo"}` or raises `RestoreRefused`. THE CALLER MUST ENSURE NOTHING HAS THE FILE OPEN - a restore while a panel is running is overwritten by that panel's next save, and the user is left believing they recovered."""
+    """Put a snapshot over `target`, undo copy first; or RestoreRefused. Nothing may hold it open."""
     tier = tier.lstrip(".")
     source = target + "." + tier
     if not os.path.exists(source):

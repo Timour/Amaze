@@ -1,4 +1,4 @@
-"""Palette, fonts and UI scale, derived from Houdini 22's Pluto theme; with no theme readable every colour falls back to its original constant. ▸r/pluto-theme"""
+"""Palette, fonts and UI scale from Houdini's Pluto theme, else built-in colours. ▸r/pluto-theme"""
 
 import json
 
@@ -8,7 +8,7 @@ import hou
 
 
 def _read_ui_scale(widget=None) -> float:
-    """The factor `ui_px` applies ON TOP of Qt's own scaling, for `widget`'s screen; when Houdini merely restates a ratio Qt already applies, that is 1.0. ▸r/qt-windows-macos"""
+    """The factor `ui_px` applies on top of Qt's scaling, for `widget`'s screen. ▸r/qt-windows-macos"""
     try:
         factor = float(hou.ui.globalScaleFactor())
     except Exception:
@@ -22,7 +22,7 @@ def _read_ui_scale(widget=None) -> float:
 
 
 def screen_ratio(widget=None) -> float:
-    """The device pixel ratio of `widget`'s own screen, or the primary's when there is no widget; read it at PAINT time, an unrealised one answers primary. ▸r/screen-dpr"""
+    """The pixel ratio of `widget`'s screen, else the primary's; read it at paint time. ▸r/screen-dpr"""
     try:
         if widget is not None:
             return float(widget.devicePixelRatioF()) or 1.0
@@ -36,7 +36,7 @@ UI_SCALE = _read_ui_scale()      # the no-widget verdict, kept for chrome built 
 
 
 def ui_px(value):
-    """Scale a chrome pixel value by Houdini's UI scale; ints stay ints (floored at 1 so hairlines never vanish), floats stay floats."""
+    """Scale a chrome pixel value by Houdini's UI scale; ints stay ints, floored at 1."""
     if UI_SCALE == 1.0:
         return value
     scaled = value * UI_SCALE
@@ -46,9 +46,9 @@ def ui_px(value):
     return max(result, 1) if value > 0 else result
 
 
-MIN_UI_POINTS = 12   # the smallest readable size BEFORE the UI scale; Houdini pins no absolute point size anywhere ▸r/font-sizing
+MIN_UI_POINTS = 12   # the smallest readable size before the UI scale ▸r/font-sizing
 
-FONT_ROLES = {       # a role is a SCALE and a weight, never a literal size; tile fonts are deliberately absent, they derive from the view's option font ▸r/font-sizing
+FONT_ROLES = {       # a role is a scale and a weight, never a literal size ▸r/font-sizing
     "comments_title": {"scale": 1.0, "bold": True},    # the Comments subject name, beside its type
     "empty_headline": {"scale": 1.25, "bold": True},   # the empty grid's headline, over its one explaining sentence
     "empty_quote": {"scale": 1.0, "italic": True},     # the first-run blank's quotation and its attribution, drawn at the sentence's size
@@ -56,24 +56,24 @@ FONT_ROLES = {       # a role is a SCALE and a weight, never a literal size; til
 
 
 def point_size(source, scale: float = 1.0):
-    """THE ONE GATE on deriving a size from a font: `scale` times `source`'s own point size, or None where it has none to scale. A caller skips `setPointSizeF` entirely on a None. ▸r/font-sizing"""
+    """`scale` times `source`'s point size, or None when it has none to scale. ▸r/font-sizing"""
     points = source.pointSizeF()
     return points * scale if points > 0 else None   # `> 0` because a font sized in PIXELS answers -1, and Qt refuses any size at or below zero
 
 
 def ui_font(source=None) -> QtGui.QFont:
-    """THE BASE FONT: the host's, with ONE floor applied once; `source` defaults to the application font, which is what a headless run gets. ▸r/font-sizing"""
+    """The base font: `source` or the application font, floored at MIN_UI_POINTS. ▸r/font-sizing"""
     font = QtGui.QFont(source if source is not None
                        else QtGui.QGuiApplication.font())
     floor = float(ui_px(MIN_UI_POINTS))
-    points = point_size(font)   # None where the font is sized in PIXELS, and clamping that would convert it to points ▸r/linux-live-facts
+    points = point_size(font)   # None for a pixel-sized font, which is left alone ▸r/linux-live-facts
     if points is not None and points < floor:
         font.setPointSizeF(floor)
     return font
 
 
 def font(role: str, source=None) -> QtGui.QFont:
-    """One named font derived from :func:`ui_font`; RAISES on an unknown role rather than handing back a plausible base."""
+    """One named font derived from :func:`ui_font`; raises KeyError on an unknown role."""
     try:
         spec = FONT_ROLES[role]
     except KeyError:
@@ -87,11 +87,11 @@ def font(role: str, source=None) -> QtGui.QFont:
     if spec.get("bold"):
         derived.setBold(True)
     if spec.get("italic"):
-        derived.setItalic(True)    # a REQUEST: whether a real italic face answered it is `QFontInfo(...).styleName()`, never `font.italic()` ▸r/font-italic
+        derived.setItalic(True)    # a request; check `QFontInfo(...).styleName()` ▸r/font-italic
     return derived
 
 
-_DEFAULTS = {        # the hand-tuned palette: the fallback AND the anchor the derivations reproduce under the default theme. NO print() in this module ▸r/qt-windows-macos
+_DEFAULTS = {        # the fallback palette; no print() in this module ▸r/qt-windows-macos
     "surface_low": "#272727",  # tab tray, sidebar backdrop, thumb bg
     "surface": "#2d2d2d",  # toolbar row, tab strip, line_tags
     "field": "#434343",  # filter box fill, toolbar divider
@@ -103,7 +103,7 @@ _DEFAULTS = {        # the hand-tuned palette: the fallback AND the anchor the d
     "star": "#fdba00",  # favorite badge (Yellow mode)
 }
 
-_BASE_TONES = {      # a tone on the theme base's own hue/chroma; the default base is chroma 0, so a tinted base tints every surface coherently
+_BASE_TONES = {      # a tone on the theme base's own hue and chroma
     "surface_low": 15.4,
     "surface": 18.2,
     "field": 28.1,
@@ -112,7 +112,7 @@ _BASE_TONES = {      # a tone on the theme base's own hue/chroma; the default ba
     "text_bright": 88.0,
 }
 
-_ACCENT_DERIVED = {  # (chroma factor vs the accent's own, tone), solved from the shipped chip colours against the default accent `#7082b9` ▸r/pluto-theme
+_ACCENT_DERIVED = {  # (chroma factor vs the accent's own, tone) ▸r/pluto-theme
     "tab_chip": (0.60, 30.4),
     "tab_ring": (0.59, 33.8),
 }

@@ -1,4 +1,4 @@
-"""THE DESIGN, in ONE document: every colour, size, placement and word the DESIGNS fix and Houdini's theme does NOT own, so a Figma change is one edit. `helpers/theme.py` holds what FOLLOWS Houdini's live theme; sizes here are the design's number HALVED and go through `theme.ui_px` AT THE CALL SITE. ▸p/one-design-document"""
+"""The design's fixed values; sizes are halved, `theme.ui_px` at the call. ▸p/one-design-document"""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ HEADER_BAND_INSET = 18   # where the name starts
 HEADER_BAND_TEXT_PX = 12
 HEADER_BAND_TEXT_BOLD = True    # the drawn weight on D11
 
-HOUSE_MARGIN = 5         # ▸ the content margin every compact form dialog wears; a dialog records its reason at the call to differ
+HOUSE_MARGIN = 5         # ▸ the content margin every compact form dialog wears
 
 D01_SELECTED_INK = "#755400"   # ▸ D01 Versions: the picked version's row
 
@@ -16,7 +16,7 @@ D02_CELL = 34            # one icon button in the chooser grid
 D02_COLUMNS = 8          # what the drawn 319 grid column fits at 2px spacing
 D02_FIELD_H = 22         # every field, the search and both buttons
 D02_SWATCH_GAP = 6
-D02_CHIP_W = 35          # the current-colour chip beside the Custom Color label - swatch-sized since the 2026-08-30 redraw; clicking it IS the picker
+D02_CHIP_W = 35          # the current-colour chip beside the Custom Color label, swatch-sized
 D02_STACK_GAP = 13       # preview to the switch stack, and its label column to its fields
 D02_ROW_GAP = 9          # between the stacked field rows, and the column rhythm below them
 D02_LABEL_GAP = 8        # a label to its field in the top form
@@ -27,7 +27,7 @@ D02_PRESET_GAP = 10      # the current-colour chip to the preset row
 D02_TOP_GAP = 9          # the Tags row to the Image menu
 D02_PREVIEW_DROP = 2     # the Image menu's top to the preview square's
 D02_BUTTON_GAP = 8       # grid to the button row
-D02_GRID_SPACING = 2     # the chooser grid's cell gap, UNSCALED: D02_COLUMNS is the count the drawn 319 column fits at exactly this gap
+D02_GRID_SPACING = 2     # the chooser grid's cell gap, unscaled; D02_COLUMNS assumes it
 D02_CHOOSER_RADIUS = 3   # an icon button's corner, UNSCALED - a stylesheet px, like the two below
 D02_CHECKED_BORDER = 2   # the ring on the chosen icon, UNSCALED
 D02_SWATCH_BORDER = 1    # the preset chips and the current-colour chip, UNSCALED
@@ -61,7 +61,7 @@ PREFS_FORM_WIDTH = 490   # ▸ P01-P06 Preferences: the drawn frame less Qt's 8 
 PREFS_INSET = 20         # content to the frame edge, both sides: rows span 20..470
 PREFS_DIALOG_MARGIN = 12  # the tabbed window's own margin, outside the tab strip
 PREFS_PAGE_MARGIN = 8    # each tab page's margin, inside it: 12 + 8 is the drawn 20
-PREFS_CONTENT_WIDTH = 450  # the drawn content column, spanned by every row and divider: 20..470. PINNED, because the page is handed more than this - Qt makes the window 8 wider than the tab widget needs and then lets the page use all of it ▸r/tabwidget-adds-eight
+PREFS_CONTENT_WIDTH = 450  # the drawn content column, 20..470; pin it ▸r/tabwidget-adds-eight
 PREFS_TAB_BAR = (12, 12, 466, 22)   # x, y, w, h - the strip above every page
 PREFS_SUBTAB_BAR = (12, 44, 129, 22)   # x, y, w, h - Show/Hide's Renderer and Sections strip
 PREFS_LABEL_RIGHT = 140  # a form label is RIGHT-aligned and ends here
@@ -125,11 +125,11 @@ BADGE_REST_OPACITY = 0.75       # every button badge at rest, ground and icon al
 BADGE_HOVER_OPACITY = 1.0       # and under the pointer
 MENU_ICON = 16                  # ▸ C13: a menu entry's icon box, the size Houdini draws it ▸r/menu-checked-look
 LIST_INK = "#d8d6d4"            # a table is read down its columns, so every column paints in this except Category
-LIST_SELECTED_TEXT = "#000000"  # selection turns EVERY column black: the palette's highlightedText was not reliably dark against the amber highlight
+LIST_SELECTED_TEXT = "#000000"  # every column of a selected row
 BAND_TEXT_DARK = "#262626"      # text on a coloured band; a category colour can be any lightness at all
 BAND_TEXT_LIGHT = "#f0eeee"
 
-SLIDER_LEFT = "#5d7abd"         # ▸ the slider, the tabs and the icon-menu button. Also the project accent default, which `set_accent_color` overrides at runtime
+SLIDER_LEFT = "#5d7abd"         # ▸ the slider, tabs and icon-menu button; the default accent
 SLIDER_HANDLE = "#777f95"
 SLIDER_TRACK = "#1a1a1a"        # the progress track's OWN colour, never the slider's, so one tweak cannot recolour both
 TAB_TEXT_HOVER = "#cccdcd"      # not in the design, which draws no tab hover state - matching the toolbar icons' hover
@@ -246,7 +246,7 @@ EMPTY_FILE = {
 }
 
 
-DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node, per frame; `AmazeNotes/tools/figma-diff.py` checks Figma against it ▸p/one-design-document
+DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node, per frame ▸p/one-design-document
     "D01": {   # Versions: a material's versions, newest first
         "frame": (269, 344),
         "nodes": (
@@ -911,7 +911,7 @@ _DRAWN_REPEATS: dict = {}
 
 
 def drawn_boxes(frame_key: str) -> dict:
-    """One frame's boxes keyed for a call site, derived from `DIALOG_LAYOUT` alone: `(kind, text)` is the plain `<Kind>` rect ENCLOSING that `<Kind> ▸ text` node - or, for a node that carries its own text, that node's OWN rect, since a label IS its box - and `(kind, None)` is every plain `<Kind>` rect in document order. An unknown frame answers `{}`; a label drawn beside its rect rather than inside it (the toggle pills) pairs with nothing. Cached and SHARED - read it, never edit it."""
+    """A frame's boxes by `(kind, text)` or `(kind, None)`; `{}` if unknown. Shared: never edit it."""
     cached = _DRAWN_BOXES.get(frame_key)
     if cached is not None:
         return cached
@@ -934,7 +934,7 @@ def drawn_boxes(frame_key: str) -> dict:
                    and box[0] + box[2] >= x + w
                    and box[1] + box[3] >= y + h]
         if holding:
-            repeats.setdefault((plain, text), []).append(   # SMALLEST of the rects around THIS node: P02 draws `256` in three rows, so a repeated label must answer one box per drawing of it and always the same one
+            repeats.setdefault((plain, text), []).append(   # the smallest rect around this node
                 min(holding, key=lambda box: box[2] * box[3]))
             boxes.setdefault((plain, text), repeats[(plain, text)][0])
     _DRAWN_BOXES[frame_key] = boxes
@@ -944,7 +944,7 @@ def drawn_boxes(frame_key: str) -> dict:
 
 
 def drawn_repeats(frame_key: str, kind: str, text) -> tuple:
-    """Every box a call site may pin from for `(kind, text)`, in DRAWN order: one per `<kind> ▸ <text>` node, since a frame may draw a label twice - P01 draws the `...` browse button at two places - or, for `text=None`, every plain `<kind>` rect down the frame. `drawn_boxes` answers the first of them."""
+    """Every box for `(kind, text)` in drawn order, one per drawing; `drawn_boxes` has the first."""
     boxes = drawn_boxes(frame_key)
     if text is None:
         return tuple(sorted(boxes.get((kind, None), ()),
@@ -957,7 +957,7 @@ def drawn_repeats(frame_key: str, kind: str, text) -> tuple:
 
 
 def forget_drawn_boxes() -> None:
-    """Drop the derived-box cache - the NAMED test seam, so no test reaches into the module dict and pins its spelling."""
+    """Drop the derived-box cache; the test seam."""
     _DRAWN_BOXES.clear()
     _DRAWN_REPEATS.clear()
 

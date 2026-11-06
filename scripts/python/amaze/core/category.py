@@ -25,10 +25,10 @@ class Categories(QtCore.QAbstractListModel):
 
     def __init__(self, preferences: prefs.Prefs) -> None:
         super().__init__()
-        self.preferences = preferences  # REQUIRED: a model that can default binds to whatever library the machine's settings name ▸p/duplication-third-verb
+        self.preferences = preferences  # required, never defaulted ▸p/duplication-third-verb
         self._data = database.open_document(self)  # a sidecar that will not read must not take the panel down
         self._categories = self._data["categories"]
-        self._shown = list(self._categories)    # what the views have been told about; `apply_refresh` compares against it, and starting empty made its FIRST call silent
+        self._shown = list(self._categories)    # what the views have been told; `apply_refresh` compares
         self.CatSortRole = QtCore.Qt.ItemDataRole.UserRole  # 256
         self._renderer_filter = ""  # lowercased; "" = no filter. Pushed in by the panel so counts agree with the grid
         self._count_cache = None  # category -> visible count, "_All" = total; dropped on every mutation path
@@ -55,7 +55,7 @@ class Categories(QtCore.QAbstractListModel):
             return self.color_of(self._categories[index.row()])
 
     def set_renderer_filter(self, render_filter: str) -> None:
-        """Store the grid's active renderer filter; pass the exact value the panel feeds MultiFilterProxyModel ("all_renderers" for All)."""
+        """Store the grid's renderer filter, the value MultiFilterProxyModel gets ("all_renderers")."""
         self._renderer_filter = str(render_filter or "").lower()
         self.drop_count_cache()
 
@@ -64,7 +64,7 @@ class Categories(QtCore.QAbstractListModel):
         self._count_cache = None
 
     def _asset_matches_renderer(self, asset: dict) -> bool:
-        """Whether an asset is visible under the active renderer filter - MUST mirror MultiFilterProxyModel's RendererRole matching exactly, or sidebar and grid disagree."""
+        """Whether an asset passes the renderer filter; must match MultiFilterProxyModel exactly."""
         rf = self._renderer_filter
         if not rf:
             return True
@@ -74,18 +74,18 @@ class Categories(QtCore.QAbstractListModel):
         return "all_renderers" in rf  # All passes EVERY row, an empty renderer included
 
     def showing_all_renderers(self) -> bool:
-        """True when the Renderer filter is All (or unset) - the view where empty categories stay visible so they can be deleted."""
+        """True when the Renderer filter is All or unset; empty categories then stay visible."""
         rf = self._renderer_filter
         return (not rf) or ("all_renderers" in rf)
 
     def _category_count(self, raw_name: str) -> int:
-        """How many VISIBLE assets live in this category ("_All" = every visible asset), served from a lazily rebuilt one-pass map."""
+        """How many visible assets live in this category; "_All" counts every visible asset."""
         counts = self._count_cache
         if counts is None:
             counts = {}
             total = 0
             for asset in self._data.get("assets", []):
-                if not isinstance(asset, dict):    # the model side skips junk rows rather than abort (library.py) - the count pass walks the same document
+                if not isinstance(asset, dict):    # skips junk rows, as the model does
                     continue
                 if not self._asset_matches_renderer(asset):
                     continue
@@ -119,7 +119,7 @@ class Categories(QtCore.QAbstractListModel):
             self.endResetModel()
 
     def apply_refresh(self, db) -> bool:
-        """Signal the rows a refresh already merged. This list IS the connector's, so the merge landed in it unseen; what is missing is the reset the views need. True when the sidebar moved. ▸p/mutate-not-rebind"""
+        """Reset the views over rows a refresh merged; True when the sidebar moved. ▸p/mutate-not-rebind"""
         recoloured = database.colours_moved(self, db)
         if list(self._categories) == self._shown:
             if recoloured and self._categories:
@@ -174,7 +174,7 @@ class Categories(QtCore.QAbstractListModel):
         self.save()
 
     def normalize_categories(self) -> int:
-        """Strip whitespace and drop duplicate/empty entries (legacy data cleanup); returns the changed entry count."""
+        """Strip whitespace and drop duplicate or empty entries; returns how many changed."""
         cleaned = []
         changed = 0
         for c in self._categories:
@@ -186,7 +186,7 @@ class Categories(QtCore.QAbstractListModel):
                 changed += 1
             cleaned.append(c2)
         if changed:
-            self.beginResetModel()  # a whole-row-set replacement outside a reset pair leaves proxies and the selection describing rows that are gone ▸r/model-contracts
+            self.beginResetModel()  # a whole-row-set replacement needs a reset pair ▸r/model-contracts
             try:
                 self._categories[:] = cleaned  # IN PLACE: this list aliases the connector's document; a rebind detaches it
             finally:
@@ -196,7 +196,7 @@ class Categories(QtCore.QAbstractListModel):
         return changed
 
     def move_category(self, from_row: int, to_row: int) -> bool:
-        """Move one category to another row - the manual order. Row 0 is `_All`, which neither moves nor accepts a row above it; deliberately NO save, the caller commits on release. ▸r/press-gestures"""
+        """Move one category below `_All` to another row; the caller saves. ▸r/press-gestures"""
         count = len(self._categories)
         if not (1 <= from_row < count and 1 <= to_row < count):
             return False
@@ -215,10 +215,10 @@ class Categories(QtCore.QAbstractListModel):
         return True
 
     def sort_categories(self) -> None:
-        """The menu's one-off Sort by name: everything below `_All` lands alphabetically by LABEL, written through `restore_order` and saved at once - which resets the model, so a caller holding a selection has to put it back (the drag's own path is `move_category`, which does not)."""
+        """Sort everything below `_All` by label and save; it resets the model, so restore a selection."""
         head = [c for c in self._categories if c == "_All"]
         rest = sorted((c for c in self._categories if c != "_All"),
-                      key=lambda c: display_name(c).lower())    # by the LABEL, not the stored spelling: `_WIP` reads WIP and must sort there, and str() keeps a non-str row out of the raiser normalize_categories exists for
+                      key=lambda c: display_name(c).lower())    # by the label: `_WIP` sorts as WIP
         ordered = head + rest
         if ordered == self._categories:
             return
@@ -230,7 +230,7 @@ class Categories(QtCore.QAbstractListModel):
         return list(self._categories)
 
     def restore_order(self, snapshot: list) -> None:
-        """Put a snapshot's order back, in place, under a reset pair - same contract as normalize_categories. ▸r/model-contracts"""
+        """Put a snapshot's order back, in place, under a reset pair. ▸r/model-contracts"""
         if list(snapshot) == self._categories:
             return
         self.beginResetModel()
@@ -241,7 +241,7 @@ class Categories(QtCore.QAbstractListModel):
         self._told_views()
 
     def _recolor(self, old_name: str, new_name: str) -> None:
-        """Carry a colour across a rename, or drop it on a removal (empty new_name) - an orphan key would silently reattach if the name came back."""
+        """Carry a colour across a rename, or drop it on a removal (empty new_name)."""
         table = self.colors()
         color = table.pop(str(old_name), "")
         if color and new_name:
@@ -273,7 +273,7 @@ class Categories(QtCore.QAbstractListModel):
         self.save()
 
     def colors(self) -> dict:
-        """{category name: colour} for this library, stored beside the names in the same json so it travels with the library."""
+        """{category name: colour} for this library, stored in the same json as the names."""
         table = self._data.get("category_colors")
         if not isinstance(table, dict):
             table = {}
@@ -320,7 +320,7 @@ class Categories(QtCore.QAbstractListModel):
 
 
 class CategoriesSidebarProxy(QtCore.QSortFilterProxyModel):
-    """Sidebar NAVIGATION proxy over Categories: presents the STORED order and hides categories with zero visible assets, so you can never click your way to an empty grid. Never call sort()/setSortRole on an instance serving a sidebar; editing surfaces read the source model instead, so empty categories stay assignable. Hiding is optional (prefs.hide_empty_categories). ▸r/press-gestures"""
+    """Sidebar proxy: stored order, empty categories hidden; never sort() it. ▸r/press-gestures"""
 
     def __init__(self, parent: QtCore.QObject | None = None) -> None:
         super().__init__(parent)

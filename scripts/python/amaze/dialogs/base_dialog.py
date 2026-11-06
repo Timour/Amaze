@@ -1,4 +1,4 @@
-"""AssetDialog - the shared shell for every Amaze dialog: the house style (right-aligned QFormLayout labels, 5px content margins, an OK/Cancel row, a content-hugging fixed size) plus the `canceled`/accept contract, so dialogs look and cancel identically by construction. A form dialog is a few `add_*` calls then `finish()`; a one-off body is `set_content(widget)` then `finish()`; either way subclasses read their fields in `_on_accept()` and call `super()._on_accept()`, and callers run `exec_()` and check `canceled`. See docs/architecture/overview.md - the Dialog concept - and NameDialog below for the smallest complete rider."""
+"""AssetDialog, the shared dialog shell: `add_*` rows or `set_content`, then `finish()`."""
 
 from __future__ import annotations
 
@@ -31,25 +31,25 @@ def chosen_category(combo) -> str:
 
 
 class AssetDialog(QtWidgets.QDialog):
-    """Base modal form dialog in the house style. - `canceled` is True until the user accepts; subclasses read their fields in `_on_accept()` and call super()._on_accept()."""
+    """Base form dialog; `canceled` stays True until accepted, fields are read in `_on_accept()`."""
 
-    FORM_WIDTH = None    # a shared width in logical px, or None to hug the content; the save family sets one so siblings match ▸p/save-dialog-rows
-    FIELD_WIDTH = None   # the drawn field width; every row built through `add_*` takes it EXACTLY, so a dialog with fewer rows cannot end up with wider fields than its siblings ▸p/save-dialog-rows
-    FIELD_HEIGHT = amazetheme.SAVE_FIELD_H   # the drawn field height every `add_*` row takes; the form rows are the save family's, and the drawn frames give them all one height ▸p/save-dialog-rows
+    FORM_WIDTH = None    # a shared width in logical px, or None to hug the content ▸p/save-dialog-rows
+    FIELD_WIDTH = None   # the drawn field width every `add_*` row takes exactly ▸p/save-dialog-rows
+    FIELD_HEIGHT = amazetheme.SAVE_FIELD_H   # the field height every `add_*` row takes ▸p/save-dialog-rows
     HEADER_BAND = False  # the drawn strip over the content: only D11 wears one ▸p/one-design-document
-    FRAME_KEY = ""       # the frame this dialog is drawn as; set one and every `add_*` row and the OK/Cancel pair take their size from it ▸p/one-design-document
+    FRAME_KEY = ""       # the drawn frame that sizes every `add_*` row and OK/Cancel ▸p/one-design-document
 
     def __init__(self, title: str = "", fixed_size: bool = True,
                  parent=None) -> None:
         super().__init__(parent)
         self.canceled = True
         self._fixed_size = fixed_size
-        self._rows_built: dict = {}    # each row's widget per KIND in CREATION order, which is what the frame's drawn rects of that kind answer
+        self._rows_built: dict = {}    # each row's widget per kind, in creation order
         if title:
             self.setWindowTitle(title)
 
         self._form = QtWidgets.QFormLayout()
-        self._form.setLabelAlignment(   # the house convention: label column right-aligned, field right - the same rule the details view and Preferences use
+        self._form.setLabelAlignment(   # the house convention: labels right-aligned
 
             QtCore.Qt.AlignmentFlag.AlignRight
             | QtCore.Qt.AlignmentFlag.AlignVCenter
@@ -61,7 +61,7 @@ class AssetDialog(QtWidgets.QDialog):
         self._content = None
 
     def header_band_text(self) -> str:
-        """What the drawn band says - the window title by default, since for most dialogs that already IS the asset's name. A dialog whose title is a verb rather than a name overrides this. ▸p/one-design-document"""
+        """What the drawn band says: the window title unless overridden. ▸p/one-design-document"""
         return self.windowTitle()
 
     def build_header_band(self):
@@ -70,7 +70,7 @@ class AssetDialog(QtWidgets.QDialog):
                                       *amazetheme.drawn_band(self.FRAME_KEY))
 
     def add_row(self, label, widget):
-        """Add a labelled row; returns the widget for wiring. A dialog declaring `FRAME_KEY` takes the row's size from that frame's drawn rect in `finish()`; one declaring only `FIELD_WIDTH` gets it EXACTLY here, so the label column absorbs the slack and siblings with different labels still draw the same field. ▸p/save-dialog-rows"""
+        """Add a labelled row sized by FRAME_KEY or FIELD_WIDTH; returns the widget. ▸p/save-dialog-rows"""
         if self.FRAME_KEY:
             self._rows_built.setdefault(
                 ui_helpers.drawn_kind(widget, self.FRAME_KEY),
@@ -97,7 +97,7 @@ class AssetDialog(QtWidgets.QDialog):
         return self.add_row(label, combo)
 
     def set_content(self, widget) -> None:
-        """Adopt a prebuilt central widget in place of form rows - the shell (title, house margins, `canceled`/accept, the optional OK/Cancel strip, the sizing rule) stays the base's while the guts stay the dialog's; the four one-off dialogs hand-copied exactly this shell before ROADMAP R51 moved them onto it."""
+        """Adopt a prebuilt central widget in place of form rows; never use both."""
         self._content = widget
 
     def finish(self, ok_cancel: bool = True, margins: int | tuple | None = None) -> None:
@@ -168,7 +168,7 @@ class AssetDialog(QtWidgets.QDialog):
         self._pin_label_column(sides[0] + sides[2])
 
     def _pin_button_row(self) -> None:
-        """The drawn OK/Cancel pair - fixed widths and height, no padding of the box's own, the drawn gap, and the drawn ORDER, which a style is free to disagree with. Every frame that draws the pair draws it the same, so it lives here rather than in each dialog. ▸p/one-design-document"""
+        """Pin OK/Cancel to the drawn sizes, gap and order, OK first. ▸p/one-design-document"""
         box = self._buttons
         ok = box.button(QtWidgets.QDialogButtonBox.StandardButton.Ok)
         cancel = box.button(QtWidgets.QDialogButtonBox.StandardButton.Cancel)
@@ -214,7 +214,7 @@ class AssetDialog(QtWidgets.QDialog):
         return primary, cancel, row
 
     def _pin_label_column(self, sides: int) -> None:
-        """Pin every label to the slack the drawn numbers leave, clipping a long one as Houdini's own panes do - unpinned, a label 1px past the slack outgrows the strut and the whole family widens; AFTER setLayout, because `horizontalSpacing` answers -1 until the style resolves ▸p/save-dialog-rows"""
+        """Pin every label to the width left over; call it after setLayout. ▸p/save-dialog-rows"""
         if not (self.FORM_WIDTH and self.FIELD_WIDTH):
             return
         slack = (theme.ui_px(self.FORM_WIDTH) - sides
@@ -242,7 +242,7 @@ class AssetDialog(QtWidgets.QDialog):
 
 
 class NameDialog(AssetDialog):
-    """One text field and a title - the house replacement for `hou.ui.readInput`, whose native dialog carries an unwanted "i" icon and separator lines. - `CategoryDialog` was this, in `gradient_dialog`, with one caller. It lives here so a second caller does not have to import the Colors section's dialogs to ask for a name."""
+    """One text field and a title, in place of `hou.ui.readInput`; the answer is `name`."""
 
     FORM_WIDTH = SAVE_WIDTH
     FIELD_WIDTH = amazetheme.NAME_FIELD_WIDTH

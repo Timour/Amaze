@@ -1,4 +1,4 @@
-"""Models for the Gradients ("Colors") section - a material-style library over gradients.json, payload inline and preview painted. Curated sets seed once into ordinary user gradients; each res/def/*.json carries its own `source` attribution."""
+"""Models for the Colors section over gradients.json; curated sets seed once as user gradients."""
 
 import json
 import os
@@ -22,11 +22,11 @@ EMPTY_SWATCH = "#444444"    # under whatever a palette cannot paint
 
 
 def _def_path(filename: str) -> str:
-    """A curated set shipped inside the package - `package_file`, never a rebuilt install path, which answers "" with $AMAZE unset."""
+    """The path of a curated set shipped inside the package."""
     return amaze.package_file("res", "def", filename)
 
 
-CURATED_SETS = (  # the curated sets in display order; adding one here plus its JSON in res/def/ is the whole job, and "label" feeds the seeded category names
+CURATED_SETS = (  # display order; each needs its JSON in res/def/, "label" names its categories
     {"key": "wada", "label": "Wada", "file": "sanzo_wada.json"},
     {"key": "klee", "label": "Klee", "file": "paul_klee.json"},
     {"key": "albers", "label": "Albers", "file": "josef_albers.json"},
@@ -35,7 +35,7 @@ CURATED_SETS = (  # the curated sets in display order; adding one here plus its 
 
 
 def _palette_ramp_data(colors: list) -> dict:
-    """A STEPPED (constant-basis) ramp from a palette's hex colours, shaped like a saved user ramp so a seeded palette re-applies exactly and paints as bands."""
+    """A constant-basis ramp from a palette's hex colours, shaped like a saved user ramp."""
     n = len(colors)
     keys, values = [], []
     for i, c in enumerate(colors):
@@ -51,7 +51,7 @@ def _has_rgb(value) -> bool:
 
 
 def paint_swatch(colors: list, ramp: dict) -> QtGui.QImage:
-    """The Color section's tile face, THUMB_SIZE square: stacked horizontal bands when the palette is banded, the saved ramp otherwise - the one palette painter, shared with the online browser."""
+    """The tile face, THUMB_SIZE square: horizontal bands when banded, else the saved ramp."""
     image = QtGui.QImage(
         THUMB_SIZE, THUMB_SIZE, QtGui.QImage.Format.Format_RGB32
     )
@@ -80,7 +80,7 @@ class GradientCategories(category.Categories):
 
 
 class GradientLibrary(library.AssetLibrary):
-    """The Colors section's asset model - the shared engine over gradients.json, with the palette payload inline and a painted preview."""
+    """The Colors section's asset model over gradients.json, palettes inline, previews painted."""
 
     NOTES_SECTION = "gradient"
     TILE_FACE = "face_color"    # T10
@@ -97,7 +97,7 @@ class GradientLibrary(library.AssetLibrary):
         "comments": "NotesRole",
     }
 
-    CategoryLabelRole = QtCore.Qt.ItemDataRole.UserRole + 13  # list mode's Category column, the display string; CategoryRole answers a LIST for the proxy. test_role_numbers holds the gap
+    CategoryLabelRole = QtCore.Qt.ItemDataRole.UserRole + 13  # the Category column's display string
 
     @staticmethod
     def _asset_from_row(row: dict):
@@ -109,7 +109,7 @@ class GradientLibrary(library.AssetLibrary):
 
     @property
     def _load_failed(self) -> bool:
-        """Whether the connector is refusing to write this file - read through to the connector's own latch."""
+        """Whether the connector is refusing to write this file."""
         if self.preferences is None:
             return False
         return bool(
@@ -118,7 +118,7 @@ class GradientLibrary(library.AssetLibrary):
     _SEED_MARKER = ".amaze_gradient_seed_v1"  # bump when the seed contents change, so a new set re-seeds
 
     def seed_curated_palettes(self, category_model) -> None:
-        """First run per library: every curated combination becomes a normal user gradient. Guarded by a marker file, best-effort - never blocks panel startup."""
+        """Once per library, marked by a file: every curated combination becomes a user gradient."""
         from amaze.core import notes
         try:
             lib_dir = self.preferences.dir
@@ -178,7 +178,7 @@ class GradientLibrary(library.AssetLibrary):
             debug.event("gradient", "curated palette seed failed",
                         error=str(exc))
             return
-        if not os.path.exists(os.path.join(lib_dir, self.DB_FILENAME)):  # database.save() reports an OSError instead of raising, so a save held off by a full disk lands here looking successful - and a marker with no database behind it refuses gradients.json on every future launch
+        if not os.path.exists(os.path.join(lib_dir, self.DB_FILENAME)):  # save() can fail silently
             debug.event("gradient", "seed marker withheld - the "
                         "database is not on disk", file=lib_dir)
             return
@@ -207,7 +207,7 @@ class GradientLibrary(library.AssetLibrary):
         return ramp if isinstance(ramp, dict) else {}
 
     def entry(self, row: int) -> dict | None:
-        """READ-ONLY view of one palette - a copy on purpose, because edits go through the record API, not through this dict."""
+        """A read-only copy of one palette; edits go through the record API."""
         if not 0 <= row < len(self._assets):
             return None
         asset = self._assets[row]
@@ -242,7 +242,7 @@ class GradientLibrary(library.AssetLibrary):
 
     def add_user_gradient(self, name: str, category_name: str,
                           ramp_data: dict, tags: str = "") -> None:
-        """Register a saved ramp; the colour list is derived from the ramp values so search, swatches and subtitles work as they do for seeded entries. `tags` is the save dialog's comma-separated string, sanitized here as the material save does."""
+        """Register a saved ramp, its colours derived from the values; `tags` is comma-separated."""
         colors = []
         for value in ramp_data.get("values", []):
             hex_color = "#%02x%02x%02x" % tuple(
@@ -289,14 +289,14 @@ class GradientLibrary(library.AssetLibrary):
 
     @staticmethod
     def _is_banded(colors: list, ramp: dict) -> bool:
-        """True when the palette paints as bands rather than a gradient - every basis Constant, or no ramp yet."""
+        """True when the palette paints as bands: every basis Constant, or no ramp yet."""
         bases = ramp.get("bases") or []
         return bool(colors) and (
             not bases or all(b == "Constant" for b in bases)
         )
 
     def _swatch_key(self, row: int):
-        """Content-addressed, so renames cannot stale it and edits mint a new key while the old image ages out of the shared LRU."""
+        """The swatch's cache key, built from its content, so any edit makes a new key."""
         asset = self._assets[row]
         colors = self._colors_of(asset)
         ramp = self._ramp_of(asset)
@@ -338,7 +338,7 @@ class GradientLibrary(library.AssetLibrary):
 
     @staticmethod
     def _paint_ramp(painter: QtGui.QPainter, ramp_data: dict) -> None:
-        """Left-to-right preview of a saved ramp: hard bands when it is fully constant-basis, otherwise a linear-interpolated gradient."""
+        """A saved ramp left to right: hard bands when all constant-basis, else a linear gradient."""
         keys = list(ramp_data.get("keys") or [])
         values = list(ramp_data.get("values") or [])
         bases = ramp_data.get("bases", [])
@@ -386,14 +386,14 @@ class GradientLibrary(library.AssetLibrary):
 
 
 class GradientFilterProxyModel(multifilterproxy_model.MultiFilterProxyModel):
-    """The family proxy with Colors' two own dimensions on top: the palette-size filter, and a name search that also matches the colour names inside a palette."""
+    """The family proxy plus a palette-size filter and a search that matches colour names."""
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._size_filter = None
 
     def set_size_filter(self, bounds) -> None:
-        """Show only palettes holding this many colors. `bounds` is (fewest, most), `most` None meaning no upper end; None switches the filter off. panel/sections.py ▸ GradientSection.FILTER_CHOICES is where the pairs live."""
+        """Show palettes with (fewest, most) colours, `most` None for no limit; None turns it off."""
         if bounds == self._size_filter:
             return
         self._size_filter = bounds

@@ -1,4 +1,4 @@
-"""Pick a tile icon and its background colour. SHOW it, never exec: Custom Color opens Houdini's native picker, which lands under a Qt exec loop. ▸r/houdini-colour-picker"""
+"""Pick a tile icon and its background colour. Show it, never exec. ▸r/houdini-colour-picker"""
 
 from __future__ import annotations
 
@@ -15,10 +15,10 @@ COLUMNS = amazetheme.D02_COLUMNS      # how wide the grid runs before wrapping
 
 
 class IconDialog(base_dialog.AssetDialog):
-    """NON-MODAL icon + colour picker on the house shell; `spec` is the result and the inherited `canceled` stays True until the user accepts, so Esc and the title-bar X read as cancel. `applied` fires on Apply, which commits without closing - Houdini's own Accept/Apply pair (ref ▸ windows/optype)."""
+    """Non-modal icon and colour picker; `spec` is the result, Apply fires `applied`. ▸r/accept-apply"""
 
     FORM_WIDTH = amazetheme.D02_FORM_WIDTH
-    FRAME_KEY = "D02"     # the fixed-size parts only: the fields, the search and the grid stretch to the column, which is what resizes
+    FRAME_KEY = "D02"     # the fixed-size parts only; the fields, search and grid stretch
 
     applied = QtCore.Signal()
 
@@ -29,9 +29,9 @@ class IconDialog(base_dialog.AssetDialog):
                  face=None, faces=None, can_preview=True,
                  can_capture=False) -> None:
         super().__init__(tile_name if tile_name and tile_name_enabled
-                         else amazetheme.TITLE_TILE_ICON,    # the WINDOW TITLE is the asset's own name, as drawn - a multi-selection has none, so it keeps the generic one
+                         else amazetheme.TITLE_TILE_ICON,    # the asset's name; a multi-selection keeps the generic one
                          fixed_size=False, parent=parent)
-        self._tile_name = tile_name   # None = the section has no rename at all; "" with tile_name_enabled False = a multi-selection, so the field greys out
+        self._tile_name = tile_name   # None = no rename; "" with tile_name_enabled False = greyed field
         self._tile_name_enabled = bool(tile_name_enabled)
         self._tile_tags = tile_tags   # None = this section has no tags; on a multi-selection the field opens empty and ADDS
         self._categories = list(categories or [])   # None = this section has no categories, so no field at all
@@ -154,7 +154,7 @@ class IconDialog(base_dialog.AssetDialog):
         self._grid.setSpacing(amazetheme.D02_GRID_SPACING)
         self._grid.setContentsMargins(0, 0, 0, 0)
 
-        group = QtWidgets.QButtonGroup(self)   # every button is built ONCE and only shown/hidden by the filter; rebuilding 287 per keystroke feels broken
+        group = QtWidgets.QButtonGroup(self)   # every button is built once; the filter only shows or hides
         group.setExclusive(True)
         icon_px = theme.ui_px(CELL - 14)
         self._icon_px = icon_px
@@ -177,7 +177,7 @@ class IconDialog(base_dialog.AssetDialog):
         area.setStyleSheet("QScrollArea { background: %s; border: none; }"
                            % chooser_bg)
         area.setWidget(holder)
-        area.setMinimumHeight(theme.ui_px(CELL * 4))    # HEIGHT only, a floor: the drawn 250 comes from the frame height, and a width minimum here once forced the whole window past the drawing
+        area.setMinimumHeight(theme.ui_px(CELL * 4))    # a height floor only; never set a width minimum here
         self._chooser_area = area
         return area
 
@@ -204,7 +204,7 @@ class IconDialog(base_dialog.AssetDialog):
             row.setSpacing(theme.ui_px(amazetheme.D02_LABEL_GAP))
             toggle = ui_helpers.ToggleSwitch()
             toggle.setToolTip(ui_helpers.tooltip_text(tooltip))
-            row.addWidget(toggle)       # the pill sits LEFT since the 2026-08-30 redraw, its label 8px after - the Preferences rows' own shape
+            row.addWidget(toggle)       # the pill sits left, its label after
             label = QtWidgets.QLabel(label_text)
             label.setMinimumWidth(1)    # the label yields before the row overflows the column under a wide style's font
             row.addWidget(label)
@@ -241,7 +241,7 @@ class IconDialog(base_dialog.AssetDialog):
 
         colour_row = QtWidgets.QHBoxLayout()
         colour_row.setSpacing(theme.ui_px(amazetheme.D02_SWATCH_GAP))   # the drawn 6: the chip is swatch-sized and the row rides the swatch rhythm
-        self.custom_chip = QtWidgets.QToolButton()   # the chip IS the picker: it wears the current colour and opens Houdini's picker ▸r/houdini-colour-picker
+        self.custom_chip = QtWidgets.QToolButton()   # wears the current colour, opens the picker ▸r/houdini-colour-picker
         self.custom_chip.setToolTip(ui_helpers.tooltip_text(
             tooltips.CUSTOMIZE_CUSTOM_COLOR))
         self.custom_chip.clicked.connect(self._pick_custom)
@@ -285,7 +285,7 @@ class IconDialog(base_dialog.AssetDialog):
         self._refresh_preview()
 
     def _build_actions(self):
-        actions = QtWidgets.QHBoxLayout()   # Apply commits and stays open, Accept commits and closes - Houdini's own pair (ref ▸ windows/optype); closing IS cancelling, so there is no Cancel
+        actions = QtWidgets.QHBoxLayout()   # Apply stays open, Accept closes; closing cancels ▸r/accept-apply
         actions.setSpacing(theme.ui_px(amazetheme.D02_SWATCH_GAP))
         actions.addStretch(1)               # both drawn flush RIGHT at a fixed size, not spanning the column
         self.apply_button = QtWidgets.QPushButton(amazetheme.BTN_APPLY)
@@ -310,12 +310,12 @@ class IconDialog(base_dialog.AssetDialog):
 
 
     def showEvent(self, event) -> None:
-        """Ink the grid for the screen the dialog actually opened on; an unrealised widget answers with the primary ratio. ▸r/screen-dpr"""
+        """Ink the grid for the screen the dialog actually opened on. ▸r/screen-dpr"""
         super().showEvent(event)
         self._ink_for_screen()
 
     def _ink_for_screen(self) -> None:
-        """Redraw the chooser icons when this window's ratio differs from the one they carry; a no-op when it does not."""
+        """Redraw the chooser icons when this window's ratio differs from the one they carry."""
         dpr = float(self.devicePixelRatioF())
         if dpr == self._icon_dpr:
             return
@@ -326,7 +326,7 @@ class IconDialog(base_dialog.AssetDialog):
 
     @staticmethod
     def _chooser_icon(name: str, icon_px, dpr: float, ink: str):
-        """One chooser icon: the Feather SVG re-inked, rendered at device pixels with the ratio stamped, the contract every badge pixmap follows."""
+        """One chooser icon: the Feather SVG re-inked, rendered at device pixels, ratio stamped."""
         return ui_helpers.device_pixmap(
             tile_icons.icon_path(name), icon_px, dpr, {"currentColor": ink})
 
@@ -338,7 +338,7 @@ class IconDialog(base_dialog.AssetDialog):
                                  position // COLUMNS, position % COLUMNS)
 
     def _apply_filter(self, text: str) -> None:
-        """Show the icons whose name contains `text`; the visibility test asks a SET, since on 287 icons a list test made an unfiltered keystroke 287 x 287 scans."""
+        """Show the icons whose name contains `text`."""
         text = (text or "").strip().lower()
         matching = [n for n in tile_icons.icon_names() if text in n] \
             if text else list(tile_icons.icon_names())
@@ -358,7 +358,7 @@ class IconDialog(base_dialog.AssetDialog):
             self._refresh_preview()
 
     def _pick_custom(self) -> None:
-        """Houdini's colour picker, reachable ONLY because this dialog holds no exec loop. ▸r/houdini-colour-picker"""
+        """Houdini's colour picker; needs this dialog to hold no exec loop. ▸r/houdini-colour-picker"""
         chosen = ui_helpers.pick_color(self._bg, self, "Tile Background")
         if chosen is not None:
             self._set_bg(chosen.name())
@@ -383,7 +383,7 @@ class IconDialog(base_dialog.AssetDialog):
         ))
 
     def _harvest_tile_name(self) -> None:
-        """On any accepting close: the new name, or None when the field is absent, greyed, blank or unchanged."""
+        """The new name, or None when the field is absent, greyed, blank or unchanged."""
         if self.tile_name_edit is None or \
                 not self.tile_name_edit.isEnabled():
             return
@@ -392,7 +392,7 @@ class IconDialog(base_dialog.AssetDialog):
             self.new_tile_name = text
 
     def _harvest_tags(self) -> None:
-        """On any accepting close: the tag line to write, or None when the field is absent, greyed or unchanged. An EMPTY field is a real answer - it clears the tags - so this cannot test for truth the way the name does."""
+        """The tag line to write, or None when absent, greyed or unchanged; an empty field clears the tags."""
         if self.tags_edit is None or not self.tags_edit.isEnabled():
             return
         text = self.tags_edit.text().strip()
@@ -400,7 +400,7 @@ class IconDialog(base_dialog.AssetDialog):
             self.new_tags = text
 
     def _harvest_category(self) -> None:
-        """On any accepting close: the category to move to, or None when the field is absent or unchanged. A BLANK is not an answer - unlike tags there is no such thing as no category - so it is ignored."""
+        """The category to move to, or None when the field is absent, blank or unchanged."""
         if self.category_combo is None:
             return
         chosen = base_dialog.chosen_category(self.category_combo)    # STORED, never the label

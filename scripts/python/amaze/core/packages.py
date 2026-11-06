@@ -1,4 +1,4 @@
-"""The `.amazepkg` container, format 2: one zip whose `package.json` lists ASSET entries (a library record verbatim, every existing family file, the token-keyed textures, the note page) and plain FILE entries with a kind - the unit of sharing between libraries and the online store's payload."""
+"""The `.amazepkg` container: one zip whose `package.json` lists asset entries and file entries."""
 
 import json
 import os
@@ -20,7 +20,7 @@ class PackageError(Exception):
 
 
 def collect_asset(model, mat_id) -> dict:
-    """One exportable entry for a library asset: the record verbatim, {kind: source path} for every family file that EXISTS, and its note page; the model's own NOTES_SECTION names the section."""
+    """One exportable entry for a library asset: its record, its existing files, textures and note."""
     mat_id = str(mat_id)
     asset = next((a for a in model.assets
                   if str(a.mat_id) == mat_id), None)
@@ -58,7 +58,7 @@ def collect_file(path: str, kind: str) -> dict:
 
 
 def write_package(out_path: str, items) -> int:
-    """Write collector items as one package - sandbox-guarded, landed whole via scratch-beside - answering how many entries went in."""
+    """Write collector items as one package, landed whole; returns how many entries went in."""
     hostos.check_sandbox(out_path)
     entries = []
     payload = []
@@ -76,7 +76,7 @@ def write_package(out_path: str, items) -> int:
             texarcs = {}
             for t, (token, source) in enumerate(
                     sorted(entry.pop("textures", {}).items())):
-                arc = "assets/%s/%s/textures/%d_%s" % (    # the index keeps shared-store basenames apart; landing goes by TOKEN, never by arc
+                arc = "assets/%s/%s/textures/%d_%s" % (    # the index keeps basenames apart; land by token
                     entry["section"], entry["id"], t,
                     os.path.basename(source))
                 texarcs[token] = arc
@@ -103,7 +103,7 @@ def write_package(out_path: str, items) -> int:
 
 
 def manifest_from(bundle, path: str) -> dict:
-    """The manifest out of an OPEN bundle - refused by name for a missing/unreadable manifest or a format NEWER than this build reads."""
+    """The manifest of an open bundle; PackageError when missing, unreadable or too new."""
     try:
         raw = bundle.read(MANIFEST)
     except KeyError:
@@ -134,14 +134,14 @@ def read_manifest(path: str) -> dict:
 
 
 def import_package(models, prefs, path: str, restore: bool = False) -> dict:
-    """Bring one package into the library - FRESH by default (ids minted, every asset filed under `Import`), adopt-only by the package's ORIGINAL ids with `restore=True` - refusing whole on a missing member or no library, and answering {imported, skipped, files, refused, problems, categories}."""
+    """Import a package, new ids under `Import` or own ids with `restore`; PackageError if not whole."""
     if not getattr(prefs, "dir", ""):
         raise PackageError("no library set - nowhere to import into")
     try:
         bundle = zipfile.ZipFile(path)
     except (OSError, zipfile.BadZipFile) as exc:
         raise PackageError("cannot read %s: %s" % (path, exc)) from None
-    with bundle:    # ONE open serves manifest, verify and import - four sequential central-directory reads were felt on network folders, and verifying one open while importing from another gave a sync client a swap window
+    with bundle:    # one open serves manifest, verify and import
         manifest = manifest_from(bundle, path)
         if manifest.get("kind"):
             raise PackageError("%s is an add-on, not library assets"
@@ -157,7 +157,7 @@ def import_package(models, prefs, path: str, restore: bool = False) -> dict:
 
 def import_entries(models, prefs, bundle, entries,
                    restore: bool = False) -> dict:
-    """SELECTED entries out of an open package (local or remote-ranged) into the library - the whole-package door above and the per-tile online door share this one loop; a member whose zip CRC refuses counts `refused` without abandoning the batch."""
+    """Import chosen entries of an open package; a failing entry counts `refused`, the rest go on."""
     if not getattr(prefs, "dir", ""):
         raise PackageError("no library set - nowhere to import into")
     summary = {"imported": 0, "skipped": 0, "files": 0, "refused": 0,
@@ -184,7 +184,7 @@ def import_entries(models, prefs, bundle, entries,
             debug.event("packages", "entry refused", error=str(exc),
                         name=name)
             summary["refused"] += 1
-            summary["problems"].append("%s: %s" % (name, exc))    # the REAL cause, not re-costumed as a data failure: a sandbox refusal or a full disk is not a corrupt package
+            summary["problems"].append("%s: %s" % (name, exc))    # the real cause, as raised
     _commit_assets(prefs, staged, summary)
     return summary
 
@@ -238,7 +238,7 @@ def _import_asset(models, prefs, bundle, entry, restore, summary):
     row = dict(entry.get("record") or {})
     if restore:
         tag = str(row.get("curated") or "")
-        if tag:    # curated rows match on the TAG - ids are minted per library, so the same palette carries a different id everywhere
+        if tag:    # curated rows match on the tag, since ids differ per library
             present = {str(a._extra.get("curated") or "")
                        for a in model.assets}
         else:
@@ -248,7 +248,7 @@ def _import_asset(models, prefs, bundle, entry, restore, summary):
             return
     else:
         row.pop("id", None)
-        row.pop("uid", None)    # the pre-connector id spelling adopts onto `id` in every reader, so it must go too or the mint never runs
+        row.pop("uid", None)    # the old id spelling, which readers adopt onto `id`
         row["categories"] = ["Import"]
     asset = model._asset_from_row(row)
     targets = model.asset_files(asset.mat_id)
@@ -263,16 +263,16 @@ def _import_asset(models, prefs, bundle, entry, restore, summary):
                 handle.write(bundle.read(arcname))
     store_prefix = texstore.TOKEN_PREFIX + texstore.STORE_DIR_NAME + "/"
     for token, arcname in (entry.get("textures") or {}).items():
-        if not str(token).startswith(store_prefix):    # contained is not enough - a token aimed anywhere but the store could mint the library's own control files (policy.json, a file named matX)
+        if not str(token).startswith(store_prefix):    # only store tokens may land
             raise PackageError("not a store texture token: %r" % token)
-        target = hostos.contained_join(    # the token comes off a manifest nobody vouches for - PathEscape refuses `..` and the whole entry counts refused
+        target = hostos.contained_join(    # PathEscape on `..`; the entry counts refused
             prefs.dir, *str(token)[len(texstore.TOKEN_PREFIX):].split("/"))
         data = bundle.read(arcname)
         if os.path.exists(target):
             with open(target, "rb") as handle:
                 if handle.read() == data:
                     continue    # byte-identical - another asset already shares the file
-            debug.event("packages", "texture member replaced",    # the folder name carries the OWNING asset's identity, so an updated package updates it; a copy-to sharer drifts with it
+            debug.event("packages", "texture member replaced",
                         token=str(token))
         hostos.check_sandbox(target)
         os.makedirs(os.path.dirname(target), exist_ok=True)
@@ -302,7 +302,7 @@ def _import_file(prefs, bundle, entry, summary) -> None:
 
 
 def _verify(bundle, manifest) -> list:
-    """Problems against an OPEN bundle, one sentence each - every manifest member the zip does not hold; [] means whole."""
+    """Every manifest member an open bundle lacks, one sentence each; [] means whole."""
     problems = []
     held = set(bundle.namelist())
     for entry in manifest.get("entries", ()):
