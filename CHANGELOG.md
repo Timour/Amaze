@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.33.1
+
+- Every comment in the tests is one line, and the GitHub check now refuses a comment over 100 characters anywhere in the repository; one test helper and three test classes are named for what they do. Nothing changes in use.
+
 ## 1.33.0
 
 - Check Library replaces Clean Up and the shelf's Repair. Preferences ▸ Library ▸ Check opens it on the open library: one report on the lists, the folders and the File section, with a button for each fix that applies. Each fix asks first, and the panel shows the change at once, with no restart.
