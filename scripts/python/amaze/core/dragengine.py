@@ -1,4 +1,4 @@
-"""The drag & drop engine - ONE self-managed gesture per section, driven by begin() / hover_update() / end() from the drag widgets with viewport_release_target() asked at the drop; a drop lands where it is dropped and nothing is created before release. Never a native Qt drag. ▸r/native-drag-paint"""
+"""The drag and drop engine: one self-managed gesture, never a native Qt drag. ▸r/native-drag-paint"""
 
 import importlib.util
 from contextlib import contextmanager
@@ -12,7 +12,7 @@ from amaze.helpers import hostver
 serial = 0
 
 PICK_INTERVAL = 0.03
-_UNASKED = object()    # "the caller supplied no tracked answer" - distinct from a tracked MISS (None), which is an answer and must not re-run the ~3ms lookup per tick
+_UNASKED = object()    # "no tracked answer supplied", distinct from a tracked miss (None)
 CLEAR_DELAY = 0.25
 
 _hover = {
@@ -41,7 +41,7 @@ PICK_LOG_HITS_PER_GESTURE = 4
 
 
 def _pick_log_budget(hit=None) -> bool:
-    """True while this gesture may still record a pick diagnostic - hits draw on their own reserve, so a sweep-in over empty space cannot spend the whole budget on misses."""
+    """True while this gesture may still record a pick diagnostic; hits have their own reserve."""
     key = "logged_hit" if hit else "logged"
     cap = PICK_LOG_HITS_PER_GESTURE if hit else PICK_LOG_PER_GESTURE
     if _hover.get(key, 0) >= cap:
@@ -121,7 +121,7 @@ PANE_REVALIDATE = 0.25
 
 
 def pane_under_cursor_tracked(now=None):
-    """(pane, kind, fresh) for the gesture's per-move pane question: the real z-aware lookup runs when the cursor LEAVES the cached pane's screen rect and at most every PANE_REVALIDATE otherwise - between, a pure rect check answers, because `paneTabUnderCursor` measured ~3ms per call under drag load. ▸p/drag-move-cost"""
+    """(pane, kind, fresh) for the per-move pane question, cached on the pane's rect. ▸p/drag-move-cost"""
     from PySide6 import QtGui
 
     now = time.time() if now is None else now
@@ -148,7 +148,7 @@ def pane_under_cursor_tracked(now=None):
 
 
 def ghost_tick(editor, now=None) -> bool:
-    """True when the ghost's target answers are STALE - at most once per PICK_INTERVAL, immediately on a fresh gesture or another editor; the outline itself still follows every move. ▸p/drag-move-cost"""
+    """True when the ghost's target answers are stale, once per PICK_INTERVAL. ▸p/drag-move-cost"""
     now = time.time() if now is None else now
     try:
         same = _move["editor"] is not None and editor == _move["editor"]
@@ -175,7 +175,7 @@ def ghost_answers():
 
 _ghosted: list = []
 
-NEW_NODE_HALF = (0.5, 0.15)    # the host's own placement-ghost half size (nodegraphutils.theNewNodeHalfSize); the TAB-menu ghost is the look users compare against
+NEW_NODE_HALF = (0.5, 0.15)    # the host's placement-ghost half size (nodegraphutils.theNewNodeHalfSize)
 
 
 def _is_vop_network(editor) -> bool:
@@ -242,7 +242,7 @@ def ghost_snap_position():
 
 
 def _ghost_half_for(editor) -> tuple:
-    """The placement ghost's half-extent, the host's own recipe (nodegraphselectpos.py:286-301): a 0.5 SQUARE for non-VOP contexts - the NodeShape keeps its natural proportions inside it, which is what makes it match a standard node exactly - and the flat half for VOP contexts. ▸r/overlay-shapes"""
+    """The placement ghost's half-extent: a 0.5 square, or the flat half in VOP. ▸r/overlay-shapes"""
     if _is_vop_network(editor):
         return NEW_NODE_HALF
     half = max(NEW_NODE_HALF)
@@ -258,7 +258,7 @@ _shape_cache: dict = {}
 
 
 def _shape_for(type_name: str) -> str:
-    """The node shape a created carrier would wear, or "" for a plain box, through the host's own `nodeType.defaultShape` - cached per type name, misses included, since a type's default shape cannot change within a session. ▸r/overlay-shapes"""
+    """The node shape a created carrier would wear, or "" for a box; cached per type. ▸r/overlay-shapes"""
     if not type_name:
         return ""
     if type_name in _shape_cache:
@@ -282,7 +282,7 @@ def _shape_for(type_name: str) -> str:
 
 def ghost_show(editor, position, type_name: str = "",
                connection=None) -> None:
-    """Draw the outline at `position` in `editor`'s network space, with the splice preview over a wire, and repaint NOW - the gesture holds the mouse grab, so the editor receives no events of its own. ▸r/native-drag-paint"""
+    """Draw the outline at `position` in `editor`, with any splice, and repaint. ▸r/native-drag-paint"""
     if editor is None or position is None:
         return
     try:
@@ -292,7 +292,7 @@ def ghost_show(editor, position, type_name: str = "",
             position.x() + half[0], position.y() + half[1])
         _move["snap_pos"] = None
         delta = _snap_delta(editor, rect)
-        if delta is not None:    # aligned to neighbours the way the host's own placement ghost aligns - and the release lands on the same snapped point
+        if delta is not None:    # aligned to neighbours like the host's ghost; the release lands on the same point
             rect.translate(delta)
             _move["snap_pos"] = hou.Vector2(position.x() + delta.x(),
                                             position.y() + delta.y())
@@ -326,7 +326,7 @@ DROP_TARGET_RADIUS = 0.25
 
 
 def _drop_items_at(editor, position):
-    """Every network item within the drop radius of `position`, or None when the editor cannot answer - the ONE hit-test box the wire and connector questions share."""
+    """Every network item within the drop radius of `position`, or None when the editor cannot say."""
     try:
         spot = editor.posToScreen(position)
         radius = editor.lengthToScreen(DROP_TARGET_RADIUS)
@@ -339,7 +339,7 @@ def _drop_items_at(editor, position):
 
 
 def wire_under_cursor(editor, position, exclude=()):
-    """The connection a release at `position` would land on, as the triple `setDropTargetItem` wants - or (None, "", -1); the FIRST connection in the list wins and items in front of it are skipped, never a veto. The preference gates the QUESTION: a network where the host forbids the insert pays no hit test. ▸r/drop-targets"""
+    """The connection a release at `position` would land on, or (None, "", -1). ▸r/drop-targets"""
     if editor is None or position is None:
         return (None, "", -1)
     if not _drop_on_wire_allowed(editor):
@@ -360,7 +360,7 @@ def wire_under_cursor(editor, position, exclude=()):
 
 
 def connector_under_cursor(editor, position, exclude=()):
-    """The node CONNECTOR a release at `position` would land on, as (node, name, index) - or (None, "", -1), which is also the answer when the cursor is inside a node body; asked at the host's DROP radius, never the wider connector snap radius. ▸r/drop-targets"""
+    """The connector a release at `position` would land on, or (None, "", -1). ▸r/drop-targets"""
     if editor is None or position is None:
         return (None, "", -1)
     found = _drop_items_at(editor, position)
@@ -417,7 +417,7 @@ def drop_group(label: str):
 
 
 def connect_to_neighbour(target, nodes, editor=None) -> bool:
-    """Wire what landed to the connector it was dropped on - an OUTPUT under the cursor feeds it, an INPUT takes its output, and an occupied input index is REPLACED, never added beside. ▸r/drop-targets"""
+    """Wire what landed to its connector; an occupied input is replaced. ▸r/drop-targets"""
     node, name, index = target
     nodes = [n for n in nodes if n is not None]
     if node is None or not nodes:
@@ -435,7 +435,7 @@ def connect_to_neighbour(target, nodes, editor=None) -> bool:
                     node.setInput(index, last)
                 else:
                     return False
-    except (AttributeError, hou.InvalidInput,    # the index was picked during the hover and spent at the release, so a connector the node has since lost arrives here - `setInput` documents this one beside the two below, and it is a SIBLING of them, never caught by naming them
+    except (AttributeError, hou.InvalidInput,    # a connector the node lost since the hover lands here
             hou.OperationFailed, hou.PermissionError,
             hou.ObjectWasDeleted):
         return False
@@ -446,7 +446,7 @@ def connect_to_neighbour(target, nodes, editor=None) -> bool:
 
 
 def _fit_after_wiring(nodes, editor=None) -> None:
-    """Settle newly wired nodes the way the host's own drop does - PASS THE EDITOR the drop happened in, because the cursor fallback answers nothing in a driven run and settles silently into no-op. ▸r/drop-targets"""
+    """Settle newly wired nodes like the host's drop; pass the drop's editor. ▸r/drop-targets"""
     if not nodes:
         return
     try:
@@ -463,7 +463,7 @@ def _fit_after_wiring(nodes, editor=None) -> None:
 
 
 def _drop_on_wire_allowed(editor) -> bool:
-    """The artist's own Drop On Wire preference decides, read through the host's own call - True when it cannot be asked. ▸r/drop-targets"""
+    """The artist's Drop On Wire preference; True when it cannot be asked. ▸r/drop-targets"""
     try:
         import nodegraphprefs
         return bool(nodegraphprefs.allowDropOnWireNetworkSpecific(
@@ -473,7 +473,7 @@ def _drop_on_wire_allowed(editor) -> bool:
 
 
 def wire_highlight(editor, target) -> None:
-    """Light the wire a release would splice into, and remember the editor so a later clear reaches it. ▸r/overlay-shapes"""
+    """Light the wire a release would splice into, remembering the editor. ▸r/overlay-shapes"""
     item, name, index = target
     try:
         editor.setDropTargetItem(item, name, index)
@@ -484,7 +484,7 @@ def wire_highlight(editor, target) -> None:
 
 
 def splice_preview(editor, connection, position, shapes=()) -> tuple:
-    """The two wires the splice WOULD make - upstream into the ghost, ghost on to downstream - appended to `shapes` and drawn as the editor draws its own. ▸r/overlay-shapes"""
+    """The two wires the splice would make, appended to `shapes`. ▸r/overlay-shapes"""
     if editor is None or connection is None or position is None:
         return tuple(shapes)
     try:
@@ -512,7 +512,7 @@ def splice_preview(editor, connection, position, shapes=()) -> tuple:
 
 
 def splice_into_wire(connection, nodes, editor=None) -> bool:
-    """Insert `nodes` into `connection` through the host's own `insertItemsIntoWire`, so the wiring rules stay SideFX's - a list because the host's signature takes one. ▸r/drop-targets"""
+    """Insert the list `nodes` into `connection` via the host's `insertItemsIntoWire`. ▸r/drop-targets"""
     nodes = [n for n in nodes if n is not None]
     if connection is None or not nodes:
         return False
@@ -535,7 +535,7 @@ def splice_into_wire(connection, nodes, editor=None) -> bool:
 
 
 def pane_tab_under_cursor():
-    """The pane tab under the mouse - the stock z-order-aware hit test, falling back to a logged geometric loop for the mouse-grab case, and None with no ui to ask, which every caller already reads as no tab under the cursor. ▸r/status-bar"""
+    """The pane tab under the mouse, or None, including when there is no ui. ▸r/status-bar"""
     ui = getattr(hou, "ui", None)
     if ui is None:
         return None
@@ -564,7 +564,7 @@ def pane_tab_under_cursor():
 
 
 def _probe_transforms(tab, viewer, world):
-    """Debug Mode only: one pick per candidate transform, once per gesture, so the log says which one HITS instead of the reader deriving it. ▸r/pick-boundary"""
+    """Debug Mode only: one pick per candidate transform, once per gesture. ▸r/pick-boundary"""
     try:
         from PySide6 import QtGui
         window = tab.qtWindow()
@@ -614,7 +614,7 @@ def _probe_transforms(tab, viewer, world):
 
 
 def _scene_viewer_under_cursor():
-    """(viewer, x, y, widget height, device scale) for the scene viewer under the cursor, or (None, 0, 0, 0, 1.0) - the lookup half; the geometry lives in `_scene_viewer_geometry`. ▸r/pick-boundary"""
+    """(viewer, x, y, height, scale) under the cursor, or (None, 0, 0, 0, 1.0). ▸r/pick-boundary"""
     tab = pane_tab_under_cursor()
     if tab is None:
         return None, 0, 0, 0, 1.0
@@ -627,7 +627,7 @@ def _scene_viewer_under_cursor():
 
 
 def _scene_viewer_geometry(tab):
-    """(viewer, x, y, widget height, device scale) for a KNOWN scene viewer in viewer-space GL coordinates, origin bottom-left - mapped through qtWindow(), the GL area, never qtScreenGeometry(), which is the whole pane and carries the toolbar as a constant x error. ▸r/pick-boundary"""
+    """(viewer, x, y, height, scale) for a known viewer, GL coordinates. ▸r/pick-boundary"""
     from PySide6 import QtGui
 
     try:
@@ -701,13 +701,13 @@ def _viewer_world(viewer):
 
 
 def _clean_prim_path(path: str) -> str:
-    """Strip a raw `locateSceneGraphPrim` hit to the prim path proper - point instances come back as `path[instanceids]`. ▸r/pick-boundary"""
+    """Strip a raw `locateSceneGraphPrim` hit to the prim path. ▸r/pick-boundary"""
     i = path.find("[")
     return path[:i] if i >= 0 else path
 
 
 def _viewport_at(viewer, x, y, scale=1.0, widget_h=0):
-    """(viewport, local_x, local_y, viewport_height) for the viewport holding a viewer-space point, ALL IN LOGICAL PIXELS - the rects arrive in DEVICE pixels and are scaled down first, or a quad layout resolves the wrong viewport on any Retina display. ▸r/pick-boundary"""
+    """(viewport, x, y, height) holding a viewer-space point, in logical pixels. ▸r/pick-boundary"""
     try:
         vps = viewer.viewports()
     except AttributeError:
@@ -747,7 +747,7 @@ def _pick_trace(world, x, y, result, viewer=None):
 
 
 def _cursor_truth(viewer):
-    """Where the cursor REALLY is in the GL widget's logical coordinates - sampled AFTER the pick, so read the steady rows: a fast move drifts this a few pixels from the value actually passed."""
+    """The cursor in the GL widget's logical coordinates, sampled after the pick."""
     try:
         from PySide6 import QtGui
         window = viewer.qtWindow()
@@ -760,7 +760,7 @@ def _cursor_truth(viewer):
 
 
 def _pick(viewer, world, x, y, scale=1.0, widget_h=0):
-    """Target under the pixel - a prim path (LOP) or node path (OBJ), "" for a miss; LOP coords are whole-view and quad-safe as they are, OBJ resolves its containing viewport first and asks `hostver` whether that build wants device pixels. ▸r/pick-boundary"""
+    """Target under the pixel: a prim path (LOP) or node path (OBJ), "" for a miss. ▸r/pick-boundary"""
     if world == "lop":
         try:
             depth, path = viewer.locateSceneGraphPrim(x, y)
@@ -796,7 +796,7 @@ def _pick(viewer, world, x, y, scale=1.0, widget_h=0):
 
 def hover_update(panel, section_key, pane_tab=None,
                  pane_kind=_UNASKED) -> None:
-    """Per-move hover, throttled here: pick under the cursor and drive the highlight - called from the drag widgets during the gesture, Materials only, with the TRACKED pane handed in so a tick over any other pane costs no lookup; a tracked MISS is an answer too, never re-asked ▸p/drag-move-cost."""
+    """Per-move hover, throttled: pick and highlight; pass the tracked pane. ▸p/drag-move-cost"""
     if section_key != "material":
         return
     _hover["outline"] = bool(getattr(getattr(panel, "prefs", None), "obj_drag_outline", 1))
@@ -832,7 +832,7 @@ def hover_update(panel, section_key, pane_tab=None,
 
 
 def _set_highlight(viewer, world, target, now, force_clear=False):
-    """Drive the highlight for one pick - LOP through the transient scene-graph API, which must be RE-ASSERTED every tick, and OBJ through an undo-silent selection write, which must be captured and restored. ▸r/pick-boundary"""
+    """Drive the highlight for one pick, LOP or OBJ. ▸r/pick-boundary"""
     if _hover["serial"] != serial or (
         viewer is not None
         and _hover["viewer"] is not None
@@ -912,7 +912,7 @@ def _restore_highlight() -> None:
 
 
 def viewport_release_target(panel):
-    """One more pick at release: ("lop", viewer, primpath_or_"") / ("obj", viewer, node_or_None) / None when the release was not over a material-capable scene viewer."""
+    """One more pick at release: ("lop"|"obj", viewer, target), or None off a scene viewer."""
     viewer, x, y, wh, scale = _scene_viewer_under_cursor()
     if viewer is None:
         return None
@@ -929,7 +929,7 @@ _stock_lop_cache = None
 
 
 def stock_lop():
-    """Houdini's own `scripts/scene/lop_dragdrop.py` for its material-library and assignment helpers, loaded once from $HH by explicit path - NO $HH, no lookup, because a relative join here would be loaded and EXECUTED from the working directory."""
+    """Houdini's own `scripts/scene/lop_dragdrop.py`, loaded once from $HH; no $HH, no lookup."""
     global _stock_lop_cache
     if _stock_lop_cache is None:
         hh = hou.getenv("HH")
@@ -954,7 +954,7 @@ def stock_lop():
 
 
 def _first_child_where(network, matches, connected_to=None):
-    """The first child of `network` that `matches`, in creation order, or None - pass `connected_to` to consider only children wired into that node's input chain, because an assignment into a disconnected node is accepted and changes nothing on screen."""
+    """The first child of `network` that `matches`, or None; `connected_to` limits to its chain."""
     try:
         children = network.children()
     except AttributeError:
@@ -981,7 +981,7 @@ def _first_child_where(network, matches, connected_to=None):
 
 
 def find_assignmaterial(network, connected_to=None):
-    """The FIRST assignmaterial node in the network, or None - reused so repeated drops converge on one node rather than chaining; PASS `connected_to` for a viewport drop, or a leftover disconnected node wins on creation order and the binding lands where nothing displays it."""
+    """The first assignmaterial node in the network, or None; pass `connected_to` for a viewport drop."""
     return _first_child_where(
         network,
         lambda child: child.type().name() == "assignmaterial",

@@ -1,4 +1,4 @@
-"""Karma -> Redshift: a Karma material's MaterialX network rebuilt as a Redshift material builder, node type by node type, the mirror of `material_converter`. Every input with no Redshift shape is named in the report and left at the shader's own value, never invented. ▸r/redshift-nodes"""
+"""Karma -> Redshift: a MaterialX network rebuilt as a Redshift material builder. ▸r/redshift-nodes"""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from amaze.core import debug, material
 from amaze.helpers import wording
 from amaze.render import nodes
 from amaze.render.material_conversion import engine, materialx
-from amaze.render.material_converter import (    # the forward converter's tables and helpers are the ONE home for the pairing and the width-aware copy
+from amaze.render.material_converter import (    # the forward converter's tables and helpers
     ConversionReport,
     OPENPBR_MATERIAL_PARM_MAP,
     STANDARD_MATERIAL_PARM_MAP,
@@ -38,8 +38,8 @@ class RedshiftMaterial(NamedTuple):
 
 
 def make_redshift_builder(parent: hou.Node, name: str) -> hou.Node:
-    """An `rs_usd_material_builder` holding ONE terminal, `redshift_usd_material`, and the suboutput it feeds - the container Redshift itself uses in Solaris, and it renders from /mat too. The stock OpenPBR shader inside goes. ▸r/redshift-nodes"""
-    builder = parent.createNode("rs_usd_material_builder")    # Redshift's Solaris builder, which also renders from /mat; a `redshift_vopnet` is refused by the LOP import door ▸r/redshift-nodes
+    """An `rs_usd_material_builder` holding one `redshift_usd_material` terminal. ▸r/redshift-nodes"""
+    builder = parent.createNode("rs_usd_material_builder")    # a `redshift_vopnet` is refused by the LOP import door
     builder.setName(wording.sanitize_usd_path(name), unique_name=True)
     for child in list(builder.children()):
         if child.type().name() not in material.REDSHIFT_TERMINALS + ("suboutput",):    # the stock terminal and the suboutput it feeds stay; the stock shader goes
@@ -50,7 +50,7 @@ def make_redshift_builder(parent: hou.Node, name: str) -> hou.Node:
 
 
 def wire_redshift_output(builder, shader, displacement=None) -> bool:
-    """Surface and Displacement onto the terminal, by ROLE - the two terminal forms spell their inputs differently. Answers whether the surface landed."""
+    """Surface and Displacement onto the terminal, by role; answers whether the surface landed."""
     terminal = material.redshift_terminal(builder)
     if terminal is None:
         return False
@@ -72,7 +72,7 @@ def wire_redshift_output(builder, shader, displacement=None) -> bool:
 
 
 def build_redshift_material(parent, name, produce) -> RedshiftMaterial:
-    """THE Redshift engine, the shape of `nodes.build_karma_material`: `produce(builder)` answers (shader, displacement) and this owns the container, the terminal, the wiring and the layout."""
+    """The Redshift engine: `produce(builder)` answers (shader, displacement); this owns the rest."""
     builder = make_redshift_builder(parent, name)
     result = produce(builder)
     if isinstance(result, tuple):
@@ -90,7 +90,7 @@ def build_redshift_material(parent, name, produce) -> RedshiftMaterial:
 
 
 def convert_conductor(node: hou.Node, builder: hou.Node, report: ConversionReport):
-    """mtlxconductor_bsdf -> RS Standard Material at metalness 1, its base colour the per-channel normal-incidence reflectance of the measured complex index; roughness copied from the conductor's first axis. Reported as approximated: Redshift has no complex IOR input. ▸r/redshift-nodes"""
+    """mtlxconductor_bsdf -> RS Standard Material at metalness 1, approximated. ▸r/redshift-nodes"""
     rs = builder.createNode("redshift::StandardMaterial")
     rs.setName(wording.sanitize_usd_path(node.name()), unique_name=True)
     rs.parm("metalness").set(1.0)
@@ -110,7 +110,7 @@ def convert_conductor(node: hou.Node, builder: hou.Node, report: ConversionRepor
 
 
 def convert_karma_builder(source: hou.Node, parent: hou.Node, name: str, report=None):
-    """A Karma container (the saved subnet, or a builder) into a new Redshift builder under `parent`: (builder, shader, wired, report)."""
+    """A Karma container into a new Redshift builder under `parent`: (builder, shader, wired, report)."""
     report = report if report is not None else ConversionReport(name)
 
     def produce(builder):
@@ -123,7 +123,7 @@ def convert_karma_builder(source: hou.Node, parent: hou.Node, name: str, report=
 
 
 def convert_karma_network(source: hou.Node, builder: hou.Node, report: ConversionReport):
-    """Inside `builder`: the Redshift shader for `source`'s MaterialX one, every wired input converted or reported, the normal map as a Bump Map, the displacement as one. Answers (shader, displacement)."""
+    """The Redshift shader for `source`'s MaterialX one inside `builder`: (shader, displacement)."""
     src = materialx.find_shader(source)
     if src is None:
         conductor = materialx.find_conductor(source)
@@ -139,7 +139,7 @@ def convert_karma_network(source: hou.Node, builder: hou.Node, report: Conversio
         normals = (("normal", "bump_input"),)    # (Karma input, Redshift input) per normal map
     else:
         rs = builder.createNode("redshift::OpenPBRMaterial")
-        pairs = [(rs_name, rs_name) for rs_name, _standard_name in OPENPBR_MATERIAL_PARM_MAP]    # an mtlxopen_pbr_surface spells every input the way the RS OpenPBR material does (all 31 measured); the table's right column is the STANDARD-surface spelling and reads nothing here
+        pairs = [(rs_name, rs_name) for rs_name, _standard_name in OPENPBR_MATERIAL_PARM_MAP]    # an mtlxopen_pbr_surface spells every input as the RS OpenPBR material does
         colour_inputs = OPENPBR_COLOUR_INPUTS
         normals = (("geometry_normal", "geometry_normal"),    # both take a Bump Map ▸r/redshift-nodes
                    ("geometry_coat_normal", "geometry_coat_normal"))
@@ -147,7 +147,7 @@ def convert_karma_network(source: hou.Node, builder: hou.Node, report: Conversio
 
     wired_inputs = _named_inputs(src)
     for rs_name, mtlx_name in pairs:
-        _copy_constant_parm(src, mtlx_name, rs, rs_name)    # the value crosses whether or not a texture rides the input - what the shader shows when the wire is cut
+        _copy_constant_parm(src, mtlx_name, rs, rs_name)    # the value crosses whether or not a texture rides the input
         feeding = wired_inputs.get(mtlx_name)
         if feeding is None:
             continue
@@ -156,7 +156,7 @@ def convert_karma_network(source: hou.Node, builder: hou.Node, report: Conversio
 
     mapped = ({mtlx_name for _rs_name, mtlx_name in pairs} | {karma for karma, _rs in normals}
               | {"displacement", "tangent", "coat_normal"})
-    for mtlx_name, feeding in wired_inputs.items():    # a texture on an input the table does not carry is SAID, not dropped: the report is what the artist reads instead of a black slot
+    for mtlx_name, feeding in wired_inputs.items():    # a texture on an input the table does not carry is reported, not dropped
         if mtlx_name not in mapped and feeding is not None:
             report.skip('"%s" feeds %s, which the Redshift shader has no matching input for'
                         % (feeding.name(), mtlx_name))
@@ -199,7 +199,7 @@ def _constant_behind(node) -> hou.Node | None:
 
 
 def _connect(rs: hou.Node, rs_name: str, converted, feeding: hou.Node, report: ConversionReport, output_index: int = 0) -> None:
-    """Wire a converted node into the shader, or say why not - a missing converter has already been reported, so only a refused wire speaks here. A constant on the wire has no Redshift node: its value lands on the parm the wire would have fed, because the Redshift math nodes default to ZERO and a dropped factor renders black. ▸r/redshift-nodes"""
+    """Wire a converted node into the shader, or report a refused wire. ▸r/redshift-nodes"""
     if converted is None:
         constant = _constant_behind(feeding)
         if constant is not None:
@@ -213,7 +213,7 @@ def _connect(rs: hou.Node, rs_name: str, converted, feeding: hou.Node, report: C
 
 
 def convert_upstream(node: hou.Node, builder: hou.Node, report: ConversionReport, role: str):
-    """The Redshift node for one MaterialX node feeding a shader input, or None with the reason in the report. `role` is what the value MEANS at its destination - color, data or normal - which decides a texture's colour space."""
+    """The Redshift node for one MaterialX node, or None; `role` decides a texture's colour space."""
     kind = node.type().name().split("::")[0]
     if kind in GEOMETRY_TYPES:
         return None
@@ -226,7 +226,7 @@ def convert_upstream(node: hou.Node, builder: hou.Node, report: ConversionReport
 
 
 def _uv_scale(image: hou.Node) -> tuple:
-    """The (u, v) scale the texcoord chain applies, (1, 1) when there is none - the forward converter's `_get_or_create_uv_chain` records it on an mtlxmultiply between the texcoord and the image."""
+    """The (u, v) scale the texcoord chain applies, (1, 1) when there is none."""
     feeding = _named_inputs(image).get("texcoord")
     if feeding is None or feeding.type().name() != "mtlxmultiply":
         return (1.0, 1.0)
@@ -251,7 +251,7 @@ def _pair(node: hou.Node, name: str, default: tuple) -> tuple:
 
 
 def convert_image(node: hou.Node, builder: hou.Node, report: ConversionReport, role: str):
-    """mtlximage -> RS Texture Sampler on the SAME file: `tex0` takes the image's unexpanded path, so a `$AMAZELIB` token stays a token and the twins share one texture store; colour reads sRGB, data and normals Raw. ▸r/redshift-nodes"""
+    """mtlximage -> RS Texture Sampler on the unexpanded path; colour sRGB, data Raw. ▸r/redshift-nodes"""
     sampler = builder.createNode("redshift::TextureSampler")
     sampler.setName(wording.sanitize_usd_path(node.name()), unique_name=True)
     file_parm = node.parm("file")
@@ -275,7 +275,7 @@ def convert_tiledimage(node: hou.Node, builder: hou.Node, report: ConversionRepo
 
 
 def convert_normalmap(node: hou.Node, builder: hou.Node, report: ConversionReport, role: str):
-    """mtlxnormalmap -> RS Bump Map in tangent-space-normal mode, the map on `input`; `scale` crosses over, which the forward converter copies only in this mode too. ▸r/redshift-nodes"""
+    """mtlxnormalmap -> RS Bump Map in tangent-space-normal mode, `scale` across. ▸r/redshift-nodes"""
     bump = builder.createNode("redshift::BumpMap")
     bump.setName(wording.sanitize_usd_path(node.name()), unique_name=True)
     bump.parm("inputType").set(TANGENT_SPACE_NORMAL)
@@ -289,7 +289,7 @@ def convert_normalmap(node: hou.Node, builder: hou.Node, report: ConversionRepor
 
 
 def convert_displacement(node: hou.Node, builder: hou.Node, report: ConversionReport, role: str = "data"):
-    """mtlxdisplacement -> RS Displacement as a height field, the map on `texMap`, `scale` across. ▸r/redshift-nodes"""
+    """mtlxdisplacement -> RS Displacement as a height field, `scale` across. ▸r/redshift-nodes"""
     disp = builder.createNode("redshift::Displacement")
     disp.setName(wording.sanitize_usd_path(node.name()), unique_name=True)
     if _effective_signature(node) == "vector3":    # a tangent-space vector (encoding 0, space 2), not a height ▸r/redshift-nodes
@@ -308,7 +308,7 @@ def convert_displacement(node: hou.Node, builder: hou.Node, report: ConversionRe
 
 
 def convert_mix(node: hou.Node, builder: hou.Node, report: ConversionReport, role: str):
-    """mtlxmix -> RS Color Mix: MaterialX shows `bg` at mix 0 and `fg` at 1, Redshift Input 1 at 0 and Input 2 at 1. ▸r/redshift-nodes"""
+    """mtlxmix -> RS Color Mix: `bg` to Input 1, `fg` to Input 2. ▸r/redshift-nodes"""
     mix = builder.createNode("redshift::RSColorMix")
     mix.setName(wording.sanitize_usd_path(node.name()), unique_name=True)
     wired = _named_inputs(node)
@@ -322,7 +322,7 @@ def convert_mix(node: hou.Node, builder: hou.Node, report: ConversionReport, rol
 
 
 def convert_multiply(node: hou.Node, builder: hou.Node, report: ConversionReport, role: str):
-    """mtlxmultiply -> RS Mul (float) or RS Mul Vector (colour and vector), each input converted or copied."""
+    """mtlxmultiply -> RS Mul or RS Mul Vector, each input converted or copied."""
     mul = builder.createNode("redshift::RSMathMul" if _is_scalar(node) else "redshift::RSMathMulVector")
     mul.setName(wording.sanitize_usd_path(node.name()), unique_name=True)
     wired = _named_inputs(node)
@@ -335,7 +335,7 @@ def convert_multiply(node: hou.Node, builder: hou.Node, report: ConversionReport
     return mul
 
 
-TWO_INPUT_MATH = {    # mtlx category -> (Redshift float node, Redshift vector node, (mtlx input, RS connector) pairs) ▸r/redshift-nodes
+TWO_INPUT_MATH = {    # mtlx category -> (RS float node, RS vector node, (mtlx input, RS connector) pairs)
     "mtlxadd": ("redshift::RSMathAdd", "redshift::RSMathAddVector", (("in1", "input1"), ("in2", "input2"))),
     "mtlxsubtract": ("redshift::RSMathSub", "redshift::RSMathSubVector", (("in1", "input1"), ("in2", "input2"))),
     "mtlxdivide": ("redshift::RSMathDiv", "redshift::RSMathDivVector", (("in1", "input1"), ("in2", "input2"))),
@@ -351,7 +351,7 @@ def _is_scalar(node: hou.Node) -> bool:
 
 
 def convert_math(node: hou.Node, builder: hou.Node, report: ConversionReport, role: str):
-    """A MaterialX math node -> the Redshift float or vector node of the same operation, each input converted or copied. ▸r/redshift-nodes"""
+    """A MaterialX math node -> the Redshift node of the same operation. ▸r/redshift-nodes"""
     scalar_type, vector_type, pairs = TWO_INPUT_MATH[node.type().name().split("::")[0]]
     made = builder.createNode(scalar_type if _is_scalar(node) else vector_type)
     made.setName(wording.sanitize_usd_path(node.name()), unique_name=True)
@@ -366,7 +366,7 @@ def convert_math(node: hou.Node, builder: hou.Node, report: ConversionReport, ro
 
 
 def convert_clamp(node: hou.Node, builder: hou.Node, report: ConversionReport, role: str):
-    """mtlxclamp -> RS Change Range holding its input between `low` and `high`: the same range in and out, clamp on. Float only; a colour clamp is reported."""
+    """mtlxclamp -> RS Change Range, clamp on; float only, a colour clamp is reported."""
     if not _is_scalar(node):
         report.skip('"%s" (mtlxclamp %s) has no Redshift equivalent - the input keeps '
                     "the shader's own value" % (node.name(), _effective_signature(node)))
@@ -402,7 +402,7 @@ def convert_remap(node: hou.Node, builder: hou.Node, report: ConversionReport, r
 
 
 def convert_extract(node: hou.Node, builder: hou.Node, report: ConversionReport, role: str):
-    """mtlxextract -> RS Color Splitter, the channel picked as the OUTPUT (outR/outG/outB/outA by `index`)."""
+    """mtlxextract -> RS Color Splitter, the channel picked as the output by `index`."""
     splitter = builder.createNode("redshift::RSColorSplitter")
     splitter.setName(wording.sanitize_usd_path(node.name()), unique_name=True)
     index_parm = node.parm("index")
@@ -422,24 +422,24 @@ def convert_dot(node: hou.Node, builder: hou.Node, report: ConversionReport, rol
 
 
 def convert_constant(node: hou.Node, builder: hou.Node, report: ConversionReport, role: str):
-    """A constant has no node of its own on the Redshift side: the caller copies its value. Answered as None after the copy so nothing is wired."""
+    """A constant has no Redshift node: copies its value and answers None, so nothing is wired."""
     return None
 
 
 def _signature_slots(node: hou.Node, name: str) -> tuple:
-    """The parm names to try for one MaterialX input, live slot first: `<name>_<signature>`, then the bare float name - every signature's slot exists on the node, so the dead ones read as zeros. ▸r/mtlx-vop-tuple-parms"""
+    """The parm names for one MaterialX input, live slot first. ▸r/mtlx-vop-tuple-parms"""
     return ("%s_%s" % (name, _effective_signature(node)), name)
 
 
 def _copy_signature_parm(src: hou.Node, src_name: str, dst: hou.Node, dst_name: str) -> None:
-    """Copy a MaterialX input that lives in a per-signature slot (`in2_color3`, `bg_vector3`) into a Redshift parm, width-aware; the bare name is the float signature's. ▸r/mtlx-vop-tuple-parms"""
+    """Copy a per-signature MaterialX input into a Redshift parm, width-aware. ▸r/mtlx-vop-tuple-parms"""
     for candidate in _signature_slots(src, src_name):
         if src.parmTuple(candidate) is not None:
             _copy_constant_parm(src, candidate, dst, dst_name)
             return
 
 
-NODE_CONVERTERS = {    # MaterialX node type (version suffix stripped) -> converter; anything absent is reported, never guessed
+NODE_CONVERTERS = {    # MaterialX node type, version stripped -> converter; anything absent is reported
     "mtlximage": convert_image,
     "mtlxtiledimage": convert_tiledimage,
     "mtlxconvert": convert_dot,
@@ -462,11 +462,11 @@ CLASSIC_TERMINAL = material.REDSHIFT_TERMINALS[0]    # `redshift_material`, the 
 
 
 def _bypass_dots(builder: hou.Node) -> int:
-    """Rewire every consumer of a network dot straight to the node behind it and remove the dot: `hou.moveNodesTo` takes nodes only, so a wire routed through a dot would not survive the move. Answers how many dots went."""
+    """Rewire every dot's consumers to the node behind it and remove the dot; answers the count."""
     dots = [item for item in builder.allItems()
             if isinstance(item, hou.NetworkDot)]
     for dot in dots:
-        source, index = dot.inputItem(), dot.inputItemOutputIndex()    # the item behind the dot and which of its outputs; a dot has no input index of its own ▸r/node-items
+        source, index = dot.inputItem(), dot.inputItemOutputIndex()    # the item behind the dot and which of its outputs ▸r/node-items
         hops = 0
         while isinstance(source, hou.NetworkDot) and hops < 8:    # a dot fed by a dot
             source, index = source.inputItem(), source.inputItemOutputIndex()
@@ -486,13 +486,13 @@ def _bypass_dots(builder: hou.Node) -> int:
 
 
 def upgrade_to_usd_builder(builder: hou.Node) -> hou.Node:
-    """A legacy `redshift_vopnet` rebuilt as an `rs_usd_material_builder` beside it: every child but the classic `redshift_material` output moves across with names and wiring kept, the USD terminal takes the classic one's feeds by role (`Bump Map` becomes `BumpMap`), the old container is destroyed and the new one carries its name. Anything else is answered unchanged. ▸r/redshift-nodes"""
+    """A legacy `redshift_vopnet` rebuilt as an `rs_usd_material_builder` in place. ▸r/redshift-nodes"""
     if builder.type().name() != LEGACY_CONTAINER:
         return builder
     name = builder.name()
     terminals = [c for c in builder.children()
-                 if c.type().name() in material.REDSHIFT_TERMINALS]    # a legacy container may hold the classic output, a USD one (a 1.0.33 twin, or a vopnet made inside a LOP library), or both
-    feeds = {}    # input name on the USD terminal -> (source node name, source output index); a USD terminal's own feeds win over the classic one's
+                 if c.type().name() in material.REDSHIFT_TERMINALS]    # a legacy container may hold the classic output, a USD one, or both
+    feeds = {}    # USD terminal input -> (source node name, output index); its own feeds win
     for terminal in sorted(terminals, key=lambda t: t.type().name() == CLASSIC_TERMINAL, reverse=True):
         for conn in terminal.inputConnections():
             if conn.inputNode() is None:    # an empty slot below a wired one is listed as a connection to nothing ▸r/redshift-nodes
@@ -502,14 +502,14 @@ def upgrade_to_usd_builder(builder: hou.Node) -> hou.Node:
     movers = [c for c in builder.children()
               if c.type().name() not in material.REDSHIFT_TERMINALS]
     fresh = make_redshift_builder(builder.parent(), name + "_usd")
-    try:    # the container's own look and stamps come along: its colour is what the library row keeps, and the row's id rides its user data
+    try:    # the container's colour and user data, which carries the row's id
         fresh.setColor(builder.color())
         fresh.setPosition(builder.position())
         for key, value in builder.userDataDict().items():
             fresh.setUserData(key, value)
     except hou.Error as exc:
         debug.event("redshift", "container look not carried", error=str(exc))
-    try:    # and its INTERFACE: spare parms the network references with ch("../x") and container values such as the material-ID AOV number; the sidecar helpers are the one spelling of that copy
+    try:    # and its interface: spare parms and container values
         nodes.apply_builder(fresh, json.loads(nodes.capture_builder(builder)))
     except Exception as exc:                          # noqa: BLE001
         debug.event("redshift", "container interface not carried", error=str(exc))

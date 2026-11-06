@@ -1,4 +1,4 @@
-"""The Notes panel: ONE FLOWING DOCUMENT where a to-do is a block whose userState says so, its checkbox painted in the left margin; persists debounced. ▸r/qt-text-checklists"""
+"""The Notes panel: one flowing document of plain and to-do blocks. ▸r/qt-text-checklists"""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ _DRAWN = amazetheme.drawn_comments()    # every size and spacing below is N01's 
 
 
 def _fill(widget, hex_color: str) -> None:
-    """Background via the PALETTE, never a stylesheet: one on ANY ancestor hands the subtree to Qt's stylesheet engine and its primitive scrollbars."""
+    """Background via the palette; a stylesheet on any ancestor restyles the subtree's scrollbars."""
     palette = widget.palette()
     palette.setColor(QtGui.QPalette.ColorRole.Window,
                      QtGui.QColor(hex_color))
@@ -70,11 +70,11 @@ class _AddButton(QtWidgets.QToolButton):
         painter.drawComplexControl(QtWidgets.QStyle.ComplexControl.CC_ToolButton, option)
         painter.end()
 
-_glyph_cache: dict = globals().get("_glyph_cache", {})   # keyed on every input and survives the reload chain; without it a ten-to-do page did ten SVG parses per paintEvent
+_glyph_cache: dict = globals().get("_glyph_cache", {})   # keyed on every input and survives the reload chain
 
 
 def _feather_icon(name: str, side: int, ink: str, widget=None) -> QtGui.QPixmap:
-    """One Feather glyph re-inked at device resolution; pass the WIDGET being painted so the ratio is its screen's, not the primary's. ▸r/screen-dpr"""
+    """One Feather glyph re-inked at device resolution; pass the widget being painted. ▸r/screen-dpr"""
     import amaze
     dpr = theme.screen_ratio(widget)
     key = (name, int(side), str(ink), float(dpr))   # EVERY input in the key: ink changes per to-do state, dpr when the window moves screen
@@ -87,7 +87,7 @@ def _feather_icon(name: str, side: int, ink: str, widget=None) -> QtGui.QPixmap:
     return pixmap
 
 
-STATE_TODO = 1   # to-do state is each block's userState; it is NOT inherited across Enter, a fresh block reads -1 ▸r/qt-text-checklists
+STATE_TODO = 1   # each block's userState; not inherited across Enter ▸r/qt-text-checklists
 STATE_DONE = 2
 STATE_IMAGE = 3   # a picture block: ONE image fragment, no text of its own ▸p/comment-images
 STATE_UNLOADED = 4    # a picture whose file would not load: words stand in, `src` rides on the block
@@ -103,7 +103,7 @@ ADD_ITEMS = (    # what the + offers, in order - a new item type joins by adding
 
 
 class _NoteEdit(QtWidgets.QTextEdit):
-    """The flowing document: plain paragraphs and framed to-do blocks interleave freely, a to-do being any block whose userState says so."""
+    """The flowing document: plain paragraphs and to-do blocks interleave freely."""
 
     GLYPH_SPACE = _DRAWN["todo_indent"]   # left margin reserved on to-do blocks, where the glyph paints
     GLYPH_SIDE = _DRAWN["glyph"]
@@ -111,7 +111,7 @@ class _NoteEdit(QtWidgets.QTextEdit):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setFrameStyle(QtWidgets.QFrame.Shape.NoFrame)
-        palette = self.palette()   # NO stylesheet: it would hand the scrollbars to Qt's engine and its primitive chrome; the background goes through the palette
+        palette = self.palette()   # no stylesheet: the background goes through the palette
         palette.setColor(QtGui.QPalette.ColorRole.Base,
                          QtGui.QColor(0, 0, 0, 0))
         self.setPalette(palette)
@@ -152,7 +152,7 @@ class _NoteEdit(QtWidgets.QTextEdit):
 
     @staticmethod
     def image_src(block) -> str:
-        """The library-relative path an image block draws, or "" - read off the FRAGMENT, since the block's own text is only the object-replacement character. ▸p/comment-images"""
+        """The library-relative path an image block draws, or "", read off the fragment. ▸p/comment-images"""
         iterator = block.begin()
         while not iterator.atEnd():
             char_format = iterator.fragment().charFormat()
@@ -162,7 +162,7 @@ class _NoteEdit(QtWidgets.QTextEdit):
         return ""
 
     def make_image_here(self, cursor, src: str) -> bool:
-        """Turn the cursor's block into a picture of `src` (library-relative); False when the file will not load, so the caller can say so instead of leaving a blank. ▸p/comment-images"""
+        """Turn the cursor's block into a picture of `src`; False when it will not load. ▸p/comment-images"""
         image = QtGui.QImage(self.resolve_image(src))
         if image.isNull():
             return False
@@ -182,7 +182,7 @@ class _NoteEdit(QtWidgets.QTextEdit):
         return True
 
     def insert_image(self, src: str) -> bool:
-        """The picture button: a picture at the cursor; an empty plain block becomes it in place, anything else gets a new block below - the same rule `insert_todo` follows."""
+        """A picture at the cursor: an empty plain block becomes it, else a new block below."""
         cursor = self.textCursor()
         block = cursor.block()
         if self.is_todo_block(block) or self.is_image_block(block) \
@@ -191,7 +191,7 @@ class _NoteEdit(QtWidgets.QTextEdit):
             cursor.insertBlock(self._plain_format())
         if not self.make_image_here(cursor, src):
             return False
-        cursor = self.textCursor()    # LEAVE THE CURSOR BELOW THE PICTURE: it still carries the image char format, so typing here would land inside the picture's own block and `serialize` would drop every word ▸p/comment-images
+        cursor = self.textCursor()    # leave the cursor below the picture, out of its block ▸p/comment-images
         cursor.insertBlock(self._plain_format())
         cursor.block().setUserState(-1)
         cursor.setCharFormat(self._label_format(False))
@@ -199,12 +199,12 @@ class _NoteEdit(QtWidgets.QTextEdit):
         return True
 
     def _image_width(self, image) -> float:
-        """Never wider than the pane, never upscaled - a screenshot dropped in at full size would otherwise force a horizontal scrollbar on every comment."""
+        """Never wider than the pane, never upscaled."""
         room = max(self.viewport().width() - theme.ui_px(24), theme.ui_px(80))
         return float(min(image.width(), room))
 
     def resolve_image(self, src: str) -> str:
-        """A library-relative `src` as an absolute path; the stored form stays relative so a library opened on another machine still finds it. ▸p/comment-images"""
+        """A library-relative `src` as an absolute path; the stored form stays relative. ▸p/comment-images"""
         if not src:
             return ""
         if os.path.isabs(src):
@@ -220,7 +220,7 @@ class _NoteEdit(QtWidgets.QTextEdit):
         return block.text().strip()
 
     def _todo_format(self) -> QtGui.QTextBlockFormat:
-        fmt = QtGui.QTextBlockFormat()   # NO background: a to-do is the page's colour and separation is PADDING, 10px each side plus the glyph margin
+        fmt = QtGui.QTextBlockFormat()   # no background; padding 10px each side plus the glyph margin
         fmt.setBackground(QtGui.QBrush(QtCore.Qt.BrushStyle.NoBrush))
         fmt.setTopMargin(theme.ui_px(_DRAWN["todo_pad"]))
         fmt.setBottomMargin(theme.ui_px(_DRAWN["todo_pad"]))
@@ -270,7 +270,7 @@ class _NoteEdit(QtWidgets.QTextEdit):
         self.viewport().update()
 
     def insert_todo(self) -> None:
-        """The + button: a to-do frame at the cursor; an empty plain block converts in place, anything else gets a new frame below it."""
+        """A to-do at the cursor: an empty plain block converts in place, else a new one below."""
         cursor = self.textCursor()
         block = cursor.block()
         if self.is_todo_block(block) or block.text().strip():
@@ -289,7 +289,7 @@ class _NoteEdit(QtWidgets.QTextEdit):
 
 
     def _merge_keeping(self, keeper, event) -> None:
-        """Merge across a block separator, then give the survivor the KEEPER's to-do state back; Qt stamps it with the FOLLOWING block's userState. ▸r/qt-text-checklists"""
+        """Merge across a block separator, keeping the keeper's to-do state. ▸r/qt-text-checklists"""
         done = self.block_done(keeper)
         super().keyPressEvent(event)
         self._set_todo(self.textCursor().block(), done)
@@ -302,11 +302,11 @@ class _NoteEdit(QtWidgets.QTextEdit):
                     and not cursor.hasSelection()
                     and (cursor.atBlockStart()
                          or not self.block_label(block))):
-                self.make_plain_here(cursor)   # Backspace at a frame's start UNWRAPS it back to text, the mirror of Enter-on-empty; another then deletes normally
+                self.make_plain_here(cursor)   # Backspace at a frame's start unwraps it back to text
                 return
             if (not cursor.hasSelection() and cursor.atBlockStart()
                     and self.is_todo_block(block.previous())):
-                self._merge_keeping(block.previous(), event)   # backspacing UP into a to-do; without this the frame above loses its checkbox and keeps its struck text
+                self._merge_keeping(block.previous(), event)   # backspacing up into a to-do keeps its checkbox
                 return
         if (event.key() == QtCore.Qt.Key.Key_Delete
                 and not self.textCursor().hasSelection()):
@@ -314,7 +314,7 @@ class _NoteEdit(QtWidgets.QTextEdit):
             block = cursor.block()
             if (self.is_todo_block(block) and cursor.atBlockEnd()
                     and block.next().isValid()):
-                self._merge_keeping(block, event)   # the mirror: forward-Delete at a frame's end pulls the next line in and strips the checkbox the same way
+                self._merge_keeping(block, event)   # forward-Delete at a frame's end pulls the next line in, same rule
                 return
         if event.key() in (QtCore.Qt.Key.Key_Return,
                            QtCore.Qt.Key.Key_Enter):
@@ -330,7 +330,7 @@ class _NoteEdit(QtWidgets.QTextEdit):
         super().keyPressEvent(event)
 
     def _glyph_zone_block(self, pos):
-        """The to-do block whose checkbox zone contains pos, or None: the ONE hit-test the click and the hover cursor share."""
+        """The to-do block whose checkbox zone contains pos, or None; shared by click and hover."""
         cursor = self.cursorForPosition(pos)
         block = cursor.block()
         if not self.is_todo_block(block):
@@ -342,7 +342,7 @@ class _NoteEdit(QtWidgets.QTextEdit):
         return None
 
     def mousePressEvent(self, event) -> None:
-        if event.button() == QtCore.Qt.MouseButton.LeftButton:    # only the left button toggles - a right-click aiming for the context menu must not flip the item done
+        if event.button() == QtCore.Qt.MouseButton.LeftButton:    # only the left button toggles
             block = self._glyph_zone_block(event.position().toPoint())
             if block is not None and self.toggle_block(block):
                 self.textChanged.emit()
@@ -350,7 +350,7 @@ class _NoteEdit(QtWidgets.QTextEdit):
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event) -> None:
-        if not event.buttons():   # a pointing hand over the glyph zone, I-beam elsewhere; only with no button down, since swapping mid-selection flickers
+        if not event.buttons():   # a pointing hand over the glyph zone, I-beam elsewhere; only with no button down
             over = self._glyph_zone_block(
                 event.position().toPoint()) is not None
             wanted = (QtCore.Qt.CursorShape.PointingHandCursor if over
@@ -369,7 +369,7 @@ class _NoteEdit(QtWidgets.QTextEdit):
             painter.end()
 
     def _paint_todo_glyphs(self, painter) -> None:
-        """One glyph per to-do block, in the margin its block format reserves: Feather circle / check-circle."""
+        """One glyph per to-do block in its reserved margin: Feather circle or check-circle."""
         layout = self.document().documentLayout()
         x_scroll = self.horizontalScrollBar().value()
         y_scroll = self.verticalScrollBar().value()
@@ -383,7 +383,7 @@ class _NoteEdit(QtWidgets.QTextEdit):
                 if top > visible.bottom():
                     break
                 if rect.bottom() - y_scroll >= visible.top():
-                    tlayout = block.layout()   # blockBoundingRect ALREADY includes the padding; lineAt() on an un-laid-out block crashes hython natively
+                    tlayout = block.layout()   # lineAt() on an un-laid-out block crashes hython natively
                     if tlayout is not None and tlayout.lineCount() > 0:
                         line = tlayout.lineAt(0)
                         done = self.block_done(block)
@@ -436,10 +436,10 @@ class _NoteEdit(QtWidgets.QTextEdit):
             first = False
         cursor.movePosition(QtGui.QTextCursor.MoveOperation.End)
         self.setTextCursor(cursor)
-        self.document().clearUndoRedoStacks()    # the LOAD is not an edit: left undoable, one Ctrl+Z peels the page apart block by block, each step fires textChanged, and the debounced save then writes the emptied note over the real one ▸r/programmatic-load-is-undoable
+        self.document().clearUndoRedoStacks()    # the load is not an edit ▸r/programmatic-load-is-undoable
 
     def serialize(self) -> list:
-        """The document, in order, as the store's item flow: adjacent plain lines join into one text item, and blank lines between content survive inside it."""
+        """The document as the store's item flow; adjacent plain lines join into one text item."""
         items = []
         text_lines = []
 
@@ -465,7 +465,7 @@ class _NoteEdit(QtWidgets.QTextEdit):
                     items.append({"t": "image", "src": src,
                                   "text": "[image: %s]"    # what a build with no image support shows instead of a blank line ▸p/comment-images
                                           % os.path.basename(src)})
-                typed = block.text().replace("￼", "")    # the caret can legally land in the picture's block (a click right of it), and words typed there are real content - the image fragment itself reads as U+FFFC (measured, hython 22.0.418)
+                typed = block.text().replace("￼", "")    # words typed in a picture's block are content; the image reads as U+FFFC
                 if typed.strip():
                     text_lines.append(typed)
             elif self.is_todo_block(block):
@@ -482,7 +482,7 @@ class _NoteEdit(QtWidgets.QTextEdit):
 
 
 class NotesPanel(ui_helpers.HeldPane):
-    """The dockable page: `set_subject` points it at one asset, `clear_subject` shows the empty state, and saves emit `changed` so the grid repaints that tile's badge."""
+    """The dockable page for one asset's notes; saves emit `changed`."""
 
     changed = QtCore.Signal(str)
 
@@ -541,7 +541,7 @@ class NotesPanel(ui_helpers.HeldPane):
         self.add_button.setToolTip(tooltips.NOTES_ADD_TODO)
         self.add_button.setCursor(
             QtCore.Qt.CursorShape.PointingHandCursor)
-        self._build_add_menu()    # the + opens a menu now, so nothing connects to `clicked` - InstantPopup does not fire it ▸p/comment-images
+        self._build_add_menu()    # the + opens a menu; InstantPopup never fires `clicked` ▸p/comment-images
         self._paint_accents()
         head.addWidget(self.add_button, 0,
                        QtCore.Qt.AlignmentFlag.AlignVCenter)
@@ -551,7 +551,7 @@ class NotesPanel(ui_helpers.HeldPane):
         body = QtWidgets.QWidget()
         _fill(body, PAGE_BG)
         body_box = QtWidgets.QVBoxLayout(body)
-        body_box.setContentsMargins(0, 0, 0, 0)   # ZERO chrome margins: the inset lives in the DOCUMENT margin, so scrolled text slides up to the header border
+        body_box.setContentsMargins(0, 0, 0, 0)   # zero chrome margins: the inset lives in the document margin
         self.text_edit = _NoteEdit()
         self.text_edit.document().setDocumentMargin(theme.ui_px(_DRAWN["doc_margin"]))
         self.text_edit.textChanged.connect(self._something_changed)
@@ -579,7 +579,7 @@ class NotesPanel(ui_helpers.HeldPane):
         self.add_button.setIconSize(QtCore.QSize(plus_side, plus_side))
 
     def adopt_look(self, source: QtWidgets.QWidget) -> None:
-        """Clone font and text colour from a .ui-loaded sibling, identical by construction; hand-set values drifted from the app's own scale within a day."""
+        """Clone font and text colour from a .ui-loaded sibling."""
         self.text_edit.setFont(source.font())
         palette = self.text_edit.palette()
         palette.setColor(QtGui.QPalette.ColorRole.Text,
@@ -592,7 +592,7 @@ class NotesPanel(ui_helpers.HeldPane):
 
 
     def set_subject(self, subject) -> None:
-        """Point the page at one asset, flushing any pending edit for the previous one first; `subject` is a `sections.CommentSubject`, read BY NAME."""
+        """Point the page at a `sections.CommentSubject`, flushing the previous one's pending edit."""
         key = subject.key
         library = str(getattr(self.preferences, "dir", "") or "")
         if (key, library) == (self._key, self._library):    # a rename: a reload would lose the typing
@@ -655,7 +655,7 @@ class NotesPanel(ui_helpers.HeldPane):
         self.text_edit.insert_todo()
 
     def _add_image(self) -> None:
-        """Pick a picture, COPY it into the library, and put it at the cursor - the note stores the library-relative path. ▸p/comment-images"""
+        """Pick a picture, copy it into the library, and put it at the cursor. ▸p/comment-images"""
         import hou
 
         ui = getattr(hou, "ui", None)    # absent headless, so every reach for it is guarded ▸p/refusal-sink
@@ -677,7 +677,7 @@ class NotesPanel(ui_helpers.HeldPane):
             ui.displayMessage(
                 messages.PICTURE_COPIED_BUT_UNREADABLE)
             return
-        self.text_edit.setFocus()    # the insert fires textChanged, which schedules the debounced save - the same route the + button relies on
+        self.text_edit.setFocus()    # the insert fires textChanged, which schedules the debounced save
 
     def _something_changed(self) -> None:
         if self._loading or self._key is None:
@@ -685,7 +685,7 @@ class NotesPanel(ui_helpers.HeldPane):
         self._save_timer.start()
 
     def flush(self) -> None:
-        """Write any pending edit NOW: subject switches, panel hides and session ends all come through here."""
+        """Write any pending edit now; subject switches, hides and session ends call it."""
         if self._save_timer.isActive():
             self._save_timer.stop()
             self._save_now()
@@ -707,6 +707,6 @@ class NotesPanel(ui_helpers.HeldPane):
         super().hideEvent(event)
 
     def closeEvent(self, event) -> None:
-        """A close on a pane that was never shown delivers no hide event, so this is not the same net as hideEvent above."""
+        """Flush on close; a pane never shown delivers no hide event."""
         self.flush()
         super().closeEvent(event)

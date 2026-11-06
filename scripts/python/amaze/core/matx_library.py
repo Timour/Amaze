@@ -1,4 +1,4 @@
-"""The online browser model: rows from the sources instead of library.json, MaterialLibrary's role numbers so the shared delegate/proxy/grid work untouched, network on a worker thread, and previews riding the shared thumbnail engine (the preview doubles as the imported material's thumbnail)."""
+"""The online browser model: rows from the sources, on MaterialLibrary's role numbers."""
 
 from __future__ import annotations
 
@@ -17,11 +17,11 @@ from amaze.core import grid_engine
 PREVIEW_DIR_NAME = "matx_previews"    # a NAME only - where it lives resolves per call in preview_cache(), like CATALOGUE_NAME below
 
 
-from amaze.core.multifilterproxy_model import split_search  # noqa: E402 - the colon rules' ONE home; re-exported because this module's callers and tests reach it here
+from amaze.core.multifilterproxy_model import split_search  # noqa: E402 - re-exported; callers and tests reach it here
 
 
 def preview_cache() -> str:
-    """Where downloaded previews are cached right now - local only, never the cloud-synced library folder."""
+    """Where downloaded previews are cached right now; local, never the library folder."""
     return os.path.join(hostos.cache_root(), PREVIEW_DIR_NAME)
 
 
@@ -32,12 +32,12 @@ def _preview_crc(record):
 
 
 SECTION_TILE_LABELS = {"gradient": "Color", "cop": "Node",
-                       "code": "Code", "file": "File"}    # what a store tile's subtitle says per section; held equal to the sections' own labels by test_the_tile_labels_are_the_sections_own (a direct import would invert the core->panel layering)
+                       "code": "Code", "file": "File"}    # a store tile's subtitle per section, equal to the sections' own labels
 
-CATALOGUE_NAME = "matx_catalogue_v3.json"    # the on-disk catalogue that makes Online open instantly; _v3 is the record-shape version (v3: per-tile Amaze records, uid folder/file#id). Its PATH resolves per call - frozen at import it missed both the Preferences cache move and the suite's redirection, one branch from writing the real cache from a test
+CATALOGUE_NAME = "matx_catalogue_v3.json"    # the on-disk catalogue; _v3 is the record shape; its path resolves per call
 
 _LEGACY_CATALOGUE_NAMES = ["matx_catalogue.json",
-                           "matx_catalogue_v2.json"]    # older-shape filenames, swept once on first construction so a stale old-shape file never lingers - a v2 file held one tile per PACKAGE, whose payload the v3 import door cannot read
+                           "matx_catalogue_v2.json"]    # older-shape filenames, swept once on first construction
 
 
 def catalogue_cache() -> str:
@@ -99,7 +99,7 @@ class _CatalogueWorker(QtCore.QThread):
 
 
 class _PreviewWorker(QtCore.QThread):
-    """Fetches preview images - a URL download or a callable reader - and reports them by thumbnail-engine key."""
+    """Fetches preview images by URL or callable reader; reports them by thumbnail-engine key."""
 
     ready = QtCore.Signal(object, object)   # (key, QImage)
     failed = QtCore.Signal(object)          # (key): the job brought no picture
@@ -121,7 +121,7 @@ class _PreviewWorker(QtCore.QThread):
                         matx_sources.download(fetch, path)
                 image = QtGui.QImage(path)
                 if image.isNull():
-                    try:    # a file that does not decode must NOT stay on disk - the existence check is the only gate on re-fetching, so keeping it blanks the tile permanently
+                    try:    # a file that does not decode is removed, or it is never re-fetched
                         os.remove(path)
                     except OSError:
                         pass
@@ -150,7 +150,7 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
     }
     GRID_ROWS = ("_records",)
 
-    IdRole = QtCore.Qt.ItemDataRole.UserRole            # 256 - same role NUMBERS as MaterialLibrary, the shared delegate and proxy must line up; held equal by test_role_numbers
+    IdRole = QtCore.Qt.ItemDataRole.UserRole            # 256 - the same role numbers as MaterialLibrary
     CategoryRole = QtCore.Qt.ItemDataRole.UserRole + 1  # 257
     FavoriteRole = QtCore.Qt.ItemDataRole.UserRole + 2  # 258
     RendererRole = QtCore.Qt.ItemDataRole.UserRole + 3  # 259
@@ -171,12 +171,12 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
         self._key_rows = {}      # preview key -> row (delivery lookup)
         self._search = ""
         self._source_filter = None   # show only this source (View submenu)
-        self._kind_filter = None     # the online eye's choice (material/gradient/cop/code, None = All) - session-held, resets with the panel
+        self._kind_filter = None     # the online eye's kind (None = All); session-held
         self._generation = 0
         self._loaded = False
         self._loading = False
         self._workers = []
-        # a QThread destroyed while still running takes Houdini with it - shutdown() is idempotent and wired to aboutToQuit
+        # a QThread destroyed while running takes Houdini with it; shutdown() runs at aboutToQuit
         app = QtCore.QCoreApplication.instance()
         if app is not None:
             app.aboutToQuit.connect(self.shutdown)
@@ -188,7 +188,7 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
         self._pending = []           # records awaiting the next dispatch
         self._pending_scheduled = False
         self._preview_workers = []   # bounded download pool
-        thumbnails.signals.ready.connect(self._on_preview_ready)    # through the RELAY, not the engine: the singleton is replaced on module reload (thumbnails._EngineSignals)
+        thumbnails.signals.ready.connect(self._on_preview_ready)    # the relay, not the engine a reload replaces
 
     @property
     def sources(self):
@@ -205,11 +205,11 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
 
     @property
     def error(self):
-        """Last network error ('' when fine) - the panel shows an empty grid when offline, no dialog: dialogs confirm actions, they don't announce outcomes."""
+        """Last network error, '' when fine."""
         return self._error
 
     def set_search(self, text):
-        """Filter the current source's materials locally (title, category, tags) - no API round-trip; the SOURCE is picked elsewhere, the search narrows within it."""
+        """Filter the current source's materials locally by title, category and tags."""
         text = (text or "").strip()
         if text == self._search:
             return
@@ -221,7 +221,7 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
         self._source_filter = source_name
 
     def set_kind_filter(self, section) -> None:
-        """Narrow the grid to one tile KIND by section key; None shows all - a non-Amaze tile IS a material."""
+        """Narrow the grid to one tile kind by section key; None shows all."""
         if section == self._kind_filter:
             return
         self._kind_filter = section
@@ -266,7 +266,7 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
         }
 
     def reload(self, force=False):
-        """Show the catalogue fast: in memory → re-filter; else the DISK cache instantly with a background network refresh - only a cache miss waits on the fetch."""
+        """Show the catalogue from memory or the disk cache, refreshing in the background."""
         if self._loaded and not force:
             self._apply_filter()
             return
@@ -307,7 +307,7 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
                 path, {"records": [r.to_dict() for r in records]},
                 indent=None)
         except OSError as exc:
-            debug.event("online", "catalogue cache not written",    # an EVENT: internal, the browser works either way - the unreachable-source line below stays a note because it is about what the user sees
+            debug.event("online", "catalogue cache not written",    # an event: the browser works either way
                         error=str(exc))
 
     def _on_catalogue_progress(self, listed, sources, generation):
@@ -327,14 +327,14 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
             if errors:
                 debug.event("online", "sources unavailable", errors=errors)
             return
-        def _sig(recs):    # content identity, not just count: uid+title+preview_url covers everything a tile shows without hashing payloads
+        def _sig(recs):    # content identity: uid, title and preview_url
             return [(r.source, r.uid, r.title, r.preview_url, _preview_crc(r)) for r in recs]
 
         changed = _sig(records) != _sig(self._all)
         self._all = records
         self._loaded = True
         if partial:
-            debug.note(    # shown this session, never the accepted BASELINE (a cold-cache partial once became permanent - PartialCatalogueTest); ONE note, the sentence that explains a SHORT list
+            debug.note(    # shown this session, never the accepted baseline; one note explains a short list
                 "could not reach %d of the online material sites, so "
                 "this list is missing whatever they hold. What loaded "
                 "is shown but not kept, so reopening Online Materials "
@@ -352,7 +352,7 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
             self._apply_filter()
 
     def shutdown(self) -> None:
-        """Stop every worker and WAIT for it - called on application quit, safe to call twice or when nothing runs."""
+        """Stop every worker and wait for it; safe to call twice or when nothing runs."""
         workers.stop(self._workers, "online", cancel=False)    # its workers read the interruption alone
         self._workers = []
         self._loading = False
@@ -361,7 +361,7 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
         if worker in self._workers:
             self._workers.remove(worker)
         if isinstance(worker, _CatalogueWorker):
-            # `finished` fires even when run() dies before `done` - clearing _loading only in the done handler once left it stuck True, a browser that silently never refreshed again
+            # `finished` fires even when run() dies before `done`
             self._loading = False
 
     @staticmethod
@@ -375,7 +375,7 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
             ("%s/%s%s" % (record.source, record.uid, "" if crc is None else "#%d" % crc))
             .encode("utf-8")
         ).hexdigest()
-        # the source name is SANITISED like every path-bound record field (it comes off the on-disk catalogue); the digest keeps the raw value, so two sources that sanitise alike stay apart
+        # the source name is sanitised; the digest keeps the raw value
         return os.path.join(
             preview_cache(), hostos.safe_filename(str(record.source)),
             digest + ".png")
@@ -411,7 +411,7 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
             return 256
 
     def _preview(self, rec):
-        """Cached preview, requested lazily from data() on a miss - the old eager first-120-rows queue left later rows imageless and evictions permanent; one row queues here, the batch coalesces on a zero-timer."""
+        """Cached preview, requested lazily on a miss; requests coalesce on a zero-timer."""
         key = self._preview_key(rec)
         image = thumbnails.engine.peek(key)
         if image is not None:
@@ -442,7 +442,7 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
             return 8
 
     def _flush_pending(self):
-        """Dispatch accumulated requests across a BOUNDED POOL - previews are latency-bound so concurrency scales near-linearly (32 PolyHaven: 1 worker 220ms each, 8 workers 42ms; serial was a 5-10min crawl), and bounded against a per-paint thread explosion and for being a polite client of free APIs."""
+        """Dispatch accumulated requests across a bounded pool of workers."""
         self._pending_scheduled = False
         limit = self._parallel()
         while self._pending and len(self._preview_workers) < limit:
@@ -469,7 +469,7 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
             if thumbnails.engine.peek(key) is not None:
                 continue
             if rec.kind == "amazepkg":
-                member = rec.payload.get("thumb_member")    # FIRST: a named member is the chosen icon or the real render - it outranks every drawn stand-in, the way local sections rank it
+                member = rec.payload.get("thumb_member")    # first: a named member outranks every drawn stand-in
                 source = self.source_for(rec)
                 if member and source is not None:
                     reader = (lambda path, s=source, r=rec:
@@ -482,7 +482,7 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
                 colors = row.get("colors") or []
                 if colors:
                     from amaze.core import gradient_library
-                    try:    # the COLOR SECTION's own painter - banded stacks or the saved ramp, exactly the local face; same marker semantics as the values branch below
+                    try:    # the Color section's own painter; same marker rules as the values branch
                         thumbnails.engine.deposit(
                             key, gradient_library.paint_swatch(
                                 colors, row.get("ramp") or {}))
@@ -495,7 +495,7 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
                 code = str(row.get("code") or "")
                 if code:
                     from amaze.core import code_library
-                    try:    # the CODE SECTION's own painter, exactly as palettes reuse their swatch - a snippet tile must not stand blank
+                    try:    # the Code section's own painter
                         thumbnails.engine.deposit(
                             key, code_library.paint_code_preview(code))
                     except Exception as exc:              # noqa: BLE001
@@ -516,7 +516,7 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
                 jobs.append((key, reader, self._cache_path(rec)))
                 continue
             if rec.kind == "values":
-                try:    # no render to download - the tile is DRAWN from the measured numbers, cheap enough on the spot, no worker
+                try:    # no render to download: the tile is drawn from the numbers, no worker
                     thumbnails.engine.deposit(
                         key,
                         matx_icon.render(
@@ -528,7 +528,7 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
                 except Exception as exc:
                     debug.event("online", "tile icon not drawn",
                                 title=rec.title, error=str(exc))
-                    continue    # a FAILED draw keeps its marker - releasing it re-queued the failing draw every repaint; blank for the session, a panel reopen retries once
+                    continue    # a failed draw keeps its marker: blank for the session, a reopen retries
                 self._requested.discard(key)    # drawing is cheap: an evicted icon redraws on the next paint - don't hold the marker
                 continue
             if not rec.preview_url:
@@ -558,7 +558,7 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
         self._requested.discard(key)
 
     def _on_preview_attempted(self):
-        """One preview download finished (ok or failed) - advance the bar, and on a drained burst reset so the next scroll starts a fresh 0..N."""
+        """One preview download finished: advance the bar, reset it when the burst drains."""
         self._preview_done += 1
         self.progress_changed.emit(self._preview_done, self._preview_total)
         if self._preview_done >= self._preview_total and not self._pending:
@@ -567,7 +567,7 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
 
     def _deposit_preview(self, key, image):
         thumbnails.engine.deposit(key, image)
-        self._requested.discard(key)    # the RAM budget can still evict - drop the marker so the next paint re-asks (the disk cache answers)
+        self._requested.discard(key)    # drop the marker so the next paint re-asks after an eviction
 
     def _on_preview_failed(self, key):
         """A hosted picture that did not arrive: the next paint falls through to the tile's own face."""
@@ -615,7 +615,7 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
                 bits.append("measured values - no textures")
             return "\n".join(bits)
         if role == self.RendererLabelRole:
-            # the Type column: the source, plus that value-sources produce a preset rather than a textured material; a STORE tile says what it IS
+            # the Type column: the source, or what a store tile is
             if rec.kind == "amazepkg":
                 section = str(rec.payload.get("section") or "")
                 if section == "material":
@@ -639,7 +639,7 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
         return None
 
     def categories(self):
-        """The SELECTED source's distinct categories for the sidebar - from _all, not the filtered view, so the list doesn't shrink as you type."""
+        """The selected source's distinct categories for the sidebar, from the unfiltered rows."""
         seen = set()
         for rec in self._all:
             if rec.category and self._in_source(rec):
@@ -648,7 +648,7 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
 
 
 class MatxSidebarModel(QtCore.QAbstractListModel):
-    """The online browser's sidebar: row 0 is "All", the rest the SELECTED source's categories - no source suffix, the source is the submenu you came in through."""
+    """The online browser's sidebar: row 0 is "All", the rest the selected source's categories."""
 
     def __init__(self, online_model, parent=None):
         super().__init__(parent)

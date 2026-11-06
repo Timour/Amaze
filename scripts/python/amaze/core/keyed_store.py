@@ -1,4 +1,4 @@
-"""Declare a guarded JSON side-table with `register`; open it with `open_store`. ▸p/store-guards ▸p/store-declarations"""
+"""Declare a guarded JSON side-table with `register`; open it with `open_store`. ▸p/store-guards"""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ KEY_ID = "id"                       # an asset id - a folder move leaves it
 KEY_PATH = "path"                   # a path - a folder move rewrites it
 KEY_MIXED = "mixed"                 # both, so the store declares path_prefix
 
-LOC_PREFIX = "loc:"                 # `loc:<id>` or `loc:<id>/<relative>` - a location-ID key, an ID in EVERY store whatever its keyspace: no spelling conversion, no relocate rewrite, retired by `retire_location`
+LOC_PREFIX = "loc:"                 # `loc:<id>[/<relative>]`: an id in every store, retired by `retire_location`
 
 USER_SEP = "|"                      # `<uid>|<key>`, split on the FIRST one
 
@@ -58,7 +58,7 @@ MERGE_FIELDS = "fields"             # field by field inside a record both hold
 
 
 class Spec:
-    """One store as DATA - everything the engine needs to guard a file it has never heard of. ▸p/store-declarations"""
+    """One store as data: all the engine needs to guard its file. ▸p/store-declarations"""
 
     __slots__ = ("filename", "payload", "keyspace", "label", "noun",
                  "normalise", "path_prefix", "unreadable_alert",
@@ -128,7 +128,7 @@ def register(filename: str, payload: str, keyspace: str, label: str,
         raise ValueError(
             "a mixed-keyspace store must say which prefix marks a path "
             "key, or a folder move cannot tell them apart")
-    if normalise is None:    # a re-register (a module reload) keeps the binding already attached, or every store whose BINDER module is not also reloaded opens with no normaliser
+    if normalise is None:    # a re-register (a module reload) keeps the binding already attached
         normalise = getattr(_registry.get(filename), "normalise", None)
     spec = Spec(filename=filename, payload=payload, keyspace=keyspace,
                 label=label, noun=noun, normalise=normalise,
@@ -145,7 +145,7 @@ def register(filename: str, payload: str, keyspace: str, label: str,
 
 
 def bind(filename: str, normalise) -> Spec:
-    """Attach the normaliser; a declared store nothing has bound is surveyable, not openable. ▸p/store-declarations"""
+    """Attach the normaliser; an unbound store is surveyable, not openable. ▸p/store-declarations"""
     spec = _registry.get(filename)
     if spec is None:
         raise KeyError("%s is not a declared store" % (filename,))
@@ -154,7 +154,7 @@ def bind(filename: str, normalise) -> Spec:
 
 
 def stores() -> tuple:
-    """THE enumeration - never write your own; `tools/library-audit.py` cannot see it and keeps a copy. ▸p/store-declarations"""
+    """The one enumeration of stores; `tools/library-audit.py` keeps a copy. ▸p/store-declarations"""
     return tuple(_registry.values())
 
 
@@ -163,7 +163,7 @@ def store_for(filename: str):
 
 
 def filenames() -> tuple:
-    """Only the stores that are FILES IN THE LIBRARY - what Repair surveys and the audit expects on disk."""
+    """Only the stores that are files in the library: what Repair surveys and the audit expects."""
     return tuple(name for name, spec in _registry.items() if spec.in_library)
 
 
@@ -198,7 +198,7 @@ LOCATIONS = "locations.json"        # one record per registered folder
 
 FAVOURITES = "favourites.json"      # every section's, keyed to its owner
 
-LOCATION_PATHS = "location_paths.json"  # the identity table: one row per location, id -> its current path - the ONE place a location's path is stored
+LOCATION_PATHS = "location_paths.json"  # the identity table: location id -> its current path, the one place it is stored
 
 register(
     filename=LOCATION_PATHS,
@@ -389,7 +389,7 @@ def loads() -> int:
 
 
 def _root_for(spec: Spec, preferences, library: str = "") -> str:
-    """Which directory this store's file lives in; REFUSES rather than defaulting to the library. ▸p/store-declarations"""
+    """Which directory this store's file lives in; refuses rather than default. ▸p/store-declarations"""
     if spec.in_library:
         return str(library or preferences.dir)
     root = str(getattr(preferences, "path", "") or "")
@@ -402,7 +402,7 @@ def _root_for(spec: Spec, preferences, library: str = "") -> str:
 
 
 def _same_file(path: str) -> str:
-    """The cache IDENTITY of a store file - the KEY only; `Store.path` keeps its spelling. ▸p/one-file-one-table"""
+    """The cache key of a store file; `Store.path` keeps its spelling. ▸p/one-file-one-table"""
     return hostos.canonical_path_key(path)
 
 
@@ -425,7 +425,7 @@ def opened(spec: Spec, preferences):
 
 
 def own_store(spec: Spec, preferences) -> "Store":
-    """A store this caller alone holds, with its OWN stale-write baseline - for a document two panes disagree about. ▸p/document-not-table"""
+    """A store this caller alone holds, with its own stale-write baseline. ▸p/document-not-table"""
     return Store(spec, os.path.join(_root_for(spec, preferences),
                                     spec.filename), preferences)
 
@@ -569,7 +569,7 @@ class Store:
             debug.alert(spec.unreadable_alert, key=spec.alert_key)
 
     def user_tag(self) -> str:
-        """The UID these keys are tagged with, "" when untagged or nobody is picked - never a shared bucket."""
+        """The UID these keys are tagged with, "" when untagged or nobody is picked."""
         if not self.spec.user_tagged:
             return ""
         try:
@@ -620,7 +620,7 @@ class Store:
         return copy.deepcopy(self._table)
 
     def orphaned(self) -> dict:
-        """Rows from before this store had owners, keyed bare - empty again after ANY commit. ▸p/store-commit-order"""
+        """Rows from before this store had owners; empty after any commit. ▸p/store-commit-order"""
         return copy.deepcopy(self._orphans)
 
     def orphan_count(self) -> int:
@@ -666,7 +666,7 @@ class Store:
         return self._commit(staged, (key,))
 
     def update(self, values: dict) -> Written:
-        """Store many keys in ONE write - per-key `set` would rotate the restore tier away. ▸p/store-commit-order"""
+        """Store many keys in one write; use it over per-key `set` for a batch. ▸p/store-commit-order"""
         staged = dict(self._table)
         touched = []
         if not (values or {}):          # doing nothing cannot fail
@@ -699,7 +699,7 @@ class Store:
                                   for k, v in moves.items()})
 
     def adopt_orphans(self) -> Written:
-        """File every ownerless row under the current user in ONE write; adoption only ADDS. ▸p/store-commit-order"""
+        """File every ownerless row under the current user in one write; only adds. ▸p/store-commit-order"""
         if not self.spec.user_tagged or not self._orphans:
             return Written(True, REASON_UNCHANGED)
         if not self.user_tag():
@@ -715,7 +715,7 @@ class Store:
         return self._commit(staged, adopted)
 
     def retire_stored(self, keys) -> Written:
-        """Drop keys AS STORED - every owner's, no user needed; `retire` is the scoped door. ▸p/keyed-store-slate"""
+        """Drop keys as stored, every owner's; `retire` is the scoped door. ▸p/keyed-store-slate"""
         return self._drop([str(k) for k in (keys or ())
                            if str(k) in self._table])
 
@@ -734,16 +734,16 @@ class Store:
             else:
                 staged.setdefault(moves[old], value)
         return self._commit(staged, touched,
-                            retire=[k for k in touched if k not in staged])    # the OLD keys as retired, or the commit's disk adoption resurrects them beside their moved selves - sparing one another move re-filled as its destination
+                            retire=[k for k in touched if k not in staged])    # the old keys as retired, or the commit's disk adoption resurrects them
 
     def _drop(self, doomed) -> Written:
-        """Commit the table without these STORED keys; an empty list is unchanged, not a failure. ▸p/keyed-store-slate"""
+        """Commit the table without these stored keys; an empty list is no change. ▸p/keyed-store-slate"""
         if not doomed:
             return Written(True, REASON_UNCHANGED)
         staged = dict(self._table)
         for key in doomed:
             staged.pop(key, None)
-        return self._commit(staged, doomed, retire=doomed)    # as RETIRED, or the disk adoption inside the commit puts a just-dropped key straight back when the file changed since the load
+        return self._commit(staged, doomed, retire=doomed)    # as retired, or the commit's disk adoption puts a dropped key back
 
     def retire(self, keys) -> Written:
         """Drop keys - ONE write. A location is gone for good."""
@@ -756,7 +756,7 @@ class Store:
                            if self._key(str(k)) in self._table])
 
     def replace(self, document: dict, retire=(), settle=None) -> Written:
-        """Commit a WHOLE document - a key its author dropped is GONE; `retire` names what this build removed. ▸p/document-not-table"""
+        """Commit a whole document: a key its author dropped is gone. ▸p/document-not-table"""
         if not isinstance(document, dict):
             raise TypeError("a document is an object, not %s"
                             % type(document).__name__)
@@ -765,7 +765,7 @@ class Store:
                             settle=settle)    # settle(document): the caller's rule over what the merge took in
 
     def reread(self) -> Written:
-        """Read the file again, discarding this Store's cache, and answer what the reopened store can do. ▸p/keyed-store-slate"""
+        """Re-read the file, dropping the cache; answers what the store can do. ▸p/keyed-store-slate"""
         self._blank_slate()
         self._load()
         return Written(self.writable, REASON_NONE if self.writable
@@ -773,7 +773,7 @@ class Store:
                        self.spec.refused_sentence if not self.writable else "")
 
     def refresh(self) -> bool:
-        """Re-read when another writer has changed the file since this store last saw it; True when the tables moved. Costs ONE read per call, so fire it at a door a person opens, never per lookup. ▸r/peer-read"""
+        """Re-read if another writer changed the file; True when it moved. Not per lookup. ▸r/peer-read"""
         answer = hostos.peer_read(self.path, self._disk_state)
         if answer.verdict == hostos.PEER_UNCHANGED:
             return False
@@ -785,7 +785,7 @@ class Store:
         return True
 
     def _commit(self, staged: dict, keys, retire=(), settle=None) -> Written:
-        """EVERY write lands here - one guard set, and the cache moves only on success. ▸p/store-commit-order"""
+        """Every write lands here; the cache moves only on success. ▸p/store-commit-order"""
         spec = self.spec
         if not self.writable:
             debug.note(spec.refused_sentence or (
@@ -858,7 +858,7 @@ class Store:
         seen = set()
         for key, value in peer.items():
             stored = restored_key(self.spec, str(key))
-            seen.add(stored)    # BEFORE the reject: `seen` means the peer HOLDS this key, and a value we cannot read is not a peer's deletion. Marked after, the sweep below dropped our own good row on their bad one
+            seen.add(stored)    # before the reject: an unreadable peer value is not a peer's deletion
             kept = self.spec.normalise(value)
             if self._rejected(kept):
                 if (value and stored not in staged
@@ -871,7 +871,7 @@ class Store:
             if stored not in staged:
                 if based and not theirs_moved:
                     continue    # WE dropped a key they left alone: our delete stands
-                staged[stored] = kept    # their addition, or their edit to something we dropped - an edit outranks a delete, because a delete cannot be recovered from
+                staged[stored] = kept    # their addition, or their edit to something we dropped: an edit outranks a delete
                 adopted += 1
                 continue
             if staged[stored] == kept:
@@ -879,7 +879,7 @@ class Store:
             named = rule_for(self.spec.merge_rules, (stored,))
             if not named and _rules_below(self.spec.merge_rules, (stored,)):
                 named = MERGE_FIELDS    # a rule names a level below: keep walking
-            if named:    # a DECLARED rule states what the key IS - a set of folders unions whoever moved it, so the base never overrides it
+            if named:    # a declared rule decides, and the base never overrides it
                 folded = _fold(named, staged[stored], kept,
                                self.spec.merge_rules, (stored,))
                 if folded is not None:
@@ -893,7 +893,7 @@ class Store:
                 continue
             if ours_moved and not theirs_moved:
                 continue                 # only we moved it
-            if based and self.spec.in_library:    # both moved: ours, and the user hears about it. Only a LIBRARY table speaks - two panes disagreeing about this machine's own view state is not news
+            if based and self.spec.in_library:    # both moved: ours wins, and a library table tells the user
                 debug.alert(
                     messages.EDIT_CONFLICT_KEPT_YOURS % self.spec.noun,
                     key="store-conflict-%s-%s" % (self.spec.filename, stored))
@@ -916,7 +916,7 @@ RULE_ANY = "*"                      # stands for any one key
 
 
 def rule_for(rules: dict, path: tuple) -> str:
-    """The rule declared for this path into the document, "" if none; MOST SPECIFIC wins. ▸p/document-not-table"""
+    """The rule declared for this path, "" if none; most specific wins. ▸p/document-not-table"""
     if not rules:
         return ""
     best, fewest = "", None
@@ -959,7 +959,7 @@ def _shallow_fields(ours, theirs):
 
 
 def _fold(rule: str, ours, theirs, rules: dict = None, path: tuple = ()):
-    """OURS with the peer's additions folded in, or None when there were none; ADDS ONLY. ▸p/document-not-table"""
+    """Ours with the peer's additions folded in, or None if none; only adds. ▸p/document-not-table"""
     if rule == MERGE_COMBINE:
         if not (isinstance(ours, list) and isinstance(theirs, list)):
             return None
@@ -1006,7 +1006,7 @@ def _bare_path(spec: Spec, key: str) -> str:
 
 
 def storage_key(spec: Spec, key, user: str = "") -> str:
-    """The spelling a key is STORED under - variable-relative for a path, verbatim for an id (`loc:` included), and `<uid>|` prefixed on a tagged store."""
+    """The stored spelling: variable-relative path, verbatim id, `<uid>|` prefixed if tagged."""
     key = str(key)
     if spec.is_path_key(key):
         if spec.keyspace == KEY_PATH:
@@ -1028,14 +1028,14 @@ def restored_key(spec: Spec, key: str) -> str:
 
 
 def uid_shaped(value: str) -> bool:
-    """Is this a minted UID - 32 hex characters, the `uuid4().hex` shape? The ONE home for the test; `users` reads it from here."""
+    """Is this a minted UID, the 32-hex `uuid4().hex` shape? `users` reads the test from here."""
     value = str(value or "")
     return len(value) == 32 and all(
         c in "0123456789abcdef" for c in value)
 
 
 def untagged_key(spec: Spec, key: str) -> tuple:
-    """`(uid, key)` for a stored key, `("", key)` when untagged - split on the FIRST separator, and only a uid-shaped owner half counts: a pipe is legal in a POSIX path, so an untagged pre-tag row carrying one must not read as somebody's."""
+    """`(uid, key)` for a stored key, `("", key)` unless the part before the first `|` is a uid."""
     if not spec.user_tagged:
         return ("", key)
     tag, sep, rest = str(key).partition(USER_SEP)
@@ -1043,7 +1043,7 @@ def untagged_key(spec: Spec, key: str) -> tuple:
 
 
 def _under(spec: Spec, key: str, prefix: str) -> bool:
-    """Is this key the location itself, or something inside it? The prefix converts to STORAGE spelling first."""
+    """Is this key the location itself, or inside it? The prefix converts to storage spelling."""
     if not spec.is_path_key(key):
         return False
     prefix = hostos.storage_path_key(prefix)
@@ -1113,7 +1113,7 @@ def location_ids_at(preferences, prefix: str) -> list:
 
 
 def retire_prefix(preferences, prefix: str) -> dict:
-    """A location is gone: drop every key under it - the legacy path spellings, the id-keyed state, and the identity rows themselves - in the stores whose `survives_forget` says so. ▸p/store-declarations"""
+    """A location is gone: drop every key under it, identity rows last. ▸p/store-declarations"""
     results = {}
     for spec in stores():
         if spec.survives_forget or spec.keyspace == KEY_ID:
@@ -1137,14 +1137,14 @@ def retire_prefix(preferences, prefix: str) -> dict:
             if filename not in results or not written.ok:
                 results[filename] = written    # a refusal is the answer worth keeping when both sweeps touched one store
             swept_clean = swept_clean and written.ok
-    if doomed_ids and swept_clean:    # the identity rows go LAST, and only when their dependents went - retired first, a refused sweep leaves keys under an id nothing resolves
+    if doomed_ids and swept_clean:    # the identity rows go last, and only when their dependents went
         results[LOCATION_PATHS] = open_store(
             _registry[LOCATION_PATHS], preferences).retire(doomed_ids)
     return results
 
 
 def retire_location(preferences, locid: str) -> dict:
-    """A location is gone by its ID: drop `loc:<id>` and everything under `loc:<id>/` from the stores whose `survives_forget` says so - every user's, a removal is a shared act, path-prefixed spellings (`file:loc:...`) included."""
+    """Drop `loc:<id>` and all under it, every user's, from stores whose `survives_forget` says so."""
     results = {}
     locid = str(locid)
     if not locid:
@@ -1168,7 +1168,7 @@ def retire_location(preferences, locid: str) -> dict:
 
 
 def retire_owner(preferences, uid: str) -> dict:
-    """A user is gone: drop every row tagged theirs from every user-tagged store, one guarded write each - the fan-out a user deletion announces, so a new per-user store joins by declaring itself. ▸p/store-declarations"""
+    """A user is gone: drop their rows from every user-tagged store. ▸p/store-declarations"""
     results = {}
     uid = str(uid)
     if not uid:
@@ -1187,7 +1187,7 @@ def retire_owner(preferences, uid: str) -> dict:
 
 
 def refresh_all(preferences=None) -> list:
-    """Re-read every open store another machine has written since we read it, and answer the filenames that moved. For a DOOR a person opens - a dialog, a panel becoming visible - never a lookup. ▸r/peer-read"""
+    """Re-read open stores another machine wrote; answers the moved filenames. ▸r/peer-read"""
     root = (hostos.canonical_path_key(str(preferences.dir))
             if preferences is not None else None)
     moved = []

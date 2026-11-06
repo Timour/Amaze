@@ -1,4 +1,4 @@
-"""What a setting IS. Reading and WRITING the document is `persistence.py`'s, which `Prefs` inherits."""
+"""What a setting is; reading and writing the document is `persistence.py`'s."""
 
 import os
 import json
@@ -20,7 +20,7 @@ from amaze.prefs.persistence import (
 )
 
 
-TEST_LIB_SUBDIR = "lib"  # the library inside a test folder, named once because the dialog, the seeder and the overlay all have to agree. A `cache/` left in an older test folder is inert ▸ `cache_dir`
+TEST_LIB_SUBDIR = "lib"  # the library inside a test folder; the dialog, seeder and overlay share it
 
 RENDERSIZE_RANGE = (64, 1024)  # the setter clamps to it, and the Preferences row offers it
 RAM_CACHE_RANGE = (64, 4096)
@@ -37,7 +37,7 @@ def _clamped(value, bounds) -> int:
 
 
 def test_library_dir(folder: str) -> str:
-    """The library inside a test folder, with the trailing separator the connectors concatenate onto. ▸r/atomic-writes"""
+    """The library inside a test folder, with the trailing separator. ▸r/atomic-writes"""
     if not folder:
         return ""
     return _normalised_dir(os.path.join(folder, TEST_LIB_SUBDIR))
@@ -52,15 +52,15 @@ def can_hold_a_library(folder: str) -> bool:
 
 
 def write_fresh_index(path: str, document: dict) -> None:
-    """Write a library index BORN at the current schema. Every creation door writes its index through here, so the two stamps cannot be half-applied by one of them. ▸p/library-creation-doors"""
+    """Write a library index born at the current schema. ▸p/library-creation-doors"""
     born = dict(document)
     born["version"] = database.SCHEMA_VERSION
     born["format"] = branding.LIBRARY_FORMAT
-    hostos.write_json_atomic(path, born, indent=None)    # the one JSON writer: a kill mid-dump then leaves NO file and the door re-seeds, where a truncated index routes into the rescue machinery
+    hostos.write_json_atomic(path, born, indent=None)    # atomic: a kill mid-dump leaves no file and the door re-seeds
 
 
 def seed_starter_index(lib_dir: str) -> None:
-    """Seed `lib_dir` from the SHIPPED starter, stamped on the way in. Adds nothing if an index is already there. Raises OSError or ValueError if the starter itself cannot be read. ▸p/library-creation-doors"""
+    """Seed `lib_dir` from the shipped starter unless an index exists. ▸p/library-creation-doors"""
     index = os.path.join(lib_dir, "library.json")
     if os.path.exists(index):
         return
@@ -70,7 +70,7 @@ def seed_starter_index(lib_dir: str) -> None:
 
 
 def seed_test_folder(folder: str) -> tuple:
-    """Make `folder` usable as a test library - a WHOLE one, index and both asset folders. Returns (ok, what), and only ever adds what is missing. ▸p/library-creation-doors"""
+    """Make `folder` a whole test library, adding only what is missing. ▸p/library-creation-doors"""
     if not folder:
         return (False, "no folder")
     made = []
@@ -112,11 +112,11 @@ def _renderer_settings(cls):
 
 @_renderer_settings
 class Prefs(_Persistence):
-    """Holds and loads the Preferences. A location is ONE RECORD in the library's `locations.json` and `locations.FIELDS` defines it; the settings.json keys are the copy, not the home. Asset favourites are NOT here - every section's star goes through `locations.is_favourite`/`set_favourite`, and `material_favorites` in settings.json is a migration source `locations.migrate_asset_favourites` reads and retires."""
+    """Holds and loads the Preferences; locations and favourites live in `locations`."""
 
     def __init__(self) -> None:
-        """Every default a `save()` before a successful `load()` needs, so neither can AttributeError. ▸p/prefs-defaults"""
-        self.path: str = hostos.config_root()  # where the OS keeps preferences, never under $AMAZE - that puts a user's library path inside the plugin folder, and inside a git tree for anyone who installed by cloning
+        """Every default a `save()` before a successful `load()` needs. ▸p/prefs-defaults"""
+        self.path: str = hostos.config_root()  # where the OS keeps preferences, never under $AMAZE
         self._directory = ""
         self.data = {}
         for _prop, attr, default in SHARED_KEYS.values():  # load() reads the same table
@@ -127,24 +127,24 @@ class Prefs(_Persistence):
         self._view_mode = "grid"
         self._thumbsize = 128  # grid (the legacy key); `_thumbsize_list` is the list view. Both match ClickSlider.DEFAULT_VALUE
         self._thumbsize_list = 128
-        self._library_user = ""  # WHO this is - the ONE identity, keying everything stored per user AND signing versions. Blank = nobody picked yet; NEVER backfilled from the machine ▸p/identity-is-chosen
+        self._library_user = ""  # who this is; blank = nobody picked yet, never backfilled ▸p/identity-is-chosen
         self._file_folders: list[str] = []  # the File section's one folder/favourite/last quartet, and since 2026-08-12 the only one
         self._file_favorites: list[str] = []
         self._last_file_folder = ""
-        self._file_show_unknown = True  # show files Amaze cannot thumbnail (the OS-icon rows); OFF restores the pre-merge view of recognised kinds only
-        self._file_location_records: dict = {}  # THE LAST-KNOWN COPY of the library's location records, path -> record: written after every store write, never read back, and what the File section shows when the library is unreachable
+        self._file_show_unknown = True  # show files Amaze cannot thumbnail (the OS-icon rows)
+        self._file_location_records: dict = {}  # last-known copy of the library's location records, path -> record
         self._show_notes = False
         self._notes_panel_width = 0  # 0 = never dragged, so the 450px launch width applies
-        self._sidebar_width = 0  # same contract, 220px design width - both side panes OWN their width and the grid is the splitter's only flexible pane
-        self._icon_line_weight = "template"  # "template" (the design template's thin 10px stroke) or "feather" (the icon set's default) - a look, not a measurement, which is why it is a preference
+        self._sidebar_width = 0  # same contract, 220px design width
+        self._icon_line_weight = "template"  # "template" (thin 10px stroke) or "feather" (the icon set's default)
         self._sidebar_counts = True  # entry counts on INDIVIDUAL categories/folders; "All" always shows its total regardless
         self._cache_dir = ""  # "" = this OS's own convention via hostos.cache_root()
         self._libraries: list[str] = []  # the Library list, the most recently opened first
-        self._test_mode = False  # THE TEST LIBRARY OVERLAY, and an overlay never a write: `_directory` keeps the real path the whole time, because that is the only way back. It moves the LIBRARY only - the cache is keyed by file path, so moving it threw thousands of valid thumbnails away and protected nothing ▸ `cache_dir`
+        self._test_mode = False  # the test library overlay; `_directory` keeps the real path, the cache stays
         self._test_dir = ""
         self._hide_empty_categories = True  # for Materials, "empty" respects the active renderer filter
         self._enabled_sections = _default_sections()
-        self._sections_seen = {  # a fresh Prefs has every section, so their seen flags start recorded; load() recomputes from the active user's block
+        self._sections_seen = {  # every section starts seen; load() recomputes from the active user's block
             "enabled_sections_seen_%s" % key: True
             for key in _INTRODUCED_SECTIONS}
         self._accent_color = "#5d7abd"  # size slider / progress bar; matches ClickSlider.LEFT_COLOR
@@ -156,20 +156,20 @@ class Prefs(_Persistence):
 
     @property
     def dir(self) -> str:
-        """The library directory - the TEST one while Test Mode is on - carrying the trailing separator the connectors concatenate onto. ▸r/atomic-writes"""
-        if getattr(self, "_test_mode", False) and getattr(  # getattr, because a Prefs built through __new__ is a SANCTIONED fixture shape and a property added later has to answer for those too
+        """The library directory, the test one in Test Mode, with the trailing separator. ▸r/atomic-writes"""
+        if getattr(self, "_test_mode", False) and getattr(  # getattr: a Prefs built through __new__ must answer too
                 self, "_test_dir", ""):
             return test_library_dir(self._test_dir)
         return self._directory
 
     @dir.setter
     def dir(self, val: str) -> None:
-        self._directory = val  # the REAL path, always: writing the overlay through here would destroy the only route back, which is why the Preferences rows that set it are disabled while the switch is on
-        self._adopt_shared()  # `dir` can be set long after load() - a fresh install picking the folder in a dialog - and without this the first save would push this machine's defaults over the library's answers
+        self._directory = val  # the real path, always, never the overlay
+        self._adopt_shared()  # take the library's answers before this machine's defaults are saved
 
     @property
     def real_dir(self) -> str:
-        """The configured library, ignoring the Test Mode overlay - for the few callers whose subject is the REAL library whatever the session points at, such as the disaster rehearsals."""
+        """The configured library, ignoring the Test Mode overlay."""
         return self._directory
 
     @property
@@ -304,7 +304,7 @@ class Prefs(_Persistence):
 
     @property
     def matx_resolution(self) -> str:
-        """Preferred texture resolution for online MaterialX downloads - a FLOOR, not a requirement: lacking it the importer takes the next highest, else the highest below ▸ `matx_sources.pick_resolution`."""
+        """Preferred texture resolution for online MaterialX downloads; see `matx_sources.pick_resolution`."""
         return self._matx_resolution
 
     @matx_resolution.setter
@@ -314,7 +314,7 @@ class Prefs(_Persistence):
 
     @property
     def library_user(self) -> str:
-        """WHICH user this machine is, for the current library: a UID, and a POINTER not a name - resolving it may MINT, which is `users.current(prefs)`'s job, not this file's. ▸p/identity-is-chosen"""
+        """This machine's user for the library, a UID; `users.current` resolves it. ▸p/identity-is-chosen"""
         return self._library_user
 
     @library_user.setter
@@ -328,13 +328,13 @@ class Prefs(_Persistence):
 
     @property
     def file_folders(self) -> list[str]:
-        """THE REGISTERED LOCATIONS - the library's answer, DERIVED not stored here; `_file_folders` is the last-known COPY, and `core/locations.py` says why a copy is never a second truth."""
+        """The registered locations, derived from the library; `_file_folders` is a last-known copy."""
         from amaze.core import locations
         return locations.registered_paths(self)
 
     @property
     def last_known_folders(self) -> list[str]:
-        """The settings.json copy, verbatim. `locations` reads it for the sidebar's ORDER and as the fallback; nothing else should."""
+        """The settings.json copy, verbatim; only `locations` reads it."""
         return self._file_folders
 
     @property
@@ -346,7 +346,7 @@ class Prefs(_Persistence):
         return self._file_location_records
 
     def keep_last_known(self, records, order, favourites) -> None:
-        """Refresh the settings.json copy from the library and persist. ONE writer, `core/locations.py` after a store write; a None means that store could not be READ, so its copy is left exactly as it was rather than blanked - losing the fallback is what the fallback exists to prevent."""
+        """Refresh the settings.json copy from the library and persist; a None leaves that copy as it was."""
         if records is not None:
             self._file_location_records = {
                 path: dict(value) for path, value in records.items()}
@@ -357,7 +357,7 @@ class Prefs(_Persistence):
         self.save()
 
     def hold_folder_order(self, order) -> None:
-        """Stage a USER-AUTHORED sidebar order WITHOUT saving - the reorder gesture's in-flight state; `locations.move_registered` is the only caller and `commit_registered_order` persists it on release. Storage spelling, like everything in `_file_folders`."""
+        """Stage a sidebar order without saving; `commit_registered_order` persists it."""
         self._file_folders = [str(p) for p in (order or [])]
 
     def add_file_folder(self, path: str) -> None:
@@ -380,19 +380,19 @@ class Prefs(_Persistence):
         return bool(locations.relocate_record(self, old, new))
 
     def move_file_folder(self, path: str, row: int) -> bool:
-        """Move one registered location to sidebar row `row` (0-based among the folders, the All row excluded) IN MEMORY - the gesture saves once on release, through the same locations-module door its siblings use."""
+        """Move a location to sidebar row `row` (0-based, All excluded) in memory only."""
         from amaze.core import locations
         return locations.move_registered(self, path, row)
 
     @property
     def file_favorites(self) -> list[str]:
-        """The user's File favourites as paths - the panel's prune sweep reads and removes through this trio when a favourited path is gone for good."""
+        """The user's File favourites as paths."""
         from amaze.core import locations
         return locations.favourite_paths(self)
 
     def add_file_favorite(self, path: str) -> None:
         from amaze.core import locations
-        locations.set_favourite(self, path, True)  # remove's symmetric half - the panel favourites through the grid today, and a one-sided pair invites drift
+        locations.set_favourite(self, path, True)  # remove's symmetric half
 
     def remove_file_favorite(self, path: str) -> None:
         from amaze.core import locations
@@ -564,7 +564,7 @@ class Prefs(_Persistence):
 
     @property
     def cache_dir(self) -> str:
-        """Custom thumbnail-cache root; "" = the per-OS default. TEST MODE DOES NOT MOVE IT - thumbnails are keyed by file path and say nothing about which library is open, so a switch that moved them threw away thousands of valid images (measured 2026-08-08: 2496 texture and 503 geometry, against a test cache holding 106 and none)."""
+        """Custom thumbnail-cache root; "" = the per-OS default. Test Mode does not move it."""
         return self._cache_dir
 
     @cache_dir.setter
@@ -617,7 +617,7 @@ class Prefs(_Persistence):
 
     @property
     def debug_mode(self) -> bool:
-        """Write a structured session log for deep analysis. OFF by default - a diagnostic tool, not a normal running mode."""
+        """Write a structured session log for deep analysis; off by default."""
         return self._debug_mode
 
     @debug_mode.setter
@@ -635,7 +635,7 @@ class Prefs(_Persistence):
 
     @property
     def matx_parallel_downloads(self) -> int:
-        """Concurrent preview downloads in the online browser - latency-bound not bandwidth-bound, so concurrency scales almost linearly (measured 32 PolyHaven previews: 1 -> 220ms each, 8 -> 42ms, 16 -> 18ms). Capped at 16 to stay a polite client of free public APIs."""
+        """Concurrent preview downloads in the online browser, capped at 16."""
         return self._matx_parallel_downloads
 
     @matx_parallel_downloads.setter
