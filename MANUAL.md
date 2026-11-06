@@ -399,14 +399,14 @@ Browses folders on disk.
 
 <img src="docs/images/file_grid.png" width="820">
 
-- **Images** (PNG, JPG, EXR, HDR, TGA, RAT and more) get cached
+- **Images** (PNG, JPG, EXR, HDR, TGA, RAT, PSD, PIC and more) get cached
   thumbnails. **Double-click** or **Load to Node** sets the file on the
   selected node's image parameter, and a drag sets it on any parameter
   field. Formats Qt cannot read are converted in the background, and
   Preferences ▸ Render sets how many convert at once. **Cancel**, at the
   right end of the tab row, stops the conversion and keeps the
   thumbnails already made.
-- **Geometry** (.bgeo, .obj, .fbx, .abc, .usd and more) gets
+- **Geometry** (.bgeo, .obj, .fbx, .abc, .usd, .usdz, .glb and more) gets
   viewport-rendered thumbnails, wireframe over shaded. **Double-click**,
   or a drag into a network, imports it in context. Esc interrupts a long
   first scan, which resumes later.

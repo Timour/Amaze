@@ -23,6 +23,10 @@ IMAGE_EXTENSIONS = (
     ".hdr",
     ".rat",  # Houdini's own texture format; iconvert reads it
     ".dng",  # camera raw; sips reads it on macOS
+    ".pic",  # Houdini's own picture format; iconvert reads it
+    ".psd",  # Photoshop; iconvert reads it
+    ".gif",
+    ".tx",  # tiled textures; iconvert reads them
 )
 
 

@@ -13,6 +13,12 @@ GEO_EXTENSIONS = (
     ".usd",
     ".usda",
     ".usdc",
+    ".usdz",
+    ".gltf",
+    ".glb",
+    ".dxf",
+    ".iges",
+    ".igs",
     ".ply",
     ".stl",
 )
@@ -35,10 +41,10 @@ def is_cache(name: str) -> bool:
 
 
 def loader_sop_for(path: str) -> str:
-    """The SOP that reads a geometry file; FBX has none and shows as a missing thumbnail."""
+    """The SOP that reads a geometry file: Alembic's, USD's, else the File SOP. ▸r/file-sop-formats"""
     lowered = path.lower()
     if lowered.endswith(".abc"):
         return "alembic"
-    if lowered.endswith((".usd", ".usda", ".usdc")):
+    if lowered.endswith((".usd", ".usda", ".usdc", ".usdz")):
         return "usdimport"
     return "file"

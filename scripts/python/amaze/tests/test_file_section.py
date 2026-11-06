@@ -23,7 +23,7 @@ sys.path.insert(
 
 from amaze.actions import files as files_actions  # noqa: E402
 from amaze import messages  # noqa: E402
-from amaze.core import debug, file_library, scene_captures  # noqa: E402
+from amaze.core import debug, file_library, geo_library, scene_captures  # noqa: E402
 from amaze.core import locations as locations_mod  # noqa: E402
 from amaze.core import tile_icons  # noqa: E402
 from amaze.helpers import helpers, hostos  # noqa: E402
@@ -497,10 +497,18 @@ class KindRouterTest(unittest.TestCase):
                 ("m.rat", "image"),    # Houdini's own texture format - sips fails cleanly on it, the iconvert fallback converts it
                 ("n.dng", "image"), ("o.DNG", "image"),    # camera raw macOS decodes natively (probed: sips converts a real DNG in ~2.3s)
                 ("g.bgeo.sc", "geometry"), ("h.obj", "geometry"),
-                ("i.usd", "geometry"),
+                ("i.usd", "geometry"), ("i2.usdz", "geometry"),    # the File SOP reads these ▸r/file-sop-formats
+                ("i3.glb", "geometry"), ("i4.gltf", "geometry"), ("i5.dxf", "geometry"),
+                ("i6.iges", "geometry"), ("i7.IGS", "geometry"),
+                ("p.pic", "image"), ("q.psd", "image"), ("r.gif", "image"), ("s.tx", "image"),
                 ("j.txt", "other"), ("k.bvh", "other"), ("noext", "other"),
-                ("l.hip.bak", "other")):
+                ("l.hip.bak", "other"), ("v.vdb", "other")):    # a cache is not rendered unasked
             self.assertEqual(kind, file_library.kind_for(name), name)
+
+    def test_the_loader_sop_follows_the_file_type(self):
+        for name, sop in (("a.abc", "alembic"), ("b.usd", "usdimport"), ("c.USDZ", "usdimport"),
+                          ("d.glb", "file"), ("e.fbx", "file"), ("f.dxf", "file")):
+            self.assertEqual(sop, geo_library.loader_sop_for(name), name)
 
 
 class ScenePathsAreSpelledPerPreferenceTest(unittest.TestCase):
@@ -3048,13 +3056,16 @@ class ShowTicksTest(unittest.TestCase):
 class ANewLocationStartsWithTheKnownKindsTest(unittest.TestCase):
     """Add ticks Images, Geometry and HIP; a folder added again keeps its own ticks."""
 
-    def test_add_ticks_the_three_known_kinds(self):
+    def test_add_ticks_every_kind(self):
         prefs, _library = _location_prefs(self, {})
         folder = tempfile.mkdtemp(prefix="amaze_new_loc_")
         self.addCleanup(shutil.rmtree, folder, ignore_errors=True)
         prefs.add_file_folder(folder)
         self.assertEqual(set(locations_mod.SHOWN_BY_DEFAULT),
                          set(file_library.location_kinds(prefs, folder)))
+        self.assertIn(locations_mod.KIND_OTHER,
+                      file_library.location_kinds(prefs, folder),
+                      "a new location hid other files")
         prefs.set_file_folder_kinds(folder, (locations_mod.KIND_OTHER,))
         prefs.add_file_folder(folder)
         self.assertEqual({locations_mod.KIND_OTHER},
