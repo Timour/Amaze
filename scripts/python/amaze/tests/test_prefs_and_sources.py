@@ -1,10 +1,14 @@
 """Prefs, online sources and the long tail; several read the source, by AST rather than by text."""
 
 import ast
+import builtins
 import contextlib
+import importlib.util
+import json
 import ntpath
 import os
 import shutil
+import ssl
 import sys
 import tempfile
 import types
@@ -1552,6 +1556,170 @@ class APickedRootKeepsItsSlash(unittest.TestCase):
                 with self.subTest(picker=method, picked=answer):
                     self.assertEqual(kept,
                                      self._picked(method, answer, windows))
+
+
+class ALoadOnceAnswerIsKeptUntilCleared(unittest.TestCase):
+    """Each load-once answer is worked out on the first call and kept until `cache_clear()`."""
+
+    def _fresh(self, cached):
+        """Empties `cached` now and after the test; with no cache to empty, the count fails."""
+        clear = getattr(cached, "cache_clear", lambda: None)
+        clear()
+        self.addCleanup(clear)
+
+    def _scratch(self):
+        """A folder of this test's own, removed after it."""
+        folder = test_support.scratch_dir("amaze_load_once_")
+        self.addCleanup(shutil.rmtree, folder, True)
+        return folder
+
+    def _hh(self, env):
+        """Patches `hou.getenv` to read `$HH` from `env`, so a test may set it part way."""
+        real = hou.getenv
+
+        def getenv(name, *rest, **named):
+            return env["HH"] if name == "HH" else real(name, *rest, **named)
+        return mock.patch.object(hou, "getenv", getenv)
+
+    def _stub_hh(self):
+        """A `$HH` whose `scripts/scene/lop_dragdrop.py` only sets `LOADED`."""
+        folder = self._scratch()
+        test_support.write_text(os.path.join(folder, "scripts", "scene", "lop_dragdrop.py"),
+                                'LOADED = "stub"\n')
+        return folder
+
+    def _specs(self):
+        """Counts the module specs built, one per load of `lop_dragdrop.py`."""
+        return mock.patch.object(importlib.util, "spec_from_file_location",
+                                 wraps=importlib.util.spec_from_file_location)
+
+    def test_real_specs_read_the_spec_file_once(self):
+        from amaze.render import generator
+        self._fresh(generator.real_specs)
+        path = os.path.join(self._scratch(), "material_specs.json")
+        test_support.write_text(path, json.dumps({"entries": [{"spec": {}}]}))
+        with mock.patch.object(generator, "_SPECS_FILE", path), \
+                mock.patch.object(generator, "json", wraps=json) as parsed:
+            first, second = generator.real_specs(), generator.real_specs()
+            self.assertEqual([{"spec": {}}], first, "the specs read were not the scratch file")
+            self.assertEqual(1, parsed.load.call_count, "a second call read the specs again")
+            self.assertIs(first, second)
+            generator.real_specs.cache_clear()
+            generator.real_specs()
+            self.assertEqual(2, parsed.load.call_count,
+                             "after cache_clear() the next call did not read the specs")
+
+    def test_online_facts_read_each_table_once(self):
+        from amaze.render import generator
+        self._fresh(generator.online_facts)
+        folder = self._scratch()
+        table = json.dumps({"materials": {"grey": {"color": [0.5, 0.5, 0.5]}}})
+        for _source, filename in generator._ONLINE_TABLES:
+            test_support.write_text(os.path.join(folder, filename), table)
+        tables = len(generator._ONLINE_TABLES)
+        with mock.patch.object(generator, "_RES_DIR", folder), \
+                mock.patch.object(generator, "json", wraps=json) as parsed:
+            first, second = generator.online_facts(), generator.online_facts()
+            self.assertEqual(tables, len(first), "the tables read were not the scratch ones")
+            self.assertEqual(tables, parsed.load.call_count, "a second call read the tables again")
+            self.assertIs(first, second)
+            generator.online_facts.cache_clear()
+            generator.online_facts()
+            self.assertEqual(2 * tables, parsed.load.call_count,
+                             "after cache_clear() the next call did not read the tables")
+
+    def test_character_rates_measure_the_specs_once(self):
+        from amaze.render import generator
+        self._fresh(generator.character_rates)
+        entries = [{"spec": {"coat": 0.5}}, {"spec": {"coat": 0.0}}]
+        with mock.patch.object(generator, "real_specs", return_value=entries) as specs:
+            first, second = generator.character_rates(), generator.character_rates()
+            self.assertEqual(0.5, first["coat"], "the rates were not measured from these specs")
+            self.assertEqual(1, specs.call_count, "a second call measured the specs again")
+            self.assertIs(first, second)
+            generator.character_rates.cache_clear()
+            generator.character_rates()
+            self.assertEqual(2, specs.call_count,
+                             "after cache_clear() the next call did not measure the specs")
+
+    def test_the_ssl_context_is_built_once(self):
+        from amaze.core import matx_sources
+        self._fresh(matx_sources._ssl_context)
+        with mock.patch.object(matx_sources, "ssl", wraps=ssl) as tls:
+            first, second = matx_sources._ssl_context(), matx_sources._ssl_context()
+            self.assertEqual(1, tls.create_default_context.call_count,
+                             "a second call parsed the CA bundle again")
+            self.assertIs(first, second)
+            matx_sources._ssl_context.cache_clear()
+            matx_sources._ssl_context()
+            self.assertEqual(2, tls.create_default_context.call_count,
+                             "after cache_clear() the next call did not build a context")
+
+    def test_an_empty_theme_preference_is_read_once(self):
+        from amaze.helpers import theme
+        self._fresh(theme._read)
+        with mock.patch.object(hou, "getPreference", return_value="") as asked:
+            first, second = theme._read(), theme._read()
+            self.assertEqual([None, None], [first, second], "an empty preference read as a theme")
+            self.assertEqual(1, asked.call_count,
+                             "the None answer was not kept, so it was asked again")
+            theme._read.cache_clear()
+            theme._read()
+            self.assertEqual(2, asked.call_count,
+                             "after cache_clear() the next call did not ask again")
+
+    def test_pillow_is_imported_once(self):
+        from amaze.core import conversion
+        self._fresh(conversion._have_pillow)
+        with mock.patch.object(builtins, "__import__", side_effect=builtins.__import__) as imports:
+            first, second = conversion._have_pillow(), conversion._have_pillow()
+            pillow = [c for c in imports.call_args_list if c.args[:1] == ("PIL.Image",)]
+            self.assertEqual(1, len(pillow), "a second call imported Pillow again")
+            self.assertEqual(first, second)
+            conversion._have_pillow.cache_clear()
+            conversion._have_pillow()
+            pillow = [c for c in imports.call_args_list if c.args[:1] == ("PIL.Image",)]
+            self.assertEqual(2, len(pillow),
+                             "after cache_clear() the next call did not import Pillow")
+
+    def test_the_stock_lop_module_loads_once(self):
+        from amaze.core import dragengine
+        self._fresh(dragengine._load_stock_lop)
+        with self._hh({"HH": self._stub_hh()}), self._specs() as specs:
+            first, second = dragengine.stock_lop(), dragengine.stock_lop()
+            self.assertEqual("stub", getattr(first, "LOADED", None), "the stub $HH was not loaded")
+            self.assertEqual(1, specs.call_count, "a second call loaded the module again")
+            self.assertIs(first, second)
+            dragengine._load_stock_lop.cache_clear()
+            dragengine.stock_lop()
+            self.assertEqual(2, specs.call_count,
+                             "after cache_clear() the next call did not load the module")
+
+    def test_without_hh_each_call_logs_and_nothing_is_kept(self):
+        """No $HH keeps nothing: each call logs, and the first call once $HH is set loads."""
+        from amaze.core import debug, dragengine
+        self._fresh(dragengine._load_stock_lop)
+        env, stub = {"HH": ""}, self._stub_hh()
+        with self._hh(env), self._specs() as specs, \
+                mock.patch.object(debug, "event") as logged:
+            self.assertEqual([None, None], [dragengine.stock_lop(), dragengine.stock_lop()])
+            self.assertEqual(["drag", "drag"], [c.args[0] for c in logged.call_args_list],
+                             "a call without $HH went unlogged, so its None was kept")
+            self.assertEqual(0, specs.call_count, "a load was tried without $HH")
+            env["HH"] = stub
+            first, second = dragengine.stock_lop(), dragengine.stock_lop()
+            self.assertEqual("stub", getattr(first, "LOADED", None),
+                             "the answer from before $HH was set was kept")
+            self.assertEqual(1, specs.call_count, "the module did not load exactly once")
+            self.assertIs(first, second)
+
+    def test_a_failed_stock_lop_load_is_kept(self):
+        from amaze.core import dragengine
+        self._fresh(dragengine._load_stock_lop)
+        with self._hh({"HH": self._scratch()}), self._specs() as specs:
+            self.assertEqual([None, None], [dragengine.stock_lop(), dragengine.stock_lop()],
+                             "a $HH without the module loaded something")
+            self.assertEqual(1, specs.call_count, "a failed load was tried again")
 
 
 if __name__ == "__main__":

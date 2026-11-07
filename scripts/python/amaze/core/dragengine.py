@@ -1,5 +1,6 @@
 """The drag and drop engine: one self-managed gesture, never a native Qt drag. ▸r/native-drag-paint"""
 
+import functools
 import importlib.util
 from contextlib import contextmanager
 import os
@@ -925,31 +926,30 @@ def viewport_release_target(panel):
     return None
 
 
-_stock_lop_cache = None
+@functools.cache
+def _load_stock_lop():
+    """`lop_dragdrop.py` loaded from $HH, or None when the load fails; either answer is kept."""
+    path = os.path.join(hou.getenv("HH"), "scripts", "scene", "lop_dragdrop.py")
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "houdini_stock_lop_dragdrop", path
+        )
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+    except Exception as exc:
+        _dbg("stock lop_dragdrop load failed", error=str(exc))
+        return None
+    return mod
 
 
 def stock_lop():
     """Houdini's own `scripts/scene/lop_dragdrop.py`, loaded once from $HH; no $HH, no lookup."""
-    global _stock_lop_cache
-    if _stock_lop_cache is None:
-        hh = hou.getenv("HH")
-        if not hh:
-            from amaze.core import debug
-            debug.event("drag", "no $HH - the host's own LOP helpers "
-                                "were not loaded")
-            return None
-        path = os.path.join(hh, "scripts", "scene", "lop_dragdrop.py")
-        try:
-            spec = importlib.util.spec_from_file_location(
-                "houdini_stock_lop_dragdrop", path
-            )
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)
-            _stock_lop_cache = mod
-        except Exception as exc:
-            _dbg("stock lop_dragdrop load failed", error=str(exc))
-            _stock_lop_cache = False
-    return _stock_lop_cache or None
+    if not hou.getenv("HH"):
+        from amaze.core import debug
+        debug.event("drag", "no $HH - the host's own LOP helpers "
+                            "were not loaded")
+        return None
+    return _load_stock_lop()
 
 
 

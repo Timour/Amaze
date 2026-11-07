@@ -1,5 +1,6 @@
 """Palette, fonts and UI scale from Houdini's Pluto theme, else built-in colours. ▸r/pluto-theme"""
 
+import functools
 import json
 
 from PySide6 import QtGui
@@ -120,22 +121,18 @@ _ACCENT_DERIVED = {  # (chroma factor vs the accent's own, tone) ▸r/pluto-them
     "tab_ring": (0.59, 33.8),
 }
 
-_theme = "unread"
 _derived = {}
 
 
+@functools.cache
 def _read():
-    global _theme
-    if _theme != "unread":
-        return _theme
-    _theme = None
     try:
         raw = hou.getPreference("pluto_ui.themeValues")
         if raw:
             values = json.loads(raw)
             from hutil import oklch
 
-            _theme = {
+            return {
                 "oklch": oklch,
                 "base": _to_qcolor(oklch, values["base"]),
                 "accent": _to_qcolor(oklch, values["primary"]),
@@ -145,7 +142,7 @@ def _read():
         from amaze.core import debug   # lazy: debug imports theme for its session header, so a module-top import cycles on reload
 
         debug.event("theme", "not readable, using built-in colors", error=str(exc))
-    return _theme
+    return None
 
 
 def _to_qcolor(oklch, triplet):

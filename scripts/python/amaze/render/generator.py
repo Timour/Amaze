@@ -1,6 +1,7 @@
 """Generated materials: a spec dict built in class from measured materials ▸r/generator-facts"""
 
 import colorsys
+import functools
 import json
 import os
 import random
@@ -33,21 +34,15 @@ _RGL_CLASSES = (    # keyword classes for RGL, first match wins, so order matter
 _FABRIC_WORDS = ("fabric", "cloth", "textile", "felt", "silk", "wool",    # classes and tags given sheen
                  "cotton", "velvet", "denim", "linen")
 
-_online_facts = None
-_real_specs = None
-_rates = None
 
-
+@functools.cache
 def real_specs() -> list:
     """The authored spec entries, or [] when the database is absent."""
-    global _real_specs
-    if _real_specs is None:
-        try:
-            with open(_SPECS_FILE, encoding="utf-8") as handle:
-                _real_specs = json.load(handle).get("entries", [])
-        except (OSError, ValueError):
-            _real_specs = []
-    return _real_specs
+    try:
+        with open(_SPECS_FILE, encoding="utf-8") as handle:
+            return json.load(handle).get("entries", [])
+    except (OSError, ValueError):
+        return []
 
 
 def _classes_for(uid: str, entry: dict) -> list:
@@ -90,11 +85,9 @@ def _normalise(source: str, uid: str, entry: dict):
     }
 
 
+@functools.cache
 def online_facts() -> list:
     """Every shipped online material as a fact dict, cached; [] when no table ships."""
-    global _online_facts
-    if _online_facts is not None:
-        return _online_facts
     facts = []
     for source, filename in _ONLINE_TABLES:
         try:
@@ -107,7 +100,6 @@ def online_facts() -> list:
             fact = _normalise(source, uid, entry)
             if fact is not None:
                 facts.append(fact)
-    _online_facts = facts
     return facts
 
 
@@ -129,17 +121,14 @@ def fact_kind(fact: dict) -> str:
     return "opaque"
 
 
+@functools.cache
 def character_rates() -> dict:
     """How often authored materials carry coat, emission and sheen; cached, with fallbacks."""
-    global _rates
-    if _rates is not None:
-        return _rates
     defaults = {"coat": 0.334, "emission": 0.014, "sheen": 0.021,
                 "coat_roughness": 0.0}
     entries = real_specs()
     if not entries:
-        _rates = defaults
-        return _rates
+        return defaults
     total = float(len(entries))
     rates = {}
     for parm in ("coat", "emission", "sheen"):
@@ -156,8 +145,7 @@ def character_rates() -> dict:
     rates["coat_roughness"] = (
         coat_rough[len(coat_rough) // 2] if coat_rough else 0.0
     )
-    _rates = rates
-    return _rates
+    return rates
 
 
 def _clamp(value, low=0.0, high=1.0):

@@ -253,7 +253,7 @@ def _reap_or_abandon(process) -> bool:
     return False
 
 
-@functools.lru_cache(maxsize=1)
+@functools.cache
 def _have_pillow() -> bool:
     """Is Pillow importable in this Houdini's Python? Cached. ▸r/conversion-internals"""
     try:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import json
 import math
 import os
@@ -60,21 +61,16 @@ def pick_resolution(available, preferred: str) -> str | None:
     return ranked[-1][1]                # nothing higher - take the largest
 
 
-_SSL_CONTEXT = None    # built once - assembling an SSL context parses the whole CA bundle
-
-
+@functools.cache
 def _ssl_context():
-    """A verifying SSL context on Houdini's certifi bundle, built once. ▸r/matx-network-hardening"""
-    global _SSL_CONTEXT
-    if _SSL_CONTEXT is None:
-        try:
-            import certifi
+    """A verifying SSL context, built once, since a build parses every CA. ▸r/matx-network-hardening"""
+    try:
+        import certifi
 
-            _SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
-        except Exception as exc:
-            debug.note("no certifi - using the system CA store", error=str(exc))    # never unverified
-            _SSL_CONTEXT = ssl.create_default_context()
-    return _SSL_CONTEXT
+        return ssl.create_default_context(cafile=certifi.where())
+    except Exception as exc:
+        debug.note("no certifi - using the system CA store", error=str(exc))    # never unverified
+        return ssl.create_default_context()
 
 
 ALLOWED_SCHEMES = ("https",)    # remote JSON supplies every URL here ▸r/matx-network-hardening
