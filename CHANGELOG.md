@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.33.5
+
+- The test that checks the panel reloads every module it imports also sees a module whose import line carries a comment. Nothing changes in use.
+
 ## 1.33.4
 
 - The panel's code is split up: each section saves through its own method, and the online import, the package import, drop placement and capture each have a module of their own. Nothing changes in use.
