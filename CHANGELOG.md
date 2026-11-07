@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.33.6
+
+- Seven values Amaze works out once, among them the theme's colours and the certificate check for online sources, are kept by the same code, and Customize asks each section which of a tile's name, category and tags it can change. Nothing changes in use.
+
 ## 1.33.5
 
 - The test that checks the panel reloads every module it imports also sees a module whose import line carries a comment. Nothing changes in use.
