@@ -20,6 +20,7 @@ import hou  # noqa: E402
 
 from amaze import messages  # noqa: E402
 from amaze.panel import panel as panel_mod  # noqa: E402
+from amaze.panel import sections  # noqa: E402
 from amaze.tests import test_support  # noqa: E402 - redirects the log
 
 
@@ -166,7 +167,7 @@ class TheMultiMaterialSaveRunsInsideHoudinisOperation(_OnThePanel):
                 mock.patch.object(self.panel, "enable_renderer_on_add"), \
                 mock.patch.object(self.panel, "update_renderer_toggles"), \
                 mock.patch.object(self.panel, "_refresh_sidebar_categories"):
-            self.panel._commit_material_save(picked, dialog)
+            self.panel.sections["material"].commit_save(picked, picked[0], dialog)
         return saved
 
     def test_each_material_is_reported_by_name_before_its_save(self):
@@ -189,10 +190,13 @@ class ThePanelPumpsNothingForImportsAndSaves(unittest.TestCase):
     def test_no_processEvents_in_the_import_and_save_paths(self):
         for name in ("_download_operation", "_import_online_records",
                      "restore_amaze_packages", "_import_online_records_to_scene",
-                     "save_asset", "_commit_material_save"):
+                     "save_asset"):
             source = inspect.getsource(getattr(panel_mod.AmazePanel, name))
             self.assertNotIn("processEvents", source,
                              name + " pumps the event loop itself")
+        self.assertNotIn("processEvents",
+                         inspect.getsource(sections.MaterialSection.commit_save),
+                         "MaterialSection.commit_save pumps the event loop itself")
 
 
 if __name__ == "__main__":

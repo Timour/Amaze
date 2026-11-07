@@ -170,6 +170,10 @@ class Section:
         """(the categories this section's save offers, the one pre-selected)."""
         return [], ""
 
+    def commit_save(self, nodes, node, dialog) -> None:
+        """Save into this section from an accepted D09; `node` is the one aimed at, among `nodes`."""
+        raise NotImplementedError
+
     @classmethod
     def save_rank(cls, nodes) -> int:
         """Lowest opens first when several sections can take a save."""
@@ -837,6 +841,50 @@ class MaterialSection(AssetSection):
             nodes_mod.NodeHandler(self.panel.prefs).get_renderer_from_node(n)
             for n in nodes)
 
+    def commit_save(self, nodes, node, dialog) -> None:
+        if dialog.categories:
+            self.panel.category_model.check_add_category(dialog.categories)
+
+        renderers = []
+        failures = []
+        total, done = len(nodes), 0
+        try:
+            with hou.InterruptableOperation(    # type: ignore
+                messages.SAVING_MATERIALS, open_interrupt_dialog=True
+            ) as op:
+                for asset in nodes:
+                    op.updateLongProgress(done / total,
+                                          "%d/%d  %s" % (done + 1, total, asset.name()))
+                    try:    # a raise out of the save chain joins the per-material report
+                        renderer = material_actions.add_asset(
+                            self.panel.material_model, asset, dialog.categories, dialog.tags,
+                            dialog.fav, name=dialog.name or None
+                        )
+                    except hou.OperationInterrupted:
+                        raise
+                    except Exception as exc:                    # noqa: BLE001
+                        debug.exception("save_asset", exc, node=asset.path())
+                        failures.append('"%s": %s' % (asset.name(), exc))
+                        done += 1
+                        continue
+                    done += 1
+                    if not renderer:    # "" is a refused save that already spoke; name which one
+                        failures.append(messages.SAVE_DID_NOT_COMPLETE_LINE % asset.name())
+                        continue
+                    renderers.append(renderer)
+        except hou.OperationInterrupted:
+            debug.status(messages.SAVE_STOPPED % (done, total))
+
+        ui = getattr(hou, "ui", None)
+        if failures and ui is not None:
+            ui.displayMessage(
+                messages.MATERIALS_SAVE_FAILURES % "\n".join(failures))
+        for renderer in renderers:
+            self.panel.enable_renderer_on_add(renderer)
+        self.panel.prefs.save()
+        self.panel.update_renderer_toggles()
+        self.panel._refresh_sidebar_categories()
+
     def update_preview(self, indexes) -> None:
         """Update Render on Material tiles: the whole selection in one render batch."""
         model, rows = self._model_and_rows(indexes)
@@ -933,6 +981,45 @@ class CopSection(AssetSection):
     def can_save(self, nodes) -> bool:
         return (bool(nodes) and len({n.parent() for n in nodes}) == 1
                 and cop_nodes.can_save(nodes[0]))
+
+    def commit_save(self, nodes, node, dialog) -> None:
+        """Works in any context the Nodes section supports; the asset records which one."""
+        ui = getattr(hou, "ui", None)
+        net = node.parent()
+        items = [i for i in hou.selectedItems() if i.parent() == net]
+        if not any(i == node for i in items):
+            items.append(node)
+        if len(items) == 1 and cop_nodes.saves_whole_network(node):    # a container alone saves its network
+            items = None
+
+        if dialog.categories:
+            self.panel.cop_category_model.check_add_category(dialog.categories)
+
+        result = None
+        save_error = None    # no layout wrapper: add_asset announces its own insert
+        try:
+            result = node_actions.add_asset(
+                self.panel.cop_model,
+                node,
+                dialog.categories,
+                dialog.tags,
+                dialog.fav,
+                items=items,
+                name=dialog.name,
+            )
+        except Exception as exc:                        # noqa: BLE001
+            debug.exception("_commit_cop_save", exc, node=node.path())
+            save_error = str(exc)
+        if save_error is not None:
+            if ui is not None:
+                ui.displayMessage(
+                    messages.NODE_SAVE_FAILED_WITH_REASON % (node.name(), save_error)
+                )
+            return
+        if not result and ui is not None:
+            ui.displayMessage(
+                messages.NODE_SAVE_FAILED % node.name()
+            )
 
     def update_preview(self, indexes) -> None:
         """Update Render on Node tiles: each network's picture re-rendered by the Node verbs."""
@@ -1137,6 +1224,22 @@ class CodeSection(AssetSection):
         from amaze.helpers import helpers
         parm = helpers.find_code_parm(nodes[0]) if len(nodes) == 1 else None
         return parm is not None and bool(parm.eval().strip())    # an empty snippet saves nothing
+
+    def commit_save(self, nodes, node, dialog) -> None:
+        """The snippet is the node's code parm as it reads now."""
+        from amaze.helpers import helpers
+        parm = helpers.find_code_parm(node)
+        if dialog.categories:
+            self.panel.code_category_model.check_add_category(dialog.categories)
+        self.panel.code_model.add_asset(    # no layout wrapper: add_asset announces its own insert
+            parm.eval(),
+            dialog.name or node.name(),
+            dialog.language or helpers.code_parm_language(parm),
+            dialog.categories,
+            dialog.tags,
+            False,
+        )
+        self.panel._refresh_sidebar_categories()
 
     @classmethod
     def save_rank(cls, nodes) -> int:
@@ -2194,6 +2297,19 @@ class GradientSection(AssetSection):
     def save_categories(self) -> tuple:
         categories = self.panel.gradient_model.user_categories()
         return categories, (categories[0] if categories else "")
+
+    def commit_save(self, nodes, node, dialog) -> None:
+        """The node's first color ramp, registered as a user gradient."""
+        from amaze.helpers import helpers
+        parm = helpers.find_color_ramp_parm(node)
+        ramp_data = helpers.ramp_to_data(parm.evalAsRamp())
+        self.panel.gradient_model.add_user_gradient(
+            dialog.name or node.name(), dialog.categories, ramp_data,
+            tags=dialog.tags
+        )
+        if dialog.categories:
+            self.panel.gradient_categories_model.check_add_category(    # brackets its own insert
+                dialog.categories)
 
     @classmethod
     def save_rank(cls, nodes) -> int:

@@ -22,7 +22,7 @@ _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 _PACKAGE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 GUARDED = ("panel/panel.py", "render/thumbs.py", "core/dragengine.py",
-           "utils/rc_calls.py", "prefs/prefs.py")
+           "utils/rc_calls.py", "prefs/prefs.py", "panel/sections.py")
 
 
 def raw_reaches(relpath):

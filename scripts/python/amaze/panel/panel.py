@@ -2734,22 +2734,6 @@ class AmazePanel(QtWidgets.QWidget):
         )
         self.sections["code"].run_code_dialog(dialog, "")    # the first Apply adds the snippet
 
-    def _commit_code_save(self, node: hou.Node, dialog) -> None:
-        """The snippet is the node's code parm as it reads now."""
-        from amaze.helpers import helpers
-        parm = helpers.find_code_parm(node)
-        if dialog.categories:
-            self.code_category_model.check_add_category(dialog.categories)
-        self.code_model.add_asset(    # no layout wrapper: add_asset announces its own insert
-            parm.eval(),
-            dialog.name or node.name(),
-            dialog.language or helpers.code_parm_language(parm),
-            dialog.categories,
-            dialog.tags,
-            False,
-        )
-        self._refresh_sidebar_categories()
-
     def new_code_snippet(self) -> None:
         """Create a snippet by typing/pasting into an empty editor."""
         self._add_code_snippet("", "VEX", "")
@@ -2794,45 +2778,6 @@ class AmazePanel(QtWidgets.QWidget):
                 if create(index, network, **extra):
                     return True
         return False
-
-    def _commit_cop_save(self, node: hou.Node, dialog) -> None:
-        """Works in any context the Nodes section supports; the asset records which one."""
-        ui = getattr(hou, "ui", None)
-        net = node.parent()
-        items = [i for i in hou.selectedItems() if i.parent() == net]
-        if not any(i == node for i in items):
-            items.append(node)
-        if len(items) == 1 and cop_nodes.saves_whole_network(node):    # a container alone saves its network
-            items = None
-
-        if dialog.categories:
-            self.cop_category_model.check_add_category(dialog.categories)
-
-        result = None
-        save_error = None    # no layout wrapper: add_asset announces its own insert
-        try:
-            result = node_actions.add_asset(
-                self.cop_model,
-                node,
-                dialog.categories,
-                dialog.tags,
-                dialog.fav,
-                items=items,
-                name=dialog.name,
-            )
-        except Exception as exc:                        # noqa: BLE001
-            debug.exception("_commit_cop_save", exc, node=node.path())
-            save_error = str(exc)
-        if save_error is not None:
-            if ui is not None:
-                ui.displayMessage(
-                    messages.NODE_SAVE_FAILED_WITH_REASON % (node.name(), save_error)
-                )
-            return
-        if not result and ui is not None:
-            ui.displayMessage(
-                messages.NODE_SAVE_FAILED % node.name()
-            )
 
     def _active_network_pwd(self) -> hou.Node | None:
         """The pwd of the network editor the user most likely looks at, or None."""
@@ -3266,19 +3211,6 @@ class AmazePanel(QtWidgets.QWidget):
                 if isinstance(candidate, hou.Node):
                     return candidate
         return None
-
-    def _commit_gradient_save(self, node: hou.Node, dialog) -> None:
-        """The node's first color ramp, registered as a user gradient."""
-        from amaze.helpers import helpers
-        parm = helpers.find_color_ramp_parm(node)
-        ramp_data = helpers.ramp_to_data(parm.evalAsRamp())
-        self.gradient_model.add_user_gradient(
-            dialog.name or node.name(), dialog.categories, ramp_data,
-            tags=dialog.tags
-        )
-        if dialog.categories:
-            self.gradient_categories_model.check_add_category(    # brackets its own insert
-                dialog.categories)
 
     def _on_splitter_moved(self, _pos: int, _index: int) -> None:
         """A splitter drag records both side panes' widths; the debounced save writes them."""
@@ -3777,14 +3709,7 @@ class AmazePanel(QtWidgets.QWidget):
         )
         if dialog.canceled or not r:
             return
-        if chosen == "material":
-            self._commit_material_save(nodes, dialog)
-        elif chosen == "cop":
-            self._commit_cop_save(node, dialog)
-        elif chosen == "gradient":
-            self._commit_gradient_save(node, dialog)
-        elif chosen == "code":
-            self._commit_code_save(node, dialog)
+        self.sections[chosen].commit_save(nodes, node, dialog)
 
     def save_asset(self) -> None:
         """Save the selected nodes; ones already in the library raise one save-over/new/cancel choice."""
@@ -3891,50 +3816,6 @@ class AmazePanel(QtWidgets.QWidget):
         if not self.material_model or not self.category_model or not sel:
             return
         self._save_new(sel, "material")
-
-    def _commit_material_save(self, sel: list[hou.Node], dialog) -> None:
-        if dialog.categories:
-            self.category_model.check_add_category(dialog.categories)
-
-        renderers = []
-        failures = []
-        total, done = len(sel), 0
-        try:
-            with hou.InterruptableOperation(    # type: ignore
-                messages.SAVING_MATERIALS, open_interrupt_dialog=True
-            ) as op:
-                for asset in sel:
-                    op.updateLongProgress(done / total,
-                                          "%d/%d  %s" % (done + 1, total, asset.name()))
-                    try:    # a raise out of the save chain joins the per-material report
-                        renderer = material_actions.add_asset(
-                            self.material_model, asset, dialog.categories, dialog.tags,
-                            dialog.fav, name=dialog.name or None
-                        )
-                    except hou.OperationInterrupted:
-                        raise
-                    except Exception as exc:                    # noqa: BLE001
-                        debug.exception("save_asset", exc, node=asset.path())
-                        failures.append('"%s": %s' % (asset.name(), exc))
-                        done += 1
-                        continue
-                    done += 1
-                    if not renderer:    # "" is a refused save that already spoke; name which one
-                        failures.append(messages.SAVE_DID_NOT_COMPLETE_LINE % asset.name())
-                        continue
-                    renderers.append(renderer)
-        except hou.OperationInterrupted:
-            debug.status(messages.SAVE_STOPPED % (done, total))
-
-        ui = getattr(hou, "ui", None)
-        if failures and ui is not None:
-            ui.displayMessage(
-                messages.MATERIALS_SAVE_FAILURES % "\n".join(failures))
-        for renderer in renderers:
-            self.enable_renderer_on_add(renderer)
-        self.prefs.save()
-        self.update_renderer_toggles()
-        self._refresh_sidebar_categories()
 
     def enable_renderer_on_add(self, renderer: str) -> None:
         """Switch a renderer on when its first material is saved, so the save shows in its own tab."""
