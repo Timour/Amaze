@@ -306,7 +306,7 @@ class PackageImportTest(unittest.TestCase):
         original = self._gradient_package(out)
         before = model.rowCount()
         held = test_support.asset_ids(model)
-        summary = self.panel.import_package_file(out)
+        summary = self.panel.package_import.import_file(out)
         self.assertEqual(1, summary["imported"])
         self.assertEqual(before + 1, model.rowCount())
         newborn, = test_support.arrived(model, held)
@@ -323,7 +323,7 @@ class PackageImportTest(unittest.TestCase):
         self.assertIn(
             "Import", self.panel.gradient_categories_model._categories,
             "the Import category never reached the sidebar model")
-        self.panel.import_package_file(out)
+        self.panel.package_import.import_file(out)
         self.assertEqual(before + 2, model.rowCount(),
                          "a fresh import deduplicated - that is restore "
                          "mode's job, not this door's")
@@ -334,7 +334,7 @@ class PackageImportTest(unittest.TestCase):
         out = _out_path(self)
         original = self._gradient_package(out)
         before = model.rowCount()
-        summary = self.panel.import_package_file(out, restore=True)
+        summary = self.panel.package_import.import_file(out, restore=True)
         self.assertEqual(0, summary["imported"])
         self.assertEqual(1, summary["skipped"],
                          "an id already in the library was re-imported")
@@ -346,7 +346,7 @@ class PackageImportTest(unittest.TestCase):
         item = dict(item, record=record)
         packages.write_package(with_new_id, [item])
         held = test_support.asset_ids(model)
-        summary = self.panel.import_package_file(with_new_id, restore=True)
+        summary = self.panel.package_import.import_file(with_new_id, restore=True)
         self.assertEqual(1, summary["imported"])
         self.assertEqual(["f" * 32],
                          [str(a.mat_id) for a in test_support.arrived(model, held)],
@@ -365,7 +365,7 @@ class PackageImportTest(unittest.TestCase):
         out = _out_path(self)
         packages.write_package(out, [packages.collect_file(source,
                                                            "other")])
-        summary = self.panel.import_package_file(out)
+        summary = self.panel.package_import.import_file(out)
         self.assertEqual(1, summary["files"])
         landed = os.path.join(self.panel.prefs.dir, "import", "walk.bvh")
         self.assertEqual(b"mocap", _bytes(landed))
@@ -393,7 +393,7 @@ class PackageImportTest(unittest.TestCase):
                 handle.write(b"mocap")
             out = _out_path(self, name + ".amazepkg")
             packages.write_package(out, [packages.collect_file(path, "other")])
-            self.assertEqual(1, self.panel.import_package_file(out)["files"])
+            self.assertEqual(1, self.panel.package_import.import_file(out)["files"])
 
         def name_shown():
             return {hostos_mod.canonical_path_key(path): name for path, name
@@ -441,7 +441,7 @@ class PackageImportTest(unittest.TestCase):
         folders.rowsInserted.connect(heard)
         self.addCleanup(folders.rowsInserted.disconnect, heard)
         before = folders.rowCount()
-        self.panel.import_package_file(package_of("walk_a.bvh"))
+        self.panel.package_import.import_file(package_of("walk_a.bvh"))
         self.assertEqual(
             [(before, before)], inserted,
             "the import location was registered behind the sidebar "
@@ -465,7 +465,7 @@ class PackageImportTest(unittest.TestCase):
                 time.sleep(0.002)
 
         count = landed()
-        self.panel.import_package_file(package_of("walk_b.bvh"))
+        self.panel.package_import.import_file(package_of("walk_b.bvh"))
         self.assertEqual(
             count + 1, landed(),
             "a second import landed a file in the import location and "
@@ -484,7 +484,7 @@ class PackageImportTest(unittest.TestCase):
             dst.writestr(packages.MANIFEST, json.dumps(manifest))
         before = model.rowCount()
         with self.assertRaises(packages.PackageError):
-            self.panel.import_package_file(broken)
+            self.panel.package_import.import_file(broken)
         self.assertEqual(before, model.rowCount(),
                          "a refused package still changed the library")
 
@@ -499,7 +499,7 @@ class PackageImportTest(unittest.TestCase):
             out, [packages.collect_asset(model, asset.mat_id)])
         before = model.rowCount()
         held = test_support.asset_ids(model)
-        self.panel.import_package_file(out)
+        self.panel.package_import.import_file(out)
         self.assertEqual(before + 1, model.rowCount())
         newborn, = test_support.arrived(model, held)
         sources = {k: p for k, p in
@@ -546,7 +546,7 @@ class ARefusedImportIsTakenBackWhole(unittest.TestCase):
         from amaze.core import database
         with mock.patch.object(database.DatabaseConnector, "save",
                                return_value=False):
-            return self.panel.import_package_file(out)
+            return self.panel.package_import.import_file(out)
 
     def _ids(self):
         return [str(a.mat_id) for a in self.model.assets]
@@ -616,7 +616,7 @@ class AFiveAssetImportSavesOnce(unittest.TestCase):
                                side_effect=(lambda db: False) if refuse
                                else save) as saves:
             summary = packages.import_package(
-                self.panel._package_models(), self.panel.prefs, self.out)
+                self.panel.package_import.models(), self.panel.prefs, self.out)
         return summary, saves.call_count
 
     def test_five_materials_land_in_one_save(self):
@@ -666,7 +666,7 @@ class AFiveAssetImportSavesOnce(unittest.TestCase):
 
         with mock.patch.object(hostos, "write_json_atomic", counted):
             summary = packages.import_package(
-                self.panel._package_models(), self.panel.prefs, noted)
+                self.panel.package_import.models(), self.panel.prefs, noted)
         self.assertEqual(5, summary["imported"], summary)
         self.assertEqual(1, len(writes), "five note pages wrote %s %d times"
                          % (notes.SPEC.filename, len(writes)))
@@ -1310,8 +1310,8 @@ class OnlinePackageImportTest(unittest.TestCase):
         before = model.rowCount()
         held = test_support.asset_ids(model)
         with mock.patch.object(self.panel.matx_online_model, "_sources",
-                               [source]):    # the real `_online_source_for` runs, so its door is exercised too
-            ok, reason = self.panel.import_online_material(chosen)
+                               [source]):    # the real `online_import.source_for` runs, so its door is exercised too
+            ok, reason = self.panel.online_import.import_material(chosen)
         self.assertTrue(ok, reason)
         self.assertEqual(before + 1, model.rowCount(),
                          "one selected tile did not import as one asset")
@@ -1340,7 +1340,7 @@ class OnlinePackageImportTest(unittest.TestCase):
                                [source]):
             with mock.patch.object(notes, "set_notes",
                                    side_effect=OSError("notes full")) as wrote:
-                ok, reason = self.panel.import_online_material(record)
+                ok, reason = self.panel.online_import.import_material(record)
         self.assertTrue(wrote.called, "premise: the note write was reached")
         self.assertTrue(
             ok, "the asset was imported and SAVED before its note page "
@@ -1357,7 +1357,7 @@ class OnlinePackageImportTest(unittest.TestCase):
         before = model.rowCount()
         with mock.patch.object(self.panel.matx_online_model, "_sources",
                                [source]):
-            summary = self.panel.restore_amaze_packages([record])
+            summary = self.panel.package_import.restore([record])
         self.assertEqual(before, model.rowCount(),
                          "a still-present tile was duplicated by restore")
         self.assertEqual(1, summary["skipped"])
@@ -1415,7 +1415,7 @@ class OnlinePackageImportTest(unittest.TestCase):
                 with mock.patch.object(
                         self.panel.matx_online_model, "_sources",
                         [source]):
-                    ok, reason = self.panel.import_online_material(
+                    ok, reason = self.panel.online_import.import_material(
                         record, on_progress=fractions.append)
         self.assertTrue(ok, reason)
         self.assertGreater(
@@ -1473,7 +1473,7 @@ class OnlinePackageImportTest(unittest.TestCase):
             started = time.monotonic()
             with mock.patch.object(self.panel.matx_online_model, "_sources",
                                    [source]):
-                ok, reason = self.panel.import_online_material(record)
+                ok, reason = self.panel.online_import.import_material(record)
             waited = time.monotonic() - started
             release.set()
             worker.join(10)
@@ -1505,7 +1505,7 @@ class OnlinePackageImportTest(unittest.TestCase):
         before = material_model.rowCount()
         with mock.patch.object(self.panel.matx_online_model, "_sources",
                                [source]):
-            ok, reason = self.panel.import_online_material(record)
+            ok, reason = self.panel.online_import.import_material(record)
         self.assertFalse(ok, "a corrupt payload imported as good")
         self.assertIn("did not read back whole", reason,    # the counted refusal, not a crash caught by the catch-all
                       reason)
@@ -1572,7 +1572,7 @@ class TexturePackingTest(unittest.TestCase):
         os.remove(adopted)    # the package must be the only source, as in a foreign library
         before = model.rowCount()
         held = test_support.asset_ids(model)
-        summary = self.panel.import_package_file(out)
+        summary = self.panel.package_import.import_file(out)
         self.assertEqual(1, summary["imported"], summary)
         self.assertEqual(before + 1, model.rowCount())
         newborn, = test_support.arrived(model, held)
@@ -1606,7 +1606,7 @@ class TexturePackingTest(unittest.TestCase):
                 before = model.rowCount()
                 was = _bytes_or_none(landed)    # policy.json exists: the panel keeps the library version in it
                 summary = packages.import_package(
-                    self.panel._package_models(), self.panel.prefs, pkg)
+                    self.panel.package_import.models(), self.panel.prefs, pkg)
                 self.assertEqual(1, summary["refused"], summary)
                 self.assertEqual(before, model.rowCount(),
                                  "the escaping entry still landed a row")

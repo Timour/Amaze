@@ -379,7 +379,8 @@ class TheRuleHasOneHome(unittest.TestCase):
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         offenders = []
         for relative in ("core/library.py", "core/cop_library.py",
-                         "core/code_library.py", "panel/panel.py", "panel/sections.py"):
+                         "core/code_library.py", "panel/panel.py", "panel/sections.py",
+                         "panel/online_import.py", "panel/package_import.py"):
             source = open(os.path.join(root, relative),
                           encoding="utf-8").read()
             tree = ast.parse(source)

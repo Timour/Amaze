@@ -361,12 +361,12 @@ class StructuralSignalsStayOutsideRelayout(unittest.TestCase):
     CATEGORY_WRITERS = ("remove_category", "rename_category")    # move rows or save on a CATEGORIES model
 
     def test_no_relayout_wraps_a_row_move_or_a_save(self):
-        """Both files that open the pair, every verb that can move rows under it."""
+        """Every file that may open the pair, every verb that can move rows under it."""
         import ast
 
         package = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         offenders = []
-        for name in ("panel.py", "sections.py"):
+        for name in ("panel.py", "sections.py", "online_import.py", "package_import.py"):
             with open(os.path.join(package, "panel", name),
                       encoding="utf-8") as handle:
                 tree = ast.parse(handle.read())

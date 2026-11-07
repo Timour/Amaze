@@ -346,8 +346,10 @@ class NoAutomaticCaptureTest(unittest.TestCase):
         return self._stripped_source("sections.py")
 
     def test_nothing_schedules_a_capture(self):
-        """Comments and docstrings are stripped first; the panel and the sections source are both read."""
-        code = self._panel_source() + "\n" + self._sections_source()
+        """Comments and docstrings are stripped first; the panel, sections and import sources are read."""
+        code = (self._panel_source() + "\n" + self._sections_source() + "\n"
+                + self._stripped_source("online_import.py") + "\n"
+                + self._stripped_source("package_import.py"))
         for row in code.splitlines():
             if any(name in row for name in _CAPTURE_ENTRY_POINTS):
                 self.assertNotIn(

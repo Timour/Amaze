@@ -420,7 +420,7 @@ class AMultiMaterialDoorRendersOneBatch(unittest.TestCase):
 
         records = [record("batch-hosted", True), record("batch-plain", False)]
         with mock.patch.object(self.panel.matx_online_model, "_sources", [Source()]):
-            landed = self._landed(lambda: self.panel._import_online_records(records))
+            landed = self._landed(lambda: self.panel.online_import.import_records(records))
         self.assertEqual(2, len(landed), "premise: the two records did not land")
         plain = [str(mat.mat_id) for mat in self.model.assets
                  if mat._extra.get("online_uid") == "batch-plain" and str(mat.mat_id) in landed]

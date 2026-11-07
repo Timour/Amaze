@@ -529,9 +529,9 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
         records = ["rec"]
         with mock.patch.object(type(context), "_records",
                                lambda self, idx: records), \
-                mock.patch.object(panel, "_import_online_records") as lib, \
-                mock.patch.object(panel,
-                                  "_import_online_records_to_scene") as scene:
+                mock.patch.object(panel.online_import, "import_records") as lib, \
+                mock.patch.object(panel.online_import,
+                                  "import_records_to_scene") as scene:
             context.menu_import_to_library([], None, "Redshift")
             lib.assert_called_once_with(records, renderer="Redshift")
             context.menu_import_to_scene([], None, "Redshift")
@@ -559,7 +559,7 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
         with mock.patch.object(hou, "ui", mock.MagicMock(), create=True), \
                 mock.patch.object(nodes, "karma_destination",
                                   return_value=hou.node("/obj")), \
-                mock.patch.object(panel, "_online_source_for", side_effect=offline), \
+                mock.patch.object(panel.online_import, "source_for", side_effect=offline), \
                 mock.patch.object(panel, "matx_sorted_model"), \
                 mock.patch.object(panel, "matx_online_model"), \
                 mock.patch.object(type(context), "_records", lambda self, idx: [rec]):

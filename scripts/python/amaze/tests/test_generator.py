@@ -950,9 +950,9 @@ class NoNetworkBeforeTheProgressBarTest(unittest.TestCase):
         named = panel.matx_online_model.sources[0]
         record = self._records(named.name, kind="values", count=1)[0]
         stray = self._records("Nowhere", count=1)[0]
-        self.assertIs(named, panel._online_source_for(record)[0])
+        self.assertIs(named, panel.online_import.source_for(record)[0])
         self.assertEqual((None, None, "Unknown source Nowhere"),
-                         panel._online_source_for(stray))
+                         panel.online_import.source_for(stray))
         self.assertEqual([], self.calls, "a source lookup reached the network")
         model = panel.matx_online_model
         self.assertIsNone(model.source_for(stray))

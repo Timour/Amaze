@@ -1184,6 +1184,10 @@ moves only by its own button.
 ```
 panel/panel.py            The Panel (shell, widgets, shared handlers,
                           shared release plumbing)
+panel/online_import.py    The online import: catalogue records into the
+                          library or the scene (`panel.online_import`)
+panel/package_import.py   The package import: .amazepkg files and store
+                          tiles into the library (`panel.package_import`)
 panel/sections.py         The Sections (node-types) + registry + the
                           per-section GRID_MENU tables + every verb a
                           DROP rule names (release bodies, click verbs,

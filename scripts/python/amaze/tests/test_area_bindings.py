@@ -494,7 +494,8 @@ class TheBindingsAreDeclaredNotHandWritten(unittest.TestCase):
         """An import leaves the new node selected and the editors where Houdini puts them."""
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         found = []
-        for name in ("panel.py", "sections.py", "dragdrop_widgets.py"):
+        for name in ("panel.py", "sections.py", "dragdrop_widgets.py",
+                     "online_import.py", "package_import.py"):
             with open(os.path.join(root, "panel", name), encoding="utf-8") as fh:
                 source = fh.read()
             for wrapper in self._PUT_BACKS:

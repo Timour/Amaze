@@ -188,7 +188,7 @@ class Section:
 
     def menu_export_package(self, indexes, current, payload=None) -> None:
         """Ask half of the grid export: the panel picks the destination, `export_package_to` acts."""
-        path = self.panel.ask_package_destination()
+        path = self.panel.package_import.ask_destination()
         if path:
             self.export_package_to(list(indexes), path)
 
@@ -549,7 +549,7 @@ class AssetSection(Section):
         name = self.sidebar_key(current) if current is not None else None
         if not name or category.is_all(name):
             name = None
-        path = self.panel.ask_package_destination()
+        path = self.panel.package_import.ask_destination()
         if path:
             self.export_category_to(name, path)
 
@@ -2031,7 +2031,7 @@ class OnlineContext(Section):
         source = panel.matx_sorted_model.mapToSource(index)
         record = panel.matx_online_model.record(source.row())
         if record is not None:
-            panel._import_online_records_to_scene([record])
+            panel.online_import.import_records_to_scene([record])
 
     def stack(self):
         return None
@@ -2068,11 +2068,11 @@ class OnlineContext(Section):
             if renderer.key in conversion_engine.targets())
 
     def menu_import_to_library(self, indexes, current, payload=None) -> None:
-        self.panel._import_online_records(self._records(indexes),
-                                          renderer=payload or renderers.HUB.key)
+        self.panel.online_import.import_records(self._records(indexes),
+                                                renderer=payload or renderers.HUB.key)
 
     def menu_import_to_scene(self, indexes, current, payload=None) -> None:
-        self.panel._import_online_records_to_scene(    # the door wraps the editor restore for both of its callers
+        self.panel.online_import.import_records_to_scene(    # the door wraps the editor restore for both of its callers
             self._records(indexes), renderer=payload or renderers.HUB.key)
 
     def selection_is_amaze_packages(self, indexes, current) -> bool:
@@ -2082,7 +2082,7 @@ class OnlineContext(Section):
             getattr(r, "kind", "") == "amazepkg" for r in records)
 
     def menu_restore_packages(self, indexes, current, payload=None) -> None:
-        self.panel.restore_amaze_packages(self._records(indexes))
+        self.panel.package_import.restore(self._records(indexes))
 
     def menu_refresh(self, indexes, current, payload=None) -> None:
         """Refresh queries the live site, even for sources that browse from a shipped table."""

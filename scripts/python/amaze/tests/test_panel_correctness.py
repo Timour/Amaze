@@ -847,10 +847,10 @@ class AnOnlineBatchSurvivesOneBadRecord(unittest.TestCase):
 
     def test_both_import_loops_guard_each_record(self):
         """`import_record` has only try/finally, so a raise aborts the loop."""
-        for name in ("_import_online_records",
-                     "_import_online_records_to_scene"):
+        for name in ("import_records",
+                     "import_records_to_scene"):
             self.assertIn(
-                "except Exception", func_source("panel/panel.py", name),
+                "except Exception", func_source("panel/online_import.py", name),
                 "%s abandons its batch on a raising record" % name)
 
 

@@ -52,6 +52,7 @@ from amaze.helpers import helpers, hostos, theme, ui_helpers, wording
 from amaze.utils import rc_calls
 from amaze.core import database, renderers, tile_icons, users
 from amaze.render import cop_nodes, husk_job, nodes
+from amaze.panel import online_import, package_import
 
 _DEV_RELOAD = bool(os.environ.get("AMAZE_DEV_RELOAD"))    # the reload chain below is off by default ▸r/module-reload
 
@@ -151,6 +152,8 @@ _reload(matx_library)
 _reload_loaded("amaze.core.gallery_import")    # reachable from the Online menu
 _reload_loaded("amaze.core.packages")
 _reload_loaded("amaze.render.generator")
+_reload(online_import)    # after matx_sources, nodes and material_actions, which it calls
+_reload(package_import)    # after sections, whose SECTION_CLASSES it reads
 
 
 
@@ -196,6 +199,8 @@ class AmazePanel(QtWidgets.QWidget):
         self._first_show_logged = False
         rc_calls.start()    # before the log writes anything, so its header knows the Houdini
         debug.install()    # first, so a construction failure is logged even with Debug Mode off
+        self.online_import = online_import.OnlineImport(self)    # before _build, which connects a menu action to one
+        self.package_import = package_import.PackageImport(self)
         try:
             self._build()
         except Exception as exc:
@@ -1015,7 +1020,7 @@ class AmazePanel(QtWidgets.QWidget):
                 "Package Import (.amazepkg)"
             )
             self.action_package_import.triggered.connect(
-                self.import_amaze_package
+                self.package_import.import_package
             )
             self.online_menu.addSeparator()    # generating gets its own group
             self.action_generate_material = self.online_menu.addAction(
@@ -1808,64 +1813,6 @@ class AmazePanel(QtWidgets.QWidget):
             return
         self.build_filter_menu()
 
-    def import_package_file(self, path: str, restore: bool = False) -> dict:
-        """Import a whole package; `restore=True` keeps original ids. Answers the core summary."""
-        from amaze.core import packages
-        summary = packages.import_package(self._package_models(),
-                                          self.prefs, path,
-                                          restore=restore)
-        self._absorb_package_summary(summary)
-        return summary
-
-    def import_amaze_package(self) -> None:
-        """Package Import: the picker, the import, then one summary; no dialog when headless."""
-        from amaze.core import packages
-        ui = getattr(hou, "ui", None)
-        if not self.prefs.dir:
-            if ui is not None:
-                ui.displayMessage(messages.NO_LIBRARY_CONFIGURED)
-            return
-        picked = ui.selectFile(
-            title="Import Amaze Package",
-            file_type=hou.fileType.Any,
-            pattern="*" + packages.SUFFIX,
-            chooser_mode=hou.fileChooserMode.Read,
-        ) if ui is not None else ""
-        picked = (picked or "").strip()
-        if not picked:
-            return
-        try:
-            summary = self.import_package_file(
-                hou.text.expandString(picked))
-        except packages.PackageError as exc:
-            if ui is not None:
-                ui.displayMessage(str(exc))
-            return
-        if ui is not None:
-            ui.displayMessage(
-                messages.PACKAGE_IMPORT_SUMMARY % (summary["imported"], summary["files"]))
-
-    def ask_package_destination(self) -> str:
-        """The `.amazepkg` export path, suffix ensured; "" when headless or cancelled."""
-        from amaze.core import packages
-        ui = getattr(hou, "ui", None)
-        if ui is None:
-            return ""
-        picked = ui.selectFile(
-            title="Export Amaze Package",
-            file_type=hou.fileType.Any,
-            pattern="*" + packages.SUFFIX,
-            default_value="package" + packages.SUFFIX,
-            chooser_mode=hou.fileChooserMode.Write,
-        )
-        picked = (picked or "").strip()
-        if not picked:
-            return ""
-        picked = hou.text.expandString(picked)
-        if not picked.endswith(packages.SUFFIX):
-            picked += packages.SUFFIX
-        return picked
-
     def import_galleries(self) -> None:
         """Every material preset in a .gal file saved as a material; ONE render batch after it."""
         from amaze.core import gallery_import
@@ -2270,278 +2217,6 @@ class AmazePanel(QtWidgets.QWidget):
     def enter_online(self) -> None:
         """Enter the online world through `_apply_context`, the path every section takes."""
         self._apply_context(self.online_context, self.online_context.key)
-
-
-    @contextlib.contextmanager
-    def _download_operation(self, records):
-        """The interruptable operation around a multi-record import; yields progress_for(i, name)."""
-        total = max(len(records), 1)
-        self._online_download_active = True    # a late preview signal must not repaint the bar
-        try:
-            with hou.InterruptableOperation(    # type: ignore
-                messages.IMPORTING_ONLINE_MATERIALS, open_interrupt_dialog=True
-            ) as op:
-                def progress_for(i, name=""):
-                    def on_progress(frac):
-                        frac = 0.0 if frac < 0.0 else (1.0 if frac > 1.0 else frac)
-                        op.updateLongProgress((i + frac) / total,
-                                              "%d/%d  %s" % (i + 1, total, name))
-                    return on_progress
-                yield progress_for
-        finally:
-            self._online_download_active = False
-
-    def _import_online_records(self, records, renderer=renderers.HUB.key) -> None:
-        """Import online records into the LIBRARY, built as `renderer` through the conversion engine."""
-        if not len(records):
-            return
-        total = len(records)
-        failures = []
-        held = {str(mat.mat_id) for mat in getattr(self.material_model, "assets", ())}
-        with self._download_operation(records) as progress_for:
-            for i, rec in enumerate(records):
-                on_progress = progress_for(i, rec.title)
-                try:    # one bad record must not abandon the batch
-                    ok, reason = self.import_online_material(
-                        rec, on_progress=on_progress, renderer=renderer, render=False
-                    )
-                except hou.OperationInterrupted:
-                    debug.status(messages.ONLINE_IMPORT_STOPPED % (i, total))
-                    break
-                except Exception as exc:                  # noqa: BLE001
-                    debug.exception("online import", exc, record=rec.title)
-                    ok, reason = False, str(exc)
-                if not ok:
-                    failures.append("%s: %s" % (rec.title, reason))
-        if self.material_model is not None:
-            self._render_landed(held)
-        ui = getattr(hou, "ui", None)
-        if failures and ui is not None:    # ONE dialog for the batch, never one per record
-            ui.displayMessage(
-                messages.AMAZE_COULD_NOT
-                % (len(failures), total, "\n".join(failures[:10]))
-            )
-
-    def import_online_material(self, record, on_progress=None,
-                               renderer=renderers.HUB.key, render=True):
-        """Download and save one online material as `renderer`, calling on_progress(0..1): (ok, reason)."""
-        from amaze.core import matx_import
-        if record is None or not self.material_model:
-            return (False, messages.NO_LIBRARY_TO_IMPORT_INTO)
-        source, resolution, error = self._online_source_for(record)
-        if error:
-            return (False, error)
-        if source is None:
-            return (False, messages.ONLINE_SOURCE_UNKNOWN)
-        if getattr(record, "kind", "") == "amazepkg":
-            return self._import_amaze_package_record(
-                record, source, restore=False, on_progress=on_progress)
-        ok, reason = matx_import.import_record(    # NO layout pair: it ends in add_asset, an insert
-            record, source, resolution, self.material_model, self.prefs,
-            progress=on_progress, renderer=renderer,
-            save=functools.partial(material_actions.add_asset, self.material_model),
-            render=render,    # False: the caller renders its batch once
-        )
-        if not ok:
-            return (False, reason or messages.ONLINE_IMPORT_FAILED)
-        self.category_model.check_add_category(record.category)    # no relayout wrapper: it announces its own insert
-        self._refresh_sidebar_categories()
-        return (True, "")
-
-    def _package_models(self) -> dict:
-        """{section key: library model} for every asset section that has one."""
-        models = {}
-        for cls in sections.SECTION_CLASSES:
-            attr = getattr(cls, "model_attr", "")
-            model = getattr(self, attr, None) if attr else None
-            if model is not None and getattr(cls, "key", "") != "file":
-                models[cls.key] = model
-        return models
-
-    def _absorb_package_summary(self, summary) -> None:
-        """Register a package import's categories on their sidebars, and its import folder."""
-        for key, names in summary.get("categories", {}).items():
-            section = self.sections.get(key)
-            st = section.stack() if section is not None else None
-            if st is None:
-                continue
-            for name in sorted(names):
-                st.categories.check_add_category(name)
-        if summary.get("files"):
-            folder = hostos.canonical_path_key(
-                os.path.join(self.prefs.dir, "import"))
-            folders = getattr(self, "file_folders_model", None)
-            listed = {hostos.canonical_path_key(path)
-                      for path in self.prefs.file_folders}
-            if folder not in listed:
-                self.prefs.set_file_folder_name(folder, "Import")    # before the row lands, and only here: a rename stays
-                self.prefs.set_file_folder_kinds(folder, locations.EVERY_KIND)
-                if folders is None:
-                    self.prefs.add_file_folder(folder)
-                else:
-                    folders.add_folder(folder)
-            elif folders is not None:
-                folders.refresh_counts()    # already listed: files landed in it, so its number moved
-                row = folders.row_of(folder)
-                if row is not None:
-                    folders.dataChanged.emit(folders.index(0),
-                                             folders.index(row))
-
-    def _import_amaze_package_record(self, record, source, restore,
-                                     on_progress=None):
-        """One store tile into the library, fresh or restore: (ok, reason); `on_progress` pumps the UI."""
-        from amaze.core import packages
-        url = record.payload.get("package")
-        debug.event("import", "package tile start", title=record.title,
-                    package=str(url), restore=bool(restore))
-        self._last_package_summary = None    # the restore batch reads its totals here
-        try:
-            entry = record.payload.get("entry")
-            if not entry:
-                return (False, messages.STORE_TILE_HAS_NO_ENTRY)
-            notify = None if on_progress is None else (
-                lambda done, total:
-                on_progress(min(done / float(max(total, 1)), 1.0)))
-            bundle = source.import_reader(url, notify=notify)    # its own: a preview may hold the shared one
-            summary = packages.import_entries(
-                self._package_models(), self.prefs, bundle, [entry],
-                restore=restore)
-            self._last_package_summary = summary
-            self._absorb_package_summary(summary)
-            if on_progress is not None:
-                on_progress(1.0)
-            if summary.get("refused"):
-                return (False, "; ".join(summary.get("problems") or ())
-                               or messages.STORE_TILE_NOT_IMPORTED)
-            if restore and summary.get("skipped"):
-                return (True, "")
-            if not summary.get("imported") and not summary.get("files"):
-                return (False, messages.STORE_TILE_IMPORTED_NOTHING)
-            return (True, "")
-        except Exception as exc:                          # noqa: BLE001
-            debug.exception("package import", exc, record=record.title)
-            return (False, str(exc))
-
-    def restore_amaze_packages(self, records) -> dict:
-        """Restore the selected store tiles by original id, with one summary for the batch."""
-        totals = {"imported": 0, "skipped": 0, "files": 0, "refused": 0}
-        failures = []
-        with self._download_operation(records) as progress_for:
-            for i, record in enumerate(records):
-                source, _resolution, error = self._online_source_for(
-                    record)
-                if error or source is None:
-                    failures.append("%s: %s" % (record.title,
-                                                error or messages.ONLINE_SOURCE_UNKNOWN))
-                    continue
-                try:
-                    ok, reason = self._import_amaze_package_record(
-                        record, source, restore=True,
-                        on_progress=progress_for(i, record.title))
-                except hou.OperationInterrupted:
-                    debug.status(messages.ONLINE_IMPORT_STOPPED % (i, len(records)))
-                    break
-                except Exception as exc:                  # noqa: BLE001
-                    debug.exception("package restore", exc,
-                                    record=record.title)
-                    failures.append("%s: %s" % (record.title, exc))
-                    continue
-                summary = self._last_package_summary or {}
-                for key in totals:
-                    totals[key] += summary.get(key, 0)
-                if not ok and reason:
-                    failures.append("%s: %s" % (record.title, reason))
-        ui = getattr(hou, "ui", None)
-        if ui is not None:
-            lines = [messages.STORE_RESTORE_SUMMARY
-                     % (totals["imported"], totals["skipped"])]
-            if failures:
-                lines += [""] + failures[:10]
-            ui.displayMessage("\n".join(lines))
-        return totals
-
-    def _online_source_for(self, record):
-        """The record's source and the resolution to fetch it at: (source, resolution, error)."""
-        source = self.matx_online_model.source_for(record)
-        if source is None:
-            return (None, None, messages.ONLINE_SOURCE_UNKNOWN_NAMED % record.source)
-        if not source.needs_download(record):    # ask the source; sources override it
-            return (source, None, "")     # nothing to download
-        if record.kind in ("values", "amazepkg"):
-            return (source, None, "")     # downloads, but picks no resolution
-        resolution = matx_sources.pick_resolution(
-            source.resolutions(record), self.prefs.matx_resolution
-        )
-        if resolution is None:
-            return (None, None,
-                    messages.NO_DOWNLOADABLE_PACKAGE % record.title)
-        return (source, resolution, "")
-
-    def _import_online_records_to_scene(self, records,
-                                        renderer=renderers.HUB.key) -> None:
-        """Build online records into the scene, not the library; store tiles go to the library."""
-        from amaze.core import matx_import
-        packages_only = [r for r in records
-                         if getattr(r, "kind", "") == "amazepkg"]
-        if packages_only:
-            self._import_online_records(packages_only)
-            records = [r for r in records
-                       if getattr(r, "kind", "") != "amazepkg"]
-        total = len(records)
-        if not total:
-            return
-        built, failures, last, stopped_after = [], [], None, None
-        ui = getattr(hou, "ui", None)
-        with self._download_operation(records) as progress_for:
-            with hou.undos.group("Amaze Import to Scene"):    # one undo step, the destination included
-                destination = nodes.karma_destination(self.prefs)
-                if destination is None:
-                    if ui is not None:
-                        ui.displayMessage(
-                            messages.NO_MATERIAL_DESTINATION_NETWORK
-                        )
-                    return
-                for i, rec in enumerate(records):
-                    source, resolution, error = self._online_source_for(rec)
-                    if error:
-                        failures.append("%s: %s" % (rec.title, error))
-                        continue
-                    on_progress = progress_for(i, rec.title)
-
-                    try:
-                        builder, reason = matx_import.build_in_scene(
-                            rec, source, resolution, destination, self.prefs,
-                            progress=on_progress, renderer=renderer,
-                        )
-                    except hou.OperationInterrupted:
-                        stopped_after = i
-                        break
-                    except Exception as exc:           # noqa: BLE001
-                        debug.exception("import to scene", exc,
-                                        title=rec.title)
-                        builder, reason = None, str(exc)    # one bad record must not abandon the batch
-                    if builder is None:
-                        failures.append("%s: %s" % (rec.title, reason))
-                        continue
-                    built.append(builder.name())
-                    last = builder
-                if last is not None:
-                    last.setCurrent(True, True)    # fronts the new material
-        debug.event("import", "to scene finished", built=len(built),
-                    failed=len(failures), stopped_after=stopped_after)
-        if ui is not None and failures:
-            ui.displayMessage(
-                messages.SCENE_BUILD_PARTIAL_FAILURE
-                % (len(failures), total, "\n".join(failures[:10]))
-            )
-        elif ui is not None and last is not None and stopped_after is None:
-            ui.setStatusMessage(
-                "Amaze: %s in %s" % (", ".join(built[:3]),
-                                     last.parent().path())
-            )
-        if stopped_after is not None:
-            debug.status(messages.ONLINE_IMPORT_STOPPED % (stopped_after, total))
-
 
     def _select_default_sidebar_row(self, sidebar_proxy):
         """Select the sidebar's first row and return its raw name; the caller applies the filter."""

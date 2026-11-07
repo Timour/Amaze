@@ -21,6 +21,7 @@ import hou  # noqa: E402
 from amaze import messages  # noqa: E402
 from amaze.panel import panel as panel_mod  # noqa: E402
 from amaze.panel import sections  # noqa: E402
+from amaze.panel import online_import, package_import  # noqa: E402
 from amaze.tests import test_support  # noqa: E402 - redirects the log
 
 
@@ -100,9 +101,9 @@ class TheOnlineImportRunsInsideHoudinisOperation(_OnThePanel):
             return True, ""
 
         with mock.patch.object(hou, "InterruptableOperation", operation), \
-                mock.patch.object(self.panel, "import_online_material", side_effect=one), \
+                mock.patch.object(self.panel.online_import, "import_material", side_effect=one), \
                 mock.patch.object(self.panel, "_render_landed"):
-            self.panel._import_online_records([_record(t) for t in titles])
+            self.panel.online_import.import_records([_record(t) for t in titles])
         return imported
 
     def test_the_batch_reports_each_record_by_name_and_share(self):
@@ -138,10 +139,10 @@ class TheSceneImportRunsInsideHoudinisOperation(_OnThePanel):
 
         with mock.patch.object(hou, "InterruptableOperation", _EscOnTheSecondReport), \
                 mock.patch.object(nodes, "karma_destination", return_value=hou.node("/mat")), \
-                mock.patch.object(self.panel, "_online_source_for",
+                mock.patch.object(self.panel.online_import, "source_for",
                                   return_value=("source", None, "")), \
                 mock.patch.object(matx_import, "build_in_scene", side_effect=build):
-            self.panel._import_online_records_to_scene([_record("Bricks"), _record("Moss")])
+            self.panel.online_import.import_records_to_scene([_record("Bricks"), _record("Moss")])
         self.assertEqual(["Bricks"], built,
                          "the Esc did not stop the scene import after the record in hand")
         self.assertIn(messages.ONLINE_IMPORT_STOPPED % (1, 2), self.said[-1])
@@ -188,12 +189,14 @@ class ThePanelPumpsNothingForImportsAndSaves(unittest.TestCase):
     """The import and save paths leave the event loop to Houdini's operation."""
 
     def test_no_processEvents_in_the_import_and_save_paths(self):
-        for name in ("_download_operation", "_import_online_records",
-                     "restore_amaze_packages", "_import_online_records_to_scene",
-                     "save_asset"):
-            source = inspect.getsource(getattr(panel_mod.AmazePanel, name))
+        for owner, name in ((online_import.OnlineImport, "download_operation"),
+                            (online_import.OnlineImport, "import_records"),
+                            (package_import.PackageImport, "restore"),
+                            (online_import.OnlineImport, "import_records_to_scene"),
+                            (panel_mod.AmazePanel, "save_asset")):
+            source = inspect.getsource(getattr(owner, name))
             self.assertNotIn("processEvents", source,
-                             name + " pumps the event loop itself")
+                             owner.__name__ + "." + name + " pumps the event loop itself")
         self.assertNotIn("processEvents",
                          inspect.getsource(sections.MaterialSection.commit_save),
                          "MaterialSection.commit_save pumps the event loop itself")

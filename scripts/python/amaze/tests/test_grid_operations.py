@@ -254,6 +254,16 @@ class NoMENUKnowsHowToFavourite(unittest.TestCase):
                  lambda call: call.func.value.attr == "layoutAboutToBeChanged"),
                 ("panel.py emits a bare layoutChanged", "panel.py", False,
                  lambda call: not call.args
+                 and call.func.value.attr == "layoutChanged"),
+                ("online_import.py opens one", "online_import.py", False,
+                 lambda call: call.func.value.attr == "layoutAboutToBeChanged"),
+                ("online_import.py emits a bare layoutChanged", "online_import.py", False,
+                 lambda call: not call.args
+                 and call.func.value.attr == "layoutChanged"),
+                ("package_import.py opens one", "package_import.py", False,
+                 lambda call: call.func.value.attr == "layoutAboutToBeChanged"),
+                ("package_import.py emits a bare layoutChanged", "package_import.py", False,
+                 lambda call: not call.args
                  and call.func.value.attr == "layoutChanged")):
             with self.subTest(why):
                 self.assertEqual([], emits(name, menu_verbs_only, signal),
@@ -650,13 +660,13 @@ class NoRowMovesInsideALayoutChange(unittest.TestCase):
             return bool(saved), ""
 
         before = self.model.rowCount()
-        with mock.patch.object(self.panel, "_online_source_for",
+        with mock.patch.object(self.panel.online_import, "source_for",
                                lambda _record: (object(), "1k", "")), \
                 mock.patch.object(matx_import, "import_record",
                                   importing), \
                 test_support.row_moves_inside_a_layout_change(
                     self.model) as caught:
-            ok, reason = self.panel.import_online_material(record)
+            ok, reason = self.panel.online_import.import_material(record)
         self.assertTrue(ok, reason)
         self.assertEqual(before + 1, self.model.rowCount())
         self._assert_no_row_moved_inside(caught, "an online import")

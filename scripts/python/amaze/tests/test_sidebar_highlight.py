@@ -216,7 +216,7 @@ class _AssetSidebarPaths(_HighlightCase):
         with self._answer("Added"):
             self.check("a right press, Add", right_press_then("Add"), grid="Kept")
         self.check("a right press, Label", right_press_then("Label", "Red"), grid="Kept")
-        with mock.patch.object(panel, "ask_package_destination", lambda: ""):
+        with mock.patch.object(panel.package_import, "ask_destination", lambda: ""):
             self.check("a right press, Export Category",
                        right_press_then("Export Category"), grid="Kept")
         self.check("a right press, Sort by name", right_press_then("Sort by name"), grid="Kept")
