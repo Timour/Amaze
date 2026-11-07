@@ -712,5 +712,29 @@ class FolderOrderTest(unittest.TestCase):
         self.assertEqual(model.SCENE_LABEL, model.index(1, 0).data())
 
 
+class EverySidebarSourceMovesCategories(unittest.TestCase):
+    """`_sidebar_categories` hands back any source it finds, and the reorder calls `move_category`."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
+
+    def test_every_sidebar_with_a_source_holds_one_that_moves_categories(self):
+        """Asked of every context the panel built, through the lookup the reorder itself uses."""
+        panel = self.panel
+        sourced = []
+        for key, context in dict(panel.sections, online=panel.online_context).items():
+            _proxy, source = context._sidebar_categories()
+            if source is None:
+                continue
+            sourced.append(key)
+            self.assertTrue(
+                hasattr(source, "move_category"),
+                "%s's sidebar is over a %s, which has no move_category, so a "
+                "reorder raises" % (key, type(source).__name__))
+        self.assertIn("material", sourced,
+                      "premise: the Material sidebar has no source, so this checks nothing")
+
+
 if __name__ == "__main__":
     unittest.main()

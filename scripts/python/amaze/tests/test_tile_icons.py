@@ -38,6 +38,36 @@ def ink_box(image, background="#ef8878"):
     return QtGui.QRegion(QtGui.QBitmap.fromImage(mask)).boundingRect()
 
 
+def package_subclasses(base: str) -> list:
+    """Every top-level package class deriving from the class named `base`, found by its bases."""
+    import importlib
+    package = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    defined = []
+    for root, dirs, files in os.walk(package):
+        dirs[:] = [d for d in dirs if d not in ("tests", "__pycache__")]
+        for name in sorted(files):
+            if not name.endswith(".py"):
+                continue
+            path = os.path.join(root, name)
+            module = ".".join(["amaze"] + os.path.relpath(path, package)[:-3].split(os.sep))
+            module = module[:-len(".__init__")] if module.endswith(".__init__") else module
+            with open(path, encoding="utf-8") as handle:
+                tree = ast.parse(handle.read())
+            defined.extend(
+                (module, node.name, {b.attr if isinstance(b, ast.Attribute)
+                                     else getattr(b, "id", "") for b in node.bases})
+                for node in tree.body if isinstance(node, ast.ClassDef))
+    family, grew = {base}, True
+    while grew:
+        grew = False
+        for _module, name, bases in defined:
+            if name not in family and bases & family:
+                family.add(name)
+                grew = True
+    return [getattr(importlib.import_module(module), name)
+            for module, name, _bases in defined if name in family and name != base]
+
+
 class GeometryTest(unittest.TestCase):
     """What the template says, measured in pixels."""
 
@@ -654,6 +684,29 @@ class MenuWiringTest(unittest.TestCase):
                 self.assertIs(model, proxy.sourceModel(),  # the section's own pair, not the models the shared grid last showed
                               "%s's proxy is not over its own model" % key)
 
+    def test_customize_offers_exactly_the_fields_its_model_edits(self):
+        """Material opens with Name, Category and Tags; File, though offered categories, with none."""
+        self.addCleanup(self.panel.section_tabs.setChecked, self.panel.current_section)
+        for key, shown in (("material", True), ("file", False)):
+            with self.subTest(section=key):
+                self.panel.section_tabs.setChecked(key)
+                QtWidgets.QApplication.processEvents()
+                model, proxy = self.panel.sections[key].tile_models()
+                self.assertTrue(test_support.pump_until(lambda: proxy.rowCount() > 0),
+                                "premise: the %s grid shows no tile" % key)
+                self.panel._icon_dialog = None
+                self.panel.edit_tile_icon(model, proxy, [proxy.index(0, 0)],
+                                          categories=("Probe Shelf",))
+                dialog, self.panel._icon_dialog = self.panel._icon_dialog, None
+                self.assertIsNotNone(dialog, "Customize did not open on a %s tile" % key)
+                self.addCleanup(dialog.deleteLater)
+                fields = {"Name": dialog.tile_name_edit, "Category": dialog.category_combo,
+                          "Tags": dialog.tags_edit}
+                self.assertEqual(
+                    {label: shown for label in fields},
+                    {label: field is not None for label, field in fields.items()},
+                    "a %s tile opened Customize with the wrong fields" % key)
+
     def test_every_icon_api_method_takes_the_ARGUMENTS_it_is_called_with(self):
         """Binds the real call shape against the real signature; a MagicMock accepts any."""
         import inspect
@@ -909,6 +962,43 @@ class TheAboutLogoCarriesItsDensityTest(unittest.TestCase):
         self.assertEqual(max(1, round(theme.ui_px(34) * app_ratio)),
                          image.height(),
                          "the logo's pixel height is not density-scaled")
+
+
+class EveryGridModelDeclaresTheFieldsItEdits(unittest.TestCase):
+    """`TILE_FIELDS` names the fields whose setters a model has; Customize asks it, not the model."""
+
+    SETTERS = {"name": ("set_tile_name",),
+               "tags": ("set_tile_tags", "add_tile_tags"),
+               "category": ("set_tile_category",)}
+
+    def test_each_grid_model_declares_exactly_the_fields_it_can_set(self):
+        """Every GridEngine class in the package, found by its bases, so a new model is covered."""
+        from amaze.core import grid_engine
+        models = package_subclasses("GridEngine")
+        for cls in models:
+            with self.subTest(model=cls.__name__):
+                self.assertTrue(issubclass(cls, grid_engine.GridEngine),
+                                "the walk resolved %s to another class" % cls.__name__)
+                declared = tuple(cls.TILE_FIELDS)
+                self.assertEqual(
+                    [], [field for field in declared if field not in self.SETTERS],
+                    "%s declares a field the tile dialog does not edit" % cls.__name__)
+                for field, setters in self.SETTERS.items():
+                    has = [callable(getattr(cls, setter, None)) for setter in setters]
+                    self.assertEqual(
+                        any(has), all(has),
+                        "%s has only some of %s, so one way of editing %s raises"
+                        % (cls.__name__, " and ".join(setters), field))
+                    self.assertEqual(
+                        all(has), field in declared,
+                        "%s: %s is %sdeclared in TILE_FIELDS, yet its setters %s"
+                        % (cls.__name__, field, "" if field in declared else "not ",
+                           "exist" if all(has) else "are missing"))
+        self.assertTrue(
+            [cls for cls in models if set(cls.TILE_FIELDS) == set(self.SETTERS)]
+            and [cls for cls in models if not cls.TILE_FIELDS],
+            "the walk found %s - without a model that edits all three fields and one "
+            "that edits none, this proves nothing" % [cls.__name__ for cls in models])
 
 
 class TileNameTest(unittest.TestCase):

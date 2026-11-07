@@ -209,6 +209,7 @@ class AssetLibrary(grid_engine.GridEngine,
         "id": "IdRole",    # list-mode columns ▸p/d03-retired
     }
     GRID_ROWS = ("_assets", "_mat_paths", "_row_keys")
+    TILE_FIELDS = ("name", "tags", "category")
     VERSION_SECTION = versions.MATERIAL    # where this model's versions live ▸r/version-store
     TILE_FACE = ""      # the section's generic face, `ui/<TILE_FACE>.svg` from its T frame ▸r/tile-faces
     NOTES_SECTION = "" # this model's notes-store key prefix; every subclass names its own

@@ -121,8 +121,7 @@ class SidebarTreeView(QtWidgets.QTreeView):
         super().mouseDoubleClickEvent(event)
 
     def _remembers(self, model) -> bool:
-        return model is not None and getattr(model, "unfolds", False) \
-            and hasattr(model, "BrowseRole")
+        return model is not None and getattr(model, "unfolds", False)
 
     def setModel(self, model):
         old = self._watched

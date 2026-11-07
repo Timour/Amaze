@@ -507,7 +507,7 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
                 self._deposit_face(key, str(rec.payload.get("section") or ""))
                 continue
             source = self.source_for(rec)
-            if (_preview_crc(rec) is not None and hasattr(source, "read_thumb_to")
+            if (_preview_crc(rec) is not None and source is not None
                     and self._hosted.get(key, True)):
                 self._hosted[key] = True
                 reader = (lambda path, s=source, r=rec:    # Amaze's render, before any drawn face

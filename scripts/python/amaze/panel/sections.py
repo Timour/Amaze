@@ -287,7 +287,7 @@ class Section:
         """(proxy, source Categories) behind this sidebar, or (None, None) where it has none."""
         proxy = self._p(self.sidebar_attr)
         source = getattr(proxy, "sourceModel", lambda: None)()
-        if source is None or not hasattr(source, "move_category"):
+        if source is None:
             return None, None
         return proxy, source
 

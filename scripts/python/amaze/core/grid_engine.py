@@ -32,6 +32,8 @@ class GridEngine:
 
     GRID_ROWS: tuple = ()    #: names of the lists kept one entry per row; a sort moves them all
 
+    TILE_FIELDS: tuple = ()    #: the record fields the tile dialog edits here, from name, tags and category
+
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self._sort_column = NAME

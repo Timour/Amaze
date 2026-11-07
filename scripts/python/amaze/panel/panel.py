@@ -2215,14 +2215,14 @@ class AmazePanel(QtWidgets.QWidget):
                 pass                      # already deleted underneath
         single = len(rows) == 1    # Name only where the model renames, greyed on a multi-selection
         tile_name = None
-        if hasattr(model, "set_tile_name"):
+        if "name" in model.TILE_FIELDS:
             tile_name = model.tile_name(rows[0]) if single else ""
         tile_tags = None    # no field without tags; a multi-selection opens empty
-        if hasattr(model, "set_tile_tags"):
+        if "tags" in model.TILE_FIELDS:
             tile_tags = model.tile_tags(rows[0]) if single else ""
         offered = None    # no field at all where the model cannot hold a category
         tile_category = ""
-        if hasattr(model, "set_tile_category"):
+        if "category" in model.TILE_FIELDS:
             offered = list(categories)    # the OWNING section's list, handed in by its menu
             shared = {model.tile_category(row) for row in rows}
             tile_category = shared.pop() if len(shared) == 1 else ""    # mixed: the dialog opens blank
@@ -2254,11 +2254,11 @@ class AmazePanel(QtWidgets.QWidget):
             edited = set()    # keys of the records changed below - nothing saves until the one commit
             new_name = getattr(dialog, "new_tile_name", None)
             if new_name and len(rows) == 1 and \
-                    hasattr(model, "set_tile_name"):
+                    "name" in model.TILE_FIELDS:
                 if model.set_tile_name(rows[0], new_name, save=False):
                     edited.add(model.tile_key(rows[0]))
             new_tags = getattr(dialog, "new_tags", None)
-            if new_tags is not None and hasattr(model, "set_tile_tags"):
+            if new_tags is not None and "tags" in model.TILE_FIELDS:
                 if len(rows) == 1:
                     if model.set_tile_tags(rows[0], new_tags, save=False):    # "" CLEARS the tags
                         edited.add(model.tile_key(rows[0]))
@@ -2267,7 +2267,7 @@ class AmazePanel(QtWidgets.QWidget):
                         if model.add_tile_tags(row, new_tags, save=False):
                             edited.add(model.tile_key(row))
             new_category = getattr(dialog, "new_category", None)
-            if new_category and hasattr(model, "set_tile_category"):
+            if new_category and "category" in model.TILE_FIELDS:
                 for row in rows:    # EVERY selected tile, unlike the name and the tags
                     if model.set_tile_category(row, new_category, save=False):
                         edited.add(model.tile_key(row))

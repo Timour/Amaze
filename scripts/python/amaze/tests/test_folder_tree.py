@@ -699,5 +699,53 @@ class TheFileTabWalksSubfolders(unittest.TestCase):
         self.assertEqual(self.sub, live, "the live index lost the subfolder's parent")
 
 
+class EveryModelThatUnfoldsSaysWhatARowBrowses(unittest.TestCase):
+    """The sidebar keeps a model's open rows by `BrowseRole` once `unfolds` is true."""
+
+    def test_every_model_declaring_unfolds_has_a_browse_role(self):
+        """Read off the package source, so a new model that unfolds is covered unasked."""
+        import ast
+        import importlib
+        package = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        defined = []
+        for root, dirs, files in os.walk(package):
+            dirs[:] = [d for d in dirs if d not in ("tests", "__pycache__")]
+            for name in sorted(n for n in files if n.endswith(".py")):
+                path = os.path.join(root, name)
+                module = ".".join(["amaze"] + os.path.relpath(path, package)[:-3].split(os.sep))
+                with open(path, encoding="utf-8") as handle:
+                    tree = ast.parse(handle.read())
+                for node in tree.body:
+                    if not isinstance(node, ast.ClassDef):
+                        continue
+                    targets = [t for item in node.body
+                               for t in (item.targets if isinstance(item, ast.Assign) else
+                                         [item.target] if isinstance(item, ast.AnnAssign) else [])]
+                    defined.append((
+                        module[:-len(".__init__")] if module.endswith(".__init__") else module,
+                        node.name,
+                        {b.attr if isinstance(b, ast.Attribute) else getattr(b, "id", "")
+                         for b in node.bases},
+                        any(isinstance(t, ast.Name) and t.id == "unfolds" for t in targets)))
+        family = {name for _module, name, _bases, declares in defined if declares}
+        grew = True
+        while grew:
+            grew = False
+            for _module, name, bases, _declares in defined:
+                if name not in family and bases & family:
+                    family.add(name)
+                    grew = True
+        unfolding = [cls for cls in (getattr(importlib.import_module(module), name)
+                                     for module, name, _bases, _declares in defined
+                                     if name in family)
+                     if getattr(cls, "unfolds", False)]
+        self.assertTrue(unfolding, "premise: no model in the package unfolds, so this checks nothing")
+        for cls in unfolding:
+            self.assertTrue(
+                hasattr(cls, "BrowseRole"),
+                "%s unfolds but declares no BrowseRole, which the sidebar reads for "
+                "every row it opens" % cls.__name__)
+
+
 if __name__ == "__main__":
     unittest.main()

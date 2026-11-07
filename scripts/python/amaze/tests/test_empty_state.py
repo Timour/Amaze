@@ -642,5 +642,34 @@ class TheUnreachableBlankPointsAtSomethingReal(unittest.TestCase):
                          "from the one the message names")
 
 
+class EveryBoundProxyAnnouncesItsFilterPass(unittest.TestCase):
+    """`track` watches `refiltered` on whatever the grid holds; every bound proxy must have it."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
+
+    def test_every_context_binds_a_proxy_with_refiltered(self):
+        """Read off each context's own `activate()`, so a new section is covered unasked."""
+        panel = self.panel
+        self.addCleanup(lambda: panel.active_section().activate())
+        contexts = dict(panel.sections, online=panel.online_context)
+        bound = {}
+        for key, context in contexts.items():
+            with mock.patch.object(panel, "bind_grid_views") as bind, \
+                    mock.patch.object(panel.matx_online_model, "reload"):
+                context.activate()
+            self.assertEqual(1, bind.call_count,
+                             "%s bound the grid %d times" % (key, bind.call_count))
+            bound[key] = bind.call_args[0][0]
+        for key, proxy in bound.items():
+            self.assertTrue(
+                hasattr(proxy, "refiltered"),
+                "%s binds a %s to the grid, which has no refiltered signal, so "
+                "track raises on it" % (key, type(proxy).__name__))
+        self.assertEqual(len(bound), len({id(proxy) for proxy in bound.values()}),
+                         "two contexts bind one proxy, so an activation never reached the grid")
+
+
 if __name__ == "__main__":
     unittest.main()

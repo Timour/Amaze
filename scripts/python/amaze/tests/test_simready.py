@@ -988,6 +988,16 @@ class HostedPreviewTileTest(unittest.TestCase):
             model._on_catalogue([pictured], [], model._generation)
         redraw.assert_called_once()
 
+    def test_every_registered_source_can_read_a_hosted_picture(self):
+        """`source_for` answers a source built from SOURCES, or None; the tile reads through it."""
+        from amaze.core import matx_sources
+        self.assertTrue(callable(vars(matx_sources.MatxSource).get("read_thumb_to")),
+                        "the source base no longer reads a hosted picture")
+        strays = [getattr(cls, "__name__", repr(cls)) for cls in matx_sources.SOURCES
+                  if not (isinstance(cls, type) and issubclass(cls, matx_sources.MatxSource))]
+        self.assertEqual([], strays, "registered sources that are no MatxSource, so a tile "
+                                     "raises reading their hosted picture: %s" % strays)
+
 
 class AListingPrunesThePreviewCache(unittest.TestCase):
     """A whole listing keeps each source's cached pictures that a listed record names, and no other."""
