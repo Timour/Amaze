@@ -650,6 +650,7 @@ class ReloadChainTest(unittest.TestCase):
     """Every amaze module the panel imports is in its reload chain. ▸p/source-derived-tests"""
 
     def test_every_imported_amaze_module_is_reloaded(self):
+        import ast
         import re
 
         path = os.path.join(
@@ -661,19 +662,12 @@ class ReloadChainTest(unittest.TestCase):
         reloaded = set(re.findall(
             r"(?:importlib\.reload|_reload)\((\w+)\)", source))
         reloaded |= set(re.findall(r"(\w+)\.reload_engine\(\)", source))  # a package reloads through its own entry point ▸r/package-reload
-        imported = set()
-        for match in re.finditer(  # parenthesised imports span lines, so the pattern must cross newlines
-                r"^from amaze[\w.]* import \(([^)]*)\)", source, re.M | re.S):
-            for name in match.group(1).split(","):
-                name = name.split(" as ")[-1].strip()    # `x as y` binds y, the name the chain reloads
-                if name and name.isidentifier():
-                    imported.add(name)
-        for match in re.finditer(
-                r"^from amaze[\w.]* import ([^(\n]+)$", source, re.M):
-            for name in match.group(1).split(","):
-                name = name.split(" as ")[-1].strip()
-                if name and name.isidentifier():
-                    imported.add(name)
+        imported = {alias.asname or alias.name    # parsed, so a comment on the line hides no module
+                    for node in ast.parse(source).body    # module level only, as the chain is
+                    if isinstance(node, ast.ImportFrom)
+                    and (node.module or "").startswith("amaze")
+                    for alias in node.names}
+        self.assertTrue(imported, "the scan found no amaze import at all, so it checks nothing")
 
         self.assertEqual(
             set(), imported - reloaded,
