@@ -487,7 +487,8 @@ that is running on another computer shows the removal after a restart.
 ### Write Paths As
 
 Preferences ▸ Look ▸ **Write Paths As** sets how Copy Path and **Show ▸
-Pathname** write paths: **$HOME** (the default), **$JOB**, **$HIP** or
+Pathname** write paths, and how a material imported into the scene refers
+to its textures: **$HOME** (the default), **$JOB**, **$HIP** or
 **Absolute**. A variable is used when the path is under it; other paths
 are written in full.
 

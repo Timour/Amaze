@@ -67,7 +67,7 @@ PREFS_HIDE_EMPTY_CATEGORIES = 'Hide categories that have no items. They come bac
 
 PREFS_STEP_SIZE = 'Step the tile size slider from mark to mark.'
 
-PREFS_WRITE_PATHS_AS ='How Amaze writes paths in Copy Path and the File section. A variable is used when the path is inside it; otherwise the path is written as is.'
+PREFS_WRITE_PATHS_AS ='How Amaze writes paths in Copy Path, the File section and the textures of a material it imports. A variable is used when the path is inside it; otherwise the path is written as is.'
 
 PREFS_TILE_ICON_LINE = 'Line weight of the tile icons: thin or regular.'
 

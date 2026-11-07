@@ -1150,7 +1150,8 @@ class NodeHandler:
         if problem:
             raise hou.OperationFailed(problem)
 
-        texstore.resolve_parms(self._builder_node, self._preferences)    # the whole container, before it moves
+        texstore.resolve_parms(    # the whole container, before it moves
+            self._builder_node, self._preferences, helpers.houdini_path)
 
         if self._import_path.type().name() == "materiallibrary":    # a classic container is rebuilt
             from amaze.render.material_conversion import engine    # late: its APIs import this module
@@ -1178,7 +1179,9 @@ class NodeHandler:
         ]
         if not loaded:
             raise hou.OperationFailed(nothing_loaded(mat.name, file_name))
-        texstore.resolve_parms(self._builder_node, self._preferences)    # before any move: scenes get plain absolute paths
+        from amaze.helpers import helpers
+        texstore.resolve_parms(    # before any move, spelled as Write Paths As says
+            self._builder_node, self._preferences, helpers.houdini_path)
         return loaded
 
     def _place_whole_builder(self, mat: material.Material, inner) -> None:

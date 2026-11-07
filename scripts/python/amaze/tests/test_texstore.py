@@ -23,10 +23,22 @@ def _scratch_library(testcase) -> str:
     return folder
 
 
-def _prefs_over(folder):
+def _prefs_over(folder, path_style="absolute"):
     class Prefs:
         dir = os.path.join(folder, "")
-    return Prefs()
+    prefs = Prefs()
+    prefs.path_style = path_style
+    return prefs
+
+
+def _pin(testcase, name, value):
+    """`$name` is `value` for the test, whatever it was; its own value comes back after."""
+    previous = hou.getenv(name)
+    if previous is None:
+        testcase.addCleanup(hou.unsetenv, name)
+    else:
+        testcase.addCleanup(hou.putenv, name, previous)
+    hou.putenv(name, value)
 
 
 def _network_with_image(testcase, file_value):
@@ -157,7 +169,22 @@ class AdoptTest(unittest.TestCase):
 
 
 class ResolveParmsTest(unittest.TestCase):
-    """resolve_parms() is the scene-side door: $AMAZELIB leaves as a plain absolute path."""
+    """resolve_parms() is the scene-side door: $AMAZELIB leaves spelled as Write Paths As says."""
+
+    def test_write_paths_as_spells_a_placed_texture(self):
+        """Under the chosen variable when the library lies inside it, as the File section writes."""
+        from amaze.core import texstore
+        from amaze.helpers import helpers
+        lib = _scratch_library(self)
+        folder = os.path.dirname(os.path.normpath(lib))
+        tail = "/".join((os.path.basename(os.path.normpath(lib)), "matX", "Brick", "t.png"))
+        for style, name in (("hip", "HIP"), ("job", "JOB")):
+            with self.subTest(style=style):
+                _pin(self, name, folder)
+                builder, image = _network_with_image(self, "$AMAZELIB/matX/Brick/t.png")
+                self.assertEqual(1, texstore.resolve_parms(
+                    builder, _prefs_over(lib, style), helpers.houdini_path))
+                self.assertEqual("$%s/%s" % (name, tail), image.parm("file").unexpandedString())
 
     def test_token_parms_become_absolute_and_others_are_untouched(self):
         from amaze.core import texstore
@@ -232,7 +259,8 @@ class SaveDoorTest(unittest.TestCase):
                       "path")
         self.assertNotIn(source.encode(), payload)
 
-    def test_copy_to_scene_resolves_tokens_to_absolute_paths(self):
+    def test_copy_to_scene_writes_textures_as_write_paths_as_says(self):
+        """A placed material's library textures open, spelled under `$JOB` when that is the choice."""
         from amaze.core import texstore
         from amaze.render import nodes as nodes_mod
         model = self.panel.material_model
@@ -242,6 +270,9 @@ class SaveDoorTest(unittest.TestCase):
         held = test_support.asset_ids(model)
         self.assertTrue(material_actions.add_asset(model, builder, "Fabrics", "", False))
         row, = test_support.arrived(model, held)
+        _pin(self, "JOB", os.path.dirname(os.path.normpath(prefs.dir)))
+        self.addCleanup(setattr, prefs, "path_style", prefs.path_style)
+        prefs.path_style = "job"
         handler = nodes_mod.NodeHandler(prefs)
         ok, reason, created = handler.import_asset_to_scene(row, "/mat")
         self.assertTrue(ok, reason)
@@ -250,8 +281,8 @@ class SaveDoorTest(unittest.TestCase):
         self.assertTrue(refs, "premise: the landed network has a "
                               "file reference")
         for raw in refs:
-            self.assertFalse(raw.startswith("$AMAZELIB"),
-                             "a token leaked into the scene: %s" % raw)
+            self.assertTrue(raw.startswith("$JOB/"),
+                            "Write Paths As was not followed: %s" % raw)
             self.assertTrue(os.path.isfile(hou.text.expandString(raw)),
                             "the scene reference does not resolve: %s"
                             % raw)

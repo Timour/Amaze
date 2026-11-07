@@ -114,12 +114,14 @@ def adopt(node, prefs, folder: str) -> list:
     return inventory
 
 
-def resolve_parms(node, prefs) -> int:
-    """Rewrite every `$AMAZELIB/...` reference under the node to an absolute path; the count."""
+def resolve_parms(node, prefs, write_path=None) -> int:
+    """Every `$AMAZELIB/...` reference under the node made a path `write_path` spells; the count."""
+    style = getattr(prefs, "path_style", "home")    # Write Paths As, which needs Houdini to apply
     changed = 0
     for parm, raw in references(node):
         if raw.startswith(TOKEN_PREFIX):
-            _set(parm, resolve(raw, prefs))
+            path = resolve(raw, prefs)
+            _set(parm, write_path(path, style) if write_path is not None else path)
             changed += 1
     return changed
 
