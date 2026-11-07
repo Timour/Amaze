@@ -38,6 +38,7 @@ class _StubPanel(QtWidgets.QWidget):
         self._file_path_outcome = True
         from amaze.core import file_library
         self.file_files_model = file_library.FileFiles
+        self.drop_placement = _StubPlacement(self)
 
     def import_asset(self, *args, **kwargs):
         self.calls.append("import_asset")
@@ -69,13 +70,20 @@ class _StubPanel(QtWidgets.QWidget):
     def assign_category_active(self, category):
         self.calls.append("category:%s" % category)
 
-    def _network_under_release(self):
-        return self._network
-
     def _release_position(self):
         return None
 
-    def _release_position_in(self, net):
+
+class _StubPlacement:
+    """The stub panel's drop placement: the network a test aims at, and no release position."""
+
+    def __init__(self, panel):
+        self.panel = panel
+
+    def network_under_release(self):
+        return self.panel._network
+
+    def release_position_in(self, net):
         """The gated resolver the engine passes to creation doors."""
         return None
 
@@ -411,11 +419,11 @@ class ADropOnAWireIsOneUndoStep(unittest.TestCase):
                                   return_value=None), \
                 mock.patch.object(self.panel, "_node_under_cursor",
                                   return_value=None), \
-                mock.patch.object(self.panel, "_drop_context_under_cursor",
+                mock.patch.object(self.panel.drop_placement, "context_under_cursor",
                                   return_value=self.geo), \
-                mock.patch.object(self.panel, "_network_under_release",
+                mock.patch.object(self.panel.drop_placement, "network_under_release",
                                   return_value=self.geo), \
-                mock.patch.object(self.panel, "_release_position_in",
+                mock.patch.object(self.panel.drop_placement, "release_position_in",
                                   return_value=spot), \
                 mock.patch.object(dragengine, "pane_tab_under_cursor",
                                   return_value=object()), \
@@ -577,11 +585,11 @@ class TheResolversSayTheyMissed(unittest.TestCase):
 
     def _said(self, call, target=None):
         from amaze.core import dragengine
-        from amaze.panel import panel as panel_mod
+        from amaze.panel import drop_placement
         said = []
         with mock.patch.object(debug, "refuse", lambda reason, **_data: said.append(reason)), \
                 mock.patch.object(dragengine, "viewport_release_target", return_value=target), \
-                mock.patch.object(panel_mod.AmazePanel, "_drop_context_under_cursor",
+                mock.patch.object(drop_placement.DropPlacement, "context_under_cursor",
                                   return_value=None):
             self.assertFalse(call(), "a release over nothing landed")
         return said

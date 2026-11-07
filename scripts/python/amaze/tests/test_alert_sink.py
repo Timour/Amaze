@@ -264,8 +264,12 @@ class NoReleaseVerbOpensAModalInline(unittest.TestCase):
               "readMultiInput", "selectFromList", "selectFile", "selectColor", "selectNode"}
     BOX_MODALS = {"information", "warning", "critical", "question"}    # on QMessageBox
     PANEL_RELEASES = ("assign_category_active", "move_files_active")    # the gesture's own calls
-    REACHED = ("_material_lop_viewport_drop", "assign_material_to_obj", "_import_material_builder",
-               "_import_geo_in_context")    # the doors that once opened one
+    REACHED = ("material_lop_viewport_drop", "assign_material_to_obj", "_import_material_builder",
+               "import_geo_in_context")    # the doors that once opened one
+    HELPERS = {"drop_placement": ("panel/drop_placement.py", "DropPlacement"),    # the objects the panel holds
+               "tile_capture": ("panel/tile_capture.py", "TileCapture"),
+               "online_import": ("panel/online_import.py", "OnlineImport"),
+               "package_import": ("panel/package_import.py", "PackageImport")}
 
     def _methods(self, relative, only=None) -> dict:
         """{name: [def]} for the methods of one source file, of class `only` when given."""
@@ -294,6 +298,7 @@ class NoReleaseVerbOpensAModalInline(unittest.TestCase):
     def test_no_release_verb_reaches_a_modal(self):
         own = {"section": self._methods("panel/sections.py"),
                "panel": self._methods("panel/panel.py", "AmazePanel")}
+        own.update((held, self._methods(*where)) for held, where in self.HELPERS.items())
         stack = [("section", verb, verb) for verb in sorted(self._release_verbs())]
         stack += [("panel", verb, verb) for verb in self.PANEL_RELEASES]
         seen, offenders = set(), []
@@ -307,6 +312,7 @@ class NoReleaseVerbOpensAModalInline(unittest.TestCase):
                     if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)):
                         continue
                     owner, called = ast.unparse(node.func.value), node.func.attr
+                    head, _dot, held = owner.rpartition(".")
                     if called in self.MODALS or (
                             called in self.BOX_MODALS and owner.endswith("QMessageBox")):
                         offenders.append("%s: %s, line %d" % (path, called, node.lineno))
@@ -314,6 +320,8 @@ class NoReleaseVerbOpensAModalInline(unittest.TestCase):
                         stack.append((side, called, path + " > " + called))
                     elif owner in ("panel", "self.panel"):
                         stack.append(("panel", called, path + " > " + called))
+                    elif held in self.HELPERS and head in ("self", "panel", "self.panel"):
+                        stack.append((held, called, path + " > " + called))
                     elif owner in ("context", "section"):
                         stack.append(("section", called, path + " > " + called))
         reached = {name for _side, name in seen}
@@ -376,7 +384,7 @@ class AFailedReleaseSpeaksThroughTheSink(unittest.TestCase):
         network = types.SimpleNamespace(
             childTypeCategory=lambda: types.SimpleNamespace(name=lambda: "Object"),
             createNode=refuse)
-        made = self.panel._import_geo_in_context("/nowhere/rock.bgeo.sc", network)
+        made = self.panel.drop_placement.import_geo_in_context("/nowhere/rock.bgeo.sc", network)
         self.assertIsNone(made)
         self.assertEqual(([], 0), (self.shown, self.later.call_count),
                          "a network refusing the import opened a dialog")

@@ -164,7 +164,7 @@ class ACategoryIsActedOnByItsStoredName(_PanelCase):
             "the sidebar no longer strips the underscore - this test "
             "can no longer see its subject")
         self.assertEqual(
-            "_WIP", self.panel._raw_category_name(index),
+            "_WIP", self.panel.raw_category_name(index),
             "the panel reads the DISPLAYED name, so Rename matches no "
             "asset and silently does nothing, Remove returns early and "
             "leaves the row, and a drop creates a SECOND category "
@@ -175,13 +175,13 @@ class ACategoryIsActedOnByItsStoredName(_PanelCase):
         for name in ("droppable_index", "category_at_point"):
             source = func_source("panel/sidebar.py", name)
             self.assertIn(
-                "_raw_category_name", source,
+                "raw_category_name", source,
                 "%s reads a category name without the helper - a "
                 "fourth site getting this wrong is what the helper "
                 "exists to stop" % name)
 
         self.assertIn(
-            "_raw_category_name",
+            "raw_category_name",
             method_source("panel/sections.py", "AssetSection",
                           "sidebar_key"),
             "AssetSection.sidebar_key stopped reading the helper, so "
@@ -195,15 +195,15 @@ class ACategoryIsActedOnByItsStoredName(_PanelCase):
                 "sidebar_key" % verb)
         source = source_of("panel/panel.py")    # one answer for the selected category, or the dialogs disagree
         self.assertEqual(
-            1, source.count("def _selected_category_name"),
+            1, source.count("def selected_category_name"),
             "the shared answer is gone or duplicated")
         self.assertIn(
-            "_selected_category_name",
+            "selected_category_name",
             func_source("panel/panel.py", "_current_code_category"),
             "_current_code_category answers 'which category is selected' "
             "on its own again")
         self.assertIn(    # Material, Node and Code share one body; Color keeps its first-category default
-            "_selected_category_name",
+            "selected_category_name",
             method_source("panel/sections.py", "AssetSection", "save_categories"),
             "the asset sections answer 'which category is selected' on their own again")
         for cls in ("MaterialSection", "CopSection", "CodeSection"):
@@ -837,7 +837,7 @@ class EveryActivateEstablishesADefaultRow(unittest.TestCase):
             "AssetSection.activate establishes its default sidebar "
             "row on its own again, or not at all")
         self.assertIn(
-            "_select_default_sidebar_row",
+            "select_default_sidebar_row",
             method_source("panel/sections.py", "AssetSection",
                           "_stand_on_first_row"),
             "the shared default row no longer goes through the panel's helper")
@@ -1321,8 +1321,8 @@ class AStaleVersionsBadgeOpensNothing(unittest.TestCase):
 
         with mock.patch.object(versions_dialog, "VersionsDialog", dialog), \
                 mock.patch.object(model, "version_list", lambda row: (["v1", "v2"], "v1")):
-            panel._open_versions_dialog(QtCore.QModelIndex(), panel.material_sorted_model,
-                                        model)
+            panel.open_versions_dialog(QtCore.QModelIndex(), panel.material_sorted_model,
+                                       model)
         self.assertEqual([], opened, "a stale badge opened another material's versions")
 
 

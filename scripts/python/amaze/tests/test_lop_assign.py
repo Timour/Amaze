@@ -371,8 +371,8 @@ class TheViewportDropUsesHoudinisOwnLibraryPicker(unittest.TestCase):
     def test_the_drop_asks_the_stock_picker_and_amaze_keeps_no_rule_of_its_own(self):
         import inspect
         from amaze.core import dragengine
-        from amaze.panel import panel as panel_mod
-        source = inspect.getsource(panel_mod.AmazePanel._material_lop_viewport_drop)
+        from amaze.panel import drop_placement
+        source = inspect.getsource(drop_placement.DropPlacement.material_lop_viewport_drop)
         self.assertIn("getMaterialLibraryLop", source,
                       "the viewport drop picks the library itself instead of "
                       "asking Houdini's own script")

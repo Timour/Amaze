@@ -772,9 +772,9 @@ class TheHeaderSORTS(unittest.TestCase):
         panel.thumbtable.sortByColumn(
             column, QtCore.Qt.SortOrder.AscendingOrder)
         QtWidgets.QApplication.processEvents()
-        panel._section().filter_text("a")
+        panel.active_section().filter_text("a")
         QtWidgets.QApplication.processEvents()
-        self.addCleanup(panel._section().filter_text, "")
+        self.addCleanup(panel.active_section().filter_text, "")
         self.assertEqual(
             column, panel.thumbtable.model().sourceModel().sort_column(),
             "the filter change reset the sort column")
@@ -817,7 +817,7 @@ class TheSelectionSpeaksInROWS(unittest.TestCase):
 
     def test_one_selected_row_is_ONE_grid_selection(self):
         self._select_row(0)
-        selection = self.panel._section().grid_selection()
+        selection = self.panel.active_section().grid_selection()
         self.assertEqual(
             1, len(selection),
             "one selected row reads as %d selections" % len(selection))
@@ -834,7 +834,7 @@ class TheSelectionSpeaksInROWS(unittest.TestCase):
                                    model.FavoriteRole))
 
         before = fav()
-        section = self.panel._section()
+        section = self.panel.active_section()
         section.toggle_favourite(section.grid_selection())
         self.assertNotEqual(
             before, fav(),

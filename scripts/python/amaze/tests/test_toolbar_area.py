@@ -98,7 +98,7 @@ class TheToolbarFollowsTheContextLive(unittest.TestCase):
         for key in ("material", "file"):
             panel.section_tabs.setChecked(key)
             QtWidgets.QApplication.processEvents()
-            context = panel._section()
+            context = panel.active_section()
             for control, fact, verb in AmazePanel.TOOLBAR_CONTROLS:
                 with self.subTest(section=key, control=control):
                     self.assertEqual(
@@ -116,7 +116,7 @@ class TheToolbarFollowsTheContextLive(unittest.TestCase):
         panel.enter_online_world()
         QtWidgets.QApplication.processEvents()
 
-        context = panel._section()
+        context = panel.active_section()
         self.assertIsInstance(context, sections.OnlineContext,
                               "not in the online world, so this proves "
                               "nothing")

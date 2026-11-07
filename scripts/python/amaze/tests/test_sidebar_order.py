@@ -137,7 +137,7 @@ class DeletingTheLastOfACategoryStandsTheSidebarOnAll(unittest.TestCase):
         proxy, source = section._sidebar_categories()
         source.set_renderer_filter("karma")    # empty categories hide only under a renderer filter
         proxy.hide_empty = True
-        panel._refresh_sidebar_categories()
+        panel.refresh_sidebar_categories()
         self.assertTrue(
             panel._stand_on_category("Karma_Mats"),
             "the fixture sidebar has no Karma_Mats row to stand on")
@@ -355,7 +355,7 @@ class PanelWiresNoSidebarSortTest(unittest.TestCase):
 
         self.assertEqual(
             ["Karma_Mats", "usds", "_WIP"],
-            AmazePanel._category_names_from(
+            AmazePanel.category_names_from(
                 _Stored(["_All", "usds", "_WIP", "Karma_Mats"])),
             "the dropdown is not alphabetical by label - `_WIP` reads "
             "WIP and sorts there - or it offers All as a category")
@@ -364,7 +364,7 @@ class PanelWiresNoSidebarSortTest(unittest.TestCase):
                   encoding="utf-8") as handle:
             sections_flat = "".join(handle.read().split())
         self.assertIn(    # the three asset sections share one body over their own categories
-            "returnpanel._category_names_from(st.categories),", sections_flat,
+            "returnpanel.category_names_from(st.categories),", sections_flat,
             "the asset sections' list no longer comes straight from "
             "the ONE category-names home")
 
@@ -457,7 +457,7 @@ class HoldGestureTest(unittest.TestCase):
         class _Panel:
             cat_list = view
 
-            def _section(self):
+            def active_section(self):
                 return section
 
         controller = sidebar.SidebarReorder(_Panel())

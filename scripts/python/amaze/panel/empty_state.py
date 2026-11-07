@@ -40,7 +40,7 @@ def verdict(panel) -> tuple:
 
     source = proxy.sourceModel() if hasattr(proxy, "sourceModel") else None
     total = source.rowCount() if source is not None else 0
-    section = panel._section() if hasattr(panel, "_section") else None
+    section = panel.active_section() if hasattr(panel, "active_section") else None
     nothing_yet = section.nothing_yet(source) if section is not None else not total
     if nothing_yet:
         return (NOTHING_YET, "")
@@ -102,7 +102,7 @@ def quote_for(panel, blank: str) -> tuple:
     """(line, attribution) from the section's `QUOTE` for the first-run blank, else two empty strings."""
     if blank != NOTHING_YET:
         return ("", "")
-    section = panel._section() if hasattr(panel, "_section") else None
+    section = panel.active_section() if hasattr(panel, "active_section") else None
     quote = getattr(section, "QUOTE", None) or ()
     if len(quote) != 2:
         return ("", "")
@@ -111,7 +111,7 @@ def quote_for(panel, blank: str) -> tuple:
 
 def words_for(panel, blank: str, detail: str) -> tuple:
     """(headline, sentence, button label, verb) with %s filled in; a blank verb means no button."""
-    section = panel._section() if hasattr(panel, "_section") else None
+    section = panel.active_section() if hasattr(panel, "active_section") else None
     table = dict(SHARED)
     declared = getattr(section, "EMPTY", None) or {}
     table.update(declared)

@@ -146,7 +146,7 @@ class AreaBindingCase(unittest.TestCase):
         panel = self.panel
         if panel._is_online():
             panel.leave_online_world()
-        section = panel._section()
+        section = panel.active_section()
         if section is not None:
             section.activate()
         QtWidgets.QApplication.processEvents()
@@ -275,7 +275,7 @@ class TheToolbarFollowsTheContext(AreaBindingCase):
             with self.subTest(section=key):
                 panel = self.activate(key)
                 panel.texture_progress.setVisible(True)
-                panel._section().activate()
+                panel.active_section().activate()
                 QtWidgets.QApplication.processEvents()
                 self.assertTrue(   # isHidden(), not isVisible(): the panel is never shown, so isVisible() is always False
                     panel.texture_progress.isHidden(),
@@ -495,7 +495,8 @@ class TheBindingsAreDeclaredNotHandWritten(unittest.TestCase):
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         found = []
         for name in ("panel.py", "sections.py", "dragdrop_widgets.py",
-                     "online_import.py", "package_import.py"):
+                     "online_import.py", "package_import.py",
+                     "drop_placement.py", "tile_capture.py"):
             with open(os.path.join(root, "panel", name), encoding="utf-8") as fh:
                 source = fh.read()
             for wrapper in self._PUT_BACKS:

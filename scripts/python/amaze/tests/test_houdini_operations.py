@@ -102,7 +102,7 @@ class TheOnlineImportRunsInsideHoudinisOperation(_OnThePanel):
 
         with mock.patch.object(hou, "InterruptableOperation", operation), \
                 mock.patch.object(self.panel.online_import, "import_material", side_effect=one), \
-                mock.patch.object(self.panel, "_render_landed"):
+                mock.patch.object(self.panel, "render_landed"):
             self.panel.online_import.import_records([_record(t) for t in titles])
         return imported
 
@@ -167,7 +167,7 @@ class TheMultiMaterialSaveRunsInsideHoudinisOperation(_OnThePanel):
                 mock.patch.object(panel_mod.material_actions, "add_asset", side_effect=add), \
                 mock.patch.object(self.panel, "enable_renderer_on_add"), \
                 mock.patch.object(self.panel, "update_renderer_toggles"), \
-                mock.patch.object(self.panel, "_refresh_sidebar_categories"):
+                mock.patch.object(self.panel, "refresh_sidebar_categories"):
             self.panel.sections["material"].commit_save(picked, picked[0], dialog)
         return saved
 

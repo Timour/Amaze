@@ -506,7 +506,7 @@ class TheOnlineWorld(unittest.TestCase):
 
             if panel._is_online():
                 panel.leave_online_world()
-            section = panel._section()
+            section = panel.active_section()
             if section is not None:
                 section.activate()
         self.addCleanup(_restore_the_panel)

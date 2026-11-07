@@ -55,7 +55,7 @@ class TheSubjectIsRightForEachContext(unittest.TestCase):
         panel = self.panel
         panel.section_tabs.setChecked(key)
         QtWidgets.QApplication.processEvents()
-        context = panel._section()
+        context = panel.active_section()
         proxy = panel.thumblist.model()
         self.assertIsNotNone(proxy, "the %s tab has no grid model" % key)
         self.assertGreater(
@@ -85,7 +85,7 @@ class TheSubjectIsRightForEachContext(unittest.TestCase):
     def _clear_filter(self, key):
         self.panel.section_tabs.setChecked(key)
         QtWidgets.QApplication.processEvents()
-        self.panel._section().filter_text("")
+        self.panel.active_section().filter_text("")
         QtWidgets.QApplication.processEvents()
 
     def test_a_material_subject_is_keyed_by_the_SELECTED_assets_id(self):
@@ -93,7 +93,7 @@ class TheSubjectIsRightForEachContext(unittest.TestCase):
         self.assertIsNotNone(
             subject, "no subject for a material - the fixture library "
                      "has none, so this cannot test anything")
-        model = self.panel._section().stack().model
+        model = self.panel.active_section().stack().model
         self.assertEqual(
             "material:%s" % index.data(model.IdRole), subject.key,
             "the comment key does not name the asset that is selected, "
@@ -156,7 +156,7 @@ class TheSubjectIsRightForEachContext(unittest.TestCase):
         selection.selectedIndexes = lambda: (listed.append(1), real())[1]
         self.addCleanup(delattr, selection, "selectedIndexes")
         subject = panel._notes_subject()
-        model = panel._section().stack().model
+        model = panel.active_section().stack().model
         self.assertEqual(
             "material:%s" % current.data(model.IdRole), subject.key,
             "the subject is not the current row, which is selected")
@@ -175,7 +175,7 @@ class TheSubjectIsRightForEachContext(unittest.TestCase):
         QtWidgets.QApplication.processEvents()
         self.assertTrue(panel._is_online(), "not online, so this proves "
                                             "nothing")
-        self.assertFalse(panel._section().takes_comments)    # BOTH halves, because they must agree: the chip with nothing selected, the subject with a selection
+        self.assertFalse(panel.active_section().takes_comments)    # BOTH halves, because they must agree: the chip with nothing selected, the subject with a selection
         self.assertIsNone(panel._notes_subject())
 
     def _leave_online(self):
@@ -222,11 +222,11 @@ class NothingSelectedDimsThePane(unittest.TestCase):
         self.fail("the grid has no empty space to click")
 
     def _key_of(self, row):
-        return self.panel._section().comment_subject(
+        return self.panel.active_section().comment_subject(
             self.view.model().index(row, 0)).key
 
     def _assert_dim(self):
-        self.assertEqual([], self.panel._section().grid_selection(),
+        self.assertEqual([], self.panel.active_section().grid_selection(),
                          "the gesture left a selection")
         self.assertTrue(
             self.view.currentIndex().isValid(),

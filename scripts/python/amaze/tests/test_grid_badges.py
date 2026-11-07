@@ -266,7 +266,7 @@ class AQuickSecondClickOnABadgeIsAClick(unittest.TestCase):
                  (QtCore.QEvent.Type.MouseButtonPress, left),
                  (QtCore.QEvent.Type.MouseButtonDblClick, left),
                  (QtCore.QEvent.Type.MouseButtonRelease, none))
-        with mock.patch.object(panel._section(), "double_click"), \
+        with mock.patch.object(panel.active_section(), "double_click"), \
                 mock.patch.dict(delegate._badge_clicks, {"favourite": clicks.append}):
             for kind, buttons in steps:
                 QtWidgets.QApplication.sendEvent(view.viewport(), QtGui.QMouseEvent(

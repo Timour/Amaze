@@ -112,13 +112,16 @@ class NoMenuIsWrittenInThePanelAnyMore(unittest.TestCase):
     """The six panel handlers are gone, and no seventh menu may grow in panel.py beside the table."""
 
     def _panel_tree(self):
-        with open(os.path.join(PACKAGE, "panel", "panel.py"),
-                  encoding="utf-8") as handle:
-            return ast.parse(handle.read())
+        body = []
+        for name in ("panel.py", "drop_placement.py", "tile_capture.py"):
+            with open(os.path.join(PACKAGE, "panel", name),
+                      encoding="utf-8") as handle:
+                body += ast.parse(handle.read()).body
+        return ast.Module(body=body, type_ignores=[])
 
     MAY_BUILD_A_MENU = {  # the menus panel.py may still build, named rather than counted
         "init_ui",                      # the toolbar's Filter menu
-        "_material_lop_viewport_drop",  # the Drag & Drop Engine's
+        "material_lop_viewport_drop",   # the Drag & Drop Engine's
         "_build_menus",                 # the online eye's kind filter (All/Materials/Colors/Nodes/Code) - a toolbar menu, not a grid route
     }
 
@@ -188,7 +191,7 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
         with mock.patch.object(QtWidgets.QMenu, "exec_",
                                lambda menu, *a, **k: seen.extend(
                                    render(menu))):
-            panel._section().rc_menu()
+            panel.active_section().rc_menu()
         return seen
 
     def _rows_of_kind(self, kind):
@@ -370,7 +373,7 @@ class TheRowTheMenuIsAboutIsAlwaysSELECTED(unittest.TestCase):
         with mock.patch.object(grid, "build_menu", _capture), \
                 mock.patch.object(QtWidgets.QMenu, "exec_",
                                   lambda *a, **k: None):
-            panel._section().rc_menu()
+            panel.active_section().rc_menu()
 
         self.assertEqual([2], [i.row() for i in seen["indexes"]])
         self.assertEqual(
@@ -402,7 +405,7 @@ class AMenuDoesNotOUTLIVEItsRightClick(unittest.TestCase):
         with mock.patch.object(QtWidgets.QMenu, "exec_",
                                lambda *a, **k: None):
             for _ in range(20):
-                panel._section().rc_menu()
+                panel.active_section().rc_menu()
         QtWidgets.QApplication.sendPostedEvents(  # processEvents never delivers DeferredDelete; without this the test is vacuous
             None, QtCore.QEvent.Type.DeferredDelete)
 
@@ -431,7 +434,7 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
                 panel.thumblist.selectionModel().select(
                     proxy.index(0, 0),
                     QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
-                context = panel._section()
+                context = panel.active_section()
                 called = []
                 verbs = {entry.verb for entry in context.GRID_MENU
                          if entry.verb}
@@ -458,7 +461,7 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
         panel = self.panel
         panel.section_tabs.setChecked("material")
         QtWidgets.QApplication.processEvents()
-        context = panel._section()
+        context = panel.active_section()
         with mock.patch.object(type(context), "_sources_held",
                                lambda _self, _indexes: frozenset(held)), \
                 plugins_loaded("Redshift", "Octane"):
@@ -494,7 +497,7 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
         for row in rows:
             selection.select(proxy.index(row, 0),
                              QtCore.QItemSelectionModel.SelectionFlag.Select)
-        indexes = panel._section().grid_selection()
+        indexes = panel.active_section().grid_selection()
         self.assertEqual(len(rows), len(indexes), "premise: the rows are selected")
         self.assertTrue(indexes, "premise: the fixture has Karma materials")
         return indexes
@@ -505,7 +508,7 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
         indexes = self._select_karma_rows(1)
         with plugins_loaded():
             menu, _verbs = grid.build_grid_menu(
-                panel, panel._section(), indexes, indexes[0])
+                panel, panel.active_section(), indexes, indexes[0])
         row = [r for r in render(menu) if r.startswith("Convert to")]
         self.assertEqual(["Convert to > [MaterialX(off), Redshift(off), Octane(off)](off)"], row)
 
@@ -514,7 +517,7 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
         panel = self.panel
         panel.section_tabs.setChecked("material")
         QtWidgets.QApplication.processEvents()
-        context = panel._section()
+        context = panel.active_section()
         with mock.patch.object(panel, "convert_selected") as convert:
             context.menu_convert_to([], None, "Redshift")
             context.menu_convert_to([], None, "Karma")
@@ -604,7 +607,7 @@ class EveryRendererRowWEARSTheFilterMenusIcon(unittest.TestCase):
         """The Filter menu, then the material and online grid menus: (filter, material, online)."""
         panel = self.panel
         panel.build_filter_menu()
-        context = panel._section()
+        context = panel.active_section()
         material_menu, _verbs = grid.build_grid_menu(
             panel, context, context.grid_selection(), None)
         online_menu, _verbs = grid.build_grid_menu(
@@ -668,7 +671,7 @@ class EveryRendererRowWEARSTheFilterMenusIcon(unittest.TestCase):
 
         with self._everything_offered(), mock.patch.object(ui_helpers, "menu_icon", spy):
             panel = self.panel
-            context = panel._section()
+            context = panel.active_section()
             for build, times in (
                     (panel.build_filter_menu, 1),
                     (lambda: grid.build_grid_menu(
@@ -711,7 +714,7 @@ class AVerbActsOnlyOnRowsStillThere(unittest.TestCase):
             return next(a for a in menu.actions() if a.text() == label)
 
         with mock.patch.object(QtWidgets.QMenu, "exec_", _exec):
-            panel._section().rc_menu()
+            panel.active_section().rc_menu()
 
     def _starred(self, model):
         return {str(a.mat_id) for a in model.assets
@@ -769,7 +772,7 @@ class EveryVerbREACHESItsOwner(unittest.TestCase):
             raise AssertionError("%s has no %r entry" % (key, label))
 
         with mock.patch.object(QtWidgets.QMenu, "exec_", _exec):
-            panel._section().rc_menu()
+            panel.active_section().rc_menu()
 
     def test_FAVORITE_DELETE_and_UPDATE_PREVIEW_go_through_the_panels_entry_points(self):
         for label, owner, keys in (

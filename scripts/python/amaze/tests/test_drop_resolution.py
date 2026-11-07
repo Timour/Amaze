@@ -64,7 +64,7 @@ class _ReleaseCase(unittest.TestCase):
 
 
 class TheReleaseResolvesToTheNetworkUnderThePointer(_ReleaseCase):
-    """`_drop_context_under_cursor`: which network a release belongs to."""
+    """`drop_placement.context_under_cursor`: which network a release belongs to."""
 
     def setUp(self):
         super().setUp()
@@ -75,7 +75,7 @@ class TheReleaseResolvesToTheNetworkUnderThePointer(_ReleaseCase):
         net = hou.node("/obj").createNode("copnet", "resolve_cop")
         self._patch(_fake_editor(net))
         self.assertEqual(
-            net, self.panel._drop_context_under_cursor(self.matcher),
+            net, self.panel.drop_placement.context_under_cursor(self.matcher),
             "a release on blank canvas missed the network being shown")
 
     def test_a_container_under_the_pointer_takes_the_release(self):
@@ -83,7 +83,7 @@ class TheReleaseResolvesToTheNetworkUnderThePointer(_ReleaseCase):
         net = hou.node("/obj").createNode("copnet", "target_cop")
         self._patch(_fake_editor(hou.node("/obj"), items=[(net,)]))
         self.assertEqual(
-            net, self.panel._drop_context_under_cursor(self.matcher),
+            net, self.panel.drop_placement.context_under_cursor(self.matcher),
             "a release over a container landed beside it")
 
     def test_a_node_the_rule_rejects_falls_back_to_the_editor(self):
@@ -92,7 +92,7 @@ class TheReleaseResolvesToTheNetworkUnderThePointer(_ReleaseCase):
         geo = obj.createNode("geo", "not_a_target")
         self._patch(_fake_editor(obj, items=[(geo,)]))
         self.assertEqual(
-            obj, self.panel._drop_context_under_cursor(lambda _node: False),
+            obj, self.panel.drop_placement.context_under_cursor(lambda _node: False),
             "a rejected node swallowed the release")
 
     def test_a_bare_item_is_walked_like_a_tuple(self):
@@ -100,7 +100,7 @@ class TheReleaseResolvesToTheNetworkUnderThePointer(_ReleaseCase):
         net = hou.node("/obj").createNode("copnet", "bare_cop")
         self._patch(_fake_editor(hou.node("/obj"), items=[net]))
         self.assertEqual(
-            net, self.panel._drop_context_under_cursor(self.matcher))
+            net, self.panel.drop_placement.context_under_cursor(self.matcher))
 
     def test_a_pane_that_is_not_a_network_view_resolves_to_nothing(self):
         """A Parameter pane is a miss, and a miss is a normal drag outcome."""
@@ -108,20 +108,20 @@ class TheReleaseResolvesToTheNetworkUnderThePointer(_ReleaseCase):
             type=lambda: hou.paneTabType.Parm,
             pwd=lambda: hou.node("/obj")))
         self.assertIsNone(
-            self.panel._drop_context_under_cursor(self.matcher))
+            self.panel.drop_placement.context_under_cursor(self.matcher))
 
     def test_no_pane_under_the_pointer_resolves_to_nothing(self):
         """Released over the desktop, nothing is consulted."""
         self._patch(None)
         self.assertIsNone(
-            self.panel._drop_context_under_cursor(self.matcher))
+            self.panel.drop_placement.context_under_cursor(self.matcher))
 
     def test_the_chrome_of_a_pane_is_not_its_canvas(self):
         """Over a toolbar there are no items, so the shown network still wins."""
         net = hou.node("/obj").createNode("copnet", "chrome_cop")
         self._patch(_fake_editor(net, items=[(net,)], under_cursor=False))
         self.assertEqual(
-            net, self.panel._drop_context_under_cursor(self.matcher))
+            net, self.panel.drop_placement.context_under_cursor(self.matcher))
 
 
 class TheNodeDropLandsWhereItWasReleased(_ReleaseCase):
@@ -225,8 +225,8 @@ class MaterialNetworkGateTest(unittest.TestCase):
         before_mat = len(mat.children())
         with mock.patch.object(dragengine, "viewport_release_target",
                                return_value=None):
-            with mock.patch.object(self.panel,
-                                   "_drop_context_under_cursor",
+            with mock.patch.object(self.panel.drop_placement,
+                                   "context_under_cursor",
                                    return_value=obj):
                 ok = self.section.drop_material_at_release(index)
         self.assertFalse(
@@ -255,8 +255,8 @@ class MaterialNetworkGateTest(unittest.TestCase):
         before = len(lib.children())
         with mock.patch.object(dragengine, "viewport_release_target",
                                return_value=None):
-            with mock.patch.object(self.panel,
-                                   "_drop_context_under_cursor",
+            with mock.patch.object(self.panel.drop_placement,
+                                   "context_under_cursor",
                                    return_value=lib):
                 ok = self.section.drop_material_at_release(index)
         self.assertTrue(ok)

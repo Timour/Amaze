@@ -467,11 +467,11 @@ class GridGestureMixin:
             aim = sections.drop_verb(section, rule.resolve)
             return bool(aim(idx))
         if rule.on_space is not None:
-            net = panel._network_under_release()
+            net = panel.drop_placement.network_under_release()
             if net is None:
                 return section.drop_takes_nothing()
             create = sections.drop_verb(section, rule.on_space)    # the position is used only when the release editor shows that network
-            return bool(create(idx, net, panel._release_position_in(net)))
+            return bool(create(idx, net, panel.drop_placement.release_position_in(net)))
         return section.drop_takes_nothing()
 
     @staticmethod
@@ -483,8 +483,8 @@ class GridGestureMixin:
         if not landed:
             return
         editor = dragengine.pane_tab_under_cursor()
-        net = panel._network_under_release()
-        spot = panel._release_position_in(net) if net is not None else None
+        net = panel.drop_placement.network_under_release()
+        spot = panel.drop_placement.release_position_in(net) if net is not None else None
         wire, _name, _index = dragengine.wire_under_cursor(    # what landed is excluded: it sits under the cursor already
             editor, spot, exclude=landed)
         if wire is not None:
@@ -551,7 +551,7 @@ class DragDropCentralWidget(QtWidgets.QWidget):
         panel = _find_panel(self)
         if panel is None:
             return
-        section = panel._section()    # deferred out of the drop, so no modal opens mid-gesture ▸r/qt-windows-macos
+        section = panel.active_section()    # deferred out of the drop, so no modal opens mid-gesture ▸r/qt-windows-macos
 
         @debug.guarded("dropEvent.deferred_save")
         def _route(panel=panel, section=section, node=nodes[0]):

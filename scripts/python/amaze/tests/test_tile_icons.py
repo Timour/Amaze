@@ -1354,7 +1354,7 @@ class AnIconOverASelectionWritesOnce(unittest.TestCase):
                     return real(path, *args, **kwargs)
 
                 with mock.patch.object(hostos, "write_json_atomic", counted):
-                    self.panel._apply_icon_spec(model, rows, self.SPEC)
+                    self.panel.apply_icon_spec(model, rows, self.SPEC)
                 self.assertEqual(1, len(writes), "%s wrote %s %d times for "
                                  "one gesture" % (attr, tile_icons.OVERRIDES_FILE,
                                                   len(writes)))

@@ -53,6 +53,7 @@ from amaze.utils import rc_calls
 from amaze.core import database, renderers, tile_icons, users
 from amaze.render import cop_nodes, husk_job, nodes
 from amaze.panel import online_import, package_import
+from amaze.panel import drop_placement, tile_capture
 
 _DEV_RELOAD = bool(os.environ.get("AMAZE_DEV_RELOAD"))    # the reload chain below is off by default ▸r/module-reload
 
@@ -154,6 +155,8 @@ _reload_loaded("amaze.core.packages")
 _reload_loaded("amaze.render.generator")
 _reload(online_import)    # after matx_sources, nodes and material_actions, which it calls
 _reload(package_import)    # after sections, whose SECTION_CLASSES it reads
+_reload(drop_placement)    # after geo_library, helpers and wording, which it calls
+_reload(tile_capture)    # after scene_captures, which it calls
 
 
 
@@ -201,6 +204,8 @@ class AmazePanel(QtWidgets.QWidget):
         debug.install()    # first, so a construction failure is logged even with Debug Mode off
         self.online_import = online_import.OnlineImport(self)    # before _build, which connects a menu action to one
         self.package_import = package_import.PackageImport(self)
+        self.drop_placement = drop_placement.DropPlacement(self)
+        self.tile_capture = tile_capture.TileCapture(self)    # before _build too: the Capture button is wired to it
         try:
             self._build()
         except Exception as exc:
@@ -462,7 +467,7 @@ class AmazePanel(QtWidgets.QWidget):
         )
         self.online_mode = False
         self.online_source = None
-        self.online_context = sections.OnlineContext(self)    # a Section's interface, not in `sections`; `_section()` reaches it
+        self.online_context = sections.OnlineContext(self)    # a Section's interface, not in `sections`; `active_section()` reaches it
 
         for _notes_selection in (    # keyboard selection moves reach the Notes pane too
             self.material_selection_model,
@@ -474,7 +479,7 @@ class AmazePanel(QtWidgets.QWidget):
             _notes_selection.selectionChanged.connect(
                 self._refresh_notes_subject)
 
-        self.sections = sections.build_sections(self)    # one object per tab; shared handlers dispatch through self._section()
+        self.sections = sections.build_sections(self)    # one object per tab; shared handlers dispatch through self.active_section()
 
         self.sidebar_reorder = sidebar.SidebarReorder(self)    # the press-hold sidebar reorder
 
@@ -604,7 +609,7 @@ class AmazePanel(QtWidgets.QWidget):
             self.click_slider.setValue(grid.active_thumbsize(self))
         self._note_models_library()
         debug.event("session", "library switched", dir=self._models_dir)
-        section = self._section()
+        section = self.active_section()
         if section is not None:
             section.library_switched()
 
@@ -975,7 +980,7 @@ class AmazePanel(QtWidgets.QWidget):
             self.btn_hip_capture = ui_helpers.IconMenuButton(    # every section: onto the selected tile
                 None,
                 self._ui_icon_path("icon_screenshot.svg"),
-                on_click=self.capture_from_toolbar,
+                on_click=self.tile_capture.from_toolbar,
                 fallback_label="Capture",
                 name="btn_hip_capture",
             )
@@ -1375,7 +1380,7 @@ class AmazePanel(QtWidgets.QWidget):
         self.toolbar_layout.addItem(item)
 
     @staticmethod
-    def _category_names_from(model) -> list[str]:
+    def category_names_from(model) -> list[str]:
         """Every STORED category name, empty ones in and All out, sorted by the label a row shows."""
         names = []
         if not model:
@@ -1415,7 +1420,7 @@ class AmazePanel(QtWidgets.QWidget):
                     None, save=False    # fav=None: never the per-user star; save=False: one write below
                 )
         model.save()    # AFTER the pair: a save adopts a peer's rows, and an insert in it segfaults H21
-        self._refresh_sidebar_categories()
+        self.refresh_sidebar_categories()
 
     def _assign_gradient_category(self, category: str) -> None:
         """Move the selected gradients to a category, the seeded palettes included."""
@@ -1425,7 +1430,7 @@ class AmazePanel(QtWidgets.QWidget):
         ]
         moved = self.gradient_model.set_user_category(rows, category)
         if moved:
-            self._refresh_sidebar_categories()
+            self.refresh_sidebar_categories()
 
     def _grid_geometry(self) -> dict:
         """The numbers that change when the grid moves: viewport, scroll range, grid step, size hint."""
@@ -1454,11 +1459,11 @@ class AmazePanel(QtWidgets.QWidget):
 
     def _thumblist_rc_menu(self) -> None:
         """The menu itself, from the active context's `GRID_MENU`."""
-        context = self._section()    # the online world too
+        context = self.active_section()    # the online world too
         if context is not None:
             context.rc_menu()
 
-    def _open_versions_dialog(self, index, proxy, model) -> None:
+    def open_versions_dialog(self, index, proxy, model) -> None:
         """The Versions dialog over `model`'s row at `index`: Select makes the picked one active."""
         from amaze.dialogs import versions_dialog
         row = proxy.mapToSource(index).row()    # `index` is the proxy's
@@ -1477,18 +1482,13 @@ class AmazePanel(QtWidgets.QWidget):
 
 
 
-    def _scene_path(self, path: str) -> str:
-        """A path Amaze writes into the scene, spelled per Write Paths As; never for loads."""
-        return helpers.houdini_path(
-            path, getattr(self.prefs, "path_style", "home"))
-
     def copy_file_paths(self, proxy_indexes) -> None:
         """Copy the selection's paths to the clipboard as Houdini paths, one per line."""
         paths = []
         for proxy_index in proxy_indexes:
             path = proxy_index.data(self.file_files_model.PathRole) or ""
             if path:
-                paths.append(self._scene_path(path))    # spelled as the session writes parms
+                paths.append(self.drop_placement.scene_path(path))    # spelled as the session writes parms
         if not paths:
             return
         QtWidgets.QApplication.clipboard().setText("\n".join(paths))    # no dialog - the clipboard changing IS the report
@@ -1496,12 +1496,12 @@ class AmazePanel(QtWidgets.QWidget):
 
     def catlist_rc_menu(self) -> None:
         """Sidebar right-click - the active context builds its own menu."""
-        section = self._section()    # the online world has no SIDEBAR_MENU
+        section = self.active_section()    # the online world has no SIDEBAR_MENU
         if section is not None:
             section.catlist_menu()
 
 
-    def _locate_folder_user(self, folders_model) -> None:
+    def locate_folder_user(self, folders_model) -> None:
         """Sidebar "Locate Folder...": re-point the selected registered folder at a new location."""
         ui = getattr(hou, "ui", None)
         indexes = self.cat_list.selectedIndexes()
@@ -1539,40 +1539,12 @@ class AmazePanel(QtWidgets.QWidget):
         if row is None or view_model is None:
             return
         self.cat_list.setCurrentIndex(view_model.index(row, 0))
-        self._locate_folder_user(model)
-        context = self._section()
+        self.locate_folder_user(model)
+        context = self.active_section()
         if context is not None:
             context.stand_again()    # a Locate cancelled or refused moved only the highlight
 
-    def capture_from_toolbar(self) -> None:
-        """Toolbar Capture: the one selected tile; in File with nothing selected, the open scene."""
-        context = self._section()
-        indexes = context.grid_selection() if context is not None else []
-        if len(indexes) == 1 and getattr(context, "takes_capture", False):
-            self.capture_onto_tile(context, indexes[0])
-        elif not indexes and getattr(context, "key", "") == "file":
-            self._capture_and_report()    # "" = the scene the viewport is showing
-        else:
-            self._report_capture_refused(messages.CAPTURE_SELECT_ONE_TILE)
-
-    def capture_onto_tile(self, context, proxy_index) -> None:
-        """The Scene View as one tile's picture, the tile then showing it. Never automatic ▸r/tile-captures"""
-        model, proxy = context.tile_models()
-        if model is None or proxy_index is None or not proxy_index.isValid():
-            return
-        source = proxy.mapToSource(proxy_index) if proxy is not None else proxy_index
-        row = source.row()
-        scene = self._hip_path_for(proxy_index) if getattr(context, "key", "") == "file" else ""
-        if scene:
-            captured = self._capture_and_report(scene)    # a scene only while it is the one open
-        else:
-            captured = self._run_capture(
-                lambda: scene_captures.capture_tile(model.capture_path(row), model.tile_key(row)),
-                model.tile_key(row))
-        if captured:
-            self._apply_icon_spec(model, [row], {"face": "capture"})
-
-    def _hip_path_for(self, index):
+    def hip_path_for(self, index):
         """The scene path behind a File-grid index, or '' for a row that is not a scene."""
         if index is None or not index.isValid():
             return ""
@@ -1581,27 +1553,7 @@ class AmazePanel(QtWidgets.QWidget):
             return ""
         return index.data(self.file_files_model.PathRole) or ""
 
-    def _capture_and_report(self, target: str = "") -> bool:
-        """The open scene onto its File tile; "" means whatever is open. Answers whether it landed."""
-        return self._run_capture(
-            lambda: scene_captures.capture_open_scene(self.prefs, target), target)
-
-    def _run_capture(self, capture, label: str) -> bool:
-        """Run one capture and SAY WHY it refused: a silent refusal reads as a broken feature."""
-        try:
-            capture()
-        except scene_captures.CaptureRefused as exc:
-            debug.event("hip", "capture refused", file=label, reason=str(exc))
-            self._report_capture_refused(str(exc))
-            return False
-        return True
-
-    def _report_capture_refused(self, text: str) -> None:
-        ui = getattr(hou, "ui", None)
-        if ui is not None:
-            ui.displayMessage(text)
-
-    def _raw_category_name(self, index) -> str:
+    def raw_category_name(self, index) -> str:
         """The stored name behind a sidebar row, not the displayed one; key every category action on it."""
         if index is None or not index.isValid():
             return ""
@@ -1612,14 +1564,14 @@ class AmazePanel(QtWidgets.QWidget):
                 return str(raw)
         return str(index.data(QtCore.Qt.ItemDataRole.DisplayRole) or "")    # no sourceModel: the displayed name
 
-    def _selected_category_name(self) -> str:
+    def selected_category_name(self) -> str:
         """The sidebar's category, blank for All: selection, then current index; no section gate."""
         if self.cat_list is None:
             return ""
         indexes = self.cat_list.selectedIndexes()
         index = indexes[0] if indexes else ui_helpers.live_current_index(    # current but not selected after a restore
             self.cat_list)
-        name = self._raw_category_name(index)
+        name = self.raw_category_name(index)
         return "" if category.is_all(name) else name
 
     DEFAULT_SIDEBAR_COLOUR = amazetheme.SIDEBAR_PICKER_START
@@ -1635,7 +1587,7 @@ class AmazePanel(QtWidgets.QWidget):
 
     def sidebar_set_colour(self, pick: bool, preset: str = "") -> None:
         """Label ▸ on the sidebar selection: `preset`, or "" for none; `pick` asks the picker once."""
-        context = self._section()
+        context = self.active_section()
         if context is None or self.cat_list is None:
             return
         names = [context.sidebar_key(index)    # stored name, or folder path in File
@@ -1662,7 +1614,7 @@ class AmazePanel(QtWidgets.QWidget):
     def _badge_verb(self, verb):
         """A badge click as the active section's verb: on the selection when the tile is in it."""
         def click(index):
-            context = self._section()
+            context = self.active_section()
             if context is None or not hasattr(context, verb):
                 return
             selmodel = self.thumblist.selectionModel()
@@ -1672,7 +1624,7 @@ class AmazePanel(QtWidgets.QWidget):
 
     def grid_toggle_favourite(self, indexes) -> None:
         """Flip the star on the grid's selection, through the active context's own verb."""
-        context = self._section()
+        context = self.active_section()
         if context is None:
             return
         context.toggle_favourite(list(indexes))
@@ -1706,7 +1658,7 @@ class AmazePanel(QtWidgets.QWidget):
                 continue
             converted += 1 if ok else 0
             lines.extend(report.summary_lines())
-        self._render_landed(held)
+        self.render_landed(held)
         shown = " and ".join(renderers.label(source)
                              for source in conversion_engine.targets() if source in sources)
         ui = getattr(hou, "ui", None)
@@ -1714,7 +1666,7 @@ class AmazePanel(QtWidgets.QWidget):
             ui.displayMessage(messages.CONVERSION_SUMMARY % (
                 converted, eligible, shown, renderers.label(target), "\n".join(lines)))
 
-    def _render_landed(self, before: set) -> None:
+    def render_landed(self, before: set) -> None:
         """ONE render batch for the materials saved since `before` that have no picture yet."""
         model = self.material_model
         if not model.preferences.render_on_import:    # what a save asked before it rendered alone
@@ -1799,10 +1751,10 @@ class AmazePanel(QtWidgets.QWidget):
         thumbnails.engine.set_budget_mb(self.prefs.ram_cache_mb)
         for _sidebar_proxy in self.sidebar_proxies():    # every sidebar proxy
             _sidebar_proxy.hide_empty = self.prefs.hide_empty_categories
-        self._refresh_sidebar_categories()    # ends in the fall-back to All, should hiding hide its row
+        self.refresh_sidebar_categories()    # ends in the fall-back to All, should hiding hide its row
         self.cat_list.viewport().update()
         grid.visible_view(self).viewport().update()
-        section = self._section()
+        section = self.active_section()
         if section is not None and not switched:    # a switch has just shown it afresh
             section.prefs_changed()
         self._apply_enabled_sections()    # visible section tabs may have changed in Preferences
@@ -1878,7 +1830,7 @@ class AmazePanel(QtWidgets.QWidget):
             debug.event("gallery", "import interrupted", **summary)
         for name in sorted(summary.get("categories", {})):
             self.category_model.check_add_category(name)
-        self._refresh_sidebar_categories()
+        self.refresh_sidebar_categories()
         imported, skipped, failed = (summary.get(key, 0) for key in ("imported", "skipped", "failed"))
         if interrupted:
             said = messages.GALLERY_IMPORT_INTERRUPTED % (imported, skipped, failed)
@@ -1902,7 +1854,7 @@ class AmazePanel(QtWidgets.QWidget):
 
     def stand_again(self) -> None:
         """The shown section's highlight back on what its grid shows, after the rows were read again."""
-        context = self._section()
+        context = self.active_section()
         if context is not None:
             context.stand_again()
 
@@ -2109,10 +2061,10 @@ class AmazePanel(QtWidgets.QWidget):
         if self.line_filter is None:
             return
         self.line_filter.setPlaceholderText(
-            getattr(self._section(), "search_hint",
+            getattr(self.active_section(), "search_hint",
                     sections.Section.search_hint))
 
-    def _section(self):
+    def active_section(self):
         """The active context: a Section, or the online world while that shows."""
         if getattr(self, "online_mode", False):
             return getattr(self, "online_context", None)
@@ -2173,7 +2125,7 @@ class AmazePanel(QtWidgets.QWidget):
             return
         self.exit_online_materials()
         self._build_section_tabs()    # checks the tab of `current_section`, emitting nothing
-        section = self._section()    # the section underneath: no tab click re-points the widgets here
+        section = self.active_section()    # the section underneath: no tab click re-points the widgets here
         if section is not None:
             self._apply_context(section, section.key)    # the one path, as entering takes
 
@@ -2218,7 +2170,7 @@ class AmazePanel(QtWidgets.QWidget):
         """Enter the online world through `_apply_context`, the path every section takes."""
         self._apply_context(self.online_context, self.online_context.key)
 
-    def _select_default_sidebar_row(self, sidebar_proxy):
+    def select_default_sidebar_row(self, sidebar_proxy):
         """Select the sidebar's first row and return its raw name; the caller applies the filter."""
         if self.cat_list is None or sidebar_proxy is None:
             return None
@@ -2231,7 +2183,7 @@ class AmazePanel(QtWidgets.QWidget):
         selection_model.select(    # a `setModel()` leaves nothing selected
             target, QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
         self.cat_list.setCurrentIndex(target)
-        return self._raw_category_name(target)
+        return self.raw_category_name(target)
 
     def edit_tile_icon(self, model, proxy, proxy_indexes,
                        categories=()) -> None:
@@ -2298,7 +2250,7 @@ class AmazePanel(QtWidgets.QWidget):
                     if model.tile_key(row) in held]
             if not rows:
                 return
-            self._apply_icon_spec(model, rows, dialog.spec)
+            self.apply_icon_spec(model, rows, dialog.spec)
             edited = set()    # keys of the records changed below - nothing saves until the one commit
             new_name = getattr(dialog, "new_tile_name", None)
             if new_name and len(rows) == 1 and \
@@ -2335,7 +2287,7 @@ class AmazePanel(QtWidgets.QWidget):
         dialog.show()
         return
 
-    def _apply_icon_spec(self, model, rows, spec) -> None:
+    def apply_icon_spec(self, model, rows, spec) -> None:
 
         failed = model.set_tile_icons(rows, spec)    # one icon-store write for the whole selection
         model.commit_tile_icons(rows)    # once per selection, never per row
@@ -2377,13 +2329,13 @@ class AmazePanel(QtWidgets.QWidget):
 
 
     def get_code_category_names(self) -> list[str]:
-        return self._category_names_from(self.code_category_model)
+        return self.category_names_from(self.code_category_model)
 
     def _current_code_category(self) -> str:
         """The sidebar's category while Code shows, "" for All; the code dialog's default."""
         if self.current_section != "code":
             return ""
-        return self._selected_category_name()
+        return self.selected_category_name()
 
     def _add_code_snippet(
         self, code: str, language: str, default_name: str
@@ -2463,16 +2415,7 @@ class AmazePanel(QtWidgets.QWidget):
             return None
 
     @staticmethod
-    def _is_sop_container(node: hou.Node) -> bool:
-        """True for anything whose children are SOPs: a drop-into target for a geometry file."""
-        try:
-            category = node.childTypeCategory()
-        except (AttributeError, hou.OperationFailed):
-            return False
-        return category is not None and category.name() == "Sop"
-
-    @staticmethod
-    def _create_loader_inside(container: hou.Node, loader_type: str):
+    def create_loader_inside(container: hou.Node, loader_type: str):
         """Create the loader in the deepest SOP network under the container, falling outward."""
         candidates = []
 
@@ -2501,117 +2444,7 @@ class AmazePanel(QtWidgets.QWidget):
         path = index.data(self.file_files_model.PathRole)
         if not path:
             return
-        self._import_geo_in_context(path, self._active_network_pwd())
-
-    def _import_geo_in_context(
-        self, path: str, dest: hou.Node | None
-    ) -> hou.Node | None:
-        from amaze.helpers import helpers
-        base = os.path.basename(path)
-        name = wording.sanitize_usd_path(os.path.splitext(base)[0]) or "geo"
-        loader_type = geo_library.loader_sop_for(path)
-
-        category = ""
-        if dest is not None:
-            try:
-                cat_obj = dest.childTypeCategory()
-                category = cat_obj.name() if cat_obj is not None else ""
-            except (AttributeError, hou.OperationFailed):
-                category = ""
-
-        container = None  # created here; cleaned up if the import fails
-        try:
-            if category == "Sop":    # inside a SOP network: a loader SOP in place
-                loader = dest.createNode(loader_type)
-            elif category == "Lop":    # a new SOP Create holding the loader
-                anchor = None
-                try:
-                    anchor = dest.displayNode()
-                except (AttributeError, hou.OperationFailed):
-                    anchor = None
-                if anchor is not None:
-                    container = anchor.createOutputNode("sopcreate", name)    # chained onto the display node
-                else:
-                    container = dest.createNode("sopcreate", name)
-                loader = self._create_loader_inside(container, loader_type)
-            elif category == "Object":    # a new geo named after the file
-                container = dest.createNode("geo", name)
-                loader = container.createNode(loader_type)
-            else:    # a network that holds no geometry: a fresh geo at /obj
-                obj = hou.node("/obj")
-                if obj is None:
-                    raise hou.OperationFailed("no /obj network")
-                container = obj.createNode("geo", name)
-                loader = container.createNode(loader_type)
-        except hou.Error as exc:    # hou.Error: a locked asset raises PermissionError, a sibling
-            if container is not None:
-                try:
-                    container.destroy()
-                except (hou.OperationFailed, hou.ObjectWasDeleted):
-                    pass
-            debug.event("import", "geometry import failed",
-                        file=base, error=str(exc))
-            debug.refuse(messages.GEOMETRY_IMPORT_FAILED % (base, exc))    # ▸p/refusal-sink
-            return
-        parm = helpers.find_file_parm(loader)
-        if parm is None:
-            try:
-                (container or loader).destroy()
-            except (hou.OperationFailed, hou.ObjectWasDeleted):
-                pass
-            debug.refuse(messages.LOADER_SOP_HAS_NO_FILE_PARM % loader_type)
-            return
-        parm.set(self._scene_path(path))
-        try:
-            loader.setName(name, unique_name=True)
-        except hou.OperationFailed:
-            pass
-        loader.setDisplayFlag(True)
-        try:
-            loader.setRenderFlag(True)
-        except AttributeError:
-            pass
-        helpers.auto_place(loader)
-        if container is not None:
-            helpers.auto_place(container)
-            try:
-                container.setDisplayFlag(True)    # createOutputNode wires but does not flag
-            except (AttributeError, hou.Error):
-                pass
-        made = container or loader
-        made.setCurrent(True, True)    # current and selected, as a node from the Tab menu is
-        return made
-
-    def _drop_context_under_cursor(
-        self, matcher, include_viewports: bool = False    # a type-name substring, or a callable(node) -> bool
-    ) -> hou.Node | None:
-        """Where a drag was released: the matching node under the cursor, else the pwd, else None."""
-        pane_tab, pane_type = self._pane_and_kind_under_cursor()
-        if pane_tab is None:
-            return None
-        if (
-            include_viewports    # a viewport release resolves to its pwd
-            and pane_type == hou.paneTabType.SceneViewer
-        ):
-            try:
-                return pane_tab.pwd()
-            except AttributeError:
-                return None
-        if pane_type != hou.paneTabType.NetworkEditor:    # the canvas takes no native node drops
-            return None
-        node = self._first_node_at_cursor(pane_tab)
-        if node is not None:
-            hit = (
-                matcher(node)
-                if callable(matcher)
-                else matcher in node.type().name()
-            )
-            if hit:
-                return node
-        try:
-            return pane_tab.pwd()
-        except AttributeError:
-            return None
+        self.drop_placement.import_geo_in_context(path, self._active_network_pwd())
 
     def _import_material_builder(self, asset_id, target, context_node=None):
         """Import a library material by id at a release; the builder VOP, or None once reported."""
@@ -2658,7 +2491,7 @@ class AmazePanel(QtWidgets.QWidget):
         parm.set(builder.path())
         return True
 
-    def _selected_material_ids(self, index) -> list:
+    def selected_material_ids(self, index) -> list:
         """Asset ids of the selection, the pressed tile first."""
         row = self.material_sorted_model.mapToSource(index).row()    # may be -1 for a stale index ▸r/model-contracts
         if not 0 <= row < len(self.material_model.assets):
@@ -2678,116 +2511,7 @@ class AmazePanel(QtWidgets.QWidget):
             pass
         return ids
 
-    def _material_lop_viewport_drop(self, ids, viewer, primpath) -> bool:
-        """LOP-viewport release: the prim menu, then import and assign through Houdini's stock helpers."""
-        from amaze.core import dragengine, lop_assign
-        from amaze.helpers import helpers
-        stock = dragengine.stock_lop()
-        if stock is None:
-            debug.refuse(messages.STOCK_LOP_HELPERS_UNAVAILABLE)    # ▸p/refusal-sink
-            return False
-        try:
-            lopnet = viewer.pwd()
-        except AttributeError:
-            return False
-        target_lop = lopnet.displayNode()
-        if target_lop is None:
-            children = lopnet.children()
-            target_lop = children[-1] if children else None
-
-        stage = target_lop.stage() if target_lop is not None else None
-        choices = lop_assign.drop_choices(stage, primpath)    # what to offer is lop_assign's
-        if not choices:
-            return False
-        cmenu = QtWidgets.QMenu(self)
-        actions = {}
-        previous_kind = None
-        for kind, label, payload in choices:
-            if previous_kind == "swap" and kind != "swap":
-                cmenu.addSeparator()
-            actions[cmenu.addAction(label)] = (kind, payload)
-            previous_kind = kind
-        chosen = cmenu.exec(QtGui.QCursor.pos())    # screen coordinates
-        cmenu.deleteLater()    # parented to the panel, so deleted; `actions` keeps its keys until then
-        if chosen is None:
-            return False    # dismissed: nothing happens
-        kind, payload = actions[chosen]
-        assign_path = payload if kind == "assign" else None
-        swap_targets = payload if kind == "swap" else None
-        undo_label = (
-            "Amaze Swap Material" if swap_targets is not None
-            else "Amaze Assign Material"
-        )
-        with hou.undos.group(undo_label):    # the library, the import and the assign revert as one step
-            try:    # Houdini's own library picker and its own assign ▸r/houdini-after-create
-                if target_lop is not None:
-                    node2, liblop, _vop = stock.getMaterialLibraryLop(target_lop)
-                else:    # an empty network: the library Houdini's own branch makes, unwired
-                    liblop = lopnet.createNode("materiallibrary")
-                    helpers.auto_place(liblop)
-                    liblop.setDisplayFlag(True)
-                    liblop.setCurrent(True, True)
-                    node2 = liblop
-            except hou.Error as refusal:    # a locked asset raises PermissionError, a sibling
-                debug.event("drag", "the network refused a material "
-                            "library", dest=lopnet.path(),
-                            error=str(refusal))
-                debug.refuse(messages.NETWORK_REFUSED_MATERIAL_LIBRARY
-                             % (lopnet.name(), refusal))
-                return False
-            if swap_targets is not None:
-                ids = list(ids)[:1]    # a swap replaces one material
-            vops = []
-            imported = []    # (asset id, vop) for the imports that succeeded
-            for aid in ids:
-                vop = self.import_material_into_container(aid, liblop)
-                if vop is not None:
-                    imported.append((aid, vop))
-                    vops.append(vop)
-            pressed_vop = None
-            if imported and ids and imported[0][0] == ids[0]:
-                pressed_vop = imported[0][1]
-            elif imported:
-                debug.refuse(messages.DROPPED_MATERIAL_IMPORT_FAILED)
-            debug.event("drag", "lop viewport drop", imported=len(vops),
-                        amaze=liblop.path(), assign=str(assign_path),
-                        swap=bool(swap_targets))
-            if pressed_vop is not None and swap_targets is not None:
-                reason = lop_assign.swap_assignments(    # the module does the USD and reports; the panel says it
-                    stock, lopnet, liblop, node2, swap_targets,
-                    pressed_vop
-                )
-                if reason:
-                    debug.refuse(reason)
-            elif assign_path and pressed_vop is not None:
-                try:
-                    matpath = stock.getMaterialPrimPathForNode(
-                        liblop, pressed_vop
-                    )
-                    before = {
-                        n for n in lopnet.children()
-                        if n.type().name() == "assignmaterial"
-                    }
-                    stock.assignMat(assign_path, str(matpath), node2)
-                    lop_assign.name_new_assign(lopnet, before, assign_path)
-                except Exception as exc:
-                    debug.event("drag", "lop assign failed", error=str(exc))
-                    debug.refuse(messages.MATERIAL_ASSIGN_FAILED % exc)
-        return bool(vops)
-
-
-
-
-
-    def _import_materials_into_context(self, context, ids,
-                                       position=None) -> None:
-        """Network-release material import, one undo step; a `position` cascades the copies from it."""
-        from amaze.core import dragengine
-        with dragengine.drop_group("Amaze Import Materials"):
-            self._import_materials_into_context_grouped(
-                context, ids, position)
-
-    def _import_materials_into_context_grouped(self, context, ids,
+    def import_materials_into_context_grouped(self, context, ids,
                                                position=None) -> None:
         from amaze.helpers import helpers
         for offset, aid in enumerate(ids):
@@ -2814,7 +2538,7 @@ class AmazePanel(QtWidgets.QWidget):
 
     def move_files_active(self, folder: str) -> bool:
         """Move the ACTIVE section's selected files into `folder`; True when a move started."""
-        context = self._section()
+        context = self.active_section()
         return bool(context is not None and context.takes_file_drops
                     and context.move_files_to(folder))
 
@@ -2849,7 +2573,7 @@ class AmazePanel(QtWidgets.QWidget):
         except (AttributeError, TypeError, hou.OperationFailed):
             return ()
 
-    def _pane_and_kind_under_cursor(self):
+    def pane_and_kind_under_cursor(self):
         """The pane tab under the cursor and its type, or (None, None); the caller compares the type."""
         from amaze.core import dragengine
         pane_tab = dragengine.pane_tab_under_cursor()
@@ -2864,7 +2588,7 @@ class AmazePanel(QtWidgets.QWidget):
                            pane_type=None) -> hou.Node | None:
         """The node under the cursor, or a Parameter Editor's node; pass the pane ▸p/drag-move-cost"""
         if pane_tab is None:
-            pane_tab, pane_type = self._pane_and_kind_under_cursor()
+            pane_tab, pane_type = self.pane_and_kind_under_cursor()
         if pane_tab is None:
             return None
         if pane_type == hou.paneTabType.Parm:    # the node that pane shows
@@ -2874,9 +2598,9 @@ class AmazePanel(QtWidgets.QWidget):
                 return None
         if pane_type != hou.paneTabType.NetworkEditor:
             return None
-        return self._first_node_at_cursor(pane_tab)
+        return self.first_node_at_cursor(pane_tab)
 
-    def _first_node_at_cursor(self, pane_tab) -> hou.Node | None:
+    def first_node_at_cursor(self, pane_tab) -> hou.Node | None:
         """The first hou.Node under the cursor, or None; the drop and click resolvers share it."""
         for item in self._network_items_at_cursor(pane_tab):
             candidates = (
@@ -2944,7 +2668,7 @@ class AmazePanel(QtWidgets.QWidget):
 
     def _notes_subject(self):
         """What the Comments pane points at, or None - the section says what its selected tile is."""
-        context = self._section()
+        context = self.active_section()
         if context is None or not context.takes_comments:    # the context answers
             return None
         index = grid.selected_current_in(    # a SELECTED row: Qt keeps the current one after a deselect
@@ -3017,24 +2741,24 @@ class AmazePanel(QtWidgets.QWidget):
 
     def _active_asset_stack(self):
         """The showing asset section's stack (model, proxy, selection, categories), or None."""
-        section = self._section()
+        section = self.active_section()
         return section.stack() if section is not None else None
 
     def filter_thumb_view(self) -> None:
         """Search box changed - the active context applies it."""
-        section = self._section()
+        section = self.active_section()
         if section is not None:
             section.filter_text(self.line_filter.text())    # online, the source's API searches
 
     def filter_favs(self) -> None:
         """Favourites star toggled - the active context applies it."""
-        section = self._section()
+        section = self.active_section()
         if section is not None:
             section.filter_favorites(self.cb_favsonly.isChecked())
 
     def build_filter_menu(self) -> None:
         """Fill the Filter menu from the active section's `filter_entries`, and apply the remembered one."""
-        section = self._section()
+        section = self.active_section()
         entries = tuple(section.filter_entries()) if section is not None else ()
         self.menu_filter.clear()    # deletes the menu's actions, emptying the group, never the group itself
         if self.filter_action_group is None:
@@ -3081,7 +2805,7 @@ class AmazePanel(QtWidgets.QWidget):
 
     def apply_section_filter(self) -> None:
         """Push the menu's checked entry into the active section."""
-        section = self._section()
+        section = self.active_section()
         if section is None or not self.filter_actions:
             return
         checked = (self.filter_action_group.checkedAction()
@@ -3096,7 +2820,7 @@ class AmazePanel(QtWidgets.QWidget):
             if self.thumblist.model() is not None else -1,
         )
 
-    def _refresh_sidebar_categories(self) -> None:
+    def refresh_sidebar_categories(self) -> None:
         """Re-evaluate empty-category hiding and counts, for changes that emit no layoutChanged."""
         for proxy in self.sidebar_proxies():
             proxy.sourceModel().drop_count_cache()
@@ -3131,7 +2855,7 @@ class AmazePanel(QtWidgets.QWidget):
             return
         if self.cat_list is None or self.cat_list.model() is not proxy:
             return
-        section = self._section()
+        section = self.active_section()
         stack = section.stack() if section is not None else None
         if stack is None:
             return
@@ -3213,20 +2937,20 @@ class AmazePanel(QtWidgets.QWidget):
                 )
             return
 
-        section = self._section()
+        section = self.active_section()
         if section is not None:
             section.select_category(indexes[0])
 
     def grid_update_preview(self, indexes) -> None:
         """Re-render the grid selection's thumbnails, through the active context."""
-        context = self._section()
+        context = self.active_section()
         if context is None:
             return
         context.update_preview(list(indexes))
 
     def grid_delete(self, indexes) -> None:
         """Delete the grid selection after the context's own question; not where `deletes_rows` is off."""
-        context = self._section()
+        context = self.active_section()
         if context is None or not context.deletes_rows:
             return
         proxy = self.thumblist.model()
@@ -3474,7 +3198,7 @@ class AmazePanel(QtWidgets.QWidget):
             model, model.find_asset_row_by_id(mat_id), node)
         if renderer:
             model.row_changed(model.find_asset_row_by_id(mat_id))    # renderer and date changed IN PLACE
-        self._refresh_sidebar_categories()    # a re-detected renderer can shift counts and hiding
+        self.refresh_sidebar_categories()    # a re-detected renderer can shift counts and hiding
         if not renderer:
             ui = getattr(hou, "ui", None)
             if ui is not None:
@@ -3513,7 +3237,7 @@ class AmazePanel(QtWidgets.QWidget):
         """The grid's double-click, answered by the active section's `double_click`."""
         if index is not None and index.isValid():
             index = index.siblingAtColumn(0)    # the row, not the clicked cell ▸r/row-selection
-        section = self._section()
+        section = self.active_section()
         if section is not None:
             section.double_click(index)
 
@@ -3521,36 +3245,6 @@ class AmazePanel(QtWidgets.QWidget):
         ui = getattr(hou, "ui", None)
         if ui is not None:
             ui.displayMessage(messages.CANNOT_LOAD_HERE)  # type: ignore
-
-    def _network_under_release(self) -> hou.Node | None:
-        """The network a no-node release happened inside, or None off any editor."""
-        return self._drop_context_under_cursor(lambda _node: False)
-
-    def _release_position_in(self, net):
-        """The release position, only when the editor under the cursor shows `net`; else None."""
-        from amaze.core import dragengine
-        pane_tab = dragengine.pane_tab_under_cursor()
-        if pane_tab is None or net is None:
-            debug.event("interact", "no drop point - no editor under "
-                        "the cursor", net=net.path() if net else None)
-            return None
-        try:
-            if pane_tab.type() != hou.paneTabType.NetworkEditor:
-                return None
-            if pane_tab.pwd() != net:    # cross-space: the cursor is in another plane
-                debug.event("interact", "no drop point - the editor "
-                            "shows another network",
-                            showing=pane_tab.pwd().path(),
-                            destination=net.path())
-                return None
-            spot = dragengine.ghost_snap_position() \
-                or pane_tab.cursorPosition()    # the ghost promised the SNAPPED point, so the release lands there
-            debug.event("interact", "drop point",
-                        at=[round(spot.x(), 3), round(spot.y(), 3)],
-                        net=net.path())
-            return spot
-        except AttributeError:
-            return None
 
     def _visible_selected_nodes(self) -> list:
         """Selected nodes in a visible editor's network, for the click doors ▸r/matlib-entries"""
@@ -3573,40 +3267,6 @@ class AmazePanel(QtWidgets.QWidget):
             if pwd is not None and pwd not in networks:
                 networks.append(pwd)
         return networks
-
-    def _create_carrier(self, dest, type_name: str, name: str,
-                        position=None):
-        """Create `type_name` in `dest` if it can hold one, else None; the caller owns the undo group."""
-        from amaze.helpers import helpers
-        if dest is None:
-            return None
-        try:
-            category = dest.childTypeCategory()
-        except (AttributeError, hou.OperationFailed):
-            return None
-        if category is None or hou.nodeType(category, type_name) is None:
-            debug.event("interact", "no carrier for this network",
-                        carrier=type_name, dest=dest.path())
-            return None
-        try:
-            node = dest.createNode(type_name)
-        except hou.Error as refusal:    # Houdini's refusal is logged; the walk moves on
-            debug.event("interact", "the network refused the carrier",
-                        carrier=type_name, dest=dest.path(),
-                        error=str(refusal))
-            return None
-        if name:
-            try:
-                node.setName(name, unique_name=True)
-            except hou.OperationFailed:
-                pass
-        if position is None:    # auto-place only without a position
-            helpers.auto_place(node)
-        else:
-            helpers.place_nodes([node], position)
-        debug.event("interact", "carrier created", carrier=type_name,
-                    dest=dest.path())
-        return node
 
     def import_asset_to_mat(self):
         """Explicitly import the selected materials into /mat."""

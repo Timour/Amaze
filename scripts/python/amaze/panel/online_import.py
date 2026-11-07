@@ -59,7 +59,7 @@ class OnlineImport:
                 if not ok:
                     failures.append("%s: %s" % (rec.title, reason))
         if self.panel.material_model is not None:
-            self.panel._render_landed(held)
+            self.panel.render_landed(held)
         ui = getattr(hou, "ui", None)
         if failures and ui is not None:    # ONE dialog for the batch, never one per record
             ui.displayMessage(
@@ -90,7 +90,7 @@ class OnlineImport:
         if not ok:
             return (False, reason or messages.ONLINE_IMPORT_FAILED)
         self.panel.category_model.check_add_category(record.category)    # no relayout wrapper: it announces its own insert
-        self.panel._refresh_sidebar_categories()
+        self.panel.refresh_sidebar_categories()
         return (True, "")
 
     def source_for(self, record):

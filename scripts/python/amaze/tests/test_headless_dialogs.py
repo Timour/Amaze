@@ -23,7 +23,8 @@ _PACKAGE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 GUARDED = ("panel/panel.py", "render/thumbs.py", "core/dragengine.py",
            "utils/rc_calls.py", "prefs/prefs.py", "panel/sections.py",
-           "panel/online_import.py", "panel/package_import.py")
+           "panel/online_import.py", "panel/package_import.py",
+           "panel/drop_placement.py", "panel/tile_capture.py")
 
 
 def raw_reaches(relpath):
@@ -76,7 +77,7 @@ class TheGuardedPanelRefusesHeadlessTest(unittest.TestCase):
         doors = (("check_library", lambda: panel.check_library()),
                  ("open_usdlib_folder", lambda: panel.open_usdlib_folder()),
                  ("_active_network_pwd", lambda: self.assertIsNone(panel._active_network_pwd())),
-                 ("_locate_folder_user", lambda: panel._locate_folder_user(None)),
+                 ("locate_folder_user", lambda: panel.locate_folder_user(None)),
                  ("rc_calls.convert(None)", lambda: rc_calls.convert(None, "Karma")),
                  ("rc_calls.convert(geo)", lambda: rc_calls.convert(geo, "Karma")),
                  ("rc_calls.convert(geo, swap)", lambda: rc_calls.convert(geo, "Karma", swap=True)))

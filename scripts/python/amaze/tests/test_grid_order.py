@@ -380,7 +380,8 @@ class TheRuleHasOneHome(unittest.TestCase):
         offenders = []
         for relative in ("core/library.py", "core/cop_library.py",
                          "core/code_library.py", "panel/panel.py", "panel/sections.py",
-                         "panel/online_import.py", "panel/package_import.py"):
+                         "panel/online_import.py", "panel/package_import.py",
+                         "panel/drop_placement.py", "panel/tile_capture.py"):
             source = open(os.path.join(root, relative),
                           encoding="utf-8").read()
             tree = ast.parse(source)

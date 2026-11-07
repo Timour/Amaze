@@ -31,7 +31,7 @@ def _grid_key(panel) -> str:
         return panel.matx_sorted_model.filter_value(role) or ""
     if panel.current_section == "file":
         return panel.file_files_model.browsing()
-    stack = panel._section().stack()
+    stack = panel.active_section().stack()
     return stack.proxy.filter_value(stack.model.CategoryRole) or ""
 
 
@@ -176,10 +176,10 @@ class _AssetSidebarPaths(_HighlightCase):
 
     def setUp(self):
         super().setUp()
-        categories = self.panel._section().stack().categories
+        categories = self.panel.active_section().stack().categories
         for name in ("Kept", "Other"):
             categories.check_add_category(name)
-        self.panel._refresh_sidebar_categories()
+        self.panel.refresh_sidebar_categories()
         _pump()
 
     def stand(self, key="Kept"):
@@ -190,7 +190,7 @@ class _AssetSidebarPaths(_HighlightCase):
 
     def _peer_adds(self, name):
         """Another machine adds category `name`; the merge reaches the models through the registry."""
-        categories = self.panel._section().stack().categories
+        categories = self.panel.active_section().stack().categories
         path = os.path.join(self.panel.prefs.dir, categories.DB_FILENAME)
         with open(path, encoding="utf-8-sig") as handle:
             document = json.load(handle)
@@ -202,7 +202,7 @@ class _AssetSidebarPaths(_HighlightCase):
         model_registry.apply_merged(db)
 
     def test_every_path_leaves_the_highlight_on_the_grids_row(self):
-        panel, section = self.panel, self.panel._section()
+        panel, section = self.panel, self.panel.active_section()
         self.check("activate", grid="")
         self.check("a click", self.stand, grid="Kept")
 
@@ -279,7 +279,7 @@ class _AssetSidebarPaths(_HighlightCase):
 
     def test_a_change_made_elsewhere_leaves_the_highlight_on_the_grids_row(self):
         """A peer merge and a second panel's verbs reach this sidebar only through the shared model."""
-        categories = self.panel._section().stack().categories
+        categories = self.panel.active_section().stack().categories
 
         def peer_merge():
             self.stand()
@@ -310,7 +310,7 @@ class _AssetSidebarPaths(_HighlightCase):
 
     def test_a_burst_of_resets_stands_again_once(self):
         """However many resets land in one event-loop turn, the sidebar stands again once."""
-        section = self.panel._section()
+        section = self.panel.active_section()
         categories = section.stack().categories
         self.stand()
         order, stood = categories.order_snapshot(), []
@@ -382,7 +382,7 @@ class FileSidebarTest(_HighlightCase, unittest.TestCase):
         proxy = self.panel.thumblist.model()
         selection = self.panel.thumblist.selectionModel()
         selection.select(proxy.index(0, 0), QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
-        self.assertTrue(self.panel._section().move_files_to(folder), "premise: no move started")
+        self.assertTrue(self.panel.active_section().move_files_to(folder), "premise: no move started")
         self.assertTrue(test_support.pump_until(lambda: not file_moves.mover.busy()), "the move never landed")
 
     def remember_unread(self, name) -> str:

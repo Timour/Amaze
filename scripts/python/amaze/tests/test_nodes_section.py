@@ -333,7 +333,7 @@ class NodesSectionTest(unittest.TestCase):
             self.assertEqual("current", stage.displayNode().name())
 
             before = set(stage.children())
-            panel._import_geo_in_context("/tmp/does_not_exist.bgeo", stage)
+            panel.drop_placement.import_geo_in_context("/tmp/does_not_exist.bgeo", stage)
             made = [c for c in stage.children() if c not in before]
         finally:
             pass        # fixture_panel owns its own teardown

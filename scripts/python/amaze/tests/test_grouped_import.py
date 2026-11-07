@@ -53,7 +53,7 @@ class TheGroupedImportStopsAtTheFirstRefusalTest(unittest.TestCase):
                 mock.patch.object(material_actions, "import_asset_to_scene",
                                   lambda model, idx, target, context_node=None:
                                   model.import_asset_to_scene(idx, target, context_node)):
-            self.panel._import_materials_into_context_grouped(
+            self.panel.import_materials_into_context_grouped(
                 self.context, ids)
         return self.panel.material_model, refused
 

@@ -512,7 +512,7 @@ class KindRouterTest(unittest.TestCase):
 
 
 class ScenePathsAreSpelledPerPreferenceTest(unittest.TestCase):
-    """Every path written into the scene goes through `_scene_path`, the Write Paths As preference."""
+    """Every path written into the scene goes through `scene_path`, the Write Paths As preference."""
 
     @classmethod
     def setUpClass(cls):
@@ -528,7 +528,7 @@ class ScenePathsAreSpelledPerPreferenceTest(unittest.TestCase):
         home = self._home()
         geo = hou.node("/obj").createNode("geo", "amaze_pathtest_dest")
         self.addCleanup(geo.destroy)
-        self.panel._import_geo_in_context(
+        self.panel.drop_placement.import_geo_in_context(
             home + "/models/amaze_spelling.obj", geo)
         loaders = [n for n in geo.children() if n.type().name() == "file"]
         self.assertTrue(loaders, "no loader SOP was created")
@@ -740,10 +740,10 @@ class CreationRuleTest(unittest.TestCase):
         with mock.patch.object(dragengine, "pane_tab_under_cursor",
                                return_value=editor):
             self.assertIsNone(
-                self.panel._release_position_in(inside),
+                self.panel.drop_placement.release_position_in(inside),
                 "a foreign editor's coordinates crossed into the "
                 "destination network")
-            got = self.panel._release_position_in(outer)
+            got = self.panel.drop_placement.release_position_in(outer)
         self.assertEqual((9.0, 9.0), (got.x(), got.y()))
 
     def test_a_creation_never_steals_the_selection(self):
@@ -1625,13 +1625,13 @@ class CopyPathTest(unittest.TestCase):
     """Copy Path fills the clipboard with HOUDINI paths, one per line, and no dialog."""
 
     def test_paths_land_houdini_shaped_one_per_line(self):
+        from amaze.panel import drop_placement
         from amaze.panel import panel as panel_mod
         home = hou.expandString("$HOME").replace("\\", "/").rstrip("/")
         if not home or home in ("/", "."):
             self.skipTest("no $HOME in this session")
         recorder = _RecordingPanel()
-        recorder._scene_path = (    # the real spelling home, bound to the stub
-            lambda p: panel_mod.AmazePanel._scene_path(recorder, p))
+        recorder.drop_placement = drop_placement.DropPlacement(recorder)    # the real spelling home, bound to the stub
         panel_mod.AmazePanel.copy_file_paths(recorder, [
             _FakeIndex("other", home + "/mocap/walk.bvh"),
             _FakeIndex("image", "/mnt/elsewhere/tex.png"),

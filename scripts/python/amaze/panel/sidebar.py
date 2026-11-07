@@ -227,7 +227,7 @@ class SidebarReorder(QtCore.QObject):
                 view.viewport().unsetCursor()
 
     def _section(self):
-        section = self._panel._section()
+        section = self._panel.active_section()
         if section is None or not getattr(section, "reorders_sidebar",
                                           False):
             return None
@@ -352,7 +352,7 @@ class SidebarReorder(QtCore.QObject):
 
 def droppable_index(panel, pos):
     """THE ONE PLACE the drop-target rules live; None if no tile may land here."""
-    context = panel._section()
+    context = panel.active_section()
     if context is None or not (context.takes_category_drops or context.takes_file_drops):
         return None
     if panel.cat_list is None:
@@ -362,7 +362,7 @@ def droppable_index(panel, pos):
         return None
     if context.takes_file_drops:    # a folder row: the tile's file moves there, on disk
         return index if context.accepts_file_drop(index) else None
-    name = panel._raw_category_name(index)
+    name = panel.raw_category_name(index)
     if not name or category.is_all(name):
         return None
     if not context.accepts_category_drop(index, name):
@@ -372,16 +372,16 @@ def droppable_index(panel, pos):
 
 def category_at_point(panel, pos):
     """The droppable category at a point, by its STORED name - the form the write needs."""
-    context = panel._section()
+    context = panel.active_section()
     if context is None or not context.takes_category_drops:
         return None
     index = droppable_index(panel, pos)
-    return None if index is None else panel._raw_category_name(index)
+    return None if index is None else panel.raw_category_name(index)
 
 
 def folder_at_point(panel, pos):
     """The folder a tile dropped at a point moves into, or None."""
-    context = panel._section()
+    context = panel.active_section()
     if context is None or not context.takes_file_drops:
         return None
     index = droppable_index(panel, pos)
@@ -440,7 +440,7 @@ def update_hover_global(panel) -> None:
 
 def can_drop(panel, event) -> bool:
     """Only OUR OWN grid, only into a context that takes drops - the rest falls through."""
-    context = panel._section()
+    context = panel.active_section()
     return bool(context is not None
                 and (context.takes_category_drops or context.takes_file_drops)
                 and event.source() is panel.thumblist)

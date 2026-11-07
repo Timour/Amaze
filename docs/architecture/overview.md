@@ -78,7 +78,7 @@ The five sections, grouped by **Archetype** (they share machinery):
 Plus one *view mode*, not a section:
 
 - **Online Browser** — a parallel WORLD with a Section's interface:
-  `sections.OnlineContext`, reached through `panel._section()` like any
+  `sections.OnlineContext`, reached through `panel.active_section()` like any
   section, so every area path stops asking which world it is in. It is
   NOT in `SECTION_CLASSES` and never appears in `enabled_sections`,
   because it is not a section. Its delegate carries only the roles
@@ -148,7 +148,7 @@ Plus one *view mode*, not a section:
 | `can_save(nodes)` / `save_categories()` / `takes_language` | the **Save Door** asks every section whether it could take these scene nodes, and what its Category row offers; `takes_language` lights the Language row (Code only). One right-click entry and the panel drop both go through `panel.save_from_node` |
 | `prefs_changed()` | Preferences closed — re-scan live filesystem/render state |
 
-The Panel's shared handlers dispatch to `panel._section().<method>()`
+The Panel's shared handlers dispatch to `panel.active_section().<method>()`
 instead of branching on the section key.
 
 Plus one piece of DATA, alongside `key` and `label`: **`search_hint`** —
@@ -233,9 +233,10 @@ it there. The panel fallback the migration carried is REMOVED; a
 declaration naming a verb its section does not define fails loudly,
 and `test_area_bindings` walks every declaration to keep it that way.
 The panel keeps the shared release plumbing the verbs call
-(`_drop_context_under_cursor`, `_release_position_in`,
-`_create_carrier`, `_scene_path`, `_node_under_cursor`) — shared
-because it carries no per-type meaning.
+(`drop_placement.context_under_cursor`,
+`drop_placement.release_position_in`, `drop_placement.create_carrier`,
+`drop_placement.scene_path`, `_node_under_cursor`) — shared because it
+carries no per-type meaning.
 
 **THE SELECTION IS A HINT, NOT A VETO.** One visible selected node is
 offered the payload first; a node that cannot take it FALLS THROUGH to
@@ -1188,6 +1189,10 @@ panel/online_import.py    The online import: catalogue records into the
                           library or the scene (`panel.online_import`)
 panel/package_import.py   The package import: .amazepkg files and store
                           tiles into the library (`panel.package_import`)
+panel/drop_placement.py   Where a drop or a click lands: the network,
+                          the position, the carrier (`panel.drop_placement`)
+panel/tile_capture.py     Capture: the Scene View onto one tile, or the
+                          open scene onto its File tile (`panel.tile_capture`)
 panel/sections.py         The Sections (node-types) + registry + the
                           per-section GRID_MENU tables + every verb a
                           DROP rule names (release bodies, click verbs,

@@ -308,7 +308,7 @@ class ScratchNameKeepsTheImageFormatTest(unittest.TestCase):
 
 
 _CAPTURE_ENTRY_POINTS = (    # every name a capture runs through; a new one joins here
-    "capture_from_toolbar", "capture_onto_tile", "_capture_and_report", "_run_capture",
+    "from_toolbar", "onto_tile", "capture_and_report", "tile_capture.run", "self.run(",
     "capture_open_scene", "capture_tile", "capture_viewport")
 
 
@@ -346,10 +346,12 @@ class NoAutomaticCaptureTest(unittest.TestCase):
         return self._stripped_source("sections.py")
 
     def test_nothing_schedules_a_capture(self):
-        """Comments and docstrings are stripped first; the panel, sections and import sources are read."""
+        """Comments and docstrings are stripped first; the panel, sections and helper sources are read."""
         code = (self._panel_source() + "\n" + self._sections_source() + "\n"
                 + self._stripped_source("online_import.py") + "\n"
-                + self._stripped_source("package_import.py"))
+                + self._stripped_source("package_import.py") + "\n"
+                + self._stripped_source("drop_placement.py") + "\n"
+                + self._stripped_source("tile_capture.py"))
         for row in code.splitlines():
             if any(name in row for name in _CAPTURE_ENTRY_POINTS):
                 self.assertNotIn(
@@ -381,9 +383,10 @@ class NoAutomaticCaptureTest(unittest.TestCase):
         """Guards the guard: each file scan must see the function it is aimed at."""
         panel_code = self._panel_source()
         section_code = self._sections_source()
+        capture_code = self._stripped_source("tile_capture.py")
         self.assertIn("def open_hip_scene", section_code)
-        self.assertIn("def capture_onto_tile", panel_code)
-        self.assertIn("def capture_from_toolbar", panel_code)
+        self.assertIn("def onto_tile", capture_code)
+        self.assertIn("def from_toolbar", capture_code)
         self.assertGreater(len(panel_code), 10000)
         self.assertGreater(len(section_code), 10000)
 
@@ -1134,12 +1137,12 @@ class CaptureDecisionPathTest(unittest.TestCase):
         """Source-derived: every capture entry point delegates the policy; none re-decides."""
         path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "panel", "panel.py")
+            "panel", "tile_capture.py")
         with open(path, encoding="utf-8") as handle:
             code = handle.read()
-        for name, shared in (("capture_from_toolbar", ("capture_onto_tile(", "_capture_and_report(")),
-                             ("capture_onto_tile", ("capture_tile(", "_capture_and_report(")),
-                             ("_capture_and_report", ("capture_open_scene(",))):
+        for name, shared in (("from_toolbar", ("onto_tile(", "capture_and_report(")),
+                             ("onto_tile", ("capture_tile(", "capture_and_report(")),
+                             ("capture_and_report", ("capture_open_scene(",))):
             start = code.find("def %s" % name)
             self.assertGreater(start, -1, "%s is gone" % name)
             end = code.find("\n    def ", start + 10)
@@ -1901,7 +1904,7 @@ class CaptureFromTheMenuTest(unittest.TestCase):
         for row in rows:
             selection.select(proxy.index(row, 0),
                              _QtCore.QItemSelectionModel.SelectionFlag.Select)
-        context = panel._section()
+        context = panel.active_section()
         chosen = context.grid_selection()
         self.assertEqual(len(rows), len(chosen), "the selection is not what the test says")
         return context, chosen
@@ -1915,7 +1918,7 @@ class CaptureFromTheMenuTest(unittest.TestCase):
 
     def _refusals(self):
         said = []
-        _patch(self, self.panel, "_report_capture_refused", said.append)
+        _patch(self, self.panel.tile_capture, "report_refused", said.append)
         return said
 
     def test_one_tile_in_any_section_can_be_captured(self):
@@ -1955,7 +1958,7 @@ class CaptureFromTheMenuTest(unittest.TestCase):
 
         _patch(self, scene_captures, "capture_tile", capture)
         self.addCleanup(model.set_tile_icons, [row], {})
-        self.panel.capture_onto_tile(context, chosen[0])
+        self.panel.tile_capture.onto_tile(context, chosen[0])
         self.assertEqual([(model.capture_path(row), model.tile_key(row))], taken)
         self.assertEqual("capture", tile_icons.face_for(model, row),
                          "the tile went on showing its render")
@@ -1985,7 +1988,7 @@ class CaptureFromTheMenuTest(unittest.TestCase):
 
         _patch(self, scene_captures, "capture_tile", refuse)
         said = self._refusals()
-        self.panel.capture_onto_tile(context, chosen[0])
+        self.panel.tile_capture.onto_tile(context, chosen[0])
         self.assertEqual(["Please stop the viewport render before capturing."], said)
         self.assertEqual(before, model.tile_icon(row), "a refused capture changed the tile")
 
@@ -1995,7 +1998,7 @@ class CaptureFromTheMenuTest(unittest.TestCase):
         said = self._refusals()
         _patch(self, scene_captures, "capture_tile",
                lambda out, key: self.fail("captured onto no tile"))
-        self.panel.capture_from_toolbar()
+        self.panel.tile_capture.from_toolbar()
         self.assertEqual([messages.CAPTURE_SELECT_ONE_TILE], said)
 
     def test_the_toolbar_in_File_with_nothing_selected_takes_the_open_scene(self):
@@ -2003,7 +2006,7 @@ class CaptureFromTheMenuTest(unittest.TestCase):
         asked = []
         _patch(self, scene_captures, "capture_open_scene",
                lambda preferences, target="": asked.append(target) or "")
-        self.panel.capture_from_toolbar()
+        self.panel.tile_capture.from_toolbar()
         self.assertEqual([""], asked, "the open scene was not captured")
 
 
@@ -2034,7 +2037,7 @@ class LoadOnTheGridMenuOpensTheSceneTest(unittest.TestCase):
         with mock.patch.object(QtWidgets.QMenu, "exec_", _pick), \
                 mock.patch.object(hou.hipFile, "load",
                                   lambda path, **_kwargs: loaded.append(path)):
-            panel._section().rc_menu()
+            panel.active_section().rc_menu()
         self.assertEqual([proxy.index(row, 0).data(path_role)], loaded,
                          "Load did not open the scene it was picked on")
 

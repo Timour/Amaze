@@ -48,7 +48,7 @@ class TheColourReachesBOTHPlacesItIsPainted(unittest.TestCase):
                            "the %s sidebar has only All, so there is "
                            "nothing to colour" % key)
         row = getattr(model, "_offset", lambda: 1)()    # File puts a scene row first
-        return panel._section(), model, model.index(row, 0)
+        return panel.active_section(), model, model.index(row, 0)
 
     def test_the_sidebar_is_TOLD_so_the_row_actually_repaints(self):
         """These models answer live from the store, so only a change signal proves the row repaints."""
@@ -103,7 +103,7 @@ class TheColourReachesBOTHPlacesItIsPainted(unittest.TestCase):
         self.addCleanup(categories.remove_category, "_WIP")
         QtWidgets.QApplication.processEvents()
 
-        context = panel._section()
+        context = panel.active_section()
         self.addCleanup(context.set_sidebar_colour, "_WIP", "")
         context.set_sidebar_colour("_WIP", "#4af2a1")
 

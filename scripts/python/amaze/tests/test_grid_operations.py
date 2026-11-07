@@ -264,6 +264,16 @@ class NoMENUKnowsHowToFavourite(unittest.TestCase):
                  lambda call: call.func.value.attr == "layoutAboutToBeChanged"),
                 ("package_import.py emits a bare layoutChanged", "package_import.py", False,
                  lambda call: not call.args
+                 and call.func.value.attr == "layoutChanged"),
+                ("drop_placement.py opens one", "drop_placement.py", False,
+                 lambda call: call.func.value.attr == "layoutAboutToBeChanged"),
+                ("drop_placement.py emits a bare layoutChanged", "drop_placement.py", False,
+                 lambda call: not call.args
+                 and call.func.value.attr == "layoutChanged"),
+                ("tile_capture.py opens one", "tile_capture.py", False,
+                 lambda call: call.func.value.attr == "layoutAboutToBeChanged"),
+                ("tile_capture.py emits a bare layoutChanged", "tile_capture.py", False,
+                 lambda call: not call.args
                  and call.func.value.attr == "layoutChanged")):
             with self.subTest(why):
                 self.assertEqual([], emits(name, menu_verbs_only, signal),
@@ -288,7 +298,7 @@ class FavouritingWorksInEverySection(unittest.TestCase):
         self.assertGreater(proxy.rowCount(), 0,
                            "the %s fixture is empty, so this test "
                            "cannot say anything" % key)
-        context = panel._section()
+        context = panel.active_section()
         if displaced:
             self.assertGreater(
                 proxy.rowCount(), 1,
@@ -308,7 +318,7 @@ class FavouritingWorksInEverySection(unittest.TestCase):
     def _clear_filter(self, key):
         self.panel.section_tabs.setChecked(key)
         QtWidgets.QApplication.processEvents()
-        self.panel._section().filter_text("")
+        self.panel.active_section().filter_text("")
         QtWidgets.QApplication.processEvents()
 
     def _favourite_role(self, panel, key):
@@ -390,7 +400,7 @@ class AStarOverASelectionWritesOnce(unittest.TestCase):
         from amaze.prefs import prefs as prefs_mod
         self.panel.section_tabs.setChecked(key)
         QtWidgets.QApplication.processEvents()
-        context = self.panel._section()
+        context = self.panel.active_section()
         proxy = self.panel.thumblist.model()
         rows = range(min(proxy.rowCount(), 5))
         self.assertGreater(len(rows), 1, "premise: %s shows two tiles" % key)
@@ -941,7 +951,7 @@ class CustomizeOffersTheOwningSectionsCategories(unittest.TestCase):
         combo = self._customize(self.rows[:1]).category_combo
         offered = [combo.itemData(i) for i in range(combo.count())
                    if combo.itemData(i)]
-        self.assertEqual(self.panel._category_names_from(self.panel.cop_category_model), offered,
+        self.assertEqual(self.panel.category_names_from(self.panel.cop_category_model), offered,
                          "a Node tile was offered another section's "
                          "categories")
         self.assertEqual("Rigs", base_dialog.chosen_category(combo))
@@ -990,7 +1000,7 @@ class ADeleteOverASelectionSavesOnce(unittest.TestCase):
                                   autospec=True,
                                   side_effect=library.AssetLibrary.rebuild_thumbs
                                   ) as rebuilds:
-            self.panel._section().delete_rows(
+            self.panel.active_section().delete_rows(
                 [self.model.index(row, 0) for row in self.rows])
             QtWidgets.QApplication.processEvents()
         return saves.call_count, rebuilds.call_count

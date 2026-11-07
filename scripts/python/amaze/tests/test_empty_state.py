@@ -373,7 +373,7 @@ class AnEmptyCategoryIsThePlainGrid(unittest.TestCase):
         sidebar.invalidateFilter()
         with mock.patch.object(panel, "ask_category_name",
                                lambda _title, _default="": "Probe"):
-            panel._section().menu_add_category([], None)
+            panel.active_section().menu_add_category([], None)
         self.assertTrue(panel._stand_on_category("Probe"),
                         "premise: Probe is a sidebar row")
         QtWidgets.QApplication.processEvents()
@@ -545,7 +545,7 @@ class AnEmptyLocationIsThePlainGrid(unittest.TestCase):
 
     def test_a_right_click_on_an_empty_location_opens_the_grid_menu(self):
         self._stand(self.folders.row_of(self._register_empty()))
-        section = self.panel._section()
+        section = self.panel.active_section()
         menu, _verbs = grid.build_grid_menu(self.panel, section, [], None)
         self.addCleanup(menu.deleteLater)
         expected = [(action.text(), action.isEnabled()) for action in menu.actions()
@@ -631,9 +631,9 @@ class TheUnreachableBlankPointsAtSomethingReal(unittest.TestCase):
             rows = panel.cat_list.selectedIndexes()
             seen["row"] = rows[0].row() if rows else -1
 
-        original = self.panel._locate_folder_user
-        self.panel._locate_folder_user = _picker
-        self.addCleanup(setattr, self.panel, "_locate_folder_user",
+        original = self.panel.locate_folder_user
+        self.panel.locate_folder_user = _picker
+        self.addCleanup(setattr, self.panel, "locate_folder_user",
                         original)
         self.panel.locate_unreadable_folder()
 

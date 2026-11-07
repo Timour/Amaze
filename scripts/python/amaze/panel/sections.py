@@ -241,7 +241,7 @@ class Section:
     def _stand_again_if_shown(self) -> None:
         """The watcher's stand: only while this section is shown, never under a press-hold reorder."""
         reorder = getattr(self.panel, "sidebar_reorder", None)
-        if self.panel._section() is self and not (reorder is not None and reorder.reordering()):
+        if self.panel.active_section() is self and not (reorder is not None and reorder.reordering()):
             self.stand_again()
 
     def stand_after_removal(self, removed) -> None:
@@ -404,14 +404,14 @@ class Section:
         return len(indexes) == 1
 
     def menu_capture(self, indexes, current, payload=None) -> None:
-        self.panel.capture_onto_tile(self, current)
+        self.panel.tile_capture.onto_tile(self, current)
 
     def menu_favourite(self, indexes, current, payload=None) -> None:
         self.panel.grid_toggle_favourite(indexes)
 
     def menu_versions(self, indexes, current, payload=None) -> None:
-        self.panel._open_versions_dialog(current, self._p(self.proxy_attr),
-                                         self._p(self.model_attr))
+        self.panel.open_versions_dialog(current, self._p(self.proxy_attr),
+                                        self._p(self.model_attr))
 
     def menu_comments(self, indexes, current, payload=None) -> None:
         self.panel.btn_notes.click()    # the toolbar Comments button's own click, so the two never differ
@@ -458,7 +458,7 @@ class AssetSection(Section):
 
     def _stand_on_first_row(self) -> None:
         """Select the sidebar's first row and filter the grid to it; a select from code fires no click."""
-        selected_name = self.panel._select_default_sidebar_row(self._p(self.sidebar_attr))
+        selected_name = self.panel.select_default_sidebar_row(self._p(self.sidebar_attr))
         model = self._p(self.model_attr)
         proxy = self._p(self.proxy_attr)
         if model is not None and proxy is not None:
@@ -515,7 +515,7 @@ class AssetSection(Section):
             st.categories.rename_category(name, new_name)    # OUTSIDE the pair: it saves its list
         st.model.save()    # AFTER the pair: a save adopts a peer's rows, and an insert in it segfaults H21
         self.stand_on_key(new_name if standing in names else standing)    # a renamed row by its new name
-        self.panel._refresh_sidebar_categories()    # counts and empty-category hiding follow the rename
+        self.panel.refresh_sidebar_categories()    # counts and empty-category hiding follow the rename
 
     def export_package_to(self, indexes, path: str) -> int:
         """Act half: the selected rows leave as one `.amazepkg`; answers the entry count."""
@@ -594,8 +594,8 @@ class AssetSection(Section):
         if st is None:
             return [], ""
         panel = self.panel
-        current = panel._selected_category_name() if panel._section() is self else ""
-        return panel._category_names_from(st.categories), current
+        current = panel.selected_category_name() if panel.active_section() is self else ""
+        return panel.category_names_from(st.categories), current
 
     def stack(self):
         model = self._p(self.model_attr)
@@ -621,10 +621,10 @@ class AssetSection(Section):
         if st is None:
             return
         st.model.remove_rows([index.row() for index in indexes])    # ONE save for the selection
-        self.panel._refresh_sidebar_categories()
+        self.panel.refresh_sidebar_categories()
 
     def sidebar_key(self, index) -> str:
-        return self.panel._raw_category_name(index)    # the ONE reader of a category row's stored name; the underscore strip lives in Categories.data
+        return self.panel.raw_category_name(index)    # the ONE reader of a category row's stored name; the underscore strip lives in Categories.data
 
     def sidebar_colour(self, name: str) -> str:
         st = self.stack()
@@ -689,14 +689,14 @@ class AssetSection(Section):
         else:
             st.proxy.setFilter(st.model.RendererRole, value)    # every asset section keeps its kind in this role; a filter on any other role is ignored
         st.categories.set_renderer_filter(value or "")    # the sidebar too, given the proxy's value, never the menu's label
-        self.panel._refresh_sidebar_categories()
+        self.panel.refresh_sidebar_categories()
 
     def select_category(self, index) -> None:
         """Narrow the grid to the clicked row's category, always by the STORED name."""
         st = self.stack()
         if st is None:
             return
-        stored = self.panel._raw_category_name(index)    # never index.data(): a category stored _WIP displays "WIP"
+        stored = self.panel.raw_category_name(index)    # never index.data(): a category stored _WIP displays "WIP"
         st.proxy.setFilter(st.model.CategoryRole,
                         "" if category.is_all(stored) else stored)    # "" keeps _All meaning everything rather than a literal category nobody has
 
@@ -745,7 +745,7 @@ class MaterialSection(AssetSection):
         panel = self.panel
         if not panel.material_model or index is None or not index.isValid():
             return False
-        ids = panel._selected_material_ids(index)
+        ids = panel.selected_material_ids(index)
         target = dragengine.viewport_release_target(panel)
         if target is not None:
             kind, viewer, data = target
@@ -754,13 +754,13 @@ class MaterialSection(AssetSection):
             if kind == "lop":
                 if not data:
                     return self.drop_takes_nothing()    # empty viewport space is a MISS, not an import offer
-                shown = panel._material_lop_viewport_drop(ids, viewer, data)
+                shown = panel.drop_placement.material_lop_viewport_drop(ids, viewer, data)
                 return "menu" if shown is not False else False    # "menu" only when a menu was shown: it suppresses the miss icon
             if kind == "obj" and data is not None:
                 with dragengine.drop_group("Amaze Assign Material"):
                     return bool(panel.assign_material_to_obj(ids, data))    # False when the picked object has no shop_materialpath
             return self.drop_takes_nothing()
-        context = panel._drop_context_under_cursor("materiallibrary")
+        context = panel.drop_placement.context_under_cursor("materiallibrary")
         if context is None or not cop_nodes.accepts_context(
                 context, self.DROP.context):    # the wrong network is a miss and creates nothing; the declaration gates
             debug.event("drag", "material release", target="miss",
@@ -768,8 +768,8 @@ class MaterialSection(AssetSection):
             return self.drop_takes_nothing()
         debug.event("drag", "material release", target="network",
                     context=context.path(), count=len(ids))
-        position = panel._release_position_in(context)
-        panel._import_materials_into_context(context, ids, position)
+        position = panel.drop_placement.release_position_in(context)
+        panel.drop_placement.import_materials_into_context(context, ids, position)
         return True
 
     def copy_to_targets(self, indexes, current) -> tuple:
@@ -883,7 +883,7 @@ class MaterialSection(AssetSection):
             self.panel.enable_renderer_on_add(renderer)
         self.panel.prefs.save()
         self.panel.update_renderer_toggles()
-        self.panel._refresh_sidebar_categories()
+        self.panel.refresh_sidebar_categories()
 
     def update_preview(self, indexes) -> None:
         """Update Render on Material tiles: the whole selection in one render batch."""
@@ -937,7 +937,7 @@ class CopSection(AssetSection):
             return False
         if index is None or not index.isValid():
             return False    # a drag armed on empty grid space has an invalid index
-        context = panel._drop_context_under_cursor(
+        context = panel.drop_placement.context_under_cursor(
             cop_nodes.is_container)
         if context is None:
             return self.drop_takes_nothing()
@@ -953,7 +953,7 @@ class CopSection(AssetSection):
             debug.refuse(reason, net=context.path())    # the door marks library damage, which is what picks the dialog over the status line ▸p/refusal-sink
         if ok:
             helpers.place_nodes(created,
-                                panel._release_position_in(context))
+                                panel.drop_placement.release_position_in(context))
         return True
 
     def menu_load(self, indexes, current, payload=None) -> None:
@@ -1107,7 +1107,7 @@ class CodeSection(AssetSection):
         name = wording.sanitize_usd_path(
             str(getattr(asset, "name", "") or "")) or "snippet"
         with dragengine.drop_group("Amaze Create Code Node"):
-            node = panel._create_carrier(dest, type_name, name, position)
+            node = panel.drop_placement.create_carrier(dest, type_name, name, position)
             if node is None:
                 return False
             ok, _reason = code_actions.apply_to_node(panel.code_model, row, node)
@@ -1193,7 +1193,7 @@ class CodeSection(AssetSection):
             got = panel.code_model.save_from_editor(    # NO layout pair: it announces itself
                 saved["id"], dialog.version, dialog.code, dialog.name, dialog.language,
                 dialog.category, dialog.tags)
-            panel._refresh_sidebar_categories()
+            panel.refresh_sidebar_categories()
             if got:
                 saved["id"] = got
                 dialog.versions_saved(*panel.code_model.version_list(
@@ -1239,7 +1239,7 @@ class CodeSection(AssetSection):
             dialog.tags,
             False,
         )
-        self.panel._refresh_sidebar_categories()
+        self.panel.refresh_sidebar_categories()
 
     @classmethod
     def save_rank(cls, nodes) -> int:
@@ -1775,8 +1775,8 @@ class FileSection(FolderSection):
         from amaze.core import dragengine
         from amaze.helpers import helpers
         panel = self.panel
-        context = panel._drop_context_under_cursor(
-            panel._is_sop_container, include_viewports=True
+        context = panel.drop_placement.context_under_cursor(
+            panel.drop_placement.is_sop_container, include_viewports=True
         )
         if context is None:
             return False
@@ -1784,10 +1784,10 @@ class FileSection(FolderSection):
         if not path:
             return False
         with dragengine.drop_group("Amaze Import Geometry"):
-            created = panel._import_geo_in_context(path, context)
+            created = panel.drop_placement.import_geo_in_context(path, context)
         if created is not None:
             helpers.place_nodes([created],
-                                panel._release_position_in(context))
+                                panel.drop_placement.release_position_in(context))
         return True
 
     def click_open_hip(self, index) -> bool:
@@ -1796,7 +1796,7 @@ class FileSection(FolderSection):
 
     def open_hip_scene(self, index) -> None:
         """Open a scene file from the grid; Houdini's own save prompt handles unsaved changes."""
-        path = self.panel._hip_path_for(index)
+        path = self.panel.hip_path_for(index)
         if not path:
             return
         if not os.path.isfile(path):
@@ -1829,7 +1829,7 @@ class FileSection(FolderSection):
                          % (node.name(), os.path.basename(path)))
             return False
         with dragengine.drop_group("Amaze Set File Path"):
-            parm.set(panel._scene_path(path))
+            parm.set(panel.drop_placement.scene_path(path))
         return True
 
     def create_image_node_in(self, index, dest, position=None) -> bool:
@@ -1843,14 +1843,14 @@ class FileSection(FolderSection):
         base = wording.sanitize_usd_path(
             os.path.splitext(os.path.basename(path))[0]) or "image"
         with dragengine.drop_group("Amaze Create Image Node"):
-            node = panel._create_carrier(dest, "mtlximage", base, position)
+            node = panel.drop_placement.create_carrier(dest, "mtlximage", base, position)
             if node is None:
                 return False
             parm = helpers.find_file_parm(node)
             if parm is None:
                 node.destroy()
                 return False
-            parm.set(panel._scene_path(path))
+            parm.set(panel.drop_placement.scene_path(path))
         return True
 
     def click_copy_path(self, index) -> bool:
@@ -1956,7 +1956,7 @@ class FileSection(FolderSection):
         self.stand_after_removal(self.panel.remove_file_folder_user())
 
     def menu_locate_location(self, indexes, current, payload=None) -> None:
-        self.panel._locate_folder_user(self._p(self.folders_attr))
+        self.panel.locate_folder_user(self._p(self.folders_attr))
 
     files_proxy_attr = "file_sorted_model"
     selection_attr = "file_selection_model"
@@ -2186,8 +2186,8 @@ class GradientSection(AssetSection):
         name = wording.sanitize_usd_path(
             str(entry.get("name") or "")) or "gradient"
         with dragengine.drop_group("Amaze Create Gradient Node"):
-            node = self.panel._create_carrier(dest, "hmtlxrampc", name,
-                                              position)
+            node = self.panel.drop_placement.create_carrier(dest, "hmtlxrampc", name,
+                                                            position)
             if node is None:
                 return False
             parm = helpers.find_color_ramp_parm(node)

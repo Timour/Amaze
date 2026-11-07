@@ -77,7 +77,7 @@ class TheSceneRowInTheFileTab(_SceneCase):
         ui.selectFile.side_effect = lambda *a, **k: picked.append(1) or self.loc
         ui.displayMessage.side_effect = lambda *a, **k: said.append(a)
         with mock.patch.object(hou, "ui", ui, create=True):
-            self.panel._locate_folder_user(self.folders)
+            self.panel.locate_folder_user(self.folders)
         self.assertEqual([], picked, "Locate opened a folder picker on the scene row")
         self.assertEqual(1, len(said), "Locate said nothing on the scene row")
         self.assertEqual(before, list(self.folders._folders()), "a location's pointer changed")

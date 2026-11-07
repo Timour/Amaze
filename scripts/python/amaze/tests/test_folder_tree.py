@@ -662,7 +662,7 @@ class TheFileTabWalksSubfolders(unittest.TestCase):
         self._stand(self.sub)
         self.assertEqual([], self.panel.remove_file_folder_user(),
                          "removing with a subfolder selected unregistered a location")
-        self.panel._locate_folder_user(self.folders)
+        self.panel.locate_folder_user(self.folders)
         self.assertEqual(before, list(self.folders._folders()),
                          "a subfolder's row reached a location's pointer")
         self.assertEqual(self.folders.index_of(self.loc),

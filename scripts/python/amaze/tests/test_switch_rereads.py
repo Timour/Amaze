@@ -209,7 +209,7 @@ class AfterASwitchAnAssetGridFollowsItsSidebar(unittest.TestCase):
             with self.subTest(section=key):
                 panel.section_tabs.setChecked(key)
                 QtWidgets.QApplication.processEvents()
-                st = panel._section().stack()
+                st = panel.active_section().stack()
                 st.categories.check_add_category("Probe")
                 sidebar = panel.cat_list.model()
                 sidebar.hide_empty = False
@@ -219,7 +219,7 @@ class AfterASwitchAnAssetGridFollowsItsSidebar(unittest.TestCase):
                                  "premise: the grid is filtered on Probe")
                 self._switch_to_a_fresh_library(panel)
                 self.assertEqual(
-                    panel._selected_category_name(),
+                    panel.selected_category_name(),
                     st.proxy.filter_value(st.model.CategoryRole) or "",
                     "the grid keeps the previous library's category")
                 self.assertTrue(panel.cat_list.selectionModel().selectedIndexes(),

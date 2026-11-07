@@ -51,7 +51,7 @@ class _Panel:
     """The real name reader, wired to the proxy as in production, since it falls back to DisplayRole."""
 
     from amaze.panel.panel import AmazePanel as _Real
-    _raw_category_name = _Real._raw_category_name
+    raw_category_name = _Real.raw_category_name
 
     def __init__(self, proxy):
         self.cat_list = _CatList(proxy)
