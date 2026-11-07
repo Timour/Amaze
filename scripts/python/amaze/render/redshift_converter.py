@@ -7,7 +7,7 @@ from typing import NamedTuple
 import hou
 import json
 
-from amaze.core import debug, material
+from amaze.core import debug, material, renderers
 from amaze.helpers import wording
 from amaze.render import nodes
 from amaze.render.material_conversion import engine, materialx
@@ -39,7 +39,7 @@ class RedshiftMaterial(NamedTuple):
 
 def make_redshift_builder(parent: hou.Node, name: str) -> hou.Node:
     """An `rs_usd_material_builder` holding one `redshift_usd_material` terminal. ▸r/redshift-nodes"""
-    builder = parent.createNode("rs_usd_material_builder")    # a `redshift_vopnet` is refused by the LOP import door
+    builder = parent.createNode(renderers.REDSHIFT.usd_builder)    # a classic one is refused by the LOP import door
     builder.setName(wording.sanitize_usd_path(name), unique_name=True)
     for child in list(builder.children()):
         if child.type().name() not in material.REDSHIFT_TERMINALS + ("suboutput",):    # the stock terminal and the suboutput it feeds stay; the stock shader goes
@@ -456,8 +456,6 @@ NODE_CONVERTERS = {    # MaterialX node type, version stripped -> converter; any
 NODE_CONVERTERS.update({category: convert_math for category in TWO_INPUT_MATH})
 
 
-LEGACY_CONTAINER = "redshift_vopnet"
-USD_CONTAINER = "rs_usd_material_builder"
 CLASSIC_TERMINAL = material.REDSHIFT_TERMINALS[0]    # `redshift_material`, the OBJ-only output the upgrade leaves behind
 
 
@@ -487,7 +485,7 @@ def _bypass_dots(builder: hou.Node) -> int:
 
 def upgrade_to_usd_builder(builder: hou.Node) -> hou.Node:
     """A legacy `redshift_vopnet` rebuilt as an `rs_usd_material_builder` in place. ▸r/redshift-nodes"""
-    if builder.type().name() != LEGACY_CONTAINER:
+    if builder.type().name() != renderers.REDSHIFT.classic_container:
         return builder
     name = builder.name()
     terminals = [c for c in builder.children()

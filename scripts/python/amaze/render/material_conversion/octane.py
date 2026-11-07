@@ -9,8 +9,6 @@ from amaze.helpers import wording
 from amaze.render import material_converter, nodes
 from amaze.render.material_conversion import engine, materialx, octane_reader
 
-CLASSIC_CONTAINER = "octane_vopnet"
-SOLARIS_CONTAINER = "octane_solaris_material_builder"    # wired at creation ▸r/octane-builder
 SOLARIS_TERMINAL = "octane_material"
 PLUMBING = ("subinput", "suboutput")
 PASS_THROUGH = "mtlxdot"
@@ -42,7 +40,7 @@ def admitted(type_name: str) -> bool:
 
 def mark(builder: hou.Node) -> None:
     """Octane's mark and Tab menu on a MaterialX builder, which Octane then reads as its own."""
-    builder.setUserData(nodes.OCTANE_BUILDER_MARK, "1")
+    builder.setUserData(renderers.OCTANE.builder_mark, "1")
     try:
         import octane_material_builder    # Octane's own, on its plugin's script path
         octane_material_builder.refreshTabMenuMask(builder)
@@ -52,7 +50,7 @@ def mark(builder: hou.Node) -> None:
 
 def find_shader(container: hou.Node):
     """The surface shader of any of Octane's three containers, or None."""
-    if container.type().name() == SOLARIS_CONTAINER:
+    if container.type().name() == renderers.OCTANE.usd_builder:
         terminal = next((c for c in container.children()
                          if c.type().name() == SOLARIS_TERMINAL), None)
         return terminal.input(0) if terminal is not None else None
@@ -194,7 +192,7 @@ def report_ignored(container: hou.Node, report) -> None:
 
 def classic_into(parent: hou.Node, vopnet: hou.Node, name: str = "") -> hou.Node:
     """A classic `octane_vopnet` rebuilt inside `parent` into the container a LOP renders."""
-    builder = parent.createNode(SOLARIS_CONTAINER, name or vopnet.name())
+    builder = parent.createNode(renderers.OCTANE.usd_builder, name or vopnet.name())    # wired at creation ▸r/octane-builder
     terminal = next(c for c in builder.children()
                     if c.type().name() == SOLARIS_TERMINAL)
     stock = [c for c in builder.children()
@@ -215,7 +213,7 @@ def classic_into(parent: hou.Node, vopnet: hou.Node, name: str = "") -> hou.Node
 
 def upgrade_to_solaris_builder(container: hou.Node) -> hou.Node:
     """A classic container rebuilt beside itself as the Solaris one, which takes its name."""
-    if container.type().name() != CLASSIC_CONTAINER:
+    if container.type().name() != renderers.OCTANE.classic_container:
         return container
     name = container.name()
     fresh = classic_into(container.parent(), container, name + "_usd")

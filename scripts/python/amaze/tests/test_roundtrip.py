@@ -346,6 +346,20 @@ class TestRoundTrip(unittest.TestCase):
                           "the import left the COP companion it restored")
         self.assertEqual(["theirs"], self._libraries(stage))
 
+    def test_a_builder_is_saved_whole_with_its_own_data(self):
+        """A MaterialX builder saves whole, so data on the builder itself comes back with it."""
+        builder = _build_material(self.staging, "whole_probe")
+        builder.setUserData("amaze_whole_probe", "1")
+        held = test_support.asset_ids(self.model)
+        self.assertEqual("Karma", material_actions.add_asset(
+            self.model, builder, "", "", False))
+        asset, = test_support.arrived(self.model, held)
+        ok, reason, created = nodes.NodeHandler(self.prefs).import_asset_to_scene(
+            asset, target="mat")
+        self.assertTrue(ok, reason)
+        self.assertEqual("1", created[0].userData("amaze_whole_probe"),
+                         "the builder was saved as its contents, so its own data stayed behind")
+
     def test_saved_material_survives_disk_and_reimports(self):  # -- the round-trip --
         rows_before = self.model.rowCount()
         builder = _build_material(self.staging, "roundtrip_mat")
@@ -460,36 +474,26 @@ class TestRoundTrip(unittest.TestCase):
         self.assertEqual(fresh, [], "failed import left debris in /mat")
 
 
-class TheRedshiftAndOctaneSaveIsOneSave(unittest.TestCase):
-    """Redshift and Octane share one save that names its thumbnail ▸p/source-derived-tests"""
+class EveryMaterialSaveIsOneSave(unittest.TestCase):
+    """One method writes every renderer's material files, the COP save its own ▸p/source-derived-tests"""
 
-    def _shared_calls(self):
+    def test_one_method_writes_the_pair(self):
         import ast
         source = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
             "render", "nodes.py")
         with open(source, encoding="utf-8") as handle:
             tree = ast.parse(handle.read())
-        found = []
-        for node in ast.walk(tree):
-            if (isinstance(node, ast.Call)
-                    and getattr(node.func, "attr", "")
-                    == "_save_staged_with_cop_companion"):
-                found.append([a.value for a in node.args
-                              if isinstance(a, ast.Constant)])
-        return found
-
-    def test_every_thumbnail_named_there_actually_exists(self):
-        """Every `create_thumb_*` name passed to the shared save exists; a typo raises only on a real save."""
-        from amaze.render import thumbs as thumbs_mod
-        named = [args[-1] for args in self._shared_calls() if args]
-        self.assertTrue(named, "no thumbnail method names found to check")
-        for name in named:
-            self.assertTrue(
-                hasattr(thumbs_mod.ThumbNailRenderer, name),
-                "the shared save dispatches to ThumbNailRenderer.%s, "
-                "which does not exist - a save on a machine with that "
-                "renderer would raise after writing the files" % name)
+        writers = sorted(
+            func.name for func in ast.walk(tree)
+            if isinstance(func, ast.FunctionDef)
+            and any(isinstance(call, ast.Call)
+                    and getattr(call.func, "attr", "") == "save_asset_pair"
+                    for call in ast.walk(func)))
+        self.assertEqual(
+            ["_save_copy", "save_node_cop"], writers,
+            "a material save writes its files outside `_save_copy`, so its copy, "
+            "adoption or thumbnail can drift from every other renderer's")
 
 
 class ARedshiftImportReadsItsInterfaceOnce(unittest.TestCase):

@@ -162,15 +162,14 @@ class AWholeNetworkSaveKeepsItsDots(unittest.TestCase):
         self.assertIn(dot, builder.allItems())
 
     def test_the_staged_save_asks_for_every_item(self):
-        """Source-derived: the whole-network save hands `saveItemsToFile` the items, not the children."""
+        """Source-derived: the material save hands `saveItemsToFile` the items, not the children."""
         import inspect
-        source = inspect.getsource(
-            nodes.NodeHandler._save_staged_with_cop_companion)
+        source = inspect.getsource(nodes.NodeHandler._save_copy)
         self.assertIn("allItems()", source,
-                      "the Redshift/Octane save still collects children, "
+                      "the material save still collects children, "
                       "so a wire through a dot is dropped")
         self.assertNotIn(
-            "save_node.children()", source,
+            ".children()", source,
             "children() is still what the save collects")
 
     def test_a_saved_file_carries_the_dot_back(self):
@@ -190,7 +189,7 @@ class AWholeNetworkSaveKeepsItsDots(unittest.TestCase):
 
 
 class ALooseSurfaceSaveKeepsAWireThroughADot(unittest.TestCase):
-    """A surface saved on its own (`save_node_collect`) comes back fed as it was. ▸r/node-items"""
+    """A surface saved on its own, a loose save, comes back fed as it was. ▸r/node-items"""
 
     def setUp(self):
         test_support.pin_env(self, "OCIO", "/dev/null")

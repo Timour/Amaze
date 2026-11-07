@@ -368,7 +368,7 @@ class HostedPictureImportTest(unittest.TestCase):
         from amaze.core import library as library_mod, matx_import, tile_icons
         from amaze.render import thumbs
         model = library_mod.MaterialLibrary(preferences=self.prefs)
-        with mock.patch.object(thumbs.ThumbNailRenderer, "create_thumb_mtlx") as render:
+        with mock.patch.object(thumbs.ThumbNailRenderer, "create_thumb") as render:
             ok, reason = matx_import.import_record(
                 self._record(), self._source(), "", model, self.prefs,
                 save=functools.partial(material_actions.add_asset, model))
@@ -388,7 +388,7 @@ class HostedPictureImportTest(unittest.TestCase):
         record.payload = {"values": record.payload["values"]}    # no hosted picture
         for kwargs, renders in (({"render": False}, 0), ({}, 1)):
             with self.subTest(kwargs=kwargs):
-                with mock.patch.object(thumbs.ThumbNailRenderer, "create_thumb_mtlx",
+                with mock.patch.object(thumbs.ThumbNailRenderer, "create_thumb",
                                        return_value=True) as render:
                     ok, reason = matx_import.import_record(
                         record, self._source(), "", model, self.prefs,

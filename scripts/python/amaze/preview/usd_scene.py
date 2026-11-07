@@ -5,7 +5,7 @@ import os
 import hou
 
 import amaze
-from amaze.core import debug
+from amaze.core import debug, renderers
 from amaze.helpers import helpers, hostver
 from amaze.preview import thumbnail_scene
 
@@ -17,10 +17,9 @@ FLOOR_TEXTURE = {    # Octane and Redshift read no `.rat` here ▸r/octane-thumb
     "Octane": "$AMAZE/scripts/python/amaze/res/img/FloorTexture.exr",
     "Redshift": "$AMAZE/scripts/python/amaze/res/img/FloorTexture.exr",
 }
-OCTANE_LOP_CONTAINER = "octane_solaris_material_builder"    # wired at creation ▸r/octane-builder
-REDSHIFT_BUILDER = "rs_usd_material_builder"    # Redshift's USD builder ▸r/stage-karma-to-redshift
-REDSHIFT_LEGACY = "redshift_vopnet"    # a classic container, rebuilt into the builder for a stage
-COPIED_WHOLE = ("subnet", OCTANE_LOP_CONTAINER, REDSHIFT_BUILDER, REDSHIFT_LEGACY)    # copied whole
+USD_BUILDERS = (renderers.OCTANE.usd_builder,    # Octane's is wired at creation ▸r/octane-builder
+                renderers.REDSHIFT.usd_builder)    # Redshift's ▸r/stage-karma-to-redshift
+COPIED_WHOLE = ("subnet",) + USD_BUILDERS + (renderers.REDSHIFT.classic_container,)    # copied whole
 
 
 def _karma_settings(net, preferences) -> tuple:
@@ -172,7 +171,7 @@ def _stage_material(lib, node, asset_id, prim_path: str) -> str:
             curr_items = node.children()
 
     with debug.timed("batch", "copy nodes into lib", asset_id=str(asset_id)):
-        if not isinstance(node, list) and node.type().name() == "octane_vopnet":
+        if not isinstance(node, list) and node.type().name() == renderers.OCTANE.classic_container:
             from amaze.render.material_conversion import octane    # late: it imports render/
             curr_nodes = [octane.classic_into(lib, node)]
         elif isinstance(node, list):    # a loose save's nodes, with their dots ▸r/node-items
@@ -181,7 +180,7 @@ def _stage_material(lib, node, asset_id, prim_path: str) -> str:
                           if isinstance(item, hou.Node)]    # a dot is no material candidate
         else:
             curr_nodes = hou.copyNodesTo(curr_items, lib)  # type: ignore
-            if not isinstance(node, list) and node.type().name() == REDSHIFT_LEGACY:
+            if not isinstance(node, list) and node.type().name() == renderers.REDSHIFT.classic_container:
                 from amaze.render.material_conversion import engine    # late: it imports render/
                 curr_nodes = [engine.ready_for_solaris(curr_nodes[0], "Redshift")]    # the copy, as the USD builder
     if curr_nodes:    # empty for a builder subnet with no children: nothing to render
@@ -200,7 +199,7 @@ def _stage_material(lib, node, asset_id, prim_path: str) -> str:
                 mat_node = n
                 break
             elif ("subnet" in n.type().name()
-                  or n.type().name() in (OCTANE_LOP_CONTAINER, REDSHIFT_BUILDER)):
+                  or n.type().name() in USD_BUILDERS):
                 n.setGenericFlag(hou.nodeFlag.Material, True)
                 mat_node = n
                 break

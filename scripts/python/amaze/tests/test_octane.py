@@ -171,7 +171,7 @@ class OctanesOwnBuilderIsAnOctaneMaterial(unittest.TestCase):
         self.assertEqual("Octane", self._renderer(self.builder))
         bare = _octane_builder(hou.node("/mat"))
         self.addCleanup(bare.destroy)
-        bare.destroyUserData(nodes.OCTANE_BUILDER_MARK)
+        bare.destroyUserData(renderers.OCTANE.builder_mark)
         self.assertEqual("", self._renderer(bare))
         bare.createNode("mtlxstandard_surface")
         self.assertEqual("Karma", self._renderer(bare))
@@ -223,11 +223,11 @@ class OctanesOwnBuilderRoundTrips(unittest.TestCase):
         self.assertEqual("Octane:Standard Surface", self.model.renderer_label(asset))
         self.assertEqual("subnet", material_files.get_saved_node_type(self.prefs, asset))
         imported = self._imported(asset)
-        self.assertEqual("1", imported.userData(nodes.OCTANE_BUILDER_MARK),
+        self.assertEqual("1", imported.userData(renderers.OCTANE.builder_mark),
                          "the import lost Octane's marker")
         self.assertEqual(
             [], [c.name() for c in imported.children()
-                 if c.userData(nodes.OCTANE_BUILDER_MARK)],
+                 if c.userData(renderers.OCTANE.builder_mark)],
             "the builder came back nested inside another subnet")
         self.assertTrue(nodes.surface_terminal_wired(imported))
         for got, want in zip(_shader(imported).parmTuple("baseColor").eval(), RED):
@@ -268,7 +268,7 @@ class OctanesOwnBuilderRoundTrips(unittest.TestCase):
         stage = hou.node("/obj").createNode("lopnet", "octane_classic_probe")
         self.addCleanup(stage.destroy)
         imported = self._imported(asset, target="lop", context=stage)
-        self.assertEqual(octane_api.SOLARIS_CONTAINER, imported.type().name())
+        self.assertEqual(renderers.OCTANE.usd_builder, imported.type().name())
         for got, want in zip(octane_api.find_shader(imported).parmTuple("baseColor").eval(), RED):
             self.assertAlmostEqual(want, got, places=5)
         from pxr import UsdShade
@@ -283,6 +283,43 @@ class OctanesOwnBuilderRoundTrips(unittest.TestCase):
         self.assertEqual({"mat", "lop"},
                          nodes.NodeHandler(self.prefs).import_targets(asset))
         self.assertEqual("USD Octane:Standard Surface", self.model.renderer_label(asset))
+
+
+class AMarkedSubnetSavesWholeWithoutThePlugin(unittest.TestCase):
+    """Octane's mark alone routes the save and the import, so this runs where Octane is absent."""
+
+    @classmethod
+    def setUpClass(cls):
+        test_support.pin_env(test_support.class_scope(cls), "OCIO", "/dev/null")    # save_node gates on $OCIO; nothing renders here
+
+    def setUp(self):
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        self.prefs = test_support.fixture_prefs(self)
+        self.prefs.render_on_import = 0
+        self.model = library_mod.MaterialLibrary(preferences=self.prefs)
+        self.builder = hou.node("/mat").createNode("subnet", "marked_probe")
+        self.addCleanup(self.builder.destroy)
+        self.builder.setUserData(renderers.OCTANE.builder_mark, "1")
+        self.builder.createNode("mtlxstandard_surface")
+
+    def test_it_saves_whole_and_comes_back_marked(self):
+        held = test_support.asset_ids(self.model)
+        self.assertEqual("Octane", material_actions.add_asset(
+            self.model, self.builder, "", "", False))
+        asset, = test_support.arrived(self.model, held)
+        self.assertEqual("subnet", material_files.get_saved_node_type(self.prefs, asset))
+        self.assertEqual({"mat", "lop"}, nodes.NodeHandler(self.prefs).import_targets(asset))
+        ok, reason, created = nodes.NodeHandler(self.prefs).import_asset_to_scene(
+            asset, target="mat")
+        self.assertTrue(ok, reason)
+        imported, = created
+        self.addCleanup(imported.destroy)
+        self.assertEqual("1", imported.userData(renderers.OCTANE.builder_mark),
+                         "the subnet was saved as its contents, so its mark stayed behind")
+        self.assertEqual([], [c.name() for c in imported.children()
+                              if c.type().name() == "subnet"],
+                         "the builder came back nested inside another subnet")
 
 
 @unittest.skipUnless(test_support.renderer_loaded("Octane"), "the Octane plugin is not loaded")

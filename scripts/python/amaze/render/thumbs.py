@@ -141,9 +141,9 @@ class ThumbNailRenderer:
         """Render this material's thumbnail in the background: a batch of one."""
         ThumbNailRenderer.render_assets(self._preferences, [self._mat])
 
-    def create_thumb_mtlx(self, node: hou.Node, asset_id: str) -> bool:
-        """One MaterialX thumbnail, in the background; a batch of one."""
-        return self.render_batch(self._preferences, "Karma", [(asset_id, node)])
+    def create_thumb(self, renderer: str, node, asset_id: str) -> bool:
+        """One material's thumbnail in its `renderer`'s stage, in the background: a batch of one."""
+        return self.render_batch(self._preferences, renderer, [(asset_id, node)])
 
     @staticmethod
     def _pick_cop_thumb_source(temp: hou.Node) -> hou.Node | None:
@@ -534,11 +534,3 @@ class ThumbNailRenderer:
             if temp is not None:
                 with hou.undos.disabler():  # off the stack at BOTH ends, like create_thumb_sop
                     temp.destroy()
-
-    def create_thumb_redshift(self, node: hou.Node, asset_id: str) -> bool:
-        """One Redshift thumbnail in the shared stage, in the background. ▸r/redshift-thumbnail-stall"""
-        return self.render_batch(self._preferences, "Redshift", [(asset_id, node)])
-
-    def create_thumb_octane(self, node: hou.Node, asset_id: str) -> bool:
-        """One Octane thumbnail in the MaterialX one's stage, in the background. ▸r/octane-thumbnail"""
-        return self.render_batch(self._preferences, "Octane", [(asset_id, node)])

@@ -609,7 +609,7 @@ the container, the wiring, activation and verification; each input is an
   builder, which renders MaterialX; the classic container rebuilt for
   Solaris) reading through `octane_reader.py` (Octane's nodes → MaterialX).
   A new renderer is a new module here and one entry in `core/renderers.py`,
-  which names the module and the order every menu lists it. The callers:
+  which names the module, its node types and the order every menu lists it. The callers:
   `MaterialLibrary.convert(index, target)`, the Convert to menu, the online
   import's `matx_import.to_renderer`, and `NodeHandler.load_items_file` on
   the way into a LOP library. `ConversionReport` lives in `report.py`.
@@ -1142,7 +1142,10 @@ moves only by its own button.
 - **The renderer table** — `core/renderers.py` holds every renderer once:
   the key libraries store, the name every menu shows, its icon, its
   converter module, its Preferences ▸ Show/Hide switch (and the key that
-  switch is stored under) and its Render tab samples row. A switch turned
+  switch is stored under), its Render tab samples row, and its plugin's
+  node types: the classic container, the USD-builder a classic one is
+  rebuilt as, and the user-data mark on its own builder, which save, load
+  and import read from the table. A switch turned
   off hides that renderer from the Filter, Convert to and both Import
   menus and from the Render tab (`renderers.offered`); renaming one is its
   `label`; the `key` never changes, being data on disk.

@@ -34,17 +34,15 @@ source_of = test_support.source_of
 class EveryRendererRendersInTheOneBatch(unittest.TestCase):
     """No material renders inside Houdini: each renderer's door is a batch of one."""
 
-    def test_each_door_is_a_batch_of_one(self):
+    def test_each_renderer_is_a_batch_of_one(self):
         prefs = test_support.fixture_prefs(self)
         node = mock.Mock(name="builder")
-        for door, renderer in (("create_thumb_mtlx", "Karma"),
-                               ("create_thumb_octane", "Octane"),
-                               ("create_thumb_redshift", "Redshift")):
-            with self.subTest(door=door):
+        for renderer in ("Karma", "Octane", "Redshift"):
+            with self.subTest(renderer=renderer):
                 batches = []
                 with mock.patch.object(thumbs.ThumbNailRenderer, "render_batch", staticmethod(
                         lambda _prefs, r, items: batches.append((r, items)))):
-                    getattr(thumbs.ThumbNailRenderer(prefs), door)(node, "ID")
+                    thumbs.ThumbNailRenderer(prefs).create_thumb(renderer, node, "ID")
                 self.assertEqual([(renderer, [("ID", node)])], batches)
 
     def test_no_material_path_opens_an_interrupt_dialog(self):
@@ -414,7 +412,7 @@ class AKarmaThumbnailLeavesTheSceneAsItFoundIt(unittest.TestCase):
         dot.setInput(image, 0)
         surface.setInput(surface.inputIndex("base_color"), dot, 0)
         batch = preview.write_batch(
-            self._scaffold(), [("DOT_PROBE", [surface, image])], self.out)    # as save_node_collect
+            self._scaffold(), [("DOT_PROBE", [surface, image])], self.out)    # as a loose save hands it
         stage = Usd.Stage.Open(batch["usd"])
         staged = next(UsdShade.Shader(prim) for prim in Usd.PrimRange(
             stage.GetPrimAtPath(batch["prims"][0])) if prim.GetName() == "probe_surface")

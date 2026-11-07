@@ -20,6 +20,7 @@ from amaze.core import library as library_mod  # noqa: E402
 from amaze.actions import materials as material_actions  # noqa: E402
 from amaze.core import material_files  # noqa: E402
 from amaze.core import matx_import  # noqa: E402
+from amaze.core import renderers  # noqa: E402
 from amaze.render import nodes  # noqa: E402
 from amaze.render.material_conversion import engine, materialx  # noqa: E402
 from amaze.render.material_conversion import octane as octane_api  # noqa: E402
@@ -140,6 +141,19 @@ class TheEngineRoutesThroughMaterialX(unittest.TestCase):
             writer.middle.path()    # the MaterialX step is gone
         self.assertEqual("My_Mat", made.builder.name())
         self.assertEqual(1, made.report.skipped.count(engine.UNWIRED))
+
+
+class TheTableWritesEachPluginsOwnNames(unittest.TestCase):
+    """A misspelt name reads as a missing plugin and skips its tests, so the names are written out."""
+
+    def test_each_renderer_names_its_plugins_node_types(self):
+        self.assertEqual(
+            {"Karma": ("", "", ""),
+             "Redshift": ("redshift_vopnet", "rs_usd_material_builder", ""),
+             "Octane": ("octane_vopnet", "octane_solaris_material_builder",
+                        "octane_material_builder")},
+            {each.key: (each.classic_container, each.usd_builder, each.builder_mark)
+             for each in renderers.ALL})
 
 
 class RedshiftLoadsOnlyWithBothItsContainers(unittest.TestCase):

@@ -6,13 +6,15 @@ import hou
 
 from amaze.core import debug
 from amaze.core import material
+from amaze.core import renderers
 
 from amaze.helpers import wording
 from amaze.render import nodes
 from amaze.render.material_conversion.report import ConversionReport    # the one home
 
 
-REDSHIFT_CONTAINERS = ("redshift_vopnet", "rs_usd_material_builder")    # read, and written
+REDSHIFT_CONTAINERS = (renderers.REDSHIFT.classic_container,    # read, and written
+                       renderers.REDSHIFT.usd_builder)
 
 
 def _redshift_type_available() -> bool:

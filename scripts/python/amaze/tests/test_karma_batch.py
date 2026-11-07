@@ -277,7 +277,7 @@ class ASaveAskedNotToRenderRendersNothing(unittest.TestCase):
                 self.addCleanup(builder.destroy)
                 nodes.wire_builder_output(builder, builder.createNode("mtlxstandard_surface"))
                 held = test_support.asset_ids(model)
-                with mock.patch.object(thumbs.ThumbNailRenderer, "create_thumb_mtlx",
+                with mock.patch.object(thumbs.ThumbNailRenderer, "create_thumb",
                                        return_value=True) as rendered:
                     self.assertEqual("Karma", material_actions.add_asset(
                         model, builder, "", "", False, **kwargs))
@@ -343,11 +343,11 @@ class AMultiMaterialDoorRendersOneBatch(unittest.TestCase):
         for owner, name, value in (
                 (thumbs.ThumbNailRenderer, "render_assets", lambda prefs, mats:
                  self.batches.append(sorted(str(mat.mat_id) for mat in mats))),
-                (thumbs.ThumbNailRenderer, "create_thumb_mtlx", mock.Mock(return_value=True))):
+                (thumbs.ThumbNailRenderer, "create_thumb", mock.Mock(return_value=True))):
             patcher = mock.patch.object(owner, name, value)
             patcher.start()
             self.addCleanup(patcher.stop)
-        self.each = thumbs.ThumbNailRenderer.create_thumb_mtlx    # the render a save starts
+        self.each = thumbs.ThumbNailRenderer.create_thumb    # the render a save starts
 
     def _landed(self, door):
         held = test_support.asset_ids(self.model)

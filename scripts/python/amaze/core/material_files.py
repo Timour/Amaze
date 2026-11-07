@@ -2,12 +2,9 @@
 
 import re
 
-from amaze.core import material
+from amaze.core import material, renderers
 
-LOP_CAPABLE_NODE_TYPES = (
-    "rs_usd_material_builder",  # Redshift USD material builder
-    "octane_solaris_material_builder",  # Octane Solaris material builder
-)
+LOP_CAPABLE_NODE_TYPES = tuple(each.usd_builder for each in renderers.ALL if each.usd_builder)
 
 SHADER_TYPE_LABELS = {    # renderer -> (type in the saved .mat, label); the first one found wins
     "Redshift": (

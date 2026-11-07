@@ -61,9 +61,10 @@ class HoudiniSpeaker:
             info["effective_ui_scale"] = float(theme.UI_SCALE)
         except Exception:
             pass
+        from amaze.core import renderers
         for label, type_name in (
-            ("redshift", "redshift_vopnet"),
-            ("octane", "octane_vopnet"),
+            ("redshift", renderers.REDSHIFT.classic_container),
+            ("octane", renderers.OCTANE.classic_container),
             ("mtlx", "mtlxstandard_surface"),
         ):
             info["has_" + label] = bool(

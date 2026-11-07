@@ -20,6 +20,7 @@ sys.path.insert(        # three dirnames reach python/; four would test the inst
 from amaze.actions import nodes as node_actions  # noqa: E402
 from amaze.core import cop_library  # noqa: E402
 from amaze.core import material  # noqa: E402
+from amaze.core import renderers  # noqa: E402
 from amaze.render import cop_nodes  # noqa: E402
 from amaze.render import nodes  # noqa: E402
 from amaze.render import thumbs  # noqa: E402
@@ -729,7 +730,7 @@ class WhatCountsAsAFailure(unittest.TestCase):
                     "ocio_set" if ocio else "ocio_empty")
                 self._pin_ocio(ocio)
 
-                with mock.patch.object(handler, "save_node_collect",
+                with mock.patch.object(handler, "_save_copy",
                                        return_value=True) as saver:
                     saved = handler.save_node(collect, "asset1", False)
 
@@ -737,7 +738,7 @@ class WhatCountsAsAFailure(unittest.TestCase):
                                  "$OCIO=%r decided the save the wrong way"
                                  % ocio)
                 self.assertEqual(
-                    [mock.call(collect, "asset1", False)] if saves else [],
+                    [mock.call(collect, "asset1", False, renderers.KARMA)] if saves else [],
                     saver.call_args_list)
 
 

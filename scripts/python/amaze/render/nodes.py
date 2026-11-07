@@ -125,21 +125,36 @@ def apply_node_color(node, color) -> None:
         pass
 
 
-OCTANE_BUILDER_MARK = "octane_material_builder"      # Octane's user data ▸r/octane-builder
+KARMA_SURFACES = ("mtlxopen_pbr_surface", "mtlxstandard_surface")    # saved loose, without a builder
+CONNECTORS = ("subnetconnector", "suboutput")    # a container's plumbing, not the material's
 
 
-def is_octane_builder(node) -> bool:
-    """Octane's own builder: a plain subnet with Octane's marker, tested as Octane tests it."""
+def is_marked_builder(node, renderer) -> bool:
+    """`renderer`'s own builder: a plain subnet carrying its mark, tested as the renderer tests it."""
     try:
-        return (node.type().name() == "subnet"
-                and node.userData(OCTANE_BUILDER_MARK) == "1")
+        return (bool(renderer.builder_mark) and node.type().name() == "subnet"
+                and node.userData(renderer.builder_mark) == "1")
     except (AttributeError, hou.Error):
         return False
 
 
-def saved_as_octane_builder(renderer, saved_type) -> bool:
-    """An Octane asset whose .interface starts with a plain subnet: Octane's builder, saved whole."""
-    return "Octane" in str(renderer or "") and saved_type == "subnet"
+def is_octane_builder(node) -> bool:
+    """Octane's own builder, a plain subnet with Octane's marker. ▸r/octane-builder"""
+    return is_marked_builder(node, renderers.OCTANE)
+
+
+def saved_as_own_builder(renderer, saved_type) -> bool:
+    """A `renderer` asset whose .interface starts with a plain subnet: its own builder, saved whole."""
+    return bool(renderer.builder_mark) and saved_type == "subnet"
+
+
+def copy_network(nodes, staging) -> hou.Node:
+    """A loose surface's `nodes` and the dots on their wires, copied into a fresh subnet."""
+    holder = staging.createNode("subnet")
+    for child in holder.children():    # the subnet's own default plumbing
+        child.destroy()
+    copy_with_dots(nodes, holder)
+    return holder
 
 
 def surface_terminal_wired(builder) -> bool:
@@ -712,27 +727,22 @@ class NodeHandler:
 
     def get_renderer_from_node(self, node: hou.Node) -> str:
         """The renderer a node's type implies, or the refusal answer."""
-        if node.type().name() == "redshift_vopnet":
-            self._renderer = "Redshift"
-        elif "rs_usd_material_builder" in node.type().name():
-            self._renderer = "Redshift"
-        elif node.type().name() == "octane_vopnet":
-            self._renderer = "Octane"
-        elif "octane_solaris_material_builder" in node.type().name():
-            self._renderer = "Octane"
-        elif is_octane_builder(node):    # before the MaterialX walk: it may hold MaterialX nodes
-            self._renderer = "Octane"
-        elif "mtlxopen_pbr_surface" in node.type().name():
-            self._renderer = "Karma"
-        elif "mtlxstandard_surface" in node.type().name():
-            self._renderer = "Karma"
-        elif node.type().name() == "subnet":
+        kind = node.type().name()
+        for each in renderers.ALL:    # before the MaterialX walk: a marked builder may hold MaterialX
+            if ((each.classic_container and kind == each.classic_container)
+                    or (each.usd_builder and each.usd_builder in kind)
+                    or is_marked_builder(node, each)):
+                self._renderer = each.key
+                return self._renderer
+        if any(surface in kind for surface in KARMA_SURFACES):
+            self._renderer = renderers.KARMA.key
+        elif kind == "subnet":
             for n in node.allSubChildren():  # the whole interior, subnets included
                 if "mtlx" in n.type().name():
-                    self._renderer = "Karma"
+                    self._renderer = renderers.KARMA.key
                     break
-        elif node.type().name() == "collect":
-            self._renderer = "Karma"
+        elif kind == "collect":
+            self._renderer = renderers.KARMA.key
         return self._renderer
 
     def import_targets(self, mat: material.Material, saved_type=None) -> set:
@@ -743,13 +753,13 @@ class NodeHandler:
             saved_type = material_files.get_saved_node_type(self._preferences, mat)
         if saved_type in material_files.LOP_CAPABLE_NODE_TYPES:
             return {"mat", "lop"}
-        if saved_as_octane_builder(mat.renderer, saved_type):    # lives in both, as Karma's does
+        found = renderers.get(mat.renderer)
+        if found is None:
+            return {"mat"}
+        if saved_as_own_builder(found, saved_type):    # lives in both, as Karma's does
             return {"mat", "lop"}
-        if "Redshift" in mat.renderer and node_type_available(
-                "rs_usd_material_builder"):    # a legacy container is rebuilt as the USD one in a LOP library
-            return {"mat", "lop"}
-        if "Octane" in mat.renderer and node_type_available(
-                "octane_solaris_material_builder"):    # the classic one is rebuilt, as Redshift's is
+        if found.usd_builder and node_type_available(
+                found.usd_builder):    # a classic container is rebuilt as it in a LOP library
             return {"mat", "lop"}
         return {"mat"}
 
@@ -782,34 +792,29 @@ class NodeHandler:
     ):
         """The import seam: (ok, reason, created); [] on refusal."""
         self._builder_node = None
-        ok, reason = self._import_asset_to_scene_inner(
-            mat, target, context_node=context_node)
+        self._context_override = context_node    # the network the target is read from, this import only
+        try:
+            ok, reason = self._import_asset_to_scene_inner(mat, target)
+        finally:
+            self._context_override = None
         created = ([self._builder_node]
                    if ok and self._builder_node is not None else [])
         return ok, reason, created
 
-    def _import_asset_to_scene_inner(
-        self,
-        mat: material.Material,
-        target: str = "auto",
-        context_node: hou.Node | None = None,
-    ):
-        """Import a material to "auto", "mat", "lop" or context_node: (ok, why) ▸p/material-import-door"""
+    def _import_asset_to_scene_inner(self, mat: material.Material, target: str = "auto"):
+        """Import to `auto`, `mat`, `lop` or the seam's network: (ok, why) ▸p/material-import-door"""
         from amaze.helpers import helpers
         payload, refusal = self._payload_or_refusal(mat)
         if refusal:
-            self._context_override = None
             return (False, refusal)
         try:
             if os.path.getsize(payload) == 0:
-                self._context_override = None
                 return (False,
                         debug.Damage(
                             '"%s" cannot be imported: its material file is '
                             "empty, so the save that produced it did not "
                             "finish (%s)" % (mat.name, payload)))
         except OSError as exc:
-            self._context_override = None
             return (False,
                     debug.Damage(
                         '"%s" cannot be imported: its material file could '
@@ -817,20 +822,16 @@ class NodeHandler:
 
         saved_type = material_files.get_saved_node_type(self._preferences, mat)
         if saved_type and not node_type_available(saved_type):
-            self._context_override = None
             return (False,
                     '"%s" needs the "%s" node type, which is not '
                     "available in this session - is the %s plugin "
                     "installed?" % (mat.name, saved_type, mat.renderer))
 
-        self._context_override = context_node
         try:
             ok, reason = self.update_context(mat, target, saved_type)
         except hou.Error as exc:
-            self._context_override = None
             return (False, "cannot import here: %s" % exc)
         if not ok:
-            self._context_override = None
             return (False, reason)
 
         self._created_cop_net = None
@@ -899,7 +900,6 @@ class NodeHandler:
                     "installed?). %s"
                     % (mat.name, mat.renderer, first_line))
         finally:
-            self._context_override = None
             if self._hou_parent is not None:
                 self._hou_parent.destroy()
             if not completed:
@@ -1078,27 +1078,25 @@ class NodeHandler:
             return ""
 
     def _load_saved(self, mat: material.Material, saved_type=None) -> tuple:
-        """Rebuild the saved builder under `_hou_parent` by renderer family: (ok, refusal)."""
-        if renderers.is_karma(mat.renderer):
-            self.load_interface_mtlx(mat)
-            self.load_items_file_mtlx(mat)
-        elif "Redshift" in mat.renderer:
-            self.load_interface_other(mat, "redshift_vopnet", saved_type)
-            self.load_items_file(mat)
-        elif "Octane" in mat.renderer:
-            if saved_type is None:
-                saved_type = material_files.get_saved_node_type(self._preferences, mat)
-            if saved_as_octane_builder(mat.renderer, saved_type):
-                self.load_octane_builder(mat)
-            else:
-                self.load_interface_other(mat, "octane_vopnet", saved_type)
-                self.load_items_file(mat)
-        else:
+        """Rebuild the saved builder under `_hou_parent` by its renderer's record: (ok, refusal)."""
+        found = renderers.get(mat.renderer)
+        if found is None:
             return (False, debug.Damage(
                 '"%s" has an unrecognised renderer (%r), so there is '
                 "no way to rebuild it. Re-save it from a material "
                 "builder, or set its renderer in Info."
                 % (mat.name, mat.renderer)))
+        if found is renderers.KARMA:
+            self.load_interface_mtlx(mat)
+            self.load_items_file_mtlx(mat)
+            return (True, "")
+        if found.builder_mark and saved_type is None:    # only a renderer with its own builder asks
+            saved_type = material_files.get_saved_node_type(self._preferences, mat)
+        if saved_as_own_builder(found, saved_type):
+            self.load_own_builder(mat)
+        else:
+            self.load_interface_other(mat, found.classic_container, saved_type)
+            self.load_items_file(mat)
         return (True, "")
 
     def rebuild_saved(self, mat: material.Material, scratch: hou.Node) -> hou.Node:
@@ -1200,8 +1198,8 @@ class NodeHandler:
             debug.event("import", "surface terminal not wired",
                         material=mat.name, node=moved.path())
 
-    def load_octane_builder(self, mat: material.Material) -> None:
-        """Octane's builder is saved whole, so one loaded subnet IS the material. ▸r/octane-builder"""
+    def load_own_builder(self, mat: material.Material) -> None:
+        """A renderer's own builder is saved whole, so one loaded subnet IS the material. ▸r/octane-builder"""
         from amaze.helpers import helpers
         self._builder_node = self._hou_parent.createNode("subnet")    # the holder
         loaded = self._load_into_holder(mat)
@@ -1232,7 +1230,7 @@ class NodeHandler:
                 collect_nodes.append(child)
             elif tname == "mtlxdisplacement" and displacement_node is None:
                 displacement_node = child
-            elif tname in ("subnetconnector", "suboutput"):
+            elif tname in CONNECTORS:
                 continue
             elif shader_node is None and (
                 "surface" in child.outputDataTypes()
@@ -1691,16 +1689,16 @@ class NodeHandler:
         return (True, "")
 
     def save_node(self, node: hou.Node, asset_id: str, update: bool) -> bool:
-        """Save Node wrapper for different Material Types"""
+        """Save a material node's files and its thumbnail; the library is not touched."""
         from amaze.helpers import helpers
-        self.texture_inventory = []    # filled by the staged save paths; add_asset/update copy it onto the row
+        self.texture_inventory = []    # filled by the save; add_asset/update copy it onto the row
         ui = getattr(hou, "ui", None)  # without a UI the refusals below still return False ▸r/status-bar
         if not hou.getenv("OCIO"):    # an empty OCIO counts as unset
             if ui is not None:
                 ui.displayMessage(messages.OCIO_NOT_SET)
             return False
-        saver = self._saver_for(node)
-        if saver is None:
+        renderer = renderers.get(self._renderer)
+        if renderer is None:
             if ui is not None:
                 ui.displayMessage(messages.NODE_IS_NOT_A_MATERIAL_BUILDER)
             return False
@@ -1710,180 +1708,45 @@ class NodeHandler:
                     hou.InterruptableOperation(    # the staging copies select themselves
                         "Rendering", "Performing Tasks",
                         open_interrupt_dialog=True):
-                return saver(node, asset_id, update)    # all of it scratch work ▸r/undo-groups
+                return self._save_copy(node, asset_id, update, renderer)    # all scratch work ▸r/undo-groups
         finally:
             self._discard_pending_cop_promote()    # a save that never reached the pair keeps no companion
 
-    def _saver_for(self, node: hou.Node):
-        """The save path this node's renderer takes, or None for a node that is no material."""
-        if "Redshift" in self._renderer:
-            return self.save_node_redshift
-        if "Octane" in self._renderer:
-            return self.save_node_octane
-        if not renderers.is_karma(self._renderer):
-            return None
-        kind = node.type().name()
-        if (kind == "collect" or "mtlxopen_pbr_surface" in kind
-                or "mtlxstandard_surface" in kind):
-            return self.save_node_collect
-        return self.save_node_mtlx
-
-    def save_node_collect(self, node: hou.Node, asset_id: str, update: bool) -> bool:
-        """Save a collect node's network to disk; the library is not touched."""
-        file_name = material.payload_path(
-            self._preferences, str(asset_id), self._preferences.ext
-        )
-        parms_file_name = material.payload_path(
-            self._preferences, str(asset_id), ".interface"
-        )
-
+    def _save_copy(self, node: hou.Node, asset_id: str, update: bool, renderer) -> bool:
+        """Every material save: a scratch copy, its textures adopted, the pair written, a render."""
         from amaze.helpers import helpers
         from amaze.render import thumbs
-        nodetree = [      # a connector belongs to the container, not the material
-            n for n in helpers.get_connected_nodes(node)
-            if n.type().name() not in ("subnetconnector", "suboutput")
-        ]
-
+        asset_id = str(asset_id)
+        kind = node.type().name()
+        loose = renderer is renderers.KARMA and (
+            kind == "collect" or any(surface in kind for surface in KARMA_SURFACES))
+        whole = not loose and (renderer is renderers.KARMA or is_marked_builder(node, renderer))
+        sources = ([n for n in helpers.get_connected_nodes(node) if n.type().name() not in CONNECTORS]
+                   if loose else [node])    # a list stays a list: the thumbnail stage reads it so
+        file_name = material.payload_path(self._preferences, asset_id, self._preferences.ext)
+        parms_file_name = material.payload_path(self._preferences, asset_id, ".interface")
+        path_map = self.prepare_cop_companion(tuple(sources), asset_id, node.name())
         with hou.undos.disabler():
-            staging_parent = hou.node("/obj").createNode("matnet")
-            sub_tmp = staging_parent.createNode("subnet")
-        try:
-            children = sub_tmp.children()
-            for n in children:
-                n.destroy()
-            copy_with_dots(nodetree, sub_tmp)
-            children = sub_tmp.allItems()    # NOT children(): a dot is no child ▸r/node-items
-
-            path_map = self.prepare_cop_companion(
-                tuple(nodetree), str(asset_id), node.name()
-            )
-            if path_map:
-                self.rewrite_cop_refs((sub_tmp,), path_map)
-
-            self.texture_inventory = texstore.adopt(
-                sub_tmp, self._preferences,
-                texstore.asset_folder(node.name(), asset_id))
-
-            self.save_asset_pair(
-                parms_file_name, file_name, sub_tmp.asCode(),
-                lambda path: sub_tmp.saveItemsToFile(
-                    children, path,
-                    save_hda_fallbacks=hda_fallbacks_needed(children),
-                ),
-                builder_node=sub_tmp, asset_id=str(asset_id),
-            )
-        finally:
-            with hou.undos.disabler():
-                staging_parent.destroy()
-
-        self.after_save_thumbnail(
-            update, "Karma", asset_id, node.path(),
-            lambda: thumbs.ThumbNailRenderer(
-                self._preferences).create_thumb_mtlx(nodetree, asset_id))
-        return True
-
-    def save_node_mtlx(self, node: hou.Node, asset_id: str, update: bool) -> bool:
-        """Save the MtlX node to disk; the library is not touched."""
-        return self._save_builder_whole(
-            node, asset_id, update, "Karma", "create_thumb_mtlx")
-
-    def _save_builder_whole(
-        self, node: hou.Node, asset_id: str, update: bool,
-        renderer: str, thumb_method: str,
-    ) -> bool:
-        """A builder subnet saved whole, its own data riding along: MaterialX's and Octane's."""
-        from amaze.render import thumbs
-        file_name = material.payload_path(
-            self._preferences, asset_id, self._preferences.ext
-        )
-
-        parms_file_name = material.payload_path(
-            self._preferences, asset_id, ".interface"
-        )
-
-        with hou.undos.disabler():
-            builder = hou.node("/obj").createNode("matnet")
-        try:
-            copied = hou.copyNodesTo((node,), builder)  # type: ignore
-
-            path_map = self.prepare_cop_companion((node,), str(asset_id), node.name())
-            if path_map:
-                self.rewrite_cop_refs((copied[0],), path_map)
-
-            self.texture_inventory = texstore.adopt(    # on the COPY, before asCode - the scene node stays untouched and .interface agrees with .mat
-                copied[0], self._preferences,
-                texstore.asset_folder(node.name(), asset_id))
-
-            self.save_asset_pair(      # EVERY part from the staging COPY
-                parms_file_name, file_name, copied[0].asCode(),
-                lambda path: builder.saveItemsToFile(
-                    copied, path,
-                    save_hda_fallbacks=hda_fallbacks_needed(copied),
-                ),
-                builder_node=copied[0], asset_id=str(asset_id),
-            )
-        finally:
-            with hou.undos.disabler():
-                builder.destroy()
-
-        self.after_save_thumbnail(
-            update, renderer, asset_id, node.path(),
-            lambda: getattr(thumbs.ThumbNailRenderer(self._preferences),
-                            thumb_method)(node, asset_id))
-        return True
-
-    def save_node_redshift(self, node: hou.Node, asset_id: str, update: bool) -> bool:
-        """Saves the Redshift node to disk - does not add to library"""
-        return self._save_staged_with_cop_companion(
-            node, asset_id, update, "Redshift", "create_thumb_redshift")
-
-    def save_node_octane(self, node: hou.Node, asset_id: str, update: bool) -> bool:
-        """Octane's own builder saves whole, as MaterialX's does; the typed containers stage."""
-        if is_octane_builder(node):    # its marker is user data, which only a whole save keeps
-            return self._save_builder_whole(
-                node, asset_id, update, "Octane", "create_thumb_octane")
-        return self._save_staged_with_cop_companion(
-            node, asset_id, update, "Octane", "create_thumb_octane")
-
-    def _save_staged_with_cop_companion(
-        self, node: hou.Node, asset_id: str, update: bool,
-        renderer: str, thumb_method: str,
-    ) -> bool:
-        """The Redshift and Octane save, which is ONE save."""
-        file_name = material.payload_path(
-            self._preferences, str(asset_id), self._preferences.ext
-        )
-        from amaze.render import thumbs
-        parms_file_name = material.payload_path(
-            self._preferences, str(asset_id), ".interface"
-        )
-        path_map = self.prepare_cop_companion((node,), str(asset_id), node.name())
-        with hou.undos.disabler():    # ALWAYS staged now: adoption rewrites parms, and that must land on a copy, never the scene node
-            tmp_parent = hou.node("/obj").createNode("matnet")
+            staging = hou.node("/obj").createNode("matnet")
         try:    # all after the create, so the copy is always removed
-            save_node = hou.copyNodesTo((node,), tmp_parent)[0]
+            root = (copy_network(sources, staging) if loose
+                    else hou.copyNodesTo((node,), staging)[0])  # type: ignore
             if path_map:
-                self.rewrite_cop_refs((save_node,), path_map)
-            self.texture_inventory = texstore.adopt(
-                save_node, self._preferences,
-                texstore.asset_folder(node.name(), asset_id))
-
-            items = save_node.allItems()    # not children(), which misses dots, boxes and stickies ▸r/node-items
-
+                self.rewrite_cop_refs((root,), path_map)
+            self.texture_inventory = texstore.adopt(    # on the copy: the scene node stays untouched
+                root, self._preferences, texstore.asset_folder(node.name(), asset_id))
+            holder, items = ((staging, (root,)) if whole    # a builder subnet keeps its own data
+                             else (root, root.allItems()))    # NOT children(): a dot is no child ▸r/node-items
             self.save_asset_pair(
-                parms_file_name, file_name, save_node.asCode(),
-                lambda path: save_node.saveItemsToFile(
-                    items, path,
-                    save_hda_fallbacks=hda_fallbacks_needed(items),
-                ),
-                builder_node=save_node, asset_id=str(asset_id),
-            )
+                parms_file_name, file_name, root.asCode(),
+                lambda path: holder.saveItemsToFile(
+                    items, path, save_hda_fallbacks=hda_fallbacks_needed(items)),
+                builder_node=root, asset_id=asset_id)
         finally:
             with hou.undos.disabler():
-                tmp_parent.destroy()
-
+                staging.destroy()
         self.after_save_thumbnail(
-            update, renderer, asset_id, node.path(),
-            lambda: getattr(thumbs.ThumbNailRenderer(self._preferences),
-                            thumb_method)(node, asset_id))
+            update, renderer.key, asset_id, node.path(),
+            lambda: thumbs.ThumbNailRenderer(self._preferences).create_thumb(
+                renderer.key, sources if loose else node, asset_id))
         return True
