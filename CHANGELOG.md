@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.33.4
+
+- The panel's code is split up: each section saves through its own method, and the online import, the package import, drop placement and capture each have a module of their own. Nothing changes in use.
+
 ## 1.33.3
 
 - A material imported into the scene refers to its textures as Preferences ▸ Look ▸ Write Paths As says: by default under `$HOME` when the library is in the home folder, in full otherwise. Until now the setting was not used for textures. Materials already in a scene keep the paths they have.
