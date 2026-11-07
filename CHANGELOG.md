@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.33.2
+
+- Every renderer's materials are saved by the same code, and saving, loading and importing look up each renderer's node types in one table. Nothing changes in use.
+
 ## 1.33.1
 
 - Every comment in the tests is one line, and the GitHub check now refuses a comment over 100 characters anywhere in the repository; one test helper and three test classes are named for what they do. Nothing changes in use.
