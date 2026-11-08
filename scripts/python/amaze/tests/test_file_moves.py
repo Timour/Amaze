@@ -1,5 +1,6 @@
 """Files moved between folders on disk, and what Amaze keeps about each. ▸r/cross-volume-move"""
 
+import contextlib
 import errno
 import importlib
 import os
@@ -54,6 +55,24 @@ def _writable(path):
         os.chmod(path, stat.S_IREAD | stat.S_IWRITE)
     except OSError:
         pass
+
+
+@contextlib.contextmanager
+def _written_first(dest):
+    """Every rename onto `dest` meets another program's file, written there just before it."""
+    def first(real):
+        def call(source, target, *args, **kwargs):
+            if target == dest and not os.path.lexists(dest):
+                test_support.write_text(dest, "other")
+            return real(source, target, *args, **kwargs)
+        return call
+
+    with mock.patch.object(os, "rename", first(os.rename)), \
+            mock.patch.object(hostos, "rename_exclusive", first(hostos.rename_exclusive)):
+        yield
+
+
+NO_LINKS = PermissionError(errno.EPERM, "no links")    # what a drive without hard links answers
 
 
 class _Folders(unittest.TestCase):
@@ -113,18 +132,26 @@ class AFileMovesOnOneDriveTest(_Folders):
         self.assertFalse(os.path.exists(self.landed))
 
     def test_without_hard_links_a_taken_name_is_still_refused(self):
-        """No hard links means a rename, which replaces silently. ▸r/cross-volume-move"""
+        """A plain rename replaces silently, so the move never uses one. ▸r/no-replace-rename"""
         test_support.write_text(self.landed, "other")
-        with mock.patch.object(os, "link", side_effect=PermissionError(errno.EPERM, "no links")):
+        with mock.patch.object(os, "link", side_effect=NO_LINKS):
             result = self._move()
         self.assertEqual([(self.plate, self.landed)], result.skipped)
         self.assertEqual(("plate", "other"), (_read(self.plate), _read(self.landed)))
 
     def test_without_hard_links_a_free_name_still_moves(self):
-        with mock.patch.object(os, "link", side_effect=PermissionError(errno.EPERM, "no links")):
+        with mock.patch.object(os, "link", side_effect=NO_LINKS):
             result = self._move()
         self.assertEqual([(self.plate, self.landed)], result.moved)
         self.assertFalse(os.path.exists(self.plate))
+
+    def test_a_name_taken_in_the_last_instant_is_kept(self):
+        """Another program writes the name after every check, just before the rename. ▸r/no-replace-rename"""
+        with mock.patch.object(os, "link", side_effect=NO_LINKS), _written_first(self.landed):
+            result = self._move()
+        self.assertEqual([(self.plate, self.landed)], result.skipped,
+                         "the move replaced a file written under its name: %s" % (result,))
+        self.assertEqual(("plate", "other"), (_read(self.plate), _read(self.landed)))
 
     def test_a_rename_refused_across_mounts_still_moves_by_copy(self):
         """One st_dev is not one mount: a bind mount refuses the rename with EXDEV. ▸r/cross-volume-move"""
@@ -136,7 +163,8 @@ class AFileMovesOnOneDriveTest(_Folders):
             return call
 
         with mock.patch.object(os, "link", across(os.link)), \
-                mock.patch.object(os, "rename", across(os.rename)):
+                mock.patch.object(os, "rename", across(os.rename)), \
+                mock.patch.object(hostos, "rename_exclusive", across(hostos.rename_exclusive)):
             result = self._move()
         self.assertEqual([(self.plate, self.landed)], result.moved,
                          "a rename the mounts refused failed the move: %s" % (result.failed,))
@@ -181,6 +209,15 @@ class AFileCopiesAcrossDrivesTest(_Folders):
         with mock.patch.object(file_moves, "place", side_effect=taken):
             result = self._move()
         self.assertEqual([(self.plate, self.landed)], result.skipped)
+        self.assertEqual(("plate", "other"), (_read(self.plate), _read(self.landed)))
+        self.assertEqual([], self._parts())
+
+    def test_a_name_taken_as_the_copy_lands_keeps_both_files(self):
+        """The copy lands with the same one rename, after its own check. ▸r/no-replace-rename"""
+        with mock.patch.object(os, "link", side_effect=NO_LINKS), _written_first(self.landed):
+            result = self._move()
+        self.assertEqual([(self.plate, self.landed)], result.skipped,
+                         "the copy replaced a file written under its name: %s" % (result,))
         self.assertEqual(("plate", "other"), (_read(self.plate), _read(self.landed)))
         self.assertEqual([], self._parts())
 
@@ -244,6 +281,119 @@ class AFileCopiesAcrossDrivesTest(_Folders):
         said = [record for record in log.records("move")
                 if str(record.get("data", {}).get("file", "")).endswith(file_moves.PART)]
         self.assertTrue(said, "a part the copy could not remove was left in silence")
+
+
+class TheExclusiveRenameTest(_Folders):
+    """The one call a move lands with, on this drive and with the flag answered for it."""
+
+    def test_a_taken_name_is_refused_and_both_files_kept(self):
+        test_support.write_text(self.landed, "other")
+        self.assertFalse(hostos.rename_exclusive(self.plate, self.landed))
+        self.assertEqual(("plate", "other"), (_read(self.plate), _read(self.landed)))
+
+    def test_a_free_name_is_renamed(self):
+        self.assertTrue(hostos.rename_exclusive(self.plate, self.landed))
+        self.assertFalse(os.path.exists(self.plate))
+        self.assertEqual("plate", _read(self.landed))
+
+    @unittest.skipIf(sys.platform == "win32", "Windows renames with a call that takes no flag")
+    def test_a_drive_without_the_flag_says_so_and_renames_nothing(self):
+        with mock.patch.object(hostos, "_flagged_rename", return_value=errno.ENOTSUP), \
+                self.assertRaises(hostos.NoExclusiveRename):
+            hostos.rename_exclusive(self.plate, self.landed)
+        self.assertEqual("plate", _read(self.plate))
+        self.assertFalse(os.path.exists(self.landed))
+
+    @unittest.skipIf(sys.platform == "win32", "Windows renames with a call that takes no flag")
+    def test_any_other_refusal_is_raised_as_itself(self):
+        with mock.patch.object(hostos, "_flagged_rename", return_value=errno.EXDEV), \
+                self.assertRaises(OSError) as caught:
+            hostos.rename_exclusive(self.plate, self.landed)
+        self.assertEqual(errno.EXDEV, caught.exception.errno)
+        self.assertNotIsInstance(caught.exception, hostos.NoExclusiveRename)
+
+
+@unittest.skipIf(sys.platform == "win32", "the Windows rename refuses a taken name, so it never claims")
+class ADriveWithNoSafeRenameTest(_Folders):
+    """exFAT, FAT32 and a share on a Mac: the name is claimed with an empty file first."""
+
+    def setUp(self):
+        super().setUp()
+        unsupported = hostos.NoExclusiveRename(errno.ENOTSUP, "no flag")
+        for patcher in (mock.patch.object(hostos, "rename_exclusive", side_effect=unsupported),
+                        mock.patch.object(os, "link", side_effect=NO_LINKS)):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def _rename_with(self, before):
+        real = os.rename
+
+        def rename(source, dest, *args, **kwargs):
+            before(dest)
+            return real(source, dest, *args, **kwargs)
+        return mock.patch.object(os, "rename", rename)
+
+    def test_a_free_name_still_moves(self):
+        result = self._move()
+        self.assertEqual([(self.plate, self.landed)], result.moved, result.failed)
+        self.assertFalse(os.path.exists(self.plate))
+        self.assertEqual("plate", _read(self.landed))
+
+    def test_a_taken_name_is_still_refused(self):
+        test_support.write_text(self.landed, "other")
+        result = self._move()
+        self.assertEqual([(self.plate, self.landed)], result.skipped)
+        self.assertEqual(("plate", "other"), (_read(self.plate), _read(self.landed)))
+
+    def test_the_claim_holds_the_name_until_the_rename(self):
+        """A program creating the name after the claim is refused. ▸r/no-replace-rename"""
+        refused = []
+
+        def create(dest):
+            try:
+                os.close(os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_EXCL))
+            except FileExistsError:
+                refused.append(dest)
+
+        with self._rename_with(create):
+            result = self._move()
+        self.assertEqual([self.landed], refused, "the name was free just before the rename")
+        self.assertEqual([(self.plate, self.landed)], result.moved, result.failed)
+        self.assertEqual("plate", _read(self.landed))
+
+    def test_a_failed_rename_takes_its_claim_back(self):
+        with mock.patch.object(os, "rename", side_effect=PermissionError(errno.EACCES, "denied")):
+            result = self._move()
+        self.assertEqual([self.plate], [source for source, _why in result.failed])
+        self.assertEqual("plate", _read(self.plate))
+        self.assertFalse(os.path.lexists(self.landed), "the empty claim was left behind")
+
+    def test_a_claim_written_into_is_left_alone(self):
+        """A program that wrote into the claim keeps its file when the rename then fails."""
+        def overwrite(dest):
+            test_support.write_text(dest, "other")
+            raise PermissionError(errno.EACCES, "denied")
+
+        with self._rename_with(overwrite):
+            result = self._move()
+        self.assertEqual([self.plate], [source for source, _why in result.failed])
+        self.assertEqual(("plate", "other"), (_read(self.plate), _read(self.landed)))
+
+    def test_a_name_a_share_gave_away_is_skipped(self):
+        """A share removes the claim to rename, and another machine took the name between."""
+        with mock.patch.object(os, "rename", side_effect=FileExistsError(errno.EEXIST, "taken")):
+            result = self._move()
+        self.assertEqual([(self.plate, self.landed)], result.skipped)
+        self.assertEqual("plate", _read(self.plate))
+        self.assertFalse(os.path.lexists(self.landed), "the empty claim was left behind")
+
+    def test_a_copy_from_another_drive_lands_through_the_claim(self):
+        with mock.patch.object(file_moves, "same_drive", return_value=False):
+            result = self._move()
+        self.assertEqual([(self.plate, self.landed)], result.moved, result.failed)
+        self.assertFalse(os.path.exists(self.plate))
+        self.assertEqual("plate", _read(self.landed))
+        self.assertEqual([], self._parts())
 
 
 def _held(entered, release):

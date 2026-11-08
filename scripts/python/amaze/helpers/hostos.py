@@ -654,6 +654,54 @@ def replace_file(src: str, dst: str) -> None:
     os.replace(src, dst)
 
 
+class NoExclusiveRename(OSError):
+    """This drive has no rename that refuses a taken name. ▸r/no-replace-rename"""
+
+
+_RENAME_EXCL = 0x4    # macOS sys/stdio.h, for renamex_np
+_RENAME_NOREPLACE = 0x1    # Linux linux/fs.h, for renameat2
+_AT_FDCWD = -100    # Linux fcntl.h: a relative path resolves from the working folder, as in os.rename
+_NO_SUCH_FLAG = frozenset((errno.ENOTSUP, errno.EOPNOTSUPP, errno.EINVAL, errno.ENOSYS))
+
+
+@functools.lru_cache(maxsize=None)
+def _libc():
+    import ctypes
+    return ctypes.CDLL(None, use_errno=True)
+
+
+def _flagged_rename(source: bytes, dest: bytes) -> int:
+    """0 when the rename that refuses a taken name renamed, else its errno. ▸r/no-replace-rename"""
+    import ctypes
+    try:
+        if is_macos():
+            code = _libc().renamex_np(source, dest, ctypes.c_uint(_RENAME_EXCL))
+        elif is_linux():
+            code = _libc().renameat2(_AT_FDCWD, source, _AT_FDCWD, dest,
+                                     ctypes.c_uint(_RENAME_NOREPLACE))
+        else:
+            return errno.ENOTSUP
+    except AttributeError:    # no such call in this C library: glibc before 2.28
+        return errno.ENOTSUP
+    return 0 if code == 0 else ctypes.get_errno()
+
+
+def rename_exclusive(source: str, dest: str) -> bool:
+    """Rename in one call that refuses a taken name, False when taken. ▸r/no-replace-rename"""
+    if is_windows():
+        try:
+            os.rename(source, dest)    # Windows refuses a taken name itself
+        except FileExistsError:
+            return False
+        return True
+    code = _flagged_rename(os.fsencode(source), os.fsencode(dest))
+    if code in (0, errno.EEXIST):
+        return code == 0
+    if code in _NO_SUCH_FLAG:    # the drive or the kernel has no such rename: exFAT, FAT32
+        raise NoExclusiveRename(code, os.strerror(code), dest)
+    raise OSError(code, os.strerror(code), source, None, dest)
+
+
 _MKSTEMP_MODE = 0o600  # what `tempfile.mkstemp` creates with; promote_scratch recognises it
 
 

@@ -52,7 +52,7 @@ def same_drive(path: str, folder: str) -> bool:
 
 def _patiently(call, *args):
     """`call(*args)`, retried while Windows says the file is held, then once more, raising."""
-    for wait in HELD_WAITS:
+    for wait in HELD_WAITS if hostos.is_windows() else ():
         try:
             return call(*args)
         except PermissionError:    # a thumbnail read or a sync scanner holding it for a moment
@@ -62,27 +62,52 @@ def _patiently(call, *args):
 
 def place(source: str, dest: str) -> bool:
     """Move a file within one drive; False, and nothing changed, when `dest` is taken."""
-    if hostos.is_windows():
-        try:
-            _patiently(os.rename, source, dest)    # Windows refuses a taken name itself
-        except FileExistsError:
-            return False
-        return True
     try:
-        os.link(source, dest)    # refuses a taken name, where a rename replaces it ▸r/cross-volume-move
+        return _patiently(hostos.rename_exclusive, source, dest)    # one call ▸r/no-replace-rename
+    except hostos.NoExclusiveRename:
+        pass
+    try:
+        os.link(source, dest)    # a hard link refuses a taken name too
     except FileExistsError:
         return False
-    except OSError:    # no hard links here: a network share, some synced folders
-        if os.path.lexists(dest):
-            return False
-        os.rename(source, dest)
-        return True
+    except OSError:    # neither: exFAT, FAT32, a network share on a Mac ▸r/no-replace-rename
+        return _claimed(source, dest)
     try:
         os.unlink(source)
     except OSError:
         os.unlink(dest)    # one file, where it was
         raise
     return True
+
+
+def _claimed(source: str, dest: str) -> bool:
+    """Take `dest` with an empty file first, then rename over it; False when taken."""
+    try:
+        claim = os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)    # refuses a taken name
+    except FileExistsError:
+        return False
+    try:
+        mine = os.fstat(claim)
+    finally:
+        os.close(claim)
+    try:
+        os.rename(source, dest)    # replaces the empty claim and nothing else
+    except OSError as exc:
+        _unclaim(dest, mine)
+        if isinstance(exc, FileExistsError):    # a share removed the claim and the name was taken
+            return False
+        raise
+    return True
+
+
+def _unclaim(dest: str, mine) -> None:
+    """Remove the claim, but only while it is still the same empty file."""
+    try:
+        now = os.lstat(dest)
+    except OSError:
+        return
+    if (now.st_dev, now.st_ino, now.st_size) == (mine.st_dev, mine.st_ino, 0):
+        _remove(dest)
 
 
 def copy_across(source: str, dest: str, tick=None, stopped=lambda: False) -> bool:

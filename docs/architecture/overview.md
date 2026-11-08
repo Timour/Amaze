@@ -727,6 +727,13 @@ test `sys.platform` or hardcode an OS path convention.
   function for geometry, scenes and images, which had two copies and a
   third mechanism between them) and `migrate_legacy_file(dir, old, new)`
   (rename-once, best-effort, same-directory; three copies before).
+- **`rename_exclusive(source, dest)`** — a rename that refuses a taken
+  name in the same call, False when taken: `renamex_np(RENAME_EXCL)` on
+  macOS, `renameat2(RENAME_NOREPLACE)` on Linux, `os.rename` on Windows.
+  It raises `NoExclusiveRename` where the drive has none, as a Mac's
+  exFAT, FAT32 and network shares do; `file_moves.place` then tries a
+  hard link, then takes the name with an empty file before renaming
+  over it (▸r/no-replace-rename).
 - **`disk_state(path)`** — `(mtime_ns, size)`, or None when the file is
   not there: the cheap stat the content stale-write guard keeps per
   asset (`AssetLibrary._content_stat`). The stores compare content
