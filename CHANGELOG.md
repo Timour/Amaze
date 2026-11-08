@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.33.11
+
+- Package Import and the Add-On tab's Update refuse a package whose `package.json` Amaze cannot read, before anything is written, and say which file it was; the Amaze store shows no tiles for one. Some of these stopped with a Python error until now, one of them after part of the package was already in the library.
+- Packages and add-ons are written to disk a piece at a time instead of being read into memory whole first. A package that would unpack to more than 16 GB, or an add-on to more than 512 MB, is refused before anything is written.
+- A download from an online material source or the Amaze store stops at 16 GB, and a GPUOpen package that would unpack to more than that is refused before anything is unpacked.
+
 ## 1.33.10
 
 - File: on a drive without hard links, such as an exFAT or FAT32 drive or a network share, moving a file onto a folder no longer checks the name and moves the file in two separate steps. Where the system can, the move itself refuses a name in use, as Linux does on FAT32 drives and network shares. Where it cannot, as on a Mac, Amaze first takes the name with an empty file and then moves the file over it. A file of that name saved there a moment before is kept, and the move is skipped.
