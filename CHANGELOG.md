@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.33.8
+
+- When a switch to another library fails and Repair cannot fix its list, the message offers Check This Library, which looks at that library and offers the fixes that apply.
+
 ## 1.33.7
 
 - Amaze's messages are reworded in shorter, plainer English.
