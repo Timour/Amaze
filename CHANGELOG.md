@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.33.14
+
+- When a code snippet is saved but the library list cannot be, the status bar now says `"<name>" was added, but the library could not be saved.`, or `was updated` for a new version. It replaces an alert that told you to restart Houdini and save again, and a restart would have lost the snippet.
+- The online import, Gallery Import and Convert to now end on the same status bar line when a material landed but the library list could not be saved. They used to say nothing.
+
 ## 1.33.13
 
 - A material imported from an online source no longer carries the line `Please credit the creator as the license requires.` on its node comment. The comment's `License:` line already names the licence the source itself states, and most of those sources ask for no credit.
