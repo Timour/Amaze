@@ -19,11 +19,13 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
+from amaze import messages  # noqa: E402
 from amaze.actions import materials as material_actions  # noqa: E402
 from amaze.actions import nodes as node_actions  # noqa: E402
-from amaze.core import library_policy, matx_import, tile_icons  # noqa: E402
+from amaze.core import library_policy, matx_import, renderers, tile_icons  # noqa: E402
 from amaze.dialogs import base_dialog, code_dialog  # noqa: E402
 from amaze.panel import sections  # noqa: E402
+from amaze.render import nodes as render_nodes  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
 PACKAGE =os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -1085,6 +1087,57 @@ class ACustomizeOverASelectionSavesOnce(unittest.TestCase):
         self._apply("probe-tag", "Probe Shelf")
         self.assertEqual(0, self._apply("probe-tag", "Probe Shelf"),
                          "re-applying what every tile already carries saved")
+
+
+class ASaveVersionTheListCannotTakeIsSaidOnce(unittest.TestCase):
+    """Save Version with the library list write refused: one status line after the batch, no dialog."""
+
+    def setUp(self):
+        test_support.pin_env(self, "OCIO", "/dev/null")    # save_node gates on $OCIO; nothing renders here
+        self.panel = test_support.fixture_panel(self)
+        self.staging = hou.node("/obj").createNode("matnet")
+        self.addCleanup(self.staging.destroy)
+
+    def _save_over(self, count):
+        model = self.panel.material_model
+        assets = [asset for asset in model.assets
+                  if renderers.is_karma(asset.renderer)][:count]
+        self.assertEqual(count, len(assets), "premise: too few Karma materials")
+        held = []
+        for number, asset in enumerate(assets):
+            node = render_nodes.build_karma_material(
+                self.staging, "held%d" % number,
+                lambda builder: builder.createNode("mtlxstandard_surface")).builder
+            node.setUserData("assetlib_id", str(asset.mat_id))
+            held.append(node)
+        shown = []
+
+        def answering(text, *_args, **_kwargs):
+            shown.append(text)
+            return 0    # Save Version, the first button
+
+        index = os.path.join(self.panel.prefs.dir, model.DB_FILENAME)
+        with mock.patch.object(hou, "selectedNodes", lambda: held), \
+                mock.patch.object(hou, "ui", types.SimpleNamespace(displayMessage=answering),
+                                  create=True), \
+                mock.patch.object(library_policy, "allow_overwrite", lambda *_a: True), \
+                test_support.full_disk_for(index), test_support.captured_log() as log:
+            self.panel.save_asset()
+        self.assertNotIn(messages.MATERIAL_UPDATE_FAILED, shown,
+                         "Update failed was shown, yet the files are the new ones")
+        self.assertTrue(log.matching("could not save the library", "alert"),
+                        "premise: the list write went through")
+        return assets, log.messages("refuse")
+
+    def test_one_update_names_the_material(self):
+        assets, said = self._save_over(1)
+        self.assertEqual([messages.MATERIAL_UPDATED_LIBRARY_NOT_SAVED % assets[0].name], said,
+                         "the status line did not say the library was not saved")
+
+    def test_several_updates_share_one_line(self):
+        _assets, said = self._save_over(2)
+        self.assertEqual([messages.MATERIALS_UPDATED_LIBRARY_NOT_SAVED % 2], said,
+                         "the batch did not end on one line counting its unsaved updates")
 
 
 if __name__ == "__main__":

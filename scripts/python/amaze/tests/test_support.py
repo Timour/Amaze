@@ -296,6 +296,21 @@ def refused_at_open(path, error=None):
     return mock.patch("builtins.open", refused)
 
 
+def full_disk_for(path):
+    """`hostos.write_json_atomic` refusing `path` alone, as a full disk refuses a write."""
+    import errno
+    from unittest import mock
+    real_write = hostos.write_json_atomic
+    wanted = os.path.realpath(path)
+
+    def refused(name, *args, **kwargs):
+        if os.path.realpath(name) == wanted:
+            raise OSError(errno.ENOSPC, "No space left on device", name)
+        return real_write(name, *args, **kwargs)
+
+    return mock.patch.object(hostos, "write_json_atomic", refused)
+
+
 @contextlib.contextmanager
 def captured_log():
     """Capture what `debug` records in the block; state restored on exit. ▸p/harness-isolation"""

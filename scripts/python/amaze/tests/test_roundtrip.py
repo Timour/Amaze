@@ -829,6 +829,58 @@ class AStaleCompanionGoesWhateverTheExtension(unittest.TestCase):
                          "the stale companion stayed beside the asset")
 
 
+class AnUpdateWhoseListWriteIsRefused(unittest.TestCase):
+    """The files are new, the record waits in memory, and the save's own alert is the only dialog."""
+
+    def setUp(self):
+        test_support.pin_env(self, "OCIO", "/dev/null")    # save_node gates on $OCIO; nothing renders here
+        self.prefs = test_support.fixture_prefs(self)
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        self.model = library_mod.MaterialLibrary(preferences=self.prefs)
+        self.staging = hou.node("/obj").createNode("matnet")
+        self.addCleanup(self.staging.destroy)
+
+    def _listed(self, mat_id):
+        with open(self._index(), encoding="utf-8") as handle:
+            return next(row for row in json.load(handle)["assets"]
+                        if str(row.get("id")) == mat_id)
+
+    def _index(self):
+        return os.path.join(self.prefs.dir, self.model.DB_FILENAME)
+
+    def test_the_answer_says_so_and_the_next_save_writes_the_record(self):
+        row = next(r for r in range(self.model.rowCount())
+                   if renderers.is_karma(self.model.assets[r].renderer))
+        mat = self.model.assets[row]
+        mat_id = str(mat.mat_id)
+        network = self.model.asset_files(mat_id)["mat"]
+        with open(network, "rb") as handle:
+            before = handle.read()
+        listed = self._listed(mat_id)
+        node = _build_material(self.staging, "refused_list_probe")
+        with test_support.full_disk_for(self._index()), test_support.captured_log() as log:
+            answer = material_actions.update_asset_content(self.model, row, node)
+        with open(network, "rb") as handle:
+            self.assertNotEqual(before, handle.read(), "premise: the update wrote no files")
+        self.assertEqual(listed, self._listed(mat_id), "premise: the list write went through")
+        self.assertNotEqual(listed["date"], mat.date, "premise: the record kept its date")
+        self.assertTrue(answer, "the files are new, yet the update answered that nothing was "
+                        "written, which the panel shows as Update failed")
+        self.assertIsInstance(answer, material_actions.ListNotSaved,
+                              "the update answered a plain success while its list entry "
+                              "was not saved, so the panel could not say so")
+        self.assertEqual(1, len(log.messages("alert")),
+                         "a second alert joined the save's own: %s" % log.messages("alert"))
+        self.assertTrue(log.matching("could not save the library", "alert"),
+                        log.messages("alert"))
+        self.assertTrue(log.matching("list was not saved", "library"),
+                        "the update did not record that its list write was refused")
+        self.assertTrue(self.model.save(), "premise: the next save was refused too")
+        self.assertEqual(mat.date, self._listed(mat_id)["date"],
+                         "the next save that works did not write the update's record")
+
+
 class StructureSignatureTest(unittest.TestCase):
     """Versions rule: only values differ means a new version, else structural ▸p/structure-signature"""
 

@@ -3176,7 +3176,7 @@ class AmazePanel(QtWidgets.QWidget):
             if choice == cancel_at:
                 return
             if choice == overwrite_at:
-                total, done = len(existing), 0
+                total, done, unlisted = len(existing), 0, []
                 try:
                     with hou.InterruptableOperation(    # type: ignore
                         messages.UPDATING_MATERIALS, open_interrupt_dialog=True
@@ -3184,10 +3184,11 @@ class AmazePanel(QtWidgets.QWidget):
                         for mat_id, node in existing:
                             op.updateLongProgress(
                                 done / total, "%d/%d  %s" % (done + 1, total, node.name()))
-                            self._update_existing_asset(mat_id, node)
+                            unlisted.append(self._update_existing_asset(mat_id, node))
                             done += 1
                 except hou.OperationInterrupted:
                     debug.status(messages.SAVE_STOPPED % (done, total))
+                self._say_updates_not_listed([name for name in unlisted if name])    # once the progress window is gone
                 if new_nodes:
                     self.get_material_info_user(new_nodes)
                 return
@@ -3202,11 +3203,13 @@ class AmazePanel(QtWidgets.QWidget):
                 return row
         return self.material_model.find_asset_row_by_name(node.name())
 
-    def _update_existing_asset(self, mat_id: str, node: hou.Node) -> None:
-        """Overwrite asset `mat_id`'s content from the scene node: same entry and metadata, new files."""
+    def _update_existing_asset(self, mat_id: str, node: hou.Node) -> str:
+        """Overwrite asset `mat_id`'s files from the scene node: its name if the list did not take it."""
         model = self.material_model
+        row = model.find_asset_row_by_id(mat_id)
+        name = model.assets[row].name if row >= 0 else ""    # taken first: a save can drop the row
         renderer = material_actions.update_asset_content(    # NO layout pair: it saves, which adopts rows
-            model, model.find_asset_row_by_id(mat_id), node)
+            model, row, node)
         if renderer:
             model.row_changed(model.find_asset_row_by_id(mat_id))    # renderer and date changed IN PLACE
         self.refresh_sidebar_categories()    # a re-detected renderer can shift counts and hiding
@@ -3216,10 +3219,19 @@ class AmazePanel(QtWidgets.QWidget):
                 ui.displayMessage(
                     messages.MATERIAL_UPDATE_FAILED
                 )
-            return
+            return ""
         self.enable_renderer_on_add(renderer)
         self.prefs.save()
         self.update_renderer_toggles()
+        return name if isinstance(renderer, material_actions.ListNotSaved) else ""
+
+    @staticmethod
+    def _say_updates_not_listed(names: list) -> None:
+        """One status line for the updates whose files were written but whose list entries were not."""
+        if len(names) == 1:
+            debug.refuse(messages.MATERIAL_UPDATED_LIBRARY_NOT_SAVED % names[0])
+        elif names:
+            debug.refuse(messages.MATERIALS_UPDATED_LIBRARY_NOT_SAVED % len(names))
 
     def get_material_info_user(self, sel: list[hou.Node]) -> None:
         """The new-material save: D09 opened on Material, any section still choosable."""

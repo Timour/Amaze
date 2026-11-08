@@ -57,8 +57,14 @@ def add_asset(model, node: hou.Node, cats: str, tags: str, fav: bool,
     return ""
 
 
+class ListNotSaved(str):
+    """The renderer of an update whose files were written but whose list entry was not saved."""
+
+    __slots__ = ()
+
+
 def update_asset_content(model, row: int, node: hou.Node) -> str:
-    """Row `row`'s saved files rewritten from `node`, its record kept: the renderer, "" on failure."""
+    """Rewrite row `row`'s files from `node`: its renderer, a `ListNotSaved` one if unlisted, else ""."""
     from amaze.core import library_policy
     if row < 0 or row >= len(model._assets):
         return ""
@@ -144,12 +150,15 @@ def update_asset_content(model, row: int, node: hou.Node) -> str:
                     error=str(exc),
                 )
     model._add_thumb_paths(row)  # the engine discard inside is what makes the repaint fetch the freshly rendered PNG
-    model.save()
+    listed = model.save()
+    if not listed:    # the save said why; the record waits in memory for the next save that works
+        debug.event("library", "update written but the library list was not saved",
+                    mat_id=str(mat.mat_id), name=mat.name)
     try:
         node.setUserData("assetlib_id", str(mat.mat_id))
     except (hou.OperationFailed, hou.ObjectWasDeleted):    # a vanished node costs the stamp ▸r/node-vanished
         pass
-    return renderer
+    return renderer if listed else ListNotSaved(renderer)
 
 
 def render_thumbnail(model, row: int) -> None:
