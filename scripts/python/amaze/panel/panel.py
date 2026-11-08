@@ -294,23 +294,34 @@ class AmazePanel(QtWidgets.QWidget):
             return False
         ok, how = repair.repair_index(folder, self.prefs.asset_dir, guard=False)
         if not ok:
-            ui.displayMessage(
+            self._say_repair_failed(
+                ui, folder, switching,
                 messages.REPAIR_COULD_NOT_FIX_THE_LIST_SWITCHING % how if switching
-                else messages.REPAIR_COULD_NOT_FIX_THE_LIST % how,
-                severity=hou.severityType.Warning,
-                title=messages.TITLE_AMAZE)
+                else messages.REPAIR_COULD_NOT_FIX_THE_LIST % how)
             return False
         if library_actions.index_unreadable(folder):
             debug.event("session", "index still unreadable after repair", dir=folder)
-            ui.displayMessage(
+            self._say_repair_failed(
+                ui, folder, switching,
                 messages.INDEX_UNREADABLE_AFTER_REPAIR_SWITCHING if switching
-                else messages.INDEX_UNREADABLE_AFTER_REPAIR,
-                severity=hou.severityType.Warning,
-                title=messages.TITLE_AMAZE)
+                else messages.INDEX_UNREADABLE_AFTER_REPAIR)
             return False
         ui.displayMessage(messages.LIBRARY_INDEX_REPAIRED % how, title=messages.TITLE_AMAZE)
         debug.event("session", "index repaired", how=how, dir=folder)
         return True
+
+    def _say_repair_failed(self, ui, folder: str, switching: bool, text: str) -> None:
+        """Say Repair failed; on a switch, offer Check Library on the library that failed."""
+        if not switching:
+            ui.displayMessage(text, severity=hou.severityType.Warning, title=messages.TITLE_AMAZE)
+            return
+        choice = ui.displayMessage(
+            text, buttons=messages.BUTTONS_CHECK_THIS_LIBRARY,
+            severity=hou.severityType.Warning, default_choice=1, close_choice=1,
+            title=messages.TITLE_AMAZE)
+        if choice == 0:
+            from amaze.dialogs import repair_dialog
+            repair_dialog.check_failed_library(folder, self.prefs)
 
     MENU_ICON_FILES = {    # menu title -> icon asset with a baked-in "opens a menu" triangle
         "View": "icon_renderer.svg",

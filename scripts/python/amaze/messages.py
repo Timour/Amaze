@@ -75,8 +75,8 @@ LIBRARY_INDEX_REPAIRED = 'The library index can be read again: %s.'
 REPAIR_COULD_NOT_FIX_THE_LIST = "Repair could not fix the list: %s.\n\nAmaze will open without a library. Close Amaze and run Check Library on the Amaze shelf for details."
 INDEX_UNREADABLE_AFTER_REPAIR = "The repaired list still could not be read. Amaze opens without a library; close Amaze and run Check Library on the Amaze shelf for details."
 LIBRARY_INDEX_UNREADABLE_SWITCHING = "The library's list file could not be read.\n\nRepair puts back the newest saved copy or, if no copy reads, rebuilds the list from what each asset file remembers. Category names survive; their order and colors may not. The broken file is preserved as a backup.\n\nCancel leaves the folder unchanged and keeps the current library open."
-REPAIR_COULD_NOT_FIX_THE_LIST_SWITCHING = "Repair could not fix the list: %s.\n\nAmaze keeps the library you have open."
-INDEX_UNREADABLE_AFTER_REPAIR_SWITCHING = "The repaired list still could not be read.\n\nAmaze keeps the library you have open."
+REPAIR_COULD_NOT_FIX_THE_LIST_SWITCHING = "Repair could not fix the list: %s.\n\nAmaze keeps the library you have open. Check This Library looks at the one that failed and offers the fixes that apply."
+INDEX_UNREADABLE_AFTER_REPAIR_SWITCHING = "The repaired list still could not be read.\n\nAmaze keeps the library you have open. Check This Library looks at the one that failed and offers the fixes that apply."
 LIBRARY_INDEX_READ_NOT_PERMITTED = 'this account is not allowed to read it:\n%s\n\nThe permissions on the file, or on a folder above it, have to let this account read it.'
 
 LIBRARY_NOT_OPENED = 'The library could not be opened because %s\n\nAmaze will open without a library.'
@@ -322,6 +322,8 @@ BUTTONS_ADD_BACK = ('Add Them Back', 'Cancel')
 BUTTONS_REPAIR_OR_OPEN_WITHOUT = ('Repair', 'Open Without Library')
 
 BUTTONS_REPAIR_OR_CANCEL = ('Repair', 'Cancel')
+
+BUTTONS_CHECK_THIS_LIBRARY = ('Check This Library', 'Close')
 
 BUTTONS_IMPORT = ('Import', 'Cancel')
 

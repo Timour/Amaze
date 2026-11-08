@@ -120,6 +120,18 @@ def check_in_panel(panel) -> None:
         act(findings, action, guard=False, changed=lambda: check.read_again(panel))
 
 
+def check_failed_library(folder: str, preferences) -> None:
+    """Check Library on a library a switch left closed; fixes only while nothing here holds it."""
+    while True:
+        findings = repair.survey(folder, preferences.asset_dir, preferences.img_dir)
+        findings["settings"] = None
+        surveyed(findings)
+        action = report(findings, may_change=not repair.session_holds(folder))
+        if action is None or (action != "holding" and repair.session_holds(folder)):
+            return
+        act(findings, action, guard=False)
+
+
 def surveyed(findings: dict) -> None:
     """The survey's record in the log, one event per check."""
     debug.event("repair", "surveyed", complete=findings["complete"],

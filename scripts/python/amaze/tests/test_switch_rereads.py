@@ -504,6 +504,70 @@ class AnUnreadableListIsAskedAboutBeforeTheSwitch(unittest.TestCase):
                          os.path.normpath(self.panel._models_dir),
                          "Repair did not open the picked library")
 
+    def _answering_in_turn(self, presses, action):
+        """Press each dialog's button by label in turn; past the list, its last button."""
+        asked, queue = [], list(presses)
+
+        def scripted(message, **kwargs):
+            buttons = tuple(kwargs.get("buttons", ()))
+            asked.append((str(message), buttons))
+            if not buttons:
+                return 0
+            wanted = queue.pop(0) if queue else None
+            return buttons.index(wanted) if wanted in buttons else len(buttons) - 1
+
+        def picked(labels, **kwargs):
+            material = database.section_label("library.json")
+            return [next(i for i, label in enumerate(labels) if label.startswith(material))]
+
+        ui = mock.MagicMock()
+        ui.displayMessage.side_effect = scripted
+        ui.selectFromList.side_effect = picked
+        ui.selectFile.return_value = self.broken
+        with mock.patch.object(hou, "ui", ui, create=True):
+            action()
+            QtWidgets.QApplication.processEvents()
+        return asked
+
+    def test_a_failed_repair_checks_and_fixes_the_picked_library(self):
+        from amaze.core import repair
+        opened = self.panel.prefs.dir
+        held = os.path.join(opened, "library.json")
+        with open(held, "rb") as handle:
+            held_bytes = handle.read()
+        with mock.patch.object(repair, "repair_index", return_value=(False, "no copy reads")):
+            asked = self._answering_in_turn(
+                ["Repair", messages.BUTTONS_CHECK_THIS_LIBRARY[0],
+                 messages.BUTTON_REPAIR_PUT_COPY_BACK, messages.BUTTONS_PUT_COPY_BACK[0]],
+                self._add_and_apply)
+        self.assertIn((messages.REPAIR_COULD_NOT_FIX_THE_LIST_SWITCHING % "no copy reads",
+                       messages.BUTTONS_CHECK_THIS_LIBRARY), asked)
+        self.assertTrue(any(os.path.normpath(self.broken) in text for text, _b in asked[2:]),
+                        "Check Library did not report on the library that failed")
+        with open(os.path.join(self.broken, "library.json"), encoding="utf-8") as handle:
+            json.load(handle)    # the saved copy is back, so the list reads
+        self.assertEqual(opened, self.panel.prefs.dir, "the open library changed")
+        self.assertEqual(opened, self.panel._models_dir, "the panel left the open library")
+        with open(held, "rb") as handle:
+            self.assertEqual(held_bytes, handle.read(), "the open library's list was written")
+
+    def test_check_library_offers_no_fix_on_a_library_this_houdini_holds(self):
+        from amaze.dialogs import repair_dialog
+        opened = self.panel.prefs.dir
+        index = os.path.join(opened, "library.json")
+        shutil.copyfile(index, index + ".bak-1")    # a copy Check Library would offer to put back
+        asked = self._answering_in_turn(
+            [messages.BUTTON_REPAIR_PUT_COPY_BACK],
+            lambda: repair_dialog.check_failed_library(opened, self.panel.prefs))
+        text, buttons = asked[0]
+        self.assertIn(messages.CHECK_LIBRARY_ONLY_A_REPORT, text)
+        self.assertNotIn(messages.BUTTON_REPAIR_PUT_COPY_BACK, buttons)
+
+    def test_only_the_open_library_is_held(self):
+        from amaze.core import repair
+        self.assertTrue(repair.session_holds(self.panel.prefs.dir))
+        self.assertFalse(repair.session_holds(self.broken))
+
     def test_cancel_turns_test_library_back_off(self):
         from amaze.dialogs import prefs_dialog
         from amaze.prefs import prefs as prefs_mod

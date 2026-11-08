@@ -1407,6 +1407,14 @@ def session_has_a_library_open() -> bool:
     return bool(database.DatabaseConnector._instances)
 
 
+def session_holds(directory: str) -> bool:
+    """Whether a list this session holds lives in `directory`, a closed panel included."""
+    wanted = hostos.comparable_path(str(directory or ""))
+    return any(hostos.comparable_path(connector._path) == wanted
+               for connector in database.DatabaseConnector._instances.values()
+               if connector._path)
+
+
 def settings_survey(preferences=None):
     """settings.json as a list Repair can put back; None when no settings folder is named."""
     folder = (hostos.config_root() if preferences is None
