@@ -44,9 +44,8 @@ REAL_LEAK_CHECK = os.path.join(
 RUNNER_REL = os.path.join("scripts", "python", "amaze", "tests",
                           "start_test.sh")
 
-SYNC_GREEN_MSG = "sync-install: suite green - the install is safe to open."
+SYNC_SHIPPED_MSG = "is identical to the repo"
 SYNC_END = "sync-install: DONE"
-SYNC_RED_END = "git stash && tools/sync-install.sh"
 PUSH_GREEN_MSG = "tests OK, real debug log clean."
 PUSH_END = "pre-push: DONE"
 PUSH_RED_END = "Fix, or push --no-verify."

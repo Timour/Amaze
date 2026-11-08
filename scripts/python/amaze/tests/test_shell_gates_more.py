@@ -13,20 +13,19 @@ from amaze.tests.test_shell_gates import (
     PUSH_GREEN_MSG,
     PUSH_RED_END,
     SYNC_END,
-    SYNC_GREEN_MSG,
-    SYNC_RED_END,
+    SYNC_SHIPPED_MSG,
     _write)
 
 
 class SyncInstallGateTest(GateFixture):
     """`sync-install.sh`'s slower cases; refusals guarding the real install stay in the default run."""
 
-    def test_green_suite_ships_and_says_so(self):
-        result = self.sync("green")
+    def test_it_ships_and_runs_no_suite(self):
+        """The push and `run-tests.sh` test the commit; a sync only copies it and checks the copy."""
+        result = self.sync("crash")
         self.assertEqual(result.returncode, 0, self.both(result))
-        self.assertIn(SYNC_GREEN_MSG, result.stdout)
-        self.assertEqual(len(self.suite_calls()), 1,
-                         "the suite ran %r times" % self.suite_calls())
+        self.assertIn(SYNC_SHIPPED_MSG, result.stdout)
+        self.assertEqual(self.suite_calls(), [], "the sync ran the suite")
         lines = [line for line in result.stdout.splitlines() if line.strip()]
         self.assertEqual(lines[-1], SYNC_END,    # an exit status cannot tell a finish from a set -e death
                          "sync-install stopped early:\n%s" % result.stdout)
@@ -83,38 +82,7 @@ class SyncInstallGateTest(GateFixture):
         result = self.sync("green")
 
         self.assertEqual(result.returncode, 0, self.both(result))
-        self.assertIn(SYNC_GREEN_MSG, result.stdout)
-
-    def test_red_suite_refuses_and_names_the_failures(self):
-        result = self.sync("red")
-        self.assertEqual(result.returncode, 1, self.both(result))
-        self.assertNotIn(SYNC_END, result.stdout)
-        self.assertIn("SUITE FAILED", result.stderr)
-        self.assertIn("FAIL: test_tile_is_composed", result.stderr)
-        self.assertIn("ERROR: test_restore", result.stderr)
-        self.assertReachedEnd(result, SYNC_RED_END)    # the rollback line prints last
-
-    def test_a_suite_that_cannot_run_is_refused(self):
-        """No FAIL line and no `Ran` line is not the same as nothing wrong - the state that shipped broken."""
-        for mode, says in (("crash", "The suite did not run at all"),
-                           ("no_tests", ""),    # `Ran 0 tests ... OK` verifies nothing
-                           ("silent", ""),
-                           ("leak", "")):    # a zero exit that wrote the real debug log
-            with self.subTest(mode=mode):
-                result = self.sync(mode)
-                self.assertNotEqual(result.returncode, 0,
-                                    "a %s suite was reported as a good "
-                                    "ship:\n%s" % (mode, self.both(result)))
-                self.assertNotIn(SYNC_END, result.stdout)
-                self.assertIn(says, result.stderr)
-                self.assertReachedEnd(result, SYNC_RED_END)
-
-    def test_no_verify_skips_the_suite_entirely(self):
-        """`run-tests.sh` sets this to break the recursion, or the suite runs twice per command."""
-        result = self.sync("crash", AMAZE_SYNC_NO_VERIFY="1")
-        self.assertEqual(result.returncode, 0, self.both(result))
-        self.assertEqual(self.suite_calls(), [],
-                         "the suite ran despite AMAZE_SYNC_NO_VERIFY")
+        self.assertIn(SYNC_SHIPPED_MSG, result.stdout)
 
     def test_it_wires_the_push_gate_in_a_fresh_clone(self):
         """A fresh clone has no hook until this wires it; losing that silently reopens the push gate."""

@@ -133,74 +133,7 @@ else
     exit 1
 fi
 
-# VERIFY WHAT WAS JUST SHIPPED. It CANNOT refuse before syncing - the
-# suite reads $AMAZE, so the tests only mean anything after. Sync, test,
-# then name the command that undoes it. run-tests.sh sets
-# AMAZE_SYNC_NO_VERIFY to break the recursion.
-if [ -n "${AMAZE_SYNC_NO_VERIFY:-}" ]; then
-    exit 0
-fi
-# A scratch install is never verified by running the suite: the code in
-# it is usually sabotaged ON PURPOSE, so a red result is the point
-# rather than a reason to refuse.
-if [ -n "$scratch" ]; then
-    exit 0
-fi
-
-if ! command -v hython >/dev/null 2>&1 && [ -z "${HFS:-}" ]; then
-    # Never a bare `ls -d <glob>` here: under `set -euo pipefail` it
-    # exits non-zero when nothing matches and kills this script with NO
-    # output, on the fresh machine these lines exist for.
-    # amaze_houdini returns "" instead, which is reportable.
-    HFS="$(amaze_houdini)"
-    export HFS
-fi
-if ! command -v hython >/dev/null 2>&1 && [ ! -d "${HFS:-}" ]; then
-    echo "sync-install: REFUSING to report success - no Houdini found," >&2
-    echo "  so the code just shipped to the install was never tested." >&2
-    exit 1
-fi
-
-echo "sync-install: verifying what was just shipped..."
-# set +e, NOT `|| true`: under `set -e` a failing suite aborts here
-# silently, but `|| true` throws away the status and then "no FAILED
-# line" reads as green - which a licence hiccup or a crash inside the
-# runner also produces. Check all three: status, FAILED, and a leak.
-set +e
-out="$(bash "$repo/scripts/python/amaze/tests/start_test.sh" 2>&1)"
-rc=$?
-set -e
-# `|| true` on every one: grep -c EXITS 1 when the count is zero, so a
-# green suite would kill the script here under `set -e`.
-failed="$(printf '%s\n' "$out" | grep -cE '^FAILED( \(|$)' || true)"
-leak="$(printf '%s\n' "$out" | grep -c 'LOG LEAK' || true)"
-# The NUMBER, not the number of matching lines: "Ran 0 tests" is a
-# line, so counting lines made an empty suite look like it had run.
-ran="$(printf '%s\n' "$out" | sed -n 's/^Ran \([0-9][0-9]*\) test.*/\1/p' | tail -1 || true)"
-ran="${ran:-0}"
-if [ "$rc" -ne 0 ] || [ "$failed" -ne 0 ] || [ "$leak" -ne 0 ] || [ "$ran" -eq 0 ]; then
-    echo >&2
-    echo "=====================================================" >&2
-    echo " SUITE FAILED - A BROKEN BUILD IS IN YOUR LIVE INSTALL" >&2
-    echo "=====================================================" >&2
-    # `|| true`: with no match grep exits 1, pipefail carries it past
-    # head, and set -e kills the script INSIDE the failure branch,
-    # losing the rollback instructions below.
-    printf '%s\n' "$out" | grep -E '^(FAIL|ERROR):|^FAILED|LOG LEAK' | head -12 >&2 || true
-    if [ "$ran" -eq 0 ]; then
-        echo " The suite did not run at all (exit $rc)." >&2
-    fi
-    echo >&2
-    echo " The live install now holds this failing build." >&2
-    echo " Fix and re-run, or roll back with:" >&2
-    echo "   cd $repo && git stash && tools/sync-install.sh" >&2
-    echo >&2
-    echo " (Auto-rollback was built and REMOVED: snapshotting the 113MB" >&2
-    echo "  install cost 1m56s per sync against ~20s, and wrote a copy" >&2
-    echo "  into the cloud-synced folder. Measured, not guessed.)" >&2
-    exit 1
-fi
-echo "sync-install: suite green - the install is safe to open."
+# No suite here: the push and run-tests.sh test the commit this copies. ▸p/sync-runs-no-suite
 # END MARKER. Under `set -e` an exit code alone cannot tell "finished"
 # from "aborted partway", so keep a terminal line and check for it.
 echo "sync-install: DONE"
