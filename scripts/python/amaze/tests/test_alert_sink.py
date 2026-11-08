@@ -65,6 +65,114 @@ class AlertIsOncePerConditionTest(unittest.TestCase):
             "how often the condition fired")
 
 
+class SayUnlistedNamesWhatTheListDidNotTake(unittest.TestCase):
+    """`library.say_unlisted`: the one status line six doors end on, and silence when all landed"""
+
+    def setUp(self):
+        from amaze.utils import rc_calls
+        self.said = []
+        self.shown = []
+        self.addCleanup(debug.hand_over, debug._ui)
+        debug.hand_over(rc_calls.HoudiniSpeaker)
+
+    def _ui(self):
+        return types.SimpleNamespace(
+            setStatusMessage=lambda text, *a, **k: self.said.append(text),
+            displayMessage=lambda text, *a, **k: self.shown.append(text),
+        )
+
+    def _say(self, names, **kwargs):
+        from amaze.core import library as library_mod
+        with mock.patch.object(hou, "ui", self._ui(), create=True):
+            library_mod.say_unlisted(names, **kwargs)
+        self.assertEqual([], self.shown, "the status line opened a dialog")
+        return self.said
+
+    def test_nothing_is_said_when_every_row_landed(self):
+        """The guard: without it a clean batch ends on `0 materials were added`."""
+        self.assertEqual([], self._say([]))
+
+    def test_one_added_row_is_named(self):
+        said = self._say(["Rust"])
+        self.assertEqual(1, len(said), said)
+        self.assertIn('"Rust" was added, but the library could not be saved.', said[0])
+
+    def test_several_added_rows_are_counted_not_named(self):
+        said = self._say(["Rust", "Chrome", "Oak"])
+        self.assertEqual(1, len(said), "a batch said more than one line: %r" % said)
+        self.assertIn("3 materials were added, but the library could not be saved.", said[0])
+
+    def test_one_updated_row_says_updated(self):
+        said = self._say(["Rust"], updated=True)
+        self.assertIn('"Rust" was updated, but the library could not be saved.', said[0])
+
+    def test_several_updated_rows_say_updated(self):
+        said = self._say(["Rust", "Chrome"], updated=True)
+        self.assertIn("2 materials were updated, but the library could not be saved.", said[0])
+
+
+class TheOnlineImportEndsOnThatLine(unittest.TestCase):
+    """A batch collects the records its list did not take and says so once, after everything else"""
+
+    class _Panel:
+        _online_download_active = False
+
+        def __init__(self):
+            self.material_model = types.SimpleNamespace(assets=())
+            self.landed = []
+
+        def render_landed(self, held):
+            self.landed.append(held)
+
+    def _batch(self, answers):
+        """`import_records` over len(answers) records, each door answering one (ok, reason)."""
+        from amaze.panel import online_import as online_import_mod
+
+        class Door(online_import_mod.OnlineImport):
+            def import_material(self, record, on_progress=None, **kwargs):
+                return answers[record]
+
+        panel = self._Panel()
+        with mock.patch.object(hou, "ui", types.SimpleNamespace(
+                setStatusMessage=lambda text, *a, **k: self.said.append(text),
+                displayMessage=lambda text, *a, **k: self.shown.append(text)),
+                create=True):
+            Door(panel).import_records(list(answers))
+        return panel
+
+    def setUp(self):
+        from amaze.utils import rc_calls
+        self.said = []
+        self.shown = []
+        self.addCleanup(debug.hand_over, debug._ui)
+        debug.hand_over(rc_calls.HoudiniSpeaker)
+
+    def test_a_landed_but_unlisted_record_is_named_and_is_no_failure(self):
+        from amaze.core import library as library_mod
+        self._batch({"Rust": (True, library_mod.ListNotSaved("Rust"))})
+        self.assertEqual([], self.shown, "an unlisted record opened the failure dialog")
+        self.assertEqual(1, len(self.said), self.said)
+        self.assertIn('"Rust" was added, but the library could not be saved.', self.said[0])
+
+    def test_a_batch_counts_only_the_records_its_list_refused(self):
+        from amaze.core import library as library_mod
+        self._batch({"Rust": (True, library_mod.ListNotSaved("Rust")),
+                     "Chrome": (True, ""),
+                     "Oak": (True, library_mod.ListNotSaved("Oak"))})
+        self.assertEqual(1, len(self.said), self.said)
+        self.assertIn("2 materials were added", self.said[0])
+
+    def test_a_batch_that_all_landed_says_nothing(self):
+        self._batch({"Rust": (True, ""), "Chrome": (True, "")})
+        self.assertEqual([], self.said, "a clean batch wrote the status line anyway")
+
+    def test_a_real_failure_still_opens_its_dialog_and_is_not_a_status_line(self):
+        self._batch({"Rust": (False, "the fetch died")})
+        self.assertEqual([], self.said, "a failure was reported as merely unlisted")
+        self.assertEqual(1, len(self.shown), self.shown)
+        self.assertIn("the fetch died", self.shown[0])
+
+
 class RefuseIsTheGestureSinkTest(unittest.TestCase):
     """`debug.refuse`: bad aim to the status line, damage to a dialog. ▸p/refusal-sink"""
 
