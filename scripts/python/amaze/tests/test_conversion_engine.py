@@ -650,6 +650,47 @@ class AnOctaneTwinIsMaterialXInTheLibrary(unittest.TestCase):
         self.assertEqual(("Karma", "Octane Red"), (twin.renderer, twin.name))
 
 
+class AnOnlineImportWhoseListWasNotSavedSaysSo(unittest.TestCase):
+    """The online import answers ok with a `ListNotSaved` naming the material its list did not take."""
+
+    def setUp(self):
+        test_support.pin_env(self, "OCIO", "/dev/null")
+        self.prefs = test_support.fixture_prefs(self)
+        self.prefs.render_on_import = 0
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        self.model = library_mod.MaterialLibrary(preferences=self.prefs)
+
+    def _import(self, uid):
+        from amaze.core import matx_sources
+        record = matx_sources.MatxRecord(
+            source="PhysicallyBased", uid=uid, title="Probe " + uid,
+            category="Metal", kind="values", licence="CC0 1.0",
+            payload={"values": {"color": [0.8, 0.2, 0.1], "roughness": 0.3}})
+
+        class Source:
+            name = "PhysicallyBased"
+
+            def fetch(self, record, resolution, dest_dir, progress=None):
+                return {"values": record.payload["values"]}
+
+        model = self.model
+        ok, reason = matx_import.import_record(
+            record, Source(), "", model, self.prefs, render=False,
+            save=lambda *a, **k: material_actions.add_asset(model, *a, **k))
+        return record, ok, reason
+
+    def test_the_answer_names_the_unlisted_material(self):
+        with test_support.full_disk_for(os.path.join(self.prefs.dir, self.model.DB_FILENAME)):
+            record, ok, reason = self._import("unlisted")
+        self.assertTrue(ok, reason)
+        self.assertEqual(matx_import.record_name(record), str(reason))
+
+    def test_a_listed_import_answers_no_reason(self):
+        _record, ok, reason = self._import("listed")
+        self.assertEqual((True, ""), (ok, reason))
+
+
 class TheConversionDevToolsShareOneSettingsStub(unittest.TestCase):
     """conversion_report and extract_specs run the convert path on one settings stub."""
 

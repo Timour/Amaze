@@ -319,7 +319,7 @@ def hosted_picture(record, source, renderer) -> str:
 
 def import_record(record, source, resolution, library, preferences,
                   progress=None, renderer: str = renderers.HUB.key, *, save, render=True):
-    """One online record saved by `save` into `library`, nothing left in the scene: (ok, why)."""
+    """One record saved by `save` into `library`: (ok, why); on ok, why names it if unlisted."""
     name = record_name(record)
     debug.event("import", "start", title=record.title, name=name,
                 source=record.source, kind=record.kind,
@@ -346,6 +346,7 @@ def import_record(record, source, resolution, library, preferences,
             return (False, "%s could not be saved to your library, so "
                            "it was not added. Your scene is unchanged."
                            % name)
+        listed = True    # unknown when the credit raises: the library's own alert has spoken
         try:
             credited = library.assets[row]
             credited.about = _credit_text(record, source)    # moved into the COMMENT below ▸p/d03-retired
@@ -355,11 +356,11 @@ def import_record(record, source, resolution, library, preferences,
             extra["online_uid"] = str(record.uid or "")    # not `uid`: that spelling is the pre-connector id, which packages.py strips on import
             if measurement_note:
                 credited.description = measurement_note
-            library.save()
+            listed = library.save()    # writes the whole list: an earlier refusal lands here too
             library.adopt_retired_text_into_notes()    # the one door into the COMMENT ▸p/d03-retired
         except Exception as exc:
             debug.exception("credit the import", exc)
             debug.event("import", "credit not written", error=str(exc))
         debug.event("import", "registered", name=name,
-                    rows=library.rowCount())
-        return (True, "")
+                    rows=library.rowCount(), listed=listed)
+        return (True, "" if listed else name)    # ok with a name: it landed, but its list did not

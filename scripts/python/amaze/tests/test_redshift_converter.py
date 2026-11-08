@@ -285,6 +285,13 @@ class TheLibraryDoorMakesANewRedshiftEntry(unittest.TestCase):
     def row(self):
         return self.model.find_asset_row_by_id(self.source_id)    # rows sort; the id holds
 
+    def test_a_twin_whose_list_was_not_saved_answers_list_not_saved(self):
+        from amaze.core import library as library_mod
+        with test_support.full_disk_for(os.path.join(self.prefs.dir, self.model.DB_FILENAME)):
+            ok, report = material_actions.convert(
+                self.model, self.model.index(self.row, 0), "Redshift")
+        self.assertIsInstance(ok, library_mod.ListNotSaved, report.summary_lines())
+
     def test_a_redshift_twin_is_added_beside_the_karma_source(self):
         before = len(self.model.assets)
         held = test_support.asset_ids(self.model)

@@ -110,6 +110,22 @@ class AGalleryImportRendersOnceAfterItsSaves(unittest.TestCase):
         self.assertEqual([], self._import(0, ["Karma"])[1])
 
 
+class AnEntryWhoseListWasNotSavedIsNamed(unittest.TestCase):
+    """The panel's save answers `ListNotSaved` for a landed entry: imported, and its name kept."""
+
+    def test_the_unlisted_entry_counts_imported_and_is_named(self):
+        from amaze.actions import materials as material_actions
+        from amaze.core import library as library_mod
+        answers = iter(["Karma", library_mod.ListNotSaved("Karma")])
+        unlisted = []
+        with mock.patch.object(material_actions, "add_asset",
+                               lambda *a, **k: next(answers)):
+            summary = gallery_import.import_entries(
+                material_actions.adding_into(None, unlisted), _entries(2))
+        self.assertEqual((2, 0), (summary["imported"], summary["failed"]))
+        self.assertEqual(1, len(unlisted), "the entry whose list was not saved was not named")
+
+
 class _Escaped:
     """`hou.InterruptableOperation` whose third progress report is the user's Esc."""
 

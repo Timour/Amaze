@@ -7,7 +7,7 @@ import hou
 
 from amaze import messages
 from amaze.actions import materials as material_actions
-from amaze.core import debug, matx_sources, renderers
+from amaze.core import debug, library, matx_sources, renderers
 from amaze.render import nodes
 
 
@@ -41,7 +41,7 @@ class OnlineImport:
         if not len(records):
             return
         total = len(records)
-        failures = []
+        failures, unlisted = [], []
         held = {str(mat.mat_id) for mat in getattr(self.panel.material_model, "assets", ())}
         with self.download_operation(records) as progress_for:
             for i, rec in enumerate(records):
@@ -58,6 +58,8 @@ class OnlineImport:
                     ok, reason = False, str(exc)
                 if not ok:
                     failures.append("%s: %s" % (rec.title, reason))
+                elif isinstance(reason, library.ListNotSaved):
+                    unlisted.append(str(reason))
         if self.panel.material_model is not None:
             self.panel.render_landed(held)
         ui = getattr(hou, "ui", None)
@@ -66,6 +68,7 @@ class OnlineImport:
                 messages.AMAZE_COULD_NOT
                 % (len(failures), total, "\n".join(failures[:10]))
             )
+        library.say_unlisted(unlisted)    # the status line, last: nothing after it writes the line
 
     def import_material(self, record, on_progress=None,
                         renderer=renderers.HUB.key, render=True):
@@ -91,7 +94,7 @@ class OnlineImport:
             return (False, reason or messages.ONLINE_IMPORT_FAILED)
         self.panel.category_model.check_add_category(record.category)    # no relayout wrapper: it announces its own insert
         self.panel.refresh_sidebar_categories()
-        return (True, "")
+        return (True, library.ListNotSaved(reason) if reason else "")    # a name: landed, unlisted
 
     def source_for(self, record):
         """The record's source and the resolution to fetch it at: (source, resolution, error)."""

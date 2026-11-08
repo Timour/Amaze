@@ -1651,7 +1651,7 @@ class AmazePanel(QtWidgets.QWidget):
         model = self.material_model
         ids = [model.tile_key(self.material_sorted_model.mapToSource(index).row())
                for index in indexes]    # by ID, with no layout pair: each twin inserts and saves
-        lines, converted, eligible, sources = [], 0, 0, set()
+        lines, converted, eligible, sources, unlisted = [], 0, 0, set(), []
         held = {str(mat.mat_id) for mat in model.assets}    # the twins are what arrives after
         for row in (model.find_asset_row_by_id(mat_id) for mat_id in ids):
             if row < 0:
@@ -1668,6 +1668,8 @@ class AmazePanel(QtWidgets.QWidget):
                 lines.append(messages.CONVERSION_CRASHED_LINE % (mat.name, exc))
                 continue
             converted += 1 if ok else 0
+            if isinstance(ok, library.ListNotSaved):
+                unlisted.append(mat.name)    # the twin carries its source's name
             lines.extend(report.summary_lines())
         self.render_landed(held)
         shown = " and ".join(renderers.label(source)
@@ -1676,6 +1678,7 @@ class AmazePanel(QtWidgets.QWidget):
         if ui is not None and eligible:
             ui.displayMessage(messages.CONVERSION_SUMMARY % (
                 converted, eligible, shown, renderers.label(target), "\n".join(lines)))
+        library.say_unlisted(unlisted)    # the status line, last: nothing after it writes the line
 
     def render_landed(self, before: set) -> None:
         """ONE render batch for the materials saved since `before` that have no picture yet."""
@@ -1822,7 +1825,7 @@ class AmazePanel(QtWidgets.QWidget):
         ) if ui is not None else 1    # no screen to ask, so the answer is the close_choice - Cancel
         if choice != 0:
             return
-        summary, interrupted = {}, False    # import_entries fills OURS, so an Esc keeps what landed
+        summary, interrupted, unlisted = {}, False, []    # import_entries fills OURS: Esc keeps what landed
         try:
             with hou.InterruptableOperation(  # type: ignore
                 "Importing gallery presets", open_interrupt_dialog=True
@@ -1833,7 +1836,7 @@ class AmazePanel(QtWidgets.QWidget):
                         "%d/%d  %s" % (index + 1, total, name),
                     )
                 gallery_import.import_entries(
-                    functools.partial(material_actions.add_asset, self.material_model),
+                    material_actions.adding_into(self.material_model, unlisted),
                     entries, progress=progress, summary=summary,
                     library=self.material_model)    # each save skips its render; ONE batch follows
         except hou.OperationInterrupted:
@@ -1851,6 +1854,7 @@ class AmazePanel(QtWidgets.QWidget):
             said = messages.GALLERY_IMPORT_FINISHED_IMPORTED_SKIPPED % (imported, skipped, failed)
         if ui is not None:
             ui.displayMessage(said)
+        library.say_unlisted(unlisted)    # the status line, last
 
     def check_library(self) -> None:
         """Library ▸ Check Library…: the report and its actions, every model read again after each."""
@@ -3230,10 +3234,7 @@ class AmazePanel(QtWidgets.QWidget):
             else:
                 ui.displayMessage(messages.MATERIALS_NOT_UPDATED % "\n".join(
                     messages.MATERIAL_NOT_UPDATED_LINE % (name, reason) for name, reason in refused))
-        if len(unlisted) == 1:    # the status line, last: nothing after it writes the line
-            debug.refuse(messages.MATERIAL_UPDATED_LIBRARY_NOT_SAVED % unlisted[0])
-        elif unlisted:
-            debug.refuse(messages.MATERIALS_UPDATED_LIBRARY_NOT_SAVED % len(unlisted))
+        library.say_unlisted(unlisted, updated=True)    # the status line, last: nothing writes after it
 
     def _update_existing_asset(self, mat_id: str, node: hou.Node) -> bool:
         """Overwrite asset `mat_id`'s files from the scene node: False if the list did not take them."""

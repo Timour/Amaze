@@ -198,6 +198,20 @@ class ListNotSaved(str):
     __slots__ = ()
 
 
+def say_unlisted(names, updated: bool = False) -> None:
+    """One status line for the rows a batch left unlisted: each waits for the next save that works."""
+    if not names:
+        return
+    if updated and len(names) == 1:
+        debug.refuse(messages.MATERIAL_UPDATED_LIBRARY_NOT_SAVED % names[0])
+    elif updated:
+        debug.refuse(messages.MATERIALS_UPDATED_LIBRARY_NOT_SAVED % len(names))
+    elif len(names) == 1:
+        debug.refuse(messages.ASSET_ADDED_LIBRARY_NOT_SAVED % names[0])
+    else:
+        debug.refuse(messages.MATERIALS_ADDED_LIBRARY_NOT_SAVED % len(names))
+
+
 class AssetLibrary(grid_engine.GridEngine,
                    QtCore.QAbstractTableModel):
     """The shared asset model every library section runs on; nothing renderer-shaped lives here."""
@@ -929,15 +943,13 @@ class AssetLibrary(grid_engine.GridEngine,
             self.save()
         return changed
 
-    def report_refused_index_write(self, asset) -> None:
-        """Alert that an inline asset was not saved, its list write refused; file saves are marked."""
+    def report_refused_index_write(self, asset, updated: bool = False) -> None:
+        """Say on the status line that an inline asset's list write was refused; it waits in memory."""
         name = asset.name or "The asset"
         debug.event("save", "inline asset not saved - the index write "
                     "was refused", name=name, mat_id=asset.mat_id,
                     model=self.DB_FILENAME)
-        debug.alert(
-            messages.ASSET_NOT_SAVED_LIST_NOT_UPDATED % name,
-            key="index-refused-inline-content")
+        say_unlisted([name], updated=updated)    # the library's own alert said why; a restart loses it
 
     def asset_files(self, mat_id: str) -> dict:
         """`asset_files_for` this library; a new per-asset file is added THERE and nowhere else."""

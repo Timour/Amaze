@@ -137,6 +137,35 @@ class SelectSwitchesTheSnippet(_Case):
                          "the edit no version held was lost to the switch")
 
 
+class ARefusedListWriteIsSaidOnTheStatusLine(_Case):
+    """A snippet whose list write fails waits in memory: a status line says so, never restart advice."""
+
+    def _refused(self, act):
+        from amaze import messages
+        with test_support.full_disk_for(os.path.join(self.prefs.dir, "code.json")), \
+                test_support.captured_log() as log:
+            act()
+        alerts = [text for text in log.messages("alert")
+                  if "could not save the library" not in text]
+        self.assertEqual([], alerts, "an alert beside the library's own was shown")
+        return messages, log.messages("refuse")
+
+    def test_a_new_snippet_is_said_added(self):
+        messages, said = self._refused(
+            lambda: self.model.add_asset(SECOND, "probe", "VEX", "Examples", "", False))
+        self.assertEqual([messages.ASSET_ADDED_LIBRARY_NOT_SAVED % "probe"], said)
+
+    def test_a_saved_version_is_said_updated(self):
+        messages, said = self._refused(
+            lambda: self._save(self.model.NEW_VERSION, SECOND, "helper fast"))
+        self.assertEqual([messages.MATERIAL_UPDATED_LIBRARY_NOT_SAVED % "helper fast"], said)
+
+    def test_a_switched_version_is_said_updated(self):
+        self._save(self.model.NEW_VERSION, SECOND, "helper fast")
+        messages, said = self._refused(lambda: self.model.switch_version(self.row, 1))
+        self.assertEqual([messages.MATERIAL_UPDATED_LIBRARY_NOT_SAVED % "helper"], said)
+
+
 class TheModelCarriesCodeVersions(_Case):
 
     def test_the_badge_roles_read_the_code_store(self):

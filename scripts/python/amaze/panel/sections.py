@@ -887,10 +887,7 @@ class MaterialSection(AssetSection):
         self.panel.prefs.save()
         self.panel.update_renderer_toggles()
         self.panel.refresh_sidebar_categories()
-        if len(unlisted) == 1:    # the status line, last: nothing after it writes the line
-            debug.refuse(messages.ASSET_ADDED_LIBRARY_NOT_SAVED % unlisted[0])
-        elif unlisted:
-            debug.refuse(messages.MATERIALS_ADDED_LIBRARY_NOT_SAVED % len(unlisted))
+        library.say_unlisted(unlisted)    # the status line, last: nothing after it writes the line
 
     def update_preview(self, indexes) -> None:
         """Update Render on Material tiles: the whole selection in one render batch."""

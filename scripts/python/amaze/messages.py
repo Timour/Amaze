@@ -9,7 +9,6 @@ LIBRARY_WRITE_FAILED = "Amaze could not save the library: %s The change is still
 PALETTE_NOT_SAVED = "Amaze could not save \"%s\". Close any other Amaze panel or restart Houdini, then try again."
 PALETTE_NOT_DELETED = "\"%s\" was not deleted because the colors list could not be updated. Close any other Amaze panel or restart Houdini, then try again."
 SAVE_DENIED_WITH_CAUSE = "%s Cause: %s"
-ASSET_NOT_SAVED_LIST_NOT_UPDATED = "\"%s\" was not saved because the library list could not be updated. Restart Houdini and save again."
 ASSET_NOT_DELETED_LIST_NOT_UPDATED = "\"%s\" was not deleted because the library list could not be updated. Close any other Amaze panel or restart Houdini, then try again."
 EDIT_CONFLICT_KEPT_YOURS = "Someone else changed \"%s\" while you had it open.\n\nAmaze kept your version and discarded theirs."
 VERSION_SWITCH_DIVERGED = "The version switch didn't finish: the material's files hold version %d but its version list still names the old one. All archived versions are still there.\n\nSwitch the version again to finish."

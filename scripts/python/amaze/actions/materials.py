@@ -59,6 +59,16 @@ def add_asset(model, node: hou.Node, cats: str, tags: str, fav: bool,
     return ""
 
 
+def adding_into(model, unlisted: list):
+    """`add_asset` into `model`; each save whose list did not land appends its name to `unlisted`."""
+    def save(node, *args, **kwargs):
+        answer = add_asset(model, node, *args, **kwargs)
+        if isinstance(answer, library.ListNotSaved):
+            unlisted.append(kwargs.get("name") or node.name())    # the name the add gave it
+        return answer
+    return save
+
+
 class UpdateRefused(Exception):
     """Why an update wrote nothing: a sentence for the one message after the save."""
 
@@ -217,6 +227,8 @@ def convert(model, index: QtCore.QModelIndex, target: str, render: bool = True):
             saved = add_asset(
                 model, made.builder, ",".join(mat.categories), ",".join(mat.tags), False,
                 name=mat.name, render=render)
+            if isinstance(saved, library.ListNotSaved):    # landed, unlisted: the caller says so
+                return saved, report
             return bool(saved), report    # a refused save leaves nothing: the scratch goes below
         finally:
             scratch.destroy()

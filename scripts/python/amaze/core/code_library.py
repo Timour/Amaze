@@ -139,7 +139,7 @@ class CodeLibrary(library.AssetLibrary):
                          language or "Code")
         new_mat.code = code
         self._append_record(new_mat)
-        if not self.save():    # inline, so nothing is left on disk: the user must hear it
+        if not self.save():    # inline, so it lives in memory until the next save that works
             self.report_refused_index_write(new_mat)
         return str(new_mat.mat_id)
 
@@ -218,7 +218,7 @@ class CodeLibrary(library.AssetLibrary):
                     self.preferences, mat_id, number, versions.CODE, held):
                 return False
             if not self._write_snippet(asset, code, name, language, cats, tags):
-                self.report_refused_index_write(asset)
+                self.report_refused_index_write(asset, updated=True)
                 return False
             if number == self.NEW_VERSION:
                 return bool(versions.create_version(
@@ -248,7 +248,7 @@ class CodeLibrary(library.AssetLibrary):
                 self.preferences, mat_id, versions.CODE) or asset.name
             asset.set_current_date()
             if not self._store_text(asset, code):
-                self.report_refused_index_write(asset)
+                self.report_refused_index_write(asset, updated=True)
                 return False
             return True
         except OSError as exc:
