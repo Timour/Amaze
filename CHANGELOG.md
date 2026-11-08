@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.33.13
+
+- A material imported from an online source no longer carries the line `Please credit the creator as the license requires.` on its node comment. The comment's `License:` line already names the licence the source itself states, and most of those sources ask for no credit.
+- `Licence` is spelled `License` everywhere Amaze shows it: an imported material's node comment, and the About box.
+
 ## 1.33.12
 
 - When saving a new material or node setup cannot save the library list, the status bar says so once the save is done: `"<name>" was added, but the library could not be saved.`, or how many materials were, for several. It replaces an alert whose advice, to restart Houdini and run Check Library, ended with Check Library offering to move the new files aside.
