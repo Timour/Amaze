@@ -550,7 +550,7 @@ class TheAboutTabCanActuallyRunAnInstall(unittest.TestCase):
             dialog.install_update()
 
         fetch.assert_not_called()
-        self.assertIn("cannot tell where it is installed",
+        self.assertIn("can't tell where it's installed",
                       dialog._lbl_version.text())
 
 
@@ -684,8 +684,8 @@ class TheAboutTabOffersTheUpdateInOnePlace(unittest.TestCase):
                 dialog._btn_update.click()
             self.assertEqual(installs, install.call_count, "answer %d" % choice)
             text, kwargs = asked[0]
-            self.assertEqual("Your library will be updated and not compatible with "
-                             "Amaze versions lower than 9.8.0.", text)
+            self.assertEqual("The library will be updated and won't work with "
+                             "Amaze versions older than 9.8.0.", text)
             self.assertEqual(("Continue", "Cancel"), tuple(kwargs["buttons"]))
 
     def test_the_about_form_keeps_ONE_divider_above_test_library(self):
@@ -750,8 +750,8 @@ class TheShelfToolAsksTheSameQuestion(unittest.TestCase):
         asked, installs = self._run(99, [0, 1])    # Install Update, then Cancel
         self.assertEqual(0, installs)
         self.assertIn("Amaze v9.9 is available. The library will be updated to v99.", asked[0])
-        self.assertEqual("Your library will be updated and not compatible with Amaze "
-                         "versions lower than 9.8.0.", asked[1])
+        self.assertEqual("The library will be updated and won't work with Amaze "
+                         "versions older than 9.8.0.", asked[1])
 
     def test_continue_on_a_library_update_installs(self):
         self.assertEqual(1, self._run(99, [0, 0])[1])

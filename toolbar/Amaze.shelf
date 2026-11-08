@@ -15,7 +15,7 @@ try:
     from amaze.utils import rc_calls
 except ImportError as exc:
     hou.ui.displayMessage(
-        "Amaze is not importable from this session (%s).\n\n"
+        "Amaze can't be imported in this session (%s).\n\n"
         "Check that $AMAZE points at the install and that Houdini was "
         "restarted after it changed." % exc)
 else:
@@ -62,7 +62,7 @@ try:
     from amaze.utils import rc_calls
 except ImportError as exc:
     hou.ui.displayMessage(
-        "Amaze is not importable from this session (%s).\n\n"
+        "Amaze can't be imported in this session (%s).\n\n"
         "Check that $AMAZE points at the install and that Houdini was "
         "restarted after it changed." % exc)
 else:
@@ -81,7 +81,7 @@ try:
     from amaze.utils import rc_calls
 except ImportError as exc:
     hou.ui.displayMessage(
-        "Amaze is not importable from this session (%s).\n\n"
+        "Amaze can't be imported in this session (%s).\n\n"
         "Check that $AMAZE points at the install and that Houdini was "
         "restarted after it changed." % exc)
 else:
@@ -99,7 +99,7 @@ try:
     from amaze.utils import rc_calls
 except ImportError as exc:
     hou.ui.displayMessage(
-        "Amaze is not importable from this session (%s).\n\n"
+        "Amaze can't be imported in this session (%s).\n\n"
         "Check that $AMAZE points at the install and that Houdini was "
         "restarted after it changed." % exc)
 else:

@@ -546,15 +546,17 @@ class DatabaseConnector:
         self._data = {"categories": ["_All"], "assets": []}
         self._write_blocked = True
         debug.note(
-            "The index file for this section is missing from the library "
-            "folder on this computer (%s), but snapshots next to it show "
-            "it existed - the file is probably still syncing here. Amaze "
-            "opened the section empty and paused saving this session, so "
-            "the file won't be overwritten when it appears. When the file "
-            "is present at %s, restart Houdini. If the section was "
-            "deleted on purpose, delete %s as well. If the file never "
-            "appears, run Library ▸ Check Library… in the Amaze panel."
-            % (wording.and_list(traces), full, wording.and_list(traces)),
+            "%s is missing from the library folder on this computer, "
+            "though files beside it show it was there (%s). Amaze treats "
+            "it as still arriving, not as a new library: the section opens "
+            "empty and nothing will be saved to it until Houdini restarts, "
+            "so the file cannot be replaced by an empty one. When the file "
+            "is back at %s, restart Houdini. If you removed it on purpose, "
+            "remove %s as well and the next launch starts a fresh one. If "
+            "the file never comes back, run Library ▸ Check Library… in "
+            "the Amaze panel."
+            % (section_name(self._filename), wording.and_list(traces), full,
+               wording.and_list(traces)),
             file=full, evidence=", ".join(traces))
 
     def _normalize_all_category(self) -> None:
