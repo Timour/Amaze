@@ -709,6 +709,22 @@ class TruncatedDownloadTest(unittest.TestCase):
         self.assertFalse(os.path.exists(dest + ".part"),
                          "the partial file was left behind")
 
+    def test_a_download_past_the_ceiling_is_refused(self):
+        from unittest import mock
+
+        from amaze import messages
+        from amaze.core import packages
+        for body, declared in ((b"x" * 500, 5000), (b"y" * 5000, None)):    # declared over it; arriving over it
+            with self.subTest(declared=declared):
+                url = self._serve_once(body, declared_length=declared)
+                dest = self._dest()
+                with mock.patch.object(packages, "MAX_UNPACKED_BYTES", 1000), \
+                        self.assertRaises(matx_sources.DownloadTooLarge) as caught:
+                    matx_sources.download(url, dest)
+                self.assertEqual(messages.DOWNLOAD_TOO_LARGE % "1000 bytes", str(caught.exception))
+                self.assertEqual([], os.listdir(os.path.dirname(dest)),
+                                 "a refused download left a file behind")
+
     def test_a_complete_transfer_still_lands(self):
         """The guard must not be so strict it refuses good downloads."""
         for body, declared in ((b"y" * 5000, 5000), (b"z" * 300, None)):    # no Content-Length is no lie

@@ -14,7 +14,9 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
+from amaze import messages
 from amaze.core import addons, matx_sources, packages, updater
+from amaze.helpers import wording
 from amaze.tests import test_support
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
@@ -190,6 +192,35 @@ class TheReaderTest(_Workspace):
             addons.read(self._rewritten(path, manifest))
         self.assertIn("newer than", str(caught.exception))
 
+    def test_a_field_of_the_wrong_type_is_refused_by_name(self):
+        path = self.package()
+        good = addons.read(path)
+        node = good["nodes"][0]
+        for name, manifest, said in (
+                ("a list", [], messages.PACKAGE_NOT_READABLE % os.path.basename(path + ".edited")),
+                ("a member", dict(good, files=good["files"] + [["x"]]),
+                 "['x'] is not a plain relative path"),
+                ("houdini_min", dict(good, houdini_min=22.0),
+                 messages.ADDON_FIELD_NOT_TEXT % "houdini_min"),
+                ("folder", dict(good, folder=5), messages.ADDON_FIELD_NOT_TEXT % "folder"),
+                ("name", dict(good, name=["x"]), messages.ADDON_FIELD_NOT_TEXT % "name"),
+                ("a node file", dict(good, nodes=[dict(node, file=["x"])]),
+                 messages.ADDON_NODE_FIELD_NOT_TEXT % ("One", "file")),
+                ("a node type", dict(good, nodes=[dict(node, type=["x"])]),
+                 messages.ADDON_NODE_FIELD_NOT_TEXT % ("One", "type")),
+                ("a node label", dict(good, nodes=[dict(node, label=["x"])]),
+                 messages.ADDON_NODE_FIELD_NOT_TEXT % (["x"], "label"))):
+            copy = self._rewritten(path, manifest)
+            root = tempfile.mkdtemp(prefix="amaze_root_", dir=self.dir)
+            for door in (addons.read,
+                         lambda p: addons.install(p, root, running=(22, 0, 466))):
+                with self.subTest(name, door=door):
+                    with self.assertRaises(packages.PackageError) as caught:
+                        door(copy)
+                    self.assertIn(said, str(caught.exception))
+            with self.subTest(name, door="nothing written"):
+                self.assertEqual([], os.listdir(root))
+
     def test_the_library_import_refuses_an_add_on(self):
         library = types.SimpleNamespace(dir=os.path.join(self.dir, "library") + os.sep)
         with self.assertRaises(packages.PackageError) as caught:
@@ -244,6 +275,41 @@ class TheInstallerTest(_Workspace):
             addons.install(stored, self.amaze, running=(22, 0, 466))
         self.assertEqual("1.2.3", addons.installed(self.amaze, "example")["version"])
         self.assertFalse(os.path.exists(self._folder() + ".installing"))
+
+    def test_an_add_on_unpacking_past_the_cap_is_refused_and_the_old_stays(self):
+        addons.install(self.package(), self.amaze, running=(22, 0, 466))
+        path = self.package({"otls/example_one.hda": "x" * 4000, "icons/one.svg": "s"},
+                            version="1.3.0")
+        with zipfile.ZipFile(path) as bundle:
+            listed = sum(info.file_size for info in bundle.infolist()
+                         if info.filename != packages.MANIFEST)
+        with mock.patch.object(addons, "MAX_UNPACKED_BYTES", listed - 1), \
+                self.assertRaises(packages.PackageError) as caught:
+            addons.install(path, self.amaze, running=(22, 0, 466))
+        self.assertIn(messages.ADDON_TOO_LARGE % (wording.byte_size(listed),
+                                                  wording.byte_size(listed - 1)),
+                      str(caught.exception))
+        self.assertEqual("1.2.3", addons.installed(self.amaze, "example")["version"])
+        self.assertFalse(os.path.exists(self._folder() + ".installing"))
+        with mock.patch.object(addons, "MAX_UNPACKED_BYTES", listed):
+            addons.install(path, self.amaze, running=(22, 0, 466))
+        self.assertEqual("1.3.0", addons.installed(self.amaze, "example")["version"],
+                         "an add-on of exactly the cap was refused")
+
+    def test_an_install_reads_no_member_whole(self):
+        reads, whole = [], zipfile.ZipFile.read
+
+        def read(bundle, name, pwd=None):
+            reads.append(getattr(name, "filename", name))
+            return whole(bundle, name, pwd)
+
+        path = self.package()
+        with mock.patch.object(zipfile.ZipFile, "read", read):
+            addons.install(path, self.amaze, running=(22, 0, 466))
+        self.assertEqual([packages.MANIFEST], reads, "a member was read whole into memory")
+        with open(os.path.join(self._folder(), "otls", "example_one.hda"),
+                  encoding="utf-8") as handle:
+            self.assertEqual("hda one", handle.read())
 
 
 class _ThreeRows(_Workspace):

@@ -8,11 +8,12 @@ import shutil
 import zipfile
 import zlib
 
-from amaze import branding
+from amaze import branding, messages
 from amaze.core import packages
-from amaze.helpers import hostos
+from amaze.helpers import hostos, wording
 
 KIND = "houdini-package"
+MAX_UNPACKED_BYTES = 512 * 1024 * 1024    # the most an add-on may unpack, as a release may ▸r/zip-declared-size
 ROOT = "addons"    #: the add-ons' folder, in Amaze's install and in the package store alike
 REQUIRED = ("name", "folder", "version", "author", "houdini", "houdini_min", "changelog")
 NODE_KEYS = ("label", "type", "file", "addon_icon", "short_description", "description")
@@ -38,19 +39,30 @@ def _relative(member) -> bool:
 def problems(manifest) -> list:
     """What keeps `manifest` from being an installable add-on, one sentence each; [] when it is one."""
     found = [] if manifest.get("kind") == KIND else ["not an add-on package"]
-    found += ["no %s" % key for key in REQUIRED if not str(manifest.get(key) or "").strip()]
-    if manifest.get("version") and not _VERSION.match(str(manifest["version"])):
-        found.append("version %r is not X.Y.Z or X.Y.Z-beta" % manifest["version"])
-    if manifest.get("houdini_min") and not _MAJOR_MINOR.match(str(manifest["houdini_min"])):
-        found.append("houdini_min %r is not MAJOR.MINOR" % manifest["houdini_min"])
-    if manifest.get("folder") and not _FOLDER.match(str(manifest["folder"])):
-        found.append("folder %r is not a plain lowercase name" % manifest["folder"])
+    for key in REQUIRED:
+        value = manifest.get(key)
+        if value is not None and not isinstance(value, str):
+            found.append(messages.ADDON_FIELD_NOT_TEXT % key)
+        elif not (value or "").strip():
+            found.append("no %s" % key)
+    text = {key: value for key, value in manifest.items() if isinstance(value, str) and value}
+    if "version" in text and not _VERSION.match(text["version"]):
+        found.append("version %r is not X.Y.Z or X.Y.Z-beta" % text["version"])
+    if "houdini_min" in text and not _MAJOR_MINOR.match(text["houdini_min"]):
+        found.append("houdini_min %r is not MAJOR.MINOR" % text["houdini_min"])
+    if "folder" in text and not _FOLDER.match(text["folder"]):
+        found.append("folder %r is not a plain lowercase name" % text["folder"])
     files = manifest.get("files")
     if not isinstance(files, list) or not files:
         return found + ["no files"]
-    found += ["%r is not a plain relative path" % member for member in files
+    found += ["%r is not a plain relative path" % (member,) for member in files
               if not _relative(member)]
-    return found + _node_problems(manifest.get("nodes"), set(files))
+    return found + _node_problems(manifest.get("nodes"), _texts(files))
+
+
+def _texts(values) -> set:
+    """The members of a list that are text, as a set; anything else is refused by name elsewhere."""
+    return {value for value in values if isinstance(value, str)}
 
 
 def _node_problems(nodes, files) -> list:
@@ -64,12 +76,14 @@ def _node_problems(nodes, files) -> list:
             found.append("a node lacks %s" % ", ".join(missing))
             continue
         label = node["label"]
+        wrong = [key for key in NODE_KEYS if not isinstance(node[key], str)]
+        if wrong:    # every node field is text: a path, a type name, or words the tab shows
+            found += [messages.ADDON_NODE_FIELD_NOT_TEXT % (label, key) for key in wrong]
+            continue
         found += ["%s: %s %r is not in files" % (label, key, node[key])
                   for key in ("file", "addon_icon") if node[key] not in files]
-        if not str(node["addon_icon"]).lower().endswith(PICTURES):
+        if not node["addon_icon"].lower().endswith(PICTURES):
             found.append("%s: addon_icon %r is not an .svg or .png" % (label, node["addon_icon"]))
-        found += ["%s: %s is not text" % (label, key) for key in ("short_description", "description")
-                  if not isinstance(node[key], str)]
         if not isinstance(node.get("group", ""), str):
             found.append("%s: group is not text" % label)
     return found + _group_problems(nodes)
@@ -138,11 +152,15 @@ def _checked(bundle, path) -> dict:
     manifest = packages.manifest_from(bundle, path)
     found = problems(manifest)
     files = manifest.get("files")
-    listed = set(files) if isinstance(files, list) else set()
+    listed = _texts(files) if isinstance(files, list) else set()
     members = {name for name in bundle.namelist()
                if not name.endswith("/") and name != packages.MANIFEST}
     found += ["missing member %s" % member for member in sorted(listed - members)]
     found += ["member %s is not listed" % member for member in sorted(members - listed)]
+    needed = packages.unpacked_bytes(bundle, listed)
+    if needed > MAX_UNPACKED_BYTES:    # read off the zip before a write ▸r/zip-declared-size
+        found.append(messages.ADDON_TOO_LARGE % (
+            wording.byte_size(needed), wording.byte_size(MAX_UNPACKED_BYTES)))
     if found:
         raise packages.PackageError("%s is not an add-on Amaze can install: %s"
                                     % (os.path.basename(path), "; ".join(found)))
@@ -179,7 +197,7 @@ def install(path: str, amaze_root: str, running=None) -> dict:
                 dest = os.path.join(staging, *member.split("/"))
                 os.makedirs(os.path.dirname(dest), exist_ok=True)
                 with open(dest, "wb") as handle:
-                    handle.write(bundle.read(member))
+                    packages.copy_member(bundle, member, handle)
             with open(os.path.join(staging, packages.MANIFEST), "w", encoding="utf-8",
                       newline="\n") as handle:
                 json.dump(manifest, handle, indent=2)

@@ -256,9 +256,9 @@ class TheDownloadTest(_FeedMixin):
         streamed = []
         real = matx_sources.stream_into
 
-        def spy(url, path, on_bytes=None):
+        def spy(url, path, on_bytes=None, ceiling=0):
             streamed.append(url)
-            return real(url, path, on_bytes)
+            return real(url, path, on_bytes, ceiling)
 
         matx_sources.stream_into = spy
         self.addCleanup(setattr, matx_sources, "stream_into", real)

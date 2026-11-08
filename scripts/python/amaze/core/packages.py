@@ -2,17 +2,21 @@
 
 import json
 import os
+import shutil
 import zipfile
 
-from amaze import branding
+from amaze import branding, messages
 from amaze.core import debug, notes, texstore
-from amaze.helpers import hostos
+from amaze.helpers import hostos, wording
 
 FORMAT = 4    # the newest this build reads; 4: add-on rows (groups, Add-On tab icons), core/addons.py
 ASSETS_FORMAT = 2    # what a package of library assets is written as, so an older Amaze still reads it
 SUFFIX = ".amazepkg"
 MANIFEST = "package.json"
 DERIVED = ("stamp",)    # regenerated from the record on every save, so packing one ships an instantly-stale copy
+MAX_UNPACKED_BYTES = 16 * 1024 ** 3    # the most one import may unpack, by the zip's own sizes ▸r/zip-declared-size
+OBJECTS = ("record", "note", "files", "textures")    # what an entry holds as an object, or leaves out
+PIECE = 1024 * 1024    # how much of a member is in memory at once while it is compared
 
 
 class PackageError(Exception):
@@ -103,7 +107,7 @@ def write_package(out_path: str, items) -> int:
 
 
 def manifest_from(bundle, path: str) -> dict:
-    """The manifest of an open bundle; PackageError when missing, unreadable or too new."""
+    """The manifest of an open bundle; PackageError when missing, unreadable, too new or misshapen."""
     try:
         raw = bundle.read(MANIFEST)
     except KeyError:
@@ -116,12 +120,88 @@ def manifest_from(bundle, path: str) -> dict:
     except ValueError as exc:
         raise PackageError("unreadable %s: %s"
                            % (MANIFEST, exc)) from None
-    got = manifest.get("format")
-    if not isinstance(got, int) or got > FORMAT:
+    got = manifest.get("format") if isinstance(manifest, dict) else None
+    if _whole_number(got) and got > FORMAT:
         raise PackageError(
             "package format %s is newer than the %s this build reads "
             "- update Amaze to import it" % (got, FORMAT))
+    problems = _shape_problems(manifest)
+    if problems:
+        debug.event("packages", "manifest refused",
+                    package=os.path.basename(path), problems=problems[:20])
+        raise PackageError(messages.PACKAGE_NOT_READABLE
+                           % os.path.basename(path))
     return manifest
+
+
+def _whole_number(value) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _shape_problems(manifest) -> list:
+    """What in a parsed manifest a reader would trip on, one phrase each; [] when nothing."""
+    if not isinstance(manifest, dict):
+        return ["the manifest is not an object"]
+    found = [] if _whole_number(manifest.get("format")) \
+        else ["format is not a whole number"]
+    entries = manifest.get("entries", [])
+    if not isinstance(entries, list):
+        return found + ["entries is not a list"]
+    for n, entry in enumerate(entries, 1):
+        found += ["entry %d: %s" % (n, problem)
+                  for problem in _entry_problems(entry)]
+    return found
+
+
+def _entry_problems(entry) -> list:
+    """What in one manifest entry a reader would trip on: the fields it walks, by their types."""
+    if not isinstance(entry, dict):
+        return ["not an object"]
+    found = ["%s is not an object" % key for key in OBJECTS
+             if entry.get(key) is not None and not isinstance(entry[key], dict)]
+    for key in ("files", "textures"):
+        named = entry.get(key)
+        if isinstance(named, dict) and not all(
+                isinstance(arc, str) for arc in named.values()):
+            found.append("%s names a member that is not text" % key)
+    if entry.get("type") == "file" and not isinstance(entry.get("arc"), str):
+        found.append("arc is not text")
+    record = entry.get("record") if isinstance(entry.get("record"), dict) else {}
+    cats = record.get("categories")
+    if cats is not None and not isinstance(cats, str) and not (
+            isinstance(cats, list) and all(isinstance(c, str) for c in cats)):
+        found.append("categories is not text or a list of text")
+    if record.get("colors") is not None and not isinstance(record["colors"], list):
+        found.append("colors is not a list")
+    note = entry.get("note") if isinstance(entry.get("note"), dict) else {}
+    if note.get("items") is not None and not isinstance(note["items"], list):
+        found.append("note items is not a list")
+    return found
+
+
+def unpacked_bytes(bundle, members) -> int:
+    """What `members` of an open bundle unpack to, by the sizes the zip declares. ▸r/zip-declared-size"""
+    sizes = {info.filename: info.file_size for info in bundle.infolist()}
+    return sum(sizes.get(name, 0) for name in set(members))
+
+
+def copy_member(bundle, member, handle) -> None:
+    """One member of an open bundle into an open file, a piece at a time, never whole in memory."""
+    with bundle.open(member) as source:
+        shutil.copyfileobj(source, handle)
+
+
+def _holds(bundle, member, path) -> bool:
+    """Whether the file at `path` is the member byte for byte, both read a piece at a time."""
+    if os.path.getsize(path) != bundle.getinfo(member).file_size:
+        return False
+    with bundle.open(member) as source, open(path, "rb") as handle:
+        while True:
+            piece = source.read(PIECE)
+            if piece != handle.read(PIECE):
+                return False
+            if not piece:
+                return True
 
 
 def read_manifest(path: str) -> dict:
@@ -160,6 +240,10 @@ def import_entries(models, prefs, bundle, entries,
     """Import chosen entries of an open package; a failing entry counts `refused`, the rest go on."""
     if not getattr(prefs, "dir", ""):
         raise PackageError("no library set - nowhere to import into")
+    needed = unpacked_bytes(bundle, [arc for entry in entries for arc in _arcs(entry)])
+    if needed > MAX_UNPACKED_BYTES:    # before the first write, so a refusal leaves the library as it was
+        raise PackageError(messages.PACKAGE_TOO_LARGE % (
+            wording.byte_size(needed), wording.byte_size(MAX_UNPACKED_BYTES)))
     summary = {"imported": 0, "skipped": 0, "files": 0, "refused": 0,
                "categories": {}, "problems": []}
     staged = []    # appended rows, saved once per model by `_commit_assets`
@@ -260,25 +344,23 @@ def _import_asset(models, prefs, bundle, entry, restore, summary):
         os.makedirs(os.path.dirname(target), exist_ok=True)
         with hostos.scratch_beside(target) as scratch:
             with open(scratch, "wb") as handle:
-                handle.write(bundle.read(arcname))
+                copy_member(bundle, arcname, handle)
     store_prefix = texstore.TOKEN_PREFIX + texstore.STORE_DIR_NAME + "/"
     for token, arcname in (entry.get("textures") or {}).items():
         if not str(token).startswith(store_prefix):    # only store tokens may land
             raise PackageError("not a store texture token: %r" % token)
         target = hostos.contained_join(    # PathEscape on `..`; the entry counts refused
             prefs.dir, *str(token)[len(texstore.TOKEN_PREFIX):].split("/"))
-        data = bundle.read(arcname)
         if os.path.exists(target):
-            with open(target, "rb") as handle:
-                if handle.read() == data:
-                    continue    # byte-identical - another asset already shares the file
+            if _holds(bundle, arcname, target):
+                continue    # byte-identical - another asset already shares the file
             debug.event("packages", "texture member replaced",
                         token=str(token))
         hostos.check_sandbox(target)
         os.makedirs(os.path.dirname(target), exist_ok=True)
         with hostos.scratch_beside(target) as scratch:
             with open(scratch, "wb") as handle:
-                handle.write(data)
+                copy_member(bundle, arcname, handle)
     model._append_record(asset)
     return model, asset, entry, row
 
@@ -297,8 +379,16 @@ def _import_file(prefs, bundle, entry, summary) -> None:
     hostos.check_sandbox(target)
     with hostos.scratch_beside(target) as scratch:
         with open(scratch, "wb") as handle:
-            handle.write(bundle.read(entry["arc"]))
+            copy_member(bundle, entry["arc"], handle)
     summary["files"] += 1
+
+
+def _arcs(entry) -> list:
+    """The members one entry lands: a file entry its `arc`, an asset entry its files and textures."""
+    if entry.get("type") == "file":
+        return [entry.get("arc")]
+    return (list((entry.get("files") or {}).values())
+            + list((entry.get("textures") or {}).values()))
 
 
 def _verify(bundle, manifest) -> list:
@@ -306,10 +396,7 @@ def _verify(bundle, manifest) -> list:
     problems = []
     held = set(bundle.namelist())
     for entry in manifest.get("entries", ()):
-        arcs = ([entry.get("arc")] if entry.get("type") == "file"
-                else list((entry.get("files") or {}).values())
-                + list((entry.get("textures") or {}).values()))
-        for arc in arcs:
+        for arc in _arcs(entry):
             if arc and arc not in held:
                 problems.append("missing member %s" % arc)
     return problems

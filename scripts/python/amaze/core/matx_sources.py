@@ -20,7 +20,7 @@ import zlib
 
 import amaze
 from amaze.core import debug
-from amaze.helpers import hostos
+from amaze.helpers import hostos, wording
 from amaze import messages
 
 USER_AGENT = "Amaze/1.0 (Houdini material library)"
@@ -197,6 +197,13 @@ class ShortDownload(OSError):
         self.total = total
 
 
+class DownloadTooLarge(OSError):
+    """A body over the ceiling its caller set, refused as declared or as it arrives."""
+
+    def __init__(self, ceiling: int) -> None:
+        super().__init__(messages.DOWNLOAD_TOO_LARGE % wording.byte_size(ceiling))
+
+
 def _drain(resp, write, on_bytes=None, total=0) -> int:
     """A response body through `write` in 64 KB chunks, on_bytes(read, total) after each."""
     read = 0
@@ -211,14 +218,23 @@ def _drain(resp, write, on_bytes=None, total=0) -> int:
     return read
 
 
-def stream_into(url: str, path: str, on_bytes=None) -> int:
-    """The body at `url` written into `path`; answers the bytes read, raises ShortDownload."""
+def stream_into(url: str, path: str, on_bytes=None, ceiling: int = 0) -> int:
+    """The body at `url` into `path`; the bytes read, or ShortDownload or DownloadTooLarge."""
     with _request(url) as resp, open(path, "wb") as fh:
         try:
             total = int(resp.headers.get("Content-Length") or 0)
         except (TypeError, ValueError):
             total = 0
-        read = _drain(resp, fh.write, on_bytes, total)
+        if ceiling and total > ceiling:    # the server's own word, before a byte is read
+            raise DownloadTooLarge(ceiling)
+
+        def counted(read, total):
+            if ceiling and read > ceiling:    # what arrives, whatever the server declared
+                raise DownloadTooLarge(ceiling)
+            if on_bytes is not None:
+                on_bytes(read, total)
+
+        read = _drain(resp, fh.write, counted, total)
     if total and read != total:    # a short body ends the loop normally ▸r/matx-source-quirks
         raise ShortDownload(url, read, total)
     return read
@@ -275,11 +291,14 @@ def report_unsafe(kind: str, paths) -> None:
                 key="online-unsafe-archive-paths")
 
 
-def download(url: str, dest_path: str, on_bytes=None) -> str:
-    """Stream a URL to `dest_path` through a scratch beside it; on_bytes(read, total) per 64KB chunk."""
+def download(url: str, dest_path: str, on_bytes=None, ceiling=None) -> str:
+    """A URL streamed to `dest_path` through a scratch beside it, refused past an import's own cap."""
+    if ceiling is None:
+        from amaze.core import packages
+        ceiling = packages.MAX_UNPACKED_BYTES    # one figure for what one import brings in ▸r/zip-declared-size
     os.makedirs(os.path.dirname(dest_path), exist_ok=True)
     with hostos.scratch_beside(dest_path) as tmp_path:    # a fixed .part name was one shared buffer between concurrent fetches
-        stream_into(url, tmp_path, on_bytes)
+        stream_into(url, tmp_path, on_bytes, ceiling)
     return dest_path
 
 
@@ -576,6 +595,11 @@ class GPUOpenSource(MatxSource):
                         skipped.append(member)
                     else:
                         safe.append(member)
+                from amaze.core import packages
+                needed = packages.unpacked_bytes(zf, safe)
+                if needed > packages.MAX_UNPACKED_BYTES:    # before the alert, which says the rest imported
+                    raise OSError(messages.PACKAGE_TOO_LARGE % (
+                        wording.byte_size(needed), wording.byte_size(packages.MAX_UNPACKED_BYTES)))
                 report_unsafe("archive", skipped)
                 zf.extractall(dest_dir, members=safe)
         finally:

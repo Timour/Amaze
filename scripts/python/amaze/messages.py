@@ -90,6 +90,9 @@ NO_FOLDER_SELECTED_TO_RELOCATE = "Select the registered folder to re-point first
 RELOCATE_TARGET_NOT_A_FOLDER = "That location isn't a folder."
 NO_LIBRARY_CONFIGURED = "Set up a library first."
 PACKAGE_IMPORT_SUMMARY = "Imported %d asset(s) and %d file(s) into the Import category."
+PACKAGE_NOT_READABLE = '"%s" is not a package Amaze can read.'
+PACKAGE_TOO_LARGE = "This package unpacks to %s, more than the %s Amaze imports at once."
+DOWNLOAD_TOO_LARGE = "This download is larger than the %s Amaze imports at once."
 MATERIAL_PRESETS_FOUND = "No material presets found in: %s"
 IMPORT_MATERIAL_PRESETS_FROM = "Import %d material presets from:\n%s\n\n%s\n\nPreviews aren't generated during import — select the new materials afterwards and use Update Render."
 IMPORT_MATERIAL_PRESETS_FROM_RENDERING = 'Import %d material presets from:\n%s\n\n%s\n\nNote: Thumbnails are rendered in one batch once the import finishes.'
@@ -192,6 +195,9 @@ ADDONS_TURNED = "Restart Houdini to turn %s %s."
 ADDONS_STORE_UNREACHABLE = "The Amaze store couldn't be reached (%s)."
 ADDONS_LOCATION_UNKNOWN = "Amaze can't tell where it's installed, so it can't install add-ons. Check that $AMAZE points at the install."
 ADDON_VERSION = 'version %s'
+ADDON_FIELD_NOT_TEXT = '%s is not text'
+ADDON_NODE_FIELD_NOT_TEXT = '%s: %s is not text'
+ADDON_TOO_LARGE = 'it unpacks to %s, more than the %s an add-on may hold'
 
 ADDON_AUTHOR = 'author: %s'
 

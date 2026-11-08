@@ -644,6 +644,47 @@ class OnlineDownloadsStayInsideTheLibrary(unittest.TestCase):
             "contained_join - and its uid comes from the remote "
             "catalogue, so `../x` writes outside the cache root")
 
+    def test_a_package_past_the_cap_is_refused_before_it_unpacks(self):
+        import shutil
+        import tempfile
+        import zipfile
+        from unittest import mock
+
+        from amaze import messages
+        from amaze.core import matx_sources, packages
+        from amaze.helpers import wording
+        dest = tempfile.mkdtemp(prefix="amaze_gpuopen_")
+        self.addCleanup(shutil.rmtree, dest, True)
+
+        def served(url, path, on_bytes=None, ceiling=None):
+            with zipfile.ZipFile(path, "w") as bundle:
+                bundle.writestr("brick/brick.mtlx", "<materialx/>")
+                bundle.writestr("brick/brick_color.png", b"x" * 4000)
+                bundle.writestr("../outside.txt", b"y")
+            return path
+
+        class Record:
+            payload = {}
+            title = "Red Brick"
+
+        class Source(matx_sources.GPUOpenSource):
+            def __init__(self):
+                pass
+
+            def _resolved_packages(self, record):
+                return [("2K", "id", "https://example.invalid/brick.zip")]
+
+        with mock.patch.object(matx_sources, "download", served), \
+                mock.patch.object(matx_sources, "report_unsafe") as reported, \
+                mock.patch.object(packages, "MAX_UNPACKED_BYTES", 1000), \
+                self.assertRaises(OSError) as caught:
+            Source().fetch(Record(), "2K", dest)
+        self.assertEqual(messages.PACKAGE_TOO_LARGE % (wording.byte_size(4012),
+                                                       wording.byte_size(1000)),
+                         str(caught.exception))
+        self.assertEqual([], os.listdir(dest), "a refused package still unpacked")
+        reported.assert_not_called()    # its alert says the rest imported, which a refusal makes untrue
+
     def test_a_failed_package_lookup_is_not_cached(self):
         """`_packages` returns [] on error, a present key, so caching it would outlive a network blip."""
         from amaze.core import matx_sources

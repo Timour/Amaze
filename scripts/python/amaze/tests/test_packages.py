@@ -194,6 +194,44 @@ class PackageReaderTest(unittest.TestCase):
         self.assertEqual(1, len(problems))
         self.assertIn("files/0_a.png", problems[0])
 
+    def test_a_manifest_of_the_wrong_shape_is_refused_by_name(self):
+        from amaze import messages
+        from amaze.core import packages
+        asset = {"type": "asset", "section": "material"}
+        for manifest in ([], "x", None, {"entries": []},
+                         {"format": "2", "entries": []},
+                         {"format": True, "entries": []},
+                         {"format": 1, "entries": {"a": 1}},
+                         {"format": 2, "entries": [1]},
+                         {"format": 2, "entries": [dict(asset, files=["a"])]},
+                         {"format": 2, "entries": [dict(asset, textures=["a"])]},
+                         {"format": 2, "entries": [dict(asset, files={"mat": ["a"]})]},
+                         {"format": 2, "entries": [dict(asset, record=[1])]},
+                         {"format": 2, "entries": [dict(asset, note=[1])]},
+                         {"format": 2, "entries": [dict(asset, record={"categories": 5})]},
+                         {"format": 2, "entries": [dict(asset, record={"categories": [["a"]]})]},
+                         {"format": 2, "entries": [dict(asset, record={"colors": 5})]},
+                         {"format": 2, "entries": [dict(asset, note={"items": 5})]},
+                         {"format": 2, "entries": [{"type": "file", "arc": ["a"]}]}):
+            path = self._package(manifest)
+            for read in (packages.read_manifest, packages.verify_package):
+                with self.subTest(manifest=manifest, read=read.__name__):
+                    with self.assertRaises(packages.PackageError) as caught:
+                        read(path)
+                    self.assertEqual(messages.PACKAGE_NOT_READABLE % "p.amazepkg",
+                                     str(caught.exception))
+        kept = {"format": 2, "entries": [dict(asset, record={"categories": "Fabrics"},
+                                              note=None, textures=None)]}
+        self.assertEqual(kept, packages.read_manifest(self._package(kept)),
+                         "a text category or an absent field is a shape every writer has made")
+
+    def test_a_size_is_said_with_one_decimal_at_most(self):
+        from amaze.helpers import wording
+        self.assertEqual(
+            ["16 GB", "1.5 GB", "512 MB", "1.5 MB", "4 KB", "900 bytes"],
+            [wording.byte_size(n) for n in (16 * 1024 ** 3, 1536 * 1024 ** 2,
+                                            512 * 1024 ** 2, 1536 * 1024, 4096, 900)])
+
 
 class ExportMenuTest(unittest.TestCase):
     """The doors: Export Package on every section, Export Category on the sidebar, headless verbs."""
@@ -487,6 +525,81 @@ class PackageImportTest(unittest.TestCase):
             self.panel.package_import.import_file(broken)
         self.assertEqual(before, model.rowCount(),
                          "a refused package still changed the library")
+
+    def _material_package(self, entries_after=()):
+        """A package of a fixture material that owns payload files, raw entries appended after it."""
+        from amaze.core import packages
+        model = self.panel.material_model
+        asset = next(a for a in model.assets
+                     if any(os.path.exists(p)
+                            for p in model.asset_files(a.mat_id).values()))
+        out = _out_path(self)
+        packages.write_package(
+            out, [packages.collect_asset(model, asset.mat_id)])
+        if not entries_after:
+            return out
+        edited = _out_path(self, "edited.amazepkg")
+        with zipfile.ZipFile(out) as src, zipfile.ZipFile(edited, "w") as dst:
+            for name in src.namelist():
+                data = src.read(name)
+                if name == packages.MANIFEST:
+                    manifest = json.loads(data)
+                    manifest["entries"] += list(entries_after)
+                    data = json.dumps(manifest)
+                dst.writestr(name, data)
+        return edited
+
+    def test_a_misshapen_entry_after_a_whole_one_changes_nothing(self):
+        from amaze.core import packages
+        model = self.panel.material_model
+        out = self._material_package(
+            [{"type": "asset", "section": "material", "record": [1]}])
+        before, files = model.rowCount(), _files_under(self.panel.prefs.dir)
+        with self.assertRaises(packages.PackageError):
+            self.panel.package_import.import_file(out)
+        self.assertEqual(before, model.rowCount(),
+                         "the whole entry ahead of the misshapen one still landed")
+        self.assertEqual(files, _files_under(self.panel.prefs.dir),
+                         "a refused package still wrote into the library")
+
+    def test_the_import_door_says_why_a_misshapen_package_is_refused(self):
+        from unittest import mock
+
+        from amaze import messages
+        from amaze.core import packages
+        path = _out_path(self, "misshapen.amazepkg")
+        with zipfile.ZipFile(path, "w") as bundle:
+            bundle.writestr(packages.MANIFEST,
+                            json.dumps({"format": 1, "entries": {"a": 1}}))
+        ui = mock.Mock()
+        ui.selectFile.return_value = path
+        with mock.patch.object(hou, "ui", ui, create=True):
+            self.panel.package_import.import_package()
+        ui.displayMessage.assert_called_once_with(
+            messages.PACKAGE_NOT_READABLE % "misshapen.amazepkg")
+
+    def test_a_package_unpacking_past_the_cap_is_refused_before_a_write(self):
+        from unittest import mock
+
+        from amaze import messages
+        from amaze.core import packages
+        from amaze.helpers import wording
+        model = self.panel.material_model
+        out = self._material_package()
+        with zipfile.ZipFile(out) as bundle:
+            payload = sum(info.file_size for info in bundle.infolist()
+                          if info.filename != packages.MANIFEST)
+        before, files = model.rowCount(), _files_under(self.panel.prefs.dir)
+        with mock.patch.object(packages, "MAX_UNPACKED_BYTES", payload - 1), \
+                self.assertRaises(packages.PackageError) as caught:
+            self.panel.package_import.import_file(out)
+        self.assertEqual(
+            messages.PACKAGE_TOO_LARGE % (wording.byte_size(payload),
+                                          wording.byte_size(payload - 1)),
+            str(caught.exception))
+        self.assertEqual(before, model.rowCount())
+        self.assertEqual(files, _files_under(self.panel.prefs.dir),
+                         "the cap was read after a write")
 
     def test_an_imported_materials_family_lands_under_the_new_id(self):
         from amaze.core import packages
@@ -824,6 +937,13 @@ def _bytes_or_none(path):
         return None
 
 
+def _files_under(folder):
+    """Every file under `folder`, relative to it, once the stamp checks have stopped writing there."""
+    test_support.settle_stamps()
+    return {os.path.relpath(os.path.join(at, name), folder)
+            for at, _dirs, names in os.walk(folder) for name in names}
+
+
 def _manifest_zip(testcase, entries, members=None,
                   name="pkg.amazepkg", fmt=None) -> str:
     """A local package from raw manifest entries and {arcname: bytes}; `fmt` overrides the format."""
@@ -988,6 +1108,18 @@ class AmazeSourceTest(unittest.TestCase):
             "a package of a NEWER format than this build reads must "
             "list no tiles - importing it would silently misread it - "
             "while the readable package beside it still shows")
+
+    def test_a_misshapen_package_lists_no_tiles(self):
+        bad = _manifest_zip(self, [_palette_entry(7),
+                                   {"type": "asset", "section": "gradient", "record": [1]}],
+                            name="bad.amazepkg")
+        good = _manifest_zip(self, [_palette_entry(1), _palette_entry(2),
+                                    _palette_entry(3)], name="a.amazepkg")
+        tree = [("defaults", "bad.amazepkg", self.URL + "defaults/bad.amazepkg"),
+                ("defaults", "a.amazepkg", self.URL + "defaults/a.amazepkg")]
+        source = _canned_amaze_source(tree, {tree[0][2]: bad, tree[1][2]: good})
+        self.assertEqual(3, len(source.list_materials(limit=100)),
+                         "a misshapen package must list nothing and stop no other")
 
     def test_a_store_package_is_refused_by_the_local_reader(self):
         """A store package with no manifest is refused by name, as a local one is."""
@@ -1512,6 +1644,32 @@ class OnlinePackageImportTest(unittest.TestCase):
         self.assertEqual(before, material_model.rowCount(),
                          "the refused tile still changed the library")
 
+    def test_a_tile_unpacking_past_the_cap_is_refused_before_a_write(self):
+        from unittest import mock
+
+        from amaze import messages
+        from amaze.core import packages
+        from amaze.helpers import wording
+        member = "assets/material/f/f.mat"
+        entry = {"type": "asset", "section": "material", "id": "f" * 32,
+                 "record": {"id": "f" * 32, "name": "Heavy", "categories": ["X"]},
+                 "note": {}, "files": {"mat": member}}
+        pkg = _manifest_zip(self, [entry], members={member: b"x" * 4000})
+        url = self.URL + "defaults/heavy.amazepkg"
+        source = _canned_amaze_source([("defaults", "heavy.amazepkg", url)], {url: pkg})
+        record = source.list_materials(limit=10)[0]
+        model = self.panel.material_model
+        before, files = model.rowCount(), _files_under(self.panel.prefs.dir)
+        with mock.patch.object(self.panel.matx_online_model, "_sources", [source]), \
+                mock.patch.object(packages, "MAX_UNPACKED_BYTES", 1000):
+            ok, reason = self.panel.online_import.import_material(record)
+        self.assertFalse(ok, "a tile past the cap imported")
+        self.assertEqual(messages.PACKAGE_TOO_LARGE % (wording.byte_size(4000),
+                                                       wording.byte_size(1000)), reason)
+        self.assertEqual(before, model.rowCount())
+        self.assertEqual(files, _files_under(self.panel.prefs.dir),
+                         "the store path read the cap after a write")
+
 
 class TexturePackingTest(unittest.TestCase):
     """Format 2: adopted textures travel and land at the same tokens; an escaping token is refused."""
@@ -1582,6 +1740,50 @@ class TexturePackingTest(unittest.TestCase):
         landed = texstore.resolve(tokens[0], model.preferences)
         self.assertTrue(os.path.isfile(landed),
                         "the texture member did not land at its token")
+
+    def test_no_member_is_read_whole(self):
+        from unittest import mock
+
+        from amaze.core import packages, texstore
+        model, row = self._material_with_texture("Streamed_Weave")
+        folder = tempfile.mkdtemp(prefix="amaze_pkg_filesrc_")
+        self.addCleanup(__import__("shutil").rmtree, folder, ignore_errors=True)
+        plain = os.path.join(folder, "notes.txt")
+        with open(plain, "wb") as handle:
+            handle.write(b"plain file bytes")
+        out = _out_path(self, "streamed.amazepkg")
+        packages.write_package(out, [packages.collect_asset(model, str(row.mat_id)),
+                                     packages.collect_file(plain, "other")])
+        os.remove(texstore.resolve(row.get_as_dict()["textures"][0],
+                                   model.preferences))    # so the texture lands rather than compares
+        reads, whole = [], zipfile.ZipFile.read
+
+        def read(bundle, name, pwd=None):
+            reads.append(getattr(name, "filename", name))
+            return whole(bundle, name, pwd)
+
+        with mock.patch.object(zipfile.ZipFile, "read", read):
+            summary = self.panel.package_import.import_file(out)
+        self.assertEqual((1, 1), (summary["imported"], summary["files"]), summary)
+        self.assertEqual([packages.MANIFEST], reads, "a member was read whole into memory")
+
+    def test_a_texture_in_place_is_kept_when_identical_and_replaced_when_not(self):
+        from amaze.core import packages, texstore
+        model, row = self._material_with_texture("Shared_Weave")
+        out = _out_path(self, "shared.amazepkg")
+        packages.write_package(
+            out, [packages.collect_asset(model, str(row.mat_id))])
+        adopted = texstore.resolve(row.get_as_dict()["textures"][0],
+                                   model.preferences)
+        before = os.stat(adopted).st_ino
+        self.assertEqual(1, self.panel.package_import.import_file(out)["imported"])
+        self.assertEqual(before, os.stat(adopted).st_ino,
+                         "a texture already in place byte for byte was written again")
+        with open(adopted, "wb") as handle:
+            handle.write(b"WEAVEBYTES")    # the same length, so only the bytes tell them apart
+        self.assertEqual(1, self.panel.package_import.import_file(out)["imported"])
+        self.assertEqual(b"weavebytes", _bytes(adopted),
+                         "a different texture in place was kept")
 
     def test_a_token_escaping_the_library_is_refused(self):
         from amaze.core import packages
