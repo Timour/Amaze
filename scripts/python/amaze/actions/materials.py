@@ -7,7 +7,7 @@ import hou
 from PySide6 import QtCore
 
 from amaze import messages
-from amaze.core import debug, material, versions
+from amaze.core import debug, library, material, versions
 from amaze.render import husk_job, nodes
 
 
@@ -20,7 +20,7 @@ def connect(model) -> None:
 
 def add_asset(model, node: hou.Node, cats: str, tags: str, fav: bool,
               name: str | None = None, picture: str = "", render: bool = True) -> str:
-    """Save `node` into `model` as a new material: its renderer when it is in, "" when it is not."""
+    """Save `node` into `model` as a new material: its renderer (`ListNotSaved` if unlisted), or ""."""
     handler = nodes.NodeHandler(model.preferences)
     handler.supplied_thumbnail = picture    # a hosted picture, which replaces the render
     handler.render_after_save = render    # False: the caller renders its rows in one batch
@@ -44,46 +44,49 @@ def add_asset(model, node: hou.Node, cats: str, tags: str, fav: bool,
         if isinstance(inventory, (list, tuple)) and inventory:    # rides _extra like the curated tag - old builds ignore it, get_as_dict carries it
             new_mat._extra["textures"] = list(inventory)
         model._append_record(new_mat)    # per row, so in a multi-save each tile shows as its save lands
-        if not model.save():  # the index write can be refused with the files already on disk
-            model.report_refused_index_write(new_mat)
+        listed = model.save()
+        if not listed:    # the save said why; the record waits in memory for the next save that works
+            debug.event("save", "material files written but the library list was not saved",
+                        name=new_mat.name, mat_id=new_mat.mat_id)
         try:  # the node carries its id, so a later save can offer Update Existing
             node.setUserData("assetlib_id", str(new_mat.mat_id))
         except (hou.OperationFailed, hou.ObjectWasDeleted):    # the save succeeded ▸r/node-vanished
             pass
-        return renderer
+        return renderer if listed else library.ListNotSaved(renderer)
     debug.event("save", "add_asset refused - the node was not saved",
                 name=new_mat.name, node=node.path(),
                 mat_id=new_mat.mat_id)
     return ""
 
 
-class ListNotSaved(str):
-    """The renderer of an update whose files were written but whose list entry was not saved."""
-
-    __slots__ = ()
+class UpdateRefused(Exception):
+    """Why an update wrote nothing: a sentence for the one message after the save."""
 
 
 def update_asset_content(model, row: int, node: hou.Node) -> str:
-    """Rewrite row `row`'s files from `node`: its renderer, a `ListNotSaved` one if unlisted, else ""."""
+    """Rewrite `row`'s files from `node`: its renderer, `ListNotSaved` if unlisted; refusals raise."""
     from amaze.core import library_policy
     if row < 0 or row >= len(model._assets):
-        return ""
+        raise UpdateRefused(messages.UPDATE_REFUSED_GONE)
     mat = model._assets[row]
     if not library_policy.allow_overwrite(model.preferences.dir):  # the gate every caller goes through
         debug.event("library", "overwrite refused - the library "
                     "does not allow it", mat_id=str(mat.mat_id),
                     name=mat.name)
-        return ""
+        raise UpdateRefused(messages.UPDATE_REFUSED_VERSIONS_OFF)
     known = model._content_state.get(str(mat.mat_id))    # content is outside the index merge: last write would win
     current = model._content_stat(mat.mat_id)
     if known is not None and current is not None and current != known:
         debug.event("library", "content update refused - the files "
                     "changed since this session read them",
                     mat_id=str(mat.mat_id), name=mat.name)
-        debug.alert(
-            messages.ASSET_CHANGED_ON_DISK_SINCE_LOAD % mat.name,
-            key="content-changed-on-disk")
-        return ""
+        raise UpdateRefused(messages.UPDATE_REFUSED_CHANGED_ON_DISK)
+    handler = nodes.NodeHandler(model.preferences)
+    renderer = handler.get_renderer_from_node(node)
+    if not nodes.ocio_set():    # the save's own two refusals, asked before anything is held aside
+        raise UpdateRefused(messages.OCIO_NOT_SET)
+    if not renderer:
+        raise UpdateRefused(messages.UPDATE_REFUSED_NOT_A_BUILDER)
 
     old_signature = None  # values-only is a new version, else structural ▸p/structure-signature
     pre_edit = {}
@@ -97,10 +100,8 @@ def update_asset_content(model, row: int, node: hou.Node) -> str:
                     "will be treated as structural",
                     mat_id=str(mat.mat_id), error=str(exc))
 
-    handler = nodes.NodeHandler(model.preferences)
-    renderer = handler.get_renderer_from_node(node)
     try:  # the pre-edit copies go on every exit, the early returns included
-        if not handler.save_node(node, mat.mat_id, True):  # overwrites the pair, always re-renders
+        if not handler.save_node(node, mat.mat_id, True):  # its two refusals were asked above
             return ""
         model._content_state[str(mat.mat_id)] = model._content_stat(  # our own write is the new baseline for this id
             mat.mat_id)
@@ -158,7 +159,7 @@ def update_asset_content(model, row: int, node: hou.Node) -> str:
         node.setUserData("assetlib_id", str(mat.mat_id))
     except (hou.OperationFailed, hou.ObjectWasDeleted):    # a vanished node costs the stamp ▸r/node-vanished
         pass
-    return renderer if listed else ListNotSaved(renderer)
+    return renderer if listed else library.ListNotSaved(renderer)
 
 
 def render_thumbnail(model, row: int) -> None:

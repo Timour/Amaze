@@ -192,6 +192,12 @@ class _StampWriter:
             return False
 
 
+class ListNotSaved(str):
+    """The answer of a save whose files were written but whose list entry was not saved."""
+
+    __slots__ = ()
+
+
 class AssetLibrary(grid_engine.GridEngine,
                    QtCore.QAbstractTableModel):
     """The shared asset model every library section runs on; nothing renderer-shaped lives here."""
@@ -923,22 +929,15 @@ class AssetLibrary(grid_engine.GridEngine,
             self.save()
         return changed
 
-    CONTENT_SURVIVES_A_REFUSED_INDEX_WRITE = True  # whether Repair can recover what a refused index write leaves; subclasses override
-
     def report_refused_index_write(self, asset) -> None:
-        """Report content written but the list not; call it from every add_asset. Files stay put."""
+        """Alert that an inline asset was not saved, its list write refused; file saves are marked."""
         name = asset.name or "The asset"
-        debug.event("save", "asset content written but the index write "
+        debug.event("save", "inline asset not saved - the index write "
                     "was refused", name=name, mat_id=asset.mat_id,
                     model=self.DB_FILENAME)
-        if self.CONTENT_SURVIVES_A_REFUSED_INDEX_WRITE:
-            debug.alert(
-                messages.ASSET_FILES_WRITTEN_BUT_LIST_NOT_UPDATED % name,
-                key="index-refused-after-content-write")
-        else:
-            debug.alert(
-                messages.ASSET_NOT_SAVED_LIST_NOT_UPDATED % name,
-                key="index-refused-inline-content")
+        debug.alert(
+            messages.ASSET_NOT_SAVED_LIST_NOT_UPDATED % name,
+            key="index-refused-inline-content")
 
     def asset_files(self, mat_id: str) -> dict:
         """`asset_files_for` this library; a new per-asset file is added THERE and nowhere else."""

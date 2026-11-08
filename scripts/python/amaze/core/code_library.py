@@ -118,8 +118,6 @@ class CodeLibrary(library.AssetLibrary):
     VERSION_SECTION = versions.CODE    # code/versions/<id>/, the text handed in as a file
     NEW_VERSION = 0    # save_version's number for a version the editor has not saved yet
 
-    CONTENT_SURVIVES_A_REFUSED_INDEX_WRITE = False  # inline: a refused write leaves nothing to recover
-
     def add_asset(
         self,
         code: str,

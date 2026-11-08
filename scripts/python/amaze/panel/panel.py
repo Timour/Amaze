@@ -3176,19 +3176,7 @@ class AmazePanel(QtWidgets.QWidget):
             if choice == cancel_at:
                 return
             if choice == overwrite_at:
-                total, done, unlisted = len(existing), 0, []
-                try:
-                    with hou.InterruptableOperation(    # type: ignore
-                        messages.UPDATING_MATERIALS, open_interrupt_dialog=True
-                    ) as op:
-                        for mat_id, node in existing:
-                            op.updateLongProgress(
-                                done / total, "%d/%d  %s" % (done + 1, total, node.name()))
-                            unlisted.append(self._update_existing_asset(mat_id, node))
-                            done += 1
-                except hou.OperationInterrupted:
-                    debug.status(messages.SAVE_STOPPED % (done, total))
-                self._say_updates_not_listed([name for name in unlisted if name])    # once the progress window is gone
+                self._update_existing_assets(existing)
                 if new_nodes:
                     self.get_material_info_user(new_nodes)
                 return
@@ -3203,35 +3191,62 @@ class AmazePanel(QtWidgets.QWidget):
                 return row
         return self.material_model.find_asset_row_by_name(node.name())
 
-    def _update_existing_asset(self, mat_id: str, node: hou.Node) -> str:
-        """Overwrite asset `mat_id`'s files from the scene node: its name if the list did not take it."""
-        model = self.material_model
-        row = model.find_asset_row_by_id(mat_id)
-        name = model.assets[row].name if row >= 0 else ""    # taken first: a save can drop the row
-        renderer = material_actions.update_asset_content(    # NO layout pair: it saves, which adopts rows
-            model, row, node)
-        if renderer:
-            model.row_changed(model.find_asset_row_by_id(mat_id))    # renderer and date changed IN PLACE
-        self.refresh_sidebar_categories()    # a re-detected renderer can shift counts and hiding
-        if not renderer:
-            ui = getattr(hou, "ui", None)
+    def _update_existing_assets(self, existing: list) -> None:
+        """Save Version over each (id, node); what it did not update is said once, after the batch."""
+        ui = getattr(hou, "ui", None)
+        if not nodes.ocio_set():    # every material would refuse alike, so it is said once
             if ui is not None:
-                ui.displayMessage(
-                    messages.MATERIAL_UPDATE_FAILED
-                )
-            return ""
+                ui.displayMessage(messages.OCIO_NOT_SET)
+            return
+        model = self.material_model
+        total, done, unlisted, refused = len(existing), 0, [], []
+        try:
+            with hou.InterruptableOperation(    # type: ignore
+                messages.UPDATING_MATERIALS, open_interrupt_dialog=True
+            ) as op:
+                for mat_id, node in existing:
+                    op.updateLongProgress(
+                        done / total, "%d/%d  %s" % (done + 1, total, node.name()))
+                    row = model.find_asset_row_by_id(mat_id)
+                    name = model.assets[row].name if row >= 0 else node.name()    # taken first: a save can drop the row
+                    try:
+                        if not self._update_existing_asset(mat_id, node):
+                            unlisted.append(name)
+                    except hou.OperationInterrupted:
+                        raise
+                    except material_actions.UpdateRefused as refusal:
+                        refused.append((name, str(refusal)))
+                    except Exception as exc:                        # noqa: BLE001 - one error is that material's line
+                        debug.exception("save version", exc, node=node.path())
+                        refused.append((name, str(exc)))
+                    done += 1
+        except hou.OperationInterrupted:
+            debug.status(messages.SAVE_STOPPED % (done, total))
+        self.refresh_sidebar_categories()    # a re-detected renderer can shift counts and hiding
+        if refused and ui is not None:    # once the progress window is gone
+            if len(refused) == 1:
+                name, reason = refused[0]
+                ui.displayMessage(messages.MATERIAL_NOT_UPDATED % (name, reason))
+            else:
+                ui.displayMessage(messages.MATERIALS_NOT_UPDATED % "\n".join(
+                    messages.MATERIAL_NOT_UPDATED_LINE % (name, reason) for name, reason in refused))
+        if len(unlisted) == 1:    # the status line, last: nothing after it writes the line
+            debug.refuse(messages.MATERIAL_UPDATED_LIBRARY_NOT_SAVED % unlisted[0])
+        elif unlisted:
+            debug.refuse(messages.MATERIALS_UPDATED_LIBRARY_NOT_SAVED % len(unlisted))
+
+    def _update_existing_asset(self, mat_id: str, node: hou.Node) -> bool:
+        """Overwrite asset `mat_id`'s files from the scene node: False if the list did not take them."""
+        model = self.material_model
+        renderer = material_actions.update_asset_content(    # NO layout pair: it saves, which adopts rows
+            model, model.find_asset_row_by_id(mat_id), node)
+        if not renderer:    # the save refused and said why itself
+            return True
+        model.row_changed(model.find_asset_row_by_id(mat_id))    # renderer and date changed IN PLACE
         self.enable_renderer_on_add(renderer)
         self.prefs.save()
         self.update_renderer_toggles()
-        return name if isinstance(renderer, material_actions.ListNotSaved) else ""
-
-    @staticmethod
-    def _say_updates_not_listed(names: list) -> None:
-        """One status line for the updates whose files were written but whose list entries were not."""
-        if len(names) == 1:
-            debug.refuse(messages.MATERIAL_UPDATED_LIBRARY_NOT_SAVED % names[0])
-        elif names:
-            debug.refuse(messages.MATERIALS_UPDATED_LIBRARY_NOT_SAVED % len(names))
+        return not isinstance(renderer, library.ListNotSaved)
 
     def get_material_info_user(self, sel: list[hou.Node]) -> None:
         """The new-material save: D09 opened on Material, any section still choosable."""

@@ -21,6 +21,7 @@ import json  # noqa: E402
 import shutil  # noqa: E402
 import tempfile  # noqa: E402
 
+from amaze import messages  # noqa: E402
 from amaze.core import library as library_mod  # noqa: E402
 from amaze.actions import materials as material_actions  # noqa: E402
 from amaze.core import material_files  # noqa: E402
@@ -779,11 +780,15 @@ class UpdateExistingIsGuardedAgainstTheOtherSessionTest(unittest.TestCase):
                       "rb").read()
 
         node = self.staging.createNode("subnet")
-        result = material_actions.update_asset_content(self.model, row, node)
+        with test_support.captured_log() as log, \
+                self.assertRaises(material_actions.UpdateRefused,
+                                  msg="the update overwrote content another session "
+                                      "wrote since this one read it") as refused:
+            material_actions.update_asset_content(self.model, row, node)
 
-        self.assertEqual("", result,
-                         "the update overwrote content another session "
-                         "wrote since this one read it")
+        self.assertEqual(messages.UPDATE_REFUSED_CHANGED_ON_DISK, str(refused.exception))
+        self.assertEqual([], log.messages("alert"),
+                         "the refusal alerted on its own, beside the save's one message")
         now = open(self.model.asset_files(mat.mat_id)["mat"],
                    "rb").read()
         self.assertEqual(theirs, now,
@@ -867,7 +872,7 @@ class AnUpdateWhoseListWriteIsRefused(unittest.TestCase):
         self.assertNotEqual(listed["date"], mat.date, "premise: the record kept its date")
         self.assertTrue(answer, "the files are new, yet the update answered that nothing was "
                         "written, which the panel shows as Update failed")
-        self.assertIsInstance(answer, material_actions.ListNotSaved,
+        self.assertIsInstance(answer, library_mod.ListNotSaved,
                               "the update answered a plain success while its list entry "
                               "was not saved, so the panel could not say so")
         self.assertEqual(1, len(log.messages("alert")),
@@ -879,6 +884,35 @@ class AnUpdateWhoseListWriteIsRefused(unittest.TestCase):
         self.assertTrue(self.model.save(), "premise: the next save was refused too")
         self.assertEqual(mat.date, self._listed(mat_id)["date"],
                          "the next save that works did not write the update's record")
+
+
+class AnAddWhoseListWriteIsRefused(unittest.TestCase):
+    """A new material whose list write fails: in the grid, its answer marked, one alert only."""
+
+    def setUp(self):
+        test_support.pin_env(self, "OCIO", "/dev/null")    # save_node gates on $OCIO; nothing renders here
+        self.prefs = test_support.fixture_prefs(self)
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        self.model = library_mod.MaterialLibrary(preferences=self.prefs)
+        self.staging = hou.node("/obj").createNode("matnet")
+        self.addCleanup(self.staging.destroy)
+
+    def test_the_answer_says_so_and_the_library_alert_is_the_only_one(self):
+        node = _build_material(self.staging, "refused_add_probe")
+        held = test_support.asset_ids(self.model)
+        index = os.path.join(self.prefs.dir, self.model.DB_FILENAME)
+        with test_support.full_disk_for(index), test_support.captured_log() as log:
+            answer = material_actions.add_asset(self.model, node, "", "", False)
+        self.assertEqual(1, len(test_support.arrived(self.model, held)),
+                         "premise: the new tile is not in the grid")
+        self.assertIsInstance(answer, library_mod.ListNotSaved,
+                              "the add answered a plain success while its list entry "
+                              "was not saved, so the panel could not say so")
+        self.assertEqual(1, len(log.messages("alert")),
+                         "a second alert joined the library's own: %s" % log.messages("alert"))
+        self.assertTrue(log.matching("could not save the library", "alert"),
+                        log.messages("alert"))
 
 
 class StructureSignatureTest(unittest.TestCase):

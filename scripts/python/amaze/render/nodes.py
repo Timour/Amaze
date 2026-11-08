@@ -596,6 +596,11 @@ def build_karma_material(parent, name, produce):
     return KarmaMaterial(builder, shader, wired)
 
 
+def ocio_set() -> bool:
+    """Whether $OCIO names a configuration, which every material save renders through; empty is unset."""
+    return bool(hou.getenv("OCIO"))
+
+
 class NodeHandler:
     """Save, import and convert, against the user's live scene."""
 
@@ -1696,7 +1701,7 @@ class NodeHandler:
         from amaze.helpers import helpers
         self.texture_inventory = []    # filled by the save; add_asset/update copy it onto the row
         ui = getattr(hou, "ui", None)  # without a UI the refusals below still return False ▸r/status-bar
-        if not hou.getenv("OCIO"):    # an empty OCIO counts as unset
+        if not ocio_set():
             if ui is not None:
                 ui.displayMessage(messages.OCIO_NOT_SET)
             return False

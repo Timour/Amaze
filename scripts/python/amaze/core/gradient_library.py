@@ -87,8 +87,6 @@ class GradientLibrary(library.AssetLibrary):
 
     DB_FILENAME = "gradients.json"
 
-    CONTENT_SURVIVES_A_REFUSED_INDEX_WRITE = False  # a palette lives INLINE, so a refused list write leaves nothing on disk to recover
-
     COLUMN_ROLES = {
         "name": QtCore.Qt.ItemDataRole.DisplayRole,
         "type": "RendererLabelRole",

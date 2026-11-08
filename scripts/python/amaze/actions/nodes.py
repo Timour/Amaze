@@ -2,13 +2,13 @@
 
 import hou
 
-from amaze.core import debug, material
+from amaze.core import debug, library, material
 from amaze.render import cop_nodes, nodes
 
 
 def add_asset(model, node: hou.Node, cats: str, tags: str, fav: bool,
               items: list | None = None, name: str = "") -> str:
-    """Save `node`, or `items` inside it, into `model`: the context label recorded, "" on failure."""
+    """Save `node`, or `items` in it, into `model`: its label (`ListNotSaved` if unlisted), or ""."""
     handler = nodes.NodeHandler(model.preferences)
     new_mat = material.Material()
     tags = model.sanitize_tags(tags)
@@ -21,13 +21,15 @@ def add_asset(model, node: hou.Node, cats: str, tags: str, fav: bool,
         return ""
     new_mat.cop_net = handler.cop_info    # carries `thumb_node`, read off the live display flag
     model._append_record(new_mat)
-    if not model.save():
-        model.report_refused_index_write(new_mat)
+    listed = model.save()
+    if not listed:    # the save said why; the record waits in memory for the next save that works
+        debug.event("save", "node files written but the library list was not saved",
+                    name=new_mat.name, mat_id=new_mat.mat_id)
     try:
         node.setUserData("assetlib_id", str(new_mat.mat_id))
     except hou.OperationFailed:
         pass
-    return label
+    return label if listed else library.ListNotSaved(label)
 
 
 def import_asset_to_scene(model, index, context_node=None):

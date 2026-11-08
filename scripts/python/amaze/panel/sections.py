@@ -13,7 +13,7 @@ from amaze.actions import code as code_actions
 from amaze.actions import materials as material_actions
 from amaze.actions import nodes as node_actions
 from amaze.core import (category, debug, file_library, file_moves,
-                        grid_columns, library_policy, locations, multifilterproxy_model,
+                        grid_columns, library, library_policy, locations, multifilterproxy_model,
                         renderers, scene_captures, notes, section_list)
 from amaze.helpers import hostos, ui_helpers, wording
 from amaze import messages
@@ -847,6 +847,7 @@ class MaterialSection(AssetSection):
 
         renderers = []
         failures = []
+        unlisted = []
         total, done = len(nodes), 0
         try:
             with hou.InterruptableOperation(    # type: ignore
@@ -872,6 +873,8 @@ class MaterialSection(AssetSection):
                         failures.append(messages.SAVE_DID_NOT_COMPLETE_LINE % asset.name())
                         continue
                     renderers.append(renderer)
+                    if isinstance(renderer, library.ListNotSaved):
+                        unlisted.append(dialog.name or asset.name())    # the name the add gave it
         except hou.OperationInterrupted:
             debug.status(messages.SAVE_STOPPED % (done, total))
 
@@ -884,6 +887,10 @@ class MaterialSection(AssetSection):
         self.panel.prefs.save()
         self.panel.update_renderer_toggles()
         self.panel.refresh_sidebar_categories()
+        if len(unlisted) == 1:    # the status line, last: nothing after it writes the line
+            debug.refuse(messages.ASSET_ADDED_LIBRARY_NOT_SAVED % unlisted[0])
+        elif unlisted:
+            debug.refuse(messages.MATERIALS_ADDED_LIBRARY_NOT_SAVED % len(unlisted))
 
     def update_preview(self, indexes) -> None:
         """Update Render on Material tiles: the whole selection in one render batch."""
@@ -1020,6 +1027,8 @@ class CopSection(AssetSection):
             ui.displayMessage(
                 messages.NODE_SAVE_FAILED % node.name()
             )
+        if isinstance(result, library.ListNotSaved):    # the name below is the one the add gave it
+            debug.refuse(messages.ASSET_ADDED_LIBRARY_NOT_SAVED % (dialog.name.strip() or node.name()))
 
     def update_preview(self, indexes) -> None:
         """Update Render on Node tiles: each network's picture re-rendered by the Node verbs."""

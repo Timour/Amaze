@@ -1,6 +1,7 @@
 """The Grid area's operations: each verb is one Section method that is handed the selection."""
 
 import ast
+import contextlib
 import json
 import os
 import sys
@@ -1089,42 +1090,64 @@ class ACustomizeOverASelectionSavesOnce(unittest.TestCase):
                          "re-applying what every tile already carries saved")
 
 
-class ASaveVersionTheListCannotTakeIsSaidOnce(unittest.TestCase):
-    """Save Version with the library list write refused: one status line after the batch, no dialog."""
+class _SavesThroughThePanel:
+    """A fixture panel whose Save runs for real on fresh Karma builders, every dialog recorded."""
 
     def setUp(self):
         test_support.pin_env(self, "OCIO", "/dev/null")    # save_node gates on $OCIO; nothing renders here
         self.panel = test_support.fixture_panel(self)
         self.staging = hou.node("/obj").createNode("matnet")
         self.addCleanup(self.staging.destroy)
+        self.shown = []
 
-    def _save_over(self, count):
-        model = self.panel.material_model
-        assets = [asset for asset in model.assets
+    def _karma(self, count):
+        assets = [asset for asset in self.panel.material_model.assets
                   if renderers.is_karma(asset.renderer)][:count]
         self.assertEqual(count, len(assets), "premise: too few Karma materials")
-        held = []
-        for number, asset in enumerate(assets):
-            node = render_nodes.build_karma_material(
-                self.staging, "held%d" % number,
-                lambda builder: builder.createNode("mtlxstandard_surface")).builder
+        return assets
+
+    def _builders(self, count):
+        return [render_nodes.build_karma_material(
+            self.staging, "held%d" % number,
+            lambda builder: builder.createNode("mtlxstandard_surface")).builder
+            for number in range(count)]
+
+    def _held(self, assets, builder=True):
+        held = (self._builders(len(assets)) if builder else
+                [self.staging.createNode("null", "held%d" % n) for n in range(len(assets))])
+        for node, asset in zip(held, assets):
             node.setUserData("assetlib_id", str(asset.mat_id))
-            held.append(node)
-        shown = []
+        return held
 
-        def answering(text, *_args, **_kwargs):
-            shown.append(text)
-            return 0    # Save Version, the first button
+    def _list_of(self, model):
+        return os.path.join(self.panel.prefs.dir, model.DB_FILENAME)
 
-        index = os.path.join(self.panel.prefs.dir, model.DB_FILENAME)
-        with mock.patch.object(hou, "selectedNodes", lambda: held), \
-                mock.patch.object(hou, "ui", types.SimpleNamespace(displayMessage=answering),
-                                  create=True), \
-                mock.patch.object(library_policy, "allow_overwrite", lambda *_a: True), \
-                test_support.full_disk_for(index), test_support.captured_log() as log:
+    def _answering(self, text, *_args, **_kwargs):
+        self.shown.append(text)
+        return 0    # Save Version, the first button
+
+    def _save(self, held, *patches):
+        """The panel's Save over `held`, answered Save Version: (the dialogs after that question, log)."""
+        with contextlib.ExitStack() as stack:
+            for patch in (mock.patch.object(hou, "selectedNodes", lambda: held),
+                          mock.patch.object(hou, "ui", types.SimpleNamespace(
+                              displayMessage=self._answering), create=True),
+                          mock.patch.object(library_policy, "allow_overwrite", lambda *_a: True),
+                          *patches):
+                stack.enter_context(patch)
+            log = stack.enter_context(test_support.captured_log())
             self.panel.save_asset()
-        self.assertNotIn(messages.MATERIAL_UPDATE_FAILED, shown,
-                         "Update failed was shown, yet the files are the new ones")
+        return self.shown[1:], log
+
+
+class ASaveVersionTheListCannotTakeIsSaidOnce(_SavesThroughThePanel, unittest.TestCase):
+    """Save Version with the library list write refused: one status line after the batch, no dialog."""
+
+    def _save_over(self, count):
+        assets = self._karma(count)
+        index = self._list_of(self.panel.material_model)
+        shown, log = self._save(self._held(assets), test_support.full_disk_for(index))
+        self.assertEqual([], shown, "a dialog joined the library's own alert")
         self.assertTrue(log.matching("could not save the library", "alert"),
                         "premise: the list write went through")
         return assets, log.messages("refuse")
@@ -1138,6 +1161,118 @@ class ASaveVersionTheListCannotTakeIsSaidOnce(unittest.TestCase):
         _assets, said = self._save_over(2)
         self.assertEqual([messages.MATERIALS_UPDATED_LIBRARY_NOT_SAVED % 2], said,
                          "the batch did not end on one line counting its unsaved updates")
+
+
+class ASaveVersionSaysWhatItDidNotUpdateOnce(_SavesThroughThePanel, unittest.TestCase):
+    """Every material Save Version did not update, named once with its reason, after the batch."""
+
+    def _files(self, assets):
+        model = self.panel.material_model
+        found = []
+        for asset in assets:
+            with open(model.asset_files(asset.mat_id)["mat"], "rb") as handle:
+                found.append(handle.read())
+        return found
+
+    def test_an_unset_ocio_is_said_once_and_nothing_is_written(self):
+        assets = self._karma(2)
+        before = self._files(assets)
+        was = hou.getenv("OCIO") or ""
+        hou.putenv("OCIO", "")    # an empty $OCIO counts as unset, as the save reads it
+        self.addCleanup(hou.putenv, "OCIO", was)
+        shown, _log = self._save(self._held(assets))
+        self.assertEqual([messages.OCIO_NOT_SET], shown,
+                         "an unset $OCIO was said more than once, or with Update failed after it")
+        self.assertEqual(before, self._files(assets), "a material was written without $OCIO")
+
+    def test_a_node_that_is_no_builder_is_one_sentence(self):
+        assets = self._karma(1)
+        shown, _log = self._save(self._held(assets, builder=False))
+        self.assertEqual(
+            [messages.MATERIAL_NOT_UPDATED % (assets[0].name, messages.UPDATE_REFUSED_NOT_A_BUILDER)],
+            shown, "the refusal and Update failed came as two dialogs")
+
+    def test_two_changed_on_disk_are_both_named_in_one_message(self):
+        assets = self._karma(2)
+        for asset in assets:
+            path = self.panel.material_model.asset_files(asset.mat_id)["mat"]
+            with open(path, "ab") as handle:
+                handle.write(b"\0their-bytes")
+            stat = os.stat(path)
+            os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 5_000_000_000))
+        shown, log = self._save(self._held(assets))
+        lines = "\n".join(messages.MATERIAL_NOT_UPDATED_LINE
+                          % (asset.name, messages.UPDATE_REFUSED_CHANGED_ON_DISK) for asset in assets)
+        self.assertEqual([messages.MATERIALS_NOT_UPDATED % lines], shown,
+                         "the second material's refusal was not named, or came as its own dialog")
+        self.assertEqual([], log.messages("alert"), "the refusal alerted beside the one message")
+
+    def test_an_error_in_one_save_does_not_stop_the_batch(self):
+        assets = self._karma(2)
+        tried = []
+
+        def failing(handler, node, *_args):
+            tried.append(node.name())
+            raise OSError(28, "No space left on device")
+
+        try:
+            shown, _log = self._save(self._held(assets), mock.patch.object(
+                render_nodes.NodeHandler, "_save_copy", failing))
+        except OSError as exc:
+            self.fail("the error escaped Save Version, after %s: %s" % (tried, exc))
+        self.assertEqual(["held0", "held1"], tried, "the error stopped the batch")
+        lines = "\n".join(messages.MATERIAL_NOT_UPDATED_LINE
+                          % (asset.name, OSError(28, "No space left on device")) for asset in assets)
+        self.assertEqual([messages.MATERIALS_NOT_UPDATED % lines], shown,
+                         "the errors were not named in the batch's one message")
+
+
+class ASaveNewTheListCannotTakeIsSaidOnce(_SavesThroughThePanel, unittest.TestCase):
+    """A new material or node setup whose list write fails: a status line, the library's alert alone."""
+
+    def _dialog(self, name=""):
+        return types.SimpleNamespace(categories="", tags="", fav=False, name=name)
+
+    def _save_new(self, count):
+        held = self._builders(count)
+        index = self._list_of(self.panel.material_model)
+        with test_support.full_disk_for(index), test_support.captured_log() as log, \
+                mock.patch.object(hou, "ui", types.SimpleNamespace(
+                    displayMessage=self._answering), create=True):
+            self.panel.sections["material"].commit_save(held, held[0], self._dialog())
+        self.assertEqual([], self.shown, "a dialog joined the library's own alert")
+        self.assertEqual([], [text for text in log.messages("alert")
+                              if "could not save the library" not in text],
+                         "an alert beside the library's own said the material was not listed")
+        return held, log.messages("refuse")
+
+    def test_one_new_material_is_named(self):
+        held, said = self._save_new(1)
+        self.assertEqual([messages.ASSET_ADDED_LIBRARY_NOT_SAVED % held[0].name()], said,
+                         "the status line did not say the library was not saved")
+
+    def test_several_new_materials_share_one_line(self):
+        _held, said = self._save_new(2)
+        self.assertEqual([messages.MATERIALS_ADDED_LIBRARY_NOT_SAVED % 2], said,
+                         "the save did not end on one line counting its unlisted materials")
+
+    def test_a_new_node_setup_is_named(self):
+        lop = hou.node("/obj").createNode("lopnet", "refused_setup")
+        self.addCleanup(lop.destroy)
+        lop.createNode("sphere")
+        index = self._list_of(self.panel.cop_model)
+        with test_support.full_disk_for(index), test_support.captured_log() as log, \
+                mock.patch.object(hou, "selectedItems", lambda: [lop]), \
+                mock.patch.object(hou, "ui", types.SimpleNamespace(
+                    displayMessage=self._answering), create=True):
+            self.panel.sections["cop"].commit_save([lop], lop, self._dialog("probe_setup"))
+        self.assertEqual([], self.shown, "a dialog joined the library's own alert")
+        self.assertEqual([messages.ASSET_ADDED_LIBRARY_NOT_SAVED % "probe_setup"],
+                         log.messages("refuse"),
+                         "the status line did not say the library was not saved")
+        self.assertEqual([], [text for text in log.messages("alert")
+                              if "could not save the library" not in text],
+                         "an alert beside the library's own said the setup was not listed")
 
 
 if __name__ == "__main__":
