@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.33.12
+
+- When saving a new material or node setup cannot save the library list, the status bar says so once the save is done: `"<name>" was added, but the library could not be saved.`, or how many materials were, for several. It replaces an alert whose advice, to restart Houdini and run Check Library, ended with Check Library offering to move the new files aside.
+- Save Version names each material it did not update, with the reason, in one message after the save. Until now it showed `Update failed` after each refusal's own message. An unset $OCIO is said once, before anything is written, and an error in one material no longer stops the rest.
+
 ## 1.33.11
 
 - Package Import and the Add-On tab's Update refuse a package whose `package.json` Amaze cannot read, before anything is written, and say which file it was; the Amaze store shows no tiles for one. Some of these stopped with a Python error until now, one of them after part of the package was already in the library.
