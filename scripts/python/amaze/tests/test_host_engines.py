@@ -1,7 +1,9 @@
 """The two host engines own their branches, checked on source with comments and strings removed."""
 
 import os
+import shutil
 import sys
+import tempfile
 import tokenize
 import unittest
 
@@ -284,6 +286,53 @@ class AFailedWriteSaysWhichFailure(unittest.TestCase):
                                  "winerror %d was misread" % winerror)
                 self.assertEqual(cause == hostos.FAILED_HELD,
                                  "another program" in sentence)
+
+
+@unittest.skipUnless(sys.platform == "win32", "Windows refuses a replace onto these; POSIX does not")
+class AWindowsReplaceRefusalNamesTheFile(unittest.TestCase):
+    """Both arrive as winerror 5, which alone reads as a read-only folder. ▸r/windows-files"""
+
+    def setUp(self):
+        self.folder = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.folder, True)
+        self.path = os.path.join(self.folder, "notes.json")
+        with open(self.path, "w", encoding="utf-8") as handle:
+            handle.write("{}")
+
+    def _refusal(self):
+        from amaze.helpers import hostos
+        staged = os.path.join(self.folder, "notes.writing")
+        with open(staged, "w", encoding="utf-8") as handle:
+            handle.write("{}")
+        with self.assertRaises(OSError) as raised:
+            os.replace(staged, self.path)
+        return hostos.why_failed(raised.exception, self.path)
+
+    def test_a_read_only_file_is_named_not_its_folder(self):
+        import stat
+        from amaze.helpers import hostos
+        os.chmod(self.path, stat.S_IREAD)
+        self.addCleanup(os.chmod, self.path, stat.S_IREAD | stat.S_IWRITE)
+        cause, sentence = self._refusal()
+        self.assertEqual(hostos.FAILED_READ_ONLY, cause)
+        self.assertIn("the file is read-only", sentence)
+        self.assertNotIn("folder", sentence)
+
+    def test_a_file_another_program_holds_is_held(self):
+        import ctypes
+        from ctypes import wintypes
+        from amaze.helpers import hostos
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.CreateFileW.restype = wintypes.HANDLE
+        kernel32.CreateFileW.argtypes = (wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
+                                         wintypes.LPVOID, wintypes.DWORD, wintypes.DWORD,
+                                         wintypes.HANDLE)
+        held = kernel32.CreateFileW(self.path, 0x80000000, 0, None, 3, 0x80, None)
+        self.assertNotEqual(wintypes.HANDLE(-1).value, held, "premise: the file could be held")
+        self.addCleanup(kernel32.CloseHandle, held)
+        cause, sentence = self._refusal()
+        self.assertEqual(hostos.FAILED_HELD, cause)
+        self.assertIn("another program", sentence)
 
 
 if __name__ == "__main__":

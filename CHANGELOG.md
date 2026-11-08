@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.33.15
+
+- Karma and Octane material thumbnails render again on Windows when Redshift is installed. Redshift's shader plugin crashed every such render before its first picture; a thumbnail render now leaves out the shader plugins of renderers it does not use.
+- On Windows, saving over a read-only file, or a file another program has open, now says which of the two it is. Both used to be blamed on a read-only folder.
+- Check Library shows paths with Windows' own backslashes.
+
 ## 1.33.14
 
 - When a code snippet is saved but the library list cannot be, the status bar now says `"<name>" was added, but the library could not be saved.`, or `was updated` for a new version. It replaces an alert that told you to restart Houdini and save again, and a restart would have lost the snippet.

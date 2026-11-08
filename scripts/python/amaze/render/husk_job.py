@@ -20,6 +20,8 @@ UNUSED_PLUGINS = {    # Houdini plugins a thumbnail husk skips; Octane aborts wi
     "Octane": ("redshift4houdini.*",),
     "Redshift": ("Houdini_Octane*",),
 }
+SDR_BASES = ("SdrDiscoveryPlugin", "SdrParserPlugin")
+SDR_DISABLE = "PXR_SDR_DISABLE_PLUGINS"
 RESTART_EVERY = {"Octane": 1}    # Octane keeps frame 1's material unless restarted
 KILL_AFTER = 5.0    # seconds a husk may outlive its terminate ▸r/redshift-thumbnail-paths
 STALL_SECONDS = 600    # quiet this long, a husk is killed; done tiles stay ▸r/redshift-thumbnail-stall
@@ -58,6 +60,30 @@ def plugin_exclusion(renderer: str, current: str = "") -> str:
     if not patterns:
         return ""
     return patterns[0] if len(patterns) == 1 else "{%s}" % ",".join(patterns)
+
+
+def foreign_shader_plugins(renderer: str) -> list:
+    """Shader plugins from neither Houdini nor `renderer`'s folder. ▸r/husk-foreign-shader-plugins"""
+    from pxr import Plug, Tf
+    from amaze.helpers import hostos
+    registry = Plug.Registry()
+
+    def home(plugin) -> str:
+        return hostos.comparable_path(os.path.dirname(os.path.realpath(plugin.path)))
+
+    hfs = hostos.comparable_path(os.path.realpath(hou.getenv("HFS")))
+    delegate = Tf.Type.FindByName(DELEGATES.get(renderer, ""))
+    own = None if delegate.isUnknown else registry.GetPluginForType(delegate)
+    own_home = home(own) if own else None
+    foreign = set()
+    for base in SDR_BASES:
+        for kind in registry.GetAllDerivedTypes(base):
+            plugin = registry.GetPluginForType(kind)
+            where = home(plugin) if plugin else None
+            if where is None or where == own_home or where == hfs or where.startswith(hfs + os.sep):
+                continue
+            foreign.add(kind.typeName)
+    return sorted(foreign)
 
 
 def local_data_path(renderer: str) -> str:
@@ -124,6 +150,9 @@ class HuskJob(QtCore.QObject):
         pattern = plugin_exclusion(self.renderer, env.get(EXCLUDE, ""))
         if pattern:
             env[EXCLUDE] = pattern
+        foreign = foreign_shader_plugins(self.renderer)
+        if foreign:
+            env[SDR_DISABLE] = ",".join([p for p in [env.get(SDR_DISABLE, "")] if p] + foreign)
         variable = LOCAL_DATA.get(self.renderer)
         if variable:
             env[variable] = local_data_path(self.renderer)    # apart from the session's own

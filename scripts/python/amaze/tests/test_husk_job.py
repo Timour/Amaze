@@ -118,6 +118,38 @@ class TheCommandAndItsEnvironment(unittest.TestCase):
             env = self._job("Karma").environment()
         self.assertEqual(husk_job.plugin_exclusion("Karma"), env[husk_job.EXCLUDE])
 
+    def test_the_environment_disables_the_foreign_shader_plugins(self):
+        """A list already set is kept in front; with none foreign and none set, nothing is set."""
+        for found, current, expected in (
+                (["A", "B"], None, "A,B"), (["A"], "Mine", "Mine,A"),
+                ([], None, None), ([], "Mine", "Mine")):
+            with self.subTest(found=found, current=current):
+                with mock.patch.dict(os.environ, {}, clear=False), \
+                        mock.patch.object(husk_job, "foreign_shader_plugins", return_value=found):
+                    os.environ.pop(husk_job.SDR_DISABLE, None)
+                    if current is not None:
+                        os.environ[husk_job.SDR_DISABLE] = current
+                    env = self._job("Karma").environment()
+                self.assertEqual(expected, env.get(husk_job.SDR_DISABLE))
+
+    def test_houdinis_own_shader_plugins_are_never_foreign(self):
+        from pxr import Plug
+        registry = Plug.Registry()
+        own = {kind.typeName for base in husk_job.SDR_BASES
+               for kind in registry.GetAllDerivedTypes(base)
+               if "Redshift" not in kind.typeName and "Octane" not in kind.typeName}
+        self.assertIn("UsdMtlxParserPlugin", own, "premise: MaterialX's parser is registered")
+        for renderer in husk_job.DELEGATES:
+            with self.subTest(renderer=renderer):
+                self.assertEqual(set(), own & set(husk_job.foreign_shader_plugins(renderer)))
+
+    @unittest.skipUnless(test_support.renderer_loaded("Redshift"), "the Redshift plugin is not loaded")
+    def test_only_a_redshift_husk_keeps_redshifts_shader_plugins(self):
+        """Karma crashed inside them on Windows. ▸r/husk-foreign-shader-plugins"""
+        theirs = {"SdrRedshiftDiscoveryPlugin", "SdrRedshiftParserPlugin"}
+        self.assertEqual(theirs, theirs & set(husk_job.foreign_shader_plugins("Karma")))
+        self.assertEqual(set(), theirs & set(husk_job.foreign_shader_plugins("Redshift")))
+
     def test_a_redshift_husk_keeps_its_own_cache_and_log(self):
         """Its local data path is its own folder under Amaze's cache, apart from the session's."""
         from amaze.helpers import hostos

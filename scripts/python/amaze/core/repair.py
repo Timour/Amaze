@@ -655,7 +655,7 @@ def report_lines(findings: dict) -> list:
     lines = ["Amaze looked at the library in %s. It keeps a separate list "
              "for each of its sections - Materials, Nodes, Code and "
              "Colors%s."
-             % (str(findings["directory"]).rstrip("/\\"), also), ""]
+             % (os.path.normpath(str(findings["directory"])), also), ""]
 
     troubled = [entry for entry in findings["lists"] if entry["state"] in _TROUBLE_LINES]
     problems = []
@@ -885,7 +885,8 @@ def _files_section_lines(findings: dict) -> list:
                     "the folder is added again:\n  %s"
                     % ("This folder" if len(dead) == 1 else "These %d folders" % len(dead),
                        "is" if len(dead) == 1 else "are", "it" if len(dead) == 1 else "them",
-                       "its" if len(dead) == 1 else "their", "\n  ".join(sorted(dead))))
+                       "its" if len(dead) == 1 else "their",
+                       "\n  ".join(sorted(os.path.normpath(p) for p in dead))))
     unmounted = findings.get("unmounted_folders") or []
     if unmounted:
         said.append("%s on a drive that is not connected, so %s left as %s - %s back "
@@ -900,7 +901,8 @@ def _files_section_lines(findings: dict) -> list:
         said.append("%s gone from %s folder:\n  %s" % (
             "This starred file is" if len(stars) == 1
             else "These %d starred files are" % len(stars),
-            "its" if len(stars) == 1 else "their", "\n  ".join(sorted(stars))))
+            "its" if len(stars) == 1 else "their",
+            "\n  ".join(sorted(os.path.normpath(p) for p in stars))))
     return said
 
 

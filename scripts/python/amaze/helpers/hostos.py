@@ -934,14 +934,32 @@ _HELD_WINERRORS = frozenset((  # native Windows codes for a held destination, wh
 ))
 
 
+def _windows_refusing_file(path: str):
+    """FAILED_READ_ONLY or FAILED_HELD when Windows refused because of the FILE, else None."""
+    if not is_windows() or not path or not os.path.isfile(path):
+        return None
+    try:
+        if os.stat(path).st_file_attributes & stat.FILE_ATTRIBUTE_READONLY:
+            return FAILED_READ_ONLY
+        with open(path, "r+b"):
+            return None
+    except OSError:
+        return FAILED_HELD
+
+
 def why_failed(exc: OSError, path: str = "") -> tuple:
     """(cause, sentence) for a write that raised, naming what the user must fix. ▸r/failed-write"""
     cause = _FAILURE_CAUSES.get(getattr(exc, "errno", None),
                                 FAILED_UNKNOWN)
     if getattr(exc, "winerror", None) in _HELD_WINERRORS:
         cause = FAILED_HELD  # the native code outranks the errno, which reads a held file as EACCES
+    target = _windows_refusing_file(path) if cause == FAILED_READ_ONLY else None
+    cause = FAILED_HELD if target == FAILED_HELD else cause
     where = os.path.dirname(path) or path
-    if cause == FAILED_UNREACHABLE:
+    if target == FAILED_READ_ONLY:
+        sentence = ("the file is read-only" + (":\n" + path if path else "")
+                    + "\n\nClear Read-only in its Properties and save again.")
+    elif cause == FAILED_UNREACHABLE:
         sentence = ("the folder it lives in cannot be reached right now"
                     + (":\n" + where if where else "")
                     + "\n\nIf it is in a synced or network folder, it "
