@@ -5,7 +5,7 @@ from __future__ import annotations
 LIBRARY_NOT_SAVED_ANOTHER_PANEL = "This panel's library was not saved: another Amaze panel is open on a different library. Close the other panel (or reopen this one), then save again."
 SECTION_UNREADABLE_SAVING_DISABLED = "Your saved %s could not be read, so Amaze will not overwrite that file. Changes made now won't be kept. Quit Houdini and restore a recent copy with Check Library in the Amaze shelf."
 LIBRARY_FORMAT_AHEAD_READ_ONLY = "This library was saved by a newer Amaze, so this machine opens it read-only to protect it. Update Amaze to work with it normally."
-LIBRARY_WRITE_FAILED = "Could not save the library (%s). Your change is still in Amaze's memory but not on disk — it will be lost if you close Houdini."
+LIBRARY_WRITE_FAILED = "Amaze could not write the library: %s. The change is still in Amaze and the next save will try again - fix the cause (folder permissions, disk space, path length), then save again."
 PALETTE_NOT_SAVED = "Amaze could not save \"%s\". Your other colors are unchanged. Close any other Amaze panel or restart Houdini, then try again."
 PALETTE_NOT_DELETED = "\"%s\" was not deleted because the colors list could not be updated. The palette is unchanged. Close any other Amaze panel or restart Houdini, then try again."
 SAVE_DENIED_WITH_CAUSE = "%s. Cause: %s."
