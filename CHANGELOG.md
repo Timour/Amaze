@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.33.10
+
+- File: on a drive without hard links, such as an exFAT or FAT32 drive or a network share, moving a file onto a folder no longer checks the name and moves the file in two separate steps. Where the system can, the move itself refuses a name in use, as Linux does on FAT32 drives and network shares. Where it cannot, as on a Mac, Amaze first takes the name with an empty file and then moves the file over it. A file of that name saved there a moment before is kept, and the move is skipped.
+
 ## 1.33.9
 
 - When Save Version cannot save the library list, Houdini's status bar says so once the save is done: `"<name>" was updated, but the library could not be saved.`, or how many materials were, for several. Until now only the library's own message said so, once each Houdini session. The material's new files are in place, and the list takes the change with the next save that works.
