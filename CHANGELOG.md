@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.33.9
+
+- When Save Version cannot save the library list, Houdini's status bar says so once the save is done: `"<name>" was updated, but the library could not be saved.`, or how many materials were, for several. Until now only the library's own message said so, once each Houdini session. The material's new files are in place, and the list takes the change with the next save that works.
+
 ## 1.33.8
 
 - When a switch to another library fails and Repair cannot fix its list, the message offers Check This Library, which looks at that library and offers the fixes that apply.
