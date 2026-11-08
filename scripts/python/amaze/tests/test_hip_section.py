@@ -1799,7 +1799,7 @@ class NewerLibraryTest(unittest.TestCase):
         self.assertEqual([], asked, "asked inside onCreateInterface, where a modal draws black")
         self._idle(asked)
         text, kwargs = asked[0]
-        self.assertEqual("This library is version %d, which needs a newer Amaze. "
+        self.assertEqual("This library is version %d and needs a newer Amaze. "
                          "Update Amaze to open it." % self.newer, text)
         self.assertEqual(("Update Amaze", "Cancel"), tuple(kwargs["buttons"]))
 

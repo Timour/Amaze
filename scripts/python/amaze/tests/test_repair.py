@@ -1118,7 +1118,7 @@ class TheGuardsTest(_Case):
                 str(value)
                 for call in hou.ui.displayMessage.call_args_list
                 for value in list(call.args) + list(call.kwargs.values()))
-        self.assertIn("cannot reach the library folder", said)
+        self.assertIn("can't reach its library folder", said)
         self.assertIn(prefs.dir, said,
                       "the message does not name the folder it cannot "
                       "reach, so nobody can tell which drive to connect")
@@ -1279,7 +1279,7 @@ class TheSettingsComeBackTest(_Case):
         # the report's restore button, the confirm, the closing note
         ui = self._run(buttons=[0, 0, 0], listed=(0,))
         report = ui.displayMessage.call_args_list[0]
-        self.assertIn("could not be read", str(report))
+        self.assertIn("couldn't be read", str(report))
         self.assertIn("Put a Saved Copy Back", report.kwargs["buttons"],
                       "the settings that cannot be read are not offered back")
         self.assertNotIn(
@@ -1318,7 +1318,7 @@ class TheSettingsComeBackTest(_Case):
         when = {tier: restore_lib.info(self.settings + "." + tier)["when"]
                 for tier in ("bak-1", "bak-2")}
         self.assertIn(when["bak-1"], lines)
-        self.assertIn(when["bak-2"] + " - this copy cannot be read", lines)
+        self.assertIn(when["bak-2"] + " — this copy can't be read", lines)
 
     def test_with_no_copy_it_says_so_and_changes_nothing(self):
         self._broken()
@@ -1342,7 +1342,7 @@ class TheSettingsComeBackTest(_Case):
         confirm = ui.displayMessage.call_args_list[1]
         self.assertIn(when, report.args[0].splitlines(),
                       "the report does not name the saved copy")
-        self.assertNotIn("could not be read", report.args[0],
+        self.assertNotIn("couldn't be read", report.args[0],
                          "a missing settings file is reported as one that will not read")
         self.assertEqual(messages.CONFIRM_PUT_SETTINGS_BACK % when, confirm.args[0],
                          "the missing case does not use the same confirm")
@@ -1486,7 +1486,7 @@ class TheShelfToolAndWhatItReportsTest(_Case):
         script = tool.find("script").text
         self.assertIn("from amaze.dialogs import repair_dialog", script)
         self.assertIn("except ImportError", script)
-        self.assertIn("not importable from this session", script)
+        self.assertIn("can't be imported in this session", script)
         self.assertIn("repair_dialog.run()", script)
         # Strip the comments first: a substring test matches the sentence saying so.
         code = "\n".join(line for line in script.splitlines()

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.33.7
+
+- Amaze's messages are reworded in shorter, plainer English.
+
 ## 1.33.6
 
 - Seven values Amaze works out once, among them the theme's colours and the certificate check for online sources, are kept by the same code, and Customize asks each section which of a tile's name, category and tags it can change. Nothing changes in use.
