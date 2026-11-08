@@ -176,21 +176,9 @@ register(
     noun="comment",
     category="notes",
     alert_key="notes-unreadable",
-    unreadable_alert=(
-        "Your comments could not be read, so Amaze will not save over "
-        "them.\n\n"
-        "Any comment you write now will not be kept.\n\n"
-        "Put back a recent copy with Library ▸ Check Library… "
-        "in Amaze."),
-    refused_sentence=(
-        "the notes file could not be read earlier this run, so what you "
-        "wrote was not saved - writing now would replace every note "
-        "already in it."),
-    denied_alert=(
-        "Your comment could not be saved.\n\n"
-        "Nothing already saved has been lost - only this change. It is "
-        "still on screen, so you can copy it somewhere safe before "
-        "closing Houdini."),
+    unreadable_alert="Your comments could not be read, so Amaze will not overwrite the file. Amaze shows empty pages for now, and anything you write will not be kept. Quit Houdini and restore a recent copy with Library ▸ Check Library in Amaze.",
+    refused_sentence="the notes file could not be read earlier this run, so what you wrote was not saved — writing now would replace every note already in it.",
+    denied_alert="Your comment could not be saved. Everything already saved is intact — only this change was dropped. It is still on screen; copy it somewhere safe before closing Houdini.",
     survives_forget=False,
 )
 
@@ -208,16 +196,8 @@ register(
     noun="location path",
     category="file",
     alert_key="location-paths-unreadable",
-    unreadable_alert=(
-        "Your registered folders' paths could not be read, so Amaze "
-        "will not save over them.\n\n"
-        "Any folder you add or move now will not be kept.\n\n"
-        "Put back a recent copy with Library ▸ Check Library… "
-        "in Amaze."),
-    refused_sentence=(
-        "the registered folders' paths could not be read earlier this "
-        "run, so this change was not saved - writing now would replace "
-        "every path already in the list."),
+    unreadable_alert="Your registered folders' paths could not be read, so Amaze will not overwrite the file. Any folder you add or move now will not be kept. Quit Houdini and restore a recent copy with Library ▸ Check Library in Amaze.",
+    refused_sentence="the registered folders' paths could not be read earlier this run, so this change was not saved — writing now would replace every path already in the list.",
     survives_forget=True,
 )
 
@@ -229,16 +209,8 @@ register(
     noun="location",
     category="file",
     alert_key="locations-unreadable",
-    unreadable_alert=(
-        "Your registered folders could not be read, so Amaze will not "
-        "save over them.\n\n"
-        "Any folder you add or rename now will not be kept.\n\n"
-        "Put back a recent copy with Library ▸ Check Library… "
-        "in Amaze."),
-    refused_sentence=(
-        "the registered folders could not be read earlier this run, so "
-        "this change was not saved - writing now would replace every "
-        "folder already in the list."),
+    unreadable_alert="Your registered folders could not be read, so Amaze will not overwrite the file. Any folder you add or rename now will not be kept. Quit Houdini and restore a recent copy with Library ▸ Check Library in Amaze.",
+    refused_sentence="the registered folders file could not be read earlier this run, so this change was not saved — writing now would replace every folder already in the list.",
     survives_forget=False,
     user_tagged=True,
 )
@@ -251,16 +223,8 @@ register(
     noun="favourite",
     category="file",
     alert_key="favourites-unreadable",
-    unreadable_alert=(
-        "Your favorites could not be read, so Amaze will not save over "
-        "them.\n\n"
-        "Anything you star now will not be kept.\n\n"
-        "Put back a recent copy with Library ▸ Check Library… "
-        "in Amaze."),
-    refused_sentence=(
-        "the favorites file could not be read earlier this run, so your "
-        "star was not saved - writing now would replace every favorite "
-        "already in it."),
+    unreadable_alert="Your favorites could not be read, so Amaze will not overwrite the file. The star shows nothing for now; anything you star will not be kept. Quit Houdini and restore a recent copy with Library ▸ Check Library in Amaze.",
+    refused_sentence="the favorites file could not be read earlier this run, so your star was not saved — writing now would replace every favorite already in it.",
     survives_forget=False,
     user_tagged=True,
 )
@@ -273,16 +237,8 @@ register(
     noun="user",
     category="users",
     alert_key="users-unreadable",
-    unreadable_alert=(
-        "The list of people using this library could not be read, so "
-        "Amaze will not save over it.\n\n"
-        "Any user you add, rename or delete now will not be kept.\n\n"
-        "Put back a recent copy with Library ▸ Check Library… "
-        "in Amaze."),
-    refused_sentence=(
-        "the list of people using this library could not be read "
-        "earlier this run, so your change was not saved - writing now "
-        "would replace everyone already in it."),
+    unreadable_alert="The list of people using this library could not be read, so Amaze will not overwrite it. Any user you add, rename or delete now will not be kept. Quit Houdini and restore a recent copy with Library ▸ Check Library in Amaze.",
+    refused_sentence="the user list could not be read earlier this run, so your change was not saved — writing now would replace everyone already in it.",
     survives_forget=True,
 )
 
@@ -294,20 +250,9 @@ register(
     noun="tile icon",
     category="icons",
     alert_key="icons-unreadable",
-    unreadable_alert=(
-        "The tile icons you chose could not be read, so Amaze will not "
-        "save over them.\n\n"
-        "Any icon you pick now will not be kept.\n\n"
-        "Put back a recent copy with Library ▸ Check Library… "
-        "in Amaze."),
-    refused_sentence=(
-        "the tile icon file could not be read earlier this run, so your "
-        "icon choice was not saved - writing now would replace every "
-        "icon already in it."),
-    denied_alert=(
-        "The icon you picked could not be saved.\n\n"
-        "Nothing already saved has been lost - only this choice. The "
-        "tile goes back to the icon it had next time Amaze opens."),
+    unreadable_alert="Your chosen tile icons could not be read, so Amaze will not overwrite the file. Tiles show their default icons for now; any icon you pick will not be kept. Quit Houdini and restore a recent copy with Library ▸ Check Library in Amaze.",
+    refused_sentence="the tile icon file could not be read earlier this run, so your icon choice was not saved — writing now would replace every icon already in it.",
+    denied_alert="The icon you picked could not be saved. Everything already saved is intact — only this choice was dropped. The tile reverts to its previous icon next time Amaze opens.",
     survives_forget=False,
 )
 
@@ -321,21 +266,9 @@ register(
     noun="setting",
     category="prefs",
     alert_key="shared-settings-unreadable",
-    unreadable_alert=(
-        "The library's shared settings could not be read, so Amaze "
-        "will not save over them.\n\n"
-        "Any shared setting you change now will not be kept.\n\n"
-        "Put back a recent copy with Library ▸ Check Library… "
-        "in Amaze."),
-    refused_sentence=(
-        "the library's shared settings could not be read earlier this "
-        "run, so your change was not saved - writing now would replace "
-        "every setting already in it."),
-    denied_alert=(
-        "Your setting could not be saved.\n\n"
-        "Nothing already saved has been lost - only this change. It "
-        "still applies for now, and goes back to what it was next time "
-        "Amaze opens."),
+    unreadable_alert="The library's shared settings could not be read, so Amaze will not overwrite the file. Any shared setting you change now will not be kept. Quit Houdini and restore a recent copy with Library ▸ Check Library in Amaze.",
+    refused_sentence="the shared settings file could not be read earlier this run, so your change was not saved — writing now would replace every setting already in it.",
+    denied_alert="Your setting could not be saved. Everything already saved is intact — only this change was dropped. It still applies this session and reverts next time Amaze opens.",
     survives_forget=True,
 )
 
@@ -361,20 +294,9 @@ register(
         "users": MERGE_FIELDS,
     },
     alert_key="prefs-unreadable",
-    unreadable_alert=(
-        "Your Amaze settings could not be read, so Amaze will not save "
-        "over them.\n\n"
-        "Any setting you change now will not be kept.\n\n"
-        "Your settings are also recorded in the debug log. Use "
-        "Library ▸ Check Library… in Amaze to put them back."),
-    refused_sentence=(
-        "your settings could not be read earlier this run, so this "
-        "change was not saved - writing now would replace the library "
-        "path, folders and favourites already in the file."),
-    denied_alert=(
-        "Amaze could not save your preferences.\n\n"
-        "Your settings for this session still work, but they will not "
-        "be there next time Houdini opens."),
+    unreadable_alert="Your Amaze settings could not be read, so Amaze opened with defaults and will not overwrite the file. Your library path, folders and favorites are still in it. The settings are also in the debug log. Restore them with Library ▸ Check Library in Amaze.",
+    refused_sentence="your settings could not be read earlier this run, so this change was not saved — writing now would replace the library path, folders and favourites already in the file.",
+    denied_alert="Amaze could not save your preferences. They apply for this session only and won't be there next time Houdini opens.",
     survives_forget=True,
 )
 
