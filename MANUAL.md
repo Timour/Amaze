@@ -24,7 +24,7 @@ Installation is described in the [README](README.md).
 - [Drag and drop](#drag-and-drop)
 - [Preferences](#preferences)
 - [Housekeeping and troubleshooting](#housekeeping-and-troubleshooting)
-- [Credits and licence](#credits-and-licence)
+- [Credits and license](#credits-and-license)
 
 ---
 
@@ -243,7 +243,7 @@ listed and again while their pictures load.
 
 <img src="docs/images/online_browser.png" width="820">
 
-| Source | Content | Licence |
+| Source | Content | License |
 |---|---|---|
 | **PolyHaven** | Photoscanned PBR materials with textures | CC0 |
 | **GPUOpen** | AMD's MaterialX library with textures | MIT Public Domain |
@@ -270,7 +270,7 @@ The right-click menu acts on one material or a selection:
 
 **Double-click** imports a material into the scene.
 
-Every import records its source, author, link and licence.
+Every import records its source, author, link and license.
 
 ### Gallery Import (.gal)
 
@@ -422,7 +422,7 @@ Browses folders on disk.
   A location lists these files when **Show ▸ Other Files** is on.
 - **New Folder** asks for a name and makes that folder in the folder you
   are looking at. **Save Scene** asks for a name and saves the open scene
-  as a new file there, with the extension your licence writes, and that
+  as a new file there, with the extension your license writes, and that
   file becomes the one you are working in. Both are greyed while All is
   showing, since there is no one folder to make them in.
 
@@ -771,7 +771,7 @@ for the Amaze store. See [Add-ons](#add-ons).
 
 <img src="docs/images/prefs_about.png" width="440">
 
-Credits and licences. The version line shows the running version and
+Credits and licenses. The version line shows the running version and
 the answer to each update check. **Check for Updates** checks for a
 newer Amaze; when there is one, the button changes to **Install
 Update**, which installs it. When the newer Amaze also updates the
@@ -928,7 +928,7 @@ modules per session.
 
 ---
 
-## Credits and licence
+## Credits and license
 
 Amaze uses code from [egMatLib](https://github.com/eglaubauf/egMatLib)
 for its material preview engine. Thank you.

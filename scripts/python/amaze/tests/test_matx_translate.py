@@ -402,5 +402,56 @@ class HostedPictureImportTest(unittest.TestCase):
             self._record(), self._source(), "Redshift"))
 
 
+class TheCreditCommentClaimsNoRequirement(unittest.TestCase):
+    """The credit comment names the declared licence and demands nothing ▸r/online-source-licences"""
+
+    def setUp(self):
+        test_support.pin_env(self, "OCIO", "/dev/null")
+        self.prefs = test_support.fixture_prefs(self)
+        self.prefs.render_on_import = 0
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+
+    def _record(self, licence="MIT-0 (MIT No Attribution)"):
+        from amaze.core import matx_sources
+        return matx_sources.MatxRecord(
+            source="SimReady", uid="credit-probe", title="Carbon Fiber",
+            author="NVIDIA", category="Metal", kind="values", licence=licence,
+            payload={"values": {"color": [0.8, 0.2, 0.1], "roughness": 0.3}})
+
+    def _source(self):
+        class Source:
+            name = "SimReady"
+
+            def fetch(self, record, resolution, dest_dir, progress=None):
+                return {"values": record.payload["values"]}
+
+            def page_url(self, record):
+                return "https://example/page"
+
+        return Source()
+
+    def test_no_requirement_is_claimed(self):
+        from amaze.core import matx_import
+        for licence in ("MIT-0 (MIT No Attribution)", "CC0",
+                        "CC0 1.0 - EPFL Realistic Graphics Lab", ""):
+            with self.subTest(licence=licence):
+                text = matx_import._credit_text(self._record(licence), self._source())
+                self.assertNotIn("as the license requires", text)
+                self.assertNotIn("Please credit", text)
+
+    def test_the_comment_still_names_the_licence(self):
+        from amaze.core import matx_import
+        destination = hou.node("/mat") or hou.node("/").createNode("mat")
+        builder, reason = matx_import.build_in_scene(
+            self._record(), self._source(), "", destination, self.prefs)
+        self.assertIsNotNone(builder, reason)
+        self.addCleanup(builder.destroy)
+        comment = builder.comment()
+        self.assertIn("MIT-0 (MIT No Attribution)", comment,
+                      "the comment does not name the licence the source declares")
+        self.assertNotIn("as the license requires", comment)
+
+
 if __name__ == "__main__":
     unittest.main()

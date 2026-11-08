@@ -976,7 +976,7 @@ class PrefsDialog(base_dialog.AssetDialog):
             "<a href='https://rgl.epfl.ch/materials'>EPFL RGL</a> "
             "measured materials (CC0 1.0)<br>"
             "Every imported material stores its own source and "
-            "licence.</p>"
+            "license.</p>"
             "<p><b>Generate Material</b> builds from the measured "
             "values of these two CC0 datasets: (Physically Based "
             "and EPFL RGL).</p>"

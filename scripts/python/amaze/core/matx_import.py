@@ -22,7 +22,7 @@ def matx_dir(library_dir: str) -> str:
 
 
 def _credit_text(record, source) -> str:
-    """The credit block for a downloaded material: source, author and a link back to it."""
+    """Source, author and a link back; it asserts no licence requirement ▸r/online-source-licences"""
     lines = ['"%s" from the %s library.' % (record.title, record.source)]
     if record.author:
         lines.append("Created by %s." % record.author)
@@ -33,7 +33,6 @@ def _credit_text(record, source) -> str:
         url = ""
     if url:
         lines.append(url)
-    lines.append("Please credit the creator as the license requires.")
     return "\n".join(lines)
 
 
@@ -289,7 +288,7 @@ def build_in_scene(record, source, resolution, destination, preferences,
         try:
             comment = _credit_text(record, source)   # the node comment carries credit and licence
             if record.licence:
-                comment += "\nLicence: %s" % record.licence
+                comment += "\nLicense: %s" % record.licence
             if note:
                 comment += "\n\n%s" % note
             builder.setComment(comment)
