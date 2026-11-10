@@ -295,6 +295,17 @@ class MaterialNetworkGateTest(unittest.TestCase):
             dragengine._ghost_half_for(_fake_editor(matnet)),
             "VOP contexts use the flat new-node half, as the host does")
 
+    def test_the_ghost_reads_the_hosts_half_size(self):
+        """`nodegraphutils.getNewNodeHalfSize()` is asked, never copied; headless it cannot import."""
+        import sys
+        import types
+        host = types.ModuleType("nodegraphutils")
+        host.getNewNodeHalfSize = lambda: hou.Vector2(0.75, 0.25)
+        matnet = hou.node("/obj").createNode("matnet")
+        self.addCleanup(matnet.destroy)
+        with mock.patch.dict(sys.modules, {"nodegraphutils": host}):
+            self.assertEqual((0.75, 0.25), dragengine._ghost_half_for(_fake_editor(matnet)))
+
 
 if __name__ == "__main__":
     unittest.main()

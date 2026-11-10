@@ -176,7 +176,11 @@ def ghost_answers():
 
 _ghosted: list = []
 
-NEW_NODE_HALF = (0.5, 0.15)    # the host's placement-ghost half size (nodegraphutils.theNewNodeHalfSize)
+def _new_node_half() -> tuple:
+    """The host's placement-ghost half size, asked each time."""
+    from amaze.helpers import helpers
+    half = helpers.new_node_half()
+    return (half.x(), half.y())
 
 
 def _is_vop_network(editor) -> bool:
@@ -244,9 +248,10 @@ def ghost_snap_position():
 
 def _ghost_half_for(editor) -> tuple:
     """The placement ghost's half-extent: a 0.5 square, or the flat half in VOP. ▸r/overlay-shapes"""
+    flat = _new_node_half()
     if _is_vop_network(editor):
-        return NEW_NODE_HALF
-    half = max(NEW_NODE_HALF)
+        return flat
+    half = max(flat)
     return (half, half)
 
 GHOST_COLOUR = (0.988, 0.725, 0.0)
@@ -498,7 +503,7 @@ def splice_preview(editor, connection, position, shapes=()) -> tuple:
             upstream, connection.inputItemOutputIndex())
         in_pos = editor.itemInputPos(downstream, connection.inputIndex())
         in_dir = editor.itemInputDir(downstream, connection.inputIndex())
-        half = hou.Vector2(0.0, NEW_NODE_HALF[1])    # already a HALF size, the host's own
+        half = hou.Vector2(0.0, _new_node_half()[1])    # already a HALF size, the host's own
         top = position + half
         bottom = position - half
         return tuple(shapes) + (

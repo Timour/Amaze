@@ -395,15 +395,20 @@ def auto_place(node) -> None:
         pass
 
 
+def new_node_half():
+    """The host's new-node half size; its own default where `nodegraphutils` cannot import (headless)."""
+    try:
+        import nodegraphutils
+        return nodegraphutils.getNewNodeHalfSize()
+    except (ImportError, AttributeError):
+        return hou.Vector2(0.5, 0.15)
+
+
 def centred_on(position):
     """The setPosition value that centres a node's body on `position`; None for None."""
     if position is None:
         return None
-    try:
-        import nodegraphutils
-        half = nodegraphutils.getNewNodeHalfSize()
-    except (ImportError, AttributeError):
-        half = hou.Vector2(0.5, 0.15)
+    half = new_node_half()
     return hou.Vector2(position.x() - half.x(), position.y() - half.y())
 
 
