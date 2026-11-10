@@ -65,15 +65,20 @@ def file_parms(node) -> list:
     return parms
 
 
+def raw_path(parm) -> str:
+    """The parm's raw spelling, or its evaluated path where it has keyframes. ▸r/texture-refs"""
+    import hou
+    try:
+        return parm.unexpandedString()
+    except (hou.OperationFailed, hou.PermissionError):    # keyframes: a reference or an expression; PermissionError is a SIBLING ▸r/hou-errors
+        return parm.evalAsString()
+
+
 def references(node) -> list:
     """(parm, raw unexpanded value) for every non-empty file reference under the node."""
-    import hou
     refs = []
     for parm in file_parms(node):
-        try:
-            raw = parm.unexpandedString()
-        except (hou.OperationFailed, hou.PermissionError):    # PermissionError is a SIBLING, not a subclass ▸r/hou-errors
-            raw = parm.evalAsString()
+        raw = raw_path(parm)
         if raw:
             refs.append((parm, raw))
     return refs

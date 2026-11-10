@@ -6,7 +6,7 @@ import math
 
 import hou
 
-from amaze.core import debug
+from amaze.core import debug, texstore
 from amaze.helpers import wording
 from amaze.render.material_converter import _copy_constant_parm, _set_poly_parm
 
@@ -545,7 +545,7 @@ def read_image(reader, node, role):
     signature = "color4" if alpha else SIGNATURE.get(role, "color3")
     image = reader.make("mtlximage", node)
     _set(image, "signature", signature)
-    _set(image, "file", node.parm("A_FILENAME").unexpandedString())
+    _set(image, "file", texstore.raw_path(node.parm("A_FILENAME")))
     _colour_space(reader, node, image, role)
     for axis in ("U", "V"):
         mode, fill = ADDRESS.get(_token(node, "borderMode" + axis), ("periodic", None))

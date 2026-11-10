@@ -7,6 +7,7 @@ import hou
 from amaze.core import debug
 from amaze.core import material
 from amaze.core import renderers
+from amaze.core import texstore
 
 from amaze.helpers import wording
 from amaze.render import nodes
@@ -354,7 +355,7 @@ def convert_texture_sampler(
     mtlx = dest_parent.createNode("mtlximage")
     path_parm = rs_node.parm("tex0")
     if path_parm is not None:
-        mtlx.parm("file").set(path_parm.unexpandedString())
+        mtlx.parm("file").set(texstore.raw_path(path_parm))
     role = "color" if target_input in _COLOUR_INPUTS else "data"
     _apply_image_colorspace(mtlx, role, report, f'"{rs_node.name()}"')
     scale = (1.0, 1.0)

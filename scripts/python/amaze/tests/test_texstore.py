@@ -221,6 +221,21 @@ class AReferencedParmTest(unittest.TestCase):
         self.assertEqual([token], inventory)
 
 
+class RawPathTest(unittest.TestCase):
+    """raw_path() is the raw spelling, or the evaluated path where the parm has keyframes."""
+
+    def test_a_plain_parm_reads_raw_and_a_keyframed_one_reads_evaluated(self):
+        from amaze.core import texstore
+        builder, image = _network_with_image(self, "$AMAZE_NOT_SET_HERE/t.png")
+        self.assertEqual("$AMAZE_NOT_SET_HERE/t.png", texstore.raw_path(image.parm("file")))
+        control = builder.createNode("mtlximage", "control")
+        control.parm("file").set("/maps/ref.png")
+        image.parm("file").setExpression('chs("../control/file")', hou.exprLanguage.Hscript)
+        self.assertEqual("/maps/ref.png", texstore.raw_path(image.parm("file")))
+        image.parm("file").setExpression('"/maps/" + "py.png"', hou.exprLanguage.Python)
+        self.assertEqual("/maps/py.png", texstore.raw_path(image.parm("file")))
+
+
 class ResolveParmsTest(unittest.TestCase):
     """resolve_parms() is the scene-side door: $AMAZELIB leaves spelled as Write Paths As says."""
 

@@ -650,6 +650,73 @@ class AnOctaneTwinIsMaterialXInTheLibrary(unittest.TestCase):
         self.assertEqual(("Karma", "Octane Red"), (twin.renderer, twin.name))
 
 
+KEYED = "/maps/keyed_albedo.png"
+
+
+class AKeyframedTexturePathCrossesEvaluated(unittest.TestCase):
+    """A referenced or expression texture path has no raw spelling: its evaluated path crosses."""
+
+    def setUp(self):
+        self.parent = hou.node("/obj").createNode("matnet")
+        self.addCleanup(self.parent.destroy)
+        control = self.parent.createNode("null", "texture_control")
+        control.addSpareParmTuple(hou.StringParmTemplate("tex", "tex", 1))
+        control.parm("tex").set(KEYED)
+        self.keyframed = (
+            ('chs("%s")' % control.parm("tex").path(), hou.exprLanguage.Hscript),
+            ('"/maps/" + "keyed_albedo.png"', hou.exprLanguage.Python),
+        )
+
+    def _crosses(self, make_source, source, target, image_type, file_parm):
+        for expression, language in self.keyframed:
+            with self.subTest(language=str(language)):
+                parent = hou.node("/obj").createNode("matnet")    # each case its own names
+                self.addCleanup(parent.destroy)
+                net, path_parm = make_source(parent)
+                path_parm.setExpression(expression, language)
+                made = engine.convert(net, source, target, parent, "Keyed")
+                self.assertIsNotNone(made.builder, made.report.summary_lines())
+                images = [n for n in made.builder.allSubChildren()
+                          if n.type().name() == image_type]
+                self.assertEqual([KEYED], [n.parm(file_parm).evalAsString() for n in images])
+
+    @unittest.skipUnless(REDSHIFT, "the Redshift plugin is not loaded")
+    def test_karma_to_redshift(self):
+        def make_source(parent):
+            builder = nodes.make_karma_builder(parent, "keyed_karma")
+            shader = builder.createNode("mtlxstandard_surface")
+            image = builder.createNode("mtlximage")
+            image.parm("signature").set("color3")
+            shader.setNamedInput("base_color", image, 0)
+            nodes.wire_builder_output(builder, shader)
+            return builder, image.parm("file")
+        self._crosses(make_source, "Karma", "Redshift", "redshift::TextureSampler", "tex0")
+
+    @unittest.skipUnless(REDSHIFT, "the Redshift plugin is not loaded")
+    def test_redshift_to_karma(self):
+        def make_source(parent):
+            net = parent.createNode("redshift_vopnet", "keyed_redshift")
+            for child in list(net.children()):
+                if child.type().name() != "redshift_material":
+                    child.destroy()
+            shader = net.createNode("redshift::StandardMaterial")
+            sampler = net.createNode("redshift::TextureSampler")
+            shader.setNamedInput("base_color", sampler, 0)
+            next(c for c in net.children() if c.type().name() == "redshift_material"
+                 ).setNamedInput("Surface", shader, 0)
+            return net, sampler.parm("tex0")
+        self._crosses(make_source, "Redshift", "Karma", "mtlximage", "file")
+
+    @unittest.skipUnless(OCTANE, "the Octane plugin is not loaded")
+    def test_octane_to_karma(self):
+        def make_source(parent):
+            net, shader = _octane_net(parent, name="keyed_octane")
+            image = net.createNode("octane::NT_TEX_IMAGE")
+            shader.setNamedInput("baseColor", image, 0)
+            return net, image.parm("A_FILENAME")
+        self._crosses(make_source, "Octane", "Karma", "mtlximage", "file")
+
+
 class AnOnlineImportWhoseListWasNotSavedSaysSo(unittest.TestCase):
     """The online import answers ok with a `ListNotSaved` naming the material its list did not take."""
 

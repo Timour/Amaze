@@ -7,7 +7,7 @@ from typing import NamedTuple
 import hou
 import json
 
-from amaze.core import debug, material, renderers
+from amaze.core import debug, material, renderers, texstore
 from amaze.helpers import wording
 from amaze.render import nodes
 from amaze.render.material_conversion import engine, materialx
@@ -256,7 +256,7 @@ def convert_image(node: hou.Node, builder: hou.Node, report: ConversionReport, r
     sampler.setName(wording.sanitize_usd_path(node.name()), unique_name=True)
     file_parm = node.parm("file")
     if file_parm is not None:
-        sampler.parm("tex0").set(file_parm.unexpandedString())
+        sampler.parm("tex0").set(texstore.raw_path(file_parm))
     colour = role == "color" and _effective_signature(node) in ("color3", "color4")
     sampler.parm("tex0_colorSpace").set("sRGB" if colour else "Raw")    # data types read raw, as in Karma
     sampler.parmTuple("scale").set(_uv_scale(node))
