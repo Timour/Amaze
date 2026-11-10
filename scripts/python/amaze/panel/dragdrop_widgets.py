@@ -546,8 +546,9 @@ class DragDropCentralWidget(QtWidgets.QWidget):
             return
         event.acceptProposedAction()
         nodes = [hou.node(p) for p in paths]
-        for i, n in enumerate(nodes):    # the dropped nodes become the selection the save reads
-            n.setSelected(True, clear_all_selected=(i == 0))
+        with hou.undos.disabler():    # a selection is an undo entry of its own
+            for i, n in enumerate(nodes):    # the dropped nodes become the selection the save reads
+                n.setSelected(True, clear_all_selected=(i == 0))
         panel = _find_panel(self)
         if panel is None:
             return

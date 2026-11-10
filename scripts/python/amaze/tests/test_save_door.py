@@ -245,6 +245,29 @@ class ADroppedNodeIsSavedAtTheTopOfTheEventLoop(unittest.TestCase):
         self.assertEqual([node.path()], saved,
                          "the save did not run once the event loop was idle")
 
+    def test_a_drop_to_save_leaves_no_undo_entry(self):
+        """The drop selects what it saves; the artist's next Ctrl+Z is not that selection."""
+        from PySide6 import QtCore
+        from amaze.panel import dragdrop_widgets
+        node = _material(self, "door_drop_undo")
+        node.setSelected(False, clear_all_selected=True)
+        target = self.panel.findChild(dragdrop_widgets.DragDropCentralWidget)
+        mime = QtCore.QMimeData()
+        mime.setText(node.path())
+        event = mock.MagicMock()
+        event.source.return_value = None
+        event.mimeData.return_value = mime
+        hou.undos.clear()
+        self.addCleanup(hou.undos.clear)
+        routed = []
+        with mock.patch.object(self.panel, "save_from_node",
+                               lambda dropped, **_kw: routed.append(dropped)):
+            target.dropEvent(event)
+            test_support.settle(lambda: routed)    # the deferred save runs while patched
+        self.assertTrue(node.isSelected(), "premise: the drop did not select the node")
+        self.assertEqual((), hou.undos.undoLabels(),
+                         "the drop's selection went onto the undo stack")
+
 
 class ASaveLeavesNothingOnTheUndoStack(unittest.TestCase):
     """The staging copies are the save's own business; the next Ctrl+Z is the artist's."""
