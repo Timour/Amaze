@@ -37,6 +37,13 @@ def _sop_network(name: str) -> hou.Node:
     return geo
 
 
+def _overlap(a, b) -> bool:
+    """Do two network items' rectangles intersect?"""
+    (ax, ay), (aw, ah) = a.position(), a.size()
+    (bx, by), (bw, bh) = b.position(), b.size()
+    return ax < bx + bw and bx < ax + aw and ay < by + bh and by < ay + ah
+
+
 def _cop_node_type() -> str:
     """Whatever this build calls a simple COP: type names moved with Copernicus, so ask."""
     kinds = hou.copNodeTypeCategory().nodeTypes()
@@ -143,6 +150,52 @@ class NodesSectionTest(unittest.TestCase):
         self.assertEqual(sorted(made, key=lambda n: n.path()),
                          sorted(helpers.placed_nodes(), key=lambda n: n.path()),
                          "the wire splice would be handed a note, box or dot")
+
+    def _saved_arrangement(self, name):
+        """A SOP asset of three nodes spread out by hand, saved; answers their offsets from the box."""
+        geo = _sop_network(name)
+        spots = {"the_box": (0.0, 0.0), "the_mountain": (5.0, -3.0)}
+        geo.createNode("null", "the_null")
+        spots["the_null"] = (-4.0, 2.0)
+        for node, (x, y) in spots.items():
+            geo.node(node).setPosition(hou.Vector2(x, y))
+        self.assertEqual("SOP", node_actions.add_asset(
+            self.model, geo, "", "", False, name=name))
+        geo.destroy()
+        return {node: (x, y) for node, (x, y) in spots.items()}
+
+    @staticmethod
+    def _offsets(made):
+        box = next(n for n in made if n.name().startswith("the_box"))
+        return {n.name(): (round(n.position().x() - box.position().x(), 4),
+                           round(n.position().y() - box.position().y(), 4)) for n in made}
+
+    def test_a_load_keeps_the_arrangement_it_was_saved_with(self):
+        """No re-layout: the loaded nodes keep their saved places relative to each other, as a paste does."""
+        saved = self._saved_arrangement("arranged_sop")
+        dest = hou.node("/obj").createNode("geo", "arranged_dest")
+        ok, reason, created = node_actions.import_asset_to_scene(
+            self.model, self.model.index(0, 0), context_node=dest)
+        self.assertTrue(ok, reason)
+        self.assertEqual(saved, self._offsets([n for n in created if isinstance(n, hou.Node)]))
+
+    def test_a_load_with_no_drop_point_lands_clear_of_the_nodes_there(self):
+        """A menu import lands beside what is there, arrangement kept, nothing under it."""
+        saved = self._saved_arrangement("clear_sop")
+        dest = hou.node("/obj").createNode("geo", "clear_dest")
+        there = []
+        for x, y in ((0.0, 0.0), (5.0, -3.0), (-4.0, 2.0), (1.0, 1.0)):
+            there.append(dest.createNode("null"))
+            there[-1].setPosition(hou.Vector2(x, y))
+        ok, reason, created = node_actions.import_asset_to_scene(
+            self.model, self.model.index(0, 0), context_node=dest)
+        self.assertTrue(ok, reason)
+        made = [n for n in created if isinstance(n, hou.Node)]
+        self.assertEqual(saved, self._offsets(made))
+        self.assertEqual([(-4.0, 2.0), (0.0, 0.0), (1.0, 1.0), (5.0, -3.0)],
+                         sorted(tuple(n.position()) for n in there), "an existing node moved")
+        self.assertEqual([], [(a.name(), b.name()) for a in made for b in there
+                              if _overlap(a, b)], "the load landed on the nodes already there")
 
     def test_an_unsafe_id_is_refused_with_a_sentence(self):
         """An id that cannot be a filename gets a sentence, not a traceback ▸p/nodes-section."""

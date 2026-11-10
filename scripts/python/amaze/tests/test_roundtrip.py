@@ -1269,6 +1269,55 @@ class TheBuilderTypeIsReadFromTheSidecarFirst(unittest.TestCase):
         self.assertEqual("subnet", material_files.get_saved_node_type(self.prefs, self.asset))
 
 
+class ALooseKarmaLoadKeepsItsArrangement(unittest.TestCase):
+    """Saved nodes keep their places; only the connectors Amaze adds are placed, beside them."""
+
+    def setUp(self):
+        test_support.pin_env(self, "OCIO", "/dev/null")
+        self.prefs = test_support.fixture_prefs(self)
+        self.prefs.render_on_import = 0
+        self.home = hou.node("/mat").createNode("subnet", "loose_layout_home")
+        self.addCleanup(self.home.destroy)
+
+    def test_the_saved_nodes_stay_put_and_the_plumbing_lands_beside_them(self):
+        image = self.home.createNode("mtlximage", "layout_image")
+        surface = self.home.createNode("mtlxstandard_surface", "layout_surface")
+        surface.setInput(surface.inputIndex("base_color"), image)
+        image.setPosition(hou.Vector2(10.0, 10.0))
+        surface.setPosition(hou.Vector2(13.0, 8.0))
+        handler = nodes.NodeHandler(self.prefs)
+        handler._renderer = renderers.KARMA.key
+        self.assertTrue(handler.save_node(surface, "looselayout", False), "premise: no save")
+        asset = material.Material(name="looselayout", renderer=renderers.KARMA.key,
+                                  mat_id="looselayout")
+        ok, reason, created = nodes.NodeHandler(self.prefs).import_asset_to_scene(
+            asset, context_node=self.home)
+        self.assertTrue(ok, reason)
+        builder, = created
+        self.addCleanup(builder.destroy)
+        loaded = [c for c in builder.children() if c.type().name().startswith("mtlx")]
+        plumbing = [c for c in builder.children() if c not in loaded]
+        self.assertEqual(2, len(loaded), "premise: the loose save came back loose")
+        self.assertTrue(plumbing, "premise: the builder has its own connectors")
+        by_type = {c.type().name(): c for c in loaded}
+        offset = (by_type["mtlxstandard_surface"].position()
+                  - by_type["mtlximage"].position())
+        self.assertEqual((3.0, -2.0), (round(offset.x(), 4), round(offset.y(), 4)),
+                         "the saved nodes were re-laid out")
+        self.assertEqual([], [(p.name(), n.name()) for p in plumbing for n in loaded
+                              if _overlap(p, n)], "a connector landed on a saved node")
+        right = max(n.position().x() + n.size().x() for n in loaded)
+        outputs = [p for p in plumbing if p.type().name() != "subinput"]
+        self.assertEqual([], [p.name() for p in outputs if p.position().x() < right],
+                         "an output connector is not to the right of what feeds it")
+
+
+def _overlap(a, b) -> bool:
+    (ax, ay), (aw, ah) = a.position(), a.size()
+    (bx, by), (bw, bh) = b.position(), b.size()
+    return ax < bx + bw and bx < ax + aw and ay < by + bh and by < ay + ah
+
+
 def _alive(node) -> bool:
     try:
         node.path()

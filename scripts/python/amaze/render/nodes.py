@@ -104,6 +104,30 @@ def replace_stock_plumbing(builder, loaded) -> int:
     return replaced
 
 
+def place_plumbing_beside(plumbing, saved, gap: float = 1.0) -> None:
+    """Amaze's own connectors beside the saved nodes, which stay put: inputs left, outputs right."""
+    from amaze.helpers import helpers
+    around = helpers.bounds(saved)
+    if around is None:
+        return
+    outputs = [node for node in plumbing if _is_output_plumbing(node)]
+    inputs = [node for node in plumbing if node not in outputs]
+    for side, edge in ((outputs, around[2] + gap), (inputs, around[0] - gap)):
+        own = helpers.bounds(side)
+        if own is None:
+            continue
+        x = edge - own[0] if side is outputs else edge - own[2]
+        helpers.shift_items(side, hou.Vector2(x, around[3] - own[3]))    # their stock order, top-aligned
+
+
+def _is_output_plumbing(node) -> bool:
+    kind = node.type().name()
+    if kind == "subnetconnector":
+        parm = node.parm("connectorkind")
+        return parm is not None and parm.eval() == 1
+    return kind != "subinput"
+
+
 def custom_node_color(node) -> list:
     """The node's chosen color as [r, g, b]; [] when it is default grey."""
     try:
@@ -1307,9 +1331,11 @@ class NodeHandler:
             )
             debug.note("WARNING - loaded '%s' has no wired surface "
                 "terminal and will render black" % mat.name)
+        kept = [c for c in loaded if c not in collect_nodes]
         for collect in collect_nodes:
             collect.destroy()
-        self._builder_node.layoutChildren()
+        place_plumbing_beside(
+            [c for c in self._builder_node.children() if c not in kept], kept)
         helpers.auto_place(self._builder_node)
 
     COP_LIB_ROOT = "/obj/Amaze"    # the token saved files carry; the import maps it to the companion
@@ -1675,15 +1701,13 @@ class NodeHandler:
                     return (False, debug.Damage(nothing_loaded(mat.name, file_name)))
                 for loaded in new_children:    # only what this load added ▸r/inherited-stamps
                     clear_inherited_stamps(loaded, include_self=True)
-                if new_children:
-                    try:
-                        dest.layoutChildren(items=new_children)
-                    except (TypeError, hou.OperationFailed):
-                        pass
                 self._imported_cop_nodes = list(new_children)
                 self._imported_cop_riders = [    # moved with the nodes, as a paste moves them
                     item for item in dest.allItems()
                     if item.path() not in held and not isinstance(item, hou.Node)]
+                helpers.clear_of(    # saved arrangement kept, as a paste keeps it; a drop point moves it after
+                    self._imported_cop_nodes + self._imported_cop_riders,
+                    [item for item in dest.allItems() if item.path() in held])
                 return (True, "")
 
         container = None

@@ -438,6 +438,47 @@ def _box_depth(item) -> int:
     return depth
 
 
+def shift_items(items, shift) -> None:
+    """Move every item by `shift`, keeping their arrangement."""
+    targets = [(item, item.position() + shift) for item in items]
+    boxes = sorted((pair for pair in targets if isinstance(pair[0], hou.NetworkBox)),
+                   key=lambda pair: _box_depth(pair[0]))
+    rest = [pair for pair in targets if not isinstance(pair[0], hou.NetworkBox)]
+    for item, target in boxes + rest:    # a box carries what it holds, so all land absolute
+        try:
+            item.setPosition(target)
+        except (hou.OperationFailed, hou.ObjectWasDeleted):
+            pass
+
+
+def bounds(items):
+    """(left, bottom, right, top) around the items' rectangles, or None for none."""
+    rects = []
+    for item in items:
+        try:
+            (x, y), (w, h) = item.position(), item.size()
+        except (AttributeError, hou.ObjectWasDeleted):
+            continue
+        rects.append((x, y, x + w, y + h))
+    if not rects:
+        return None
+    return (min(r[0] for r in rects), min(r[1] for r in rects),
+            max(r[2] for r in rects), max(r[3] for r in rects))
+
+
+def clear_of(items, others, gap: float = 1.0) -> None:
+    """Move `items` as one group beside `others`, top-aligned, when their outline lands on one."""
+    group = bounds(items)
+    there = [bounds((other,)) for other in others]
+    if group is None or not any(
+            b and b[0] < group[2] and group[0] < b[2] and b[1] < group[3] and group[1] < b[3]
+            for b in there):
+        return
+    right = max(b[2] for b in there if b)
+    top = max(b[3] for b in there if b)
+    shift_items(items, hou.Vector2(right + gap - group[0], top - group[3]))
+
+
 def place_nodes(nodes, position) -> None:
     """Move created items so the NODES' centroid lands at `position`; notes, boxes, dots ride along."""
     from amaze.core import debug
@@ -453,16 +494,7 @@ def place_nodes(nodes, position) -> None:
         return
     centroid_x = sum(n.position().x() for n in nodes) / len(nodes)
     centroid_y = sum(n.position().y() for n in nodes) / len(nodes)
-    shift = hou.Vector2(position.x() - centroid_x, position.y() - centroid_y)
-    targets = [(item, item.position() + shift) for item in items]
-    boxes = sorted((pair for pair in targets if isinstance(pair[0], hou.NetworkBox)),
-                   key=lambda pair: _box_depth(pair[0]))
-    rest = [pair for pair in targets if not isinstance(pair[0], hou.NetworkBox)]
-    for item, target in boxes + rest:    # a box carries what it holds, so all land absolute
-        try:
-            item.setPosition(target)
-        except (hou.OperationFailed, hou.ObjectWasDeleted):
-            pass
+    shift_items(items, hou.Vector2(position.x() - centroid_x, position.y() - centroid_y))
     try:
         after_x = sum(n.position().x() for n in nodes) / len(nodes)  # the achieved centroid, logged beside the asked one
         after_y = sum(n.position().y() for n in nodes) / len(nodes)
