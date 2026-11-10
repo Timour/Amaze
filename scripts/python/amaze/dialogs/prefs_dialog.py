@@ -1714,7 +1714,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         box.addButton(QtWidgets.QMessageBox.Close)
         box.exec()
         if box.clickedButton() is reveal:
-            hostos.reveal_path(target)
+            ui_helpers.reveal(target)
 
     def clear_debug_log(self) -> None:
         # through the engine, never os.remove: it owns the session header and the flood counters

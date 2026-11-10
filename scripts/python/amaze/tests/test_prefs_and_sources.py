@@ -1267,6 +1267,58 @@ class TheOsHandOffsNeverRaise(unittest.TestCase):
                 hostos.reveal_path("/nowhere/amaze_debug.jsonl")
 
 
+class RevealGoesThroughHoudiniFirst(unittest.TestCase):
+    """`hou.ui.showInFileBrowser` selects on every OS; hostos is the fallback without a UI."""
+
+    def setUp(self):
+        self.shown, self.revealed = [], []
+        patcher = mock.patch.object(hostos, "reveal_path", self.revealed.append)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.folder = tempfile.mkdtemp(prefix="amaze_reveal_")
+        self.addCleanup(shutil.rmtree, self.folder, ignore_errors=True)
+
+    def _ui(self, raising=False):
+        def show(path):
+            if raising:
+                raise hou.OperationFailed("no browser")
+            self.shown.append(path)
+        return mock.patch.object(hou, "ui", types.SimpleNamespace(showInFileBrowser=show),
+                                 create=True)
+
+    def test_a_file_is_selected_and_a_folder_opened(self):
+        from amaze.helpers import ui_helpers
+        target = os.path.join(self.folder, "amaze_debug.jsonl")
+        with self._ui():
+            ui_helpers.reveal(target)
+            ui_helpers.reveal(self.folder)
+        self.assertEqual([target, self.folder + "/"], self.shown)    # the manual: a trailing / selects nothing
+        self.assertEqual([], self.revealed)
+
+    def test_without_a_ui_or_when_houdini_refuses_hostos_reveals(self):
+        from amaze.helpers import ui_helpers
+        self.assertFalse(hasattr(hou, "ui"), "this host HAS a ui, so the fallback is untested")
+        ui_helpers.reveal(self.folder)
+        with self._ui(raising=True):
+            ui_helpers.reveal(self.folder)
+        self.assertEqual([self.folder, self.folder], self.revealed)
+
+    def test_every_caller_inside_houdini_uses_the_one_door(self):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        callers = []
+        for folder in ("panel", "dialogs", "actions", "utils", "core", "render"):
+            for dirpath, _dirs, files in os.walk(os.path.join(root, folder)):
+                for name in files:
+                    if not name.endswith(".py"):
+                        continue
+                    path = os.path.join(dirpath, name)
+                    with open(path, encoding="utf-8") as handle:
+                        tree = ast.parse(handle.read())
+                    callers += ["%s:%d" % (os.path.relpath(path, root), node.lineno)
+                                for node in ast.walk(tree)
+                                if isinstance(node, ast.Attribute) and node.attr == "reveal_path"]
+        self.assertEqual([], callers, "these reach past Houdini's file browser")
+
 class TheUserRowCreatesAndDeletes(unittest.TestCase):
     """Preferences > User creates, renames and deletes; deletion sweeps everything tagged theirs."""
 

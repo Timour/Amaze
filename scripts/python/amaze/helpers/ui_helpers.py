@@ -9,7 +9,7 @@ from PySide6 import QtWidgets, QtCore, QtGui, QtSvg
 import amaze
 from amaze import amazetheme
 from amaze.core import debug
-from amaze.helpers import theme
+from amaze.helpers import hostos, theme
 
 
 @contextlib.contextmanager
@@ -24,6 +24,17 @@ def relayout(*models):
         for model in reversed(live):   # reverse order, so the innermost model is released first - the mirror of how they were announced
             model.layoutChanged.emit()
 
+
+def reveal(path: str) -> None:
+    """Show `path` in the system file browser, a file selected, a folder opened; hostos without a UI."""
+    try:
+        import hou
+        hou.ui.showInFileBrowser(    # selects on Linux too, which xdg-open cannot
+            path.rstrip("/\\") + "/" if os.path.isdir(path) else path)    # a trailing / selects nothing
+        return
+    except Exception as exc:                             # noqa: BLE001 - no hou.ui headless, or refused
+        debug.event("file", "showInFileBrowser failed", error=str(exc))
+    hostos.reveal_path(path)
 
 DRAG_TAG_STYLE = (     # the drag name tag, shared by the self-managed and the native drags
     "background-color: #2d2d2d; color: #e6e6e6;"

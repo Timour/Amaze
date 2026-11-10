@@ -6,7 +6,7 @@ import hou
 
 from amaze import messages
 from amaze.core import database, debug, keyed_store, repair
-from amaze.helpers import hostos
+from amaze.helpers import ui_helpers
 from amaze.helpers import restore as restore_lib
 
 MOST_BUTTONS = 5    # actions one report shows before Choose an Action lists them instead
@@ -212,7 +212,7 @@ def _every_choice(findings: dict, may_change: bool):
 def act(findings: dict, action: str, guard: bool = True, changed=None) -> bool:
     """Confirm and run one action, `changed` called once it lands, then say so; True if it did."""
     if action == "holding":
-        hostos.reveal_path(findings["holding"]["path"])
+        ui_helpers.reveal(findings["holding"]["path"])
         return False
     done = {"add-back": _do_add_back, "restore": _do_restore, "reattach": _do_reattach,
             "quarantine": _do_move_aside, "unknown": _do_move_unknown,

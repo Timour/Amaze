@@ -1489,7 +1489,7 @@ class FolderSection(Section):
         if not path:
             return
         try:
-            hostos.reveal_path(path)
+            ui_helpers.reveal(path)
         except Exception as exc:                         # noqa: BLE001
             debug.event("file", "reveal failed", error=str(exc))
 
