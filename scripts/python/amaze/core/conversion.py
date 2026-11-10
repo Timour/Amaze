@@ -27,6 +27,7 @@ REASON_STALLED = "stalled"    # a converter's child outlived its kill: the file'
 MAX_RESCUE_MEGABYTES = 1024    # the most any route may decode in full ▸r/conversion-internals
 
 CONVERT_TIMEOUT_MS = 30000    # how long any one converter may run before it is killed
+READ_PROBE_SECONDS = 2.0    # how long a raw read of the file may take before its reads count as stuck
 
 
 class Conversion:
@@ -86,6 +87,55 @@ def _exr_size(path: str) -> QtCore.QSize:
             break
         at = value + size
     return QtCore.QSize()
+
+
+_SIPS_MAGIC = (b"\xff\xd8\xff", b"\x89PNG", _EXR_MAGIC, b"II*\x00", b"MM\x00*",
+               b"#?RADIANCE", b"#?RGBE", b"8BPS", b"BM")
+_TGA_FOOTER = b"TRUEVISION-XFILE.\x00"    # the last 18 bytes of a TGA 2.0 file
+
+
+def _sips_reads(path: str) -> bool:
+    """Is this file, by its HEADER, a format sips was measured to read? ▸r/conversion-internals"""
+    try:
+        with open(path, "rb") as handle:
+            head = handle.read(18)
+            size = handle.seek(0, os.SEEK_END)
+            handle.seek(max(0, size - len(_TGA_FOOTER)))
+            tail = handle.read()
+    except OSError:
+        return False
+    if head.startswith(_SIPS_MAGIC) or (head[:4] == b"RIFF" and head[8:12] == b"WEBP"):
+        return True
+    if tail == _TGA_FOOTER:
+        return True
+    return _tga_v1(head)
+
+
+def _tga_v1(head: bytes) -> bool:
+    """A footerless TGA 1.0 has no magic: its header fields must all hold a TGA's values."""
+    if len(head) < 18:
+        return False
+    width, height = struct.unpack_from("<HH", head, 12)
+    return (head[1] in (0, 1) and head[2] in (1, 2, 3, 9, 10, 11)
+            and head[16] in (8, 15, 16, 24, 32) and width > 0 and height > 0)
+
+
+def _reads_promptly(path: str, seconds: float = READ_PROBE_SECONDS) -> bool:
+    """Does a raw read of the file's two ends return within `seconds`? ▸p/conversion-shape"""
+    done = threading.Event()
+
+    def _read():
+        try:
+            with open(path, "rb") as handle:
+                handle.read(65536)
+                handle.seek(max(0, handle.seek(0, os.SEEK_END) - 65536))
+                handle.read()
+        except OSError:
+            pass    # an error came back, so the reads are not stuck
+        done.set()
+
+    threading.Thread(target=_read, name="amaze-read-probe", daemon=True).start()    # a stuck read keeps only this thread
+    return done.wait(seconds)
 
 
 @contextlib.contextmanager
@@ -269,6 +319,8 @@ def _produce_sips(source: str, out_path: str, ctx, resample: bool) -> tuple:
     """macOS's `/usr/bin/sips`, registered for both FIT and FORMAT. ▸r/sips-hdr ▸r/conversion-internals"""
     if not hostos.is_macos():
         return False, "not macOS"
+    if not _sips_reads(source):
+        return False, "not a format sips is measured to read"
     sips = shutil.which("sips")
     if sips is None:
         return False, "sips not on PATH"
@@ -286,6 +338,20 @@ def _produce_iconvert(source: str, out_path: str, ctx) -> tuple:
     if iconvert is None:
         return False, "iconvert not in $HFS/bin"
     ok, err = _run_process(iconvert, [source, out_path], cancelled=ctx.cancelled)
+    return (True, "") if ok else (False, err)
+
+
+def _produce_icp(source: str, out_path: str, ctx) -> tuple:
+    """Houdini's own resampler, scaling by the size Qt declared; FIT only. ▸r/conversion-internals"""
+    declared = ctx.declared.get(source)
+    if declared is None or not declared.isValid() or declared.isEmpty():
+        return False, "no declared size to scale from"
+    icp = hostos.bundled_binary(ctx.hfs, "icp")
+    if icp is None:
+        return False, "icp not in $HFS/bin"
+    percent = 100.0 * ctx.size / max(declared.width(), declared.height())    # `-s` keeps the aspect; `-w` alone is ignored
+    ok, err = _run_process(icp, ["-s", "%.4f" % percent, source, out_path],
+                           cancelled=ctx.cancelled)
     return (True, "") if ok else (False, err)
 
 
@@ -331,9 +397,10 @@ _SIPS_FIT = functools.partial(_produce_sips, resample=True)
 _SIPS_FORMAT = functools.partial(_produce_sips, resample=False)
 
 
-_FIT_ADAPTERS = (    # resamplers only, sips first ▸r/conversion-internals
+_FIT_ADAPTERS = (    # resamplers only, sips first; sips takes only the headers it reads ▸r/conversion-internals
     ("sips (resampling)", _SIPS_FIT),
     ("pillow", _produce_pillow),
+    ("icp (resampling)", _produce_icp),
 )
 
 _FORMAT_ADAPTERS = (    # Pillow first: it declines fastest ▸r/conversion-internals
@@ -356,6 +423,7 @@ class _Ctx:
         self.need = ""    # what this file turned out to need; first answer wins ▸r/conversion-internals
         self.fallback = None    # a uniform image kept in case nothing does better ▸p/conversion-shape
         self.fallback_via = ""
+        self.declared = {}    # path -> the size Qt declared for it, which icp scales from
 
     def needs(self, need: str) -> None:
         if not self.need:
@@ -462,8 +530,11 @@ def _run_adapters(adapters, source: str, ctx: _Ctx, need: str,
                     ctx.tried(name, why)
                     return _Step(need=need, reason=REASON_CANCELLED)
                 ctx.tried(name, why)
-                if why == ABANDONED:    # no second converter on a file whose reads are stuck
-                    return _Step(need=need, reason=REASON_STALLED)
+                if why == ABANDONED:    # the FILE is measured: a stuck read gets no second converter
+                    if not _reads_promptly(source):
+                        return _Step(need=need, reason=REASON_STALLED)
+                    debug.event("convert", "a converter was abandoned on a file that reads - the next one runs",
+                                path=source, converter=name)
                 continue
             step = reread(out_path, ctx)
             if step.image is None:
@@ -497,6 +568,7 @@ def _fitted(path: str, ctx: _Ctx) -> _Step:
 
     ctx.tried("qt", "decode would pass Qt's allocation limit")
     ctx.needs(FIT)
+    ctx.declared[path] = declared
     if declared_mb > MAX_RESCUE_MEGABYTES:
         debug.event(    # declined, and logged ▸p/conversion-shape
             "convert", "image too large to convert - declined",

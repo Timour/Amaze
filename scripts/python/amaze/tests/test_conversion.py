@@ -289,12 +289,23 @@ class AStuckChildEndsItsFilesChain(unittest.TestCase):
         return False, "not reached"
 
     def test_an_abandoned_child_stops_its_files_chain(self):
+        """When the file's own reads stall, no second converter is started on it."""
         adapters = (("stuck", self._stuck), ("next", self._next))
-        with _sigkill_deferred(), mock.patch.object(conversion, "_FORMAT_ADAPTERS", adapters):
+        with _sigkill_deferred(), mock.patch.object(conversion, "_FORMAT_ADAPTERS", adapters), \
+                mock.patch.object(conversion, "_reads_promptly", lambda path: False):
             result = conversion.convert_image(self.source, 64)
         self.assertEqual(["stuck"], self.started,
                          "a second converter was started on a file whose reads are stuck")
         self.assertEqual(conversion.REASON_STALLED, result.reason)
+
+    def test_an_abandoned_child_on_a_readable_file_lets_the_next_run(self):
+        """One tool hanging is not the file hanging: a file that reads goes on to the next adapter."""
+        adapters = (("stuck", self._stuck), ("next", self._next))
+        with _sigkill_deferred(), mock.patch.object(conversion, "_FORMAT_ADAPTERS", adapters):
+            result = conversion.convert_image(self.source, 64)
+        self.assertEqual(["stuck", "next"], self.started,
+                         "a converter that hung on a readable file ended its chain")
+        self.assertNotEqual(conversion.REASON_STALLED, result.reason)
 
     def test_the_timeout_and_graveyard_records_name_the_file(self):
         adapters = (("stuck", self._stuck),)
@@ -308,6 +319,203 @@ class AStuckChildEndsItsFilesChain(unittest.TestCase):
                 self.assertIn(self.source, found[0]["data"].get("args") or [],
                               "the record does not name the file")
 
+
+@unittest.skipUnless(hasattr(os, "mkfifo"), "the stalled read is a FIFO with no writer")
+class TheReadProbeMeasuresTheFile(unittest.TestCase):
+    """The stall verdict is a bounded raw read of the file, not one converter's hang."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp(prefix="amaze_probe_")
+        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
+
+    def test_a_readable_file_reads(self):
+        path = os.path.join(self.dir, "plain.bin")
+        with open(path, "wb") as handle:
+            handle.write(b"\0" * 200000)
+        self.assertTrue(conversion._reads_promptly(path))
+
+    def test_a_read_that_never_returns_is_a_stall(self):
+        fifo = os.path.join(self.dir, "stuck")
+        os.mkfifo(fifo)    # opening it for reading blocks until a writer comes: a real stalled read
+
+        def _release():    # the probe's thread is still blocked; a writer opening and closing frees it
+            try:
+                os.close(os.open(fifo, os.O_WRONLY | os.O_NONBLOCK))
+            except OSError:
+                pass
+        self.addCleanup(_release)
+        self.assertFalse(conversion._reads_promptly(fifo, seconds=0.3))
+
+
+class SipsGetsOnlyTheFormatsItReads(unittest.TestCase):
+    """sips is offered a file only when its HEADER is a format sips was measured to read."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp(prefix="amaze_sips_")
+        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
+
+    def _file(self, name, head, tail=b""):
+        path = os.path.join(self.dir, name)
+        with open(path, "wb") as handle:
+            handle.write(head + b"\0" * 64 + tail)
+        return path
+
+    TGA_V1 = bytes((0, 0, 2)) + b"\0" * 9 + struct.pack("<HH", 64, 32) + bytes((24, 0))
+
+    ALLOWED = {
+        "jpeg": b"\xff\xd8\xff\xe0",
+        "png": b"\x89PNG\r\n\x1a\n",
+        "exr": b"\x76\x2f\x31\x01",
+        "tiff-intel": b"II*\x00",
+        "tiff-motorola": b"MM\x00*",
+        "radiance": b"#?RADIANCE\n",
+        "rgbe": b"#?RGBE\n",
+        "psd": b"8BPS",
+        "bmp": b"BM",
+        "webp": b"RIFF\x24\x00\x00\x00WEBPVP8 ",
+        "tga-1": TGA_V1,
+    }
+
+    def test_each_measured_header_is_offered_to_sips(self):
+        for name, head in self.ALLOWED.items():
+            with self.subTest(name):
+                self.assertTrue(conversion._sips_reads(self._file(name, head)),
+                                "a format sips reads was kept from it")
+
+    def test_a_tga_is_known_by_its_footer(self):
+        footer = b"\0" * 8 + b"TRUEVISION-XFILE.\0"
+        path = self._file("footer.tga", b"\x00\x01\x09" + b"\0" * 15, footer)
+        self.assertTrue(conversion._sips_reads(path))
+
+    def test_a_rat_and_an_unknown_header_are_not(self):
+        for name, head in (("rat", b"fbtH\x05\x00\x00\x00"), ("rat-classic", b"tarH\x80\x00"),
+                           ("riff-not-webp", b"RIFF\x24\x00\x00\x00WAVE"),
+                           ("unknown", b"not an image Qt knows"), ("empty", b"")):
+            with self.subTest(name):
+                self.assertFalse(conversion._sips_reads(self._file(name, head)),
+                                 "sips was offered a file it was never measured to read")
+
+    def _programs(self, path):
+        seen = []
+
+        def spy(program, args, **kw):
+            seen.append(os.path.basename(program))
+            return False, "exit 13: stand-in"
+
+        with mock.patch.object(conversion, "_run_process", spy):
+            conversion.convert_image(path, 64, hfs=os.environ.get("HFS", ""))
+        return seen
+
+    @unittest.skipUnless(hostos.is_macos(), "sips is macOS-only")
+    def test_a_measured_header_reaches_sips_first(self):
+        seen = self._programs(self._file("broken.png", b"\x89PNG\r\n\x1a\n"))
+        self.assertTrue(seen, "premise: no converter ran")
+        self.assertEqual("sips", seen[0], "sips was not the first converter: %s" % seen)
+
+    @unittest.skipUnless(hostos.is_macos(), "sips is macOS-only")
+    def test_a_rat_and_an_unknown_header_never_start_sips(self):
+        for name, head in (("tex.rat", b"fbtH\x05\x00\x00\x00"), ("thing.xyz", b"not an image")):
+            with self.subTest(name):
+                seen = self._programs(self._file(name, head))
+                self.assertNotIn("sips", seen, "sips started on a format it does not read")
+
+
+def _houdini_made(hfs, tool, args):
+    """A real file written by one of Houdini's own tools; None when that tool is missing."""
+    import subprocess
+    binary = hostos.bundled_binary(hfs, tool)
+    if binary is None:
+        return None
+    done = subprocess.run([binary] + list(args), capture_output=True, timeout=120)
+    return args[-1] if done.returncode == 0 and os.path.exists(args[-1]) else None
+
+
+def _spy_programs(seen, sips_answer=None):
+    """Record every converter program; `sips_answer` stands in for what sips says, else it runs."""
+    real = conversion._run_process
+
+    def spy(program, args, **kw):
+        name = os.path.basename(program)
+        seen.append(name)
+        if name == "sips" and sips_answer is not None:
+            return sips_answer
+        return real(program, args, **kw)
+    return mock.patch.object(conversion, "_run_process", spy)
+
+
+class AHoudiniTextureGetsHoudinisConverters(unittest.TestCase):
+    """A `.rat` never meets sips; a `.tx` sips refuses or hangs on still reaches iconvert."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp(prefix="amaze_houdini_tex_")
+        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
+        self.hfs = os.environ.get("HFS", "")
+        limit = QtGui.QImageReader.allocationLimit()
+        self.addCleanup(QtGui.QImageReader.setAllocationLimit, limit)
+        self.png = write_png(os.path.join(self.dir, "source.png"), 1024, 512)
+
+    def _made(self, tool, args):
+        made = _houdini_made(self.hfs, tool, args)
+        if made is None:
+            self.skipTest("no working $HFS/bin/%s" % tool)
+        return made
+
+    def _rat(self):
+        rat = self._made("iconvert", [self.png, os.path.join(self.dir, "tex.rat")])
+        with open(rat, "rb") as handle:
+            self.assertEqual(b"fbtH", handle.read(4), "premise: iconvert wrote no Houdini .rat")
+        return rat
+
+    def _tx(self):    # maketx's default, a tiled TIFF: sips's header
+        tx = self._made("imaketx", [self.png, os.path.join(self.dir, "tex.tx")])
+        with open(tx, "rb") as handle:
+            self.assertEqual(b"II*\x00", handle.read(4), "premise: not a TIFF inside")
+        return tx
+
+    def _convert(self, path, seen, pillow=True, **kw):
+        adapters = tuple(a for a in conversion._FORMAT_ADAPTERS    # Pillow reads this 8-bit fixture; not a float .tx
+                         if pillow or a[0] != "pillow")
+        with _spy_programs(seen, **kw), mock.patch.object(conversion, "_FORMAT_ADAPTERS", adapters):
+            return conversion.convert_image(path, 256, hfs=self.hfs)
+
+    def test_a_rat_gets_a_thumbnail_without_sips(self):
+        seen = []
+        result = self._convert(self._rat(), seen)
+        self.assertTrue(result, "a Houdini .rat got no thumbnail: %s" % (result.reason,))
+        self.assertFalse(uniform(result.image))
+        self.assertNotIn("sips", seen, "sips was started on a .rat")
+        self.assertIn("iconvert", seen)
+
+    def test_an_oversized_rat_is_resampled_by_houdini_not_sips(self):
+        """FIT: icp scales by the declared size, so no full-size temp is written."""
+        rat = self._rat()
+        QtGui.QImageReader.setAllocationLimit(1)    # 1MB: 1024x512 decodes to 2.1MB, so FIT
+        seen = []
+        with qt_refuses(rat, declared=(1024, 512)):
+            result = self._convert(rat, seen)
+        self.assertTrue(result, "an oversized .rat got no thumbnail: %s" % (result.attempts,))
+        self.assertNotIn("sips", seen, "sips was started on a .rat")
+        self.assertEqual("icp (resampling)", result.via)
+        self.assertEqual((256, 128), (result.image.width(), result.image.height()))
+
+    @unittest.skipUnless(hostos.is_macos(), "sips is macOS-only")
+    def test_a_tx_sips_refuses_reaches_iconvert(self):
+        seen = []
+        result = self._convert(self._tx(), seen, pillow=False,
+                               sips_answer=(False, "exit 13: Error 13"))
+        self.assertEqual("sips", seen[0], "a .tx's header is measured to go to sips first: %s" % seen)
+        self.assertTrue(result, "a .tx sips refused got no thumbnail: %s" % (result.attempts,))
+        self.assertEqual("iconvert", result.via)
+
+    @unittest.skipUnless(hostos.is_macos(), "sips is macOS-only")
+    def test_a_tx_whose_sips_hangs_on_a_readable_file_reaches_iconvert(self):
+        seen = []
+        result = self._convert(self._tx(), seen, pillow=False,
+                               sips_answer=(False, conversion.ABANDONED))
+        self.assertEqual("sips", seen[0])
+        self.assertTrue(result, "a sips hang ended the chain on a file that reads: %s"
+                        % (result.attempts,))
+        self.assertEqual("iconvert", result.via)
 
 def _exr_header(width, height) -> bytes:
     """An OpenEXR header laid out as Houdini's iconvert writes one, with a box2i data window."""

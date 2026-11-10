@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.33.18
+
+- `.rat` textures get thumbnails again, without a 30-second wait first. A converter that hangs on one picture no longer stops the others from trying.
+
 ## 1.33.17
 
 - A thumbnail render starts with the same settings Houdini gives its own renders, and no longer switches off any renderer's plugins. 1.33.15 and 1.33.16 switched off Redshift's shader plugins in Karma and Octane thumbnail renders.
