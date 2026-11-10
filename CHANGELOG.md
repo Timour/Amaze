@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.33.21
+
+- A loose OpenPBR material gets its thumbnail when it is saved.
+
 ## 1.33.20
 
 - Loading a saved node network keeps the layout it was saved with instead of re-arranging it.
