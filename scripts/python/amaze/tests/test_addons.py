@@ -417,11 +417,13 @@ class TheStoreTest(_ThreeRows):
             shutil.copy(self.three_rows(version="1.3.0"), dest)
             return dest
 
+        from amaze.actions import addons as addon_actions
         with mock.patch.object(matx_sources, "download", download), \
                 mock.patch.object(hou, "getenv", lambda name, default=None: houdini_temp
                                   if name == "HOUDINI_TEMP_DIR" else real_getenv(name, default)):
-            addons.fetch_and_install("https://example.invalid/addons/Example-1.3.0.amazepkg",
-                                     self.amaze, running=(22, 0, 466))
+            addon_actions.install(
+                [("Example", "1.3.0", "https://example.invalid/addons/Example-1.3.0.amazepkg")],
+                self.amaze)
         self.assertEqual(houdini_temp, os.path.dirname(os.path.dirname(landed[0])))
         self.assertEqual([], os.listdir(houdini_temp), "the scratch folder was left behind")
 
@@ -449,12 +451,13 @@ class TheStoreTest(_ThreeRows):
             on_bytes(1, 2)
             return dest
 
+        from amaze.actions import addons as addon_actions
         with mock.patch.object(matx_sources, "download", download), \
-                mock.patch.object(hou, "InterruptableOperation", Operation, create=True), \
-                self.assertRaises(OSError) as caught:
-            addons.fetch_and_install("https://example.invalid/addons/Example-1.3.0.amazepkg",
-                                     self.amaze, running=(22, 0, 466))
-        self.assertEqual(messages.DOWNLOAD_STOPPED, str(caught.exception))
+                mock.patch.object(hou, "InterruptableOperation", Operation, create=True):
+            said = addon_actions.install(
+                [("Example", "1.3.0", "https://example.invalid/addons/Example-1.3.0.amazepkg")],
+                self.amaze)
+        self.assertEqual(messages.DOWNLOAD_STOPPED, said)
         self.assertTrue(opened and opened[0].kwargs.get("open_interrupt_dialog"))
         self.assertIsNone(addons.installed(self.amaze, "example"), "a stopped download installed")
 

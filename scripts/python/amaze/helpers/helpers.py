@@ -6,6 +6,7 @@ import sys
 
 import hou
 
+from amaze import messages
 from amaze.helpers import hostos
 
 PATH_STYLES = ("absolute", "hip", "job", "home")  # Write Paths As: one variable or absolute; home by default
@@ -304,6 +305,18 @@ def preserving_selection_and_current():
         if not _open_blocks:    # an inner block's pass would run last and win with a mid-operation state
             run_at_top_of_loop(functools.partial(_put_editors_back, editors, "deferred"),
                                "editor put-back")    # Houdini's own dive follows the first pass ▸r/editor-put-back
+
+
+@contextlib.contextmanager
+def download_operation(name: str):
+    """Esc and a progress bar around a download: yields on_bytes(read, total); an Esc is OSError."""
+    try:
+        with hou.InterruptableOperation(name, open_interrupt_dialog=True) as op:    # as online_import
+            def on_bytes(read, total):
+                op.updateProgress(min(read / total, 1.0) if total else -1.0)
+            yield on_bytes
+    except hou.OperationInterrupted:
+        raise OSError(messages.DOWNLOAD_STOPPED) from None
 
 
 def run_at_top_of_loop(fn, what: str) -> None:

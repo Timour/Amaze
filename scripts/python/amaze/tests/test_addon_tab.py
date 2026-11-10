@@ -131,7 +131,7 @@ class TheRowsAreThePackagesOwnTest(_Tab):
         self.assertEqual(messages.ADDONS_AVAILABLE % "Example 1.3.0, Other 0.1.0", self.line())
         fetched = []
         with mock.patch.object(addons, "fetch_and_install",
-                               lambda url, root, running=None: fetched.append(url)):
+                               lambda url, root, running=None, **_kw: fetched.append(url)):
             self.dialog.install_addons()
         self.assertEqual([URL % ("Example", "1.3.0"), URL % ("Other", "0.1.0")], fetched)
         self.assertEqual(messages.ADDONS_INSTALLED % "Example 1.3.0, Other 0.1.0", self.line())
@@ -142,7 +142,7 @@ class TheRowsAreThePackagesOwnTest(_Tab):
         self.dialog._addons_found = [("Example", "1.3.0", URL % ("Example", "1.3.0"))]
         seen = []
         with mock.patch.object(addons, "fetch_and_install",
-                               lambda url, root, running=None: seen.append(running)):
+                               lambda url, root, running=None, **_kw: seen.append(running)):
             self.dialog.install_addons()
         self.assertEqual([hostver.houdini_version()], seen,
                          "the install was not told which Houdini it must run in")

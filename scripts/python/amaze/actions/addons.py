@@ -21,11 +21,16 @@ def check(betas: bool) -> tuple:
 
 def install(found, root: str) -> str:
     """Install what `check` found into the Amaze at `root`; the sentence saying what happened."""
+    import functools
+    import hou
+    from amaze.helpers import helpers
     done = []
     running = hostver.houdini_version()
+    temp_dir = hou.getenv("HOUDINI_TEMP_DIR")    # Houdini's scratch, as the thumbnail jobs use
+    downloading = functools.partial(helpers.download_operation, messages.DOWNLOADING_ADDONS)
     try:
         for name, version, url in found:
-            addons.fetch_and_install(url, root, running)
+            addons.fetch_and_install(url, root, running, temp_dir=temp_dir, downloading=downloading)
             done.append("%s %s" % (name, version))
     except (packages.PackageError, OSError) as exc:
         return str(exc)

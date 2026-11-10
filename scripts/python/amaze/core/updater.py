@@ -318,9 +318,9 @@ def install(found, into: str = "") -> None:
     if not into or not os.path.isdir(into):
         raise OSError(messages.INSTALL_LOCATION_UNKNOWN)
     workspace = os.path.join(hostos.cache_root(), "updates")
-    from amaze.core import matx_sources
+    from amaze.helpers import helpers
     try:
-        with matx_sources.download_operation(messages.DOWNLOADING_UPDATE) as on_bytes:
+        with helpers.download_operation(messages.DOWNLOADING_UPDATE) as on_bytes:
             staged = fetch_and_stage(found.url, workspace,
                                      digest=getattr(found, "digest", ""),
                                      size=getattr(found, "size", 0), on_bytes=on_bytes)

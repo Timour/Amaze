@@ -325,15 +325,14 @@ def store_versions(betas: bool = False) -> dict:
     return newest
 
 
-def fetch_and_install(url: str, amaze_root: str, running=None) -> dict:
-    """Download one store package and install it; a row that was off stays off. Answers its manifest."""
+def fetch_and_install(url: str, amaze_root: str, running=None, temp_dir=None,
+                      downloading=contextlib.nullcontext) -> dict:
+    """Download one package into `temp_dir` and install it; `downloading()` wraps the download alone."""
     import tempfile
-    import hou
     from amaze.core import matx_sources
-    scratch = tempfile.mkdtemp(prefix="amaze_addon_",    # Houdini's scratch, as the thumbnail jobs use
-                               dir=hou.getenv("HOUDINI_TEMP_DIR") or None)
+    scratch = tempfile.mkdtemp(prefix="amaze_addon_", dir=temp_dir or None)
     try:
-        with matx_sources.download_operation(messages.DOWNLOADING_ADDONS) as on_bytes:
+        with downloading() as on_bytes:
             path = matx_sources.download(url, os.path.join(scratch, url.rsplit("/", 1)[-1]),
                                          on_bytes)
         was_off = _off_types(amaze_root, read(path)["folder"])

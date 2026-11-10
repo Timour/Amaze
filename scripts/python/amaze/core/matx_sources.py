@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import contextlib
 import functools
 import json
 import math
@@ -290,19 +289,6 @@ def report_unsafe(kind: str, paths) -> None:
                 count=len(paths), paths=list(paths)[:20])
     debug.alert(messages.UNSAFE_ARCHIVE_PATHS_SKIPPED % len(paths),
                 key="online-unsafe-archive-paths")
-
-
-@contextlib.contextmanager
-def download_operation(name: str):
-    """Esc and a progress bar around a download: yields on_bytes(read, total); an Esc is OSError."""
-    import hou
-    try:
-        with hou.InterruptableOperation(name, open_interrupt_dialog=True) as op:    # as online_import
-            def on_bytes(read, total):
-                op.updateProgress(min(read / total, 1.0) if total else -1.0)
-            yield on_bytes
-    except hou.OperationInterrupted:
-        raise OSError(messages.DOWNLOAD_STOPPED) from None
 
 
 def download(url: str, dest_path: str, on_bytes=None, ceiling=None) -> str:
