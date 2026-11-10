@@ -1540,25 +1540,68 @@ class PreferencesSpeakTheDrawnWords(unittest.TestCase):
                          seen.get("text"), "premise: the confirm was asked")
         self.assertEqual(messages.HELP_MATERIAL_VERSIONS, seen.get("help"))
 
-    def test_the_log_save_failure(self):
-        from amaze import messages
+    def _save_log(self, answer=1, **patches):
+        """Save Log through hou.ui, as the rest of Preferences: what was asked and what was said."""
         from amaze.core import debug
         from amaze.tests import test_support
         dlg = self._dialog()
         folder = test_support.scratch_dir("amaze_log_save_")
         self.addCleanup(shutil.rmtree, folder, True)
-        failure = OSError("the disk is full")
-        shown = []
-        with mock.patch.object(QtWidgets.QFileDialog, "getExistingDirectory",
-                               return_value=folder), \
-                mock.patch.object(debug, "export_log", side_effect=failure), \
-                mock.patch.object(QtWidgets.QMessageBox, "warning",
-                                  lambda *args: shown.append(args)):
-            dlg.save_debug_log()
-        self.assertEqual(1, len(shown), "premise: the failure was shown")
-        self.assertEqual(messages.LOG_NOT_SAVED_UNEXPECTED % failure,
-                         shown[0][2])
+        asked, said = [], []
 
+        def display(text, *_args, **kwargs):
+            said.append(dict(kwargs, text=text))
+            return answer
+
+        ui = types.SimpleNamespace(
+            selectFile=lambda *a, **k: asked.append(k) or folder + "/", displayMessage=display)
+        with mock.patch.object(hou, "ui", ui, create=True), \
+                mock.patch.object(QtWidgets.QFileDialog, "getExistingDirectory",
+                                  side_effect=AssertionError("a Qt picker")), \
+                mock.patch.object(QtWidgets.QMessageBox, "exec",
+                                  side_effect=AssertionError("a Qt box")), \
+                mock.patch.object(debug, "export_log", **patches) as export, \
+                mock.patch("amaze.helpers.ui_helpers.reveal") as reveal:
+            dlg.save_debug_log()
+        self.assertEqual([hou.fileType.Directory], [k.get("file_type") for k in asked])
+        return folder, export, said, reveal
+
+    def test_the_log_save_failure(self):
+        from amaze import messages
+        failure = OSError("the disk is full")
+        _folder, _export, said, _reveal = self._save_log(side_effect=failure)
+        self.assertEqual([(messages.LOG_NOT_SAVED_UNEXPECTED % failure, messages.TITLE_LOG_NOT_SAVED,
+                           hou.severityType.Warning)],
+                         [(s["text"], s.get("title"), s.get("severity")) for s in said])
+
+    def test_a_refused_log_save_says_why(self):
+        from amaze import messages
+        from amaze.core import debug
+        _folder, _export, said, _reveal = self._save_log(
+            side_effect=debug.ExportRefused("the log is empty"))
+        self.assertEqual([("the log is empty", messages.TITLE_LOG_NOT_SAVED,
+                           hou.severityType.Warning)],
+                         [(s["text"], s.get("title"), s.get("severity")) for s in said])
+
+    def test_a_saved_log_offers_show_in_folder(self):
+        from amaze import messages
+        target = os.path.join("/somewhere", "amaze_debug.jsonl")
+        for answer, revealed in ((0, [target]), (1, [])):
+            with self.subTest(answer=answer):
+                folder, export, said, reveal = self._save_log(answer=answer, return_value=target)
+                self.assertEqual(os.path.normpath(folder),
+                                 os.path.normpath(export.call_args.args[0]))
+                shown, = said
+                self.assertEqual(messages.LOG_SAVED_AS % "amaze_debug.jsonl", shown["text"])
+                self.assertEqual(messages.HELP_LOG_SAVED, shown.get("help"))
+                self.assertEqual(messages.TITLE_LOG_SAVED, shown.get("title"))
+                self.assertEqual(messages.BUTTON_SHOW_IN_FOLDER, shown["buttons"][0])
+                self.assertEqual(revealed, [c.args[0] for c in reveal.call_args_list])
+
+    def test_the_two_log_titles_are_spelled_as_one_pair(self):
+        from amaze import messages
+        self.assertEqual(("Log not saved", "Log saved"),
+                         (messages.TITLE_LOG_NOT_SAVED, messages.TITLE_LOG_SAVED))
 
 class ThePickersStartInAForwardSlashPath(unittest.TestCase):
     """`hou.ui.selectFile` wants forward slashes in `start_directory`, even on Windows."""

@@ -312,9 +312,11 @@ TITLE_AMAZE = 'Amaze'
 
 TITLE_CHECK_LIBRARY = 'Check Library'
 
-TITLE_LOG_NOT_SAVED = 'Amaze — Log not saved'
+TITLE_LOG_NOT_SAVED = 'Log not saved'
 
-TITLE_LOG_SAVED = 'Amaze - log saved'
+TITLE_LOG_SAVED = 'Log saved'
+
+TITLE_SAVE_LOG_TO_FOLDER = 'Save Amaze log to folder'
 
 TITLE_EMPTY_SNIPPET = 'Empty snippet'
 
@@ -348,6 +350,8 @@ BUTTONS_DELETE = ('Delete', 'Cancel')
 BUTTONS_DELETE_USER = ('Delete User', 'Cancel')
 
 BUTTONS_OPEN_PREFERENCES = ('Open Preferences', 'Close')
+
+BUTTONS_SHOW_IN_FOLDER = (BUTTON_SHOW_IN_FOLDER, 'Close')
 
 BUTTONS_TURN_ON = ('Turn On', 'Cancel')
 
