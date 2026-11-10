@@ -19,9 +19,9 @@ def byte_size(count: int) -> str:
     return "%d bytes" % count
 
 
-def sanitize_usd_path(path: str) -> str:
-    """`path` as a node or USD prim name: other characters become `_`, and a digit may not lead."""
+def sanitize_usd_path(path: str, digit_may_lead: bool = False) -> str:
+    """`path` as a node or USD prim name: other characters become `_`; a node name alone may lead with a digit."""
     clean = re.sub("[^a-zA-Z0-9]", "_", path)
-    if clean and clean[0].isdigit():
+    if clean and clean[0].isdigit() and not digit_may_lead:
         clean = "_" + clean
     return clean

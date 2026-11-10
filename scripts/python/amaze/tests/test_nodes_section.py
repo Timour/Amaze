@@ -769,6 +769,29 @@ class WhatCountsAsAFailure(unittest.TestCase):
             "Rough_Metal_01", handler.builder_node.name(),
             "the display name did not reach the node through the sanitiser")
 
+    def test_a_name_that_cleans_to_nothing_still_names_the_builder(self):
+        """`setName("")` raises; a whole saved builder takes `material` as the COP path does."""
+        handler = nodes.NodeHandler(self.prefs)
+        home = hou.node("/obj").createNode("matnet", "empty_name_home")
+        handler._import_path = home
+        handler._builder_node = home.createNode("subnet", "holder")
+        inner = handler._builder_node.createNode("subnet", "saved_builder")
+        handler._place_whole_builder(material.Material(name="", renderer="Karma"), inner)
+        self.assertTrue(handler.builder_node.name().startswith("material"),
+                        handler.builder_node.name())
+
+    def test_one_rule_cleans_every_node_name(self):
+        """Network names went through `[^\\w]`, which keeps letters `setName` refuses."""
+        from amaze.helpers import wording
+        self.assertFalse(hasattr(nodes.NodeHandler, "_sanitize_net_name"),
+                         "a second name cleaner is back")
+        for name, net, usd in (("my-net.v2", "my_net_v2", "my_net_v2"),    # (name, network, USD)
+                               ("01_wall", "01_wall", "_01_wall"),
+                               ("café", "caf_", "caf_")):
+            self.assertEqual(usd, wording.sanitize_usd_path(name))
+            self.assertEqual(net, wording.sanitize_usd_path(name, digit_may_lead=True),
+                             "a network name a library already holds would change")
+
     def test_an_ocio_set_to_nothing_is_no_colour_config(self):
         """`OCIO =` in houdini.env leaves the variable set and empty; an empty `$OCIO` is no config."""
         for ocio, saves in (("", False), ("/dev/null", True)):    # refusing empty must not refuse a set one

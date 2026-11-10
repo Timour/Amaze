@@ -21,7 +21,7 @@ def make_karma_builder(parent: hou.Node, name: str) -> hou.Node:
     """The mtlx builder, starters gone, connectors KEPT for wiring."""
     import voptoolutils
     builder = parent.createNode("subnet")
-    builder.setName(wording.sanitize_usd_path(name), unique_name=True)
+    builder.setName(wording.sanitize_usd_path(name) or "material", unique_name=True)
     builder = voptoolutils._setupMtlXBuilderSubnet(
         subnet_node=builder,
         name=name,
@@ -1175,7 +1175,7 @@ class NodeHandler:
                 builder, read_builder_sidecar(self._builder_sidecar(mat)))
 
         builder.setName(      # `setName` takes node names only, so a display name is sanitized
-            wording.sanitize_usd_path(mat.name), unique_name=True)
+            wording.sanitize_usd_path(mat.name) or "material", unique_name=True)
         builder.setGenericFlag(hou.nodeFlag.Material, True)
 
         self._builder_node = builder
@@ -1232,7 +1232,7 @@ class NodeHandler:
         holder = self._builder_node
         self._builder_node = moved
         holder.destroy()
-        moved.setName(wording.sanitize_usd_path(mat.name), unique_name=True)
+        moved.setName(wording.sanitize_usd_path(mat.name) or "material", unique_name=True)
         moved.setGenericFlag(hou.nodeFlag.Material, True)
         helpers.auto_place(moved)
         if not surface_terminal_wired(moved):
@@ -1251,7 +1251,7 @@ class NodeHandler:
             self._place_whole_builder(mat, loaded[0])
             return
         holder = self._builder_node    # loose nodes: the holder is their container, as before
-        holder.setName(wording.sanitize_usd_path(mat.name), unique_name=True)
+        holder.setName(wording.sanitize_usd_path(mat.name) or "material", unique_name=True)
         holder.setGenericFlag(hou.nodeFlag.Material, True)
         self._builder_node = hou.moveNodesTo((holder,), self._import_path)[0]  # type: ignore
         helpers.auto_place(self._builder_node)
@@ -1304,9 +1304,6 @@ class NodeHandler:
         """COP companion info from the last save ({} if none)"""
         return self._cop_info
 
-    def _sanitize_net_name(self, name: str) -> str:
-        return re.sub(r"[^\w]", "_", name)
-
     def _find_cop_container(self, cop_node):
         """Walk up from a COP node to the network node containing it"""
         n = cop_node
@@ -1355,7 +1352,7 @@ class NodeHandler:
         if not refs:
             return {}
 
-        net_name = self._sanitize_net_name(net_name)
+        net_name = wording.sanitize_usd_path(net_name, digit_may_lead=True)    # the token libraries already hold
         containers = []
         for _parm, _target, container in refs:
             if container not in containers:
