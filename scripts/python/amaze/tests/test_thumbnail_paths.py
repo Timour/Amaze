@@ -1107,5 +1107,21 @@ class TheThumbnailPicksItsRendererAsTheImportDoes(unittest.TestCase):
         self.assertEqual(["Octane"], self._rendered_by("Octane 2026"))
 
 
+class ALooseSurfaceIsPickedByItsType(unittest.TestCase):
+    """A loose OpenPBR is the batch entry at its prim path, as a Standard Surface is."""
+
+    def test_a_loose_openpbr_gets_the_explicit_entry(self):
+        for kind in ("mtlxopen_pbr_surface", "mtlxstandard_surface"):
+            with self.subTest(kind):
+                lib = hou.node("/stage").createNode("materiallibrary", "pick_" + kind)
+                self.addCleanup(test_support.drop_node, lib)
+                loose = hou.node("/mat").createNode(kind, "loose_" + kind)
+                self.addCleanup(test_support.drop_node, loose)
+                path = preview.usd_scene._stage_material(lib, [loose], "probe", "/materials/amaze_thumb_0")    # a loose save hands its items
+                self.assertEqual("/materials/amaze_thumb_0", path)
+                self.assertEqual(kind, hou.node(lib.path() + "/" + lib.parm("matnode1").evalAsString()).type().name())
+
+
 if __name__ == "__main__":
     unittest.main()
+

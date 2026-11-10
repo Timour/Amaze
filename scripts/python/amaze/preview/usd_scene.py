@@ -193,8 +193,9 @@ def _stage_material(lib, node, asset_id, prim_path: str) -> str:
             mat_node = n
 
     if mat_node is None:
+        from amaze.render import nodes    # late, as above
         for n in curr_nodes:
-            if n.type().name() == "mtlxstandard_surface":
+            if n.type().name() in nodes.KARMA_SURFACES:    # OpenPBR too, saved loose
                 n.setGenericFlag(hou.nodeFlag.Material, True)
                 mat_node = n
                 break
@@ -227,7 +228,10 @@ def _stage_material(lib, node, asset_id, prim_path: str) -> str:
     lib.parm("assign1").set(0)    # husk binds each frame's material itself ▸r/husk-startup
     if not lib.parm("materials").evalAsInt():
         return ""
-    return lib.parm("matpath1").evalAsString()
+    path = lib.parm("matpath1").evalAsString()
+    if path and not path.startswith("/"):    # auto-fill's entry is relative to the container
+        path = lib.parm("containerpath").evalAsString().rstrip("/") + "/" + path
+    return path
 
 
 def write_batch(scaffold, items, out_dir: str) -> dict:
