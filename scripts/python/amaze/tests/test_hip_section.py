@@ -1348,6 +1348,15 @@ class ShelfTest(unittest.TestCase):
                 "%s points at %s, which does not exist"
                 % (tool.get("name"), icon))
 
+    def test_the_pane_tab_wears_the_mark_the_shelf_tool_wears(self):
+        """One mark for Amaze: the pypanel icon is the open-panel tool's file, not the stock Python one."""
+        import xml.etree.ElementTree as ET
+        tool = [t for t in self._shelf().findall("tool") if t.get("name") == "amaze_open_panel"][0]
+        pypanel = os.path.join(os.path.dirname(self._shelf_path()), "..",
+                               "python_panels", "Amaze.pypanel")
+        interface = ET.parse(pypanel).getroot().find("interface")
+        self.assertEqual(tool.get("icon"), interface.get("icon"))
+
     ONE_CALL = {"amaze_capture_hip": "capture", "amaze_check_updates": "check_for_updates",
                 "amaze_reload": "reload_asset_files"}
 

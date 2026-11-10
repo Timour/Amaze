@@ -9,7 +9,7 @@
        reach at load time - Houdini reads it before any code runs, so a
        rename is edited HERE to match branding.APP_NAME, and every saved
        .desk keyed on name= is patched in the same change. -->
-  <interface name="Amaze" label="Amaze" icon="MISC_python" showNetworkNavigationBar="false"
+  <interface name="Amaze" label="Amaze" icon="$AMAZE/scripts/python/amaze/ui/logo_mark.svg" showNetworkNavigationBar="false"
     help_url="">
     <script><![CDATA[import os
 
