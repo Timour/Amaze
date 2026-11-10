@@ -241,7 +241,10 @@ class TheInstallerTest(_Workspace):
     def test_an_install_writes_the_package_file_houdini_loads_it_by(self):
         addons.install(self.package(folder="any_tool"), self.amaze, running=(22, 0, 466))
         with open(addons.package_file(self.amaze, "any_tool"), encoding="utf-8") as handle:
-            self.assertEqual({"hpath": ["$HOUDINI_PACKAGE_PATH/any_tool"]}, json.load(handle))
+            self.assertEqual({"hpath": ["$HOUDINI_PACKAGE_PATH/any_tool"]}, json.load(handle),
+                             "no `load_package_once`: it does not reach a startup folder's copy "
+                             "from a package_path folder, and a later copy carrying it suppresses "
+                             "an earlier one of the same name ▸r/load-package-once")
 
     def test_an_update_replaces_the_folder_whole(self):
         old = {"otls/example_one.hda": "1", "icons/one.svg": "s", "scripts/python/old.py": "x"}
@@ -630,6 +633,12 @@ class ThePackageTemplateTest(unittest.TestCase):
         amaze = template["env"][0]["AMAZE"]
         self.assertEqual(amaze + "/" + addons.ROOT, template["package_path"],
                          "package_path cannot use $AMAZE, so it repeats the folder in full")
+
+    def test_the_template_loads_one_amaze_when_two_package_files_carry_its_name(self):
+        """Houdini loads the first `Amaze.json` carrying `load_package_once` ▸r/load-package-once."""
+        with open(os.path.join(REPO, "Amaze.json"), encoding="utf-8") as handle:
+            template = json.load(handle)
+        self.assertIs(True, template.get("load_package_once"))
 
     def test_the_readme_shows_the_template_as_it_is(self):
         with open(os.path.join(REPO, "Amaze.json"), encoding="utf-8") as handle:
