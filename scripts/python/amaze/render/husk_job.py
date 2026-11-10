@@ -26,7 +26,7 @@ PREFRAME = '''from pxr import UsdShade
 import hou
 _prims = %(prims)r
 _mat = UsdShade.Material(stage.GetPrimAtPath(_prims[int(hou.frame()) - 1]))
-UsdShade.MaterialBindingAPI(stage.GetPrimAtPath(%(ball)r)).Bind(
+UsdShade.MaterialBindingAPI.Apply(stage.GetPrimAtPath(%(ball)r)).Bind(
     _mat, UsdShade.Tokens.weakerThanDescendants)
 '''
 

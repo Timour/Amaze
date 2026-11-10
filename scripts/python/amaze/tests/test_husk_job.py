@@ -296,6 +296,8 @@ class ThePreFrameScriptBindsFrameNsMaterial(unittest.TestCase):
         bound = UsdShade.MaterialBindingAPI(mesh.GetPrim()).ComputeBoundMaterial()[0]
         self.assertEqual(Sdf.Path("/materials/b"), bound.GetPath(),
                          "frame 2 did not render the second material")
+        self.assertTrue(stage.GetPrimAtPath("/ball").HasAPI(UsdShade.MaterialBindingAPI),
+                        "the binding was authored without applying its API schema")
 
 
 class OneHuskRendersEachMaterial(unittest.TestCase):
