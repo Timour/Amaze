@@ -199,6 +199,7 @@ ADDONS_NONE = "No add-ons installed. Check for Updates finds them in the Amaze s
 ADDONS_UP_TO_DATE = "All add-ons are up to date."
 ADDONS_AVAILABLE = "Available: %s."
 ADDONS_INSTALLED = "Installed. Restart Houdini to load %s."
+ADDONS_REST_STOPPED = "The download of the rest was stopped."
 ADDONS_TURNED = "Restart Houdini to turn %s %s."
 ADDONS_STORE_UNREACHABLE = "The Amaze store couldn't be reached (%s)."
 ADDONS_LOCATION_UNKNOWN = "Amaze can't tell where it's installed, so it can't install add-ons. Check that $AMAZE points at the install."

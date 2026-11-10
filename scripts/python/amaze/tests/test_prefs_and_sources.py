@@ -1286,13 +1286,13 @@ class RevealGoesThroughHoudiniFirst(unittest.TestCase):
         return mock.patch.object(hou, "ui", types.SimpleNamespace(showInFileBrowser=show),
                                  create=True)
 
-    def test_a_file_is_selected_and_a_folder_opened(self):
+    def test_a_file_or_a_folder_is_selected_in_its_parent(self):
         from amaze.helpers import ui_helpers
         target = os.path.join(self.folder, "amaze_debug.jsonl")
         with self._ui():
             ui_helpers.reveal(target)
-            ui_helpers.reveal(self.folder)
-        self.assertEqual([target, self.folder + "/"], self.shown)    # the manual: a trailing / selects nothing
+            ui_helpers.reveal(self.folder + "/")
+        self.assertEqual([target, self.folder], self.shown)    # no trailing /: that would select nothing
         self.assertEqual([], self.revealed)
 
     def test_without_a_ui_or_when_houdini_refuses_hostos_reveals(self):

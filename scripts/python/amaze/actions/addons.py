@@ -33,5 +33,8 @@ def install(found, root: str) -> str:
             addons.fetch_and_install(url, root, running, temp_dir=temp_dir, downloading=downloading)
             done.append("%s %s" % (name, version))
     except (packages.PackageError, OSError) as exc:
-        return str(exc)
+        if not done:
+            return str(exc)
+        rest = messages.ADDONS_REST_STOPPED if str(exc) == messages.DOWNLOAD_STOPPED else str(exc)
+        return "%s %s" % (messages.ADDONS_INSTALLED % ", ".join(done), rest)    # what landed is said
     return messages.ADDONS_INSTALLED % ", ".join(done)

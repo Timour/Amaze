@@ -26,11 +26,10 @@ def relayout(*models):
 
 
 def reveal(path: str) -> None:
-    """Show `path` in the system file browser, a file selected, a folder opened; hostos without a UI."""
+    """Show `path` selected in its parent folder, file or folder alike; hostos without a UI."""
     try:
         import hou
-        hou.ui.showInFileBrowser(    # selects on Linux too, which xdg-open cannot
-            path.rstrip("/\\") + "/" if os.path.isdir(path) else path)    # a trailing / selects nothing
+        hou.ui.showInFileBrowser(path.rstrip("/\\") or path)    # selects on Linux too; a trailing / would select nothing
         return
     except Exception as exc:                             # noqa: BLE001 - no hou.ui headless, or refused
         debug.event("file", "showInFileBrowser failed", error=str(exc))
