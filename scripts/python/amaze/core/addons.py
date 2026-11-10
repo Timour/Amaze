@@ -325,13 +325,16 @@ def store_versions(betas: bool = False) -> dict:
     return newest
 
 
-def fetch_and_install(url: str, amaze_root: str, running=None) -> dict:
-    """Download one store package and install it; a row that was off stays off. Answers its manifest."""
+def fetch_and_install(url: str, amaze_root: str, running=None, temp_dir=None,
+                      downloading=contextlib.nullcontext) -> dict:
+    """Download one package into `temp_dir` and install it; `downloading()` wraps the download alone."""
     import tempfile
     from amaze.core import matx_sources
-    scratch = tempfile.mkdtemp(prefix="amaze_addon_")
+    scratch = tempfile.mkdtemp(prefix="amaze_addon_", dir=temp_dir or None)
     try:
-        path = matx_sources.download(url, os.path.join(scratch, url.rsplit("/", 1)[-1]))
+        with downloading() as on_bytes:
+            path = matx_sources.download(url, os.path.join(scratch, url.rsplit("/", 1)[-1]),
+                                         on_bytes)
         was_off = _off_types(amaze_root, read(path)["folder"])
         manifest = install(path, amaze_root, running)
     finally:

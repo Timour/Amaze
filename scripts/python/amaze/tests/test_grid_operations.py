@@ -661,8 +661,9 @@ class NoRowMovesInsideALayoutChange(unittest.TestCase):
                         mock.patch.object(hou, "ui", ui, create=True):
                     self.panel.convert_selected(target)
                 self.assertEqual(
-                    "Converted 1 of 1 %s material(s) to %s.\n\na line"
-                    % shown, ui.displayMessage.call_args.args[0])
+                    ("Converted 1 of 1 %s material(s) to %s." % shown, "a line"),
+                    (ui.displayMessage.call_args.args[0],
+                     ui.displayMessage.call_args.kwargs.get("details")))
 
     def test_an_online_import(self):
         record = types.SimpleNamespace(kind="", category="", title="t")
@@ -1122,8 +1123,8 @@ class _SavesThroughThePanel:
     def _list_of(self, model):
         return os.path.join(self.panel.prefs.dir, model.DB_FILENAME)
 
-    def _answering(self, text, *_args, **_kwargs):
-        self.shown.append(text)
+    def _answering(self, text, *_args, **kwargs):
+        self.shown.append((text, kwargs["details"]) if kwargs.get("details") else text)    # a list rides in details
         return 0    # Save Version, the first button
 
     def _save(self, held, *patches):
@@ -1203,7 +1204,7 @@ class ASaveVersionSaysWhatItDidNotUpdateOnce(_SavesThroughThePanel, unittest.Tes
         shown, log = self._save(self._held(assets))
         lines = "\n".join(messages.MATERIAL_NOT_UPDATED_LINE
                           % (asset.name, messages.UPDATE_REFUSED_CHANGED_ON_DISK) for asset in assets)
-        self.assertEqual([messages.MATERIALS_NOT_UPDATED % lines], shown,
+        self.assertEqual([(messages.MATERIALS_NOT_UPDATED, lines)], shown,
                          "the second material's refusal was not named, or came as its own dialog")
         self.assertEqual([], log.messages("alert"), "the refusal alerted beside the one message")
 
@@ -1223,7 +1224,7 @@ class ASaveVersionSaysWhatItDidNotUpdateOnce(_SavesThroughThePanel, unittest.Tes
         self.assertEqual(["held0", "held1"], tried, "the error stopped the batch")
         lines = "\n".join(messages.MATERIAL_NOT_UPDATED_LINE
                           % (asset.name, OSError(28, "No space left on device")) for asset in assets)
-        self.assertEqual([messages.MATERIALS_NOT_UPDATED % lines], shown,
+        self.assertEqual([(messages.MATERIALS_NOT_UPDATED, lines)], shown,
                          "the errors were not named in the batch's one message")
 
 

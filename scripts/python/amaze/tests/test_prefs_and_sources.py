@@ -1267,6 +1267,58 @@ class TheOsHandOffsNeverRaise(unittest.TestCase):
                 hostos.reveal_path("/nowhere/amaze_debug.jsonl")
 
 
+class RevealGoesThroughHoudiniFirst(unittest.TestCase):
+    """`hou.ui.showInFileBrowser` selects on every OS; hostos is the fallback without a UI."""
+
+    def setUp(self):
+        self.shown, self.revealed = [], []
+        patcher = mock.patch.object(hostos, "reveal_path", self.revealed.append)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.folder = tempfile.mkdtemp(prefix="amaze_reveal_")
+        self.addCleanup(shutil.rmtree, self.folder, ignore_errors=True)
+
+    def _ui(self, raising=False):
+        def show(path):
+            if raising:
+                raise hou.OperationFailed("no browser")
+            self.shown.append(path)
+        return mock.patch.object(hou, "ui", types.SimpleNamespace(showInFileBrowser=show),
+                                 create=True)
+
+    def test_a_file_or_a_folder_is_selected_in_its_parent(self):
+        from amaze.helpers import ui_helpers
+        target = os.path.join(self.folder, "amaze_debug.jsonl")
+        with self._ui():
+            ui_helpers.reveal(target)
+            ui_helpers.reveal(self.folder + "/")
+        self.assertEqual([target, self.folder], self.shown)    # no trailing /: that would select nothing
+        self.assertEqual([], self.revealed)
+
+    def test_without_a_ui_or_when_houdini_refuses_hostos_reveals(self):
+        from amaze.helpers import ui_helpers
+        self.assertFalse(hasattr(hou, "ui"), "this host HAS a ui, so the fallback is untested")
+        ui_helpers.reveal(self.folder)
+        with self._ui(raising=True):
+            ui_helpers.reveal(self.folder)
+        self.assertEqual([self.folder, self.folder], self.revealed)
+
+    def test_every_caller_inside_houdini_uses_the_one_door(self):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        callers = []
+        for folder in ("panel", "dialogs", "actions", "utils", "core", "render"):
+            for dirpath, _dirs, files in os.walk(os.path.join(root, folder)):
+                for name in files:
+                    if not name.endswith(".py"):
+                        continue
+                    path = os.path.join(dirpath, name)
+                    with open(path, encoding="utf-8") as handle:
+                        tree = ast.parse(handle.read())
+                    callers += ["%s:%d" % (os.path.relpath(path, root), node.lineno)
+                                for node in ast.walk(tree)
+                                if isinstance(node, ast.Attribute) and node.attr == "reveal_path"]
+        self.assertEqual([], callers, "these reach past Houdini's file browser")
+
 class TheUserRowCreatesAndDeletes(unittest.TestCase):
     """Preferences > User creates, renames and deletes; deletion sweeps everything tagged theirs."""
 
@@ -1488,25 +1540,119 @@ class PreferencesSpeakTheDrawnWords(unittest.TestCase):
                          seen.get("text"), "premise: the confirm was asked")
         self.assertEqual(messages.HELP_MATERIAL_VERSIONS, seen.get("help"))
 
-    def test_the_log_save_failure(self):
-        from amaze import messages
+    def _save_log(self, answer=1, **patches):
+        """Save Log through hou.ui, as the rest of Preferences: what was asked and what was said."""
         from amaze.core import debug
         from amaze.tests import test_support
         dlg = self._dialog()
         folder = test_support.scratch_dir("amaze_log_save_")
         self.addCleanup(shutil.rmtree, folder, True)
-        failure = OSError("the disk is full")
-        shown = []
-        with mock.patch.object(QtWidgets.QFileDialog, "getExistingDirectory",
-                               return_value=folder), \
-                mock.patch.object(debug, "export_log", side_effect=failure), \
-                mock.patch.object(QtWidgets.QMessageBox, "warning",
-                                  lambda *args: shown.append(args)):
-            dlg.save_debug_log()
-        self.assertEqual(1, len(shown), "premise: the failure was shown")
-        self.assertEqual(messages.LOG_NOT_SAVED_UNEXPECTED % failure,
-                         shown[0][2])
+        asked, said = [], []
 
+        def display(text, *_args, **kwargs):
+            said.append(dict(kwargs, text=text))
+            return answer
+
+        ui = types.SimpleNamespace(
+            selectFile=lambda *a, **k: asked.append(k) or folder + "/", displayMessage=display)
+        with mock.patch.object(hou, "ui", ui, create=True), \
+                mock.patch.object(QtWidgets.QFileDialog, "getExistingDirectory",
+                                  side_effect=AssertionError("a Qt picker")), \
+                mock.patch.object(QtWidgets.QMessageBox, "exec",
+                                  side_effect=AssertionError("a Qt box")), \
+                mock.patch.object(debug, "export_log", **patches) as export, \
+                mock.patch("amaze.helpers.ui_helpers.reveal") as reveal:
+            dlg.save_debug_log()
+        self.assertEqual([hou.fileType.Directory], [k.get("file_type") for k in asked])
+        return folder, export, said, reveal
+
+    def test_the_log_save_failure(self):
+        from amaze import messages
+        failure = OSError("the disk is full")
+        _folder, _export, said, _reveal = self._save_log(side_effect=failure)
+        self.assertEqual([(messages.LOG_NOT_SAVED_UNEXPECTED % failure, messages.TITLE_LOG_NOT_SAVED,
+                           hou.severityType.Warning)],
+                         [(s["text"], s.get("title"), s.get("severity")) for s in said])
+
+    def test_a_refused_log_save_says_why(self):
+        from amaze import messages
+        from amaze.core import debug
+        _folder, _export, said, _reveal = self._save_log(
+            side_effect=debug.ExportRefused("the log is empty"))
+        self.assertEqual([("the log is empty", messages.TITLE_LOG_NOT_SAVED,
+                           hou.severityType.Warning)],
+                         [(s["text"], s.get("title"), s.get("severity")) for s in said])
+
+    def test_a_saved_log_offers_show_in_folder(self):
+        from amaze import messages
+        target = os.path.join("/somewhere", "amaze_debug.jsonl")
+        for answer, revealed in ((0, [target]), (1, [])):
+            with self.subTest(answer=answer):
+                folder, export, said, reveal = self._save_log(answer=answer, return_value=target)
+                self.assertEqual(os.path.normpath(folder),
+                                 os.path.normpath(export.call_args.args[0]))
+                shown, = said
+                self.assertEqual(messages.LOG_SAVED_AS % "amaze_debug.jsonl", shown["text"])
+                self.assertEqual(messages.HELP_LOG_SAVED, shown.get("help"))
+                self.assertEqual(messages.TITLE_LOG_SAVED, shown.get("title"))
+                self.assertEqual(messages.BUTTON_SHOW_IN_FOLDER, shown["buttons"][0])
+                self.assertEqual(revealed, [c.args[0] for c in reveal.call_args_list])
+
+    def test_the_two_log_titles_are_spelled_as_one_pair(self):
+        from amaze import messages
+        self.assertEqual(("Log not saved", "Log saved"),
+                         (messages.TITLE_LOG_NOT_SAVED, messages.TITLE_LOG_SAVED))
+
+class ThePresetThemeIsFollowed(unittest.TestCase):
+    """A named theme leaves `themeValues` empty; its triplets come from the theme files. ▸r/pluto-theme"""
+
+    def setUp(self):
+        from amaze.helpers import theme
+        self.theme = theme
+        theme._read.cache_clear()
+        self.addCleanup(theme._read.cache_clear)
+        self.prefs = {}
+        self.folder = tempfile.mkdtemp(prefix="amaze_themes_")
+        self.addCleanup(shutil.rmtree, self.folder, ignore_errors=True)
+        shipped = hou.text.expandString("$HFS/houdini/config/Themes")
+        for patcher in (
+                mock.patch.object(hou, "getPreference",
+                                  lambda name: self.prefs.get(name, "")),
+                mock.patch.object(hou, "findDirectories",
+                                  lambda path: (self.folder, shipped))):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def _base(self, triplet):
+        from hutil import oklch
+        return self.theme._to_qcolor(oklch, triplet).name()
+
+    def _read_base(self):
+        read = self.theme._read()
+        return None if read is None else read["base"].name()
+
+    def test_a_stock_preset_is_read_by_name(self):
+        self.prefs["pluto_ui.themeName"] = "Default Colorful"
+        self.assertEqual(self._base([280, 5, 18]), self._read_base())
+
+    def test_hand_edited_values_win_over_the_name(self):
+        self.prefs.update({"pluto_ui.themeName": "Default Colorful",
+                           "pluto_ui.themeValues": json.dumps(
+                               {"base": [100, 10, 20], "primary": [270, 29, 55],
+                                "highlight": [82, 60, 80]})})
+        self.assertEqual(self._base([100, 10, 20]), self._read_base())
+
+    def test_a_user_theme_is_read_by_its_file_and_name(self):
+        path = os.path.join(self.folder, "mine.theme.json")
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump({"name": "Mine", "theme": {"base": [30, 8, 22], "primary": [270, 29, 55],
+                                                 "highlight": [82, 60, 80]}}, handle)
+        self.prefs["pluto_ui.themeName"] = path.replace("\\", "/") + "::Mine"
+        self.assertEqual(self._base([30, 8, 22]), self._read_base())
+
+    def test_an_unknown_name_falls_back_to_the_built_in_colors(self):
+        self.prefs["pluto_ui.themeName"] = "No Such Theme"
+        self.assertIsNone(self.theme._read())
 
 class ThePickersStartInAForwardSlashPath(unittest.TestCase):
     """`hou.ui.selectFile` wants forward slashes in `start_directory`, even on Windows."""
@@ -1700,13 +1846,15 @@ class ALoadOnceAnswerIsKeptUntilCleared(unittest.TestCase):
         from amaze.helpers import theme
         self._fresh(theme._read)
         with mock.patch.object(hou, "getPreference", return_value="") as asked:
-            first, second = theme._read(), theme._read()
+            first = theme._read()
+            once = asked.call_count
+            second = theme._read()
             self.assertEqual([None, None], [first, second], "an empty preference read as a theme")
-            self.assertEqual(1, asked.call_count,
+            self.assertEqual(once, asked.call_count,
                              "the None answer was not kept, so it was asked again")
             theme._read.cache_clear()
             theme._read()
-            self.assertEqual(2, asked.call_count,
+            self.assertEqual(2 * once, asked.call_count,
                              "after cache_clear() the next call did not ask again")
 
     def test_pillow_is_imported_once(self):

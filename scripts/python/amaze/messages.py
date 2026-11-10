@@ -100,8 +100,8 @@ GALLERY_IMPORT_FINISHED_RENDERING = 'Gallery import complete.\n\nImported: %d\nS
 GALLERY_IMPORT_INTERRUPTED = 'Gallery import stopped.\n\nImported: %d\nSkipped: %d\nFailed: %d\n\nTo render them, select the new materials and use Update Render.'
 
 NO_LIBRARY_OPEN = "Open a library first."
-AMAZE_COULD_NOT = "%d of %d items could not be imported:\n\n%s"
-SCENE_BUILD_PARTIAL_FAILURE = "%d of %d could not be built:\n\n%s"
+AMAZE_COULD_NOT = "%d of %d items could not be imported:"
+SCENE_BUILD_PARTIAL_FAILURE = "%d of %d could not be built:"
 TILE_ICON_SAVE_FAILED = "%d tile icon%s could not be saved - check that the library folder is writable."
 CAPTURE_SELECT_ONE_TILE = "Select one tile to capture onto."
 NO_LIBRARY_CONFIGURED_2 = "Set up a library first: open Preferences, add one under Library, press Apply."
@@ -164,7 +164,7 @@ MATERIALS_UPDATED_LIBRARY_NOT_SAVED = "%d materials were updated, but the librar
 ASSET_ADDED_LIBRARY_NOT_SAVED = "\"%s\" was added, but the library could not be saved."
 MATERIALS_ADDED_LIBRARY_NOT_SAVED = "%d materials were added, but the library could not be saved."
 MATERIAL_NOT_UPDATED = "\"%s\" was not updated: %s"
-MATERIALS_NOT_UPDATED = "Some materials were not updated:\n\n%s"
+MATERIALS_NOT_UPDATED = "Some materials were not updated:"
 MATERIAL_NOT_UPDATED_LINE = "\"%s\": %s"
 UPDATE_REFUSED_GONE = "it is no longer in the library."
 UPDATE_REFUSED_VERSIONS_OFF = "Material Versions is off for this library."
@@ -192,10 +192,14 @@ LIBRARY_UPDATE_WARNING = "The library will be updated and won't work with Amaze 
 LIBRARY_NEEDS_NEWER_AMAZE = "This library is version %d and needs a newer Amaze. Update Amaze to open it."
 UPDATE_INSTALLED = "Amaze %s installed. Restart Houdini to use it."
 UPDATE_FAILED_UNEXPECTED = "The update couldn't be installed (%s)."
+DOWNLOADING_UPDATE = 'Downloading the Amaze update'
+DOWNLOADING_ADDONS = 'Downloading add-ons'
+DOWNLOAD_STOPPED = 'The download was stopped. Nothing has been changed.'
 ADDONS_NONE = "No add-ons installed. Check for Updates finds them in the Amaze store."
 ADDONS_UP_TO_DATE = "All add-ons are up to date."
 ADDONS_AVAILABLE = "Available: %s."
 ADDONS_INSTALLED = "Installed. Restart Houdini to load %s."
+ADDONS_REST_STOPPED = "The download of the rest was stopped."
 ADDONS_TURNED = "Restart Houdini to turn %s %s."
 ADDONS_STORE_UNREACHABLE = "The Amaze store couldn't be reached (%s)."
 ADDONS_LOCATION_UNKNOWN = "Amaze can't tell where it's installed, so it can't install add-ons. Check that $AMAZE points at the install."
@@ -309,9 +313,11 @@ TITLE_AMAZE = 'Amaze'
 
 TITLE_CHECK_LIBRARY = 'Check Library'
 
-TITLE_LOG_NOT_SAVED = 'Amaze — Log not saved'
+TITLE_LOG_NOT_SAVED = 'Log not saved'
 
-TITLE_LOG_SAVED = 'Amaze - log saved'
+TITLE_LOG_SAVED = 'Log saved'
+
+TITLE_SAVE_LOG_TO_FOLDER = 'Save Amaze log to folder'
 
 TITLE_EMPTY_SNIPPET = 'Empty snippet'
 
@@ -345,6 +351,8 @@ BUTTONS_DELETE = ('Delete', 'Cancel')
 BUTTONS_DELETE_USER = ('Delete User', 'Cancel')
 
 BUTTONS_OPEN_PREFERENCES = ('Open Preferences', 'Close')
+
+BUTTONS_SHOW_IN_FOLDER = (BUTTON_SHOW_IN_FOLDER, 'Close')
 
 BUTTONS_TURN_ON = ('Turn On', 'Cancel')
 
@@ -404,7 +412,7 @@ SAVE_SCENE_TAKEN = 'A file named %s is already in %s, so the scene was not saved
 SAVE_SCENE_FAILED = 'Houdini could not save the scene as %s: %s'
 
 LOG_NOT_SAVED_UNEXPECTED = "The log couldn't be saved: %s"
-CONVERSION_SUMMARY = "Converted %d of %d %s material(s) to %s.\n\n%s"
+CONVERSION_SUMMARY = "Converted %d of %d %s material(s) to %s."
 NODE_CONVERTED = 'Converted "%s" to %s.'
 
 NODE_SWAPPED = 'Converted "%s" to %s in its place.'
@@ -417,8 +425,8 @@ NODE_NOT_A_MATERIAL = '"%s" is not a material Amaze can convert.'
 
 NODE_SKIPPED_LINE = '"%s":\n  [skipped] %s'
 
-NODE_ASSETS_IMPORT_FAILURES = "Some node assets couldn't be imported:\n\n%s"
-MATERIALS_SAVE_FAILURES = "Some materials could not be saved:\n\n%s"
-MATERIALS_IMPORT_FAILURES = "Some materials could not be imported:\n\n%s"
+NODE_ASSETS_IMPORT_FAILURES = "Some node assets couldn't be imported:"
+MATERIALS_SAVE_FAILURES = "Some materials could not be saved:"
+MATERIALS_IMPORT_FAILURES = "Some materials could not be imported:"
 LOADER_SOP_HAS_NO_FILE_PARM = "The \"%s\" SOP has no file parameter to set."
 GEOMETRY_IMPORT_FAILED = "Could not import %s: %s"

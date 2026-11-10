@@ -573,7 +573,8 @@ class PrefsDialog(base_dialog.AssetDialog):
                 return
         if not library_policy.set_allow_overwrite(library_dir, checked):
             hou.ui.displayMessage(  # type: ignore
-                messages.LIBRARY_SETTING_NOT_WRITTEN)
+                messages.LIBRARY_SETTING_NOT_WRITTEN,
+                title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
             _show_quietly(self._cbx_allow_overwrite, not checked)
 
     def _build_library_tab(self) -> QtWidgets.QWidget:
@@ -1457,7 +1458,8 @@ class PrefsDialog(base_dialog.AssetDialog):
         ok, what = prefs_mod.seed_test_folder(folder)
         if not ok:
             hou.ui.displayMessage(  # type: ignore
-                messages.TEST_FOLDER_NOT_PREPARED % what)
+                messages.TEST_FOLDER_NOT_PREPARED % what,
+                title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
             return
         name = self._user_name()    # read in the library being left
         self._prefs.save()    # before the switch: unsaved edits belong to the library they were made in
@@ -1688,33 +1690,32 @@ class PrefsDialog(base_dialog.AssetDialog):
 
     def save_debug_log(self) -> None:
         """Export the log to a folder the user picks each time; the file carries paths and asset names."""
+        import hou
+
         start = self._prefs.dir or os.path.expanduser("~")   # `.dir`: a wrong name raises inside a Qt slot, which PySide swallows
-        folder = QtWidgets.QFileDialog.getExistingDirectory(
-            self, "Save Amaze log to folder", start)
-        if not folder:
+        path = hou.ui.selectFile(
+            start_directory=_chooser_path(start), title=messages.TITLE_SAVE_LOG_TO_FOLDER,
+            file_type=hou.fileType.Directory)
+        if not path:
             return                       # cancelled, not failed
+        folder = hou.text.expandString(path)
         try:
             target = debug.export_log(folder)
         except debug.ExportRefused as exc:
-            QtWidgets.QMessageBox.information(   # SAY WHY: nothing-happened is the one outcome that teaches nothing
-                self, messages.TITLE_LOG_NOT_SAVED, str(exc))
+            hou.ui.displayMessage(   # SAY WHY: nothing-happened is the one outcome that teaches nothing
+                str(exc), title=messages.TITLE_LOG_NOT_SAVED, severity=hou.severityType.Warning)
             debug.event("prefs", "log export refused", reason=str(exc))
             return
         except Exception as exc:                         # noqa: BLE001
-            QtWidgets.QMessageBox.warning(
-                self, messages.TITLE_LOG_NOT_SAVED,
-                messages.LOG_NOT_SAVED_UNEXPECTED % exc)
+            hou.ui.displayMessage(
+                messages.LOG_NOT_SAVED_UNEXPECTED % exc, title=messages.TITLE_LOG_NOT_SAVED,
+                severity=hou.severityType.Warning)
             return
-        box = QtWidgets.QMessageBox(self)
-        box.setWindowTitle(messages.TITLE_LOG_SAVED)
-        box.setText(messages.LOG_SAVED_AS % os.path.basename(target))
-        box.setInformativeText(messages.HELP_LOG_SAVED)
-        reveal = box.addButton(messages.BUTTON_SHOW_IN_FOLDER,
-                               QtWidgets.QMessageBox.ActionRole)
-        box.addButton(QtWidgets.QMessageBox.Close)
-        box.exec()
-        if box.clickedButton() is reveal:
-            hostos.reveal_path(target)
+        if hou.ui.displayMessage(
+                messages.LOG_SAVED_AS % os.path.basename(target), help=messages.HELP_LOG_SAVED,
+                buttons=messages.BUTTONS_SHOW_IN_FOLDER, default_choice=1, close_choice=1,
+                title=messages.TITLE_LOG_SAVED, severity=hou.severityType.Message) == 0:
+            ui_helpers.reveal(target)
 
     def clear_debug_log(self) -> None:
         # through the engine, never os.remove: it owns the session header and the flood counters

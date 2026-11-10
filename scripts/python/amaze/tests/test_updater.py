@@ -10,6 +10,7 @@ import sys
 import tempfile
 import unittest
 import urllib.error
+import zipfile
 
 sys.path.insert(
     0, os.path.dirname(os.path.dirname(
@@ -293,6 +294,95 @@ class TheDownloadTest(_FeedMixin):
             "the final path, where the next run reads it as a download "
             "that finished")
 
+
+class _Operation:
+    """A stand-in for hou.InterruptableOperation: records its reports, Esc on report `esc_at`."""
+
+    esc_at = 0
+
+    def __init__(self, *args, **kwargs):
+        self.args, self.kwargs, self.reports = args, kwargs, []
+        type(self).opened.append(self)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_exc):
+        return False
+
+    def updateProgress(self, fraction=-1.0):
+        import hou
+        self.reports.append(round(fraction, 3))
+        if len(self.reports) == self.esc_at:
+            raise hou.OperationInterrupted()
+
+
+class TheInstallCanBeStoppedTest(_FeedMixin):
+    """The download and staging run under Esc with a progress bar; the swap never does."""
+
+    def setUp(self):
+        import hou
+        from unittest import mock
+        self.dir = tempfile.mkdtemp(prefix="amaze_update_esc_")
+        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
+        self.install = os.path.join(self.dir, "install")
+        os.makedirs(self.install)
+        archive = io.BytesIO()
+        with zipfile.ZipFile(archive, "w", zipfile.ZIP_STORED) as bundle:
+            for entry in updater.INSTALL_ENTRIES:
+                bundle.writestr(entry if "." in entry else entry + "/x.txt", "release")
+            bundle.writestr("scripts/weight.bin", os.urandom(200 * 1024))    # four 64 KB chunks
+        payload = archive.getvalue()
+        self.answer(payload, headers={"Content-Length": str(len(payload))})
+        self.found = updater.Update(
+            updater.NEWER, version="9.9", url="https://example.invalid/r.zip", sentence="newer",
+            digest="sha256:" + hashlib.sha256(payload).hexdigest(), size=len(payload))
+        _Operation.opened = []
+        for patcher in (mock.patch.object(hou, "InterruptableOperation", _Operation, create=True),
+                        mock.patch.object(updater, "install_root", lambda: self.install)):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def test_the_download_reports_each_chunk_in_an_operation_esc_can_stop(self):
+        from unittest import mock
+        with mock.patch.object(updater, "apply_update") as swap:
+            updater.install(self.found)
+        self.assertEqual(1, len(_Operation.opened), "no operation, or one per step")
+        operation, = _Operation.opened
+        self.assertTrue(operation.kwargs.get("open_interrupt_dialog"))
+        self.assertGreaterEqual(len(operation.reports), 4, operation.reports)
+        self.assertEqual(1.0, operation.reports[-1])
+        swap.assert_called_once()
+
+    def test_an_esc_mid_download_changes_nothing_and_says_so(self):
+        from unittest import mock
+        from amaze import messages
+        _Operation.esc_at = 2
+        self.addCleanup(setattr, _Operation, "esc_at", 0)
+        with mock.patch.object(updater, "apply_update") as swap, \
+                self.assertRaises(OSError) as caught:
+            updater.install(self.found)
+        self.assertEqual(messages.DOWNLOAD_STOPPED, str(caught.exception))
+        swap.assert_not_called()
+        self.assertEqual([], os.listdir(self.install), "the install was touched")
+
+    def test_the_swap_runs_outside_the_operation(self):
+        """An Esc inside the renames would leave half an install."""
+        from unittest import mock
+        seen = []
+        with mock.patch.object(updater, "apply_update",
+                               lambda staged, into: seen.append(_Operation.opened[-1].closed)):
+            original_exit = _Operation.__exit__
+
+            def closing(op, *exc):
+                op.closed = True
+                return original_exit(op, *exc)
+
+            with mock.patch.object(_Operation, "__enter__",
+                                   lambda op: setattr(op, "closed", False) or op), \
+                    mock.patch.object(_Operation, "__exit__", closing):
+                updater.install(self.found)
+        self.assertEqual([True], seen, "the swap ran inside the interruptable operation")
 
 class TheSwapTest(unittest.TestCase):
 

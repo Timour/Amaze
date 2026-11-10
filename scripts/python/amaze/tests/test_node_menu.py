@@ -96,9 +96,10 @@ def _geo(test, name="menu_geo"):
 
 def _speakers(test):
     """`hou.ui` patched to record its dialogs in `test.said` and its status line in `test.bar`."""
-    test.said, test.bar = [], []
+    test.said, test.bar, test.details = [], [], []
     ui = types.SimpleNamespace(
-        displayMessage=lambda text, *a, **k: test.said.append(text) or 0,
+        displayMessage=lambda text, *a, **k: test.said.append(text)
+        or test.details.append(k.get("details", "")) or 0,
         setStatusMessage=lambda text, *a, **k: test.bar.append(text))
     patcher = mock.patch.object(hou, "ui", ui, create=True)
     patcher.start()
@@ -154,6 +155,25 @@ class TheMenuIsOneAmazeSubmenu(unittest.TestCase):
                               % target, item.findtext("scriptCode"))
         save = submenu.find("scriptItem[@id='amazeSave']")
         self.assertIn('rc_calls.save(kwargs.get("node", None))', save.findtext("scriptCode"))
+
+    def test_a_click_reloads_rc_calls_only_behind_the_dev_switch(self):
+        """As the pypanel: a reload reruns the module body each click, so only the dev switch asks."""
+        import importlib
+        from amaze.utils import rc_calls
+        items = list(_submenu().iter("scriptItem"))
+        self.assertEqual(5, len(items))
+        for switched in ("", "1"):
+            for item in items:
+                with self.subTest(item.get("id"), switched=switched), \
+                        mock.patch.dict(os.environ, {"AMAZE_DEV_RELOAD": switched}), \
+                        mock.patch.object(importlib, "reload") as reload, \
+                        mock.patch.object(rc_calls, "convert"), \
+                        mock.patch.object(rc_calls, "save"):
+                    if not switched:
+                        os.environ.pop("AMAZE_DEV_RELOAD")
+                    exec(item.findtext("scriptCode"), {"kwargs": {}, "hou": hou})
+                    self.assertEqual(bool(switched), reload.called,
+                                     "the reload does not follow the dev switch")
 
     def test_no_label_is_computed(self):
         self.assertEqual([], list(ET.parse(MENU).getroot().iter("labelExpression")))
@@ -422,7 +442,7 @@ class ASelectionConvertsAsOne(unittest.TestCase):
         self.assertEqual(1, len(self.said), "not one dialog: %s" % self.said)
         self.assertTrue(self.said[0].startswith("Converted 1 of 2 %s material(s) to Redshift."
                                                 % renderers.label("Karma")), self.said[0])
-        self.assertIn(messages.NODE_NOT_A_MATERIAL % "menu_sel_geo", self.said[0])
+        self.assertIn(messages.NODE_NOT_A_MATERIAL % "menu_sel_geo", self.details[0])
 
     @unittest.skipUnless(REDSHIFT, "the Redshift plugin is not loaded")
     def test_a_node_outside_the_selection_converts_alone(self):

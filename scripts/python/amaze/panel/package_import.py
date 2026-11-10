@@ -31,7 +31,8 @@ class PackageImport:
         ui = getattr(hou, "ui", None)
         if not self.panel.prefs.dir:
             if ui is not None:
-                ui.displayMessage(messages.NO_LIBRARY_CONFIGURED)
+                ui.displayMessage(messages.NO_LIBRARY_CONFIGURED,
+                                  title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
             return
         picked = ui.selectFile(
             title="Import Amaze Package",
@@ -47,11 +48,13 @@ class PackageImport:
                 hou.text.expandString(picked))
         except packages.PackageError as exc:
             if ui is not None:
-                ui.displayMessage(str(exc))
+                ui.displayMessage(str(exc),
+                                  title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
             return
         if ui is not None:
             ui.displayMessage(
-                messages.PACKAGE_IMPORT_SUMMARY % (summary["imported"], summary["files"]))
+                messages.PACKAGE_IMPORT_SUMMARY % (summary["imported"], summary["files"]),
+                title=messages.TITLE_AMAZE, severity=hou.severityType.Message)
 
     def ask_destination(self) -> str:
         """The `.amazepkg` export path, suffix ensured; "" when headless or cancelled."""
@@ -179,9 +182,8 @@ class PackageImport:
                     failures.append("%s: %s" % (record.title, reason))
         ui = getattr(hou, "ui", None)
         if ui is not None:
-            lines = [messages.STORE_RESTORE_SUMMARY
-                     % (totals["imported"], totals["skipped"])]
-            if failures:
-                lines += [""] + failures[:10]
-            ui.displayMessage("\n".join(lines))
+            ui.displayMessage(
+                messages.STORE_RESTORE_SUMMARY % (totals["imported"], totals["skipped"]),
+                details="\n".join(failures[:10]), title=messages.TITLE_AMAZE,
+                severity=hou.severityType.Warning if failures else hou.severityType.Message)
         return totals

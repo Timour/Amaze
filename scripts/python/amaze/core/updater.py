@@ -180,7 +180,7 @@ def _verify_digest(path: str, digest: str) -> None:
             "has been changed.")
 
 
-def download(url: str, into: str, digest: str = "", size: int = 0) -> str:
+def download(url: str, into: str, digest: str = "", size: int = 0, on_bytes=None) -> str:
     """Stream a release to `into`: the file, or OSError ▸r/release-digest ▸p/updater-shape"""
     from amaze.core import matx_sources
     from amaze.helpers import hostos
@@ -189,12 +189,14 @@ def download(url: str, into: str, digest: str = "", size: int = 0) -> str:
     target = os.path.join(into, "amaze-update.zip")
     ceiling = min(size, MAX_DOWNLOAD_BYTES) if size else MAX_DOWNLOAD_BYTES
 
-    def below_the_ceiling(read, _total):
+    def below_the_ceiling(read, total):
         if read > ceiling:
             raise OSError(
                 "the download is larger than a release should "
                 "be (over %d bytes). Nothing has been changed."
                 % ceiling)
+        if on_bytes is not None:
+            on_bytes(read, total or size)
 
     with hostos.scratch_beside(target) as scratch:
         try:
@@ -284,9 +286,9 @@ def stage_release(archive: str, into: str) -> str:
 
 
 def fetch_and_stage(url: str, workspace: str,
-                    digest: str = "", size: int = 0) -> str:
+                    digest: str = "", size: int = 0, on_bytes=None) -> str:
     """Download and stage a release; without `digest` and `size` it is unverified ▸r/release-digest"""
-    archive = download(url, workspace, digest=digest, size=size)
+    archive = download(url, workspace, digest=digest, size=size, on_bytes=on_bytes)
     try:
         return stage_release(archive, os.path.join(workspace, "staged"))
     finally:    # the archive is always removed
@@ -316,11 +318,13 @@ def install(found, into: str = "") -> None:
     if not into or not os.path.isdir(into):
         raise OSError(messages.INSTALL_LOCATION_UNKNOWN)
     workspace = os.path.join(hostos.cache_root(), "updates")
+    from amaze.helpers import helpers
     try:
-        staged = fetch_and_stage(found.url, workspace,
-                                 digest=getattr(found, "digest", ""),
-                                 size=getattr(found, "size", 0))
-        return apply_update(staged, into)
+        with helpers.download_operation(messages.DOWNLOADING_UPDATE) as on_bytes:
+            staged = fetch_and_stage(found.url, workspace,
+                                     digest=getattr(found, "digest", ""),
+                                     size=getattr(found, "size", 0), on_bytes=on_bytes)
+        return apply_update(staged, into)    # never under Esc: half a rename is half an install
     finally:    # the workspace is always removed
         shutil.rmtree(workspace, ignore_errors=True)
 

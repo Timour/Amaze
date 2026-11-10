@@ -455,6 +455,11 @@ def note(message: str, /, **data) -> None:
     """Print `Amaze: ...` and record it; never prints on Windows ▸r/platform-files"""
     if _enabled and not _rotation_blocked:
         _write({"cat": "note", "msg": message, "data": data})
+    _print(message)
+
+
+def _print(message: str) -> None:
+    """`Amaze: ...` to stdout, except on Windows, where a print opens the Console ▸r/platform-files"""
     try:
         from amaze.helpers import hostos
         if hostos.is_windows():
@@ -488,7 +493,7 @@ def alert(message: str, /, key: str = "", **data) -> bool:
         _ui.dialog(message)
         return True
     except Exception:                                    # noqa: BLE001 - none handed over, or no screen
-        print("Amaze: " + message)
+        _print(message)
         return True
 
 
@@ -511,7 +516,7 @@ def refuse(reason: str, /, **data) -> bool:
             _ui.status(str(reason))
         return True
     except Exception:                                    # noqa: BLE001 - none handed over, or no screen
-        print("Amaze: " + str(reason))
+        _print(str(reason))
         return True
 
 

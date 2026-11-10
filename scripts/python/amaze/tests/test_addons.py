@@ -404,6 +404,100 @@ class TheStoreTest(_ThreeRows):
         self.assertTrue(os.path.isfile(self.hda("three")), "the update turned Three off")
 
 
+    def test_the_download_lands_in_houdinis_temp_dir(self):
+        """Houdini's scratch, as the thumbnail jobs use, not Python's own."""
+        import hou
+        houdini_temp = os.path.join(self.dir, "houdini_temp")
+        os.makedirs(houdini_temp)
+        real_getenv = hou.getenv
+        landed = []
+
+        def download(url, dest, on_bytes=None):
+            landed.append(dest)
+            shutil.copy(self.three_rows(version="1.3.0"), dest)
+            return dest
+
+        from amaze.actions import addons as addon_actions
+        with mock.patch.object(matx_sources, "download", download), \
+                mock.patch.object(hou, "getenv", lambda name, default=None: houdini_temp
+                                  if name == "HOUDINI_TEMP_DIR" else real_getenv(name, default)):
+            addon_actions.install(
+                [("Example", "1.3.0", "https://example.invalid/addons/Example-1.3.0.amazepkg")],
+                self.amaze)
+        self.assertEqual(houdini_temp, os.path.dirname(os.path.dirname(landed[0])))
+        self.assertEqual([], os.listdir(houdini_temp), "the scratch folder was left behind")
+
+    def test_an_esc_during_the_download_installs_nothing_and_says_so(self):
+        """The download runs under Esc with a progress bar; the install that follows never does."""
+        import hou
+        opened = []
+
+        class Operation:
+            def __init__(self, *args, **kwargs):
+                self.kwargs = kwargs
+                opened.append(self)
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_exc):
+                return False
+
+            def updateProgress(self, fraction=-1.0):
+                raise hou.OperationInterrupted()
+
+        def download(url, dest, on_bytes=None):
+            shutil.copy(self.three_rows(version="1.3.0"), dest)
+            on_bytes(1, 2)
+            return dest
+
+        from amaze.actions import addons as addon_actions
+        with mock.patch.object(matx_sources, "download", download), \
+                mock.patch.object(hou, "InterruptableOperation", Operation, create=True):
+            said = addon_actions.install(
+                [("Example", "1.3.0", "https://example.invalid/addons/Example-1.3.0.amazepkg")],
+                self.amaze)
+        self.assertEqual(messages.DOWNLOAD_STOPPED, said)
+        self.assertTrue(opened and opened[0].kwargs.get("open_interrupt_dialog"))
+        self.assertIsNone(addons.installed(self.amaze, "example"), "a stopped download installed")
+
+    def test_an_esc_after_one_add_on_says_which_one_did_install(self):
+        """A stop on the second download leaves the first installed, and the sentence says so."""
+        import hou
+        calls = []
+
+        class Operation:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_exc):
+                return False
+
+            def updateProgress(self, fraction=-1.0):
+                if len(calls) > 1:
+                    raise hou.OperationInterrupted()
+
+        def download(url, dest, on_bytes=None):
+            calls.append(url)
+            shutil.copy(self.three_rows(version="1.3.0"), dest)
+            on_bytes(1, 2)
+            return dest
+
+        from amaze.actions import addons as addon_actions
+        with mock.patch.object(matx_sources, "download", download), \
+                mock.patch.object(hou, "InterruptableOperation", Operation, create=True):
+            said = addon_actions.install(
+                [("Example", "1.3.0", "https://example.invalid/addons/Example-1.3.0.amazepkg"),
+                 ("Other", "2.0.0", "https://example.invalid/addons/Other-2.0.0.amazepkg")],
+                self.amaze)
+        self.assertNotIn("Nothing has been changed", said)
+        self.assertIn(messages.ADDONS_INSTALLED % "Example 1.3.0", said)
+        self.assertIn(messages.ADDONS_REST_STOPPED, said)
+
+
 class AnAmazeUpdateKeepsItsAddOnsTest(_Workspace):
 
     def test_the_updater_carries_the_add_ons_into_the_new_install(self):

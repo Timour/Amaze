@@ -994,7 +994,8 @@ class NodeHandler:
                             library=self._import_path.path())
                 hou.ui.displayMessage(  # type: ignore
                     messages.IMPORTED_MATERIAL_MAY_NOT_APPEAR
-                    % (mat.name, self._import_path.path(), problem)
+                    % (mat.name, self._import_path.path(), problem),
+                    title=messages.TITLE_AMAZE, severity=hou.severityType.Warning
                 )
         except Exception as exc:
             debug.event("import", "registration check failed",
@@ -1539,14 +1540,16 @@ class NodeHandler:
             selection_nodes = [i for i in items if isinstance(i, hou.Node)]
             if not selection_nodes:
                 if ui is not None:
-                    ui.displayMessage(messages.NO_NODES_SELECTED_TO_SAVE)
+                    ui.displayMessage(messages.NO_NODES_SELECTED_TO_SAVE,
+                                      title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
                 return False
         else:
             net = node
             selection_nodes = None
             if not node.children():
                 if ui is not None:
-                    ui.displayMessage(messages.NETWORK_EMPTY_NOTHING_TO_SAVE)
+                    ui.displayMessage(messages.NETWORK_EMPTY_NOTHING_TO_SAVE,
+                                      title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
                 return False
         file_name = material.payload_path(
             self._preferences, str(asset_id), self._preferences.ext
@@ -1741,12 +1744,14 @@ class NodeHandler:
         ui = getattr(hou, "ui", None)  # without a UI the refusals below still return False ▸r/status-bar
         if not ocio_set():
             if ui is not None:
-                ui.displayMessage(messages.OCIO_NOT_SET)
+                ui.displayMessage(messages.OCIO_NOT_SET,
+                                  title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
             return False
         renderer = renderers.get(self._renderer)
         if renderer is None:
             if ui is not None:
-                ui.displayMessage(messages.NODE_IS_NOT_A_MATERIAL_BUILDER)
+                ui.displayMessage(messages.NODE_IS_NOT_A_MATERIAL_BUILDER,
+                                  title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
             return False
         try:
             with helpers.preserving_selection_and_current(), \

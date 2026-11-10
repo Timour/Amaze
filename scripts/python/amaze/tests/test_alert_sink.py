@@ -135,7 +135,8 @@ class TheOnlineImportEndsOnThatLine(unittest.TestCase):
         panel = self._Panel()
         with mock.patch.object(hou, "ui", types.SimpleNamespace(
                 setStatusMessage=lambda text, *a, **k: self.said.append(text),
-                displayMessage=lambda text, *a, **k: self.shown.append(text)),
+                displayMessage=lambda text, *a, **k: self.shown.append(
+                    "\n\n".join(filter(None, (text, k.get("details")))))),    # the list rides in details
                 create=True):
             Door(panel).import_records(list(answers))
         return panel
@@ -273,6 +274,19 @@ class RefuseIsTheGestureSinkTest(unittest.TestCase):
                         "a headless refusal reported that it said nothing")
         self.assertEqual(2, len(self.printed))
 
+
+    def test_on_windows_the_fallback_prints_nothing(self):
+        """A print opens the Windows Console, so alert and refuse keep note's rule. ▸r/platform-files"""
+        from amaze.helpers import hostos
+        debug.hand_over(None)
+        self.addCleanup(debug._alerted.clear)
+        with mock.patch.object(hostos, "is_windows", lambda: True), \
+                mock.patch("builtins.print", self.printed.append):
+            debug.note("noted")
+            debug.alert("windows alert", key="windows-alert-fallback")
+            debug.refuse("no ramp here")
+            debug.refuse(debug.Damage("gone"))
+        self.assertEqual([], self.printed, "a fallback printed on Windows")
 
 class TheDamageDoorMarksItsRefusalsTest(unittest.TestCase):
     """Every literal refusal the import door authors, classified. ▸p/refusal-sink"""

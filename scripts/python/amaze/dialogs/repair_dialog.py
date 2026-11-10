@@ -6,7 +6,7 @@ import hou
 
 from amaze import messages
 from amaze.core import database, debug, keyed_store, repair
-from amaze.helpers import hostos
+from amaze.helpers import ui_helpers
 from amaze.helpers import restore as restore_lib
 
 MOST_BUTTONS = 5    # actions one report shows before Choose an Action lists them instead
@@ -31,23 +31,25 @@ def open_panel_tab():
     return None
 
 
-def _say(text: str) -> None:
-    hou.ui.displayMessage(text, title=messages.TITLE_CHECK_LIBRARY)    # type: ignore
+def _say(text: str, severity=None) -> None:
+    """A finished sentence; `severity` Warning for what failed, Error for damage, else Message."""
+    hou.ui.displayMessage(text, title=messages.TITLE_CHECK_LIBRARY,    # type: ignore
+                          severity=severity or hou.severityType.Message)    # type: ignore
 
 
 def _confirmed(text: str, buttons: tuple, help_text: str = "", warn: bool = False) -> bool:
     """One confirm with Cancel as Enter and close; True only for its first button."""
-    extra = {"severity": hou.severityType.Warning} if warn else {}    # type: ignore
     return hou.ui.displayMessage(                         # type: ignore
         text, help=help_text, buttons=buttons, default_choice=1, close_choice=1,
-        title=messages.TITLE_CHECK_LIBRARY, **extra) == 0
+        title=messages.TITLE_CHECK_LIBRARY,
+        severity=hou.severityType.Warning if warn else hou.severityType.Message) == 0    # type: ignore
 
 
 def _repair_settings(settings: dict) -> None:
     """settings.json will not read, is missing or names no library: offer saved copies back."""
     folder = os.path.dirname(settings["path"])
     if not settings["snapshots"]:
-        _say(messages.SETTINGS_UNREADABLE_NO_COPIES % folder)
+        _say(messages.SETTINGS_UNREADABLE_NO_COPIES % folder, hou.severityType.Error)
         return
     if open_panel_tab() is not None:
         _say(messages.CHECK_LIBRARY_IN_THE_PANEL)
@@ -70,7 +72,9 @@ def _repair_settings(settings: dict) -> None:
     picked = hou.ui.displayMessage(                       # type: ignore
         text, buttons=tuple(choices),
         default_choice=len(choices) - 1, close_choice=len(choices) - 1,
-        title=messages.TITLE_CHECK_LIBRARY)
+        title=messages.TITLE_CHECK_LIBRARY,
+        severity=(hou.severityType.Error if settings["state"] == "unreadable"    # damage
+                  else hou.severityType.Warning))
     if 0 <= picked < len(actions) and actions[picked] == "restore":
         act(findings, "restore")
 
@@ -88,10 +92,10 @@ def run(preferences=None) -> None:
         if named:
             _repair_settings(dict(settings, state="no-library", snapshots=named))
             return
-        _say(messages.NO_LIBRARY_FOLDER_CONFIGURED)
+        _say(messages.NO_LIBRARY_FOLDER_CONFIGURED, hou.severityType.Warning)
         return
     if not os.path.isdir(configured):
-        _say(messages.LIBRARY_FOLDER_UNREACHABLE % configured)
+        _say(messages.LIBRARY_FOLDER_UNREACHABLE % configured, hou.severityType.Warning)
         debug.event("repair", "refused - the library folder is not there", path=configured)
         return
     if open_panel_tab() is not None:
@@ -148,7 +152,7 @@ def report(findings: dict, may_change: bool = True):
     picked = hou.ui.displayMessage(                       # type: ignore
         text, buttons=tuple(choices), help=messages.HELP_CHECK_LIBRARY,
         default_choice=len(choices) - 1, close_choice=len(choices) - 1,
-        title=messages.TITLE_CHECK_LIBRARY)
+        title=messages.TITLE_CHECK_LIBRARY, severity=hou.severityType.Message)
     action = actions[picked] if 0 <= picked < len(actions) else None
     if action != "choose":
         return action
@@ -212,7 +216,7 @@ def _every_choice(findings: dict, may_change: bool):
 def act(findings: dict, action: str, guard: bool = True, changed=None) -> bool:
     """Confirm and run one action, `changed` called once it lands, then say so; True if it did."""
     if action == "holding":
-        hostos.reveal_path(findings["holding"]["path"])
+        ui_helpers.reveal(findings["holding"]["path"])
         return False
     done = {"add-back": _do_add_back, "restore": _do_restore, "reattach": _do_reattach,
             "quarantine": _do_move_aside, "unknown": _do_move_unknown,
@@ -242,7 +246,7 @@ def _do_add_back(findings: dict, guard: bool, changed) -> None:
     try:
         result = repair.add_materials_back(findings, guard=guard)
     except ValueError as exc:
-        _say(messages.SECTION_LIST_UNCHANGED_REASON % (label, exc))
+        _say(messages.SECTION_LIST_UNCHANGED_REASON % (label, exc), hou.severityType.Warning)
         return
     changed()
     added = len(result["added"])
@@ -300,7 +304,7 @@ def _put_copy_back(findings: dict, offer: tuple, guard: bool, changed, older: bo
         return _do_restore_settings(findings, tier, snap, guard, changed, older=older)
     label = database.section_label(filename)
     if snap["error"]:
-        _say(messages.CHOSEN_SAVED_COPY_CANNOT_BE_READ % label)
+        _say(messages.CHOSEN_SAVED_COPY_CANNOT_BE_READ % label, hou.severityType.Warning)
         return None
     held = snap["count"] or 0
     if current["error"]:
@@ -324,7 +328,7 @@ def _put_copy_back(findings: dict, offer: tuple, guard: bool, changed, older: bo
     try:
         done = repair.put_back(findings, filename, tier, guard=guard)
     except restore_lib.RestoreRefused as exc:
-        _say(str(exc))
+        _say(str(exc), hou.severityType.Warning)
         return None
     changed()
     undo = (restore_lib.info(os.path.join(findings["directory"], done["undo"]))
@@ -342,7 +346,7 @@ def _do_restore_settings(findings: dict, tier: str, snap: dict, guard: bool, cha
                          older: bool = False):
     """Confirm and put a settings copy back, saying how to undo it; `older` as above."""
     if snap["error"]:
-        _say(messages.SETTINGS_COPY_CANNOT_BE_READ)
+        _say(messages.SETTINGS_COPY_CANNOT_BE_READ, hou.severityType.Warning)
         return None
     way_back = findings["settings"]["state"] == "ok"
     picked = hou.ui.displayMessage(                       # type: ignore
@@ -359,7 +363,7 @@ def _do_restore_settings(findings: dict, tier: str, snap: dict, guard: bool, cha
     try:
         done = repair.put_back(findings, keyed_store.SETTINGS, tier, guard=guard)
     except restore_lib.RestoreRefused as exc:
-        _say(str(exc))
+        _say(str(exc), hou.severityType.Warning)
         return None
     changed()
     folder = os.path.dirname(repair.target_of(findings, keyed_store.SETTINGS))
@@ -376,7 +380,8 @@ def _moved(result: dict) -> None:
     """What a move aside did, and what it could not move."""
     if result["failed"]:
         _say(messages.FILES_MOVED_ASIDE_SOME_FAILED
-             % (repair.files(len(result["moved"])), repair.files(len(result["failed"]))))
+             % (repair.files(len(result["moved"])), repair.files(len(result["failed"]))),
+             hou.severityType.Warning)
     else:
         _say(messages.FILES_MOVED_ASIDE_DONE % repair.files(len(result["moved"])))
 
@@ -400,7 +405,7 @@ def _do_move_aside(findings: dict, guard: bool, changed) -> None:
     try:
         result = repair.move_aside(findings, what, guard=guard)
     except ValueError as exc:
-        _say(messages.NOTHING_MOVED_ASIDE_REASON % exc)
+        _say(messages.NOTHING_MOVED_ASIDE_REASON % exc, hou.severityType.Warning)
         return
     if result["moved"]:
         changed()
@@ -417,7 +422,7 @@ def _do_move_unknown(findings: dict, guard: bool, changed) -> None:
     try:
         result = repair.move_aside(findings, "unknown", guard=guard)
     except ValueError as exc:
-        _say(messages.NOTHING_MOVED_ASIDE_REASON % exc)
+        _say(messages.NOTHING_MOVED_ASIDE_REASON % exc, hou.severityType.Warning)
         return
     if result["moved"]:
         changed()
@@ -440,7 +445,7 @@ def _do_set_aside(findings: dict, guard: bool, changed) -> None:
         folders = repair.set_aside_folders(findings, guard=guard) if dead else []
         gone = repair.drop_dead_stars(findings, guard=guard) if stars else []
     except ValueError as exc:
-        _say(messages.NOTHING_CHANGED_REASON % exc)
+        _say(messages.NOTHING_CHANGED_REASON % exc, hou.severityType.Warning)
         return
     if folders or gone:
         changed()
@@ -461,7 +466,7 @@ def _do_uncategorised(findings: dict, guard: bool, changed) -> None:
     try:
         done = repair.rescue_uncategorised(findings, guard=guard)
     except ValueError as exc:
-        _say(messages.NOTHING_CHANGED_REASON % exc)
+        _say(messages.NOTHING_CHANGED_REASON % exc, hou.severityType.Warning)
         return
     if done:
         changed()
@@ -494,7 +499,7 @@ def _do_reattach(findings: dict, guard: bool, changed) -> None:
     try:
         result = repair.reattach(findings, filename, only=pairs, guard=guard)
     except ValueError as exc:
-        _say(messages.SECTION_LIST_UNCHANGED_REASON % (label, exc))
+        _say(messages.SECTION_LIST_UNCHANGED_REASON % (label, exc), hou.severityType.Warning)
         return
     changed()
     count = len(result["added"])

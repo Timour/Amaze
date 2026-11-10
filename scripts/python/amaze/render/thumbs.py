@@ -100,13 +100,15 @@ class ThumbNailRenderer:
             debug.event("thumb", "no scene viewer - the batch renders nothing")
             ui = getattr(hou, "ui", None)
             if ui is not None:
-                ui.displayMessage(messages.NO_SCENE_VIEWER_FOR_THUMBNAIL)
+                ui.displayMessage(messages.NO_SCENE_VIEWER_FOR_THUMBNAIL,
+                                  title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
             return
         for renderer, group in groups.items():
             ThumbNailRenderer._render_group(preferences, renderer, group)
         ui = getattr(hou, "ui", None)
         if refused and ui is not None:    # ONE message for the rows no husk renders
-            ui.displayMessage("\n".join(refused))
+            ui.displayMessage("\n".join(refused),
+                              title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
 
     @staticmethod
     def _render_group(preferences, renderer: str, mats) -> None:
@@ -135,7 +137,8 @@ class ThumbNailRenderer:
                     handler.cleanup()    # the stage is written: husk reads the file, not these
         ui = getattr(hou, "ui", None)
         if refused and ui is not None:    # ONE message for the batch
-            ui.displayMessage("\n".join(refused))
+            ui.displayMessage("\n".join(refused),
+                              title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
 
     def create_thumbnail(self) -> None:
         """Render this material's thumbnail in the background: a batch of one."""
