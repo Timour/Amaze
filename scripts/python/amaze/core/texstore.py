@@ -109,7 +109,7 @@ def adopt(node, prefs, folder: str) -> list:
             debug.event("texstore", "referenced file missing",
                         parm=parm.path(), raw=raw)
             continue
-        if _set(parm, token):    # a refused rewrite stays out of the inventory
+        if _set(parm, token, node):    # a refused rewrite stays out of the inventory
             _remember(inventory, token)
     return inventory
 
@@ -121,7 +121,7 @@ def resolve_parms(node, prefs, write_path=None) -> int:
     for parm, raw in references(node):
         if raw.startswith(TOKEN_PREFIX):
             path = resolve(raw, prefs)
-            _set(parm, write_path(path, style) if write_path is not None else path)
+            _set(parm, write_path(path, style) if write_path is not None else path, node)
             changed += 1
     return changed
 
@@ -139,15 +139,27 @@ def _landing(destination: str, source: str) -> str:
     return target
 
 
-def _set(parm, value: str) -> bool:
+def _set(parm, value: str, root) -> bool:
+    """Write `value`; follow a reference only to a parm under `root`. ▸r/texture-refs"""
     import hou
     try:
-        parm.set(value)
+        parm.set(value, follow_parm_reference=_lands_under(parm, root))
         return True
     except (hou.OperationFailed, hou.PermissionError) as exc:    # locked or keyframed: the reference stands ▸r/hou-errors
         debug.event("texstore", "parm not rewritten", parm=parm.path(),
                     error=str(exc))
         return False
+
+
+def _lands_under(parm, root) -> bool:
+    """Does the end of `parm`'s reference chain sit on `root` or a node under it?"""
+    seen = {parm.path()}
+    target = parm.getReferencedParm()
+    while target.path() not in seen:    # a chain, as `set()` follows it; a cycle ends it
+        seen.add(target.path())
+        target = target.getReferencedParm()
+    owner = target.node().path()
+    return owner == root.path() or owner.startswith(root.path().rstrip("/") + "/")
 
 
 def _remember(inventory: list, token: str) -> None:

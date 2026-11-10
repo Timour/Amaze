@@ -168,6 +168,59 @@ class AdoptTest(unittest.TestCase):
             lib, "matX", "Brick__env", "textures", "brick_diff.png")))
 
 
+class AReferencedParmTest(unittest.TestCase):
+    """A rewrite writes the staged parm; it follows a reference only to a parm inside the staged copy."""
+
+    def _outside_texture(self):
+        outside = tempfile.mkdtemp(prefix="amaze_outside_")
+        self.addCleanup(shutil.rmtree, outside, ignore_errors=True)
+        path = os.path.join(outside, "ref_diff.png")
+        with open(path, "wb") as handle:
+            handle.write(b"pngbytes")
+        return path
+
+    def _string_parm(self, node, name, value):
+        node.addSpareParmTuple(hou.StringParmTemplate(
+            name, name, 1, string_type=hou.stringParmType.FileReference))
+        node.parm(name).set(value)
+        return node.parm(name)
+
+    def test_a_reference_out_of_the_copy_leaves_the_scene_parm_alone(self):
+        from amaze.core import texstore
+        lib = _scratch_library(self)
+        source = self._outside_texture()
+        control = hou.node("/obj").createNode("null", "amaze_tex_control")
+        self.addCleanup(control.destroy)
+        scene = self._string_parm(control, "tex", source)
+        builder, image = _network_with_image(self, "")
+        image.parm("file").setExpression('chs("%s")' % scene.path(), hou.exprLanguage.Hscript)
+        self.assertEqual(scene, image.parm("file").getReferencedParm(),
+                         "premise: the staged parm references the scene one")
+        inventory = texstore.adopt(builder, _prefs_over(lib), "Ref__out")
+        token = "$AMAZELIB/matX/Ref__out/textures/ref_diff.png"
+        self.assertEqual(source, scene.unexpandedString(),
+                         "a save rewrote a parm outside the copy it staged")
+        self.assertEqual(token, image.parm("file").unexpandedString(),
+                         "the staged parm does not carry the adopted file")
+        self.assertEqual([token], inventory)
+
+    def test_a_reference_inside_the_copy_keeps_following(self):
+        """A promoted subnet parm is rewritten where it is promoted, and the image still reads it."""
+        from amaze.core import texstore
+        lib = _scratch_library(self)
+        source = self._outside_texture()
+        builder, image = _network_with_image(self, "")
+        promoted = self._string_parm(builder, "tex", source)
+        image.parm("file").setExpression('chs("../tex")', hou.exprLanguage.Hscript)
+        self.assertEqual(promoted, image.parm("file").getReferencedParm(), "premise")
+        inventory = texstore.adopt(builder, _prefs_over(lib), "Ref__in")
+        token = "$AMAZELIB/matX/Ref__in/textures/ref_diff.png"
+        self.assertEqual(token, promoted.unexpandedString())
+        self.assertEqual(promoted, image.parm("file").getReferencedParm(),
+                         "the promotion inside the copy was broken")
+        self.assertEqual([token], inventory)
+
+
 class ResolveParmsTest(unittest.TestCase):
     """resolve_parms() is the scene-side door: $AMAZELIB leaves spelled as Write Paths As says."""
 
