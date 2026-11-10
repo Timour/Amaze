@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.33.22
+
+- A message whose list of names sits under Show Details ends its sentence with a period.
+
 ## 1.33.21
 
 - A loose OpenPBR material gets its thumbnail when it is saved.
