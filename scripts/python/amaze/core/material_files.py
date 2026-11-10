@@ -46,6 +46,9 @@ _SIDECAR_TYPE = re.compile(rb'\n  "type": "([^"\\]*)"')    # a top-level key, as
 _NO_FOLLOW = getattr(os, "O_NOFOLLOW", 0)
 
 
+STALE_SIDECAR_S = 60    # one save writes both files moments apart
+
+
 def get_saved_node_type(preferences, mat: material.Material) -> str:
     """The builder type the builder sidecar records, else the .interface's first createNode, or ""."""
     iface = material.payload_path(preferences, mat.mat_id, ".interface")
@@ -74,6 +77,8 @@ def _sidecar_type(preferences, mat: material.Material, iface: str) -> str:
             fh = open(material.payload_path(
                 preferences, mat.mat_id, material.BUILDER_SUFFIX), "rb")
         with fh:
+            if os.fstat(fh.fileno()).st_mtime < os.stat(iface).st_mtime - STALE_SIDECAR_S:
+                return ""    # re-saved by an Amaze that writes no sidecar: the .interface is newer
             data = fh.read()
     except OSError:
         return ""

@@ -1253,6 +1253,14 @@ class TheBuilderTypeIsReadFromTheSidecarFirst(unittest.TestCase):
                 self.assertEqual("subnet",
                                  material_files.get_saved_node_type(self.prefs, self.asset))
 
+    def test_a_sidecar_older_than_its_interface_is_not_believed(self):
+        """An Amaze that writes no sidecar re-saved the asset: the newer .interface answers."""
+        self._sidecar(json.dumps({"type": renderers.REDSHIFT.usd_builder}))
+        iface = material.payload_path(self.prefs, self.asset.mat_id, ".interface")
+        now = os.path.getmtime(iface)
+        os.utime(self.sidecar, (now - 86400, now - 86400))
+        self.assertEqual("subnet", material_files.get_saved_node_type(self.prefs, self.asset))
+
     def test_a_linked_sidecar_is_not_followed_and_a_long_preamble_still_reads(self):
         if hasattr(os, "symlink") and getattr(os, "O_NOFOLLOW", 0):
             outside = os.path.join(self.prefs.path, "elsewhere.json")
