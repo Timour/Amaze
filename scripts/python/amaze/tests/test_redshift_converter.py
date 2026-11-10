@@ -604,6 +604,72 @@ class AWireThroughADotSurvivesTheSolarisRebuild(unittest.TestCase):
                           if isinstance(i, hou.NetworkDot)])
 
 
+class ADotIsRemovedAndItsWiresStay(unittest.TestCase):
+    """`_bypass_dots` leaves every consumer fed by what fed the dot, whatever that is. ▸r/node-items"""
+
+    @staticmethod
+    def _feeds(node):
+        """input index -> (the item behind it, which of its outputs), dots included."""
+        return {c.inputIndex(): (c.inputItem(), c.outputIndex())
+                for c in node.inputConnections()}
+
+    def _assert_no_dots(self, parent):
+        self.assertFalse([i for i in parent.allItems() if isinstance(i, hou.NetworkDot)],
+                         "a dot was left in the network")
+
+    def test_a_chain_of_two_dots_feeds_both_consumers_from_the_third_output(self):
+        from amaze.render import redshift_converter
+        net = hou.node("/mat").createNode("subnet")
+        self.addCleanup(net.destroy)
+        for child in list(net.children()):
+            child.destroy()
+        split = net.createNode("vectofloat", "split")
+        mix = net.createNode("mix", "mix")
+        product = net.createNode("multiply", "product")
+        first, second = net.createNetworkDot(), net.createNetworkDot()
+        first.setInput(split, 2)
+        second.setInput(first, 0)
+        mix.setInput(2, second)
+        product.setInput(0, second)
+        redshift_converter._bypass_dots(net)
+        self.assertEqual({2: (split, 2)}, self._feeds(mix))
+        self.assertEqual({0: (split, 2)}, self._feeds(product))
+        self._assert_no_dots(net)
+
+    def test_a_dot_fed_by_a_subnet_input_keeps_that_wire(self):
+        from amaze.render import redshift_converter
+        geo = hou.node("/obj").createNode("geo")
+        self.addCleanup(geo.destroy)
+        outer = geo.createNode("null", "outer")
+        sub = geo.createNode("subnet", "sub")
+        sub.setInput(0, outer)
+        indirect = sub.indirectInputs()[0]
+        inner = sub.createNode("null", "inner")
+        dot = sub.createNetworkDot()
+        dot.setInput(indirect, 0)
+        inner.setInput(0, dot)
+        redshift_converter._bypass_dots(sub)
+        self.assertEqual({0: (indirect, 0)}, self._feeds(inner),
+                         "the wire from the subnet's input is gone")
+        self.assertEqual(outer, inner.input(0))
+        self._assert_no_dots(sub)
+
+    def test_a_dot_into_a_merge_keeps_its_slot(self):
+        from amaze.render import redshift_converter
+        geo = hou.node("/obj").createNode("geo")
+        self.addCleanup(geo.destroy)
+        merge = geo.createNode("merge", "merge")
+        a, b, c = (geo.createNode("null", name) for name in "abc")
+        dot = geo.createNetworkDot()
+        dot.setInput(b, 0)
+        merge.setInput(0, a)
+        merge.setInput(1, dot)
+        merge.setInput(2, c)
+        redshift_converter._bypass_dots(geo)
+        self.assertEqual({0: (a, 0), 1: (b, 0), 2: (c, 0)}, self._feeds(merge))
+        self._assert_no_dots(geo)
+
+
 class _ValuesSource:
     """A values source with nothing to download: `fetch` answers the record's own payload."""
 

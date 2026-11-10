@@ -459,28 +459,13 @@ NODE_CONVERTERS.update({category: convert_math for category in TWO_INPUT_MATH})
 CLASSIC_TERMINAL = material.REDSHIFT_TERMINALS[0]    # `redshift_material`, the OBJ-only output the upgrade leaves behind
 
 
-def _bypass_dots(builder: hou.Node) -> int:
-    """Rewire every dot's consumers to the node behind it and remove the dot; answers the count."""
-    dots = [item for item in builder.allItems()
-            if isinstance(item, hou.NetworkDot)]
-    for dot in dots:
-        source, index = dot.inputItem(), dot.inputItemOutputIndex()    # the item behind the dot and which of its outputs ▸r/node-items
-        hops = 0
-        while isinstance(source, hou.NetworkDot) and hops < 8:    # a dot fed by a dot
-            source, index = source.inputItem(), source.inputItemOutputIndex()
-            hops += 1
-        if isinstance(source, hou.Node):
-            for conn in dot.outputConnections():    # listed with repeats; setInput twice is the same wire
-                consumer = conn.outputItem()
-                try:
-                    if isinstance(consumer, hou.NetworkDot):
-                        consumer.setInput(source, index)    # a dot fed by this dot now hangs off the node directly, and its own turn rewires its consumers
-                    elif consumer is not None:
-                        consumer.setInput(conn.inputIndex(), source, index)
-                except hou.Error as exc:
-                    debug.event("redshift", "dot wire not carried", error=str(exc))
-        dot.destroy()
-    return len(dots)
+def _bypass_dots(builder: hou.Node) -> None:
+    """Remove every dot; destroying one wires its consumers to what fed it. ▸r/node-items"""
+    for dot in [item for item in builder.allItems() if isinstance(item, hou.NetworkDot)]:
+        try:
+            dot.destroy()
+        except hou.Error as exc:
+            debug.event("redshift", "dot wire not carried", error=str(exc))
 
 
 def upgrade_to_usd_builder(builder: hou.Node) -> hou.Node:
