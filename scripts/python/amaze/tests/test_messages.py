@@ -449,6 +449,16 @@ class EveryMessageBoxSaysWhoAndHowBad(unittest.TestCase):
                   and joins(call.args[0].right)]
         self.assertEqual([], listed)
 
+class AListUnderShowDetailsEndsItsSentence(unittest.TestCase):
+    """The list sits under Show Details, so the sentence before it ends in a period."""
+
+    def test_no_summary_points_at_a_list_with_a_colon(self):
+        for name in ("AMAZE_COULD_NOT", "SCENE_BUILD_PARTIAL_FAILURE", "MATERIALS_NOT_UPDATED",
+                     "NODE_ASSETS_IMPORT_FAILURES", "MATERIALS_SAVE_FAILURES", "MATERIALS_IMPORT_FAILURES"):
+            with self.subTest(name):
+                self.assertTrue(getattr(messages, name).endswith("."), getattr(messages, name))
+
+
 class CheckLibrarySaysWhereFilesGo(unittest.TestCase):
     """Check Library moves a file into the holding folder; it does not delete it."""
 
