@@ -1586,7 +1586,7 @@ class NodeHandler:
         mat: material.Material,
         context_node: hou.Node | None = None,
     ):
-        """The COP import seam: (ok, reason, created), the nodes then the notes, boxes and dots; [] on refusal."""
+        """The COP import seam: (ok, reason, created), nodes then notes, boxes, dots; [] on refusal."""
         self._imported_cop_nodes = []
         self._imported_cop_riders = []    # notes, boxes and dots, after the nodes
         ok, reason = self._import_cop_asset_inner(

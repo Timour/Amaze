@@ -426,7 +426,7 @@ def _box_depth(item) -> int:
 
 
 def place_nodes(nodes, position) -> None:
-    """Move created items as a group so the NODES' centroid lands at `position`; notes, boxes, dots ride along."""
+    """Move created items so the NODES' centroid lands at `position`; notes, boxes, dots ride along."""
     from amaze.core import debug
     items = [item for item in nodes if item is not None]
     nodes = [item for item in items if isinstance(item, hou.Node)]
