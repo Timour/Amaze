@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.33.16
+
+- Saving a material whose texture path is linked to a parameter elsewhere in the scene no longer rewrites that parameter. Only the saved material's own copy takes the library path.
+- Convert to no longer fails on a material whose texture path is keyframed or an expression. The path is taken as it evaluates at the current frame.
+- Gallery Import reads only the .gal you chose. A file that is not a gallery now finds nothing, where it used to bring in another gallery's materials, and the imported gallery is no longer left installed afterwards.
+- On macOS, a thumbnail render no longer switches off Houdini's own shader plugins, MaterialX's among them. 1.33.15 switched them off along with other renderers'.
+
 ## 1.33.15
 
 - Karma and Octane material thumbnails render again on Windows when Redshift is installed. Redshift's shader plugin crashed every such render before its first picture; a thumbnail render now leaves out the shader plugins of renderers it does not use.

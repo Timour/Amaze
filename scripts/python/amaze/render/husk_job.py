@@ -71,7 +71,9 @@ def foreign_shader_plugins(renderer: str) -> list:
     def home(plugin) -> str:
         return hostos.comparable_path(os.path.dirname(os.path.realpath(plugin.path)))
 
-    hfs = hostos.comparable_path(os.path.realpath(hou.getenv("HFS")))
+    hfs = os.path.realpath(hou.getenv("HFS"))
+    houdini = os.path.dirname(hfs) if ".framework" + os.sep in hfs else hfs
+    houdini = hostos.comparable_path(houdini)
     delegate = Tf.Type.FindByName(DELEGATES.get(renderer, ""))
     own = None if delegate.isUnknown else registry.GetPluginForType(delegate)
     own_home = home(own) if own else None
@@ -80,7 +82,7 @@ def foreign_shader_plugins(renderer: str) -> list:
         for kind in registry.GetAllDerivedTypes(base):
             plugin = registry.GetPluginForType(kind)
             where = home(plugin) if plugin else None
-            if where is None or where == own_home or where == hfs or where.startswith(hfs + os.sep):
+            if where is None or where == own_home or where == houdini or where.startswith(houdini + os.sep):
                 continue
             foreign.add(kind.typeName)
     return sorted(foreign)
