@@ -100,8 +100,8 @@ GALLERY_IMPORT_FINISHED_RENDERING = 'Gallery import complete.\n\nImported: %d\nS
 GALLERY_IMPORT_INTERRUPTED = 'Gallery import stopped.\n\nImported: %d\nSkipped: %d\nFailed: %d\n\nTo render them, select the new materials and use Update Render.'
 
 NO_LIBRARY_OPEN = "Open a library first."
-AMAZE_COULD_NOT = "%d of %d items could not be imported:\n\n%s"
-SCENE_BUILD_PARTIAL_FAILURE = "%d of %d could not be built:\n\n%s"
+AMAZE_COULD_NOT = "%d of %d items could not be imported:"
+SCENE_BUILD_PARTIAL_FAILURE = "%d of %d could not be built:"
 TILE_ICON_SAVE_FAILED = "%d tile icon%s could not be saved - check that the library folder is writable."
 CAPTURE_SELECT_ONE_TILE = "Select one tile to capture onto."
 NO_LIBRARY_CONFIGURED_2 = "Set up a library first: open Preferences, add one under Library, press Apply."
@@ -164,7 +164,7 @@ MATERIALS_UPDATED_LIBRARY_NOT_SAVED = "%d materials were updated, but the librar
 ASSET_ADDED_LIBRARY_NOT_SAVED = "\"%s\" was added, but the library could not be saved."
 MATERIALS_ADDED_LIBRARY_NOT_SAVED = "%d materials were added, but the library could not be saved."
 MATERIAL_NOT_UPDATED = "\"%s\" was not updated: %s"
-MATERIALS_NOT_UPDATED = "Some materials were not updated:\n\n%s"
+MATERIALS_NOT_UPDATED = "Some materials were not updated:"
 MATERIAL_NOT_UPDATED_LINE = "\"%s\": %s"
 UPDATE_REFUSED_GONE = "it is no longer in the library."
 UPDATE_REFUSED_VERSIONS_OFF = "Material Versions is off for this library."
@@ -411,7 +411,7 @@ SAVE_SCENE_TAKEN = 'A file named %s is already in %s, so the scene was not saved
 SAVE_SCENE_FAILED = 'Houdini could not save the scene as %s: %s'
 
 LOG_NOT_SAVED_UNEXPECTED = "The log couldn't be saved: %s"
-CONVERSION_SUMMARY = "Converted %d of %d %s material(s) to %s.\n\n%s"
+CONVERSION_SUMMARY = "Converted %d of %d %s material(s) to %s."
 NODE_CONVERTED = 'Converted "%s" to %s.'
 
 NODE_SWAPPED = 'Converted "%s" to %s in its place.'
@@ -424,8 +424,8 @@ NODE_NOT_A_MATERIAL = '"%s" is not a material Amaze can convert.'
 
 NODE_SKIPPED_LINE = '"%s":\n  [skipped] %s'
 
-NODE_ASSETS_IMPORT_FAILURES = "Some node assets couldn't be imported:\n\n%s"
-MATERIALS_SAVE_FAILURES = "Some materials could not be saved:\n\n%s"
-MATERIALS_IMPORT_FAILURES = "Some materials could not be imported:\n\n%s"
+NODE_ASSETS_IMPORT_FAILURES = "Some node assets couldn't be imported:"
+MATERIALS_SAVE_FAILURES = "Some materials could not be saved:"
+MATERIALS_IMPORT_FAILURES = "Some materials could not be imported:"
 LOADER_SOP_HAS_NO_FILE_PARM = "The \"%s\" SOP has no file parameter to set."
 GEOMETRY_IMPORT_FAILED = "Could not import %s: %s"

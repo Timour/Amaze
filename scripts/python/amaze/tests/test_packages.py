@@ -575,8 +575,9 @@ class PackageImportTest(unittest.TestCase):
         ui.selectFile.return_value = path
         with mock.patch.object(hou, "ui", ui, create=True):
             self.panel.package_import.import_package()
-        ui.displayMessage.assert_called_once_with(
-            messages.PACKAGE_NOT_READABLE % "misshapen.amazepkg")
+        ui.displayMessage.assert_called_once()
+        self.assertEqual((messages.PACKAGE_NOT_READABLE % "misshapen.amazepkg",),
+                         ui.displayMessage.call_args.args)
 
     def test_a_package_unpacking_past_the_cap_is_refused_before_a_write(self):
         from unittest import mock

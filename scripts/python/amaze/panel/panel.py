@@ -306,7 +306,8 @@ class AmazePanel(QtWidgets.QWidget):
                 messages.INDEX_UNREADABLE_AFTER_REPAIR_SWITCHING if switching
                 else messages.INDEX_UNREADABLE_AFTER_REPAIR)
             return False
-        ui.displayMessage(messages.LIBRARY_INDEX_REPAIRED % how, title=messages.TITLE_AMAZE)
+        ui.displayMessage(messages.LIBRARY_INDEX_REPAIRED % how,
+                          title=messages.TITLE_AMAZE, severity=hou.severityType.Message)
         debug.event("session", "index repaired", how=how, dir=folder)
         return True
 
@@ -674,7 +675,10 @@ class AmazePanel(QtWidgets.QWidget):
             return
         found = updater.check()
         if not found:
-            ui.displayMessage(found.sentence, title=messages.TITLE_AMAZE)
+            ui.displayMessage(found.sentence, title=messages.TITLE_AMAZE,
+                              severity=(hou.severityType.Warning
+                                        if found.verdict == updater.UNREACHABLE
+                                        else hou.severityType.Message))
         elif update_dialog.confirmed(found, library_dir):
             update_dialog.install_and_say(found)
 
@@ -808,7 +812,8 @@ class AmazePanel(QtWidgets.QWidget):
         ui = getattr(hou, "ui", None)
         if ui is not None and ui.displayMessage(
                 messages.NO_USER_PICKED, buttons=messages.BUTTONS_OPEN_PREFERENCES,
-                default_choice=0, close_choice=1, title=messages.TITLE_AMAZE) == 0:
+                default_choice=0, close_choice=1,
+                title=messages.TITLE_AMAZE, severity=hou.severityType.Warning) == 0:
             self.set_library()
         return ""
 
@@ -1520,7 +1525,8 @@ class AmazePanel(QtWidgets.QWidget):
         if row <= 0 or not folders_model.registered_at(row):    # nothing selected, All or the scene row: no location
             if ui is not None:
                 ui.displayMessage(
-                    messages.NO_FOLDER_SELECTED_TO_RELOCATE
+                    messages.NO_FOLDER_SELECTED_TO_RELOCATE,
+                    title=messages.TITLE_AMAZE, severity=hou.severityType.Warning
                 )
             return
         path = ui.selectFile(file_type=hou.fileType.Directory) if ui else ""
@@ -1531,7 +1537,8 @@ class AmazePanel(QtWidgets.QWidget):
         if rewritten < 0:
             if ui is not None:
                 ui.displayMessage(
-                    messages.RELOCATE_TARGET_NOT_A_FOLDER
+                    messages.RELOCATE_TARGET_NOT_A_FOLDER,
+                    title=messages.TITLE_AMAZE, severity=hou.severityType.Warning
                 )
             return
         if rewritten:
@@ -1676,8 +1683,11 @@ class AmazePanel(QtWidgets.QWidget):
                              for source in conversion_engine.targets() if source in sources)
         ui = getattr(hou, "ui", None)
         if ui is not None and eligible:
-            ui.displayMessage(messages.CONVERSION_SUMMARY % (
-                converted, eligible, shown, renderers.label(target), "\n".join(lines)))
+            ui.displayMessage(
+                messages.CONVERSION_SUMMARY % (converted, eligible, shown, renderers.label(target)),
+                details="\n".join(lines), title=messages.TITLE_AMAZE,
+                severity=(hou.severityType.Message if converted == eligible
+                          else hou.severityType.Warning))
         library.say_unlisted(unlisted)    # the status line, last: nothing after it writes the line
 
     def render_landed(self, before: set) -> None:
@@ -1785,7 +1795,8 @@ class AmazePanel(QtWidgets.QWidget):
         ui = getattr(hou, "ui", None)
         if not self.material_model:
             if ui is not None:
-                ui.displayMessage(messages.NO_LIBRARY_CONFIGURED)
+                ui.displayMessage(messages.NO_LIBRARY_CONFIGURED,
+                                  title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
             return
         picked = ui.selectFile(
             start_directory=gallery_import.default_gallery_dir(),    # opens where Houdini keeps its galleries
@@ -1802,7 +1813,8 @@ class AmazePanel(QtWidgets.QWidget):
         if not entries:
             if ui is not None:
                 ui.displayMessage(
-                    messages.MATERIAL_PRESETS_FOUND % picked
+                    messages.MATERIAL_PRESETS_FOUND % picked,
+                    title=messages.TITLE_AMAZE, severity=hou.severityType.Warning
                 )
             return
         types = {}
@@ -1822,6 +1834,7 @@ class AmazePanel(QtWidgets.QWidget):
         choice = ui.displayMessage(
             question, buttons=messages.BUTTONS_IMPORT,
             default_choice=0, close_choice=1,
+            title=messages.TITLE_AMAZE, severity=hou.severityType.Message,
         ) if ui is not None else 1    # no screen to ask, so the answer is the close_choice - Cancel
         if choice != 0:
             return
@@ -1853,7 +1866,8 @@ class AmazePanel(QtWidgets.QWidget):
         else:
             said = messages.GALLERY_IMPORT_FINISHED_IMPORTED_SKIPPED % (imported, skipped, failed)
         if ui is not None:
-            ui.displayMessage(said)
+            ui.displayMessage(said, title=messages.TITLE_AMAZE,
+                              severity=hou.severityType.Warning if failed else hou.severityType.Message)
         library.say_unlisted(unlisted)    # the status line, last
 
     def check_library(self) -> None:
@@ -1862,7 +1876,8 @@ class AmazePanel(QtWidgets.QWidget):
         if ui is None:
             return
         if not self.material_model:
-            ui.displayMessage(messages.NO_LIBRARY_OPEN)
+            ui.displayMessage(messages.NO_LIBRARY_OPEN,
+                              title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
             return
         from amaze.dialogs import repair_dialog
         repair_dialog.check_in_panel(self)
@@ -1878,7 +1893,8 @@ class AmazePanel(QtWidgets.QWidget):
         if not self.material_model:
             ui = getattr(hou, "ui", None)
             if ui is not None:
-                ui.displayMessage(messages.NO_LIBRARY_OPEN)
+                ui.displayMessage(messages.NO_LIBRARY_OPEN,
+                                  title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
             return
         lib_dir = self.prefs.dir
         hostos.open_path(lib_dir)
@@ -2310,7 +2326,8 @@ class AmazePanel(QtWidgets.QWidget):
         if failed and ui is not None:
             ui.displayMessage(
                 messages.TILE_ICON_SAVE_FAILED
-                % (failed, "" if failed == 1 else "s")    # a real plural
+                % (failed, "" if failed == 1 else "s"),
+                title=messages.TITLE_AMAZE, severity=hou.severityType.Warning    # a real plural
             )
 
 
@@ -2319,9 +2336,9 @@ class AmazePanel(QtWidgets.QWidget):
         self._import_selection(
             self.cop_sorted_model, self.cop_model, node_actions.import_asset_to_scene,
             "Amaze Import Nodes Asset", messages.NAMELESS_NODE_ASSET,
-            lambda listed: messages.NODE_ASSETS_IMPORT_FAILURES % listed)
+            messages.NODE_ASSETS_IMPORT_FAILURES)
 
-    def _import_selection(self, proxy, model, verb, label: str, noun: str, sentence) -> None:
+    def _import_selection(self, proxy, model, verb, label: str, noun: str, summary: str) -> None:
         """Each selected tile through `verb(model, source_index)`: ONE undo entry, one dialog."""
         failures = []
         with hou.undos.group(label):    # the containers and what loads into them revert as one step
@@ -2340,7 +2357,8 @@ class AmazePanel(QtWidgets.QWidget):
                     failures.append(reason)
         ui = getattr(hou, "ui", None)
         if failures and ui is not None:
-            ui.displayMessage(sentence("\n".join(failures)))
+            ui.displayMessage(summary, details="\n".join(failures),
+                              title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
 
 
     def get_code_category_names(self) -> list[str]:
@@ -2362,7 +2380,8 @@ class AmazePanel(QtWidgets.QWidget):
             ui = getattr(hou, "ui", None)
             if ui is not None:
                 ui.displayMessage(
-                    messages.NO_LIBRARY_CONFIGURED_2
+                    messages.NO_LIBRARY_CONFIGURED_2,
+                    title=messages.TITLE_AMAZE, severity=hou.severityType.Warning
                 )
             return
         dialog = code_dialog.CodeDialog(
@@ -2984,6 +3003,7 @@ class AmazePanel(QtWidgets.QWidget):
             context.delete_prompt(len(sources), name),
             buttons=messages.BUTTONS_DELETE,
             default_choice=1, close_choice=1,
+            title=messages.TITLE_AMAZE, severity=hou.severityType.Warning,
         ) != 0:
             return
         context.delete_rows(sources)
@@ -3000,7 +3020,8 @@ class AmazePanel(QtWidgets.QWidget):
             if destination is None:
                 if ui is not None:
                     ui.displayMessage(
-                        messages.NO_MATERIAL_DESTINATION_NETWORK
+                        messages.NO_MATERIAL_DESTINATION_NETWORK,
+                        title=messages.TITLE_AMAZE, severity=hou.severityType.Warning
                     )
                 return
             staging = hou.node("/obj").createNode("matnet")    # built in staging, moved in one step ▸r/matlib-entries
@@ -3009,7 +3030,8 @@ class AmazePanel(QtWidgets.QWidget):
                 if builder is None:
                     if ui is not None:
                         ui.displayMessage(
-                            messages.MATERIAL_GENERATION_FAILED
+                            messages.MATERIAL_GENERATION_FAILED,
+                            title=messages.TITLE_AMAZE, severity=hou.severityType.Warning
                         )
                     return
                 moved = hou.moveNodesTo((builder,), destination)
@@ -3019,7 +3041,8 @@ class AmazePanel(QtWidgets.QWidget):
                                 destination=destination.path())
                     if ui is not None:
                         ui.displayMessage(
-                            messages.GENERATED_MATERIAL_MOVE_FAILED % destination.path()
+                            messages.GENERATED_MATERIAL_MOVE_FAILED % destination.path(),
+                            title=messages.TITLE_AMAZE, severity=hou.severityType.Warning
                         )
                     return
                 builder = moved[0]
@@ -3043,14 +3066,16 @@ class AmazePanel(QtWidgets.QWidget):
                             provenance=builder.comment())
                 if not registered and ui is not None:
                     ui.displayMessage(
-                        messages.GENERATED_MATERIAL_NOT_REGISTERED % (builder.name(), destination.path())
+                        messages.GENERATED_MATERIAL_NOT_REGISTERED % (builder.name(), destination.path()),
+                        title=messages.TITLE_AMAZE, severity=hou.severityType.Warning
                     )
             except hou.Error as exc:
                 builder = None
                 debug.event("generate", "failed", error=str(exc))
                 if ui is not None:
                     ui.displayMessage(
-                        messages.MATERIAL_GENERATION_ERROR % exc
+                        messages.MATERIAL_GENERATION_ERROR % exc,
+                        title=messages.TITLE_AMAZE, severity=hou.severityType.Warning
                     )
             finally:
                 staging.destroy()
@@ -3068,7 +3093,8 @@ class AmazePanel(QtWidgets.QWidget):
         node = node or (selected[0] if selected else None)
         if node is None:
             if ui is not None:
-                ui.displayMessage(messages.NO_NODE_TO_SAVE)
+                ui.displayMessage(messages.NO_NODE_TO_SAVE,
+                                  title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
             return
         nodes = selected if node in selected else [node]
         keys = self._save_targets(nodes)
@@ -3076,7 +3102,8 @@ class AmazePanel(QtWidgets.QWidget):
                     prefer=prefer)
         if not keys:
             if ui is not None:
-                ui.displayMessage(messages.NODE_CANNOT_BE_SAVED % node.name())
+                ui.displayMessage(messages.NODE_CANNOT_BE_SAVED % node.name(),
+                                  title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
             return
         key = sections.save_guess(keys, nodes, prefer)
         if key == "material":
@@ -3133,12 +3160,14 @@ class AmazePanel(QtWidgets.QWidget):
         debug.event("save", "save_asset entry", selected=len(sel))
         if not sel:
             if ui is not None:
-                ui.displayMessage(messages.NO_MATERIAL_SELECTED)
+                ui.displayMessage(messages.NO_MATERIAL_SELECTED,
+                                  title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
             return
         if not self.material_model:
             if ui is not None:
                 ui.displayMessage(
-                    messages.NO_LIBRARY_CONFIGURED_2
+                    messages.NO_LIBRARY_CONFIGURED_2,
+                    title=messages.TITLE_AMAZE, severity=hou.severityType.Warning
                 )
             return
         existing = []    # (asset id, node) per node held: ONE choice for all; ids, as saves move rows
@@ -3175,7 +3204,7 @@ class AmazePanel(QtWidgets.QWidget):
                 buttons=buttons,
                 default_choice=0,
                 close_choice=cancel_at,
-                title=messages.TITLE_SAVE_TO % branding.APP_NAME,
+                title=messages.TITLE_SAVE_TO % branding.APP_NAME, severity=hou.severityType.Message,
             ) if ui is not None else cancel_at    # no screen to ask, so the answer is the close_choice - Cancel
             if choice == cancel_at:
                 return
@@ -3200,7 +3229,8 @@ class AmazePanel(QtWidgets.QWidget):
         ui = getattr(hou, "ui", None)
         if not nodes.ocio_set():    # every material would refuse alike, so it is said once
             if ui is not None:
-                ui.displayMessage(messages.OCIO_NOT_SET)
+                ui.displayMessage(messages.OCIO_NOT_SET,
+                                  title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
             return
         model = self.material_model
         total, done, unlisted, refused = len(existing), 0, [], []
@@ -3230,10 +3260,12 @@ class AmazePanel(QtWidgets.QWidget):
         if refused and ui is not None:    # once the progress window is gone
             if len(refused) == 1:
                 name, reason = refused[0]
-                ui.displayMessage(messages.MATERIAL_NOT_UPDATED % (name, reason))
+                ui.displayMessage(messages.MATERIAL_NOT_UPDATED % (name, reason),
+                                  title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
             else:
-                ui.displayMessage(messages.MATERIALS_NOT_UPDATED % "\n".join(
-                    messages.MATERIAL_NOT_UPDATED_LINE % (name, reason) for name, reason in refused))
+                ui.displayMessage(messages.MATERIALS_NOT_UPDATED, details="\n".join(
+                    messages.MATERIAL_NOT_UPDATED_LINE % (name, reason) for name, reason in refused),
+                    title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
         library.say_unlisted(unlisted, updated=True)    # the status line, last: nothing writes after it
 
     def _update_existing_asset(self, mat_id: str, node: hou.Node) -> bool:
@@ -3270,7 +3302,7 @@ class AmazePanel(QtWidgets.QWidget):
             self.material_sorted_model, self.material_model,
             lambda model, index: material_actions.import_asset_to_scene(model, index, target),
             "Amaze Import Materials", messages.NAMELESS_MATERIAL,
-            lambda listed: messages.MATERIALS_IMPORT_FAILURES % listed)
+            messages.MATERIALS_IMPORT_FAILURES)
 
     def import_asset_auto(self, index: QtCore.QModelIndex | None = None):
         """The grid's double-click, answered by the active section's `double_click`."""
@@ -3283,7 +3315,8 @@ class AmazePanel(QtWidgets.QWidget):
     def _cannot_load_here(self) -> None:
         ui = getattr(hou, "ui", None)
         if ui is not None:
-            ui.displayMessage(messages.CANNOT_LOAD_HERE)  # type: ignore
+            ui.displayMessage(messages.CANNOT_LOAD_HERE,
+                              title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)  # type: ignore
 
     def _visible_selected_nodes(self) -> list:
         """Selected nodes in a visible editor's network, for the click doors ▸r/matlib-entries"""

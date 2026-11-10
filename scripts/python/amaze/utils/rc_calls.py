@@ -90,7 +90,8 @@ def _find_panel():
                 break
     if not panel:
         ui.displayMessage(
-            messages.PANEL_NOT_OPEN % branding.APP_NAME
+            messages.PANEL_NOT_OPEN % branding.APP_NAME,
+            title=messages.TITLE_AMAZE, severity=hou.severityType.Warning
         )
     return panel
 
@@ -105,7 +106,8 @@ def save(node=None) -> None:
     if door is None:    # the menu reloads from disk, the panel does not: an update awaits a restart
         ui = getattr(hou, "ui", None)
         if ui is not None:
-            ui.displayMessage(messages.RESTART_TO_FINISH_UPDATE)
+            ui.displayMessage(messages.RESTART_TO_FINISH_UPDATE,
+                              title=messages.TITLE_AMAZE, severity=hou.severityType.Message)
         return
     if node is not None and not node.isSelected():
         node.setSelected(True, clear_all_selected=True)
@@ -194,7 +196,8 @@ def convert(node, target, swap=False) -> None:
         return
     made_count = sum(1 for made, _report in reports if made.shader is not None)
     if len(chosen) == 1 and skipped:    # one node refused: its sentence is the whole answer
-        ui.displayMessage(_refusal(node, node_renderer(node), target))
+        ui.displayMessage(_refusal(node, node_renderer(node), target),
+                          title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
     elif not skipped and made_count == len(chosen) \
             and all(report.is_clean() for _made, report in reports):    # summary_lines always holds the name line
         if len(chosen) > 1:
@@ -208,8 +211,11 @@ def convert(node, target, swap=False) -> None:
         shown = " and ".join(renderers.label(source)
                              for source in engine.targets() if source in sources)
         lines = skipped + [line for _made, report in reports for line in report.summary_lines()]
-        ui.displayMessage(messages.CONVERSION_SUMMARY % (
-            made_count, len(chosen), shown, word, "\n".join(lines)))
+        ui.displayMessage(
+            messages.CONVERSION_SUMMARY % (made_count, len(chosen), shown, word),
+            details="\n".join(lines), title=messages.TITLE_AMAZE,
+            severity=(hou.severityType.Message if made_count == len(chosen)
+                      else hou.severityType.Warning))
 
 
 
@@ -223,7 +229,8 @@ def _shelf_tool(*names):
         for name in names:
             __import__(name)    # the import statement's own door, so a broken install is said
     except ImportError as exc:
-        ui.displayMessage(messages.AMAZE_NOT_IMPORTABLE % exc)
+        ui.displayMessage(messages.AMAZE_NOT_IMPORTABLE % exc,
+                          title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
         return None
     return (ui,) + tuple(sys.modules[name] for name in names)
 
@@ -239,7 +246,7 @@ def capture() -> None:
     try:
         scene_captures.capture_open_scene(preferences)
     except scene_captures.CaptureRefused as exc:
-        ui.displayMessage(str(exc))
+        ui.displayMessage(str(exc), title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
     else:
         HoudiniSpeaker.status("thumbnail captured for %s"
                               % hou.hipFile.basename())    # "untitled.hip" when unsaved, never ""
@@ -254,11 +261,14 @@ def check_for_updates() -> None:
     found = updater.check()
     library = updater.configured_library()
     if not found:    # up to date, no release, or unreachable: the sentence is the whole answer
-        ui.displayMessage(found.sentence, title=messages.TITLE_AMAZE)
+        ui.displayMessage(found.sentence, title=messages.TITLE_AMAZE,
+                          severity=(hou.severityType.Warning
+                                    if found.verdict == updater.UNREACHABLE
+                                    else hou.severityType.Message))
     elif ui.displayMessage(
             messages.UPDATE_OFFER % updater.offer_line(found, library),
             buttons=messages.BUTTONS_INSTALL_UPDATE,
-            close_choice=1, title=messages.TITLE_AMAZE) == 0 \
+            close_choice=1, title=messages.TITLE_AMAZE, severity=hou.severityType.Message) == 0 \
             and update_dialog.confirmed(found, library):    # Continue or Cancel, as on the About tab
         update_dialog.install_and_say(found)
 

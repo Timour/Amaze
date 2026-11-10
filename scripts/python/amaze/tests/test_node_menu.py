@@ -96,9 +96,10 @@ def _geo(test, name="menu_geo"):
 
 def _speakers(test):
     """`hou.ui` patched to record its dialogs in `test.said` and its status line in `test.bar`."""
-    test.said, test.bar = [], []
+    test.said, test.bar, test.details = [], [], []
     ui = types.SimpleNamespace(
-        displayMessage=lambda text, *a, **k: test.said.append(text) or 0,
+        displayMessage=lambda text, *a, **k: test.said.append(text)
+        or test.details.append(k.get("details", "")) or 0,
         setStatusMessage=lambda text, *a, **k: test.bar.append(text))
     patcher = mock.patch.object(hou, "ui", ui, create=True)
     patcher.start()
@@ -156,7 +157,7 @@ class TheMenuIsOneAmazeSubmenu(unittest.TestCase):
         self.assertIn('rc_calls.save(kwargs.get("node", None))', save.findtext("scriptCode"))
 
     def test_a_click_reloads_rc_calls_only_behind_the_dev_switch(self):
-        """As the pypanel: a reload reruns the module body on every click, so only AMAZE_DEV_RELOAD asks for it."""
+        """As the pypanel: a reload reruns the module body each click, so only the dev switch asks."""
         import importlib
         from amaze.utils import rc_calls
         items = list(_submenu().iter("scriptItem"))
@@ -441,7 +442,7 @@ class ASelectionConvertsAsOne(unittest.TestCase):
         self.assertEqual(1, len(self.said), "not one dialog: %s" % self.said)
         self.assertTrue(self.said[0].startswith("Converted 1 of 2 %s material(s) to Redshift."
                                                 % renderers.label("Karma")), self.said[0])
-        self.assertIn(messages.NODE_NOT_A_MATERIAL % "menu_sel_geo", self.said[0])
+        self.assertIn(messages.NODE_NOT_A_MATERIAL % "menu_sel_geo", self.details[0])
 
     @unittest.skipUnless(REDSHIFT, "the Redshift plugin is not loaded")
     def test_a_node_outside_the_selection_converts_alone(self):

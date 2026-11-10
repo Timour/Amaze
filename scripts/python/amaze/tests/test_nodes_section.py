@@ -894,7 +894,8 @@ class ASelectionImportsAsOneStep(unittest.TestCase):
         self.panel.prefs.render_on_import = 0
         self.said = []
         ui = types.SimpleNamespace(
-            displayMessage=lambda text, *a, **k: self.said.append(text) or 0,
+            displayMessage=lambda text, *a, **k: self.said.append(
+                (text, k["details"]) if k.get("details") else text) or 0,    # a list rides in details
             paneTabs=lambda *a, **k: ())    # no network editor: the import lands in /obj
         patcher = mock.patch.object(hou, "ui", ui, create=True)
         patcher.start()
@@ -937,7 +938,7 @@ class ASelectionImportsAsOneStep(unittest.TestCase):
         self.assertTrue([node for node in hou.node("/obj").allSubChildren()
                          if node.name() == "the_box"], "the good tile did not land")
         _ok, reason, _created = node_actions.import_asset_to_scene(self.panel.cop_model, bad)
-        self.assertEqual([messages.NODE_ASSETS_IMPORT_FAILURES % reason], self.said)
+        self.assertEqual([(messages.NODE_ASSETS_IMPORT_FAILURES, reason)], self.said)
 
     def test_material_tiles(self):
         from amaze import messages
@@ -954,7 +955,7 @@ class ASelectionImportsAsOneStep(unittest.TestCase):
         self.assertEqual(("Amaze Import Materials",), hou.undos.undoLabels())
         self.assertIsNotNone(hou.node("/mat/one_step_good"), "the good tile did not land")
         _ok, reason, _created = material_actions.import_asset_to_scene(model, bad, "mat")
-        self.assertEqual([messages.MATERIALS_IMPORT_FAILURES % reason], self.said)
+        self.assertEqual([(messages.MATERIALS_IMPORT_FAILURES, reason)], self.said)
 
 
 if __name__ == "__main__":

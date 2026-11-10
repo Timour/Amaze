@@ -881,7 +881,8 @@ class MaterialSection(AssetSection):
         ui = getattr(hou, "ui", None)
         if failures and ui is not None:
             ui.displayMessage(
-                messages.MATERIALS_SAVE_FAILURES % "\n".join(failures))
+                messages.MATERIALS_SAVE_FAILURES, details="\n".join(failures),
+                title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
         for renderer in renderers:
             self.panel.enable_renderer_on_add(renderer)
         self.panel.prefs.save()
@@ -1017,12 +1018,14 @@ class CopSection(AssetSection):
         if save_error is not None:
             if ui is not None:
                 ui.displayMessage(
-                    messages.NODE_SAVE_FAILED_WITH_REASON % (node.name(), save_error)
+                    messages.NODE_SAVE_FAILED_WITH_REASON % (node.name(), save_error),
+                    title=messages.TITLE_AMAZE, severity=hou.severityType.Warning
                 )
             return
         if not result and ui is not None:
             ui.displayMessage(
-                messages.NODE_SAVE_FAILED % node.name()
+                messages.NODE_SAVE_FAILED % node.name(),
+                title=messages.TITLE_AMAZE, severity=hou.severityType.Warning
             )
         if isinstance(result, library.ListNotSaved):    # the name below is the one the add gave it
             debug.refuse(messages.ASSET_ADDED_LIBRARY_NOT_SAVED % (dialog.name.strip() or node.name()))

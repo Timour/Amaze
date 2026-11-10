@@ -135,7 +135,8 @@ class TheOnlineImportEndsOnThatLine(unittest.TestCase):
         panel = self._Panel()
         with mock.patch.object(hou, "ui", types.SimpleNamespace(
                 setStatusMessage=lambda text, *a, **k: self.said.append(text),
-                displayMessage=lambda text, *a, **k: self.shown.append(text)),
+                displayMessage=lambda text, *a, **k: self.shown.append(
+                    "\n\n".join(filter(None, (text, k.get("details")))))),    # the list rides in details
                 create=True):
             Door(panel).import_records(list(answers))
         return panel

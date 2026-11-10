@@ -58,4 +58,4 @@ class TileCapture:
     def report_refused(self, text: str) -> None:
         ui = getattr(hou, "ui", None)
         if ui is not None:
-            ui.displayMessage(text)
+            ui.displayMessage(text, title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)

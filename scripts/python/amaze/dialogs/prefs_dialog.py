@@ -573,7 +573,8 @@ class PrefsDialog(base_dialog.AssetDialog):
                 return
         if not library_policy.set_allow_overwrite(library_dir, checked):
             hou.ui.displayMessage(  # type: ignore
-                messages.LIBRARY_SETTING_NOT_WRITTEN)
+                messages.LIBRARY_SETTING_NOT_WRITTEN,
+                title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
             _show_quietly(self._cbx_allow_overwrite, not checked)
 
     def _build_library_tab(self) -> QtWidgets.QWidget:
@@ -1457,7 +1458,8 @@ class PrefsDialog(base_dialog.AssetDialog):
         ok, what = prefs_mod.seed_test_folder(folder)
         if not ok:
             hou.ui.displayMessage(  # type: ignore
-                messages.TEST_FOLDER_NOT_PREPARED % what)
+                messages.TEST_FOLDER_NOT_PREPARED % what,
+                title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
             return
         name = self._user_name()    # read in the library being left
         self._prefs.save()    # before the switch: unsaved edits belong to the library they were made in

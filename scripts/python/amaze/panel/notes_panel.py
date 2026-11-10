@@ -671,11 +671,13 @@ class NotesPanel(ui_helpers.HeldPane):
         src = notes.adopt_image(self.preferences, chosen)
         if not src:
             ui.displayMessage(
-                messages.PICTURE_NOT_COPIED_TO_LIBRARY)
+                messages.PICTURE_NOT_COPIED_TO_LIBRARY,
+                title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
             return
         if not self.text_edit.insert_image(src):
             ui.displayMessage(
-                messages.PICTURE_COPIED_BUT_UNREADABLE)
+                messages.PICTURE_COPIED_BUT_UNREADABLE,
+                title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
             return
         self.text_edit.setFocus()    # the insert fires textChanged, which schedules the debounced save
 

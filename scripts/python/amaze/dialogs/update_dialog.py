@@ -11,13 +11,16 @@ def install_and_say(found) -> bool:
     try:
         updater.install(found)
     except OSError as exc:
-        hou.ui.displayMessage(str(exc), title=messages.TITLE_AMAZE)    # already a finished sentence
+        hou.ui.displayMessage(str(exc),
+                              title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)    # already a finished sentence
         return False
     except Exception as exc:                                  # noqa: BLE001
         debug.exception("update install", exc)
-        hou.ui.displayMessage(messages.UPDATE_FAILED_UNEXPECTED % exc, title=messages.TITLE_AMAZE)
+        hou.ui.displayMessage(messages.UPDATE_FAILED_UNEXPECTED % exc,
+                              title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
         return False
-    hou.ui.displayMessage(messages.UPDATE_INSTALLED % found.version, title=messages.TITLE_AMAZE)
+    hou.ui.displayMessage(messages.UPDATE_INSTALLED % found.version,
+                          title=messages.TITLE_AMAZE, severity=hou.severityType.Message)
     return True
 
 

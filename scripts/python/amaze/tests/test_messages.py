@@ -421,6 +421,34 @@ class ThePlaceholdersAgreeWithTheCallers(unittest.TestCase):
             + "\n  ".join(offenders))
 
 
+class EveryMessageBoxSaysWhoAndHowBad(unittest.TestCase):
+    """Houdini's own box: a title (else it reads `Houdini`), a severity, and a list in `details`."""
+
+    def _calls(self):
+        for path in _sources():
+            with open(path, encoding="utf-8") as handle:
+                tree = ast.parse(handle.read())
+            for node in ast.walk(tree):
+                if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                        and node.func.attr == "displayMessage"):
+                    yield "%s:%d" % (os.path.relpath(path, _PKG), node.lineno), node
+
+    def test_every_box_has_a_title_and_a_severity(self):
+        bare = ["%s %s" % (where, sorted({"title", "severity"} - {k.arg for k in call.keywords}))
+                for where, call in self._calls()
+                if not {"title", "severity"} <= {k.arg for k in call.keywords}]
+        self.assertEqual([], bare)
+
+    def test_no_message_carries_a_joined_list_in_its_text(self):
+        """`messages.X % (..., "\\n".join(rows))` is a list in the body: it goes to details=."""
+        def joins(node):
+            return any(isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                       and n.func.attr == "join" for n in ast.walk(node))
+        listed = [where for where, call in self._calls() if call.args
+                  and isinstance(call.args[0], ast.BinOp) and isinstance(call.args[0].op, ast.Mod)
+                  and joins(call.args[0].right)]
+        self.assertEqual([], listed)
+
 class CheckLibrarySaysWhereFilesGo(unittest.TestCase):
     """Check Library moves a file into the holding folder; it does not delete it."""
 

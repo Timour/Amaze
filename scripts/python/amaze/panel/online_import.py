@@ -65,9 +65,9 @@ class OnlineImport:
         ui = getattr(hou, "ui", None)
         if failures and ui is not None:    # ONE dialog for the batch, never one per record
             ui.displayMessage(
-                messages.AMAZE_COULD_NOT
-                % (len(failures), total, "\n".join(failures[:10]))
-            )
+                messages.AMAZE_COULD_NOT % (len(failures), total),
+                details="\n".join(failures[:10]),
+                title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
         library.say_unlisted(unlisted)    # the status line, last: nothing after it writes the line
 
     def import_material(self, record, on_progress=None,
@@ -134,7 +134,8 @@ class OnlineImport:
                 if destination is None:
                     if ui is not None:
                         ui.displayMessage(
-                            messages.NO_MATERIAL_DESTINATION_NETWORK
+                            messages.NO_MATERIAL_DESTINATION_NETWORK,
+                            title=messages.TITLE_AMAZE, severity=hou.severityType.Warning
                         )
                     return
                 for i, rec in enumerate(records):
@@ -167,9 +168,9 @@ class OnlineImport:
                     failed=len(failures), stopped_after=stopped_after)
         if ui is not None and failures:
             ui.displayMessage(
-                messages.SCENE_BUILD_PARTIAL_FAILURE
-                % (len(failures), total, "\n".join(failures[:10]))
-            )
+                messages.SCENE_BUILD_PARTIAL_FAILURE % (len(failures), total),
+                details="\n".join(failures[:10]),
+                title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
         elif ui is not None and last is not None and stopped_after is None:
             ui.setStatusMessage(
                 "Amaze: %s in %s" % (", ".join(built[:3]),
