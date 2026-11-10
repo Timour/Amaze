@@ -1603,6 +1603,57 @@ class PreferencesSpeakTheDrawnWords(unittest.TestCase):
         self.assertEqual(("Log not saved", "Log saved"),
                          (messages.TITLE_LOG_NOT_SAVED, messages.TITLE_LOG_SAVED))
 
+class ThePresetThemeIsFollowed(unittest.TestCase):
+    """A named theme leaves `themeValues` empty; its triplets come from the theme files. ▸r/pluto-theme"""
+
+    def setUp(self):
+        from amaze.helpers import theme
+        self.theme = theme
+        theme._read.cache_clear()
+        self.addCleanup(theme._read.cache_clear)
+        self.prefs = {}
+        self.folder = tempfile.mkdtemp(prefix="amaze_themes_")
+        self.addCleanup(shutil.rmtree, self.folder, ignore_errors=True)
+        shipped = hou.text.expandString("$HFS/houdini/config/Themes")
+        for patcher in (
+                mock.patch.object(hou, "getPreference",
+                                  lambda name: self.prefs.get(name, "")),
+                mock.patch.object(hou, "findDirectories",
+                                  lambda path: (self.folder, shipped))):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def _base(self, triplet):
+        from hutil import oklch
+        return self.theme._to_qcolor(oklch, triplet).name()
+
+    def _read_base(self):
+        read = self.theme._read()
+        return None if read is None else read["base"].name()
+
+    def test_a_stock_preset_is_read_by_name(self):
+        self.prefs["pluto_ui.themeName"] = "Default Colorful"
+        self.assertEqual(self._base([280, 5, 18]), self._read_base())
+
+    def test_hand_edited_values_win_over_the_name(self):
+        self.prefs.update({"pluto_ui.themeName": "Default Colorful",
+                           "pluto_ui.themeValues": json.dumps(
+                               {"base": [100, 10, 20], "primary": [270, 29, 55],
+                                "highlight": [82, 60, 80]})})
+        self.assertEqual(self._base([100, 10, 20]), self._read_base())
+
+    def test_a_user_theme_is_read_by_its_file_and_name(self):
+        path = os.path.join(self.folder, "mine.theme.json")
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump({"name": "Mine", "theme": {"base": [30, 8, 22], "primary": [270, 29, 55],
+                                                 "highlight": [82, 60, 80]}}, handle)
+        self.prefs["pluto_ui.themeName"] = path.replace("\\", "/") + "::Mine"
+        self.assertEqual(self._base([30, 8, 22]), self._read_base())
+
+    def test_an_unknown_name_falls_back_to_the_built_in_colors(self):
+        self.prefs["pluto_ui.themeName"] = "No Such Theme"
+        self.assertIsNone(self.theme._read())
+
 class ThePickersStartInAForwardSlashPath(unittest.TestCase):
     """`hou.ui.selectFile` wants forward slashes in `start_directory`, even on Windows."""
 
@@ -1795,13 +1846,15 @@ class ALoadOnceAnswerIsKeptUntilCleared(unittest.TestCase):
         from amaze.helpers import theme
         self._fresh(theme._read)
         with mock.patch.object(hou, "getPreference", return_value="") as asked:
-            first, second = theme._read(), theme._read()
+            first = theme._read()
+            once = asked.call_count
+            second = theme._read()
             self.assertEqual([None, None], [first, second], "an empty preference read as a theme")
-            self.assertEqual(1, asked.call_count,
+            self.assertEqual(once, asked.call_count,
                              "the None answer was not kept, so it was asked again")
             theme._read.cache_clear()
             theme._read()
-            self.assertEqual(2, asked.call_count,
+            self.assertEqual(2 * once, asked.call_count,
                              "after cache_clear() the next call did not ask again")
 
     def test_pillow_is_imported_once(self):

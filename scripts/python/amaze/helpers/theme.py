@@ -1,7 +1,9 @@
 """Palette, fonts and UI scale from Houdini's Pluto theme, else built-in colours. ▸r/pluto-theme"""
 
 import functools
+import glob
 import json
+import os
 
 from PySide6 import QtGui
 
@@ -126,10 +128,10 @@ _derived = {}
 
 @functools.cache
 def _read():
+    """The active theme's three roles as QColors, read once a session: a live switch is not followed."""
     try:
-        raw = hou.getPreference("pluto_ui.themeValues")
-        if raw:
-            values = json.loads(raw)
+        values = _theme_values()
+        if values:
             from hutil import oklch
 
             return {
@@ -144,6 +146,42 @@ def _read():
         debug.event("theme", "not readable, using built-in colors", error=str(exc))
     return None
 
+
+def _theme_values():
+    """Hand-edited `themeValues` first, else `themeName` looked up as Houdini's theme manager does."""
+    raw = hou.getPreference("pluto_ui.themeValues")
+    if raw:
+        return json.loads(raw)
+    unique_id = hou.getPreference("pluto_ui.themeName")    # a named theme leaves the values empty ▸r/pluto-theme
+    return _named_theme(unique_id) if unique_id else None
+
+
+def _named_theme(unique_id: str):
+    """A theme's values by ID: `<file>::<name>`, or a bare name, the shipped file's first."""
+    wanted_file, _, wanted_name = unique_id.rpartition("::")
+    wanted_file = _same_file_key(hou.text.expandString(wanted_file)) if wanted_file else ""
+    shipped = _same_file_key(hou.text.expandString("$HFS/houdini/config/Themes/default.theme.json"))
+    by_name = []
+    for folder in hou.findDirectories("config/Themes"):
+        for path in sorted(glob.glob(os.path.join(folder, "*.theme.json"))):
+            try:
+                with open(path, encoding="utf-8") as handle:
+                    data = json.load(handle)
+            except (OSError, ValueError):
+                continue
+            found = ({data.get("name", os.path.basename(path)): data["theme"]} if "theme" in data
+                     else data.get("themes") or {})
+            if not isinstance(found, dict) or wanted_name not in found:
+                continue
+            key = _same_file_key(path)
+            if key == (wanted_file or shipped):
+                return found[wanted_name]
+            by_name.append(found[wanted_name])
+    return by_name[0] if by_name else None    # Houdini falls back to the name alone too
+
+
+def _same_file_key(path: str) -> str:
+    return os.path.normcase(os.path.realpath(path))
 
 def _to_qcolor(oklch, triplet):
     hue, chroma, tone = (float(v) for v in triplet[:3])
