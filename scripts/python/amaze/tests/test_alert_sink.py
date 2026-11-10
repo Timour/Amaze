@@ -274,6 +274,19 @@ class RefuseIsTheGestureSinkTest(unittest.TestCase):
         self.assertEqual(2, len(self.printed))
 
 
+    def test_on_windows_the_fallback_prints_nothing(self):
+        """A print opens the Windows Console, so alert and refuse keep note's rule. ▸r/platform-files"""
+        from amaze.helpers import hostos
+        debug.hand_over(None)
+        self.addCleanup(debug._alerted.clear)
+        with mock.patch.object(hostos, "is_windows", lambda: True), \
+                mock.patch("builtins.print", self.printed.append):
+            debug.note("noted")
+            debug.alert("windows alert", key="windows-alert-fallback")
+            debug.refuse("no ramp here")
+            debug.refuse(debug.Damage("gone"))
+        self.assertEqual([], self.printed, "a fallback printed on Windows")
+
 class TheDamageDoorMarksItsRefusalsTest(unittest.TestCase):
     """Every literal refusal the import door authors, classified. ▸p/refusal-sink"""
 
