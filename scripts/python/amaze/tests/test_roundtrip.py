@@ -1146,5 +1146,89 @@ class ASavedAssetRebuildsInsideAScratchNetwork(unittest.TestCase):
         self.assertIn("unrecognised renderer", str(caught.exception))
 
 
+class AnImportLandsInTheNetworkTheArtistHasOpen(unittest.TestCase):
+    """An auto import goes where the editor is: a Material Network open is the destination."""
+
+    def setUp(self):
+        self.prefs = test_support.fixture_prefs(self)
+        self.addCleanup(test_support.clear_obj)
+        self.mat = hou.node("/mat")
+        self.stage = hou.node("/stage")
+        self.geo = hou.node("/obj").createNode("geo", "routing_geo")
+        made = []
+        self.addCleanup(lambda: [n.destroy() for n in made if _alive(n)])
+        self.library = self.stage.createNode("materiallibrary", "routing_lib")
+        self.lop_matnet = self.stage.createNode("matnet", "routing_lop_matnet")
+        self.builder = self.mat.createNode("subnet", "routing_builder")
+        made.extend((self.library, self.lop_matnet, self.builder))
+
+    def _routed(self, network):
+        """Where an auto import into `network` lands: (path or the refusal, the container was the artist's)."""
+        handler = nodes.NodeHandler(self.prefs)
+        handler._context_override = network
+        karma = material.Material(name="routed", renderer=renderers.KARMA.key, mat_id="routed")
+        ok, reason = handler.update_context(karma, "auto")
+        if not ok:
+            return (reason, None)
+        return (handler._import_path.path(), handler._use_existing_node)
+
+    def test_every_network_kind_routes_as_it_should(self):
+        obj = hou.node("/obj")
+        obj_matnet = obj.createNode("matnet", "routing_obj_matnet")
+        sop_matnet = self.geo.createNode("matnet", "routing_sop_matnet")
+        attribvop = self.geo.createNode("attribvop", "routing_vop")
+        copnet = obj.createNode("copnet", "routing_cop")
+        cases = (    # (what is open, where it lands, the container was already there)
+            (obj, "/mat", True),
+            (self.mat, "/mat", True),
+            (obj_matnet, obj_matnet.path(), True),
+            (sop_matnet, sop_matnet.path(), True),
+            (copnet, "/mat", True),
+            (attribvop, "/mat", True),    # VOP children, but not a Material Network
+            (self.builder, "/mat", True),    # inside a builder: never a builder in a builder
+            (self.lop_matnet, "/mat", True),
+            (self.library, self.library.path(), True),
+            (self.stage, messages.LOP_IMPORT_OUTSIDE_LIBRARY, None),
+        )
+        for network, where, theirs in cases:
+            with self.subTest(network.path()):
+                self.assertEqual((where, theirs), self._routed(network))
+        empty = obj.createNode("geo", "routing_empty_geo")
+        landed, theirs = self._routed(empty)    # a geo with no matnet gets ONE, made by the import
+        self.assertEqual(empty.path(), hou.node(landed).parent().path())
+        self.assertEqual("matnet", hou.node(landed).type().name())
+        self.assertFalse(theirs)
+
+    def test_a_karma_import_lands_inside_the_open_matnet(self):
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        model = library_mod.MaterialLibrary(preferences=self.prefs)
+        karma = next(a for a in model.assets if renderers.is_karma(a.renderer))
+        sop_matnet = self.geo.createNode("matnet", "landing_matnet")
+        mat_before = set(self.mat.children())
+        ok, reason, created = nodes.NodeHandler(self.prefs).import_asset_to_scene(
+            karma, context_node=sop_matnet)
+        self.assertTrue(ok, reason)
+        self.assertEqual([sop_matnet.path()], [c.parent().path() for c in created])
+        self.assertEqual(mat_before, set(self.mat.children()),
+                         "the import went to /mat with a Material Network open")
+
+    def test_the_online_import_and_generate_use_the_open_matnet_too(self):
+        sop_matnet = self.geo.createNode("matnet", "destination_matnet")
+        for network, where in ((sop_matnet, sop_matnet), (self.geo, self.mat),
+                               (hou.node("/obj"), self.mat)):
+            with self.subTest(network.path()), mock.patch.object(
+                    nodes.NodeHandler, "get_current_network_node", return_value=network):
+                self.assertEqual(where, nodes.karma_destination(self.prefs))
+
+
+def _alive(node) -> bool:
+    try:
+        node.path()
+        return True
+    except hou.ObjectWasDeleted:
+        return False
+
+
 if __name__ == "__main__":
     unittest.main()

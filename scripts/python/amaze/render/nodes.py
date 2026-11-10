@@ -538,7 +538,7 @@ def register_in_materiallibrary(library, builder) -> bool:
 
 
 def karma_destination(prefs):
-    """The Material Library the editor is in, /mat in the OBJ world, or None."""
+    """The Material Library the editor is in, else the Material Network it is in, else /mat; or None."""
     handler = NodeHandler(prefs)
     try:
         world = handler._auto_world()
@@ -548,8 +548,16 @@ def karma_destination(prefs):
         if handler._set_lop_import_path():
             return None
     else:
-        handler._import_path = hou.node("/mat")
+        handler._import_path = handler.open_material_network() or hou.node("/mat")
     return handler._import_path
+
+
+def is_material_library(node) -> bool:
+    """A LOP Material Library, by type name; any version of it."""
+    try:
+        return "materiallibrary" in node.type().name()
+    except (AttributeError, hou.ObjectWasDeleted):
+        return False
 
 
 def hda_fallbacks_needed(saved_items) -> bool:
@@ -1057,36 +1065,42 @@ class NodeHandler:
         elif world == "sop":
             self._set_sop_import_path()
         else:  # "mat" (and any fallback)
-            self._import_path = hou.node("/mat")
+            self._import_path = ((target == "auto" and self.open_material_network())
+                                 or hou.node("/mat"))
             self._use_existing_node = True
         return (True, "")
 
     def _auto_world(self) -> str:
-        """The editor's context as 'lop', 'sop', or 'mat' (the default)."""
+        """The editor's context as 'lop', 'sop', or 'mat' (the default), by what the network holds."""
         curr = self.get_current_network_node()
         if curr is None:
             return "mat"
-        typename = curr.type().name()
         try:
-            child_cat = curr.childTypeCategory().name().lower()
-        except Exception:
-            child_cat = ""
-        if (
-            "stage" in typename
-            or "lopnet" in typename
-            or "materiallibrary" in typename
-            or "lop" in child_cat
-        ):
+            holds = curr.childTypeCategory()
+        except (AttributeError, hou.OperationFailed):
+            return "mat"
+        if holds == hou.lopNodeTypeCategory() or is_material_library(curr):
             return "lop"
-        if "geo" in typename or "sop" in child_cat:
+        if holds == hou.sopNodeTypeCategory():
             return "sop"
         return "mat"
+
+    def open_material_network(self):
+        """The Material Network the editor is in, outside LOPs, else None."""
+        try:
+            curr = self.get_current_network_node()
+            if (curr is None or not curr.isMaterialManager()    # /mat and every matnet; not an attribvop
+                    or curr.type().category() == hou.lopNodeTypeCategory()):
+                return None
+        except (AttributeError, hou.ObjectWasDeleted):
+            return None
+        return curr
 
     def _set_lop_import_path(self) -> str:
         """The Material Library the editor is in, else a refusal and nothing made."""
         from amaze import messages
         curr = self.get_current_network_node()
-        if curr is not None and "materiallibrary" in curr.type().name():
+        if curr is not None and is_material_library(curr):
             self._import_path = curr
             self._use_existing_node = True
             return ""
