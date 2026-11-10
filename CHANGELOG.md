@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.33.19
+
+- A node network loaded at the drop point brings its sticky notes, network boxes and dots with it.
+- Dropping nodes on the panel to save them no longer adds a selection step to Houdini's undo history.
+- A saved material builder keeps each parameter's expression language, and an animated parameter keeps its keyframes.
+- Every Amaze message is titled Amaze and shows a warning or error icon when something failed. Long lists of names sit under Show Details.
+- Downloading an update or add-ons shows a progress bar, and Esc stops the download.
+- Show in Folder opens Houdini's own file browser call, which selects the file on Linux too.
+- Preferences ▸ Save Log uses Houdini's folder picker and message boxes.
+- The panel follows Houdini's preset color themes, not only a theme edited by hand.
+- The Amaze pane tab shows the Amaze icon.
+- Add-on downloads use Houdini's temp folder, `HOUDINI_TEMP_DIR`.
+- A material whose name has no letters or digits is named `material` instead of failing to load.
+- On Windows, Amaze no longer opens Houdini's console window before the panel has loaded.
+
 ## 1.33.18
 
 - `.rat` textures get thumbnails again, without a 30-second wait first. A converter that hangs on one picture no longer stops the others from trying.
