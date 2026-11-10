@@ -328,8 +328,10 @@ def store_versions(betas: bool = False) -> dict:
 def fetch_and_install(url: str, amaze_root: str, running=None) -> dict:
     """Download one store package and install it; a row that was off stays off. Answers its manifest."""
     import tempfile
+    import hou
     from amaze.core import matx_sources
-    scratch = tempfile.mkdtemp(prefix="amaze_addon_")
+    scratch = tempfile.mkdtemp(prefix="amaze_addon_",    # Houdini's scratch, as the thumbnail jobs use
+                               dir=hou.getenv("HOUDINI_TEMP_DIR") or None)
     try:
         path = matx_sources.download(url, os.path.join(scratch, url.rsplit("/", 1)[-1]))
         was_off = _off_types(amaze_root, read(path)["folder"])

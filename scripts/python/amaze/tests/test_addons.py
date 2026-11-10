@@ -404,6 +404,27 @@ class TheStoreTest(_ThreeRows):
         self.assertTrue(os.path.isfile(self.hda("three")), "the update turned Three off")
 
 
+    def test_the_download_lands_in_houdinis_temp_dir(self):
+        """Houdini's scratch, as the thumbnail jobs use, not Python's own."""
+        import hou
+        houdini_temp = os.path.join(self.dir, "houdini_temp")
+        os.makedirs(houdini_temp)
+        real_getenv = hou.getenv
+        landed = []
+
+        def download(url, dest, on_bytes=None):
+            landed.append(dest)
+            shutil.copy(self.three_rows(version="1.3.0"), dest)
+            return dest
+
+        with mock.patch.object(matx_sources, "download", download), \
+                mock.patch.object(hou, "getenv", lambda name, default=None: houdini_temp
+                                  if name == "HOUDINI_TEMP_DIR" else real_getenv(name, default)):
+            addons.fetch_and_install("https://example.invalid/addons/Example-1.3.0.amazepkg",
+                                     self.amaze, running=(22, 0, 466))
+        self.assertEqual(houdini_temp, os.path.dirname(os.path.dirname(landed[0])))
+        self.assertEqual([], os.listdir(houdini_temp), "the scratch folder was left behind")
+
 class AnAmazeUpdateKeepsItsAddOnsTest(_Workspace):
 
     def test_the_updater_carries_the_add_ons_into_the_new_install(self):
