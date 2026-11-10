@@ -425,6 +425,39 @@ class TheStoreTest(_ThreeRows):
         self.assertEqual(houdini_temp, os.path.dirname(os.path.dirname(landed[0])))
         self.assertEqual([], os.listdir(houdini_temp), "the scratch folder was left behind")
 
+    def test_an_esc_during_the_download_installs_nothing_and_says_so(self):
+        """The download runs under Esc with a progress bar; the install that follows never does."""
+        import hou
+        opened = []
+
+        class Operation:
+            def __init__(self, *args, **kwargs):
+                self.kwargs = kwargs
+                opened.append(self)
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_exc):
+                return False
+
+            def updateProgress(self, fraction=-1.0):
+                raise hou.OperationInterrupted()
+
+        def download(url, dest, on_bytes=None):
+            shutil.copy(self.three_rows(version="1.3.0"), dest)
+            on_bytes(1, 2)
+            return dest
+
+        with mock.patch.object(matx_sources, "download", download), \
+                mock.patch.object(hou, "InterruptableOperation", Operation, create=True), \
+                self.assertRaises(OSError) as caught:
+            addons.fetch_and_install("https://example.invalid/addons/Example-1.3.0.amazepkg",
+                                     self.amaze, running=(22, 0, 466))
+        self.assertEqual(messages.DOWNLOAD_STOPPED, str(caught.exception))
+        self.assertTrue(opened and opened[0].kwargs.get("open_interrupt_dialog"))
+        self.assertIsNone(addons.installed(self.amaze, "example"), "a stopped download installed")
+
 class AnAmazeUpdateKeepsItsAddOnsTest(_Workspace):
 
     def test_the_updater_carries_the_add_ons_into_the_new_install(self):

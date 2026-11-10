@@ -333,7 +333,9 @@ def fetch_and_install(url: str, amaze_root: str, running=None) -> dict:
     scratch = tempfile.mkdtemp(prefix="amaze_addon_",    # Houdini's scratch, as the thumbnail jobs use
                                dir=hou.getenv("HOUDINI_TEMP_DIR") or None)
     try:
-        path = matx_sources.download(url, os.path.join(scratch, url.rsplit("/", 1)[-1]))
+        with matx_sources.download_operation(messages.DOWNLOADING_ADDONS) as on_bytes:
+            path = matx_sources.download(url, os.path.join(scratch, url.rsplit("/", 1)[-1]),
+                                         on_bytes)
         was_off = _off_types(amaze_root, read(path)["folder"])
         manifest = install(path, amaze_root, running)
     finally:
