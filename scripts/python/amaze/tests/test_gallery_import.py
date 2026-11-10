@@ -1,7 +1,9 @@
 """Gallery Import saves each entry through the save its caller hands in. ▸r/gallery-entries"""
 
 import os
+import shutil
 import sys
+import tempfile
 import types
 import unittest
 from unittest import mock
@@ -209,6 +211,65 @@ class GalleryImportInThePanel(unittest.TestCase):
         self.assertEqual([landed], self.batches, "not ONE batch of what landed")
         self.assertEqual(1, self.panel.prefs.render_on_import)
         self.assertEqual(messages.GALLERY_IMPORT_FINISHED_RENDERING % (2, 0, 0), self.said[-1])
+
+
+class AGalleryFileIsReadFromItsOwnInstall(unittest.TestCase):
+    """The file's own gallery is read, and Houdini's gallery list is left as it was found."""
+
+    def _gallery(self, entry_name):
+        """A real .gal on disk holding one material entry, NOT installed."""
+        folder = tempfile.mkdtemp(prefix="amaze_gallery_")
+        self.addCleanup(shutil.rmtree, folder, ignore_errors=True)
+        path = os.path.join(folder, entry_name + ".gal")
+        node = hou.node("/mat").createNode("subnet", entry_name)
+        try:
+            self.assertIsNotNone(hou.galleries.createGalleryEntry(path, entry_name, node), "premise")
+        finally:
+            node.destroy()
+        self.addCleanup(hou.galleries.removeGallery, path)
+        hou.galleries.removeGallery(path)    # creating it installed it
+        return path
+
+    def _names(self, path):
+        return [entry.name() for entry, _type, _category in gallery_import.entries_from_file(path)]
+
+    def test_a_gallery_not_installed_is_read_then_removed_again(self):
+        path = self._gallery("amaze_gallery_probe")
+        self.assertEqual(["amaze_gallery_probe"], self._names(path))
+        self.assertFalse(hou.galleries.removeGallery(path),
+                         "reading a file left its gallery installed for the session")
+
+    def test_an_installed_gallery_is_read_and_kept(self):
+        path = self._gallery("amaze_gallery_kept")
+        self.assertIsNotNone(hou.galleries.installGallery(path), "premise")
+        self.assertEqual(["amaze_gallery_kept"], self._names(path))
+        self.assertTrue(hou.galleries.removeGallery(path), "the user's gallery was uninstalled")
+
+    def test_a_file_that_is_no_gallery_reads_nothing(self):
+        other = self._gallery("amaze_gallery_other")
+        self.assertIsNotNone(hou.galleries.installGallery(other), "premise: installed last")
+        folder = tempfile.mkdtemp(prefix="amaze_gallery_")
+        self.addCleanup(shutil.rmtree, folder, ignore_errors=True)
+        junk = os.path.join(folder, "junk.gal")
+        with open(junk, "w", encoding="utf-8") as handle:
+            handle.write("not a gallery")
+        self.assertEqual([], self._names(junk), "another installed gallery was read in its place")
+        self.assertEqual([], self._names(os.path.join(folder, "missing.gal")))
+        self.assertTrue(hou.galleries.removeGallery(other), "an unrelated gallery was uninstalled")
+
+    def test_an_installed_gallery_that_will_not_reinstall_is_put_back(self):
+        path = self._gallery("amaze_gallery_back")
+        self.assertIsNotNone(hou.galleries.installGallery(path), "premise")
+        real = hou.galleries.installGallery
+        calls = []
+
+        def refuse_once(gallery_path):
+            calls.append(gallery_path)
+            return None if len(calls) == 1 else real(gallery_path)
+        with mock.patch.object(hou.galleries, "installGallery", refuse_once):
+            self.assertEqual([], self._names(path))
+        self.assertTrue(hou.galleries.removeGallery(path),
+                        "a failed read cost the user that gallery for the session")
 
 
 if __name__ == "__main__":

@@ -23,28 +23,17 @@ def default_gallery_dir() -> str:
 def entries_from_file(gallery_path: str) -> list:
     """(entry, type_name, category) per material in one .gal, its registration kept. ▸r/gallery-entries"""
     gallery_path = os.path.abspath(os.path.expanduser(gallery_path))
-    was_installed = False
-    try:
-        hou.galleries.removeGallery(gallery_path)
-        was_installed = True
-    except (AttributeError, hou.Error):
-        pass          # not previously registered ▸r/gallery-entries
-    try:
-        hou.galleries.installGallery(gallery_path)
-    except (AttributeError, hou.Error) as exc:
-        debug.event("gallery", "install failed",
-                    file=gallery_path, error=str(exc))
-        if was_installed:    # put the user's gallery back ▸r/gallery-entries
-            try:
-                hou.galleries.installGallery(gallery_path)
-            except (AttributeError, hou.Error) as restore_exc:
-                debug.event("gallery", "could NOT put the user's gallery "
-                            "back", file=gallery_path,
-                            error=str(restore_exc))
+    was_installed = bool(hou.galleries.removeGallery(gallery_path))    # False: not registered; neither call raises ▸r/gallery-entries
+    gallery = hou.galleries.installGallery(gallery_path)    # the file's own gallery, or None
+    if gallery is None:
+        debug.event("gallery", "install failed", file=gallery_path,
+                    error="not a gallery, or missing")
+        if was_installed and hou.galleries.installGallery(gallery_path) is None:    # put the user's gallery back ▸r/gallery-entries
+            debug.event("gallery", "could NOT put the user's gallery "
+                        "back", file=gallery_path)
         return []
     try:
-        galleries = list(hou.galleries.galleries())
-        entries = galleries[-1].galleryEntries() if galleries else []
+        entries = gallery.galleryEntries()
         found = [
             (entry, node_type.name(), _category_of(entry))
             for entry, node_type in (
@@ -57,11 +46,8 @@ def entries_from_file(gallery_path: str) -> list:
                     entries=len(entries), materials=len(found))
         return found
     finally:
-        if not was_installed:
-            try:    # leave the user's gallery path as it was found
-                hou.galleries.removeGallery(gallery_path)
-            except (AttributeError, hou.Error):
-                pass
+        if not was_installed:    # leave the user's gallery path as it was found
+            hou.galleries.removeGallery(gallery_path)
 
 
 def _best_type(entry):
