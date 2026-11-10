@@ -13,18 +13,15 @@ except ImportError:
     hou = None
 
 
-def _read_ui_scale(widget=None) -> float:
-    """The factor `ui_px` applies on top of Qt's scaling, for `widget`'s screen. ▸r/qt-windows-macos"""
+def _read_ui_scale() -> float:
+    """The factor `ui_px` applies on top of Qt's scaling. ▸r/qt-windows-macos"""
     try:
         factor = float(hou.ui.globalScaleFactor())
     except Exception:
         return 1.0
     if factor <= 0:
         return 1.0
-    dpr = screen_ratio(widget)
-    if dpr > 1.0 and abs(factor - dpr) < 0.05:
-        return 1.0
-    return factor
+    return factor    # H22 reports Global UI Size alone; Qt's dpr does the screen
 
 
 def screen_ratio(widget=None) -> float:

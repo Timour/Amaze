@@ -779,6 +779,14 @@ class ThereIsOneFontTable(unittest.TestCase):
             "the floor is back to an unscaled constant, so the panel "
             "ignores Global UI Size where the host honours it")
 
+    def test_houdinis_ui_scale_is_applied_on_a_retina_screen_too(self):
+        """H22 reports Global UI Size on its own, never the Retina factor; a 2.0 is the user's."""
+        from amaze.helpers import theme as theme_mod
+        ui = types.SimpleNamespace(globalScaleFactor=lambda: 2.0)
+        with mock.patch.object(hou, "ui", ui, create=True), \
+                mock.patch.object(theme_mod, "screen_ratio", lambda widget=None: 2.0):
+            self.assertEqual(2.0, theme_mod._read_ui_scale())
+
     def test_a_role_derives_and_never_decides(self):
         from amaze.helpers import theme as theme_mod
         base = QtGui.QFont()

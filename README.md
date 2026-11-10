@@ -45,6 +45,7 @@ Developed and tested on Houdini 22.0, macOS (Apple Silicon). Linux and Windows a
 
 ```json
 {
+    "load_package_once": true,
     "env": [
         { "AMAZE": "/path/to/Amaze" }
     ],
@@ -54,6 +55,8 @@ Developed and tested on Houdini 22.0, macOS (Apple Silicon). Linux and Windows a
 ```
 
    `package_path` is the same folder with `/addons` on the end, written out in full: Houdini does not expand `$AMAZE` there. Amaze installs its add-ons into that folder.
+
+   `load_package_once` makes Houdini load the first `Amaze.json` in its package folders that carries this line, and ignore every other file of that name.
 
 3. Launch Houdini and add an **Amaze** pane tab.
 4. Open Preferences (the gear) and choose a library folder — this is where saved assets are stored. Keep it outside the plugin folder.
