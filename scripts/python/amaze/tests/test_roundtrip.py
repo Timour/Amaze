@@ -676,6 +676,70 @@ class TestInterfaceIsNeverExecuted(unittest.TestCase):
                                "the sidecar restored the parm but not its "
                                "value")
 
+    def _animated_builder(self):
+        """A builder with a Python expression and two parms keyed at frames 1 and 25."""
+        staging = hou.node("/obj").createNode("matnet")
+        self.addCleanup(staging.destroy)
+        builder = staging.createNode("subnet")
+        group = builder.parmTemplateGroup()
+        group.append(hou.FloatParmTemplate("amaze_py", "Py", 1))
+        group.append(hou.FloatParmTemplate("amaze_keyed", "Keyed", 1))
+        group.append(hou.StringParmTemplate("amaze_skeyed", "SKeyed", 1))
+        builder.setParmTemplateGroup(group)
+        builder.parm("amaze_py").setExpression("hou.frame() * 3", language=hou.exprLanguage.Python)
+        keys = []
+        for frame, value in ((1, 0.0), (25, 10.0)):
+            key = hou.Keyframe()
+            key.setFrame(frame)
+            key.setValue(value)
+            key.setExpression("linear()", hou.exprLanguage.Hscript)
+            keys.append(key)
+        builder.parm("amaze_keyed").setKeyframes(keys)
+        skeys = []
+        for frame, text in ((1, "'early'"), (25, "'late'")):
+            key = hou.StringKeyframe()
+            key.setFrame(frame)
+            key.setExpression(text, hou.exprLanguage.Python)
+            skeys.append(key)
+        builder.parm("amaze_skeyed").setKeyframes(skeys)
+        return staging, builder
+
+    def test_an_expression_keeps_its_language_and_keys_stay_keys(self):
+        """`setExpression` without a language reads Python as HScript; several keys are no expression."""
+        staging, builder = self._animated_builder()
+        self.addCleanup(hou.setFrame, hou.frame())
+        captured = json.loads(nodes.capture_builder(builder))
+        fresh = staging.createNode("subnet")
+        nodes.apply_builder(fresh, captured)
+        py = fresh.parm("amaze_py")
+        self.assertEqual(hou.exprLanguage.Python, py.expressionLanguage(),
+                         "a Python expression came back in another language")
+        hou.setFrame(2)
+        self.assertAlmostEqual(6.0, py.eval(), 5)
+        keyed = fresh.parm("amaze_keyed")
+        self.assertEqual(2, len(keyed.keyframes()),
+                         "the keyframes came back baked to one value")
+        hou.setFrame(13)
+        self.assertAlmostEqual(5.0, keyed.eval(), 4)
+        skeyed = fresh.parm("amaze_skeyed")
+        self.assertEqual(2, len(skeyed.keyframes()), "the string keys were lost")
+        hou.setFrame(30)
+        self.assertEqual("late", skeyed.eval())
+
+    def test_a_sidecar_stays_readable_on_both_sides_of_the_keyframe_change(self):
+        """An old sidecar loads as before, and every new value still carries a field an old reader reads."""
+        staging, builder = self._animated_builder()
+        for name, spec in json.loads(nodes.capture_builder(builder))["values"].items():
+            self.assertTrue({"expr", "str", "val"} & set(spec),
+                            "%s has nothing an older Amaze can apply: %r" % (name, spec))
+        old = {"dialog_script": builder.parmTemplateGroup().asDialogScript(),
+               "values": {"amaze_keyed": {"expr": "$F * 2"}, "amaze_py": {"val": 0.5}}}
+        fresh = staging.createNode("subnet")
+        nodes.apply_builder(fresh, old)
+        self.assertEqual("$F * 2", fresh.parm("amaze_keyed").expression())
+        self.assertEqual(hou.exprLanguage.Hscript, fresh.parm("amaze_keyed").expressionLanguage())
+        self.assertAlmostEqual(0.5, fresh.parm("amaze_py").eval(), 5)
+
     def test_a_promoted_RAMP_round_trips_through_its_components(self):
         """A promoted ramp round-trips: shape from the dialog script, values from its Float components."""
         staging = hou.node("/obj").createNode("matnet")

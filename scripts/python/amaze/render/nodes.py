@@ -218,13 +218,25 @@ def capture_builder(node) -> str:
     """Type, interface, non-default values as JSON. ▸p/structure-signature"""
     values = {}
     for parm in node.parms():
+        try:
+            keys = parm.keyframes()
+        except hou.Error:
+            keys = ()
+        if len(keys) > 1:      # `expression()` raises on these, and `eval()` would bake them
+            try:
+                values[parm.name()] = _keyed_spec(parm, keys)
+            except (hou.Error, TypeError, ValueError) as exc:
+                debug.event("save", "parm could not be captured",
+                            parm=parm.name(), error=str(exc))
+            continue
         expression = None
         try:
             expression = parm.expression()
+            language = parm.expressionLanguage().name()
         except hou.Error:      # no expression; family matters ▸r/hou-errors
             expression = None
         if expression is not None:
-            values[parm.name()] = {"expr": expression}
+            values[parm.name()] = {"expr": expression, "lang": language}
             continue
         try:
             if parm.isAtDefault():
@@ -244,6 +256,27 @@ def capture_builder(node) -> str:
         "dialog_script": node.parmTemplateGroup().asDialogScript(),
         "values": values,
     }, indent=2, sort_keys=True)
+
+
+def _keyed_spec(parm, keys) -> dict:
+    """Every keyframe as Houdini writes it, plus the value now for a reader that knows no keys."""
+    now = parm.eval()
+    json.dumps(now)
+    spec = {"keys": [key.asJSON() for key in keys]}
+    spec["str" if parm.parmTemplate().type() == hou.parmTemplateType.String else "val"] = now
+    return spec
+
+
+def _restore_keys(parm, keys) -> None:
+    """`keys` as `_keyed_spec` wrote them, set on `parm` in one call."""
+    kind = (hou.StringKeyframe if parm.parmTemplate().type() == hou.parmTemplateType.String
+            else hou.Keyframe)
+    made = []
+    for spec in keys:
+        key = kind()
+        key.fromJSON(spec)
+        made.append(key)
+    parm.setKeyframes(made)
 
 
 def read_builder_sidecar(path: str) -> dict:
@@ -283,13 +316,16 @@ def apply_builder(node, data: dict) -> None:
         if parm is None:
             continue
         try:
-            if "expr" in spec:
-                parm.setExpression(spec["expr"])
+            if "keys" in spec:
+                _restore_keys(parm, spec["keys"])
+            elif "expr" in spec:
+                language = getattr(hou.exprLanguage, spec.get("lang") or "", None)    # none before the field
+                parm.setExpression(spec["expr"], language=language)
             elif "str" in spec:
                 parm.set(spec["str"])
             else:
                 parm.set(spec["val"])
-        except hou.Error as exc:
+        except (hou.Error, TypeError, ValueError) as exc:
             debug.event("import", "builder parm could not be restored",
                         node=node.path(), parm=name, error=str(exc))
 
