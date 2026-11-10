@@ -970,9 +970,12 @@ portable outside Houdini (not `.mtlx`/`.usda`).
 
 **The `.interface` file is READ, never executed.** `asCode()` emits a
 literal `createNode("<type>", ...)` call, so the first such type is the
-saved builder - recovered by regex, which is what drives capability
-routing and USD/renderer labelling on every material already in the
-library with no re-save.
+saved builder. The builder sidecar records the same type as `"type"`
+and is read first; the regex over `.interface` answers for assets saved
+before the sidecar, so capability routing and USD/renderer labelling
+work on every material already in the library with no re-save. Both
+files are still written: other machines and older Amaze read
+`.interface`.
 
 Executing it is what the builder sidecar replaced. `asCode()` output is
 Python whose only documented contract is that it RUNS, so importing a

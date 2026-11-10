@@ -1214,7 +1214,7 @@ class MaterialLibrary(AssetLibrary):
             self._shader_type_cache.pop(mat_id, None)
 
     def is_usd_material(self, asset) -> bool:
-        """True if the material is a USD-builder type, from its .interface file, cached per id."""
+        """True if the material is a USD-builder type, from its saved builder type, cached per id."""
         mid = asset.mat_id
         if mid in self._usd_cache:
             return self._usd_cache[mid]

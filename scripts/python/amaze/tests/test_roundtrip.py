@@ -1163,7 +1163,7 @@ class AnImportLandsInTheNetworkTheArtistHasOpen(unittest.TestCase):
         made.extend((self.library, self.lop_matnet, self.builder))
 
     def _routed(self, network):
-        """Where an auto import into `network` lands: (path or the refusal, the container was the artist's)."""
+        """(where an auto import into `network` lands, or the refusal; it was there already)."""
         handler = nodes.NodeHandler(self.prefs)
         handler._context_override = network
         karma = material.Material(name="routed", renderer=renderers.KARMA.key, mat_id="routed")
@@ -1220,6 +1220,53 @@ class AnImportLandsInTheNetworkTheArtistHasOpen(unittest.TestCase):
             with self.subTest(network.path()), mock.patch.object(
                     nodes.NodeHandler, "get_current_network_node", return_value=network):
                 self.assertEqual(where, nodes.karma_destination(self.prefs))
+
+
+class TheBuilderTypeIsReadFromTheSidecarFirst(unittest.TestCase):
+    """The sidecar's `type` names the saved builder; the `.interface` regex answers older assets."""
+
+    def setUp(self):
+        self.prefs = test_support.fixture_prefs(self)
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        self.model = library_mod.MaterialLibrary(preferences=self.prefs)
+        self.asset = next(a for a in self.model.assets if renderers.is_karma(a.renderer))
+        self.sidecar = material.payload_path(self.prefs, self.asset.mat_id,
+                                             material.BUILDER_SUFFIX)
+
+    def _sidecar(self, text):
+        with open(self.sidecar, "w", encoding="utf-8") as handle:
+            handle.write(text)
+
+    def test_the_sidecar_wins_and_anything_unusable_falls_back(self):
+        usd = renderers.REDSHIFT.usd_builder
+        self.assertEqual("subnet", material_files.get_saved_node_type(self.prefs, self.asset),
+                         "premise: the fixture's .interface names a subnet")
+        self.assertFalse(os.path.exists(self.sidecar), "premise: no sidecar yet")
+        self._sidecar(json.dumps({"format": 1, "type": usd, "dialog_script": "", "values": {}}))
+        self.assertEqual(usd, material_files.get_saved_node_type(self.prefs, self.asset))
+        self.assertTrue(self.model.is_usd_material(self.asset))
+        for unusable in ("not json", json.dumps(["a list"]), json.dumps({"type": ""}),
+                         json.dumps({"type": 7})):
+            with self.subTest(unusable):
+                self._sidecar(unusable)
+                self.assertEqual("subnet",
+                                 material_files.get_saved_node_type(self.prefs, self.asset))
+
+    def test_a_linked_sidecar_is_not_followed_and_a_long_preamble_still_reads(self):
+        if hasattr(os, "symlink") and getattr(os, "O_NOFOLLOW", 0):
+            outside = os.path.join(self.prefs.path, "elsewhere.json")
+            with open(outside, "w", encoding="utf-8") as handle:
+                handle.write(json.dumps({"type": "rs_usd_material_builder"}, indent=2))
+            os.symlink(outside, self.sidecar)
+            self.assertEqual("subnet", material_files.get_saved_node_type(self.prefs, self.asset))
+            os.remove(self.sidecar)
+        iface = material.payload_path(self.prefs, self.asset.mat_id, ".interface")
+        with open(iface, encoding="utf-8") as handle:
+            script = handle.read()
+        with open(iface, "w", encoding="utf-8") as handle:
+            handle.write("#" * 9000 + "\n" + script)
+        self.assertEqual("subnet", material_files.get_saved_node_type(self.prefs, self.asset))
 
 
 def _alive(node) -> bool:
