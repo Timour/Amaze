@@ -49,9 +49,12 @@ except Exception:
                 </context>
                 <scriptCode>
 <![CDATA[
+import os
 from amaze.utils import rc_calls
-import importlib
-importlib.reload(rc_calls)
+# Reload only with the dev switch on, as the pypanel does.
+if os.environ.get("AMAZE_DEV_RELOAD"):
+    import importlib
+    importlib.reload(rc_calls)
 rc_calls.convert(kwargs.get("node", None), "Redshift")
 ]]>
                 </scriptCode>
@@ -72,9 +75,12 @@ except Exception:
                 </context>
                 <scriptCode>
 <![CDATA[
+import os
 from amaze.utils import rc_calls
-import importlib
-importlib.reload(rc_calls)
+# Reload only with the dev switch on, as the pypanel does.
+if os.environ.get("AMAZE_DEV_RELOAD"):
+    import importlib
+    importlib.reload(rc_calls)
 rc_calls.convert(kwargs.get("node", None), "Karma")
 ]]>
                 </scriptCode>
@@ -96,9 +102,12 @@ except Exception:
                 </context>
                 <scriptCode>
 <![CDATA[
+import os
 from amaze.utils import rc_calls
-import importlib
-importlib.reload(rc_calls)
+# Reload only with the dev switch on, as the pypanel does.
+if os.environ.get("AMAZE_DEV_RELOAD"):
+    import importlib
+    importlib.reload(rc_calls)
 rc_calls.convert(kwargs.get("node", None), "Redshift", swap=True)
 ]]>
                 </scriptCode>
@@ -119,9 +128,12 @@ except Exception:
                 </context>
                 <scriptCode>
 <![CDATA[
+import os
 from amaze.utils import rc_calls
-import importlib
-importlib.reload(rc_calls)
+# Reload only with the dev switch on, as the pypanel does.
+if os.environ.get("AMAZE_DEV_RELOAD"):
+    import importlib
+    importlib.reload(rc_calls)
 rc_calls.convert(kwargs.get("node", None), "Karma", swap=True)
 ]]>
                 </scriptCode>
@@ -131,9 +143,12 @@ rc_calls.convert(kwargs.get("node", None), "Karma", swap=True)
                 <label>Save</label>
                 <scriptCode>
 <![CDATA[
+import os
 from amaze.utils import rc_calls
-import importlib
-importlib.reload(rc_calls)
+# Reload only with the dev switch on, as the pypanel does.
+if os.environ.get("AMAZE_DEV_RELOAD"):
+    import importlib
+    importlib.reload(rc_calls)
 rc_calls.save(kwargs.get("node", None))
 ]]>
                 </scriptCode>
