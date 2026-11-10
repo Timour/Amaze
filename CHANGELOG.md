@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.33.17
+
+- A thumbnail render starts with the same settings Houdini gives its own renders, and no longer switches off any renderer's plugins. 1.33.15 and 1.33.16 switched off Redshift's shader plugins in Karma and Octane thumbnail renders.
+
 ## 1.33.16
 
 - Saving a material whose texture path is linked to a parameter elsewhere in the scene no longer rewrites that parameter. Only the saved material's own copy takes the library path.
