@@ -407,10 +407,24 @@ def centred_on(position):
     return hou.Vector2(position.x() - half.x(), position.y() - half.y())
 
 
+def _box_depth(item) -> int:
+    """How many network boxes hold `item`: an outer box moves before the boxes inside it."""
+    depth = 0
+    try:
+        box = item.parentNetworkBox()
+        while box is not None:
+            depth += 1
+            box = box.parentNetworkBox()
+    except (AttributeError, hou.ObjectWasDeleted):
+        pass
+    return depth
+
+
 def place_nodes(nodes, position) -> None:
-    """Move created nodes as a group so their centroid lands at `position`; None leaves them."""
+    """Move created items as a group so the NODES' centroid lands at `position`; notes, boxes, dots ride along."""
     from amaze.core import debug
-    nodes = [node for node in nodes if node is not None]
+    items = [item for item in nodes if item is not None]
+    nodes = [item for item in items if isinstance(item, hou.Node)]
     if not nodes:
         return
     _remember_placed(nodes)
@@ -421,13 +435,14 @@ def place_nodes(nodes, position) -> None:
         return
     centroid_x = sum(n.position().x() for n in nodes) / len(nodes)
     centroid_y = sum(n.position().y() for n in nodes) / len(nodes)
-    shift_x = position.x() - centroid_x
-    shift_y = position.y() - centroid_y
-    for node in nodes:
+    shift = hou.Vector2(position.x() - centroid_x, position.y() - centroid_y)
+    targets = [(item, item.position() + shift) for item in items]
+    boxes = sorted((pair for pair in targets if isinstance(pair[0], hou.NetworkBox)),
+                   key=lambda pair: _box_depth(pair[0]))
+    rest = [pair for pair in targets if not isinstance(pair[0], hou.NetworkBox)]
+    for item, target in boxes + rest:    # a box carries what it holds, so all land absolute
         try:
-            node.setPosition(hou.Vector2(
-                node.position().x() + shift_x,
-                node.position().y() + shift_y))
+            item.setPosition(target)
         except (hou.OperationFailed, hou.ObjectWasDeleted):
             pass
     try:
@@ -440,4 +455,5 @@ def place_nodes(nodes, position) -> None:
                 landed=[round(after_x, 3), round(after_y, 3)],
                 drift=[round(after_x - position.x(), 3),
                        round(after_y - position.y(), 3)],
-                nodes=len(nodes), first=nodes[0].path())
+                nodes=len(nodes), riders=len(items) - len(nodes),
+                first=nodes[0].path())

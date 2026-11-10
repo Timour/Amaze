@@ -95,6 +95,55 @@ class NodesSectionTest(unittest.TestCase):
                                msg="the group centroid missed the spot")
         self.assertAlmostEqual(anchor.y(), sum(ys) / len(ys))
 
+    def test_notes_boxes_and_dots_travel_with_the_nodes(self):
+        """A load at the drop point moves EVERY item it added, as Houdini's paste does."""
+        from amaze.helpers import helpers
+
+        geo = _sop_network("riders_src")
+        box_node = geo.node("the_box")
+        note = geo.createStickyNote()
+        note.setPosition(hou.Vector2(-3.0, 2.0))
+        frame = geo.createNetworkBox()
+        frame.addItem(box_node)
+        frame.fitAroundContents()
+        dot = geo.createNetworkDot()
+        dot.setPosition(hou.Vector2(4.0, -1.0))
+        self.assertEqual("SOP", node_actions.add_asset(
+            self.model, geo, "", "", False, name="riders_sop"))
+        geo.destroy()
+
+        dest = hou.node("/obj").createNode("geo", "riders_dest")
+        ok, reason, created = node_actions.import_asset_to_scene(
+            self.model, self.model.index(0, 0), context_node=dest)
+        self.assertTrue(ok, reason)
+        made = [n for n in created if isinstance(n, hou.Node)]
+        self.assertEqual(2, len(made), "the seam's nodes changed: %r" % created)
+        self.assertIsInstance(created[0], hou.Node, "the nodes no longer lead")
+        note, = dest.stickyNotes()
+        frame, = dest.networkBoxes()
+        dot, = dest.networkDots()
+        self.assertEqual({note, frame, dot}, set(created[len(made):]),
+                         "the seam did not report the notes, boxes and dots it added")
+
+        def offsets():
+            cx = sum(n.position().x() for n in made) / len(made)
+            cy = sum(n.position().y() for n in made) / len(made)
+            return [(round(i.position().x() - cx, 4), round(i.position().y() - cy, 4))
+                    for i in (note, frame, dot) + tuple(made)]
+
+        held = offsets()
+        spot = hou.Vector2(40.0, -30.0)
+        helpers.place_nodes(created, spot)
+        anchor = helpers.centred_on(spot)
+        self.assertAlmostEqual(anchor.x(), sum(n.position().x() for n in made) / len(made),
+                               msg="the nodes' centroid no longer lands on the spot")
+        self.assertAlmostEqual(anchor.y(), sum(n.position().y() for n in made) / len(made))
+        self.assertEqual(held, offsets(),
+                         "a note, box or dot stayed at its saved place while the nodes moved")
+        self.assertEqual(sorted(made, key=lambda n: n.path()),
+                         sorted(helpers.placed_nodes(), key=lambda n: n.path()),
+                         "the wire splice would be handed a note, box or dot")
+
     def test_an_unsafe_id_is_refused_with_a_sentence(self):
         """An id that cannot be a filename gets a sentence, not a traceback ▸p/nodes-section."""
         geo = _sop_network("unsafe_src")

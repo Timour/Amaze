@@ -1553,11 +1553,13 @@ class NodeHandler:
         mat: material.Material,
         context_node: hou.Node | None = None,
     ):
-        """The COP import seam: (ok, reason, created); [] on refusal."""
+        """The COP import seam: (ok, reason, created), the nodes then the notes, boxes and dots; [] on refusal."""
         self._imported_cop_nodes = []
+        self._imported_cop_riders = []    # notes, boxes and dots, after the nodes
         ok, reason = self._import_cop_asset_inner(
             mat, context_node=context_node)
-        created = list(self._imported_cop_nodes) if ok else []
+        created = (list(self._imported_cop_nodes)
+                   + list(self._imported_cop_riders)) if ok else []
         return ok, reason, created
 
     def _import_cop_asset_inner(
@@ -1629,6 +1631,9 @@ class NodeHandler:
                     except (TypeError, hou.OperationFailed):
                         pass
                 self._imported_cop_nodes = list(new_children)
+                self._imported_cop_riders = [    # moved with the nodes, as a paste moves them
+                    item for item in dest.allItems()
+                    if item.path() not in held and not isinstance(item, hou.Node)]
                 return (True, "")
 
         container = None
