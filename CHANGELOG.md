@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.33.20
+
+- Loading a saved node network keeps the layout it was saved with instead of re-arranging it.
+- A loose Karma material keeps its saved node layout; only its input and output connectors are placed, beside it.
+- A network imported from the menu into a network that already has nodes lands beside them, not on top of them.
+- With a Material Network open, in /obj, inside a geo or anywhere else outside Solaris, an imported, downloaded or generated material lands there instead of in /mat.
+- Houdini's Global UI Size now applies on a Retina Mac when it is set near 2.
+- The Amaze.json package template carries `"load_package_once": true`, so Houdini loads only the first Amaze.json in its package folders. An installed Amaze.json keeps its own text; add the line to it, or copy the template again.
+
 ## 1.33.19
 
 - A node network loaded at the drop point brings its sticky notes, network boxes and dots with it.
