@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.33.27
+
+- Check Library no longer offers to move the pictures pasted into comments aside.
+
 ## 1.33.26
 
 - Export Package and Export Category say how many items they exported, and say so when there was nothing to export or the file could not be saved.
