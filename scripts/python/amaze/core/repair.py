@@ -1093,7 +1093,7 @@ def move_aside(findings: dict, what, guard: bool = True) -> dict:
         raise ValueError(held)
     from amaze.core import quarantine as holding
     root = holding.quarantine_folder(directory)
-    moved, failed, record = [], [], []
+    moved, failed, taken, record = [], [], [], []
 
     def take(relative, shown):
         source = os.path.join(directory, *naming.split(relative))
@@ -1112,7 +1112,7 @@ def move_aside(findings: dict, what, guard: bool = True) -> dict:
             for name in names:
                 relative = folder.rstrip("/\\") + "/" + name
                 if naming.classify(relative)[1] in claimed:
-                    failed.append(name)    # a list claims it since the check
+                    taken.append(name)    # a list claims it since the check
                     continue
                 take(relative, name)
     if "leftovers" in asked:
@@ -1131,7 +1131,7 @@ def move_aside(findings: dict, what, guard: bool = True) -> dict:
     debug.event("repair", "files moved aside", what=list(asked), folder=root,
                 moved=len(moved), failed=len(failed), files=record,
                 failed_files=failed)
-    return {"folder": root, "moved": moved, "failed": failed}
+    return {"folder": root, "moved": moved, "failed": failed, "claimed": taken}
 
 
 def set_aside_folders(findings: dict, guard: bool = True) -> list:
@@ -1308,7 +1308,8 @@ def _add_rows(findings: dict, filename: str, ids: list) -> dict:
             taken |= claimed
     added, minted, rows = [], [], []
     folder = os.path.join(findings["directory"], findings["asset_dir"])
-    for asset_id in [one for one in ids if one not in taken]:    # a list may claim it since the check
+    claimed = [one for one in ids if one in taken]    # a list took them since the check
+    for asset_id in [one for one in ids if one not in taken]:
         record = read_stamp(os.path.join(folder, asset_id + STAMP_SUFFIX))
         if record is None:
             record = material.Material(
@@ -1339,7 +1340,7 @@ def _add_rows(findings: dict, filename: str, ids: list) -> dict:
     debug.event("repair", "unlisted files added back to a list",
                 file=filename, added=len(added), from_stamps=len(added) - len(minted),
                 written_new=missing)
-    return {"added": added, "path": path, "minted": minted}
+    return {"added": added, "path": path, "minted": minted, "claimed": claimed}
 
 
 def _state_of(findings: dict, filename: str) -> str:

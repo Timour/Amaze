@@ -250,8 +250,8 @@ def _do_add_back(findings: dict, guard: bool, changed) -> None:
         return
     changed()
     added = len(result["added"])
-    _say(messages.UNLISTED_FILES_ADDED_BACK_DONE
-         % (added, database.section_noun("library.json", added), label))
+    _added(messages.UNLISTED_FILES_ADDED_BACK_DONE
+           % (added, database.section_noun("library.json", added), label), result)
 
 
 def _do_restore(findings: dict, guard: bool, changed) -> None:
@@ -378,12 +378,24 @@ def _do_restore_settings(findings: dict, tier: str, snap: dict, guard: bool, cha
 
 def _moved(result: dict) -> None:
     """What a move aside did, and what it could not move."""
+    claimed = result.get("claimed")    # files a list took since the check
     if result["failed"]:
         _say(messages.FILES_MOVED_ASIDE_SOME_FAILED
              % (repair.files(len(result["moved"])), repair.files(len(result["failed"]))),
              hou.severityType.Warning)
-    else:
+    elif result["moved"] or not claimed:
         _say(messages.FILES_MOVED_ASIDE_DONE % repair.files(len(result["moved"])))
+    if claimed:
+        _say(messages.LIBRARY_CHANGED_SINCE_CHECK, hou.severityType.Warning)
+
+
+def _added(said: str, result: dict) -> None:
+    """What an Add Back did, and that the library changed when a list took files since the check."""
+    claimed = result.get("claimed")
+    if result["added"] or not claimed:
+        _say(said)
+    if claimed:
+        _say(messages.LIBRARY_CHANGED_SINCE_CHECK, hou.severityType.Warning)
 
 
 def _do_move_aside(findings: dict, guard: bool, changed) -> None:
@@ -453,8 +465,10 @@ def _do_set_aside(findings: dict, guard: bool, changed) -> None:
         _say(messages.FOLDERS_SET_ASIDE_DONE % (
             repair.folders(len(folders)),
             messages.DEAD_STARS_ALSO_REMOVED % repair.favorites(len(gone)) if gone else ""))
-    else:
+    elif gone:
         _say(messages.DEAD_STARS_REMOVED_DONE % repair.favorites(len(gone)))
+    if len(folders) < len(dead) or not (folders or gone):    # a folder came back since the check
+        _say(messages.LIBRARY_CHANGED_SINCE_CHECK, hou.severityType.Warning)
 
 
 def _do_uncategorised(findings: dict, guard: bool, changed) -> None:
@@ -510,4 +524,4 @@ def _do_reattach(findings: dict, guard: bool, changed) -> None:
             count, noun, label, minted, repair.RECOVERED_CATEGORY)
     else:
         said = messages.UNLISTED_FILES_ADDED_BACK_DONE % (count, noun, label)
-    _say(said)
+    _added(said, result)

@@ -420,8 +420,38 @@ class MovingFilesAsideTest(_Case):
             self.assertTrue(os.path.exists(path),
                             "%s was moved aside though a list now claims it" % path)
         self.assertEqual([], result["moved"])
+        self.assertEqual([], result["failed"], "a file a list took is not a file that would not move")
         self.assertEqual(sorted(os.path.basename(p) for p in paths),
-                         sorted(result["failed"]))
+                         sorted(result["claimed"]))
+
+    def _said(self, call, *args) -> list:
+        """What one dialog step says, each box as (text, severity), with every confirm answered yes."""
+        said = []
+        with patch.object(repair_dialog, "_say",
+                          lambda text, severity=None: said.append((text, severity))), \
+                patch.object(repair_dialog, "_confirmed", lambda *a, **k: True):
+            call(*args)
+        return said
+
+    def test_a_step_that_finds_the_library_changed_says_so(self):
+        changed = (messages.LIBRARY_CHANGED_SINCE_CHECK, hou.severityType.Warning)
+        self.assertEqual([changed], self._said(
+            repair_dialog._moved, {"moved": [], "failed": [], "claimed": ["x.mat"]}),
+            "files a list took since the check were reported some other way")
+        both = self._said(repair_dialog._moved, {"moved": ["a"], "failed": [], "claimed": ["x.mat"]})
+        self.assertEqual(2, len(both), "what did move was not said beside the change")
+        self.assertEqual(changed, both[-1])
+        self.assertEqual([changed], self._said(
+            repair_dialog._added, "0 restored", {"added": [], "minted": [], "claimed": ["x"]}),
+            "an Add Back that found every file listed said how many it restored")
+        self.assertEqual([("1 restored", None)], self._said(
+            repair_dialog._added, "1 restored", {"added": ["y"], "minted": [], "claimed": []}))
+        back = tempfile.mkdtemp(prefix="amaze_back_")
+        self.addCleanup(shutil.rmtree, back, True)
+        findings = {"dead_folders": [back], "dead_stars": [], "preferences": MagicMock()}
+        self.assertEqual([changed], self._said(
+            repair_dialog._do_set_aside, findings, False, lambda: None),
+            "a Set Aside whose folder came back said what it removed")
 
     def test_a_list_that_turns_unreadable_after_the_check_refuses_the_move(self):
         """A list that will not read may own the pair, so nothing moves."""
@@ -558,6 +588,7 @@ class AddingUnlistedFilesBackTest(_Case):
         rows = [r for r in self._read(index)["assets"] if r.get("id") == self.COP_ID]
         self.assertEqual(1, len(rows), "the list now holds two rows with one id")
         self.assertEqual([], result["added"])
+        self.assertEqual([self.COP_ID], result["claimed"], "the step cannot say the library changed")
 
     def test_a_pair_a_sibling_gained_after_the_check_is_not_added(self):
         """An id a sibling list claims since the check is that list's."""
