@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.33.24
+
+- Esc during an online download or a package import stops the whole batch.
+- Package Import shows why entries were left out, and is refused while no library is open.
+- Locate is refused on a folder that is already a location.
+- In the File tab, folder counts update right after a move, New Folder or a Show change, and a geometry file that could not be rendered shows the file icon at once.
+- Check Library no longer offers to move the `import` folder aside.
+- Check Library looks at the library's lists again before it moves files aside or adds files back, and Repair waits for a list that is still arriving.
+
 ## 1.33.23
 
 - In the File tab, pressing a folder's arrow shows its subfolders' counts and arrows faster, and the sidebar redraws faster.
