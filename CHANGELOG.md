@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.33.29
+
+- Check Library calls its 30-day folder the trash: **Move Files to Trash**, **Move Unknown Files to Trash** and **Show Trash** replace Move Files Aside, Move Unknown Files Aside and Show Holding Folder.
+- Files that no database names are called orphaned files.
+
 ## 1.33.28
 
 - Check Library and the messages that point to it use the word `database` for the file that records what a section holds, in place of `list` and `index`.
