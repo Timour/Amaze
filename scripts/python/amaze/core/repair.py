@@ -679,29 +679,27 @@ def report_lines(findings: dict) -> list:
     if findings["unreadable_folders"]:
         problems.append(
             "Amaze could not look inside the %s, so it cannot say whether "
-            "anything in there is in no database. Nothing will be "
+            "there are orphaned files in there. Nothing will be "
             "moved while that is true."
             % _and_folders(findings["unreadable_folders"]))
     elif total and findings["complete"]:
-        held = ["None of them will be moved aside while a database that may own them holds "
-                "nothing: put a saved copy of it back, or add them to a section."
+        held = ["None of them will be moved to the trash while a database that may own "
+                "them holds nothing: put a saved copy of it back, or add them to a section."
                 ] if why_unlisted_stay(findings) else []
-        problems.append(" ".join(["No database names %s. Either they belong to something "
+        problems.append(" ".join(["%s %s. Either they belong to something "
                                   "whose database was lost, or nothing needs them any more."
-                                  % files_by_folder(findings)]
+                                  % (files_by_folder(findings), _orphaned(total))]
                                  + _what_can_be_added_back(findings) + held))
     elif total:
         problems.append(" ".join([
-            "No database names %s. Amaze could not check the %s database either, "
+            "%s %s. Amaze could not check the %s database either, "
             "so some of those files may be its. Nothing will be moved "
             "while that is true."
-            % (files_by_folder(findings), wording.and_list(unchecked))]
+            % (files_by_folder(findings), _orphaned(total), wording.and_list(unchecked))]
             + _what_can_be_added_back(findings)))
     elif findings["unaccounted"]:
-        well.append("Every file in %s belongs to a %s in the databases."
-                    % (wording.and_list(["`%s`" % folder for folder in findings["unaccounted"]]),
-                       " or ".join(database.section_noun(filename, 1)
-                                   for filename in database.ASSET_FILE_OWNERS)))
+        well.append("There are no orphaned files in %s."
+                    % wording.and_list(["`%s`" % folder for folder in findings["unaccounted"]]))
 
     said, fine = _check_lines(findings)
     problems.extend(said)
@@ -713,6 +711,12 @@ def report_lines(findings: dict) -> list:
     if "holding" in findings:
         lines.append(_holding_line(findings["holding"]))
     return lines
+
+
+def _orphaned(count: int) -> str:
+    """What follows the files no database names: `is orphaned: no database names it`."""
+    return ("is orphaned: no database names it" if count == 1
+            else "are orphaned: no database names them")
 
 
 _TROUBLE_LINES = {    # a list's state, and the line it gets when it is in trouble
@@ -851,7 +855,7 @@ def _leftover_lines(findings: dict) -> list:
             if count:
                 parts.append("%d %s" % (count, one if count == 1 else more))
         said.append("Amaze made %s here that nothing needs any more: %s. Moving them "
-                    "aside takes them out of the library: %s."
+                    "to the trash takes them out of the library: %s."
                     % (files(len(leftovers)), wording.and_list(parts),
                        _named("`%s`" % entry[0] for entry in leftovers)))
     for relative, original, size, when, why in findings.get("held_back") or []:
@@ -913,12 +917,12 @@ def _files_section_lines(findings: dict) -> list:
 def _holding_line(held: dict) -> str:
     """The holding folder's line: what it holds, when the oldest day goes, and where it is."""
     if not held["files"]:
-        return ("Amaze's holding folder on this computer is empty. Anything moved "
-                "aside goes there and is kept for %d days: %s"
+        return ("Amaze's trash on this computer is empty. Files moved "
+                "to it are deleted after %d days: %s"
                 % (_quarantine_days(), held["path"]))
     first = next((expires for _day_name, expires, _n, _b in held["days"] if expires), "")
-    return ("Amaze's holding folder on this computer holds %s (%s), moved aside on "
-            "%s. Each day's files are kept for %d days%s: %s"
+    return ("Amaze's trash on this computer holds %s (%s), moved there on "
+            "%s. Each day's files are deleted after %d days%s: %s"
             % (files(held["files"]), _size(held["bytes"]),
                "1 day" if len(held["days"]) == 1 else "%d days" % len(held["days"]),
                _quarantine_days(),
@@ -1001,11 +1005,11 @@ def _what_can_be_added_back(findings: dict) -> list:
                        else "Of those, " + files(len(addable))))
     if rest and said:
         said.append("The rest are halves of an asset whose other file is not "
-                    "in the folder, so they can only be moved aside.")
+                    "in the folder, so they can only be moved to the trash.")
     spared = len(_files_of(findings, stamped_unlisted(findings)))
     if spared:
         one = spared == 1
-        said.append("Moving files aside leaves %s where %s: the name and category of what "
+        said.append("Moving files to the trash leaves %s where %s: the name and category of what "
                     "%s to are saved beside %s, so %s can still be put back."
                     % (files(spared), "it is" if one else "they are",
                        "it belongs" if one else "they belong", "it" if one else "them",
@@ -1263,7 +1267,7 @@ def why_nothing_can_be_added(findings: dict, filename: str = "") -> str:
     """Empty when unlisted files may go on `filename`, or on any list; else why they may not."""
     if findings.get("unreadable_folders"):
         return ("Amaze could not look inside the %s, so it cannot tell which "
-                "files are in a database" % _and_folders(findings["unreadable_folders"]))
+                "files are orphaned" % _and_folders(findings["unreadable_folders"]))
     for entry in findings.get("lists", ()):
         if entry["state"] == "unreadable":
             return ("that database cannot be read, so nothing was added to it"

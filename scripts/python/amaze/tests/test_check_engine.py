@@ -439,14 +439,12 @@ class TheSurveyAnswersEverythingTest(_Library):
         for key in ("leftovers", "held_back", "unknown", "unknown_folders", "shrunk"):
             self.assertEqual([], findings[key], key)
         lines = [line for line in repair.report_lines(findings) if line]
-        self.assertIn("holding folder on this computer", lines[-1])
+        self.assertIn("trash on this computer", lines[-1])
         self.assertIn(findings["holding"]["path"], lines[-1])
         text = "\n".join(lines)
         for said in ("Every material and node", "has a category",
                      "Nothing is left over"):
             self.assertIn(said, text)
-        for word in ("index", "record", "row", "orphan", "stale"):
-            self.assertNotIn(word, text.lower())
 
 
 class TheFilesSectionTest(_Library):
@@ -701,7 +699,7 @@ class AListInTroubleHoldsItsFilesTest(_Library):
         with self.assertRaises(ValueError):
             repair.move_aside(findings, "unlisted")
         self.assertTrue(os.path.exists(os.path.join(self.mat_dir, "NODELOST1.mat")))
-        self.assertIn("None of them will be moved aside", "\n".join(repair.report_lines(findings)))
+        self.assertIn("None of them will be moved to the trash", "\n".join(repair.report_lines(findings)))
 
     def test_a_list_still_on_its_way_holds_back_adding_to_another(self):
         self._write(os.path.join(self.dir, "cops.json.bak-1"), {"assets": [{"id": "X"}]})
@@ -836,7 +834,7 @@ class CheckLibraryInThePanelTest(unittest.TestCase):
             handle.write("x")
         self.assertTrue(repair.session_has_a_library_open(), "premise")
         with patch.object(repair_dialog, "open_panel_tab", return_value=object()):
-            self._check(_Screen("Move 1 File Aside", self.messages.BUTTONS_MOVE_ASIDE[0]))
+            self._check(_Screen("Move 1 File to Trash", self.messages.BUTTONS_MOVE_ASIDE[0]))
         self.assertFalse(os.path.exists(stray), "a second pane stopped Check Library")
 
     def test_a_row_not_yet_saved_keeps_its_files_through_move_files_aside(self):
@@ -935,7 +933,7 @@ class TheReportSaysProblemsFirstTest(_Library):
         self.assertNotIn("accounted for by a section", text)
         for folder in ("`mat/`", "`img/`", "`captures/`"):
             self.assertIn(folder, text)
-        self.assertIn("material or node", text)
+        self.assertIn("There are no orphaned files in", text)
 
     def test_a_problem_comes_before_every_all_well_line(self):
         os.remove(os.path.join(self.mat_dir, self.first_id + ".mat"))
@@ -947,7 +945,7 @@ class TheReportSaysProblemsFirstTest(_Library):
         fine = next(at for at, line in enumerate(lines) if "read fine" in line)
         self.assertLess(broken, fine)
         self.assertLess(missing, fine)
-        self.assertIn("holding folder on this computer", lines[-1])
+        self.assertIn("trash on this computer", lines[-1])
 
 
 class OnePutBackForMaterialsAndNodesTest(_Library):

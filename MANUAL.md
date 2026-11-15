@@ -706,7 +706,7 @@ list holds 20 libraries; **Manage** takes libraries off it. **Check**,
 the library. For a library from an older Amaze, the line beside
 **Apply** says that applying updates it; Amaze then moves this
 computer's scene captures into the library's `captures` folder, and the
-originals stay in Amaze's holding folder for 30 days. A library from a
+originals stay in Amaze's trash for 30 days. A library from a
 newer Amaze cannot be applied, and the line says to update Amaze.
 
 **Versions** turns [versions](#versions) on and off, for materials and
@@ -820,7 +820,7 @@ report, with a button for each fix that applies. The report covers:
   stays in the database; **Delete** removes it. Materials and node setups
   that can have a render and have none are counted; **Update Render**
   renders them.
-- **Unlisted files.** Files in the `mat`, `img` and `captures` folders
+- **Orphaned files.** Files in the `mat`, `img` and `captures` folders
   that no database names.
 - **Leftovers.** Files Amaze made that nothing needs any more: scratch
   files left by a save that did not finish, once they are an hour old;
@@ -837,12 +837,12 @@ report, with a button for each fix that applies. The report covers:
 - **The File section.** File locations whose folder is not on this
   computer, and starred files gone from a folder that is. Locations on
   a drive that is not connected are named and left as they are.
-- **The holding folder.** Its path, what it holds, and when its oldest
-  files go.
+- **The trash.** Its path, what it holds, and when its oldest files
+  are deleted.
 
 The fixes, each shown only when it applies:
 
-- **Add *N* Materials Back** puts unlisted materials back in the
+- **Add *N* Materials Back** puts orphaned materials back in the
   Material database, with the name, category and tags saved beside each
   one. It writes a new Material database when there is none.
 - **Put a Saved Copy Back** puts a database back to its newest saved
@@ -853,17 +853,17 @@ The fixes, each shown only when it applies:
   items saved after the
   copy come back from the record saved beside their files, and items
   changed after it are brought up to date.
-- **Add *N* Files to a Section** adds unlisted pairs of `.mat` and
+- **Add *N* Files to a Section** adds orphaned pairs of `.mat` and
   `.interface` files to the section you pick, Material or Node. Each one
   keeps the name, category and tags recorded beside its files; one with
   no such record comes back in a category called Recovered, named
   Recovered plus the start of its file name.
-- **Move *N* Files Aside** moves the unlisted files and the leftovers
-  into the holding folder. Unlisted files stay while a database that
-  may own them cannot be read or holds nothing, and so do files whose
-  saved record can still put them back in a database.
-- **Move *N* Unknown Files Aside** moves the unknown files and folders
-  into the holding folder, after a confirmation that names each one.
+- **Move *N* Files to Trash** moves the orphaned files and the leftovers
+  into the trash. Orphaned files stay while a database that may own
+  them cannot be read or holds nothing, and so do files whose saved
+  record can still put them back in a database.
+- **Move *N* Unknown Files to Trash** moves the unknown files and
+  folders into the trash, after a confirmation that names each one.
 - **Set Aside *N* Folders** takes the File locations whose folder is not
   on this computer out of the sidebar. Their comments, tile icons and
   favorites are kept and come back when the folder is added again.
@@ -872,19 +872,19 @@ The fixes, each shown only when it applies:
   removes those alone.
 - **Put *N* in Uncategorized** puts the materials and node setups with
   no category in Uncategorized.
-- **Show Holding Folder** opens the holding folder.
+- **Show Trash** opens the trash folder.
 
 With more than five fixes, **Choose an Action...** lists them instead.
 Each fix asks for confirmation. After it, Amaze reads the library again,
 so the panel shows the change without a restart, and the report opens
 again with what is left. **Close** ends the check.
 
-Moved files go to Amaze's holding folder on this computer, outside the
-library, in one folder per day. Each day's files are kept for 30 days,
-and every check removes the days older than that. To put a file back,
-copy it from the holding folder into the library. The holding folder
-follows the library by an id stored in the library's `policy.json`, so
-a library moved to a new folder keeps it.
+Moved files go to Amaze's trash folder on this computer, outside the
+library, in one folder per day. Each day's files are deleted after 30
+days; every check deletes the days older than that. To restore a file,
+copy it from the trash into the library. The trash follows the library
+by an id stored in the library's `policy.json`, so a library moved to a
+new folder keeps it.
 
 **Check Library**, on the Amaze shelf, runs the same check when the
 Amaze panel will not open. With an Amaze panel open, it says to use the

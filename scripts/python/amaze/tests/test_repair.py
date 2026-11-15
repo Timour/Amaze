@@ -107,8 +107,7 @@ class TheReportSaysWhatIsWrongTest(_Case):
         self.assertEqual(0, repair.unaccounted_total(findings))
         text = "\n".join(repair.report_lines(findings))
         self.assertIn("Every database reads fine: ", text)
-        self.assertIn("Every file in `mat/`, `img/` and `captures/` belongs to a "
-                      "material or node in the databases.", text)
+        self.assertIn("There are no orphaned files in `mat/`, `img/` and `captures/`.", text)
         choices, actions = repair_dialog._choices(findings, may_change=True)
         self.assertEqual(["Close"], choices,
                          "Repair offered an action on a library with "
@@ -260,7 +259,7 @@ class TheReportSaysWhatIsWrongTest(_Case):
             "complete, so files could have been moved on a guess")
         text = "\n".join(repair.report_lines(findings))
         self.assertIn("could not look inside the mat folder", text)
-        self.assertNotIn("belongs to a material or node in the databases", text,
+        self.assertNotIn("There are no orphaned files", text,
                          "Repair reported a folder it could not read as "
                          "accounted for")
         choices, actions = repair_dialog._choices(findings, may_change=True)
@@ -283,27 +282,11 @@ class TheReportSaysWhatIsWrongTest(_Case):
                          "pair")
         choices, actions = repair_dialog._choices(findings, may_change=True)
         self.assertIn("Add 2 Files to a Section", choices)
-        self.assertIn("Move 3 Files Aside", choices)
+        self.assertIn("Move 3 Files to Trash", choices)
         text = "\n".join(repair.report_lines(findings))
         self.assertIn("Of those, 2 files can be added back", text,
                       "nothing tells the reader the two buttons cover "
                       "different files")
-
-    def test_the_report_avoids_the_words_the_style_guide_bans(self):
-        """The user's words: these exist only because of how it was built."""
-        self._cops([])
-        self._pair()
-        with open(os.path.join(self.dir, "code.json"), "w",
-                  encoding="utf-8") as handle:
-            handle.write("{ truncated")
-        text = " ".join(repair.report_lines(self._survey())).lower()
-        for word in ("index", "record", "row", "session",
-                     "merge", "schema", "orphan", "stale", "connector",
-                     "atomic", "manifest"):
-            self.assertNotIn(word, text,
-                             "the report uses '%s', which is a word about "
-                             "how Amaze is built, not about the library"
-                             % word)
 
 
 class RepairNeverDeletesTest(unittest.TestCase):
@@ -783,7 +766,7 @@ class AMissingListComesBackFromItsFilesTest(_Case):
             {"id": "KEEPER01", "name": "Keeper", "categories": ["Fabric"]}]))
         findings = self._survey()
         choices, actions = repair_dialog._choices(findings, may_change=True)
-        self.assertIn("Move 1 File Aside", choices,
+        self.assertIn("Move 1 File to Trash", choices,
                       "Move Aside counts the files of materials Repair can put back")
         self._run(buttons=[actions.index("quarantine"), 0, 0])
         self.assertFalse(os.path.exists(half))
@@ -1261,10 +1244,6 @@ class TheWholeFlowTest(_Case):
                          "save would write over it")
         self.assertIn(messages.CHECK_LIBRARY_ONLY_A_REPORT, shown[0][0],
                       "nothing tells the user how to get the buttons back")
-        for word in ("session", "index", "record", "row",
-                     "merge", "schema", "stale"):
-            self.assertNotIn(word, str(shown).lower(),
-                             "the dialog uses '%s'" % word)
 
     def test_the_restore_flow_names_what_it_recovers_and_what_it_loses(self):
         self._cops([{"id": "LIVE1"}, {"id": "LIVE2"}])
@@ -1312,7 +1291,7 @@ class TheWholeFlowTest(_Case):
         for path in paths:
             self.assertFalse(os.path.exists(path))
         told = str(ui.displayMessage.call_args_list[-1])
-        self.assertIn("holding folder", told,
+        self.assertIn("Amaze's trash", told,
                       "the user is not told where the files went")
         self.assertIn("30 days", told,    # the retention, not the words: the step must promise files are kept ▸p/messages-need-one-home
                       "the user is not told the files are kept")

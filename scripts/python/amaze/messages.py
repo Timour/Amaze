@@ -31,11 +31,11 @@ HELP_PUT_SETTINGS_BACK = "Amaze then opens the library it pointed to at that tim
 SETTINGS_NOW_SAVED_FIRST = " Your settings from now are saved next to it first — run Check Library again and it offers that copy back."
 SETTINGS_PUT_BACK_DONE = "Your settings are back to the copy from %s.\n\nOpen Amaze to use them.%s"
 SETTINGS_EARLIER_COPY_KEPT = " Your previous settings are kept too — run Check Library again and put back the copy from %s to go back to them."
-CONFIRM_MOVE_FILES_ASIDE = "Move %s aside?"
+CONFIRM_MOVE_FILES_ASIDE = "Move %s to the trash?"
 NOTHING_MOVED_ASIDE_REASON = "Amaze moved nothing: %s."
-FILES_MOVED_ASIDE_SOME_FAILED = "%s moved to Amaze's holding folder on this computer (outside your library, kept 30 days). %s could not be moved and are still in place."
-FILES_MOVED_ASIDE_DONE = "%s moved to Amaze's holding folder on this computer (outside your library, kept 30 days)."
-CONFIRM_MOVE_UNKNOWN_ASIDE = 'Move the files Amaze does not know aside?'
+FILES_MOVED_ASIDE_SOME_FAILED = "%s moved to Amaze's trash on this computer (outside your library, deleted after 30 days). %s could not be moved and are still in place."
+FILES_MOVED_ASIDE_DONE = "%s moved to Amaze's trash on this computer (outside your library, deleted after 30 days)."
+CONFIRM_MOVE_UNKNOWN_ASIDE = 'Move the files Amaze does not know to the trash?'
 
 CONFIRM_SET_ASIDE_FOLDERS = 'Set aside %s in the Files section?'
 
@@ -295,11 +295,11 @@ BUTTON_REPAIR_PUT_COPY_BACK = 'Put a Saved Copy Back'
 
 BUTTON_REPAIR_ADD_TO_SECTION = 'Add %s to a Section'
 
-BUTTON_REPAIR_MOVE_ASIDE = 'Move %s Aside'
+BUTTON_REPAIR_MOVE_ASIDE = 'Move %s to Trash'
 
-BUTTON_MOVE_ONE_UNKNOWN_ASIDE = 'Move 1 Unknown File Aside'
+BUTTON_MOVE_ONE_UNKNOWN_ASIDE = 'Move 1 Unknown File to Trash'
 
-BUTTON_MOVE_UNKNOWN_ASIDE = 'Move %d Unknown Files Aside'
+BUTTON_MOVE_UNKNOWN_ASIDE = 'Move %d Unknown Files to Trash'
 
 BUTTON_SET_ASIDE_FOLDERS = 'Set Aside %s'
 
@@ -307,7 +307,7 @@ BUTTON_REMOVE_DEAD_STARS = 'Remove %s of Missing Files'
 
 BUTTON_PUT_IN_UNCATEGORIZED = 'Put %s in %s'
 
-BUTTON_SHOW_HOLDING_FOLDER = 'Show Holding Folder'
+BUTTON_SHOW_HOLDING_FOLDER = 'Show Trash'
 
 BUTTON_CHOOSE_AN_ACTION = 'Choose an Action...'
 
@@ -334,7 +334,7 @@ BUTTONS_PUT_COPY_BACK = ('Put This Copy Back', 'Cancel')
 
 BUTTONS_PUT_COPY_BACK_OR_OLDER = ('Put This Copy Back', 'Older Copies...', 'Cancel')
 
-BUTTONS_MOVE_ASIDE = ('Move Them Aside', 'Cancel')
+BUTTONS_MOVE_ASIDE = ('Move to Trash', 'Cancel')
 
 BUTTONS_SET_ASIDE = ('Set Them Aside', 'Cancel')
 
@@ -373,7 +373,7 @@ BUTTONS_SAVE_VERSION_OR_NEW = ('Save Version', 'Save New', 'Cancel')
 BUTTONS_SAVE_NEW = ('Save New', 'Cancel')
 
 
-HELP_CHECK_LIBRARY = "Check Library looks at every database and folder in your library and changes nothing until you press a button. Anything you move aside goes into Amaze's holding folder on this computer, outside your library, and is kept for 30 days."
+HELP_CHECK_LIBRARY = "Check Library looks at every database and folder in your library and changes nothing until you press a button. Files you move to the trash go into Amaze's trash folder on this computer, outside your library, and are deleted after 30 days."
 
 HELP_MATERIAL_VERSIONS = "This is shared: everyone working from this library gets the same setting.\n\nWith it on, saving over an existing material keeps the previous version, and the + in the code editor keeps versions of a snippet."
 HELP_DELETE_USER = 'Their favorites and registered folders are removed from this library everywhere it syncs. A machine signed in as "%s" will ask who is using the library the next time it opens. This cannot be undone.'
@@ -384,15 +384,15 @@ HELP_ADD_BACK = 'Each one comes back with the name, category and tags saved besi
 
 HELP_PUT_SAVED_COPY_BACK = "That copy is from %s and holds %d %s. %s\n\nYour %s' own files and thumbnails are not touched either way, and the database you have now is saved in the library folder first - run Check Library again and it offers that copy back."
 
-HELP_MOVE_FILES_ASIDE = "%s They move into Amaze's own holding folder on this computer - outside your library, so they do not sync and do not travel. Nothing is deleted today: they are kept for 30 days and named in the report, and moving one back is copying it back.\n\nEverything showing in Amaze stays.%s"
+HELP_MOVE_FILES_ASIDE = "%s They move into Amaze's trash folder on this computer, outside your library, so they do not sync. They are deleted after 30 days. To restore one before then, copy it back into the library.\n\nEverything showing in Amaze stays.%s"
 
-HELP_MOVE_UNLISTED = 'The files no database names: %s.'
+HELP_MOVE_UNLISTED = 'The orphaned files: %s.'
 
 HELP_MOVE_LEFTOVERS = 'The files Amaze left behind and no longer needs: %s.'
 
 HELP_MOVE_UNLISTED_LAST = ' Do this only if you have already tried putting a saved copy of a database back: if one of these files belongs to a material whose database was lost, restoring the database is what brings it back.'
 
-HELP_MOVE_UNKNOWN_ASIDE = "These are not files Amaze made or knows: %s. They move into Amaze's holding folder on this computer, outside your library, and are kept for 30 days."
+HELP_MOVE_UNKNOWN_ASIDE = "These are not files Amaze made or knows: %s. They move into Amaze's trash folder on this computer, outside your library, and are deleted after 30 days."
 
 HELP_SET_ASIDE_FOLDERS = "Each folder's comments, icons and favorites are kept, and come back when the folder is added again. Its files are not touched.%s"
 

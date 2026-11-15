@@ -13,7 +13,7 @@ PREFS_APPLY_LIBRARY = 'Switch to the library and user shown.'
 
 PREFS_ACCEPT_LIBRARY = 'Apply, then close Preferences.'
 
-PREFS_CHECK_LIBRARY = "Look over the library's databases and folders and fix what you choose. Anything moved aside is kept in Amaze's holding folder on this computer for 30 days."
+PREFS_CHECK_LIBRARY = "Look over the library's databases and folders and fix what you choose. Files moved to Amaze's trash are deleted after 30 days."
 
 PREFS_RELOAD_LIBRARY = 'Reload the library from disk.'
 
