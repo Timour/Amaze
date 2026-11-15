@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.33.26
+
+- Export Package and Export Category say how many items they exported, and say so when there was nothing to export or the file could not be saved.
+
 ## 1.33.25
 
 - Locate and Add Folder say so when the folder is already a location.
