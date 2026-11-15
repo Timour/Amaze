@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.33.30
+
+- Check Library says backup and restore: **Restore Backup**, **Restore** and **Older Backups...** replace Put a Saved Copy Back, Put This Copy Back and Older Copies....
+- Messages use the usual words for these things: metadata, corrupt, conflict copy, temporary files, read-only, session, not synced, and preview cache.
+
 ## 1.33.29
 
 - Check Library calls its 30-day folder the trash: **Move Files to Trash**, **Move Unknown Files to Trash** and **Show Trash** replace Move Files Aside, Move Unknown Files Aside and Show Holding Folder.
