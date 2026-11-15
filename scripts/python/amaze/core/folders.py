@@ -5,8 +5,13 @@ import os
 
 from PySide6 import QtCore
 
-from amaze.core import category, debug, workers
+from amaze.core import category, debug, keyed_store, locations, workers
 from amaze.helpers import hostos
+
+
+def name_order(names) -> list:
+    """Folder names as the sidebar lists them: by letter, a case-only tie in one fixed order."""
+    return sorted(names, key=lambda name: (name.lower(), name))
 
 
 def walk_following_links(root: str):
@@ -59,8 +64,8 @@ def scan_folder(path: str, recursive: bool, matches, stopped=lambda: False):
             for depth, (_dirpath, dirnames, filenames) in enumerate(walk_following_links(path)):
                 if stopped():
                     return None
-                dirnames[:] = sorted((d for d in dirnames if not d.startswith(".")),
-                                     key=str.lower)    # hidden folders pruned, as the grid prunes them
+                dirnames[:] = name_order(d for d in dirnames    # hidden folders pruned, as the grid prunes them
+                                         if not d.startswith("."))
                 if depth == 0:
                     subfolders = list(dirnames)
                 count += sum(1 for name in filenames if matches(name))
@@ -77,7 +82,7 @@ def scan_folder(path: str, recursive: bool, matches, stopped=lambda: False):
                     count += 1
     except OSError:
         return 0, []
-    return count, sorted(subfolders, key=str.lower)
+    return count, name_order(subfolders)
 
 
 class _CountWorker(QtCore.QThread):
@@ -148,6 +153,7 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
     ALL_LABEL = "All"
     SCENE_LABEL = "$HIP"    # the fixed scene row's label, and the token the last folder remembers it by
     scene_folder_changed = QtCore.Signal(str, str)    # (old, new) once the scene row reads another folder
+    scene_folder_left = QtCore.Signal(str)    # (old) once the scene row is gone: the scene has no file
     COUNT_ROLE = category.SIDEBAR_COUNT_ROLE    # the ONE definition, shared by every sidebar model
     unfolds = True    # its rows keep an arrow's room ▸r/tree-views
 
@@ -158,7 +164,7 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
     remove_folder_method = ""
     relocate_folder_method = ""    # re-points one folder IN ITS OWN ROW ▸p/folder-sidebar
     move_folder_method = ""        # the sidebar reorder; empty = this section's folders do not reorder
-    COUNT_WORKERS = 4    # reads at once: a slow share holds one, the other reads keep landing
+    COUNT_WORKERS = 2    # reads at once: a slow share holds one; four slowed the paint ▸r/count-workers
     ANNOUNCE_MS = 100    # reads landing inside this window repaint the sidebar once, not each
     _counts_asked = QtCore.Signal()    # queued: an ask from ANY thread dispatches on the GUI thread
 
@@ -178,6 +184,7 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
         self._announce_armed = False
         self._rows: list = []
         self._rows_key = None    # what `_rows` was read against; None reads again
+        self._held = None    # the rows the views know, while a write is answered; SET here ▸r/qobject-missing-attribute
         self._records: dict = {}    # path -> its location record, read against `_records_key`
         self._records_key = None
         self._listed: dict = {}    # folder path -> the subfolder names its last read found
@@ -199,9 +206,8 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
 
 
     def _folders(self) -> list:
-        held = getattr(self, "_held", None)    # the rows the views know, while a write is answered
-        if held is not None:
-            return held
+        if self._held is not None:
+            return self._held
         key = self._rows_token()
         if key != self._rows_key:
             self._rows = list(getattr(self.preferences, self.folders_attr))
@@ -257,6 +263,7 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
             self._forget_row(self._node_ids.get((_SCENE, old)))
             self.endRemoveRows()
             self._out_of_date((old,), keep=False)
+            self.scene_folder_left.emit(old)
             return True
         self._repoint(1, _SCENE, old, path, lambda: setattr(self, "_scene", path))
         self.scene_folder_changed.emit(old, path)
@@ -264,7 +271,6 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
 
     def _rows_token(self) -> tuple:
         """What the registered list derives from: a location write, the copy's order, library, user."""
-        from amaze.core import locations
         preferences = self.preferences
         return (locations.generation(),
                 tuple(getattr(preferences, "last_known_folders", ()) or ()),
@@ -345,7 +351,6 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
 
     def _record(self, path: str) -> dict:
         """One location's record, kept until a location write or a store rereads its file."""
-        from amaze.core import keyed_store, locations
         key = (self._rows_token(), keyed_store.loads())
         if key != self._records_key:
             self._records = {}
@@ -363,14 +368,12 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
         """The innermost registered location a folder sits in, else the folder itself."""
         if not path:
             return path    # no folder, no location: the global rule answers
-        from amaze.core import locations
         return locations.innermost(self._folders(), path) or path
 
     def top_of(self, path: str) -> str:
         """The innermost top row's folder a folder sits in, the scene's included, else the folder itself."""
         if not path:
             return path
-        from amaze.core import locations
         return locations.innermost(self._tops(), path) or path
 
     def display_name(self, path: str) -> str:
@@ -527,17 +530,33 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
         if not parent.isValid():
             return
         keep = set(wanted)
-        for row in range(len(kids) - 1, -1, -1):
-            if kids[row] not in keep:
-                self.beginRemoveRows(parent, row, row)
-                gone = kids.pop(row)
+        last = len(kids)    # neighbours go, and come, as ONE signal: each costs every view a pass
+        while last > 0:
+            first = last
+            while first > 0 and kids[first - 1] not in keep:
+                first -= 1
+            if first == last:
+                last -= 1
+                continue
+            self.beginRemoveRows(parent, first, last - 1)
+            for gone in kids[first:last]:
                 self._forget_row(self._node_ids.get((row_id, gone)))
-                self.endRemoveRows()
-        for row, path in enumerate(wanted):
-            if row >= len(kids) or kids[row] != path:
-                self.beginInsertRows(parent, row, row)
-                kids.insert(row, path)
-                self.endInsertRows()
+            del kids[first:last]
+            self.endRemoveRows()
+            last = first
+        row = 0
+        while row < len(wanted):
+            if row < len(kids) and kids[row] == wanted[row]:
+                row += 1
+                continue
+            following = kids[row] if row < len(kids) else None    # the next row already standing
+            end = row + 1
+            while end < len(wanted) and wanted[end] != following:
+                end += 1
+            self.beginInsertRows(parent, row, end - 1)
+            kids[row:row] = wanted[row:end]
+            self.endInsertRows()
+            row = end
 
     def _forget_row(self, row_id) -> None:
         """Drop a row id and everything below it; no signals - its rows are already gone."""

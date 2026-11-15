@@ -505,6 +505,26 @@ class KindRouterTest(unittest.TestCase):
                 ("l.hip.bak", "other"), ("v.vdb", "other")):    # a cache is not rendered unasked
             self.assertEqual(kind, file_library.kind_for(name), name)
 
+    def test_the_router_answers_as_the_three_recognisers_do(self):
+        from amaze.core import scene_files, texture_library
+
+        def by_recogniser(name):
+            if scene_files.matched_extension(name):
+                return "hip"
+            if texture_library.matched_extension(name):
+                return "image"
+            if geo_library.matched_extension(name):
+                return "geometry"
+            return "other"
+
+        for name in ("A.HIP", "a.Hiplc", "x.BGEO.SC", "x.bgeo.SC", "x.bgeo", "shot.v001.EXR",
+                     "name.exr.txt", "hip", ".hip", "png", "a.", "", "a.tx", "a.TX", "a.txt",
+                     "É.PNG", "a.usd.bak", "a.hip.png", "a.png.hip", "a b.jpeg"):
+            self.assertEqual(by_recogniser(name), file_library.kind_for(name), repr(name))
+        with mock.patch.object(scene_files, "HIP_EXTENSIONS", (".Scene", "")):
+            self.assertEqual("hip", file_library.kind_for("a.SCENE"), "a list's own case decided the match")
+            self.assertEqual("other", file_library.kind_for("a.dat"), "an empty entry matched every name")
+
     def test_the_loader_sop_follows_the_file_type(self):
         for name, sop in (("a.abc", "alembic"), ("b.usd", "usdimport"), ("c.USDZ", "usdimport"),
                           ("d.glb", "file"), ("e.fbx", "file"), ("f.dxf", "file")):

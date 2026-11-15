@@ -1056,6 +1056,20 @@ def matched_extension(name: str, extensions) -> str:
     return best
 
 
+_endings: dict = {}    # an extensions tuple -> its entries lower-cased, as `str.endswith` takes them
+
+
+def has_extension(name: str, extensions) -> bool:
+    """`matched_extension` as a yes or no, in one C call: for a per-file loop."""
+    try:
+        endings = _endings.get(extensions)
+    except TypeError:    # a list: nothing to remember it by
+        return bool(matched_extension(name, extensions))
+    if endings is None:
+        endings = _endings[extensions] = tuple(ext.lower() for ext in extensions if ext)
+    return name.lower().endswith(endings)
+
+
 class PathEscape(ValueError):
     """A composed path landed outside the directory it had to stay in."""
 

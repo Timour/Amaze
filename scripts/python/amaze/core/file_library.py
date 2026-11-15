@@ -15,12 +15,12 @@ from amaze.helpers import hostos
 
 
 def kind_for(name: str) -> str:
-    """Which per-type behaviour a filename gets, by each section's own recogniser."""
-    if scene_files.matched_extension(name):
+    """Which per-type behaviour a filename gets, by each section's own extensions; runs per file."""
+    if hostos.has_extension(name, scene_files.HIP_EXTENSIONS):
         return locations.KIND_HIP
-    if texture_library.matched_extension(name):
+    if hostos.has_extension(name, texture_library.IMAGE_EXTENSIONS):
         return locations.KIND_IMAGE
-    if geo_library.matched_extension(name):
+    if hostos.has_extension(name, geo_library.GEO_EXTENSIONS):
         return locations.KIND_GEO
     return locations.KIND_OTHER
 

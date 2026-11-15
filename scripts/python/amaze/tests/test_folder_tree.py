@@ -13,7 +13,7 @@ from PySide6 import QtCore, QtGui, QtTest, QtWidgets
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 from amaze import amazetheme  # noqa: E402
-from amaze.core import category, file_library, locations  # noqa: E402
+from amaze.core import category, file_library, folders, locations  # noqa: E402
 from amaze.helpers import hostos, theme, ui_helpers  # noqa: E402
 from amaze.panel import delegates, sidebar  # noqa: E402
 from amaze.tests import test_support  # noqa: E402 - arms the sandbox
@@ -229,6 +229,41 @@ class ALocationUnfoldsToItsSubfolders(unittest.TestCase):
         self.assertEqual([(self.loc, 2, 2)], inserted, "not just d's row came")
         self.assertEqual(1, model.rowCount(model.index_of(_child(self.loc, "A"))),
                          "an unchanged subfolder lost its own children")
+
+    def test_rows_that_come_or_go_side_by_side_are_one_signal(self):
+        model, _prefs, (loc,) = _model(self, {"A": {"p": {}, "q": {}, "r": {}, "s": {}}})
+        _shown(model, loc)
+        test_support.pump_until(lambda: model.rowCount(model.index_of(loc)) == 1)
+        inside = _child(loc, "A")
+        self.assertEqual(0, model.rowCount(model.index_of(inside)))    # asked before its read, as a paint asks
+        removed, inserted = [], []
+        model.rowsRemoved.connect(
+            lambda p, a, b: removed.append((p.data(model.BrowseRole), a, b)))
+        model.rowsInserted.connect(
+            lambda p, a, b: inserted.append((p.data(model.BrowseRole), a, b)))
+        _shown(model, inside)
+        self.assertTrue(test_support.pump_until(lambda: model.rowCount(model.index_of(inside)) == 4))
+        self.assertEqual([(inside, 0, 3)], inserted, "four subfolders of one read came as four signals")
+        for name in ("q", "r"):
+            os.rmdir(os.path.join(inside, name))
+        model.refresh_counts()
+        model.data(model.index_of(inside), COUNT)
+        self.assertTrue(test_support.pump_until(
+            lambda: _names(model, model.index_of(inside)) == ["p", "s"]))
+        self.assertEqual([(inside, 1, 2)], removed, "two neighbours left as two signals")
+
+    def test_names_that_differ_only_by_case_keep_one_order(self):
+        self.assertEqual(["A", "a", "b"], folders.name_order(["b", "a", "A"]))
+        self.assertEqual(["A", "a", "b"], folders.name_order(["a", "b", "A"]),
+                         "the order followed the disk's, so a refresh could show a row twice")
+
+    def test_the_rows_are_asked_without_a_missing_attribute(self):
+        self.assertTrue("_held" in vars(self.model),    # ▸r/qobject-missing-attribute
+                        "every row lookup pays Qt's price for an attribute that is not there")
+
+    def test_no_more_than_two_folders_are_read_at_once(self):
+        self.assertLessEqual(self.model.COUNT_WORKERS, 2,    # ▸r/count-workers
+                             "four counters at once doubled the sidebar's paint time on a large tree")
 
     def test_removing_a_location_takes_its_subfolders_with_it(self):
         model = self.model
