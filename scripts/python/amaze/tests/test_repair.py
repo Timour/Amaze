@@ -1866,7 +1866,9 @@ class TheRealLibrarysWholeShapeTest(unittest.TestCase):
                              {"scratch", "pre-adopt", "duplicate"})
         text = "\n".join(repair.report_lines(findings))
         self.assertIn("nothing needs any more", text)
-        self.assertIn("not files Amaze knows", text)
+        self.assertTrue("not files Amaze knows" in text or "not a file Amaze knows" in text,
+                        "the files Amaze does not know are not named as such")
+        self.assertNotIn("img/comments", text, "the comment pictures folder is reported")
 
 
 class TestRecoveredRowsAreVisible(unittest.TestCase):

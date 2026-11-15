@@ -22,6 +22,7 @@ CAPTURE_FOLDER = "captures"
 CODE_FOLDER = "code"
 VERSIONS = "versions"
 PACKAGE_FOLDER = "matX"    # a permanent store: the check does not enter it, the audit looks for scratch only
+COMMENT_FOLDER = "comments"    # `img/comments/`, the pictures pasted into comments; `notes.IMAGE_DIR`
 IMPORT_FOLDER = "import"    # where Package Import writes plain files: a File location, its contents the user's
 LEDGER = "versions.json"
 
@@ -55,6 +56,7 @@ RENDER = "render"            # `img/<id>.png`
 TILE_ICON = "tile-icon"
 CAPTURE = "capture"          # `captures/<id>.png`
 FILE_CAPTURE = "file-capture"    # `captures/file_<40 hex>.png`
+COMMENT_IMAGE = "comment-image"    # `img/comments/<32 hex>.<ext>`
 VERSION = "version"
 VERSION_LEDGER = "ledger"
 PACKAGE = "package"
@@ -68,7 +70,7 @@ UNREADABLE = "unreadable"    # a folder `walk` could not list; its detail is the
 
 KNOWN = frozenset((LIST, SIDE_TABLE, POLICY_FILE, MARKER, BACKUP, UNDO, PRESERVED,
                    ASSET, BUILDER, STAMP, COMPANION, RENDER, TILE_ICON, CAPTURE,
-                   FILE_CAPTURE, VERSION, VERSION_LEDGER, PACKAGE, FOLDER))
+                   FILE_CAPTURE, COMMENT_IMAGE, VERSION, VERSION_LEDGER, PACKAGE, FOLDER))
 COPIES = frozenset((BACKUP, UNDO, PRESERVED))    # a duplicate of one of these is swept whatever its bytes
 OUT_OF_PLACE = frozenset((SCRATCH, PRE_ADOPT_COPY, DUPLICATE, UNKNOWN))    # `walk` stats these, and only these
 
@@ -76,6 +78,7 @@ _UNDO = re.compile(r"^%s-\d{8}-\d{6}(-\d+)?$" % re.escape(UNDO_TIER))
 _PRESERVED = re.compile(r"^unreadable(\.\d+)?$")
 _STEM = re.compile(r"^(?:[^\W_]+-)?\d+$")    # a version stem: `<writer>-<n>` or `<n>`, the writer alphanumeric
 _FILE_CAPTURE = re.compile(r"^file_[0-9a-f]{40}\.png$")
+_COMMENT_IMAGE = re.compile(r"^[0-9a-f]{32}\.\w+$")
 _COPY_NUMBER = re.compile(r" \d+(?=\.|$)")
 
 
@@ -183,6 +186,8 @@ def _folder(parts: list) -> bool:
                             CODE_FOLDER, PACKAGE_FOLDER, IMPORT_FOLDER)
     if parts[0] == PACKAGE_FOLDER:
         return True
+    if parts == [RENDER_FOLDER, COMMENT_FOLDER]:
+        return True
     if parts[0] in (ASSET_FOLDER, CODE_FOLDER) and parts[1] == VERSIONS:
         return depth == 2 or (depth == 3 and parts[2].isalnum())
     return False
@@ -200,6 +205,8 @@ def _plain(parts: list):
         return _render_folder(name)
     if depth == 2 and top == CAPTURE_FOLDER:
         return _capture_folder(name)
+    if depth == 3 and parts[:2] == [RENDER_FOLDER, COMMENT_FOLDER]:
+        return (COMMENT_IMAGE, "") if _COMMENT_IMAGE.match(name.lower()) else None
     if depth == 4 and parts[1] == VERSIONS and parts[2].isalnum():
         if top == ASSET_FOLDER:
             return _version_folder(name, VERSION_SUFFIXES)

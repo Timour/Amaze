@@ -286,6 +286,20 @@ class LeftoversTest(_Library):
                          "a file Package Import wrote is called unknown")
         self.assertEqual(0, repair.unknown_to_move_aside(findings))
 
+    def test_the_comment_pictures_folder_is_not_offered_to_move(self):
+        """A picture pasted into a comment is copied to img/comments/ under a 32-hex name."""
+        self.assertEqual((library_files.FOLDER, ""),
+                         library_files.classify("img/comments", is_dir=True))
+        self._file("img/comments/0123456789abcdef0123456789abcdef.png")
+        self._file("img/comments/0123456789abcdef0123456789abcdef.JPG")
+        stray = self._file("img/comments/holiday.png")
+        findings = self._survey()
+        self.assertEqual([], [entry[0] for entry in findings["unknown_folders"]],
+                         "the comment pictures folder is offered to Move Unknown Files Aside")
+        self.assertEqual(["img/comments/holiday.png"], [entry[0] for entry in findings["unknown"]],
+                         "a comment picture is called unknown, or a stray file there is not")
+        self.assertTrue(os.path.exists(stray))
+
     def test_the_os_s_own_files_are_neither_named_nor_moved(self):
         self._file(".DS_Store")
         self._file("mat/._x.mat")
@@ -987,6 +1001,7 @@ class TheAuditToolTest(unittest.TestCase):
             os.makedirs(os.path.dirname(path), exist_ok=True)
             open(path, "w").close()
         os.makedirs(os.path.join(library, "img", "comments"))
+        os.makedirs(os.path.join(library, "img", "elsewhere"))
         done = self._run(library)
         self.assertEqual(1, done.returncode, done.stdout + done.stderr)
         for kind, relative in (("scratch", "mat/a.mat.x1.writing"),
@@ -994,9 +1009,10 @@ class TheAuditToolTest(unittest.TestCase):
                                ("duplicate", "notes.json 2.bak-3"),
                                ("unknown", "stray.txt"),
                                ("scratch", "matX/pack/half.tmp"),
-                               ("unknown", "img/comments/")):
+                               ("unknown", "img/elsewhere/")):
             line = next((one for one in done.stdout.splitlines() if relative in one), "")
             self.assertIn(kind, line, "%s is not named as %s:\n%s" % (relative, kind, done.stdout))
+        self.assertNotIn("img/comments", done.stdout, "the comment pictures folder is named as a fault")
 
 
 if __name__ == "__main__":
