@@ -176,8 +176,8 @@ register(
     noun="comment",
     category="notes",
     alert_key="notes-unreadable",
-    unreadable_alert="Your comments could not be read, so Amaze has paused saving to that file to protect it. Anything you write will not be kept. Put back a recent copy with Library ▸ Check Library… in Amaze.",
-    refused_sentence="the notes file could not be read earlier this run, so what you wrote was not saved — writing now would replace every note already in it.",
+    unreadable_alert="Your comments could not be read, so Amaze has opened that file read-only. Anything you write will not be kept. Restore a backup with Library ▸ Check Library… in Amaze.",
+    refused_sentence="the notes file could not be read earlier this session, so what you wrote was not saved — writing now would replace every note already in it.",
     denied_alert="Your comment could not be saved. Everything already saved is intact — only this change was dropped. It is still on screen; copy it somewhere safe before closing Houdini.",
     survives_forget=False,
 )
@@ -196,8 +196,8 @@ register(
     noun="location path",
     category="file",
     alert_key="location-paths-unreadable",
-    unreadable_alert="Your registered folders' paths could not be read, so Amaze has paused saving to that file to protect it. Any folder you add or move now will not be kept. Put back a recent copy with Library ▸ Check Library… in Amaze.",
-    refused_sentence="the registered folders' paths could not be read earlier this run, so this change was not saved — writing now would replace every path already in the database.",
+    unreadable_alert="Your registered folders' paths could not be read, so Amaze has opened that file read-only. Any folder you add or move now will not be kept. Restore a backup with Library ▸ Check Library… in Amaze.",
+    refused_sentence="the registered folders' paths could not be read earlier this session, so this change was not saved — writing now would replace every path already in the database.",
     survives_forget=True,
 )
 
@@ -209,8 +209,8 @@ register(
     noun="location",
     category="file",
     alert_key="locations-unreadable",
-    unreadable_alert="Your registered folders could not be read, so Amaze has paused saving to that file to protect it. Any folder you add or rename now will not be kept. Put back a recent copy with Library ▸ Check Library… in Amaze.",
-    refused_sentence="the registered folders file could not be read earlier this run, so this change was not saved — writing now would replace every folder already in the database.",
+    unreadable_alert="Your registered folders could not be read, so Amaze has opened that file read-only. Any folder you add or rename now will not be kept. Restore a backup with Library ▸ Check Library… in Amaze.",
+    refused_sentence="the registered folders file could not be read earlier this session, so this change was not saved — writing now would replace every folder already in the database.",
     survives_forget=False,
     user_tagged=True,
 )
@@ -223,8 +223,8 @@ register(
     noun="favourite",
     category="file",
     alert_key="favourites-unreadable",
-    unreadable_alert="Your favorites could not be read, so Amaze has paused saving to that file to protect it. Anything you star will not be kept. Put back a recent copy with Library ▸ Check Library… in Amaze.",
-    refused_sentence="the favorites file could not be read earlier this run, so your star was not saved — writing now would replace every favorite already in it.",
+    unreadable_alert="Your favorites could not be read, so Amaze has opened that file read-only. Anything you star will not be kept. Restore a backup with Library ▸ Check Library… in Amaze.",
+    refused_sentence="the favorites file could not be read earlier this session, so your star was not saved — writing now would replace every favorite already in it.",
     survives_forget=False,
     user_tagged=True,
 )
@@ -237,8 +237,8 @@ register(
     noun="user",
     category="users",
     alert_key="users-unreadable",
-    unreadable_alert="The users database could not be read, so Amaze has paused saving to it to protect it. Any user you add, rename or delete now will not be kept. Put back a recent copy with Library ▸ Check Library… in Amaze.",
-    refused_sentence="the users database could not be read earlier this run, so your change was not saved — writing now would replace everyone already in it.",
+    unreadable_alert="The users database could not be read, so Amaze has opened it read-only. Any user you add, rename or delete now will not be kept. Restore a backup with Library ▸ Check Library… in Amaze.",
+    refused_sentence="the users database could not be read earlier this session, so your change was not saved — writing now would replace everyone already in it.",
     survives_forget=True,
 )
 
@@ -250,8 +250,8 @@ register(
     noun="tile icon",
     category="icons",
     alert_key="icons-unreadable",
-    unreadable_alert="Your chosen tile icons could not be read, so Amaze has paused saving to that file to protect it. Any icon you pick will not be kept. Put back a recent copy with Library ▸ Check Library… in Amaze.",
-    refused_sentence="the tile icon file could not be read earlier this run, so your icon choice was not saved — writing now would replace every icon already in it.",
+    unreadable_alert="Your chosen tile icons could not be read, so Amaze has opened that file read-only. Any icon you pick will not be kept. Restore a backup with Library ▸ Check Library… in Amaze.",
+    refused_sentence="the tile icon file could not be read earlier this session, so your icon choice was not saved — writing now would replace every icon already in it.",
     denied_alert="The icon you picked could not be saved. Everything already saved is intact — only this choice was dropped. The tile reverts to its previous icon next time Amaze opens.",
     survives_forget=False,
 )
@@ -266,8 +266,8 @@ register(
     noun="setting",
     category="prefs",
     alert_key="shared-settings-unreadable",
-    unreadable_alert="The library's shared settings could not be read, so Amaze has paused saving to that file to protect it. Any shared setting you change now will not be kept. Put back a recent copy with Library ▸ Check Library… in Amaze.",
-    refused_sentence="the shared settings file could not be read earlier this run, so your change was not saved — writing now would replace every setting already in it.",
+    unreadable_alert="The library's shared settings could not be read, so Amaze has opened that file read-only. Any shared setting you change now will not be kept. Restore a backup with Library ▸ Check Library… in Amaze.",
+    refused_sentence="the shared settings file could not be read earlier this session, so your change was not saved — writing now would replace every setting already in it.",
     denied_alert="Your setting could not be saved. Everything already saved is intact — only this change was dropped. It still applies for now and reverts next time Amaze opens.",
     survives_forget=True,
 )
@@ -294,8 +294,8 @@ register(
         "users": MERGE_FIELDS,
     },
     alert_key="prefs-unreadable",
-    unreadable_alert="Your Amaze settings could not be read, so Amaze will not overwrite the file and defaults are in use. Any setting you change now will not be kept. Your library path, folders and favorites remain recorded in the file, and the settings are also in the debug log. Put them back with Library ▸ Check Library… in the Amaze panel.",
-    refused_sentence="your settings could not be read earlier this run, so this change was not saved — writing now would replace the library path, folders and favourites already in the file.",
+    unreadable_alert="Your Amaze settings could not be read, so Amaze will not overwrite the file and defaults are in use. Any setting you change now will not be kept. Your library path, folders and favorites remain recorded in the file, and the settings are also in the debug log. Restore a backup with Library ▸ Check Library… in the Amaze panel.",
+    refused_sentence="your settings could not be read earlier this session, so this change was not saved — writing now would replace the library path, folders and favourites already in the file.",
     denied_alert="Amaze could not save your preferences. They still apply now but won't be there next time Houdini opens.",
     survives_forget=True,
 )
@@ -711,7 +711,7 @@ class Store:
         spec = self.spec
         if not self.writable:
             debug.note(spec.refused_sentence or (
-                "%s could not be read earlier this run, so your change "
+                "%s could not be read earlier this session, so your change "
                 "was not saved." % spec.label), path=self.path)
             reason = (REASON_ABSENT if self.trace else REASON_LATCHED)
             return Written(False, reason, spec.refused_sentence, keys)

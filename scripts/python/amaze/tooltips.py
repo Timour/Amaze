@@ -27,11 +27,11 @@ PREFS_RENAME_USER = 'Change the name shown for this user. Only the name changes;
 
 PREFS_DELETE_USER = 'Remove this user, their favorites, and their folders. You will be asked to confirm.'
 
-PREFS_CACHE_PATH = 'Where preview copies are kept on this machine.'
+PREFS_CACHE_PATH = 'Where the preview cache is kept on this machine.'
 
 PREFS_DEFAULT_CACHE = 'Move the preview cache back to its default location. Nothing is deleted; previews are rebuilt at the new location as you browse.'
 
-PREFS_DELETE_LOCAL_CACHE = 'Delete the preview copies. They rebuild as you browse; your library is not touched.'
+PREFS_DELETE_LOCAL_CACHE = 'Delete the preview cache. It rebuilds as you browse; your library is not touched.'
 
 PREFS_RENDER_SIZE = 'Thumbnail size in pixels. Bigger looks sharper but takes longer to render.'   # ▸ Preferences - Render tab (P02)
 

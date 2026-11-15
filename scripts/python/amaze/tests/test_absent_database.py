@@ -476,7 +476,7 @@ class SiblingAbsenceHoldsTheMoveAsideBackTest(unittest.TestCase):
                       "the report does not name the section it is waiting for")
         self.assertIn("run Check Library again", text)
         self.assertIn("Amaze could not check the Node database either", text)
-        self.assertIn("Node: saved copies - from ", text,
+        self.assertIn("Node: backups - from ", text,
                       "nothing says the trace is a saved copy that can be put back")
         self.assertNotIn("cops.json", text, "the report names the storage file, never seen")
         self.assertNotIn("not on disk", text)
@@ -1262,7 +1262,7 @@ class AStampedAssetIsNotAStrayTest(unittest.TestCase):
         self.assertFalse(os.path.exists(self.leftover),
                          "a file with no stamp beside it stayed: Move Aside has stopped moving")
         said = [part for part in " ".join(repair.report_lines(findings)).split(". ")
-                if "can still be put back" in part]
+                if "can still be added back" in part]
         self.assertEqual(1, len(said), "the spared files are not named once: %s" % said)
         for guess in ("material", "node", "snippet"):    # no list claims it: a section is a guess
             self.assertNotIn(guess, said[0].lower(),

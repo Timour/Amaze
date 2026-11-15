@@ -438,7 +438,7 @@ def repair_index(directory: str, asset_dir: str = "mat/", guard: bool = True) ->
         debug.event("repair", "index restored from a snapshot",
                     tier=tier, undo=outcome.get("undo", ""))
         return True, _after_a_put_back(directory, asset_dir, "library.json",
-                                       "the newest saved copy was put back")["said"]
+                                       "the newest backup was restored")["said"]
     document = rebuild_from_stamps(directory, asset_dir)
     if document["unreadable"]:  # an unparsed list claims nothing ▸p/clean-library-sweep
         debug.event("repair", "rebuild refused - a sibling list is "
@@ -447,8 +447,8 @@ def repair_index(directory: str, asset_dir: str = "mat/", guard: bool = True) ->
                        "assets from this database's"
                        % wording.and_list(document["unreadable"]))
     if not document["assets"]:
-        return False, ("no saved copy parses and no recovery stamps "
-                       "were found")
+        return False, ("no backup can be read and no asset metadata "
+                       "was found")
     try:
         hostos.preserve_unreadable(target, why="library index")  # the only copy kept of an unparsable file ▸p/db-restore
         hostos.snapshot_before_write(target)
@@ -462,7 +462,7 @@ def repair_index(directory: str, asset_dir: str = "mat/", guard: bool = True) ->
         debug.event("repair", "stamp rebuild could not be written",
                     error=str(exc))
         return False, "the rebuilt database could not be written"
-    how = "the database was rebuilt from what each asset remembers"
+    how = "the database was rebuilt from each asset's metadata"
     if document["damaged"]:
         how += " (%d could not be read)" % len(document["damaged"])
     debug.event("repair", "index rebuilt from stamps",
@@ -631,8 +631,8 @@ def copy_named_by_what_it_holds(filename: str, snap: dict) -> str:
 
 def _snapshot_line(entry: dict) -> str:
     if not entry["snapshots"]:
-        line = ("%s: there are no saved copies of this database beside it, so "
-                "there is nothing to put back." % entry["label"])
+        line = ("%s: there are no backups of this database, so "
+                "there is nothing to restore." % entry["label"])
         if entry["filename"] in database.ASSET_FILE_OWNERS:
             # Only where it is true: Code and Colors keep their assets inline.
             line += (" Your %s' own files and thumbnails are still in the "
@@ -644,7 +644,7 @@ def _snapshot_line(entry: dict) -> str:
         part = copy_named_by_what_it_holds(entry["filename"], snap)
         if part not in parts:    # two copies alike read as one
             parts.append(part)
-    return "%s: saved copies - %s." % (entry["label"], "; ".join(parts))
+    return "%s: backups - %s." % (entry["label"], "; ".join(parts))
 
 
 def report_lines(findings: dict) -> list:
@@ -684,7 +684,7 @@ def report_lines(findings: dict) -> list:
             % _and_folders(findings["unreadable_folders"]))
     elif total and findings["complete"]:
         held = ["None of them will be moved to the trash while a database that may own "
-                "them holds nothing: put a saved copy of it back, or add them to a section."
+                "them holds nothing: restore a backup of it, or add them to a section."
                 ] if why_unlisted_stay(findings) else []
         problems.append(" ".join(["%s %s. Either they belong to something "
                                   "whose database was lost, or nothing needs them any more."
@@ -721,10 +721,10 @@ def _orphaned(count: int) -> str:
 
 _TROUBLE_LINES = {    # a list's state, and the line it gets when it is in trouble
     "empty": "%s: the database is there and holds nothing.",
-    "unreadable": "%s: the database is there and Amaze cannot read it. It has not been changed.",
+    "unreadable": "%s: the database is corrupt or cannot be read. It has not been changed.",
     "absent-but-known": (
         "%s: there is no database for it in the library folder, though Amaze can see there "
-        "was one here before. If this folder syncs, it may still be on its way - give it "
+        "was one here before. If this folder syncs, it may not have synced yet - give it "
         "a minute and run Check Library again."),
 }
 
@@ -812,7 +812,7 @@ def _check_lines(findings: dict) -> tuple:
     gone = _leftover_lines(findings) + _unknown_lines(findings)
     said.extend(gone)
     if not gone:
-        well.append("Nothing is left over from a save that did not finish, and every file "
+        well.append("There are no temporary files from a save that did not finish, and every file "
                     "in the library folder has a name Amaze knows.")
     loose = findings.get("uncategorised") or {}
     if any(loose.values()):
@@ -828,20 +828,20 @@ def _check_lines(findings: dict) -> tuple:
         well.append("Every folder in the Files section is on this computer, and "
                     "every starred file is still there.")
     for filename, holds, newest in findings.get("shrunk", ()):
-        said.append("Your %s database holds %s, but its newest saved copy holds %s. If you "
-                    "did not remove them yourself, that copy can be put back."
+        said.append("Your %s database holds %s, but its newest backup holds %s. If you "
+                    "did not remove them yourself, that backup can be restored."
                     % (database.section_label(filename), _counted(holds, filename),
                        _counted(newest, filename)))
     return said, well
 
 
 _LEFTOVER_KINDS = (    # (kind, one, more)
-    (naming.SCRATCH, "file left by a save that did not finish",
-     "files left by saves that did not finish"),
+    (naming.SCRATCH, "temporary file from a save that did not finish",
+     "temporary files from saves that did not finish"),
     (naming.PRE_ADOPT_COPY, "backup kept from before an earlier texture update",
      "backups kept from before an earlier texture update"),
-    (naming.DUPLICATE, "second copy a sync service made of a file still here",
-     "second copies a sync service made of files still here"),
+    (naming.DUPLICATE, "conflict copy a sync service made of a file still here",
+     "conflict copies a sync service made of files still here"),
 )
 
 
@@ -860,10 +860,10 @@ def _leftover_lines(findings: dict) -> list:
                        _named("`%s`" % entry[0] for entry in leftovers)))
     for relative, original, size, when, why in findings.get("held_back") or []:
         if why == "alone":
-            said.append("`%s` looks like a second copy of `%s`, which is not here, so "
+            said.append("`%s` looks like a conflict copy of `%s`, which is not here, so "
                         "it is left where it is." % (relative, original))
         else:
-            said.append("`%s` is a second version of `%s`, from %s (%s), and the two "
+            said.append("`%s` is a conflict copy of `%s`, from %s (%s), and the two "
                         "differ, so it is left where it is." % (
                             relative, original, _day(when), _size(size)))
     return said
@@ -1009,8 +1009,8 @@ def _what_can_be_added_back(findings: dict) -> list:
     spared = len(_files_of(findings, stamped_unlisted(findings)))
     if spared:
         one = spared == 1
-        said.append("Moving files to the trash leaves %s where %s: the name and category of what "
-                    "%s to are saved beside %s, so %s can still be put back."
+        said.append("Moving files to the trash leaves %s where %s: the metadata of what "
+                    "%s to is saved beside %s, so %s can still be added back."
                     % (files(spared), "it is" if one else "they are",
                        "it belongs" if one else "they belong", "it" if one else "them",
                        "it" if one else "they"))
@@ -1025,7 +1025,7 @@ def _materials_sentence(on_record: list) -> str:
     if count <= 6:
         names = ": " + wording.and_list([str(record.get("name") or asset_id)
                                           for asset_id, record in on_record])
-    return ("The files include %d %s with %s name, category and tags saved "
+    return ("The files include %d %s with %s metadata saved "
             "beside %s%s. Add %s Back puts %s in the %s database."
             % (count, database.section_noun("library.json", count),
                "its" if one else "their", "it" if one else "them", names,
@@ -1038,7 +1038,7 @@ def _folder_name(folder: str) -> str:
 
 
 _SESSION_HOLDS_THE_LIBRARY = (
-    "this Houdini has already read the library, so open Amaze and use Library ▸ Check Library…")
+    "this Houdini session has already read the library, so open Amaze and use Library ▸ Check Library…")
 
 
 def _refuse_a_houdini_that_holds_the_library(refusal=ValueError) -> None:
@@ -1275,7 +1275,7 @@ def why_nothing_can_be_added(findings: dict, filename: str = "") -> str:
                     "one of the library's databases cannot be read, so these "
                     "files may belong to it")
         if entry["state"] == "absent-but-known" and entry["filename"] != filename:
-            return ("the %s database has not arrived in the library folder yet, so these "
+            return ("the %s database has not synced to the library folder yet, so these "
                     "files may belong to it" % entry["label"])
     return ""
 
@@ -1289,7 +1289,7 @@ def _add_rows(findings: dict, filename: str, ids: list) -> dict:
     missing = _state_of(findings, filename) in _MISSING
     if missing and os.path.exists(path):
         debug.event("repair", "a list arrived after the survey", file=filename)
-        raise ValueError("the database has arrived in the library folder since "
+        raise ValueError("the database has synced into the library folder since "
                          "Amaze looked, so nothing was added to it - run "
                          "Check Library again")
     document, error = (({"categories": ["_All"], "tags": [], "assets": []}, "")
@@ -1418,7 +1418,7 @@ def put_back(findings: dict, filename: str, tier: str, guard: bool = True) -> di
     if guard:
         _refuse_a_houdini_that_holds_the_library(
             lambda phrase: restore_lib.RestoreRefused(
-                "Nothing was put back: %s." % phrase))
+                "Nothing was restored: %s." % phrase))
     target = target_of(findings, filename)
     done = restore_lib.put_back(target, tier, allow_loss=True)
     debug.event("repair", "saved copy put back", file=filename, tier=tier,

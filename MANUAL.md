@@ -812,9 +812,9 @@ report, with a button for each fix that applies. The report covers:
 - **The databases.** Each section keeps a database of what it holds,
   and the comments, tile icons, favorites, File locations, users and
   shared settings each have one too. The report gives what each
-  database holds, and names a database that is empty, cannot be read or
-  is missing, with its saved copies. A section's database that holds
-  under half of what its newest saved copy holds is named as well.
+  database holds, and names a database that is empty, corrupt or
+  missing, with its backups. A section's database that holds under half
+  of what its newest backup holds is named as well.
 - **Missing files and renders.** A material or node setup in a database
   whose `.mat` or `.interface` file is not in the library is named and
   stays in the database; **Delete** removes it. Materials and node setups
@@ -822,14 +822,14 @@ report, with a button for each fix that applies. The report covers:
   renders them.
 - **Orphaned files.** Files in the `mat`, `img` and `captures` folders
   that no database names.
-- **Leftovers.** Files Amaze made that nothing needs any more: scratch
-  files left by a save that did not finish, once they are an hour old;
-  the `.pre-adopt` backups kept from before an earlier texture update;
-  and second copies a sync service made of a file still in the library,
-  such as `notes.json 2.bak-3`. A second copy of a database or an asset file
-  counts only when its contents match the original's. One that differs
-  is named with its date and size and left in place, and so is a second
-  copy whose original is not there.
+- **Leftovers.** Files Amaze made that nothing needs any more:
+  temporary files from a save that did not finish, once they are an
+  hour old; the `.pre-adopt` backups kept from before an earlier texture
+  update; and conflict copies a sync service made of a file still in the
+  library, such as `notes.json 2.bak-3`. A conflict copy of a database
+  or an asset file counts only when its contents match the original's.
+  One that differs is named with its date and size and left in place,
+  and so is a conflict copy whose original is not there.
 - **Unknown files.** Files and folders with a name Amaze does not
   write, each named with its folder, size and date.
 - **No category.** Materials and node setups with no category, which
@@ -843,25 +843,26 @@ report, with a button for each fix that applies. The report covers:
 The fixes, each shown only when it applies:
 
 - **Add *N* Materials Back** puts orphaned materials back in the
-  Material database, with the name, category and tags saved beside each
-  one. It writes a new Material database when there is none.
-- **Put a Saved Copy Back** puts a database back to its newest saved
-  copy. The confirmation says how many items the copy holds and how many
-  the database holds now, and **Older Copies...** lists the earlier
-  copies. The database you have now is kept in the library folder, and
-  the next check offers it back. For the Material and Node databases,
-  items saved after the
-  copy come back from the record saved beside their files, and items
-  changed after it are brought up to date.
+  Material database, with the metadata saved beside each one: name,
+  category and tags. It writes a new Material database when there is
+  none.
+- **Restore Backup** restores a database from its newest backup. The
+  confirmation says how many items the backup holds and how many the
+  database holds now, and **Older Backups...** lists the earlier ones.
+  The database you have now is backed up in the library folder first,
+  and the next check offers that backup. For the Material and Node
+  databases, items saved after the backup come back from the metadata
+  saved beside their files, and items changed after it are brought up
+  to date.
 - **Add *N* Files to a Section** adds orphaned pairs of `.mat` and
   `.interface` files to the section you pick, Material or Node. Each one
-  keeps the name, category and tags recorded beside its files; one with
-  no such record comes back in a category called Recovered, named
-  Recovered plus the start of its file name.
+  keeps the metadata saved beside its files; one with no metadata comes
+  back in a category called Recovered, named Recovered plus the start of
+  its file name.
 - **Move *N* Files to Trash** moves the orphaned files and the leftovers
   into the trash. Orphaned files stay while a database that may own
-  them cannot be read or holds nothing, and so do files whose saved
-  record can still put them back in a database.
+  them is corrupt or holds nothing, and so do files whose metadata can
+  still add them back to a database.
 - **Move *N* Unknown Files to Trash** moves the unknown files and
   folders into the trash, after a confirmation that names each one.
 - **Set Aside *N* Folders** takes the File locations whose folder is not
@@ -890,15 +891,15 @@ new folder keeps it.
 Amaze panel will not open. With an Amaze panel open, it says to use the
 panel instead. When this Houdini session has already read the library,
 it shows the report without the fixes. When `settings.json`, the
-settings file that names the library, cannot be read, is missing or
-names no library, it lists the file's saved copies and puts the one you
-pick back.
+settings file that names the library, is corrupt, is missing or names
+no library, it lists the file's backups and restores the one you pick.
 
-When the Material database cannot be read as a library opens, Amaze asks
-first. **Repair** puts back the newest saved copy that holds materials,
-else the newest that reads. With no such copy, it rebuilds the database
-from the record saved beside each material; category names are kept,
-and their order and colors may change. The unreadable file is kept beside the database. **Open Without
+When the Material database is corrupt as a library opens, Amaze asks
+first. **Repair** restores the newest backup that holds materials, else
+the newest that reads. With no such backup, it rebuilds the database
+from the metadata saved beside each material; category names are kept,
+and their order and colors may change. The corrupt file is kept beside
+the database. **Open Without
 Library** leaves the folder unchanged. A message then says what Repair
 did, or why it could not.
 
@@ -911,8 +912,8 @@ exit with 1 when it finds anything, and `--quiet` prints only what it
 finds. It also looks inside the `matX` package folder, which Check
 Library leaves alone.
 
-Every write takes a snapshot of the database first, with rolling
-backups and a first-run copy, and writes from a second Houdini session
+Every write backs up the database first, with rolling backups and a
+first-run backup, and writes from a second Houdini session
 are merged.
 
 **Versions** (Preferences ▸ Library) is stored in the library,

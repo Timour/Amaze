@@ -152,7 +152,7 @@ class TheReportSaysWhatIsWrongTest(_Case):
         findings = self._survey()
         self.assertFalse(findings["complete"])
         text = "\n".join(repair.report_lines(findings))
-        self.assertIn("Node: the database is there and Amaze cannot read it.",
+        self.assertIn("Node: the database is corrupt or cannot be read.",
                       text)
         self.assertIn("Amaze could not check the Node database either, so "
                       "some of those files may be its", text,
@@ -186,7 +186,7 @@ class TheReportSaysWhatIsWrongTest(_Case):
         text = "\n".join(repair.report_lines(findings))
         self.assertIn("Amaze can see there was one here before", text,
                       "the report does not say the list was here before")
-        self.assertIn("still be on its way", text)
+        self.assertIn("may not have synced yet", text)
         self.assertIn("run Check Library again", text,
                       "a list that may still be arriving is reported with "
                       "no next step")
@@ -688,7 +688,7 @@ class AMissingListComesBackFromItsFilesTest(_Case):
                          "a copy holding no materials, or one of a list that reads "
                          "fine, was offered as the way back")
         choices, _actions = repair_dialog._choices(findings, may_change=True)
-        self.assertNotIn("Put a Saved Copy Back", choices)
+        self.assertNotIn("Restore Backup", choices)
 
     def test_while_a_list_is_missing_the_others_copies_stay_out(self):
         """A copy of a list that reads fine would only take things away from it."""
@@ -723,7 +723,7 @@ class AMissingListComesBackFromItsFilesTest(_Case):
         findings = self._survey()
         self.assertEqual([("cops.json", "bak-1")], self._offered(findings))
         line = [line for line in repair.report_lines(findings)
-                if line.startswith("Node: saved copies")][0]
+                if line.startswith("Node: backups")][0]
         self.assertEqual(1, line.count("2 saved nodes"), line)
 
     def test_a_copy_the_list_already_matches_is_not_offered(self):
@@ -1345,10 +1345,10 @@ class TheSettingsComeBackTest(_Case):
         ui = self._run(buttons=[0, 0, 0], listed=(0,))
         report = ui.displayMessage.call_args_list[0]
         self.assertIn("couldn't be read", str(report))
-        self.assertIn("Put a Saved Copy Back", report.kwargs["buttons"],
+        self.assertIn("Restore Backup", report.kwargs["buttons"],
                       "the settings that cannot be read are not offered back")
         self.assertNotIn(
-            "offers that copy back", ui.displayMessage.call_args_list[1].kwargs["help"],
+            "offers that backup", ui.displayMessage.call_args_list[1].kwargs["help"],
             "the confirm promises the unreadable settings back, and Repair refuses them")
         self.assertEqual(self.GOOD, self._read(self.settings),
                          "the saved copy did not land")
@@ -1370,7 +1370,7 @@ class TheSettingsComeBackTest(_Case):
             repair_dialog._do_restore_settings(
                 findings, "bak-1", dict(findings["settings"]["snapshots"])["bak-1"],
                 guard=True, changed=lambda: None)
-        self.assertIn("offers that copy back",
+        self.assertIn("offers that backup",
                       ui.displayMessage.call_args.kwargs["help"])
 
     def test_the_report_names_each_saved_copy_on_a_line_of_its_own(self):
@@ -1383,14 +1383,14 @@ class TheSettingsComeBackTest(_Case):
         when = {tier: restore_lib.info(self.settings + "." + tier)["when"]
                 for tier in ("bak-1", "bak-2")}
         self.assertIn(when["bak-1"], lines)
-        self.assertIn(when["bak-2"] + " — this copy can't be read", lines)
+        self.assertIn(when["bak-2"] + " — this backup can't be read", lines)
 
     def test_with_no_copy_it_says_so_and_changes_nothing(self):
         self._broken()
         ui = self._run(buttons=[0])
         self.assertEqual(1, ui.displayMessage.call_count)
         said = self._said(ui)
-        self.assertIn("no saved copy", said)
+        self.assertIn("no backup to restore", said)
         self.assertIn(self.config, said, "the folder to look in is not named")
         with open(self.settings, encoding="utf-8") as handle:
             self.assertTrue(handle.read().endswith("/libr"),
@@ -1402,7 +1402,7 @@ class TheSettingsComeBackTest(_Case):
         # the report's restore button, the confirm, the closing note
         ui = self._run(buttons=[0, 0, 0], listed=(0,))
         report = ui.displayMessage.call_args_list[0]
-        self.assertIn("Put a Saved Copy Back", report.kwargs.get("buttons", ()),
+        self.assertIn("Restore Backup", report.kwargs.get("buttons", ()),
                       "the saved copies of missing settings are not offered back")
         confirm = ui.displayMessage.call_args_list[1]
         self.assertIn(when, report.args[0].splitlines(),
@@ -1411,7 +1411,7 @@ class TheSettingsComeBackTest(_Case):
                          "a missing settings file is reported as one that will not read")
         self.assertEqual(messages.CONFIRM_PUT_SETTINGS_BACK % when, confirm.args[0],
                          "the missing case does not use the same confirm")
-        self.assertNotIn("offers that copy back", confirm.kwargs["help"],
+        self.assertNotIn("offers that backup", confirm.kwargs["help"],
                          "the confirm promises back settings that were never there")
         self.assertEqual(self.GOOD, self._read(self.settings),
                          "the saved copy did not land")
@@ -1466,7 +1466,7 @@ class TheSettingsComeBackTest(_Case):
         # the report's restore button, the confirm, the closing note
         ui = self._run(buttons=[0, 0, 0], listed=(0,))
         report = ui.displayMessage.call_args_list[0]
-        self.assertIn("Put a Saved Copy Back", report.kwargs.get("buttons", ()),
+        self.assertIn("Restore Backup", report.kwargs.get("buttons", ()),
                       "the copies that name a library are not offered back")
         self.assertEqual(messages.SETTINGS_NO_LIBRARY_REPAIR_REPORT % when, report.args[0],
                          "the report lists a copy that names no library or will not read")
@@ -1475,7 +1475,7 @@ class TheSettingsComeBackTest(_Case):
                          "an older copy that names no library or will not read is offered")
         confirm = ui.displayMessage.call_args_list[1]
         self.assertEqual(messages.CONFIRM_PUT_SETTINGS_BACK % when, confirm.args[0])
-        self.assertNotIn("offers that copy back", confirm.kwargs["help"],
+        self.assertNotIn("offers that backup", confirm.kwargs["help"],
                          "the confirm promises back settings that name no library")
         self.assertEqual(self.GOOD, self._read(self.settings),
                          "the copy that names a library did not land")
@@ -1639,7 +1639,7 @@ class TheShelfToolAndWhatItReportsTest(_Case):
         findings = self._survey()
         self.assertEqual("unreadable", self._list_entry(findings, "gradients.json")["state"])
         self.assertFalse(findings["complete"])
-        self.assertIn("Color: the database is there and Amaze cannot read it. It has not been changed.",
+        self.assertIn("Color: the database is corrupt or cannot be read. It has not been changed.",
                       "\n".join(repair.report_lines(findings)))
 
     def test_a_missing_colors_list_with_a_trace_holds_the_move_back(self):

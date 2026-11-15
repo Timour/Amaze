@@ -429,7 +429,7 @@ class TheSurveyAnswersEverythingTest(_Library):
         self._write(self.index, dict(document, assets=document["assets"][:1]))
         findings = self._survey()
         self.assertEqual([("library.json", 1, len(document["assets"]))], findings["shrunk"])
-        self.assertIn("newest saved copy holds %d" % len(document["assets"]),
+        self.assertIn("newest backup holds %d" % len(document["assets"]),
                       "\n".join(repair.report_lines(findings)))
 
     def test_a_healthy_library_gets_one_line_per_question_and_the_holding_folder_last(self):
@@ -443,7 +443,7 @@ class TheSurveyAnswersEverythingTest(_Library):
         self.assertIn(findings["holding"]["path"], lines[-1])
         text = "\n".join(lines)
         for said in ("Every material and node", "has a category",
-                     "Nothing is left over"):
+                     "There are no temporary files"):
             self.assertIn(said, text)
 
 
@@ -666,7 +666,7 @@ class MoveAsideSparesWhatCanBePutBackTest(_Library):
                          sorted(aside["unaccounted"]["mat/"]),
                          "Move Files Aside counts a pair that can still be put back")
         self.assertEqual(3, repair.files_to_move_aside(findings))
-        self.assertIn("can still be put back", "\n".join(repair.report_lines(findings)))
+        self.assertIn("can still be added back", "\n".join(repair.report_lines(findings)))
         repair.move_aside(findings, ("unlisted", "leftovers"))
         for kept in ("MATSTAMP1.mat", "NODESTAMP1.mat", "NODESTAMP1.interface"):
             self.assertTrue(os.path.exists(os.path.join(self.mat_dir, kept)),
@@ -825,7 +825,7 @@ class CheckLibraryInThePanelTest(unittest.TestCase):
                                      self.messages.BUTTONS_PUT_COPY_BACK[0]))
         self.assertIn("added back", screen.texts())
         self._models_hold_the_file()
-        self.assertIn("is back to the copy from", screen.texts())
+        self.assertIn("is restored from the backup of", screen.texts())
 
     def test_a_second_pane_open_does_not_stop_it(self):
         from amaze.dialogs import repair_dialog
@@ -940,7 +940,7 @@ class TheReportSaysProblemsFirstTest(_Library):
         with open(os.path.join(self.dir, "cops.json"), "w", encoding="utf-8") as handle:
             handle.write("{ broken")
         lines = [line for line in repair.report_lines(self._survey()) if line]
-        broken = next(at for at, line in enumerate(lines) if "cannot read it" in line)
+        broken = next(at for at, line in enumerate(lines) if "is corrupt or cannot be read" in line)
         missing = next(at for at, line in enumerate(lines) if "files are missing" in line)
         fine = next(at for at, line in enumerate(lines) if "read fine" in line)
         self.assertLess(broken, fine)
