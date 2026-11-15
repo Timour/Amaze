@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.33.28
+
+- Check Library and the messages that point to it use the word `database` for the file that records what a section holds, in place of `list` and `index`.
+
 ## 1.33.27
 
 - Check Library no longer offers to move the pictures pasted into comments aside.
