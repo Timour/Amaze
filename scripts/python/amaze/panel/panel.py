@@ -1537,7 +1537,8 @@ class AmazePanel(QtWidgets.QWidget):
         if rewritten < 0:
             if ui is not None:
                 ui.displayMessage(
-                    messages.RELOCATE_TARGET_NOT_A_FOLDER,
+                    messages.LOCATION_ALREADY_ADDED if rewritten == folders.ALREADY_A_LOCATION
+                    else messages.RELOCATE_TARGET_NOT_A_FOLDER,
                     title=messages.TITLE_AMAZE, severity=hou.severityType.Warning
                 )
             return
@@ -1905,7 +1906,12 @@ class AmazePanel(QtWidgets.QWidget):
         path = ui.selectFile(file_type=hou.fileType.Directory) if ui else ""
         if not path:
             return
-        self.file_folders_model.add_folder(hou.text.expandString(path))
+        path = hou.text.expandString(path)
+        if self.file_folders_model.is_location(path):
+            ui.displayMessage(messages.LOCATION_ALREADY_ADDED, title=messages.TITLE_AMAZE,
+                              severity=hou.severityType.Warning)
+            return
+        self.file_folders_model.add_folder(path)
 
     def unwatch_scene(self) -> None:
         """The scene row stops following the scene; a second call removes nothing."""

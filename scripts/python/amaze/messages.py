@@ -54,6 +54,7 @@ PUT_IN_UNCATEGORIZED_DONE = 'Put %s in %s.'
 CONFIRM_ADD_UNLISTED_TO_SECTION = "Add %d unlisted %s to %s?"
 SECTION_LIST_UNCHANGED_REASON = "Amaze did not change the %s list: %s."
 NOTHING_CHANGED_REASON = 'Amaze changed nothing: %s.'
+LIBRARY_CHANGED_SINCE_CHECK = "Something changed in the library since the check. Run Check Library again."
 
 UNLISTED_FILES_ADDED_BACK_DONE = "%d %s restored to %s. Each came back with the name, category and tags recorded beside its files."
 UNLISTED_FILES_ADDED_BACK_SOME_UNNAMED = "%d %s restored to %s.\n\n%d of them had no record beside the files: they're in the %s category, named after their file — rename them as needed."
@@ -85,6 +86,7 @@ LIBRARY_LIST_NOT_LOADED = 'one of its lists could not be loaded (%s).'
 STARTER_SEED_REFUSED_DIRECTORY_HELD_LIBRARY = "This folder looks like a library whose list hasn't arrived yet, so Amaze didn't set up a new one over it. If it's in a synced folder, let the sync finish and reopen Amaze. If the list is really gone, close Amaze and run Check Library on the Amaze shelf to rebuild it."
 NO_FOLDER_SELECTED_TO_RELOCATE = "Select the registered folder to re-point first (\"All\" is not a real folder)."
 RELOCATE_TARGET_NOT_A_FOLDER = "That location isn't a folder."
+LOCATION_ALREADY_ADDED = "That location is already added."
 NO_LIBRARY_CONFIGURED = "Set up a library first."
 PACKAGE_IMPORT_SUMMARY = "Imported %d asset(s) and %d file(s) into the Import category."
 PACKAGE_NOT_READABLE = '"%s" is not a package Amaze can read.'

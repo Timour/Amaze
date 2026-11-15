@@ -313,7 +313,7 @@ class ALocationUnfoldsToItsSubfolders(unittest.TestCase):
         removed = []
         model.rowsRemoved.connect(lambda p, a, b: removed.append((a, b)))
         spelled = other.rstrip("/")    # the picker hands no trailing separator
-        self.assertEqual(-1, model.relocate_folder(model.row_of(self.loc), spelled),
+        self.assertEqual(folders.ALREADY_A_LOCATION, model.relocate_folder(model.row_of(self.loc), spelled),
                          "Locate onto a folder already registered was not refused")
         self.assertEqual(before, list(model._folders()), "a refused Locate changed the locations")
         self.assertEqual(len(before), len(locations.registered_paths(self.prefs)),
@@ -733,6 +733,24 @@ class TheFileTabWalksSubfolders(unittest.TestCase):
                          "a subfolder's row reached a location's pointer")
         self.assertEqual(self.folders.index_of(self.loc),
                          sidebar.top_level(self.sub), "a reorder over a subfolder lands elsewhere")
+
+    def test_locate_and_add_on_a_folder_already_a_location_say_so(self):
+        import hou
+        from amaze import messages
+        second = self.folders._folders()[1].rstrip("/")    # the picker hands no trailing separator
+        before = list(self.folders._folders())
+        self._stand(self.folders.index_of(self.loc))
+        ui = mock.Mock()
+        ui.selectFile.return_value = second
+        with mock.patch.object(hou, "ui", ui, create=True):
+            self.panel.locate_folder_user(self.folders)
+            self.assertEqual(messages.LOCATION_ALREADY_ADDED, ui.displayMessage.call_args[0][0],
+                             "a Locate onto a location said the folder is no folder")
+            ui.displayMessage.reset_mock()
+            self.panel.add_file_folder_user()
+            self.assertTrue(ui.displayMessage.called, "adding a location twice said nothing")
+            self.assertEqual(messages.LOCATION_ALREADY_ADDED, ui.displayMessage.call_args[0][0])
+        self.assertEqual(before, list(self.folders._folders()))
 
     def test_a_subfolders_menu_greys_the_location_entries(self):
         section = self.panel.sections["file"]

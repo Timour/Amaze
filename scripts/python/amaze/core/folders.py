@@ -141,6 +141,7 @@ class _CountEngine(QtCore.QObject):
         self._threads = []
 
 
+ALREADY_A_LOCATION = -2    # `relocate_folder`'s answer for a folder that is a location already
 _ROOT = QtCore.QModelIndex()
 _SCENE = -1    # the fixed scene row's parent id: its node is never a registered location's at the same path
 
@@ -706,6 +707,14 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
         return str(self._record(path).get("color", ""))
 
 
+    def is_location(self, path: str, but: str = "") -> bool:
+        """Is this folder a registered location already, however it is spelled? `but` is left out."""
+        if not path:
+            return False
+        wanted = keyed_store.path_identity(hostos.canonical_path_key(path).rstrip("/") + "/")
+        return any(keyed_store.path_identity(folder) == wanted
+                   for folder in self._folders() if folder != but)
+
     def add_folder(self, path: str) -> bool:
         """Register a folder pointer; True when its row landed, nothing if already registered."""
         if not path or path in self._folders():
@@ -771,7 +780,7 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
             self.endResetModel()
 
     def relocate_folder(self, row: int, new_path: str) -> int:
-        """Re-point the location at ROW; the favourites moved, or -1. ▸p/folder-sidebar"""
+        """Re-point the location at ROW; the favourites moved, -1, or ALREADY_A_LOCATION. ▸p/folder-sidebar"""
         old_path = self.registered_at(row)
         if not old_path:
             return -1
@@ -782,10 +791,8 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
             new_path += "/"
         if new_path == old_path:
             return 0
-        wanted = keyed_store.path_identity(new_path)
-        if any(keyed_store.path_identity(path) == wanted
-               for path in self._folders() if path != old_path):
-            return -1    # already another location: two ids would point at one folder
+        if self.is_location(new_path, but=old_path):
+            return ALREADY_A_LOCATION    # two ids would point at one folder
         old_prefix = old_path if old_path.endswith("/") else old_path + "/"    # COUNTED here ▸p/folder-sidebar
         rewritten = sum(1 for fav in self._favorites()
                         if fav.startswith(old_prefix))
