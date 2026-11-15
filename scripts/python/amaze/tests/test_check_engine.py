@@ -273,6 +273,19 @@ class LeftoversTest(_Library):
         findings = self._survey()
         self.assertEqual(["NOBODYS1.png"], findings["unaccounted"]["captures/"])
 
+    def test_the_folder_package_import_writes_into_is_not_offered_to_move(self):
+        """Package Import writes plain files into import/ and registers it as a File location."""
+        self.assertEqual((library_files.FOLDER, ""),
+                         library_files.classify("import", is_dir=True))
+        self._file("import/reference.hip")
+        self._file("import/notes_1.txt")
+        findings = self._survey()
+        self.assertEqual([], [entry[0] for entry in findings["unknown_folders"]],
+                         "the folder Package Import fills is offered to Move Unknown Files Aside")
+        self.assertEqual([], [entry[0] for entry in findings["unknown"]],
+                         "a file Package Import wrote is called unknown")
+        self.assertEqual(0, repair.unknown_to_move_aside(findings))
+
     def test_the_os_s_own_files_are_neither_named_nor_moved(self):
         self._file(".DS_Store")
         self._file("mat/._x.mat")

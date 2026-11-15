@@ -22,6 +22,7 @@ CAPTURE_FOLDER = "captures"
 CODE_FOLDER = "code"
 VERSIONS = "versions"
 PACKAGE_FOLDER = "matX"    # a permanent store: the check does not enter it, the audit looks for scratch only
+IMPORT_FOLDER = "import"    # where Package Import writes plain files: a File location, its contents the user's
 LEDGER = "versions.json"
 
 ASSET_SUFFIXES = (".mat", ".interface", ".builder.json", ".stamp.json")    # `repair.ASSET_SIDECARS`
@@ -179,7 +180,7 @@ def _folder(parts: list) -> bool:
     depth = len(parts)
     if depth == 1:
         return parts[0] in (ASSET_FOLDER, RENDER_FOLDER, CAPTURE_FOLDER,
-                            CODE_FOLDER, PACKAGE_FOLDER)
+                            CODE_FOLDER, PACKAGE_FOLDER, IMPORT_FOLDER)
     if parts[0] == PACKAGE_FOLDER:
         return True
     if parts[0] in (ASSET_FOLDER, CODE_FOLDER) and parts[1] == VERSIONS:
@@ -225,7 +226,7 @@ def classify(relative: str, is_dir: bool = False) -> tuple:
         return OS_NOISE_KIND, ""
     if is_scratch(name):
         return SCRATCH, ""
-    if parts[0] == PACKAGE_FOLDER and len(parts) > 1:
+    if parts[0] in (PACKAGE_FOLDER, IMPORT_FOLDER) and len(parts) > 1:
         return (FOLDER if is_dir else PACKAGE), ""
     if is_dir:
         return (FOLDER, "") if _folder(parts) else (UNKNOWN, "folder")

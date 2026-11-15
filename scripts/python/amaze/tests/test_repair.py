@@ -408,6 +408,34 @@ class MovingFilesAsideTest(_Case):
                       "second round - a delete wearing a move's name")
         self.assertIn("ROUND TWO BYTES\n", landed)
 
+    def test_a_pair_a_list_claims_after_the_check_stays_where_it_is(self):
+        """A peer list that syncs in while the dialog is open now owns the pair."""
+        self._cops(self.KEPT)
+        paths = self._pair()
+        findings = self._survey()
+        self._cops(self.KEPT + [{"id": self.COP_ID, "name": "Arrived",
+                                 "categories": ["Kept"]}])
+        result = repair.move_aside(findings, "unlisted")
+        for path in paths:
+            self.assertTrue(os.path.exists(path),
+                            "%s was moved aside though a list now claims it" % path)
+        self.assertEqual([], result["moved"])
+        self.assertEqual(sorted(os.path.basename(p) for p in paths),
+                         sorted(result["failed"]))
+
+    def test_a_list_that_turns_unreadable_after_the_check_refuses_the_move(self):
+        """A list that will not read may own the pair, so nothing moves."""
+        self._cops(self.KEPT)
+        paths = self._pair()
+        findings = self._survey()
+        with open(self.cops, "w", encoding="utf-8") as handle:
+            handle.write('{"assets": [{"id": "COPOWN')
+        with self.assertRaises(ValueError):
+            repair.move_aside(findings, "unlisted")
+        for path in paths:
+            self.assertTrue(os.path.exists(path),
+                            "%s was moved aside while a list could not be read" % path)
+
     def test_the_quarantine_folder_is_invisible_to_the_next_sweep(self):
         """A top-level folder is in neither list the next sweep walks."""
         self._cops(self.KEPT)
@@ -515,6 +543,33 @@ class AddingUnlistedFilesBackTest(_Case):
                     choices, actions = repair_dialog._choices(findings,
                                                        may_change=True)
                     self.assertNotIn("reattach", actions)
+
+    def test_a_pair_the_list_gained_after_the_check_is_not_added_twice(self):
+        """Two rows with one id share files, so deleting one deletes the other's."""
+        self._cops([])
+        self._pair()
+        findings = self._survey()
+        index = os.path.join(self.dir, "library.json")
+        document = self._read(index)
+        document["assets"].append({"id": self.COP_ID, "name": "Arrived",
+                                   "categories": ["Kept"]})
+        self._write(index, document)
+        result = repair.reattach(findings, "library.json")
+        rows = [r for r in self._read(index)["assets"] if r.get("id") == self.COP_ID]
+        self.assertEqual(1, len(rows), "the list now holds two rows with one id")
+        self.assertEqual([], result["added"])
+
+    def test_a_pair_a_sibling_gained_after_the_check_is_not_added(self):
+        """An id a sibling list claims since the check is that list's."""
+        self._cops([])
+        self._pair()
+        findings = self._survey()
+        self._cops([{"id": self.COP_ID, "name": "Arrived", "categories": ["Kept"]}])
+        result = repair.reattach(findings, "library.json")
+        rows = [r for r in self._read(os.path.join(self.dir, "library.json"))["assets"]
+                if r.get("id") == self.COP_ID]
+        self.assertEqual([], rows, "an id the Node list claims was added to Materials too")
+        self.assertEqual([], result["added"])
 
     def test_it_refuses_while_a_list_cannot_be_read(self):
         self._cops([])
@@ -2086,6 +2141,41 @@ class TheRebuildDrillTest(unittest.TestCase):
         self.assertFalse(
             os.path.exists(os.path.join(self.prefs.dir, "library.json")),
             "a refused rebuild still wrote the index")
+
+    NODE = "c0de0000000040008000000000000003"
+
+    def _a_node_stamp_and_no_material_copies(self):
+        """One node stamp in the asset folder, and the Material list gone with every copy."""
+        with open(os.path.join(self.mat_dir, self.NODE + ".stamp.json"), "w",
+                  encoding="utf-8") as handle:
+            json.dump({"id": self.NODE, "name": "A COP network",
+                       "categories": ["Nodes"], "renderer": "COP"}, handle)
+        for name in ("library.json", "library.json.bak-1", "library.json.bak-2",
+                     "library.json.bak-3", "library.json.bak-first", "cops.json"):
+            path = os.path.join(self.prefs.dir, name)
+            if os.path.exists(path):
+                os.remove(path)
+
+    def test_a_rebuild_refuses_while_a_sibling_list_is_still_arriving(self):
+        """A list absent but known lists ids nobody can read yet, so it claims them all."""
+        self._a_node_stamp_and_no_material_copies()
+        with open(os.path.join(self.prefs.dir, "cops.json.bak-1"), "w",
+                  encoding="utf-8") as handle:
+            json.dump({"assets": [{"id": self.NODE}]}, handle)
+        ok, sentence = repair.repair_index(self.prefs.dir,
+                                           self.prefs.asset_dir, guard=False)
+        self.assertFalse(
+            ok, "the index was rebuilt while the Node list was still arriving: %s" % sentence)
+        self.assertFalse(os.path.exists(os.path.join(self.prefs.dir, "library.json")),
+                         "a refused rebuild still wrote the index")
+
+    def test_a_rebuild_takes_no_stamp_that_belongs_on_another_list(self):
+        """A node stamp is the Node list's, even when no list names it."""
+        self._a_node_stamp_and_no_material_copies()
+        rebuilt = repair.rebuild_from_stamps(self.prefs.dir, self.prefs.asset_dir)
+        ids = {str(r.get("id")) for r in rebuilt["assets"]}
+        self.assertNotIn(self.NODE, ids, "the rebuilt Material list took a node in")
+        self.assertEqual({str(a.mat_id) for a in self.model.assets}, ids)
 
     def test_the_damaged_index_is_kept_before_a_rebuild_writes_over_it(self):
         """The dialog promises the corrupted file is retained. It has to be."""

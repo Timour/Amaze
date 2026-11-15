@@ -369,6 +369,8 @@ def rebuild_from_stamps(directory: str, asset_dir: str = "mat/",
     owned_elsewhere = set()
     by_file, unreadable = database.ids_claimed_by(directory)
     unreadable = [name for name in unreadable if name != index_filename]  # the index being rebuilt is unreadable BY PREMISE; a sibling is not
+    unreadable += [name for name in database.DATABASES    # a list still arriving claims what it will list
+                   if name != index_filename and database.absent_but_known(directory, name)]
     for filename, ids in by_file.items():
         if filename != index_filename:
             owned_elsewhere |= ids
@@ -386,6 +388,8 @@ def rebuild_from_stamps(directory: str, asset_dir: str = "mat/",
         if record is None:
             damaged.append(asset_id)
             continue
+        if _list_of(record) not in ("", index_filename):
+            continue    # a stamp that names another list goes on that one
         record.setdefault("id", asset_id)
         assets.append(record)
         for cat in record.get("categories") or []:
@@ -1099,9 +1103,18 @@ def move_aside(findings: dict, what, guard: bool = True) -> dict:
             record.append([source, landed])
 
     if "unlisted" in asked:
+        by_file, unreadable = database.ids_claimed_by(directory)
+        if unreadable:
+            raise ValueError("one of the library's lists cannot be read, so these "
+                             "files may belong to it")
+        claimed = set().union(*by_file.values())
         for folder, names in movable(findings)["unaccounted"].items():
             for name in names:
-                take(folder.rstrip("/\\") + "/" + name, name)
+                relative = folder.rstrip("/\\") + "/" + name
+                if naming.classify(relative)[1] in claimed:
+                    failed.append(name)    # a list claims it since the check
+                    continue
+                take(relative, name)
     if "leftovers" in asked:
         for relative, kind, _size, _when in findings.get("leftovers", ()):
             if kind == naming.DUPLICATE and _why_a_duplicate_stays(
@@ -1284,9 +1297,18 @@ def _add_rows(findings: dict, filename: str, ids: list) -> dict:
         raise ValueError("that list cannot be read, so nothing was added "
                          "to it")
 
+    by_file, unreadable = database.ids_claimed_by(findings["directory"])
+    if [name for name in unreadable if name != filename]:
+        raise ValueError("one of the library's lists cannot be read, so these "
+                         "files may belong to it")
+    taken = {database.row_id(row) for row in document.get("assets") or []
+             if isinstance(row, dict)}
+    for other, claimed in by_file.items():
+        if other != filename:
+            taken |= claimed
     added, minted, rows = [], [], []
     folder = os.path.join(findings["directory"], findings["asset_dir"])
-    for asset_id in ids:
+    for asset_id in [one for one in ids if one not in taken]:    # a list may claim it since the check
         record = read_stamp(os.path.join(folder, asset_id + STAMP_SUFFIX))
         if record is None:
             record = material.Material(
