@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.33.23
+
+- In the File tab, pressing a folder's arrow shows its subfolders' counts and arrows faster, and the sidebar redraws faster.
+- Folders with many files are counted and listed faster.
+- The $HIP row is listed only once the scene has been saved.
+
 ## 1.33.22
 
 - A message whose list of names sits under Show Details ends its sentence with a period.
