@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.33.25
+
+- Locate and Add Folder say so when the folder is already a location.
+- When the library changed between a check and its fix, Check Library says so and asks for a new check.
+
 ## 1.33.24
 
 - Esc during an online download or a package import stops the whole batch.
