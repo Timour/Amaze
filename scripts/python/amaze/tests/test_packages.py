@@ -283,6 +283,35 @@ class ExportMenuTest(unittest.TestCase):
                 self.assertEqual(0, self.panel.sections[key].export_package_to([index], out))
                 self.assertFalse(os.path.exists(out), "a package was written for no tile")
 
+    def test_an_export_says_what_it_wrote_wrote_nothing_or_could_not_write(self):
+        from unittest import mock
+        from amaze import messages
+        section = self.panel.sections["gradient"]
+        index = self.panel.gradient_sorted_model.index(0, 0)
+        out = _out_path(self)
+        ui = mock.Mock()
+
+        def said():
+            call = ui.displayMessage.call_args
+            ui.displayMessage.reset_mock()
+            return call[0][0], call[1].get("severity")
+
+        with mock.patch.object(hou, "ui", ui, create=True), \
+                mock.patch.object(self.panel.package_import, "ask_destination", lambda: out):
+            section.menu_export_package([index], index)
+            self.assertEqual((messages.PACKAGE_EXPORTED_ONE % os.path.basename(out),
+                              hou.severityType.Message), said(), "a finished export said nothing")
+            section.menu_export_category([], None)
+            self.assertEqual(messages.PACKAGE_EXPORTED % (self.panel.gradient_model.rowCount(),
+                                                          os.path.basename(out)), said()[0])
+            section.menu_export_package([], None)
+            self.assertEqual((messages.PACKAGE_EXPORT_EMPTY, hou.severityType.Warning), said(),
+                             "an export of nothing said nothing")
+            with mock.patch("amaze.core.packages.write_package", side_effect=OSError("no room")):
+                section.menu_export_package([index], index)
+            self.assertEqual((messages.PACKAGE_NOT_SAVED % "no room", hou.severityType.Warning),
+                             said(), "an export that could not be written left the panel silent")
+
     def test_the_category_act_door_writes_every_member(self):
         from amaze.core import packages
         section = self.panel.sections["gradient"]

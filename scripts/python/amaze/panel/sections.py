@@ -190,7 +190,28 @@ class Section:
         """Ask half of the grid export: the panel picks the destination, `export_package_to` acts."""
         path = self.panel.package_import.ask_destination()
         if path:
-            self.export_package_to(list(indexes), path)
+            self._say_export(lambda: self.export_package_to(list(indexes), path), path)
+
+    def _say_export(self, export, path: str) -> None:
+        """Run one export and say what it wrote, that it wrote nothing, or why it could not."""
+        from amaze.core import packages
+        warning = hou.severityType.Warning
+        try:
+            count = export()
+        except (packages.PackageError, OSError) as exc:
+            debug.exception("package export", exc, path=path)
+            said, severity = messages.PACKAGE_NOT_SAVED % exc, warning
+        else:
+            name = os.path.basename(path)
+            if not count:
+                said, severity = messages.PACKAGE_EXPORT_EMPTY, warning
+            elif count == 1:
+                said, severity = messages.PACKAGE_EXPORTED_ONE % name, hou.severityType.Message
+            else:
+                said, severity = messages.PACKAGE_EXPORTED % (count, name), hou.severityType.Message
+        ui = getattr(hou, "ui", None)
+        if ui is not None:
+            ui.displayMessage(said, title=messages.TITLE_AMAZE, severity=severity)
 
     def filter_text(self, text: str) -> None:
         pass
@@ -551,7 +572,7 @@ class AssetSection(Section):
             name = None
         path = self.panel.package_import.ask_destination()
         if path:
-            self.export_category_to(name, path)
+            self._say_export(lambda: self.export_category_to(name, path), path)
 
     def menu_remove_category(self, indexes, current, payload=None) -> None:
         st = self.stack()
