@@ -64,6 +64,14 @@ def unwatch_scene(callback, *_destroyed) -> None:
         pass
 
 
+def _show_missing(model, key, full: str) -> None:
+    """Every row of a render that made no picture shows the missing face, found by key not row."""
+    for row in list(model._key_rows.get(key) or ()):
+        if 0 <= row < len(model._row_specs) and model._row_specs[row][0] == key:
+            model._row_specs[row] = (key, "missing", full)
+            model.row_changed(row, [QtCore.Qt.ItemDataRole.DecorationRole])
+
+
 def render_geo_misses(model, misses: list) -> None:
     """Render `model`'s missing geometry thumbnails now: blocking, Esc stops it, each lands at once."""
     misses = [pair for pair in misses  # a CACHE file gets no thumbnail unasked
@@ -123,6 +131,7 @@ def render_geo_misses(model, misses: list) -> None:
                 if not pictured:
                     operation.updateProgress(done / total)    # an Esc'd render ends imageless too; this raises
                     cache.remember_failure(full)
+                    _show_missing(model, ("geo", full, cache.cache_dir), full)
                 done += 1
                 model.progress_changed.emit(done, total)
                 QtCore.QCoreApplication.processEvents(  # paints only, so no input re-enters the panel

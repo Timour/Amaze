@@ -230,6 +230,22 @@ class ALocationUnfoldsToItsSubfolders(unittest.TestCase):
         self.assertEqual(1, model.rowCount(model.index_of(_child(self.loc, "A"))),
                          "an unchanged subfolder lost its own children")
 
+    def test_a_refresh_asks_the_views_to_read_every_known_count_again(self):
+        model = self.model
+        _shown(model, self.loc)
+        test_support.pump_until(lambda: model.rowCount(model.index_of(self.loc)) == 3)
+        changed = []
+        model.dataChanged.connect(lambda a, b, roles=(): changed.append(
+            (a.parent().data(model.BrowseRole), a.row(), b.row(), list(roles))))
+        model.refresh_counts()
+        self.assertIn((None, 0, model.rowCount() - 1, [COUNT]), changed,
+                      "a refresh told the views nothing, so the top counts stay stale until a repaint")
+        self.assertIn((self.loc, 0, 2, [COUNT]), changed,
+                      "a refresh did not tell the views about the subfolder counts as one range")
+        self.assertEqual(2, len(changed), "a refresh announced the rows one by one")
+        self.assertIsNotNone(model.data(model.index_of(self.loc), COUNT),
+                             "a refresh dropped the old number before the fresh one landed")
+
     def test_rows_that_come_or_go_side_by_side_are_one_signal(self):
         model, _prefs, (loc,) = _model(self, {"A": {"p": {}, "q": {}, "r": {}, "s": {}}})
         _shown(model, loc)
@@ -288,6 +304,21 @@ class ALocationUnfoldsToItsSubfolders(unittest.TestCase):
         _shown(model, pointer)
         self.assertTrue(test_support.pump_until(lambda: _names(model, model.index_of(pointer)) == ["Z"]),
                         "the new folder's subfolders never arrived")
+
+    def test_locate_onto_another_registered_location_is_refused(self):
+        model = self.model
+        other = self.roots[1]
+        _shown(model, other)
+        before = list(model._folders())
+        removed = []
+        model.rowsRemoved.connect(lambda p, a, b: removed.append((a, b)))
+        spelled = other.rstrip("/")    # the picker hands no trailing separator
+        self.assertEqual(-1, model.relocate_folder(model.row_of(self.loc), spelled),
+                         "Locate onto a folder already registered was not refused")
+        self.assertEqual(before, list(model._folders()), "a refused Locate changed the locations")
+        self.assertEqual(len(before), len(locations.registered_paths(self.prefs)),
+                         "a refused Locate dropped a registered location")
+        self.assertEqual([], removed, "a refused Locate removed rows")
 
     def test_a_read_that_lands_after_its_location_left_adds_nothing(self):
         model = self.model

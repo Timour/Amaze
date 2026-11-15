@@ -337,6 +337,16 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
         self._out_of_date(self._known())
         self._rows_key = None
         self._records_key = None
+        self._ask_counts_again()
+
+    def _ask_counts_again(self) -> None:
+        """Every known count marked stale for the views: the top rows, then each parent as one range."""
+        self.dataChanged.emit(self.index(0, 0), self.index(self.rowCount() - 1, 0), [self.COUNT_ROLE])
+        for row_id, kids in list(self._kids.items()):
+            parent = self._index_for(row_id) if kids else QtCore.QModelIndex()
+            if parent.isValid():
+                self.dataChanged.emit(self.index(0, 0, parent), self.index(len(kids) - 1, 0, parent),
+                                      [self.COUNT_ROLE])
 
     def _known(self) -> set:
         return set(self._counts) | set(self._walking)
@@ -772,6 +782,10 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
             new_path += "/"
         if new_path == old_path:
             return 0
+        wanted = keyed_store.path_identity(new_path)
+        if any(keyed_store.path_identity(path) == wanted
+               for path in self._folders() if path != old_path):
+            return -1    # already another location: two ids would point at one folder
         old_prefix = old_path if old_path.endswith("/") else old_path + "/"    # COUNTED here ▸p/folder-sidebar
         rewritten = sum(1 for fav in self._favorites()
                         if fav.startswith(old_prefix))

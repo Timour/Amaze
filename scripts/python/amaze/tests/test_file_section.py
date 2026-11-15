@@ -3278,6 +3278,17 @@ class GeometryThatRendersNothingIsRememberedTest(unittest.TestCase):
                          "Rerender Thumbnail or an edited file did not "
                          "get another render")
 
+    def test_a_file_that_renders_nothing_shows_the_missing_face_at_once(self):
+        folder, _path, model = self._geometry()
+        repainted = []
+        model.dataChanged.connect(lambda top, _bottom, roles=(): repainted.append(top.row()))
+        with self._rendering([]):
+            model.set_folder(folder)
+        self.assertEqual("missing", model._row_specs[0][1],
+                         "a failed render left the row waiting for a render, so every paint stats the cache")
+        self.assertIsNotNone(model.preview_image(0), "a failed render left the tile blank")
+        self.assertIn(0, repainted, "the failed row was not repainted")
+
     def test_a_rendered_picture_reaches_the_cache(self):
         """The renderer writes through Houdini's own image writer, which picks the format from the name."""
         folder, path, model = self._geometry()
