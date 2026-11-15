@@ -579,6 +579,43 @@ class PackageImportTest(unittest.TestCase):
         self.assertEqual((messages.PACKAGE_NOT_READABLE % "misshapen.amazepkg",),
                          ui.displayMessage.call_args.args)
 
+    def test_the_import_door_refuses_while_no_library_is_open(self):
+        from unittest import mock
+
+        from amaze import messages
+        from amaze.core import packages
+        ui = mock.Mock()
+        ui.selectFile.return_value = _out_path(self)
+        with mock.patch.object(hou, "ui", ui, create=True), \
+                mock.patch.object(self.panel, "material_model", None), \
+                mock.patch.object(packages, "import_package",
+                                  return_value={"imported": 0, "files": 0}) as imported:
+            self.panel.package_import.import_package()
+        self.assertFalse(imported.called, "a package imported into a library left closed")
+        ui.displayMessage.assert_called_once()
+        self.assertEqual((messages.NO_LIBRARY_CONFIGURED,), ui.displayMessage.call_args.args)
+
+    def test_the_import_door_warns_with_the_reasons_when_entries_were_refused(self):
+        from unittest import mock
+
+        from amaze import messages
+        summary = {"imported": 0, "files": 0, "refused": 2, "skipped": 0,
+                   "categories": {}, "problems": ["one: unreadable", "two: unreadable"]}
+        ui = mock.Mock()
+        ui.selectFile.return_value = _out_path(self)
+        with mock.patch.object(hou, "ui", ui, create=True), \
+                mock.patch.object(self.panel.package_import, "import_file",
+                                  return_value=summary):
+            self.panel.package_import.import_package()
+        ui.displayMessage.assert_called_once()
+        self.assertEqual((messages.PACKAGE_IMPORT_SUMMARY % (0, 0),),
+                         ui.displayMessage.call_args.args)
+        self.assertEqual(hou.severityType.Warning, ui.displayMessage.call_args.kwargs.get("severity"),
+                         "a package whose entries were all refused reported at Message severity")
+        self.assertEqual("one: unreadable\ntwo: unreadable",
+                         ui.displayMessage.call_args.kwargs.get("details"),
+                         "the refused entries' reasons were not shown")
+
     def test_a_package_unpacking_past_the_cap_is_refused_before_a_write(self):
         from unittest import mock
 

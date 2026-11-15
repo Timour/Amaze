@@ -29,8 +29,8 @@ class PackageImport:
         """Package Import: the picker, the import, then one summary; no dialog when headless."""
         from amaze.core import packages
         ui = getattr(hou, "ui", None)
-        if not self.panel.prefs.dir:
-            if ui is not None:
+        if not self.panel.prefs.dir or getattr(self.panel, "material_model", None) is None:
+            if ui is not None:    # no library open, whether none is set or it was left closed
                 ui.displayMessage(messages.NO_LIBRARY_CONFIGURED,
                                   title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
             return
@@ -52,9 +52,11 @@ class PackageImport:
                                   title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
             return
         if ui is not None:
+            held_back = summary.get("refused") or summary.get("skipped")    # the reasons go in the details
             ui.displayMessage(
                 messages.PACKAGE_IMPORT_SUMMARY % (summary["imported"], summary["files"]),
-                title=messages.TITLE_AMAZE, severity=hou.severityType.Message)
+                details="\n".join((summary.get("problems") or [])[:10]), title=messages.TITLE_AMAZE,
+                severity=hou.severityType.Warning if held_back else hou.severityType.Message)
 
     def ask_destination(self) -> str:
         """The `.amazepkg` export path, suffix ensured; "" when headless or cancelled."""
@@ -147,6 +149,8 @@ class PackageImport:
             if not summary.get("imported") and not summary.get("files"):
                 return (False, messages.STORE_TILE_IMPORTED_NOTHING)
             return (True, "")
+        except hou.OperationInterrupted:
+            raise    # the Esc belongs to the batch loop, not to this tile
         except Exception as exc:                          # noqa: BLE001
             debug.exception("package import", exc, record=record.title)
             return (False, str(exc))

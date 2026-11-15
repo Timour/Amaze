@@ -2,6 +2,7 @@
 
 import inspect
 import os
+import shutil
 import sys
 import types
 import unittest
@@ -183,6 +184,50 @@ class TheMultiMaterialSaveRunsInsideHoudinisOperation(_OnThePanel):
         self.assertEqual(["save_probe_a"], saved,
                          "the Esc did not stop the save after the material in hand")
         self.assertIn(messages.SAVE_STOPPED % (1, 3), self.said[-1])
+
+
+class AnEscInsideOneRecordReachesTheBatch(_OnThePanel):
+    """The Esc raised inside a download leaves the record's own handler for the batch loop."""
+
+    class _Interrupting:
+        """A source whose every download is stopped by the Esc."""
+
+        def fetch(self, *args, **kwargs):
+            raise hou.OperationInterrupted()
+
+        def import_reader(self, *args, **kwargs):
+            raise hou.OperationInterrupted()
+
+    def _prefs(self):
+        """Prefs naming a throwaway library folder, removed after the test."""
+        folder = test_support.scratch_dir("amaze_esc_")
+        self.addCleanup(shutil.rmtree, folder, True)
+        return types.SimpleNamespace(dir=folder)
+
+    def _record(self, kind, payload="https://example.invalid/p.zip"):
+        return types.SimpleNamespace(title="Bricks", kind=kind, source="test", uid="1",
+                                     payload=payload)
+
+    def test_an_esc_in_a_measurement_download_is_not_a_failed_record(self):
+        from amaze.core import matx_import
+        prefs = self._prefs()
+        with self.assertRaises(hou.OperationInterrupted,
+                               msg="the Esc in a measurement download became a failed record"):
+            matx_import._producer_for(self._record("values"), self._Interrupting(), None, prefs)
+
+    def test_an_esc_in_a_package_download_is_not_a_download_failed(self):
+        from amaze.core import matx_import
+        prefs = self._prefs()
+        with self.assertRaises(hou.OperationInterrupted,
+                               msg="the Esc in a package download became a Download failed"):
+            matx_import._producer_for(self._record("material"), self._Interrupting(), "1k", prefs)
+
+    def test_an_esc_in_a_store_package_download_is_not_a_failed_tile(self):
+        record = self._record("package", payload={"package": "https://example.invalid/p.amazepkg",
+                                                  "entry": {"type": "asset"}})
+        with self.assertRaises(hou.OperationInterrupted,
+                               msg="the Esc in a store package download became a failed tile"):
+            self.panel.package_import.import_record(record, self._Interrupting(), restore=True)
 
 
 class ThePanelPumpsNothingForImportsAndSaves(unittest.TestCase):

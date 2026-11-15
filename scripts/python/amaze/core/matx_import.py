@@ -131,6 +131,8 @@ def _producer_for(record, source, resolution, preferences, progress=None):
     if record.kind == "values":   # may download too: a measurement the shipped table lacks
         try:
             fetched_values = source.fetch(record, None, None, progress)
+        except hou.OperationInterrupted:
+            raise    # the Esc belongs to the batch loop, not to this record
         except Exception as exc:                        # noqa: BLE001
             debug.exception("measurement download", exc, uid=record.uid)
             return (None, "", "Could not read the measurement for %s: %s"
@@ -164,6 +166,9 @@ def _producer_for(record, source, resolution, preferences, progress=None):
         try:
             fetched = source.fetch(record, resolution, scratch,
                                    progress=progress)
+        except hou.OperationInterrupted:
+            shutil.rmtree(scratch, ignore_errors=True)
+            raise    # the Esc belongs to the batch loop, not to this record
         except Exception as exc:                        # noqa: BLE001
             debug.exception("download", exc, url=record.payload, dest=dest)
             shutil.rmtree(scratch, ignore_errors=True)
