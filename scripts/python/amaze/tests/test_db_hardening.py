@@ -1813,7 +1813,7 @@ class TheSurveyReadsEveryListFromDiskTest(_CheckCase):
                 for path in owned:
                     self.assertTrue(os.path.exists(path),
                                     "files were moved while the list could not be read at all")
-                self.assertIn("Amaze could not check the Material list", text,
+                self.assertIn("Amaze could not check the Material database", text,
                               "nothing was said about the move that cannot run")
 
 
@@ -1854,7 +1854,7 @@ class AnEmptyListWithFilesLeftBehindIsAskedAboutTest(_CheckCase):
             self.assertTrue(os.path.exists(path),
                             "%s moved before anyone chose to move it" % os.path.basename(path))
         self.assertNotIn("could not be read", text)
-        self.assertIn("Node: the list is there and holds nothing.", text)
+        self.assertIn("Node: the database is there and holds nothing.", text)
         self.assertIn("2 files in the mat folder", text,
                       "the report does not say how many files, in which folder")
         self.assertNotIn("mat/ folder", text,
@@ -1876,8 +1876,8 @@ class AnEmptyListWithFilesLeftBehindIsAskedAboutTest(_CheckCase):
         explanations = [line for line in lines if "looks the same whether" in line]
         self.assertEqual(1, len(explanations),
                          "one dialog carried the same explanation twice")
-        self.assertIn("Material: the list is there and holds nothing.", "\n".join(lines))
-        self.assertIn("Node: the list is there and holds nothing.", "\n".join(lines))
+        self.assertIn("Material: the database is there and holds nothing.", "\n".join(lines))
+        self.assertIn("Node: the database is there and holds nothing.", "\n".join(lines))
 
     def test_a_live_model_agreeing_it_is_empty_does_not_override_files(self):
         """A model cannot talk unlisted files out of existence, and while it is open nothing moves."""
@@ -1963,7 +1963,7 @@ class AnEmptyListWithFilesLeftBehindIsAskedAboutTest(_CheckCase):
             self.assertNotIn(jargon, text,
                              "the report shows '%s', which is the parser "
                              "talking to itself" % jargon)
-        self.assertIn("Node: the list is there and Amaze cannot read it.", text,
+        self.assertIn("Node: the database is there and Amaze cannot read it.", text,
                       "the unreadable list is not named by its section")
 
     def test_a_healthy_library_still_moves_a_stray(self):
@@ -1987,9 +1987,9 @@ class AnEmptyListWithFilesLeftBehindIsAskedAboutTest(_CheckCase):
         findings = self._survey()
         self.assertFalse(findings["complete"], "the move must still be held back")
         text = self._text(findings)
-        self.assertIn("Code: the list is there and Amaze cannot read it.", text,
+        self.assertIn("Code: the database is there and Amaze cannot read it.", text,
                       "the report does not name the list that would not parse")
-        self.assertIn("Amaze could not check the Code list either, so some of those "
+        self.assertIn("Amaze could not check the Code database either, so some of those "
                       "files may be its. Nothing will be moved while that is true.", text)
         self.assertEqual(len(findings["leftovers"]), self.repair.files_to_move_aside(findings))
         with self.assertRaises(ValueError):

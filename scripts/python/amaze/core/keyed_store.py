@@ -197,7 +197,7 @@ register(
     category="file",
     alert_key="location-paths-unreadable",
     unreadable_alert="Your registered folders' paths could not be read, so Amaze has paused saving to that file to protect it. Any folder you add or move now will not be kept. Put back a recent copy with Library ▸ Check Library… in Amaze.",
-    refused_sentence="the registered folders' paths could not be read earlier this run, so this change was not saved — writing now would replace every path already in the list.",
+    refused_sentence="the registered folders' paths could not be read earlier this run, so this change was not saved — writing now would replace every path already in the database.",
     survives_forget=True,
 )
 
@@ -210,7 +210,7 @@ register(
     category="file",
     alert_key="locations-unreadable",
     unreadable_alert="Your registered folders could not be read, so Amaze has paused saving to that file to protect it. Any folder you add or rename now will not be kept. Put back a recent copy with Library ▸ Check Library… in Amaze.",
-    refused_sentence="the registered folders file could not be read earlier this run, so this change was not saved — writing now would replace every folder already in the list.",
+    refused_sentence="the registered folders file could not be read earlier this run, so this change was not saved — writing now would replace every folder already in the database.",
     survives_forget=False,
     user_tagged=True,
 )
@@ -237,8 +237,8 @@ register(
     noun="user",
     category="users",
     alert_key="users-unreadable",
-    unreadable_alert="The list of people using this library could not be read, so Amaze has paused saving to it to protect it. Any user you add, rename or delete now will not be kept. Put back a recent copy with Library ▸ Check Library… in Amaze.",
-    refused_sentence="the user list could not be read earlier this run, so your change was not saved — writing now would replace everyone already in it.",
+    unreadable_alert="The users database could not be read, so Amaze has paused saving to it to protect it. Any user you add, rename or delete now will not be kept. Put back a recent copy with Library ▸ Check Library… in Amaze.",
+    refused_sentence="the users database could not be read earlier this run, so your change was not saved — writing now would replace everyone already in it.",
     survives_forget=True,
 )
 

@@ -32,7 +32,7 @@ Everything saved to the library appears as a tile in the grid — a picture and 
 - **Converters** — **Convert to** rebuilds a material for MaterialX, Redshift or Octane on the same textures, through one conversion engine with MaterialX in the middle, with a report of everything that could not be translated.
 - **Updates from Preferences** — checks the GitHub release feed, verifies the download, and backs up the install it replaces.
 - **Fast** — thumbnails load in the background and cache to disk.
-- **Portable storage** — assets live on disk as plain Houdini node archives and a JSON index; they load with vanilla Houdini even without Amaze.
+- **Portable storage** — assets live on disk as plain Houdini node archives and JSON databases; they load with vanilla Houdini even without Amaze.
 
 ## Compatibility
 

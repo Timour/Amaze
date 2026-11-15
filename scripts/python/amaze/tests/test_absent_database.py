@@ -471,11 +471,11 @@ class SiblingAbsenceHoldsTheMoveAsideBackTest(unittest.TestCase):
         self.assertTrue(os.path.exists(self.orphan),
                         "a file was moved while cops.json was merely not-yet-arrived")
         text = "\n".join(repair.report_lines(findings))
-        self.assertIn("Node: there is no list for it in the library folder, though Amaze "
+        self.assertIn("Node: there is no database for it in the library folder, though Amaze "
                       "can see there was one here before.", text,
                       "the report does not name the section it is waiting for")
         self.assertIn("run Check Library again", text)
-        self.assertIn("Amaze could not check the Node list either", text)
+        self.assertIn("Amaze could not check the Node database either", text)
         self.assertIn("Node: saved copies - from ", text,
                       "nothing says the trace is a saved copy that can be put back")
         self.assertNotIn("cops.json", text, "the report names the storage file, never seen")
@@ -534,7 +534,7 @@ class ANodeListNotYetHereKeepsItsFilesTest(unittest.TestCase):
             repair.move_aside(findings, ("unlisted", "leftovers"))
         self.assertTrue(os.path.exists(self.owned) and os.path.exists(self.owned_interface),
                         "files the absent Node list owns were moved")
-        self.assertIn("Amaze could not check the Node list either",
+        self.assertIn("Amaze could not check the Node database either",
                       "\n".join(repair.report_lines(findings)),
                       "files were spared but the user was told nothing")
 
@@ -579,7 +579,7 @@ class ANodeListNotYetHereKeepsItsFilesTest(unittest.TestCase):
         findings = _survey(self.prefs)
         self.assertEqual("empty", _list_entry(findings, "cops.json")["state"])
         text = "\n".join(repair.report_lines(findings))
-        self.assertIn("Node: the list is there and holds nothing.", text)
+        self.assertIn("Node: the database is there and holds nothing.", text)
         self.assertIn("Amaze will not decide on its own which it is", text)
         self.assertIn(self.COP_ID + ".mat", text, "the files left behind are not named")
         _labels, keys = repair_dialog._choices(findings, may_change=True)

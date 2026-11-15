@@ -445,7 +445,7 @@ class TheSurveyAnswersEverythingTest(_Library):
         for said in ("Every material and node", "has a category",
                      "Nothing is left over"):
             self.assertIn(said, text)
-        for word in ("index", "record", "row", "database", "orphan", "stale"):
+        for word in ("index", "record", "row", "orphan", "stale"):
             self.assertNotIn(word, text.lower())
 
 
@@ -685,7 +685,7 @@ class MoveAsideSparesWhatCanBePutBackTest(_Library):
 
 
 class AListInTroubleHoldsItsFilesTest(_Library):
-    """A list that holds nothing, or has not arrived, may own what no list names."""
+    """A database that holds nothing, or has not arrived, may own what no list names."""
 
     def _cops(self, assets):
         self._write(os.path.join(self.dir, "cops.json"),

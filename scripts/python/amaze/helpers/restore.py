@@ -167,13 +167,13 @@ def put_back(target: str, tier: str, allow_loss: bool = False) -> dict:
     if not os.path.exists(source):
         raise RestoreRefused(
             "That copy is no longer in the library folder, so nothing was "
-            "put back and the list you have now is untouched.",
+            "put back and the database you have now is untouched.",
             detail="%s does not exist" % source)
     payload, document, error = read_payload(source)
     if error:
         raise RestoreRefused(
             "That copy of %s cannot be read, so nothing was put back and "
-            "the list you have now is untouched."
+            "the database you have now is untouched."
             % os.path.basename(target), detail=error)
 
     current_doc, current_error = read_document(target) \
@@ -183,7 +183,7 @@ def put_back(target: str, tier: str, allow_loss: bool = False) -> dict:
         got, _ = count_in(document)
         if have is not None and got is not None and got < have:
             raise RestoreRefused(
-                "That copy holds %d %s and the list you have now holds "
+                "That copy holds %d %s and the database you have now holds "
                 "%d - putting it back would lose %d. If that is what you "
                 "want, say so explicitly."
                 % (got, noun, have, have - got),

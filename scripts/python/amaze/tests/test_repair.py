@@ -106,9 +106,9 @@ class TheReportSaysWhatIsWrongTest(_Case):
         self.assertTrue(findings["complete"])
         self.assertEqual(0, repair.unaccounted_total(findings))
         text = "\n".join(repair.report_lines(findings))
-        self.assertIn("Every list reads fine: ", text)
+        self.assertIn("Every database reads fine: ", text)
         self.assertIn("Every file in `mat/`, `img/` and `captures/` belongs to a "
-                      "material or node on the lists.", text)
+                      "material or node in the databases.", text)
         choices, actions = repair_dialog._choices(findings, may_change=True)
         self.assertEqual(["Close"], choices,
                          "Repair offered an action on a library with "
@@ -120,7 +120,7 @@ class TheReportSaysWhatIsWrongTest(_Case):
         self._pair()
         findings = self._survey()
         text = "\n".join(repair.report_lines(findings))
-        self.assertIn("Node: the list is there and holds nothing.", text)
+        self.assertIn("Node: the database is there and holds nothing.", text)
         self.assertIn("2 files in the mat folder", text,
                       "the report does not say how many files, in which "
                       "folder - a combined total cannot be checked against "
@@ -153,9 +153,9 @@ class TheReportSaysWhatIsWrongTest(_Case):
         findings = self._survey()
         self.assertFalse(findings["complete"])
         text = "\n".join(repair.report_lines(findings))
-        self.assertIn("Node: the list is there and Amaze cannot read it.",
+        self.assertIn("Node: the database is there and Amaze cannot read it.",
                       text)
-        self.assertIn("Amaze could not check the Node list either, so "
+        self.assertIn("Amaze could not check the Node database either, so "
                       "some of those files may be its", text,
                       "the report points at 'a list above' instead of "
                       "naming the section whose files may be at risk")
@@ -260,7 +260,7 @@ class TheReportSaysWhatIsWrongTest(_Case):
             "complete, so files could have been moved on a guess")
         text = "\n".join(repair.report_lines(findings))
         self.assertIn("could not look inside the mat folder", text)
-        self.assertNotIn("belongs to a material or node on the lists", text,
+        self.assertNotIn("belongs to a material or node in the databases", text,
                          "Repair reported a folder it could not read as "
                          "accounted for")
         choices, actions = repair_dialog._choices(findings, may_change=True)
@@ -297,7 +297,7 @@ class TheReportSaysWhatIsWrongTest(_Case):
                   encoding="utf-8") as handle:
             handle.write("{ truncated")
         text = " ".join(repair.report_lines(self._survey())).lower()
-        for word in ("index", "record", "row", "database", "session",
+        for word in ("index", "record", "row", "session",
                      "merge", "schema", "orphan", "stale", "connector",
                      "atomic", "manifest"):
             self.assertNotIn(word, text,
@@ -1098,7 +1098,7 @@ class PuttingASavedCopyBackTest(_Case):
         self.assertNotIn("bak-3", sentence)
         self.assertNotIn("cops.json", sentence)
         self.assertIn("untouched", sentence,
-                      "the refusal does not say the list you have now is "
+                      "the refusal does not say the database you have now is "
                       "unharmed")
         self.assertIn("bak-3", caught.exception.detail,
                       "the terminal tool loses the detail it prints")
@@ -1261,7 +1261,7 @@ class TheWholeFlowTest(_Case):
                          "save would write over it")
         self.assertIn(messages.CHECK_LIBRARY_ONLY_A_REPORT, shown[0][0],
                       "nothing tells the user how to get the buttons back")
-        for word in ("session", "index", "record", "row", "database",
+        for word in ("session", "index", "record", "row",
                      "merge", "schema", "stale"):
             self.assertNotIn(word, str(shown).lower(),
                              "the dialog uses '%s'" % word)
@@ -1587,7 +1587,7 @@ class TheShelfToolAndWhatItReportsTest(_Case):
         paths = self._pair()
         findings = self._survey()
         text = "\n".join(repair.report_lines(findings))
-        self.assertIn("Node: the list is there and holds nothing.", text)
+        self.assertIn("Node: the database is there and holds nothing.", text)
         self.assertIn("COPOWNED1.mat", text, "the files left behind are not named")
         self.assertEqual(2, repair.unaccounted_total(findings),
                          "the report and the move disagree about the folder")
@@ -1660,7 +1660,7 @@ class TheShelfToolAndWhatItReportsTest(_Case):
         findings = self._survey()
         self.assertEqual("unreadable", self._list_entry(findings, "gradients.json")["state"])
         self.assertFalse(findings["complete"])
-        self.assertIn("Color: the list is there and Amaze cannot read it. It has not been changed.",
+        self.assertIn("Color: the database is there and Amaze cannot read it. It has not been changed.",
                       "\n".join(repair.report_lines(findings)))
 
     def test_a_missing_colors_list_with_a_trace_holds_the_move_back(self):
@@ -1671,7 +1671,7 @@ class TheShelfToolAndWhatItReportsTest(_Case):
         self.assertEqual("absent-but-known",
                          self._list_entry(findings, "gradients.json")["state"])
         self.assertFalse(findings["complete"])
-        self.assertIn("Color: there is no list for it in the library folder, though Amaze can "
+        self.assertIn("Color: there is no database for it in the library folder, though Amaze can "
                       "see there was one here before.", "\n".join(repair.report_lines(findings)))
 
     def test_a_saved_palette_does_not_hold_back_an_empty_list(self):
@@ -1776,7 +1776,7 @@ class TheRealLibraryRehearsalTest(unittest.TestCase):
 
         findings = self._survey()
         text = "\n".join(repair.report_lines(findings))
-        self.assertIn("Node: the list is there and holds nothing.", text)
+        self.assertIn("Node: the database is there and holds nothing.", text)
         for name in owned:
             self.assertTrue(
                 os.path.exists(os.path.join(self.mat_dir, name)),
@@ -1806,7 +1806,7 @@ class TheRealLibraryRehearsalTest(unittest.TestCase):
             still_unlisted, after["unaccounted"][self.prefs.asset_dir],
             "putting the saved copy back did not account for the files "
             "its rows own, so the recovery does not recover")
-        self.assertNotIn("Node: the list is there and holds nothing.",
+        self.assertNotIn("Node: the database is there and holds nothing.",
                          "\n".join(repair.report_lines(after)),
                          "the Node list is still reported empty after it was put back")
 

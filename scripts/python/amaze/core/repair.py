@@ -328,7 +328,7 @@ def _survey_one(directory: str, filename: str, names=None) -> dict:
         entry["state"] = "unreadable"
         entry["info"] = dict(
             facts,
-            error=malformed or "it is not shaped like a list Amaze wrote")
+            error=malformed or "it is not shaped like a database Amaze wrote")
         return entry
     for row in (document.get("assets") or []):
         if isinstance(row, dict):
@@ -444,7 +444,7 @@ def repair_index(directory: str, asset_dir: str = "mat/", guard: bool = True) ->
         debug.event("repair", "rebuild refused - a sibling list is "
                     "unreadable", files=document["unreadable"])
         return False, ("%s cannot be read, so a rebuild cannot tell its "
-                       "assets from this list's"
+                       "assets from this database's"
                        % wording.and_list(document["unreadable"]))
     if not document["assets"]:
         return False, ("no saved copy parses and no recovery stamps "
@@ -461,8 +461,8 @@ def repair_index(directory: str, asset_dir: str = "mat/", guard: bool = True) ->
     except OSError as exc:
         debug.event("repair", "stamp rebuild could not be written",
                     error=str(exc))
-        return False, "the rebuilt list could not be written"
-    how = "the list was rebuilt from what each asset remembers"
+        return False, "the rebuilt database could not be written"
+    how = "the database was rebuilt from what each asset remembers"
     if document["damaged"]:
         how += " (%d could not be read)" % len(document["damaged"])
     debug.event("repair", "index rebuilt from stamps",
@@ -534,7 +534,7 @@ def _put_back_sentence(refreshed: int, newer: int, gone: list,
     if how is not None:
         said = how + (", and " + said if said else "")
     if gone:
-        said += "%s%s %s listed in it, but %s files are gone" % (
+        said += "%s%s %s in it, but %s files are gone" % (
             " - " if said else "",
             wording.and_list(gone[:8]) + (" and %d more" % (len(gone) - 8) if len(gone) > 8 else ""),
             "is" if len(gone) == 1 else "are", "its" if len(gone) == 1 else "their")
@@ -631,7 +631,7 @@ def copy_named_by_what_it_holds(filename: str, snap: dict) -> str:
 
 def _snapshot_line(entry: dict) -> str:
     if not entry["snapshots"]:
-        line = ("%s: there are no saved copies of this list beside it, so "
+        line = ("%s: there are no saved copies of this database beside it, so "
                 "there is nothing to put back." % entry["label"])
         if entry["filename"] in database.ASSET_FILE_OWNERS:
             # Only where it is true: Code and Colors keep their assets inline.
@@ -656,7 +656,7 @@ def report_lines(findings: dict) -> list:
     if extra:
         also = (", and one%s for the %s you add to them"
                 % (" each" if len(extra) > 1 else "", wording.and_list(extra)))
-    lines = ["Amaze looked at the library in %s. It keeps a separate list "
+    lines = ["Amaze looked at the library in %s. It keeps a separate database "
              "for each of its sections - Materials, Nodes, Code and "
              "Colors%s."
              % (os.path.normpath(str(findings["directory"])), also), ""]
@@ -668,7 +668,7 @@ def report_lines(findings: dict) -> list:
                                   for entry in troubled))
     if any(entry["state"] == "empty" for entry in troubled):
         problems.append(
-            "A list that holds nothing looks the same whether nothing was "
+            "A database that holds nothing looks the same whether nothing was "
             "ever saved there or it failed to load this time, so Amaze "
             "will not decide on its own which it is.")
     well = [_lists_line(findings["lists"], bool(troubled))]
@@ -679,26 +679,26 @@ def report_lines(findings: dict) -> list:
     if findings["unreadable_folders"]:
         problems.append(
             "Amaze could not look inside the %s, so it cannot say whether "
-            "anything in there is listed by no section. Nothing will be "
+            "anything in there is in no database. Nothing will be "
             "moved while that is true."
             % _and_folders(findings["unreadable_folders"]))
     elif total and findings["complete"]:
-        held = ["None of them will be moved aside while a list that may own them holds "
+        held = ["None of them will be moved aside while a database that may own them holds "
                 "nothing: put a saved copy of it back, or add them to a section."
                 ] if why_unlisted_stay(findings) else []
-        problems.append(" ".join(["No section lists %s. Either they belong to something "
-                                  "whose list was lost, or nothing needs them any more."
+        problems.append(" ".join(["No database names %s. Either they belong to something "
+                                  "whose database was lost, or nothing needs them any more."
                                   % files_by_folder(findings)]
                                  + _what_can_be_added_back(findings) + held))
     elif total:
         problems.append(" ".join([
-            "No section lists %s. Amaze could not check the %s list either, "
+            "No database names %s. Amaze could not check the %s database either, "
             "so some of those files may be its. Nothing will be moved "
             "while that is true."
             % (files_by_folder(findings), wording.and_list(unchecked))]
             + _what_can_be_added_back(findings)))
     elif findings["unaccounted"]:
-        well.append("Every file in %s belongs to a %s on the lists."
+        well.append("Every file in %s belongs to a %s in the databases."
                     % (wording.and_list(["`%s`" % folder for folder in findings["unaccounted"]]),
                        " or ".join(database.section_noun(filename, 1)
                                    for filename in database.ASSET_FILE_OWNERS)))
@@ -716,10 +716,10 @@ def report_lines(findings: dict) -> list:
 
 
 _TROUBLE_LINES = {    # a list's state, and the line it gets when it is in trouble
-    "empty": "%s: the list is there and holds nothing.",
-    "unreadable": "%s: the list is there and Amaze cannot read it. It has not been changed.",
+    "empty": "%s: the database is there and holds nothing.",
+    "unreadable": "%s: the database is there and Amaze cannot read it. It has not been changed.",
     "absent-but-known": (
-        "%s: there is no list for it in the library folder, though Amaze can see there "
+        "%s: there is no database for it in the library folder, though Amaze can see there "
         "was one here before. If this folder syncs, it may still be on its way - give it "
         "a minute and run Check Library again."),
 }
@@ -732,8 +732,8 @@ def _lists_line(lists: list, others: bool) -> str:
     unsaved = [entry["label"] for entry in lists if entry["state"] == "absent"]
     said = []
     if held:
-        said.append("%s: %s." % ("The other lists read fine" if others
-                                 else "Every list reads fine", wording.and_list(held)))
+        said.append("%s: %s." % ("The other databases read fine" if others
+                                 else "Every database reads fine", wording.and_list(held)))
     if unsaved:
         said.append("Nothing is saved yet in %s." % wording.and_list(unsaved))
     return " ".join(said)
@@ -788,7 +788,7 @@ def _check_lines(findings: dict) -> tuple:
     missing = findings.get("missing_files") or {}
     for filename, rows in missing.items():
         if rows:
-            said.append("%s %s on the %s list, but %s files are missing: %s. A file "
+            said.append("%s %s in the %s database, but %s files are missing: %s. A file "
                         "that has not finished syncing looks the same as one that is gone."
                         % (_counted(len(rows), filename), "is" if len(rows) == 1 else "are",
                            database.section_label(filename),
@@ -801,10 +801,10 @@ def _check_lines(findings: dict) -> tuple:
                     "Render when convenient, since a render takes time."
                     % (_per_section(renders), "it" if total == 1 else "them"))
     if not any(missing.values()) and not any(renders.values()):
-        well.append("Every %s on the lists has its files, and every one that can have a "
+        well.append("Every %s in the databases has its files, and every one that can have a "
                     "render has one." % _every_section())
     elif not any(missing.values()):
-        well.append("Every %s on the lists has its files." % _every_section())
+        well.append("Every %s in the databases has its files." % _every_section())
     gone = _leftover_lines(findings) + _unknown_lines(findings)
     said.extend(gone)
     if not gone:
@@ -824,7 +824,7 @@ def _check_lines(findings: dict) -> tuple:
         well.append("Every folder in the Files section is on this computer, and "
                     "every starred file is still there.")
     for filename, holds, newest in findings.get("shrunk", ()):
-        said.append("Your %s list holds %s, but its newest saved copy holds %s. If you "
+        said.append("Your %s database holds %s, but its newest saved copy holds %s. If you "
                     "did not remove them yourself, that copy can be put back."
                     % (database.section_label(filename), _counted(holds, filename),
                        _counted(newest, filename)))
@@ -1022,7 +1022,7 @@ def _materials_sentence(on_record: list) -> str:
         names = ": " + wording.and_list([str(record.get("name") or asset_id)
                                           for asset_id, record in on_record])
     return ("The files include %d %s with %s name, category and tags saved "
-            "beside %s%s. Add %s Back puts %s on the %s list."
+            "beside %s%s. Add %s Back puts %s in the %s database."
             % (count, database.section_noun("library.json", count),
                "its" if one else "their", "it" if one else "them", names,
                count_on_a_button(count, "library.json"), "it" if one else "them",
@@ -1062,11 +1062,11 @@ def files_to_move_aside(findings: dict) -> int:
 def why_unlisted_stay(findings: dict) -> str:
     """Empty when unlisted files may be moved aside; else why a list may still own them."""
     if not findings.get("complete"):
-        return "one of the library's lists cannot be read, so these files may belong to it"
+        return "one of the library's databases cannot be read, so these files may belong to it"
     empty = [entry["label"] for entry in findings.get("lists", ())
              if entry["state"] == "empty" and entry["filename"] in database.ASSET_FILE_OWNERS]
     if empty and findings["unaccounted"].get(findings.get("asset_dir")):
-        return ("the %s list holds nothing, so these files may belong to it"
+        return ("the %s database holds nothing, so these files may belong to it"
                 % wording.and_list(empty))
     return ""
 
@@ -1105,7 +1105,7 @@ def move_aside(findings: dict, what, guard: bool = True) -> dict:
     if "unlisted" in asked:
         by_file, unreadable = database.ids_claimed_by(directory)
         if unreadable:
-            raise ValueError("one of the library's lists cannot be read, so these "
+            raise ValueError("one of the library's databases cannot be read, so these "
                              "files may belong to it")
         claimed = set().union(*by_file.values())
         for folder, names in movable(findings)["unaccounted"].items():
@@ -1174,7 +1174,7 @@ def rescue_uncategorised(findings: dict, guard: bool = True) -> dict:
         path = os.path.join(findings["directory"], filename)
         document, error = restore_lib.read_document(path)
         if error or database.wrong_shape(document):
-            raise ValueError("that list cannot be read, so nothing was changed in it")
+            raise ValueError("that database cannot be read, so nothing was changed in it")
         count = 0
         for row in document.get("assets") or []:
             if (isinstance(row, dict) and database.row_id(row) in wanted
@@ -1263,15 +1263,15 @@ def why_nothing_can_be_added(findings: dict, filename: str = "") -> str:
     """Empty when unlisted files may go on `filename`, or on any list; else why they may not."""
     if findings.get("unreadable_folders"):
         return ("Amaze could not look inside the %s, so it cannot tell which "
-                "files are listed" % _and_folders(findings["unreadable_folders"]))
+                "files are in a database" % _and_folders(findings["unreadable_folders"]))
     for entry in findings.get("lists", ()):
         if entry["state"] == "unreadable":
-            return ("that list cannot be read, so nothing was added to it"
+            return ("that database cannot be read, so nothing was added to it"
                     if entry["filename"] == filename else
-                    "one of the library's lists cannot be read, so these "
+                    "one of the library's databases cannot be read, so these "
                     "files may belong to it")
         if entry["state"] == "absent-but-known" and entry["filename"] != filename:
-            return ("the %s list has not arrived in the library folder yet, so these "
+            return ("the %s database has not arrived in the library folder yet, so these "
                     "files may belong to it" % entry["label"])
     return ""
 
@@ -1285,7 +1285,7 @@ def _add_rows(findings: dict, filename: str, ids: list) -> dict:
     missing = _state_of(findings, filename) in _MISSING
     if missing and os.path.exists(path):
         debug.event("repair", "a list arrived after the survey", file=filename)
-        raise ValueError("the list has arrived in the library folder since "
+        raise ValueError("the database has arrived in the library folder since "
                          "Amaze looked, so nothing was added to it - run "
                          "Check Library again")
     document, error = (({"categories": ["_All"], "tags": [], "assets": []}, "")
@@ -1294,12 +1294,12 @@ def _add_rows(findings: dict, filename: str, ids: list) -> dict:
     if malformed:
         debug.event("repair", "cannot add to a list it cannot read",
                     file=filename, reason=malformed)
-        raise ValueError("that list cannot be read, so nothing was added "
+        raise ValueError("that database cannot be read, so nothing was added "
                          "to it")
 
     by_file, unreadable = database.ids_claimed_by(findings["directory"])
     if [name for name in unreadable if name != filename]:
-        raise ValueError("one of the library's lists cannot be read, so these "
+        raise ValueError("one of the library's databases cannot be read, so these "
                          "files may belong to it")
     taken = {database.row_id(row) for row in document.get("assets") or []
              if isinstance(row, dict)}

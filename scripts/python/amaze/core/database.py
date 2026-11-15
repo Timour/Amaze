@@ -117,7 +117,7 @@ def held_much_less(holds: int, newest_copy_holds: int) -> bool:
 
 
 def shrunk_sentence(filename: str, holds: int, newest_copy_holds: int) -> str:
-    return ("Your %s list holds %d %s, but its newest saved copy holds %d %s. If "
+    return ("Your %s database holds %d %s, but its newest saved copy holds %d %s. If "
             "you did not remove them yourself, use Library ▸ Check Library… before you "
             "change anything - it can put that copy back."
             % (section_label(filename), holds, section_noun(filename, holds),

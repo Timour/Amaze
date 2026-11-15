@@ -44,7 +44,7 @@ Pick your user or create one, then press **Apply**. The library belongs
 outside the plugin folder, which updates replace. Cloud-synced folders
 are supported.
 
-The library holds a list of the assets in JSON and one Houdini node
+The library holds a JSON database per section and one Houdini node
 archive per asset (`.mat` and `.interface`). Both are standard Houdini
 files.
 
@@ -806,27 +806,27 @@ newest beta when on, the newest release when off.
 ## Housekeeping and troubleshooting
 
 **Check** (Preferences ▸ Library) opens Check Library on the open
-library. It reads every list and folder in the library and shows a
+library. It reads every database and folder in the library and shows a
 report, with a button for each fix that applies. The report covers:
 
-- **The lists.** Each section keeps a list of what it holds, and the
-  comments, tile icons, favorites, File locations, users and shared
-  settings each have one too. The report gives what each list holds,
-  and names a list that is empty, cannot be read or is missing, with
-  its saved copies. A section's list that holds under half of what its
-  newest saved copy holds is named as well.
-- **Missing files and renders.** A material or node setup on a list
+- **The databases.** Each section keeps a database of what it holds,
+  and the comments, tile icons, favorites, File locations, users and
+  shared settings each have one too. The report gives what each
+  database holds, and names a database that is empty, cannot be read or
+  is missing, with its saved copies. A section's database that holds
+  under half of what its newest saved copy holds is named as well.
+- **Missing files and renders.** A material or node setup in a database
   whose `.mat` or `.interface` file is not in the library is named and
-  stays on the list; **Delete** removes it. Materials and node setups
+  stays in the database; **Delete** removes it. Materials and node setups
   that can have a render and have none are counted; **Update Render**
   renders them.
 - **Unlisted files.** Files in the `mat`, `img` and `captures` folders
-  that no list claims.
+  that no database names.
 - **Leftovers.** Files Amaze made that nothing needs any more: scratch
   files left by a save that did not finish, once they are an hour old;
   the `.pre-adopt` backups kept from before an earlier texture update;
   and second copies a sync service made of a file still in the library,
-  such as `notes.json 2.bak-3`. A second copy of a list or an asset file
+  such as `notes.json 2.bak-3`. A second copy of a database or an asset file
   counts only when its contents match the original's. One that differs
   is named with its date and size and left in place, and so is a second
   copy whose original is not there.
@@ -842,14 +842,15 @@ report, with a button for each fix that applies. The report covers:
 
 The fixes, each shown only when it applies:
 
-- **Add *N* Materials Back** puts unlisted materials back on the
-  Material list, with the name, category and tags saved beside each one.
-  It writes a new Material list when there is none.
-- **Put a Saved Copy Back** puts a list back to its newest saved copy.
-  The confirmation says how many items the copy holds and how many the
-  list holds now, and **Older Copies...** lists the earlier copies. The
-  list you have now is kept in the library folder, and the next check
-  offers it back. For the Material and Node lists, items saved after the
+- **Add *N* Materials Back** puts unlisted materials back in the
+  Material database, with the name, category and tags saved beside each
+  one. It writes a new Material database when there is none.
+- **Put a Saved Copy Back** puts a database back to its newest saved
+  copy. The confirmation says how many items the copy holds and how many
+  the database holds now, and **Older Copies...** lists the earlier
+  copies. The database you have now is kept in the library folder, and
+  the next check offers it back. For the Material and Node databases,
+  items saved after the
   copy come back from the record saved beside their files, and items
   changed after it are brought up to date.
 - **Add *N* Files to a Section** adds unlisted pairs of `.mat` and
@@ -858,9 +859,9 @@ The fixes, each shown only when it applies:
   no such record comes back in a category called Recovered, named
   Recovered plus the start of its file name.
 - **Move *N* Files Aside** moves the unlisted files and the leftovers
-  into the holding folder. Unlisted files stay while a list that may
-  own them cannot be read or holds nothing, and so do files whose saved
-  record can still put them back on a list.
+  into the holding folder. Unlisted files stay while a database that
+  may own them cannot be read or holds nothing, and so do files whose
+  saved record can still put them back in a database.
 - **Move *N* Unknown Files Aside** moves the unknown files and folders
   into the holding folder, after a confirmation that names each one.
 - **Set Aside *N* Folders** takes the File locations whose folder is not
@@ -893,11 +894,11 @@ settings file that names the library, cannot be read, is missing or
 names no library, it lists the file's saved copies and puts the one you
 pick back.
 
-When the Material list cannot be read as a library opens, Amaze asks
+When the Material database cannot be read as a library opens, Amaze asks
 first. **Repair** puts back the newest saved copy that holds materials,
-else the newest that reads. With no such copy, it rebuilds the list
+else the newest that reads. With no such copy, it rebuilds the database
 from the record saved beside each material; category names are kept,
-and their order and colors may change. The unreadable file is kept beside the list. **Open Without
+and their order and colors may change. The unreadable file is kept beside the database. **Open Without
 Library** leaves the folder unchanged. A message then says what Repair
 did, or why it could not.
 
@@ -910,7 +911,7 @@ exit with 1 when it finds anything, and `--quiet` prints only what it
 finds. It also looks inside the `matX` package folder, which Check
 Library leaves alone.
 
-Every write takes a snapshot of the asset list first, with rolling
+Every write takes a snapshot of the database first, with rolling
 backups and a first-run copy, and writes from a second Houdini session
 are merged.
 
