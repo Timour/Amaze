@@ -721,7 +721,7 @@ def _orphaned(count: int) -> str:
 
 _TROUBLE_LINES = {    # a list's state, and the line it gets when it is in trouble
     "empty": "%s: the database is there and holds nothing.",
-    "unreadable": "%s: the database is corrupt or cannot be read. It has not been changed.",
+    "unreadable": "%s: the database is corrupt/unreadable. It has not been changed.",
     "absent-but-known": (
         "%s: there is no database for it in the library folder, though Amaze can see there "
         "was one here before. If this folder syncs, it may not have synced yet - give it "

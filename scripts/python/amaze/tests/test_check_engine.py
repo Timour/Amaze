@@ -940,7 +940,7 @@ class TheReportSaysProblemsFirstTest(_Library):
         with open(os.path.join(self.dir, "cops.json"), "w", encoding="utf-8") as handle:
             handle.write("{ broken")
         lines = [line for line in repair.report_lines(self._survey()) if line]
-        broken = next(at for at, line in enumerate(lines) if "is corrupt or cannot be read" in line)
+        broken = next(at for at, line in enumerate(lines) if "is corrupt/unreadable" in line)
         missing = next(at for at, line in enumerate(lines) if "files are missing" in line)
         fine = next(at for at, line in enumerate(lines) if "read fine" in line)
         self.assertLess(broken, fine)

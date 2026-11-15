@@ -1135,7 +1135,7 @@ class CheckLibraryRefusesOnIncompleteKnowledgeTest(unittest.TestCase):
         self.assertEqual(len(findings["leftovers"]), repair.files_to_move_aside(findings))
         with self.assertRaises(ValueError):
             repair.move_aside(findings, "unlisted")
-        self.assertIn("Node: the database is corrupt or cannot be read. It has not been changed.",
+        self.assertIn("Node: the database is corrupt/unreadable. It has not been changed.",
                       repair.report_lines(findings))
 
     def test_a_readable_sibling_contributes_its_ids(self):

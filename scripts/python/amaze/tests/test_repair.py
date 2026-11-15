@@ -152,7 +152,7 @@ class TheReportSaysWhatIsWrongTest(_Case):
         findings = self._survey()
         self.assertFalse(findings["complete"])
         text = "\n".join(repair.report_lines(findings))
-        self.assertIn("Node: the database is corrupt or cannot be read.",
+        self.assertIn("Node: the database is corrupt/unreadable.",
                       text)
         self.assertIn("Amaze could not check the Node database either, so "
                       "some of those files may be its", text,
@@ -1639,7 +1639,7 @@ class TheShelfToolAndWhatItReportsTest(_Case):
         findings = self._survey()
         self.assertEqual("unreadable", self._list_entry(findings, "gradients.json")["state"])
         self.assertFalse(findings["complete"])
-        self.assertIn("Color: the database is corrupt or cannot be read. It has not been changed.",
+        self.assertIn("Color: the database is corrupt/unreadable. It has not been changed.",
                       "\n".join(repair.report_lines(findings)))
 
     def test_a_missing_colors_list_with_a_trace_holds_the_move_back(self):

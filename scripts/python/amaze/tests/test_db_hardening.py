@@ -1963,7 +1963,7 @@ class AnEmptyListWithFilesLeftBehindIsAskedAboutTest(_CheckCase):
             self.assertNotIn(jargon, text,
                              "the report shows '%s', which is the parser "
                              "talking to itself" % jargon)
-        self.assertIn("Node: the database is corrupt or cannot be read.", text,
+        self.assertIn("Node: the database is corrupt/unreadable.", text,
                       "the unreadable list is not named by its section")
 
     def test_a_healthy_library_still_moves_a_stray(self):
@@ -1987,7 +1987,7 @@ class AnEmptyListWithFilesLeftBehindIsAskedAboutTest(_CheckCase):
         findings = self._survey()
         self.assertFalse(findings["complete"], "the move must still be held back")
         text = self._text(findings)
-        self.assertIn("Code: the database is corrupt or cannot be read.", text,
+        self.assertIn("Code: the database is corrupt/unreadable.", text,
                       "the report does not name the list that would not parse")
         self.assertIn("Amaze could not check the Code database either, so some of those "
                       "files may be its. Nothing will be moved while that is true.", text)

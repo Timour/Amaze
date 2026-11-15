@@ -129,7 +129,7 @@ class TheUnreadableIndexDialogTest(unittest.TestCase):  # sabotage: drop `_build
     def test_repair_reopens_the_recovered_library(self):
         panel, calls, index_path, _ = self._panel_over_broken_index(0)
         self.assertTrue(calls, "no dialog was offered")
-        self.assertIn("could not be read", calls[0])
+        self.assertIn("corrupt/unreadable", calls[0])
         self.assertIsNotNone(panel.material_model,
                              "repair accepted but no library opened")
         self.assertTrue(

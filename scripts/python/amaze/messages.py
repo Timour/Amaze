@@ -67,12 +67,12 @@ LIBRARY_SETTING_NOT_WRITTEN = "The setting could not be written to the library f
 TEST_FOLDER_NOT_PREPARED = "That folder could not be prepared:\n\n%s"
 PICTURE_NOT_COPIED_TO_LIBRARY = "That picture could not be copied into the library, so it was not added."
 PICTURE_COPIED_BUT_UNREADABLE = "That file was copied but couldn't be read as a picture, so it was not added."
-LIBRARY_INDEX_UNREADABLE = "The library's database file is corrupt or could not be read. Repair restores the newest backup or, if no backup reads, rebuilds the database from each asset's metadata. Category names survive; their order and colors may not. The broken file is preserved as a backup. Open Without Library opens Amaze without touching the folder."
+LIBRARY_INDEX_UNREADABLE = "The library's database file is corrupt/unreadable. Repair restores the newest backup or, if no backup reads, rebuilds the database from each asset's metadata. Category names survive; their order and colors may not. The broken file is preserved as a backup. Open Without Library opens Amaze without touching the folder."
 LIBRARY_INDEX_REPAIRED = 'The library database can be read again: %s.'
 
 REPAIR_COULD_NOT_FIX_THE_LIST = "Repair could not fix the database: %s.\n\nAmaze will open without a library. Close Amaze and run Check Library on the Amaze shelf for details."
 INDEX_UNREADABLE_AFTER_REPAIR = "The repaired database still could not be read. Amaze opens without a library; close Amaze and run Check Library on the Amaze shelf for details."
-LIBRARY_INDEX_UNREADABLE_SWITCHING = "The library's database file is corrupt or could not be read.\n\nRepair restores the newest backup or, if no backup reads, rebuilds the database from each asset's metadata. Category names survive; their order and colors may not. The broken file is preserved as a backup.\n\nCancel leaves the folder unchanged and keeps the current library open."
+LIBRARY_INDEX_UNREADABLE_SWITCHING = "The library's database file is corrupt/unreadable.\n\nRepair restores the newest backup or, if no backup reads, rebuilds the database from each asset's metadata. Category names survive; their order and colors may not. The broken file is preserved as a backup.\n\nCancel leaves the folder unchanged and keeps the current library open."
 REPAIR_COULD_NOT_FIX_THE_LIST_SWITCHING = "Repair could not fix the database: %s.\n\nAmaze keeps the library you have open. Check This Library looks at the one that failed and offers the fixes that apply."
 INDEX_UNREADABLE_AFTER_REPAIR_SWITCHING = "The repaired database still could not be read.\n\nAmaze keeps the library you have open. Check This Library looks at the one that failed and offers the fixes that apply."
 LIBRARY_INDEX_READ_NOT_PERMITTED = 'this account is not allowed to read it:\n%s\n\nThe permissions on the file, or on a folder above it, have to let this account read it.'
