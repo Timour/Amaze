@@ -196,6 +196,14 @@ def pin_scene_folder(testcase) -> str:
         open(os.path.join(scene, name), "w").close()
     testcase.addCleanup(hou.putenv, "HIP", hou.getenv("HIP"))    # always set: `pin_env` would skip it
     hou.putenv("HIP", scene)
+    from amaze.actions import files as files_actions
+    real = getattr(files_actions.scene_saved, "real", files_actions.scene_saved)
+
+    def saved() -> bool:    # the pinned scene counts as saved; `.real` is Houdini's own answer
+        return True
+    saved.real = real
+    files_actions.scene_saved = saved
+    testcase.addCleanup(setattr, files_actions, "scene_saved", real)
     return posix_path(scene) + "/"
 
 

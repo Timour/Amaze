@@ -172,12 +172,19 @@ class TheSceneRowFollowsTheScene(_SceneCase):
         self.assertEqual(self.loc, self.files.browsing(), "the grid left its location")
         self.assertEqual(self.loc, self.panel.cat_list.currentIndex().data(self.folders.PathRole))
 
-    def test_a_new_scene_reads_hip_again(self):
-        moved = self._save()
-        self.assertEqual(moved, self.folders.scene_folder(), "premise: the row did not move")
-        hou.hipFile.clear(suppress_save_prompt=True)
-        self.assertEqual(_hip(), self.folders.scene_folder())
-        self.assertNotEqual(moved, self.folders.scene_folder())
+    def test_a_new_scene_takes_the_row_away_and_a_save_brings_it_back(self):
+        from amaze.actions import files as files_actions
+        with mock.patch.object(files_actions, "scene_saved", files_actions.scene_saved.real):
+            moved = self._save()
+            self.assertEqual(moved, self.folders.scene_folder(), "a saved scene shows no row")
+            self._stand(self._row())
+            self.assertEqual(moved, self.files.browsing(), "premise: not on the scene row")
+            hou.hipFile.clear(suppress_save_prompt=True)
+            QtWidgets.QApplication.processEvents()
+            self.assertEqual("", self.folders.scene_folder(), "an unsaved scene kept its row")
+            self.assertIsNone(self.folders.scene_row())
+            self.assertEqual(self.loc, self.files.browsing(), "the grid stayed in a folder with no row")
+            self.assertEqual(self.loc, self.panel.cat_list.currentIndex().data(self.folders.PathRole))
 
 
 class TheSceneWatchItself(unittest.TestCase):
@@ -187,6 +194,15 @@ class TheSceneWatchItself(unittest.TestCase):
         from amaze.actions import files as files_actions
         with mock.patch.object(hou, "getenv", lambda name, default=None: None):
             self.assertEqual("", files_actions.scene_folder())
+
+    def test_a_scene_with_no_file_reads_no_scene_folder(self):
+        from amaze.actions import files as files_actions
+        real = getattr(files_actions.scene_saved, "real", files_actions.scene_saved)
+        self.assertFalse(os.path.isfile(hou.hipFile.path()), "premise: the scene has a file")
+        self.assertTrue(hou.getenv("HIP"), "premise: no $HIP to read")
+        with mock.patch.object(files_actions, "scene_saved", real):
+            self.assertEqual("", files_actions.scene_folder(),
+                             "an untitled scene showed the folder Houdini was started in")
 
     def test_removing_a_callback_houdini_no_longer_holds_is_no_error(self):
         from amaze.actions import files as files_actions

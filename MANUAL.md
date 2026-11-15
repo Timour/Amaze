@@ -465,7 +465,8 @@ too. Locate, Rename, Remove, Show and Label act on locations and are
 greyed out on the folders inside them. Folders stay open until the panel
 closes, and the File tab reopens on the last folder clicked.
 
-**$HIP** shows the folder of the current open .hip file. It is a fixed
+**$HIP** shows the folder of the current open .hip file, once the scene
+has been saved. It is a fixed
 location under All: its folders open as a location's do, it lists
 Images, Geometry and HIP, and inside a registered location it lists what
 that location lists. Locate, Rename, Remove, Show and Label are greyed

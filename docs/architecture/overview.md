@@ -110,7 +110,8 @@ Plus one *view mode*, not a section:
   no `PathRole`, so every location verb passes it by. The `$HIP` row is
   one more top row of the same model, fixed at row 1 before the
   registered locations (`FolderTreeModel.set_scene_folder`, no record on
-  disk): the scene's folder, browsed and counted by those same rules,
+  disk): the scene's folder, shown only while the scene has a file on
+  disk (`actions/files.scene_saved`), browsed and counted by those same rules,
   re-pointed in place by one `hou.hipFile` callback per panel
   (`actions/files.watch_scene`, on AfterSave, AfterLoad and AfterClear)
   and remembered in `last_file_folder` by the token `$HIP`.

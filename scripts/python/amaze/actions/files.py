@@ -23,8 +23,18 @@ def connect(files_model, folders_model, os_icon=None) -> None:
     folders_model.write_path = lambda path, style: helpers.houdini_path(path, style)
 
 
+def scene_saved() -> bool:
+    """Has the open scene a file on disk? An untitled one has none. ▸r/hip-and-scene-events"""
+    try:
+        return os.path.isfile(hou.hipFile.path() or "")
+    except hou.Error:
+        return False
+
+
 def scene_folder() -> str:
-    """`$HIP`, the open scene's folder, with the pointer's slash. ▸r/hip-and-scene-events"""
+    """`$HIP` with the pointer's slash; "" until the scene is saved. ▸r/hip-and-scene-events"""
+    if not scene_saved():
+        return ""
     hip = hou.getenv("HIP") or ""
     if not hip:
         return ""

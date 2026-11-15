@@ -1273,6 +1273,19 @@ class FolderSection(Section):
         changed = getattr(self._p(self.folders_attr), "scene_folder_changed", None)
         if changed is not None:
             changed.connect(self._scene_moved)
+        left = getattr(self._p(self.folders_attr), "scene_folder_left", None)
+        if left is not None:
+            left.connect(self._scene_left)
+
+    def _scene_left(self, old: str) -> None:
+        """The scene row went: a grid in its folder opens the tab's first row instead."""
+        try:
+            active = self.panel.active_section() is self
+        except RuntimeError:    # the panel is gone, and the shared model outlives it
+            return
+        shown = self.standing_key()
+        if active and shown and (shown.rstrip("/") + "/").startswith(old):
+            self.activate()
 
     def _scene_moved(self, old: str, new: str) -> None:
         """The scene's folder moved: a grid on the scene row, or inside it, follows."""
