@@ -180,6 +180,18 @@ MIN_PANEL_WIDTH = 500    #: design px through `theme.ui_px` at use; the grid pan
 _ICON_ASKED = globals().get("_ICON_ASKED", set())    # library folders given their icon this session
 
 
+class _LibraryAt:
+    """The preferences, read as if `folder` were the library and `user` its user."""
+
+    def __init__(self, preferences, folder: str, user: str) -> None:
+        self._preferences = preferences
+        self.dir = folder if folder.endswith(("/", os.sep)) else folder + "/"
+        self.library_user = user
+
+    def __getattr__(self, name):
+        return getattr(self._preferences, name)
+
+
 
 
 class _FirstPaint(QtCore.QObject):
@@ -234,10 +246,8 @@ class AmazePanel(QtWidgets.QWidget):
         hostos.set_cache_override(self.prefs.cache_dir)    # set before any cache is touched
         if loaded:
             self.init_ui()
-            from amaze.core import library_conversion
             if (library_actions.index_unreadable(self.prefs.dir)
-                    or library_actions.list_not_arrived(self.prefs.dir)
-                    or library_conversion.needs_conversion(self.prefs.dir)):
+                    or library_actions.list_not_arrived(self.prefs.dir)):
                 self._defer_open_library()    # a question asked inside the build holds the pane
                 opened = False    # the pane opens without a library; what it says follows
             else:
@@ -278,12 +288,7 @@ class AmazePanel(QtWidgets.QWidget):
 
     def _open_at_start(self) -> bool:
         """Open the library only with this computer's user picked; `ensure_library_user` asks."""
-        from amaze.core import library_conversion
-        opened = self.open_library(needs_user=True)
-        if not opened and getattr(hou, "ui", None) is not None \
-                and library_conversion.needs_conversion(self.prefs.dir):
-            self.set_library()    # left unconverted: Preferences, where Apply converts it
-        return opened
+        return self.open_library(needs_user=True)
 
     def serves(self, folder: str) -> bool:
         """Whether the models are open on `folder`."""
@@ -544,7 +549,7 @@ class AmazePanel(QtWidgets.QWidget):
             ui = getattr(hou, "ui", None)
             if ui is not None:
                 ui.displayMessage(
-                    messages.STARTER_SEED_REFUSED_DIRECTORY_HELD_LIBRARY,
+                    messages.LIBRARY_FOLDER_NOT_EMPTY,
                     severity=hou.severityType.Warning,
                     title=messages.TITLE_AMAZE)
             return False
@@ -560,8 +565,6 @@ class AmazePanel(QtWidgets.QWidget):
         if (library_actions.index_unreadable(self.prefs.dir)
                 and not self._repaired(self.prefs.dir)):
             return self._stay_closed()
-        if not self._converted(self.prefs.dir):
-            return self._stay_closed()    # a library is used in format 4 only, once whole
         library_actions.prepare(self.prefs)
         if not library_actions.index_present(self.prefs.dir):    # prepare could not set one up
             return self._stay_closed()
@@ -582,18 +585,41 @@ class AmazePanel(QtWidgets.QWidget):
                 self.prefs.dir, amaze.package_file("ui", "library_folder.icns"))).start()
         return True
 
-    def _converted(self, folder: str) -> bool:
-        """A format 3 library converted whole, told first and shown as it goes; headless, never."""
-        from amaze.core import library_conversion, library_policy
-        if not folder or not library_conversion.needs_conversion(folder):
-            return True    # no library here, or nothing to convert: the open goes on as before
+    def convert_old_library(self) -> bool:
+        """Preferences ▸ About: pick a folder holding an older library and convert it to 2.0."""
+        from amaze.core import library_conversion
         ui = getattr(hou, "ui", None)
-        if ui is None:    # a script or a test converts by calling the converter, not by opening
-            debug.event("session", "library not opened - it needs converting", dir=folder)
+        if ui is None:
             return False
-        if not self.prefs.library_user:    # the one converting owns what was saved before users
-            debug.event("session", "library not converted - no user picked", dir=folder)
+        picked = ui.selectFile(title=messages.CONVERT_OLD_LIBRARY_PICK,
+                               file_type=hou.fileType.Directory,
+                               chooser_mode=hou.fileChooserMode.Read)
+        folder = hou.text.expandString(picked or "").strip()
+        if not folder:
             return False
+        if not library_conversion.needs_conversion(folder):
+            ui.displayMessage(messages.CONVERT_OLD_LIBRARY_NONE,
+                              severity=hou.severityType.Message, title=messages.TITLE_AMAZE)
+            return False
+        known = library_conversion.old_users(folder)
+        user = self.prefs.library_user if self.prefs.library_user in known else ""
+        if not user and len(known) == 1:
+            user = next(iter(known))
+        elif not user and known:    # whose stars and locations the ones saved before users become
+            ids = sorted(known, key=lambda uid: known[uid].lower())
+            chosen = ui.selectFromList([known[uid] for uid in ids], exclusive=True,
+                                       title=messages.CONVERT_OLD_LIBRARY_AS,
+                                       column_header=messages.CONVERT_OLD_LIBRARY_AS)
+            if not chosen:
+                return False
+            user = ids[chosen[0]]
+        return self._convert(folder, user)
+
+    def _convert(self, folder: str, user: str) -> bool:
+        """An older library converted whole, told first and shown as it goes; whether it was."""
+        from amaze.core import library_conversion, library_policy
+        ui = hou.ui
+        at = _LibraryAt(self.prefs, folder, user)
 
         def confirm():
             return ui.displayMessage(
@@ -622,19 +648,17 @@ class AmazePanel(QtWidgets.QWidget):
                 except hou.OperationInterrupted:    # the button is Houdini's own: a press is ignored
                     pass
             outcome = library_conversion.convert(
-                folder, confirm, progress, user=self.prefs.library_user,
+                folder, confirm, progress, user=user,
                 machine_stars=library_conversion.machine_stars(self.prefs),
                 show_unknown=self.prefs.file_show_unknown,
-                classic=classic_rebuild.Rebuilder(self.prefs, trash_classic))
-        library_db.release(self.prefs)    # what was read of it before is not what it holds now
+                classic=classic_rebuild.Rebuilder(at, trash_classic))
+        library_db.release(at)    # what was read of it while converting is not what it holds now
         if outcome.status == library_conversion.BLOCKED:
             ui.displayMessage(messages.CONVERT_LIBRARY_BLOCKED % outcome.why,
                               severity=hou.severityType.Warning, title=messages.TITLE_AMAZE)
             return False
-        if outcome.status == library_conversion.CANCELLED:
-            return False    # nothing touched; the question comes again at the next open
         if outcome.status != library_conversion.DONE:
-            return True
+            return False    # cancelled: nothing touched
         left = outcome.set_aside
         if not left:
             ui.displayMessage(messages.CONVERT_LIBRARY_DONE, severity=hou.severityType.Message,
@@ -914,9 +938,6 @@ class AmazePanel(QtWidgets.QWidget):
     def ensure_library_user(self) -> str:
         """After the first paint: this computer's user, or the question that opens Preferences on Library."""
         preferences = self.prefs
-        from amaze.core import library_conversion
-        if library_conversion.needs_conversion(preferences.dir):
-            return ""    # its conversion is asked by the deferred open, and its users read after it
         uid = users.current(preferences)
         if uid or not library_actions.index_present(preferences.dir):
             return uid or ""    # no library to ask about: the pane's own blank says where to set one

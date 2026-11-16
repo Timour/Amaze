@@ -299,9 +299,6 @@ class PrefsDialog(base_dialog.AssetDialog):
         """`{uid: name}` in `folder`; nobody in a folder out of reach."""
         if not folder or not os.path.isdir(folder):
             return {}
-        from amaze.core import library_conversion
-        if library_conversion.needs_conversion(folder):    # Apply converts it, as this user
-            return library_conversion.old_users(folder)
         return users.all_users(self._prefs, library=folder)
 
     def _preselected(self, known: dict, folder: str) -> str:
@@ -444,7 +441,7 @@ class PrefsDialog(base_dialog.AssetDialog):
             return
         if library_actions.list_not_arrived(folder):
             debug.event("prefs", "library not added - its list has not arrived", dir=folder)
-            ui.displayMessage(messages.STARTER_SEED_REFUSED_DIRECTORY_HELD_LIBRARY,
+            ui.displayMessage(messages.LIBRARY_FOLDER_NOT_EMPTY,
                               severity=hou.severityType.Warning, title=messages.TITLE_AMAZE)
             return
         self.pick_library(folder)
@@ -995,8 +992,11 @@ class PrefsDialog(base_dialog.AssetDialog):
         ask = QtWidgets.QHBoxLayout(ask_row)
         ask.setContentsMargins(0, 0, 0, 0)
         ask.setSpacing(theme.ui_px(amazetheme.PREFS_BUTTON_GAP))
+        self._btn_convert = QtWidgets.QPushButton(amazetheme.LABEL_CONVERT_OLD_LIBRARY)
+        self._btn_convert.clicked.connect(self.convert_old_library)
         ask.addWidget(self._btn_update)
         ask.addWidget(self._btn_report)
+        ask.addWidget(self._btn_convert)
         ask.addStretch(1)
         form.addRow(self._label(""), ask_row)
         self._path_rows.append(ask_row)    # spaced from the drawing like every other row of pinned widgets
@@ -1486,6 +1486,12 @@ class PrefsDialog(base_dialog.AssetDialog):
     def set_matx_parallel_downloads(self, value: int) -> None:
         """Read fresh on every dispatch, so it applies to the next batch without a restart."""
         self._prefs.matx_parallel_downloads = value
+
+    @debug.guarded("prefs.convert_old_library")
+    def convert_old_library(self) -> None:
+        """About ▸ Convert pre-1.40: the panel's converter, on a folder picked there."""
+        if self._panel is not None:
+            self._panel.convert_old_library()
 
     @debug.guarded("prefs.report_bug")
     def report_bug(self) -> None:

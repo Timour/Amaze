@@ -3,7 +3,7 @@
 import os
 
 from amaze import messages
-from amaze.core import debug, guard, library_conversion, library_files, library_policy
+from amaze.core import debug, guard, library_files, library_policy
 from amaze.core import library_settings, material
 from amaze.helpers import hostos
 from amaze.prefs import prefs as prefs_mod
@@ -11,7 +11,7 @@ from amaze.prefs import prefs as prefs_mod
 
 def index_unreadable(lib_dir: str) -> bool:
     """The Materials database is there and does not read: Repair can restore or rebuild it."""
-    if not lib_dir or not os.path.isdir(lib_dir) or library_conversion.needs_conversion(lib_dir):
+    if not lib_dir or not os.path.isdir(lib_dir):
         return False
     return guard.Guard(lib_dir).read(library_files.MATERIALS).verdict == guard.CORRUPT
 
@@ -34,13 +34,12 @@ def index_unopenable(lib_dir: str) -> str:
 
 
 def index_present(lib_dir: str) -> bool:
-    """Whether `lib_dir` holds a library: its `DataBase.json`, or an older library to convert."""
-    return bool(lib_dir) and (os.path.isfile(os.path.join(lib_dir, library_files.MASTER))
-                              or library_conversion.needs_conversion(lib_dir))
+    """Whether `lib_dir` holds a library: its `DataBase.json`."""
+    return bool(lib_dir) and os.path.isfile(os.path.join(lib_dir, library_files.MASTER))
 
 
 def list_not_arrived(lib_dir: str) -> bool:
-    """A folder that has held a library and has none now, which `prepare` will not seed over."""
+    """A folder that is no library and is not empty: a new library is made in an empty one alone."""
     return (prefs_mod.can_hold_a_library(lib_dir) and not index_present(lib_dir)
             and bool(starter_would_overwrite(lib_dir)))
 
@@ -53,16 +52,12 @@ def newer_version(preferences) -> int:
 
 
 def starter_would_overwrite(lib_dir: str) -> list:
-    """The evidence that `lib_dir` has held a library, or []; `prepare` asks this before seeding."""
-    found = []
-    for name in (library_files.BACKUP_FOLDER,) + tuple(
-            library_files.SECTION_FOLDERS[section] for section in library_files.ASSET_SECTIONS):
-        folder = os.path.join(lib_dir, name)
-        if os.path.isdir(folder) and os.listdir(folder):
-            found.append(name + "/")
-    found.extend(name for name in library_files.LISTS + (library_files.FILES,)
-                 if os.path.isfile(os.path.join(lib_dir, name)))
-    return found
+    """What `lib_dir` holds besides the system's own files, or []; `prepare` asks before seeding."""
+    try:
+        return sorted(name for name in os.listdir(lib_dir)
+                      if not library_files.is_os_noise(name))
+    except OSError:
+        return []
 
 
 def prepare(preferences) -> None:
@@ -73,12 +68,11 @@ def prepare(preferences) -> None:
         return
     new_folder = False
     if not index_present(lib_dir):
-        held = starter_would_overwrite(lib_dir)    # ABSENT IS NOT EMPTY: never seed over it
+        held = starter_would_overwrite(lib_dir)    # a new library takes an empty folder alone
         if held:
-            debug.event("session", "library NOT created - the directory has held a library",
-                        dir=lib_dir, evidence=held)
-            debug.alert(messages.STARTER_SEED_REFUSED_DIRECTORY_HELD_LIBRARY,
-                        key="starter-refused")
+            debug.event("session", "library NOT created - the folder is not empty",
+                        dir=lib_dir, evidence=held[:10])
+            debug.alert(messages.LIBRARY_FOLDER_NOT_EMPTY, key="starter-refused")
             return
         prefs_mod.create_library(lib_dir)
         new_folder = True
@@ -89,11 +83,10 @@ def prepare(preferences) -> None:
 
 
 def ensure_library_dirs(preferences) -> bool:
-    """img/ and each asset section's folder made, each asked on its own; True if one was made."""
+    """Each asset section's folder made, each asked on its own; True if one was made."""
     made = False
-    for folder in [os.path.join(preferences.dir, preferences.img_dir)] + [
-            material.section_folder(preferences.dir, section)
-            for section in library_files.ASSET_SECTIONS]:
+    for folder in [material.section_folder(preferences.dir, section)
+                   for section in library_files.ASSET_SECTIONS]:
         if not os.path.isdir(folder):
             made = True
         os.makedirs(folder, exist_ok=True)

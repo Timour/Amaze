@@ -468,7 +468,7 @@ class AnUnreadableListIsAskedAboutBeforeTheSwitch(unittest.TestCase):
         self.panel.prefs.save = lambda *a, **k: saves.append(True)
         before = self.panel.prefs.dir
         asked = self._answering(0, lambda: self._preferences().add_library(), picked=held)
-        self.assertEqual([(messages.STARTER_SEED_REFUSED_DIRECTORY_HELD_LIBRARY, ())], asked)
+        self.assertEqual([(messages.LIBRARY_FOLDER_NOT_EMPTY, ())], asked)
         self.assertEqual([], saves, "the settings were saved, which writes into the picked folder")
         self.assertEqual(before, self.panel.prefs.dir, "the library moved")
 

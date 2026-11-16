@@ -175,7 +175,8 @@ LABEL_NAME = "Name"
 PLACEHOLDER_SEARCH_ICONS = "Search"     # D02 drew the count in it; it does not any more
 LABEL_NOT_CONNECTED = "not connected"    # D15: a listed library whose folder cannot be reached
 LABEL_LIBRARY_FORMAT = "Format: v%s"    # ▸ P01, under the library's buttons
-LABEL_UPGRADES_LIBRARY = "Apply/Accept will upgrade your library to v%s"   # beside Apply
+LABEL_CONVERT_OLD_LIBRARY = "Convert pre-1.40"    # About: an older library, picked and converted
+LABEL_UPGRADES_LIBRARY ="Apply/Accept will upgrade your library to v%s"   # beside Apply
 LABEL_LIBRARY_TOO_NEW = "You need to update Amaze to use this library"
 LABEL_LIBRARY_UNREACHABLE = "Amaze cannot reach this library"
 LABEL_PICK_USER = "Pick or create a user"    # the User list with nobody picked
@@ -553,6 +554,8 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
             ("QPushButton", 264, 295, 90, 22, None),
             ("QPushButton ▸ text", 156, 299, 92, 15, "Check for Updates"),
             ("QPushButton ▸ text", 272, 299, 74, 15, "Report a Bug..."),
+            ("QPushButton", 362, 295, 108, 22, None),
+            ("QPushButton ▸ text", 374, 299, 84, 15, "Convert pre-1.40"),
             ("QPushButton", 260, 323, 64, 22, None),
             ("QPushButton", 332, 323, 70, 22, None),
             ("QPushButton", 408, 323, 62, 22, None),

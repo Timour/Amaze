@@ -537,25 +537,31 @@ class NothingChangesUnlessItRunsTest(_OldLibrary):
         self.assertEqual(policy_bytes, read_bytes(policy) if os.path.exists(policy) else None)
         self.assertTrue(library_conversion.needs_conversion(self.dir))
 
-    def test_a_headless_open_never_converts(self):
+    def test_opening_it_changes_nothing_and_makes_no_library_in_it(self):
+        from amaze.actions import library as library_actions
+        before = self.lay_out()
+        self.assertFalse(library_actions.index_present(self.dir), "an older library read as one")
+        self.assertTrue(library_actions.list_not_arrived(self.dir),
+                        "a folder that is not empty would be given a new library")
+        with mock.patch.object(library_actions.debug, "alert") as said:
+            library_actions.prepare(self.prefs)
+        self.assertEqual(messages.LIBRARY_FOLDER_NOT_EMPTY, said.call_args[0][0])
+        self.assertEqual(before, listing(self.dir), "opening it changed the folder")
+
+    def test_the_open_flow_names_no_conversion(self):
+        import inspect
         from amaze.actions import library as library_actions
         from amaze.panel import panel as panel_mod
-        before = self.lay_out()
-        holder = types.SimpleNamespace(prefs=self.prefs)
-        with mock.patch.object(panel_mod, "hou", types.SimpleNamespace()):    # no hou.ui
-            self.assertFalse(panel_mod.AmazePanel._converted(holder, self.dir))
-        import hou
-        if getattr(hou, "ui", None) is None:    # the real headless Houdini, as a script opens it
-            self.assertFalse(panel_mod.AmazePanel._converted(holder, self.dir))
-        library_actions.prepare(self.prefs)
-        self.assertEqual(before, listing(self.dir), "opening headless changed the library")
-        self.assertTrue(library_conversion.needs_conversion(self.dir))
+        for where in (panel_mod.AmazePanel._build, panel_mod.AmazePanel.open_library,
+                      panel_mod.AmazePanel._open_at_start,
+                      panel_mod.AmazePanel.ensure_library_user, library_actions):
+            self.assertNotIn("library_conversion", inspect.getsource(where), str(where))
 
 
 class TheBoxesTest(_OldLibrary):
-    """The panel's boxes, through `_converted` with a stand-in `hou.ui`."""
+    """The converter's boxes, through the panel's `_convert` with a stand-in `hou.ui`."""
 
-    def run_panel(self, answers):
+    def run_panel(self, answers, pick=None, tool=False):
         from amaze.panel import panel as panel_mod
         shown = []
         answers = list(answers)
@@ -578,42 +584,40 @@ class TheBoxesTest(_OldLibrary):
                 pass
 
         fake = types.SimpleNamespace(
-            ui=types.SimpleNamespace(displayMessage=display),
+            ui=types.SimpleNamespace(
+                displayMessage=display,
+                selectFile=lambda **kwargs: pick if pick is not None else self.dir,
+                selectFromList=lambda names, **kwargs: (0,)),
+            text=types.SimpleNamespace(expandString=lambda text: text),
+            fileType=types.SimpleNamespace(Directory="directory"),
+            fileChooserMode=types.SimpleNamespace(Read="read"),
             InterruptableOperation=Operation, OperationInterrupted=RuntimeError,
             severityType=types.SimpleNamespace(Warning="warning", Message="message"))
         holder = types.SimpleNamespace(prefs=self.prefs)
-        holder._offer_old_trash = types.MethodType(panel_mod.AmazePanel._offer_old_trash, holder)
+        for name in ("_offer_old_trash", "_convert"):
+            setattr(holder, name, types.MethodType(getattr(panel_mod.AmazePanel, name), holder))
         with mock.patch.object(panel_mod, "hou", fake):
-            opened = panel_mod.AmazePanel._converted(holder, self.dir)
+            if tool:
+                opened = panel_mod.AmazePanel.convert_old_library(holder)
+            else:
+                opened = holder._convert(self.dir, self.prefs.library_user)
         return opened, shown
 
-    def test_a_cancelled_conversion_asks_nothing_about_the_user(self):
-        from amaze.panel import panel as panel_mod
+    def test_the_tool_converts_the_folder_picked_and_says_so_of_one_that_holds_none(self):
         self.database("library.json", ["MAT1"])
         self.old_asset("MAT1")
-        shown, opened = [], []
-        fake = types.SimpleNamespace(ui=types.SimpleNamespace(
-            displayMessage=lambda text, **kwargs: shown.append(text) or 1))
-        with mock.patch.object(panel_mod, "hou", fake):
-            answer = panel_mod.AmazePanel.ensure_library_user(types.SimpleNamespace(
-                prefs=self.prefs, set_library=lambda: opened.append(True)))
-        self.assertEqual(("", [], []), (answer, shown, opened),
-                         "a library left unconverted was asked about its user")
-        holder = types.SimpleNamespace(prefs=self.prefs, open_library=lambda needs_user: False,
-                                       set_library=lambda: opened.append(True))
-        with mock.patch.object(panel_mod, "hou", fake):
-            self.assertFalse(panel_mod.AmazePanel._open_at_start(holder))
-        self.assertEqual([True], opened, "Preferences, where Apply converts it, did not open")
+        empty = test_support.scratch_dir("amaze_no_old_library_")
+        self.addCleanup(shutil.rmtree, empty, True)
+        opened, shown = self.run_panel([], pick=empty, tool=True)
+        self.assertFalse(opened)
+        self.assertEqual([messages.CONVERT_OLD_LIBRARY_NONE], [text for text, _k in shown])
+        opened, shown = self.run_panel([0], tool=True)    # Convert
+        self.assertTrue(opened)
+        self.assertEqual(messages.CONVERT_LIBRARY_DONE, shown[-1][0])
+        self.assertFalse(library_conversion.needs_conversion(self.dir))
+        self.assertTrue(os.path.isfile(os.path.join(self.materials, "MAT1.mat")))
 
-    def test_the_conversion_is_never_asked_inside_the_pane_s_build(self):
-        import inspect
-        from amaze.panel import panel as panel_mod
-        build = inspect.getsource(panel_mod.AmazePanel._build)
-        self.assertIn("library_conversion.needs_conversion(self.prefs.dir)", build)
-        self.assertLess(build.index("needs_conversion"), build.index("_defer_open_library()"),
-                        "a library to convert is opened inside the build, where its box holds the pane")
-
-    def test_preferences_lists_the_older_library_s_users_and_nothing_is_written_to_it(self):
+    def test_the_older_library_s_users_are_read_and_no_save_writes_into_it(self):
         from amaze.core import library_settings
         write(self.at("users.json"), {"users": {test_support.FIXTURE_USER: {"name": "Anna"}}})
         self.database("library.json", ["MAT1"])
@@ -1139,8 +1143,8 @@ class AFreshLibraryTest(unittest.TestCase):
         from amaze.actions import library as library_actions
         folder = test_support.scratch_dir("amaze_fresh_sections_")
         self.addCleanup(shutil.rmtree, folder, True)
-        library_actions.ensure_library_dirs(types.SimpleNamespace(dir=folder, img_dir="img/"))
-        self.assertEqual(sorted(["img", "materials", "nodes"]), sorted(os.listdir(folder)))
+        library_actions.ensure_library_dirs(types.SimpleNamespace(dir=folder))
+        self.assertEqual(["materials", "nodes"], sorted(os.listdir(folder)))
         self.assertFalse(library_conversion.needs_conversion(folder))
 
 

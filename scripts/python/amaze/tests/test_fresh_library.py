@@ -144,7 +144,7 @@ class EveryWayIntoAnEmptyFolderReadiesIt(unittest.TestCase):
             json.dump(data, handle)
 
     def _assert_ready(self):
-        for name in ("DataBase.json", "img", "materials", "nodes"):
+        for name in ("DataBase.json", "materials", "nodes"):
             self.assertTrue(os.path.exists(os.path.join(self.empty, name)),
                             "the empty folder was opened without its %s" % name)
 

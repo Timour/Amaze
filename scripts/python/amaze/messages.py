@@ -89,7 +89,10 @@ LIBRARY_NOT_OPENED_SWITCHING = 'The library could not be opened because %s\n\nAm
 
 LIBRARY_LIST_NOT_LOADED = 'one of its databases could not be loaded (%s).'
 
-STARTER_SEED_REFUSED_DIRECTORY_HELD_LIBRARY = "This folder looks like a library whose database has not synced yet, so Amaze didn't set up a new one over it. If it's in a synced folder, let the sync finish and reopen Amaze. If the database is really gone, close Amaze and run Check Library on the Amaze shelf to rebuild it."
+LIBRARY_FOLDER_NOT_EMPTY = "This folder is not empty. Pick an empty folder for a new library."
+CONVERT_OLD_LIBRARY_PICK = "Convert Old Library"
+CONVERT_OLD_LIBRARY_NONE = "This folder holds no older library."
+CONVERT_OLD_LIBRARY_AS = "Convert as"
 NO_FOLDER_SELECTED_TO_RELOCATE = "Select the registered folder to re-point first (\"All\" is not a real folder)."
 RELOCATE_TARGET_NOT_A_FOLDER = "That location isn't a folder."
 LOCATION_ALREADY_ADDED = "That location is already added."

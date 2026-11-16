@@ -39,13 +39,12 @@ class TheLibraryVersionTest(_Library):
         self.assertEqual("2.0", library_settings.version_label(
             library_settings.library_version(self.dir)))
 
-    def test_an_older_library_reads_its_own_number_and_needs_converting(self):
+    def test_an_older_library_is_no_library_to_the_version_read(self):
         with open(os.path.join(self.dir, "policy.json"), "w", encoding="utf-8") as handle:
             json.dump({"library_version": 3}, handle)
         with open(os.path.join(self.dir, "library.json"), "w", encoding="utf-8") as handle:
             json.dump({"assets": []}, handle)
-        self.assertEqual(3, library_settings.library_version(self.dir))
-        self.assertEqual("3", library_settings.version_label(3))
+        self.assertEqual(0, library_settings.library_version(self.dir))
 
     def test_an_empty_folder_has_no_version(self):
         self.assertEqual(0, library_settings.library_version(self.dir))

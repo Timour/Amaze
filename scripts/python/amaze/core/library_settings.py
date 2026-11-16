@@ -31,16 +31,13 @@ def version_label(version: int) -> str:
 
 
 def library_version(library_dir: str) -> int:
-    """The version of the library in `library_dir`: its policy's, else an older library's own."""
+    """The version in the policy of the library in `library_dir`; 0 for a folder that holds none."""
     if not library_dir:
         return 0
     reading = guard.Guard(str(library_dir)).read(library_files.MASTER)
     entry = ((reading.document or {}).get(POLICY) or {}).get(VERSION_ENTRY) or {}
     found = entry.get("version") if isinstance(entry, dict) else None
-    if isinstance(found, int) and not isinstance(found, bool) and found > 0:
-        return found
-    from amaze.core import library_conversion
-    return library_conversion.old_version(str(library_dir))
+    return found if isinstance(found, int) and not isinstance(found, bool) and found > 0 else 0
 
 
 def stamp_version(preferences) -> bool:
