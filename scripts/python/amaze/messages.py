@@ -360,8 +360,6 @@ CHECK_NO_FILES = '%s listed in the database %s no files.'
 
 CHECK_IN_NO_DATABASE = '%s in %s %s in no database.'
 
-CHECK_NO_PICTURE = '%s %s no picture.'
-
 CHECK_LEFTOVERS = "%s %s left over from Amaze's own work."
 
 CHECK_UNKNOWN = '%s %s not known to Amaze.'

@@ -193,6 +193,10 @@ class TheDatabasesRowShowsOneCheck(unittest.TestCase):
         sheet = self.dialog._btn_check.styleSheet()
         self.assertIn(amazetheme.P01_LIGHT_FOUND, sheet)
         self.assertIn(amazetheme.P01_REPAIR_INK, sheet)
+        self.assertIn("border:", sheet, "Qt paints no background on a button whose rule sets no border")
+        self.dialog._btn_check.resize(75, 22)
+        middle = self.dialog._btn_check.grab().toImage().pixelColor(6, 11).name()
+        self.assertEqual(amazetheme.P01_LIGHT_FOUND, middle, "the Repair button is not drawn red")
 
     def test_repair_opens_the_dialog_and_checks_again_after_the_fix(self):
         star = self.dead_favorite()
@@ -221,7 +225,7 @@ class TheDatabasesRowShowsOneCheck(unittest.TestCase):
         if amazetheme.P01_LIGHT_FOUND not in fills:
             self.assertEqual(messages.CHECK_NOTHING_TO_REPAIR, self.row()[2])
         from amaze.core import library_check, repair
-        if not library_check.summary(repair.survey(self.prefs))["fixable"]:
+        if not library_check.summary(repair.survey(self.prefs))["lines"]:
             self.assertEqual("Check", self.dialog._btn_check.text())
             self.assertEqual("", self.dialog._btn_check.styleSheet())
 

@@ -64,10 +64,6 @@ def _file_lines(findings: dict) -> list:
         if names:
             said.append(messages.CHECK_IN_NO_DATABASE % (
                 repair.files(len(names)), folder, _are(len(names))))
-    renders = findings.get("missing_renders") or {}
-    if _total(renders):
-        said.append(messages.CHECK_NO_PICTURE % (repair.per_section(renders),
-                                                 _have(_total(renders))))
     leftovers = len(findings.get("leftovers") or ())
     if leftovers:
         said.append(messages.CHECK_LEFTOVERS % (repair.files(leftovers), _are(leftovers)))
@@ -95,8 +91,7 @@ def _ref_lines(findings: dict) -> list:
 
 
 def _files_count(findings: dict) -> int:
-    return (_total(findings.get("missing_files")) + _total(findings.get("missing_renders"))
-            + repair.unaccounted_total(findings)
+    return (_total(findings.get("missing_files")) + repair.unaccounted_total(findings)
             + sum(len(findings.get(key) or ())
                   for key in ("leftovers", "unknown", "unknown_folders", "held_back")))
 
@@ -197,12 +192,30 @@ def all_fixes(findings: dict) -> list:
     return fixes
 
 
+def found_names(findings: dict) -> list:
+    """Each asset, file and folder the red lights count, one per line, for the Repair dialog."""
+    shown = lights(findings)
+    names = []
+    if shown[FILES][0] == FOUND:
+        for filename, rows in (findings.get("missing_files") or {}).items():
+            names.extend("%s: %s" % (naming.section_label(filename), name) for _id, name in rows)
+        for folder, files in findings["unaccounted"].items():
+            names.extend("%s/%s" % (folder, name) for name in files)
+        for key in ("leftovers", "unknown", "unknown_folders", "held_back"):
+            names.extend(entry[0] for entry in findings.get(key) or ())
+    if shown[REFS][0] == FOUND:
+        names.extend(findings.get("dead_stars") or ())
+        names.extend(findings.get("dead_folders") or ())
+    return [str(name) for name in names]
+
+
 def summary(findings: dict) -> dict:
-    """The Databases row: {lights, info, lines, safe, fixable}."""
+    """The Databases row: {lights, info, lines, names, safe, fixable}."""
     lines = finding_lines(findings)
     fixes = all_fixes(findings)
     return {"lights": lights(findings),
             "lines": lines,
+            "names": found_names(findings),
             "info": (lines[0] if lines else _unjudged_line(findings)
                      or messages.CHECK_NOTHING_TO_REPAIR),
             "safe": bool(safe_fixes(findings)),

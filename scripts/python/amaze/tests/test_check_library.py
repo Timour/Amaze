@@ -642,12 +642,12 @@ class TheThreeLightsTest(_Library):
         self.assertEqual("3 files in materials/ are in no database.", found["info"])
         self.assertTrue(found["safe"])
 
-    def test_a_row_with_no_picture_is_found_and_not_fixable(self):
+    def test_a_row_with_no_picture_is_not_counted(self):
         os.remove(os.path.join(self.materials, "AAA1.png"))
         found = self.lights()
-        self.assertEqual((library_check.FOUND, 1), found["lights"][library_check.FILES])
-        self.assertEqual("1 material has no picture.", found["info"])
-        self.assertFalse(found["fixable"])
+        self.assertEqual((library_check.CLEAN, 0), found["lights"][library_check.FILES])
+        self.assertEqual([], found["lines"])
+        self.assertEqual([], found["names"])
 
     def test_leftovers_unknown_files_and_conflict_copies(self):
         _make(os.path.join(self.materials, "AAA1.interface"))
@@ -819,6 +819,9 @@ class TheRepairDialogTest(_Broken):
             "1 file and 1 folder are not known to Amaze.", text)
         self.assertEqual(("Fix All", "Fix Safe", "Cancel"), tuple(asked["buttons"]))
         self.assertEqual((2, 2), (asked["default_choice"], asked["close_choice"]))
+        names = asked["details"].split("\n")
+        self.assertIn("Materials: " + self.survey()["missing_files"][MATERIALS][0][1], names)
+        self.assertEqual(7, len(names), "the dialog does not name each thing its lines count")
         self.assertEqual("Amaze", asked["title"])
         self.assertEqual(1, len(shown), "Cancel said something")
         self.assertEqual((False, 0), (self.landed, self.changed))

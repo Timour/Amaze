@@ -89,6 +89,7 @@ P01_LIGHT_CLEAN = "#3fc28a"     # a part the check found nothing in
 P01_LIGHT_FOUND = "#ff3600"     # a part with findings, and the button once it reads Repair
 P01_LIGHT_UNJUDGED = "#ffae00"  # a part that could not be judged now
 P01_REPAIR_INK = "#f9f9f9"      # the Repair button's text
+P01_REPAIR_RADIUS = 4           # the Repair button's corners, a stylesheet px
 P01_LIGHT_COUNT_GAP = 6         # a light to its count, as drawn for two of the three
 D15_SELECTED_INK = UPDATE_WARNING_FILL   # ▸ D15 Manage Libraries: a row picked for removal
 D15_DIM_INK = "#787878"        # a library that cannot be reached: its name and `not connected`

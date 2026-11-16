@@ -772,8 +772,9 @@ class PrefsDialog(base_dialog.AssetDialog):
         """`Check`, or a red `Repair` once a check found what can be fixed; one drawn box."""
         self._btn_check.setText(amazetheme.BTN_REPAIR if fixable else amazetheme.BTN_CHECK)
         self._btn_check.setStyleSheet(
-            "QPushButton { background-color: %s; color: %s; }"
-            % (amazetheme.P01_LIGHT_FOUND, amazetheme.P01_REPAIR_INK) if fixable else "")
+            "QPushButton { background-color: %s; color: %s; border: none; border-radius: %dpx; }"
+            % (amazetheme.P01_LIGHT_FOUND, amazetheme.P01_REPAIR_INK,
+               amazetheme.P01_REPAIR_RADIUS) if fixable else "")
 
     def _show_check(self, findings: dict) -> None:
         """Fill the row from one survey: each light's colour and count, the line, the button."""
@@ -787,8 +788,8 @@ class PrefsDialog(base_dialog.AssetDialog):
             light.set_fill(fills[state])
             count.setText(amazetheme.LABEL_UNJUDGED if number is None else str(number))
         self._set_check_info(found["info"])
-        self._check_found = findings if found["fixable"] else None
-        self._set_check_button(found["fixable"])
+        self._check_found = findings if found["lines"] else None
+        self._set_check_button(bool(found["lines"]))
 
     def _survey_open_library(self) -> dict:
         """One survey of the open library on disk, the panel's waiting changes saved first."""
@@ -814,7 +815,7 @@ class PrefsDialog(base_dialog.AssetDialog):
             return
         from amaze.dialogs import repair_dialog
         findings = self._survey_open_library()
-        if library_check.summary(findings)["fixable"]:
+        if library_check.summary(findings)["lines"]:
             panel = self._panel
             repair_dialog.repair_found(
                 findings, guard=False,

@@ -115,13 +115,15 @@ def run(preferences=None) -> None:
 def repair_found(findings: dict, guard: bool = True, changed=None) -> bool:
     """Preferences' Repair: what the check found, Fix All or Fix Safe, then what was done."""
     found = library_check.summary(findings)
-    buttons = ((messages.BUTTON_FIX_ALL,)
+    buttons = (((messages.BUTTON_FIX_ALL,) if found["fixable"] else ())
                + ((messages.BUTTON_FIX_SAFE,) if found["safe"] else ())
-               + (messages.BUTTON_FIX_CANCEL,))
+               + ((messages.BUTTON_FIX_CANCEL if found["fixable"]
+                   else messages.BUTTON_REPAIR_CLOSE),))
     picked = hou.ui.displayMessage(                       # type: ignore
         "\n".join([messages.CHECK_FOUND_HEAD, ""] + found["lines"]), buttons=buttons,
         default_choice=len(buttons) - 1, close_choice=len(buttons) - 1,
-        title=messages.TITLE_AMAZE, severity=hou.severityType.Message)    # type: ignore
+        title=messages.TITLE_AMAZE, severity=hou.severityType.Message,    # type: ignore
+        details="\n".join(found["names"]) or None, details_expanded=True)
     if not 0 <= picked < len(buttons) - 1:
         return False
     fix = (library_check.fix_all if buttons[picked] == messages.BUTTON_FIX_ALL
