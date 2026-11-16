@@ -33,6 +33,8 @@ class SharedPrefsCase(unittest.TestCase):
         self.lib = tempfile.mkdtemp(prefix="amaze_shared_lib_")
         for folder in (self.home_a, self.home_b, self.lib):
             self.addCleanup(shutil.rmtree, folder, ignore_errors=True)
+        with open(os.path.join(self.lib, STORE), "w", encoding="utf-8") as handle:
+            json.dump({"format": 5}, handle)    # a library: settings go only where one already is
         test_support.reset_database_singletons()
         self.addCleanup(test_support.reset_database_singletons)
 

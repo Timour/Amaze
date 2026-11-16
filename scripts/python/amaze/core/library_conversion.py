@@ -275,12 +275,6 @@ def _old_databases_left(library_dir: str) -> list:
     return left
 
 
-def holds_old_databases(library_dir: str) -> bool:
-    """Whether an older library's root files are here: one look at the folder, for every save."""
-    return bool(library_dir) and os.path.isdir(library_dir) and bool(
-        _old_databases_left(library_dir))
-
-
 def needs_conversion(library_dir: str) -> bool:
     """Whether anything older than 2.0 is left: an old database, or a format 3 file."""
     library_dir = str(library_dir or "")
