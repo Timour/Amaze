@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.33.31
+
+- **Export Package (.amazepkg)** is in the Import/Generate menu, next to the import, and no longer in the right-click menus. It exports the selected tiles.
+- Package Import is named **Import Package (.amazepkg)**.
+
 ## 1.33.30
 
 - Check Library says backup and restore: **Restore Backup**, **Restore** and **Older Backups...** replace Put a Saved Copy Back, Put This Copy Back and Older Copies....
