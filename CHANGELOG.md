@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.33.32
+
+- The Code section's right-click **Apply** is named **Load**.
+
 ## 1.33.31
 
 - **Export Package (.amazepkg)** is in the Import/Generate menu, next to the import, and no longer in the right-click menus. It exports the selected tiles.
