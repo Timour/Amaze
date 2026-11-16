@@ -721,9 +721,8 @@ snippets.
 
 **User** lists the users in the picked library. Favorites, File folders
 and saved versions belong to the user, so the same user on another
-computer sees the same items. Amaze picks the user with the same name as
-the current one, or the library's only user; otherwise pick one, or
-**Create a new user...**. Two users in one library cannot share a name.
+computer sees the same items. Pick one, or **Create a new user...**. Two
+users in one library cannot share a name.
 **Rename** renames the user shown, and **Delete** removes them from the
 library, after a confirmation. Amaze opens a library only with a user
 picked: when it starts without one, it shows a message with **Open

@@ -372,7 +372,6 @@ def set_overrides(preferences, specs: dict, database: str) -> dict:
                 held.put(SECTION, str(key), chosen)
             else:
                 held.drop(SECTION, str(key))
-    saved = library_db.save(preferences, database)
-    landed = bool(saved) or saved.reason == "unchanged"
-    return {str(key): landed and override_for(preferences, key, database) == normalise(spec)
+    library_db.changed(preferences, database)    # the panel timer saves it with the rest of the gesture
+    return {str(key): override_for(preferences, key, database) == normalise(spec)
             for key, spec in specs.items()}

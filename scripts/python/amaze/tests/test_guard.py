@@ -254,9 +254,10 @@ class NoTicketNoWriteTest(_Library):
         reading = self.guard.read(MATERIALS)
         self.assertEqual((guard.MISSING, None), (reading.verdict, reading.ticket))
 
-    def test_missing_with_a_backup_is_not_a_fresh_start(self):
+    def test_only_the_manifest_says_a_database_existed(self):
         put(self.dir, "backup/%s.2026-11-01_090000.bak" % NODES, assets(3))
-        self.assertEqual(guard.MISSING, self.guard.read(NODES).verdict)
+        self.assertEqual(guard.FRESH, self.guard.read(NODES).verdict,
+                         "a backup file was taken as proof where the manifest names nothing")
 
     def test_a_missing_master_beside_other_databases_is_known(self):
         os.remove(self.at(guard.MASTER))

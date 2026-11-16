@@ -71,9 +71,17 @@ def guard_for(path: str):
     return guard.Guard(os.path.dirname(os.path.dirname(os.path.abspath(path))))
 
 
+def unreadable(path: str) -> str:
+    """Why a record that is there does not read; "" when it reads or is absent."""
+    return _load(path)[1]
+
+
 def write_section(path: str, section: str, data: dict, user: str = "") -> None:
     """Replace one section and keep the other, through the guard; OSError propagates."""
     with LOCK:
+        why = unreadable(path)
+        if why:    # what did not read is never written over
+            raise OSError("%s does not read (%s), so it was not written" % (path, why))
         held = guard_for(path)
         relative = held.inside(path)
         if not relative:

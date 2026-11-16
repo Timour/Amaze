@@ -23,7 +23,7 @@ sys.path.insert(
 
 from amaze import amazetheme  # noqa: E402
 from amaze.actions import nodes as node_actions  # noqa: E402
-from amaze.core import cop_library, keyed_store, tile_icons  # noqa: E402
+from amaze.core import cop_library, guard, library_db, library_files, tile_icons  # noqa: E402
 from amaze.dialogs import icon_dialog  # noqa: E402
 from amaze.helpers import theme  # noqa: E402
 from amaze.panel import panel as panel_mod  # noqa: E402
@@ -116,7 +116,7 @@ class ChoiceTest(unittest.TestCase):
 
     def setUp(self):
         test_support.reset_database_singletons()
-        keyed_store.release()
+        library_db.release()
         self.prefs = test_support.fixture_prefs(self)
         self.prefs.render_on_import = 0
         self.model = cop_library.CopLibrary(preferences=self.prefs)
@@ -165,11 +165,11 @@ class ChoiceTest(unittest.TestCase):
         self.assertEqual(render_path, self.model._mat_paths[self.row])
 
     def test_the_choice_lands_in_the_store_and_ONLY_there(self):
-        """One icons.json for every section is the only home of an icon choice."""
+        """The icons section of the section database is the only home of an icon choice."""
         self.model.set_tile_icon(self.row, {"name": "layers",
                                             "bg": "#4af2a1"})
         stored = tile_icons.override_for(
-            self.prefs, self.model.tile_key(self.row))
+            self.prefs, self.model.tile_key(self.row), self.model.DB_FILENAME)
         self.assertEqual("layers", stored.get("name"),
                          "the pick never reached the shared store")
         self.assertNotIn(
@@ -179,7 +179,7 @@ class ChoiceTest(unittest.TestCase):
             "that strips it is undone on every save")
         self.model.set_tile_icon(self.row, {})
         self.assertEqual({}, tile_icons.override_for(
-            self.prefs, self.model.tile_key(self.row)),
+            self.prefs, self.model.tile_key(self.row), self.model.DB_FILENAME),
             "clearing the icon left the store entry behind")
 
     def test_the_cache_key_changes_with_the_icon(self):
@@ -264,7 +264,7 @@ class FaceChoiceTest(unittest.TestCase):
 
     def setUp(self):
         test_support.reset_database_singletons()
-        keyed_store.release()
+        library_db.release()
         self.prefs = test_support.fixture_prefs(self)
         self.prefs.render_on_import = 0
         self.model = cop_library.CopLibrary(preferences=self.prefs)
@@ -313,32 +313,47 @@ class FaceChoiceTest(unittest.TestCase):
 
 
 class FileRowTest(unittest.TestCase):
-    """File rows have no asset record, so their choices live in icons.json keyed by path."""
+    """File rows have no asset record, so their choices live in the icons section of files.json."""
+
+    FILES = library_files.FILES
 
     def setUp(self):
-        keyed_store.release()
+        library_db.release()
+        self.addCleanup(library_db.release)
         self.prefs = test_support.fixture_prefs(self)
 
+    def _on_disk(self) -> dict:
+        with open(os.path.join(self.prefs.dir, self.FILES), encoding="utf-8") as handle:
+            return json.load(handle).get(tile_icons.SECTION, {})
+
     def test_a_path_keyed_choice_round_trips(self):
-        tile_icons.set_override(self.prefs, "/tmp/a.exr",
-                                {"name": "image", "bg": "#5cc9f5"})
-        keyed_store.release()
+        self.assertTrue(tile_icons.set_override(self.prefs, "/tmp/a.exr",
+                                                {"name": "image", "bg": "#5cc9f5"}, self.FILES))
+        library_db.release()
         self.assertEqual({"name": "image", "bg": "#5cc9f5",
                           "ink": "dark"},
-                         tile_icons.override_for(self.prefs, "/tmp/a.exr"))
-        self.assertTrue(os.path.exists(
-            os.path.join(self.prefs.dir, tile_icons.OVERRIDES_FILE)))
-        tile_icons.set_override(self.prefs, "/tmp/a.exr", {})
-        keyed_store.release()
-        self.assertEqual({}, tile_icons.override_for(self.prefs, "/tmp/a.exr"),
+                         tile_icons.override_for(self.prefs, "/tmp/a.exr", self.FILES))
+        self.assertIn("/tmp/a.exr", self._on_disk())
+        self.assertTrue(self._on_disk()["/tmp/a.exr"].get("_by"),
+                        "the entry on disk carries no user")
+        tile_icons.set_override(self.prefs, "/tmp/a.exr", {}, self.FILES)
+        library_db.release()
+        self.assertEqual({}, tile_icons.override_for(self.prefs, "/tmp/a.exr", self.FILES),
                          "clearing did not forget the path on disk")
+        self.assertNotIn("/tmp/a.exr", self._on_disk())
 
     def test_an_unreadable_store_costs_icons_not_the_section(self):
-        path = os.path.join(self.prefs.dir, tile_icons.OVERRIDES_FILE)
+        path = os.path.join(self.prefs.dir, self.FILES)
         with open(path, "w", encoding="utf-8") as handle:
             handle.write("{ this is not json")
-        keyed_store.release()
-        self.assertEqual({}, tile_icons.override_for(self.prefs, "/tmp/a.exr"))
+        library_db.release()
+        self.assertEqual({}, tile_icons.override_for(self.prefs, "/tmp/a.exr", self.FILES))
+        self.assertFalse(tile_icons.set_override(self.prefs, "/tmp/a.exr",
+                                                 {"name": "image", "bg": "#5cc9f5"}, self.FILES),
+                         "a choice was taken by a database that does not read")
+        with open(path, encoding="utf-8") as handle:
+            self.assertEqual("{ this is not json", handle.read(),
+                             "an unreadable database was written over")
 
 
 class LineWeightTest(unittest.TestCase):
@@ -889,12 +904,16 @@ class ComposedCacheTest(unittest.TestCase):
 
 
 class AnotherSessionsIconsSurviveTest(unittest.TestCase):
-    """Another machine's icons.json choices survive this machine's next icon write."""
+    """Another machine's icon choices in files.json survive this machine's next icon write."""
 
     def setUp(self):
+        library_db.release()
+        self.addCleanup(library_db.release)
         self.prefs = test_support.fixture_prefs(self)
-        self.path = os.path.join(str(self.prefs.dir),
-                                 tile_icons.OVERRIDES_FILE)
+        self.path = os.path.join(str(self.prefs.dir), library_files.FILES)
+
+    def set_override(self, key, spec):
+        return tile_icons.set_override(self.prefs, key, spec, library_files.FILES)
 
     def _behind_our_back(self, key, name):
         with open(self.path, encoding="utf-8") as handle:
@@ -906,39 +925,39 @@ class AnotherSessionsIconsSurviveTest(unittest.TestCase):
         os.utime(self.path, ns=(stat.st_atime_ns,
                                 stat.st_mtime_ns + 5_000_000_000))
 
-    def test_their_key_survives_our_write(self):
-        tile_icons.set_override(self.prefs, "/ours/a.exr",
-                                {"name": "layers", "bg": "#111111"})
-        self._behind_our_back("/theirs/b.exr", "map")
-        tile_icons.set_override(self.prefs, "/ours/c.exr",
-                                {"name": "box", "bg": "#333333"})
+    def _icons(self) -> dict:
         with open(self.path, encoding="utf-8") as handle:
-            icons = json.load(handle)["icons"]
+            return json.load(handle).get(tile_icons.SECTION, {})
+
+    def test_their_key_survives_our_write(self):
+        self.assertTrue(self.set_override("/ours/a.exr", {"name": "layers", "bg": "#111111"}))
+        self._behind_our_back("/theirs/b.exr", "map")
+        self.assertTrue(self.set_override("/ours/c.exr", {"name": "box", "bg": "#333333"}))
+        icons = self._icons()
         self.assertIn("/theirs/b.exr", icons,
                       "the other session's icon choice was overwritten by "
                       "this session's next pick")
         self.assertIn("/ours/a.exr", icons)
         self.assertIn("/ours/c.exr", icons)
+        self.assertEqual("map", tile_icons.override_for(
+            self.prefs, "/theirs/b.exr", library_files.FILES).get("name"),
+            "the other session's choice did not reach this session")
 
     def test_an_in_session_delete_stays_deleted(self):
-        """Adoption may only ADD - it must not resurrect the icon this session just removed."""
-        tile_icons.set_override(self.prefs, "/ours/a.exr",
-                                {"name": "layers", "bg": "#111111"})
-        tile_icons.set_override(self.prefs, "/ours/a.exr", {})
-        with open(self.path, encoding="utf-8") as handle:
-            self.assertNotIn("/ours/a.exr",
-                             json.load(handle).get("icons", {}),
-                             "removing an icon did not remove it")
+        """A merge with another session's save must not bring back the icon this session removed."""
+        self.set_override("/ours/a.exr", {"name": "layers", "bg": "#111111"})
+        self._behind_our_back("/theirs/b.exr", "map")
+        self.set_override("/ours/a.exr", {})
+        icons = self._icons()
+        self.assertNotIn("/ours/a.exr", icons, "removing an icon did not remove it")
+        self.assertIn("/theirs/b.exr", icons)
 
     def test_a_write_now_leaves_a_restore_point(self):
-        tile_icons.set_override(self.prefs, "/ours/a.exr",
-                                {"name": "layers", "bg": "#111111"})
-        tile_icons.set_override(self.prefs, "/ours/b.exr",
-                                {"name": "map", "bg": "#222222"})
-        self.assertTrue(
-            os.path.exists(self.path + ".bak-first"),
-            "icons.json still has no .bak tier - the first bad write is "
-            "the last word on every icon in the library")
+        self.set_override("/ours/a.exr", {"name": "layers", "bg": "#111111"})
+        self.set_override("/ours/b.exr", {"name": "map", "bg": "#222222"})
+        backups = library_db.guard_of(self.prefs).backups(library_files.FILES)
+        self.assertTrue(backups, "files.json has no backup - the first bad write is "
+                                 "the last word on every icon in the library")
 
 
 class CustomColourOpensTheHoudiniPickerTest(unittest.TestCase):
@@ -1275,9 +1294,9 @@ class OneRowsIconCostsOneRowsLookups(unittest.TestCase):
         calls = []
         real = tile_icons.override_for
 
-        def counted(preferences, mat_id):
+        def counted(preferences, mat_id, database):
             calls.append(mat_id)
-            return real(preferences, mat_id)
+            return real(preferences, mat_id, database)
 
         with mock.patch.object(tile_icons, "override_for", counted):
             model.set_tile_icon(model.index(0, 0),
@@ -1302,9 +1321,9 @@ class OneRowsIconCostsOneRowsLookups(unittest.TestCase):
         calls = []
         real = tile_icons.override_for
 
-        def counted(preferences, key):
+        def counted(preferences, key, database):
             calls.append(key)
-            return real(preferences, key)
+            return real(preferences, key, database)
 
         with mock.patch.object(tile_icons, "override_for", counted):
             model.rebuild_thumbs()
@@ -1328,13 +1347,24 @@ class AnIconEditWritesNoIndex(unittest.TestCase):
         self.addCleanup(test_support.reset_database_singletons)
         self.library_mod = library_mod
 
-    def _saves_during(self, action):
-        from amaze.core import database
-        with mock.patch.object(database.DatabaseConnector, "save",
-                               autospec=True,
-                               side_effect=database.DatabaseConnector.save) as save:
+    def _rows_and_records_during(self, action, database):
+        """(rows of the database before, after, the asset files written) around `action`."""
+        def rows():
+            with open(os.path.join(self.prefs.dir, database), encoding="utf-8") as handle:
+                return json.load(handle).get("assets", {})
+        written = []
+        real = guard.Disk.write
+
+        def counted(disk, path, data):
+            if not os.path.basename(path).startswith(database):
+                written.append(os.path.basename(path))
+            return real(disk, path, data)
+
+        before = rows()
+        with mock.patch.object(guard.Disk, "write", counted):
             action()
-        return save.call_count
+            library_db.flush()
+        return before, rows(), written
 
     def test_the_panel_s_icon_pass_saves_no_index(self):
         model = self.library_mod.MaterialLibrary(preferences=self.prefs)
@@ -1345,9 +1375,11 @@ class AnIconEditWritesNoIndex(unittest.TestCase):
                 self.assertTrue(model.set_tile_icon(row, self.SPEC, save=False))
             model.commit_tile_icons(rows)
 
-        self.assertEqual(0, self._saves_during(icon_pass),
-                         "an icon choice wrote the material list, whose "
-                         "records no icon field lives in")
+        before, after, written = self._rows_and_records_during(icon_pass, library_files.MATERIALS)
+        self.assertEqual(before, after, "an icon choice changed a material row, "
+                                        "where no icon field lives")
+        self.assertEqual([], [name for name in written if name.endswith(".json")],
+                         "an icon choice rewrote an asset's record")
         self.assertTrue(model.tile_icon(0), "premise: the icon landed")
 
     def test_a_colour_icon_saves_no_index(self):
@@ -1358,9 +1390,10 @@ class AnIconEditWritesNoIndex(unittest.TestCase):
             {"keys": [0.0, 1.0], "values": [[1, 0, 0], [0, 0, 1]],
              "bases": ["Linear", "Linear"]})
         self.assertTrue(model.rowCount(), "premise: a palette was saved")
-        self.assertEqual(
-            0, self._saves_during(lambda: model.set_tile_icon(0, self.SPEC)),
-            "a palette's icon wrote the Colors list")
+        before, after, _written = self._rows_and_records_during(
+            lambda: self.assertTrue(model.set_tile_icon(0, self.SPEC)), library_files.COLORS)
+        self.assertEqual(before, after, "a palette's icon changed a Colors row")
+        self.assertTrue(model.tile_icon(0), "premise: the icon landed")
 
     def test_one_row_s_icon_scans_no_other_row_and_reads_no_ledger(self):
         from amaze.core import versions
@@ -1447,7 +1480,11 @@ class TheLineWeightRedrawsEverySection(unittest.TestCase):
 
 
 class AnIconOverASelectionWritesOnce(unittest.TestCase):
-    """The shared Customize apply commits `icons.json` once per gesture, and every row still lands."""
+    """The shared Customize apply writes the section database once per gesture, every row landed."""
+
+    DATABASES = {"material_model": library_files.MATERIALS, "cop_model": library_files.NODES,
+                 "code_model": library_files.CODE, "file_files_model": library_files.FILES,
+                 "gradient_model": library_files.COLORS}
 
     SPEC = {"name": "circle", "bg": "#e0523a", "ink": "dark"}
 
@@ -1455,7 +1492,6 @@ class AnIconOverASelectionWritesOnce(unittest.TestCase):
         self.panel = test_support.fixture_panel(self)
 
     def test_every_section_commits_a_selection_s_icon_once(self):
-        from amaze.helpers import hostos
         self.panel.section_tabs.setChecked("file")    # File lists its rows once shown
         QtWidgets.QApplication.processEvents()
         checked = []
@@ -1465,25 +1501,59 @@ class AnIconOverASelectionWritesOnce(unittest.TestCase):
             if len(rows) < 2:
                 continue
             with self.subTest(model=attr):
+                database = self.DATABASES[attr]
+                library_db.flush()
                 writes = []
-                real = hostos.write_json_atomic
+                real = guard.Disk.write
 
-                def counted(path, *args, writes=writes, **kwargs):
-                    if os.path.basename(path) == tile_icons.OVERRIDES_FILE:
+                def counted(disk, path, data, writes=writes, database=database):
+                    name = os.path.basename(path)
+                    backup = os.path.basename(os.path.dirname(path)) == guard.BACKUP_DIR
+                    if name.startswith(database + ".") and name.endswith(guard.SCRATCH) \
+                            and not backup:
                         writes.append(path)
-                    return real(path, *args, **kwargs)
+                    return real(disk, path, data)
 
-                with mock.patch.object(hostos, "write_json_atomic", counted):
+                with mock.patch.object(guard.Disk, "write", counted):
                     self.panel.apply_icon_spec(model, rows, self.SPEC)
+                    QtWidgets.QApplication.processEvents()
+                    library_db.flush()
                 self.assertEqual(1, len(writes), "%s wrote %s %d times for "
-                                 "one gesture" % (attr, tile_icons.OVERRIDES_FILE,
-                                                  len(writes)))
+                                 "one gesture" % (attr, database, len(writes)))
                 self.assertEqual([tile_icons.normalise(self.SPEC)] * len(rows),
                                  [model.tile_icon(row) for row in rows],
                                  "%s: a row did not take the icon" % attr)
                 checked.append(attr)
         self.assertIn("material_model", checked, "premise: Materials checked")
         self.assertIn("file_files_model", checked, "premise: File checked")
+
+    def test_an_icon_and_a_category_in_one_gesture_are_one_write(self):
+        """Customize sets the icon and files the tiles: with the panel timer, one save of both."""
+        model = self.panel.material_model
+        rows = list(range(min(model.rowCount(), 3)))
+        self.assertGreater(len(rows), 1, "premise: two material tiles")
+        library_db.flush()
+        library_db.set_scheduler(self.panel._save_timer.start)    # the timer the harness took off
+        self.addCleanup(library_db.drop_scheduler)
+        writes = []
+        real = guard.Disk.write
+
+        def counted(disk, path, data):
+            if os.path.basename(path).startswith(library_files.MATERIALS + ".") \
+                    and os.path.basename(os.path.dirname(path)) != guard.BACKUP_DIR:
+                writes.append(path)
+            return real(disk, path, data)
+
+        with mock.patch.object(guard.Disk, "write", counted):
+            self.panel.apply_icon_spec(model, rows, self.SPEC)
+            edited = {model.tile_key(row) for row in rows
+                      if model.set_tile_category(row, "Customized", save=False)}    # as Customize
+            model.commit_tile_edits(edited)
+            QtWidgets.QApplication.processEvents()
+            library_db.flush()
+        self.assertEqual(1, len(writes), "one Customize wrote materials.json %d times" % len(writes))
+        self.assertEqual([tile_icons.normalise(self.SPEC)] * len(rows),
+                         [model.tile_icon(row) for row in rows])
 
 
 if __name__ == "__main__":

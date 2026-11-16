@@ -17,15 +17,42 @@ from PySide6 import QtCore, QtGui, QtWidgets
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 from amaze.core import category                          # noqa: E402
-from amaze.core import database                          # noqa: E402
 from amaze.core import gradient_library                  # noqa: E402
-from amaze.core import keyed_store                       # noqa: E402
+from amaze.core import library_db                        # noqa: E402
+from amaze.core import library_files                     # noqa: E402
 from amaze.core import tile_icons                        # noqa: E402
 from amaze.panel import sections                         # noqa: E402
 from amaze.prefs import prefs                            # noqa: E402
 from amaze.tests import test_support                     # noqa: E402
 
-SCHEMA = database.SCHEMA_VERSION    # read from the module, so a fixture never silently tests the migration at the next bump
+COLORS = library_files.COLORS
+
+
+def _colors_document(document: dict) -> dict:
+    """A {categories: [...], assets: [...]} payload as colors.json holds it: rows and categories keyed."""
+    order = [name for name in document.get("categories") or []
+             if isinstance(name, str) and name.lstrip("_") != "All"]
+    rows = {}
+    for row in document.get("assets") or []:
+        if isinstance(row, dict):
+            rows[str(row.get("id") or row.get("name"))] = dict(row)
+    for row in rows.values():
+        order.extend(name for name in row.get("categories") or [] if name not in order)
+    return {"assets": rows,
+            "categories": {name: {"order": at} for at, name in enumerate(order)},
+            "comments": {}, "icons": {}, "stars": {}}
+
+
+def _lay(path: str, document: dict) -> None:
+    """colors.json at `path`, written from the payload as another session would leave it."""
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(_colors_document(document), fh, indent=1)
+
+
+def _rows_on_disk(path: str) -> list:
+    """The palette rows colors.json holds, in its order."""
+    with open(path, encoding="utf-8") as fh:
+        return list((json.load(fh).get("assets") or {}).values())
 
 
 def _fixture_prefs(testcase, directory,
@@ -53,37 +80,33 @@ class GradientStaleWriteTest(unittest.TestCase):
         test_support.reset_database_singletons()    # the connector is one instance per filename, process-wide; a stale one latches
         self.dir = tempfile.mkdtemp(prefix="amaze_grad_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
-        self.path = os.path.join(self.dir, "gradients.json")
-        self._write({"version": SCHEMA, "categories": ["Warm"],    # with an identity: the connector keys its whole union on it
+        self.path = os.path.join(self.dir, COLORS)
+        self._write({"categories": ["Warm"],
                      "assets": [{"name": "ours", "id": "oursuid",
                                  "colors": []}]})
         self.lib = gradient_library.GradientLibrary(
             preferences=_fixture_prefs(self, self.dir))
 
     def _write(self, data):
-        with open(self.path, "w", encoding="utf-8") as fh:
-            json.dump(data, fh, indent=1)
+        _lay(self.path, data)
 
-    def _read(self):
-        with open(self.path, encoding="utf-8") as fh:
-            return json.load(fh)
+    def _names(self):
+        return [row["name"] for row in _rows_on_disk(self.path)]
 
     def _touch_from_another_session(self):
-        """Another writer replaces the file after we loaded it."""
-        self._write({"version": SCHEMA, "categories": ["Theirs"],
-                     "assets": [{"name": "theirs", "colors": [],
+        """Another writer adds two palettes after we loaded the file."""
+        self._write({"categories": ["Warm", "Theirs"],
+                     "assets": [{"name": "ours", "id": "oursuid", "colors": []},
+                                {"name": "theirs", "colors": [],
                                  "id": "theirsuid1"},
                                 {"name": "theirs2", "colors": [],
                                  "id": "theirsuid2"}]})
-        stat = os.stat(self.path)
-        os.utime(self.path, ns=(stat.st_atime_ns,    # make the change unmistakable to an (mtime_ns, size) key, whatever the timer resolution
-                                stat.st_mtime_ns + 5_000_000_000))
 
     def test_the_other_sessions_gradients_survive_our_save(self):
-        """The connector three-way merges, like the other three databases: both sides survive."""
+        """The database merges three ways, like every other one: both sides survive."""
         self._touch_from_another_session()
         self.lib.add_user_gradient("mine", "", {"values": [], "keys": []})
-        names = [g["name"] for g in self._read()["assets"]]
+        names = self._names()
         for theirs in ("theirs", "theirs2"):
             self.assertIn(
                 theirs, names,
@@ -96,7 +119,7 @@ class GradientStaleWriteTest(unittest.TestCase):
         """The baseline is refreshed after a write, or our own save looks like another edit on the next."""
         self.lib.add_user_gradient("first", "", {"values": [], "keys": []})
         self.lib.add_user_gradient("second", "", {"values": [], "keys": []})
-        names = [g["name"] for g in self._read()["assets"]]
+        names = self._names()
         self.assertIn(
             "second", names,
             "the second save was refused - the post-write baseline is "
@@ -115,7 +138,7 @@ class GradientStaleWriteTest(unittest.TestCase):
         row = _row_named(self, self.lib, "ours")
         self.lib.remove_rows([row])
         self.lib.add_user_gradient("kept", "", {"values": [], "keys": []})
-        names = [g["name"] for g in self._read()["assets"]]
+        names = self._names()
         self.assertIn("kept", names, "premise: the later save landed")
         self.assertNotIn(
             "ours", names,
@@ -144,19 +167,16 @@ class GradientTagsReachTheRowTest(unittest.TestCase):
         test_support.reset_database_singletons()
         self.dir = tempfile.mkdtemp(prefix="amaze_grad_tags_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
-        self.path = os.path.join(self.dir, "gradients.json")
-        with open(self.path, "w", encoding="utf-8") as fh:
-            json.dump({"version": SCHEMA, "categories": ["Warm"],
-                       "assets": []}, fh)
+        self.path = os.path.join(self.dir, COLORS)
+        _lay(self.path, {"categories": ["Warm"], "assets": []})
         self.lib = gradient_library.GradientLibrary(
             preferences=_fixture_prefs(self, self.dir))
 
     def _saved(self, name):
         """The row as it reached DISK, which is the only place a tag has to survive to."""
-        with open(self.path, encoding="utf-8") as fh:
-            for row in json.load(fh).get("assets", []):
-                if row.get("name") == name:
-                    return row
+        for row in _rows_on_disk(self.path):
+            if row.get("name") == name:
+                return row
         self.fail("no palette named %r reached the file" % name)
 
     def test_the_tags_are_stored_on_the_saved_palette(self):
@@ -193,36 +213,30 @@ class GradientAbsenceAndShapeTest(unittest.TestCase):
         test_support.reset_database_singletons()
         self.dir = tempfile.mkdtemp(prefix="amaze_grad_shape_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
-        self.path = os.path.join(self.dir, "gradients.json")
+        self.path = os.path.join(self.dir, COLORS)
+        self.addCleanup(library_db.release)
 
     def _library(self):
         return gradient_library.GradientLibrary(
             preferences=_fixture_prefs(self, self.dir))
 
-    def test_repair_and_the_loader_agree_that_the_file_was_here(self):
-        """With the marker present and the file gone, Repair and the loader must both say it was here."""
-        marker = os.path.join(self.dir, gradient_library.GradientLibrary
-                              ._SEED_MARKER)
-        with open(marker, "w", encoding="utf-8") as fh:
-            fh.write("seeded 3 curated palettes\n")
-        self.assertFalse(os.path.exists(self.path), "premise: file absent")
-        self.assertTrue(
-            database.absent_but_known(self.dir, "gradients.json"),
-            "the shared table still cannot see that gradients.json was "
-            "here - Repair will report a false all-clear")
-
     def test_a_wrong_shaped_file_does_not_take_the_panel_down(self):
         """Valid JSON of the wrong shape takes the parse-failure refusal: empty, latched, untouched."""
-        for shape in ({"version": SCHEMA, "assets": "this is not a list"},
+        for shape in ({"assets": "this is not a table"},
                       ["not", "an", "object"]):
             with self.subTest(shape=shape):
                 test_support.reset_database_singletons()
+                library_db.release()
                 with open(self.path, "w", encoding="utf-8") as fh:
                     json.dump(shape, fh)
                 lib = self._library()                       # must not raise
                 self.assertTrue(getattr(lib, "_load_failed", False),
                                 "a wrong-shaped file loaded as if it were "
                                 "fine, so the next save would overwrite it")
+                lib.add_user_gradient("refused", "", {"values": [], "keys": []})
+                library_db.flush()
+                with open(self.path, encoding="utf-8") as fh:
+                    self.assertEqual(shape, json.load(fh), "the wrong-shaped file was written over")
 
     def test_the_sidebar_survives_the_same_file(self):
         """The sidebar reads the same file right after the library and must survive it too."""
@@ -236,17 +250,15 @@ class GradientAbsenceAndShapeTest(unittest.TestCase):
 
     def test_the_seed_marker_is_withheld_when_the_save_did_not_land(self):
         """The seed marker is minted only for a save that landed, or the loader latches for the session."""
-        lib = self._library()
-        connector = database.DatabaseConnector(lib.DB_FILENAME)
-        connector._write_blocked = True
-        self.addCleanup(setattr, connector, "_write_blocked", False)
-        self.assertFalse(lib.save(),
-                         "save reported success while refusing")
-        lib.seed_curated_palettes(gradient_library.GradientCategories(
-            preferences=_fixture_prefs(self, self.dir)))
+        from amaze.core import library_settings
+        prefs_ = _fixture_prefs(self, self.dir)
+        lib = gradient_library.GradientLibrary(preferences=prefs_)
+        with test_support.full_disk_for(self.path):
+            lib.seed_curated_palettes(gradient_library.GradientCategories(preferences=prefs_))
+        self.assertFalse(os.path.exists(self.path), "premise: the seed did not land")
+        library_db.release()
         self.assertFalse(
-            os.path.exists(os.path.join(
-                self.dir, gradient_library.GradientLibrary._SEED_MARKER)),
+            library_settings.marked(_fixture_prefs(self, self.dir), lib._SEED_MARK),
             "the seed minted its permanent marker for a refused save")
 
 
@@ -257,25 +269,22 @@ class GradientRowRideTest(unittest.TestCase):
         test_support.reset_database_singletons()
         self.dir = tempfile.mkdtemp(prefix="amaze_grad_ride_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
-        self.path = os.path.join(self.dir, "gradients.json")
-        with open(self.path, "w", encoding="utf-8") as fh:
-            json.dump({"version": SCHEMA, "categories": ["Warm"],
-                       "assets": [{"name": "ours", "id": "oursuid",
-                                   "categories": ["Warm"],
-                                   "colors": [{"name": "red",
-                                               "hex": "#ff0000"}],
-                                   "ramp": {"keys": [0.0],
-                                            "values": [[1, 0, 0]],
-                                            "bases": ["Constant"]}}]},
-                      fh, indent=1)
+        self.path = os.path.join(self.dir, COLORS)
+        _lay(self.path, {"categories": ["Warm"],
+                         "assets": [{"name": "ours", "id": "oursuid",
+                                     "categories": ["Warm"],
+                                     "colors": [{"name": "red",
+                                                 "hex": "#ff0000"}],
+                                     "ramp": {"keys": [0.0],
+                                              "values": [[1, 0, 0]],
+                                              "bases": ["Constant"]}}]})
         self.lib = gradient_library.GradientLibrary(
             preferences=_fixture_prefs(self, self.dir))
 
     def _on_disk_row(self, name):
-        with open(self.path, encoding="utf-8") as fh:
-            for row in json.load(fh).get("assets", []):
-                if isinstance(row, dict) and row.get("name") == name:
-                    return row
+        for row in _rows_on_disk(self.path):
+            if isinstance(row, dict) and row.get("name") == name:
+                return row
         self.fail("no row named %r on disk" % name)
 
     def test_a_loaded_row_rides_a_save_untouched_and_a_new_one_is_born_dated(self):
@@ -294,64 +303,19 @@ class GradientRowRideTest(unittest.TestCase):
         self.assertNotEqual("", self._on_disk_row("mine").get("date", ""),
                             "a new palette should carry its birth date")
 
-    def _pre_bump_library(self):
-        """A v7 document with one id-less row beside a stamped one, at the literal old version on purpose."""
-        with open(self.path, "w", encoding="utf-8") as fh:
-            json.dump({"version": 7, "categories": [],
-                       "assets": [{"name": "bare", "colors": []},
-                                  {"name": "kept", "colors": [],
-                                   "id": "keptid"}]}, fh)
-        test_support.reset_database_singletons()
-
-    def test_the_bump_mints_an_identity_only_where_there_is_none(self):
-        """An id-less row re-mints on every load; a re-minted id orphans every note keyed to it."""
-        self._pre_bump_library()
-        gradient_library.GradientLibrary(
-            preferences=_fixture_prefs(self, self.dir))
-        with open(self.path, encoding="utf-8") as fh:
-            saved = json.load(fh)
-        self.assertEqual(SCHEMA, saved.get("version"),
-                         "the document did not reach the current schema")
-        bare = [row["name"] for row in saved["assets"]
-                if not str(row.get("id") or "")]
-        self.assertEqual([], bare,
-                         "%d row(s) still carry no identity" % len(bare))
-        kept = {row["name"]: row.get("id") for row in saved["assets"]}
-        self.assertEqual("keptid", kept.get("kept"),
-                         "the migration overwrote an identity that was "
-                         "already there")
-
-    def test_a_minted_identity_is_stable_across_a_reload(self):
-        """The whole point of writing it back: the id must not change on the next open."""
-        self._pre_bump_library()
-        first = gradient_library.GradientLibrary(
-            preferences=_fixture_prefs(self, self.dir))
-        minted = first.tile_key(_row_named(self, first, "bare"))
-        self.assertTrue(minted, "no identity was minted at all")
-        test_support.reset_database_singletons()
-        again = gradient_library.GradientLibrary(
-            preferences=_fixture_prefs(self, self.dir))
-        self.assertEqual(
-            minted, again.tile_key(_row_named(self, again, "bare")),
-            "the identity did not survive the reload, so every launch "
-            "keys the palette's notes and icon differently")
-
-
 class GradientTileIconTest(unittest.TestCase):
     """A palette icon is stored, reaches the tile and is reversible; Customize writes no PNG for it."""
 
     def setUp(self):
         test_support.reset_database_singletons()
-        keyed_store.release()
+        library_db.release()
         self.dir = tempfile.mkdtemp(prefix="amaze_gicon_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
-        self.path = os.path.join(self.dir, "gradients.json")
-        with open(self.path, "w", encoding="utf-8") as fh:
-            json.dump({"version": SCHEMA, "categories": ["Warm"],
-                       "assets": [
-                {"name": "ours", "categories": ["Warm"], "id": "oursicon",
-                 "colors": [{"name": "red", "hex": "#ff0000"},
-                            {"name": "blue", "hex": "#0000ff"}]}]}, fh)
+        self.path = os.path.join(self.dir, COLORS)
+        _lay(self.path, {"categories": ["Warm"], "assets": [
+            {"name": "ours", "categories": ["Warm"], "id": "oursicon",
+             "colors": [{"name": "red", "hex": "#ff0000"},
+                        {"name": "blue", "hex": "#0000ff"}]}]})
         self.prefs = _fixture_prefs(self, self.dir)
         self.lib = gradient_library.GradientLibrary(preferences=self.prefs)
         self.row = _row_named(self, self.lib, "ours")
@@ -374,7 +338,7 @@ class GradientTileIconTest(unittest.TestCase):
             self.row, {"name": "layers", "bg": "#4af2a1"}))
         self.assertEqual("layers", self.lib.tile_icon(self.row)["name"])
         test_support.reset_database_singletons()
-        keyed_store.release()
+        library_db.release()
         again = gradient_library.GradientLibrary(
             preferences=_fixture_prefs(self, self.dir))
         row = _row_named(self, again, "ours")
@@ -409,12 +373,10 @@ class GradientCategoryColorTest(unittest.TestCase):
         test_support.reset_database_singletons()
         self.dir = tempfile.mkdtemp(prefix="amaze_gcol_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
-        self.path = os.path.join(self.dir, "gradients.json")
-        with open(self.path, "w", encoding="utf-8") as fh:
-            json.dump({"version": SCHEMA, "categories": ["Warm"],
-                       "assets": [
-                {"name": "ours", "categories": ["Warm"], "id": "ourscolor",
-                 "colors": [{"name": "red", "hex": "#ff0000"}]}]}, fh)
+        self.path = os.path.join(self.dir, COLORS)
+        _lay(self.path, {"categories": ["Warm"], "assets": [
+            {"name": "ours", "categories": ["Warm"], "id": "ourscolor",
+             "colors": [{"name": "red", "hex": "#ff0000"}]}]})
         self.prefs = _fixture_prefs(self, self.dir)
         self.lib = gradient_library.GradientLibrary(preferences=self.prefs)
         self.sidebar = gradient_library.GradientCategories(
@@ -464,10 +426,10 @@ class APaletteCategoryWithACommaStaysWholeTest(unittest.TestCase):
         self.addCleanup(test_support.reset_database_singletons)
         self.dir = tempfile.mkdtemp(prefix="amaze_gcomma_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
-        with open(os.path.join(self.dir, "gradients.json"), "w", encoding="utf-8") as fh:
-            json.dump({"version": SCHEMA, "categories": ["Warm", self.NAME],
-                       "assets": [{"name": "ours", "categories": ["Warm"], "id": "ourscomma",
-                                   "colors": [{"name": "red", "hex": "#ff0000"}]}]}, fh)
+        _lay(os.path.join(self.dir, COLORS),
+             {"categories": ["Warm", self.NAME],
+              "assets": [{"name": "ours", "categories": ["Warm"], "id": "ourscomma",
+                          "colors": [{"name": "red", "hex": "#ff0000"}]}]})
         self.lib = gradient_library.GradientLibrary(
             preferences=_fixture_prefs(self, self.dir))
 
@@ -503,7 +465,7 @@ class GradientSeedNoteTest(unittest.TestCase):
         test_support.reset_database_singletons()
         self.dir = tempfile.mkdtemp(prefix="amaze_seednote_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
-        self.path = os.path.join(self.dir, "gradients.json")
+        self.path = os.path.join(self.dir, COLORS)
         self.prefs = _fixture_prefs(self, self.dir)
 
     def _seeded(self):
@@ -523,9 +485,7 @@ class GradientSeedNoteTest(unittest.TestCase):
         self.assertTrue(pages,
                         "no seeded palette carries its colour text, so "
                         "the seed dropped it")
-        with open(self.path, encoding="utf-8") as fh:
-            saved = json.load(fh)
-        carried = [g["name"] for g in saved["assets"] if "note" in g]
+        carried = [g["name"] for g in _rows_on_disk(self.path) if "note" in g]
         self.assertEqual([], carried,
                          "the retired field reached disk on %d rows"
                          % len(carried))
@@ -538,40 +498,59 @@ class GradientFirstOpenWriteCountTest(unittest.TestCase):
         test_support.reset_database_singletons()
         self.dir = tempfile.mkdtemp(prefix="amaze_writestorm_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
-        self.path = os.path.join(self.dir, "gradients.json")
-        with open(self.path, "w", encoding="utf-8") as fh:
-            json.dump(    # stamped ids and `_All` present, so neither the id persist nor its normalisation writes
-                {"version": SCHEMA, "categories": ["_All"],
-                 "assets": [{"name": "g%d" % i, "colors": [],
-                             "id": "fixtureuid%02d" % i,
-                             "note": "note %d" % i}
-                            for i in range(12)]}, fh, indent=1)
+        self.path = os.path.join(self.dir, COLORS)
+        _lay(self.path, {"categories": [],
+                         "assets": [{"name": "g%d" % i, "colors": [],
+                                     "id": "fixtureuid%02d" % i}
+                                    for i in range(12)]})
         self.prefs = _fixture_prefs(self, self.dir)
 
     def _counted_writes(self):
-        """Counts at hostos.write_json_atomic, where every engine write lands, not at a wrapper."""
-        from amaze.helpers import hostos
+        """The databases written, counted at the guard disk, where every database write lands."""
+        from unittest import mock
+        from amaze.core import guard
         seen = []
-        real = hostos.write_json_atomic
+        real = guard.Disk.write
 
-        def counting(path, *args, **kwargs):
-            seen.append(os.path.basename(path))
-            return real(path, *args, **kwargs)
+        def counting(disk, path, data):
+            if os.path.basename(os.path.dirname(path)) != guard.BACKUP_DIR:
+                seen.append(os.path.basename(path).split(".json")[0] + ".json")
+            return real(disk, path, data)
 
-        hostos.write_json_atomic = counting
-        self.addCleanup(setattr, hostos, "write_json_atomic", real)
+        patcher = mock.patch.object(guard.Disk, "write", counting)
+        patcher.start()
+        self.addCleanup(patcher.stop)
         return seen
 
     def test_the_whole_curated_seed_costs_one_notes_write(self):
-        """39 pages, one write: a per-note write rotates a snapshot each time."""
+        """39 pages, one write: a per-note write would make a backup each time."""
+        from unittest import mock
+        from amaze.core import notes
         seen = self._counted_writes()
         lib = gradient_library.GradientLibrary(preferences=self.prefs)
-        lib.seed_curated_palettes(
-            gradient_library.GradientCategories(preferences=self.prefs))
-        self.assertEqual(
-            1, seen.count("notes.json"),
-            "the seed wrote notes.json %d times; batching is what keeps "
-            "the snapshot tier usable" % seen.count("notes.json"))
+        during_pages = []
+        real_set_notes = notes.set_notes
+
+        def counted_set_notes(*args, **kwargs):
+            before = seen.count(COLORS)
+            answer = real_set_notes(*args, **kwargs)
+            during_pages.append(seen.count(COLORS) - before)
+            return answer
+
+        timer = []
+        library_db.set_scheduler(lambda: timer.append(1))    # as the panel does: a burst waits
+        self.addCleanup(library_db.drop_scheduler)
+        with mock.patch.object(notes, "set_notes", counted_set_notes):
+            lib.seed_curated_palettes(
+                gradient_library.GradientCategories(preferences=self.prefs))
+        library_db.flush()
+        self.assertGreater(lib.rowCount(), 12, "premise: the seed ran")
+        self.assertEqual([1], during_pages,
+                         "the seed wrote its pages in %s writes; batching is what "
+                         "keeps the backups usable" % during_pages)
+        self.assertLessEqual(seen.count(COLORS), 3,
+                             "the seed wrote colors.json %d times; the rows, the pages "
+                             "and the categories once each" % seen.count(COLORS))
         from amaze.core import notes
         pages = sum(1 for row in range(lib.rowCount())
                     if notes.note_for(
@@ -586,11 +565,11 @@ class GradientFirstOpenWriteCountTest(unittest.TestCase):
         """Rows born stamped cost no write; counted, as an id afterwards cannot tell born from backfilled."""
         seen = self._counted_writes()
         gradient_library.GradientLibrary(preferences=self.prefs)
-        self.assertLessEqual(
-            seen.count("gradients.json"), 1,
-            "first open wrote gradients.json %d times; the note sweep "
-            "is one write and the identity persist should add none"
-            % seen.count("gradients.json"))
+        library_db.flush()
+        self.assertEqual(
+            0, seen.count(COLORS),
+            "first open wrote colors.json %d times; opening a library "
+            "that holds nothing to change writes nothing" % seen.count(COLORS))
 
 
 class GradientTileNameTest(unittest.TestCase):
@@ -600,12 +579,9 @@ class GradientTileNameTest(unittest.TestCase):
         test_support.reset_database_singletons()
         self.dir = tempfile.mkdtemp(prefix="amaze_gradname_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
-        self.path = os.path.join(self.dir, "gradients.json")
-        with open(self.path, "w", encoding="utf-8") as fh:
-            json.dump({"version": SCHEMA, "categories": [],
-                       "assets": [{"name": "klee", "colors": [],
-                                   "id": "kleeid"}]},
-                      fh, indent=1)
+        self.path = os.path.join(self.dir, COLORS)
+        _lay(self.path, {"categories": [],
+                         "assets": [{"name": "klee", "colors": [], "id": "kleeid"}]})
         self.prefs = _fixture_prefs(self, self.dir)
 
     def test_set_tile_name_renames_and_persists(self):
@@ -628,7 +604,7 @@ class GradientRowShapeTest(unittest.TestCase):
         test_support.reset_database_singletons()
         self.dir = tempfile.mkdtemp(prefix="amaze_grad_rows_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
-        self.path = os.path.join(self.dir, "gradients.json")
+        self.path = os.path.join(self.dir, COLORS)
 
     def _write(self, payload):
         with open(self.path, "w", encoding="utf-8") as fh:
@@ -639,10 +615,10 @@ class GradientRowShapeTest(unittest.TestCase):
             preferences=_fixture_prefs(self, self.dir))
 
     def test_the_good_rows_around_it_still_load(self):
-        """Skip the bad row, keep the library - the connector's own merge policy, applied here."""
+        """Skip the bad row, keep the library: one junk entry costs that entry alone."""
         good = {"name": "Warm", "colors": [], "id": "warmid"}
-        self._write({"version": SCHEMA, "assets": [good, 42, None, "nope"],
-                     "categories": []})
+        self._write({"assets": {"warmid": good, "n": 42, "none": None, "s": "nope"},
+                     "categories": {}})
         lib = self._library()                       # must not raise
         self.assertEqual(
             ["Warm"],
@@ -669,11 +645,8 @@ class TwoRampsWithOneSetOfColoursDoNotShareATile(unittest.TestCase):
                     "ramp": {"bases": ["Linear", "Linear"],
                              "keys": keys,
                              "values": [[1, 0, 0], [0, 0, 1]]}}
-        with open(os.path.join(self.dir, "gradients.json"), "w",
-                  encoding="utf-8") as fh:
-            json.dump({"version": SCHEMA, "categories": [],
-                       "assets": [_row("a", keys_a), _row("b", keys_b)]},
-                      fh)
+        _lay(os.path.join(self.dir, COLORS),
+             {"categories": [], "assets": [_row("a", keys_a), _row("b", keys_b)]})
         return gradient_library.GradientLibrary(
             preferences=_fixture_prefs(self, self.dir))
 
@@ -696,16 +669,13 @@ class TheColorsProxyIsTheFamilys(unittest.TestCase):
         test_support.reset_database_singletons()
         self.dir = tempfile.mkdtemp(prefix="amaze_grad_proxy_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
-        with open(os.path.join(self.dir, "gradients.json"), "w",
-                  encoding="utf-8") as fh:
-            json.dump({"version": SCHEMA, "categories": ["_All", "Warm"],
-                       "assets": [
-                {"id": "a", "name": "Sunrise", "categories": ["Warm"],
-                 "colors": [{"name": "crimson", "hex": "#dc143c"},
-                            {"name": "gold", "hex": "#ffd700"}]},
-                {"id": "b", "name": "Marine", "categories": [],
-                 "colors": [{"name": "teal", "hex": "#008080"}]},
-            ]}, fh)
+        _lay(os.path.join(self.dir, COLORS), {"categories": ["Warm"], "assets": [
+            {"id": "a", "name": "Sunrise", "categories": ["Warm"],
+             "colors": [{"name": "crimson", "hex": "#dc143c"},
+                        {"name": "gold", "hex": "#ffd700"}]},
+            {"id": "b", "name": "Marine", "categories": [],
+             "colors": [{"name": "teal", "hex": "#008080"}]},
+        ]})
         self.model = gradient_library.GradientLibrary(
             preferences=_fixture_prefs(self, self.dir))
         self.proxy = gradient_library.GradientFilterProxyModel()
@@ -743,32 +713,33 @@ class TheColorsProxyIsTheFamilys(unittest.TestCase):
 
 
 class AColourStarSurvivesAReloadTest(unittest.TestCase):
-    """Colors stars go through the one favourites store, tagged by owner; the record field is dead."""
+    """Colors stars live in the stars section of colors.json, per user; the record field is dead."""
+
+    USER = "8a7b6c5d4e3f20110213f4e5d6c7b8a9"    # minted shape, as in _fixture_prefs
 
     def setUp(self):
         test_support.reset_database_singletons()
-        keyed_store.release()
-        self.addCleanup(keyed_store.release)
+        library_db.release()
+        self.addCleanup(library_db.release)
         self.dir = tempfile.mkdtemp(prefix="amaze_grad_star_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
-        self.path = os.path.join(self.dir, "gradients.json")
+        self.path = os.path.join(self.dir, COLORS)
 
-    def _write(self, document):
-        with open(self.path, "w", encoding="utf-8") as fh:
-            json.dump(document, fh, indent=1)
-
-    def _library(self, user="8a7b6c5d4e3f20110213f4e5d6c7b8a9"):  # minted shape, as in _fixture_prefs
+    def _library(self, user=USER):
         return gradient_library.GradientLibrary(
             preferences=_fixture_prefs(self, self.dir, user=user))
 
     def _one_warm_palette(self):
-        self._write({"version": SCHEMA, "categories": ["Warm"],
-                     "assets": [{"name": "warm", "id": "warmid",
-                                 "categories": ["Warm"], "colors": []}]})
+        _lay(self.path, {"categories": ["Warm"],
+                         "assets": [{"name": "warm", "id": "warmid",
+                                     "categories": ["Warm"], "colors": []}]})
 
     def _disk_rows(self):
+        return _rows_on_disk(self.path)
+
+    def _disk_stars(self):
         with open(self.path, encoding="utf-8") as fh:
-            return json.load(fh).get("assets", [])
+            return json.load(fh).get("stars", {})
 
     def test_a_star_lands_in_the_store_and_survives_a_reload(self):
         self._one_warm_palette()
@@ -777,38 +748,38 @@ class AColourStarSurvivesAReloadTest(unittest.TestCase):
         row = _row_named(self, lib, "warm")
         self.assertTrue(lib.data(lib.index(row, 0), lib.FavoriteRole),
                         "the toggle did not light the star it just set")
-        lib.save()    # the shared record gains nothing on disk, or the star is everyone's again
+        lib.save()
+        library_db.flush()
         self.assertFalse(
             any("favorite" in row for row in self._disk_rows()
                 if isinstance(row, dict)),
-            "the star reached gradients.json - the shared document "
+            "the star reached the shared row - the shared section "
             "carries per-user state again")
-        test_support.reset_database_singletons()    # a fresh session reads it back out of the library store
-        keyed_store.release()
+        self.assertEqual({self.USER: {"warmid": True}}, self._disk_stars())
+        test_support.reset_database_singletons()    # a fresh session reads it back out of the library
+        library_db.release()
         again = self._library()
         arow = _row_named(self, again, "warm")
         self.assertTrue(
             again.data(again.index(arow, 0), again.FavoriteRole),
-            "the star did not survive a reload through the store")
+            "the star did not survive a reload")
+        other = self._library(user="1a2b3c4d5e6f70811213f4e5d6c7b8a9")
+        self.assertFalse(
+            other.data(other.index(_row_named(self, other, "warm"), 0), other.FavoriteRole),
+            "one user star lit for another user")
 
-    def test_the_step_takes_a_star_off_a_version_5_document(self):
-        """The v5 to v6 step strips stars from the shared document, where nothing reads them."""
-        self._write({"version": 5, "categories": ["Warm"],
-                     "assets": [{"name": "warm", "id": "warmid",
-                                 "categories": ["Warm"], "colors": [],
-                                 "favorite": True}]})
+    def test_a_star_field_on_a_row_is_not_a_star(self):
+        """Only the stars section answers; a favorite field left on a row is no one's star."""
+        _lay(self.path, {"categories": ["Warm"],
+                         "assets": [{"name": "warm", "id": "warmid",
+                                     "categories": ["Warm"], "colors": [],
+                                     "favorite": True}]})
         lib = self._library()
         row = _row_named(self, lib, "warm")
-        lib.save()
-        self.assertFalse(
-            any("favorite" in r for r in self._disk_rows()
-                if isinstance(r, dict)),
-            "a version-5 record star survived the load - the step that "
-            "retires the field did not run")
         self.assertFalse(
             lib.data(lib.index(row, 0), lib.FavoriteRole),
-            "a stripped record star still reads as a favourite - the "
-            "read is answering the record, not the store")
+            "a row field still reads as a favourite - the read is "
+            "answering the record, not the stars section")
 
     def test_no_user_picked_means_no_star_and_no_write(self):
         self._one_warm_palette()
@@ -820,9 +791,8 @@ class AColourStarSurvivesAReloadTest(unittest.TestCase):
             "a machine with nobody picked lit a star - the store filed "
             "it under a blank tag, which is an ABSENT user, not a "
             "shared one")
-        self.assertFalse(
-            os.path.exists(os.path.join(self.dir, "favourites.json")),
-            "a refused star still created the favourites store")
+        library_db.flush()
+        self.assertEqual({}, self._disk_stars(), "a refused star still reached colors.json")
 
 
 class ColorsHonourARefusedSave(unittest.TestCase):
@@ -832,13 +802,10 @@ class ColorsHonourARefusedSave(unittest.TestCase):
         test_support.reset_database_singletons()
         self.dir = tempfile.mkdtemp(prefix="amaze_grad_refuse_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
-        self.path = os.path.join(self.dir, "gradients.json")
-        with open(self.path, "w", encoding="utf-8") as fh:
-            json.dump({"version": SCHEMA, "categories": ["Warm"],
-                       "assets": [
-                           {"name": "keep", "id": "keepuid", "colors": []},
-                           {"name": "doomed", "id": "doomeduid",
-                            "colors": []}]}, fh, indent=1)
+        self.path = os.path.join(self.dir, COLORS)
+        _lay(self.path, {"categories": ["Warm"], "assets": [
+            {"name": "keep", "id": "keepuid", "colors": []},
+            {"name": "doomed", "id": "doomeduid", "colors": []}]})
         self.lib = gradient_library.GradientLibrary(
             preferences=_fixture_prefs(self, self.dir))
 
@@ -849,11 +816,8 @@ class ColorsHonourARefusedSave(unittest.TestCase):
                 return row
         return -1
 
-    def _on_disk_names(self):
-        with open(self.path, encoding="utf-8") as fh:
-            document = json.load(fh)
-        rows = document.get("assets") or []
-        return [r.get("name") for r in rows if isinstance(r, dict)]
+    def _on_disk_names(self, path=None):
+        return [r.get("name") for r in _rows_on_disk(path or self.path) if isinstance(r, dict)]
 
     def _stamp_of(self, asset_id):
         """The palette's one file, its captured picture in `colors/`; the row owns it."""
@@ -866,20 +830,18 @@ class ColorsHonourARefusedSave(unittest.TestCase):
 
     def test_a_refused_delete_puts_the_palette_back(self):
         """Its stamp stays too, and no later save may commit the delete the list declined."""
-        from unittest.mock import patch
-
         stamp = self._stamp_of("doomeduid")
         row = self._row_named("doomed")
         self.assertGreaterEqual(row, 0, "premise: the fixture loaded")
-        with patch.object(database.DatabaseConnector, "save",
-                          return_value=False):
+        with test_support.full_disk_for(self.path):
             self.lib.remove_rows([row])
+            library_db.flush()
 
         self.assertIn("doomed", self._on_disk_names(),
                       "premise: the refusal kept it on disk")
         self.assertGreaterEqual(
             self._row_named("doomed"), 0,
-            "the palette left the grid while gradients.json still "
+            "the palette left the grid while colors.json still "
             "listed it - the delete looked done and was not")
         self.assertTrue(os.path.exists(stamp),
                         "a delete the list refused took the stamp anyway")
@@ -889,21 +851,38 @@ class ColorsHonourARefusedSave(unittest.TestCase):
             "the declined delete was committed by an unrelated save")
 
     def test_a_refused_add_leaves_no_palette_on_screen_or_in_the_next_save(self):
-        from unittest.mock import patch
-
-        before = self.lib.rowCount()
-        with patch.object(database.DatabaseConnector, "save",
-                          return_value=False):
-            self.lib.add_user_gradient(
-                "ghost", "", {"values": [], "keys": []})
+        """A database that does not read takes no palette: none on screen, none written later."""
+        with open(self.path, "w", encoding="utf-8") as fh:
+            fh.write("{damaged")
+        test_support.reset_database_singletons()
+        library_db.release()
+        lib = gradient_library.GradientLibrary(preferences=_fixture_prefs(self, self.dir))
+        before = lib.rowCount()
+        lib.add_user_gradient("ghost", "", {"values": [], "keys": []})
+        library_db.flush()
         self.assertEqual(
-            before, self.lib.rowCount(),
+            before, lib.rowCount(),
             "a palette that never reached disk stayed in the grid, so "
             "it is gone at the next launch with nothing said")
-        self.lib.add_user_gradient("later", "", {"values": [], "keys": []})    # anything at all that writes the file afterwards
-        self.assertNotIn(
-            "ghost", self._on_disk_names(),
-            "the refused palette reached disk with an unrelated save")
+        with open(self.path, encoding="utf-8") as fh:
+            self.assertEqual("{damaged", fh.read(), "the refused palette was written")
+
+    def test_an_add_the_disk_refused_is_said_and_lands_at_the_next_save(self):
+        """A full disk: the user is told, the palette is held, and the next save writes it."""
+        from unittest import mock
+        from amaze.core import debug
+        with test_support.full_disk_for(self.path), \
+                mock.patch.object(debug, "alert") as alert:
+            self.lib.add_user_gradient("held", "", {"values": [], "keys": []})
+            library_db.flush()
+        self.assertTrue(alert.called, "a write the disk refused was not said")
+        self.assertNotIn("held", self._on_disk_names(), "premise: the disk refused it")
+        self.assertGreaterEqual(self._row_named("held"), 0,
+                                "the held palette left the grid")
+        self.lib.add_user_gradient("later", "", {"values": [], "keys": []})
+        library_db.flush()
+        self.assertIn("held", self._on_disk_names(),
+                      "the palette the disk refused was lost instead of landing")
 
     def test_a_delete_removes_the_palette_and_its_stamp(self):
         """A stamp no list claims is what Repair rebuilds from, so a deleted palette takes its own."""
@@ -915,31 +894,28 @@ class ColorsHonourARefusedSave(unittest.TestCase):
                          "the deleted palette's stamp stayed in the asset folder")
 
     def test_a_refused_delete_is_not_put_into_another_library(self):
-        """Another pane's switch moved the shared connector, so the take-back must not write to it."""
+        """Another pane holds another library open; the take-back must not write into it."""
         other = tempfile.mkdtemp(prefix="amaze_grad_other_")
         self.addCleanup(shutil.rmtree, other, ignore_errors=True)
-        other_path = os.path.join(other, "gradients.json")
-        with open(other_path, "w", encoding="utf-8") as fh:
-            json.dump({"version": SCHEMA, "categories": ["_All"],
-                       "assets": [{"name": "theirs", "id": "theirsuid",
-                                   "colors": []}]}, fh, indent=1)
-        connector = database.DatabaseConnector(self.lib.DB_FILENAME)
-        connector.reload_with_path(other + os.sep)
+        other_path = os.path.join(other, COLORS)
+        _lay(other_path, {"categories": [],
+                          "assets": [{"name": "theirs", "id": "theirsuid", "colors": []}]})
+        theirs = gradient_library.GradientLibrary(preferences=_fixture_prefs(self, other))
 
-        self.lib.remove_rows([self._row_named("doomed")])
+        with test_support.full_disk_for(self.path):
+            self.lib.remove_rows([self._row_named("doomed")])
 
         self.assertGreaterEqual(
             self._row_named("doomed"), 0,
             "premise: the refused delete put the palette back on screen")
         self.assertNotIn(
-            "doomeduid", [r.get("id") for r in connector._data["assets"]],
-            "the refused delete put the palette into the OTHER library's "
-            "document - that library's next save writes it there")
-        self.assertTrue(connector.save(), "premise: the other library saves")
-        with open(other_path, encoding="utf-8") as fh:
-            names = [r.get("name") for r in json.load(fh)["assets"]]
-        self.assertNotIn("doomed", names,
+            "doomeduid", [theirs.tile_key(row) for row in range(theirs.rowCount())],
+            "the refused delete put the palette into the OTHER library")
+        theirs.add_user_gradient("theirs2", "", {"values": [], "keys": []})
+        library_db.flush()
+        self.assertNotIn("doomed", self._on_disk_names(other_path),
                          "a palette from one library landed in another")
+        self.assertIn("theirs2", self._on_disk_names(other_path), "premise: the other library saves")
 
 
 class ColorsHandOverWhatTheMergeAdopted(unittest.TestCase):
@@ -949,26 +925,20 @@ class ColorsHandOverWhatTheMergeAdopted(unittest.TestCase):
         test_support.reset_database_singletons()
         self.dir = tempfile.mkdtemp(prefix="amaze_grad_adopt_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
-        self.path = os.path.join(self.dir, "gradients.json")
-        with open(self.path, "w", encoding="utf-8") as fh:
-            json.dump({"version": SCHEMA, "categories": ["Warm"],
-                       "assets": [{"name": "ours", "id": "oursuid",
-                                   "colors": []}]}, fh, indent=1)
-        self.lib = gradient_library.GradientLibrary(
-            preferences=_fixture_prefs(self, self.dir))
+        self.path = os.path.join(self.dir, COLORS)
+        _lay(self.path, {"categories": ["Warm"],
+                         "assets": [{"name": "ours", "id": "oursuid", "colors": []}]})
+        from amaze.core import model_registry
+        self.addCleanup(test_support.reset_database_singletons)
+        self.lib = model_registry.models_for(_fixture_prefs(self, self.dir))["gradient_model"]
 
     def test_a_palette_the_other_mac_added_reaches_the_grid(self):
         with open(self.path, encoding="utf-8") as fh:
             document = json.load(fh)
-        rows = document.get("assets") or []
-        rows.append({"name": "from_theirs", "id": "theirsid",
-                     "colors": []})
-        document["assets"] = rows
+        document["assets"]["theirsid"] = {"name": "from_theirs", "id": "theirsid",
+                                          "colors": []}
         with open(self.path, "w", encoding="utf-8") as fh:
             json.dump(document, fh, indent=1)
-        stat = os.stat(self.path)
-        os.utime(self.path, ns=(stat.st_atime_ns,
-                                stat.st_mtime_ns + 5_000_000_000))
 
         # Any ordinary edit takes the merge path.
         self.lib.add_user_gradient("mine", "", {"values": [], "keys": []})
@@ -977,7 +947,7 @@ class ColorsHandOverWhatTheMergeAdopted(unittest.TestCase):
                  for r in range(self.lib.rowCount())]
         self.assertIn(
             "from_theirs", names,
-            "the merge adopted the row into gradients.json and never "
+            "the merge adopted the row into colors.json and never "
             "handed it to the model, so the grid, the sidebar counts "
             "and the filter never saw it - and the next save rebuilds "
             "the list without it")
@@ -990,25 +960,20 @@ class ColorsHandOverWhatTheMergeAdoptedIntoCATEGORIES(unittest.TestCase):
         test_support.reset_database_singletons()
         self.dir = tempfile.mkdtemp(prefix="amaze_grad_cat_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
-        self.path = os.path.join(self.dir, "gradients.json")
+        self.path = os.path.join(self.dir, COLORS)
+        document = _colors_document({"categories": ["Warm"],
+                                     "assets": [{"name": "ours", "id": "oursid", "colors": []}]})
+        document["categories"]["Warm"]["color"] = "#c08040"
         with open(self.path, "w", encoding="utf-8") as fh:
-            json.dump({"categories": ["_All", "Warm"],
-                       "category_colors": {"Warm": "#c08040"},
-                       "assets": [{"name": "ours", "id": "oursid",
-                                   "colors": []}]}, fh, indent=1)
+            json.dump(document, fh, indent=1)
         self.lib = gradient_library.GradientLibrary(
             preferences=_fixture_prefs(self, self.dir))
 
     def _peer_adds_a_category(self):
-        with open(self.path, encoding="utf-8") as fh:
-            document = json.load(fh)
-        document.setdefault("categories", []).append("Bronze")
-        document.setdefault("category_colors", {})["Bronze"] = "#7b5230"
+        document = self._on_disk()
+        document["categories"]["Bronze"] = {"order": 1, "color": "#7b5230"}
         with open(self.path, "w", encoding="utf-8") as fh:
             json.dump(document, fh, indent=1)
-        stat = os.stat(self.path)
-        os.utime(self.path, ns=(stat.st_atime_ns,
-                                stat.st_mtime_ns + 5_000_000_000))
 
     def _on_disk(self):
         with open(self.path, encoding="utf-8") as fh:
@@ -1018,18 +983,18 @@ class ColorsHandOverWhatTheMergeAdoptedIntoCATEGORIES(unittest.TestCase):
         self._peer_adds_a_category()
         # Edit one merges; edit two is the one that used to erase it.
         self.lib.add_user_gradient("mine", "", {"values": [], "keys": []})
-        self.assertIn("Bronze", self._on_disk().get("categories", []),
+        self.assertIn("Bronze", self._on_disk().get("categories", {}),
                       "the merge itself is broken - this test is aimed "
                       "at the save AFTER the merge")
         self.lib.add_user_gradient("mine2", "", {"values": [], "keys": []})
         self.assertIn(
-            "Bronze", self._on_disk().get("categories", []),
+            "Bronze", self._on_disk().get("categories", {}),
             "the second Colors edit wrote the other machine's category "
             "out of existence - the model holds a detached copy of the "
             "category list")
         self.assertEqual(
             "#7b5230",
-            self._on_disk().get("category_colors", {}).get("Bronze"),
+            self._on_disk()["categories"]["Bronze"].get("color"),
             "the peer's category colour was written out of existence - "
             "the colour table is a detached dict rebuilt on save")
 
@@ -1041,16 +1006,10 @@ class TheColorsSidebarIsTheSharedModel(unittest.TestCase):
         test_support.reset_database_singletons()
         self.dir = tempfile.mkdtemp(prefix="amaze_grad_side_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
-        with open(os.path.join(self.dir, "gradients.json"), "w",
-                  encoding="utf-8") as fh:
-            json.dump({"version": SCHEMA,
-                       "categories": ["_All", "Warm", "Cool"],
-                       "assets": [
-                           {"id": "a", "name": "one",
-                            "categories": ["Warm"], "colors": []},
-                           {"id": "b", "name": "two",
-                            "categories": ["Warm"], "colors": []},
-                       ]}, fh)
+        _lay(os.path.join(self.dir, COLORS), {
+            "categories": ["Warm", "Cool"],
+            "assets": [{"id": "a", "name": "one", "categories": ["Warm"], "colors": []},
+                       {"id": "b", "name": "two", "categories": ["Warm"], "colors": []}]})
 
     def _sidebar(self):
         return gradient_library.GradientCategories(
@@ -1120,12 +1079,9 @@ class ColorsNumbersItsRolesLikeTheAssetFamily(unittest.TestCase):
         directory = tempfile.mkdtemp(prefix="amaze_grad_roles_")
         self.addCleanup(shutil.rmtree, directory, ignore_errors=True)
         test_support.reset_database_singletons()
-        with open(os.path.join(directory, "gradients.json"), "w",
-                  encoding="utf-8") as handle:
-            json.dump({"version": SCHEMA, "categories": ["Warm"],
-                       "assets": [
-                {"id": "aaa", "name": "Test", "categories": ["Warm"],
-                 "colors": [{"name": "red", "hex": "#ff0000"}]}]}, handle)
+        _lay(os.path.join(directory, COLORS), {"categories": ["Warm"], "assets": [
+            {"id": "aaa", "name": "Test", "categories": ["Warm"],
+             "colors": [{"name": "red", "hex": "#ff0000"}]}]})
         lib = gradient_library.GradientLibrary(
             preferences=_fixture_prefs(self, directory))
         value = lib.data(lib.index(0, 0), lib.CategoryRole)
@@ -1188,38 +1144,33 @@ class EveryCallThePanelMakesOnTheColorsSidebarResolves(unittest.TestCase):
 
 
 class TheAllMarkerIsNotChurnedOnEverySave(unittest.TestCase):
-    """`_All` stays stored and the view filters it; stripping it costs a rewrite on the next launch."""
+    """The All row is the view, never a stored category: no edit writes it, and none is offered."""
 
     def setUp(self):
         test_support.reset_database_singletons()
         self.dir = tempfile.mkdtemp(prefix="amaze_grad_all_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
-        self.path = os.path.join(self.dir, "gradients.json")
-        with open(self.path, "w", encoding="utf-8") as fh:
-            json.dump({"categories": ["_All", "Warm"],
-                       "assets": [{"name": "ours", "id": "oursid",
-                                   "colors": []}]}, fh, indent=1)
+        self.path = os.path.join(self.dir, COLORS)
+        _lay(self.path, {"categories": ["Warm"],
+                         "assets": [{"name": "ours", "id": "oursid", "colors": []}]})
         self.lib = gradient_library.GradientLibrary(
             preferences=_fixture_prefs(self, self.dir))
 
-    def test_an_ordinary_edit_leaves_the_All_marker_on_disk(self):
+    def test_an_ordinary_edit_writes_no_All_marker(self):
         self.lib.add_user_gradient("mine", "", {"values": [], "keys": []})
+        library_db.flush()
         with open(self.path, encoding="utf-8") as fh:
-            categories = json.load(fh).get("categories", [])
-        self.assertIn(
-            "_All", categories,
-            "a Colors edit stripped `_All` from gradients.json, so the "
-            "next launch re-adds it with a full rewrite and spends the "
-            "snapshot slot before the user has done anything")
+            categories = json.load(fh).get("categories", {})
+        self.assertEqual(["Warm"], sorted(categories),
+                         "a Colors edit stored the All row as a category")
 
     def test_neither_marker_is_offered_as_a_category(self):
-        """`_All`, or a plain All a merge left in memory or a hand edit left on disk."""
-        self.lib._data["categories"].append("All")    # as a merge of another machine's list can leave it
-        self.assertEqual(["Warm"], self.lib.user_categories(),
-                         "the save dialog offers a marker as a category to file under")
+        """`_All`, or a plain All a hand edit or an older build left on disk."""
+        document = _colors_document({"assets": []})
+        document["categories"] = {"_All": {"order": 0}, "All": {"order": 1},
+                                  "Warm": {"order": 2}}
         with open(self.path, "w", encoding="utf-8") as fh:
-            json.dump({"categories": ["_All", "All", "Warm"],
-                       "assets": []}, fh, indent=1)
+            json.dump(document, fh, indent=1)
         test_support.reset_database_singletons()
         lib = gradient_library.GradientLibrary(
             preferences=_fixture_prefs(self, self.dir))

@@ -1412,7 +1412,7 @@ class TheUserRowCreatesAndDeletes(unittest.TestCase):
         self.assertFalse(dlg._btn_apply_library.isEnabled(),
                          "Apply runs with nobody picked")
 
-    def test_the_only_user_left_is_picked_and_waits_for_apply(self):
+    def test_the_only_user_left_is_listed_and_not_picked(self):
         from amaze.core import users
         from amaze.dialogs import prefs_dialog
         from amaze.tests import test_support
@@ -1423,10 +1423,10 @@ class TheUserRowCreatesAndDeletes(unittest.TestCase):
         dlg = prefs_dialog.PrefsDialog(p, panel=None)
         self.addCleanup(dlg.deleteLater)
         dlg.delete_library_user(first)
-        self.assertEqual("Sienna", dlg.cbb_library_user.currentText(),
-                         "the library's only user was not picked")
-        self.assertEqual("", str(p.library_user or ""),
-                         "the only user was adopted before Apply")
+        self.assertGreaterEqual(dlg.cbb_library_user.findText("Sienna"), 0)
+        self.assertEqual(-1, dlg.cbb_library_user.currentIndex(),
+                         "the user left was picked because it was the only one")
+        self.assertEqual("", str(p.library_user or ""))
 
 
 class ACancelledTestFolderPickIsANoOp(unittest.TestCase):

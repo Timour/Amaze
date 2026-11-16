@@ -868,15 +868,6 @@ class AssetLibrary(grid_engine.GridEngine,
                 return row
         return -1
 
-    def find_asset_row_by_name(self, name: str) -> int:
-        """Row of the asset whose (possibly sanitized) name matches uniquely, else -1."""
-        from amaze.helpers import wording
-        matches = []
-        for row, asset in enumerate(self._assets):
-            if asset.name == name or wording.sanitize_usd_path(asset.name) == name:
-                matches.append(row)
-        return matches[0] if len(matches) == 1 else -1
-
     def version_list(self, row: int) -> tuple:
         """([{n, name, author, date}] oldest first, the active number) for the asset at `row`."""
         if not 0 <= row < len(self._assets):

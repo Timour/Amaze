@@ -3375,13 +3375,9 @@ class AmazePanel(QtWidgets.QWidget):
         self.get_material_info_user(sel)    # Save as New falls through to here with the FULL selection
 
     def _find_existing_asset_row(self, node: hou.Node) -> int:
-        """The source row of the material this node came from, by id stamp, else unique name; or -1."""
+        """The source row of the material this node came from, by its id stamp alone; or -1."""
         mat_id = node.userData("assetlib_id")
-        if mat_id:
-            row = self.material_model.find_asset_row_by_id(mat_id)
-            if row >= 0:
-                return row
-        return self.material_model.find_asset_row_by_name(node.name())
+        return self.material_model.find_asset_row_by_id(mat_id) if mat_id else -1
 
     def _update_existing_assets(self, existing: list) -> None:
         """Save Version over each (id, node); what it did not update is said once, after the batch."""

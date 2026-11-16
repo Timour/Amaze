@@ -276,8 +276,11 @@ def needs_conversion(library_dir: str) -> bool:
     library_dir = str(library_dir or "")
     if not library_dir or not os.path.isdir(library_dir):
         return False
-    return bool(_old_databases_left(library_dir) or _plan_ids(library_dir)
-                or _old_version_folders(library_dir))
+    if _old_databases_left(library_dir):
+        return True
+    if _converted_databases(library_dir):
+        return False    # what a finished run left, set aside or claimed twice, is Check Library's
+    return bool(_plan_ids(library_dir) or _old_version_folders(library_dir))
 
 
 def old_version(library_dir: str) -> int:

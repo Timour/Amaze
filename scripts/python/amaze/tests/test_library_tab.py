@@ -47,22 +47,28 @@ def _real_saves():
 
 
 class TheUserIsPickedByTheRule(unittest.TestCase):
-    """The same name as this computer's user, else the only user, else pick or create."""
+    """A user is this computer's by its id in the open library; in any other library, pick or create."""
 
     def setUp(self):
         self.prefs = test_support.fixture_prefs(self)
         self.prefs.library_user = users.create(self.prefs, "Plum")
         self.dialog = _dialog(self, self.prefs)
 
-    def test_the_same_name_is_picked_in_another_library(self):
-        other, made = _library_with(self, "Sage", "Plum")
-        self.dialog.pick_library(other)
-        self.assertEqual(made["Plum"], self.dialog.cbb_library_user.currentData())
+    def test_the_open_library_shows_this_computers_user(self):
+        self.dialog.pick_library(self.prefs.dir)
+        self.assertEqual(self.prefs.library_user, self.dialog.cbb_library_user.currentData())
 
-    def test_the_only_user_is_picked_when_no_name_matches(self):
-        other, made = _library_with(self, "Sage")
+    def test_a_user_of_the_same_name_in_another_library_is_not_picked(self):
+        other, _made = _library_with(self, "Sage", "Plum")
         self.dialog.pick_library(other)
-        self.assertEqual(made["Sage"], self.dialog.cbb_library_user.currentData())
+        self.assertEqual(-1, self.dialog.cbb_library_user.currentIndex(),
+                         "a user was picked because the name matched")
+
+    def test_the_only_user_of_another_library_is_not_picked(self):
+        other, _made = _library_with(self, "Sage")
+        self.dialog.pick_library(other)
+        self.assertEqual(-1, self.dialog.cbb_library_user.currentIndex(),
+                         "a user was picked because it was the only one")
 
     def test_nobody_is_picked_among_several_without_a_match(self):
         other, _made = _library_with(self, "Sage", "Fern")
@@ -90,6 +96,8 @@ class WhatApplyingDoesIsSaidFirst(unittest.TestCase):
         other, _made = _library_with(self, "Sage")
         test_support.set_library_version(other, version)
         self.dialog.pick_library(other)
+        combo = self.dialog.cbb_library_user
+        combo.setCurrentIndex(combo.findText("Sage"))
         return self.dialog._lbl_library_format.text(), self.dialog._lbl_library_apply.text()
 
     def test_an_older_library_says_apply_upgrades_it(self):
@@ -189,7 +197,7 @@ class NothingSwitchesBeforeApply(unittest.TestCase):
 
     def test_apply_switches_the_library_and_the_user_together(self):
         other, made = _library_with(self, "Sage")
-        self.assertTrue(test_support.apply_library(self, self.panel, other))
+        self.assertTrue(test_support.apply_library(self, self.panel, other, user="Sage"))
         self.assertEqual(other, self.panel._models_dir)
         self.assertEqual(made["Sage"], self.panel.prefs.library_user)
         self.assertEqual(other, self.panel.prefs.libraries[0],
@@ -215,6 +223,8 @@ class NothingSwitchesBeforeApply(unittest.TestCase):
         self.panel.show_prefs()
         dialog = self.panel._prefs_dialog
         dialog.pick_library(other)
+        combo = dialog.cbb_library_user    # another library: its user is picked by hand
+        combo.setCurrentIndex(combo.findText("Sage"))
         with _real_saves():
             dialog.accept_library()
         QtWidgets.QApplication.processEvents()
@@ -287,7 +297,8 @@ class AStartWithoutAUserOpensNoLibrary(unittest.TestCase):
 
     def test_apply_with_the_user_opens_the_library(self):
         panel = self._reopened_with("")
-        self.assertTrue(test_support.apply_library(self, panel, panel.prefs.dir))
+        self.assertTrue(test_support.apply_library(self, panel, panel.prefs.dir,
+                                                   user=test_support.FIXTURE_USER_NAME))
         self.assertIsNotNone(panel.material_model, "Apply left the library closed")
         self.assertEqual(test_support.FIXTURE_USER, panel.prefs.library_user)
 

@@ -892,6 +892,18 @@ class ARowHeldAcrossASaveIsFoundAgain(unittest.TestCase):
                          "Save Version wrote over other materials: each update saves, "
                          "and the first save took in a deletion above the rows it held")
 
+    def test_a_node_is_a_library_material_by_its_stamp_and_never_by_its_name(self):
+        model = self._material_tiles()
+        asset = model.assets[3]
+
+        def node(stamp):
+            return types.SimpleNamespace(name=lambda: asset.name,
+                                         userData=lambda key: stamp)
+        self.assertEqual(-1, self.panel._find_existing_asset_row(node(None)),
+                         "a node with no stamp was matched to a material of the same name")
+        self.assertEqual(-1, self.panel._find_existing_asset_row(node("no-such-id")))
+        self.assertEqual(3, self.panel._find_existing_asset_row(node(str(asset.mat_id))))
+
     def test_deleting_a_selection_deletes_exactly_the_tiles_chosen(self):
         model = self._material_tiles()
         chosen = [model.assets[row] for row in (2, 4, 6)]

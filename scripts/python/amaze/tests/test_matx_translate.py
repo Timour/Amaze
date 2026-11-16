@@ -268,6 +268,25 @@ class BothOnlineDestinationsRunOneSequence(unittest.TestCase):
         self.assertIsNotNone(builder, reason)
         self.addCleanup(builder.destroy)
 
+    def test_the_credit_lands_as_the_comment_of_the_new_asset(self):
+        """The credit is the asset comment, written once, and never a field on the row."""
+        from amaze.core import library as library_mod, library_db, matx_import, notes
+        model = library_mod.MaterialLibrary(preferences=self.prefs)
+        before = test_support.asset_ids(model)
+        ok, reason = matx_import.import_record(
+            self._record(), self._source(), "", model, self.prefs,
+            save=functools.partial(material_actions.add_asset, model))
+        self.assertTrue(ok, reason)
+        saved, = test_support.arrived(model, before)
+        library_db.flush()
+        items = notes.note_for(self.prefs, notes.note_key(model.NOTES_SECTION, saved.mat_id))
+        texts = [item.get("text", "") for item in items.get("items", [])]
+        self.assertEqual(1, len([text for text in texts if "PhysicallyBased library" in text]),
+                         "the credit did not become the comment of the imported asset: %s" % texts)
+        row = model._doc().get("assets", str(saved.mat_id)) or {}
+        self.assertFalse(row.get("about") or row.get("description"),
+                         "the credit was written onto the row as a retired field")
+
     def test_an_import_to_the_library_adds_no_undo_entry(self):
         """Build, convert and save all happen in scratch: the artist's next Ctrl+Z is theirs."""
         hou.undos.clear()

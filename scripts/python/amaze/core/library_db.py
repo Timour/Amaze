@@ -128,6 +128,8 @@ def _records(key: str, held: documents.Document):
             if not os.path.exists(path) and not os.path.exists(
                     held.guard.path(folder, asset_id + ".mat")):
                 continue    # no files of its own: nothing to rebuild a lost database from
+            if asset_record.unreadable(path):
+                continue
             metadata = {field: value for field, value in row.items()
                         if field not in documents.STAMPS}
             if asset_record.read(path)[asset_record.METADATA] != metadata:

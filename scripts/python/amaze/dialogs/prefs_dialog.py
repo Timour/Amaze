@@ -302,15 +302,9 @@ class PrefsDialog(base_dialog.AssetDialog):
         return users.all_users(self._prefs, library=folder)
 
     def _preselected(self, known: dict, folder: str) -> str:
-        """This computer's user, matched by name off the open library; else the only user; else nobody."""
+        """This computer's user when the picked library is the open one and knows that id; else nobody."""
         current = str(self._prefs.library_user or "")
-        if _same_folder(folder, self._prefs.real_dir) and current in known:
-            return current
-        wanted = (users.name_for(self._prefs, current) if current else "").strip().casefold()
-        for uid, name in known.items():
-            if wanted and name.strip().casefold() == wanted:
-                return uid
-        return next(iter(known)) if len(known) == 1 else ""
+        return current if _same_folder(folder, self._prefs.real_dir) and current in known else ""
 
     def _reload_library_users(self, picked=None) -> None:
         """Fill the User list for the picked library and select `picked`, else the user the rule picks."""

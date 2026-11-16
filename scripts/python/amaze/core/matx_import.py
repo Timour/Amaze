@@ -354,15 +354,15 @@ def import_record(record, source, resolution, library, preferences,
         listed = True    # unknown when the credit raises: the library's own alert has spoken
         try:
             credited = library.assets[row]
-            credited.about = _credit_text(record, source)    # moved into the COMMENT below ▸p/d03-retired
             credited.license = record.licence or ""
             extra = credited._extra
             extra["source"] = record.source or ""    # where it came from and which one, on the row
             extra["online_uid"] = str(record.uid or "")    # not `uid`: that spelling is the pre-connector id, which packages.py strips on import
-            if measurement_note:
-                credited.description = measurement_note
             listed = library.save()    # writes the whole list: an earlier refusal lands here too
-            library.adopt_retired_text_into_notes()    # the one door into the COMMENT ▸p/d03-retired
+            from amaze.core import notes
+            notes.set_note(preferences, notes.note_key(library.NOTES_SECTION, stamped), [
+                {"t": "text", "text": text}
+                for text in (_credit_text(record, source), measurement_note) if text])    # ▸p/d03-retired
         except Exception as exc:
             debug.exception("credit the import", exc)
             debug.event("import", "credit not written", error=str(exc))

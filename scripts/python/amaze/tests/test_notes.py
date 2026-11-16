@@ -21,7 +21,7 @@ sys.path.insert(
         os.path.dirname(os.path.abspath(__file__)))))
 
 from amaze.panel import sections  # noqa: E402
-from amaze.core import keyed_store, notes  # noqa: E402
+from amaze.core import library_db, library_files, notes  # noqa: E402
 from amaze.tests import test_support  # noqa: E402 - redirects the log
 
 
@@ -36,20 +36,33 @@ def _plus_menu(widget, label):
 
 
 class _Prefs:
+    USER = "u-notes"
+
     def __init__(self, testcase):
         self.dir = tempfile.mkdtemp(prefix="amaze_notes_lib_")
+        self.library_user = self.USER
         testcase.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
+
+
+def _bare(items) -> list:
+    """Comment items without the id and author each carries, so a flow compares by what it says."""
+    return [{key: value for key, value in item.items() if key not in ("id", "author")}
+            for item in items]
 
 
 class StoreTest(unittest.TestCase):
 
     def setUp(self):
-        keyed_store.release()
-        self.addCleanup(keyed_store.release)
+        library_db.release()
+        self.addCleanup(library_db.release)
         self.prefs = _Prefs(self)
 
-    def _path(self):
-        return os.path.join(self.prefs.dir, notes.NOTES_FILE)
+    def _path(self, database=library_files.MATERIALS):
+        return os.path.join(self.prefs.dir, database)
+
+    def _comments(self, database=library_files.MATERIALS) -> dict:
+        with open(self._path(database), encoding="utf-8") as handle:
+            return json.load(handle).get(notes.SECTION, {})
 
     def test_a_page_roundtrips_in_order(self):
         """The page is a FLOW - text and to-dos in the order written."""
@@ -66,24 +79,29 @@ class StoreTest(unittest.TestCase):
             with self.subTest(ident=ident):
                 key = notes.note_key("material", ident)
                 self.assertTrue(notes.set_note(self.prefs, key, flow))
-                keyed_store.release()                 # a fresh session reads disk
+                library_db.release()                 # a fresh session reads disk
                 page = notes.note_for(self.prefs, key)
-                self.assertEqual(flow, page["items"],
+                self.assertEqual(flow, _bare(page["items"]),
                                  "the flow lost its order or content")
+                self.assertEqual([_Prefs.USER] * len(flow),
+                                 [item["author"] for item in page["items"]],
+                                 "an item does not name who wrote it")
+                self.assertEqual(len(flow), len({item["id"] for item in page["items"]}),
+                                 "two items share an id, so a merge cannot tell them apart")
                 self.assertTrue(notes.has_note(self.prefs, key))
 
-    def test_the_first_builds_shape_converts_on_read(self):
-        """The first build's {text, todos} shape reads as a flow, lossless."""
-        with open(self._path(), "w", encoding="utf-8") as handle:
-            json.dump({"notes": {"material:1": {
-                "text": "old words",
-                "todos": [{"label": "old item", "done": True}]}}},
-                handle)
-        page = notes.note_for(self.prefs, "material:1")
-        self.assertEqual(
-            [{"t": "text", "text": "old words"},
-             {"t": "todo", "label": "old item", "done": True}],
-            page["items"])
+    def test_an_unchanged_item_keeps_its_id_and_author(self):
+        """The editor sends the whole page back; what it did not change stays the same item."""
+        key = notes.note_key("material", "3")
+        notes.set_note(self.prefs, key, [{"t": "text", "text": "kept"}])
+        first = notes.note_for(self.prefs, key)["items"][0]
+        self.prefs.library_user = "u-other"
+        notes.set_note(self.prefs, key, [{"t": "text", "text": "kept"},
+                                         {"t": "text", "text": "added"}])
+        kept, added = notes.note_for(self.prefs, key)["items"]
+        self.assertEqual((first["id"], _Prefs.USER), (kept["id"], kept["author"]),
+                         "an item sent back unchanged was taken as a new one")
+        self.assertEqual("u-other", added["author"])
 
     def test_an_empty_page_removes_the_key(self):
         key = notes.note_key("cop", "7")
@@ -96,19 +114,18 @@ class StoreTest(unittest.TestCase):
                 self.assertFalse(notes.has_note(self.prefs, key),
                                  "an empty page still counts as a note - "
                                  "the badge will never clear")
-                with open(self._path(), encoding="utf-8") as handle:
-                    self.assertEqual({}, json.load(handle)["notes"])
+                self.assertEqual({}, self._comments(library_files.NODES))
 
     def test_junk_normalises_instead_of_raising(self):
-        self.assertEqual({}, notes.normalise("a string"))
-        self.assertEqual({}, notes.normalise({"items": "not-a-list",
-                                              "todos": "junk"}))
-        page = notes.normalise({"items": [
+        self.assertEqual([], notes.normalise_items("a string"))
+        self.assertEqual([], notes.normalise_items({"items": "not-a-list"}))
+        items = notes.normalise_items([
             3, {"t": "todo", "label": "  real  "},
             {"t": "todo", "label": ""}, {"t": "text", "text": "  "},
-            {"t": "weird"}]})
+            {"t": "weird"}])
         self.assertEqual([{"t": "todo", "label": "real",
-                           "done": False}], page["items"])
+                           "done": False}], _bare(items))
+        self.assertTrue(items[0]["id"], "a kept item has no id")
 
     def test_an_unreadable_file_latches_writes_off(self):
         """Unreadable file = writes latch off, or a save erases every note."""
@@ -130,26 +147,25 @@ class StoreTest(unittest.TestCase):
                        [{"t": "text", "text": "mine"}])
         with open(self._path(), encoding="utf-8") as handle:  # the other session writes a DIFFERENT key underneath us
             on_disk = json.load(handle)
-        on_disk["notes"]["material:2"] = {
-            "items": [{"t": "text", "text": "theirs"}]}
+        on_disk[notes.SECTION]["2"] = {
+            "items": [{"t": "text", "text": "theirs", "id": "t1", "author": "u-peer"}]}
         with open(self._path(), "w", encoding="utf-8") as handle:
             json.dump(on_disk, handle)
         notes.set_note(self.prefs, mine,
                        [{"t": "text", "text": "mine, edited"}])
-        with open(self._path(), encoding="utf-8") as handle:
-            final = json.load(handle)["notes"]
-        self.assertIn("material:2", final,
+        final = self._comments()
+        self.assertIn("2", final,
                       "the other session's note was clobbered")
         self.assertEqual("mine, edited",
-                         final[mine]["items"][0]["text"])
+                         final["1"]["items"][0]["text"])
 
     def test_every_write_leaves_a_restore_tier(self):
         key = notes.note_key("code", "9")
         notes.set_note(self.prefs, key, [{"t": "text", "text": "first"}])
         notes.set_note(self.prefs, key, [{"t": "text", "text": "second"}])
-        backups = glob.glob(self._path() + ".bak*")
+        backups = library_db.guard_of(self.prefs).backups(library_files.CODE)
         self.assertTrue(backups,
-                        "no .bak tier beside notes.json - the first "
+                        "no backup of code.json - the first "
                         "bad write is the last word on every note")
 
 
@@ -157,8 +173,8 @@ class PanelWidgetTest(unittest.TestCase):
     """One flowing editor: text and framed to-dos interleave in order."""
 
     def setUp(self):
-        keyed_store.release()
-        self.addCleanup(keyed_store.release)
+        library_db.release()
+        self.addCleanup(library_db.release)
         self.prefs = _Prefs(self)
         from amaze.panel import notes_panel
         self.widget = notes_panel.NotesPanel(self.prefs)
@@ -477,7 +493,7 @@ class PanelWidgetTest(unittest.TestCase):
         self.widget.flush()
         page = notes.note_for(self.prefs, key)
         self.assertEqual([{"t": "text", "text": "keep me"}],
-                         page["items"],
+                         _bare(page["items"]),
                          "an empty frame counted as content")
 
     def test_switching_subject_flushes_the_pending_edit(self):
@@ -553,8 +569,8 @@ class ModelRoleTest(unittest.TestCase):
     """NotesRole is the badge's question, answered by the real models."""
 
     def setUp(self):
-        keyed_store.release()
-        self.addCleanup(keyed_store.release)
+        library_db.release()
+        self.addCleanup(library_db.release)
 
     def test_file_rows_answer_by_path(self):
         from amaze.core import file_library
@@ -654,8 +670,8 @@ class GradientNotesTest(unittest.TestCase):
     """Notes reach gradients like every section, keyed gradient:<id>."""
 
     def setUp(self):
-        keyed_store.release()
-        self.addCleanup(keyed_store.release)
+        library_db.release()
+        self.addCleanup(library_db.release)
         test_support.reset_database_singletons()
         self.prefs = test_support.fixture_prefs(self)
         from amaze.core import gradient_library
@@ -671,8 +687,9 @@ class GradientNotesTest(unittest.TestCase):
 
     def test_the_seed_writes_its_colour_text_to_the_store_not_the_row(self):
         """The retired `note` field is never written, so the sweep has nothing to undo."""
-        carried = [row for row in (self.model._data.get("assets") or [])
+        carried = [row for row in self.model._doc().table("assets").values()
                    if isinstance(row, dict) and "note" in row]
+        self.assertTrue(self.model._doc().table("assets"), "premise: the rows are in colors.json")
         self.assertEqual([], carried,
                          "%d seeded rows carry the retired `note` field"
                          % len(carried))
@@ -1127,8 +1144,8 @@ class AnUndoNeverEatsALoadedNote(unittest.TestCase):
     """Loading a note is not an edit and stays off the undo stack. ▸r/programmatic-load-is-undoable"""
 
     def setUp(self):
-        keyed_store.release()
-        self.addCleanup(keyed_store.release)
+        library_db.release()
+        self.addCleanup(library_db.release)
         self.prefs = _Prefs(self)
         from amaze.panel import notes_panel
         self.widget = notes_panel.NotesPanel(self.prefs)
@@ -1267,8 +1284,8 @@ class ThePictureButtonIsActuallyRun(unittest.TestCase):
         from amaze.core import notes as notes_mod
         from amaze.panel import notes_panel
         from amaze.tests import test_support
-        keyed_store.release()
-        self.addCleanup(keyed_store.release)
+        library_db.release()
+        self.addCleanup(library_db.release)
         self.notes = notes_mod
         self.prefs = test_support.fixture_prefs(self)
         self.widget = notes_panel.NotesPanel(self.prefs)
@@ -1461,136 +1478,24 @@ class APictureIsCOPIEDIntoTheLibrary(unittest.TestCase):
 
     def test_no_half_copied_picture_is_left_where_a_note_points(self):
         """The copy promotes on completion, so a failure leaves nothing at the target."""
+        from amaze.core import guard
         original = self._a_picture_outside_the_library()
-        real_copy = shutil.copyfile
 
-        def dying_copy(source, target):
+        def dying_write(_disk, target, _data):
+            os.makedirs(os.path.dirname(target), exist_ok=True)
             with open(target, "wb") as handle:
                 handle.write(b"half")
             raise OSError("the disk filled up")
 
-        shutil.copyfile = dying_copy
-        self.addCleanup(setattr, shutil, "copyfile", real_copy)
-        src = self.notes.adopt_image(self.prefs, original)
-        shutil.copyfile = real_copy
+        with mock.patch.object(guard.Disk, "write", dying_write):
+            src = self.notes.adopt_image(self.prefs, original)
 
         self.assertEqual("", src, "a failed copy reported a path anyway")
         folder = os.path.join(self.prefs.dir, "img", "comments")
+        left = os.listdir(folder) if os.path.isdir(folder) else []
         self.assertEqual(
-            [], os.listdir(folder) if os.path.isdir(folder) else [],
+            [], [name for name in left if not name.endswith(guard.SCRATCH)],
             "a half-copied picture was left where a note could point")
-
-
-class AboutBecomesAComment(unittest.TestCase):
-    """The retired About credit text lives on as a comment in every library. ▸p/d03-retired"""
-
-    def setUp(self):
-        keyed_store.release()
-        self.addCleanup(keyed_store.release)
-        test_support.reset_database_singletons()
-        self.addCleanup(test_support.reset_database_singletons)
-        self.prefs = test_support.fixture_prefs(self)
-
-    def _model(self):
-        from amaze.core import library as library_mod
-        return library_mod.MaterialLibrary(preferences=self.prefs)
-
-    def test_an_existing_credit_moves_and_the_field_clears(self):
-        model = self._model()
-        if not model.rowCount():
-            self.skipTest("fixture library has no rows")
-        credit = "From Ambient CG, by the AmbientCG team. CC0."
-        model.assets[0].about = credit
-        asset_id = str(model.assets[0].mat_id)
-        model.save()
-
-        self.assertEqual(1, model.adopt_retired_text_into_notes())
-        key = notes.note_key(model.NOTES_SECTION, asset_id)
-        self.assertEqual(
-            [{"t": "text", "text": credit}],
-            notes.note_for(self.prefs, key).get("items"),
-            "the credit did not become a comment")
-        self.assertEqual("", model.assets[0].about,
-                         "the About field kept a copy, so the two can "
-                         "now disagree")
-
-    def test_it_does_not_run_twice_over_the_same_credit(self):
-        """Every library open calls it: a second pass, here or on another machine, adds nothing."""
-        model = self._model()
-        if not model.rowCount():
-            self.skipTest("fixture library has no rows")
-        credit = "From Poly Haven, by Rob Tuytel. CC0."
-        asset_id = str(model.assets[0].mat_id)
-        key = notes.note_key(model.NOTES_SECTION, asset_id)
-        notes.set_note(self.prefs, key, [{"t": "text", "text": credit}])
-        model.assets[0].about = credit
-
-        model.adopt_retired_text_into_notes()
-        self.assertEqual(
-            [{"t": "text", "text": credit}],
-            notes.note_for(self.prefs, key).get("items"),
-            "the credit was written into the comment a second time")
-        self.assertEqual("", model.assets[0].about)
-        self.assertEqual(0, model.adopt_retired_text_into_notes(),
-                         "a swept library still had something to move")
-
-    def test_it_lands_above_whatever_the_user_already_wrote(self):
-        model = self._model()
-        if not model.rowCount():
-            self.skipTest("fixture library has no rows")
-        asset_id = str(model.assets[0].mat_id)
-        key = notes.note_key(model.NOTES_SECTION, asset_id)
-        mine = {"t": "todo", "label": "check the roughness",
-                "done": False}
-        notes.set_note(self.prefs, key, [mine])
-        model.assets[0].about = "From Ambient CG. CC0."
-
-        model.adopt_retired_text_into_notes()
-        self.assertEqual(
-            [{"t": "text", "text": "From Ambient CG. CC0."}, mine],
-            notes.note_for(self.prefs, key).get("items"),
-            "the user's own comment was displaced or lost")
-
-    def test_a_library_that_cannot_be_written_keeps_its_field(self):
-        """A failed note write must leave About alone - clearing it there would delete text nothing kept."""
-        model = self._model()
-        if not model.rowCount():
-            self.skipTest("fixture library has no rows")
-        model.assets[0].about = "From Ambient CG. CC0."
-        for door in ("set_note", "set_notes"):    # whichever door the move writes through
-            self.addCleanup(setattr, notes, door, getattr(notes, door))
-            setattr(notes, door, lambda *a, **k: False)
-
-        self.assertEqual(0, model.adopt_retired_text_into_notes())
-        self.assertEqual("From Ambient CG. CC0.", model.assets[0].about,
-                         "the credit was cleared off the record after "
-                         "the comment refused it - the text is gone")
-
-    def test_many_assets_move_in_one_comments_write(self):
-        from unittest import mock
-        from amaze.helpers import hostos
-        model = self._model()
-        self.assertGreaterEqual(model.rowCount(), 4, "premise: four rows")
-        for row in (1, 2, 3):
-            model.assets[row].about = "Credit %d" % row
-        model.assets[3].description = "Described 3"
-        writes = []
-        real = hostos.write_json_atomic
-
-        def counting(path, *args, **kwargs):
-            if os.path.basename(str(path)) == notes.NOTES_FILE:
-                writes.append(path)
-            return real(path, *args, **kwargs)
-
-        with mock.patch.object(hostos, "write_json_atomic", counting):
-            self.assertEqual(4, model.adopt_retired_text_into_notes())
-        self.assertEqual(1, len(writes),
-                         "four retired fields wrote the comments file %d "
-                         "times" % len(writes))
-        key = notes.note_key(model.NOTES_SECTION, model.assets[3].mat_id)
-        self.assertEqual(["Described 3", "Credit 3"],
-                         [item["text"] for item in
-                          notes.note_for(self.prefs, key).get("items")])
 
 
 class TheCommentsPaneStandsOnItsFrame(unittest.TestCase):

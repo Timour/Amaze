@@ -3141,8 +3141,8 @@ class TheUserPickerFollowsTheLibrary(unittest.TestCase):
                   for i in range(dialog.cbb_library_user.count())]
         self.assertIn(uid_b, listed,
                       "the picker still lists the open library's users")
-        self.assertEqual(uid_b, dialog.cbb_library_user.currentData(),
-                         "the library's only user was not picked")
+        self.assertEqual(-1, dialog.cbb_library_user.currentIndex(),
+                         "a user of another library was picked without being chosen")
 
     def test_every_method_that_swaps_the_library_reloads_the_picker(self):
         """By AST over the whole dialog, so any method that swaps the library is caught."""

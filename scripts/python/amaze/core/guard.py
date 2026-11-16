@@ -279,9 +279,7 @@ class Guard:
         return [self.read(name) for name in DATABASES]
 
     def _known(self, name: str) -> bool:
-        """Whether an absent database is known to have existed: the manifest, else a backup."""
-        if self.backups(name):
-            return True
+        """Whether an absent database is known to have existed: the manifest names it."""
         if name == MASTER:
             return any(self.disk.exists(self.path(other)) for other in DATABASES if other != MASTER)
         try:

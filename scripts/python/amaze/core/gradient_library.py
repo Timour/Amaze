@@ -250,12 +250,12 @@ class GradientLibrary(library.AssetLibrary):
             return
         self.row_changed(0)
 
-    def _owned_paths(self, mat_id) -> tuple:
+    def _owned_paths(self, mat_id) -> list:
         """A palette owns its captured picture at most: the rest is stored inline."""
         try:
-            return self.asset_files(mat_id), {}
+            return list(self.asset_files(mat_id).values())
         except hostos.PathEscape:
-            return {}, {}
+            return []
 
     def _report_refused_delete(self, asset) -> None:
         """A palette's refused delete, in Colors' words."""
