@@ -17,7 +17,9 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze.core import keyed_store, renderers  # noqa: E402
+from amaze.core import library_db, model_registry, renderers  # noqa: E402
+
+STORE = "DataBase.json"    # the library's own database: its `settings` section is the store
 from amaze.prefs import prefs as prefs_mod   # noqa: E402
 from amaze.tests import test_support         # noqa: E402
 
@@ -31,14 +33,15 @@ class SharedPrefsCase(unittest.TestCase):
         self.lib = tempfile.mkdtemp(prefix="amaze_shared_lib_")
         for folder in (self.home_a, self.home_b, self.lib):
             self.addCleanup(shutil.rmtree, folder, ignore_errors=True)
-        keyed_store.release()
-        self.addCleanup(keyed_store.release)
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
 
     def machine(self, home):
         """A Prefs the way a session builds one - load settings, then meet the library."""
         p = prefs_mod.Prefs()
         p.path = home
         p.load()
+        p.library_user = "u-" + os.path.basename(home)    # every change is signed by its user
         p.dir = self.lib + "/"
         return p
 
@@ -48,9 +51,9 @@ class SharedPrefsCase(unittest.TestCase):
             return json.load(handle)
 
     def store_doc(self):
-        with open(os.path.join(self.lib, "prefs.json"),
-                  encoding="utf-8") as handle:
-            return json.load(handle)
+        library_db.flush()
+        with open(os.path.join(self.lib, STORE), encoding="utf-8") as handle:
+            return {"prefs": json.load(handle).get("settings", {})}
 
 
 class AChangeReachesTheNextMachine(SharedPrefsCase):
@@ -63,7 +66,7 @@ class AChangeReachesTheNextMachine(SharedPrefsCase):
         a.renderer_octane_enabled = False
         a.render_on_import = 0    # falsy: the record wrap keeps the delete contract off it
         a.save()
-        keyed_store.release()
+        test_support.reset_database_singletons()
         b = self.machine(self.home_b)
         self.assertEqual(512, b.rendersize,
                          "machine B still answers its own default - "
@@ -104,6 +107,7 @@ class TheFlatSpellingsRetire(SharedPrefsCase):
         p = prefs_mod.Prefs()
         p.path = self.home_a
         p.load()
+        p.library_user = "u-home"
         self.assertEqual(300, p.rendersize,
                          "the flat value no longer loads - the "
                          "migration source was dropped before the "
@@ -127,7 +131,7 @@ class TheCopyServesAnUnreachableLibrary(SharedPrefsCase):
         a.rendersize = 512
         a.save()
         shutil.rmtree(self.lib)
-        keyed_store.release()
+        test_support.reset_database_singletons()
         p = prefs_mod.Prefs()
         p.path = self.home_a
         p.load()
@@ -144,12 +148,13 @@ class TheCopyServesAnUnreachableLibrary(SharedPrefsCase):
         a = self.machine(self.home_a)
         a.rendersize = 512
         a.save()
-        store_path = os.path.join(self.lib, "prefs.json")
+        library_db.flush()
+        store_path = os.path.join(self.lib, STORE)
         with open(store_path, "w", encoding="utf-8") as handle:
-            handle.write('{"prefs": {"rendersize"')      # truncated
+            handle.write('{"settings": {"rendersize"')      # truncated
         with open(store_path, "rb") as handle:
             broken = handle.read()
-        keyed_store.release()
+        test_support.reset_database_singletons()
         p = prefs_mod.Prefs()
         p.path = self.home_a
         p.load()
@@ -176,7 +181,7 @@ class TheLibraryIsAdoptedWhenItArrives(SharedPrefsCase):
         a = self.machine(self.home_a)
         a.rendersize = 512
         a.save()
-        keyed_store.release()
+        test_support.reset_database_singletons()
         fresh = prefs_mod.Prefs()
         fresh.path = self.home_b       # no settings.json, no load()
         fresh.dir = self.lib + "/"
@@ -187,9 +192,9 @@ class TheLibraryIsAdoptedWhenItArrives(SharedPrefsCase):
 
     def test_junk_in_the_store_does_not_poison_a_clamped_setting(self):
         """A hand-edit can put a string where a size belongs, so the adopt validates as load does."""
-        with open(os.path.join(self.lib, "prefs.json"), "w",
+        with open(os.path.join(self.lib, STORE), "w",
                   encoding="utf-8") as handle:
-            json.dump({"prefs": {
+            json.dump({"settings": {
                 "ram_cache_mb": {"value": "abc"},
                 "rendersize": {"value": 512},
             }}, handle)
@@ -209,11 +214,13 @@ class AnUnchangedSaveDoesNotTouchTheStore(SharedPrefsCase):
         a = self.machine(self.home_a)
         a.rendersize = 512
         a.save()
-        store_path = os.path.join(self.lib, "prefs.json")
+        library_db.flush()
+        store_path = os.path.join(self.lib, STORE)
         before = os.stat(store_path).st_mtime_ns
         a.save()
+        library_db.flush()
         self.assertEqual(before, os.stat(store_path).st_mtime_ns,
-                         "an unchanged save rewrote prefs.json - the "
+                         "an unchanged save rewrote DataBase.json - the "
                          "UNCHANGED collapse is not reaching the "
                          "push")
 
@@ -242,13 +249,15 @@ class TheTestLibrarySwitchKeepsEachLibrarysSettings(SharedPrefsCase):
                          "premise: Test Library is on")
 
     def real_bytes(self):
-        with open(os.path.join(self.lib, "prefs.json"), "rb") as handle:
+        library_db.flush()
+        with open(os.path.join(self.lib, STORE), "rb") as handle:
             return handle.read()
 
     def stored_in_test_lib(self, key):
-        with open(os.path.join(self.test_lib, "prefs.json"),
+        library_db.flush()
+        with open(os.path.join(self.test_lib, STORE),
                   encoding="utf-8") as handle:
-            return json.load(handle)["prefs"][key]["value"]
+            return json.load(handle)["settings"][key]["value"]
 
     def test_switching_off_leaves_the_real_library_alone(self):
         self.switch_on()
@@ -282,10 +291,11 @@ class TheTestLibrarySwitchKeepsEachLibrarysSettings(SharedPrefsCase):
     def test_switching_on_shows_the_test_librarys_own_settings(self):
         other = prefs_mod.Prefs()
         other.path = self.home_b
+        other.library_user = "u-elsewhere"
         other.dir = self.test_lib
         other.rendersize = 512
         other.save()
-        keyed_store.release()
+        test_support.reset_database_singletons()
         before = self.real_bytes()
         self.switch_on()
         self.assertEqual(512, self.prefs.rendersize,
@@ -403,13 +413,15 @@ class EveryRowFollowsAUserOrLibraryChange(SharedPrefsCase):
         from amaze.core import users
         other = tempfile.mkdtemp(prefix="amaze_shared_lib_other_")
         self.addCleanup(shutil.rmtree, other, ignore_errors=True)
-        shutil.copy(os.path.join(self.lib, users.USERS_FILE), other)
+        library_db.flush()
+        shutil.copy(os.path.join(self.lib, STORE), other)
         elsewhere = prefs_mod.Prefs()
         elsewhere.path = self.home_b
+        elsewhere.library_user = "u-elsewhere"
         elsewhere.dir = other + "/"
         elsewhere.rendersize = 512
         elsewhere.save()
-        keyed_store.release()
+        test_support.reset_database_singletons()
         class _Panel:
             def serves(self, _folder):
                 return False
@@ -442,7 +454,8 @@ class AMachineRunningBeforeAChangeTakesIt(SharedPrefsCase):
         self._tables = {"A": {}, "B": {}}    # two processes share no open store
 
     def on(self, machine):
-        return mock.patch.object(keyed_store, "_open", self._tables[machine])
+        """That machine's own open databases: two processes share none, and save at once."""
+        return mock.patch.object(library_db, "_libraries", self._tables[machine])
 
     def stored(self, key):
         return self.store_doc()["prefs"][key]["value"]
@@ -462,7 +475,7 @@ class AMachineRunningBeforeAChangeTakesIt(SharedPrefsCase):
             a.rendersize = 512
             a.save()
         with self.on("B"):
-            keyed_store.refresh_all(b)    # the panel shown, Preferences opened
+            model_registry.refresh_all(b)    # the panel shown, Preferences opened
             b.sidebar_width = 300
             b.save()
         self.assertEqual(512, self.stored("rendersize"), "B wrote its own value back")
@@ -494,13 +507,13 @@ class AMachineRunningBeforeAChangeTakesIt(SharedPrefsCase):
             b.rendersize = 300
             b.save()
         with self.on("A"):
-            keyed_store.refresh_all(a)
+            model_registry.refresh_all(a)
             a.sidebar_width = 200
             a.save()
             a.rendersize = 512
             a.save()
         with self.on("B"):
-            keyed_store.refresh_all(b)
+            model_registry.refresh_all(b)
             b.sidebar_width = 300
             b.save()
         self.assertEqual(512, self.stored("rendersize"),

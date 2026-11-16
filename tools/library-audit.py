@@ -54,8 +54,8 @@ def main(argv=None) -> int:
     if not library:
         sys.stderr.write("give a library directory (or set AMAZE_LIBRARY)\n")
         return 2
-    if not os.path.isfile(os.path.join(library, "library.json")):
-        sys.stderr.write("no library.json under %s\n" % library)
+    if not os.path.isfile(os.path.join(library, naming.MASTER)):
+        sys.stderr.write("no %s under %s\n" % (naming.MASTER, library))
         return 2
 
     found = audit(library)

@@ -5,7 +5,7 @@ import os
 
 from PySide6 import QtCore
 
-from amaze.core import category, debug, keyed_store, locations, workers
+from amaze.core import category, debug, locations, workers
 from amaze.helpers import hostos
 
 
@@ -361,8 +361,8 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
                 self._counted.pop(path, None)
 
     def _record(self, path: str) -> dict:
-        """One location's record, kept until a location write or a store rereads its file."""
-        key = (self._rows_token(), keyed_store.loads())
+        """One location's record, kept until a location write or a read of another session's save."""
+        key = self._rows_token()
         if key != self._records_key:
             self._records = {}
             self._records_key = key
@@ -711,8 +711,8 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
         """Is this folder a registered location already, however it is spelled? `but` is left out."""
         if not path:
             return False
-        wanted = keyed_store.path_identity(hostos.canonical_path_key(path).rstrip("/") + "/")
-        return any(keyed_store.path_identity(folder) == wanted
+        wanted = locations.path_identity(hostos.canonical_path_key(path).rstrip("/") + "/")
+        return any(locations.path_identity(folder) == wanted
                    for folder in self._folders() if folder != but)
 
     def add_folder(self, path: str) -> bool:

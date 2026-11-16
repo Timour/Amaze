@@ -2,13 +2,14 @@
 
 import hou
 
-from amaze.core import debug, library, material
+from amaze import messages
+from amaze.core import asset_record, debug, material
 from amaze.render import cop_nodes, nodes
 
 
 def add_asset(model, node: hou.Node, cats: str, tags: str, fav: bool,
               items: list | None = None, name: str = "") -> str:
-    """Save `node`, or `items` in it, into `model`: its label (`ListNotSaved` if unlisted), or ""."""
+    """Save `node`, or `items` in it, into `model` with its row as one unit: its label, or ""."""
     handler = nodes.NodeHandler(model.preferences)
     new_mat = material.Material()
     tags = model.sanitize_tags(tags)
@@ -17,19 +18,21 @@ def add_asset(model, node: hou.Node, cats: str, tags: str, fav: bool,
     new_mat.set_data(name.strip() or node.name(), cats, tags, fav, label)
     new_mat.node_color = nodes.custom_node_color(node)
 
+    handler.staging = []    # the files wait to land with the row, as one unit
     if not handler.save_node_cop(node, new_mat.mat_id, items=items):
+        asset_record.discard(handler.staging)
         return ""
     new_mat.cop_net = handler.cop_info    # carries `thumb_node`, read off the live display flag
-    model._append_record(new_mat)
-    listed = model.save()
-    if not listed:    # the save said why; the record waits in memory for the next save that works
-        debug.event("save", "node files written but the library list was not saved",
+    if not model.add_saved(new_mat, handler.staging):
+        debug.event("save", "node setup not saved - its database took neither row nor files",
                     name=new_mat.name, mat_id=new_mat.mat_id)
+        debug.refuse(messages.ASSET_NOT_SAVED_DATABASE_REFUSED % new_mat.name)
+        return ""
     try:
         node.setUserData("assetlib_id", str(new_mat.mat_id))
     except hou.OperationFailed:
         pass
-    return label if listed else library.ListNotSaved(label)
+    return label
 
 
 def import_asset_to_scene(model, index, context_node=None):

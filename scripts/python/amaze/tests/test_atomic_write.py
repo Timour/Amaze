@@ -213,47 +213,6 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
         self.assertEqual([], self._leftovers(),
                          "a scratch file was left beside settings.json")
 
-    def test_library_policy_uses_a_unique_scratch(self):
-        from amaze.core import library_policy
-        for allowed in (True, False, True, False, True, False):
-            self.assertTrue(
-                library_policy.set_allow_overwrite(self.dir, allowed),
-                "the policy write failed, so this proves nothing")
-        self._assert_unique("library_policy._write")
-        self.assertEqual([], self._leftovers(),
-                         "a scratch file was left beside policy.json")
-        # And it still round-trips - a fix that broke the setting is worse than the defect.
-        self.assertFalse(library_policy.allow_overwrite(self.dir),
-                         "the last written value was not read back")
-
-    def test_tile_icons_uses_a_unique_scratch(self):
-        from amaze.core import keyed_store, tile_icons
-
-        class _Prefs:
-            """Only what `tile_icons` reads - a real Prefs under hython resolves `$AMAZE` to the live install."""
-
-            def __init__(self, directory):
-                self.dir = directory
-                self.img_dir = "img/"
-                self.img_ext = ".png"
-
-        prefs = _Prefs(self.dir + os.sep)
-        keyed_store.release()
-        self.addCleanup(keyed_store.release)
-        # Through the ENGINE's resolver - one place composes the path for every keyed side table.
-        path = keyed_store.open_store(tile_icons.SPEC, prefs).path
-        for n in range(6):
-            self.assertTrue(
-                tile_icons.set_override(
-                    prefs, "ASSET%d" % n, {"name": "box", "bg": "#ef8878"}),
-                "the icon write failed, so this proves nothing")
-        self._assert_unique("keyed_store.Store._commit")
-        self.assertEqual([], self._leftovers(os.path.dirname(path)),
-                         "a scratch file was left beside icons.json")
-        with open(path, encoding="utf-8") as handle:
-            self.assertEqual(6, len(json.load(handle)["icons"]),
-                             "the icon table did not survive the writes")
-
     def _asset_writer(self, asset_id):
         """A handler over `self.dir` as its library, a builder, and the asset's two paths."""
         import hou
@@ -707,36 +666,6 @@ class PrefsSurvivesADamagedOrUnwritableFileTest(unittest.TestCase):
             "a failed settings write left no trace at all")
 
 
-class AFailedRotationSaysSoTest(unittest.TestCase):
-    """No data is lost when the tier cannot rotate, but it stops advancing."""
-
-    def test_a_rotation_failure_reaches_the_log(self):
-        import shutil as shutil_mod
-
-        directory = test_support.scratch_dir("amaze_rotate_")
-        self.addCleanup(shutil_mod.rmtree, directory, ignore_errors=True)
-        target = os.path.join(directory, "library.json")
-        for name, body in ((target, '{"assets": []}'),
-                           (target + ".bak-first", '{"assets": []}'),
-                           (target + ".bak-1", '{"assets": [1]}')):
-            with open(name, "w", encoding="utf-8") as handle:
-                handle.write(body)
-
-        def boom(*_args, **_kwargs):
-            raise OSError(13, "Permission denied")
-
-        original = hostos.shutil.copy2
-        hostos.shutil.copy2 = boom
-        self.addCleanup(setattr, hostos.shutil, "copy2", original)
-
-        with test_support.captured_log() as log:
-            hostos.snapshot_before_write(target)      # must not raise
-
-        self.assertTrue(
-            log.matching("the tier could not be rotated", "backup"),
-            "the backup tier stopped advancing and nothing recorded it")
-
-
 class NoContentWriterTargetsItsDestinationTest(unittest.TestCase):
     """A source scan of the whole package, since asset content has no `.bak-*` tier. ▸r/atomic-writes"""
 
@@ -778,94 +707,6 @@ class NoContentWriterTargetsItsDestinationTest(unittest.TestCase):
             "a node archive is written straight onto its destination, so a "
             "save that dies partway truncates content that has no backup "
             "tier to restore from:\n  " + "\n  ".join(offenders))
-
-
-class MachineLocalHistoryTest(unittest.TestCase):
-    """The synced `.bak-*` ring gets a machine-local daily ledger beside it. ▸r/atomic-writes"""
-
-    def setUp(self):
-        self.dir = tempfile.mkdtemp(prefix="amaze_hist_")
-        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
-        self.path = os.path.join(self.dir, "library.json")
-        self.config = tempfile.mkdtemp(prefix="amaze_hist_cfg_")
-        self.addCleanup(shutil.rmtree, self.config, ignore_errors=True)
-        real_config = hostos.config_root
-        hostos.config_root = lambda: self.config
-        self.addCleanup(setattr, hostos, "config_root", real_config)
-
-    def _write(self, payload):
-        with open(self.path, "w", encoding="utf-8") as fh:
-            json.dump(payload, fh)
-
-    def _entries(self):
-        folder = hostos.history_root(self.path)
-        if not os.path.isdir(folder):
-            return []
-        return sorted(os.listdir(folder))
-
-    def test_the_entry_lands_outside_the_library_and_round_trips(self):
-        self._write({"assets": [{"id": "A", "name": "gold"}]})
-        entry = hostos.record_history(self.path)
-        self.assertTrue(entry, "no history entry was written")
-        self.assertFalse(
-            os.path.abspath(entry).startswith(os.path.abspath(self.dir)),
-            "the history entry is inside the library it protects - the "
-            "same tree a sync client propagates corruption through")
-        with gzip.open(entry, "rb") as fh:
-            self.assertEqual({"assets": [{"id": "A", "name": "gold"}]},
-                             json.loads(fh.read().decode("utf-8")))
-
-    def test_one_entry_per_day_not_per_save(self):
-        self._write({"assets": []})
-        self.assertTrue(hostos.record_history(self.path))
-        for _ in range(5):
-            self._write({"assets": [{"id": "later"}]})
-            self.assertEqual("", hostos.record_history(self.path),
-                             "a second entry was written the same day")
-        self.assertEqual(1, len(self._entries()))
-
-    def test_a_file_that_does_not_parse_is_not_recorded(self):
-        """Recording garbage spends the day's slot while the good state ages out behind it."""
-        with open(self.path, "w", encoding="utf-8") as fh:
-            fh.write("{ truncated")
-        self.assertEqual("", hostos.record_history(self.path))
-        self.assertEqual([], self._entries())
-
-    def test_two_libraries_do_not_share_a_folder(self):
-        other_dir = tempfile.mkdtemp(prefix="amaze_hist_other_")
-        self.addCleanup(shutil.rmtree, other_dir, ignore_errors=True)
-        self.assertNotEqual(
-            hostos.history_root(self.path),
-            hostos.history_root(os.path.join(other_dir, "library.json")),
-            "two libraries write their history to one folder, so each "
-            "overwrites the other's day")
-
-    def test_old_entries_are_pruned_by_DATE_not_mtime(self):
-        """The name carries the date the copy is OF, and a restore or a file copy rewrites mtime."""
-        folder = hostos.history_root(self.path)
-        os.makedirs(folder, exist_ok=True)
-        made = []
-        for day in range(1, 8):
-            name = "library.json.2026-01-%02d.gz" % day
-            full = os.path.join(folder, name)
-            with gzip.open(full, "wb") as fh:
-                fh.write(b"{}")
-            made.append(name)
-        os.utime(os.path.join(folder, made[0]), None)   # oldest, so mtime and date disagree
-        hostos._prune_history(folder, "library.json", days=3)
-        left = sorted(n for n in os.listdir(folder) if n.endswith(".gz"))
-        self.assertEqual(made[-3:], left,
-                         "pruning kept the wrong entries - it is following "
-                         "mtime, which a restore or a copy rewrites")
-
-    def test_a_save_records_history_without_being_asked(self):
-        """Wired into the one chokepoint every database uses, so no new database lacks history."""
-        self._write({"assets": []})
-        hostos.snapshot_before_write(self.path)
-        self.assertEqual(1, len(self._entries()),
-                         "snapshot_before_write did not record a history "
-                         "entry, so nothing outside the synced tree holds "
-                         "yesterday's state")
 
 
 class TwoPanesEditSettingsWithoutClobberTest(unittest.TestCase):
@@ -931,8 +772,8 @@ class TwoPanesEditSettingsWithoutClobberTest(unittest.TestCase):
 
     def test_every_collected_key_has_a_backing_attribute(self):
         """Every collected key is reachable flat with nobody picked and under `users/<uid>/` once picked."""
-        from amaze.core import keyed_store
-        rules = keyed_store.store_for(keyed_store.SETTINGS).merge_rules
+        from amaze.prefs import settings_store
+        rules = settings_store.RULES
         flat = {key for key in rules if "/" not in key and key != "users"}
         nested = {key.split("/")[-1] for key in rules if "/" in key}
         self.assertEqual(
@@ -970,97 +811,6 @@ class TwoPanesEditSettingsWithoutClobberTest(unittest.TestCase):
         check.load()
         self.assertEqual(512, check.thumbsize,
                          "the active editor's scalar lost")
-
-
-class AHealthyFileRepairsABrokenFloorTest(unittest.TestCase):
-    """`.bak-first` is write-once forever, so a floor from a truncated file is worse than none."""
-
-    def setUp(self):
-        self.dir = tempfile.mkdtemp(prefix="amaze_floor_")
-        self.addCleanup(shutil.rmtree, self.dir, True)
-        self.path = os.path.join(self.dir, "library.json")
-        with open(self.path, "w", encoding="utf-8") as fh:
-            json.dump({"assets": [{"id": "GOOD"}]}, fh)
-        hostos._session_snapshots.pop(self.path, None)
-        self.addCleanup(hostos._session_snapshots.pop, self.path, None)
-
-    def _floor(self):
-        with open(self.path + ".bak-first", encoding="utf-8") as fh:
-            return fh.read()
-
-    def test_a_garbage_floor_is_replaced_by_a_healthy_file(self):
-        with open(self.path + ".bak-first", "w", encoding="utf-8") as fh:
-            fh.write("{ truncated garbage")
-        hostos.snapshot_before_write(self.path)
-        self.assertIn("GOOD", self._floor(),
-                      "the permanent restore floor is still garbage - "
-                      "the one copy that never rotates is the one that "
-                      "never worked")
-
-    def test_a_parseable_floor_with_different_content_is_never_touched(self):
-        """The control: a healthy floor that differs is never replaced."""
-        with open(self.path + ".bak-first", "w", encoding="utf-8") as fh:
-            json.dump({"assets": [{"id": "OLD-STATE"}]}, fh)
-        hostos.snapshot_before_write(self.path)
-        self.assertIn("OLD-STATE", self._floor(),
-                      "a parseable .bak-first was overwritten - the "
-                      "earliest state is gone")
-
-
-class SnapshotsAreThrottledNotOncePerProcessTest(unittest.TestCase):
-    """A once-per-session gate gives the `.bak-N` ring one state per launch, so it mostly holds air."""
-
-    def setUp(self):
-        self.dir = tempfile.mkdtemp(prefix="amaze_throttle_")
-        self.addCleanup(shutil.rmtree, self.dir, True)
-        self.path = os.path.join(self.dir, "library.json")
-        hostos._session_snapshots.pop(self.path, None)
-        self.addCleanup(hostos._session_snapshots.pop, self.path, None)
-
-    def _write_state(self, count):
-        with open(self.path, "w", encoding="utf-8") as fh:
-            json.dump({"assets": [{"id": "a%d" % i} for i in range(count)]},
-                      fh)
-
-    def _tiers(self):
-        return sorted(n for n in os.listdir(self.dir) if ".bak-" in n)
-
-    def test_states_past_the_interval_each_get_a_snapshot(self):
-        for number, count in enumerate((1, 2, 3, 4), 1):
-            self._write_state(count)
-            hostos.snapshot_before_write(self.path)
-            # Backdate the stamp - monotonic time itself cannot be moved.
-            hostos._session_snapshots[self.path] -= (
-                hostos.SNAPSHOT_INTERVAL + 1)
-        tiers = self._tiers()
-        self.assertIn("library.json.bak-first", tiers)
-        self.assertEqual(
-            {"library.json.bak-1", "library.json.bak-2",
-             "library.json.bak-3", "library.json.bak-first"},
-            set(tiers),
-            "distinct states past the interval did not each earn a "
-            "snapshot - the ring holds one state per launch again: %s"
-            % tiers)
-
-    def test_inside_the_interval_no_second_snapshot(self):
-        self._write_state(1)
-        hostos.snapshot_before_write(self.path)
-        before = self._tiers()
-        self._write_state(2)
-        hostos.snapshot_before_write(self.path)   # seconds later
-        self.assertEqual(before, self._tiers(),
-                         "a save storm can chew all three slots inside "
-                         "a minute")
-
-    def test_identical_content_does_not_consume_a_slot(self):
-        self._write_state(3)
-        hostos.snapshot_before_write(self.path)
-        hostos._session_snapshots[self.path] -= (
-            hostos.SNAPSHOT_INTERVAL + 1)
-        hostos.snapshot_before_write(self.path)   # same bytes
-        tiers = self._tiers()
-        self.assertNotIn("library.json.bak-2", tiers,
-                         "an identical state consumed a rotation slot")
 
 
 class TheLibraryUserIsTheOneIdentityTest(unittest.TestCase):
@@ -1279,129 +1029,6 @@ A_USER = "a1b2c3d4e5f60718293a4b5c6d7e8f90"  # minted shape: only uuid4().hex re
 B_USER = "90f8e7d6c5b4a3928170f6e5d4c3b2a1"
 
 
-class AStoreCanTagItsKeysWithAnOwnerTest(unittest.TestCase):
-    """Tagging is declared on a test-built `Spec`, never a registered one Repair would then see."""
-
-    SEP = "|"
-
-    def setUp(self):
-        from amaze.core import keyed_store
-        self.dir = tempfile.mkdtemp(prefix="amaze_tagged_")
-        self.addCleanup(shutil.rmtree, self.dir, True)
-        keyed_store.release()
-        self.addCleanup(keyed_store.release)
-
-    def _spec(self, tagged=True):
-        from amaze.core import keyed_store
-        return keyed_store.Spec(
-            filename="tagtest.json", payload="entries",
-            keyspace=keyed_store.KEY_PATH, label="Tag test", noun="entry",
-            normalise=lambda value: {"on": True} if value else {},
-            user_tagged=tagged)
-
-    def _prefs(self, user=""):
-        class _P:
-            pass
-        p = _P()
-        p.dir = self.dir
-        p.library_user = user
-        return p
-
-    def _store(self, user="", tagged=True):
-        from amaze.core import keyed_store
-        return keyed_store.open_store(self._spec(tagged), self._prefs(user))
-
-    def _on_disk(self):
-        with open(os.path.join(self.dir, "tagtest.json"),
-                  encoding="utf-8") as handle:
-            return json.load(handle)["entries"]
-
-    def _plant(self, *keys):
-        """A file written the way a build BEFORE the tag wrote one."""
-        with open(os.path.join(self.dir, "tagtest.json"), "w",
-                  encoding="utf-8") as handle:
-            json.dump({"entries": {key: {"on": True} for key in keys}},
-                      handle)
-
-    def test_the_stored_key_carries_the_uid(self):
-        """`<uid>|<key>` split on the first separator only: a uuid4 hex holds none, a path can."""
-        self._store(A_USER).set("~/a|b.exr", True)
-        keys = list(self._on_disk())
-        self.assertEqual(1, len(keys))
-        tag, _sep, rest = keys[0].partition(self.SEP)
-        self.assertEqual(A_USER, tag, "key %r is not tagged" % keys[0])
-        self.assertEqual("~/a|b.exr", rest,
-                         "a separator inside the KEY was eaten")
-
-    def test_no_user_stores_nothing_rather_than_a_blank_bucket(self):
-        """An empty tag is not a shared user, it is an absent one."""
-        from amaze.core import keyed_store
-        written = self._store("").set("~/a.exr", True)
-        self.assertFalse(written, "an entry was filed with no user")
-        self.assertEqual(keyed_store.REASON_NO_USER, written.reason)
-        self.assertFalse(self._store("").has("~/a.exr"))
-
-    def test_all_is_scoped_and_everyones_is_not(self):
-        """`all()` is mine and what a section paints; `everyones()` is for repair and migration only."""
-        from amaze.core import keyed_store
-        self.assertTrue(self._store(A_USER).set("~/mine.exr", True))
-        self.assertTrue(self._store(A_USER).has("~/mine.exr"))
-        keyed_store.release()
-        self._store(B_USER).set("~/theirs.exr", True)
-        self.assertFalse(
-            self._store(B_USER).has("~/mine.exr"),
-            "the other user's entry is showing - the tag is not keeping "
-            "them apart")
-        keyed_store.release()
-        store = self._store(A_USER)
-        self.assertTrue(store.has("~/mine.exr"),
-                        "switching back lost the first user's entry")
-        self.assertEqual(["~/mine.exr"], sorted(store.all()),
-                         "all() is not scoped to this user")
-        self.assertEqual(2, len(store.everyones()),
-                         "everyones() cannot see across people")
-
-    def test_a_row_from_before_the_store_had_owners_is_dropped(self):
-        """A pre-owner row is removed, not adopted: adopting gives one person everybody's entries."""
-        self._plant("~/old.exr")
-        store = self._store(A_USER)
-        self.assertFalse(store.has("~/old.exr"),
-                         "an entry from before the store had owners is "
-                         "still showing")
-        self.assertEqual({}, store.all())
-        self.assertEqual({}, store.everyones(),
-                         "the row was kept aside rather than dropped")
-        store.set("~/mine.exr", True)
-        self.assertEqual([A_USER + self.SEP + "~/mine.exr"],
-                         sorted(self._on_disk()),
-                         "the untagged row was written back after being "
-                         "dropped")
-
-    def test_asking_for_nothing_is_not_a_refusal(self):
-        """Doing nothing cannot fail: an empty write answers `UNCHANGED`, not a failure."""
-        from amaze.core import keyed_store
-        store = self._store("")
-        for written, what in ((store.update({}), "update"),
-                              (store.rekey({}), "rekey"),
-                              (store.retire([]), "retire")):
-            self.assertTrue(written, "an empty %s was refused" % what)
-            self.assertEqual(keyed_store.REASON_UNCHANGED, written.reason,
-                             "an empty %s did not answer unchanged" % what)
-
-    def test_an_untagged_store_is_completely_unaffected(self):
-        """The control: with `user_tagged` false the engine is unchanged, even for a prefs with no user."""
-        from amaze.core import keyed_store
-        store = self._store("", tagged=False)
-        self.assertTrue(store.set("~/a.exr", True))
-        self.assertTrue(store.has("~/a.exr"))
-        self.assertEqual(["~/a.exr"], sorted(store.all()))
-        self.assertEqual(store.all(), store.everyones())
-        keyed_store.release()
-        self._plant("~/old.exr")
-        self.assertTrue(self._store("", tagged=False).has("~/old.exr"),
-                        "an untagged store dropped a row it should keep")
-
-
 class SandboxRefusesAWriteOutsideTempTest(unittest.TestCase):
     """The JSON write door refuses when a run may touch only temp. ▸p/hand-run-script-is-unguarded"""
 
@@ -1479,7 +1106,6 @@ class SandboxRefusesEveryPrimitiveTest(unittest.TestCase):
         path = os.path.join(self.outside, name)
         with open(path, "w", encoding="utf-8") as handle:
             handle.write(text)
-        self.addCleanup(hostos._session_snapshots.pop, path, None)
         return path
 
     def _inside_file(self):
@@ -1502,35 +1128,22 @@ class SandboxRefusesEveryPrimitiveTest(unittest.TestCase):
         self._refused(hostos.promote_scratch, self._inside_file(), target)
         self._refused(hostos.replace_file, self._inside_file(), target)
 
-    def test_the_snapshot_copies_are_refused(self):
-        healthy = self._planted("lib.json", '{"assets": []}')
+    def test_the_unreadable_copy_is_refused(self):
         broken = self._planted("bad.json", "{ truncated")
-        self._refused(hostos.snapshot_before_write, healthy)
-        self._refused(hostos.seed_restore_floor, healthy)
         self._refused(hostos.preserve_unreadable, broken)
 
-    def test_a_history_entry_outside_is_refused(self):
-        real_config = hostos.config_root
-        hostos.config_root = lambda: self.outside
-        self.addCleanup(setattr, hostos, "config_root", real_config)
-        source = os.path.join(self.inside, "library.json")
-        with open(source, "w", encoding="utf-8") as handle:
-            handle.write('{"assets": []}')
-        self._refused(hostos.record_history, source)
-
-    def test_a_quarantine_move_outside_is_refused(self):
-        from amaze.core import quarantine
-        real_config = hostos.config_root
-        hostos.config_root = lambda: self.outside
-        self.addCleanup(setattr, hostos, "config_root", real_config)
-        library = os.path.join(self.inside, "library")
+    def test_a_trash_move_outside_is_refused(self):
+        from amaze.core import guard
+        library = os.path.join(self.outside, "library")
         os.makedirs(os.path.join(library, "materials"))
         leftover = os.path.join(library, "materials", "LEFTOVER.mat")
         with open(leftover, "w", encoding="utf-8") as handle:
             handle.write("x")
-        self._refused(quarantine.quarantine_file, library, leftover)
-        self.assertTrue(os.path.exists(leftover),
-                        "the refused move still took the file")
+        change = guard.Guard(library).change("")
+        change.trash("materials/LEFTOVER.mat")
+        with self.assertRaises(hostos.SandboxRefused):
+            change.commit()
+        self.assertTrue(os.path.exists(leftover), "the refused move still took the file")
 
     def test_a_cache_folder_made_outside_is_refused(self):
         self.addCleanup(hostos.set_cache_override, hostos._cache_override)
@@ -1551,11 +1164,9 @@ class SandboxKeepsThePerUserFoldersInTempTest(unittest.TestCase):
 
     def _assert_in_temp(self):
         temp = os.path.realpath(tempfile.gettempdir()) + os.sep
-        library = os.path.join(temp, "library", "library.json")
         for label, path in (("settings", hostos.config_root()),
                             ("cache", hostos.cache_root()),
-                            ("log", hostos.log_root()),
-                            ("history", hostos.history_root(library))):
+                            ("log", hostos.log_root())):
             self.assertTrue(
                 os.path.realpath(path).startswith(temp),
                 "the %s folder is %s, outside the temp dir %s"

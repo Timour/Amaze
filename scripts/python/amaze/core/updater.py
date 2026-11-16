@@ -121,10 +121,10 @@ def release_library(tag: str) -> tuple:
 
 def updates_library(found, library_dir: str) -> bool:
     """Installing `found` updates the library at `library_dir`: the red Install Update."""
-    from amaze.core import library_policy
+    from amaze.core import library_settings
     wanted = int(getattr(found, "library_version", 0) or 0)
     return (bool(found) and bool(library_dir)
-            and wanted > library_policy.library_version(library_dir))
+            and wanted > library_settings.library_version(library_dir))
 
 
 def configured_library() -> str:
@@ -140,8 +140,10 @@ def configured_library() -> str:
 def offer_line(found, library_dir: str) -> str:
     """The check's answer in one line, worded as P06 draws it when the library is updated too."""
     from amaze import messages
+    from amaze.core import library_settings
     if updates_library(found, library_dir):
-        return messages.UPDATE_LIBRARY_AVAILABLE % (found.version, found.library_version)
+        return messages.UPDATE_LIBRARY_AVAILABLE % (
+            found.version, library_settings.version_label(found.library_version))
     return found.sentence
 
 

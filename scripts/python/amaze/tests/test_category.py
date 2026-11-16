@@ -1,166 +1,89 @@
-"""The Categories model, with PySide6, prefs and the database connector mocked out."""
+"""The Categories model over a real 2.0 library: names, order, colours and counts."""
 
-import unittest
-from unittest.mock import MagicMock, patch
-
+import json
 import os
 import sys
+import unittest
+from unittest.mock import MagicMock
 
 sys.path.insert(  # scripts/python: the dev tree, not the install ▸p/checkout-not-install
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze.core import category
+from amaze.core import category, guard
 from amaze.tests import test_support  # noqa: E402,F401 - import redirects the debug log
 
 
+def _write(prefs, document: dict) -> None:
+    """The library's materials.json as `document`, written whole."""
+    with open(os.path.join(prefs.dir, "materials.json"), "w", encoding="utf-8") as handle:
+        handle.write(guard.encode(document).decode("utf-8"))
+
+
 class TestCategories(unittest.TestCase):
-    """Test suite for the Categories model class."""
+    """The sidebar model reads its names in their order, All first, and saves them back."""
 
     def setUp(self):
-        """Set up mocks before each test."""
-        self.mock_qtcore = MagicMock()
-        self.mock_qtcore.Qt.ItemDataRole.UserRole = 256
-        self.mock_qtcore.Qt.ItemDataRole.DisplayRole = 0
-        self.mock_qtcore.QAbstractListModel = MagicMock
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        self.prefs = self.prefs_for()
+        self.index = MagicMock()
 
-        self.mock_prefs_instance = MagicMock()
-        self.mock_prefs_instance.dir = "/mock/path"
-        self.mock_prefs_class = MagicMock(return_value=self.mock_prefs_instance)
+    def prefs_for(self):
+        prefs = test_support.fixture_prefs(self)
+        test_support.with_fixture_user(prefs.dir)
+        _write(prefs, {"categories": {"Cat1": {"order": 0}, "_Hidden": {"order": 1},
+                                      "Cat2": {"order": 2}},
+                       "assets": {}})
+        return prefs
 
-        self.mock_db_instance = MagicMock()
-        self.mock_db_instance.load.return_value = {
-            "categories": ["Cat1", "_Hidden", "Cat2"]
-        }
-        self.mock_db_instance.reload_with_path.return_value = {
-            "categories": ["New1", "New2"]
-        }
-        self.mock_db_class = MagicMock(return_value=self.mock_db_instance)
+    def model(self):
+        return category.Categories(self.prefs)
 
-        self.mock_index = MagicMock()
+    def test_init_reads_the_names_in_order_with_all_first(self):
+        model = self.model()
+        self.assertIs(self.prefs, model.preferences)
+        self.assertEqual(["_All", "Cat1", "_Hidden", "Cat2"], model._categories)
+        self.assertEqual(4, model.rowCount())
 
-        self.patcher_qtcore = patch("PySide6.QtCore", self.mock_qtcore)
-        self.patcher_prefs = patch("amaze.prefs.prefs.Prefs", self.mock_prefs_class)
-        self.patcher_db = patch(
-            "amaze.core.database.DatabaseConnector", self.mock_db_class
-        )
-
-        self.patcher_qtcore.start()
-        self.addCleanup(self.patcher_qtcore.stop)
-        self.patcher_prefs.start()
-        self.addCleanup(self.patcher_prefs.stop)
-        self.patcher_db.start()
-        self.addCleanup(self.patcher_db.stop)
-        self.category_module = category  # bound after patching
-
-    def test_init_loads_preferences_and_categories(self):
-        """Test that __init__ takes the given preferences and loads categories from database."""
-        model = self.category_module.Categories(self.mock_prefs_instance)
-
-        self.assertIs(self.mock_prefs_instance, model.preferences)
-        self.mock_prefs_instance.load.assert_not_called()  # a load here reverts unsaved panel edits
-        self.mock_db_instance.load.assert_called_once_with("/mock/path")
-        self.assertEqual(model._categories, ["Cat1", "_Hidden", "Cat2"])
-        self.assertEqual(model.CatSortRole, 256)
-
-    def test_row_count(self):
-        """Test that rowCount returns the correct number of categories."""
-        model = self.category_module.Categories(self.mock_prefs_instance)
-
-        self.assertEqual(model.rowCount(), 3)
-
-    def test_data_with_cat_sort_role(self):
-        """Test data method with CatSortRole returns raw category."""
-        model = self.category_module.Categories(self.mock_prefs_instance)
-        self.mock_index.row.return_value = 1
-
-        result = model.data(self.mock_index, role=256)
-
-        self.assertEqual(result, "_Hidden")
-
-    def test_data_with_display_role_strips_underscore(self):
-        """Test data method with DisplayRole strips leading underscore."""
-        model = self.category_module.Categories(self.mock_prefs_instance)
-        self.mock_index.row.return_value = 1
-
-        result = model.data(self.mock_index, role=0)
-
-        self.assertEqual(result, "Hidden")
-
-    def test_data_with_display_role_no_underscore(self):
-        """Test data method with DisplayRole for category without underscore."""
-        model = self.category_module.Categories(self.mock_prefs_instance)
-        self.mock_index.row.return_value = 0
-
-        result = model.data(self.mock_index, role=0)
-
-        self.assertEqual(result, "Cat1")
+    def test_display_strips_a_leading_underscore_and_the_sort_role_does_not(self):
+        model = self.model()
+        self.index.row.return_value = 2
+        self.assertEqual("_Hidden", model.data(self.index, role=model.CatSortRole))
+        self.assertEqual("Hidden", model.data(self.index, role=0))
+        self.index.row.return_value = 1
+        self.assertEqual("Cat1", model.data(self.index, role=0))
 
     def test_a_junk_row_does_not_abort_the_counts(self):
-        """The sidebar count pass skips non-dict rows the same way the model side does."""
-        self.mock_db_instance.load.return_value = {
-            "categories": ["Cat1"],
-            "assets": [
-                {"categories": ["Cat1"], "renderer": "Karma"},
-                "junk left by a hand edit",
-                {"categories": ["Cat1"], "renderer": "Karma"},
-            ],
-        }
-        model = self.category_module.Categories(self.mock_prefs_instance)
+        _write(self.prefs, {"categories": {"Cat1": {"order": 0}},
+                            "assets": {"a": {"categories": ["Cat1"], "renderer": "Karma"},
+                                       "b": "junk left by a hand edit",
+                                       "c": {"categories": ["Cat1"], "renderer": "Karma"}}})
+        model = self.model()
         self.assertEqual(2, model._category_count("Cat1"))
         self.assertEqual(2, model._category_count("_All"))
 
     def test_a_name_holding_a_comma_counts_as_one(self):
-        self.mock_db_instance.load.return_value = {
-            "categories": ["Wood, Oak"],
-            "assets": [{"categories": ["Wood, Oak"], "renderer": "Karma"},
-                       {"categories": "Wood, Oak", "renderer": "Karma"}],    # a hand-edited row
-        }
-        model = self.category_module.Categories(self.mock_prefs_instance)
+        _write(self.prefs, {"categories": {"Wood, Oak": {"order": 0}},
+                            "assets": {"a": {"categories": ["Wood, Oak"], "renderer": "Karma"},
+                                       "b": {"categories": "Wood, Oak", "renderer": "Karma"}}})
+        model = self.model()
         self.assertEqual((2, 0), (model._category_count("Wood, Oak"), model._category_count("Wood")),
                          "the count split a category name at its comma")
 
-    def test_switch_model_data(self):
-        """A switch reads the library the Prefs it holds names NOW; the panel loaded them once."""
-        model = self.category_module.Categories(self.mock_prefs_instance)
-        self.mock_prefs_instance.dir = "/mock/other"
-
-        model.switch_model_data()
-
-        self.mock_db_instance.reload_with_path.assert_called_once_with("/mock/other")
-        self.assertEqual(model._categories, ["New1", "New2"])
-
-    def test_remove_category(self):
-        """Test remove_category removes category and saves."""
-        model = self.category_module.Categories(self.mock_prefs_instance)
-        model.save = MagicMock()
-
+    def test_remove_and_rename_save_and_the_database_holds_it(self):
+        model = self.model()
         model.remove_category("Cat1")
+        model.rename_category("Cat2", "Second")
+        test_support.reset_database_singletons()
+        self.assertEqual(["_All", "_Hidden", "Second"], self.model()._categories)
 
-        self.assertNotIn("Cat1", model._categories)
-        self.assertEqual(model._categories, ["_Hidden", "Cat2"])
-        model.save.assert_called_once()
-
-    def test_rename_category(self):
-        """Test rename_category renames all instances and saves."""
-        model = self.category_module.Categories(self.mock_prefs_instance)
-        model._categories = ["OldName", "Cat2", "OldName"]
+    def test_a_rename_to_nothing_known_still_saves(self):
+        model = self.model()
         model.save = MagicMock()
-
-        model.rename_category("OldName", "NewName")
-
-        self.assertEqual(model._categories, ["NewName", "Cat2", "NewName"])
-        model.save.assert_called_once()
-
-    def test_rename_category_no_match(self):
-        """Test rename_category when category doesn't exist still calls save."""
-        model = self.category_module.Categories(self.mock_prefs_instance)
-        model.save = MagicMock()
-        original_categories = model._categories.copy()
-
+        original = list(model._categories)
         model.rename_category("NonExistent", "NewName")
-
-        self.assertEqual(model._categories, original_categories)
+        self.assertEqual(original, model._categories)
         model.save.assert_called_once()
 
     def test_check_add_category_adds_only_new_trimmed_names_and_saves_only_then(self):
@@ -174,23 +97,23 @@ class TestCategories(unittest.TestCase):
         )
         for typed, added, saves in cases:
             with self.subTest(typed=typed):
-                model = self.category_module.Categories(self.mock_prefs_instance)
+                model = self.model()
                 model.save = MagicMock()
                 before = list(model._categories)
                 model.check_add_category(typed)
                 self.assertEqual(sorted(before + list(added)), sorted(model._categories))
                 self.assertEqual(saves, model.save.called)
 
-    def test_save(self):
-        """Test save method writes categories to database."""
-        model = self.category_module.Categories(self.mock_prefs_instance)
-
-        model.save()
-
-        self.mock_db_instance.set.assert_called_with(  # colours travel with the names
-            {"categories": ["Cat1", "_Hidden", "Cat2"], "category_colors": {}}
-        )
-        self.mock_db_instance.save.assert_called_once()
+    def test_the_order_and_a_colour_are_what_is_saved(self):
+        model = self.model()
+        model.move_category(3, 1)
+        model.set_color("Cat1", "#ff0000")
+        with open(os.path.join(self.prefs.dir, "materials.json"), encoding="utf-8") as handle:
+            stored = json.load(handle)["categories"]
+        self.assertEqual({"Cat2": 0, "Cat1": 1, "_Hidden": 2},
+                         {name: entry["order"] for name, entry in stored.items()})
+        self.assertEqual("#ff0000", stored["Cat1"]["color"])
+        self.assertNotIn("_All", stored, "All is a view, never stored")
 
 
 class NormalizeBracketsItsResetTest(unittest.TestCase):
@@ -224,47 +147,22 @@ class NormalizeBracketsItsResetTest(unittest.TestCase):
         self.assertEqual(0, model.normalize_categories())
         self.assertEqual([], seen, "a no-op reset the whole model")
 
-    def test_the_model_stays_ALIASED_to_the_connectors_list(self):
-        """A normalize mutates the list the connector shares, or a merge into it never reaches the model."""
-        from amaze.core import category as category_mod
-        from amaze.core import database
-        from amaze.tests import test_support
-
-        prefs = test_support.fixture_prefs(self)
-        test_support.reset_database_singletons()
-        self.addCleanup(test_support.reset_database_singletons)
-        model = category_mod.Categories(preferences=prefs)
-        shared = database.DatabaseConnector(
-            category_mod.Categories.DB_FILENAME).load(prefs.dir)
-        self.assertIs(model._categories, shared["categories"],
-                      "premise: the model aliases the connector's list")
-        shared["categories"].append("  Needs Cleaning  ")
-        self.assertGreater(model.normalize_categories(), 0,
-                           "the dirty entry was not cleaned")
-        self.assertIs(
-            model._categories, shared["categories"],
-            "normalize_categories rebound the list - the model is "
-            "detached from the document the merge repairs, and the "
-            "next save erases whatever a peer machine added")
-
-
 class ALocalEditIsNotReadAsAMerge(unittest.TestCase):
     """A refresh resets the sidebar for a change made elsewhere, never for one of its own edits."""
 
     def setUp(self):
-        from amaze.core import database
         test_support.reset_database_singletons()
         self.addCleanup(test_support.reset_database_singletons)
         self.prefs = test_support.fixture_prefs(self)
+        test_support.with_fixture_user(self.prefs.dir)
         self.model = category.Categories(preferences=self.prefs)
-        self.db = database.DatabaseConnector(category.Categories.DB_FILENAME)
         self.resets = []
         self.model.modelReset.connect(lambda: self.resets.append(True))
 
     def _resets_on_refresh_after(self, edit):
         edit()
         del self.resets[:]
-        self.model.apply_refresh(self.db)
+        self.model.apply_refresh()
         return len(self.resets)
 
     def test_a_category_added_here_keeps_the_selection(self):

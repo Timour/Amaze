@@ -1,36 +1,37 @@
-"""Repair: never deletes, only reports and moves. ▸p/db-restore"""
+"""Check Library: the guard's judgement of the databases and the folder, and fixes through it."""
 
 import filecmp
 import json
 import os
 import time
 
-from amaze import branding
-from amaze.core import database, debug, keyed_store, material, renderers
+from amaze.core import debug, documents, guard, library_db, material, renderers
 from amaze.core import library_files as naming
 from amaze.core import asset_record
 from amaze.core.material import RECORD_SUFFIX
-from amaze.helpers import hostos, restore as restore_lib, wording
+from amaze.helpers import hostos, wording
 from amaze.prefs import prefs as prefs_module
 
 
-DATABASES = database.DATABASES
+DATABASES = naming.DATABASES
+ROWS = "assets"
 
 ASSET_SIDECARS = naming.ASSET_SUFFIXES
 
 _MISSING = ("absent", "absent-but-known")
 
-_IN_TROUBLE = ("unreadable", "absent-but-known", "no-library")    # an empty list only with a copy
+_IN_TROUBLE = ("unreadable", "absent-but-known", "newer", "no-library")    # empty: only with a copy
 
-_SETTINGS = keyed_store.SETTINGS    # machine-local, beside its own saved copies in the settings folder
-
-
-def side_tables() -> tuple:
-    """The keyed side tables, from the one registry that declares them."""
-    from amaze.core import keyed_store
-    return keyed_store.filenames()
+_SETTINGS = "settings.json"    # machine-local; Check Library says when it will not read
 
 RECOVERED_CATEGORY = "Recovered"
+
+_STATE = {guard.CORRUPT: "unreadable", guard.MISSING: "absent-but-known", guard.NEWER: "newer",
+          guard.FRESH: "absent"}
+
+
+class RestoreRefused(Exception):
+    """A restore not done; `str()` is a sentence for a dialog."""
 
 
 def configured_library(preferences=None) -> str:
@@ -65,6 +66,10 @@ def _unlistable(directory: str) -> tuple:
         for section in _PICTURE_SECTIONS)
 
 
+def _guard(directory: str) -> guard.Guard:
+    return guard.Guard(str(directory))
+
+
 def survey(preferences_or_directory, img_dir: str = "img/") -> dict:
     """Everything Check Library reports, from one walk; with preferences the Files section too."""
     preferences = None
@@ -74,20 +79,23 @@ def survey(preferences_or_directory, img_dir: str = "img/") -> dict:
         directory = str(preferences.dir or "")
         img_dir = preferences.img_dir
     directory = str(directory)
-    from amaze.core import quarantine as holding
-    holding.prune_quarantine(directory)
+    held = _guard(directory)
+    held.expire_trash()
     listing = _walk(directory)
-    root_names = listing["names"].get("")
 
     lists = []
     ids = set()
     complete = True
-    for filename in DATABASES + side_tables():
-        entry = _survey_one(directory, filename, root_names)
+    shrunk = []
+    for reading in held.health():
+        entry = _survey_one(held, reading)
         lists.append(entry)
         ids |= entry["ids"]
-        if entry["state"] in ("unreadable", "absent-but-known"):
+        if entry["state"] in ("unreadable", "absent-but-known", "newer") and \
+                entry["filename"] in naming.LISTS:
             complete = False
+        if reading.shrunk:
+            shrunk.append((reading.name,) + tuple(reading.shrunk))
 
     folders = asset_folders(directory)
     keys = {folder: folder + "/" for folder, _kinds, _needed in _unlistable(directory)}
@@ -122,18 +130,13 @@ def survey(preferences_or_directory, img_dir: str = "img/") -> dict:
     findings.update(_listed_rows_checked(lists, listing))
     findings.update(_out_of_place(directory, listing))
     findings.update(_files_section(preferences))
-    findings["shrunk"] = [
-        (entry["filename"], entry["info"]["count"] or 0, newest)
-        for entry, newest in ((entry, _newest_copy_holds(entry)) for entry in lists
-                              if entry["filename"] in DATABASES
-                              and entry["state"] in ("ok", "empty"))
-        if newest is not None and database.held_much_less(entry["info"]["count"] or 0, newest)]
-    findings["holding"] = holding.held(directory)
+    findings["shrunk"] = shrunk
+    findings["holding"] = held.trash_held()
     return findings
 
 
 def _walk(directory: str) -> dict:
-    """The library in one walk: {names: {folder: {name: (kind, detail)}}, out_of_place, unreadable}."""
+    """The library in one walk: {names: {folder: {name: (kind, detail)}}, out_of_place, ...}."""
     names = {}
     out_of_place = []
     unreadable = []
@@ -206,7 +209,7 @@ def metadata_of(folders, asset_id: str):
 
 
 def _stamps_of_unlisted_pairs(findings: dict, listing: dict) -> dict:
-    """{id: record or None} for each unlisted pair or lone metadata: the only ones a survey opens."""
+    """{id: record or None} for each unlisted pair or lone metadata: all a survey opens."""
     folders = [path for _key, path in _folders_of(findings)]
     return {asset_id: metadata_of(folders, asset_id)
             for asset_id in _ids_with_a_stamp(findings)}
@@ -219,18 +222,18 @@ def _on_disk(listing: dict, folders: list, names: tuple) -> bool:
 
 
 def _listed_rows_checked(lists: list, listing: dict) -> dict:
-    """Per Material and Node list: rows whose files are gone, renders missing, no category."""
+    """Per Material and Node database: rows whose files are gone, renders missing, no category."""
     missing_files, missing_renders, uncategorised = {}, {}, {}
     for entry in lists:
         filename = entry["filename"]
-        if filename not in database.ASSET_FILE_OWNERS:
+        if filename not in naming.ASSET_SECTIONS:
             continue
         home = naming.SECTION_FOLDERS[filename]
         folders = [home]
         listed = home in listing["names"]
         gone, unrendered, loose = [], [], []
         for row in entry.get("rows", ()):
-            asset_id = database.row_id(row)
+            asset_id = str(row.get("id", ""))
             named = (asset_id, str(row.get("name") or asset_id))
             if not _categories_of(row):
                 loose.append(named)
@@ -240,7 +243,7 @@ def _listed_rows_checked(lists: list, listing: dict) -> dict:
                     listing, folders, (asset_id + RECORD_SUFFIX,)):
                 gone.append(named)
             elif (not _on_disk(listing, folders, (asset_id + naming.PICTURE_SUFFIX,))
-                  and (filename == "library.json"
+                  and (filename == naming.MATERIALS
                        or renderers.can_hold_a_render(row.get("renderer")))):
                 unrendered.append(named)
         missing_files[filename] = gone
@@ -251,10 +254,10 @@ def _listed_rows_checked(lists: list, listing: dict) -> dict:
 
 
 def _categories_of(row: dict) -> list:
-    """A row's categories as a list, blanks dropped; a legacy comma string is split."""
+    """A row's categories as a list, blanks dropped."""
     found = row.get("categories")
     if isinstance(found, str):
-        found = found.split(",") if found else []
+        found = [found]
     return [one.strip() for one in (found or []) if isinstance(one, str) and one.strip()]
 
 
@@ -276,8 +279,8 @@ def _out_of_place(directory: str, listing: dict) -> dict:
             else:
                 leftovers.append((relative, kind, size, when))
         elif detail == "folder":
-            files, total = _folder_size(os.path.join(directory, relative))
-            unknown_folders.append((relative, files, total, when))
+            files_in, total = _folder_size(os.path.join(directory, relative))
+            unknown_folders.append((relative, files_in, total, when))
         else:
             unknown.append((relative, size, when))
     return {"leftovers": leftovers, "held_back": held_back, "unknown": unknown,
@@ -305,8 +308,8 @@ def _why_a_duplicate_stays(directory: str, relative: str, original: str, listing
 
 def _folder_size(path: str) -> tuple:
     count = total = 0
-    for here, _dirs, files in os.walk(path):
-        for name in files:
+    for here, _dirs, names in os.walk(path):
+        for name in names:
             try:
                 total += os.path.getsize(os.path.join(here, name))
                 count += 1
@@ -316,7 +319,7 @@ def _folder_size(path: str) -> tuple:
 
 
 def _files_section(preferences) -> dict:
-    """The Files section's folders not on this computer, on a drive not connected, and stars gone."""
+    """The Files section's folders not on this computer or on a drive away, and stars gone."""
     found = {"dead_folders": [], "unmounted_folders": [], "dead_stars": []}
     if preferences is None:
         return found
@@ -331,82 +334,87 @@ def _files_section(preferences) -> dict:
     for path in locations.favourite_paths(preferences):
         if os.path.exists(path) or hostos.volume_unreachable(path):
             continue
-        if not os.path.isdir(os.path.dirname(path)):    # its folder is not here, set aside or unsynced
+        if not os.path.isdir(os.path.dirname(path)):    # its folder is not here, or not synced yet
             continue
         found["dead_stars"].append(path)
     return found
 
 
-def _newest_copy_holds(entry: dict):
-    """What the newest saved copy beside a list holds, the tier order `database` reads, or None."""
-    copies = dict(entry["snapshots"])
-    for tier in restore_lib.TIERS:
-        snap = copies.get(tier)
-        if snap is not None:
-            return None if snap["error"] else snap["count"]
-    return None
+def _count(name: str, document) -> int:
+    """How many entries a database holds by the section it is counted by, per-user ones summed."""
+    kind = guard.DATABASES[name]
+    section = kind.counted or ("users" if name == naming.MASTER else "")
+    table = (document or {}).get(section) or {}
+    if kind.sections.get(section) == guard.PER_USER:
+        return sum(len(own or {}) for own in table.values() if isinstance(own, dict))
+    return len(table)
 
 
-def _snapshots_among(path: str, names: dict) -> list:
-    """`restore.snapshots` answered from the folder's listing: undo copies newest first, then tiers."""
-    base = os.path.basename(path)
-    folder = os.path.dirname(path)
-    prefix = base + "." + restore_lib.UNDO_TIER
-    found = [(name[len(base) + 1:], os.path.join(folder, name))
-             for name in sorted((name for name in names if name.startswith(prefix)),
-                                reverse=True)]
-    return found + [(tier, path + "." + tier) for tier in restore_lib.TIERS
-                    if base + "." + tier in names]
+def _backup_facts(held: guard.Guard, name: str, entry: str, when) -> dict:
+    """What one backup is: its date, what it holds, or why it cannot be read."""
+    path = held.path(guard.BACKUP_DIR, entry)
+    facts = {"path": path, "name": entry, "exists": True, "size": 0,
+             "when": when.strftime("%Y-%m-%d %H:%M"), "count": None,
+             "noun": naming.section_noun(name), "error": ""}
+    try:
+        raw = held.read_file(guard.BACKUP_DIR + "/" + entry)
+        facts["size"] = len(raw)
+        document = json.loads(raw.decode("utf-8-sig"))
+        if not isinstance(document, dict):
+            raise ValueError("it is not a database")
+        facts["count"] = _count(name, document)
+    except (OSError, ValueError) as exc:
+        facts["error"] = str(exc)
+    return facts
 
 
-def _survey_one(directory: str, filename: str, names=None) -> dict:
-    """One list: its state, what it holds, and what copies sit beside it; `names` lists the folder."""
-    path = os.path.join(directory, filename)
-    facts, document = restore_lib.surveyed(path)    # ONE parse for both - the state below reads `facts`, the ids read `document`
-    copies = (restore_lib.snapshots(path) if names is None
-              else _snapshots_among(path, names))
+def stored(row: dict) -> dict:
+    """A row without who changed it and when."""
+    return {field: value for field, value in row.items() if field not in documents.STAMPS}
+
+
+def _survey_one(held: guard.Guard, reading) -> dict:
+    """One database as the guard judges it: its state, what it holds, and its backups."""
+    name = reading.name
+    path = held.path(name)
+    exists = os.path.lexists(path)
+    facts = {"path": path, "name": name, "exists": exists, "size": 0, "when": "",
+             "count": None, "noun": naming.section_noun(name), "error": reading.why}
+    if exists:
+        try:
+            info = os.stat(path)
+            facts["size"] = info.st_size
+            facts["when"] = time.strftime("%Y-%m-%d %H:%M", time.localtime(info.st_mtime))
+        except OSError:
+            pass
     entry = {
-        "filename": filename,
-        "label": database.section_label(filename),
+        "filename": name,
+        "label": naming.section_label(name),
         "path": path,
         "info": facts,
         "ids": set(),
         "rows": [],
         "trace": "",
-        "snapshots": [(tier, restore_lib.info(snap)) for tier, snap in copies],
+        "verdict": reading.verdict,
+        "snapshots": [(backup, _backup_facts(held, name, backup, when))
+                      for backup, when in held.backups(name)],
     }
-    if not facts["exists"]:
-        entry["trace"] = database.absent_but_known(directory, filename, names)
-        entry["state"] = "absent-but-known" if entry["trace"] else "absent"
+    if reading.verdict != guard.FINE:
+        entry["state"] = _STATE.get(reading.verdict, "unreadable")
+        if reading.verdict == guard.MISSING:
+            entry["trace"] = reading.why
         return entry
-    if facts["error"]:
-        entry["state"] = "unreadable"
-        return entry
-    from amaze.core import keyed_store
-    spec = keyed_store.store_for(filename)
-    if spec is not None:
-        malformed = database.wrong_table_shape(document, spec.payload)
-        if not malformed and spec.payload not in (document or {}):
-            malformed = ("it holds no %r, so it is not the %s file"
-                         % (spec.payload, spec.label))
-    else:
-        malformed = database.wrong_shape(document)
-    if malformed or facts["count"] is None:
-        entry["state"] = "unreadable"
-        entry["info"] = dict(
-            facts,
-            error=malformed or "it is not shaped like a database Amaze wrote")
-        return entry
-    for row in (document.get("assets") or []):
+    facts["count"] = _count(name, reading.document)
+    for key, row in ((reading.document or {}).get(ROWS) or {}).items():
         if isinstance(row, dict):
-            entry["ids"].add(database.row_id(row))
-            entry["rows"].append(row)
-    entry["state"] = "empty" if not facts["count"] else "ok"
+            entry["ids"].add(str(key))
+            entry["rows"].append(dict(stored(row), id=row.get("id", key)))
+    entry["state"] = "empty" if not facts["count"] and name in naming.LISTS else "ok"
     return entry
 
 
 def _metadata_names(directory: str) -> dict:
-    """{id: [folder, ...]} of every `<id>.json` and format 3 stamp in the asset folders."""
+    """{id: [folder, ...]} of every `<id>.json` in the asset folders."""
     found = {}
     for folder in asset_folders(directory):
         path = os.path.join(directory, folder)
@@ -417,31 +425,41 @@ def _metadata_names(directory: str) -> dict:
                         folder=path, error=str(exc))
             continue
         for name in names:
-            asset_id = metadata_stem(name)    # by content, as the old rebuild matched every stamp
+            asset_id = metadata_stem(name)
             if asset_id and path not in found.get(asset_id, ()):
                 found.setdefault(asset_id, []).append(path)
     return found
 
 
-def rebuild_from_stamps(directory: str, index_filename: str = "library.json") -> dict:
-    """One index rebuilt from each asset's metadata; never write it while `unreadable` is set."""
-    folder = directory
-    assets, damaged = [], []
+def ids_claimed_by(directory: str) -> tuple:
+    """`(by_file, unreadable)`: ids per section database that reads, and those that do not."""
+    held = _guard(directory)
+    by_file, unreadable = {}, []
+    for name in naming.LISTS:
+        reading = held.read(name)
+        if reading.verdict == guard.FRESH:
+            continue
+        if reading.verdict != guard.FINE:
+            unreadable.append(name)
+            continue
+        by_file[name] = set(((reading.document or {}).get(ROWS) or {}))
+    return by_file, unreadable
+
+
+def rebuild_from_stamps(directory: str, index_filename: str = naming.MATERIALS) -> dict:
+    """A section database rebuilt from each asset's metadata; refused while one is unreadable."""
+    assets, damaged = {}, []
     categories = []
     by_id = _metadata_names(directory)
-
     owned_elsewhere = set()
-    by_file, unreadable = database.ids_claimed_by(directory)
-    unreadable = [name for name in unreadable if name != index_filename]  # the index being rebuilt is unreadable BY PREMISE; a sibling is not
-    unreadable += [name for name in database.DATABASES    # a list still arriving claims what it will list
-                   if name != index_filename and database.absent_but_known(directory, name)]
+    by_file, unreadable = ids_claimed_by(directory)
+    unreadable = [name for name in unreadable if name != index_filename]
     for filename, ids in by_file.items():
         if filename != index_filename:
             owned_elsewhere |= ids
     if unreadable:
-        debug.event("repair", "a sibling database could not be read "
-                               "while rebuilding", files=unreadable)
-
+        debug.event("repair", "a sibling database could not be read while rebuilding",
+                    files=unreadable)
     for asset_id, folders in sorted(by_id.items()):
         if asset_id in owned_elsewhere:
             continue
@@ -450,140 +468,139 @@ def rebuild_from_stamps(directory: str, index_filename: str = "library.json") ->
             damaged.append(asset_id)
             continue
         if _list_of(record) not in ("", index_filename):
-            continue    # a stamp that names another list goes on that one
+            continue    # metadata that names another database goes in that one
         record.setdefault("id", asset_id)
-        assets.append(record)
+        assets[asset_id] = record
         for cat in record.get("categories") or []:
             if cat and cat not in categories:
                 categories.append(cat)
-
-    debug.event("repair", "rebuilt an index from recovery stamps",
-                folder=folder, assets=len(assets), damaged=len(damaged))
-    return {
-        "assets": assets,
-        "categories": sorted(categories),
-        "damaged": damaged,
-        "unreadable": sorted(unreadable),
-    }
+    debug.event("repair", "rebuilt a database from asset metadata",
+                folder=directory, assets=len(assets), damaged=len(damaged))
+    return {"assets": assets,
+            "categories": {name: {"order": order} for order, name in enumerate(sorted(categories))},
+            "damaged": damaged,
+            "unreadable": sorted(unreadable)}
 
 
-def _copies_by_what_they_hold(target: str) -> list:
-    """The tiers of saved copies that parse, newest first; those holding nothing after the rest."""
+def _readable_backups(held: guard.Guard, name: str) -> list:
+    """The backups of a database that read, newest first; those holding nothing last."""
     found = []
-    for order, tier in enumerate(restore_lib.TIERS):
-        source = "%s.%s" % (target, tier)
-        document, error = restore_lib.read_document(source)
-        if error or database.wrong_shape(document):
+    for order, (entry, when) in enumerate(held.backups(name)):
+        if entry.endswith(guard.UNDO_TAIL):
             continue
-        try:
-            when = os.path.getmtime(source)
-        except OSError:
+        facts = _backup_facts(held, name, entry, when)
+        if facts["error"]:
             continue
-        holds = bool(document.get("assets"))
-        found.append((not holds, -when, order, tier))
-    return [tier for *_key, tier in sorted(found)]
+        found.append((not facts["count"], order, entry))
+    return [entry for *_key, entry in sorted(found)]
 
 
-def repair_index(directory: str, guard: bool = True) -> tuple:
-    """The newest copy holding materials, else the newest that parses, else a rebuild; (ok, how)."""
-    if guard:
+def repair_index(directory: str, guard_session: bool = True, name: str = naming.MATERIALS,
+                 **legacy) -> tuple:
+    """The newest backup holding assets, else one that reads, else a rebuild; (ok, how)."""
+    if legacy.get("guard", guard_session):
         _refuse_a_houdini_that_holds_the_library()
-    target = os.path.join(directory, "library.json")
-    for tier in _copies_by_what_they_hold(target):
+    held = _guard(directory)
+    for entry in _readable_backups(held, name):
         try:
-            outcome = restore_lib.put_back(target, tier)
-        except restore_lib.RestoreRefused as refusal:
-            debug.event("repair", "snapshot refused for the rebuild",
-                        tier=tier, error=str(refusal))
+            held.restore(name, entry)
+        except (guard.Refused, OSError) as exc:
+            debug.event("repair", "backup refused for the rebuild", backup=entry, error=str(exc))
             continue
-        debug.event("repair", "index restored from a snapshot",
-                    tier=tier, undo=outcome.get("undo", ""))
-        return True, _after_a_put_back(directory, "library.json",
-                                       "the newest backup was restored")["said"]
-    document = rebuild_from_stamps(directory)
-    if document["unreadable"]:  # an unparsed list claims nothing ▸p/clean-library-sweep
-        debug.event("repair", "rebuild refused - a sibling list is "
-                    "unreadable", files=document["unreadable"])
+        debug.event("repair", "database restored from a backup", backup=entry)
+        return True, _after_a_put_back(directory, name, "the newest backup was restored")["said"]
+    document = rebuild_from_stamps(directory, name)
+    if document["unreadable"]:
+        debug.event("repair", "rebuild refused - a sibling database is unreadable",
+                    files=document["unreadable"])
         return False, ("%s cannot be read, so a rebuild cannot tell its "
                        "assets from this database's"
                        % wording.and_list(document["unreadable"]))
     if not document["assets"]:
-        return False, ("no backup can be read and no asset metadata "
-                       "was found")
+        return False, "no backup can be read and no asset metadata was found"
     try:
-        hostos.preserve_unreadable(target, why="library index")  # the only copy kept of an unparsable file ▸p/db-restore
-        hostos.snapshot_before_write(target)
-        hostos.write_json_atomic(target, {
-            "version": database.SCHEMA_VERSION,
-            "format": branding.LIBRARY_FORMAT,
-            "assets": document["assets"],
-            "categories": document["categories"],
-        }, indent=4)
+        change = held.change("")
+        change.replace(name, {ROWS: document["assets"], "categories": document["categories"]})
+        change.commit()
     except OSError as exc:
-        debug.event("repair", "stamp rebuild could not be written",
-                    error=str(exc))
+        debug.event("repair", "rebuilt database could not be written", error=str(exc))
         return False, "the rebuilt database could not be written"
     how = "the database was rebuilt from each asset's metadata"
     if document["damaged"]:
         how += " (%d could not be read)" % len(document["damaged"])
-    debug.event("repair", "index rebuilt from stamps",
-                assets=len(document["assets"]),
-                damaged=len(document["damaged"]))
+    debug.event("repair", "database rebuilt from asset metadata",
+                assets=len(document["assets"]), damaged=len(document["damaged"]))
     return True, how
 
 
-def _rows_against_their_stamps(target: str, folders: list) -> tuple:
-    """(listed rows that took their metadata, names of rows with no .mat and no metadata)."""
-    document, error = restore_lib.read_document(target)
-    if error or database.wrong_shape(document):
-        return 0, []
-    rows = document.get("assets") or []
-    categories = document.setdefault("categories", ["_All"])
-    taken, gone = 0, []
-    for index, row in enumerate(rows):
-        asset_id = database.row_id(row) if isinstance(row, dict) else ""
-        if not material.is_safe_asset_id(asset_id):
-            continue
-        record = metadata_of(folders, asset_id)    # written only after its list landed
-        if record is None:
-            if not any(os.path.exists(os.path.join(one, asset_id + ".mat")) for one in folders):
-                gone.append(str(row.get("name") or asset_id))    # listed, never dropped
-            continue
-        if record is None or str(record.get("id", asset_id)) != asset_id:
-            continue
-        record["id"] = row.get("id", asset_id)
-        if record != row:
-            rows[index] = record
-            taken += 1
-            for cat in record.get("categories") or []:
-                if cat and cat not in categories:
-                    categories.append(cat)    # a newer record brings its category back too
-    if taken:
-        try:
-            _write_json(target, document)
-        except OSError as exc:    # the copy is back either way
-            debug.event("repair", "newer records not taken", error=str(exc))
-            taken = 0
-    debug.event("repair", "rows checked against their stamps", taken=taken, gone=len(gone))
-    return taken, sorted(gone)
+def _edit(directory: str, name: str, edit) -> bool:
+    """One database read with its ticket, changed by `edit(document)`, saved; whether it was."""
+    held = _guard(directory)
+    reading = held.read(name)
+    if not reading.writable:
+        raise ValueError("that database cannot be read, so nothing was changed in it")
+    document = json.loads(json.dumps(reading.document or {}))
+    if not edit(document):
+        return False
+    change = held.change("")
+    change.put(reading.ticket, document)
+    change.commit()
+    return True
+
+
+def _rows_against_their_stamps(directory: str, name: str, folders: list) -> tuple:
+    """(rows that took their newer metadata, names of rows with no .mat and no metadata)."""
+    taken, gone = [0], []
+
+    def edit(document):
+        rows = document.setdefault(ROWS, {})
+        categories = document.setdefault("categories", {})
+        for asset_id, row in list(rows.items()):
+            if not material.is_safe_asset_id(asset_id) or not isinstance(row, dict):
+                continue
+            record = metadata_of(folders, asset_id)
+            if record is None:
+                if not any(os.path.exists(os.path.join(one, asset_id + ".mat"))
+                           for one in folders):
+                    gone.append(str(row.get("name") or asset_id))    # listed, never dropped
+                continue
+            if str(record.get("id", asset_id)) != asset_id:
+                continue
+            record["id"] = row.get("id", asset_id)
+            if record != stored(row):
+                rows[asset_id] = record
+                taken[0] += 1
+                for cat in record.get("categories") or []:
+                    if cat and cat not in categories:
+                        categories[cat] = {"order": len(categories)}
+        return bool(taken[0])
+    try:
+        _edit(directory, name, edit)
+    except (OSError, ValueError) as exc:    # the backup is back either way
+        debug.event("repair", "newer records not taken", error=str(exc))
+        taken[0] = 0
+    debug.event("repair", "rows checked against their metadata", taken=taken[0], gone=len(gone))
+    return taken[0], sorted(gone)
 
 
 def _after_a_put_back(directory: str, filename: str, how=None) -> dict:
-    """A Material or Node list just put back: newer metadata taken, rows saved after it added back."""
-    target = os.path.join(directory, filename)
+    """A Material or Node database put back: newer metadata taken, later rows added back."""
+    if filename not in naming.ASSET_SECTIONS:
+        return {"refreshed": 0, "newer": 0, "gone": [],
+                "said": how if how is not None else ""}
     folders = [os.path.join(directory, naming.SECTION_FOLDERS[filename])]
-    refreshed, gone = _rows_against_their_stamps(target, folders)
+    refreshed, gone = _rows_against_their_stamps(directory, filename, folders)
     newer = _rows_newer_than_the_copy(directory, filename)
     return {"refreshed": refreshed, "newer": newer, "gone": gone,
             "said": _put_back_sentence(refreshed, newer, gone, filename, how)}
 
 
 def _put_back_sentence(refreshed: int, newer: int, gone: list,
-                       filename: str = "library.json", how=None) -> str:
-    """`how`, then what came after the copy and the rows whose files are gone; no `how`, a sentence."""
+                       filename: str = naming.MATERIALS, how=None) -> str:
+    """`how`, then what came after the backup and the rows whose files are gone."""
     def counted(count, after):
         return "the %d %s %s after it %s" % (
-            count, database.section_noun(filename, count), after,
+            count, naming.section_noun(filename, count), after,
             "was" if count == 1 else "were")
 
     done = []
@@ -605,15 +622,15 @@ def _put_back_sentence(refreshed: int, newer: int, gone: list,
 
 
 def _rows_newer_than_the_copy(directory: str, filename: str) -> int:
-    """The rows a put-back copy predates, added from their metadata; how many came back."""
+    """The rows a restored backup predates, added from their metadata; how many came back."""
     findings = survey(directory)
     ids = [asset_id for asset_id, _record in on_record(findings, filename)]
     if not ids or why_nothing_can_be_added(findings, filename):
         return 0
     try:
         return len(_add_rows(findings, filename, ids)["added"])
-    except (OSError, ValueError) as exc:    # the copy is back either way; these stay for Repair
-        debug.event("repair", "rows newer than the copy not added",
+    except (OSError, ValueError) as exc:    # the backup is back either way; these stay for Repair
+        debug.event("repair", "rows newer than the backup not added",
                     file=filename, error=str(exc))
         return 0
 
@@ -623,104 +640,90 @@ def unaccounted_total(findings: dict) -> int:
 
 
 def restorable(findings: dict) -> list:
-    """Every copy that could be put back, newest first, in panel order."""
+    """Every backup that could be restored, newest first, in panel order."""
     offers = []
-    for entry in findings["lists"] + [findings.get("settings") or {}]:
+    for entry in findings["lists"]:
         for tier, snap in entry.get("snapshots", ()):
             offers.append((entry["filename"], tier, snap, entry["info"]))
     return offers
 
 
+def _document_of(path: str):
+    """A database file's sections, without its format stamp; None when it does not read."""
+    try:
+        with open(path, "rb") as handle:
+            document = json.loads(handle.read().decode("utf-8-sig"))
+    except (OSError, ValueError):
+        return None
+    if isinstance(document, dict):
+        document.pop("format", None)
+    return document
+
+
 def offered_copies(findings: dict) -> list:
-    """`restorable` less any copy that changes nothing; while a list is in trouble, its copies."""
-    entries = {entry["filename"]: entry
-               for entry in findings["lists"] + [findings.get("settings") or {}]
-               if entry}
+    """`restorable` less a backup that changes nothing; while a database is in trouble, its own."""
+    entries = {entry["filename"]: entry for entry in findings["lists"]}
     offers, held = [], {}
     for offer in restorable(findings):
         filename, tier, snap, _now = offer
-        undo = tier.startswith(restore_lib.UNDO_TIER)    # the done-dialog promises it back
+        undo = tier.endswith(guard.UNDO_TAIL)    # the done-dialog promises it back
         if snap["error"] or not (undo or snap["count"]):
             continue
-        document, error = restore_lib.read_document(snap["path"])
-        seen = held.setdefault(filename, [_as_it_is(entries[filename])])
-        if error or document in seen:    # a repeat of one above it, or of the list as it is
+        document = _document_of(snap["path"])
+        now = None
+        if entries[filename]["state"] in ("ok", "empty"):
+            now = _document_of(entries[filename]["path"])
+        seen = held.setdefault(filename, [now])
+        if document in seen:    # a repeat of one above it, or of the database as it is
             continue
         seen.append(document)
         offers.append(offer)
     troubled = {filename for filename, entry in entries.items()
                 if entry["state"] in _IN_TROUBLE} | {
                     offer[0] for offer in offers if entries[offer[0]]["state"] != "ok"}
-    if complete_pairs(findings):    # unlisted pairs are a Material or Node list's loss
-        troubled |= set(database.ASSET_FILE_OWNERS)
+    if complete_pairs(findings):    # unlisted pairs are a Material or Node database's loss
+        troubled |= set(naming.ASSET_SECTIONS)
     if troubled:
         offers = [offer for offer in offers if offer[0] in troubled
-                  or offer[1].startswith(restore_lib.UNDO_TIER)]    # undo copies stay
+                  or offer[1].endswith(guard.UNDO_TAIL)]    # undo copies stay
     by_list = {}
     for offer in offers:
         by_list.setdefault(offer[0], []).append(offer)
-    return [offer for group in by_list.values()    # each list's newest saved state first
+    return [offer for group in by_list.values()    # each database's newest backup first
             for offer in sorted(group, key=lambda one: one[2]["when"], reverse=True)]
 
 
-def _as_it_is(entry: dict):
-    """The list as it reads now; None where there is none to read."""
-    if entry["state"] in _MISSING or entry["state"] == "unreadable":
-        return None
-    document, error = restore_lib.read_document(entry["path"])
-    return None if error else document
-
-
-def _holdings(entry: dict) -> str:
-    """The count with the word for what was counted, per section."""
-    count = entry["info"]["count"] or 0
-    return "%d saved %s" % (
-        count, database.section_noun(entry["filename"], count))
-
-
 def copy_named_by_what_it_holds(filename: str, snap: dict) -> str:
-    """A saved copy named by its date and count, never by its storage tier."""
-    if filename == _SETTINGS:    # a count of settings tells the reader nothing
-        return ("from %s, cannot be read" if snap["error"]
-                else "from %s") % snap["when"]
+    """A backup named by its date and count."""
     if snap["error"]:
         return "from %s, cannot be read" % snap["when"]
     count = snap["count"] or 0
     return "from %s, %d saved %s" % (
-        snap["when"], count, database.section_noun(filename, count))
+        snap["when"], count, naming.section_noun(filename, count))
 
 
 def _snapshot_line(entry: dict) -> str:
     if not entry["snapshots"]:
         line = ("%s: there are no backups of this database, so "
                 "there is nothing to restore." % entry["label"])
-        if entry["filename"] in database.ASSET_FILE_OWNERS:
-            # Only where it is true: Code and Colors keep their assets inline.
+        if entry["filename"] in naming.ASSET_SECTIONS:
             line += (" Your %s' own files and thumbnails are still in the "
                      "library folder either way."
-                     % database.section_noun(entry["filename"], 2))
+                     % naming.section_noun(entry["filename"], 2))
         return line
     parts = []
     for _tier, snap in entry["snapshots"]:
         part = copy_named_by_what_it_holds(entry["filename"], snap)
-        if part not in parts:    # two copies alike read as one
+        if part not in parts:    # two backups alike read as one
             parts.append(part)
     return "%s: backups - %s." % (entry["label"], "; ".join(parts))
 
 
 def report_lines(findings: dict) -> list:
     """The whole report, in the user's words, never the program's."""
-    from amaze.core import keyed_store
-    extra = [spec.label.lower() for spec in keyed_store.stores()
-             if spec.in_library]
-    also = ""
-    if extra:
-        also = (", and one%s for the %s you add to them"
-                % (" each" if len(extra) > 1 else "", wording.and_list(extra)))
-    lines = ["Amaze looked at the library in %s. It keeps a separate database "
-             "for each of its sections - Materials, Nodes, Code and "
-             "Colors%s."
-             % (os.path.normpath(str(findings["directory"])), also), ""]
+    lines = ["Amaze looked at the library in %s. It keeps a database for each of its "
+             "sections - Materials, Nodes, Code, Colors and Files - and one for the "
+             "library itself." % os.path.normpath(str(findings["directory"])), ""]
 
     troubled = [entry for entry in findings["lists"] if entry["state"] in _TROUBLE_LINES]
     problems = []
@@ -736,7 +739,7 @@ def report_lines(findings: dict) -> list:
 
     total = unaccounted_total(findings)
     unchecked = [entry["label"] for entry in troubled
-                 if entry["state"] in ("unreadable", "absent-but-known")]
+                 if entry["state"] in ("unreadable", "absent-but-known", "newer")]
     if findings["unreadable_folders"]:
         problems.append(
             "Amaze could not look inside the %s, so it cannot say whether "
@@ -780,18 +783,20 @@ def _orphaned(count: int) -> str:
             else "are orphaned: no database names them")
 
 
-_TROUBLE_LINES = {    # a list's state, and the line it gets when it is in trouble
+_TROUBLE_LINES = {    # a database's state, and the line it gets when it is in trouble
     "empty": "%s: the database is there and holds nothing.",
     "unreadable": "%s: the database is corrupt/unreadable. It has not been changed.",
     "absent-but-known": (
         "%s: there is no database for it in the library folder, though Amaze can see there "
         "was one here before. If this folder syncs, it may not have synced yet - give it "
         "a minute and run Check Library again."),
+    "newer": "%s: the database was saved by a newer Amaze, so it is read-only here. "
+             "Update Amaze to change it.",
 }
 
 
 def _lists_line(lists: list, others: bool) -> str:
-    """One line for every list that reads fine, each count in its own noun; empty when none does."""
+    """One line for every database that reads fine, each count in its own noun."""
     held = [_counted(entry["info"]["count"] or 0, entry["filename"])
             for entry in lists if entry["state"] == "ok"]
     unsaved = [entry["label"] for entry in lists if entry["state"] == "absent"]
@@ -815,19 +820,19 @@ def _named(names: list) -> str:
 
 
 def _counted(count: int, filename: str) -> str:
-    return "%d %s" % (count, database.section_noun(filename, count))
+    return "%d %s" % (count, naming.section_noun(filename, count))
 
 
 def _per_section(found: dict) -> str:
-    """`3 materials and 1 node`, a count per list in its own noun, empty lists left out."""
+    """`3 materials and 1 node`, a count per database in its own noun, empty ones left out."""
     return wording.and_list([_counted(len(rows), filename)
                              for filename, rows in found.items() if rows])
 
 
 def _every_section() -> str:
-    """`material and node`: the nouns of the lists that own asset files."""
-    return wording.and_list([database.section_noun(filename, 1)
-                             for filename in database.ASSET_FILE_OWNERS])
+    """`material and node`: the nouns of the databases that own asset files."""
+    return wording.and_list([naming.section_noun(filename, 1)
+                             for filename in naming.ASSET_SECTIONS])
 
 
 def _size(count: int) -> str:
@@ -846,7 +851,7 @@ def _limited(lines: list) -> list:
 
 
 def _check_lines(findings: dict) -> tuple:
-    """(problems, all-well lines) for what only a full survey asks; a question with no problem says so."""
+    """(problems, all-well lines) of what only a full survey asks; a check with none says so."""
     if "leftovers" not in findings:
         return [], []
     said, well = [], []
@@ -856,7 +861,7 @@ def _check_lines(findings: dict) -> tuple:
             said.append("%s %s in the %s database, but %s files are missing: %s. A file "
                         "that has not finished syncing looks the same as one that is gone."
                         % (_counted(len(rows), filename), "is" if len(rows) == 1 else "are",
-                           database.section_label(filename),
+                           naming.section_label(filename),
                            "its" if len(rows) == 1 else "their",
                            _named(name for _id, name in rows)))
     renders = findings.get("missing_renders") or {}
@@ -891,7 +896,7 @@ def _check_lines(findings: dict) -> tuple:
     for filename, holds, newest in findings.get("shrunk", ()):
         said.append("Your %s database holds %s, but its newest backup holds %s. If you "
                     "did not remove them yourself, that backup can be restored."
-                    % (database.section_label(filename), _counted(holds, filename),
+                    % (naming.section_label(filename), _counted(holds, filename),
                        _counted(newest, filename)))
     return said, well
 
@@ -978,23 +983,17 @@ def _files_section_lines(findings: dict) -> list:
 
 
 def _holding_line(held: dict) -> str:
-    """The holding folder's line: what it holds, when the oldest day goes, and where it is."""
+    """The trash's line: what it holds, when the oldest day goes, and where it is."""
     if not held["files"]:
-        return ("Amaze's trash on this computer is empty. Files moved "
-                "to it are deleted after %d days: %s"
-                % (_quarantine_days(), held["path"]))
+        return ("The library's trash is empty. Files moved to it are deleted "
+                "after %d days: %s" % (guard.TRASH_DAYS, held["path"]))
     first = next((expires for _day_name, expires, _n, _b in held["days"] if expires), "")
-    return ("Amaze's trash on this computer holds %s (%s), moved there on "
+    return ("The library's trash holds %s (%s), moved there on "
             "%s. Each day's files are deleted after %d days%s: %s"
             % (files(held["files"]), _size(held["bytes"]),
                "1 day" if len(held["days"]) == 1 else "%d days" % len(held["days"]),
-               _quarantine_days(),
+               guard.TRASH_DAYS,
                ", and the oldest go on %s" % first if first else "", held["path"]))
-
-
-def _quarantine_days() -> int:
-    from amaze.core import quarantine as holding
-    return holding.QUARANTINE_DAYS
 
 
 def files(count: int) -> str:
@@ -1009,7 +1008,7 @@ def files_on_a_button(count: int) -> str:
 
 def count_on_a_button(count: int, filename: str) -> str:
     """`3 Materials`, `1 Material`: a section's count, Title Case for a button."""
-    noun = database.section_noun(filename, count)
+    noun = naming.section_noun(filename, count)
     return "%d %s" % (count, noun[:1].upper() + noun[1:])
 
 
@@ -1030,13 +1029,12 @@ def on_a_button(counted: str) -> str:
 
 
 def uncategorised_count(findings: dict) -> str:
-    """`3 materials and 1 node`: the rows with no category, each list in its own noun."""
+    """`3 materials and 1 node`: the rows with no category, each database in its own noun."""
     return _per_section(findings.get("uncategorised") or {})
 
 
-def _and_folders(folders: list) -> str:
-    return wording.and_list(["%s folder" % _folder_name(folder)
-                      for folder in folders])
+def _and_folders(names: list) -> str:
+    return wording.and_list(["%s folder" % _folder_name(folder) for folder in names])
 
 
 def files_by_folder(findings: dict) -> str:
@@ -1045,8 +1043,7 @@ def files_by_folder(findings: dict) -> str:
     for folder, names in findings["unaccounted"].items():
         if not names:
             continue
-        part = "%s in the %s folder" % (files(len(names)),
-                                        _folder_name(folder))
+        part = "%s in the %s folder" % (files(len(names)), _folder_name(folder))
         if unaccounted_total(findings) <= 6:
             part += " (%s)" % ", ".join(names)
         parts.append(part)
@@ -1057,14 +1054,14 @@ def _what_can_be_added_back(findings: dict) -> list:
     """The line that keeps the buttons apart: materials by name, then pairs, then the rest."""
     if why_nothing_can_be_added(findings):
         return []
-    on_record = materials_on_record(findings)
+    on_record_now = materials_on_record(findings)
     addable = reattachable_files(findings)
     rest = unaccounted_total(findings) - len(addable) - len(
-        _files_of(findings, [asset_id for asset_id, _record in on_record]))
-    said = [_materials_sentence(on_record)] if on_record else []
-    if addable and (rest or on_record):
+        _files_of(findings, [asset_id for asset_id, _record in on_record_now]))
+    said = [_materials_sentence(on_record_now)] if on_record_now else []
+    if addable and (rest or on_record_now):
         said.append("%s can be added back to a section."
-                    % (files(len(addable)).replace(" ", " more ", 1) if on_record
+                    % (files(len(addable)).replace(" ", " more ", 1) if on_record_now
                        else "Of those, " + files(len(addable))))
     if rest and said:
         said.append("The rest are halves of an asset whose other file is not "
@@ -1080,20 +1077,20 @@ def _what_can_be_added_back(findings: dict) -> list:
     return [" ".join(said)] if said else []
 
 
-def _materials_sentence(on_record: list) -> str:
-    """The materials Add Back puts on the list, by name while there are few enough to read."""
-    count = len(on_record)
+def _materials_sentence(on_record_now: list) -> str:
+    """The materials Add Back puts in the database, by name while there are few to read."""
+    count = len(on_record_now)
     one = count == 1
     names = ""
     if count <= 6:
         names = ": " + wording.and_list([str(record.get("name") or asset_id)
-                                          for asset_id, record in on_record])
+                                          for asset_id, record in on_record_now])
     return ("The files include %d %s with %s metadata saved "
             "beside %s%s. Add %s Back puts %s in the %s database."
-            % (count, database.section_noun("library.json", count),
+            % (count, naming.section_noun(naming.MATERIALS, count),
                "its" if one else "their", "it" if one else "them", names,
-               count_on_a_button(count, "library.json"), "it" if one else "them",
-               database.section_label("library.json")))
+               count_on_a_button(count, naming.MATERIALS), "it" if one else "them",
+               naming.section_label(naming.MATERIALS)))
 
 
 def _folder_name(folder: str) -> str:
@@ -1101,7 +1098,8 @@ def _folder_name(folder: str) -> str:
 
 
 _SESSION_HOLDS_THE_LIBRARY = (
-    "this Houdini session has already read the library, so open Amaze and use Library ▸ Check Library…")
+    "this Houdini session has already read the library, so open Amaze and use "
+    "Library ▸ Check Library…")
 
 
 def _refuse_a_houdini_that_holds_the_library(refusal=ValueError) -> None:
@@ -1111,7 +1109,7 @@ def _refuse_a_houdini_that_holds_the_library(refusal=ValueError) -> None:
 
 
 def movable(findings: dict) -> dict:
-    """`findings` less the files of each unlisted pair whose stamp reads: those can be put back."""
+    """`findings` less the files of each unlisted pair whose metadata reads: those go back."""
     kept = set(_files_of(findings, stamped_unlisted(findings)))
     if not kept:
         return findings
@@ -1121,17 +1119,17 @@ def movable(findings: dict) -> dict:
 
 
 def files_to_move_aside(findings: dict) -> int:
-    """Move Files Aside's count: the unlisted files `movable` leaves, and the leftovers."""
+    """Move to Trash's count: the unlisted files `movable` leaves, and the leftovers."""
     unlisted = 0 if why_unlisted_stay(findings) else unaccounted_total(movable(findings))
     return unlisted + len(findings.get("leftovers") or ())
 
 
 def why_unlisted_stay(findings: dict) -> str:
-    """Empty when unlisted files may be moved aside; else why a list may still own them."""
+    """Empty when unlisted files may go to the trash; else why a database may still own them."""
     if not findings.get("complete"):
         return "one of the library's databases cannot be read, so these files may belong to it"
     empty = [entry["label"] for entry in findings.get("lists", ())    # only its own folder is held
-             if entry["state"] == "empty" and entry["filename"] in database.ASSET_FILE_OWNERS
+             if entry["state"] == "empty" and entry["filename"] in naming.ASSET_SECTIONS
              and findings["unaccounted"].get(naming.SECTION_FOLDERS[entry["filename"]] + "/")]
     if empty:
         return ("the %s database holds nothing, so these files may belong to it"
@@ -1140,47 +1138,47 @@ def why_unlisted_stay(findings: dict) -> str:
 
 
 def unknown_to_move_aside(findings: dict) -> int:
-    """Move Unknown Files Aside's count: each unknown file, and each unknown folder as one."""
+    """Move Unknown's count: each unknown file, and each unknown folder as one."""
     return len(findings.get("unknown") or ()) + len(findings.get("unknown_folders") or ())
 
 
 MOVABLE = ("unlisted", "leftovers", "unknown")
 
 
-def move_aside(findings: dict, what, guard: bool = True) -> dict:
-    """Move into the holding folder what `what` names, one of MOVABLE or several; never deletes."""
-    if guard:
+def move_aside(findings: dict, what, guard_session: bool = True, **legacy) -> dict:
+    """What `what` names, one of MOVABLE or several, into the library's trash as ONE change."""
+    if legacy.get("guard", guard_session):
         _refuse_a_houdini_that_holds_the_library()
     asked = (what,) if isinstance(what, str) else tuple(what)
     for one in asked:
         if one not in MOVABLE:
-            raise ValueError("there is nothing called %r to move aside" % one)
+            raise ValueError("there is nothing called %r to move to the trash" % one)
     directory = findings["directory"]
-    held = why_unlisted_stay(findings) if "unlisted" in asked else ""
-    if held:
-        raise ValueError(held)
-    from amaze.core import quarantine as holding
-    root = holding.quarantine_folder(directory)
-    moved, failed, taken, record = [], [], [], []
+    reason = why_unlisted_stay(findings) if "unlisted" in asked else ""
+    if reason:
+        raise ValueError(reason)
+    held = _guard(directory)
+    change = held.change("")
+    moved, failed, taken = [], [], []
 
     def take(relative, shown):
-        source = os.path.join(directory, *naming.split(relative))
-        landed = holding.quarantine_file(directory, source) if os.path.lexists(source) else ""
-        (moved if landed else failed).append(shown)
-        if landed:
-            record.append([source, landed])
+        if os.path.lexists(os.path.join(directory, *naming.split(relative))):
+            change.trash(relative)
+            moved.append(shown)
+        else:
+            failed.append(shown)
 
     if "unlisted" in asked:
-        by_file, unreadable = database.ids_claimed_by(directory)
+        by_file, unreadable = ids_claimed_by(directory)
         if unreadable:
             raise ValueError("one of the library's databases cannot be read, so these "
                              "files may belong to it")
-        claimed = set().union(*by_file.values())
+        claimed = set().union(*by_file.values()) if by_file else set()
         for folder, names in movable(findings)["unaccounted"].items():
             for name in names:
                 relative = folder.rstrip("/\\") + "/" + name
                 if naming.classify(relative)[1] in claimed:
-                    taken.append(name)    # a list claims it since the check
+                    taken.append(name)    # a database claims it since the check
                     continue
                 take(relative, name)
     if "leftovers" in asked:
@@ -1195,16 +1193,21 @@ def move_aside(findings: dict, what, guard: bool = True) -> dict:
             take(relative, relative)
         for relative, _files, _size, _when in findings.get("unknown_folders", ()):
             take(relative, relative)
-    holding.prune_quarantine(directory)
-    debug.event("repair", "files moved aside", what=list(asked), folder=root,
-                moved=len(moved), failed=len(failed), files=record,
-                failed_files=failed)
+    try:
+        change.commit()
+    except OSError as exc:
+        debug.event("repair", "nothing moved to the trash", error=str(exc))
+        failed.extend(moved)
+        moved = []
+    root = held.path(guard.TRASH_DIR)
+    debug.event("repair", "files moved to the trash", what=list(asked), folder=root,
+                moved=len(moved), failed=len(failed), failed_files=failed)
     return {"folder": root, "moved": moved, "failed": failed, "claimed": taken}
 
 
-def set_aside_folders(findings: dict, guard: bool = True) -> list:
-    """Drop the Files section's pointer to each folder not on this computer; its files are untouched."""
-    if guard:
+def set_aside_folders(findings: dict, guard_session: bool = True, **legacy) -> list:
+    """Drop the Files section's pointer to each folder not on this computer; files untouched."""
+    if legacy.get("guard", guard_session):
         _refuse_a_houdini_that_holds_the_library()
     preferences = findings["preferences"]
     done = []
@@ -1217,9 +1220,9 @@ def set_aside_folders(findings: dict, guard: bool = True) -> list:
     return done
 
 
-def drop_dead_stars(findings: dict, guard: bool = True) -> list:
-    """Unstar each starred file gone from a folder that is still here, in one write."""
-    if guard:
+def drop_dead_stars(findings: dict, guard_session: bool = True, **legacy) -> list:
+    """Unstar each starred file gone from a folder that is still here, as one change."""
+    if legacy.get("guard", guard_session):
         _refuse_a_houdini_that_holds_the_library()
     from amaze.core import locations
     gone = [path for path in findings.get("dead_stars", ())
@@ -1230,60 +1233,56 @@ def drop_dead_stars(findings: dict, guard: bool = True) -> list:
     return gone
 
 
-def rescue_uncategorised(findings: dict, guard: bool = True) -> dict:
-    """Put each row with no category in Uncategorized, list by list; {filename: how many}."""
-    if guard:
+def rescue_uncategorised(findings: dict, guard_session: bool = True, **legacy) -> dict:
+    """Each row with no category put in Uncategorized, database by database; {database: n}."""
+    if legacy.get("guard", guard_session):
         _refuse_a_houdini_that_holds_the_library()
     done = {}
     for filename, rows in findings.get("uncategorised", {}).items():
         wanted = {asset_id for asset_id, _name in rows}
         if not wanted:
             continue
-        path = os.path.join(findings["directory"], filename)
-        document, error = restore_lib.read_document(path)
-        if error or database.wrong_shape(document):
-            raise ValueError("that database cannot be read, so nothing was changed in it")
-        count = 0
-        for row in document.get("assets") or []:
-            if (isinstance(row, dict) and database.row_id(row) in wanted
-                    and not _categories_of(row)):
-                row["categories"] = [UNCATEGORISED]
-                count += 1
-        if not count:
-            continue
-        categories = document.setdefault("categories", ["_All"])
-        if UNCATEGORISED not in categories:
-            categories.append(UNCATEGORISED)
-        hostos.snapshot_before_write(path)
-        _write_json(path, document)
-        done[filename] = count
+        count = [0]
+
+        def edit(document, wanted=wanted, count=count):
+            for asset_id, row in (document.get(ROWS) or {}).items():
+                if asset_id in wanted and isinstance(row, dict) and not _categories_of(row):
+                    row["categories"] = [UNCATEGORISED]
+                    count[0] += 1
+            if count[0]:
+                categories = document.setdefault("categories", {})
+                categories.setdefault(UNCATEGORISED, {"order": len(categories)})
+            return bool(count[0])
+        if _edit(findings["directory"], filename, edit):
+            done[filename] = count[0]
     debug.event("repair", "rows with no category put in one", lists=done)
     return done
 
 
-def reattach(findings: dict, filename: str, only=None, guard: bool = True) -> dict:
-    """Add the unclaimed pairs, or the ids in `only`, to `filename` from their stamps ▸p/recovery-stamp"""
-    if guard:
+def reattach(findings: dict, filename: str, only=None, guard_session: bool = True,
+             **legacy) -> dict:
+    """Add the unclaimed pairs, or the ids in `only`, to `filename` from their metadata."""
+    if legacy.get("guard", guard_session):
         _refuse_a_houdini_that_holds_the_library()
     return _add_rows(findings, filename,
                      complete_pairs(findings) if only is None else list(only))
 
 
-def add_materials_back(findings: dict, guard: bool = True) -> dict:
-    """Put every material `materials_on_record` finds on the Material list; raises as `reattach`."""
-    if guard:
+def add_materials_back(findings: dict, guard_session: bool = True, **legacy) -> dict:
+    """Put every material `materials_on_record` finds in the Materials database."""
+    if legacy.get("guard", guard_session):
         _refuse_a_houdini_that_holds_the_library()
-    return _add_rows(findings, "library.json",
+    return _add_rows(findings, naming.MATERIALS,
                      [asset_id for asset_id, _record in materials_on_record(findings)])
 
 
 def materials_on_record(findings: dict) -> list:
-    """`on_record` for the Material list: what Add Back puts there."""
-    return on_record(findings, "library.json")
+    """`on_record` for the Materials database: what Add Back puts there."""
+    return on_record(findings, naming.MATERIALS)
 
 
 def on_record(findings: dict, filename: str) -> list:
-    """The unlisted pairs whose readable metadata belongs on `filename`, as `(id, record)`."""
+    """The unlisted pairs whose readable metadata belongs in `filename`, as `(id, record)`."""
     if "asset_dirs" not in findings:
         return []
     stamps = _stamps(findings)
@@ -1292,11 +1291,11 @@ def on_record(findings: dict, filename: str) -> list:
 
 
 def _list_of(record: dict) -> str:
-    """The list a stamp's record goes on: a renderer Amaze knows is a material's, any other a node's."""
+    """The database a record goes in: a renderer Amaze knows is a material's, else a node's."""
     renderer = record.get("renderer")
     if renderers.get(renderer):
-        return "library.json"
-    return "cops.json" if renderer else ""
+        return naming.MATERIALS
+    return naming.NODES if renderer else ""
 
 
 def stamped_unlisted(findings: dict) -> list:
@@ -1320,21 +1319,23 @@ def _ids_with_a_stamp(findings: dict) -> list:
 
 
 def _stamps(findings: dict) -> dict:
-    """The metadata of the unlisted pairs, read once per survey; hand-made findings read it here."""
+    """The metadata of the unlisted pairs, read once per survey."""
     if "stamps" not in findings:
-        folders = [path for _key, path in _folders_of(findings)]
-        findings["stamps"] = {asset_id: metadata_of(folders, asset_id)
+        found = [path for _key, path in _folders_of(findings)]
+        findings["stamps"] = {asset_id: metadata_of(found, asset_id)
                               for asset_id in _ids_with_a_stamp(findings)}
     return findings["stamps"]
 
 
 def why_nothing_can_be_added(findings: dict, filename: str = "") -> str:
-    """Empty when unlisted files may go on `filename`, or on any list; else why they may not."""
+    """Empty when unlisted files may go in `filename`, or in any database; else why not."""
     if findings.get("unreadable_folders"):
         return ("Amaze could not look inside the %s, so it cannot tell which "
                 "files are orphaned" % _and_folders(findings["unreadable_folders"]))
     for entry in findings.get("lists", ()):
-        if entry["state"] == "unreadable":
+        if entry["filename"] not in naming.LISTS:
+            continue
+        if entry["state"] in ("unreadable", "newer"):
             return ("that database cannot be read, so nothing was added to it"
                     if entry["filename"] == filename else
                     "one of the library's databases cannot be read, so these "
@@ -1346,94 +1347,75 @@ def why_nothing_can_be_added(findings: dict, filename: str = "") -> str:
 
 
 def _add_rows(findings: dict, filename: str, ids: list) -> dict:
-    """`reattach` without the session guard, for the panel's own repair; writes a missing list new."""
+    """`reattach` without the session check: rows added, their files moved home, ONE change."""
     reason = why_nothing_can_be_added(findings, filename)
     if reason:
         raise ValueError(reason)
-    path = os.path.join(findings["directory"], filename)
-    missing = _state_of(findings, filename) in _MISSING
-    if missing and os.path.exists(path):
-        debug.event("repair", "a list arrived after the survey", file=filename)
-        raise ValueError("the database has synced into the library folder since "
-                         "Amaze looked, so nothing was added to it - run "
-                         "Check Library again")
-    document, error = (({"categories": ["_All"], "tags": [], "assets": []}, "")
-                       if missing else restore_lib.read_document(path))
-    malformed = error or database.wrong_shape(document)
-    if malformed:
-        debug.event("repair", "cannot add to a list it cannot read",
-                    file=filename, reason=malformed)
-        raise ValueError("that database cannot be read, so nothing was added "
-                         "to it")
-
-    by_file, unreadable = database.ids_claimed_by(findings["directory"])
+    directory = findings["directory"]
+    held = _guard(directory)
+    reading = held.read(filename)
+    if reading.verdict == guard.MISSING:
+        raise ValueError("the database has not synced to the library folder yet, so nothing "
+                         "was added to it - run Check Library again")
+    if not reading.writable:
+        debug.event("repair", "cannot add to a database it cannot read", file=filename)
+        raise ValueError("that database cannot be read, so nothing was added to it")
+    document = json.loads(json.dumps(reading.document or {}))
+    by_file, unreadable = ids_claimed_by(directory)
     if [name for name in unreadable if name != filename]:
         raise ValueError("one of the library's databases cannot be read, so these "
                          "files may belong to it")
-    taken = {database.row_id(row) for row in document.get("assets") or []
-             if isinstance(row, dict)}
+    rows = document.setdefault(ROWS, {})
+    taken = set(rows)
     for other, claimed in by_file.items():
         if other != filename:
             taken |= claimed
-    added, minted, rows = [], [], []
-    folders = [path for _key, path in _folders_of(findings)]
-    claimed = [one for one in ids if one in taken]    # a list took them since the check
+    added, minted = [], []
+    places = [path for _key, path in _folders_of(findings)]
+    claimed = [one for one in ids if one in taken]    # a database took them since the check
+    categories = document.setdefault("categories", {})
     for asset_id in [one for one in ids if one not in taken]:
-        record = metadata_of(folders, asset_id)
+        record = metadata_of(places, asset_id)
         if record is None:
             record = material.Material(
-                name="Recovered %s" % asset_id[:8],
-                cats=RECOVERED_CATEGORY,
-                tags=[],
-                fav=False,
-                renderer="",
-                mat_id=asset_id,
-            ).get_as_dict()
+                name="Recovered %s" % asset_id[:8], cats=RECOVERED_CATEGORY, tags=[],
+                fav=False, renderer="", mat_id=asset_id).get_as_dict()
             minted.append(asset_id)
         record["id"] = asset_id
-        rows.append(record)
+        rows[asset_id] = record
         added.append(asset_id)
+        for cat in record.get("categories") or []:    # a row with metadata brings its own back
+            if cat and cat not in categories:
+                categories[cat] = {"order": len(categories)}
+    if minted and RECOVERED_CATEGORY not in categories:
+        categories[RECOVERED_CATEGORY] = {"order": len(categories)}
     if added:
-        document.setdefault("assets", []).extend(rows)
-        categories = document.setdefault("categories", ["_All"])
-        for row in rows:                # a stamped row brings its own back
-            for cat in row.get("categories") or []:
-                if cat and cat not in categories:
-                    categories.append(cat)
-        if minted and RECOVERED_CATEGORY not in categories:
-            categories.append(RECOVERED_CATEGORY)
-        if missing:
-            prefs_module.write_fresh_index(path, document)    # the one door a new list is born by
-        else:
-            _write_json(path, document)
-        _move_home(findings, filename, added)
-    debug.event("repair", "unlisted files added back to a list",
-                file=filename, added=len(added), from_stamps=len(added) - len(minted),
-                written_new=missing)
-    return {"added": added, "path": path, "minted": minted, "claimed": claimed}
+        change = held.change("")
+        change.put(reading.ticket, document)
+        _move_home(findings, held, change, filename, added)
+        change.commit()
+    debug.event("repair", "unlisted files added back to a database",
+                file=filename, added=len(added), from_metadata=len(added) - len(minted),
+                written_new=reading.verdict == guard.FRESH)
+    return {"added": added, "path": held.path(filename), "minted": minted, "claimed": claimed}
 
 
-def _move_home(findings: dict, filename: str, ids: list) -> None:
-    """The files of rows just added to `filename` into its section's folder, from wherever they lay."""
+def _move_home(findings: dict, held: guard.Guard, change, filename: str, ids: list) -> None:
+    """The files of rows just added to `filename` into its section's folder, same change."""
     if filename not in naming.ASSET_SECTIONS:
         return
     home = os.path.join(findings["directory"], naming.SECTION_FOLDERS[filename])
     wanted = set(ids)
     for _key, folder in _folders_of(findings):
-        if folder == home:
+        if os.path.normpath(folder) == os.path.normpath(home):
             continue
         for name in _listdir(folder):
-            if database.asset_id_for_file(name, ASSET_SIDECARS + (".png",), "_cop") not in wanted:
+            if naming.asset_id(name, ASSET_SIDECARS + (".png",), "_cop") not in wanted:
                 continue
             target = os.path.join(home, name)
             if os.path.lexists(target):
                 continue
-            try:
-                os.makedirs(home, exist_ok=True)
-                os.replace(os.path.join(folder, name), target)
-            except OSError as exc:
-                debug.event("repair", "an added file stays where it was",
-                            file=name, error=str(exc))
+            change.take(held.inside(target), os.path.join(folder, name))
 
 
 def _listdir(folder: str) -> list:
@@ -1449,14 +1431,14 @@ def _state_of(findings: dict, filename: str) -> str:
 
 
 def list_is_missing(findings: dict, filename: str) -> bool:
-    """Whether adding back to `filename` writes the list new."""
+    """Whether adding back to `filename` writes the database new."""
     return _state_of(findings, filename) in _MISSING
 
 
 def complete_pairs(findings: dict) -> list:
     """The unclaimed ids with a `.mat` and an `<id>.json` in ONE folder, in a stable order."""
     halves = {}
-    for key in findings.get("asset_dirs", ()):    # none for settings
+    for key in findings.get("asset_dirs", ()):
         for name in findings["unaccounted"].get(key, []):
             kind, asset_id = naming.classify(key + name)
             if kind == naming.RECORD or (kind == naming.UNKNOWN and metadata_stem(name)):
@@ -1469,9 +1451,8 @@ def complete_pairs(findings: dict) -> list:
 
 def unsorted_pairs(findings: dict) -> list:
     """The complete pairs `materials_on_record` leaves: only the user can name their section."""
-    on_record = {asset_id for asset_id, _record in materials_on_record(findings)}
-    return [asset_id for asset_id in complete_pairs(findings)
-            if asset_id not in on_record]
+    named_already = {asset_id for asset_id, _record in materials_on_record(findings)}
+    return [asset_id for asset_id in complete_pairs(findings) if asset_id not in named_already]
 
 
 def reattachable_files(findings: dict) -> list:
@@ -1480,92 +1461,90 @@ def reattachable_files(findings: dict) -> list:
 
 
 def _files_of(findings: dict, ids) -> list:
-    """Every unaccounted file the assets in `ids` own, the builder, stamp and thumbnail included."""
+    """Every unaccounted file the assets in `ids` own: the builder, metadata and picture too."""
     ids = set(ids)
     covered = []
     for folder, names in findings["unaccounted"].items():
         extensions, tail = (ASSET_SIDECARS + (".png",), "_cop") \
             if folder in findings.get("asset_dirs", ()) else ((".png",), "_icon")
         for name in names:
-            if ids and database.asset_id_for_file(name, extensions, tail) in ids:
+            if ids and naming.asset_id(name, extensions, tail) in ids:
                 covered.append(name)
     return covered
 
 
-def _write_json(path: str, document) -> None:
-    """Scratch-and-promote without the snapshot: a recovery tool keeps the copies."""
-    with hostos.scratch_beside(path, suffix=".repairing") as scratch:
-        with open(scratch, "w", encoding="utf-8", newline="\n") as handle:
-            json.dump(document, handle, indent=4)
-
-
 def target_of(findings: dict, filename: str) -> str:
-    """The file a saved copy goes back over: settings.json in its own folder, a list in the library."""
-    settings = findings.get("settings") or {}
-    if filename == settings.get("filename"):
-        return settings["path"]
+    """The file a backup goes back over: a database in the library."""
     return os.path.join(findings["directory"], filename)
 
 
-def put_back(findings: dict, filename: str, tier: str, guard: bool = True) -> dict:
-    """One saved copy back, then for a Material or Node list what `repair_index` does after; `said`."""
-    if guard:
+def put_back(findings: dict, filename: str, tier: str, guard_session: bool = True,
+             **legacy) -> dict:
+    """One backup restored through the guard, then for a Material or Node one the rows after."""
+    if legacy.get("guard", guard_session):
         _refuse_a_houdini_that_holds_the_library(
-            lambda phrase: restore_lib.RestoreRefused(
-                "Nothing was restored: %s." % phrase))
-    target = target_of(findings, filename)
-    done = restore_lib.put_back(target, tier, allow_loss=True)
-    debug.event("repair", "saved copy put back", file=filename, tier=tier,
-                undo=done["undo"])
-    done["said"] = ""
-    if (filename in database.ASSET_FILE_OWNERS
-            and target == os.path.join(findings["directory"], filename)):
+            lambda phrase: RestoreRefused("Nothing was restored: %s." % phrase))
+    held = _guard(findings["directory"])
+    try:
+        held.restore(filename, tier)
+    except guard.Refused as exc:
+        raise RestoreRefused("That backup cannot be read, so nothing was restored and the "
+                             "database you have now is untouched.") from exc
+    except OSError as exc:
+        raise RestoreRefused("Nothing was restored: %s." % exc) from exc
+    undo = next((entry for entry, _when in held.backups(filename)
+                 if entry.endswith(guard.UNDO_TAIL)), "")
+    debug.event("repair", "backup restored", file=filename, backup=tier, undo=undo)
+    done = {"tier": tier, "undo": undo, "said": ""}
+    if filename in naming.ASSET_SECTIONS:
         done.update(_after_a_put_back(findings["directory"], filename))
     return done
 
 
+def undo_facts(findings: dict, filename: str, undo: str) -> dict:
+    """What the undo copy a restore kept is, for the done message; {} for none."""
+    if not undo:
+        return {}
+    held = _guard(findings["directory"])
+    for entry, when in held.backups(filename):
+        if entry == undo:
+            return _backup_facts(held, filename, entry, when)
+    return {}
+
+
 def session_has_a_library_open() -> bool:
-    """Whether anything in this session holds a list, a closed panel included."""
-    return bool(database.DatabaseConnector._instances)
+    """Whether anything in this session holds a library's databases, a closed panel too."""
+    return bool(library_db.held_libraries())
 
 
 def session_holds(directory: str) -> bool:
-    """Whether a list this session holds lives in `directory`, a closed panel included."""
-    wanted = hostos.comparable_path(str(directory or ""))
-    return any(hostos.comparable_path(connector._path) == wanted
-               for connector in database.DatabaseConnector._instances.values()
-               if connector._path)
+    """Whether this session holds the databases of the library in `directory`."""
+    wanted = hostos.canonical_path_key(str(directory or ""))
+    return any(key == wanted for key in library_db.held_libraries())
 
 
 def settings_survey(preferences=None):
-    """settings.json as a list Repair can put back; None when no settings folder is named."""
+    """settings.json's state for the shelf tool; None when no settings folder is named."""
     folder = (hostos.config_root() if preferences is None
               else str(getattr(preferences, "path", "") or ""))
     if not folder:
         return None
     path = os.path.join(folder, _SETTINGS)
-    facts = restore_lib.info(path)
-    if not facts["exists"]:
-        state = "absent"
-    elif facts["error"] or facts["count"] is None:
-        state = "unreadable"
-    else:
+    state = "absent"
+    if os.path.exists(path):
         state = "ok"
-    return {"filename": _SETTINGS,
-            "label": database.section_label(_SETTINGS),
-            "path": path, "info": facts, "ids": set(), "trace": "",
-            "state": state,
-            "snapshots": [(tier, _with_library(*restore_lib.surveyed(snap)))
-                          for tier, snap in restore_lib.snapshots(path)]}
-
-
-def _with_library(facts: dict, document) -> dict:
-    """A settings copy's facts plus `library`, the folder its `directory` key names or empty."""
-    named = document.get("directory") if isinstance(document, dict) else ""
-    return dict(facts, library=named if isinstance(named, str) else "")
+        try:
+            with open(path, encoding="utf-8-sig") as handle:
+                if not isinstance(json.load(handle), dict):
+                    state = "unreadable"
+        except (OSError, ValueError):
+            state = "unreadable"
+    return {"filename": _SETTINGS, "label": "Settings", "path": path, "ids": set(),
+            "trace": "", "state": state, "snapshots": [],
+            "info": {"path": path, "exists": state != "absent", "count": None,
+                     "error": "" if state != "unreadable" else "unreadable"}}
 
 
 def copies_naming_a_library(settings) -> list:
-    """The saved settings copies that read and name a library folder; the rest are no way back."""
-    return [(tier, snap) for tier, snap in (settings or {}).get("snapshots", ())
-            if not snap["error"] and snap["library"]]
+    """The saved settings copies that name a library folder: settings keep no backups."""
+    return []

@@ -249,7 +249,7 @@ class Material:
 
     @property
     def fav(self) -> bool:
-        """In-memory fallback only; stars live per-user in favourites.json."""
+        """In-memory fallback only; stars live per user in the section's database."""
         return self._fav
 
     @fav.setter

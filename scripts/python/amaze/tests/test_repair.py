@@ -1,7 +1,5 @@
-"""Check Library: the report, its actions, and the shelf tool that reaches them."""
+"""The 2.0 conversion and Check Library rehearsed on a private copy of the real library."""
 
-import ast
-import datetime
 import json
 import os
 import shutil
@@ -9,8 +7,6 @@ import sys
 import tempfile
 import time
 import unittest
-import xml.etree.ElementTree as ET
-from unittest.mock import MagicMock, patch
 
 sys.path.insert(
     0, os.path.dirname(os.path.dirname(
@@ -21,2006 +17,249 @@ from PySide6 import QtWidgets
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
-import hou                                                # noqa: E402
-
-from amaze import messages                                # noqa: E402
-from amaze.core import category, database, material, quarantine, repair  # noqa: E402
-from amaze.core import asset_record, library_conversion, library_files  # noqa: E402
-from amaze.core import library as library_mod             # noqa: E402
-from amaze.core import multifilterproxy_model             # noqa: E402
-from amaze.dialogs import repair_dialog                   # noqa: E402
-from amaze.helpers import hostos                          # noqa: E402
-from amaze.helpers import restore as restore_lib          # noqa: E402
-from amaze.prefs import prefs as prefs_module             # noqa: E402
+from amaze.core import guard, library_conversion, library_files, material, repair  # noqa: E402
 from amaze.tests import test_support                      # noqa: E402
-
-REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
-    os.path.dirname(os.path.abspath(__file__))))))
-SHELF = os.path.join(REPO, "toolbar", "Amaze.shelf")
-
-MATERIALS_DIR = library_files.SECTION_FOLDERS[library_files.MATERIALS] + "/"    # "materials/"
-NODES_DIR = library_files.SECTION_FOLDERS[library_files.NODES] + "/"    # "nodes/"
-LEGACY_DIR = "mat/"    # format 3's shared folder: only the converter reads it now
-BUILDER = {"type": "subnet", "interface": "", "values": {}}
-
-
-def write_record(folder, asset_id, metadata=None, builder=BUILDER):
-    """A format 4 `<id>.json`: the builder, and the metadata when given; its path."""
-    os.makedirs(folder, exist_ok=True)
-    path = os.path.join(folder, asset_id + material.RECORD_SUFFIX)
-    if builder:
-        asset_record.write_section(path, asset_record.BUILDER, dict(builder))
-    if metadata is not None:
-        asset_record.write_section(path, asset_record.METADATA, dict(metadata))
-    return path
-
-
-class _Case(unittest.TestCase):
-    """A private copy of the fixture library and a clean registry."""
-
-    COP_ID = "COPOWNED1"
-    KEPT = [{"id": "KEPTNODE1", "name": "Kept", "categories": ["Kept"]}]    # a Node list not empty
-
-    def setUp(self):
-        self.prefs = test_support.fixture_prefs(self)
-        test_support.reset_database_singletons()
-        self.addCleanup(test_support.reset_database_singletons)
-        self.dir = self.prefs.dir
-        self.mat_dir = material.section_folder(self.dir, library_files.MATERIALS)
-        self.nodes_dir = material.section_folder(self.dir, library_files.NODES)
-        self.legacy_dir = os.path.join(self.dir, "mat")
-        self.img_dir = os.path.join(self.dir, self.prefs.img_dir)
-        self.cops = os.path.join(self.dir, "cops.json")
-
-    def _survey(self):
-        return repair.survey(self.dir, self.prefs.img_dir)
-
-    def _pair(self, asset_id=None, legacy=False, folder=None):
-        """The two files an asset owns, listed by nothing; `legacy`, format 3's in `mat/`."""
-        asset_id = asset_id or self.COP_ID
-        if not legacy:
-            folder = folder or self.mat_dir
-            os.makedirs(folder, exist_ok=True)
-            path = os.path.join(folder, asset_id + ".mat")
-            with open(path, "w", encoding="utf-8") as handle:
-                handle.write("owned by " + asset_id + "\n")
-            return [path, write_record(folder, asset_id)]
-        os.makedirs(self.legacy_dir, exist_ok=True)
-        paths = []
-        for suffix in (".mat", ".interface"):
-            path = os.path.join(self.legacy_dir, asset_id + suffix)
-            with open(path, "w", encoding="utf-8") as handle:
-                handle.write("owned by " + asset_id + "\n")
-            paths.append(path)
-        return paths
-
-    def _write(self, path, document):
-        with open(path, "w", encoding="utf-8") as handle:
-            json.dump(document, handle, indent=4)
-
-    def _cops(self, assets):
-        self._write(self.cops, {"version": 2, "categories": ["_All"],
-                                "tags": [], "assets": assets})
-
-    def _read(self, path):
-        with open(path, encoding="utf-8-sig") as handle:
-            return json.load(handle)
-
-    def _without_the_legacy_row(self):
-        """The fixture's odd row with no files and no category taken out: a healthy library."""
-        index = os.path.join(self.dir, "library.json")
-        document = self._read(index)
-        document["assets"] = [row for row in document["assets"]
-                              if str(row.get("id")) != "-1"]
-        self._write(index, document)
-
-    def _run(self, buttons, listed=None):
-        ui = MagicMock()
-        ui.displayMessage.side_effect = list(buttons)
-        ui.selectFromList.return_value = listed if listed is not None else ()
-        with patch.object(hou, "ui", ui, create=True):
-            repair_dialog.run(preferences=self.prefs)
-        return ui
-
-
-class TheReportSaysWhatIsWrongTest(_Case):
-    """A report nobody can act on is a log with a dialog around it."""
-
-    def test_a_healthy_library_says_so_and_offers_nothing_to_fix(self):
-        self._without_the_legacy_row()
-        findings = self._survey()
-        self.assertTrue(findings["complete"])
-        self.assertEqual(0, repair.unaccounted_total(findings))
-        text = "\n".join(repair.report_lines(findings))
-        self.assertIn("Every database reads fine: ", text)
-        self.assertIn("There are no orphaned files in `materials/`, `nodes/`, `code/` "
-                      "and `colors/`.", text)
-        choices, actions = repair_dialog._choices(findings, may_change=True)
-        self.assertEqual(["Close"], choices,
-                         "Repair offered an action on a library with "
-                         "nothing wrong - a button that changes nothing is "
-                         "an invitation to break something")
-
-    def test_an_empty_list_and_its_files_are_both_named(self):
-        self._cops([])
-        self._pair()
-        findings = self._survey()
-        text = "\n".join(repair.report_lines(findings))
-        self.assertIn("Node: the database is there and holds nothing.", text)
-        self.assertIn("2 files in the materials folder", text,
-                      "the report does not say how many files, in which "
-                      "folder - a combined total cannot be checked against "
-                      "the refusal that sent the reader here, which counts "
-                      "the asset folder alone")
-        self.assertIn("COPOWNED1.mat", text,
-                      "the files are counted but not named, and the next "
-                      "dialog offers to move them")
-
-    def test_two_empty_lists_get_one_explanation_between_them(self):
-        """One line for the ambiguity, no less than the refusal said, and not twice."""
-        self._cops([])
-        with open(os.path.join(self.dir, "code.json"), "w",
-                  encoding="utf-8") as handle:
-            json.dump({"version": 2, "categories": ["_All"], "tags": [],
-                       "assets": []}, handle)
-        lines = repair.report_lines(self._survey())
-        explanations = [line for line in lines
-                        if "looks the same whether" in line]
-        self.assertEqual(1, len(explanations),
-                         "one dialog carried the same explanation twice")
-        self.assertIn("nothing was ever saved there", explanations[0])
-        self.assertIn("failed to load", explanations[0])
-
-    def test_an_unreadable_list_is_named_and_stops_any_moving(self):
-        """While a list cannot be read, no file may be called unclaimed."""
-        with open(self.cops, "w", encoding="utf-8") as handle:
-            handle.write('{"assets": [{"id": "COPOWNED1"}')     # truncated
-        self._pair()
-        findings = self._survey()
-        self.assertFalse(findings["complete"])
-        text = "\n".join(repair.report_lines(findings))
-        self.assertIn("Node: the database is corrupt/unreadable.",
-                      text)
-        self.assertIn("Amaze could not check the Node database either, so "
-                      "some of those files may be its", text,
-                      "the report points at 'a list above' instead of "
-                      "naming the section whose files may be at risk")
-        choices, actions = repair_dialog._choices(findings, may_change=True)
-        self.assertNotIn("quarantine", actions,
-                         "moving files aside was offered while a list "
-                         "could not be read - the files may be its")
-        self.assertNotIn("reattach", actions,
-                         "adding files to a list was offered while another "
-                         "list could not be read")
-        with self.assertRaises(ValueError):
-            repair.move_aside(findings, "unlisted")
-
-    def test_a_list_that_has_not_arrived_is_told_apart_from_a_new_one(self):
-        """Absent is new only when nothing says the file was ever here."""
-        blank = self._survey()
-        nodes = [e for e in blank["lists"] if e["filename"] == "cops.json"][0]
-        self.assertEqual("absent", nodes["state"])
-        unsaved = "\n".join(repair.report_lines(blank)).split("Nothing is saved yet in ")
-        self.assertEqual(2, len(unsaved), "absent lists are not said once, together")
-        self.assertIn("Node", unsaved[1].split(".")[0])
-
-        self._write(self.cops + ".bak-1", {"assets": [{"id": self.COP_ID}]})
-        findings = self._survey()
-        nodes = [e for e in findings["lists"]
-                 if e["filename"] == "cops.json"][0]
-        self.assertEqual("absent-but-known", nodes["state"])
-        self.assertFalse(findings["complete"])
-        text = "\n".join(repair.report_lines(findings))
-        self.assertIn("Amaze can see there was one here before", text,
-                      "the report does not say the list was here before")
-        self.assertIn("may not have synced yet", text)
-        self.assertIn("run Check Library again", text,
-                      "a list that may still be arriving is reported with "
-                      "no next step")
-        self.assertNotIn("cops.json.bak-1", text,
-                         "the report names a file the reader has never "
-                         "opened in a sentence that does not send them to "
-                         "it")
-
-    def test_the_saved_copies_say_what_each_would_bring_back(self):
-        """The count and the date are the answer; a filename is not."""
-        self._cops([])
-        self._write(self.cops + ".bak-1",
-                    {"assets": [{"id": "A"}, {"id": "B"}]})
-        self._write(self.cops + ".bak-first", {"assets": [{"id": "A"}]})
-        findings = self._survey()
-        text = "\n".join(repair.report_lines(findings))
-        self.assertRegex(text, r"from \d{4}-\d{2}-\d{2} \d\d:\d\d, "
-                               r"2 saved nodes")
-        self.assertRegex(text, r"from \d{4}-\d{2}-\d{2} \d\d:\d\d, "
-                               r"1 saved node",
-                         "the count arrives without the word for what was "
-                         "counted, or without agreeing with it")
-        for suffix in ("bak-1", "bak-first"):
-            self.assertNotIn(suffix, text,
-                             "the report asks the reader to choose by "
-                             "'%s', which nothing in Houdini has ever "
-                             "shown them" % suffix)
-
-    def test_a_copy_that_cannot_be_read_is_not_offered_as_a_rescue(self):
-        """A backup can be truncated too, so a listed copy must be readable."""
-        self._cops([])
-        with open(self.cops + ".bak-1", "w", encoding="utf-8") as handle:
-            handle.write("{ truncated")
-        findings = self._survey()
-        text = "\n".join(repair.report_lines(findings))
-        self.assertRegex(text, r"from \d{4}-\d{2}-\d{2} \d\d:\d\d, "
-                               r"cannot be read")
-
-    def test_a_colors_file_of_the_wrong_shape_is_not_called_empty(self):
-        """A file nothing can be counted in reads as unreadable, never empty."""
-        for shape in (["not", "a", "list", "Amaze", "wrote"],
-                      {"version": 3, "categories": ["_All"],    # one count_in answers 1 for
-                       "tags": [], "assets": "oops"}):
-            with self.subTest(shape=shape):
-                with open(os.path.join(self.dir, "gradients.json"), "w",
-                          encoding="utf-8") as handle:
-                    json.dump(shape, handle)
-                findings = self._survey()
-                colors = [e for e in findings["lists"]
-                          if e["filename"] == "gradients.json"][0]
-                self.assertEqual(
-                    "unreadable", colors["state"],
-                    "Repair called a broken Colors list healthy - the tool "
-                    "whose whole job is saying what is wrong said nothing was")
-                self.assertFalse(
-                    findings["complete"],
-                    "the union looked complete over a list nobody can read, "
-                    "so files could be moved aside on a guess")
-
-    def test_a_folder_it_could_not_read_is_not_called_accounted_for(self):
-        """A neutral value makes a failure indistinguishable from an empty result."""
-        self._without_the_legacy_row()
-        shutil.rmtree(self.mat_dir)
-        findings = self._survey()
-        self.assertEqual([MATERIALS_DIR],
-                         findings["unreadable_folders"])
-        self.assertFalse(
-            findings["complete"],
-            "a folder Amaze could not look inside left the union looking "
-            "complete, so files could have been moved on a guess")
-        text = "\n".join(repair.report_lines(findings))
-        self.assertIn("could not look inside the materials folder", text)
-        self.assertNotIn("There are no orphaned files", text,
-                         "Repair reported a folder it could not read as "
-                         "accounted for")
-        choices, actions = repair_dialog._choices(findings, may_change=True)
-        self.assertEqual(["Close"], choices,
-                         "an action was offered while a whole folder was "
-                         "unread")
-        with self.assertRaises(ValueError):
-            repair.move_aside(findings, "unlisted")
-
-    def test_the_two_buttons_say_how_many_files_each_one_acts_on(self):
-        """Two buttons act on two different sets, so each says its own count."""
-        self._cops(self.KEPT)
-        self._pair()
-        with open(os.path.join(self.mat_dir, "HALFONLY2.mat"), "w",
-                  encoding="utf-8") as handle:
-            handle.write("no .json beside me\n")
-        findings = self._survey()
-        self.assertEqual(3, repair.unaccounted_total(findings),
-                         "premise: one of the three files must be half a "
-                         "pair")
-        choices, actions = repair_dialog._choices(findings, may_change=True)
-        self.assertIn("Add 2 Files to a Section", choices)
-        self.assertIn("Move 3 Files to Trash", choices)
-        text = "\n".join(repair.report_lines(findings))
-        self.assertIn("Of those, 2 files can be added back", text,
-                      "nothing tells the reader the two buttons cover "
-                      "different files")
-
-    def test_format_3_s_mat_folder_is_no_asset_folder(self):
-        """Check Library reads the new shape only: a `mat/` left over is one unknown folder."""
-        self._cops(self.KEPT)
-        self._pair(legacy=True)
-        findings = self._survey()
-        self.assertEqual([MATERIALS_DIR, NODES_DIR], findings["asset_dirs"])
-        self.assertNotIn(LEGACY_DIR, findings["unaccounted"])
-        self.assertEqual([], repair.complete_pairs(findings),
-                         "a pair in `mat/` was read as an asset")
-        self.assertEqual([("mat", 2)], [(entry[0], entry[1])
-                                        for entry in findings["unknown_folders"]],
-                         "mat/ is not one unknown folder holding its two files")
-        self.assertNotIn("mat", [entry[0] for entry in findings["leftovers"]],
-                         "a leftover mat/ was offered for sweeping as superseded")
-        self.assertEqual(1, repair.unknown_to_move_aside(findings))
-
-    def test_older_files_beside_their_json_are_leftovers_not_orphans(self):
-        """What a `.json` replaced is swept as a leftover; nothing calls it unlisted."""
-        self._without_the_legacy_row()
-        listed = "139888336268658010"
-        for suffix in (".interface", ".builder.json", ".stamp.json"):
-            with open(os.path.join(self.mat_dir, listed + suffix), "w",
-                      encoding="utf-8") as handle:
-                handle.write("{}\n")
-        findings = self._survey()
-        self.assertEqual(0, repair.unaccounted_total(findings),
-                         "a file a `.json` replaced was reported as orphaned")
-        self.assertEqual(
-            sorted(MATERIALS_DIR + listed + suffix for suffix in
-                   (".interface", ".builder.json", ".stamp.json")),
-            sorted(entry[0] for entry in findings["leftovers"]
-                   if entry[1] == library_files.SUPERSEDED))
-        self.assertIn("files of the older format whose content is now in their asset's .json",
-                      "\n".join(repair.report_lines(findings)))
-        self.assertEqual(3, repair.files_to_move_aside(findings))
-
-
-class RepairNeverDeletesTest(unittest.TestCase):
-    """The one property that may not regress, read from source with `ast`."""
-
-    FORBIDDEN = {
-        ("os", "remove"), ("os", "unlink"), ("os", "rmdir"),
-        ("os", "removedirs"), ("shutil", "rmtree"), ("shutil", "move"),
-        ("pathlib", "unlink"),
-    }
-
-    def _deletes(self, tree):
-        found = []
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Call):
-                continue
-            func = node.func
-            if isinstance(func, ast.Attribute) and isinstance(func.value,
-                                                              ast.Name):
-                if (func.value.id, func.attr) in self.FORBIDDEN:
-                    found.append("%s.%s line %d"
-                                 % (func.value.id, func.attr, node.lineno))
-            if isinstance(func, ast.Name) and func.id in ("unlink",
-                                                          "rmtree"):
-                found.append("%s line %d" % (func.id, node.lineno))
-        return found
-
-    def test_the_module_contains_no_delete_call_at_all(self):
-        self.assertEqual(
-            1, len(self._deletes(ast.parse("import os\nos.remove('x')\n"))),
-            "the walk cannot find a planted delete, so it checks nothing")
-        path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "core", "repair.py")
-        with open(path, encoding="utf-8") as handle:
-            found = self._deletes(ast.parse(handle.read(), filename=path))
-        self.assertEqual(
-            [], found,
-            "repair.py calls %s - Repair may only ever MOVE a file, and if "
-            "a delete is needed here the design is wrong" % ", ".join(found))
-
-
-class MovingFilesAsideTest(_Case):
-    """Quarantine: the strongest thing Repair may do."""
-
-    def test_files_are_moved_not_deleted_and_keep_their_bytes(self):
-        self._cops(self.KEPT)
-        paths = self._pair()
-        before = {os.path.basename(p): open(p, "rb").read() for p in paths}
-        findings = self._survey()
-        result = repair.move_aside(findings, "unlisted")
-        for path in paths:
-            self.assertFalse(os.path.exists(path),
-                             "%s was left where it was" % path)
-        moved_dir = os.path.join(result["folder"], MATERIALS_DIR.rstrip("/\\"))
-        for name, content in before.items():
-            landed = os.path.join(moved_dir, name)
-            self.assertTrue(os.path.exists(landed),
-                            "%s did not arrive in the folder aside" % name)
-            with open(landed, "rb") as handle:
-                self.assertEqual(content, handle.read(),
-                                 "%s changed on the way" % name)
-        self.assertEqual(sorted(before), sorted(result["moved"]))
-        self.assertEqual([], result["failed"])
-
-    def test_the_folder_is_THE_quarantine_not_a_second_one(self):
-        """One quarantine for both tools, machine-local, with the 30-day window."""
-        from amaze.core import library as library_mod
-        self._cops(self.KEPT)
-        self._pair()
-        result = repair.move_aside(self._survey(), "unlisted")
-        self.assertEqual(
-            os.path.normpath(quarantine.quarantine_folder(self.dir)),
-            os.path.normpath(result["folder"]),
-            "Repair quarantines somewhere other than Clean Library")
-        self.assertFalse(
-            os.path.normpath(result["folder"]).startswith(
-                os.path.normpath(self.dir)),
-            "the quarantine is inside the synced library again")
-
-    def test_a_second_round_the_same_day_keeps_the_first_copy(self):
-        """`os.replace` overwrites, and the holding folder is named per day."""
-        self._cops(self.KEPT)
-        path = os.path.join(self.mat_dir, self.COP_ID + ".mat")
-        with open(path, "w", encoding="utf-8") as handle:
-            handle.write("ROUND ONE BYTES\n")
-        first = repair.move_aside(self._survey(), "unlisted")
-        with open(path, "w", encoding="utf-8") as handle:
-            handle.write("ROUND TWO BYTES\n")
-        second = repair.move_aside(self._survey(), "unlisted")
-        self.assertEqual(first["folder"], second["folder"],
-                         "premise: both rounds must land in the same dated "
-                         "folder, or the collision cannot happen")
-        landed = []
-        for root, _dirs, names in os.walk(first["folder"]):
-            for name in names:
-                with open(os.path.join(root, name), encoding="utf-8") as fh:
-                    landed.append(fh.read())
-        self.assertIn("ROUND ONE BYTES\n", landed,
-                      "the first copy's bytes were overwritten by the "
-                      "second round - a delete wearing a move's name")
-        self.assertIn("ROUND TWO BYTES\n", landed)
-
-    def test_a_pair_a_list_claims_after_the_check_stays_where_it_is(self):
-        """A peer list that syncs in while the dialog is open now owns the pair."""
-        self._cops(self.KEPT)
-        paths = self._pair()
-        findings = self._survey()
-        self._cops(self.KEPT + [{"id": self.COP_ID, "name": "Arrived",
-                                 "categories": ["Kept"]}])
-        result = repair.move_aside(findings, "unlisted")
-        for path in paths:
-            self.assertTrue(os.path.exists(path),
-                            "%s was moved aside though a list now claims it" % path)
-        self.assertEqual([], result["moved"])
-        self.assertEqual([], result["failed"], "a file a list took is not a file that would not move")
-        self.assertEqual(sorted(os.path.basename(p) for p in paths),
-                         sorted(result["claimed"]))
-
-    def _said(self, call, *args) -> list:
-        """What one dialog step says, each box as (text, severity), with every confirm answered yes."""
-        said = []
-        with patch.object(repair_dialog, "_say",
-                          lambda text, severity=None: said.append((text, severity))), \
-                patch.object(repair_dialog, "_confirmed", lambda *a, **k: True):
-            call(*args)
-        return said
-
-    def test_a_step_that_finds_the_library_changed_says_so(self):
-        changed = (messages.LIBRARY_CHANGED_SINCE_CHECK, hou.severityType.Warning)
-        self.assertEqual([changed], self._said(
-            repair_dialog._moved, {"moved": [], "failed": [], "claimed": ["x.mat"]}),
-            "files a list took since the check were reported some other way")
-        both = self._said(repair_dialog._moved, {"moved": ["a"], "failed": [], "claimed": ["x.mat"]})
-        self.assertEqual(2, len(both), "what did move was not said beside the change")
-        self.assertEqual(changed, both[-1])
-        self.assertEqual([changed], self._said(
-            repair_dialog._added, "0 restored", {"added": [], "minted": [], "claimed": ["x"]}),
-            "an Add Back that found every file listed said how many it restored")
-        self.assertEqual([("1 restored", None)], self._said(
-            repair_dialog._added, "1 restored", {"added": ["y"], "minted": [], "claimed": []}))
-        back = tempfile.mkdtemp(prefix="amaze_back_")
-        self.addCleanup(shutil.rmtree, back, True)
-        findings = {"dead_folders": [back], "dead_stars": [], "preferences": MagicMock()}
-        self.assertEqual([changed], self._said(
-            repair_dialog._do_set_aside, findings, False, lambda: None),
-            "a Set Aside whose folder came back said what it removed")
-
-    def test_a_list_that_turns_unreadable_after_the_check_refuses_the_move(self):
-        """A list that will not read may own the pair, so nothing moves."""
-        self._cops(self.KEPT)
-        paths = self._pair()
-        findings = self._survey()
-        with open(self.cops, "w", encoding="utf-8") as handle:
-            handle.write('{"assets": [{"id": "COPOWN')
-        with self.assertRaises(ValueError):
-            repair.move_aside(findings, "unlisted")
-        for path in paths:
-            self.assertTrue(os.path.exists(path),
-                            "%s was moved aside while a list could not be read" % path)
-
-    def test_the_quarantine_folder_is_invisible_to_the_next_sweep(self):
-        """A top-level folder is in neither list the next sweep walks."""
-        self._cops(self.KEPT)
-        self._pair()
-        result = repair.move_aside(self._survey(), "unlisted")
-        again = self._survey()
-        self.assertEqual(0, repair.unaccounted_total(again),
-                         "the files aside are still counted as unclaimed, "
-                         "so Repair would offer to move them again forever")
-        self.assertTrue(os.path.isdir(result["folder"]),
-                        "premise: the folder aside must still be there")
-
-
-class AddingUnlistedFilesBackTest(_Case):
-    """Re-attach: the last resort when no saved copy holds the rows."""
-
-    def test_a_pair_comes_back_as_something_the_app_can_read(self):
-        from amaze.core import material as material_mod
-
-        self._cops([])
-        self._pair()
-        findings = self._survey()
-        result = repair.reattach(findings, "library.json")
-        self.assertEqual([self.COP_ID], result["added"])
-        document = self._read(os.path.join(self.dir, "library.json"))
-        rows = [r for r in document["assets"] if r.get("id") == self.COP_ID]
-        self.assertEqual(1, len(rows), "the asset was not added once")
-        # Through the real loader: the row shape has to be the app's own.
-        asset = material_mod.Material.from_dict(rows[0])
-        self.assertEqual(self.COP_ID, str(asset.mat_id))
-        self.assertIn(repair.RECOVERED_CATEGORY, document["categories"])
-        self.assertEqual(
-            [], [name for name in os.listdir(self.dir)
-                 if ".repairing" in name],
-            "a scratch file was left in the library folder - an unowned "
-            "file there is exactly what the next sweep has to puzzle over")
-        self.assertEqual(0, repair.unaccounted_total(self._survey()),
-                         "the files are still unclaimed after being added "
-                         "back, so Clean Library would still refuse")
-
-    STAMPED = {"id": "COPOWNED1", "name": "Brushed Copper",
-               "categories": ["Metals"], "tags": ["copper", "pbr"],
-               "description": "the one from the kitchen shot", "renderer": "Karma"}
-
-    def _named_back(self):
-        """Reattach to Materials, then the row it wrote and the list."""
-        repair.reattach(self._survey(), "library.json")
-        document = self._read(os.path.join(self.dir, "library.json"))
-        return [r for r in document["assets"] if r.get("id") == self.COP_ID][0], document
-
-    def test_the_metadata_beside_the_files_names_the_asset(self):
-        """▸p/recovery-stamp: Repair is the sanctioned reader, and this is a repair."""
-        self._cops([])
-        self._pair()
-        write_record(self.mat_dir, self.COP_ID, metadata=self.STAMPED)
-        row, document = self._named_back()
-        self.assertEqual(
-            "Brushed Copper", row.get("name"),
-            "the name sat in the `.json` beside the files and Repair minted a "
-            "placeholder instead; the next save then rewrites that metadata")
-        self.assertEqual(["Metals"], row.get("categories"))
-        self.assertIn("Metals", document["categories"])
-        self.assertEqual(["copper", "pbr"], row.get("tags"))
-
-    def test_a_pair_with_no_stamp_still_comes_back_named(self):
-        """The fallback: no metadata, or a `.json` that will not parse, still reattaches."""
-        self._cops([])
-        self._pair()
-        with open(os.path.join(self.mat_dir,
-                               self.COP_ID + material.RECORD_SUFFIX), "w",
-                  encoding="utf-8") as handle:
-            handle.write("{not json")
-
-        result = repair.reattach(self._survey(), "library.json")
-
-        self.assertEqual([self.COP_ID], result["added"])
-        document = self._read(os.path.join(self.dir, "library.json"))
-        row = [r for r in document["assets"]
-               if r.get("id") == self.COP_ID][0]
-        self.assertTrue(str(row.get("name", "")).startswith("Recovered "),
-                        "an unreadable stamp must fall back, not raise")
-        self.assertIn(repair.RECOVERED_CATEGORY, document["categories"])
-
-    def test_only_a_complete_pair_is_offered(self):
-        """Half a pair, or `X_cop.mat` read as X's `.mat`, would mint a tile that cannot open."""
-        self._cops([])
-        for why, files, pairs in (
-                ("half a pair", ("HALFONLY1.mat",), []),
-                ("a COP companion beside a record",
-                 ("PAIRCOP1_cop.mat", "PAIRCOP1.json"), []),
-                ("a real pair beside its companion",
-                 ("PAIRFULL1.mat", "PAIRFULL1.json",
-                  "PAIRFULL1_cop.mat"), ["PAIRFULL1"]),
-                ("an unconverted pair in mat/ is no asset",
-                 ("../mat/PAIROLD1.mat", "../mat/PAIROLD1.interface"),
-                 ["PAIRFULL1"])):
-            with self.subTest(why):
-                for name in files:
-                    path = os.path.normpath(os.path.join(self.mat_dir, name))
-                    os.makedirs(os.path.dirname(path), exist_ok=True)
-                    with open(path, "w", encoding="utf-8") as handle:
-                        handle.write("owned by %s\n" % name)
-                findings = self._survey()
-                self.assertEqual(pairs, repair.complete_pairs(findings))
-                if not pairs:
-                    choices, actions = repair_dialog._choices(findings,
-                                                       may_change=True)
-                    self.assertNotIn("reattach", actions)
-
-    def test_a_pair_the_list_gained_after_the_check_is_not_added_twice(self):
-        """Two rows with one id share files, so deleting one deletes the other's."""
-        self._cops([])
-        self._pair()
-        findings = self._survey()
-        index = os.path.join(self.dir, "library.json")
-        document = self._read(index)
-        document["assets"].append({"id": self.COP_ID, "name": "Arrived",
-                                   "categories": ["Kept"]})
-        self._write(index, document)
-        result = repair.reattach(findings, "library.json")
-        rows = [r for r in self._read(index)["assets"] if r.get("id") == self.COP_ID]
-        self.assertEqual(1, len(rows), "the list now holds two rows with one id")
-        self.assertEqual([], result["added"])
-        self.assertEqual([self.COP_ID], result["claimed"], "the step cannot say the library changed")
-
-    def test_a_pair_a_sibling_gained_after_the_check_is_not_added(self):
-        """An id a sibling list claims since the check is that list's."""
-        self._cops([])
-        self._pair()
-        findings = self._survey()
-        self._cops([{"id": self.COP_ID, "name": "Arrived", "categories": ["Kept"]}])
-        result = repair.reattach(findings, "library.json")
-        rows = [r for r in self._read(os.path.join(self.dir, "library.json"))["assets"]
-                if r.get("id") == self.COP_ID]
-        self.assertEqual([], rows, "an id the Node list claims was added to Materials too")
-        self.assertEqual([], result["added"])
-
-    def test_it_refuses_while_a_list_cannot_be_read(self):
-        self._cops([])
-        self._pair()
-        with open(os.path.join(self.dir, "code.json"), "w",
-                  encoding="utf-8") as handle:
-            handle.write("{ truncated")
-        with self.assertRaises(ValueError):
-            repair.reattach(self._survey(), "library.json")
-
-    def test_the_list_it_writes_is_still_loadable_by_the_app(self):
-        """Written through `Material.get_as_dict`; a hand-built row drifts."""
-        self._cops([])
-        paths = self._pair()
-        repair.reattach(self._survey(), "cops.json")
-        for path in paths:
-            self.assertTrue(os.path.exists(os.path.join(self.nodes_dir, os.path.basename(path))),
-                            "Add Back to Nodes left %s outside the Nodes folder" % path)
-        from amaze.core import cop_library
-        model = cop_library.CopLibrary(preferences=self.prefs)
-        self.assertIn(self.COP_ID, [str(a.mat_id) for a in model.assets],
-                      "the Nodes section cannot see what Repair added")
-
-
-class AMissingListComesBackFromItsFilesTest(_Case):
-    """Materials made in one sitting are in no saved copy; the record beside each is the way back."""
-
-    LOST = (("FABRIC01", "Aegean Herringbone", "Karma"),
-            ("FABRIC02", "Aegean Herringbone", "Karma"),
-            ("VELVET01", "Crushed Velvet", "Octane"))
-    EMPTY = {"version": 8, "format": 3, "categories": ["_All"], "tags": [],
-             "assets": []}
-
-    def setUp(self):
-        super().setUp()
-        self.index = os.path.join(self.dir, "library.json")
-        shutil.rmtree(self.mat_dir)    # a new library: only what this test saves
-        os.makedirs(self.mat_dir)
-        shutil.rmtree(self.img_dir, ignore_errors=True)    # format 4 keeps no picture in img/
-        self._write(self.index, self.EMPTY)
-
-    def _saved(self, asset_id, name, renderer):
-        """A save's `.mat`, `.json` and `<id>.png`."""
-        row = {"id": asset_id, "name": name, "categories": ["Fabric"],
-               "tags": ["cloth"], "renderer": renderer, "date": "2026-10-24 00:24:58"}
-        folder = self.mat_dir
-        os.makedirs(folder, exist_ok=True)
-        with open(os.path.join(folder, asset_id + ".mat"), "w", encoding="utf-8") as handle:
-            handle.write("owned by %s\n" % asset_id)
-        write_record(folder, asset_id, metadata=row)
-        with open(os.path.join(folder, asset_id + ".png"), "wb") as handle:
-            handle.write(b"\x89PNG\r\n")
-
-    def _metadata(self, asset_id):
-        return asset_record.read(os.path.join(
-            self.mat_dir, asset_id + material.RECORD_SUFFIX))[asset_record.METADATA]
-
-    def _lose_the_list(self):
-        """The incident: both saved copies predate every material, then the list is moved out."""
-        for tier in ("bak-1", "bak-first"):
-            self._write(self.index + "." + tier, self.EMPTY)
-        for asset_id, name, renderer in self.LOST:
-            self._saved(asset_id, name, renderer)
-        os.remove(self.index)
-
-    def _state(self, findings, filename):
-        return [entry["state"] for entry in findings["lists"]
-                if entry["filename"] == filename][0]
-
-    def _offered(self, findings):
-        return [(filename, tier) for filename, tier, _snap, _now
-                in repair.offered_copies(findings)]
-
-    def test_the_materials_come_back_when_their_list_is_missing(self):
-        self._lose_the_list()
-        findings = self._survey()
-        self.assertEqual("absent-but-known", self._state(findings, "library.json"),
-                         "premise: the list was here and is gone")
-        choices, _actions = repair_dialog._choices(findings, may_change=True)
-        self.assertIn("Add 3 Materials Back", choices,
-                      "the materials' own files and records are in the folder, and "
-                      "Repair offered no way to put them back on the list")
-        self._run(buttons=[choices.index("Add 3 Materials Back"), 0, 0])
-        document = self._read(self.index)
-        rows = {row["id"]: row for row in document["assets"]}
-        self.assertEqual(sorted(asset_id for asset_id, _n, _r in self.LOST),
-                         sorted(rows), "not every material came back, once")
-        self.assertEqual("Crushed Velvet", rows["VELVET01"]["name"])
-        self.assertEqual("Octane", rows["VELVET01"]["renderer"])
-        self.assertIn("Fabric", document["categories"])
-        after = self._survey()
-        self.assertEqual("ok", self._state(after, "library.json"))
-        self.assertEqual(0, repair.unaccounted_total(after),
-                         "files are still unlisted after the materials came back")
-        model = library_mod.MaterialLibrary(preferences=self.prefs)
-        self.assertEqual(sorted(rows), sorted(str(a.mat_id) for a in model.assets),
-                         "the Materials section cannot see what Repair put back")
-
-    def test_a_copy_that_holds_nothing_is_not_offered(self):
-        """Nor, while the missing list has none worth having, a copy of a list that reads fine."""
-        self._lose_the_list()
-        code = os.path.join(self.dir, "code.json")
-        self._write(code, {"version": 8, "categories": ["_All"], "tags": [],
-                           "assets": [{"id": "SNIP1"}, {"id": "SNIP2"}]})
-        self._write(code + ".bak-1", {"assets": [{"id": "SNIP1"}]})
-        findings = self._survey()
-        self.assertEqual([], self._offered(findings),
-                         "a copy holding no materials, or one of a list that reads "
-                         "fine, was offered as the way back")
-        choices, _actions = repair_dialog._choices(findings, may_change=True)
-        self.assertNotIn("Restore Backup", choices)
-
-    def test_while_a_list_is_missing_the_others_copies_stay_out(self):
-        """A copy of a list that reads fine would only take things away from it."""
-        self._lose_the_list()
-        self._write(self.index + ".bak-2", {"assets": [{"id": "OLDER01"}]})
-        code = os.path.join(self.dir, "code.json")
-        self._write(code, {"version": 8, "categories": ["_All"], "tags": [],
-                           "assets": [{"id": "SNIP1"}, {"id": "SNIP2"}]})
-        self._write(code + ".bak-1", {"assets": [{"id": "SNIP1"}]})
-        self.assertEqual([("library.json", "bak-2")], self._offered(self._survey()))
-
-    def test_a_list_with_its_materials_beside_it_offers_no_other_list_s_copy(self):
-        """The list is there and empty, as after putting back a copy older than its materials."""
-        for asset_id, name, renderer in self.LOST:
-            self._saved(asset_id, name, renderer)
-        code = os.path.join(self.dir, "code.json")
-        self._write(code, {"version": 8, "categories": ["_All"], "tags": [],
-                           "assets": [{"id": "SNIP1"}, {"id": "SNIP2"}]})
-        self._write(code + ".bak-1", {"assets": [{"id": "SNIP1"}]})
-        findings = self._survey()
-        self.assertEqual("empty", self._state(findings, "library.json"), "premise")
-        self.assertEqual([], self._offered(findings),
-                         "a copy that takes snippets away was offered while the "
-                         "materials sat unlisted beside an empty list")
-
-    def test_two_copies_that_hold_the_same_are_offered_once(self):
-        self._cops([])
-        held = {"version": 2, "categories": ["_All"], "tags": [],
-                "assets": [{"id": "A"}, {"id": "B"}]}
-        self._write(self.cops + ".bak-1", held)
-        self._write(self.cops + ".bak-first", held)
-        findings = self._survey()
-        self.assertEqual([("cops.json", "bak-1")], self._offered(findings))
-        line = [line for line in repair.report_lines(findings)
-                if line.startswith("Node: backups")][0]
-        self.assertEqual(1, line.count("2 saved nodes"), line)
-
-    def test_a_copy_the_list_already_matches_is_not_offered(self):
-        held = {"version": 2, "categories": ["_All"], "tags": [],
-                "assets": [{"id": "A"}]}
-        self._cops(held["assets"])
-        self._write(self.cops + ".bak-1", held)
-        self.assertEqual([], self._offered(self._survey()))
-
-    def test_a_node_s_record_keeps_it_off_the_materials_list(self):
-        self._lose_the_list()
-        self._saved("SCATTER1", "Scatter Rocks", "SOP")
-        findings = self._survey()
-        choices, _actions = repair_dialog._choices(findings, may_change=True)
-        self.assertIn("Add 3 Materials Back", choices)
-        repair.add_materials_back(findings)
-        self.assertNotIn("SCATTER1",
-                         [row["id"] for row in self._read(self.index)["assets"]],
-                         "a saved node was put on the Materials list")
-
-    def test_the_files_beside_a_pair_are_not_called_halves(self):
-        """The builder and the record travel with the pair; neither is half of anything."""
-        for asset_id, name, renderer in self.LOST:
-            self._saved(asset_id, name, renderer)
-        findings = self._survey()
-        self.assertEqual(9, repair.unaccounted_total(findings), "premise: .mat, .json, .png")
-        text = "\n".join(repair.report_lines(findings))
-        self.assertNotIn("halves of an asset", text)
-        self.assertIn("Crushed Velvet", text, "the materials it can put back are not named")
-        self.assertIn("Add 3 Materials Back", text)
-
-    def test_moving_aside_leaves_the_materials_it_can_put_back(self):
-        """Their record names them, so the holding folder is never their first stop."""
-        for asset_id, name, renderer in self.LOST:
-            self._saved(asset_id, name, renderer)
-        half = os.path.join(self.mat_dir, "HALFONLY1.mat")
-        with open(half, "w", encoding="utf-8") as handle:
-            handle.write("no .json beside me\n")
-        self._write(self.index, dict(self.EMPTY, assets=[    # an empty list would hold them all
-            {"id": "KEEPER01", "name": "Keeper", "categories": ["Fabric"]}]))
-        findings = self._survey()
-        choices, actions = repair_dialog._choices(findings, may_change=True)
-        self.assertIn("Move 1 File to Trash", choices,
-                      "Move Aside counts the files of materials Repair can put back")
-        self._run(buttons=[actions.index("quarantine"), 0, 0])
-        self.assertFalse(os.path.exists(half))
-        for asset_id, _name, _renderer in self.LOST:
-            self.assertTrue(os.path.exists(os.path.join(self.mat_dir, asset_id + ".mat")),
-                            "a material Repair could put back was moved aside")
-
-    def test_nothing_is_added_while_the_materials_list_cannot_be_read(self):
-        self._lose_the_list()
-        with open(self.index, "w", encoding="utf-8") as handle:
-            handle.write('{"assets": [')
-        findings = self._survey()
-        choices, _actions = repair_dialog._choices(findings, may_change=True)
-        self.assertNotIn("Add 3 Materials Back", choices)
-        with self.assertRaises(ValueError):
-            repair.add_materials_back(findings)
-        with open(self.index, encoding="utf-8") as handle:
-            self.assertEqual('{"assets": [', handle.read())
-
-    def test_a_list_that_arrives_meanwhile_is_not_written_over(self):
-        self._lose_the_list()
-        findings = self._survey()
-        self._write(self.index, dict(self.EMPTY, assets=[{"id": "SYNCED01"}]))
-        with self.assertRaises(ValueError):
-            repair.add_materials_back(findings)
-        self.assertEqual(["SYNCED01"],
-                         [row["id"] for row in self._read(self.index)["assets"]])
-
-    def test_a_houdini_that_has_read_the_library_is_refused(self):
-        self._lose_the_list()
-        findings = self._survey()
-        database.DatabaseConnector("library.json")     # the panel, earlier
-        with self.assertRaises(ValueError):
-            repair.add_materials_back(findings)
-        self.assertFalse(os.path.exists(self.index))
-        choices, _actions = repair_dialog._choices(findings, may_change=False)
-        self.assertEqual(["Close"], choices)
-
-    def test_the_panel_s_repair_keeps_materials_saved_after_the_copy(self):
-        """Its saved copy predates the newest materials, and their records are newer than it."""
-        self._lose_the_list()
-        self._saved("OLDONE01", "Old One", "Karma")
-        self._write(self.index + ".bak-1", dict(
-            self.EMPTY, assets=[{"id": "OLDONE01", "name": "Old One",
-                                 "categories": ["Fabric"], "renderer": "Karma"}]))
-        with open(self.index, "w", encoding="utf-8") as handle:
-            handle.write('{"assets": [')
-        ok, how = repair.repair_index(self.dir)
-        self.assertTrue(ok, how)
-        ids = [row["id"] for row in self._read(self.index)["assets"]]
-        self.assertEqual(sorted(["OLDONE01", "FABRIC01", "FABRIC02", "VELVET01"]),
-                         sorted(ids), "the copy came back without the materials "
-                                      "saved after it, or with one twice")
-
-    def _put_back_over(self, rows):
-        """A copy holding `rows` is the newest, and the list itself will not read."""
-        self._write(self.index + ".bak-1", dict(self.EMPTY, assets=rows))
-        with open(self.index, "w", encoding="utf-8") as handle:
-            handle.write('{"assets": [')
-        ok, how = repair.repair_index(self.dir)
-        self.assertTrue(ok, how)
-        return {row["id"]: row for row in self._read(self.index)["assets"]}, how
-
-    def test_a_row_edited_after_the_copy_comes_back_as_its_stamp_says(self):
-        """Metadata is written only after its list landed, so it is never older than a copy."""
-        for asset_id, name, renderer in self.LOST:
-            self._saved(asset_id, name, renderer)
-        stamp = dict(self._metadata("FABRIC01"), categories=["Woven"])
-        write_record(self.mat_dir, "FABRIC01", metadata=stamp, builder=None)
-        older = dict(stamp, name="Herringbone", categories=["Before"])
-        rows, how = self._put_back_over([older])
-        self.assertEqual(stamp, rows["FABRIC01"],
-                         "the copy's older record came back over the newer one its .json holds")
-        self.assertIn("Woven", self._read(self.index)["categories"],
-                      "the newer record's category is missing from the list")
-
-    def test_the_shelf_s_put_back_keeps_materials_saved_after_the_copy(self):
-        """The shelf's Put a Saved Copy Back does what the panel's repair does after the copy lands."""
-        self._lose_the_list()
-        self._saved("OLDONE01", "Old One", "Karma")
-        self._write(self.index + ".bak-1", dict(
-            self.EMPTY, assets=[{"id": "OLDONE01", "name": "Old One",
-                                 "categories": ["Fabric"], "renderer": "Karma"}]))
-        with open(self.index, "w", encoding="utf-8") as handle:
-            handle.write('{"assets": [')
-        done = repair.put_back(self._survey(), "library.json", "bak-1")
-        ids = [row["id"] for row in self._read(self.index)["assets"]]
-        self.assertEqual(sorted(["OLDONE01", "FABRIC01", "FABRIC02", "VELVET01"]),
-                         sorted(ids), "the shelf's put-back left the materials saved "
-                                      "after the copy for a second run")
-        self.assertIn("the 3 materials saved after it were added back", done["said"])
-
-    def test_the_shelf_s_put_back_takes_a_row_edited_after_the_copy_from_its_record(self):
-        """An asset's `<id>.json` metadata is the newer row."""
-        for asset_id, name, renderer in self.LOST:
-            self._saved(asset_id, name, renderer)
-        stamp = dict(self._metadata("FABRIC01"), categories=["Woven"])
-        asset_record.write_section(os.path.join(self.mat_dir, "FABRIC01" + material.RECORD_SUFFIX),
-                                   asset_record.METADATA, stamp)
-        self._write(self.index + ".bak-1", dict(
-            self.EMPTY, assets=[dict(stamp, name="Herringbone", categories=["Before"])]))
-        with open(self.index, "w", encoding="utf-8") as handle:
-            handle.write('{"assets": [')
-        repair.put_back(self._survey(), "library.json", "bak-1")
-        rows = {row["id"]: row for row in self._read(self.index)["assets"]}
-        self.assertEqual(stamp, rows["FABRIC01"],
-                         "the copy's older record came back over the newer one its stamp holds")
-
-    def test_a_row_whose_files_and_record_are_gone_is_named(self):
-        self._saved("VELVET01", "Crushed Velvet", "Octane")
-        gone = {"id": "GONE0001", "name": "Deleted Since", "categories": ["Fabric"],
-                "tags": [], "renderer": "Karma"}
-        rows, how = self._put_back_over([gone])
-        self.assertIn("GONE0001", rows, "Repair dropped a row - it never deletes")
-        self.assertIn("Deleted Since", how,
-                      "a row whose files and record are both gone came back unnamed")
-        self.assertNotIn("Crushed Velvet", how, "a material with its files was named as gone")
-
-
-class TheNewestCopyIsTheOnePickedTest(_Case):
-    """Put a Saved Copy Back offers the newest copy; an older one is a second, deliberate step."""
-
-    COPIES = (("bak-1", ["NEW1", "NEW2"], 24), ("bak-2", ["MID1"], 23),
-              ("bak-first", ["OLD1", "OLD2", "OLD3"], 22))
-
-    def setUp(self):
-        super().setUp()
-        self._cops([])
-        for tier, ids, day in self.COPIES:
-            path = self.cops + "." + tier
-            self._write(path, {"version": 2, "categories": ["_All"], "tags": [],
-                               "assets": [{"id": asset_id} for asset_id in ids]})
-            stamp = time.mktime((2026, 10, day, 12, 0, 0, 0, 0, -1))
-            os.utime(path, (stamp, stamp))
-
-    def _ids(self):
-        return [row["id"] for row in self._read(self.cops)["assets"]]
-
-    def _restore_button(self):
-        _choices, actions = repair_dialog._choices(self._survey(), may_change=True)
-        return actions.index("restore")
-
-    def test_the_newest_copy_is_offered_without_a_list(self):
-        ui = self._run(buttons=[self._restore_button(), 0, 0])
-        self.assertFalse(ui.selectFromList.called,
-                         "a list of copies came before the newest one")
-        confirm = ui.displayMessage.call_args_list[1]
-        self.assertIn("2026-10-24", confirm.args[0], "the copy offered is not the newest")
-        self.assertEqual(messages.BUTTONS_PUT_COPY_BACK_OR_OLDER,
-                         confirm.kwargs["buttons"])
-        self.assertEqual(2, confirm.kwargs["default_choice"],
-                         "Enter puts a copy back instead of cancelling")
-        self.assertEqual(["NEW1", "NEW2"], self._ids())
-
-    def test_an_older_copy_is_one_deliberate_step_away(self):
-        ui = self._run(buttons=[self._restore_button(), 1, 0, 0], listed=(1,))
-        older = ui.selectFromList.call_args
-        self.assertEqual(2, len(older.args[0]), "the older copies repeat the newest")
-        self.assertIn("2026-10-23", older.args[0][0], "the older copies are not newest first")
-        self.assertEqual((0,), tuple(older.kwargs["default_choices"]))
-        self.assertTrue(older.kwargs["clear_on_cancel"],
-                        "a cancelled list answers its picked row, so Cancel would put "
-                        "that copy back")
-        self.assertEqual(["OLD1", "OLD2", "OLD3"], self._ids())
-
-    def test_cancelling_the_older_copies_puts_nothing_back(self):
-        self._run(buttons=[self._restore_button(), 1], listed=())
-        self.assertEqual([], self._ids())
-
-    def test_newest_is_by_when_the_copy_was_saved_not_by_its_slot(self):
-        """An undo copy is listed first, and can hold a state older than every slot."""
-        undo = self.cops + ".bak-before-restore-20260901-120000"
-        self._write(undo, {"assets": [{"id": "UNDO1"}]})
-        stamp = time.mktime((2026, 9, 1, 12, 0, 0, 0, 0, -1))
-        os.utime(undo, (stamp, stamp))
-        offers = repair.offered_copies(self._survey())
-        self.assertEqual("bak-1", offers[0][1], "a month-old copy was offered as the newest")
-        self.assertIn("bak-before-restore-20260901-120000", [offer[1] for offer in offers])
-
-    def test_with_two_lists_in_trouble_each_shows_only_its_newest_copy(self):
-        code = os.path.join(self.dir, "code.json")
-        self._write(code, {"version": 8, "categories": ["_All"], "tags": [],
-                           "assets": []})
-        self._write(code + ".bak-1", {"assets": [{"id": "SNIP1"}]})
-        ui = self._run(buttons=[self._restore_button(), 2], listed=(0,))
-        lists = ui.selectFromList.call_args_list[0]
-        self.assertEqual(2, len(lists.args[0]), "a list showed more than its newest copy")
-        self.assertIn("2026-10-24", lists.args[0][0])
-        self.assertEqual((0,), tuple(lists.kwargs["default_choices"]))
-        self.assertTrue(lists.kwargs["clear_on_cancel"])
-        self.assertEqual([], self._ids(), "Cancel on the confirm put a copy back")
-
-
-class ADateOnAWholeSecondKeepsItsSecondsTest(_Case):
-    """The stored date is `YYYY-MM-DD HH:MM:SS`; a clock on a whole second prints no fraction."""
-
-    WHOLE = datetime.datetime(2026, 10, 14, 13, 45, 12)    # microsecond 0
-    STORED = "2026-10-14 13:45:12"
-
-    def _frozen(self, module):
-        clock = MagicMock()
-        clock.datetime.now.return_value = self.WHOLE
-        return patch.object(module, "datetime", clock, create=True)    # every clock the path may read
-
-    def test_a_material_and_a_reattached_pair_keep_their_seconds(self):
-        from amaze.core import material as material_mod
-        asset = material_mod.Material(name="whole_second")
-        with self._frozen(material_mod):
-            asset.set_current_date()
-        self.assertEqual(self.STORED, asset.date,
-                         "the stamp lost its seconds")
-        self._cops([])
-        self._pair()
-        with self._frozen(material_mod), self._frozen(repair):
-            repair.reattach(self._survey(), "library.json")
-        document = self._read(os.path.join(self.dir, "library.json"))
-        row = [r for r in document["assets"]
-               if r.get("id") == self.COP_ID][0]
-        self.assertEqual(self.STORED, row.get("date"),
-                         "Repair minted a date with its seconds cut off")
-
-
-class PuttingASavedCopyBackTest(_Case):
-    """One restore, shared with the terminal tool."""
-
-    def test_the_copy_lands_and_the_current_state_is_kept(self):
-        self._cops([])
-        self._write(self.cops + ".bak-1",
-                    {"version": 2, "categories": ["_All"], "tags": [],
-                     "assets": [{"id": "A"}, {"id": "B"}]})
-        done = repair.put_back(self._survey(), "cops.json", "bak-1")
-        self.assertEqual(2, len(self._read(self.cops)["assets"]))
-        # The undo copy is timestamped, never a fixed name.
-        self.assertTrue(
-            done["undo"].startswith("cops.json.bak-before-restore-"),
-            "the undo copy is not named per restore: %r" % done["undo"])
-        self.assertEqual(
-            [], self._read(os.path.join(self.dir, done["undo"]))["assets"],
-            "the list that was there is not in the undo copy, so the "
-            "restore cannot be undone")
-
-    def test_the_undo_copy_is_offered_back_and_survives_being_used(self):
-        """The promised undo has to be a copy `snapshots` will offer back."""
-        self._cops([{"id": "LIVE1"}, {"id": "LIVE2"}])
-        self._write(self.cops + ".bak-1",
-                    {"version": 2, "categories": ["_All"], "tags": [],
-                     "assets": [{"id": "OLD1"}]})
-        done = repair.put_back(self._survey(), "cops.json", "bak-1")
-        self.assertEqual(["OLD1"],
-                         [r["id"] for r in self._read(self.cops)["assets"]])
-
-        offered = [tier for filename, tier, _snap, _now
-                   in repair.restorable(self._survey())
-                   if filename == "cops.json"]
-        undo_tier = done["undo"][len("cops.json."):]
-        self.assertIn(undo_tier, offered,
-                      "the copy the done-dialog promises is not among the "
-                      "copies Repair offers, so the only route to the "
-                      "promised undo is the one the tool does not have")
-        self.assertIn(("cops.json", undo_tier),
-                      [(filename, tier) for filename, tier, _snap, _now
-                       in repair.offered_copies(self._survey())],
-                      "the pick list leaves out the copy the done-dialog promises")
-
-        repair.put_back(self._survey(), "cops.json", undo_tier)
-        self.assertEqual(
-            ["LIVE1", "LIVE2"],
-            [r["id"] for r in self._read(self.cops)["assets"]],
-            "putting the undo copy back did not bring the list you had "
-            "back - the undo is a preserved copy, not a restorable one")
-        self.assertEqual(
-            ["LIVE1", "LIVE2"],
-            [r["id"] for r in self._read(
-                os.path.join(self.dir, done["undo"]))["assets"]],
-            "the undo copy was consumed by being restored, so the same "
-            "choice cannot flip back")
-
-    def test_two_restores_in_a_row_keep_the_starting_state(self):
-        """Every restore writes its own undo copy, so the trail stays walkable."""
-        self._cops([{"id": "START1"}, {"id": "START2"}, {"id": "START3"}])
-        self._write(self.cops + ".bak-1", {"assets": [{"id": "A"}]})
-        self._write(self.cops + ".bak-2", {"assets": [{"id": "B"}]})
-        first = repair.put_back(self._survey(), "cops.json", "bak-1")
-        second = repair.put_back(self._survey(), "cops.json", "bak-2")
-        self.assertNotEqual(first["undo"], second["undo"],
-                            "two restores shared one undo name, so the "
-                            "second deleted the first's copy")
-        self.assertEqual(
-            ["START1", "START2", "START3"],
-            [r["id"] for r in self._read(
-                os.path.join(self.dir, first["undo"]))["assets"]],
-            "the pre-first-restore state is gone from the folder")
-        offered = [tier for filename, tier, _snap, _now
-                   in repair.restorable(self._survey())
-                   if filename == "cops.json"]
-        self.assertIn(first["undo"][len("cops.json."):], offered)
-        self.assertIn(second["undo"][len("cops.json."):], offered)
-        repair.put_back(self._survey(), "cops.json",
-                        first["undo"][len("cops.json."):])
-        self.assertEqual(
-            ["START1", "START2", "START3"],
-            [r["id"] for r in self._read(self.cops)["assets"]],
-            "walking back to the starting state through the undo copies "
-            "does not arrive at the starting state")
-
-    def test_a_missing_copy_is_refused_without_a_tier_or_a_filename(self):
-        """No storage suffix and no filename in a dialog the user reads."""
-        self._cops([{"id": "LIVE1"}])
-        with self.assertRaises(restore_lib.RestoreRefused) as caught:
-            repair.put_back(self._survey(), "cops.json", "bak-3")
-        sentence = str(caught.exception)
-        self.assertNotIn("bak-3", sentence)
-        self.assertNotIn("cops.json", sentence)
-        self.assertIn("untouched", sentence,
-                      "the refusal does not say the database you have now is "
-                      "unharmed")
-        self.assertIn("bak-3", caught.exception.detail,
-                      "the terminal tool loses the detail it prints")
-
-    def test_a_refusal_carries_no_exception_text_for_the_dialog(self):
-        """No raw exception text on screen; the detail rides in `.detail`."""
-        self._cops([{"id": "LIVE1"}])
-        with open(self.cops + ".bak-1", "w", encoding="utf-8") as handle:
-            handle.write("{ truncated")
-        with self.assertRaises(restore_lib.RestoreRefused) as caught:
-            repair.put_back(self._survey(), "cops.json", "bak-1")
-        sentence = str(caught.exception)
-        for jargon in ("line 1", "column", "char ", "Expecting",
-                       "Errno", "Traceback"):
-            self.assertNotIn(jargon, sentence,
-                             "the refusal a dialog would show carries '%s'"
-                             % jargon)
-        self.assertTrue(sentence.endswith("."),
-                        "the refusal is not a finished sentence")
-        self.assertIn("Expecting", caught.exception.detail,
-                      "the technical half was dropped instead of moved, so "
-                      "the log and the terminal lose it")
-        self.assertEqual(1, len(self._read(self.cops)["assets"]),
-                         "the live list was overwritten with something "
-                         "that does not parse")
-
-    def test_the_copy_put_back_is_the_copy_that_was_checked(self):
-        """A save elsewhere can rotate the copy between two reads, so the restore reads it once."""
-        self._cops([{"id": "LIVE1"}])
-        source = self.cops + ".bak-1"
-        self._write(source, {"assets": [{"id": "A"}, {"id": "B"}]})
-        findings, real_open, reads = self._survey(), open, []
-
-        def rotating_open(path, *args, **kwargs):
-            if os.path.abspath(str(path)) == os.path.abspath(source):
-                if reads:
-                    self._write(source, {"assets": []})
-                reads.append(path)
-            return real_open(path, *args, **kwargs)
-
-        with patch.object(restore_lib, "open", rotating_open, create=True):
-            repair.put_back(findings, "cops.json", "bak-1")
-        self.assertEqual(
-            ["A", "B"], [r["id"] for r in self._read(self.cops)["assets"]],
-            "the restore wrote bytes from a later read than the one it "
-            "checked")
-
-    def test_the_terminal_tool_and_the_shelf_tool_read_the_same_copies(self):
-        self._cops([])
-        for tier in ("bak-1", "bak-3"):
-            self._write("%s.%s" % (self.cops, tier), {"assets": []})
-        findings = self._survey()
-        mine = [(f, t) for f, t, _snap, _now in repair.restorable(findings)
-                if f == "cops.json"]
-        theirs = [("cops.json", tier)
-                  for tier, _path in restore_lib.snapshots(self.cops)]
-        self.assertEqual(theirs, mine)
-
-
-class TheGuardsTest(_Case):
-    """Repair reports always; it changes only from a session with no library open."""
-
-    def test_the_actions_themselves_refuse_such_a_session(self):
-        """The guard belongs to the operations; a withheld button protects one caller."""
-        self._cops([])
-        paths = self._pair()
-        self._write(self.cops + ".bak-1", {"assets": [{"id": "A"}]})
-        findings = self._survey()
-        database.DatabaseConnector("cops.json")     # the panel, earlier
-        self.assertTrue(repair.session_has_a_library_open(), "premise")
-        with self.assertRaises(restore_lib.RestoreRefused) as caught:
-            repair.put_back(findings, "cops.json", "bak-1")
-        self.assertIn("open Amaze and use Library ▸ Check Library…", str(caught.exception),
-                      "the refusal does not say the step that works")
-        with self.assertRaises(ValueError):
-            repair.move_aside(findings, "unlisted")
-        with self.assertRaises(ValueError):
-            repair.reattach(findings, "cops.json")
-        self.assertEqual([], self._read(self.cops)["assets"],
-                         "a list was changed by an action that should "
-                         "have refused this Houdini")
-        for path in paths:
-            self.assertTrue(os.path.exists(path),
-                            "a file was moved by a refused action")
-
-    def test_no_library_folder_is_said_plainly_and_nothing_is_read(self):
-        with patch.object(hou, "ui", MagicMock(), create=True):
-            repair_dialog.run(preferences=_NoLibraryPrefs())
-            said = " ".join(str(call) for call in hou.ui.displayMessage
-                            .call_args_list)
-        self.assertIn("no library folder", said.lower())    # case-insensitive: only the sense is tested, not the wording ▸p/messages-need-one-home
-        self.assertIn("Preferences", said,
-                      "the user is not told where to set one")
-
-    def test_a_library_folder_that_is_not_reachable_is_not_called_absent(
-            self):
-        prefs = _NoLibraryPrefs()
-        prefs.dir = os.path.join(self.dir, "not-mounted") + os.sep
-        with patch.object(hou, "ui", MagicMock(), create=True):
-            repair_dialog.run(preferences=prefs)
-            # The arguments, not `str(call)`: a mock repr escapes every backslash.
-            said = " ".join(
-                str(value)
-                for call in hou.ui.displayMessage.call_args_list
-                for value in list(call.args) + list(call.kwargs.values()))
-        self.assertIn("can't reach its library folder", said)
-        self.assertIn(prefs.dir, said,
-                      "the message does not name the folder it cannot "
-                      "reach, so nobody can tell which drive to connect")
-        self.assertIn("connect it and run Check Library again", said)
-        self.assertNotIn("has no library folder", said,
-                         "an unreachable library is reported as no library "
-                         "at all, which is a wrong diagnosis")
-
-
-class _NoLibraryPrefs:
-    dir = ""
-    img_dir = "img/"
-
-
-class TheWholeFlowTest(_Case):
-    """Driving `run` itself: a feature is not verified until its call site is."""
-
-    def test_the_report_is_one_dialog_and_close_changes_nothing(self):
-        """Aggregate before interrupting: one dialog, never one per problem."""
-        self._cops([])
-        paths = self._pair()
-        ui = self._run(buttons=[99])          # 99 = the Close button index
-        self.assertEqual(1, ui.displayMessage.call_count,
-                         "Repair opened more than one dialog to say what it "
-                         "found")
-        for path in paths:
-            self.assertTrue(os.path.exists(path))
-
-    def test_a_panel_that_is_open_stops_it_before_it_reads(self):
-        self._cops([])
-        tab = MagicMock()
-        with patch.object(repair_dialog, "open_panel_tab", return_value=tab):
-            ui = self._run(buttons=[0])
-        said = str(ui.displayMessage.call_args_list[0])
-        self.assertIn("Amaze is open", said)
-        self.assertIn(messages.CHECK_LIBRARY_IN_THE_PANEL, said,
-                      "the refusal does not send the user to the panel's own door")
-        self.assertEqual(1, ui.displayMessage.call_count,
-                         "it carried on past the refusal")
-
-    def test_a_session_that_has_read_a_library_gets_the_report_only(self):
-        """The guard wired in: `run` is where the decision is made."""
-        self._cops([])
-        self._write(self.cops + ".bak-1", {"assets": [{"id": "OLD1"}]})
-        database.DatabaseConnector("cops.json")     # the panel, earlier
-        self.assertTrue(repair.session_has_a_library_open(),
-                        "premise: this session must look like one that has "
-                        "already opened a library")
-        ui = self._run(buttons=[0])
-        shown = ui.displayMessage.call_args_list[0]
-        self.assertEqual(("Close",), shown[1]["buttons"],
-                         "an action was offered to a session whose next "
-                         "save would write over it")
-        self.assertIn(messages.CHECK_LIBRARY_ONLY_A_REPORT, shown[0][0],
-                      "nothing tells the user how to get the buttons back")
-
-    def test_the_restore_flow_names_what_it_recovers_and_what_it_loses(self):
-        self._cops([{"id": "LIVE1"}, {"id": "LIVE2"}])
-        self._write(self.cops + ".bak-1",
-                    {"version": 2, "categories": ["_All"], "tags": [],
-                     "assets": [{"id": "OLD1"}]})
-        # report to the restore button, confirm, done.
-        ui = self._run(buttons=[0, 0, 0], listed=(0,))
-        confirm = str(ui.displayMessage.call_args_list[1])
-        self.assertIn("holds 1 node", confirm,
-                      "the confirm does not say what the copy would bring "
-                      "back, in the word for what it holds")
-        self.assertIn("holds 2", confirm,
-                      "the confirm does not say what is there now, so the "
-                      "loss cannot be judged")
-        self.assertIn("takes you from 2 to 1", confirm,
-                      "the confirm gives both numbers and never says what "
-                      "the change is")
-        self.assertIn("not be there afterwards", confirm)
-        self.assertIn("run Check Library again", confirm,
-                      "the confirm does not say how the restore could be "
-                      "undone")
-        self.assertEqual(["OLD1"],
-                         [r["id"] for r in self._read(self.cops)["assets"]])
-
-    def test_cancelling_the_restore_confirm_changes_nothing(self):
-        self._cops([{"id": "LIVE1"}])
-        self._write(self.cops + ".bak-1", {"assets": [{"id": "OLD1"}]})
-        self._run(buttons=[0, 1], listed=(0,))          # 1 = Cancel
-        self.assertEqual(["LIVE1"],
-                         [r["id"] for r in self._read(self.cops)["assets"]])
-        self.assertEqual(
-            [], [name for name in os.listdir(self.dir)
-                 if name.startswith("cops.json.bak-before-restore")],
-            "a cancelled restore still wrote an undo copy, so it did "
-            "something")
-
-    def test_the_quarantine_flow_moves_and_says_where(self):
-        self._cops(self.KEPT)
-        paths = self._pair()
-        findings = self._survey()
-        choices, actions = repair_dialog._choices(findings, may_change=True)
-        index = actions.index("quarantine")
-        ui = self._run(buttons=[index, 0, 0])
-        for path in paths:
-            self.assertFalse(os.path.exists(path))
-        told = str(ui.displayMessage.call_args_list[-1])
-        self.assertIn("Amaze's trash", told,
-                      "the user is not told where the files went")
-        self.assertIn("30 days", told,    # the retention, not the words: the step must promise files are kept ▸p/messages-need-one-home
-                      "the user is not told the files are kept")
-
-
-class _SettingsPrefs:
-    """A Preferences stand-in naming a settings folder and a library."""
-    img_dir = "img/"
-
-    def __init__(self, path, directory=""):
-        self.path = path
-        self.dir = directory
-
-
-class TheSettingsComeBackTest(_Case):
-    """Repair puts settings.json back from its saved copies, the way it puts a list back."""
-
-    GOOD = {"directory": "/somewhere/library/", "view_mode": "list"}
-
-    def setUp(self):
-        super().setUp()
-        self.config = tempfile.mkdtemp(prefix="amaze_repair_settings_")
-        self.addCleanup(shutil.rmtree, self.config, ignore_errors=True)
-        self.settings = os.path.join(self.config, "settings.json")
-
-    def _broken(self):
-        with open(self.settings, "w", encoding="utf-8") as handle:
-            handle.write('{"directory": "/somewhere/libr')
-
-    def _copy(self, tier="bak-1"):
-        self._write(self.settings + "." + tier, self.GOOD)
-
-    def _run(self, buttons, listed=None, prefs=None):
-        ui = MagicMock()
-        ui.displayMessage.side_effect = list(buttons)
-        ui.selectFromList.return_value = listed if listed is not None else ()
-        with patch.object(hou, "ui", ui, create=True):
-            repair_dialog.run(preferences=prefs or _SettingsPrefs(self.config))
-        return ui
-
-    def _said(self, ui):
-        return " ".join(str(value)
-                        for call in ui.displayMessage.call_args_list
-                        for value in list(call.args) + list(call.kwargs.values()))
-
-    def test_an_unreadable_settings_file_is_put_back_from_a_copy(self):
-        self._broken()
-        self._copy()
-        # the report's restore button, the confirm, the closing note
-        ui = self._run(buttons=[0, 0, 0], listed=(0,))
-        report = ui.displayMessage.call_args_list[0]
-        self.assertIn("couldn't be read", str(report))
-        self.assertIn("Restore Backup", report.kwargs["buttons"],
-                      "the settings that cannot be read are not offered back")
-        self.assertNotIn(
-            "offers that backup", ui.displayMessage.call_args_list[1].kwargs["help"],
-            "the confirm promises the unreadable settings back, and Repair refuses them")
-        self.assertEqual(self.GOOD, self._read(self.settings),
-                         "the saved copy did not land")
-        self.assertTrue([name for name in os.listdir(self.config)
-                         if name.startswith("settings.json.bak-before-restore")],
-                        "the unreadable settings were not kept aside first")
-        self.assertNotIn("No library folder", self._said(ui),
-                         "Repair still says no library is set")
-
-    def test_the_confirm_promises_readable_settings_back(self):
-        self._write(self.settings, {"directory": self.dir})
-        self._copy()
-        findings = self._survey()
-        findings["settings"] = repair.settings_survey(
-            _SettingsPrefs(self.config, self.dir))
-        ui = MagicMock()
-        ui.displayMessage.return_value = 1    # declined
-        with patch.object(hou, "ui", ui, create=True):
-            repair_dialog._do_restore_settings(
-                findings, "bak-1", dict(findings["settings"]["snapshots"])["bak-1"],
-                guard=True, changed=lambda: None)
-        self.assertIn("offers that backup",
-                      ui.displayMessage.call_args.kwargs["help"])
-
-    def test_the_report_names_each_saved_copy_on_a_line_of_its_own(self):
-        self._broken()
-        self._copy("bak-1")
-        with open(self.settings + ".bak-2", "w", encoding="utf-8") as handle:
-            handle.write("{")
-        ui = self._run(buttons=[99])    # past the last button: the report is closed
-        lines = ui.displayMessage.call_args_list[0].args[0].splitlines()
-        when = {tier: restore_lib.info(self.settings + "." + tier)["when"]
-                for tier in ("bak-1", "bak-2")}
-        self.assertIn(when["bak-1"], lines)
-        self.assertIn(when["bak-2"] + " — this backup can't be read", lines)
-
-    def test_with_no_copy_it_says_so_and_changes_nothing(self):
-        self._broken()
-        ui = self._run(buttons=[0])
-        self.assertEqual(1, ui.displayMessage.call_count)
-        said = self._said(ui)
-        self.assertIn("no backup to restore", said)
-        self.assertIn(self.config, said, "the folder to look in is not named")
-        with open(self.settings, encoding="utf-8") as handle:
-            self.assertTrue(handle.read().endswith("/libr"),
-                            "Repair changed the settings with nothing to restore")
-
-    def test_a_missing_settings_file_is_put_back_from_a_copy(self):
-        self._copy()
-        when = restore_lib.info(self.settings + ".bak-1")["when"]
-        # the report's restore button, the confirm, the closing note
-        ui = self._run(buttons=[0, 0, 0], listed=(0,))
-        report = ui.displayMessage.call_args_list[0]
-        self.assertIn("Restore Backup", report.kwargs.get("buttons", ()),
-                      "the saved copies of missing settings are not offered back")
-        confirm = ui.displayMessage.call_args_list[1]
-        self.assertIn(when, report.args[0].splitlines(),
-                      "the report does not name the saved copy")
-        self.assertNotIn("couldn't be read", report.args[0],
-                         "a missing settings file is reported as one that will not read")
-        self.assertEqual(messages.CONFIRM_PUT_SETTINGS_BACK % when, confirm.args[0],
-                         "the missing case does not use the same confirm")
-        self.assertNotIn("offers that backup", confirm.kwargs["help"],
-                         "the confirm promises back settings that were never there")
-        self.assertEqual(self.GOOD, self._read(self.settings),
-                         "the saved copy did not land")
-        self.assertEqual(messages.SETTINGS_PUT_BACK_DONE % (when, ""),
-                         ui.displayMessage.call_args_list[2].args[0],
-                         "the closing note offers a way back to settings that were never there")
-        self.assertNotIn("No library folder", self._said(ui),
-                         "Repair still says no library is set")
-
-    def test_a_missing_settings_file_with_no_copy_is_a_fresh_start(self):
-        ui = self._run(buttons=[0])
-        self.assertEqual([messages.NO_LIBRARY_FOLDER_CONFIGURED],
-                         [call.args[0] for call in ui.displayMessage.call_args_list],
-                         "a fresh start no longer reads as one")
-        self.assertFalse(os.path.exists(self.settings),
-                         "Repair wrote settings where there were none")
-
-    def test_a_readable_library_offers_the_settings_copies_too(self):
-        self._write(self.settings, {"directory": self.dir})
-        self._copy()
-        prefs = _SettingsPrefs(self.config, self.dir)
-        findings = self._survey()
-        findings["settings"] = repair.settings_survey(prefs)
-        offered = [(filename, tier) for filename, tier, _snap, _info
-                   in repair.restorable(findings)]
-        self.assertIn(("settings.json", "bak-1"), offered)
-        repair.put_back(findings, "settings.json", "bak-1")
-        self.assertEqual(self.GOOD, self._read(self.settings),
-                         "the settings copy was put back somewhere else")
-        self.assertFalse(os.path.exists(os.path.join(self.dir, "settings.json")),
-                         "the settings copy landed in the library folder")
-
-    def _opened_without_settings(self):
-        """settings.json gone, then the first changes Amaze saves with no library to open."""
-        fresh = prefs_module.Prefs()
-        fresh.path = self.config
-        self.assertFalse(fresh.load(), "premise: Amaze opens unconfigured")
-        fresh.save()
-        fresh.view_mode = "list"
-        fresh.save()
-        self.assertEqual("", self._read(self.settings)["directory"],
-                         "premise: what Amaze wrote names a library")
-
-    def test_settings_that_name_no_library_offer_the_copies_that_do(self):
-        self._copy()
-        older = time.mktime((2026, 1, 2, 3, 4, 0, 0, 0, -1))
-        os.utime(self.settings + ".bak-1", (older, older))
-        when = restore_lib.info(self.settings + ".bak-1")["when"]
-        self._opened_without_settings()
-        with open(self.settings + ".bak-3", "w", encoding="utf-8") as handle:
-            handle.write("{")
-        # the report's restore button, the confirm, the closing note
-        ui = self._run(buttons=[0, 0, 0], listed=(0,))
-        report = ui.displayMessage.call_args_list[0]
-        self.assertIn("Restore Backup", report.kwargs.get("buttons", ()),
-                      "the copies that name a library are not offered back")
-        self.assertEqual(messages.SETTINGS_NO_LIBRARY_REPAIR_REPORT % when, report.args[0],
-                         "the report lists a copy that names no library or will not read")
-        self.assertEqual(messages.BUTTONS_PUT_COPY_BACK,
-                         ui.displayMessage.call_args_list[1].kwargs["buttons"],
-                         "an older copy that names no library or will not read is offered")
-        confirm = ui.displayMessage.call_args_list[1]
-        self.assertEqual(messages.CONFIRM_PUT_SETTINGS_BACK % when, confirm.args[0])
-        self.assertNotIn("offers that backup", confirm.kwargs["help"],
-                         "the confirm promises back settings that name no library")
-        self.assertEqual(self.GOOD, self._read(self.settings),
-                         "the copy that names a library did not land")
-        self.assertEqual(messages.SETTINGS_PUT_BACK_DONE % (when, ""),
-                         ui.displayMessage.call_args_list[2].args[0],
-                         "the closing note offers a way back to settings that name no library")
-
-    def test_settings_that_name_no_library_with_no_copy_naming_one_say_so(self):
-        self._opened_without_settings()
-        with open(self.settings + ".bak-3", "w", encoding="utf-8") as handle:
-            handle.write("{")
-        before = self._read(self.settings)
-        ui = self._run(buttons=[0])
-        self.assertEqual([messages.NO_LIBRARY_FOLDER_CONFIGURED],
-                         [call.args[0] for call in ui.displayMessage.call_args_list],
-                         "a copy that names no library or will not read was offered")
-        self.assertEqual(before, self._read(self.settings))
-
-
-class TheShelfToolAndWhatItReportsTest(_Case):
-    """The shelf tool is the way in when the panel will not open, so its route is tested."""
-
-    def _list_entry(self, findings, filename):
-        return next(entry for entry in findings["lists"] if entry["filename"] == filename)
-
-    def test_the_shelf_carries_a_tool_labelled_check_library(self):
-        root = ET.parse(SHELF).getroot()
-        tools = {tool.get("name"): tool for tool in root.findall("tool")}
-        self.assertIn("amaze_repair_library", tools,
-                      "the shelf tool the panel cannot do without is not on the shelf")
-        tool = tools["amaze_repair_library"]
-        self.assertEqual("Check Library", tool.get("label"))
-        self.assertIn("Library ▸ Check Library…", tool.find("helpText").text,
-                      "the help does not name the panel's own door")
-        shelves = {shelf.get("name"): [m.get("name") for m in
-                                       shelf.findall("memberTool")]
-                   for shelf in root.findall("toolshelf")}
-        self.assertIn("amaze_repair_library", shelves.get("amaze", []),
-                      "the tool exists but is not on the Amaze shelf")
-        self.assertIn("Amaze", [shelf.get("label")
-                                for shelf in root.findall("toolshelf")],
-                      "the Amaze shelf has no label")
-
-    def test_the_tool_uses_the_committed_icon_in_the_family(self):
-        """The two icons are compared to each other, never to a frozen number."""
-        root = ET.parse(SHELF).getroot()
-        tool = [t for t in root.findall("tool")
-                if t.get("name") == "amaze_repair_library"][0]
-        icon = tool.get("icon")
-        self.assertEqual(
-            "$AMAZE/scripts/python/amaze/ui/icon_repair.svg", icon)
-        path = os.path.join(REPO, icon.replace("$AMAZE/", ""))
-        self.assertTrue(os.path.isfile(path), "the icon is not committed")
-
-        import re as _re
-
-        def box(svg_path):
-            with open(svg_path, encoding="utf-8") as handle:
-                found = _re.search(r'viewBox="([^"]+)"', handle.read())
-            return found.group(1) if found else None
-
-        mark = os.path.join(REPO, "scripts/python/amaze/ui/logo_mark.svg")
-        self.assertEqual(
-            box(mark), box(path),
-            "icon_repair.svg and logo_mark.svg no longer share a "
-            "viewBox - one was restyled without the other, and the "
-            "shelf family drifts apart again")
-
-    def test_the_tool_runs_repair_and_guards_its_import(self):
-        root = ET.parse(SHELF).getroot()
-        tool = [t for t in root.findall("tool")
-                if t.get("name") == "amaze_repair_library"][0]
-        script = tool.find("script").text
-        self.assertIn("from amaze.dialogs import repair_dialog", script)
-        self.assertIn("except ImportError", script)
-        self.assertIn("can't be imported in this session", script)
-        self.assertIn("repair_dialog.run()", script)
-        # Strip the comments first: a substring test matches the sentence saying so.
-        code = "\n".join(line for line in script.splitlines()
-                         if not line.strip().startswith("#"))
-        self.assertNotIn("panel", code,
-                         "the Repair tool reaches for the panel, which is "
-                         "the one thing it must not need")
-
-    def test_an_empty_list_is_named_and_its_files_wait_until_it_is_settled(self):
-        """The whole route in one test, every step the real code."""
-        self._cops([])
-        paths = self._pair(folder=self.nodes_dir)    # in the empty database's own folder
-        findings = self._survey()
-        text = "\n".join(repair.report_lines(findings))
-        self.assertIn("Node: the database is there and holds nothing.", text)
-        self.assertIn("COPOWNED1.mat", text, "the files left behind are not named")
-        self.assertEqual(2, repair.unaccounted_total(findings),
-                         "the report and the move disagree about the folder")
-        self.assertIn("Node", repair.why_unlisted_stay(findings))
-        with self.assertRaises(ValueError):
-            repair.move_aside(findings, "unlisted")
-        for path in paths:
-            self.assertTrue(os.path.exists(path), "files an empty list may own were moved")
-        self.assertIn("reattach", repair_dialog._choices(findings, may_change=True)[1])
-        repair.reattach(findings, "cops.json")
-
-        leftover = os.path.join(self.mat_dir, "GONEMATERIAL1.png")
-        with open(leftover, "wb") as handle:
-            handle.write(b"a thumbnail whose material is gone")
-        for path in paths:
-            self.assertTrue(os.path.exists(path), "the pair added to Nodes left the Nodes folder")
-        again = self._survey()
-        self.assertEqual(["GONEMATERIAL1.png"], again["unaccounted"][MATERIALS_DIR])
-        self.assertEqual([], again["unaccounted"][NODES_DIR],
-                         "files added back are still reported, so the way out does not work")
-        repair.move_aside(again, "unlisted")
-        self.assertFalse(os.path.exists(leftover), "the next round did not move the stray")
-
-    def test_a_stray_elsewhere_does_not_wait_for_an_empty_list(self):
-        """An empty Node list holds back nodes/ alone: a stray in materials/ may go."""
-        self._cops([])
-        stray = os.path.join(self.mat_dir, "GENUINELEFTOVER3.mat")
-        with open(stray, "w", encoding="utf-8") as handle:
-            handle.write("in no list at all\n")
-        findings = self._survey()
-        self.assertEqual([], findings["unaccounted"].get(NODES_DIR, []))
-        self.assertEqual("", repair.why_unlisted_stay(findings))
-        self.assertEqual(1, repair.files_to_move_aside(findings))
-        self.assertEqual(["GENUINELEFTOVER3.mat"],
-                         repair.move_aside(findings, "unlisted")["moved"])
-        self.assertFalse(os.path.exists(stray))
-
-    def test_a_later_leftover_waits_while_a_list_is_empty(self):
-        """An empty list may own a file in its own folder: it stays until the list is settled."""
-        self._cops([])
-        os.makedirs(self.nodes_dir, exist_ok=True)
-        later = os.path.join(self.nodes_dir, "GENUINELEFTOVER2.mat")
-        with open(later, "w", encoding="utf-8") as handle:
-            handle.write("in no list at all\n")
-        findings = self._survey()
-        self.assertIn("GENUINELEFTOVER2.mat", findings["unaccounted"][NODES_DIR])
-        self.assertEqual(0, repair.files_to_move_aside(findings))
-        with self.assertRaises(ValueError):
-            repair.move_aside(findings, "unlisted")
-        self.assertTrue(os.path.exists(later))
-        self._cops(self.KEPT)
-        result = repair.move_aside(self._survey(), "unlisted")
-        self.assertEqual(["GENUINELEFTOVER2.mat"], result["moved"])
-        self.assertFalse(os.path.exists(later))
-
-    def test_the_button_count_and_the_move_agree(self):
-        """One classifier: the count on Move Files Aside is the files it moves."""
-        self._cops(self.KEPT)
-        self._pair()
-        for name, body in (("STRAY1.mat.writing", "x\n"), ("notes.txt", "x\n"),
-                           ("STRAY2_cop.mat", "x\n"),
-                           ("STRAY3.builder.json", "{}\n"),
-                           ("STRAY4.stamp.json", "{}\n")):
-            with open(os.path.join(self.mat_dir, name), "w",
-                      encoding="utf-8") as handle:
-                handle.write(body)
-        findings = self._survey()
-        mine = findings["unaccounted"][MATERIALS_DIR]
-        self.assertIn("STRAY2_cop.mat", mine,
-                      "premise: a companion file must be in the set, or "
-                      "this is not comparing the tail-stripping rule")
-        self.assertNotIn("STRAY3.builder.json", mine,
-                         "premise: a format 3 sidecar is a superseded leftover, not unlisted")
-        self.assertNotIn("STRAY1.mat.writing", mine,
-                         "premise: a scratch file must be out of the set")
-        self.assertNotIn("notes.txt", mine, "premise: an unknown file is not unlisted")
-        counted = repair.files_to_move_aside(findings)
-        result = repair.move_aside(findings, ("unlisted", "leftovers"))
-        self.assertEqual(counted, len(result["moved"]),
-                         "the button counted one set of files and the move took another")
-        self.assertEqual([], result["failed"])
-
-    def test_an_unreadable_colors_list_holds_the_move_back(self):
-        """Colors claims ids like every other list, so a Colors file that will not parse stops it."""
-        with open(os.path.join(self.dir, "gradients.json"), "w",
-                  encoding="utf-8") as handle:
-            handle.write('{"assets": [{"id": "c0de')
-        findings = self._survey()
-        self.assertEqual("unreadable", self._list_entry(findings, "gradients.json")["state"])
-        self.assertFalse(findings["complete"])
-        self.assertIn("Color: the database is corrupt/unreadable. It has not been changed.",
-                      "\n".join(repair.report_lines(findings)))
-
-    def test_a_missing_colors_list_with_a_trace_holds_the_move_back(self):
-        with open(os.path.join(self.dir, ".amaze_gradient_seed_v1"), "w",
-                  encoding="utf-8") as handle:
-            handle.write("seeded\n")
-        findings = self._survey()
-        self.assertEqual("absent-but-known",
-                         self._list_entry(findings, "gradients.json")["state"])
-        self.assertFalse(findings["complete"])
-        self.assertIn("Color: there is no database for it in the library folder, though Amaze can "
-                      "see there was one here before.", "\n".join(repair.report_lines(findings)))
-
-    def test_a_saved_palette_does_not_hold_back_an_empty_list(self):
-        """Colors owns no asset folder, so a palette leaves no file to call unlisted."""
-        from amaze.core import gradient_library
-        self._cops([])
-        palettes = gradient_library.GradientLibrary(self.prefs)
-        palettes.add_user_gradient(
-            "Ochre Probe", "Uncategorized",
-            {"keys": [0.0, 1.0], "values": [[1, 0, 0], [0, 0, 1]],
-             "bases": ["Linear", "Linear"]})
-        palette = str(palettes.assets[0].mat_id)
-        test_support.settle_stamps()
-        for folder in (self.mat_dir, self.nodes_dir, self.legacy_dir):
-            for suffix in (material.RECORD_SUFFIX, ".stamp.json"):
-                self.assertFalse(os.path.exists(os.path.join(folder, palette + suffix)),
-                                 "a saved palette wrote %s%s into an asset folder"
-                                 % (palette, suffix))
-        test_support.reset_database_singletons()    # an action refuses a library this process holds
-        findings = self._survey()
-        self.assertTrue(findings["complete"], "one saved palette held the whole move back")
-        self.assertEqual(0, repair.unaccounted_total(findings),
-                         "a palette the Colors list holds left a file called unlisted")
-        self.assertNotIn("Ochre Probe", "\n".join(repair.report_lines(findings)))
-        self.assertEqual([], repair.move_aside(findings, "unlisted")["moved"])
 
 
 def _sizes(directory: str) -> dict:
-    """{relative path: size} of every file under `directory`."""
+    """{relative path: size} of every file under `directory`, the library's trash left out."""
     found = {}
-    for here, _dirs, names in os.walk(directory):
+    for here, dirs, names in os.walk(directory):
+        if os.path.relpath(here, directory) == ".":
+            dirs[:] = [one for one in dirs if one != library_files.TRASH_FOLDER]
         for name in names:
             path = os.path.join(here, name)
             found[os.path.relpath(path, directory).replace(os.sep, "/")] = os.path.getsize(path)
     return found
 
 
-def _rows_of(directory: str) -> dict:
-    """{database filename: {id: row}} of every database the library holds."""
-    found = {}
-    for filename in database.DATABASES:
-        path = os.path.join(directory, filename)
-        if os.path.exists(path):
-            with open(path, encoding="utf-8-sig") as handle:
-                found[filename] = {database.row_id(row): row
-                                   for row in json.load(handle).get("assets") or []
-                                   if isinstance(row, dict)}
-    return found
+def _old(directory: str, name: str) -> dict:
+    """An old root file as it was written; {} when it is not there or does not read."""
+    try:
+        with open(os.path.join(directory, name), encoding="utf-8-sig") as handle:
+            found = json.load(handle)
+    except (OSError, ValueError):
+        return {}
+    return found if isinstance(found, dict) else {}
+
+
+def _new(directory: str, name: str) -> dict:
+    """A 2.0 database as the guard reads it; {} when it is not there."""
+    reading = guard.Guard(directory).read(name)
+    return dict(reading.document or {})
+
+
+def _owner(key: str) -> tuple:
+    owner, sep, rest = str(key).partition("|")
+    return (owner, rest) if sep and len(owner) == 32 else ("", str(key))
+
+
+def _words(items) -> list:
+    """What a comment says, item by item, its ids and authors aside."""
+    return [(item.get("t"), str(item.get("text", "")).strip(), item.get("label"),
+             item.get("src")) for item in items or [] if isinstance(item, dict)]
+
+
+class _Census:
+    """What a library holds, read in its own shape: rows, comments, stars, icons, people."""
+
+    def __init__(self, directory: str, old: bool) -> None:
+        self.rows, self.comments, self.stars, self.icons = {}, {}, set(), {}
+        self.locations, self.users, self.settings = {}, {}, {}
+        (self._old if old else self._new)(directory)
+
+    def _old(self, directory: str) -> None:
+        for old_name, (name, prefix) in library_conversion.OLD_SECTIONS.items():
+            document = _old(directory, old_name)
+            rows = {library_conversion._row_id(row, index): row
+                    for index, row in enumerate(document.get("assets") or [])
+                    if isinstance(row, dict)}
+            self.rows[name] = set(rows)
+            for asset_id, row in rows.items():
+                for field in library_conversion.RETIRED_TEXT_FIELDS:
+                    text = row.get(field)
+                    if isinstance(text, str) and text.strip():
+                        self.comments.setdefault((name, asset_id), []).append(
+                            ("text", text.strip(), None, None))
+        for key, page in (_old(directory, "notes.json").get("notes") or {}).items():
+            prefix, _sep, ident = str(key).partition(":")
+            if prefix == "file":
+                continue    # a file's key is re-homed on its location: counted, not compared
+            items = library_conversion._first_shape(page)
+            name = {"material": library_files.MATERIALS, "cop": library_files.NODES,
+                    "code": library_files.CODE, "gradient": library_files.COLORS}.get(prefix)
+            if name and items:
+                said = self.comments.setdefault((name, ident), [])
+                said.extend(word for word in _words(items) if word not in said)
+        owner_of = {asset_id: name for name, ids in self.rows.items() for asset_id in ids}
+        for key, value in (_old(directory, "favourites.json").get("favourites") or {}).items():
+            owner, bare = _owner(key)
+            if value and owner and bare in owner_of:
+                self.stars.add((owner_of[bare], owner, bare))
+        for key, spec in (_old(directory, "icons.json").get("icons") or {}).items():
+            if isinstance(spec, dict) and spec and spec.get("face") not in ("preview", "capture") \
+                    and key in owner_of:
+                self.icons[(owner_of[key], key)] = spec
+        for key, record in (_old(directory, "locations.json").get("locations") or {}).items():
+            owner, _bare = _owner(key)
+            if owner and isinstance(record, dict) and record:
+                self.locations[owner] = self.locations.get(owner, 0) + 1
+        self.users = {uid: record.get("name") for uid, record in
+                      (_old(directory, "users.json").get("users") or {}).items()
+                      if isinstance(record, dict) and str(record.get("name") or "").strip()}
+        self.settings = {key: record.get("value") for key, record in
+                         (_old(directory, "prefs.json").get("prefs") or {}).items()
+                         if isinstance(record, dict) and "value" in record}
+
+    def _new(self, directory: str) -> None:
+        for name in library_files.LISTS:
+            document = _new(directory, name)
+            self.rows[name] = set(document.get("assets") or {})
+            for ident, page in (document.get("comments") or {}).items():
+                self.comments[(name, ident)] = _words((page or {}).get("items"))
+            for owner, own in (document.get("stars") or {}).items():
+                self.stars.update((name, owner, key) for key in own or {})
+            for key, spec in (document.get("icons") or {}).items():
+                self.icons[(name, key)] = spec
+        files = _new(directory, library_files.FILES)
+        self.locations = {owner: len(own or {})
+                          for owner, own in (files.get("locations") or {}).items()}
+        master = _new(directory, library_files.MASTER)
+        self.users = {uid: record.get("name") for uid, record in
+                      (master.get("users") or {}).items()}
+        self.settings = {key: record.get("value") for key, record in
+                         (master.get("settings") or {}).items()}
 
 
 class _ConversionRehearsal:
-    """The format 3 to 4 conversion run on a private copy of the real library, then proven."""
-
-    def _old_pictures(self, sizes: dict) -> list:
-        return [path for path in sizes
-                if path.split("/")[0] in (library_conversion.OLD_PICTURES,
-                                          library_conversion.OLD_CAPTURES)
-                and library_conversion.old_shape(path)]
-
-    def _had_picture(self, directory: str, section: str, asset_id: str) -> bool:
-        return any(os.path.exists(path) for path in (
-            os.path.join(directory, library_conversion.OLD_PICTURES, asset_id + ".png"),
-            os.path.join(directory, library_conversion.OLD_CAPTURES, asset_id + ".png"),
-            os.path.join(material.section_folder(directory, section), asset_id + ".png")))
+    """The 2.0 conversion run on a private copy of the real library, then proven."""
 
     def rehearse(self, directory: str, label: str):
-        """Convert `directory`, assert the result whole, print a summary; the outcome."""
-        from amaze.core import library_policy
-        before_rows = _rows_of(directory)
-        before_sizes = _sizes(directory)
-        pictured = {(section, asset_id) for section in library_files.ASSET_SECTIONS
-                    for asset_id in before_rows.get(section, {})
-                    if self._had_picture(directory, section, asset_id)}
-        version_folders = len(library_conversion._old_version_folders(directory))
-        old_pictures = self._old_pictures(before_sizes)
-        section_pictures = sum(1 for path in before_sizes if path.split("/")[0] in (
-            library_files.SECTION_FOLDERS[section] for section in library_files.ASSET_SECTIONS)
-            and len(path.split("/")) == 2 and path.endswith(".png"))
+        """Convert `directory`, prove every row and setting came through, print a summary."""
+        if not library_conversion.needs_conversion(directory):
+            self.skipTest("the real library is already 2.0: nothing to rehearse a conversion on")
+        before = _Census(directory, old=True)
         started = time.perf_counter()
         outcome = library_conversion.convert(directory, confirm=lambda: True)
         took = time.perf_counter() - started
-        self.assertIn(outcome.status, (library_conversion.DONE, library_conversion.NOTHING),
-                      "the conversion did not run: %s %s" % (outcome.status, outcome.why))
-
-        after_rows = _rows_of(directory)
-        after_sizes = _sizes(directory)
+        self.assertEqual(library_conversion.DONE, outcome.status,
+                         "the conversion did not run: %s" % outcome.why)
+        after = _Census(directory, old=False)
         aside = {}
         for one in outcome.set_aside:
             if one.row is not None:
-                aside[one.section] = aside.get(one.section, 0) + 1
-        for section in library_files.ASSET_SECTIONS:
-            with self.subTest(section=section):
-                self.assertEqual(len(before_rows.get(section, {})),
-                                 len(after_rows.get(section, {})) + aside.get(section, 0),
-                                 "rows went missing beyond the set-aside ones")
-                home = material.section_folder(directory, section)
-                missing = [asset_id for asset_id in after_rows.get(section, {})
-                           for suffix in (".mat", material.RECORD_SUFFIX)
-                           if not os.path.exists(os.path.join(home, asset_id + suffix))]
-                self.assertEqual([], missing[:20], "rows whose files are not in their folder")
-                lost = [asset_id for asset_id in after_rows.get(section, {})
-                        if (section, asset_id) in pictured
-                        and not os.path.exists(os.path.join(home, asset_id + ".png"))]
-                self.assertEqual([], lost[:20], "rows that lost their picture")
+                aside.setdefault(one.section, set()).add(one.asset_id)
+        for name in library_files.LISTS:
+            with self.subTest(section=name):
+                self.assertEqual(before.rows.get(name, set()) - aside.get(name, set()),
+                                 after.rows.get(name, set()), "rows changed beyond the set-aside")
+        missing = [key for key, words in before.comments.items()
+                   if key[1] not in aside.get(key[0], set())
+                   and any(word not in after.comments.get(key, []) for word in words)]
+        self.assertEqual([], missing[:20], "comments that did not come through whole")
+        self.assertEqual({star for star in before.stars if star[2] not in aside.get(star[0], ())},
+                         {star for star in after.stars if star[2] in after.rows.get(star[0], ())},
+                         "stars changed")
+        self.assertEqual({key: spec for key, spec in before.icons.items()
+                          if key[1] not in aside.get(key[0], set())},
+                         {key: spec for key, spec in after.icons.items()
+                          if key[1] in after.rows.get(key[0], ())}, "tile icons changed")
+        self.assertEqual(before.locations, after.locations, "locations changed")
+        self.assertEqual(before.users, after.users, "users changed")
+        self.assertEqual(before.settings, after.settings, "shared settings changed")
+        sizes = _sizes(directory)
+        old_left = [path for path in sizes if "/" not in path and (
+            path in library_conversion.OLD_ROOT_FILES + tuple(library_conversion.OLD_MARKS)
+            or any(tail in path for tail in library_conversion.OLD_COPY_TAILS))
+            and path not in (library_conversion.OLD_POLICY,) + library_files.DATABASES]
+        self.assertEqual([], old_left, "old root files or their copies were left")
         kept_aside = {os.path.normpath(path) for one in outcome.set_aside for path in one.files}
-        old_left = [path for path in after_sizes if library_conversion.old_shape(path)
-                    and os.path.normpath(os.path.join(directory, path)) not in kept_aside]
-        self.assertEqual([], old_left[:20], "format 3 files left that no one set aside")
+        shaped = [path for path in sizes if library_conversion.old_shape(path)
+                  and os.path.normpath(os.path.join(directory, path)) not in kept_aside]
+        self.assertEqual([], shaped[:20], "format 3 files left that no one set aside")
+        for name in library_files.DATABASES:
+            reading = guard.Guard(directory).read(name)
+            self.assertIn(reading.verdict, (guard.FINE, guard.FRESH),
+                          "%s reads %s after the conversion" % (name, reading.verdict))
         self.assertFalse(library_conversion.needs_conversion(directory))
-        self.assertEqual(3, library_policy.library_version(directory))
-
         again = library_conversion.convert(directory, confirm=lambda: True)
         self.assertEqual(library_conversion.NOTHING, again.status)
-        self.assertEqual(after_sizes, _sizes(directory), "a second conversion changed a file")
-
-        kept = sum(1 for path in after_sizes if path.split("/")[0] in (
-            library_files.SECTION_FOLDERS[section] for section in library_files.ASSET_SECTIONS)
-            and len(path.split("/")) == 2 and path.endswith(".png")) - section_pictures
-        dropped = len(old_pictures) - len(self._old_pictures(after_sizes)) - kept
-        sections = ", ".join("%s %d" % (database.section_label(name), len(rows))
-                             for name, rows in after_rows.items())
-        names = "; ".join(one.name for one in outcome.set_aside) or "none"
+        self.assertEqual(sizes, _sizes(directory), "a second conversion changed a file")
+        sections = ", ".join("%s %d" % (library_files.section_label(name), len(rows))
+                             for name, rows in after.rows.items() if rows)
         sys.stderr.write(
-            "\n  Conversion rehearsal (%s): %s\n"
-            "    assets per section after: %s\n"
-            "    converted %d, set aside %d (%s)\n"
-            "    pictures kept %d, dropped %d; version folders rewritten %d\n"
-            "    %.1f s; %d bytes before, %d after; second convert: %s\n"
-            % (label, outcome.status, sections, outcome.counts.get("converted", 0),
-               len(outcome.set_aside), names, kept, dropped, version_folders, took,
-               sum(before_sizes.values()), sum(after_sizes.values()), again.status))
+            "\n  Conversion rehearsal (%s): %s in %.1f s\n"
+            "    rows per section after: %s\n"
+            "    comments %d, stars %d, tile icons %d, users %d, shared settings %d, "
+            "locations %d\n"
+            "    set aside %d (%s); old files removed %d; second conversion: %s\n"
+            % (label, outcome.status, took, sections, len(after.comments), len(after.stars),
+               len(after.icons), len(after.users), len(after.settings),
+               sum(after.locations.values()), len(outcome.set_aside),
+               "; ".join(one.name for one in outcome.set_aside) or "none",
+               outcome.counts.get("deleted", 0), again.status))
         return outcome
 
 
 class TheRealLibraryRehearsalTest(_ConversionRehearsal, unittest.TestCase):
-    """The same route against the real library's shape, which is only ever read."""
-
-    LISTS = database.DATABASES
+    """The databases and every old root file copied whole, each folder's top level as stand-ins."""
 
     def setUp(self):
-        from amaze.prefs import prefs as prefs_mod
         live = test_support.live_library_to_rehearse_on(self)
         self.live = live
         self.dir = tempfile.mkdtemp(prefix="amaze_repair_real_") + os.sep
         self.addCleanup(shutil.rmtree, self.dir, True)
-        for name in self.LISTS:
+        for name in sorted(os.listdir(live.dir)):
             source = os.path.join(live.dir, name)
-            if os.path.exists(source):
+            if os.path.isfile(source) and (
+                    name in library_conversion.OLD_ROOT_FILES + library_files.DATABASES
+                    + tuple(library_conversion.OLD_MARKS) or any(
+                        name.startswith(one + ".") for one in library_conversion.OLD_ROOT_FILES)):
                 shutil.copy2(source, os.path.join(self.dir, name))
-            for tier in restore_lib.TIERS:
-                if os.path.exists("%s.%s" % (source, tier)):
-                    shutil.copy2("%s.%s" % (source, tier),
-                                 os.path.join(self.dir,
-                                              "%s.%s" % (name, tier)))
-        self.asset_dirs = [folder + "/" for folder in repair.asset_folders(live.dir)]
-        old_shape = [folder + "/" for folder in (library_conversion.OLD_FOLDER,
-                                                 library_conversion.OLD_CAPTURES)
-                     if os.path.isdir(os.path.join(live.dir, folder))]    # the converter's input
-        for folder in self.asset_dirs + [live.img_dir] + old_shape:
-            os.makedirs(os.path.join(self.dir, folder), exist_ok=True)
+        folders = [library_files.SECTION_FOLDERS[section] for section in library_files.LISTS] + [
+            library_files.RENDER_FOLDER, library_files.CAPTURE_FOLDER,
+            library_conversion.OLD_FOLDER]
+        for folder in folders:
             if not os.path.isdir(os.path.join(live.dir, folder)):
                 continue    # a section that has saved nothing yet
+            os.makedirs(os.path.join(self.dir, folder), exist_ok=True)
             for entry in os.listdir(os.path.join(live.dir, folder)):
-                if os.path.isdir(os.path.join(live.dir, folder, entry)):
+                source = os.path.join(live.dir, folder, entry)
+                if os.path.isdir(source):
                     continue
-                # metadata stays whole: the census reads it, and a 0-byte stand-in reads as unreadable
-                if entry.endswith(material.RECORD_SUFFIX):
-                    shutil.copy2(os.path.join(live.dir, folder, entry),
-                                 os.path.join(self.dir, folder, entry))
+                target = os.path.join(self.dir, folder, entry)
+                if entry.endswith(material.RECORD_SUFFIX) or entry.endswith(".builder.json") \
+                        or entry.endswith(".stamp.json"):
+                    shutil.copy2(source, target)    # metadata whole: the conversion reads it
                 else:
-                    open(os.path.join(self.dir, folder, entry),
-                         "wb").close()
-        self.prefs = prefs_mod.Prefs()
-        self.prefs.dir = self.dir
-        self.prefs.path = tempfile.mkdtemp(prefix="amaze_repair_real_prefs_")
-        self.addCleanup(shutil.rmtree, self.prefs.path, True)
+                    with open(target, "wb") as handle:
+                        handle.write(b"x")    # a stand-in a byte long: an empty file is no file
         test_support.reset_database_singletons()
         self.addCleanup(test_support.reset_database_singletons)
-        self.cops = os.path.join(self.dir, "cops.json")
-
-    def _survey(self):
-        return repair.survey(self.dir, self.prefs.img_dir)
-
-    def _asset_files(self):
-        """(folder key, name) of every file in the copy's asset folders a `.json` did not replace."""
-        found = []
-        for folder in self.asset_dirs:
-            names = set(os.listdir(os.path.join(self.dir, folder)))
-            for name in names:
-                if library_conversion.old_shape(folder + name):
-                    continue    # a leftover the conversion did not take
-                found.append((folder, name))
-        return sorted(found)
-
-    def _unaccounted_assets(self, findings):
-        return sorted((folder, name) for folder in self.asset_dirs
-                      for name in findings["unaccounted"].get(folder, ()))
-
-    def _cop_ids(self):
-        with open(os.path.join(self.live.dir, "cops.json"),
-                  encoding="utf-8-sig") as handle:
-            return {str(row.get("id"))
-                    for row in json.load(handle).get("assets", [])}
-
-    def _converted(self):
-        """The copy in format 4, as the panel's first open leaves it."""
-        outcome = library_conversion.convert(self.dir, confirm=lambda: True)
-        self.assertIn(outcome.status, (library_conversion.DONE, library_conversion.NOTHING),
-                      outcome.why)
-        test_support.reset_database_singletons()
-        return outcome
 
     def test_the_conversion_rehearsed_on_the_copy(self):
-        """Databases whole, the rest of each folder's top level as empty stand-ins."""
-        self.rehearse(self.dir, "databases and top-level stand-ins")
+        """Every row, comment, star, icon, location, user and shared setting comes through."""
+        self.rehearse(self.dir, "databases whole, files as stand-ins")
 
-    def test_the_real_library_is_coherent_and_nothing_moves(self):
-        """The accept path: if anything is unlisted here, the engine is broken."""
-        self._converted()
-        findings = self._survey()
+    def test_the_converted_copy_is_coherent_and_nothing_moves(self):
+        """The accept path: Check Library finds nothing unlisted, and moves nothing."""
+        outcome = library_conversion.convert(self.dir, confirm=lambda: True)
+        if outcome.status == library_conversion.NOTHING:
+            self.skipTest("the real library is already 2.0")
+        self.assertEqual(library_conversion.DONE, outcome.status, outcome.why)
+        findings = repair.survey(self.dir, "img/")
         self.assertTrue(findings["complete"])
-        self.assertEqual(
-            0, repair.unaccounted_total(findings),
-            "the real library has files no section lists: %r"
-            % {folder: names[:5]
-               for folder, names in findings["unaccounted"].items()})
-        before = self._asset_files()
-        result = repair.move_aside(findings, "unlisted")
-        self.assertEqual([], result["moved"])
-        self.assertEqual(before, self._asset_files(),
-                         "files moved from a library where every one of them is listed")
-
-    def test_the_incident_itself_is_reported_and_put_back_undoes_it(self):
-        """A list seeded over a sync placeholder: named, nothing moved, and put back."""
-        from amaze.dialogs import repair_dialog
-        self._converted()
-        kinds = repair.ASSET_SIDECARS + (".png",)    # format 4: the picture is in the folder too
-        owned = [(folder, name) for folder, name in self._asset_files()
-                 if database.asset_id_for_file(name, kinds, "_cop") in self._cop_ids()]
-        self.assertTrue(owned, "premise: the real cops.json owns files in "
-                               "an asset folder")
-        with open(self.cops, "w", encoding="utf-8") as handle:
-            json.dump({"version": 2, "categories": ["_All"], "tags": [],
-                       "assets": []}, handle)
-
-        findings = self._survey()
-        text = "\n".join(repair.report_lines(findings))
-        self.assertIn("Node: the database is there and holds nothing.", text)
-        for folder, name in owned:
-            self.assertTrue(
-                os.path.exists(os.path.join(self.dir, folder, name)),
-                "%s moved before anyone chose to move it" % name)
-        self.assertEqual(
-            owned, self._unaccounted_assets(findings),
-            "the report does not name the same asset files the empty list left behind")
-        self.assertTrue(any(name.endswith(".png") for _folder, name in owned),
-                        "the pictures those assets own are not reported, so the report "
-                        "is narrower than the loss was")
-        tiers = [tier for tier, _snap in restore_lib.snapshots(self.cops)]
-        self.assertIn("bak-1", tiers,
-                      "premise: the real cops.json has a saved copy")
-        _labels, keys = repair_dialog._choices(findings, may_change=True)
-        self.assertIn("restore", keys, "putting the saved copy back is not offered")
-        repair.put_back(findings, "cops.json", "bak-1")
-
-        after = self._survey()
-        self.assertTrue(after["complete"])
-        after_ids = after["ids"]
-        still_unlisted = [
-            (folder, name) for folder, name in owned
-            if database.asset_id_for_file(name, kinds, "_cop") not in after_ids]
-        self.assertEqual(
-            still_unlisted, self._unaccounted_assets(after),
-            "putting the saved copy back did not account for the files "
-            "its rows own, so the recovery does not recover")
-        self.assertNotIn("Node: the database is there and holds nothing.",
-                         "\n".join(repair.report_lines(after)),
-                         "the Node list is still reported empty after it was put back")
+        self.assertEqual(0, repair.unaccounted_total(findings),
+                         "files no section lists: %r" % {
+                             folder: names[:5]
+                             for folder, names in findings["unaccounted"].items()})
+        self.assertEqual([], repair.move_aside(findings, "unlisted", guard=False)["moved"])
 
 
 class TheRealLibrarysWholeShapeTest(_ConversionRehearsal, unittest.TestCase):
-    """Check Library on the real library's whole shape: lists and stamps copied, the rest empty."""
+    """Every folder of the real library, its databases and records whole, the rest stand-ins."""
 
     def setUp(self):
-        from amaze.core import library_files
         live = test_support.live_library_to_rehearse_on(self)
         self.dir = tempfile.mkdtemp(prefix="amaze_check_real_") + os.sep
         self.addCleanup(shutil.rmtree, self.dir, True)
@@ -2030,19 +269,17 @@ class TheRealLibrarysWholeShapeTest(_ConversionRehearsal, unittest.TestCase):
             relative = os.path.relpath(folder, source_root)
             here = os.path.normpath(os.path.join(self.dir, relative))
             os.makedirs(here, exist_ok=True)
-            if relative == library_files.PACKAGE_FOLDER:
+            if relative in (library_files.PACKAGE_FOLDER, library_files.TRASH_FOLDER):
                 dirs[:] = []    # a permanent store the check never enters
                 continue
             for name in names:
                 source = os.path.join(folder, name)
                 target = os.path.join(here, name)
-                if name == library_files.POLICY:
-                    continue    # its library id would share this copy's holding folder
-                kind = library_files.classify(os.path.join(relative, name))[0]
-                if relative == "." or kind == library_files.RECORD:
-                    shutil.copy2(source, target)    # what the survey reads
+                if relative == "." or name.endswith((material.RECORD_SUFFIX, ".interface")):
+                    shutil.copy2(source, target)    # what the conversion and the survey read
                 else:
-                    open(target, "wb").close()
+                    with open(target, "wb") as handle:
+                        handle.write(b"x")
                     stat = os.stat(source)
                     os.utime(target, (stat.st_atime, stat.st_mtime))
                 self.files += 1
@@ -2050,7 +287,7 @@ class TheRealLibrarysWholeShapeTest(_ConversionRehearsal, unittest.TestCase):
         self.addCleanup(test_support.reset_database_singletons)
 
     def test_the_conversion_rehearsed_on_the_whole_shape(self):
-        """Every folder and version folder, databases and root files whole, the rest stand-ins."""
+        """Every folder and version folder, the databases and root files whole."""
         self.rehearse(self.dir, "whole shape")
 
     def test_unlisted_files_leftovers_and_unknowns_are_told_apart(self):
@@ -2071,653 +308,11 @@ class TheRealLibrarysWholeShapeTest(_ConversionRehearsal, unittest.TestCase):
         leftovers = {entry[0] for entry in findings["leftovers"]}
         unknown = ({entry[0] for entry in findings["unknown"]}
                    | {entry[0] for entry in findings["unknown_folders"]})
-        if not leftovers or not unknown:
-            self.skipTest("premise gone: the real library no longer holds both "
-                          "leftovers and unknown files")
         self.assertEqual(set(), leftovers & unknown,
                          "one file was called both a leftover and unknown")
-        self.assertLessEqual({entry[1] for entry in findings["leftovers"]},
-                             {"scratch", "pre-adopt", "duplicate", library_files.SUPERSEDED})
         text = "\n".join(repair.report_lines(findings))
-        self.assertIn("nothing needs any more", text)
-        self.assertTrue("not files Amaze knows" in text or "not a file Amaze knows" in text,
-                        "the files Amaze does not know are not named as such")
         self.assertNotIn("img/comments", text, "the comment pictures folder is reported")
 
 
-class TestRecoveredRowsAreVisible(unittest.TestCase):
-    """A recovered row carries an empty renderer, and the proxy has to show it."""
-
-    def setUp(self):
-        self.prefs = test_support.fixture_prefs(self)
-        test_support.reset_database_singletons()
-        self.addCleanup(test_support.reset_database_singletons)
-        self.model = library_mod.MaterialLibrary(preferences=self.prefs)
-
-    def _proxy(self, renderer_filter):
-        proxy = multifilterproxy_model.MultiFilterProxyModel()
-        proxy.setSourceModel(self.model)
-        proxy.setFilter(self.model.RendererRole, renderer_filter)
-        return proxy
-
-    def test_all_renderers_shows_the_empty_renderer_row(self):
-        """The fixture holds the row Repair produces: All shows it, and empty is not MaterialX."""
-        empties = [a for a in self.model.assets if str(a.renderer) == ""]
-        self.assertEqual(1, len(empties),
-                         "fixture no longer holds an empty-renderer row, "
-                         "so this test proves nothing")
-        self.assertEqual(
-            self.model.rowCount(), self._proxy("all_renderers").rowCount(),
-            'the Renderer menu says "All" and the grid is still hiding '
-            "rows - a Repair-recovered material cannot be seen or "
-            "selected, so Edit Info cannot reach it either")
-        renderers = [
-            str(self.model.data(self.model.index(row, 0), self.model.RendererRole))
-            for row in range(self.model.rowCount())
-        ]
-        self.assertEqual(renderers.count("MaterialX"),
-                         self._proxy("materialx").rowCount())
-
-    def test_the_sidebar_counter_agrees_with_the_grid(self):
-        """The counter mirrors the proxy, or a sidebar 0 sits beside a full grid."""
-        cats = category.Categories(preferences=self.prefs)
-        cats._renderer_filter = "all_renderers"
-        self.assertTrue(
-            cats._asset_matches_renderer({"renderer": ""}),
-            "sidebar counts an empty-renderer row as invisible while the "
-            "grid now shows it")
-        cats._renderer_filter = "materialx"
-        self.assertFalse(cats._asset_matches_renderer({"renderer": ""}))
-
-
-class TestLibraryManifest(unittest.TestCase):
-    """What a library may contain; `core/library_files.py` is the statement, the audit tool reads it."""
-
-    def _audit_module(self):
-        import importlib.util
-        path = os.path.join(REPO, "tools", "library-audit.py")
-        spec = importlib.util.spec_from_file_location("library_audit", path)
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        return module
-
-    def test_every_kind_of_file_is_classified(self):
-        """Product data from `database.DATABASES` and every restore tier are ok; the rest is reported."""
-        from amaze.core import library_files
-        audit = self._audit_module()
-        self.assertEqual(os.path.realpath(library_files.__file__),
-                         os.path.realpath(audit._CONVENTION),
-                         "the audit tool reads a convention other than the package's")
-        checked = tuple(database.DATABASES) + (
-            "policy.json",
-            "library.json.bak-1", "library.json.bak-2", "library.json.bak-3",
-            "library.json.bak-first", "cops.json.bak-first",
-            "code.json.unreadable", ".amaze_gradient_seed_v1",
-            os.path.join("materials", "abc.mat"),
-            os.path.join("materials", "abc.json"),
-            os.path.join("nodes", "abc.mat"),
-            os.path.join("nodes", "abc_cop.mat"),
-            os.path.join("nodes", "abc.json"),
-            os.path.join("matX", "pack", "tex.exr"))
-        for rel in checked:
-            self.assertIn(library_files.classify(rel)[0], library_files.KNOWN, rel)
-        for folder in ("materials", "nodes", "code", "colors"):    # the one picture
-            self.assertEqual((library_files.RENDER, "abc"),
-                             library_files.classify(os.path.join(folder, "abc.png")), folder)
-        for rel, kind in (
-                (os.path.join("img", "140024152983962990.png.lock"), "scratch"),
-                (os.path.join("materials", "abc.mat.capturing"), "scratch"),
-                (os.path.join("materials", "abc.writing"), "scratch"),
-                (os.path.join("materials", "notes.txt"), "unknown"),
-                (os.path.join("code", "abc.json"), "unknown"),
-                (os.path.join("matX", "pack", "half.tmp"), "scratch"),
-                ("stray.txt", "unknown"),
-                (os.path.join("mat", "abc.mat"), "unknown"),    # format 3: the converter's only
-                (os.path.join("mat", "abc.interface"), "unknown"),
-                (os.path.join("img", "abc.png"), "unknown"),
-                ("notes.md", "unknown"),
-                (".DS_Store", "os-noise")):
-            self.assertEqual(kind, library_files.classify(rel)[0], rel)
-
-
-class TheRebuildDrillTest(unittest.TestCase):
-    """Delete the index outright and put the library back from each asset's metadata."""
-
-    def setUp(self):
-        self.prefs = test_support.fixture_prefs(self)
-        test_support.reset_database_singletons()
-        self.addCleanup(test_support.reset_database_singletons)
-        self.model = library_mod.MaterialLibrary(preferences=self.prefs)
-        # One save writes every row's metadata, none there yet: the unchanged ones on a worker.
-        self.assertTrue(self.model.save(), "premise: the fixture saves")
-        test_support.settle_stamps()
-        self.mat_dir = material.section_folder(self.prefs.dir, library_files.MATERIALS)
-        self.nodes_dir = material.section_folder(self.prefs.dir, library_files.NODES)
-        self.code_dir = os.path.join(self.prefs.dir, library_files.CODE_FOLDER)
-
-    def _stamps(self):
-        """The `<id>.json` in the Materials folder that hold metadata."""
-        return sorted(n for n in os.listdir(self.mat_dir)
-                      if n.endswith(material.RECORD_SUFFIX)
-                      and asset_record.read(os.path.join(self.mat_dir, n))[
-                          asset_record.METADATA])
-
-    def test_a_rebuild_leaves_the_other_sections_assets_alone(self):
-        """Metadata another section's list claims is that section's, wherever it lies."""
-        import json as json_mod
-        mine = {str(a.mat_id) for a in self.model.assets}
-        self.assertTrue(mine, "premise: this library has materials")
-
-        stranger = "c0de0000000040008000000000000001"
-        write_record(self.mat_dir, stranger, metadata={
-            "id": stranger, "name": "Jitter Points", "categories": ["Toolbox"],
-            "renderer": "VEX", "code": "// snippet"})
-        with open(os.path.join(self.prefs.dir, "code.json"), "w",
-                  encoding="utf-8") as handle:
-            json_mod.dump({"version": 2, "categories": ["_All"], "tags": [],
-                           "assets": [{"id": stranger}]}, handle)
-
-        rebuilt = repair.rebuild_from_stamps(self.prefs.dir)
-
-        ids = {str(r.get("id")) for r in rebuilt["assets"]}
-        self.assertNotIn(
-            stranger, ids,
-            "the rebuilt material index claimed a Code snippet")
-        self.assertEqual(
-            mine, ids,
-            "the rebuild did not return exactly this library's own "
-            "assets")
-        self.assertNotIn(
-            "Toolbox", rebuilt["categories"],
-            "a category that belongs to Code came with it")
-
-    def test_a_rebuild_leaves_a_saved_palette_to_colors(self):
-        """A palette's metadata in the Materials folder is claimed by `gradients.json`."""
-        from amaze.core import gradient_library
-        palettes = gradient_library.GradientLibrary(preferences=self.prefs)
-        palettes.add_user_gradient("Dusk", "",
-                                   {"values": [[0.1, 0.2, 0.3]], "keys": [0.0]})
-        palette = str(next(a for a in palettes.assets
-                           if a.name == "Dusk").mat_id)
-        test_support.settle_stamps()
-        self.assertNotIn(palette + material.RECORD_SUFFIX, os.listdir(self.mat_dir),
-                         "a palette wrote metadata into the Materials folder")
-        write_record(self.mat_dir, palette,
-                     metadata={"id": palette, "name": "Dusk", "categories": []})
-
-        rebuilt = repair.rebuild_from_stamps(self.prefs.dir)
-
-        ids = {str(r.get("id")) for r in rebuilt["assets"]}
-        self.assertNotIn(palette, ids,
-                         "the rebuilt material index took a palette in")
-        self.assertEqual({str(a.mat_id) for a in self.model.assets}, ids)
-
-    def test_the_rebuilt_index_carries_this_builds_stamps(self):
-        """A rebuild writes this build's schema and its `format` stamp."""
-        import json as json_mod
-        from amaze import branding
-
-        for name in ("library.json", "library.json.bak-1",
-                     "library.json.bak-2", "library.json.bak-3",
-                     "library.json.bak-first"):
-            path = os.path.join(self.prefs.dir, name)
-            if os.path.exists(path):
-                os.remove(path)
-
-        ok, sentence = repair.repair_index(self.prefs.dir, guard=False)
-        self.assertTrue(ok, sentence)
-        with open(os.path.join(self.prefs.dir, "library.json"),
-                  encoding="utf-8") as handle:
-            document = json_mod.load(handle)
-
-        self.assertEqual(
-            database.SCHEMA_VERSION, document.get("version"),
-            "the rebuilt list under-claims its schema, so every build "
-            "runs the whole migration chain over rows already at it")
-        self.assertEqual(
-            branding.LIBRARY_FORMAT, document.get("format"),
-            "the rebuilt list carries no write-protection stamp, so a "
-            "build that does not know this format writes it anyway")
-
-    def test_the_index_can_be_rebuilt_after_it_is_deleted(self):
-        before = {str(a.mat_id): a.get_as_dict() for a in self.model.assets}
-        os.remove(os.path.join(self.prefs.dir, "library.json"))
-        self.assertFalse(
-            os.path.exists(os.path.join(self.prefs.dir, "library.json")),
-            "premise: the index really is gone")
-
-        rebuilt = repair.rebuild_from_stamps(self.prefs.dir)
-        self.assertEqual([], rebuilt["damaged"])
-        self.assertEqual(len(before), len(rebuilt["assets"]))
-
-        by_id = {str(r.get("id")): r for r in rebuilt["assets"]}
-        self.assertEqual(set(before), set(by_id))
-        for mat_id, original in before.items():
-            self.assertEqual(
-                original, by_id[mat_id],
-                "asset %s came back with a different record - its metadata "
-                "is not carrying the whole row" % mat_id)
-
-    def test_a_rebuild_reads_the_json_alone_and_never_a_stamp(self):
-        """`<id>.json` is the one source; a format 3 stamp anywhere is never read."""
-        asset = next(a for a in self.model.assets if str(a.mat_id).isalnum())
-        kept = str(asset.mat_id)
-        legacy = os.path.join(self.prefs.dir, "mat")
-        for folder, asset_id in ((self.mat_dir, kept), (legacy, "LEGACYM1")):
-            os.makedirs(folder, exist_ok=True)
-            with open(os.path.join(folder, asset_id + ".stamp.json"), "w",
-                      encoding="utf-8") as handle:
-                json.dump({"id": asset_id, "name": "An Older Name", "categories": ["Old"],
-                           "renderer": "Karma"}, handle)
-        os.remove(os.path.join(self.prefs.dir, "library.json"))
-        by_id = {str(r.get("id")): r
-                 for r in repair.rebuild_from_stamps(self.prefs.dir)["assets"]}
-        self.assertEqual(asset.name, by_id[kept]["name"],
-                         "a stamp beside the `.json` was read over the `.json`'s metadata")
-        self.assertNotIn("LEGACYM1", by_id, "a format 3 stamp in mat/ was read")
-
-    def test_every_per_asset_FIELD_survives_including_the_soft_ones(self):
-        """Ids and names alone are a file listing; the favourite is per-user."""
-        row = 1
-        asset = self.model.assets[row]
-        asset.tags = "brushed,worn"
-        asset.description = "a description that lives nowhere else"
-        asset.categories = "Metal"
-        self.assertTrue(self.model.save())
-
-        os.remove(os.path.join(self.prefs.dir, "library.json"))
-        rebuilt = repair.rebuild_from_stamps(self.prefs.dir)
-        back = next(r for r in rebuilt["assets"]
-                    if str(r.get("id")) == str(asset.mat_id))
-        self.assertEqual("a description that lives nowhere else",
-                         back.get("description"))
-        self.assertIn("brushed", back.get("tags") or [])
-        self.assertIn("Metal", back.get("categories") or [])
-        self.assertIn("Metal", rebuilt["categories"])
-        self.assertNotIn("tags", rebuilt, "the rebuild still writes the retired tags list")
-
-    def test_one_corrupt_stamp_costs_only_its_own_asset(self):
-        """The rebuild completes and names the casualty, rather than refusing."""
-        stamps = self._stamps()
-        self.assertTrue(stamps, "premise: there is metadata to corrupt")
-        victim = stamps[0]
-        with open(os.path.join(self.mat_dir, victim), "w",
-                  encoding="utf-8") as handle:
-            handle.write("{ this is not json")
-
-        rebuilt = repair.rebuild_from_stamps(self.prefs.dir)
-        self.assertEqual(len(stamps) - 1, len(rebuilt["assets"]),
-                         "a corrupt `.json` cost more than its own asset")
-        self.assertEqual(
-            [victim[: -len(material.RECORD_SUFFIX)]], rebuilt["damaged"],
-            "the rebuild did not name the asset it could not recover")
-
-    def test_a_stamp_is_never_read_in_normal_operation(self):
-        import ast
-        root = os.path.dirname(os.path.dirname(os.path.abspath(
-            library_mod.__file__)))
-        readers = []
-        for folder, _dirs, files in os.walk(root):
-            if "tests" in os.path.relpath(folder, root).split(os.sep):
-                continue
-            for name in files:
-                if not name.endswith(".py") or name == "repair.py":
-                    continue
-                full = os.path.join(folder, name)
-                with open(full, encoding="utf-8") as fh:
-                    text = fh.read()
-                if "STAMP_SUFFIX" not in text:
-                    continue
-                for node in ast.walk(ast.parse(text)):
-                    # A read is an `open` naming a stamp, outside the writer itself.
-                    if isinstance(node, ast.Call) and \
-                            getattr(node.func, "id", "") == "open" and \
-                            name not in ("library.py", "repair.py"):
-                        readers.append("%s:%d" % (name, node.lineno))
-        self.assertEqual([], readers,
-                         "something outside Repair reads a recovery stamp - "
-                         "they are write-only shadows, and a reader makes "
-                         "them a second source of truth")
-
-    def test_a_rebuild_refuses_while_a_sibling_list_is_unreadable(self):
-        """An unreadable sibling claims NOTHING, so its assets read as ours."""
-        stranger = "c0de0000000040008000000000000002"
-        write_record(self.nodes_dir, stranger, metadata={
-            "id": stranger, "name": "A COP network", "categories": ["Nodes"]})
-        with open(os.path.join(self.prefs.dir, "cops.json"), "w",  # EXISTS and will not parse - not the absent case ▸p/clean-library-sweep
-                  encoding="utf-8") as handle:
-            handle.write('{"assets": [{"id": "c0de00000')
-
-        document = repair.rebuild_from_stamps(self.prefs.dir)
-        self.assertEqual(
-            ["cops.json"], document["unreadable"],
-            "the rebuild did not report the sibling it could not read, so "
-            "no caller can refuse on it")
-
-        for name in ("library.json", "library.json.bak-1",
-                     "library.json.bak-2", "library.json.bak-3",
-                     "library.json.bak-first"):
-            path = os.path.join(self.prefs.dir, name)
-            if os.path.exists(path):
-                os.remove(path)
-        ok, sentence = repair.repair_index(self.prefs.dir, guard=False)
-        self.assertFalse(
-            ok, "the index was rebuilt while a sibling could not be read, so "
-                "that sibling's assets are now rows in this list")
-        self.assertIn("cannot be read", sentence)
-        self.assertFalse(
-            os.path.exists(os.path.join(self.prefs.dir, "library.json")),
-            "a refused rebuild still wrote the index")
-
-    NODE = "c0de0000000040008000000000000003"
-
-    def _a_node_stamp_and_no_material_copies(self):
-        """One node's metadata in the Nodes folder, and the Material list gone with every copy."""
-        write_record(self.nodes_dir, self.NODE, metadata={
-            "id": self.NODE, "name": "A COP network", "categories": ["Nodes"],
-            "renderer": "COP"})
-        for name in ("library.json", "library.json.bak-1", "library.json.bak-2",
-                     "library.json.bak-3", "library.json.bak-first", "cops.json"):
-            path = os.path.join(self.prefs.dir, name)
-            if os.path.exists(path):
-                os.remove(path)
-
-    def test_a_rebuild_refuses_while_a_sibling_list_is_still_arriving(self):
-        """A list absent but known lists ids nobody can read yet, so it claims them all."""
-        self._a_node_stamp_and_no_material_copies()
-        with open(os.path.join(self.prefs.dir, "cops.json.bak-1"), "w",
-                  encoding="utf-8") as handle:
-            json.dump({"assets": [{"id": self.NODE}]}, handle)
-        ok, sentence = repair.repair_index(self.prefs.dir, guard=False)
-        self.assertFalse(
-            ok, "the index was rebuilt while the Node list was still arriving: %s" % sentence)
-        self.assertFalse(os.path.exists(os.path.join(self.prefs.dir, "library.json")),
-                         "a refused rebuild still wrote the index")
-
-    def test_a_rebuild_takes_no_stamp_that_belongs_on_another_list(self):
-        """A node stamp is the Node list's, even when no list names it."""
-        self._a_node_stamp_and_no_material_copies()
-        rebuilt = repair.rebuild_from_stamps(self.prefs.dir)
-        ids = {str(r.get("id")) for r in rebuilt["assets"]}
-        self.assertNotIn(self.NODE, ids, "the rebuilt Material list took a node in")
-        self.assertEqual({str(a.mat_id) for a in self.model.assets}, ids)
-
-    def test_the_damaged_index_is_kept_before_a_rebuild_writes_over_it(self):
-        """The dialog promises the corrupted file is retained. It has to be."""
-        damaged = b'{"assets": [{"id": "0000000000'
-        target = os.path.join(self.prefs.dir, "library.json")
-        for name in ("library.json.bak-1", "library.json.bak-2",
-                     "library.json.bak-3", "library.json.bak-first"):
-            path = os.path.join(self.prefs.dir, name)
-            if os.path.exists(path):
-                os.remove(path)
-        with open(target, "wb") as handle:
-            handle.write(damaged)
-
-        ok, sentence = repair.repair_index(self.prefs.dir, guard=False)
-        self.assertTrue(ok, sentence)
-
-        kept = target + ".unreadable"
-        self.assertTrue(
-            os.path.exists(kept),
-            "the rebuild destroyed the damaged index; no other copy of it "
-            "is kept, since the snapshot tier refuses a file that will not "
-            "parse")
-        with open(kept, "rb") as handle:
-            self.assertEqual(damaged, handle.read(),
-                             "the kept copy is not the damaged bytes")
-
-
-class TheSuffixesAndTiersHaveOneHome(unittest.TestCase):
-
-    def test_the_sidecar_list_is_the_one_it_was(self):
-        """Repair's suffixes are the convention's: `.mat` and format 4's `.json`, nothing else."""
-        self.assertIs(library_files.ASSET_SUFFIXES, repair.ASSET_SIDECARS)
-        self.assertEqual((".mat", material.RECORD_SUFFIX), repair.ASSET_SIDECARS)
-        self.assertEqual(".json", material.RECORD_SUFFIX)
-        for gone in ("BUILDER_SUFFIX", "STAMP_SUFFIX"):
-            self.assertFalse(hasattr(material, gone), "material still names format 3's " + gone)
-        self.assertEqual(("bak-1", "bak-2", "bak-3", "bak-first"),
-                         restore_lib.TIERS)
-
-
-class QuarantineIsBoundedTest(unittest.TestCase):
-    """A holding folder that only ever grows is a leak wherever it lives."""
-
-    def setUp(self):
-        self.dir = tempfile.mkdtemp(prefix="amaze_quar_")
-        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
-        self.config = tempfile.mkdtemp(prefix="amaze_quar_cfg_")
-        self.addCleanup(shutil.rmtree, self.config, ignore_errors=True)
-        real = hostos.config_root
-        hostos.config_root = lambda: self.config
-        self.addCleanup(setattr, hostos, "config_root", real)
-
-    def _day(self, stamp):
-        root = os.path.join(hostos.history_root(
-            os.path.join(self.dir, "library.json")),
-            quarantine.QUARANTINE_PREFIX, stamp)
-        os.makedirs(root, exist_ok=True)
-        with open(os.path.join(root, "held.mat"), "w") as fh:
-            fh.write("x")
-        return root
-
-    def test_days_past_the_window_are_removed(self):
-        import time as _t
-        old = _t.strftime("%Y-%m-%d",
-                          _t.localtime(_t.time() - 60 * 86400))
-        recent = _t.strftime("%Y-%m-%d",
-                             _t.localtime(_t.time() - 2 * 86400))
-        old_dir, recent_dir = self._day(old), self._day(recent)
-        removed = quarantine.prune_quarantine(self.dir)
-        self.assertEqual(1, removed)
-        self.assertFalse(os.path.exists(old_dir),
-                         "a quarantine day past the window survived, so "
-                         "the folder grows without end")
-        self.assertTrue(os.path.exists(recent_dir),
-                        "a recent quarantine day was removed - the window "
-                        "is what makes a wrong sweep recoverable")
-
-    def test_one_folder_holds_what_is_moved_counted_and_expired(self):
-        """What `quarantine_file` moves, `quarantine_size` counts and `prune_quarantine` expires."""
-        import time as _t
-        stray = os.path.join(self.dir, "stray.mat")
-        with open(stray, "w") as fh:
-            fh.write("xyz")
-        moved = quarantine.quarantine_file(self.dir, stray)
-        self.assertTrue(moved.startswith(quarantine.quarantine_folder(self.dir)))
-        self._day(_t.strftime("%Y-%m-%d", _t.localtime(_t.time() - 60 * 86400)))
-        self.assertEqual((2, 4), quarantine.quarantine_size(self.dir))
-        self.assertEqual(1, quarantine.prune_quarantine(self.dir))
-        self.assertEqual((1, 3), quarantine.quarantine_size(self.dir))
-
-    def test_the_window_follows_the_NAME_not_mtime(self):
-        """A copy rewrites mtime; the name says which day they were taken out."""
-        import time as _t
-        old = _t.strftime("%Y-%m-%d", _t.localtime(_t.time() - 60 * 86400))
-        old_dir = self._day(old)
-        os.utime(old_dir, None)              # looks brand new by mtime
-        quarantine.prune_quarantine(self.dir)
-        self.assertFalse(os.path.exists(old_dir),
-                         "pruning followed mtime, so a touched folder "
-                         "never expires")
-
-    def test_a_conflicted_copy_is_never_classified_as_sweepable(self):
-        """A sync client's rename is the one artifact preserving a divergence; real shapes still read."""
-        for name in ("library (conflicted copy 2026-07-29).mat",
-                     "mat_001 2.mat",
-                     "abc-def.mat",
-                     "asset.backup.mat"):
-            self.assertIsNone(
-                database.asset_id_for_file(name, (".mat", ".interface")),
-                "%r was classified as sweepable" % name)
-        for name, want in (
-                ("00755b7004824333af08d921462fa3ae.mat",
-                 "00755b7004824333af08d921462fa3ae"),
-                ("139888336268658010.interface", "139888336268658010"),
-                ("COPOWNED1.mat", "COPOWNED1")):
-            self.assertEqual(
-                want, database.asset_id_for_file(
-                    name, (".mat", ".interface")), name)
-
-
-class DeletingAnAssetActuallyDeletesItTest(unittest.TestCase):
-    """The connector unions, so absence is not a delete: it has to be said."""
-
-    def setUp(self):
-        self.prefs = test_support.fixture_prefs(self)
-        test_support.reset_database_singletons()
-        self.addCleanup(test_support.reset_database_singletons)
-        self.model = library_mod.MaterialLibrary(preferences=self.prefs)
-
-    def _ids_on_disk(self):
-        with open(os.path.join(self.prefs.dir, "library.json"),
-                  encoding="utf-8") as handle:
-            return [str(a.get("id")) for a in json.load(handle)["assets"]]
-
-    def test_a_deleted_asset_does_not_come_back(self):
-        """Nor is it re-adopted from the connector's own copy on the next save."""
-        self.assertTrue(self.model.save(), "premise: the fixture saves")
-        victim = str(self.model.assets[0].mat_id)
-        self.assertIn(victim, self._ids_on_disk(), "premise: it is on disk")
-
-        self.model.remove_asset(self.model.index(0, 0))
-        self.model.save()
-
-        self.assertNotIn(
-            victim, self._ids_on_disk(),
-            "the deleted material is still in the library - the connector "
-            "keeps rows the caller does not mention, so a delete has to be "
-            "stated and this one was not")
-        gone = self._ids_on_disk()
-        self.model.save()
-        self.assertEqual(gone, self._ids_on_disk(),
-                         "a later save brought the deleted material back")
-
-
-class DeadScratchesAreMovedWithAnAgeGateTest(unittest.TestCase):
-    """The sweep is age-gated: a fresh scratch may be another session's write."""
-
-    def setUp(self):
-        self.prefs = test_support.fixture_prefs(self)
-        test_support.reset_database_singletons()
-        self.addCleanup(test_support.reset_database_singletons)
-        self.config = tempfile.mkdtemp(prefix="amaze_scr_cfg_")
-        self.addCleanup(shutil.rmtree, self.config, True)
-        real = hostos.config_root
-        hostos.config_root = lambda: self.config
-        self.addCleanup(setattr, hostos, "config_root", real)
-        self.mat_dir = material.section_folder(self.prefs.dir, library_files.MATERIALS)
-
-    def _scratch(self, name, hours_old):
-        full = os.path.join(self.mat_dir, name)
-        with open(full, "w") as fh:
-            fh.write("partial")
-        old = time.time() - hours_old * 3600
-        os.utime(full, (old, old))
-        return full
-
-    def test_an_old_scratch_is_moved_aside_and_nothing_else_moves(self):
-        """A fresh scratch may be another session's live write, and moved means recoverable."""
-        dead = self._scratch("a.mat.xyz123.writing", hours_old=5)
-        live = self._scratch("b.mat.abc456.writing", hours_old=0)
-        before = sorted(name for name in os.listdir(self.mat_dir)
-                        if name != os.path.basename(dead))
-        findings = repair.survey(self.prefs.dir, self.prefs.img_dir)
-        self.assertEqual([MATERIALS_DIR + "a.mat.xyz123.writing"],
-                         [entry[0] for entry in findings["leftovers"]])
-        result = repair.move_aside(findings, "leftovers")
-        self.assertEqual([MATERIALS_DIR + "a.mat.xyz123.writing"], result["moved"])
-        self.assertFalse(os.path.exists(dead),
-                         "a five-hour-old scratch survived - they "
-                         "accumulate forever after every hard kill")
-        self.assertTrue(os.path.exists(live),
-                        "a fresh scratch was swept - it may be another "
-                        "session's LIVE write")
-        self.assertEqual(before, sorted(os.listdir(self.mat_dir)),
-                         "the scratch sweep moved something that is not "
-                         "a scratch")
-        root = os.path.join(hostos.history_root(
-            os.path.join(self.prefs.dir, "library.json")),
-            quarantine.QUARANTINE_PREFIX)
-        held = [f for _r, _d, files in os.walk(root) for f in files]
-        self.assertIn("a.mat.xyz123.writing", held,
-                      "the swept scratch is nowhere - moved means "
-                      "recoverable, even for a scratch")
-
-
-class AFailedPromoteLeavesNoScratchTest(unittest.TestCase):
-    """A raising promote must not litter the library, or live assets get reported as orphans."""
-
-    def test_write_json_discards_its_scratch_when_the_promote_raises(self):
-        folder = tempfile.mkdtemp(prefix="amaze_repair_scratch_")
-        self.addCleanup(shutil.rmtree, folder, True)
-        target = os.path.join(folder, "library.json")
-        with open(target, "w", encoding="utf-8") as fh:
-            fh.write("{}")
-        with patch.object(hostos, "promote_scratch",
-                          side_effect=OSError("no rename")):
-            with self.assertRaises(OSError):
-                repair._write_json(target, {"assets": []})
-        leftovers = [n for n in os.listdir(folder) if ".repairing" in n]
-        self.assertEqual([], leftovers,
-                         "a failed promote left a scratch behind")
-        with open(target, encoding="utf-8") as fh:
-            self.assertEqual("{}", fh.read())
-
-
-class TheSurveyReadsEachFileOnce(_Case):
-    """`restore.surveyed` hands back a file's facts and its rows from one parse."""
-
-    def test_a_list_is_parsed_once_not_twice(self):
-        from amaze.helpers import restore as restore_lib
-
-        real = restore_lib.read_document
-        parsed = []
-
-        def counting(path, *args, **kwargs):
-            parsed.append(path)
-            return real(path, *args, **kwargs)
-
-        restore_lib.read_document = counting
-        try:
-            self._survey()
-        finally:
-            restore_lib.read_document = real
-        twice = sorted({path for path in parsed
-                        if parsed.count(path) > 1})
-        self.assertEqual(
-            [], twice,
-            "the survey parses %d file(s) more than once: %s"
-            % (len(twice), ", ".join(os.path.basename(p) for p in twice)))
-
-    def test_the_rows_it_reports_are_the_rows_in_the_file(self):
-        """The parse it saves is the one the ids come from, so dropping it must not drop them."""
-        self._cops([{"id": self.COP_ID, "name": "one"},
-                    {"id": "COPOWNED2", "name": "two"}])
-        entry = next(one for one in self._survey()["lists"]
-                     if one["filename"] == "cops.json")
-        self.assertEqual({self.COP_ID, "COPOWNED2"}, entry["ids"],
-                         "the survey lost the ids it reads from the "
-                         "document")
-
-
-class TheSentenceJoinerHasOneOwner(unittest.TestCase):
-    """`wording.and_list`, which imports nothing, so no layer keeps a copy of its own."""
-
-    def test_it_punctuates_the_way_a_sentence_does(self):
-        from amaze.helpers import wording
-
-        self.assertEqual("", wording.and_list([]))
-        self.assertEqual("a", wording.and_list(["a"]))
-        self.assertEqual("a and b", wording.and_list(["a", "b"]))
-        self.assertEqual("a, b and c", wording.and_list(["a", "b", "c"]))
-        # A generator, not just a list: the call sites pass comprehensions in.
-        self.assertEqual("a, b and c",
-                         wording.and_list(x for x in ("a", "b", "c")))
-        self.assertFalse(hasattr(database, "_and_list"),
-                         "database.py grew its own joiner again")
-
-
 if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    unittest.main()

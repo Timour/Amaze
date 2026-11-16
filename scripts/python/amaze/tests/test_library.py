@@ -32,14 +32,12 @@ class TestMaterialLibrary(unittest.TestCase):
         """Set up test fixtures and mocks; the patches stop even when setUp fails part way."""
         self.addCleanup(patch.stopall)
         self.prefs_patcher = patch("amaze.core.library.prefs.Prefs")
-        self.db_patcher = patch("amaze.core.library.database.DatabaseConnector")
         self.material_patcher = patch("amaze.core.library.material.Material")
         self.thumbs_patcher = patch("amaze.render.thumbs.ThumbNailRenderer")
         self.nodes_patcher = patch("amaze.actions.materials.nodes.NodeHandler")
         self.qimage_patcher = patch("PySide6.QtGui.QImage")
 
         self.mock_prefs_cls = self.prefs_patcher.start()
-        self.mock_db_cls = self.db_patcher.start()
         self.mock_material_cls = self.material_patcher.start()
         self.mock_thumbs_cls = self.thumbs_patcher.start()
         self.mock_nodes_cls = self.nodes_patcher.start()
@@ -47,34 +45,29 @@ class TestMaterialLibrary(unittest.TestCase):
         self.mock_qimage_cls = self.qimage_patcher.start()
 
         self.mock_prefs = Mock()
-        self._library_dir = tempfile.mkdtemp(prefix="amaze_testlib_own_")  # a real folder with a real library.json; only .dir is real
+        self._library_dir = tempfile.mkdtemp(prefix="amaze_testlib_own_")  # a real folder with a real materials.json; only .dir is real
         self.addCleanup(shutil.rmtree, self._library_dir, True)
-        with open(os.path.join(self._library_dir, "library.json"), "w",
-                  encoding="utf-8") as handle:
-            json.dump({"version": 2, "categories": ["_All"], "tags": [],
-                       "assets": [{"id": "mat_001"}]}, handle)
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
         self.mock_prefs.dir = self._library_dir + os.sep
+        self.mock_prefs.library_user = test_support.FIXTURE_USER
         self.mock_prefs.img_dir = os.path.join(self._library_dir, "img", "")    # absolute, inside temp
         self.mock_prefs.ext = ".mat"
         self.mock_prefs.img_ext = ".png"
         self.mock_prefs.render_on_import = False
         self.mock_prefs_cls.return_value = self.mock_prefs
 
-        self.mock_db = Mock()
         self.asset_data = {
+            "id": "mat_001",
             "name": "TestMaterial",
             "categories": ["metal", "rough"],
             "tags": ["test", "sample"],
-            "fav": False,
             "renderer": "karma",
             "date": "2026-02-08",
-            "mat_id": "mat_001",
         }
-        self.mock_db.load.return_value = {
-            "tags": ["test", "sample"],
-            "assets": [self.asset_data],
-        }
-        self.mock_db_cls.return_value = self.mock_db
+        with open(os.path.join(self._library_dir, library_files.MATERIALS), "w",
+                  encoding="utf-8") as handle:
+            json.dump({"assets": {"mat_001": self.asset_data}}, handle)
 
         self.mock_material = Mock()
         self.mock_material.name = "TestMaterial"
@@ -143,7 +136,7 @@ class TestMaterialLibrary(unittest.TestCase):
                           return_value=False) as asked:
             self.assertFalse(
                 self.library.data(index, self.library.FavoriteRole))
-        asked.assert_called_once_with(self.mock_prefs, mat_id)
+        asked.assert_called_once_with(self.mock_prefs, mat_id, library_files.MATERIALS)
         with patch.object(library_mod.locations, "is_favourite",
                           return_value=True):
             self.assertTrue(self.library.data(index,
@@ -164,7 +157,8 @@ class TestMaterialLibrary(unittest.TestCase):
                                  return_value=starred), \
                     patch.object(library_mod.locations, "set_favourites") as wrote:
                 self.library.toggle_fav(0)
-            wrote.assert_called_once_with(self.mock_prefs, {mat_id: not starred})
+            wrote.assert_called_once_with(self.mock_prefs, {mat_id: not starred},
+                                          library_files.MATERIALS)
 
     def test_toggle_fav_does_not_write_the_library(self):
         """Stated as its own assertion: a favourite toggle never touches the shared index."""
@@ -186,25 +180,28 @@ class TestMaterialLibrary(unittest.TestCase):
         call_args = self.mock_material.set_data.call_args  # the name is preserved rather than overwritten with the placeholder
         self.assertEqual(original_name, call_args[0][0])
 
-    @patch("os.path.exists", return_value=True)
-    @patch("os.remove")
-    def test_remove_asset(self, mock_remove, mock_exists):
-        """Test remove_asset deletes files and removes from library"""
+    def test_remove_asset(self):
+        """Every file the asset owns goes to the library's trash with its row, and nothing else."""
         index = self.library.index(0, 0)
         initial_count = self.library.rowCount()
-
         mat_id = self.library._assets[0].mat_id
-        expected = set(self.library.asset_files(mat_id).values())
+        owned = sorted(self.library.asset_files(mat_id).values())
+        for path in owned:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "wb") as handle:
+                handle.write(b"x")
+        bystander = os.path.join(os.path.dirname(owned[0]), "OTHER.mat")
+        with open(bystander, "wb") as handle:
+            handle.write(b"x")
 
         self.library.remove_asset(index)
 
-        removed = {call.args[0] for call in mock_remove.call_args_list}  # every file the asset owns, from `asset_files()` rather than a count
-        self.assertEqual(
-            expected, removed,
-            "remove_asset did not delete exactly the files asset_files() "
-            "says this asset owns - anything left behind is an orphan "
-            "Clean Library cannot classify, and anything extra belongs "
-            "to something else")
+        self.assertEqual([], [path for path in owned if os.path.exists(path)],
+                         "remove_asset left files the asset owns")
+        self.assertTrue(os.path.exists(bystander), "remove_asset took another asset's file")
+        trash = os.path.join(self._library_dir, "trash")
+        self.assertEqual(len(owned), sum(len(files) for _r, _d, files in os.walk(trash)),
+                         "the owned files did not land in the library's trash")
         self.assertEqual(self.library.rowCount(), initial_count - 1)
 
     def test_remove_asset_invalid_index(self):
@@ -228,6 +225,7 @@ class TestMaterialLibrary(unittest.TestCase):
 
         new_mat = Mock()
         new_mat.mat_id = "mat_002"
+        new_mat.get_as_dict.return_value = {"id": "mat_002", "name": "NewMaterial"}
         self.mock_material_cls.return_value = new_mat
 
         renderer = material_actions.add_asset(self.library, mock_node, "metal", "test", False)
@@ -247,6 +245,7 @@ class TestMaterialLibrary(unittest.TestCase):
 
         new_mat = Mock()
         new_mat.mat_id = "mat_named"
+        new_mat.get_as_dict.return_value = {"id": "mat_named", "name": "Chosen"}
         self.mock_material_cls.return_value = new_mat
 
         material_actions.add_asset(self.library, mock_node, "metal", "", False, name="Chosen")
@@ -316,10 +315,10 @@ class TestMaterialLibrary(unittest.TestCase):
 
 def _without_the_legacy_row(prefs) -> None:
     """The fixture's odd row with no files taken out, so a check starts from a healthy library."""
-    index = os.path.join(prefs.dir, "library.json")
+    index = os.path.join(prefs.dir, library_files.MATERIALS)
     with open(index, encoding="utf-8-sig") as handle:
         document = json.load(handle)
-    document["assets"] = [row for row in document["assets"] if str(row.get("id")) != "-1"]
+    document["assets"].pop("-1", None)
     with open(index, "w", encoding="utf-8") as handle:
         json.dump(document, handle, indent=4)
 
@@ -334,10 +333,10 @@ class CheckLibraryMovesAndNeverDeletesTest(unittest.TestCase):
         self.dir = self.prefs.dir
         self.mat_dir = material.section_folder(self.dir, library_files.MATERIALS)
         self.img_dir = os.path.join(self.dir, self.prefs.img_dir)
-        self.index = os.path.join(self.dir, "library.json")
+        self.index = os.path.join(self.dir, library_files.MATERIALS)
         _without_the_legacy_row(self.prefs)
         with open(self.index, encoding="utf-8-sig") as handle:
-            self.first_id = str(json.load(handle)["assets"][0]["id"])
+            self.first_id = sorted(json.load(handle)["assets"])[0]
 
     def _survey(self):
         from amaze.core import repair
@@ -348,28 +347,23 @@ class CheckLibraryMovesAndNeverDeletesTest(unittest.TestCase):
             handle.write(text)
         return path
 
-    def test_unlisted_files_go_to_a_holding_folder_outside_the_library(self):
-        """A move aside that is wrong is undone from the holding folder; an unlink is not."""
-        from amaze.core import quarantine, repair
+    def test_unlisted_files_go_to_the_librarys_trash(self):
+        """A move aside that is wrong is undone from the trash; an unlink is not."""
+        from amaze.core import repair
         stray = [self._write(os.path.join(self.mat_dir, "orphan.mat")),
                  self._write(os.path.join(self.mat_dir, "orphan.png"))]
         findings = self._survey()
         self.assertTrue(findings["complete"], "premise: every list reads")
         self.assertIn("orphan.mat", findings["unaccounted"][MATERIALS_KEY])
         self.assertIn("orphan.png", findings["unaccounted"][MATERIALS_KEY])
-        with patch("os.remove") as removed, patch("os.unlink") as unlinked:
-            result = repair.move_aside(findings, "unlisted")
-        self.assertFalse(removed.called or unlinked.called,
-                         "a move aside unlinked a file, and a wrong one is unrecoverable")
+        result = repair.move_aside(findings, "unlisted")
         self.assertIn("orphan.mat", result["moved"])
         self.assertIn("orphan.png", result["moved"])
         for path in stray:
             self.assertFalse(os.path.exists(path), path)
-        root = quarantine.quarantine_folder(self.dir)
-        self.assertIn(quarantine.QUARANTINE_PREFIX, root)
+        import datetime
+        root = os.path.join(self.dir, "trash", datetime.date.today().isoformat())
         self.assertTrue(os.path.isfile(os.path.join(root, MATERIALS_KEY, "orphan.mat")))
-        self.assertFalse(os.path.realpath(root).startswith(os.path.realpath(self.dir)),
-                         "the holding folder is inside the library, so it would sync")
 
     def test_a_half_synced_asset_keeps_its_row_and_its_surviving_file(self):
         """A file still syncing looks like one that is gone, so the row and its other half stay."""
@@ -379,7 +373,7 @@ class CheckLibraryMovesAndNeverDeletesTest(unittest.TestCase):
             rows_before = json.load(handle)["assets"]
         findings = self._survey()
         self.assertIn(self.first_id,
-                      [one for one, _name in findings["missing_files"]["library.json"]])
+                      [one for one, _name in findings["missing_files"][library_files.MATERIALS]])
         self.assertIn("files are missing", "\n".join(repair.report_lines(findings)),
                       "the row survives and nobody is told its file is missing")
         if findings["complete"]:
@@ -421,43 +415,17 @@ class TheLibraryKeepsNoTagList(unittest.TestCase):
         with open(path, "w", encoding="utf-8", newline="\n") as handle:
             json.dump(document, handle, indent=4)
 
-    def test_a_loaded_list_is_gone_after_the_next_save(self):
-        from amaze.core import database
-        test_support.reset_database_singletons()
-        self.addCleanup(test_support.reset_database_singletons)
-        folder = test_support.fresh_library(self)
-        path = os.path.join(folder, "library.json")
-        document = self._read(path)
-        document["tags"] = ["old", "list"]
-        self._write(path, document)
-        db = database.DatabaseConnector("library.json")
-        db.load(folder)
-        self.assertNotIn("tags", db._data)
-        self.assertTrue(db.save())
-        self.assertNotIn("tags", self._read(path))
-
-    def test_a_peer_list_is_not_adopted(self):
-        panel = test_support.fixture_panel(self)
-        model = panel.material_model
-        path = os.path.join(panel.prefs.dir, "library.json")
-        self.assertTrue(model.save(), "premise: the first save")
-        document = self._read(path)
-        document["tags"] = ["from", "an", "older", "build"]
-        self._write(path, document)
-        self.assertTrue(model.save())
-        self.assertNotIn("tags", self._read(path))
-
     def test_new_tags_stay_on_the_asset_and_nowhere_else(self):
         panel = test_support.fixture_panel(self)
         model = panel.material_model
-        path = os.path.join(panel.prefs.dir, "library.json")
+        path = os.path.join(panel.prefs.dir, library_files.MATERIALS)
         index = model.index(1, 0)
         asset_id = str(model.assets[1].mat_id)
         model.set_assetdata(index, model.assets[1].name, "", "freshtag", None)
+        test_support.settle_stamps()
         document = self._read(path)
         self.assertNotIn("tags", document)
-        row = next(r for r in document["assets"] if str(r.get("id")) == asset_id)
-        self.assertIn("freshtag", row.get("tags") or [])
+        self.assertIn("freshtag", document["assets"][asset_id].get("tags") or [])
 
 
 class TheSentinelHasOneHome(unittest.TestCase):
@@ -568,22 +536,20 @@ class ACommaInsideOneCategoryNameStaysWholeTest(unittest.TestCase):
 
     def test_check_library_leaves_the_whole_name_on_the_asset(self):
         from amaze.core import repair
-        index = os.path.join(self.prefs.dir, "library.json")
+        index = os.path.join(self.prefs.dir, library_files.MATERIALS)
         with open(index, encoding="utf-8-sig") as handle:
             document = json.load(handle)
-        row = next(one for one in document["assets"] if str(one.get("id")) == self.asset.mat_id)
-        row["categories"] = [self.NAME]
+        document["assets"][str(self.asset.mat_id)]["categories"] = [self.NAME]
         with open(index, "w", encoding="utf-8") as handle:
             json.dump(document, handle, indent=4)
         test_support.reset_database_singletons()    # an action refuses a library this process holds
         findings = repair.survey(self.prefs.dir, self.prefs.img_dir)
         self.assertNotIn(self.asset.mat_id,
-                         [one for one, _name in findings["uncategorised"]["library.json"]],
+                         [one for one, _name in findings["uncategorised"][library_files.MATERIALS]],
                          "a name holding a comma was read as no category")
         repair.rescue_uncategorised(findings)
         with open(index, encoding="utf-8-sig") as handle:
-            after = next(one for one in json.load(handle)["assets"]
-                         if str(one.get("id")) == self.asset.mat_id)
+            after = json.load(handle)["assets"][str(self.asset.mat_id)]
         self.assertEqual([self.NAME], after["categories"],
                          "Check Library split the category name at its comma")
 
@@ -620,13 +586,14 @@ class AnInlineSectionHasNoFilesToMissTest(unittest.TestCase):
             return json.load(handle)["assets"]
 
     def _checked(self, model):
-        from amaze.core import database, repair
+        from amaze.core import repair
         filename = model.DB_FILENAME
+        test_support.reset_database_singletons()    # saved, and let go: an action refuses one held
         before = self._rows(filename)
         self.assertTrue(before, "premise: the list holds nothing to keep")
-        test_support.reset_database_singletons()    # an action refuses a library this process holds
         findings = repair.survey(self.prefs.dir, self.prefs.img_dir)
-        self.assertEqual(set(database.ASSET_FILE_OWNERS), set(findings["missing_files"]),
+        self.assertEqual({library_files.MATERIALS, library_files.NODES},
+                         set(findings["missing_files"]),
                          "an inline list was checked for files it never has")
         self.assertNotIn(filename, findings["missing_renders"])
         self.assertEqual([], [line for line in repair.report_lines(findings)
@@ -733,38 +700,6 @@ class ModelSignalTest(unittest.TestCase):
             "a snippet appeared with no rowsInserted signal")
 
 
-class SchemaStampTest(unittest.TestCase):
-    """A save never stamps a newer build's database with an older schema version."""
-
-    def setUp(self):
-        import json
-        from amaze.core import library as library_mod
-        from amaze.tests import test_support
-
-        self.json = json
-        self.prefs = test_support.fixture_prefs(self)
-        self.path = os.path.join(self.prefs.dir, "library.json")
-        self.library_mod = library_mod
-        self.test_support = test_support
-
-    def _version_after_save(self, written):
-        with open(self.path, encoding="utf-8") as handle:
-            data = self.json.load(handle)
-        data["version"] = written
-        with open(self.path, "w", encoding="utf-8") as handle:
-            self.json.dump(data, handle)
-        self.test_support.reset_database_singletons()
-        model = self.library_mod.MaterialLibrary(preferences=self.prefs)
-        model.save()
-        with open(self.path, encoding="utf-8") as handle:
-            return self.json.load(handle).get("version")
-
-    def test_a_newer_version_is_not_downgraded(self):
-        self.assertEqual(
-            99, self._version_after_save(99),
-            "a save stamped this build's schema over a newer one")
-
-
 class OpeningALibraryComposesOnePathPerAssetTest(unittest.TestCase):
     """Loading stats each asset's `.mat` and composes no other path. ▸r/pane-open-cost"""
 
@@ -784,61 +719,24 @@ class OpeningALibraryComposesOnePathPerAssetTest(unittest.TestCase):
 
 
 class ARetiredFieldDoesNotComeBackOnASaveTest(unittest.TestCase):
-    """Stamped at the current schema so no migration strips the retired keys before `_KNOWN_KEYS`."""
+    """A row carrying a retired key loses it at the next save: `_KNOWN_KEYS` drops it."""
 
-    def setUp(self):
-        from amaze.core import library as library_mod
-        from amaze.tests import test_support
-        self.library_mod = library_mod
-        self.test_support = test_support
-        self.prefs = test_support.fixture_prefs(self)
-        test_support.reset_database_singletons()
-        self.addCleanup(test_support.reset_database_singletons)
-        self.path = os.path.join(self.prefs.dir, "library.json")
-
-    def test_neither_field_survives_an_ordinary_save(self):
-        import json
-        with open(self.path, encoding="utf-8") as handle:
-            document = json.load(handle)
-        from amaze.core import database
-        document["version"] = database.SCHEMA_VERSION
-        for row in document["assets"]:
-            row["favorite"] = True
-            row["icon"] = {"name": "box", "bg": "#4af2a1"}
-        with open(self.path, "w", encoding="utf-8") as handle:
-            json.dump(document, handle)
-
-        model = self.library_mod.MaterialLibrary(preferences=self.prefs)
-        self.assertTrue(
-            model.assets,
-            "premise: the fixture rows reached the model, so `from_dict` "
-            "actually saw the retired keys")
-        self.assertTrue(model.save(), "premise: the save reached disk")
-
-        with open(self.path, encoding="utf-8") as handle:
-            saved = json.load(handle)
-        for row in saved["assets"]:
-            self.assertNotIn(
-                "favorite", row,
-                "the retired favourite came back on the save, so the "
-                "schema step is undone every time the panel writes")
-            self.assertNotIn("icon", row, "the retired icon came back")
+    def test_neither_field_survives_the_record(self):
+        row = material.Material.from_dict({"id": "R1", "name": "n", "favorite": True,
+                                           "icon": {"name": "box"}}).get_as_dict()
+        self.assertNotIn("favorite", row, "the retired favourite rides back into the database")
+        self.assertNotIn("icon", row, "the retired icon rides back into the database")
 
 
 class AMaterialStarLivesInTheLibraryStoreTest(unittest.TestCase):
-    """A star goes to the library store per user; `material_favorites` is a migration source only."""
+    """A star goes to the materials database, in the user's own `stars` entry."""
 
     def setUp(self):
-        from amaze.core import keyed_store, library as library_mod
-        from amaze.core import locations
-        self.keyed_store = keyed_store
-        self.locations = locations
+        from amaze.core import library as library_mod
         self.library_mod = library_mod
         self.prefs = test_support.fixture_prefs(self)
         test_support.reset_database_singletons()
         self.addCleanup(test_support.reset_database_singletons)
-        keyed_store.release()
-        self.addCleanup(keyed_store.release)
 
     def test_a_toggle_lands_in_the_store_not_in_settings(self):
         model = self.library_mod.MaterialLibrary(preferences=self.prefs)
@@ -852,11 +750,12 @@ class AMaterialStarLivesInTheLibraryStoreTest(unittest.TestCase):
         self.assertTrue(
             model.data(index, model.FavoriteRole),
             "the toggle did not light the star through the store")
-        store = self.keyed_store.open_store(
-            self.locations.FAVOURITES_SPEC, self.prefs)
+        test_support.settle_stamps()
+        with open(os.path.join(self.prefs.dir, library_files.MATERIALS), encoding="utf-8") as fh:
+            stars = json.load(fh).get("stars", {}).get(test_support.FIXTURE_USER, {})
         self.assertTrue(
-            store.has(mat_id),
-            "the star is lit but the library store does not carry it - "
+            stars.get(mat_id),
+            "the star is lit but the database does not carry it - "
             "the role is answering something machine-local again")
         self.assertNotIn(
             mat_id, list(getattr(self.prefs, "material_favorites", ()) or ()),
@@ -865,8 +764,7 @@ class AMaterialStarLivesInTheLibraryStoreTest(unittest.TestCase):
 
         # And it comes back through a fresh model reading the store.
         test_support.reset_database_singletons()
-        self.keyed_store.release()
-        again = self.library_mod.MaterialLibrary(preferences=self.prefs)
+        again =self.library_mod.MaterialLibrary(preferences=self.prefs)
         rows = {str(a.mat_id): r for r, a in enumerate(again.assets)}
         self.assertTrue(
             again.data(again.index(rows[mat_id], 0), again.FavoriteRole),
@@ -955,52 +853,53 @@ class UnreadableSiblingIsNotOverwrittenTest(unittest.TestCase):
     """A sibling file changed underneath and unparseable survives our saves, with a copy kept."""
 
     def setUp(self):
-        from amaze.core import database, library as library_mod
-        from amaze.tests import test_support
+        from amaze.core import library as library_mod, library_db
+        self.library_db = library_db
         self.prefs = test_support.fixture_prefs(self)
         test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
         self.model = library_mod.MaterialLibrary(preferences=self.prefs)
-        self.db = database.DatabaseConnector(library_mod.MaterialLibrary.DB_FILENAME)  # one connector per filename, shared - the same object the model writes through
-        self.db_path = os.path.join(self.prefs.dir, "library.json")
+        self.db_path = os.path.join(self.prefs.dir, library_files.MATERIALS)
+
+    def _save(self):
+        """One change of ours, saved."""
+        held = self.library_db.document(self.prefs, library_files.MATERIALS)
+        held.edit("assets", str(self.model.assets[0].mat_id), name="ours %d" % id(held))
+        return self.library_db.save(self.prefs, library_files.MATERIALS)
 
     def _their_file_changed_and_is_unparseable(self):
-        """Make the on-disk file both NEWER and broken, so the guard fires and the merge then fails."""
-        self.db._disk_stat = (0, 0)          # anything that is not the file's
         with open(self.db_path, "w", encoding="utf-8") as handle:
-            handle.write('{"assets": [{"id": "THEIRS", ')   # truncated
+            handle.write('{"assets": {"THEIRS": ')   # truncated
+
+    def _text(self):
+        with open(self.db_path, encoding="utf-8") as handle:
+            return handle.read()
 
     def test_their_unparseable_file_is_not_overwritten(self):
         self._their_file_changed_and_is_unparseable()
-        before = open(self.db_path, encoding="utf-8").read()
-        self.db.save()
-        after = open(self.db_path, encoding="utf-8").read()
-        self.assertEqual(
-            before, after,
-            "we overwrote a database we could not read - that is the "
-            "other machine's work")
+        before = self._text()
+        self._save()
+        self.assertEqual(before, self._text(),
+                         "we overwrote a database we could not read - another session's work")
 
     def test_a_copy_of_their_file_is_kept(self):
         self._their_file_changed_and_is_unparseable()
-        self.db.save()
-        self.assertTrue(
-            os.path.exists(self.db_path + ".unreadable"),
-            "no copy was kept, so there is nothing to recover from")
+        self._save()
+        kept = [name for name in os.listdir(os.path.join(self.prefs.dir, "backup"))
+                if name.startswith(library_files.MATERIALS + ".unreadable-")]
+        self.assertTrue(kept, "no copy was kept, so there is nothing to recover from")
 
     def test_the_refusal_holds_for_the_REST_of_the_session(self):
         """Refusing once is not enough: the next save would overwrite what the first preserved."""
         self._their_file_changed_and_is_unparseable()
-        self.db.save()
-        before = open(self.db_path, encoding="utf-8").read()
-        self.db._disk_stat = None          # guard would not re-fire
-        self.db.save()
-        after = open(self.db_path, encoding="utf-8").read()
-        self.assertEqual(
-            before, after,
-            "a later save in the same session overwrote it anyway")
+        self._save()
+        before = self._text()
+        self._save()
+        self.assertEqual(before, self._text(), "a later save in the same session overwrote it")
 
     def test_an_ordinary_save_still_works(self):
         """The refusal must not be the normal path."""
-        self.db.save()
+        self.assertTrue(self._save())
         with open(self.db_path, encoding="utf-8") as handle:
             self.assertIn("assets", json.load(handle))
 
@@ -1016,42 +915,38 @@ class TwoMachineMergeTest(unittest.TestCase):
         self.json = json
         self.prefs = test_support.fixture_prefs(self)
         test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
         self.model = library_mod.MaterialLibrary(preferences=self.prefs)
-        self.db_path = os.path.join(self.prefs.dir, "library.json")
+        self.db_path = os.path.join(self.prefs.dir, library_files.MATERIALS)
 
     def _disk(self):
         with open(self.db_path, encoding="utf-8") as handle:
             return self.json.load(handle)
 
     def _write_disk(self, data):
-        import time
         with open(self.db_path, "w", encoding="utf-8") as handle:
             self.json.dump(data, handle)
-        time.sleep(0.01)      # the guard compares mtime_ns + size
 
     def _other_machine_adds_a_material(self):
         import copy
         data = self._disk()
-        row = copy.deepcopy(data["assets"][0])
+        row = copy.deepcopy(next(iter(data["assets"].values())))
         row["id"] = "FROM_OTHER_MAC"
         row["name"] = "from_other_mac"
-        data["assets"].append(row)
+        data["assets"]["FROM_OTHER_MAC"] = row
         self._write_disk(data)
 
-    def test_an_adopted_row_reaches_the_model(self):
-        self._other_machine_adds_a_material()
-        self.model.save()  # save() directly, because a favourite toggle no longer writes the library at all
-        self.assertNotEqual(
-            -1, self.model.find_asset_row_by_id("FROM_OTHER_MAC"),
-            "the adopted row never reached the model, so the next save "
-            "will write it out of existence")
+    def _ours(self):
+        """A change of this session's, saved: a merge, since the file moved under it."""
+        self.model.set_assetdata(self.model.index(0, 0), "ours", "", "", None)
+        test_support.settle_stamps()
 
     def test_an_adopted_row_survives_the_next_save(self):
         """The consequence, not the wiring."""
         self._other_machine_adds_a_material()
-        self.model.save()
+        self._ours()
         self.model.save()                              # a SECOND save
-        ids = [a.get("id") for a in self._disk()["assets"]]
+        ids = list(self._disk()["assets"])
         self.assertIn(
             "FROM_OTHER_MAC", ids,
             "a material added on the other machine was deleted by this "
@@ -1059,50 +954,31 @@ class TwoMachineMergeTest(unittest.TestCase):
 
     def test_another_sessions_category_colours_survive(self):
         data = self._disk()
-        data["category_colors"] = {"Karma_Mats": "#ff0000"}
+        data.setdefault("categories", {}).setdefault("Karma_Mats", {})["color"] = "#ff0000"
         self._write_disk(data)
-        self.model.save()
-        self.assertEqual(
-            {"Karma_Mats": "#ff0000"},
-            self._disk().get("category_colors"),
-            "another session's category colours were wiped by an "
-            "unrelated save")
+        self._ours()
+        self.assertEqual("#ff0000", self._disk()["categories"]["Karma_Mats"].get("color"),
+                         "another session's category colour was wiped by an unrelated save")
 
     def test_an_unknown_top_level_key_is_carried_through(self):
         """A newer build's key must not be dropped by an older one."""
         data = self._disk()
         data["something_a_newer_build_wrote"] = {"keep": "me"}
         self._write_disk(data)
-        self.model.toggle_fav(0)
-        self.assertEqual(
-            {"keep": "me"},
-            self._disk().get("something_a_newer_build_wrote"),
-            "an unrecognised top-level key was dropped on save")
+        self._ours()
+        self.assertEqual({"keep": "me"}, self._disk().get("something_a_newer_build_wrote"),
+                         "an unrecognised top-level key was dropped on save")
 
     def test_a_sparse_adopted_row_is_kept_not_dropped(self):
-        """A row carrying only an id is adopted: `from_dict` fills defaults rather than raising."""
+        """A row carrying only an id is kept: `from_dict` fills defaults rather than raising."""
         data = self._disk()
-        data["assets"].append({"id": "SPARSE_ROW"})
+        data["assets"]["SPARSE_ROW"] = {"id": "SPARSE_ROW"}
         self._write_disk(data)
         try:
-            self.model.save()
+            self._ours()
         except Exception as exc:                       # noqa: BLE001
             self.fail("a sparse adopted row aborted the save: %s" % exc)
-        self.assertNotEqual(
-            -1, self.model.find_asset_row_by_id("SPARSE_ROW"),
-            "a row with only an id was dropped instead of adopted")
-        ids = [a.get("id") for a in self._disk()["assets"]]
-        self.assertIn("SPARSE_ROW", ids)
-
-    def test_a_row_that_is_not_a_dict_cannot_abort_the_save(self):
-        """The genuinely unparseable case still has to be survivable."""
-        data = self._disk()
-        data["assets"].append("this is not a row")
-        self._write_disk(data)
-        try:
-            self.model.toggle_fav(0)
-        except Exception as exc:                       # noqa: BLE001
-            self.fail("a malformed adopted row aborted the save: %s" % exc)
+        self.assertIn("SPARSE_ROW", self._disk()["assets"])
 
 
 class CheckLibraryRefusesOnIncompleteKnowledgeTest(unittest.TestCase):
@@ -1133,20 +1009,20 @@ class CheckLibraryRefusesOnIncompleteKnowledgeTest(unittest.TestCase):
 
     def test_an_unreadable_sibling_is_reported_not_skipped(self):
         from amaze.core import repair
-        self._write_sibling("cops.json", '{"assets": [{"id": "COPASSET1"}')
+        self._write_sibling(library_files.NODES, '{"assets": {"COPASSET1": {"id": "COPASSET1"}')
         self._write_sibling(os.path.join(self.NODES, "COPASSET1.mat"), "x")
         findings = self._survey()
-        self.assertEqual("unreadable", self._entry(findings, "cops.json")["state"])
+        self.assertEqual("unreadable", self._entry(findings, library_files.NODES)["state"])
         self.assertFalse(findings["complete"],
                          "an unreadable sibling was skipped, so its files look unlisted")
         self.assertEqual(len(findings["leftovers"]), repair.files_to_move_aside(findings))
         with self.assertRaises(ValueError):
             repair.move_aside(findings, "unlisted")
-        self.assertIn("Node: the database is corrupt/unreadable. It has not been changed.",
-                      repair.report_lines(findings))
+        self.assertTrue(any(line.startswith("Nodes: the database is corrupt/unreadable.")
+                            for line in repair.report_lines(findings)))
 
     def test_a_readable_sibling_contributes_its_ids(self):
-        self._write_sibling("cops.json", '{"assets": [{"id": "COPASSET1"}]}')
+        self._write_sibling(library_files.NODES, '{"assets": {"COPASSET1": {"id": "COPASSET1"}}}')
         self._write_sibling(os.path.join(self.NODES, "COPASSET1.mat"), "x")
         self._write_sibling(os.path.join(self.NODES, "COPASSET1.json"), "{}")
         findings = self._survey()
@@ -1156,24 +1032,23 @@ class CheckLibraryRefusesOnIncompleteKnowledgeTest(unittest.TestCase):
 
     def test_an_absent_sibling_is_not_an_error(self):
         """Absent owns nothing; only present-but-unparseable is unsafe."""
-        path = os.path.join(self.prefs.dir, "cops.json")
+        path = os.path.join(self.prefs.dir, library_files.NODES)
         if os.path.exists(path):
             os.remove(path)
         findings = self._survey()
-        self.assertEqual("absent", self._entry(findings, "cops.json")["state"])
+        self.assertEqual("absent", self._entry(findings, library_files.NODES)["state"])
         self.assertTrue(findings["complete"])
 
 
 def _empty_library_dir(testcase) -> str:
-    """A valid assetless library, auto-removed; a missing library.json would make the switch raise."""
-    import json
+    """A valid assetless library, auto-removed."""
     import shutil
     import tempfile
+    from amaze.prefs import prefs as prefs_mod
 
     tmp = tempfile.mkdtemp(prefix="amaze_empty_lib_")
     testcase.addCleanup(shutil.rmtree, tmp, True)
-    with open(os.path.join(tmp, "library.json"), "w", encoding="utf-8") as handle:
-        json.dump({"categories": ["_All"], "tags": [], "assets": []}, handle)
+    prefs_mod.create_library(tmp)
     return tmp + os.sep
 
 
@@ -1234,8 +1109,8 @@ class LibrarySwitchTest(unittest.TestCase):
         self.model.modelAboutToBeReset.connect(lambda: began.append(1))
         self.model.modelReset.connect(lambda: ended.append(1))
 
-        from amaze.core import database
-        with patch.object(database, "load_survivable",    # fail INSIDE the reset window, at the read
+        from amaze.core import library as library_mod
+        with patch.object(library_mod.MaterialLibrary, "_read_rows",    # fail INSIDE the reset window
                           side_effect=OSError("library unreadable")):
             with self.assertRaises(OSError):
                 self.model.switch_model_data()
@@ -1263,7 +1138,7 @@ class LibrarySwitchTest(unittest.TestCase):
 
 
 class GradientSwitchTest(unittest.TestCase):
-    """Colors resets on a switch, and `db.serves()` refuses a save aimed at another library."""
+    """Colors resets on a switch, and a save aimed at another library is refused."""
 
     def _model(self):
         from amaze.core import gradient_library
@@ -1295,12 +1170,9 @@ class GradientSwitchTest(unittest.TestCase):
             "the proxy is out of step with the gradient model")
 
     def test_a_save_aimed_at_ANOTHER_library_is_refused(self):
-        """An unswitched model must not write its colours into another library: `db.serves()`."""
+        """An unswitched model must not write its colours into another library."""
         model = self._model()
-        from amaze.core import database
-        connector = database.DatabaseConnector(model.DB_FILENAME)
-        self.assertTrue(connector.serves(self.prefs.dir),
-                        "premise: the connector serves this library")
+        self.assertTrue(model.save(), "premise: the model saves into its own library")
 
         self.prefs.dir = _empty_library_dir(self)  # move the library under the model without switching it
         self.assertFalse(
@@ -1427,15 +1299,18 @@ class FavouritesArePerUserTest(unittest.TestCase):
     def test_a_toggle_never_writes_the_shared_index(self):
         import json
         model = self._model()
-        index_path = os.path.join(self.prefs.dir, "library.json")
+        index_path = os.path.join(self.prefs.dir, library_files.MATERIALS)
         with open(index_path, "rb") as fh:
-            before = fh.read()
+            before = json.load(fh)["assets"]
         model.toggle_fav(0)
+        test_support.settle_stamps()
         with open(index_path, "rb") as fh:
-            after = fh.read()
-        self.assertEqual(before, after,
-                         "a favourite toggle wrote the shared index - "
+            after = json.load(fh)
+        self.assertEqual(before, after["assets"],
+                         "a favourite toggle wrote the shared rows - "
                          "my star still collides with yours")
+        self.assertIn(str(model.assets[0].mat_id),
+                      after.get("stars", {}).get(test_support.FIXTURE_USER, {}))
         self.assertTrue(model.data(model.index(0, 0), model.FavoriteRole))
 
 
@@ -1540,9 +1415,10 @@ class NoTagsIsAnEmptyListTest(unittest.TestCase):
     """No tags is `[]` on disk at every door: the add, and the row read back. ▸p/no-tags-is-empty"""
 
     def _saved_tags(self, prefs, name: str) -> list:
-        with open(os.path.join(prefs.dir, "library.json"),
+        test_support.settle_stamps()
+        with open(os.path.join(prefs.dir, library_files.MATERIALS),
                   encoding="utf-8") as handle:
-            rows = json.load(handle)["assets"]
+            rows = json.load(handle)["assets"].values()
         return [row["tags"] for row in rows if row.get("name") == name]
 
     def test_a_material_added_with_no_tags_saves_an_empty_list(self):

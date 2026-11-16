@@ -7,7 +7,7 @@ import hou
 from PySide6 import QtCore
 
 from amaze import messages
-from amaze.core import debug, library, material, versions
+from amaze.core import asset_record, debug, library, material, versions
 from amaze.render import husk_job, nodes
 
 
@@ -30,6 +30,7 @@ def add_asset(model, node: hou.Node, cats: str, tags: str, fav: bool,
     new_mat.set_data(name or node.name(), cats, tags, fav, renderer)
     new_mat.node_color = nodes.custom_node_color(node)
 
+    handler.staging = []    # the files wait to land with the row, as one unit
     saved = handler.save_node(node, new_mat.mat_id, False)
     debug.event(
         "save", "save_node result",
@@ -43,16 +44,17 @@ def add_asset(model, node: hou.Node, cats: str, tags: str, fav: bool,
         inventory = handler.texture_inventory
         if isinstance(inventory, (list, tuple)) and inventory:    # rides _extra like the curated tag - old builds ignore it, get_as_dict carries it
             new_mat._extra["textures"] = list(inventory)
-        model._append_record(new_mat)    # per row, so in a multi-save each tile shows as its save lands
-        listed = model.save()
-        if not listed:    # the save said why; the record waits in memory for the next save that works
-            debug.event("save", "material files written but the library list was not saved",
+        if not model.add_saved(new_mat, handler.staging):    # per row, so each tile shows as it lands
+            debug.event("save", "material not saved - its database took neither row nor files",
                         name=new_mat.name, mat_id=new_mat.mat_id)
+            debug.refuse(messages.ASSET_NOT_SAVED_DATABASE_REFUSED % new_mat.name)
+            return ""
         try:  # the node carries its id, so a later save can offer Update Existing
             node.setUserData("assetlib_id", str(new_mat.mat_id))
         except (hou.OperationFailed, hou.ObjectWasDeleted):    # the save succeeded ▸r/node-vanished
             pass
-        return renderer if listed else library.ListNotSaved(renderer)
+        return renderer
+    asset_record.discard(handler.staging)
     debug.event("save", "add_asset refused - the node was not saved",
                 name=new_mat.name, node=node.path(),
                 mat_id=new_mat.mat_id)
@@ -75,11 +77,11 @@ class UpdateRefused(Exception):
 
 def update_asset_content(model, row: int, node: hou.Node) -> str:
     """Rewrite `row`'s files from `node`: its renderer, `ListNotSaved` if unlisted; refusals raise."""
-    from amaze.core import library_policy
+    from amaze.core import library_settings
     if row < 0 or row >= len(model._assets):
         raise UpdateRefused(messages.UPDATE_REFUSED_GONE)
     mat = model._assets[row]
-    if not library_policy.allow_overwrite(model.preferences.dir):  # the gate every caller goes through
+    if not library_settings.allow_overwrite(model.preferences):  # the gate every caller goes through
         debug.event("library", "overwrite refused - the library "
                     "does not allow it", mat_id=str(mat.mat_id),
                     name=mat.name)

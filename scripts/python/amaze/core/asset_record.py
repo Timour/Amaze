@@ -1,6 +1,7 @@
 """The one reader and writer of an asset's `<id>.json`: its metadata and its builder."""
 
 import json
+import os
 import threading
 
 from amaze.core import debug, material
@@ -49,21 +50,76 @@ def encode(document: dict) -> bytes:
     return (json.dumps(document, indent=1, sort_keys=True) + "\n").encode("utf-8")
 
 
-def write_section(path: str, section: str, data: dict) -> None:
-    """Replace one section and keep the other, written whole and atomically; OSError propagates."""
-    if section not in SECTIONS:
-        raise ValueError("an asset record has no %r section" % section)
-    with LOCK:
-        document, error = _load(path)
-        if error:
-            hostos.preserve_unreadable(path, why="asset record")
-        document = dict(document)
+def with_sections(path: str, sections: dict) -> bytes:
+    """The bytes of `path`'s record with `sections` replaced and the rest kept; an empty one goes."""
+    for section in sections:
+        if section not in SECTIONS:
+            raise ValueError("an asset record has no %r section" % section)
+    document = dict(_load(path)[0])
+    for section, data in sections.items():
         if data:
             document[section] = data
         else:
             document.pop(section, None)
-        document["format"] = FORMAT
-        hostos.write_json_atomic(path, document, serialised=encode(document))
+    document["format"] = FORMAT
+    return encode(document)
+
+
+def guard_for(path: str):
+    """The guard of the library an `<id>.json` sits in: two folders up, `<library>/<section>/`."""
+    from amaze.core import guard
+    return guard.Guard(os.path.dirname(os.path.dirname(os.path.abspath(path))))
+
+
+def write_section(path: str, section: str, data: dict, user: str = "") -> None:
+    """Replace one section and keep the other, through the guard; OSError propagates."""
+    with LOCK:
+        held = guard_for(path)
+        relative = held.inside(path)
+        if not relative:
+            raise ValueError("%s is no asset record of a library" % path)
+        change = held.change(user)
+        change.put_file(relative, with_sections(path, {section: data}))
+        change.commit()
+
+
+TAKE, RECORD = "take", "record"    # a staged file: (TAKE, target, written) or (RECORD, path, sections)
+
+
+def add_staged(change, held, staged: list, metadata=None) -> None:
+    """Each staged file into `change`; `metadata` fills every record's metadata section."""
+    for kind, target, what in staged:
+        relative = held.inside(target)
+        if not relative:
+            raise ValueError("%s is outside the library" % target)
+        if kind == TAKE:
+            change.take(relative, what)
+        else:
+            sections = dict(what)
+            if metadata is not None:
+                sections[METADATA] = metadata
+            change.put_file(relative, with_sections(target, sections))
+
+
+def discard(staged: list) -> None:
+    """Remove the written files a staged save leaves when it does not land."""
+    for kind, _target, what in staged:
+        if kind == TAKE:
+            hostos.discard_scratch(what)
+
+
+def land(preferences, staged: list) -> None:
+    """An asset's staged files as one unit, its row unchanged; OSError when it did not land."""
+    from amaze.core import guard, library_db
+    held = library_db.guard_of(preferences)
+    change = held.change(str(getattr(preferences, "library_user", "") or ""))
+    try:
+        with LOCK:
+            add_staged(change, held, staged)
+            change.commit()
+    except (guard.Refused, ValueError) as exc:
+        discard(staged)
+        raise OSError(str(exc)) from exc
 
 
 def builder_section(found: dict) -> dict:

@@ -167,8 +167,8 @@ class CaptureStoreTest(unittest.TestCase):
 
     def test_an_asset_capture_is_named_by_its_id_inside_its_section_folder(self):
         """An asset's capture is its one picture, `<section folder>/<id>.png`."""
-        for section, folder in (("library.json", "materials"), ("cops.json", "nodes"),
-                                ("code.json", "code"), ("gradients.json", "colors")):
+        for section, folder in (("materials.json", "materials"), ("nodes.json", "nodes"),
+                                ("code.json", "code"), ("colors.json", "colors")):
             with self.subTest(section=section):
                 self.assertEqual(os.path.join(str(self.prefs.dir), folder, "abc123.png"),
                                  tile_icons.thumbnail_path(self.prefs, "abc123", section))
@@ -650,7 +650,7 @@ class SlowCapturePromptTest(unittest.TestCase):
         self.addCleanup(captures.signals.landed.disconnect, heard)
         with self.assertRaises(scene_captures.CaptureRefused):
             scene_captures.capture_tile(tile_icons.thumbnail_path(
-                self.prefs, "abc", "library.json"), "abc")
+                self.prefs, "abc", "materials.json"), "abc")
         self.assertEqual([], landed, "a refused capture was announced as landed")
 
 
@@ -1606,127 +1606,8 @@ class ShelfTest(unittest.TestCase):
                       "the sync does not VERIFY the toolbar landed")
 
 
-class MachineCapturesAreAdoptedTest(unittest.TestCase):
-    """Before 1.9 each computer kept its own scene captures; they move into the library."""
-
-    def setUp(self):
-        self.cache = tempfile.mkdtemp(prefix="amaze_hipcap_cache_")
-        self.addCleanup(shutil.rmtree, self.cache, True)
-        self.config = tempfile.mkdtemp(prefix="amaze_hipcap_cfg_")
-        self.addCleanup(shutil.rmtree, self.config, True)
-        for name, fake in (("cache_root", self.cache),
-                           ("config_root", self.config)):
-            real = getattr(hostos, name)
-            setattr(hostos, name, (lambda p: lambda: p)(fake))
-            self.addCleanup(setattr, hostos, name, real)
-        from amaze.core import locations
-        self.locations = locations
-        real_ready = locations.ready
-        locations.ready = lambda preferences: True    # the stub has no store to wait for
-        self.addCleanup(setattr, locations, "ready", real_ready)
-        self.prefs = _library_prefs(self)
-        self.scene = _real_scene(self)
-
-    def _old(self, root, scene, body=b"old-capture", name="0123abcd.png"):
-        """`root`'s old capture folder holding one capture of `scene`, mapped by its manifest."""
-        folder = os.path.join(root, captures.LEGACY_FOLDER)
-        os.makedirs(folder, exist_ok=True)
-        with open(os.path.join(folder, name), "wb") as fh:
-            fh.write(body)
-        manifest = os.path.join(folder, "manifest.json")
-        mapped = {}
-        if os.path.isfile(manifest):
-            with open(manifest, encoding="utf-8") as fh:
-                mapped = json.load(fh)
-        mapped[hostos.canonical_path_key(scene)] = {"thumbnail": name}
-        with open(manifest, "w", encoding="utf-8") as fh:
-            json.dump(mapped, fh)
-        return os.path.join(folder, name)
-
-    def _target(self, scene, preferences=None):
-        preferences = preferences or self.prefs
-        return captures.file_path(preferences, captures.file_key(preferences, scene))
-
-    @staticmethod
-    def _read(path):
-        with open(path, "rb") as fh:
-            return fh.read()
-
-    def _held(self, name):
-        """Where a moved original waits in the holding folder."""
-        from amaze.core import quarantine
-        return os.path.join(quarantine.quarantine_folder(self.prefs.dir),
-                            captures.LEGACY_FOLDER, name)
-
-    def test_an_old_capture_moves_into_the_library(self):
-        source = self._old(self.config, self.scene)
-        self.assertEqual(1, captures.adopt_machine_captures(self.prefs))
-        self.assertEqual(b"old-capture", self._read(self._target(self.scene)))
-        self.assertFalse(os.path.exists(source), "the original was left behind")
-        self.assertEqual(b"old-capture", self._read(self._held(os.path.basename(source))),
-                         "the original is not in the holding folder")
-        self.assertFalse(os.path.isdir(os.path.dirname(source)),
-                         "the emptied old folder stayed")
-
-    def test_both_old_folders_are_read(self):
-        """The settings folder, and the cache folder an older install kept them in."""
-        other = _real_scene(self, "other.hiplc")
-        self._old(self.config, self.scene)
-        self._old(self.cache, other, body=b"from-cache")
-        self.assertEqual(2, captures.adopt_machine_captures(self.prefs))
-        self.assertEqual(b"from-cache", self._read(self._target(other)))
-
-    def test_a_second_start_finds_nothing_to_move(self):
-        self._old(self.config, self.scene)
-        captures.adopt_machine_captures(self.prefs)
-        self.assertEqual(0, captures.adopt_machine_captures(self.prefs))
-        self.assertEqual(0, captures.adopt_machine_captures(_library_prefs(self)),
-                         "a capture moved into one library was offered to the next")
-
-    def test_a_capture_already_in_the_library_wins(self):
-        """Another computer may have captured the scene since: the library keeps its own."""
-        source = self._old(self.config, self.scene)
-        _write_png(self._target(self.scene), b"newer")
-        self.assertEqual(0, captures.adopt_machine_captures(self.prefs))
-        self.assertEqual(b"newer", self._read(self._target(self.scene)))
-        self.assertEqual(b"old-capture", self._read(self._held(os.path.basename(source))),
-                         "this computer's older capture was not kept in the holding folder")
-
-    def test_nothing_moves_before_files_can_be_keyed(self):
-        """A capture keyed by its path now would miss its row once the locations are read."""
-        self.locations.ready = lambda preferences: False
-        source = self._old(self.config, self.scene)
-        self.assertEqual(0, captures.adopt_machine_captures(self.prefs))
-        self.assertFalse(os.path.exists(self._target(self.scene)))
-        self.assertTrue(os.path.isfile(source), "a capture moved before its key could be read")
-
-    def test_a_capture_that_cannot_be_copied_waits_for_the_next_start(self):
-        from unittest import mock
-        source = self._old(self.config, self.scene)
-        with mock.patch.object(captures.shutil, "copyfile", side_effect=OSError("disk full")):
-            self.assertEqual(0, captures.adopt_machine_captures(self.prefs))
-        self.assertTrue(os.path.isfile(source), "a capture that was not copied was set aside")
-        manifest = os.path.join(os.path.dirname(source), captures.LEGACY_MANIFEST)
-        with open(manifest, encoding="utf-8") as fh:
-            self.assertIn(hostos.canonical_path_key(self.scene), json.load(fh),
-                          "the next start no longer knows which scene it belongs to")
-        self.assertEqual(1, captures.adopt_machine_captures(self.prefs))
-
-    def test_an_entry_without_its_file_is_skipped(self):
-        os.remove(self._old(self.config, self.scene))
-        self.assertEqual(0, captures.adopt_machine_captures(self.prefs))
-        self.assertFalse(os.path.exists(self._target(self.scene)))
-
-    def test_the_count_is_what_waits_to_move(self):
-        self._old(self.config, self.scene)
-        self._old(self.cache, _real_scene(self, "other.hiplc"), name="9999abcd.png")
-        self.assertEqual(2, captures.machine_capture_count())
-        captures.adopt_machine_captures(self.prefs)
-        self.assertEqual(0, captures.machine_capture_count())
-
-
 class LibraryUpdateTest(unittest.TestCase):
-    """Opening a library brings it to this Amaze's version at once; nothing asks, nothing skips."""
+    """Opening a library brings its recorded version to this Amaze's at once; nothing asks."""
 
     @classmethod
     def setUpClass(cls):
@@ -1735,69 +1616,31 @@ class LibraryUpdateTest(unittest.TestCase):
     def setUp(self):
         import types
         from unittest import mock
-        from amaze.core import library_policy
-        self.policy = library_policy
+        from amaze.core import library_policy, library_settings
+        self.policy, self.settings = library_policy, library_settings
         self.dir = self.panel.prefs.dir
-        library_policy.set_library_version(self.dir, 1)    # a library from before 1.9
-        self.moved, self.asked = [], []
-        _patch(self, captures, "adopt_machine_captures",
-               lambda preferences: self.moved.append(preferences) or 0)
+        test_support.set_library_version(self.dir, 3)    # a library a step-1 Amaze stamped
+        test_support.reset_database_singletons()
+        self.asked = []
         ui = types.SimpleNamespace(displayMessage=lambda *a, **k: self.asked.append(a) or 0)
         patcher = mock.patch.object(hou, "ui", ui, create=True)
         patcher.start()
         self.addCleanup(patcher.stop)
 
-    def test_this_computers_captures_move_without_a_question(self):
+    def test_the_version_moves_without_a_question(self):
         """No Later: a library is never left open but not updated."""
-        _patch(self, captures, "machine_capture_count", lambda: 3)
         self.panel._update_library()
-        self.assertEqual(1, len(self.moved), "the captures were not moved")
-        self.assertEqual(self.policy.LIBRARY_VERSION, self.policy.library_version(self.dir))
+        self.assertEqual(self.policy.LIBRARY_VERSION, self.settings.library_version(self.dir))
         self.assertEqual([], self.asked, "the update asked first")
 
-    def test_with_nothing_to_move_only_the_version_changes(self):
-        _patch(self, captures, "machine_capture_count", lambda: 0)
-        self.panel._update_library()
-        self.assertEqual([], self.moved)
-        self.assertEqual(self.policy.LIBRARY_VERSION, self.policy.library_version(self.dir))
-
-    def test_a_library_with_format_3_files_left_is_not_raised(self):
-        """Format 3 files left: the version stays below 3, the mark of a conversion to finish."""
-        _patch(self, captures, "machine_capture_count", lambda: 0)
-        old = os.path.join(self.dir, "mat", "OLDLEFT1.mat")
-        os.makedirs(os.path.dirname(old), exist_ok=True)
-        with open(old, "w", encoding="utf-8") as handle:
-            handle.write("nodes\n")
-        self.addCleanup(shutil.rmtree, os.path.dirname(old), True)
-        self.panel._update_library()
-        self.assertEqual(1, self.policy.library_version(self.dir),
-                         "the version was raised while format 3 files are left")
-
-    def test_an_updated_library_still_takes_this_computers_captures(self):
-        """Another computer updated it first; this computer's own captures are still outside."""
-        self.policy.set_library_version(self.dir, 2)
-        _patch(self, captures, "machine_capture_count", lambda: 2)
-        self.panel._update_library()
-        self.assertEqual(1, len(self.moved), "an updated library left this computer's behind")
-
-    def test_a_panel_is_updated_before_it_is_shown(self):
-        """No tile may paint from a library this Amaze has not updated."""
-        _patch(self, captures, "machine_capture_count", lambda: 3)
-        test_support.reopened_panel(self)
-        self.assertEqual(1, len(self.moved), "the panel was built over an old library")
-        self.assertEqual(self.policy.LIBRARY_VERSION, self.policy.library_version(self.dir))
-        self.assertEqual([], self.asked, "building the panel asked a question")
-
     def test_an_open_preferences_window_shows_the_new_version(self):
-        """Reload Library runs the update under an open Preferences, which kept saying 1."""
-        _patch(self, captures, "machine_capture_count", lambda: 0)
+        """Reload Library runs the update under an open Preferences, which kept the old number."""
         self.panel.show_prefs()
         dialog = self.panel._prefs_dialog
         self.addCleanup(dialog.close)
-        self.assertEqual("Format: v1", dialog._lbl_library_format.text())
+        self.assertEqual("Format: v3", dialog._lbl_library_format.text())
         self.panel._update_library()
-        self.assertEqual("Format: v%d" % self.policy.LIBRARY_VERSION,
-                         dialog._lbl_library_format.text())
+        self.assertEqual("Format: v2.0", dialog._lbl_library_format.text())
 
 
 class NewerLibraryTest(unittest.TestCase):
@@ -1808,13 +1651,14 @@ class NewerLibraryTest(unittest.TestCase):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
 
     def setUp(self):
-        from amaze.core import library_policy
+        from amaze.core import library_policy, library_settings
         self.policy = library_policy
         self.dir = self.panel.prefs.dir
         self.newer = library_policy.LIBRARY_VERSION + 1
-        before = library_policy.library_version(self.dir)
-        library_policy.set_library_version(self.dir, self.newer)
-        self.addCleanup(library_policy.set_library_version, self.dir, before)
+        before = library_settings.library_version(self.dir)
+        test_support.set_library_version(self.dir, self.newer)
+        self.addCleanup(test_support.set_library_version, self.dir, before)
+        test_support.reset_database_singletons()
 
     def _answering(self, choice):
         import types
@@ -1840,8 +1684,8 @@ class NewerLibraryTest(unittest.TestCase):
         self.assertEqual([], asked, "asked inside onCreateInterface, where a modal draws black")
         self._idle(asked)
         text, kwargs = asked[0]
-        self.assertEqual("This library is version %d and needs a newer Amaze. "
-                         "Update Amaze to open it." % self.newer, text)
+        self.assertEqual("This library is version 2.1 and needs a newer Amaze. "
+                         "Update Amaze to open it.", text)
         self.assertEqual(("Update Amaze", "Cancel"), tuple(kwargs["buttons"]))
 
     def test_a_switch_onto_it_leaves_the_models_where_they_are(self):
@@ -1857,7 +1701,7 @@ class NewerLibraryTest(unittest.TestCase):
         """The settings keep naming the open library: else every later save is refused."""
         asked = self._answering(1)
         other = test_support.seeded_library(self)
-        self.policy.set_library_version(other, self.newer)
+        test_support.set_library_version(other, self.newer)
         before = self.panel.prefs.dir
         self.addCleanup(setattr, self.panel.prefs, "dir", before)    # the class shares one panel
         self.panel.prefs.dir = other    # what Reload or closing Preferences reads back

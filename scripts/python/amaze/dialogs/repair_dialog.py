@@ -5,9 +5,9 @@ import os
 import hou
 
 from amaze import messages
-from amaze.core import database, debug, keyed_store, repair
+from amaze.core import debug, repair
+from amaze.core import library_files as naming
 from amaze.helpers import ui_helpers
-from amaze.helpers import restore as restore_lib
 
 MOST_BUTTONS = 5    # actions one report shows before Choose an Action lists them instead
 
@@ -181,9 +181,9 @@ def _every_choice(findings: dict, may_change: bool):
 
     if may_change:
         on_record = repair.materials_on_record(findings)
-        if on_record and not repair.why_nothing_can_be_added(findings, "library.json"):
+        if on_record and not repair.why_nothing_can_be_added(findings, naming.MATERIALS):
             offer(messages.BUTTON_REPAIR_ADD_BACK
-                  % repair.count_on_a_button(len(on_record), "library.json"), "add-back")
+                  % repair.count_on_a_button(len(on_record), naming.MATERIALS), "add-back")
         if repair.offered_copies(findings):
             offer(messages.BUTTON_REPAIR_PUT_COPY_BACK, "restore")
         if repair.unsorted_pairs(findings) and not repair.why_nothing_can_be_added(findings):
@@ -192,7 +192,7 @@ def _every_choice(findings: dict, may_change: bool):
         aside = repair.files_to_move_aside(findings)
         if aside:
             offer(messages.BUTTON_REPAIR_MOVE_ASIDE % repair.files_on_a_button(aside),
-                  "quarantine")
+                  "trash")
         unknown = repair.unknown_to_move_aside(findings)
         if unknown:
             offer(messages.BUTTON_MOVE_ONE_UNKNOWN_ASIDE if unknown == 1
@@ -219,7 +219,7 @@ def act(findings: dict, action: str, guard: bool = True, changed=None) -> bool:
         ui_helpers.reveal(findings["holding"]["path"])
         return False
     done = {"add-back": _do_add_back, "restore": _do_restore, "reattach": _do_reattach,
-            "quarantine": _do_move_aside, "unknown": _do_move_unknown,
+            "trash": _do_move_aside, "unknown": _do_move_unknown,
             "set-aside": _do_set_aside, "stars": _do_set_aside,
             "uncategorised": _do_uncategorised}[action]
     landed = []
@@ -236,11 +236,11 @@ def act(findings: dict, action: str, guard: bool = True, changed=None) -> bool:
 def _do_add_back(findings: dict, guard: bool, changed) -> None:
     """Confirm, put the materials back from what is saved beside their files, and say how many."""
     count = len(repair.materials_on_record(findings))
-    label = database.section_label("library.json")
+    label = naming.section_label(naming.MATERIALS)
     written_new = (messages.ADD_BACK_WRITES_A_NEW_LIST % label
-                   if repair.list_is_missing(findings, "library.json") else "")
+                   if repair.list_is_missing(findings, naming.MATERIALS) else "")
     if not _confirmed(messages.CONFIRM_ADD_UNLISTED_TO_SECTION
-                      % (count, database.section_noun("library.json", count), label),
+                      % (count, naming.section_noun(naming.MATERIALS, count), label),
                       messages.BUTTONS_ADD_BACK, messages.HELP_ADD_BACK % written_new):
         return
     try:
@@ -251,7 +251,7 @@ def _do_add_back(findings: dict, guard: bool, changed) -> None:
     changed()
     added = len(result["added"])
     _added(messages.UNLISTED_FILES_ADDED_BACK_DONE
-           % (added, database.section_noun("library.json", added), label), result)
+           % (added, naming.section_noun(naming.MATERIALS, added), label), result)
 
 
 def _do_restore(findings: dict, guard: bool, changed) -> None:
@@ -272,7 +272,7 @@ def _do_restore(findings: dict, guard: bool, changed) -> None:
     if _put_copy_back(findings, offer, guard, changed, older=bool(older)) != "older":
         return
     offer = _pick(older, messages.PICK_OLDER_COPY_TO_PUT_BACK
-                  % database.section_label(offer[0]), messages.COLUMN_OLDER_SAVED_COPIES)
+                  % naming.section_label(offer[0]), messages.COLUMN_OLDER_SAVED_COPIES)
     if offer is not None:
         _put_copy_back(findings, offer, guard, changed)
 
@@ -280,7 +280,7 @@ def _do_restore(findings: dict, guard: bool, changed) -> None:
 def _pick(offers: list, message: str, header: str, sections: bool = False):
     """One copy from a list that opens on its first row; None on Cancel."""
     chosen = hou.ui.selectFromList(                       # type: ignore
-        [("%s - " % database.section_label(filename) if sections else "")
+        [("%s - " % naming.section_label(filename) if sections else "")
          + repair.copy_named_by_what_it_holds(filename, snap)
          for filename, _tier, snap, _current in offers],
         default_choices=(0,), exclusive=True,
@@ -300,9 +300,7 @@ def _copy_buttons(older: bool) -> dict:
 def _put_copy_back(findings: dict, offer: tuple, guard: bool, changed, older: bool = False):
     """Confirm one copy and put it back; `older` when Older Copies was pressed instead."""
     filename, tier, snap, current = offer
-    if filename == keyed_store.SETTINGS:
-        return _do_restore_settings(findings, tier, snap, guard, changed, older=older)
-    label = database.section_label(filename)
+    label = naming.section_label(filename)
     if snap["error"]:
         _say(messages.CHOSEN_SAVED_COPY_CANNOT_BE_READ % label, hou.severityType.Warning)
         return None
@@ -316,8 +314,8 @@ def _put_copy_back(findings: dict, offer: tuple, guard: bool, changed, older: bo
     picked = hou.ui.displayMessage(                       # type: ignore
         messages.CONFIRM_PUT_SAVED_COPY_BACK % (label, snap["when"]),
         help=messages.HELP_PUT_SAVED_COPY_BACK
-             % (snap["when"], held, database.section_noun(filename, held),
-                change, database.section_noun(filename, 2)),
+             % (snap["when"], held, naming.section_noun(filename, held),
+                change, naming.section_noun(filename, 2)),
         severity=hou.severityType.Warning,                # type: ignore
         title=messages.TITLE_CHECK_LIBRARY,
         **_copy_buttons(older))
@@ -327,52 +325,17 @@ def _put_copy_back(findings: dict, offer: tuple, guard: bool, changed, older: bo
         return None
     try:
         done = repair.put_back(findings, filename, tier, guard=guard)
-    except restore_lib.RestoreRefused as exc:
+    except repair.RestoreRefused as exc:
         _say(str(exc), hou.severityType.Warning)
         return None
     changed()
-    undo = (restore_lib.info(os.path.join(findings["directory"], done["undo"]))
-            if done["undo"] else None)
-    if undo is not None and undo["exists"]:
+    undo = repair.undo_facts(findings, filename, done["undo"])
+    if undo:
         went_back = messages.LIST_EARLIER_COPY_KEPT % undo["when"]
     else:
         went_back = messages.NO_EARLIER_LIST
     _say(messages.SAVED_COPY_PUT_BACK_DONE
          % (label, snap["when"], " " + done["said"] if done["said"] else "", went_back))
-    return None
-
-
-def _do_restore_settings(findings: dict, tier: str, snap: dict, guard: bool, changed,
-                         older: bool = False):
-    """Confirm and put a settings copy back, saying how to undo it; `older` as above."""
-    if snap["error"]:
-        _say(messages.SETTINGS_COPY_CANNOT_BE_READ, hou.severityType.Warning)
-        return None
-    way_back = findings["settings"]["state"] == "ok"
-    picked = hou.ui.displayMessage(                       # type: ignore
-        messages.CONFIRM_PUT_SETTINGS_BACK % snap["when"],
-        help=messages.HELP_PUT_SETTINGS_BACK % (
-            messages.SETTINGS_NOW_SAVED_FIRST if way_back else ""),
-        severity=hou.severityType.Warning,                # type: ignore
-        title=messages.TITLE_CHECK_LIBRARY,
-        **_copy_buttons(older))
-    if older and picked == 1:
-        return "older"
-    if picked != 0:
-        return None
-    try:
-        done = repair.put_back(findings, keyed_store.SETTINGS, tier, guard=guard)
-    except restore_lib.RestoreRefused as exc:
-        _say(str(exc), hou.severityType.Warning)
-        return None
-    changed()
-    folder = os.path.dirname(repair.target_of(findings, keyed_store.SETTINGS))
-    undo = (restore_lib.info(os.path.join(folder, done["undo"]))
-            if done["undo"] else None)
-    kept = (messages.SETTINGS_EARLIER_COPY_KEPT % undo["when"]
-            if way_back and undo is not None and undo["exists"] and not undo["error"]
-            else "")
-    _say(messages.SETTINGS_PUT_BACK_DONE % (snap["when"], kept))
     return None
 
 
@@ -493,8 +456,8 @@ def _do_uncategorised(findings: dict, guard: bool, changed) -> None:
 def _do_reattach(findings: dict, guard: bool, changed) -> None:
     """Pick the section the unsorted pairs belong to, confirm, add them, and say how many."""
     pairs = repair.unsorted_pairs(findings)
-    owners = database.ASSET_FILE_OWNERS
-    labels = [database.section_label(name) for name in owners]
+    owners = naming.ASSET_SECTIONS
+    labels = [naming.section_label(name) for name in owners]
     chosen = hou.ui.selectFromList(                       # type: ignore
         labels, exclusive=True, title=messages.TITLE_CHECK_LIBRARY,
         message=messages.PICK_SECTION_FOR_FILES
@@ -503,8 +466,8 @@ def _do_reattach(findings: dict, guard: bool, changed) -> None:
     if not chosen:
         return
     filename = owners[chosen[0]]
-    label = database.section_label(filename)
-    noun = database.section_noun(filename, len(pairs))
+    label = naming.section_label(filename)
+    noun = naming.section_noun(filename, len(pairs))
     if not _confirmed(messages.CONFIRM_ADD_UNLISTED_TO_SECTION % (len(pairs), noun, label),
                       messages.BUTTONS_ADD_BACK,
                       messages.HELP_ADD_TO_SECTION
@@ -517,7 +480,7 @@ def _do_reattach(findings: dict, guard: bool, changed) -> None:
         return
     changed()
     count = len(result["added"])
-    noun = database.section_noun(filename, count)
+    noun = naming.section_noun(filename, count)
     minted = len(result["minted"])
     if minted:
         said = messages.UNLISTED_FILES_ADDED_BACK_SOME_UNNAMED % (

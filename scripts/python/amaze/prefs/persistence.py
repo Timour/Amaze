@@ -2,16 +2,9 @@
 
 import os
 
-from amaze.core import debug, keyed_store, renderers, section_list, users
+from amaze.core import debug, locations, renderers, section_list, users
 from amaze.helpers import hostos
-
-
-def _settings_value(value):
-    """A settings value as the store sees one: anything json can hold."""
-    return value  # None means no: a stored null reads as an absent key and its default wins
-
-
-SPEC = keyed_store.bind(keyed_store.SETTINGS, _settings_value)  # settings.json is a registered store; only the normaliser lives here
+from amaze.prefs import settings_store
 
 LIBRARY_FIELD = "library"    # in a `users.<uid>` block: the stored spelling of that user's library
 
@@ -108,7 +101,7 @@ POINTERS = (  # settings.json's own scalars as (stored key, setter, decode); tes
     ("test_mode", "test_mode", bool),
 )
 
-SHARED_KEYS = {  # truth in the library's prefs.json: stored key -> (property or None, attr, default)
+SHARED_KEYS = {  # truth in the library's shared settings: stored key -> (property or None, attr, default)
     "extension": (None, "_ext", ".mat"),
     "img_extension": (None, "_img_ext", ".png"),
     "img_dir": (None, "_img_dir", IMG_SUBDIR),
@@ -170,9 +163,12 @@ class _Persistence:
     def _settings_store(self, reread: bool = False):
         """This machine's settings, through the store - THIS object's own handle, never the shared cache."""
         store = getattr(self, "_settings_handle", None)
+        path = str(getattr(self, "path", "") or "")
+        if not path:
+            raise ValueError("this Prefs cannot say where its configuration lives")
         if store is None or store.path != os.path.join(  # a handle minted for another configuration directory is re-minted
-                str(self.path), keyed_store.SETTINGS):
-            store = keyed_store.own_store(SPEC, self)
+                path, settings_store.FILENAME):
+            store = settings_store.SettingsFile(os.path.join(path, settings_store.FILENAME))
             self._settings_handle = store
         elif reread:
             store.reread()
@@ -192,7 +188,7 @@ class _Persistence:
         if not store.writable:
             debug.event("prefs", "save refused - settings.json could not "
                         "be read this session", path=self.path)
-            return  # asked before the push, so pure defaults never reach the shared `prefs.json`
+            return  # asked before the push, so pure defaults never reach the library's settings
         self._push_shared()  # the shared keys go to the LIBRARY first, so the document composed below only ever carries the copy
         self.refresh_data()
         retire = list(self._RETIRED_KEYS)
@@ -260,8 +256,8 @@ class _Persistence:
         directory = self.dir  # every setter that moves `dir` adopts, so save unsaved edits before moving it
         if not directory or not os.path.isdir(directory):
             return
-        from amaze.core import library_prefs
-        values = library_prefs.all_values(self)    # fresh, latched or empty: the copy holds
+        from amaze.core import library_settings
+        values = library_settings.all_values(self)    # fresh, latched or empty: the copy holds
         seen = self._shared_seen
         for stored, (prop, attr, _default) in SHARED_KEYS.items():
             if stored not in values:
@@ -286,15 +282,15 @@ class _Persistence:
         directory = self.dir
         if not directory or not os.path.isdir(directory):
             return  # no library directory: write nothing, never a relative path
-        from amaze.core import library_prefs
-        if not library_prefs.takes_writes(self):
+        from amaze.core import library_settings
+        if not library_settings.takes_writes(self):
             return
         self._adopt_shared(follow=True)    # first what peers wrote, for each key left alone here
         seen = self._shared_seen
         changed = {stored: getattr(self, attr)
                    for stored, (_prop, attr, _default) in SHARED_KEYS.items()
                    if getattr(self, attr) != seen.get(stored, _UNSEEN)}
-        if changed and library_prefs.set_values(self, changed):    # refused: retried next save
+        if changed and library_settings.set_values(self, changed):    # refused: retried next save
             seen.update(changed)
             self._adopt_shared(follow=True)    # the commit may have merged a peer's keys in
 
@@ -387,13 +383,13 @@ class _Persistence:
         library = _encode_path(str(self.dir or ""))
         if not library:
             return []
-        mine = keyed_store.path_identity(library)
+        mine = locations.path_identity(library)
         candidates = [
             uid for uid, block in blocks.items()
             if uid != self._library_user and isinstance(block, dict)
             and isinstance(block.get(LIBRARY_FIELD), str)
             and block[LIBRARY_FIELD]
-            and keyed_store.path_identity(block[LIBRARY_FIELD]) == mine]
+            and locations.path_identity(block[LIBRARY_FIELD]) == mine]
         if candidates and roster is None:
             roster = users.roster(self)
         if not roster:
@@ -454,7 +450,7 @@ class _Persistence:
     def load(self) -> bool:
         """Load the preferences from disk; False when nothing is usable, and it never raises."""
         store = self._settings_store(reread=True)  # re-read, so the answer is what is on disk now
-        if store.state == keyed_store.FRESH:
+        if store.state == settings_store.FRESH:
             debug.event("prefs", "no settings.json yet - opening "
                         "unconfigured", path=self.path)
             return False  # absent is a fresh install, not broken: no latch

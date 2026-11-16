@@ -1,34 +1,26 @@
 """Opening a library: the steps that need no panel. ▸archive/actions/library.py"""
 
-import json
 import os
 
 from amaze import messages
-from amaze.core import captures, database, debug, library_conversion, library_files
-from amaze.core import library_policy, locations, material
+from amaze.core import debug, guard, library_conversion, library_files, library_policy
+from amaze.core import library_settings, material
 from amaze.helpers import hostos
 from amaze.prefs import prefs as prefs_mod
 
 
 def index_unreadable(lib_dir: str) -> bool:
-    """A list on disk the library cannot load: it does not parse, or it is not shaped like one."""
-    if not lib_dir:
+    """The Materials database is there and does not read: Repair can restore or rebuild it."""
+    if not lib_dir or not os.path.isdir(lib_dir) or library_conversion.needs_conversion(lib_dir):
         return False
-    try:
-        with open(os.path.join(lib_dir, "library.json"), "rb") as handle:
-            raw = handle.read()
-    except OSError:
-        return False    # a missing list is not an unreadable one
-    if not hostos.parses_as_json(raw):
-        return True
-    return bool(database.wrong_shape(json.loads(raw.decode("utf-8-sig"))))
+    return guard.Guard(lib_dir).read(library_files.MATERIALS).verdict == guard.CORRUPT
 
 
 def index_unopenable(lib_dir: str) -> str:
-    """Why the list will not OPEN here, "" when it opens or is absent - closed, never one for Repair."""
+    """Why the library will not OPEN here, "" when it opens or is absent; never one for Repair."""
     if not lib_dir:
         return ""
-    path = os.path.join(lib_dir, "library.json")
+    path = os.path.join(lib_dir, library_files.MASTER)
     try:
         with open(path, "rb"):
             return ""
@@ -42,60 +34,58 @@ def index_unopenable(lib_dir: str) -> str:
 
 
 def index_present(lib_dir: str) -> bool:
-    """Whether `lib_dir` holds a list at all; an empty folder has none until `prepare` seeds one."""
-    return bool(lib_dir) and os.path.isfile(os.path.join(lib_dir, "library.json"))
+    """Whether `lib_dir` holds a library: its `DataBase.json`, or an older library to convert."""
+    return bool(lib_dir) and (os.path.isfile(os.path.join(lib_dir, library_files.MASTER))
+                              or library_conversion.needs_conversion(lib_dir))
 
 
 def list_not_arrived(lib_dir: str) -> bool:
-    """A folder that has held a library and has no list now, which `prepare` will not seed over."""
+    """A folder that has held a library and has none now, which `prepare` will not seed over."""
     return (prefs_mod.can_hold_a_library(lib_dir) and not index_present(lib_dir)
             and bool(starter_would_overwrite(lib_dir)))
 
 
 def newer_version(preferences) -> int:
-    """The version of a library a newer Amaze updated, which this one leaves closed; else 0."""
+    """The version of a library a newer Amaze wrote, which this one leaves closed; else 0."""
     library_dir = str(preferences.dir or "")
-    found = library_policy.library_version(library_dir) if library_dir else 0
+    found = library_settings.library_version(library_dir) if library_dir else 0
     return found if found > library_policy.LIBRARY_VERSION else 0
 
 
 def starter_would_overwrite(lib_dir: str) -> list:
     """The evidence that `lib_dir` has held a library, or []; `prepare` asks this before seeding."""
     found = []
-    evidence = database.absent_but_known(lib_dir, "library.json")
-    if evidence:
-        found.append(evidence)
-    for name in (library_conversion.OLD_FOLDER, library_files.RENDER_FOLDER) + tuple(
+    for name in (library_files.BACKUP_FOLDER, library_files.RENDER_FOLDER) + tuple(
             library_files.SECTION_FOLDERS[section] for section in library_files.ASSET_SECTIONS):
         folder = os.path.join(lib_dir, name)
         if os.path.isdir(folder) and os.listdir(folder):
             found.append(name + "/")
+    found.extend(name for name in library_files.LISTS + (library_files.FILES,)
+                 if os.path.isfile(os.path.join(lib_dir, name)))
     return found
 
 
 def prepare(preferences) -> None:
-    """The library folder ready to open: a starter index in an empty one, img/ and mat/ always."""
+    """The library folder ready to open: `DataBase.json` in an empty one, each section's folder."""
     lib_dir = preferences.dir
-    if not prefs_mod.can_hold_a_library(lib_dir):    # once wrote "//library.json"
+    if not prefs_mod.can_hold_a_library(lib_dir):
         debug.event("session", "no library directory set", dir=lib_dir)
         return
     new_folder = False
-    if not os.path.exists(preferences.dir + "/library.json"):
-        held = starter_would_overwrite(preferences.dir)    # ABSENT IS NOT EMPTY: never seed over it
+    if not index_present(lib_dir):
+        held = starter_would_overwrite(lib_dir)    # ABSENT IS NOT EMPTY: never seed over it
         if held:
-            debug.event("session", "starter NOT seeded - the "
-                        "directory has held a library",
-                        dir=preferences.dir, evidence=held)
-            debug.alert(
-                messages.STARTER_SEED_REFUSED_DIRECTORY_HELD_LIBRARY,
-                key="starter-refused")
+            debug.event("session", "library NOT created - the directory has held a library",
+                        dir=lib_dir, evidence=held)
+            debug.alert(messages.STARTER_SEED_REFUSED_DIRECTORY_HELD_LIBRARY,
+                        key="starter-refused")
             return
-        prefs_mod.seed_starter_index(preferences.dir)    # stamped on the way in ▸p/library-creation-doors
+        prefs_mod.create_library(lib_dir)
         new_folder = True
     if ensure_library_dirs(preferences):
         new_folder = True
     if new_folder:
-        debug.event("session", "library created", dir=preferences.dir)
+        debug.event("session", "library created", dir=lib_dir)
 
 
 def ensure_library_dirs(preferences) -> bool:
@@ -111,14 +101,16 @@ def ensure_library_dirs(preferences) -> bool:
 
 
 def update(preferences) -> bool:
-    """The library to this Amaze's version before any tile paints; True once its version moved."""
+    """The library at this Amaze's version, its old trash expired; True once its version moved."""
     library_dir = str(preferences.dir or "")
-    if not library_dir or not locations.ready(preferences):
-        return False    # no file keys yet: a capture moved now would miss its tile
-    if captures.machine_capture_count():    # no question: installing this Amaze was the choice
-        captures.adopt_machine_captures(preferences)
-    library_policy.library_id(library_dir)    # minted once: the holding folder follows a moved library
-    return library_conversion.settle_version(library_dir)    # nothing of format 3 left: version 3
+    if not library_dir or not os.path.isdir(library_dir):
+        return False
+    from amaze.core import library_db
+    library_db.guard_of(preferences).expire_trash()
+    before = library_settings.library_version(library_dir)
+    if before >= library_policy.LIBRARY_VERSION:
+        return False
+    return library_settings.stamp_version(preferences)
 
 
 def seed_starters(code_model, code_categories, gradient_model, gradient_categories) -> None:

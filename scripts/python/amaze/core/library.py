@@ -1,11 +1,8 @@
 """The shared asset model every library section runs on, plus `MaterialLibrary`."""
 
-import functools
-import os
 import json
+import os
 import shutil
-import threading
-import types
 from typing import Any
 from PySide6 import QtCore, QtGui
 
@@ -13,189 +10,29 @@ from amaze.core import asset_files
 from amaze.core import asset_record
 from amaze.core import captures
 from amaze.core import debug
+from amaze.core import documents
 from amaze.core import grid_engine
+from amaze.core import library_db
+from amaze.core import library_files
 from amaze.core import locations
-from amaze.core import material, database, renderers, thumbnails, tile_icons, workers
+from amaze.core import material, renderers, thumbnails, tile_icons
 from amaze.core import material_files
 from amaze.core import versions
 from amaze.helpers import hostos
 from amaze import messages
 from amaze.prefs import prefs
 
-
-_STAMPED: dict = {}    # (library dir, asset id) -> repr of the record its metadata was last seen holding
-_STAMP_LOCK = threading.Lock()    # held by a worker across one asset's check-and-write
+ROWS, CATEGORIES = "assets", "categories"    # a section database's rows, and its categories
 
 
-def _holds(path: str, record: dict) -> bool:
-    """Whether the `<id>.json` at `path` holds `record` as its metadata; absent or corrupt does not."""
-    return asset_record.read(path)[asset_record.METADATA] == record
+def stored(row: dict) -> dict:
+    """A database entry without who changed it and when: the row as the model reads it."""
+    return {field: value for field, value in row.items() if field not in documents.STAMPS}
 
 
-def _write(path: str, record: dict, mat_id) -> bool:
-    """Write one metadata section; a failure is logged and answered False, never raised."""
-    try:
-        asset_record.write_section(path, asset_record.METADATA, record)
-        return True
-    except (OSError, ValueError) as exc:  # a safety net is never the thing being saved
-        debug.event("library", "asset metadata not written",
-                    mat_id=str(mat_id), error=str(exc))
-        return False
-
-
-def _as_stored(record: dict) -> dict:
-    """`record` as it reads back from json, so a comparison with the file is exact."""
+def as_stored(record: dict) -> dict:
+    """`record` as it reads back from json, so a comparison with the database is exact."""
     return json.loads(json.dumps(record, sort_keys=True))
-
-
-class _StampWorker(QtCore.QThread):
-    """Checks the metadata a save did not change against disk, writing any that differ."""
-
-    checked = QtCore.Signal(object, object)    # (this worker, [(key, repr)] of records now current)
-
-    def __init__(self, where, preferences, items) -> None:
-        super().__init__()
-        self.where = where    # (library dir, section database)
-        self._preferences = preferences    # dir and ext only, read on the GUI thread
-        self._items = items    # [(key, repr, record)]
-        self._canceled = False    # set under _STAMP_LOCK: no write after it, its findings dropped
-
-    def cancel(self) -> None:
-        self._canceled = True
-
-    def run(self) -> None:
-        current = []
-        section = self.where[1]
-        for known, seen, record in self._items:
-            if self._canceled or self.isInterruptionRequested():
-                return
-            try:
-                path = asset_record.path_for(self._preferences, known[1], section)
-            except hostos.PathEscape:
-                continue
-            if not _holds(path, record):
-                with _STAMP_LOCK:
-                    written = not self._canceled and _write(path, record, known[1])
-                if not written:
-                    continue
-            current.append((known, seen))
-        self.checked.emit(self, current)
-
-
-class _StampEngine(QtCore.QObject):
-    """Every stamp check in the process, stopped on quit and whenever its library moves on."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self._threads = []    # a running QThread must keep a reference until it ends ▸r/model-contracts
-
-    def start(self, where, preferences, items) -> None:
-        """Check `items` of `where`, (library dir, section), on a worker, its older checks stopped first."""
-        self.cancel(*where)
-        worker = _StampWorker(where, preferences, items)
-        worker.checked.connect(self._checked)
-        worker.finished.connect(functools.partial(self._finished, worker))    # never sender()
-        self._threads.append(worker)
-        worker.start()
-
-    def cancel(self, where=None, section=None) -> None:
-        """Stop the checks of library `where` and of `section`, None for any; none writes after."""
-        with _STAMP_LOCK:
-            for worker in self._threads:
-                if ((where is None or worker.where[0] == where)
-                        and (section is None or worker.where[1] == section)):
-                    worker.cancel()
-
-    def _checked(self, worker, current) -> None:
-        if not worker._canceled:    # a stopped check may hold records older than the model's
-            for known, seen in current:
-                _STAMPED[known] = seen
-
-    def _finished(self, worker) -> None:
-        self._threads = [t for t in self._threads if t is not worker]
-
-    def shutdown(self) -> None:
-        """Stop every check under the lock, THEN wait them out together; safe twice and when idle."""
-        self.cancel()    # under _STAMP_LOCK first: no write begins after this
-        workers.stop(self._threads, "library")
-        self._threads = []
-
-
-stamps = workers.install(__name__ + ".stamps", _StampEngine, QtCore.QCoreApplication.instance())
-
-
-class _StampWriter:
-    """Rewrites stale metadata in `<id>.json`; only after an index write. ▸p/recovery-stamp"""
-
-    def __init__(self, library):
-        self._library = library
-        self._section = library.DB_FILENAME
-
-    @staticmethod
-    def forget(preferences, mat_id, section=None) -> None:
-        """Drop what this session knows of one asset's metadata; the next save checks it."""
-        stamps.cancel(str(preferences.dir), section)    # a running check may hold an older record
-        _STAMPED.pop((str(preferences.dir), str(mat_id)), None)
-
-    @staticmethod
-    def forget_library(preferences, section=None) -> None:
-        """Drop what this session knows of one library's metadata, its rows read afresh."""
-        where = str(preferences.dir)
-        stamps.cancel(where, section)
-        for known in [key for key in _STAMPED if key[0] == where]:
-            del _STAMPED[known]
-
-    def _worker_preferences(self):
-        preferences = self._library.preferences
-        return types.SimpleNamespace(dir=preferences.dir, ext=preferences.ext)
-
-    def refresh(self, indexed=None) -> int:
-        """Write now the records unlike `indexed`, the index before; a worker checks the rest."""
-        if self._section not in database.ASSET_FILE_OWNERS:    # Code and Colors own no asset folder
-            return 0
-        written, later = 0, []
-        preferences = self._library.preferences
-        where = str(preferences.dir)
-        stamps.cancel(where, self._section)    # no older check may write after these
-        for asset in list(self._library._assets):
-            known = (where, str(asset.mat_id))
-            try:
-                record = asset.get_as_dict()
-                seen = repr(record)
-                if _STAMPED.get(known) == seen:
-                    continue
-                if not material.is_safe_asset_id(known[1]):
-                    continue
-                stored = _as_stored(record)
-                if indexed is not None and self._indexed(indexed.get(known[1]), record):
-                    later.append((known, seen, stored))
-                    continue
-                path = asset_record.path_for(preferences, known[1], self._section)
-            except hostos.PathEscape:
-                continue
-            except (TypeError, ValueError) as exc:  # logged, never raised: the index write already landed
-                debug.event("library", "asset metadata could not be built",
-                            mat_id=str(asset.mat_id), error=str(exc))
-                continue
-            if _holds(path, stored):
-                _STAMPED[known] = seen
-            elif _write(path, stored, asset.mat_id):
-                written += 1
-                _STAMPED[known] = seen
-        if later:
-            stamps.start((where, self._section), self._worker_preferences(), later)
-        return written
-
-    def _indexed(self, row, record) -> bool:
-        """Whether the index's `row` already held `record`: as stored, or as today's reader reads it."""
-        if row is None:
-            return False
-        if row == record:
-            return True
-        try:
-            return self._library._asset_from_row(row).get_as_dict() == record
-        except Exception:                                # noqa: BLE001 - an unreadable row is an edit
-            return False
 
 
 class ListNotSaved(str):
@@ -261,62 +98,40 @@ class AssetLibrary(grid_engine.GridEngine,
     def __init__(self, preferences: prefs.Prefs) -> None:
         super().__init__()
         self.preferences = preferences  # required, and shared with the panel ▸p/duplication-third-verb
-
-        self._data = database.open_document(self)
-
-        self._assets = [self._asset_from_row(d)  # non-dict rows are skipped
-                        for d in self._data["assets"]
-                        if isinstance(d, dict)]
-        _StampWriter.forget_library(self.preferences, self.DB_FILENAME)
+        self._forgotten = set()    # ids this model removed, dropped from the database at its save
+        self._assets = self._read_rows()
+        self._colours_seen = self._colours()
         self._remember_content_state()
-
 
         self._thumb_rows = {}  # maps engine deliveries, by key, back to the row to repaint
         thumbnails.signals.ready.connect(self._on_thumb_key_ready)  # through the relay, never the engine singleton, which a module reload replaces
         captures.signals.landed.connect(self._on_capture_landed)    # from any panel or the shelf
         self.rebuild_thumbs()
         self.order_rows()    # in the grid's order before any view has the rows
-        self.adopt_retired_text_into_notes()
 
-    RETIRED_TEXT_FIELDS = ("about", "description")    #: record fields whose text is now a comment ▸p/d03-retired
+    def _doc(self) -> documents.Document:
+        """This model's database, as the library holds it."""
+        return library_db.document(self.preferences, self.DB_FILENAME)
 
-    def adopt_retired_text_into_notes(self) -> int:
-        """Move each retired text field into its asset's comment; returns how many. ▸p/d03-retired"""
-        if not self.NOTES_SECTION:
-            return 0
-        from amaze.core import notes
-        pages, carried = {}, []    # key -> the page to write; (asset, field, needs that write)
-        for asset in self._assets:
-            key = notes.note_key(self.NOTES_SECTION, str(asset.mat_id))
-            items = None
-            for field in self.RETIRED_TEXT_FIELDS:
-                text = getattr(asset, field)
-                if not isinstance(text, str) or not text.strip():
-                    continue    # a hand-edited record can carry any type; only TEXT is worth moving
-                text = text.strip()
-                if items is None:
-                    items = list(notes.note_for(self.preferences, key).get(
-                        "items", []))
-                if any(item.get("t") == "text"    # carried already, here or by another machine
-                       and item.get("text", "").strip() == text
-                       for item in items):
-                    carried.append((asset, field, False))
-                    continue
-                items = [{"t": "text", "text": text}] + items
-                pages[key] = items
-                carried.append((asset, field, True))
-        written = not pages or bool(notes.set_notes(self.preferences, pages))    # ONE write
-        moved = 0
-        for asset, field, needed in carried:
-            if needed and not written:
-                continue    # a read-only library: leave the field rather than clear text nothing kept
-            setattr(asset, field, "")
-            moved += 1
-        if moved:
-            self.save()
-            debug.event("library", "retired text moved into comments",
-                        section=self.NOTES_SECTION, fields=moved)
-        return moved
+    def _read_rows(self) -> list:
+        """One record per row the database holds; a row that will not read is skipped."""
+        found = []
+        self._served = library_db.key_of(self.preferences)    # the library these rows came from
+        for key, row in self._doc().table(ROWS).items():
+            if not isinstance(row, dict):
+                continue
+            try:
+                found.append(self._asset_from_row(dict(stored(row), id=row.get("id", key))))
+            except Exception as exc:                        # noqa: BLE001
+                debug.event("database", "row not readable", file=self.DB_FILENAME,
+                            asset_id=str(key), error=str(exc))
+        return found
+
+    def _colours(self) -> dict:
+        """{category: colour} as the database holds them now."""
+        return {name: str(entry.get("color") or "")
+                for name, entry in self._doc().table(CATEGORIES).items()
+                if isinstance(entry, dict) and entry.get("color")}
 
     @staticmethod
     def _asset_from_row(row: dict):
@@ -345,17 +160,12 @@ class AssetLibrary(grid_engine.GridEngine,
                 return
 
     def switch_model_data(self):
-        """Point this model at the library Preferences names; stamp checks stop."""
-        stamps.cancel(section=self.DB_FILENAME)    # a running check holds the library left behind
+        """Point this model at the library Preferences names, its rows read afresh."""
         self.beginResetModel()  # required: without it proxies and selection keep stale rows ▸r/model-contracts
         try:
-            self._data = database.open_document(self, reload=True)
-
-            self._assets = [
-                self._asset_from_row(d) for d in self._data["assets"]
-                if isinstance(d, dict)
-            ]
-            _StampWriter.forget_library(self.preferences, self.DB_FILENAME)
+            self._forgotten = set()
+            self._assets = self._read_rows()
+            self._colours_seen = self._colours()
             self._remember_content_state()  # a reload is a fresh read of the library, content included
             self._drop_content_label_caches()
             self.rebuild_thumbs()
@@ -423,10 +233,8 @@ class AssetLibrary(grid_engine.GridEngine,
         cats = self._assets[row].categories
         if not cats:
             return ""
-        table = self._data.get("category_colors")
-        if not isinstance(table, dict):
-            return ""
-        return str(table.get(cats[0], "") or "")
+        entry = self._doc().get(CATEGORIES, cats[0])
+        return str((entry or {}).get("color") or "") if isinstance(entry, dict) else ""
 
     def _thumb_key(self, row: int, spec=None):
         """Shared-RAM-cache key for one row's picture; every input to the picture belongs in it."""
@@ -539,10 +347,10 @@ class AssetLibrary(grid_engine.GridEngine,
         return True
 
     def tile_icon(self, row: int) -> dict:
-        """This row's chosen icon, {} when it shows its render; `icons.json` is keyed by asset id."""
+        """This row's chosen icon, {} when it shows its picture; the database keys it by asset id."""
         if 0 <= row < len(self._assets):
             return tile_icons.override_for(
-                self.preferences, str(self._assets[row].mat_id))
+                self.preferences, str(self._assets[row].mat_id), self.DB_FILENAME)
         return {}
 
     def _edited(self, asset, save: bool) -> None:
@@ -583,10 +391,10 @@ class AssetLibrary(grid_engine.GridEngine,
         if not valid:
             return len(rows)
         chosen = {row: tile_icons.choice_for(self, row, spec) for row in valid}
-        held = tile_icons.set_overrides(  # the store is the one home, so a clear here is the whole delete
+        held = tile_icons.set_overrides(  # the database is the one home, so a clear here is the whole delete
             self.preferences,
             {str(self._assets[row].mat_id): choice
-             for row, choice in chosen.items()})
+             for row, choice in chosen.items()}, self.DB_FILENAME)
         failed = len(rows) - len(valid)
         for row in valid:
             stored = held[str(self._assets[row].mat_id)]
@@ -638,14 +446,7 @@ class AssetLibrary(grid_engine.GridEngine,
         """Take one row out of the model, marked for removal at the next save; maps NOT rebuilt."""
         if not 0 <= row < len(self._assets):
             return False
-        going = self._assets[row]
-        try:  # SAY THE DELETE: the connector unions rows, so a row only left out of set() comes back
-            database.DatabaseConnector(self.DB_FILENAME).forget(going.mat_id)
-        except (AttributeError, TypeError) as exc:
-            debug.event("library", "could not mark a row for removal",
-                        error=str(exc))
-        _StampWriter.forget(self.preferences, going.mat_id, self.DB_FILENAME)    # unlinked with it, maybe
-
+        self._forgotten.add(str(self._assets[row].mat_id))    # SAY THE DELETE: a row only left out stays
         self.beginRemoveRows(QtCore.QModelIndex(), row, row)  # del by INDEX: by value drops the first EQUAL one
         del self._assets[row]
         self.endRemoveRows()
@@ -683,8 +484,8 @@ class AssetLibrary(grid_engine.GridEngine,
             return tile_icons.face_for(self, row) == "image"    # a capture fills the tile; a render is square
 
         if role == self.FavoriteRole:
-            return locations.is_favourite(  # the USER'S star, in the library store, never the record
-                self.preferences, asset.mat_id)
+            return locations.is_favourite(  # the USER'S star, in the database, never the record
+                self.preferences, asset.mat_id, self.DB_FILENAME)
 
         if role == self.VersionsRole:
             mat_id = str(asset.mat_id)
@@ -720,34 +521,52 @@ class AssetLibrary(grid_engine.GridEngine,
                 notes.note_key(self.NOTES_SECTION, asset.mat_id))
         return None
 
-    def save(self) -> bool:
-        """Write the index to disk as json; True only when it reached the file, so honour the answer."""
-        db = database.connector_for_save(self, "save")
-        if db is None:  # another pane moved the shared connector: this model holds the old library's rows
-            return False
-        self.apply_refresh(db)    # the sidebar shares this connector: its save may have merged a peer's edit
-        data = {}
-        data["assets"] = [asset.get_as_dict() for asset in self._assets]
-        db.set(data)
-        indexed = db._loaded_rows    # the index before this save: a record unlike it is this save's edit
-        stored = db.save()
-        from amaze.core import model_registry
-        model_registry.apply_merged(db, also=self)    # every model on this file takes what the save merged
-        if stored and db._save_outcome != "identical-skip":
-            _StampWriter(self).refresh(indexed)  # after a write that landed ▸p/recovery-stamp
-        return stored
+    def _stage_rows(self, held) -> None:
+        """Every record into the database as this user's change, the removed rows out; not saved."""
+        for asset in self._assets:
+            held.put(ROWS, str(asset.mat_id), as_stored(asset.get_as_dict()))
+        for key in self._forgotten:
+            held.drop(ROWS, key)
+        self._forgotten = set()
 
-    def apply_refresh(self, db) -> bool:
-        """Drain what any merge on this connector left for the model. True when the model moved."""
-        rows, fields, gone = (db.take_adopted(), db.take_adopted_fields(),
-                              db.take_dropped())
-        self._adopt_rows(rows)
+    def save(self) -> bool:
+        """Hand the records to the database, saved by the timer; False when it takes no change now."""
+        if not library_db.accepts(self.preferences, self.DB_FILENAME):
+            return False
+        if getattr(self, "_served", None) not in (None, library_db.key_of(self.preferences)):
+            debug.event("library", "save refused - the rows are another library's",
+                        store=self.DB_FILENAME, dir=str(self.preferences.dir))
+            return False    # moved under the model without a switch: these rows are not this library's
+        held = self._doc()
+        with library_db.library_for(self.preferences).holding():
+            self._stage_rows(held)
+        library_db.changed(self.preferences, self.DB_FILENAME)
+        return True
+
+    def apply_refresh(self) -> bool:
+        """Take in what the database holds that this model does not; True when the model moved."""
+        rows = {key: dict(stored(row), id=row.get("id", key))
+                for key, row in self._doc().table(ROWS).items() if isinstance(row, dict)}
+        have = {str(asset.mat_id): asset for asset in self._assets}
+        adopted = [row for key, row in rows.items()
+                   if key not in have and key not in self._forgotten]
+        gone = [{"id": key} for key in have if key not in rows]
+        fields = []
+        for key, asset in have.items():
+            if key not in rows:
+                continue
+            mine = as_stored(asset.get_as_dict())
+            fields.extend((key, field, value) for field, value in as_stored(rows[key]).items()
+                          if mine.get(field) != value)
+        self._adopt_rows(adopted)
         self._adopt_fields(fields)
         self._drop_rows(gone)
-        recoloured = database.colours_moved(self, db)
+        colours = self._colours()
+        recoloured = colours != self._colours_seen
+        self._colours_seen = colours
         if recoloured:
             self.repaint_category_colours()
-        return bool(rows or fields or gone or recoloured)
+        return bool(adopted or fields or gone or recoloured)
 
     def repaint_category_colours(self) -> None:
         """Repaint every tile's category band, role-scoped: a colour never moves a column width."""
@@ -763,7 +582,6 @@ class AssetLibrary(grid_engine.GridEngine,
         wanted: dict = {}
         for asset_id, field, value in fields:
             wanted.setdefault(str(asset_id), {})[field] = value
-            _StampWriter.forget(self.preferences, asset_id, self.DB_FILENAME)
         for row, asset in enumerate(self._assets):
             changes = wanted.get(str(asset.mat_id))
             if not changes:
@@ -794,7 +612,7 @@ class AssetLibrary(grid_engine.GridEngine,
         return moved.get(row, row) if moved else row
 
     def _take_back_refused_append(self, record) -> None:
-        """Take a refused new record back out of the model and the save's document, by identity."""
+        """Take a refused new record back out of the model and the database, by identity."""
         row = next((i for i, held in enumerate(self._assets)
                     if held is record), -1)
         if row >= 0:
@@ -805,14 +623,27 @@ class AssetLibrary(grid_engine.GridEngine,
                 self.endRemoveRows()
             self.rebuild_thumbs()
         self._content_state.pop(str(record.mat_id), None)
-        try:
-            connector = database.DatabaseConnector(self.DB_FILENAME)
-            if connector.serves(self.preferences.dir):    # a serves() refusal never ran set()
-                connector.forget(record.mat_id)
-                connector.set({"assets": []})    # set() is where a forget lands; else any save writes it
-        except (AttributeError, TypeError) as exc:
-            debug.event("library", "could not take back a refused append",
-                        error=str(exc))
+        with library_db.library_for(self.preferences).holding():
+            self._doc().drop(ROWS, str(record.mat_id))
+
+    def add_saved(self, record, staged: list) -> bool:
+        """A new record and the files its save staged, landed as ONE unit; False: neither landed."""
+        if not library_db.accepts(self.preferences, self.DB_FILENAME):
+            asset_record.discard(staged)
+            return False
+        self._append_record(record)
+        held = self._doc()
+        row = as_stored(record.get_as_dict())
+        guard = library_db.guard_of(self.preferences)
+        with library_db.library_for(self.preferences).holding():
+            self._stage_rows(held)
+        saved = library_db.save(self.preferences, self.DB_FILENAME, also=lambda change: (
+            asset_record.add_staged(change, guard, staged, metadata=row)))
+        if not saved:
+            asset_record.discard(staged)
+            self._take_back_refused_append(record)
+            return False
+        return True
 
     def _adopt_rows(self, rows: list) -> None:
         """Insert rows another session added, with the row signals; an unparseable row is skipped."""
@@ -822,7 +653,6 @@ class AssetLibrary(grid_engine.GridEngine,
         for row in rows:
             try:
                 parsed.append(self._asset_from_row(row))
-                _StampWriter.forget(self.preferences, parsed[-1].mat_id, self.DB_FILENAME)
             except Exception as exc:                        # noqa: BLE001
                 debug.event("database", "adopted row not readable",
                             file=self.DB_FILENAME, error=str(exc),
@@ -852,7 +682,6 @@ class AssetLibrary(grid_engine.GridEngine,
         for index in range(len(self._assets) - 1, -1, -1):  # one pass, highest row first so indices stay valid
             if str(self._assets[index].mat_id) not in ids:
                 continue
-            _StampWriter.forget(self.preferences, self._assets[index].mat_id, self.DB_FILENAME)
             self.beginRemoveRows(QtCore.QModelIndex(), index, index)
             try:
                 del self._assets[index]
@@ -893,11 +722,11 @@ class AssetLibrary(grid_engine.GridEngine,
         else:
             tags = ", ".join(asset.tags)
 
-        if fav is not None:  # the star goes to the favourites store under its owner, never onto the record
+        if fav is not None:  # the star goes to this user's stars in the database, never onto the record
             if bool(fav) != locations.is_favourite(
-                    self.preferences, asset.mat_id):
+                    self.preferences, asset.mat_id, self.DB_FILENAME):
                 locations.set_favourite(
-                    self.preferences, asset.mat_id, bool(fav))
+                    self.preferences, asset.mat_id, bool(fav), self.DB_FILENAME)
         asset.set_data(name, cats, tags, asset.fav, None, about=about,
                        license=license)
         if save:
@@ -966,27 +795,38 @@ class AssetLibrary(grid_engine.GridEngine,
             self.remove_rows([index.row()])
 
     def remove_rows(self, rows) -> int:
-        """Delete these rows in ONE list write, their files only once it lands; returns how many went."""
+        """Delete these rows and move their files to the library's trash as ONE unit; how many went."""
         going = [(row, self._assets[row])
                  for row in sorted({int(r) for r in rows})
                  if 0 <= row < len(self._assets)]
         if not going:
             return 0
-        owned = [self._owned_paths(asset.mat_id) for _row, asset in going]
+        if not library_db.accepts(self.preferences, self.DB_FILENAME):
+            self._report_refused_delete(going[-1][1])
+            return 0
+        guard = library_db.guard_of(self.preferences)
+        owned = [guard.inside(path) for _row, asset in going
+                 for path in self._owned_paths(asset.mat_id) if os.path.lexists(path)]
         for row, _asset in reversed(going):    # highest first, so every row number still holds
             self._unlist_row(row)
         self.rebuild_thumbs()
-        if not self.save():    # the list is the truth: answered False, nothing on disk is touched
-            self._take_back_refused_removals(going)
+        with library_db.library_for(self.preferences).holding():
+            self._stage_rows(self._doc())
+
+        def trash(change):
+            for relative in owned:
+                if relative:
+                    change.trash(relative)
+        if not library_db.save(self.preferences, self.DB_FILENAME, also=trash):
+            self._take_back_refused_removals(going)    # nothing on disk moved: the change is whole or none
             self._report_refused_delete(going[-1][1])
             return 0
-        for files, folders in owned:
-            self._unlink_owned(files, folders)
         return len(going)
 
-    def _owned_paths(self, mat_id) -> tuple:
-        """(files, folders) a deleted asset takes with it - from `asset_files()`, never a hand list."""
-        return self.asset_files(mat_id), self.asset_directories(mat_id)
+    def _owned_paths(self, mat_id) -> list:
+        """Every file and folder a deleted asset takes with it, from `asset_files()`."""
+        return list(self.asset_files(mat_id).values()) + list(
+            self.asset_directories(mat_id).values())
 
     def _report_refused_delete(self, asset) -> None:
         """Tell the user a delete did not happen because the list could not be written."""
@@ -997,29 +837,10 @@ class AssetLibrary(grid_engine.GridEngine,
             messages.ASSET_NOT_DELETED_LIST_NOT_UPDATED % asset.name,
             key="delete-refused-index-write")
 
-    @staticmethod
-    def _unlink_owned(files: dict, folders: dict) -> None:
-        """Remove what a listed-no-more asset owned, each guarded: Clean Library sweeps a held one."""
-        for path in files.values():
-            if os.path.exists(path):
-                try:
-                    os.remove(path)
-                except OSError as exc:
-                    debug.event("library", "asset file remove skipped",
-                                file=path, error=str(exc))
-        for path in folders.values():    # the version store goes with its id
-            if os.path.isdir(path):
-                try:
-                    shutil.rmtree(path)
-                except OSError as exc:
-                    debug.event("library",
-                                "asset version store remove skipped",
-                                folder=path, error=str(exc))
-
     def _take_back_refused_removals(self, going) -> None:
-        """Put back `(row, record)` pairs whose delete the save refused, in the model and the document."""
+        """Put back `(row, record)` pairs whose delete the save refused, in the model and the database."""
         for row, asset in going:    # ascending, so each lands where it stood
-            row = min(max(row, 0), len(self._assets))    # the save's drain may have dropped rows above it
+            row = min(max(row, 0), len(self._assets))
             self.beginInsertRows(QtCore.QModelIndex(), row, row)
             try:
                 self._assets.insert(row, asset)
@@ -1027,16 +848,8 @@ class AssetLibrary(grid_engine.GridEngine,
                 self.endInsertRows()
         self.rebuild_thumbs()
         self.resort()
-        try:
-            connector = database.DatabaseConnector(self.DB_FILENAME)
-            for _row, asset in going:
-                connector.unforget(asset.mat_id)    # else the next save carries out the declined delete
-            if connector.serves(self.preferences.dir):    # a serves() refusal never ran set()
-                connector.set({"assets": [asset.get_as_dict()
-                                          for _row, asset in going]})    # set() dropped them
-        except (AttributeError, TypeError) as exc:
-            debug.event("library", "could not take back a row removal",
-                        error=str(exc))
+        with library_db.library_for(self.preferences).holding():
+            self._stage_rows(self._doc())    # else the next save carries out the declined delete
 
     def remove_category(self, cat: str) -> None:
         """Take this category off every asset in the library. Does not save."""
@@ -1143,12 +956,12 @@ class AssetLibrary(grid_engine.GridEngine,
                 continue
             mat_id = self._assets[row].mat_id
             current = wanted[mat_id] if mat_id in wanted else \
-                locations.is_favourite(self.preferences, mat_id)
+                locations.is_favourite(self.preferences, mat_id, self.DB_FILENAME)
             wanted[mat_id] = not current
             flipped.append(row)
         if not wanted:
             return
-        locations.set_favourites(self.preferences, wanted)
+        locations.set_favourites(self.preferences, wanted, self.DB_FILENAME)
         for row in flipped:
             self.row_changed(row, [self.FavoriteRole])
 
@@ -1159,7 +972,7 @@ class MaterialLibrary(AssetLibrary):
     NOTES_SECTION = "material"
     TILE_FACE = "face_material"    # T06
 
-    DB_FILENAME = "library.json"
+    DB_FILENAME = library_files.MATERIALS
 
     def __init__(self, preferences) -> None:
         super().__init__(preferences)

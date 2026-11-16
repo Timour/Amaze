@@ -7,11 +7,9 @@ import filecmp
 import json
 import os
 import re
-import shutil
 import tempfile
 import time
 
-from amaze import messages
 from amaze.core import asset_files, asset_record, debug, library_files, material, users
 from amaze.core.material import RECORD_SUFFIX
 from amaze.helpers import hostos
@@ -152,20 +150,34 @@ def _adopt_strays(preferences, mat_id: str, ledger: dict,
     _write_ledger(preferences, mat_id, ledger, section)
 
 
+def _ledger_bytes(ledger: dict) -> bytes:
+    return json.dumps(ledger, indent=1).encode("utf-8")
+
+
+def _land(preferences, writes: dict, removals=(), why: str = "") -> bool:
+    """{path: bytes} written and `removals` removed as ONE unit through the guard; whether it landed."""
+    from amaze.core import library_db
+    held = library_db.guard_of(preferences)
+    change = held.change(str(getattr(preferences, "library_user", "") or ""))
+    try:
+        for path, data in writes.items():
+            relative = held.inside(path)
+            if not relative:
+                raise OSError("%s is outside the library" % path)
+            change.put_file(relative, data)
+        for path in removals:
+            change.remove(held.inside(path))
+        change.commit()
+    except OSError as exc:
+        debug.event("versions", "not written - nothing changed", why=why, error=str(exc))
+        return False
+    return True
+
+
 def _write_ledger(preferences, mat_id: str, ledger: dict,
                   section: Section = MATERIAL) -> bool:
-    path = _ledger_path(preferences, mat_id, section)
-    try:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        if os.path.exists(path):    # snapshot an existing ledger before it is overwritten
-
-            hostos.snapshot_before_write(path)
-        hostos.write_json_atomic(path, ledger, indent=1)
-        return True
-    except OSError as exc:
-        debug.event("versions", "ledger not written",
-                    mat_id=str(mat_id), error=str(exc))
-        return False
+    return _land(preferences, {_ledger_path(preferences, mat_id, section): _ledger_bytes(ledger)},
+                 why="ledger")
 
 
 def version_count(preferences, mat_id: str, section: Section = MATERIAL) -> int:
@@ -274,77 +286,30 @@ def _archive_paths(preferences, mat_id: str, stem,
             for kind, _required in section.kinds}
 
 
-def _copy_set(sources: dict, targets: dict, kinds: tuple = _KINDS) -> bool:
-    """Copy every present kind as one unit, rolled back on failure. ▸p/list-written-first-answer"""
-    staged = []
-    displaced = []
-    created = []
-    vacated = []
-    promoted = 0
-    try:
-        for kind, required in kinds:
-            source = sources.get(kind)
-            present = source and os.path.exists(source)
-            if required and not present:
-                debug.event("versions", "no %s to copy - refused" % kind,
-                            source=source)
-                return False
-            if not present:
-                if targets.get(kind) and os.path.exists(targets[kind]):
-                    vacated.append(targets[kind])    # the targets mirror the sources: it leaves too
-                continue
-            target = targets[kind]
-            try:
-                os.makedirs(os.path.dirname(target), exist_ok=True)
-                scratch = hostos.unique_scratch(target)
-                shutil.copyfile(source, scratch)
-            except OSError as exc:    # nothing has been promoted yet, whichever kind this is
-                debug.event("versions", "copy failed - nothing promoted",
-                            source=source, target=target, error=str(exc))
-                return False
-            staged.append((scratch, target))
-
-        for scratch, target in staged:
-            if os.path.exists(target):    # moved aside first, so a rollback can put it back
-                aside = hostos.unique_scratch(target, ".rollback",
-                                              create=False)
-                hostos.replace_file(target, aside)
-                displaced.append((aside, target))
-            else:
-                created.append(target)    # nothing to put back for this kind - the rollback must REMOVE it instead
-            hostos.promote_scratch(scratch, target)
-            promoted += 1
-        staged = []
-        for target in vacated:    # aside like a replaced kind, so a rollback puts it back
-            aside = hostos.unique_scratch(target, ".rollback", create=False)
-            hostos.replace_file(target, aside)
-            displaced.append((aside, target))
-    except OSError as exc:
-        debug.event("versions", "promote failed - putting the base back",
-                    promoted=promoted, of=len(staged), error=str(exc))
-        staged = staged[promoted:]
-        for target in created:
-            try:
-                if os.path.exists(target):
-                    os.remove(target)
-            except OSError as undo_exc:
-                debug.event("versions", "ROLLBACK FAILED - a created "
-                            "kind stays", target=target,
-                            error=str(undo_exc))
-        for aside, target in reversed(displaced):
-            try:
-                hostos.replace_file(aside, target)
-            except OSError as undo_exc:    # the base is left mixed; logged, never silent
-                debug.event("versions", "ROLLBACK FAILED - the base is "
-                            "mixed", target=target, error=str(undo_exc))
-        displaced = []
-        return False
-    finally:
-        for scratch, _target in staged:    # whatever never made it into place, on any exit
-            hostos.discard_scratch(scratch)
-        for aside, _target in displaced:    # on the success path these are the old files, already replaced
-            hostos.discard_scratch(aside)
-    return True
+def _copy_set(preferences, sources: dict, targets: dict, kinds: tuple = _KINDS,
+              ledger=None) -> bool:
+    """Copy every present kind, and `ledger` as (path, document), as ONE unit through the guard."""
+    writes, vacated = {}, []
+    for kind, required in kinds:
+        source = sources.get(kind)
+        present = source and os.path.exists(source)
+        if required and not present:
+            debug.event("versions", "no %s to copy - refused" % kind, source=source)
+            return False
+        if not present:
+            if targets.get(kind) and os.path.exists(targets[kind]):
+                vacated.append(targets[kind])    # the targets mirror the sources: it leaves too
+            continue
+        try:
+            with open(source, "rb") as handle:
+                writes[targets[kind]] = handle.read()
+        except OSError as exc:
+            debug.event("versions", "copy failed - nothing changed", source=source,
+                        error=str(exc))
+            return False
+    if ledger is not None:
+        writes[ledger[0]] = _ledger_bytes(ledger[1])
+    return _land(preferences, writes, vacated, why="version files")
 
 
 def create_version(preferences, mat_id: str, name: str = "",
@@ -366,11 +331,6 @@ def create_version(preferences, mat_id: str, name: str = "",
                     stem=stem)
         number += 1
         stem = _stem(tag, number)
-    with _staged_record(sources, _archive_document(sources), section) as staged:
-        copied = _copy_set(staged, _archive_paths(preferences, mat_id, stem, section),
-                           section.kinds)
-    if not copied:
-        return 0
     author = ""    # the writer's name, frozen into the row at write time
     try:
         writer = users.current(preferences)
@@ -386,7 +346,11 @@ def create_version(preferences, mat_id: str, name: str = "",
         "file": stem,
     })
     ledger["active"] = number
-    if not _write_ledger(preferences, mat_id, ledger, section):
+    with _staged_record(sources, _archive_document(sources), section) as staged:
+        copied = _copy_set(preferences, staged,
+                           _archive_paths(preferences, mat_id, stem, section), section.kinds,
+                           ledger=(_ledger_path(preferences, mat_id, section), ledger))
+    if not copied:
         return 0
     debug.event("versions", "version created", mat_id=str(mat_id),
                 n=number)
@@ -435,6 +399,8 @@ def keep_base(preferences, mat_id: str, section: Section = MATERIAL,
 def switch_active(preferences, mat_id: str, number: int, section: Section = MATERIAL,
                   base_paths: dict = None, base_name: str = "") -> bool:
     """Copy version `number` over the base and mark it active; an unarchived base is archived first."""
+    from amaze.core import library_db
+    library_db.flush(preferences)    # the base's record holds every waiting change before it is read
     ledger = read_ledger(preferences, mat_id, section)
     if ledger.get("unreadable"):
         return False
@@ -454,34 +420,23 @@ def switch_active(preferences, mat_id: str, number: int, section: Section = MATE
     row = _row_for(ledger, number)
     if row is None:
         return False
-    previous = ledger.get("active")
-    if not _restore(preferences, mat_id, _row_stem(row), base, section):
-        return False
     ledger["active"] = int(number)
-    if not _write_ledger(preferences, mat_id, ledger, section):    # the previous archive is whole
-        previous_row = (_row_for(ledger, previous)
-                        if previous is not None else None)
-        rolled_back = (
-            previous_row is not None
-            and _restore(preferences, mat_id, _row_stem(previous_row), base, section))
-        debug.event("versions",
-                    "switch refused - ledger write failed",
-                    mat_id=str(mat_id), n=int(number),
-                    rolled_back=bool(rolled_back))
-        if not rolled_back:  # the base and the ledger disagree, so it interrupts ▸p/dialogs-are-a-bill
-            debug.alert(messages.VERSION_SWITCH_DIVERGED % int(number),
-                        key="versions-diverged-%s" % mat_id)
+    if not _restore(preferences, mat_id, _row_stem(row), base, section, ledger):
+        debug.event("versions", "switch refused - nothing changed", mat_id=str(mat_id),
+                    n=int(number))
         return False
     debug.event("versions", "active version switched",
                 mat_id=str(mat_id), n=number)
     return True
 
 
-def _restore(preferences, mat_id: str, stem, base: dict, section: Section) -> bool:
-    """Copy one archive over the base; the base's `.json` keeps its metadata, takes the builder."""
+def _restore(preferences, mat_id: str, stem, base: dict, section: Section,
+             ledger: dict) -> bool:
+    """One archive over the base and the ledger naming it, as one unit; the metadata is kept."""
     archive = _archive_paths(preferences, mat_id, stem, section)
+    named = (_ledger_path(preferences, mat_id, section), ledger)
     if RECORD_SUFFIX not in dict(section.kinds):
-        return _copy_set(archive, base, section.kinds)
+        return _copy_set(preferences, archive, base, section.kinds, ledger=named)
     target = base.get(RECORD_SUFFIX) or asset_record.path_for(
         preferences, mat_id, section.database)
     with asset_record.LOCK:    # no metadata write lands between the read and the copy
@@ -493,7 +448,8 @@ def _restore(preferences, mat_id: str, stem, base: dict, section: Section) -> bo
         if builder:
             document[asset_record.BUILDER] = builder
         with _staged_record(archive, document, section) as staged:
-            return _copy_set(staged, dict(base, **{RECORD_SUFFIX: target}), section.kinds)
+            return _copy_set(preferences, staged, dict(base, **{RECORD_SUFFIX: target}),
+                             section.kinds, ledger=named)
 
 
 def record_render(preferences, mat_id: str, section: Section = MATERIAL) -> bool:
@@ -521,10 +477,10 @@ def record_base(preferences, mat_id: str, kind: str, section: Section = MATERIAL
         if os.path.exists(target) and filecmp.cmp(source, target,
                                                   shallow=False):
             return True
-        os.makedirs(os.path.dirname(target), exist_ok=True)
-        scratch = hostos.unique_scratch(target)
-        shutil.copyfile(source, scratch)
-        hostos.promote_scratch(scratch, target)
+        with open(source, "rb") as handle:
+            data = handle.read()
+        if not _land(preferences, {target: data}, why="active slot"):
+            return False
     except (OSError, hostos.PathEscape) as exc:    # best-effort: it follows a save, never raises
         debug.event("versions", "base not recorded to the active slot",
                     mat_id=str(mat_id), n=active, kind=kind, error=str(exc))

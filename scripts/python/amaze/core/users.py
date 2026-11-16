@@ -1,55 +1,52 @@
-"""Who uses this library: a `uuid4` UID with a `name`; what a user owns is tagged with the UID."""
+"""Who uses this library: a `uuid4` UID with a `name`, in `DataBase.json`'s `users` section."""
 
 from __future__ import annotations
 
+import os
+import types
 import uuid
 
-from amaze.core import keyed_store
+from amaze.core import documents, library_db, library_files
 
-USERS_FILE = "users.json"
+SECTION = "users"
 
 RESOLVED = "resolved"    # the pointer names someone this library knows...
 MINT = "mint"            # ...the library has nobody yet...
 ASK = "ask"              # ...or it has people and this machine is none of them
 
 
-def normalise(value) -> dict:
-    """A well-formed record, or {} for junk; a user with no name reads as absent."""
-    if not isinstance(value, dict):
-        return {}
-    name = value.get("name", "")
-    if not isinstance(name, str):
-        return {}
-    name = name.strip()
-    if not name:
-        return {}
-    kept = dict(value)
-    kept["name"] = name
-    return kept
+def uid_shaped(value: str) -> bool:
+    """Is this a minted UID, the 32-hex `uuid4().hex` shape?"""
+    value = str(value or "")
+    return len(value) == 32 and all(c in "0123456789abcdef" for c in value)
 
 
-SPEC = keyed_store.bind(USERS_FILE, normalise)
-
-
-def _store(preferences, library: str = ""):
-    return keyed_store.open_store(SPEC, preferences, library)
+def _master(preferences, library: str = ""):
+    if library:
+        other = types.SimpleNamespace(
+            dir=library, library_user=getattr(preferences, "library_user", ""))
+        if library_db.key_of(other) != library_db.key_of(preferences):
+            preferences = other
+    return library_db.document(preferences, library_files.MASTER)
 
 
 def all_users(preferences, library: str = "") -> dict:
-    """`{uid: name}` for this library, or for `library` - a COPY, like every store read."""
-    return {uid: record.get("name", "")
-            for uid, record in _store(preferences, library).all().items()}
+    """`{uid: name}` for this library, or for `library`."""
+    return {uid: str(record.get("name") or "")
+            for uid, record in _master(preferences, library).table(SECTION).items()
+            if isinstance(record, dict) and str(record.get("name") or "").strip()}
 
 
 def roster(preferences) -> set:
-    """Every uid `users.json` holds now, checked against the file; empty when that cannot be proved."""
-    store = keyed_store.opened(SPEC, preferences)
-    return (store.held_keys() if store is not None else None) or set()
+    """Every uid the library's users section holds now; empty when it cannot be read."""
+    held = _master(preferences)
+    held.refresh()    # a prune acts on it: a roster read before another session's change is stale
+    return set(all_users(preferences)) if held.writable else set()
 
 
 def name_for(preferences, uid) -> str:
     """The name this UID displays under, or "" if unknown here."""
-    return _store(preferences).get(str(uid)).get("name", "")
+    return str((_master(preferences).get(SECTION, str(uid)) or {}).get("name") or "")
 
 
 def name_taken(preferences, name: str, besides: str = "", library: str = "") -> bool:
@@ -64,27 +61,50 @@ def named(preferences, name: str, library: str = "", besides: str = "") -> str:
                  if wanted and uid != str(besides) and other.strip().casefold() == wanted), "")
 
 
+def _put(preferences, uid: str, record: dict) -> bool:
+    """Store one user's record; with nobody picked yet, the newcomer signs their own row."""
+    held = _master(preferences)
+    if held.user():
+        if not held.put(SECTION, uid, record):
+            return False
+        saved = library_db.save(preferences, library_files.MASTER)
+        return bool(saved) or saved.reason == documents.UNCHANGED
+    if not os.path.isdir(held.guard.dir):
+        return False
+    reading = held.guard.read(library_files.MASTER)
+    if not reading.writable:
+        return False
+    whole = dict(reading.document)
+    table = dict(whole.get(SECTION) or {})
+    table[uid] = dict(record, **{documents.BY: uid, documents.AT: held.guard.stamp()})
+    change = held.guard.change(uid)
+    change.put(reading.ticket, dict(whole, **{SECTION: table}))
+    try:
+        change.commit()
+    except (OSError, documents.guard.Refused):
+        return False
+    held.refresh()
+    return True
+
+
 def create(preferences, name: str) -> str:
     """A new user's UID, or "" for a blank name, a name already taken, or a refused write."""
     name = str(name or "").strip()
     if not name or name_taken(preferences, name):
         return ""
     uid = uuid.uuid4().hex
-    if not _store(preferences).set(uid, {"name": name}):
-        return ""
-    return uid
+    return uid if _put(preferences, uid, {"name": name}) else ""
 
 
 def delete(preferences, uid) -> bool:
-    """Remove a user and everything tagged theirs; a refused sweep keeps the record, answers False."""
+    """Remove a user; what they starred stays theirs in the file, never another user's to change."""
     uid = str(uid)
-    store = _store(preferences)
-    if not store.get(uid):
+    held = _master(preferences)
+    if not held.get(SECTION, uid):
         return False
-    swept = keyed_store.retire_owner(preferences, uid)
-    if any(not written for written in swept.values()):
+    if not held.drop(SECTION, uid):
         return False
-    if not store.retire([uid]):
+    if not library_db.save(preferences, library_files.MASTER):
         return False
     try:
         preferences.forget_user(uid)
@@ -94,27 +114,22 @@ def delete(preferences, uid) -> bool:
 
 
 def rename(preferences, uid, name: str) -> bool:
-    """Relink a UID's name; nothing tagged is touched."""
+    """Relink a UID's name; nothing they own is touched."""
     uid = str(uid)
     name = str(name or "").strip()
-    store = _store(preferences)
-    record = store.get(uid)
+    record = _master(preferences).get(SECTION, uid)
     if not name or not record or name_taken(preferences, name, besides=uid):
         return False
-    record = dict(record)
-    record["name"] = name
-    return bool(store.set(uid, record))
+    return _master(preferences).edit(SECTION, uid, name=name) and bool(
+        library_db.save(preferences, library_files.MASTER))
 
 
 def first_run_state(preferences) -> str:
     """RESOLVED, MINT or ASK - see the constants."""
-    known = _store(preferences).all()
+    known = all_users(preferences)
     if not known:
         return MINT
-    try:
-        pointer = str(preferences.library_user or "")
-    except AttributeError:
-        pointer = ""
+    pointer = str(getattr(preferences, "library_user", "") or "")
     return RESOLVED if pointer in known else ASK
 
 

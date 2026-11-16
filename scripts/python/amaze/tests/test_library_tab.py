@@ -76,8 +76,7 @@ class TheUserIsPickedByTheRule(unittest.TestCase):
         combo = self.dialog.cbb_library_user
         self.assertEqual([user_dialog.CREATE],
                          [combo.itemData(row) for row in range(combo.count())])
-        self.assertEqual(amazetheme.LABEL_LIBRARY_FORMAT % library_policy.LIBRARY_VERSION,
-                         self.dialog._lbl_library_format.text())
+        self.assertEqual("Format: v2.0", self.dialog._lbl_library_format.text())
 
 
 class WhatApplyingDoesIsSaidFirst(unittest.TestCase):
@@ -89,14 +88,14 @@ class WhatApplyingDoesIsSaidFirst(unittest.TestCase):
 
     def _picked_at(self, version):
         other, _made = _library_with(self, "Sage")
-        library_policy.set_library_version(other, version)
+        test_support.set_library_version(other, version)
         self.dialog.pick_library(other)
         return self.dialog._lbl_library_format.text(), self.dialog._lbl_library_apply.text()
 
     def test_an_older_library_says_apply_upgrades_it(self):
         known = library_policy.LIBRARY_VERSION
         self.assertEqual((amazetheme.LABEL_LIBRARY_FORMAT % (known - 1),
-                          amazetheme.LABEL_UPGRADES_LIBRARY % known), self._picked_at(known - 1))
+                          amazetheme.LABEL_UPGRADES_LIBRARY % "2.0"), self._picked_at(known - 1))
         self.assertTrue(self.dialog._btn_apply_library.isEnabled())
         self.assertTrue(self.dialog._lbl_library_apply.alignment()
                         & QtCore.Qt.AlignmentFlag.AlignRight,
@@ -104,14 +103,14 @@ class WhatApplyingDoesIsSaidFirst(unittest.TestCase):
 
     def test_a_newer_library_says_update_amaze_and_does_not_apply(self):
         newer = library_policy.LIBRARY_VERSION + 1
-        self.assertEqual((amazetheme.LABEL_LIBRARY_FORMAT % newer,
+        self.assertEqual((amazetheme.LABEL_LIBRARY_FORMAT % "2.1",
                           amazetheme.LABEL_LIBRARY_TOO_NEW), self._picked_at(newer))
         self.assertFalse(self.dialog._btn_apply_library.isEnabled())
         self.assertFalse(self.dialog._btn_accept_library.isEnabled())
 
     def test_this_amazes_version_says_nothing(self):
         self.assertEqual(
-            (amazetheme.LABEL_LIBRARY_FORMAT % library_policy.LIBRARY_VERSION, ""),
+            (amazetheme.LABEL_LIBRARY_FORMAT % "2.0", ""),
             self._picked_at(library_policy.LIBRARY_VERSION))
 
     def test_an_unreachable_library_says_so_and_does_not_apply(self):
@@ -207,7 +206,7 @@ class NothingSwitchesBeforeApply(unittest.TestCase):
     def test_a_new_library_is_made_with_its_user_on_apply(self):
         folder = _empty_folder(self)
         self.assertTrue(test_support.apply_library(self, self.panel, folder, user="Fern"))
-        self.assertTrue(os.path.isfile(os.path.join(folder, "library.json")))
+        self.assertTrue(os.path.isfile(os.path.join(folder, "DataBase.json")))
         self.assertEqual({self.panel.prefs.library_user: "Fern"},
                          users.all_users(self.panel.prefs))
 

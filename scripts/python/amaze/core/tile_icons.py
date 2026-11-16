@@ -10,7 +10,7 @@ from PySide6 import QtCore, QtGui
 
 import amaze
 from amaze import messages
-from amaze.core import debug, keyed_store, material
+from amaze.core import debug, material
 from amaze.helpers import hostos
 
 ICON_DIR = amaze.package_file("ui", "feather")  # the icon set, through the package's one path join
@@ -336,30 +336,43 @@ def forget_composed() -> None:
     _fits.clear()
 
 
-OVERRIDES_FILE = "icons.json"  # kept by the keyed-store engine
-
-SPEC = keyed_store.bind(OVERRIDES_FILE, normalise)  # every tile's icon, by asset id or file path
+SECTION = "icons"    # in each database: a tile's chosen face, by asset id or file key
 
 
-def _store(preferences):
-    return keyed_store.open_store(SPEC, preferences)
+def _document(preferences, database: str):
+    from amaze.core import library_db
+    return library_db.document(preferences, database)
 
 
-def override_for(preferences, key: str) -> dict:
-    return _store(preferences).get(key)
+def override_for(preferences, key: str, database: str) -> dict:
+    """The face chosen for one tile of `database`, {} for none."""
+    from amaze.core import documents
+    found = _document(preferences, database).get(SECTION, str(key))
+    if not isinstance(found, dict):
+        return {}
+    return normalise({field: value for field, value in found.items()
+                      if field not in (documents.BY, documents.AT)})    # the stamps are the engine's
 
 
-def set_override(preferences, key: str, spec) -> bool:
-    """Store one key's icon, or forget it with an empty spec; the engine reports failures."""
-    return bool(_store(preferences).set(key, spec))
+def set_override(preferences, key: str, spec, database: str) -> bool:
+    """Store one tile's face, or forget it with an empty spec."""
+    return set_overrides(preferences, {key: spec}, database)[str(key)]
 
 
-def set_overrides(preferences, specs: dict) -> dict:
-    """`set_override` for many keys in ONE write; {key: whether the store now holds that choice}."""
-    store = _store(preferences)
-    written = store.update(specs)
-    if written:
-        return dict.fromkeys(specs, True)
-    held = written.reason != keyed_store.REASON_NO_USER    # as `set` answers: an unchanged key holds
-    return {key: held and store.get(key) == normalise(spec)
+def set_overrides(preferences, specs: dict, database: str) -> dict:
+    """`set_override` for many tiles as one change; {key: whether the database now holds that choice}."""
+    from amaze.core import library_db
+    held = _document(preferences, database)
+    if not held.writable or not held.user():
+        return {str(key): False for key in specs}
+    with library_db.library_for(preferences).holding():
+        for key, spec in specs.items():
+            chosen = normalise(spec)
+            if chosen:
+                held.put(SECTION, str(key), chosen)
+            else:
+                held.drop(SECTION, str(key))
+    saved = library_db.save(preferences, database)
+    landed = bool(saved) or saved.reason == "unchanged"
+    return {str(key): landed and override_for(preferences, key, database) == normalise(spec)
             for key, spec in specs.items()}

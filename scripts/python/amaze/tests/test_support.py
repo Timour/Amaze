@@ -86,7 +86,7 @@ def isolate_user_folders() -> str:
 
 TEST_HOME = isolate_user_folders()    # before anything asks for a per-user folder
 
-from amaze.core import database, debug                  # noqa: E402
+from amaze.core import debug                            # noqa: E402
 from amaze.prefs import prefs                           # noqa: E402
 
 
@@ -137,32 +137,23 @@ TEST_CACHE = isolate_cache_root()    # redirected at IMPORT for the same reason 
 
 
 def reset_database_singletons() -> None:
-    """Drop every cached DatabaseConnector, cleared in place, never rebound. ▸p/mutate-not-rebind"""
-    from amaze.core import model_registry
-    stop_stamp_checks()    # a stamp check of the last test's library would write into the next
-    database.DatabaseConnector._instances.clear()
-    model_registry.release()    # models alias the connector's document, so a kept model would leak old rows
-    if database.DatabaseConnector._instances is not database._INSTANCES:
-        raise RuntimeError(
-            "the connector registry is no longer database._INSTANCES - "
-            "every reload-survival mechanism reads that global, so this "
-            "reset drops nothing a reloaded module can see"
-        )
+    """Drop every model and every library's databases this session holds, waiting saves first."""
+    from amaze.core import library_db, model_registry
+    library_db.flush()
+    library_db.drop_scheduler()    # a panel left from the last test must not hold this one's saves
+    model_registry.release()    # a kept model would leak the last test's rows
 
 
 def settle_stamps() -> None:
-    """Wait for every stamp check to end, then hand what each found to this thread."""
-    from PySide6 import QtCore
-    from amaze.core import library
-    for worker in list(library.stamps._threads):
-        worker.wait(10000)
-    QtCore.QCoreApplication.sendPostedEvents()
+    """Every change waiting to be saved, saved now, with each asset's metadata beside it."""
+    from amaze.core import library_db
+    library_db.flush()
 
 
 def stop_stamp_checks() -> None:
-    """Stop every stamp check, as quitting does: one left running outlives the test that started it."""
-    from amaze.core import library
-    library.stamps.shutdown()
+    """Nothing runs after a test to write into its library: the saves are flushed."""
+    from amaze.core import library_db
+    library_db.flush()
 
 
 FILES_FIXTURE_DIR = os.path.join(os.path.dirname(__file__), "assets", "files")    # one tiny synthetic file per kind, built by make_file_fixtures.py
@@ -218,19 +209,28 @@ def fresh_library(testcase, source=None) -> str:
 
 
 _SEEDED = []    # the first seeded panel library, which later fixture panels copy
-_PER_PANEL = ("locations.json", "location_paths.json")    # each panel writes its own
+_PER_PANEL = ("files.json",)    # each panel writes its own locations
 
 
 def _keep_seeded(library: str) -> None:
-    """The first seeded panel library, minus its location files: what later panels copy."""
-    from amaze.core import gradient_library
-    marker = os.path.join(library, gradient_library.GradientLibrary._SEED_MARKER)
-    if _SEEDED or not os.path.exists(marker):
+    """The first seeded panel library, minus its Files database: what later panels copy."""
+    import json
+    from amaze.core import gradient_library, library_db
+    library_db.flush()
+    try:
+        with open(os.path.join(library, "DataBase.json"), encoding="utf-8") as handle:
+            marks = json.load(handle).get("marks") or {}
+    except (OSError, ValueError):
+        marks = {}
+    if _SEEDED or gradient_library.GradientLibrary._SEED_MARK not in marks:
         return
     keep = os.path.join(scratch_dir("amaze_seeded_fixture_"), "library")
     atexit.register(shutil.rmtree, os.path.dirname(keep), True)
-    shutil.copytree(library, keep, ignore=lambda _folder, names: [
-        name for name in names if name.startswith(_PER_PANEL)])
+    shutil.copytree(library, keep)
+    for name in _PER_PANEL:    # empty, not absent: the manifest names it, so absent reads as lost
+        if os.path.exists(os.path.join(keep, name)):
+            with open(os.path.join(keep, name), "w", encoding="utf-8") as handle:
+                handle.write("{}\n")
     _SEEDED.append(keep)
 
 
@@ -304,19 +304,35 @@ def refused_at_open(path, error=None):
     return mock.patch("builtins.open", refused)
 
 
+@contextlib.contextmanager
 def full_disk_for(path):
-    """`hostos.write_json_atomic` refusing `path` alone, as a full disk refuses a write."""
+    """Every write of `path`, or of its scratch beside it, refused as a full disk refuses it."""
     import errno
     from unittest import mock
-    real_write = hostos.write_json_atomic
+    from amaze.core import guard
+    real_write, real_disk_write = hostos.write_json_atomic, guard.Disk.write
     wanted = os.path.realpath(path)
 
+    def _meant(name) -> bool:
+        name = os.path.realpath(name)
+        return name == wanted or (os.path.dirname(name) == os.path.dirname(wanted)
+                                  and os.path.basename(name).startswith(
+                                      os.path.basename(wanted) + ".")
+                                  and name.endswith(guard.SCRATCH))
+
     def refused(name, *args, **kwargs):
-        if os.path.realpath(name) == wanted:
+        if _meant(name):
             raise OSError(errno.ENOSPC, "No space left on device", name)
         return real_write(name, *args, **kwargs)
 
-    return mock.patch.object(hostos, "write_json_atomic", refused)
+    def refused_disk(disk, name, data):
+        if _meant(name):
+            raise OSError(errno.ENOSPC, "No space left on device", name)
+        return real_disk_write(disk, name, data)
+
+    with mock.patch.object(hostos, "write_json_atomic", refused), \
+            mock.patch.object(guard.Disk, "write", refused_disk):
+        yield
 
 
 @contextlib.contextmanager
@@ -458,17 +474,14 @@ def live_library_to_rehearse_on(testcase):
     live.load()
     live.test_mode = False    # this instance's own overlay switch, so every `live.dir` downstream is the real library
     directory = getattr(live, "real_dir", "") or live.dir
-    index = os.path.join(directory, "library.json") if directory else ""
-    if not index or not os.path.exists(index):
+    if not directory or not os.path.isdir(directory):
         testcase.skipTest("no library configured on this machine")
-    try:
-        with open(index, encoding="utf-8-sig") as handle:
-            if not (json.load(handle).get("assets") or []):
-                testcase.skipTest(
-                    "the configured library is empty - nothing to "
-                    "rehearse a recovery on")
-    except (OSError, ValueError, AttributeError):
-        testcase.skipTest("the configured library could not be read")
+    from amaze.core import guard, library_conversion
+    if library_conversion.needs_conversion(directory):
+        return live    # an older library: the rehearsal converts a copy of it
+    reading = guard.Guard(directory).read("materials.json")
+    if reading.verdict != guard.FINE or not (reading.document or {}).get("assets"):
+        testcase.skipTest("the configured library is empty or could not be read")
     return live
 
 
@@ -500,18 +513,69 @@ FIXTURE_USER_NAME = "Fixture"    # the fixture user's name, in a library a panel
 def with_fixture_user(library) -> str:
     """`library`, holding the fixture user: a panel opens a library only with its user."""
     import types
-    from amaze.core import keyed_store, users
+    from amaze.core import library_db, users
     holder = types.SimpleNamespace(dir=library, library_user=FIXTURE_USER)
-    keyed_store.open_store(users.SPEC, holder).set(FIXTURE_USER, {"name": FIXTURE_USER_NAME})
-    keyed_store.release()
+    held = library_db.document(holder, "DataBase.json")
+    held.put(users.SECTION, FIXTURE_USER, {"name": FIXTURE_USER_NAME})
+    library_db.flush(holder)
+    library_db.release(holder)
     return library
+
+
+def backup_now(library, name: str) -> str:
+    """Database `name` as it is now, kept as a backup Check Library offers; the backup's path."""
+    import datetime
+    from amaze.core import guard
+    folder = os.path.join(str(library), guard.BACKUP_DIR)
+    os.makedirs(folder, exist_ok=True)
+    stamp = (datetime.datetime.now() - datetime.timedelta(hours=1)).strftime(guard.STAMP)
+    target = os.path.join(folder, "%s.%s%s" % (name, stamp, guard.BACKUP_TAIL))
+    shutil.copyfile(os.path.join(str(library), name), target)
+    return target
+
+
+def serves(name: str, library) -> bool:
+    """A shared model on database `name` reads `library`."""
+    from amaze.core import model_registry
+    wanted = os.path.realpath(str(library).rstrip("/\\"))
+    return any(os.path.realpath(str(model.preferences.dir).rstrip("/\\")) == wanted
+               for models in model_registry._models.values() for model in models.values()
+               if getattr(model, "DB_FILENAME", None) == name)
+
+
+def set_library_version(library, version: int) -> None:
+    """The library's recorded version set to `version`, as a newer or older Amaze would leave it."""
+    from amaze.core import guard
+    held = guard.Guard(str(library))
+    reading = held.read("DataBase.json")
+    document = dict(reading.document or {})
+    policy = dict(document.get("policy") or {})
+    policy["library"] = {"version": int(version)}
+    change = held.change("")
+    change.replace("DataBase.json", dict(document, policy=policy))
+    change.commit()
+
+
+def with_fixture_location(library, folder) -> None:
+    """`folder` registered as the fixture user's one File location in `library`."""
+    import types
+    from amaze.core import library_db, locations
+    holder = types.SimpleNamespace(dir=library, library_user=FIXTURE_USER,
+                                   last_known_folders=[folder],
+                                   keep_last_known=lambda *_args: None)
+    locations.forget()
+    if not locations.set_record(holder, folder, {"registered": True}):
+        raise RuntimeError("the fixture location could not be registered in %s" % library)
+    library_db.flush(holder)
+    library_db.release(holder)
+    locations.forget()
 
 
 def fixture_panel(testcase, render_geometry=False):
     """A real AmazePanel over a private fixture library, isolation asserted. ▸p/harness-isolation"""
     from amaze.panel import panel as panel_mod       # reloads hostos
     from amaze.helpers import hostos as hostos_mod
-    from amaze.core import matx_library, matx_sources
+    from amaze.core import library_db as library_db_mod, matx_library, matx_sources
     from amaze.actions import files as files_actions
 
     if not render_geometry:    # the fixture's three geometry files cost ~1.2 s a render, every panel, every folder shown
@@ -537,6 +601,7 @@ def fixture_panel(testcase, render_geometry=False):
     testcase.addCleanup(shutil.rmtree, config, True)
     library = with_fixture_user(fresh_library(testcase, _SEEDED[0] if _SEEDED else None))
     files = fresh_files_folder(testcase)
+    with_fixture_location(library, files)
     scene = pin_scene_folder(testcase)    # before the panel: its cleanup then runs after the panel's
     with open(os.path.join(config, "settings.json"), "w",
               encoding="utf-8") as handle:
@@ -554,6 +619,7 @@ def fixture_panel(testcase, render_geometry=False):
 
     reset_database_singletons()
     panel = panel_mod.AmazePanel()
+    library_db_mod.drop_scheduler()    # a test reads what it changed at once, never after a timer
     testcase.addCleanup(dispose_panel, panel)
     testcase.addCleanup(stop_panel_workers, panel)    # after deleteLater, so it runs first: hython never emits aboutToQuit
 
@@ -592,6 +658,8 @@ def reopened_panel(testcase):
             "reopened_panel without fixture_panel's redirection - "
             "config_root is %s, outside the temp directory" % probe)
     panel = panel_mod.AmazePanel()
+    from amaze.core import library_db
+    library_db.drop_scheduler()    # a test reads what it changed at once
     testcase.addCleanup(dispose_panel, panel)
     testcase.addCleanup(stop_panel_workers, panel)
     return panel

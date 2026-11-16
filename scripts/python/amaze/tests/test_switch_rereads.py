@@ -13,7 +13,7 @@ from PySide6 import QtWidgets  # noqa: E402
 import hou  # noqa: E402
 
 from amaze import messages
-from amaze.core import database, keyed_store, tile_icons
+from amaze.core import library_db, library_files, tile_icons
 from amaze.tests import test_support
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
@@ -39,25 +39,27 @@ class SwitchRereadsCase(unittest.TestCase):
         """An edit that lands on disk behind the cache shows after the next `switch_all_models`."""
         panel = self.panel
         prefs = panel.prefs
-        self.addCleanup(keyed_store.release)
+        self.addCleanup(test_support.reset_database_singletons)
         name = (tile_icons.icon_names() or ["feather"])[0]
-        key = os.path.join(str(prefs.dir), "img", "switch-reread-probe.png")
+        key = "switch-reread-probe"
         self.assertTrue(
-            tile_icons.set_override(prefs, key, {"name": name, "bg": "#ef8878"}),
+            tile_icons.set_override(prefs, key, {"name": name, "bg": "#ef8878"},
+                                    library_files.MATERIALS),
             "the probe write reported failure")
-        store = keyed_store.open_store(tile_icons.SPEC, prefs)
-        with open(store.path, encoding="utf-8") as handle:
+        library_db.flush()
+        path = os.path.join(str(prefs.dir), library_files.MATERIALS)
+        with open(path, encoding="utf-8") as handle:
             text = handle.read()
         self.assertIn("#ef8878", text,
                       "the probe never reached the file, so an external "
                       "edit cannot be simulated on it")
-        with open(store.path, "w", encoding="utf-8") as handle:
+        with open(path, "w", encoding="utf-8") as handle:
             handle.write(text.replace("#ef8878", "#4af2a1"))
         panel.switch_all_models()
         QtWidgets.QApplication.processEvents()
         self.assertEqual(
             "#4af2a1",
-            tile_icons.override_for(prefs, key).get("bg"),
+            tile_icons.override_for(prefs, key, library_files.MATERIALS).get("bg"),
             "the switch served the cached row instead of re-reading the "
             "file - switching back to a library shows stale data until "
             "Houdini restarts")
@@ -93,7 +95,7 @@ class ASwitchReadsTheSettingsOnce(unittest.TestCase):
                          "each model re-read settings.json for itself")
         self.assertEqual(self._landed(other), self._landed(self.panel.prefs.dir),
                          "the switch did not land on the new library")
-        self.assertTrue(database.DatabaseConnector("library.json").serves(self.panel.prefs.dir),
+        self.assertTrue(test_support.serves(library_files.MATERIALS, self.panel.prefs.dir),
                         "the models were not re-pointed at the new library")
 
     def test_shared_models_follow_the_panel_that_switched(self):
@@ -175,9 +177,9 @@ class AfterASwitchFileShowsTheNewLibrarysLocation(unittest.TestCase):
         settings = os.path.join(panel.prefs.path, "settings.json")
         with open(settings, encoding="utf-8") as handle:
             data = json.load(handle)
-        data.update(directory=test_support.seeded_library(self),
-                    file_folders=[theirs], last_file_folder=theirs,
-                    file_location_records={theirs: {"registered": True}})
+        other = test_support.seeded_library(self)
+        test_support.with_fixture_location(other, theirs)    # the location lives in its library
+        data.update(directory=other, file_folders=[theirs], last_file_folder=theirs)
         with open(settings, "w", encoding="utf-8") as handle:
             json.dump(data, handle)
         panel.switch_all_models()
@@ -258,19 +260,19 @@ class AfterASwitchTheGridAndTheSidebarShareOneDocument(unittest.TestCase):
 
     def test_each_grid_reads_its_sidebars_document(self):
         apart = [grid for grid, sidebar in self.PAIRS
-                 if getattr(self.panel, grid)._data
-                 is not getattr(self.panel, sidebar)._data]
+                 if getattr(self.panel, grid)._doc()
+                 is not getattr(self.panel, sidebar)._doc()]
         self.assertEqual([], apart,
                          "these grids hold a document their sidebar does not")
 
 
 class AnUnreadableNodeFileDoesNotStopTheSwitch(unittest.TestCase):
-    """A library whose cops.json will not parse: every model still switches, and saving says why not."""
+    """A library whose nodes.json will not parse: every model still switches; saving says why not."""
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
         self.other = test_support.seeded_library(self)
-        with open(os.path.join(self.other, "cops.json"), "w",
+        with open(os.path.join(self.other, library_files.NODES), "w",
                   encoding="utf-8") as handle:
             handle.write('{"assets": [')    # cut off mid-sync
         settings = os.path.join(self.panel.prefs.path, "settings.json")
@@ -286,8 +288,8 @@ class AnUnreadableNodeFileDoesNotStopTheSwitch(unittest.TestCase):
         except (OSError, ValueError) as exc:
             self.fail("the switch stopped at the Node sidebar and left the "
                       "models after it on the previous library: %s" % exc)
-        stranded = [name for name in database.DATABASES
-                    if not database.DatabaseConnector(name).serves(self.other)]
+        stranded = [name for name in library_files.LISTS
+                    if not test_support.serves(name, self.other)]
         self.assertEqual([], stranded,
                          "still serving the previous library: %s" % stranded)
         sidebar = self.panel.cop_category_model
@@ -298,18 +300,13 @@ class AnUnreadableNodeFileDoesNotStopTheSwitch(unittest.TestCase):
         self.assertEqual(0, self.panel.cop_model.rowCount())
 
     def test_a_node_save_is_refused_for_the_file_it_could_not_read(self):
-        self.panel.switch_all_models()    # the door that reads the settings; a model reads none
         with test_support.captured_log() as log:
+            self.panel.switch_all_models()    # the door that reads the settings; a model reads none
             self.assertFalse(self.panel.cop_model.save(),
                              "premise: a save over an unread file went ahead")
-        self.assertNotIn(
-            messages.LIBRARY_NOT_SAVED_ANOTHER_PANEL, log.messages("alert"),
-            "the refusal blamed another panel: the failed switch had left "
-            "the shared database connection on the previous library")
-        self.assertTrue(
-            log.matching("could not be read"),
-            "the refusal never said the Node file could not be read: %s"
-            % log.messages())
+        self.assertIn(
+            messages.DATABASE_CORRUPT_READ_ONLY % "Nodes", log.messages("alert"),
+            "the refusal never said the Nodes database is corrupt: %s" % log.messages())
 
 
 class OneLibraryChangeIsOneSwitch(unittest.TestCase):
@@ -439,8 +436,8 @@ class AnUnreadableListIsAskedAboutBeforeTheSwitch(unittest.TestCase):
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
         self.broken = test_support.seeded_library(self)
-        index = os.path.join(self.broken, "library.json")
-        shutil.copyfile(index, index + ".bak-1")    # what Repair puts back
+        index = os.path.join(self.broken, library_files.MATERIALS)
+        test_support.backup_now(self.broken, library_files.MATERIALS)    # what Repair puts back
         with open(index, "wb") as handle:
             handle.write(b"{ this is not json")
 
@@ -487,7 +484,7 @@ class AnUnreadableListIsAskedAboutBeforeTheSwitch(unittest.TestCase):
 
     def test_a_list_that_has_not_arrived_is_refused_before_anything_is_saved(self):
         held = test_support.seeded_library(self)
-        os.remove(os.path.join(held, "library.json"))    # mat/ and img/ stay: it has held a library
+        os.remove(os.path.join(held, library_files.MASTER))    # materials/ stays: it held a library
         saves = []
         self.panel.prefs.save = lambda *a, **k: saves.append(True)
         before = self.panel.prefs.dir
@@ -517,7 +514,7 @@ class AnUnreadableListIsAskedAboutBeforeTheSwitch(unittest.TestCase):
             return buttons.index(wanted) if wanted in buttons else len(buttons) - 1
 
         def picked(labels, **kwargs):
-            material = database.section_label("library.json")
+            material = library_files.section_label(library_files.MATERIALS)
             return [next(i for i, label in enumerate(labels) if label.startswith(material))]
 
         ui = mock.MagicMock()
@@ -532,7 +529,7 @@ class AnUnreadableListIsAskedAboutBeforeTheSwitch(unittest.TestCase):
     def test_a_failed_repair_checks_and_fixes_the_picked_library(self):
         from amaze.core import repair
         opened = self.panel.prefs.dir
-        held = os.path.join(opened, "library.json")
+        held = os.path.join(opened, library_files.MATERIALS)
         with open(held, "rb") as handle:
             held_bytes = handle.read()
         with mock.patch.object(repair, "repair_index", return_value=(False, "no copy reads")):
@@ -544,7 +541,7 @@ class AnUnreadableListIsAskedAboutBeforeTheSwitch(unittest.TestCase):
                        messages.BUTTONS_CHECK_THIS_LIBRARY), asked)
         self.assertTrue(any(os.path.normpath(self.broken) in text for text, _b in asked[2:]),
                         "Check Library did not report on the library that failed")
-        with open(os.path.join(self.broken, "library.json"), encoding="utf-8") as handle:
+        with open(os.path.join(self.broken, library_files.MATERIALS), encoding="utf-8") as handle:
             json.load(handle)    # the saved copy is back, so the list reads
         self.assertEqual(opened, self.panel.prefs.dir, "the open library changed")
         self.assertEqual(opened, self.panel._models_dir, "the panel left the open library")
@@ -554,8 +551,7 @@ class AnUnreadableListIsAskedAboutBeforeTheSwitch(unittest.TestCase):
     def test_check_library_offers_no_fix_on_a_library_this_houdini_holds(self):
         from amaze.dialogs import repair_dialog
         opened = self.panel.prefs.dir
-        index = os.path.join(opened, "library.json")
-        shutil.copyfile(index, index + ".bak-1")    # a copy Check Library would offer to put back
+        test_support.backup_now(opened, library_files.MATERIALS)    # a backup Check Library offers
         asked = self._answering_in_turn(
             [messages.BUTTON_REPAIR_PUT_COPY_BACK],
             lambda: repair_dialog.check_failed_library(opened, self.panel.prefs))
@@ -574,7 +570,8 @@ class AnUnreadableListIsAskedAboutBeforeTheSwitch(unittest.TestCase):
         folder = test_support.scratch_dir("amaze_broken_test_lib_")
         self.addCleanup(shutil.rmtree, folder, True)
         prefs_mod.seed_test_folder(folder)
-        with open(os.path.join(prefs_mod.test_library_dir(folder), "library.json"), "wb") as handle:
+        with open(os.path.join(prefs_mod.test_library_dir(folder), library_files.MATERIALS),
+                  "wb") as handle:
             handle.write(b"{ this is not json")
         self.panel.prefs.test_dir = folder
         before = self.panel.prefs.dir
@@ -600,7 +597,7 @@ class AListThatWillNotOpenIsNotSwitchedTo(unittest.TestCase):
         said = []
         ui = mock.MagicMock()
         ui.displayMessage.side_effect = lambda text, **_kw: said.append(str(text)) or 0
-        index = os.path.join(self.other, "library.json")
+        index = os.path.join(self.other, library_files.MASTER)
         with mock.patch.object(hou, "ui", ui, create=True), \
                 mock.patch.object(prefs_mod.Prefs, "save", persistence._Persistence.save), \
                 (test_support.refused_at_open(index) if refused else contextlib.nullcontext()):
@@ -627,7 +624,7 @@ class AListThatWillNotOpenIsNotSwitchedTo(unittest.TestCase):
         self.assertEqual((before, user), (panel.prefs.dir, panel.prefs.library_user))
         self.assertEqual(before, self._next_start(panel),
                          "the next Houdini opens the library that would not open")
-        self.assertTrue(database.DatabaseConnector("library.json").serves(before),
+        self.assertTrue(test_support.serves(library_files.MATERIALS, before),
                         "the list's connection was left on the library that did not open")
         self.assertEqual([messages.LIBRARY_NOT_OPENED_SWITCHING % why], said)
 
@@ -641,7 +638,7 @@ class AListThatWillNotOpenIsNotSwitchedTo(unittest.TestCase):
         self.assertEqual([messages.LIBRARY_NOT_OPENED % why], said)
 
     def test_a_list_without_its_containers_opens(self):
-        for name in ("library.json", "cops.json"):
+        for name in (library_files.MATERIALS, library_files.NODES):
             with open(os.path.join(self.other, name), "w", encoding="utf-8") as handle:
                 json.dump({}, handle)
         panel = test_support.fixture_panel(self)

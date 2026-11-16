@@ -1,22 +1,22 @@
 """Models for the Nodes section: node-network assets of any context. ▸p/nodes-section"""
 
-from amaze.core import library, category, renderers, versions
+from amaze.core import library, category, library_files, renderers, versions
 
 
 class CopCategories(category.Categories):
     """The Cop section's category sidebar - same model, own database."""
 
-    DB_FILENAME = "cops.json"
+    DB_FILENAME = library_files.NODES
 
 
 class CopLibrary(library.AssetLibrary):
-    """The Cop section's asset model - the shared engine over cops.json."""
+    """The Cop section's asset model - the shared engine over nodes.json."""
 
     TILE_FACE = "icon_nodes"    # T07
 
-    NOTES_SECTION = "cop"    # every `cop` name here is in saved data; never rename it
+    NOTES_SECTION = "cop"    # the key prefix of its comments; never rename it
 
-    DB_FILENAME = "cops.json"    # its own database, and its own folder of asset files
+    DB_FILENAME = library_files.NODES    # its own database, and its own folder of asset files
 
     VERSION_SECTION = versions.NODE
 

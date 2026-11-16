@@ -13,7 +13,7 @@ from amaze.actions import code as code_actions
 from amaze.actions import materials as material_actions
 from amaze.actions import nodes as node_actions
 from amaze.core import (category, debug, file_library, file_moves,
-                        grid_columns, library, library_policy, locations, multifilterproxy_model,
+                        grid_columns, library, library_settings, locations, multifilterproxy_model,
                         renderers, scene_captures, notes, section_list)
 from amaze.helpers import hostos, ui_helpers, wording
 from amaze import messages
@@ -1200,7 +1200,7 @@ class CodeSection(AssetSection):
         panel = self.panel
         asset = panel.code_model.assets[row]
         model, mat_id = panel.code_model, str(asset.mat_id)
-        on = library_policy.allow_overwrite(panel.prefs.dir)    # Preferences ▸ Versions
+        on = library_settings.allow_overwrite(panel.prefs)    # Preferences ▸ Versions
         listed, active = model.version_list(row) if on else ([], 0)
         dialog = code_dialog.CodeDialog(
             panel.get_code_category_names(),
@@ -1291,7 +1291,7 @@ class FolderSection(Section):
     selection_attr = ""    # with delegate_attr, what activate() points the shared grid at
     delegate_attr = ""
     search_hint = ""    # files carry no tags or categories, so the name is all there is to match
-    library_model_attrs = ("file_folders_model",)    # the folders live in the library's locations.json ▸p/folders-follow-the-library
+    library_model_attrs = ("file_folders_model",)    # the folders live in the library's files.json ▸p/folders-follow-the-library
 
     def __init__(self, panel) -> None:
         super().__init__(panel)

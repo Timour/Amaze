@@ -19,7 +19,7 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze.core import category, database  # noqa: E402
+from amaze.core import category  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
 
@@ -65,7 +65,7 @@ class SortByNameTest(unittest.TestCase):
         self.assertEqual(["_All", "Apple", "_WIP"], model._categories)
 
     def test_a_non_string_row_does_not_raise(self):
-        """`_categories` comes raw off library.json, so the sort survives whatever the file holds."""
+        """`_categories` comes raw off materials.json, so the sort survives whatever the file holds."""
         model = _categories(self, ["_All", "b", 3])
         with mock.patch.object(model, "save"):
             model.sort_categories()
@@ -215,7 +215,8 @@ class MoveCategoryTest(unittest.TestCase):
         self.assertTrue(model.save())
         test_support.reset_database_singletons()
         reloaded = category.Categories(preferences=model.preferences)
-        self.assertEqual(["_All", "b", "c", "a"], reloaded._categories)
+        self.assertEqual(["_All", "b", "c", "a"], [one for one in reloaded._categories
+                                                   if one in ("_All", "a", "b", "c")])
 
 
 class OrderSnapshotTest(unittest.TestCase):
@@ -236,39 +237,6 @@ class OrderSnapshotTest(unittest.TestCase):
         self.assertIs(held, model._categories, "restore rebound the list")
         self.assertEqual(["about", "done"], seen,
                          "a row-set replacement without its reset pair")
-
-
-class AllPinnedByTheDatabaseTest(unittest.TestCase):
-    """Every category-bearing database keeps `_All` present AND first."""
-
-    def _rewrite(self, prefs, filename, categories):
-        """Plant a category order on disk, seeding at the CURRENT schema."""
-        path = os.path.join(prefs.dir, filename)
-        if os.path.exists(path):
-            with open(path, "r", encoding="utf-8") as handle:
-                doc = json.load(handle)
-        else:
-            doc = {"version": database.SCHEMA_VERSION,
-                   "tags": [], "assets": []}
-        doc["categories"] = categories
-        with open(path, "w", encoding="utf-8") as handle:
-            json.dump(doc, handle)
-
-    def _load(self, prefs, filename):
-        test_support.reset_database_singletons()
-        self.addCleanup(test_support.reset_database_singletons)
-        return database.DatabaseConnector(filename).load(prefs.dir)
-
-    def test_all_is_moved_first_in_every_database_and_a_plain_all_rewritten(self):
-        """library.json is not exempt; a pre-convention plain "All" becomes the marker."""
-        for filename, stored, loaded in (
-                ("library.json", ["Wood", "_All", "Metal"], ["_All", "Wood", "Metal"]),
-                ("cops.json", ["X", "_All", "Y"], ["_All", "X", "Y"]),
-                ("cops.json", ["All", "X"], ["_All", "X"])):
-            with self.subTest(filename=filename, stored=stored):
-                prefs = test_support.fixture_prefs(self)
-                self._rewrite(prefs, filename, stored)
-                self.assertEqual(loaded, self._load(prefs, filename)["categories"])
 
 
 class SidebarShowsStoredOrderTest(unittest.TestCase):

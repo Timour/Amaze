@@ -733,7 +733,7 @@ class AVerbActsOnlyOnRowsStillThere(unittest.TestCase):
 
     def _starred(self, model):
         return {str(a.mat_id) for a in model.assets
-                if locations.is_favourite(self.panel.prefs, a.mat_id)}
+                if locations.is_favourite(self.panel.prefs, a.mat_id, model.DB_FILENAME)}
 
     def test_a_row_removed_above_the_one_picked(self):
         """A plain index would now name the tile below it."""

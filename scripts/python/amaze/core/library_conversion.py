@@ -1,13 +1,16 @@
 """Library format 3 to 4, the one place that knows the old shapes: read, converted, removed."""
 
 import filecmp
+import hashlib
 import json
 import os
 import re
 import shutil
+import uuid
 
 from amaze import branding
-from amaze.core import asset_record, database, debug, library_files, material
+from amaze.core import asset_record, debug, guard, library_files, library_policy, material
+from amaze.core import notes
 from amaze.helpers import hostos
 
 OLD_FOLDER = "mat"    # format 3: every section's asset files and version folders, together
@@ -32,11 +35,13 @@ DONE, NOTHING, BLOCKED, CANCELLED = ("done", "nothing", "blocked", "cancelled")
 class Outcome:
     """How one conversion went: its status, why it was blocked, the assets it set aside."""
 
-    def __init__(self, status: str, why: str = "", set_aside=(), counts=None) -> None:
+    def __init__(self, status: str, why: str = "", set_aside=(), counts=None,
+                 old_trash: str = "") -> None:
         self.status = status
         self.why = why
         self.set_aside = list(set_aside)    # `SetAside`: rows taken out, old files untouched
         self.counts = dict(counts or {})
+        self.old_trash = old_trash    # this computer's old trash for the library, "" for none
 
 
 def interface_type(raw: bytes) -> str:
@@ -136,34 +141,111 @@ def old_shape(relative: str) -> bool:
     return False
 
 
+OLD_SECTIONS = {    # an old section database -> the 2.0 one, and the key prefix of its comments
+    "library.json": (library_files.MATERIALS, "material"),
+    "cops.json": (library_files.NODES, "cop"),
+    "code.json": (library_files.CODE, "code"),
+    "gradients.json": (library_files.COLORS, "gradient"),
+}
+OLD_TABLES = {    # an old side table -> the key its file holds its table under
+    "notes.json": "notes", "icons.json": "icons", "favourites.json": "favourites",
+    "locations.json": "locations", "location_paths.json": "location_paths",
+    "users.json": "users", "prefs.json": "prefs",
+}
+OLD_POLICY = "policy.json"
+OLD_ROOT_FILES = tuple(OLD_SECTIONS) + tuple(OLD_TABLES) + (OLD_POLICY,)
+OLD_MARKS = {    # the old marker files, "the starters were offered here once" -> the 2.0 mark
+    ".amaze_gradient_seed_v1": "gradient_seed_v1", ".assetlib_gradient_seed_v1": "gradient_seed_v1",
+    ".amaze_code_starter_v1": "code_starter_v1", ".assetlib_code_starter_v1": "code_starter_v1",
+}
+OLD_COPY_TAILS = (".bak-1", ".bak-2", ".bak-3", ".bak-first", ".bak-before-restore",
+                  ".unreadable")    # the copies the old engines kept beside a file
+RETIRED_ROW_KEYS = ("favorite", "icon", "builder")    # the old schema chain, v4 to v7
+RETIRED_TEXT_FIELDS = ("about", "description")    # a row's text that is now its comment
+USER_SEP = "|"    # an old per-user key: `<uid>|<key>`
+LOC = "loc:"
+FENCE_VERSION = library_policy.LIBRARY_VERSION    # in the `policy.json` fence an older Amaze reads
+_MINT_NAMESPACE = uuid.uuid5(uuid.NAMESPACE_URL, "amaze:minted-asset-id")    # never change: ids derive from it
+
+
+def _read_old(library_dir: str, name: str):
+    """(document, why) of one old root file: why is empty when it read, both when it is absent."""
+    path = os.path.join(library_dir, name)
+    if not os.path.lexists(path):
+        return {}, ""
+    try:
+        with open(path, encoding="utf-8-sig") as handle:
+            document = json.load(handle)
+    except (OSError, ValueError) as exc:
+        return None, str(exc)
+    if not isinstance(document, dict):
+        return None, "it is not a database"
+    return document, ""
+
+
+def _old_traces(library_dir: str, name: str) -> list:
+    """Every copy the old engines kept beside `name`: its backups and its unreadable copies."""
+    return [entry for entry in _listing(library_dir)
+            if entry.startswith(name + ".") and any(
+                entry[len(name):].startswith(tail) for tail in OLD_COPY_TAILS)]
+
+
+def _row_id(row: dict, index: int) -> str:
+    """A row's id: `id`, the older `mat_id` or `uid`, else one minted from the row and its place."""
+    found = str(row.get("id", row.get("mat_id", row.get("uid", ""))) or "")
+    if found:
+        return found
+    canonical = json.dumps(row, sort_keys=True)
+    return uuid.uuid5(_MINT_NAMESPACE, "%d:%s" % (index, canonical)).hex
+
+
+def _converted_databases(library_dir: str) -> bool:
+    """Whether the six databases are already written: a conversion stopped after that step."""
+    document, _why = _read_old(library_dir, library_files.MASTER)
+    entry = ((document or {}).get("policy") or {}).get("library") or {}
+    return isinstance(entry, dict) and entry.get("version") == FENCE_VERSION
+
+
 def _databases(library_dir: str) -> tuple:
-    """({database: {id: row}}, why the conversion may not run, or "") from one read of each."""
+    """({2.0 section database: {id: row}}, why the conversion may not run, or "")."""
     found = {}
-    for filename in database.DATABASES:
-        full = os.path.join(library_dir, filename)
-        if not os.path.exists(full):
-            if database.absent_but_known(library_dir, filename):
-                return {}, ("there is no %s database in the library folder, though Amaze can "
-                            "see there was one here before." % database.section_label(filename))
-            continue
-        try:
-            with open(full, encoding="utf-8-sig") as handle:
-                document = json.load(handle)
-            malformed = database.wrong_shape(document)
-            if malformed:
-                raise ValueError(malformed)
-        except (OSError, ValueError, AttributeError, TypeError):
-            return {}, "the %s database is corrupt/unreadable." % database.section_label(filename)
+    if _converted_databases(library_dir):
+        for name, _prefix in OLD_SECTIONS.values():
+            document, _why = _read_old(library_dir, name)
+            found[name] = dict(((document or {}).get("assets") or {}))
+        return found, ""
+    for filename in OLD_SECTIONS:
+        document, why = _read_old(library_dir, filename)
+        if document is None or not isinstance(document.get("assets", []), list):
+            return {}, "the %s database is corrupt/unreadable." % _old_label(filename)
+        if not document and not os.path.lexists(os.path.join(library_dir, filename)) \
+                and _old_traces(library_dir, filename):
+            return {}, ("there is no %s database in the library folder, though Amaze can "
+                        "see there was one here before." % _old_label(filename))
         try:
             ahead = int(document.get("format", 0) or 0) > branding.LIBRARY_FORMAT
         except (TypeError, ValueError):
             ahead = False
         if ahead:
-            return {}, ("the %s database was saved by a newer Amaze."
-                        % database.section_label(filename))
-        found[filename] = {database.row_id(row): row for row in document.get("assets") or []
-                           if isinstance(row, dict)}
+            return {}, "the %s database was saved by a newer Amaze." % _old_label(filename)
+        found[OLD_SECTIONS[filename][0]] = {
+            _row_id(row, index): row for index, row in enumerate(document.get("assets") or [])
+            if isinstance(row, dict)}
+    for filename in OLD_TABLES:
+        document, why = _read_old(library_dir, filename)
+        if document is None:
+            return {}, "the %s file is corrupt/unreadable." % filename
     return found, ""
+
+
+def _old_label(filename: str) -> str:
+    return library_files.section_label(OLD_SECTIONS[filename][0])
+
+
+def _is_new_code(library_dir: str) -> bool:
+    """Whether `code.json` is already 2.0's: an interrupted conversion wrote it."""
+    document, _why = _read_old(library_dir, "code.json")
+    return isinstance(document, dict) and isinstance(document.get("assets"), dict)
 
 
 def _listing(folder: str) -> list:
@@ -173,25 +255,36 @@ def _listing(folder: str) -> list:
         return []
 
 
+def _old_databases_left(library_dir: str) -> list:
+    """The old root files still here; a `policy.json` beside `DataBase.json` is the fence."""
+    master = os.path.isfile(os.path.join(library_dir, library_files.MASTER))
+    left = []
+    for name in OLD_ROOT_FILES + tuple(OLD_MARKS):
+        if name == OLD_POLICY and master:
+            continue
+        if name == "code.json" and _is_new_code(library_dir):
+            continue
+        if os.path.lexists(os.path.join(library_dir, name)):
+            left.append(name)
+    return left
+
+
 def needs_conversion(library_dir: str) -> bool:
-    """Whether anything of format 3 is left: below library version 3, by one listing per folder."""
-    from amaze.core import library_policy
+    """Whether anything older than 2.0 is left: an old database, or a format 3 file."""
     library_dir = str(library_dir or "")
-    if not library_dir or library_policy.library_version(library_dir) >= \
-            library_policy.LIBRARY_VERSION:
+    if not library_dir or not os.path.isdir(library_dir):
         return False
-    return bool(_plan_ids(library_dir) or _old_version_folders(library_dir))
+    return bool(_old_databases_left(library_dir) or _plan_ids(library_dir)
+                or _old_version_folders(library_dir))
 
 
-def settle_version(library_dir: str) -> bool:
-    """An open library with nothing of format 3 left takes library version 3; True when it moved."""
-    from amaze.core import library_policy
-    if not library_dir or not os.path.isfile(os.path.join(library_dir, library_files.MATERIALS)):
-        return False
-    if library_policy.library_version(library_dir) >= library_policy.LIBRARY_VERSION \
-            or needs_conversion(library_dir):
-        return False
-    return library_policy.set_library_version(library_dir, library_policy.LIBRARY_VERSION)
+def old_version(library_dir: str) -> int:
+    """The library version an older library records in its `policy.json`; 0 for no library."""
+    document, _why = _read_old(library_dir, OLD_POLICY)
+    found = (document or {}).get("library_version")
+    if isinstance(found, int) and not isinstance(found, bool) and found > 0:
+        return found
+    return 1 if needs_conversion(library_dir) else 0
 
 
 def _plan_ids(library_dir: str) -> set:
@@ -474,9 +567,9 @@ def _remove_empty(folder: str) -> None:
         pass
 
 
-def convert(directory: str, confirm, progress=None) -> Outcome:
-    """Convert a format 3 library whole once `confirm()` says yes; `progress(done, total)` is told."""
-    from amaze.core import library_policy
+def convert(directory: str, confirm, progress=None, user: str = "",
+            machine_stars=()) -> Outcome:
+    """Convert an older library to 2.0 whole once `confirm()` says yes; `progress(done, total)`."""
     library_dir = str(directory or "")
     if not needs_conversion(library_dir):
         return Outcome(NOTHING)
@@ -487,6 +580,7 @@ def convert(directory: str, confirm, progress=None) -> Outcome:
     if not confirm():
         debug.event("convert", "conversion declined - nothing was changed")
         return Outcome(CANCELLED)
+    old_trash = old_trash_of(library_dir)
     faces = _stored_faces(library_dir)
     counts = {"converted": 0, "deleted": 0, "kept": 0, "left": 0}
     set_aside = []
@@ -512,16 +606,22 @@ def convert(directory: str, confirm, progress=None) -> Outcome:
         ok, old_files = _convert_asset(library_dir, item, owner, rows, faces, counts)
         if not ok:
             set_aside.append(SetAside(item, owner, rows.get(owner, {}).get(item), old_files))
-    _take_out(library_dir, set_aside)
     counts["deleted"] += _remove_old_backups(os.path.join(library_dir, OLD_FOLDER))
     for folder in (os.path.join(library_dir, OLD_FOLDER, library_files.VERSIONS),
                    os.path.join(library_dir, OLD_FOLDER),
                    os.path.join(library_dir, OLD_CAPTURES)):
         _remove_empty(folder)
     counts["left"] += len(_listing(os.path.join(library_dir, OLD_FOLDER)))
+    if not _converted_databases(library_dir):
+        built = build_databases(library_dir, {(one.section, one.asset_id) for one in set_aside
+                                              if one.row is not None}, user, machine_stars)
+        _write_databases(library_dir, built, user)
+        if not _read_back(library_dir, built):
+            debug.event("convert", "the new databases did not read back - the old files stay")
+            return Outcome(BLOCKED, "the new databases did not read back as they were written.")
+    counts["deleted"] += _remove_old_root_files(library_dir, user)
     debug.event("convert", "library conversion", set_aside=len(set_aside), **counts)
-    library_policy.set_library_version(library_dir, library_policy.LIBRARY_VERSION)
-    return Outcome(DONE, set_aside=set_aside, counts=counts)
+    return Outcome(DONE, set_aside=set_aside, counts=counts, old_trash=old_trash)
 
 
 class SetAside:
@@ -538,31 +638,315 @@ class SetAside:
         return str((self.row or {}).get("name") or self.asset_id)
 
 
-def _take_out(library_dir: str, set_aside: list) -> None:
-    """Each set-aside row out of its database, in one write per database, logged whole first."""
-    by_section = {}
-    for one in set_aside:
-        if one.row is not None and one.section in library_files.ASSET_SECTIONS:
-            by_section.setdefault(one.section, set()).add(one.asset_id)
-            debug.event("convert", "row taken out of its database - its files could not be "
-                        "converted", file=one.section, row=one.row, files=one.files)
-    for filename, ids in by_section.items():
-        path = os.path.join(library_dir, filename)
-        try:
-            with open(path, encoding="utf-8-sig") as handle:
-                document = json.load(handle)
-            document["assets"] = [row for row in document.get("assets") or []
-                                  if not (isinstance(row, dict) and database.row_id(row) in ids)]
-            hostos.snapshot_before_write(path)
-            hostos.write_json_atomic(path, document, indent=4)
-        except (OSError, ValueError) as exc:
-            debug.event("convert", "set-aside rows not taken out", file=filename, error=str(exc))
-
-
 def trash_set_aside(library_dir: str, set_aside: list) -> int:
-    """The set-aside assets' old files into Amaze's trash, at the user's word; how many moved."""
-    from amaze.core import quarantine
-    moved = sum(bool(quarantine.quarantine_file(library_dir, path))
-                for one in set_aside for path in one.files if os.path.lexists(path))
+    """The set-aside assets' old files into the library's trash, at the user's word; how many moved."""
+    held = guard.Guard(library_dir)
+    change = held.change("")
+    moved = 0
+    for one in set_aside:
+        for path in one.files:
+            relative = held.inside(path)
+            if relative and os.path.lexists(path):
+                change.trash(relative)
+                moved += 1
+    try:
+        change.commit()
+    except OSError as exc:
+        debug.event("convert", "set-aside files not moved to the trash", error=str(exc))
+        return 0
     debug.event("convert", "set-aside files moved to the trash", moved=moved)
     return moved
+
+
+def machine_stars(preferences) -> list:
+    """The stars this computer's settings kept beside the library's, which the conversion takes in."""
+    data = getattr(preferences, "data", None)
+    found = data.get("material_favorites") if isinstance(data, dict) else None
+    return [str(one) for one in found or () if str(one).strip()] if isinstance(
+        found, (list, tuple)) else []
+
+
+def _is_file_key(key: str) -> bool:
+    """Whether an old key names a file of the Files section rather than an asset id."""
+    key = str(key)
+    return key.startswith((LOC, "/", "$", "~", "\\\\", "//")) or hostos.foreign_path(key) \
+        or (len(key) > 2 and key[1] == ":")
+
+
+class _Paths:
+    """The Files section's location paths, collapsed to one id per path, and keys re-homed on them."""
+
+    def __init__(self, table: dict) -> None:
+        self.rows, self.winner = {}, {}
+        by_path = {}
+        for lid in sorted(table):
+            path = str((table[lid] or {}).get("path") or "") if isinstance(table[lid], dict) else ""
+            if not path.strip():
+                continue
+            identity = path.rstrip("/") or "/"
+            if identity in by_path:
+                self.winner[lid] = by_path[identity]    # two ids at one path: the smallest is kept
+                continue
+            by_path[identity] = lid
+            self.rows[lid] = {"path": path}
+        self.by_path = by_path
+
+    def id_for(self, path: str) -> str:
+        """The id of the location at `path`, minted when it has none."""
+        identity = str(path).rstrip("/") or "/"
+        if identity not in self.by_path:
+            lid = hashlib.sha1(("amaze:location:" + identity).encode("utf-8")).hexdigest()[:32]
+            self.by_path[identity] = lid
+            self.rows[lid] = {"path": str(path)}
+        return self.by_path[identity]
+
+    def file_key(self, key: str) -> str:
+        """An old file key on a location id: a path under the innermost location, a rival id collapsed."""
+        key = str(key)
+        if key.startswith(LOC):
+            head, sep, rel = key[len(LOC):].partition("/")
+            return LOC + self.winner.get(head, head) + sep + rel
+        best = ""
+        for identity in self.by_path:
+            if (key == identity or key.startswith(identity.rstrip("/") + "/")) \
+                    and len(identity) > len(best):
+                best = identity
+        if not best:
+            return key
+        rel = key[len(best.rstrip("/")) + 1:] if len(key) > len(best) else ""
+        return LOC + self.by_path[best] + ("/" + rel if rel else "")
+
+
+def _old_table(library_dir: str, name: str) -> dict:
+    document, _why = _read_old(library_dir, name)
+    table = (document or {}).get(OLD_TABLES[name])
+    return table if isinstance(table, dict) else {}
+
+
+def _owner_and_key(key: str, user: str) -> tuple:
+    """(user, key) of an old per-user key; an entry from before users goes to the one converting."""
+    owner, sep, rest = str(key).partition(USER_SEP)
+    if sep and len(owner) == 32 and all(c in "0123456789abcdef" for c in owner):
+        return owner, rest
+    return user, str(key)
+
+
+def _first_shape(page) -> list:
+    """A comment page's items; the first build's text-and-todos shape read as items."""
+    if not isinstance(page, dict):
+        return []
+    items = page.get("items")
+    if isinstance(items, list):
+        return items
+    found = []
+    text = page.get("text", "")
+    if isinstance(text, str) and text.strip():
+        found.append({"t": "text", "text": text})
+    for item in page.get("todos") or []:
+        if isinstance(item, dict):
+            found.append({"t": "todo", "label": item.get("label", ""),
+                          "done": item.get("done", False)})
+    return found
+
+
+def _categories_of(row: dict) -> list:
+    """A row's categories as a list; an old comma string split, blanks dropped."""
+    found = row.get("categories")
+    if isinstance(found, str):
+        found = found.split(",")
+    return [one.strip() for one in (found or []) if isinstance(one, str) and one.strip()]
+
+
+def build_databases(library_dir: str, set_aside=(), user: str = "", machine_stars=()) -> dict:
+    """The six 2.0 databases, {name: document}, built from every old root file in one pass."""
+    sections = {name: {"assets": {}, "categories": {}, "comments": {}, "icons": {}, "stars": {}}
+                for name, _prefix in OLD_SECTIONS.values()}
+    files = {"locations": {}, "paths": {}, "comments": {}, "icons": {}, "stars": {}}
+    master = {"policy": {}, "settings": {}, "users": {}, "marks": {}}
+    owner_of = {}
+    pages, retired = {}, {}    # note key -> its items; note key -> its row's text, now a comment
+    for filename, (name, prefix) in OLD_SECTIONS.items():
+        document, _why = _read_old(library_dir, filename)
+        document = document or {}
+        for index, row in enumerate(document.get("assets") or []):
+            if not isinstance(row, dict):
+                continue
+            asset_id = _row_id(row, index)
+            if (name, asset_id) in set_aside:
+                continue
+            row = {key: value for key, value in row.items()
+                   if key not in RETIRED_ROW_KEYS + ("mat_id", "uid")}
+            row["id"] = asset_id
+            if "categories" in row:
+                row["categories"] = _categories_of(row)
+            for field in RETIRED_TEXT_FIELDS:
+                text = row.pop(field, "")
+                if isinstance(text, str) and text.strip():
+                    retired.setdefault(notes.note_key(prefix, asset_id), []).append(text.strip())
+            sections[name]["assets"][asset_id] = row
+            owner_of[asset_id] = name
+        colours = document.get("category_colors") if isinstance(
+            document.get("category_colors"), dict) else {}
+        order = [one for one in (document.get("categories") or [])    # the All row is no category
+                 if isinstance(one, str) and one.strip() and one.lstrip("_") != "All"]
+        for row in sections[name]["assets"].values():
+            order.extend(one for one in row.get("categories") or [] if one not in order)
+        for position, category in enumerate(dict.fromkeys(order)):
+            entry = {"order": position}
+            if colours.get(category):
+                entry["color"] = str(colours[category])
+            sections[name]["categories"][category] = entry
+    paths = _Paths(_old_table(library_dir, "location_paths.json"))
+    for key, record in _old_table(library_dir, "locations.json").items():
+        owner, bare = _owner_and_key(key, user)
+        if not owner or not isinstance(record, dict) or not record:
+            continue
+        home = bare if bare.startswith(LOC) else LOC + paths.id_for(bare)
+        files["locations"].setdefault(owner, {})[paths.file_key(home)] = dict(record)
+    for key, page in _old_table(library_dir, "notes.json").items():
+        items = _first_shape(page)
+        if items:
+            pages[str(key)] = list(items)
+    for key, texts in retired.items():
+        items = pages.setdefault(key, [])
+        for text in reversed(texts):
+            if not any(item.get("t") == "text" and str(item.get("text", "")).strip() == text
+                       for item in items if isinstance(item, dict)):
+                items.insert(0, {"t": "text", "text": text})    # carried once, first
+    for key, items in pages.items():
+        prefix, _sep, ident = key.partition(":")
+        kept = notes.normalise_items([dict(item) for item in items])
+        if not kept:
+            continue
+        if prefix == "file":
+            files["comments"][paths.file_key(ident)] = {"items": kept}
+            continue
+        name = notes.DATABASE_OF.get(prefix)
+        if name in sections and (name, ident) not in set_aside:
+            sections[name]["comments"][ident] = {"items": kept}
+    old_faces = ("preview", "capture")    # stored tile choices that read as `image` now
+    for key, spec in _old_table(library_dir, "icons.json").items():
+        if not isinstance(spec, dict) or not spec or spec.get("face") in old_faces:
+            continue
+        if str(key) in owner_of:
+            sections[owner_of[str(key)]]["icons"][str(key)] = dict(spec)
+        elif _is_file_key(key):
+            files["icons"][paths.file_key(key)] = dict(spec)
+    stars = list(_old_table(library_dir, "favourites.json").items()) + [
+        (star, {"favourite": True}) for star in machine_stars or ()]
+    for key, value in stars:
+        owner, bare = _owner_and_key(key, user)
+        if not owner or not value:
+            continue
+        if bare in owner_of:
+            sections[owner_of[bare]]["stars"].setdefault(owner, {})[bare] = True
+        elif _is_file_key(bare):
+            files["stars"].setdefault(owner, {})[paths.file_key(bare)] = True
+    files["paths"] = dict(paths.rows)
+    for uid, record in _old_table(library_dir, "users.json").items():
+        if isinstance(record, dict) and str(record.get("name") or "").strip():
+            master["users"][str(uid)] = dict(record, name=str(record["name"]).strip())
+    for key, record in _old_table(library_dir, "prefs.json").items():
+        if isinstance(record, dict) and "value" in record:
+            master["settings"][str(key)] = {"value": record["value"]}
+    policy, _why = _read_old(library_dir, OLD_POLICY)
+    allowed = (policy or {}).get("allow_overwrite")
+    if isinstance(allowed, bool):
+        master["policy"]["allow_overwrite"] = {"value": allowed}
+    master["policy"]["library"] = {"version": library_policy.LIBRARY_VERSION}
+    for marker, mark in OLD_MARKS.items():
+        if os.path.lexists(os.path.join(library_dir, marker)):
+            master["marks"][mark] = {"offered": True}
+    built = {library_files.MASTER: master}
+    if any(files.values()):
+        built[library_files.FILES] = files
+    for filename, (name, _prefix) in OLD_SECTIONS.items():    # an empty one is born at its first save
+        if any(sections[name].values()) or os.path.lexists(os.path.join(library_dir, filename)):
+            built[name] = sections[name]
+    return built
+
+
+def _write_databases(library_dir: str, built: dict, user: str) -> None:
+    """The six databases and the fence an older Amaze reads, as ONE change; OSError propagates."""
+    held = guard.Guard(library_dir)
+    change = held.change(user)
+    for name, document in built.items():
+        change.replace(name, document)
+    change.put_file(OLD_POLICY, (json.dumps({"library_version": FENCE_VERSION}, indent=1)
+                                 + "\n").encode("utf-8"))
+    change.commit()
+
+
+def _read_back(library_dir: str, built: dict) -> bool:
+    """Whether each new database reads through the guard as exactly what was built."""
+    held = guard.Guard(library_dir)
+    for name, document in built.items():
+        reading = held.read(name)
+        if reading.verdict != guard.FINE:
+            return False
+        for section, table in document.items():
+            if (reading.document or {}).get(section, {}) != table:
+                return False
+    return True
+
+
+def _remove_old_root_files(library_dir: str, user: str) -> int:
+    """Every old root file, marker and copy beside them, removed as ONE change; how many went."""
+    held = guard.Guard(library_dir)
+    change = held.change(user)
+    gone = []
+    for name in OLD_ROOT_FILES + tuple(OLD_MARKS):
+        if name not in (OLD_POLICY, "code.json") and os.path.lexists(
+                os.path.join(library_dir, name)):
+            gone.append(name)
+        gone.extend(_old_traces(library_dir, name))
+    for name in gone:
+        change.remove(name)
+    change.commit()
+    return len(gone)
+
+
+def old_trash_of(library_dir: str) -> str:
+    """This computer's old trash and history for the library, by its old id or path; "" for none."""
+    folder = os.path.abspath(str(library_dir))
+    policy, _why = _read_old(library_dir, OLD_POLICY)
+    found = []
+    library_id = (policy or {}).get("library_id")
+    if isinstance(library_id, str) and re.match(r"^[0-9a-f]{32}$", library_id):
+        found.append(os.path.join(hostos.config_root(), "history", "library-" + library_id))
+    digest = hashlib.sha256(hostos.canonical_path_key(folder).encode("utf-8")).hexdigest()[:10]
+    label = hostos.safe_filename(os.path.basename(folder) or "library")[:24]
+    found.append(os.path.join(hostos.config_root(), "history", "%s-%s" % (label, digest)))
+    return next((path for path in found if os.path.isdir(path)), "")
+
+
+def old_trash_size(folder: str) -> tuple:
+    """(files, bytes) the old trash folder holds."""
+    count = total = 0
+    for here, _dirs, names in os.walk(folder):
+        for name in names:
+            try:
+                total += os.path.getsize(os.path.join(here, name))
+                count += 1
+            except OSError:
+                pass
+    return count, total
+
+
+def size_text(count: int) -> str:
+    """A size in KB or MB, as the user reads it."""
+    if count < 1024 * 1024:
+        return "%d KB" % max(1, round(count / 1024.0)) if count else "0 KB"
+    return "%.1f MB" % (count / 1048576.0)
+
+
+def delete_old_trash(folder: str) -> bool:
+    """The old trash folder removed whole, at the user's word; whether it went."""
+    try:
+        hostos.check_sandbox(folder)
+        shutil.rmtree(folder)
+    except OSError as exc:
+        debug.event("convert", "the old trash was not removed", folder=folder, error=str(exc))
+        return False
+    debug.event("convert", "the old trash was removed", folder=folder)
+    return True

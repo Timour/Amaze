@@ -1,4 +1,4 @@
-"""Proves a reset clears the shared connector registry and never rebinds it."""
+"""Proves a reset drops every held library and the harness helpers do what they say."""
 
 import importlib
 import json
@@ -12,7 +12,7 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze.core import database
+from amaze.core import library_db
 from amaze.tests import test_support
 
 try:
@@ -21,83 +21,34 @@ except ImportError:
     hou = None
 
 
-class ConnectorResetDetachesNothingTest(unittest.TestCase):
-    """The reset must clear the shared registry, not replace it."""
+class ResetDropsEveryHeldLibraryTest(unittest.TestCase):
+    """A reset leaves no library held, even after the module reloads."""
 
     def setUp(self):
         self.dir = tempfile.mkdtemp(prefix="amaze_harness_reset_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
-        self.path = os.path.join(self.dir, "cops.json")
-        self._attach_and_clear()
-        self.addCleanup(self._attach_and_clear)
-
-    @staticmethod
-    def _attach_and_clear():
-        """Restores the production registry, where the class attribute is the module global."""
-        database.DatabaseConnector._instances = database._INSTANCES
-        database._INSTANCES.clear()
-
-    def _latched(self):
-        """A connector latched the way production latches it, not set by hand."""
-        with open(self.path + ".bak-1", "w", encoding="utf-8") as handle:
-            json.dump({"categories": ["_All"], "tags": [],
-                       "assets": [{"id": "OLD1"}]}, handle)
-        db = database.DatabaseConnector("cops.json")
-        db.load(self.dir + os.sep)
-        self.assertTrue(
-            db._write_blocked,
-            "premise: the load must latch, or this test is not exercising "
-            "the case it was written for")
-        return db
-
-    def test_a_reset_connector_does_not_come_back_after_a_reload(self):
-        """A reload re-reads the global, so a reset that emptied a detached copy lets the latch back."""
-        latched = self._latched()
-        test_support.reset_database_singletons()
-        self.assertIs(
-            database.DatabaseConnector._instances, database._INSTANCES,
-            "the reset handed the class a private dictionary - every "
-            "reload-survival mechanism reads database._INSTANCES, so "
-            "nothing it drops is actually gone")
-        importlib.reload(database)
         self.addCleanup(test_support.reset_database_singletons)
-        fresh = database.DatabaseConnector("cops.json")
-        self.assertIsNot(
-            fresh, latched,
-            "the connector the reset dropped was handed back after a "
-            "reload - every test that resets and rebuilds has been "
-            "measuring the previous test's object")
-        self.assertFalse(
-            getattr(fresh, "_write_blocked", False),
-            "the resurrected connector brought its write-blocked latch "
-            "with it, so a save refusal from an earlier test refuses "
-            "here too and any test asserting a refusal passes for the "
-            "wrong reason")
 
-    def test_a_reset_really_drops_a_healthy_connector_too(self):
-        """The accept path: after a reset the next construction reads the new fixture path."""
-        with open(self.path, "w", encoding="utf-8") as handle:
-            json.dump({"categories": ["_All"], "tags": [],
-                       "assets": [{"id": "FIRST1"}]}, handle)
-        first = database.DatabaseConnector("cops.json")
-        self.assertEqual(["FIRST1"],
-                         [a["id"] for a in first.load(self.dir + os.sep)["assets"]])
+    def _held(self, rows):
+        """The Nodes database of this library holding `rows`, opened as a panel opens it."""
+        import types
+        with open(os.path.join(self.dir, "nodes.json"), "w", encoding="utf-8") as handle:
+            json.dump({"assets": {one: {"id": one} for one in rows}}, handle)
+        holder = types.SimpleNamespace(dir=self.dir, library_user="")
+        return sorted(library_db.document(holder, "nodes.json").table("assets"))
+
+    def test_a_reset_does_not_come_back_after_a_reload(self):
+        self.assertEqual(["FIRST1"], self._held(["FIRST1"]))
         test_support.reset_database_singletons()
+        importlib.reload(library_db)
+        self.assertEqual([], library_db.held_libraries(),
+                         "a library the reset dropped came back after a reload")
 
-        second_dir = tempfile.mkdtemp(prefix="amaze_harness_reset_b_")
-        self.addCleanup(shutil.rmtree, second_dir, ignore_errors=True)
-        with open(os.path.join(second_dir, "cops.json"), "w",
-                  encoding="utf-8") as handle:
-            json.dump({"categories": ["_All"], "tags": [],
-                       "assets": [{"id": "SECOND1"}]}, handle)
-        second = database.DatabaseConnector("cops.json")
-        self.assertIsNot(second, first, "the reset returned the cached "
-                                       "connector for the same filename")
-        self.assertEqual(
-            ["SECOND1"],
-            [a["id"] for a in second.load(second_dir + os.sep)["assets"]],
-            "the new connector answered from the previous fixture's data "
-            "- which is how a test once mutated the real library")
+    def test_the_next_read_is_the_file_as_it_is_now(self):
+        self.assertEqual(["FIRST1"], self._held(["FIRST1"]))
+        test_support.reset_database_singletons()
+        self.assertEqual(["SECOND1"], self._held(["SECOND1"]),
+                         "the held copy answered from the previous fixture's data")
 
 
 @unittest.skipUnless(hou, "Houdini is not loaded")

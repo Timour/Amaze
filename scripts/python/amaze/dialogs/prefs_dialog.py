@@ -10,7 +10,7 @@ from PySide6.QtGui import QCloseEvent
 import amaze
 from amaze import amazetheme
 from amaze import branding
-from amaze.core import (debug, keyed_store, library_policy, renderers,
+from amaze.core import (debug, library_policy, library_settings, model_registry, renderers,
                         section_list, texture_library, users)
 from amaze.actions import library as library_actions
 from amaze.dialogs import base_dialog, library_dialog, user_dialog
@@ -188,7 +188,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         super().__init__(branding.APP_NAME + " Preferences",
                          fixed_size=False, parent=parent)
         self._prefs = prefs
-        keyed_store.refresh_all(prefs)    # a DOOR: every list below reads what peers wrote ▸r/peer-read
+        model_registry.refresh_all(prefs)    # a DOOR: every list below reads what peers saved ▸r/peer-read
         prefs.follow_shared()    # and so do the shared settings this session left alone
         # the panel owns the library operations and this only forwards; None in tests is allowed
         self._panel = panel
@@ -524,18 +524,19 @@ class PrefsDialog(base_dialog.AssetDialog):
     def _library_note(self, folder: str) -> tuple:
         """(Format line, line beside Apply, whether they warn, whether Apply may run) for `folder`."""
         known = library_policy.LIBRARY_VERSION
+        label = library_settings.version_label
         if not folder:
             return "", "", False, False
         if not os.path.isdir(folder):
             return "", amazetheme.LABEL_LIBRARY_UNREACHABLE, True, False
         if not library_actions.index_present(folder):
-            return amazetheme.LABEL_LIBRARY_FORMAT % known, "", False, True    # set up on Apply
-        found = library_policy.library_version(folder)
-        shown = amazetheme.LABEL_LIBRARY_FORMAT % found
+            return amazetheme.LABEL_LIBRARY_FORMAT % label(known), "", False, True    # set up on Apply
+        found = library_settings.library_version(folder)
+        shown = amazetheme.LABEL_LIBRARY_FORMAT % label(found)
         if found > known:
             return shown, amazetheme.LABEL_LIBRARY_TOO_NEW, True, False
         if found < known:
-            return shown, amazetheme.LABEL_UPGRADES_LIBRARY % known, True, True
+            return shown, amazetheme.LABEL_UPGRADES_LIBRARY % label(known), True, True
         return shown, "", False, True
 
     def _sync_library_buttons(self) -> None:
@@ -558,8 +559,7 @@ class PrefsDialog(base_dialog.AssetDialog):
     def set_allow_overwrite(self, checked: bool) -> None:
         """Write the overwrite policy to the library; turning it on asks for confirmation first."""
         import hou
-        library_dir = self._prefs.dir
-        if checked and not library_policy.allow_overwrite(library_dir):
+        if checked and not library_settings.allow_overwrite(self._prefs):
             answer = hou.ui.displayMessage(  # type: ignore
                 messages.MATERIAL_VERSIONS_TURN_ON_CONFIRM,
                 help=messages.HELP_MATERIAL_VERSIONS,
@@ -571,7 +571,7 @@ class PrefsDialog(base_dialog.AssetDialog):
             if answer != 0:
                 _show_quietly(self._cbx_allow_overwrite, False)
                 return
-        if not library_policy.set_allow_overwrite(library_dir, checked):
+        if not library_settings.set_allow_overwrite(self._prefs, checked):
             hou.ui.displayMessage(  # type: ignore
                 messages.LIBRARY_SETTING_NOT_WRITTEN,
                 title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
@@ -606,11 +606,11 @@ class PrefsDialog(base_dialog.AssetDialog):
         form.addRow(self._label(""), self._lbl_library_format)
 
         self._add_divider(form)
-        # NOT A PREFERENCE: it lives in the library's policy.json and travels with it
+        # NOT A PREFERENCE: it lives in the library's policy and travels with it
         self._cbx_allow_overwrite = ui_helpers.ToggleSwitch(
             amazetheme.LABEL_VERSIONS)
         self._cbx_allow_overwrite.setChecked(
-            library_policy.allow_overwrite(self._prefs.dir))
+            library_settings.allow_overwrite(self._prefs))
         self._cbx_allow_overwrite.setToolTip(ui_helpers.tooltip_text(
             tooltips.PREFS_MATERIAL_VERSIONS))
         self._cbx_allow_overwrite.toggled.connect(self.set_allow_overwrite)
@@ -1553,9 +1553,9 @@ class PrefsDialog(base_dialog.AssetDialog):
             self._recompose_tile_icons()
 
     def _sync_overwrite_switch(self) -> None:
-        """Re-read the overwrite switch from the library now bound, whose policy.json holds it."""
+        """Re-read the overwrite switch from the library now bound, whose policy holds it."""
         _show_quietly(self._cbx_allow_overwrite,
-                      library_policy.allow_overwrite(self._prefs.dir))
+                      library_settings.allow_overwrite(self._prefs))
 
     def clear_texture_cache(self) -> None:
         """Delete every cached image and geometry thumbnail; scene captures are left alone."""

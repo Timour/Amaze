@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-LIBRARY_NOT_SAVED_ANOTHER_PANEL = "This panel's library was not saved: another Amaze panel is open on a different library. Close the other panel (or reopen this one), then save again."
-SECTION_UNREADABLE_SAVING_DISABLED = "Your saved %s could not be read, so Amaze has opened that file read-only; changes made now stay in memory only. Restore a backup with Library ▸ Check Library… in the Amaze panel."
+DATABASE_CORRUPT_READ_ONLY = "Your %s database is corrupt/unreadable, so Amaze has opened it read-only; changes made now stay in memory only. Restore a backup with Library ▸ Check Library… in the Amaze panel."
+DATABASE_MISSING_READ_ONLY = "Your %s database is missing from the library folder, though Amaze can see it was there before. If the folder syncs, it may not have finished yet. Until it is back the database is read-only; if it does not come back, use Library ▸ Check Library… in the Amaze panel."
+DATABASE_SHRUNK = "Your %s database holds %d %s, but its newest backup holds %d %s. If you did not remove them yourself, use Library ▸ Check Library… before you change anything - it can restore that backup."
 LIBRARY_FORMAT_AHEAD_READ_ONLY = "This library was saved by a newer Amaze, so this machine opens it read-only to protect it. Update Amaze to work with it normally."
 CONFIRM_CONVERT_LIBRARY = "This library will be converted to format 2.0. Amaze older than %s cannot open it afterwards, so update Amaze on every computer that uses this library. If the library is in a synced folder, make sure it has finished syncing before you convert."
 BUTTONS_CONVERT_LIBRARY = ("Convert", "Cancel")
@@ -11,13 +12,16 @@ CONVERT_LIBRARY_PROGRESS = "Converting library to 2.0"
 CONVERT_LIBRARY_DONE = "The library is converted to format 2.0."
 CONVERT_LIBRARY_DONE_SOME_LEFT = "The library is converted to format 2.0. %s could not be converted and are no longer in the library. Leave their files where they are, or move them to the trash?"
 BUTTONS_UNCONVERTED = ("Leave", "Move to Trash")
+OLD_TRASH_QUESTION = "The old trash for this library holds %d files (%s) on this computer. Amaze now keeps its trash in the library's trash folder and no longer uses the old one. Delete the old trash?"
+BUTTONS_OLD_TRASH = ("Delete", "Leave")
 CONVERT_LIBRARY_BLOCKED ="This library cannot be converted yet: %s Use Check Library from the Amaze shelf, then open the library again."
 LIBRARY_WRITE_FAILED = "Amaze could not save the library: %s The change is still in memory and goes into the next save that works, but it is lost if Houdini closes first."
-PALETTE_NOT_SAVED = "Amaze could not save \"%s\". Close any other Amaze panel or restart Houdini, then try again."
-PALETTE_NOT_DELETED = "\"%s\" was not deleted because the colors database could not be updated. Close any other Amaze panel or restart Houdini, then try again."
-SAVE_DENIED_WITH_CAUSE = "%s Cause: %s"
-ASSET_NOT_DELETED_LIST_NOT_UPDATED = "\"%s\" was not deleted because the library database could not be updated. Close any other Amaze panel or restart Houdini, then try again."
+PALETTE_NOT_SAVED = "Amaze could not save \"%s\": the colors database is read-only right now. Use Library ▸ Check Library… in the Amaze panel, then try again."
+PALETTE_NOT_DELETED = "\"%s\" was not deleted because the colors database is read-only right now. Use Library ▸ Check Library… in the Amaze panel, then try again."
+ASSET_NOT_SAVED_DATABASE_REFUSED = "\"%s\" was not saved: its database is read-only right now, so neither its files nor its entry were written. Use Library ▸ Check Library… in the Amaze panel, then save again."
+ASSET_NOT_DELETED_LIST_NOT_UPDATED = "\"%s\" was not deleted because its database could not be updated. Nothing was changed. Use Library ▸ Check Library… in the Amaze panel, then try again."
 EDIT_CONFLICT_KEPT_YOURS = "Someone else changed \"%s\" while you had it open.\n\nAmaze kept your version and discarded theirs."
+EDIT_CONFLICT_KEPT_YOURS_BY = "%s changed \"%s\" while you had it open.\n\nAmaze kept your version and discarded theirs."
 VERSION_SWITCH_DIVERGED = "The version switch didn't finish: the material's files hold version %d but its version list still names the old one. All archived versions are still there.\n\nSwitch the version again to finish."
 UNSAFE_ARCHIVE_PATHS_SKIPPED = "%d file(s) in this download tried to write outside your library folder and were skipped. Nothing outside the library was touched; the rest imported normally. If the material looks wrong, delete it and download again."
 NO_LIBRARY_FOLDER_CONFIGURED = "Amaze has no library folder set. Pick one in Preferences (Amaze panel), then run Check Library again."
@@ -200,9 +204,9 @@ AMAZE_NOT_IMPORTABLE = "Amaze can't be imported in this session (%s).\n\nCheck t
 NO_RELEASE_TO_INSTALL = "No release to install — check for updates first."
 INSTALL_LOCATION_UNKNOWN = "Amaze can't tell where it's installed, so it can't replace itself. Check that $AMAZE points at the install."
 UPDATE_OFFER = "%s\n\nRestart Houdini after installing."
-UPDATE_LIBRARY_AVAILABLE = "Amaze v%s is available. The library will be updated to v%d."
+UPDATE_LIBRARY_AVAILABLE = "Amaze v%s is available. The library will be updated to v%s."
 LIBRARY_UPDATE_WARNING = "The library will be updated and won't work with Amaze versions older than %s."
-LIBRARY_NEEDS_NEWER_AMAZE = "This library is version %d and needs a newer Amaze. Update Amaze to open it."
+LIBRARY_NEEDS_NEWER_AMAZE = "This library is version %s and needs a newer Amaze. Update Amaze to open it."
 UPDATE_INSTALLED = "Amaze %s installed. Restart Houdini to use it."
 UPDATE_FAILED_UNEXPECTED = "The update couldn't be installed (%s)."
 DOWNLOADING_UPDATE = 'Downloading the Amaze update'

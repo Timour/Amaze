@@ -9,10 +9,11 @@ from PySide6 import QtCore, QtGui
 
 import amaze
 from amaze import amazetheme
-from amaze.core import debug, library, category, material, thumbnails, tile_icons, versions
+from amaze.core import debug, library, library_db, library_files, category, material
+from amaze.core import thumbnails, tile_icons, versions
 
 _STARTER_DEF = "res/def/starter_snippets.json"  # shipped example snippets, seeded once per library
-_STARTER_MARKER = ".amaze_code_starter_v1"  # versioned: a new name seeds again
+_STARTER_MARK = "code_starter_v1"  # in the library's marks; versioned: a new name seeds again
 
 PREVIEW_SIZE = 512  # preview canvas, twice the on-tile size so text stays crisp on Retina
 PREVIEW_FONT_PX = 48  # font size on the PREVIEW_SIZE canvas
@@ -105,7 +106,7 @@ def _unstage(*staged) -> None:
 class CodeCategories(category.Categories):
     """The Code section's category sidebar - same model, own database."""
 
-    DB_FILENAME = "code.json"
+    DB_FILENAME = library_files.CODE
 
 
 class CodeLibrary(library.AssetLibrary):
@@ -114,7 +115,7 @@ class CodeLibrary(library.AssetLibrary):
     NOTES_SECTION = "code"
     TILE_FACE = "face_code"    # T05
 
-    DB_FILENAME = "code.json"
+    DB_FILENAME = library_files.CODE
     VERSION_SECTION = versions.CODE    # code/versions/<id>/, the text handed in as a file
     NEW_VERSION = 0    # save_version's number for a version the editor has not saved yet
 
@@ -275,13 +276,11 @@ class CodeLibrary(library.AssetLibrary):
         return super().row_data(row, role)
 
     def seed_starter_snippets(self, category_model) -> None:
-        """Seed an "Examples" category of snippets once per library, by a marker file; never raises."""
+        """Seed an "Examples" category of snippets once per library, marked in it; never raises."""
+        from amaze.core import library_settings, notes
         try:
             lib_dir = self.preferences.dir
-            if not lib_dir:
-                return
-            marker = os.path.join(lib_dir, _STARTER_MARKER)
-            if os.path.exists(marker):
+            if not lib_dir or library_settings.marked(self.preferences, _STARTER_MARK):
                 return
             def_path = amaze.package_file(_STARTER_DEF)
             if not os.path.exists(def_path):
@@ -291,6 +290,7 @@ class CodeLibrary(library.AssetLibrary):
             cat = data.get("category", "Examples")
             snippets = data.get("snippets", [])
             added = 0
+            pages = {}
             for snip in snippets:
                 code = snip.get("code", "")
                 if not code.strip():
@@ -304,40 +304,27 @@ class CodeLibrary(library.AssetLibrary):
                     snip.get("language", "VEX"),
                 )
                 mat.code = code
-                mat.description = snip.get("description", "")
                 mat._extra["curated"] = (    # the stable identity a restore matches on, riding the record's extra-keys courtesy
                     "starter/%s" % snip.get("name", "Snippet"))
+                text = str(snip.get("description", "") or "").strip()
+                if text:    # a snippet's description is its comment
+                    pages[notes.note_key(self.NOTES_SECTION, mat.mat_id)] = [
+                        {"t": "text", "text": text}]
                 self._append_record(mat)
                 added += 1
             if added:
-                self.adopt_retired_text_into_notes()    # descriptions move to the COMMENT ▸p/d03-retired
-                if not self.save():  # no marker unless the snippets reached disk
-                    debug.event("session", "starter snippets not marked "
-                                "- the save did not reach disk")
-                    return  # withhold instead: nothing was persisted, so re-seeding next launch cannot duplicate anything
+                if not self.save():  # no mark unless the snippets are kept
+                    debug.event("session", "starter snippets not marked - the save was refused")
+                    return
+                library_db.flush(self.preferences)
+                if pages:
+                    notes.set_notes(self.preferences, pages)
                 category_model.check_add_category(cat)  # so the category shows in the sidebar
         except Exception as exc:  # noqa: BLE001 - never block startup
             debug.event("session", "starter snippet seeding failed",  # an event: nothing for the user to do
                         error=str(exc))
             return
-        if not os.path.exists(os.path.join(lib_dir, self.DB_FILENAME)):  # no marker without code.json on disk
-            debug.event("session", "snippet seed marker withheld - the "
-                        "database is not on disk", file=lib_dir)
-            return
-        try:
-            with open(marker, "w", encoding="utf-8", newline="\n") as handle:  # written even when nothing was added
-                handle.write("seeded\n")
-        except OSError as exc:
-            debug.exception("snippet seed marker", exc, marker=marker)
-            debug.note(  # note, not event: this states a consequence the user can observe
-                "the starter snippets are in your Code library, but "
-                "adding them could not be recorded (%s) - so they "
-                "will be added a second time when Houdini next "
-                "starts. Nothing you saved yourself is affected, and "
-                "you can delete any duplicates from the Examples "
-                "category." % exc)
-            self._seed_marker_failed = True  # a record only; the next launch seeds again
-            return
+        library_settings.mark(self.preferences, _STARTER_MARK, added=added)
         if added:
             debug.event(
                 "session", "snippets seeded", count=added, category=cat

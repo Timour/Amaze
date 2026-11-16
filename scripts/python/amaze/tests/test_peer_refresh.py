@@ -5,12 +5,10 @@ import os
 import shutil
 import tempfile
 import unittest
-from unittest import mock
 
 from PySide6 import QtWidgets
 
-from amaze.core import keyed_store, users
-from amaze.helpers import hostos
+from amaze.core import library_files, model_registry, users
 from amaze.tests import test_support
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -31,8 +29,8 @@ class _Case(unittest.TestCase):
         self.dir = tempfile.mkdtemp(prefix="amaze_peer_refresh_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
         self.prefs = _Prefs(self.dir)
-        keyed_store.release()
-        self.addCleanup(keyed_store.release)
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
 
     def path(self, name):
         return os.path.join(self.dir, name)
@@ -46,16 +44,16 @@ class AUserMadeElsewhereShowsUpWithoutARestart(_Case):
     """The user list was a snapshot taken when the panel opened."""
 
     def test_the_user_list_is_stale_until_something_refreshes_it(self):
-        self._write("users.json", {"users": {"u-me": {"name": "Me"}}})
+        self._write(library_files.MASTER, {"users": {"u-me": {"name": "Me"}}})
         self.assertEqual({"u-me": "Me"}, users.all_users(self.prefs))
 
-        self._write("users.json", {"users": {"u-me": {"name": "Me"},
-                                             "u-them": {"name": "Colleague"}}})
+        self._write(library_files.MASTER, {"users": {"u-me": {"name": "Me"},
+                                                     "u-them": {"name": "Colleague"}}})
         self.assertEqual(
             {"u-me": "Me"}, users.all_users(self.prefs),
             "premise: the read already saw it, so nothing here is stale")
 
-        keyed_store.refresh_all(self.prefs)
+        model_registry.refresh_all(self.prefs)
 
         self.assertEqual(
             {"u-me": "Me", "u-them": "Colleague"}, users.all_users(self.prefs),
@@ -67,7 +65,7 @@ class ThePreferencesDialogSeesTheCurrentPeople(unittest.TestCase):
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
-        self.path = os.path.join(self.panel.prefs.dir, "users.json")
+        self.path = os.path.join(self.panel.prefs.dir, library_files.MASTER)
 
     def _users_on_disk(self):
         with open(self.path, encoding="utf-8-sig") as handle:
@@ -105,7 +103,7 @@ class AnAssetSavedElsewhereShowsUpWithoutARestart(unittest.TestCase):
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
         self.model = self.panel.material_model
-        self.path = os.path.join(self.panel.prefs.dir, "library.json")
+        self.path = os.path.join(self.panel.prefs.dir, library_files.MATERIALS)
 
     def _document(self):
         with open(self.path, encoding="utf-8-sig") as handle:
@@ -117,8 +115,8 @@ class AnAssetSavedElsewhereShowsUpWithoutARestart(unittest.TestCase):
 
         self.assertTrue(self.model.save())
         document = self._document()
-        document["assets"].append({"id": "VIA-THE-DOOR", "name": "Theirs",
-                                   "categories": [], "tags": []})
+        document["assets"]["VIA-THE-DOOR"] = {"id": "VIA-THE-DOOR", "name": "Theirs",
+                                              "categories": [], "tags": []}
         with open(self.path, "w", encoding="utf-8") as handle:
             json.dump(document, handle, indent=4)
 
@@ -135,7 +133,7 @@ class AnAssetSavedElsewhereShowsUpWithoutARestart(unittest.TestCase):
         before = sidebar.rowCount()
 
         document = self._document()
-        document["categories"].append("FromElsewhere")
+        document.setdefault("categories", {})["FromElsewhere"] = {"order": 99}
         with open(self.path, "w", encoding="utf-8") as handle:
             json.dump(document, handle, indent=4)
 
@@ -156,111 +154,6 @@ class AnAssetSavedElsewhereShowsUpWithoutARestart(unittest.TestCase):
         self.assertNotIn("material_model", model_registry.refresh_all(),
                          "nothing moved, yet it re-read")
         self.assertEqual(before, self.model.rowCount())
-
-
-class ARefreshCostsNothingWhenNobodyWrote(_Case):
-
-    def test_only_a_changed_file_is_re_read_and_the_baseline_follows_it(self):
-        """The baseline: otherwise the next save reads the refreshed rows as our own edits."""
-        self._write("users.json", {"users": {"u-me": {"name": "Me"}}})
-        store = keyed_store.open_store(users.SPEC, self.prefs)
-        self.assertFalse(store.refresh(), "nothing moved, yet it re-read")
-        self._write("users.json", {"users": {"u-me": {"name": "Renamed"}}})
-        self.assertTrue(store.refresh(), "the file moved and it did not say so")
-        self.assertEqual({"name": "Renamed"}, store._base.get("u-me"))
-
-
-class AnUnreadableFileMetByARefreshWipesNothing(_Case):
-    """A sync client's empty placeholder or a half-written file, met when a door refreshes."""
-
-    def _refresh_over(self, damage):
-        self._write("users.json", {"users": {"u-me": {"name": "Me"}}})
-        store = keyed_store.open_store(users.SPEC, self.prefs)
-        base, seen = dict(store._base), store._disk_state
-        with open(self.path("users.json"), "wb") as handle:
-            handle.write(damage)
-        with mock.patch.object(keyed_store.debug, "alert") as spoke:
-            moved = store.refresh()
-        self.assertEqual({"u-me": "Me"}, users.all_users(self.prefs),
-                         "the refresh emptied the table it already held")
-        self.assertTrue(store.writable,
-                        "the refresh latched the store read-only")
-        spoke.assert_not_called()
-        self.assertFalse(moved, "an unreadable file was re-read as a change")
-        self.assertEqual((base, seen), (store._base, store._disk_state),
-                         "the merge base or the fingerprint moved")
-
-    def test_an_empty_placeholder_or_a_half_written_document(self):
-        for damage in (b"", b'{"users": {"u-me": '):
-            with self.subTest(damage=damage):
-                keyed_store.release()
-                self._refresh_over(damage)
-
-
-class ALockedFileMetByARefreshWipesNothing(_Case):
-    """A sync client or a virus scanner holding the file for a moment is not the file being gone."""
-
-    def _held_open(self, locked):
-        real_open = open
-
-        def held(path, *args, **kwargs):
-            if (isinstance(path, (str, os.PathLike))
-                    and os.path.abspath(path) == os.path.abspath(locked)):
-                raise PermissionError(13, "Permission denied", str(path))
-            return real_open(path, *args, **kwargs)
-
-        return mock.patch("builtins.open", held)
-
-    def test_a_locked_file_keeps_the_table_and_says_nothing(self):
-        self._write("users.json", {"users": {"u-me": {"name": "Me"}}})
-        store = keyed_store.open_store(users.SPEC, self.prefs)
-        base, seen = dict(store._base), store._disk_state
-        with self._held_open(self.path("users.json")), \
-                mock.patch.object(keyed_store.debug, "alert") as spoke:
-            moved = store.refresh()
-        self.assertEqual(
-            {"moved": False, "rows": {"u-me": "Me"}, "writable": True,
-             "alerted": False},
-            {"moved": moved, "rows": users.all_users(self.prefs),
-             "writable": store.writable, "alerted": spoke.called},
-            "a moment's lock was read as the file being gone")
-        self.assertEqual((base, seen), (store._base, store._disk_state),
-                         "the merge base or the fingerprint moved")
-
-    def test_a_missing_file_still_reads_as_absent(self):
-        self.assertEqual(hostos.PEER_ABSENT,
-                         hostos.peer_read(self.path("users.json")).verdict)
-        under_a_file = os.path.join(self.path("users.json"), "x.json")
-        self._write("users.json", {"users": {}})
-        self.assertEqual(hostos.PEER_ABSENT,
-                         hostos.peer_read(under_a_file).verdict)
-
-
-class AnAbsentFileMetByARefreshWipesNothing(_Case):
-    """A sync client replacing the file non-atomically leaves it absent for a moment."""
-
-    def test_a_moment_without_the_file_keeps_the_table_and_says_nothing(self):
-        store = keyed_store.open_store(users.SPEC, self.prefs)
-        self.assertTrue(store.set("u-me", {"name": "Me"}), "premise: the store did not write")
-        self.assertTrue(hostos.existed_before(self.path("users.json")),
-                        "premise: no trace says the file was here, so its absence reads as new")
-        base, seen = dict(store._base), store._disk_state
-        os.replace(self.path("users.json"), self.path("users.json.syncing"))
-        with mock.patch.object(keyed_store.debug, "alert") as spoke:
-            moved = store.refresh()
-        self.assertEqual(
-            {"moved": False, "rows": {"u-me": "Me"}, "writable": True,
-             "alerted": False},
-            {"moved": moved, "rows": users.all_users(self.prefs),
-             "writable": store.writable, "alerted": spoke.called},
-            "a moment's absence was read as the file being gone for good")
-        self.assertEqual((base, seen), (store._base, store._disk_state),
-                         "the merge base or the fingerprint moved")
-        keyed_store.release()
-        with mock.patch.object(keyed_store.debug, "alert"):
-            opened = keyed_store.open_store(users.SPEC, self.prefs)
-        self.assertFalse(opened.writable,
-                         "an OPEN still meets the absence with the guard that refuses to write")
 
 
 if __name__ == "__main__":

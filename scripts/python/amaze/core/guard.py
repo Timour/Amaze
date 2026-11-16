@@ -15,6 +15,7 @@ from amaze.core import debug
 from amaze.helpers import hostos
 
 FINE, FRESH, CORRUPT, MISSING, NEWER = "fine", "fresh", "corrupt", "missing", "newer"
+HELD = "held"    # there, but it cannot be opened now: another program has it, or no permission
 SHARED, PER_USER = "shared", "per-user"
 
 MASTER = "DataBase.json"
@@ -91,6 +92,8 @@ class Disk:
 
     def swap(self, scratch: str, target: str) -> None:
         """`scratch` becomes `target` in one rename, keeping the replaced file's mode."""
+        hostos.check_sandbox(target)
+        os.makedirs(os.path.dirname(target), exist_ok=True)    # a taken file may land in a new folder
         hostos.promote_scratch(scratch, target)
 
     def move(self, source: str, target: str) -> None:
@@ -184,6 +187,17 @@ class Guard:
         parts = [part for part in str(relative).replace("\\", "/").split("/") if part]
         return self.path(*parts)
 
+    def inside(self, path: str) -> str:
+        """`path` relative to the library, "/" separated; "" for one outside it."""
+        try:
+            relative = os.path.relpath(os.path.abspath(str(path)), os.path.abspath(self.dir))
+        except ValueError:    # another drive on Windows
+            return ""
+        relative = relative.replace("\\", "/")
+        if relative == "." or relative == ".." or relative.startswith("../"):
+            return ""
+        return relative
+
     def recover(self) -> bool:
         """Finish a change a crash left half applied; True when there was one."""
         journal = self.path(JOURNAL)
@@ -246,7 +260,7 @@ class Guard:
         try:
             raw = self.disk.read(path)
         except OSError as exc:
-            return Reading(name, CORRUPT, why=str(exc))
+            return Reading(name, HELD, why=str(exc))
         document, why = _parse(raw, kind)
         if document is None:
             self._keep_unreadable(name, raw)
@@ -360,6 +374,29 @@ class Guard:
         change._forced[name] = data
         change.commit()
 
+    def trash_held(self) -> dict:
+        """{path, files, bytes, days}: each day is (day, the day it is removed, files, bytes)."""
+        root = self.path(TRASH_DIR)
+        found = {"path": root, "files": 0, "bytes": 0, "days": []}
+        for day in self.disk.names(root):
+            count = total = 0
+            for here, _dirs, names in os.walk(os.path.join(root, day)):
+                for name in names:
+                    try:
+                        total += os.path.getsize(os.path.join(here, name))
+                        count += 1
+                    except OSError:
+                        pass
+            try:
+                goes = (datetime.date.fromisoformat(day)
+                        + datetime.timedelta(days=TRASH_DAYS + 1)).isoformat()
+            except ValueError:
+                goes = ""
+            found["days"].append((day, goes, count, total))
+            found["files"] += count
+            found["bytes"] += total
+        return found
+
     def expire_trash(self) -> int:
         """Remove the trash's day folders older than the days kept; how many went."""
         cutoff = (self._now() - datetime.timedelta(days=TRASH_DAYS)).strftime("%Y-%m-%d")
@@ -377,8 +414,10 @@ class Change:
         self.guard = guard
         self.user = str(user or "")
         self._documents = {}    # name -> (ticket, bytes)
-        self._forced = {}    # name -> bytes, written whatever is there: a restore
+        self._forced = {}    # name -> bytes, written whatever is there: a restore, the conversion
+        self._replacing = set()    # forced names whose old bytes are a plain backup, not an undo copy
         self._files = {}    # relative path -> bytes
+        self._taken = {}    # relative path -> a file already written whole, moved into place
         self._removals = []
         self._trashed = []
 
@@ -388,11 +427,24 @@ class Change:
             raise Refused("a database is written with the ticket of its read")
         self._documents[ticket.name] = (ticket, encode(document))
 
+    def replace(self, name: str, document: dict) -> None:
+        """The library conversion's write: a database whatever is there, its old bytes backed up."""
+        if name not in DATABASES:
+            raise Refused("%s is no database of a library" % name)
+        self._forced[name] = encode(document)
+        self._replacing.add(name)
+
     def put_file(self, relative: str, data: bytes) -> None:
         """Any other file in the library, written whole."""
         if str(relative).replace("\\", "/").split("/")[-1] in DATABASES:
             raise Refused("a database is written with `put`")
         self._files[str(relative)] = bytes(data)
+
+    def take(self, relative: str, written: str) -> None:
+        """A file already written whole at `written` (Houdini's own save) put at `relative`."""
+        if str(relative).replace("\\", "/").split("/")[-1] in DATABASES:
+            raise Refused("a database is written with `put`")
+        self._taken[str(relative)] = str(written)
 
     def remove(self, relative: str) -> None:
         self._removals.append(str(relative))
@@ -410,8 +462,11 @@ class Change:
             try:
                 writes = self._judged()
                 for name, (old, data) in writes.items():
+                    if old and name in self._replacing and _parse(old, DATABASES[name])[0] is None:
+                        old = None    # a replaced file that did not read: no backup of what is not one
                     if old:
-                        tail = UNDO_TAIL if name in self._forced else BACKUP_TAIL
+                        undo = name in self._forced and name not in self._replacing
+                        tail = UNDO_TAIL if undo else BACKUP_TAIL
                         steps += guard._backup_steps(name, old, tail, name not in self._forced)
                     tickets[name] = Ticket(name, data)
                 for relative, data in list(writes.items()) + list(self._files.items()):
@@ -419,6 +474,12 @@ class Change:
                     scratch = "%s.%s%s" % (relative, uuid.uuid4().hex[:8], SCRATCH)
                     disk.write(guard._relative(scratch), payload)
                     steps.append({"op": "swap", "from": scratch, "to": relative})
+                for relative, source in self._taken.items():
+                    inside = guard.inside(source)
+                    if not inside:    # written outside the library: copied in, then swapped
+                        inside = "%s.%s%s" % (relative, uuid.uuid4().hex[:8], SCRATCH)
+                        disk.write(guard._relative(inside), disk.read(source))
+                    steps.append({"op": "swap", "from": inside, "to": relative})
                 steps += [{"op": "remove", "to": relative} for relative in self._removals]
                 steps += [{"op": "move", "from": relative, "to": self._trash_target(relative)}
                           for relative in self._trashed]

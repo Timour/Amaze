@@ -9,7 +9,7 @@ from PySide6 import QtCore, QtGui
 
 from amaze.core import captures, debug, file_moves, folders, geo_library, scene_files
 from amaze.core import grid_engine
-from amaze.core import keyed_store, locations
+from amaze.core import locations
 from amaze.core import texture_library, thumbnails, tile_icons
 from amaze.helpers import hostos
 
@@ -239,15 +239,13 @@ class FileFolders(folders.FolderTreeModel):
             return False    # a refused removal keeps the pointer, so every key under it stays
         if not locations.rehome_covered(self.preferences, path):
             return True    # a refused move retires nothing, so no file a remaining location lists loses a key
-        keyed_store.retire_prefix(self.preferences, path)    # what is still keyed under it, every user's, then its id row
-        locations.touch()    # the engine edited the identity table outside the module's own doors
+        locations.retire_prefix(self.preferences, path)    # what is still keyed under it, then its path row
         sweep_folder_cache(    # its cached thumbnails, bar what a remaining location covers; captures stay
             self.preferences, path, list(self._folders()))
         return True
 
     def _on_folder_relocated(self, old_path: str, new_path: str) -> None:
-        """Re-home path-keyed state an older build wrote; id-keyed state does not move."""
-        keyed_store.relocate(self.preferences, old_path, new_path)
+        """Nothing to re-home: every file key is a location id, which a move leaves alone."""
 
 
 class FileFiles(grid_engine.GridEngine,
@@ -722,7 +720,7 @@ class FileFiles(grid_engine.GridEngine,
 
     def tile_icon(self, row: int) -> dict:
         key = self.file_key(row)
-        return tile_icons.override_for(self.preferences, key) if key else {}
+        return tile_icons.override_for(self.preferences, key, locations.FILES) if key else {}
 
     def tile_key(self, row: int) -> str:
         """A file row is keyed by its path, the key its icon is stored under."""
@@ -742,7 +740,7 @@ class FileFiles(grid_engine.GridEngine,
         if not keyed:
             return len(rows)
         held = tile_icons.set_overrides(  # what really landed - a read-only library must not take icons
-            self.preferences, dict(keyed.values()))
+            self.preferences, dict(keyed.values()), locations.FILES)
         for row in keyed:
             self.row_changed(row, [QtCore.Qt.ItemDataRole.DecorationRole])
         return len(rows) - sum(1 for key, _spec in keyed.values() if held[key])

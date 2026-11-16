@@ -4,13 +4,19 @@ from typing import Any
 from PySide6 import QtCore
 
 from amaze.prefs import prefs
-from amaze.core import database, material, renderers
+from amaze.core import documents, library_db, library_files, material, renderers
 
 SIDEBAR_COUNT_ROLE = int(QtCore.Qt.ItemDataRole.UserRole) + 40  # the ONLY declaration - every sidebar model and SidebarItemDelegate import it from here
 SIDEBAR_COLOR_ROLE = int(QtCore.Qt.ItemDataRole.UserRole) + 41  # a category's colour, for the sidebar's left-edge bar
 
+ALL = "_All"    # the first row: a view of every asset, never stored
+SECTION = "categories"    # {name: {"order": n, "color": c}} in the section's database
 
-display_name = database.category_label    # the sidebar label for a STORED category
+
+def display_name(stored) -> str:
+    """How a STORED category name reads to the user: a leading underscore is not shown."""
+    text = str(stored)
+    return text[1:] if text.startswith("_") else text
 
 
 def is_all(name) -> bool:
@@ -18,16 +24,26 @@ def is_all(name) -> bool:
     return name in ("All", "_All")
 
 
+def stored_order(held) -> list:
+    """The category names a database holds, in their order, All first."""
+    table = held.table(SECTION)
+    names = sorted((name for name in table if not is_all(name)),
+                   key=lambda name: ((table[name] or {}).get("order", 1 << 30), name))
+    return [ALL] + names
+
+
 class Categories(QtCore.QAbstractListModel):
     """The category list for one library, backed by DB_FILENAME."""
 
-    DB_FILENAME = "library.json"  # subclassed by the COP section over its own cops.json
+    DB_FILENAME = library_files.MATERIALS  # subclassed by each section over its own database
 
     def __init__(self, preferences: prefs.Prefs) -> None:
         super().__init__()
         self.preferences = preferences  # required, never defaulted ▸p/duplication-third-verb
-        self._data = database.open_document(self)  # a sidecar that will not read must not take the panel down
-        self._categories = self._data["categories"]
+        self._categories = stored_order(self._doc())
+        self._seen = list(self._categories)    # the database's order as last read or saved
+        self._colour_table = self._read_colours()
+        self._removed = set()    # names this model took out, dropped from the database at its save
         self._shown = list(self._categories)    # what the views have been told; `apply_refresh` compares
         self.CatSortRole = QtCore.Qt.ItemDataRole.UserRole  # 256
         self._renderer_filter = ""  # lowercased; "" = no filter. Pushed in by the panel so counts agree with the grid
@@ -84,7 +100,7 @@ class Categories(QtCore.QAbstractListModel):
         if counts is None:
             counts = {}
             total = 0
-            for asset in self._data.get("assets", []):
+            for asset in self._doc().table("assets").values():
                 if not isinstance(asset, dict):    # skips junk rows, as the model does
                     continue
                 if not self._asset_matches_renderer(asset):
@@ -106,22 +122,37 @@ class Categories(QtCore.QAbstractListModel):
             return counts.get("_All", 0)
         return counts.get(raw_name.strip(), 0)
 
+    def _doc(self) -> documents.Document:
+        """This sidebar's database, as the library holds it."""
+        return library_db.document(self.preferences, self.DB_FILENAME)
+
+    def _read_colours(self) -> dict:
+        return {name: str(entry.get("color")) for name, entry in self._doc().table(SECTION).items()
+                if isinstance(entry, dict) and entry.get("color")}
+
     def switch_model_data(self):
         # Same whole-row-set replacement as MaterialLibrary.switch_model_data.
         self.beginResetModel()
         try:
-            data = database.open_document(self, reload=True)    # one unreadable file must not stop the switch
-            self._data = data  # the whole dict: counts and empty-category hiding read _data["assets"]
-            self._categories = data["categories"]
+            self._categories = stored_order(self._doc())
+            self._seen = list(self._categories)
+            self._colour_table = self._read_colours()
+            self._removed = set()
             self._shown = list(self._categories)    # a switch has told the views everything already
             self.drop_count_cache()
         finally:
             self.endResetModel()
 
-    def apply_refresh(self, db) -> bool:
-        """Reset the views over rows a refresh merged; True when the sidebar moved. ▸p/mutate-not-rebind"""
-        recoloured = database.colours_moved(self, db)
-        if list(self._categories) == self._shown:
+    def apply_refresh(self) -> bool:
+        """Take in the names and colours the database holds now; True when the sidebar moved."""
+        colours = self._read_colours()
+        recoloured = colours != self._colour_table
+        self._colour_table = colours
+        stored = stored_order(self._doc())
+        moved, self._seen = stored != self._seen, stored    # a local edit not yet saved is kept
+        names = [name for name in stored if name not in self._removed]
+        self.drop_count_cache()
+        if not moved or names == list(self._categories):
             if recoloured and self._categories:
                 self.dataChanged.emit(
                     self.index(0, 0), self.index(len(self._categories) - 1, 0),
@@ -129,8 +160,8 @@ class Categories(QtCore.QAbstractListModel):
             return recoloured
         self.beginResetModel()
         try:
+            self._categories[:] = names
             self._told_views()
-            self.drop_count_cache()
         finally:
             self.endResetModel()
         return True
@@ -149,6 +180,7 @@ class Categories(QtCore.QAbstractListModel):
             self._categories.pop(row)
         finally:
             self.endRemoveRows()
+        self._removed.add(cat)
         self._told_views()
         self._recolor(cat, "")
         self.save()
@@ -169,6 +201,9 @@ class Categories(QtCore.QAbstractListModel):
                 self._categories[count] = new
                 index = self.index(count, 0)
                 self.dataChanged.emit(index, index)
+        if new != old:
+            self._removed.add(old)
+            self._removed.discard(new)
         self._told_views()
         self._recolor(old, new)
         self.save()
@@ -186,9 +221,11 @@ class Categories(QtCore.QAbstractListModel):
                 changed += 1
             cleaned.append(c2)
         if changed:
+            self._removed.update(name for name in self._categories
+                                 if isinstance(name, str) and name not in cleaned)
             self.beginResetModel()  # a whole-row-set replacement needs a reset pair ▸r/model-contracts
             try:
-                self._categories[:] = cleaned  # IN PLACE: this list aliases the connector's document; a rebind detaches it
+                self._categories[:] = cleaned
             finally:
                 self.endResetModel()
             self._told_views()
@@ -269,16 +306,13 @@ class Categories(QtCore.QAbstractListModel):
             self._categories.append(cat)
         finally:
             self.endInsertRows()
+        self._removed.discard(cat)
         self._told_views()
         self.save()
 
     def colors(self) -> dict:
-        """{category name: colour} for this library, stored in the same json as the names."""
-        table = self._data.get("category_colors")
-        if not isinstance(table, dict):
-            table = {}
-            self._data["category_colors"] = table
-        return table
+        """{category name: colour} for this library, kept with the names in its database."""
+        return self._colour_table
 
     def color_of(self, cat: str) -> str:
         return str(self.colors().get(str(cat), "") or "")
@@ -304,19 +338,28 @@ class Categories(QtCore.QAbstractListModel):
         return None
 
     def save(self) -> bool:
-        """Save categories and colours to disk as json; False when the write was refused."""
-        db = database.connector_for_save(self, "category save")
-        if db is None:  # a switch in another pane repoints the shared connector, and db.set replaces in place
+        """Hand the names, order and colours to the database; False when it takes no change now."""
+        if not library_db.accepts(self.preferences, self.DB_FILENAME):
             return False
-        data = {}
-        data["categories"] = self._categories
-        data["category_colors"] = self.colors()
-        db.set(data)
-        stored = db.save()  # the connector's answer, never an unconditional True
+        held = self._doc()
+        with library_db.library_for(self.preferences).holding():
+            order = 0
+            for name in self._categories:
+                if is_all(name) or not isinstance(name, str):
+                    continue
+                entry = {"order": order}
+                if self._colour_table.get(name):
+                    entry["color"] = self._colour_table[name]
+                held.put(SECTION, name, entry)
+                order += 1
+            for name in self._removed:
+                if name not in self._categories:
+                    held.drop(SECTION, name)
+            self._removed = set()
+        self._seen = stored_order(held)
         self.drop_count_cache()
-        from amaze.core import model_registry
-        model_registry.apply_merged(db, also=self)    # every model on this file takes what the save merged
-        return bool(stored)
+        library_db.changed(self.preferences, self.DB_FILENAME)
+        return True
 
 
 class CategoriesSidebarProxy(QtCore.QSortFilterProxyModel):

@@ -703,12 +703,11 @@ list holds 20 libraries; **Manage** takes libraries off it. **Check**,
 **Reload** and **Show Folder** act on the open library. **Check** opens
 [Check Library](#housekeeping-and-troubleshooting).
 
-**Format** is the library's version. Version 2 keeps scene captures in
-the library. For a library from an older Amaze, the line beside
-**Apply** says that applying updates it; Amaze then moves this
-computer's scene captures into the library's `captures` folder, and the
-originals stay in Amaze's trash for 30 days. A library from a
-newer Amaze cannot be applied, and the line says to update Amaze.
+**Format** is the library's version: v2.0 for a library this Amaze
+writes. For a library from an older Amaze, the line beside **Apply**
+says that applying updates it; Amaze converts it to 2.0 when it opens,
+after a confirmation. A library from a newer Amaze cannot be applied,
+and the line says to update Amaze.
 
 **Versions** turns [versions](#versions) on and off, for materials and
 snippets.
@@ -718,8 +717,7 @@ and saved versions belong to the user, so the same user on another
 computer sees the same items. Amaze picks the user with the same name as
 the current one, or the library's only user; otherwise pick one, or
 **Create a new user...**. Two users in one library cannot share a name.
-**Rename** renames the user shown, and **Delete** removes them with
-their favorites and registered folders on every computer that uses the
+**Rename** renames the user shown, and **Delete** removes them from the
 library, after a confirmation. Amaze opens a library only with a user
 picked: when it starts without one, it shows a message with **Open
 Preferences**, which opens this tab. A computer still signed in as a
@@ -810,12 +808,14 @@ newest beta when on, the newest release when off.
 library. It reads every database and folder in the library and shows a
 report, with a button for each fix that applies. The report covers:
 
-- **The databases.** Each section keeps a database of what it holds,
-  and the comments, tile icons, favorites, File locations, users and
-  shared settings each have one too. The report gives what each
-  database holds, and names a database that is empty, corrupt or
-  missing, with its backups. A section's database that holds under half
-  of what its newest backup holds is named as well.
+- **The databases.** The library keeps six: one for each section
+  (`materials.json`, `nodes.json`, `code.json`, `colors.json` and
+  `files.json`), holding its items with their comments, tile icons and
+  favorites, and `DataBase.json` for the library's users, shared
+  settings and policy. The report gives what each database holds, and
+  names a database that is empty, corrupt, missing or saved by a newer
+  Amaze, with its backups. A database that holds under half of what its
+  newest backup holds is named as well.
 - **Missing files and renders.** A material or node setup in a database
   whose `.mat` or `.json` file is not in the library is named and
   stays in the database; **Delete** removes it. Materials and node setups
@@ -827,7 +827,7 @@ report, with a button for each fix that applies. The report covers:
   temporary files from a save that did not finish, once they are an
   hour old; the `.pre-adopt` backups kept from before an earlier texture
   update; and conflict copies a sync service made of a file still in the
-  library, such as `notes.json 2.bak-3`. A conflict copy of a database
+  library, such as `materials 2.json`. A conflict copy of a database
   or an asset file counts only when its contents match the original's.
   One that differs is named with its date and size and left in place,
   and so is a conflict copy whose original is not there.
@@ -838,8 +838,8 @@ report, with a button for each fix that applies. The report covers:
 - **The File section.** File locations whose folder is not on this
   computer, and starred files gone from a folder that is. Locations on
   a drive that is not connected are named and left as they are.
-- **The trash.** Its path, what it holds, and when its oldest files
-  are deleted.
+- **The trash.** The library's `trash` folder: what it holds, and when
+  its oldest files are deleted.
 
 The fixes, each shown only when it applies:
 
@@ -850,8 +850,8 @@ The fixes, each shown only when it applies:
 - **Restore Backup** restores a database from its newest backup. The
   confirmation says how many items the backup holds and how many the
   database holds now, and **Older Backups...** lists the earlier ones.
-  The database you have now is backed up in the library folder first,
-  and the next check offers that backup. For the Material and Node
+  The database you have now is kept in the library's `backup` folder
+  first, and the next check offers that backup. For the Material and Node
   databases, items saved after the backup come back from the metadata
   saved beside their files, and items changed after it are brought up
   to date.
@@ -881,26 +881,26 @@ Each fix asks for confirmation. After it, Amaze reads the library again,
 so the panel shows the change without a restart, and the report opens
 again with what is left. **Close** ends the check.
 
-Moved files go to Amaze's trash folder on this computer, outside the
-library, in one folder per day. Each day's files are deleted after 30
-days; every check deletes the days older than that. To restore a file,
-copy it from the trash into the library. The trash follows the library
-by an id stored in the library's `policy.json`, so a library moved to a
-new folder keeps it.
+Moved files go to the library's `trash` folder, in one folder per day,
+each file under the path it had in the library. Each day's files are
+deleted after 30 days; every check, and every time the library opens,
+deletes the days older than that. To restore a file, copy it from the
+trash back to its folder. Deleting a material or node setup moves its
+files to the trash too.
 
 **Check Library**, on the Amaze shelf, runs the same check when the
 Amaze panel will not open. With an Amaze panel open, it says to use the
 panel instead. When this Houdini session has already read the library,
 it shows the report without the fixes. When `settings.json`, the
-settings file that names the library, is corrupt, is missing or names
-no library, it lists the file's backups and restores the one you pick.
+settings file that names the library, is corrupt, it says where the
+file is and how to start fresh.
 
 When the Material database is corrupt as a library opens, Amaze asks
 first. **Repair** restores the newest backup that holds materials, else
 the newest that reads. With no such backup, it rebuilds the database
 from the metadata saved beside each material; category names are kept,
-and their order and colors may change. The corrupt file is kept beside
-the database. **Open Without
+and their order and colors may change. A copy of the corrupt file is
+kept in the library's `backup` folder. **Open Without
 Library** leaves the folder unchanged. A message then says what Repair
 did, or why it could not.
 
@@ -913,9 +913,12 @@ exit with 1 when it finds anything, and `--quiet` prints only what it
 finds. It also looks inside the `matX` package folder, which Check
 Library leaves alone.
 
-Every write backs up the database first, with rolling backups and a
-first-run backup, and writes from a second Houdini session
-are merged.
+Amaze keeps backups of each database in the library's `backup` folder:
+the newest three, and one a day for 30 days. A change is saved a moment
+after it is made, and always when the panel closes; it is merged with
+what another session or another user saved since. When two users
+change the same field of the same item at once, your change is kept
+and Amaze names the other user.
 
 **Versions** (Preferences ▸ Library) is stored in the library,
 and every computer that uses the library shares it.

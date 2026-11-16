@@ -11,7 +11,7 @@ sys.path.insert(
         os.path.dirname(os.path.abspath(__file__)))))
 
 from amaze import branding
-from amaze.core import asset_record, database, library_files, material
+from amaze.core import asset_record, library_files, library_policy, material
 from amaze.render import nodes as nodes_mod
 from amaze.tests import make_file_fixtures as guard
 
@@ -100,15 +100,21 @@ def main() -> int:
                     thumb]
         print("%s  %s" % (asset_id, name))
 
-    document = {"version": database.SCHEMA_VERSION,   # stamped current: an unversioned file reads as 1 and latches `_migration_incomplete`
-                "format": branding.LIBRARY_FORMAT,
-                "categories": CATEGORIES, "tags": [],
-                "assets": [sentinel_row()]
-                + [asset_row(i, n, c) for i, n, c, _colour in MATERIALS]}
-    index = os.path.join(OUT, "library.json")
+    rows = [sentinel_row()] + [asset_row(i, n, c) for i, n, c, _colour in MATERIALS]
+    document = {"format": branding.LIBRARY_FORMAT,
+                "categories": {name: {"order": order}
+                               for order, name in enumerate(CATEGORIES[1:])},
+                "assets": {str(row["id"]): row for row in rows}}
+    index = os.path.join(OUT, library_files.MATERIALS)
     with open(index, "w", encoding="utf-8") as handle:
         json.dump(document, handle, indent=1)
     written.append(index)
+    master = os.path.join(OUT, library_files.MASTER)
+    with open(master, "w", encoding="utf-8") as handle:
+        json.dump({"format": branding.LIBRARY_FORMAT,
+                   "policy": {"library": {"version": library_policy.LIBRARY_VERSION}}},
+                  handle, indent=1)
+    written.append(master)
     shutil.rmtree(guard.SCRATCH_ROOT, ignore_errors=True)
 
     total = sum(os.path.getsize(p) for p in written if os.path.isfile(p))

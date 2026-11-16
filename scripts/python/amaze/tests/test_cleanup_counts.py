@@ -3,7 +3,7 @@ import json
 import os
 import unittest
 
-from amaze.core import database, library_files, material, repair
+from amaze.core import library_files, material, repair
 from amaze.tests import test_support
 
 
@@ -16,8 +16,8 @@ class TheThumbnailCountKnowsItsSectionTest(unittest.TestCase):
         self.addCleanup(test_support.reset_database_singletons)
         self.node_dir = material.section_folder(self.prefs.dir, library_files.NODES)
         os.makedirs(self.node_dir, exist_ok=True)
-        self.cops = os.path.join(self.prefs.dir, "cops.json")
-        self.assertFalse(os.path.exists(self.cops), "premise: the fixture has no cops.json")
+        self.cops = os.path.join(self.prefs.dir, library_files.NODES)
+        self.assertFalse(os.path.exists(self.cops), "premise: the fixture has no nodes.json")
 
     def _row(self, asset_id: str, context: str) -> dict:
         for suffix in (".mat", material.RECORD_SUFFIX):    # both files present, no render
@@ -31,10 +31,11 @@ class TheThumbnailCountKnowsItsSectionTest(unittest.TestCase):
         rows = [self._row("LOPSETUP1", "LOP"), self._row("LOPSETUP2", "LOP"),
                 self._row("SOPSETUP1", "SOP")]
         with open(self.cops, "w", encoding="utf-8") as handle:
-            json.dump({"categories": ["_All", "Main"], "tags": [], "assets": rows}, handle)
+            json.dump({"categories": {"Main": {"order": 0}},
+                       "assets": {row["id"]: row for row in rows}}, handle)
         findings = repair.survey(self.prefs.dir, self.prefs.img_dir)
         self.assertEqual(["SOPSETUP1"],
-                         [one for one, _name in findings["missing_renders"]["cops.json"]],
+                         [one for one, _name in findings["missing_renders"][library_files.NODES]],
                          "the two LOP setups were counted as missing a render")
         thumbnails = [line for line in repair.report_lines(findings)
                       if line.startswith("No thumbnail image yet")]
@@ -44,10 +45,10 @@ class TheThumbnailCountKnowsItsSectionTest(unittest.TestCase):
         self.assertNotIn("material", thumbnails[0])
 
     def test_each_section_counts_in_its_own_noun(self):
-        self.assertEqual("material", database.section_noun("library.json", 1))
-        self.assertEqual("node", database.section_noun("cops.json", 1))
-        self.assertEqual("2 nodes", repair._counted(2, "cops.json"))
-        self.assertEqual("1 material", repair._counted(1, "library.json"))
+        self.assertEqual("material", library_files.section_noun(library_files.MATERIALS, 1))
+        self.assertEqual("node", library_files.section_noun(library_files.NODES, 1))
+        self.assertEqual("2 nodes", repair._counted(2, library_files.NODES))
+        self.assertEqual("1 material", repair._counted(1, library_files.MATERIALS))
 
 
 if __name__ == "__main__":

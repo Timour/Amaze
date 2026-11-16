@@ -1,4 +1,4 @@
-"""Models for the Colors section over gradients.json; curated sets seed once as user gradients."""
+"""Models for the Colors section over colors.json; curated sets seed once as user gradients."""
 
 import json
 import os
@@ -7,9 +7,10 @@ from PySide6 import QtCore, QtGui
 
 import amaze
 from amaze.core import category
-from amaze.core import database
 from amaze.core import debug
 from amaze.core import library
+from amaze.core import library_db
+from amaze.core import library_files
 from amaze.core import material
 from amaze.core import multifilterproxy_model
 from amaze.core import thumbnails
@@ -76,16 +77,16 @@ def paint_swatch(colors: list, ramp: dict) -> QtGui.QImage:
 class GradientCategories(category.Categories):
     """The Colors section's category sidebar - same model, own database."""
 
-    DB_FILENAME = "gradients.json"
+    DB_FILENAME = library_files.COLORS
 
 
 class GradientLibrary(library.AssetLibrary):
-    """The Colors section's asset model over gradients.json, palettes inline, previews painted."""
+    """The Colors section's asset model over colors.json, palettes inline, previews painted."""
 
-    NOTES_SECTION = "gradient"
+    NOTES_SECTION = "gradient"    # the key prefix of its comments; never rename it
     TILE_FACE = "face_color"    # T10
 
-    DB_FILENAME = "gradients.json"
+    DB_FILENAME = library_files.COLORS
 
     COLUMN_ROLES = {
         "name": QtCore.Qt.ItemDataRole.DisplayRole,
@@ -107,25 +108,23 @@ class GradientLibrary(library.AssetLibrary):
 
     @property
     def _load_failed(self) -> bool:
-        """Whether the connector is refusing to write this file."""
+        """Whether the database takes no change now."""
         if self.preferences is None:
             return False
-        return bool(
-            database.DatabaseConnector(self.DB_FILENAME)._write_blocked)
+        return not library_db.accepts(self.preferences, self.DB_FILENAME)
 
-    _SEED_MARKER = ".amaze_gradient_seed_v1"  # bump when the seed contents change, so a new set re-seeds
+    _SEED_MARK = "gradient_seed_v1"  # in the library's marks; bump when the seed contents change
 
     def seed_curated_palettes(self, category_model) -> None:
-        """Once per library, marked by a file: every curated combination becomes a user gradient."""
-        from amaze.core import notes
+        """Once per library, marked in it: every curated combination becomes a user gradient."""
+        from amaze.core import library_settings, notes
         try:
             lib_dir = self.preferences.dir
             if not lib_dir:
                 return
             if self._load_failed:
-                return  # a refused file must not earn a PERMANENT marker for a save that never happened
-            marker = os.path.join(lib_dir, self._SEED_MARKER)
-            if os.path.exists(marker):
+                return  # a refused database must not earn a PERMANENT mark for a save that never happened
+            if library_settings.marked(self.preferences, self._SEED_MARK):
                 return
             seeded = 0
             categories = []
@@ -164,34 +163,23 @@ class GradientLibrary(library.AssetLibrary):
                     seeded += 1
             if not seeded:
                 return  # def files unreachable this run: leave the marker off and retry next launch
-            if not self.save():  # the marker is PERMANENT, so it must not be minted for a save that never landed
-                debug.event("gradient", "curated seed not marked - the "
-                            "save did not reach disk")
+            if not self.save():  # the mark is PERMANENT, so it is never made for a save refused
+                debug.event("gradient", "curated seed not marked - the save was refused")
+                return
+            if not all(saved for saved in library_db.flush(self.preferences).values()):
+                debug.event("gradient", "curated seed not marked - the save did not land")
                 return
             if pages:
-                notes.set_notes(self.preferences, pages)  # AFTER the save landed: a page for a palette that never reached disk is an orphan
+                notes.set_notes(self.preferences, pages)  # after the rows: a page for a palette never kept is an orphan
             for cat_name in categories:
                 category_model.check_add_category(cat_name)
         except Exception as exc:                        # noqa: BLE001
             debug.event("gradient", "curated palette seed failed",
                         error=str(exc))
             return
-        if not os.path.exists(os.path.join(lib_dir, self.DB_FILENAME)):  # save() can fail silently
-            debug.event("gradient", "seed marker withheld - the "
-                        "database is not on disk", file=lib_dir)
-            return
-        try:
-            with open(marker, "w", encoding="utf-8", newline="\n") as handle:
-                handle.write("seeded %d curated palettes\n" % seeded)
-        except OSError as exc:
-            debug.exception("gradient seed marker", exc, marker=marker)
-            debug.note(
-                "the curated palettes are in your Colors library, but "
-                "adding them could not be recorded (%s) - so they "
-                "will be added a second time when Houdini next "
-                "starts. Your own palettes are not affected." % exc)
-            self._seed_marker_failed = True  # a RECORD, not a guard: hand-deleting 348 duplicated palettes is not a next step that works
-            return
+        if not library_settings.mark(self.preferences, self._SEED_MARK, seeded=seeded):
+            self._seed_marker_failed = True  # a RECORD: the next open seeds again
+            debug.event("gradient", "seed mark not kept", file=lib_dir)
 
     @staticmethod
     def _colors_of(asset) -> list:
@@ -218,7 +206,7 @@ class GradientLibrary(library.AssetLibrary):
 
     def user_categories(self) -> list:
         """The categories the save dialog lists, with neither spelling of All (`_All`, `All`)."""
-        return [name for name in self._data.get("categories", [])
+        return [name for name in category.stored_order(self._doc())
                 if isinstance(name, str) and not category.is_all(name)]
 
     def set_user_category(self, rows: list, category_name: str) -> int:

@@ -233,10 +233,70 @@ class ABurstIsOneSaveTest(_Two):
         self.assertIn("A7", self.on_disk()[ASSETS])
 
 
+class ARowAndItsFilesTest(_Two):
+    """A change held back saves with the files it belongs to, in one unit."""
+
+    def test_a_held_change_waits_and_lands_with_its_files(self):
+        asked = []
+        library = self.open(ANNA, defer=asked.append)
+        document = library.document(MATERIALS)
+        with library.holding():
+            document.put(ASSETS, "A9", {"name": "saved with its file"})
+        self.assertEqual([], asked, "a held change never asks the timer")
+        saved = document.save(also=lambda change: change.put_file("materials/A9.mat", b"nodes"))
+        self.assertTrue(saved)
+        self.assertIn("A9", self.on_disk()[ASSETS])
+        with open(os.path.join(self.dir, "materials", "A9.mat"), "rb") as handle:
+            self.assertEqual(b"nodes", handle.read())
+
+    def test_files_alone_save_when_the_row_did_not_change(self):
+        saved = self.anna.save(also=lambda change: change.put_file("materials/A1.mat", b"new"))
+        self.assertTrue(saved)
+        self.assertTrue(os.path.exists(os.path.join(self.dir, "materials", "A1.mat")))
+
+    def test_a_database_that_does_not_read_takes_no_file(self):
+        with open(os.path.join(self.dir, MATERIALS), "w", encoding="utf-8") as handle:
+            handle.write("{")
+        document = self.reread()
+        saved = document.save(also=lambda change: change.put_file("materials/A1.mat", b"new"))
+        self.assertFalse(saved)
+        self.assertFalse(os.path.exists(os.path.join(self.dir, "materials", "A1.mat")))
+
+    def test_a_peer_save_between_is_merged_and_the_files_still_land(self):
+        self.erik.put(ASSETS, "E1", {"name": "Erik's"})
+        self.assertTrue(self.erik.save())
+        self.anna.put(ASSETS, "A9", {"name": "Anna's"})
+        added = []
+        saved = self.anna.save(also=lambda change: added.append(
+            change.put_file("materials/A9.mat", b"nodes")))
+        self.assertTrue(saved)
+        self.assertEqual(2, len(added), "the files are added again to the second try")
+        self.assertEqual({"A1", "A2", "E1", "A9"}, set(self.on_disk()[ASSETS]))
+
+
 class RefusalsHoldTest(_Two):
 
     def path(self) -> str:
         return os.path.join(self.dir, MATERIALS)
+
+    def test_a_file_that_stops_reading_keeps_what_is_held_and_takes_no_change(self):
+        good = open(self.path(), "rb").read()
+        for broken in (b"", b"half a fi"):
+            with open(self.path(), "wb") as handle:
+                handle.write(broken)
+            self.anna.refresh()
+            self.assertEqual({"A1", "A2"}, set(self.anna.table(ASSETS)),
+                             "a refresh blanked what was held")
+            self.assertFalse(self.anna.writable)
+            self.assertFalse(self.anna.put(ASSETS, "A9", {"name": "refused"}))
+        os.remove(self.path())
+        self.anna.refresh()
+        self.assertEqual((guard.MISSING, {"A1", "A2"}),
+                         (self.anna.verdict, set(self.anna.table(ASSETS))))
+        with open(self.path(), "wb") as handle:
+            handle.write(good)
+        self.anna.refresh()
+        self.assertEqual((guard.FINE, True), (self.anna.verdict, self.anna.writable))
 
     def test_a_database_that_does_not_read_takes_no_change(self):
         with open(self.path(), "wb") as handle:

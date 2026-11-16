@@ -10,9 +10,8 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))))
 
-import amaze
 from amaze import branding
-from amaze.core import database
+from amaze.core import library_policy
 from amaze.core import material
 from amaze.helpers import hostos
 from amaze.prefs import prefs as prefs_mod
@@ -27,8 +26,8 @@ class TheTestLibraryDoorMakesAWholeLibrary(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.folder, ignore_errors=True)
         self.lib = os.path.join(self.folder, prefs_mod.TEST_LIB_SUBDIR)
 
-    def _index(self):
-        with open(os.path.join(self.lib, "library.json"), encoding="utf-8") as handle:
+    def _master(self):
+        with open(os.path.join(self.lib, "DataBase.json"), encoding="utf-8") as handle:
             return json.load(handle)
 
     def test_it_creates_the_asset_folder(self):
@@ -39,88 +38,55 @@ class TheTestLibraryDoorMakesAWholeLibrary(unittest.TestCase):
                 os.path.isdir(os.path.join(self.lib, tail)),
                 "%s/ was not created, so the library is half made" % tail)
         self.assertFalse(os.path.exists(os.path.join(self.lib, "mat")),
-                         "a format 4 library was born with format 3's shared mat/")
+                         "a library was born with format 3's shared mat/")
 
-    def test_its_index_is_born_at_the_current_schema(self):
-        """A versionless index reads as legacy 1, and _MIGRATIONS has no step below 4 to climb."""
+    def test_it_is_born_at_this_amazes_version(self):
+        """A library with no version recorded reads as one to convert."""
         prefs_mod.seed_test_folder(self.folder)
-        index = self._index()
-        self.assertEqual(database.SCHEMA_VERSION, index.get("version"))
-        self.assertEqual(branding.LIBRARY_FORMAT, index.get("format"))
+        master = self._master()
+        self.assertEqual(library_policy.LIBRARY_VERSION,
+                         master["policy"]["library"]["version"])
+        self.assertEqual(branding.LIBRARY_FORMAT, master.get("format"))
 
     def test_it_still_adds_only_what_is_missing(self):
         """Existing files are never touched - the door's own promise, and a second run must keep it."""
         prefs_mod.seed_test_folder(self.folder)
-        with open(os.path.join(self.lib, "library.json"), "rb") as handle:
+        with open(os.path.join(self.lib, "DataBase.json"), "rb") as handle:
             before = handle.read()
         ok, _what = prefs_mod.seed_test_folder(self.folder)
-        with open(os.path.join(self.lib, "library.json"), "rb") as handle:
+        with open(os.path.join(self.lib, "DataBase.json"), "rb") as handle:
             self.assertTrue(ok)
-            self.assertEqual(before, handle.read(), "the index was rewritten")
+            self.assertEqual(before, handle.read(), "the library's database was rewritten")
 
 
-class TheStarterCarriesNoPhantomAsset(unittest.TestCase):
-    """A fresh library opens with no phantom blank record for every save to re-emit."""
-
-    def test_the_shipped_starter_seeds_no_assets(self):
-        """The starter `prepare()` seeds holds no asset; a guard under its own name."""
-        with open(amaze.package_file("res", "def", "library.json"),
-                  encoding="utf-8") as handle:
-            starter = json.load(handle)
-        self.assertEqual([], starter.get("assets"),
-                         "the starter still ships a placeholder asset")
-        self.assertNotIn("version", starter,
-                         "the starter now carries a literal version - a "
-                         "second source of truth that goes stale at the "
-                         "next bump")
-
-
-class TheShippedStarterDoorBirthsAStampedIndex(unittest.TestCase):
-    """`prepare()`'s door: the starter has no `version`, so it is stamped on the way in."""
+class EveryNewLibraryIsBornThroughOneDoor(unittest.TestCase):
+    """`create_library` writes the library's own database and nothing else."""
 
     def setUp(self):
         self.lib = tempfile.mkdtemp(prefix="amaze_fresh_starter_")
         self.addCleanup(shutil.rmtree, self.lib, ignore_errors=True)
 
-    def _born(self):
-        prefs_mod.seed_starter_index(self.lib)
-        with open(os.path.join(self.lib, "library.json"),
-                  encoding="utf-8") as handle:
-            return json.load(handle)
-
-    def test_it_keeps_everything_the_starter_ships(self):
-        """The stamp is added to the shipped defaults, never written instead of them."""
-        with open(amaze.package_file("res", "def", "library.json"),
-                  encoding="utf-8") as handle:
-            starter = json.load(handle)
-        born = self._born()
-        for key in starter:
-            self.assertEqual(starter[key], born.get(key),
-                             "the starter's '%s' did not survive the seed" % key)
-        self.assertEqual(database.SCHEMA_VERSION, born.get("version"))
-        self.assertEqual(branding.LIBRARY_FORMAT, born.get("format"))
+    def test_it_writes_only_the_librarys_database(self):
+        self.assertTrue(prefs_mod.create_library(self.lib))
+        self.assertEqual(["DataBase.json"],
+                         [name for name in os.listdir(self.lib) if name.endswith(".json")])
 
     def test_it_adds_only_what_is_missing(self):
-        """An index already in place is never rewritten - the seeding door's standing promise."""
-        self._born()
-        index = os.path.join(self.lib, "library.json")
-        with open(index, "rb") as handle:
+        prefs_mod.create_library(self.lib)
+        path = os.path.join(self.lib, "DataBase.json")
+        with open(path, "rb") as handle:
             before = handle.read()
-        prefs_mod.seed_starter_index(self.lib)
-        with open(index, "rb") as handle:
-            self.assertEqual(before, handle.read(), "the index was rewritten")
+        self.assertTrue(prefs_mod.create_library(self.lib))
+        with open(path, "rb") as handle:
+            self.assertEqual(before, handle.read(), "the library's database was rewritten")
 
-    def test_panel_load_seeds_through_this_door(self):
-        """Pinned from SOURCE: every opening seeds through prepare(); a bare shutil.copy goes red."""
+    def test_panel_load_creates_through_this_door(self):
+        """Pinned from SOURCE: every opening creates through prepare(); a bare copy goes red."""
         import inspect
         from amaze.actions import library as library_actions
         source = inspect.getsource(library_actions.prepare)
-        self.assertIn("seed_starter_index", source,
-                      "prepare() no longer seeds through the stamping "
-                      "door, so a fresh library is born unstamped again")
-        self.assertNotIn("shutil.copy", source,
-                         "prepare() copies the starter verbatim again - "
-                         "that copy is bug B")
+        self.assertIn("create_library", source)
+        self.assertNotIn("shutil.copy", source)
 
 
 class TheAssetWriterMakesItsFolderInsideTheLibraryOnly(unittest.TestCase):
@@ -180,67 +146,8 @@ class TheAssetWriterMakesItsFolderInsideTheLibraryOnly(unittest.TestCase):
         self.assertFalse(os.path.exists(target))
 
 
-class TheBuilderFieldDiesAtSchemaSeven(unittest.TestCase):
-    """The 6 -> 7 step strips `builder`, and the record class retires it, or `_extra` carries it back."""
-
-    FILENAME = "library.json"
-
-    def setUp(self):
-        self.dir = tempfile.mkdtemp(prefix="amaze_v7_")
-        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
-        self.path = os.path.join(self.dir, self.FILENAME)
-        test_support.reset_database_singletons()
-        self.addCleanup(test_support.reset_database_singletons)
-
-    def _write(self, data):
-        with open(self.path, "w", encoding="utf-8", newline="\n") as handle:
-            json.dump(data, handle, indent=4)
-
-    def _load(self):
-        db = database.DatabaseConnector(self.FILENAME)
-        return db, db.load(self.dir + os.sep)
-
-    def _v6_document(self):
-        return {
-            "version": 6, "categories": ["_All"], "tags": [],
-            "assets": [
-                {"id": "B0", "name": "one", "builder": 1,
-                 "renderer": "Karma", "usd": 1},
-                {"id": "B1", "name": "two", "builder": 0},
-            ],
-        }
-
-    def test_a_v6_document_climbs_to_seven_and_loses_builder(self):
-        """The literal 7 is the subject here, not a stray constant."""
-        self._write(self._v6_document())
-        _db, data = self._load()
-        self.assertEqual(database.SCHEMA_VERSION, data["version"],
-                         "premise: the chain reaches the current schema")
-        self.assertGreaterEqual(
-            data["version"], 7,
-            "SCHEMA_VERSION is still below 7 - the bump has not landed")
-        for row in data["assets"]:
-            self.assertNotIn("builder", row,
-                             "the dead field survived the step")
-        row = data["assets"][0]    # the rest is user data, which a migration never assumes away
-        self.assertEqual("one", row.get("name"))
-        self.assertEqual("Karma", row.get("renderer"))
-        self.assertEqual(1, row.get("usd"))
-
-    def test_a_v4_document_climbs_the_whole_chain(self):
-        """The real `code.json` is a schema-4 document, so the chain must still carry one all the way up."""
-        self._write({
-            "version": 4, "categories": ["_All"], "tags": [],
-            "assets": [{"id": "A0", "name": "old", "favorite": True,
-                        "icon": {"name": "box"}, "builder": 1}],
-        })
-        _db, data = self._load()
-        self.assertEqual(database.SCHEMA_VERSION, data["version"])
-        row = data["assets"][0]
-        for gone in ("favorite", "icon", "builder"):
-            self.assertNotIn(gone, row,
-                             "a retired field outlived its step")
-        self.assertEqual("old", row.get("name"))
+class TheBuilderFieldIsRetired(unittest.TestCase):
+    """The record class drops `builder`, or `_extra` carries it back into the database."""
 
     def test_the_record_class_retires_builder_everywhere(self):
         """`from_dict` -> `get_as_dict` must drop the key, or `_extra` rides it back on the next save."""
@@ -269,7 +176,7 @@ class EveryWayIntoAnEmptyFolderReadiesIt(unittest.TestCase):
             json.dump(data, handle)
 
     def _assert_ready(self):
-        for name in ("library.json", "img", "materials", "nodes"):
+        for name in ("DataBase.json", "img", "materials", "nodes"):
             self.assertTrue(os.path.exists(os.path.join(self.empty, name)),
                             "the empty folder was opened without its %s" % name)
 

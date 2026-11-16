@@ -1,11 +1,7 @@
 """What a setting is; reading and writing the document is `persistence.py`'s."""
 
 import os
-import json
 
-import amaze
-from amaze import branding
-from amaze.core import database
 from amaze.core import debug
 from amaze.core import library_files
 from amaze.core import renderers
@@ -51,22 +47,20 @@ def can_hold_a_library(folder: str) -> bool:
     return os.path.dirname(normal) != normal
 
 
-def write_fresh_index(path: str, document: dict) -> None:
-    """Write a library index born at the current schema. ▸p/library-creation-doors"""
-    born = dict(document)
-    born["version"] = database.SCHEMA_VERSION
-    born["format"] = branding.LIBRARY_FORMAT
-    hostos.write_json_atomic(path, born, indent=None)    # atomic: a kill mid-dump leaves no file and the door re-seeds
-
-
-def seed_starter_index(lib_dir: str) -> None:
-    """Seed `lib_dir` from the shipped starter unless an index exists. ▸p/library-creation-doors"""
-    index = os.path.join(lib_dir, "library.json")
-    if os.path.exists(index):
-        return
-    with open(amaze.package_file("res", "def", "library.json"),
-              encoding="utf-8") as handle:
-        write_fresh_index(index, json.load(handle))
+def create_library(lib_dir: str) -> bool:
+    """A new library: its `DataBase.json`, version in it; True once there. ▸p/library-creation-doors"""
+    from amaze.core import documents, guard, library_policy, library_settings
+    held = guard.Guard(lib_dir)
+    reading = held.read(library_files.MASTER)
+    if reading.verdict != guard.FRESH:
+        return reading.verdict == guard.FINE
+    version = {"version": library_policy.LIBRARY_VERSION, documents.BY: "",
+               documents.AT: held.stamp()}
+    change = held.change("")
+    change.put(reading.ticket, {library_settings.POLICY: {
+        library_settings.VERSION_ENTRY: version}})
+    change.commit()
+    return True
 
 
 def seed_test_folder(folder: str) -> tuple:
@@ -85,11 +79,9 @@ def seed_test_folder(folder: str) -> tuple:
             if not os.path.isdir(folder_path):
                 made.append(tail)
             os.makedirs(folder_path, exist_ok=True)
-        index = os.path.join(folder, TEST_LIB_SUBDIR, "library.json")
-        if not os.path.exists(index):
-            write_fresh_index(index, {"categories": ["_All"], "tags": [],
-                                      "assets": []})
-            made.append("library.json")
+        if not os.path.exists(os.path.join(path, library_files.MASTER)):
+            create_library(path)
+            made.append(library_files.MASTER)
     except OSError as exc:
         debug.event("prefs", "test folder could not be seeded",
                     folder=folder, error=str(exc))

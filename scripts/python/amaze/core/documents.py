@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import collections
+import contextlib
 import copy
 
 from amaze.core import debug, guard
@@ -228,6 +229,12 @@ class Document:
         self._touch()
         return True
 
+    def changed(self, section: str) -> list:
+        """The keys of a section held unlike the file as last read: what the next save writes."""
+        ours, base = self._data[section], self._base.get(section) or {}
+        return sorted(key for key in set(ours) | set(base)
+                      if not _same(ours.get(key, _GONE), base.get(key, _GONE)))
+
     def take_collisions(self) -> list:
         """Each field two users changed at once where ours was kept, handed over once."""
         found, self.collisions = self.collisions, []
@@ -261,22 +268,25 @@ class Document:
         if (self._ticket is not None and reading.ticket is not None
                 and reading.ticket.raw == self._ticket.raw):
             return False
-        if not reading.writable or (self._ticket is None and not self._dirty):
+        if not reading.writable:
             moved = (self.verdict, self.writable) != (reading.verdict, reading.writable)
-            if self._dirty:    # what is unsaved is kept until the file reads again
-                self.verdict, self.why, self._ticket = reading.verdict, reading.why, None
-            else:
+            if reading.verdict == guard.NEWER and not self._dirty:
                 self._adopt(reading)
+            else:    # what is held stays as it is while the file does not read
+                self.verdict, self.why, self._ticket = reading.verdict, reading.why, None
             return moved
+        if self._ticket is None and not self._dirty:
+            self._adopt(reading)
+            return True
         before = copy.deepcopy(self._data)
         self._merge(reading.document)
         self._ticket = reading.ticket
         self.verdict, self.why, self.shrunk = reading.verdict, reading.why, reading.shrunk
         return self._data != before
 
-    def save(self) -> Saved:
-        """Write what changed, folding in what another session saved since the read."""
-        if not self._dirty:
+    def save(self, also=None) -> Saved:
+        """Write what changed, folding in what another session saved; `also(change)` adds files."""
+        if not self._dirty and also is None:
             return Saved(True, UNCHANGED)
         if not self.writable:
             return Saved(False, self.verdict, self.why)
@@ -285,7 +295,10 @@ class Document:
             return Saved(False, NO_USER)
         for _attempt in range(SAVE_TRIES):
             change = self.guard.change(user)
-            change.put(self._ticket, self._whole())
+            if self._dirty:
+                change.put(self._ticket, self._whole())
+            if also is not None:
+                also(change)
             try:
                 tickets = change.commit()
             except guard.Moved:
@@ -317,13 +330,31 @@ class Library:
         self.guard = guard.Guard(library_dir, disk=disk, now=now)
         self._user = user
         self._defer = defer
+        self._held = 0
         self._open = {}
 
     def document(self, name: str) -> Document:
         """The one `Document` of a database in this library, read on first ask."""
         if name not in self._open:
-            self._open[name] = Document(self.guard, name, self._user, self._defer)
+            self._open[name] = Document(self.guard, name, self._user, self._deferred)
         return self._open[name]
+
+    def opened(self) -> dict:
+        """{name: Document} of every database read so far."""
+        return dict(self._open)
+
+    def _deferred(self, save) -> None:
+        if self._defer is not None and not self._held:
+            self._defer(save)
+
+    @contextlib.contextmanager
+    def holding(self):
+        """Changes made inside wait for the caller's own `save`, e.g. one with an asset's files."""
+        self._held += 1
+        try:
+            yield self
+        finally:
+            self._held -= 1
 
     def flush(self) -> dict:
         """Save every document holding a change now; {name: Saved} for each that had one."""

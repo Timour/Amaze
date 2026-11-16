@@ -475,13 +475,15 @@ class DeletingAUserDropsTheirBlock(PerUserCase):
         self.assertIn(keep, held)
 
     def test_a_user_put_back_and_picked_again_is_saved_again(self):
-        """A restored `users.json` can bring a deleted uid back; picking it keeps their view state."""
-        from amaze.core import users
+        """A restored `DataBase.json` can bring a deleted uid back; picking it keeps their view state."""
+        from amaze.core import library_db, users
         p, keep, gone = self._two_users_with_blocks()
         users.adopt(p, keep)
         self.assertTrue(users.delete(p, gone))
-        self.assertTrue(users._store(p).set(gone, {"name": "Sienna"}),
-                        "premise: the record is back in users.json")
+        held = library_db.document(p, "DataBase.json")
+        self.assertTrue(held.put(users.SECTION, gone, {"name": "Sienna"}),
+                        "premise: the record is back in DataBase.json")
+        library_db.flush(p)
         users.adopt(p, gone)
         p.view_mode = "list"
         p.save()
@@ -500,9 +502,25 @@ class EachBlockKnowsItsLibrary(PerUserCase):
 
     def setUp(self):
         super().setUp()
-        from amaze.core import keyed_store
-        keyed_store.release()
-        self.addCleanup(keyed_store.release)
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+
+    def _master_path(self, p):
+        return os.path.join(p.dir, "DataBase.json")
+
+    def _elsewhere(self, p, change):
+        """Another session changes the library's users on disk; this one has not read it since."""
+        test_support.settle_stamps()
+        with open(self._master_path(p), encoding="utf-8") as handle:
+            doc = json.load(handle)
+        change(doc.setdefault("users", {}))
+        with open(self._master_path(p), "w", encoding="utf-8") as handle:
+            json.dump(doc, handle)
+
+    def _unreadable_roster(self, p):
+        test_support.settle_stamps()
+        with open(self._master_path(p), "w", encoding="utf-8") as handle:
+            handle.write('{"users": {"')
 
     def _library(self):
         from amaze.core import users
@@ -540,14 +558,13 @@ class EachBlockKnowsItsLibrary(PerUserCase):
         self.assertEqual(self._key(p), self._blocks(p)[keep].get("library"))
 
     def test_a_user_deleted_elsewhere_loses_their_block_here(self):
-        """Another machine's delete reaches only `users.json`; this machine's next save follows it."""
+        """Another machine's delete reaches only `DataBase.json`; this machine's next save follows it."""
         from amaze.core import users
         p, keep = self._library()
         gone = users.create(p, "Sienna")
         users.adopt(p, gone)
         users.adopt(p, keep)
-        self.assertTrue(users._store(p).retire([gone]),
-                        "premise: the record left users.json")
+        self._elsewhere(p, lambda table: table.pop(gone))
         p.save()
         held = self._blocks(p)
         self.assertNotIn(gone, held,
@@ -571,15 +588,13 @@ class EachBlockKnowsItsLibrary(PerUserCase):
                          "an unclaimed block was pruned or claimed blind")
 
     def test_an_unreadable_roster_prunes_nothing(self):
-        from amaze.core import keyed_store, users
+        from amaze.core import users
         p, keep = self._library()
         gone = users.create(p, "Sienna")
         users.adopt(p, gone)
         users.adopt(p, keep)
-        with open(os.path.join(p.dir, "users.json"), "w",
-                  encoding="utf-8") as handle:
-            handle.write('{"users": {"')
-        keyed_store.release()
+        self._unreadable_roster(p)
+        test_support.reset_database_singletons()
         with test_support.captured_log():
             users.all_users(p)
             p.save()
@@ -587,12 +602,10 @@ class EachBlockKnowsItsLibrary(PerUserCase):
                       "a roster that would not read pruned a block")
 
     def test_an_empty_roster_prunes_nothing(self):
-        from amaze.core import keyed_store, users
+        from amaze.core import users
         p, keep = self._library()
-        with open(os.path.join(p.dir, "users.json"), "w",
-                  encoding="utf-8") as handle:
-            json.dump({"users": {}}, handle)
-        keyed_store.release()
+        self._elsewhere(p, lambda table: table.clear())
+        test_support.reset_database_singletons()
         users.all_users(p)
         p.save()
         self.assertIn(keep, self._blocks(p),
@@ -615,7 +628,7 @@ class EachBlockKnowsItsLibrary(PerUserCase):
         from amaze.core import users
         p, keep = self._library()
         other = users.create(p, "Sienna")
-        self.assertTrue(users._store(p).retire([keep]), "premise")
+        self._elsewhere(p, lambda table: table.pop(keep))
         p.save()
         self.assertIn(keep, self._blocks(p),
                       "the block of the user this machine is was pruned")
@@ -624,12 +637,8 @@ class EachBlockKnowsItsLibrary(PerUserCase):
 
     def test_a_user_another_houdini_added_keeps_their_block(self):
         """A roster read before another Houdini added a user is stale, never grounds to prune."""
-        from amaze.core import keyed_store, users
         p, keep = self._library()
-        elsewhere = keyed_store.Store(
-            users.SPEC, os.path.join(p.dir, users.USERS_FILE), p)
-        self.assertTrue(elsewhere.set(self.STRANGER, {"name": "Sienna"}),
-                        "premise: the other Houdini added a user")
+        self._elsewhere(p, lambda table: table.update({self.STRANGER: {"name": "Sienna"}}))
         library = self._key(p)
         self._rewrite(p, lambda blocks: blocks.update(
             {self.STRANGER: {"view_mode": "list", "library": library}}))
@@ -646,70 +655,35 @@ class EachBlockKnowsItsLibrary(PerUserCase):
         gone = users.create(p, "Sienna")
         users.adopt(p, gone)
         users.adopt(p, keep)
-        self.assertTrue(users._store(p).retire([gone]), "premise")
-        with open(os.path.join(p.dir, users.USERS_FILE), "w",
-                  encoding="utf-8") as handle:
-            handle.write('{"users": {"')
+        self._elsewhere(p, lambda table: table.pop(gone))
+        self._unreadable_roster(p)
         p.save()
         self.assertIn(gone, self._blocks(p),
                       "a roster a peer left unreadable pruned from its cache")
 
     def test_a_merge_keeps_the_field_a_save_did_not_know(self):
-        from amaze.core import keyed_store
         p, keep = self._library()
         second = self._reopened(p)
         second._users_blocks[keep].pop("library")
-        keyed_store.release()
         p.view_mode = "list"
         p.save()
         second.save()
         self.assertEqual(self._key(p), self._blocks(p)[keep].get("library"),
                          "a writer that did not carry the field erased it")
 
-    def _elsewhere(self):
-        """The other Houdini's own open tables, kept between its steps as a second process keeps them."""
-        from unittest import mock
-        from amaze.core import keyed_store
-        tables = self.__dict__.setdefault("_other_tables", {})
-        return mock.patch.object(keyed_store, "_open", tables)
-
-    def _two_houdinis(self):
+    def test_a_stale_houdini_saving_after_a_delete_leaves_the_block_out(self):
+        """Another Houdini deletes a user; this one, its roster read before that, saves."""
         from amaze.core import users
         p, keep = self._library()
         gone = users.create(p, "Sienna")
         users.adopt(p, gone)
         users.adopt(p, keep)
-        return p, keep, gone, self._reopened(p)
-
-    def test_a_stale_houdini_saving_after_a_delete_leaves_the_block_out(self):
-        """Another Houdini deletes a user; this one, its roster read before that, saves."""
-        from amaze.core import keyed_store, users
-        p, keep, gone, other = self._two_houdinis()
-        with self._elsewhere():
-            self.assertTrue(users.delete(other, gone), "premise: deleted there")
-        self.assertIn(gone, keyed_store.opened(users.SPEC, p).everyones(),
-                      "premise: this Houdini's roster is stale")
+        self._elsewhere(p, lambda table: table.pop(gone))
+        self.assertIn(gone, users.all_users(p), "premise: this Houdini's roster is stale")
         p.view_mode = "list"
         p.save()
         self.assertNotIn(gone, self._blocks(p),
                          "a stale Houdini wrote a deleted user's block back")
-        self.assertIn(keep, self._blocks(p))
-
-    def test_a_delete_that_merges_a_peers_save_leaves_the_block_out(self):
-        """This Houdini saved after the other read; the other's delete and both next saves merge."""
-        from amaze.core import users
-        p, keep, gone, other = self._two_houdinis()
-        p.view_mode = "list"
-        p.save()
-        with self._elsewhere():
-            self.assertTrue(users.delete(other, gone), "premise: deleted there")
-        self.assertNotIn(gone, self._blocks(p),
-                         "the delete's own save merged the block back in")
-        p.save()
-        with self._elsewhere():
-            other.save()
-        self.assertNotIn(gone, self._blocks(p),
-                         "two Houdinis saving in turn kept a deleted user's block")
         self.assertIn(keep, self._blocks(p))
 
     def test_a_merged_block_the_rules_spare_is_kept(self):

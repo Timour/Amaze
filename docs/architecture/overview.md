@@ -383,13 +383,36 @@ every route inflates the whole image before shrinking it.
 uniform result is a SUSPICION, not a verdict: try the next adapter, and
 deliver the uniform one if nothing does better.
 
-### 4c. The **Keyed Store Engine** {#o/keyed-store}
+### 4c. The **Database Engine**: guard, documents, library_db {#o/keyed-store}
 
-One guarded JSON side-table, keyed by a stable identity, for every
-store that keeps per-key choices beside the thing they belong to.
+Library format 2.0 (library version 4, `Format: v2.0`) keeps six
+databases at the library root, each a JSON document of named sections,
+every section a table keyed by id or key:
 
-- **File:** `core/keyed_store.py` · **Entry point:**
-  `open_store(spec, preferences) -> Store`
+| File | Sections |
+|---|---|
+| `DataBase.json` | `policy`, `settings` (shared settings), `users`, `manifest`, `marks` |
+| `materials.json`, `nodes.json`, `code.json`, `colors.json` | `assets`, `categories`, `comments`, `icons`, `stars` (per user) |
+| `files.json` | `locations` (per user), `paths`, `comments`, `icons`, `stars` (per user) |
+
+Beside them: `backup/` (every backup, named by database, date and time;
+the newest 3 and one a day for 30 days; an unreadable copy once per
+content) and `trash/` (one folder per day, each file under the path it
+had, removed after 30 days). `.amaze-journal` is there only while a
+change of several files is being applied.
+
+- **`core/guard.py`** is the one door to a library's files: a read
+  returns a ticket, a write must present it, and a change of several
+  files is applied through a journal.
+- **`core/documents.py`** holds each database as keyed sections and
+  merges two users' changes per entry and per field.
+- **`core/library_db.py`** keeps one `Library` per open library and
+  holds a save back for the panel's timer.
+- **`core/library_conversion.py`** is the only code that knows an older
+  library; it leaves `policy.json` so an older Amaze stays out.
+
+### The keyed side-tables before 2.0 (history)
+
 - **ONE FILE, ONE TABLE.** `open_store` caches per file, so every
   reader of a store shares one table and one stale-write baseline —
   and the cache identity is the CANONICAL path, because
@@ -1022,24 +1045,16 @@ is ADOPTED on load, so existing `<name>-<n>` stems still match their
 writer. What keeps two writers off one filename is not the name — it is
 stepping past a stem already on disk before writing.
 
-### `policy.json` — a per-library write policy, on disk only
+### The library's policy — `DataBase.json` ▸ `policy`
 
-One key today, `allow_overwrite`, default **true**. When false,
-`update_asset_content` (`actions/materials.py`) refuses to replace an existing asset's files, and
-the Save dialog stops offering Overwrite. It is checked in the verb every
-caller goes through, not beside one caller, because a UI-level check is a suggestion.
-
-Two things about it that are easy to get wrong:
-
-- **It is NOT a DatabaseConnector file.** No merge, no `.bak-*` tier, no
-  schema version — `core/library_policy.py` reads and writes it
-  directly. It is a policy, not a database.
-- **Preferences has a control for it** (`_cbx_allow_overwrite`, set
-  through `prefs_dialog.set_allow_overwrite`), and the value still
-  travels with the library on disk rather than with the machine - so
-  two machines pointed at one library agree about it. ROADMAP plans
-  renaming it to `Versions` with the opposite polarity and a
-  migration.
+`allow_overwrite`, default **true**. When false, `update_asset_content`
+(`actions/materials.py`) refuses to replace an existing asset's files,
+and the Save dialog stops offering Overwrite. It is checked in the verb
+every caller goes through. Preferences has a control for it
+(`_cbx_allow_overwrite`), and the value travels with the library, so
+two machines pointed at one library agree. A policy that does not read
+answers no (`library_settings.allow_overwrite`). `library` holds the
+library's version (4, shown as `v2.0`).
 
 ### Housekeeping semantics (settled 2026-07-31)
 
@@ -1047,15 +1062,12 @@ Behaviour the hardening campaign changed, stated here because these are
 contracts other code and the docs lean on:
 
 - **Check Library never deletes.** Missing-file rows are reported and
-  kept. Every move is into the holding folder, the machine-local
-  quarantine `config_root()/history/library-<library id>/quarantine/<date>/`,
-  keyed by the `library_id` in the library's `policy.json`
-  (`library_policy.library_id` mints it once, at open; a library with
-  no id yet is keyed by its path, and `hostos.history_root` renames that
-  path-keyed folder to the id-keyed one the first time it sees the id).
-  A day expires permanently after 30 days (`quarantine.QUARANTINE_DAYS`),
-  and every check expires it: `repair.survey` runs `prune_quarantine`
-  first. The window IS the guardrail.
+  kept. Every move is into the library's `trash/<date>/` through one
+  guarded change; a day expires after 30 days (`guard.TRASH_DAYS`), and
+  every check and every open expires it (`guard.expire_trash`). Its
+  judgement of the databases is `guard.health()`; every fix acts
+  through the guard: restore a backup, move to the trash, add orphaned
+  files back, rebuild a lost database from each asset's `<id>.json`.
 - **One engine, two doors.** `repair.survey` walks the library once
   (`library_files.walk`, one `os.scandir` per folder) and every report,
   button and count reads that one dict. The panel door
@@ -1073,24 +1085,15 @@ contracts other code and the docs lean on:
   duplicate that differs, or whose original is absent, is named and
   left. An unknown file or folder moves only by its own button and its
   own confirm.
-- **Favourites are per-user IN THE LIBRARY** (`favourites.json`,
-  `<uid>|<key>` — 2026-08-13): every section's star goes through the
-  one favourites door, so the same user sees the same stars on every
-  machine and two users of one library each see their own. The record's
-  `favorite` field is DEAD — schema 6 strips it — and
-  `material_favorites` in settings.json is a migration source only,
-  read and retired by `locations.migrate_asset_favourites`. A star
-  toggle writes the store, never a database.
-- **Snapshots**: one per file per half hour of active saving, plus a
-  daily gzipped history entry outside the synced tree; identical
-  content never spends a slot; a healthy file may replace a garbage
-  `.bak-first`.
-- **Shared metadata merges field-wise** (name/categories/tags/
-  description/license/about/icon/node_color): different fields from two
-  sessions both survive; same-field keeps the active editor's value and
-  records the collision.
-- **Every `DatabaseConnector.save()` leaves one log record** naming its
-  outcome; the library path rides as a digest, never raw.
+- **Stars are per user IN THE LIBRARY**: each section's database holds
+  `stars` {user: {id: true}}, `files.json` the File stars; a user writes
+  only their own (`locations.set_favourites`).
+- **Backups**: a new one at most every 30 minutes, from the bytes the
+  save already read, never of content that does not parse; the newest 3
+  and one a day for 30 days are kept.
+- **Shared entries merge per field**: different fields from two users
+  both survive; the same field keeps this session's value and the alert
+  names the other user.
 
 ### What a library directory may contain
 
@@ -1110,16 +1113,14 @@ reports them too (`--strict` exits non-zero, so it can gate).
 
 | entry | what it is |
 |---|---|
-| `library.json` `cops.json` `code.json` `gradients.json` | the four databases, all four through `DatabaseConnector` since 2026-08-09 — same shape, rows under `assets` keyed by `id`. Enumerated ONCE in `database.SECTION_DATABASES` (filename, panel label, section noun, in panel order); `database.DATABASES` and Check Library derive from it, and `library_files.LISTS` keeps a deliberate copy, held equal by a test, because the audit tool must run where Houdini will not start |
-| `users.json` | **who uses this library** — a `uuid4` UID per person with a `name` beside it. Everything a user owns is tagged with the UID, so a rename relinks one label and moves nothing. The name is an alias for the UID, never the key, and names are unique in a library. Nothing makes a user silently: a user is picked or created on Preferences ▸ Library and made on Apply, and a library opens at start only when this computer's pointer names one of its users. Created, renamed and DELETED from the Preferences User row (2026-08-22): a deletion sweeps everything tagged theirs through the engine's `retire_owner` — every user-tagged store, one guarded write each — then the record; a machine still signed in as them opens no library at its next start and asks to pick a user |
-| `notes.json` `icons.json` `locations.json` `favourites.json` `prefs.json` | the keyed side tables (per-asset comment pages; chosen tile icons; the File section's registered locations — per-user since ROADMAP line 22 stage C, `<uid>|<path>`, each user's own sidebar; every section's starred rows, `<uid>|<path-or-asset-id>`; the library's shared settings — one record per preference key, everyone's answer, ROADMAP line 22). Not DatabaseConnector documents, but written here and snapshotted here like the rest. A location record is `{registered, name, color, show_all, recursive}` keyed by path — `registered` is a FIELD, so the sidebar list is derived rather than kept beside it, and a location carrying no decoration is still visible. Path-shaped keys are stored PORTABLE (2026-08-06): `$AMAZE/...` under the install tree, `~/...` under home, absolute only past both — `hostos.storage_path_key` converts at the store boundary, every legacy spelling is absorbed on load (first in wins, logged), and the locations API answers canonical absolutes so scans and sidebars never see the variable form |
-| `location_paths.json` | the location-identity table: one row per registered folder, its id → its current path |
-| `policy.json` | per-library write policy, and the `library_id` the holding folder and the daily history follow |
-| `<file>.json.bak-1/-2/-3/-first` | **the restore tier** — written by `snapshot_before_write`, read by Check Library, recovered by `restore.put_back`. Every file above that is snapshotted has one, not only the four databases |
-| `<file>.json.bak-before-restore-<stamp>` | the undo copy each restore mints, bounded at `restore.KEEP_UNDO_COPIES`; the copy Check Library's own undo sentence points at |
-| `<file>.json.unreadable` | a file that would not parse, preserved instead of overwritten |
-| `.amaze_gradient_seed_v1` `.amaze_code_starter_v1` | seed markers that the curated content was offered here once; the `.assetlib_` spellings of both are the older markers |
-| `materials/` `nodes/` | **each asset section's own folder** (library format 4), named once in `library_files.SECTION_FOLDERS` beside the section's database: `library.json`'s rows own `materials/`, `cops.json`'s own `nodes/`. Every path to an asset file is built from (section database, id) by `material.payload_path` |
+| `DataBase.json` | the library's own database: `policy` (`library` version, `allow_overwrite`), `settings` (the shared settings, one `{value}` per key), `users` (a `uuid4` UID per person with a `name`; names unique; nobody made silently), `manifest` (the databases this library has, so a lost one is known lost), `marks` (the starters offered here once) |
+| `materials.json` `nodes.json` `code.json` `colors.json` | each section's database: `assets` {id: row}, `categories` {name: {order, color}}, `comments` {id: {items}}, every item with its `id` and `author`, `icons` {id: face}, `stars` {user: {id: true}}. Named once in `library_files` (`LISTS`, `LABELS`, `NOUNS`) and declared in `guard.DATABASES` |
+| `files.json` | the Files section: `locations` {user: {`loc:<id>`: record}}, `paths` {id: {path}}, the one place a location's path is stored, and `comments`, `icons`, `stars` keyed `loc:<id>/<relative>` |
+| `backup/` | every backup: `<database>.<date>_<time>.bak`, the newest 3 and one a day for 30 days; `.before-restore.bak`, the undo copy a restore keeps; `.unreadable-<hash>`, one copy of a database that would not read |
+| `trash/<date>/…` | what a delete or Check Library moved, under its library path, removed after 30 days |
+| `.amaze-journal` | there only while a change of several files is applied; finished at the next open |
+| `policy.json` | after a conversion only: the fence `{"library_version": 4}` an older Amaze reads, which leaves the library closed. Nothing in this Amaze reads it |
+| `materials/` `nodes/` | **each asset section's own folder** (library format 4), named once in `library_files.SECTION_FOLDERS` beside the section's database: `materials.json`'s rows own `materials/`, `nodes.json`'s own `nodes/`. Every path to an asset file is built from (section database, id) by `material.payload_path` |
 | `materials/<id>.mat` | the asset's nodes |
 | `materials/<id>.json` | everything else about the asset, through `core/asset_record.py` alone: `metadata` (the row as its database holds it - what a lost database is rebuilt from, an unlisted asset added back by, and the rows a put-back brings up to date) and `builder` (the container's type, its interface as a dialog script, and its changed values - read, never executed). Two writers share it, the save and the background metadata writer, so each replaces only its own section, under one lock |
 | `materials/<id>_cop.mat` | a material's companion COP network |
@@ -1133,10 +1134,8 @@ reports them too (`--strict` exits non-zero, so it can gate).
 | `img/<id>.png` `img/<id>_icon.png` `captures/<id>.png` | format 3's pictures. The conversion keeps the one each tile showed as `<section>/<id>.png` and removes the rest |
 | `matX/<package>/…` | MaterialX packages and their textures; Check Library does not enter it, the audit tool reports scratch there only |
 
-**The `.bak-*` files are not clutter.** They are how a damaged library
-gets back, every shipping library has them, and a library without them
-has no way home from a bad write. A cleanup that removes them removes
-the recovery, which is the opposite of tidy.
+**`backup/` is not clutter.** It is how a damaged database gets back;
+a cleanup that removes it removes the recovery.
 
 **Nothing temporary belongs here.** A surviving `.writing`,
 `.capturing`, `.lock` or `.tmp` is always ours and always means a save

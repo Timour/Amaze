@@ -9,6 +9,7 @@ import importlib
 import contextlib
 import functools
 import sys
+import types
 
 from PySide6 import QtWidgets, QtGui, QtCore
 import hou
@@ -21,7 +22,7 @@ from amaze.actions import nodes as node_actions
 from amaze.core import grid_columns, grid_engine
 from amaze.panel import (dragdrop_widgets, empty_state, grid, notes_panel,
                          sections, sidebar)
-from amaze.core import debug, keyed_store, locations, section_list
+from amaze.core import debug, documents, library_db, library_files, locations, section_list
 from amaze.core import versions
 from amaze.core import notes
 from amaze.core import captures, scene_captures
@@ -50,7 +51,7 @@ from amaze import tooltips
 from amaze.prefs import prefs
 from amaze.helpers import helpers, hostos, theme, ui_helpers, wording
 from amaze.utils import rc_calls
-from amaze.core import database, renderers, tile_icons, users
+from amaze.core import renderers, tile_icons, users
 from amaze.render import cop_nodes, husk_job, nodes
 from amaze.panel import online_import, package_import
 from amaze.panel import drop_placement, tile_capture
@@ -64,14 +65,23 @@ def _reload(module):
         importlib.reload(module)
 
 
+def _saves_released(schedule, *_destroyed) -> None:
+    """A closed panel's timer goes, and every change still waiting is saved now."""
+    library_db.drop_scheduler(schedule)
+    library_db.flush()
+
+
 def _reload_loaded(name):
     """`_reload` for a module imported where it is used, so only once something has loaded it."""
     if _DEV_RELOAD and name in sys.modules:
         importlib.reload(sys.modules[name])
 
 
-_reload(keyed_store)    # first: eleven modules read their stores through it
-_reload(locations)      # right after the engine it binds two stores into - and the switch door calls locations.forget()
+_reload_loaded("amaze.core.guard")    # first: every database is read and written through it
+_reload(library_files)
+_reload(documents)
+_reload(library_db)    # keeps its open databases across the reload
+_reload(locations)      # the switch door calls locations.forget()
 _reload(hostos)    # before library: the models import the shared thumbnail engine
 _reload(wording)    # before library, nodes and sections, which name things through it
 _reload(debug)
@@ -80,8 +90,7 @@ _reload_loaded("amaze.core.dragengine")
 _reload_loaded("amaze.core.lop_assign")
 _reload_loaded("amaze.core.workers")    # before the engines that stop their threads through it
 _reload(thumbnails)
-_reload(database)
-_reload_loaded("amaze.core.library_policy")    # before library, which gates overwriting on it
+_reload_loaded("amaze.core.library_settings")    # before library, which gates overwriting on it
 _reload(versions)
 _reload(notes)
 _reload(users)    # before versions and the dialogs showing a user: both resolve a UID through it
@@ -106,7 +115,7 @@ _reload(category)
 _reload_loaded("amaze.core.repair")
 _reload(folders)
 _reload(prefs)
-_reload(library_actions)    # after captures, database and prefs, which its steps call
+_reload(library_actions)    # after captures and prefs, which its steps call
 _reload(messages)      # the wording every dialog shows ▸p/messages-need-one-home
 _reload(tooltips)      # every hover text; before the dialogs, delegates and models that read it
 _reload(amazetheme)    # before theme and ui_helpers, whose class bodies read it ▸p/one-design-document
@@ -361,7 +370,24 @@ class AmazePanel(QtWidgets.QWidget):
         proxy.hide_empty = self.prefs.hide_empty_categories
         return proxy
 
+    def _hold_saves(self) -> None:
+        """This panel's save timer: a burst of changes is one save, written when it fires or at close."""
+        if getattr(self, "_save_timer", None) is not None:
+            return
+        timer = self._save_timer = QtCore.QTimer(self)    # owned, so it dies with the panel ▸r/model-parent
+        timer.setSingleShot(True)
+        timer.setInterval(documents.SAVE_DELAY_MS)
+        timer.timeout.connect(library_db.flush)
+        schedule = timer.start
+        library_db.set_scheduler(schedule)
+        self.destroyed.connect(functools.partial(_saves_released, schedule))
+        app = QtCore.QCoreApplication.instance()
+        if app is not None and not getattr(app, "_amaze_flush_at_quit", False):
+            app.aboutToQuit.connect(library_db.flush)
+            app._amaze_flush_at_quit = True
+
     def setup(self):
+        self._hold_saves()
         for attr, model in model_registry.models_for(self.prefs).items():
             setattr(self, attr, model)    # shared with every panel on this library; the proxies below are this panel's
         files_actions.connect(self.file_files_model, self.file_folders_model,
@@ -539,6 +565,9 @@ class AmazePanel(QtWidgets.QWidget):
 
     def open_library(self, needs_user: bool = False) -> bool:
         """Every way onto a library, in one order; False when it stays closed."""
+        refused = library_actions.index_unopenable(self.prefs.dir)
+        if refused:    # first: every later step reads the library's database
+            return self._stay_closed(refused)
         if self._library_too_new():
             return self._stay_closed()    # the update is offered once Qt is idle
         if (library_actions.index_unreadable(self.prefs.dir)
@@ -565,8 +594,7 @@ class AmazePanel(QtWidgets.QWidget):
     def _converted(self, folder: str) -> bool:
         """A format 3 library converted whole, told first and shown as it goes; headless, never."""
         from amaze.core import library_conversion, library_policy
-        if (not folder or not library_actions.index_present(folder)
-                or not library_conversion.needs_conversion(folder)):
+        if not folder or not library_conversion.needs_conversion(folder):
             return True    # no library here, or nothing to convert: the open goes on as before
         ui = getattr(hou, "ui", None)
         if ui is None:    # a script or a test converts by calling the converter, not by opening
@@ -590,7 +618,9 @@ class AmazePanel(QtWidgets.QWidget):
                     held[0].updateProgress(float(done) / max(total, 1))
                 except hou.OperationInterrupted:    # the button is Houdini's own: a press is ignored
                     pass
-            outcome = library_conversion.convert(folder, confirm, progress)
+            outcome = library_conversion.convert(
+                folder, confirm, progress, user=self.prefs.library_user,
+                machine_stars=library_conversion.machine_stars(self.prefs))
         if outcome.status == library_conversion.BLOCKED:
             ui.displayMessage(messages.CONVERT_LIBRARY_BLOCKED % outcome.why,
                               severity=hou.severityType.Warning, title=messages.TITLE_AMAZE)
@@ -599,23 +629,37 @@ class AmazePanel(QtWidgets.QWidget):
             return False    # nothing touched; the question comes again at the next open
         if outcome.status != library_conversion.DONE:
             return True
-        if not outcome.set_aside:
+        left = outcome.set_aside
+        if not left:
             ui.displayMessage(messages.CONVERT_LIBRARY_DONE, severity=hou.severityType.Message,
                               title=messages.TITLE_AMAZE)
-            return True
-        left = outcome.set_aside
-        counted = wording.and_list([
-            "%d %s" % (count, database.section_noun(section, count))
-            for section, count in ((section, sum(1 for one in left if one.section == section))
-                                   for section in database.ASSET_FILE_OWNERS) if count])
-        choice = ui.displayMessage(
-            messages.CONVERT_LIBRARY_DONE_SOME_LEFT % counted,
-            details="\n".join(one.name for one in left),    # every name, one a line
-            buttons=messages.BUTTONS_UNCONVERTED, default_choice=0, close_choice=0,
-            severity=hou.severityType.Warning, title=messages.TITLE_AMAZE)
-        if choice == 1:    # Move to Trash: the user's own choice, so through the trash
-            library_conversion.trash_set_aside(folder, left)
+        else:
+            counted = wording.and_list([
+                "%d %s" % (count, library_files.section_noun(section, count))
+                for section, count in ((section, sum(1 for one in left if one.section == section))
+                                       for section in library_files.ASSET_SECTIONS) if count])
+            choice = ui.displayMessage(
+                messages.CONVERT_LIBRARY_DONE_SOME_LEFT % counted,
+                details="\n".join(one.name for one in left),    # every name, one a line
+                buttons=messages.BUTTONS_UNCONVERTED, default_choice=0, close_choice=0,
+                severity=hou.severityType.Warning, title=messages.TITLE_AMAZE)
+            if choice == 1:    # Move to Trash: the user's own choice, so through the trash
+                library_conversion.trash_set_aside(folder, left)
+        self._offer_old_trash(ui, outcome.old_trash)
         return True
+
+    def _offer_old_trash(self, ui, held: str) -> None:
+        """This computer's old trash for the library, deleted or left at the user's word, once."""
+        from amaze.core import library_conversion
+        if not held:
+            return
+        files, size = library_conversion.old_trash_size(held)
+        choice = ui.displayMessage(
+            messages.OLD_TRASH_QUESTION % (files, library_conversion.size_text(size)),
+            buttons=messages.BUTTONS_OLD_TRASH, default_choice=1, close_choice=1,
+            severity=hou.severityType.Message, title=messages.TITLE_AMAZE)
+        if choice == 0:
+            library_conversion.delete_old_trash(held)
 
     def _open_models(self) -> str:
         """The models' step of `open_library`: "" once they serve `prefs.dir`, else why not."""
@@ -633,6 +677,9 @@ class AmazePanel(QtWidgets.QWidget):
     def _stay_closed(self, why: str = "") -> bool:
         """False; an open library is kept, its Library Path and Test Library put back, `why` said."""
         switching = getattr(self, "material_model", None) is not None
+        if library_db.key_of(self.prefs) != library_db.key_of(
+                types.SimpleNamespace(dir=getattr(self, "_models_dir", ""))):
+            library_db.release(self.prefs)    # read while deciding, never opened: not held
         if switching:
             real, test_mode, test_dir = self._models_pointers
             self.prefs.test_dir = test_dir
@@ -665,12 +712,14 @@ class AmazePanel(QtWidgets.QWidget):
         pane = getattr(self, "notes_panel", None)
         if pane is not None:
             pane.clear_subject()    # a pending edit goes to its own library; the switch selects nothing
-        locations.forget()    # drops every cached store table and re-arms the migration retries
+        library_db.flush()    # what waits to be saved goes to the library it was made in
+        library_db.refresh()    # a switch reads every database as it is on disk now
+        locations.forget()
         models = self.library_models()
         if not models:
             return
         self.prefs.load()    # the switch's one read of the settings; every model takes this Prefs
-        with ui_helpers.relayout(*models), database.one_read_per_file():    # grid and sidebar share one read
+        with ui_helpers.relayout(*models):
             for m in models:
                 m.preferences = self.prefs    # a shared model may hold another panel's ▸p/one-model-set
                 m.switch_model_data()
@@ -719,14 +768,15 @@ class AmazePanel(QtWidgets.QWidget):
 
     def _offer_amaze_update(self) -> None:
         """Update Amaze or Cancel, for the library left closed; headless, nothing is asked."""
-        from amaze.core import library_policy, updater
+        from amaze.core import library_settings, updater
         from amaze.dialogs import update_dialog
         ui = getattr(hou, "ui", None)
         if ui is None:
             return
         library_dir = str(self.prefs.dir or "")
         if ui.displayMessage(
-                messages.LIBRARY_NEEDS_NEWER_AMAZE % library_policy.library_version(library_dir),
+                messages.LIBRARY_NEEDS_NEWER_AMAZE % library_settings.version_label(
+                    library_settings.library_version(library_dir)),
                 buttons=messages.BUTTONS_UPDATE_AMAZE, default_choice=0, close_choice=1,
                 severity=hou.severityType.Warning, title=messages.TITLE_AMAZE) != 0:
             return
@@ -1938,6 +1988,7 @@ class AmazePanel(QtWidgets.QWidget):
                               title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
             return
         from amaze.dialogs import repair_dialog
+        library_db.flush()    # Check Library reads the databases as they are on disk
         repair_dialog.check_in_panel(self)
 
     def stand_again(self) -> None:
@@ -2436,7 +2487,7 @@ class AmazePanel(QtWidgets.QWidget):
         self, code: str, language: str, default_name: str
     ) -> None:
         """New Snippet and a node's code: the code dialog, prefilled; each Apply saves the snippet."""
-        from amaze.core import library_policy
+        from amaze.core import library_settings
         from amaze.dialogs import code_dialog
         if not self.code_model:
             ui = getattr(hou, "ui", None)
@@ -2452,7 +2503,7 @@ class AmazePanel(QtWidgets.QWidget):
             language=language or "VEX",
             category=self._current_code_category(),
             code=code,
-            versions_on=library_policy.allow_overwrite(self.prefs.dir),    # Preferences ▸ Versions
+            versions_on=library_settings.allow_overwrite(self.prefs),    # Preferences ▸ Versions
             parent=self,
         )
         self.sections["code"].run_code_dialog(dialog, "")    # the first Apply adds the snippet
@@ -3216,7 +3267,7 @@ class AmazePanel(QtWidgets.QWidget):
 
     def save_asset(self) -> None:
         """Save the selected nodes; ones already in the library raise one save-over/new/cancel choice."""
-        from amaze.core import library_policy
+        from amaze.core import library_settings
         ui = getattr(hou, "ui", None)
         sel = hou.selectedNodes()
         debug.event("save", "save_asset entry", selected=len(sel))
@@ -3252,8 +3303,8 @@ class AmazePanel(QtWidgets.QWidget):
                 message = messages.MATERIAL_ALREADY_IN_LIBRARY % name
             else:
                 message = messages.MATERIALS_ALREADY_IN_LIBRARY % (len(existing), len(sel))
-            may_overwrite = library_policy.allow_overwrite(
-                self.material_model.preferences.dir)    # the library decides; the UI calls it Material Versions
+            may_overwrite = library_settings.allow_overwrite(
+                self.material_model.preferences)    # the library decides; the UI calls it Material Versions
             if may_overwrite:
                 buttons = messages.BUTTONS_SAVE_VERSION_OR_NEW
                 cancel_at, overwrite_at = 2, 0

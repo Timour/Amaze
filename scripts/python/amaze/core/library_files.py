@@ -3,34 +3,36 @@
 import os
 import re
 
-LISTS = ("library.json", "cops.json", "code.json", "gradients.json")    # `database.SECTION_DATABASES`, held equal by a test
-SIDE_TABLES = ("notes.json", "icons.json", "locations.json",    # `keyed_store.filenames()`, held equal by a test
-               "location_paths.json", "favourites.json", "users.json",
-               "prefs.json")
-POLICY = "policy.json"
-ROOT_FILES = LISTS + SIDE_TABLES + (POLICY,)
+MASTER = "DataBase.json"    # policy, shared settings, users, the manifest, the starter marks
+MATERIALS = "materials.json"
+NODES = "nodes.json"
+CODE = "code.json"
+COLORS = "colors.json"
+FILES = "files.json"
+LISTS = (MATERIALS, NODES, CODE, COLORS)    # the sections whose rows are assets
+DATABASES = (MASTER,) + LISTS + (FILES,)    # `guard.DATABASES`, held equal by a test
+ROOT_FILES = DATABASES
+JOURNAL = ".amaze-journal"    # `guard.JOURNAL`: there only while a change is being applied
+BACKUP_FOLDER = "backup"    # `guard.BACKUP_DIR`
+TRASH_FOLDER = "trash"    # `guard.TRASH_DIR`, one folder per day
 
-MARKERS = (".amaze_gradient_seed_v1", ".amaze_code_starter_v1",    # "the starters were offered here once"
-           ".assetlib_gradient_seed_v1", ".assetlib_code_starter_v1")
-
-TIERS = ("bak-1", "bak-2", "bak-3", "bak-first")    # `restore.TIERS`, held equal by a test
-UNDO_TIER = "bak-before-restore"
-
-MATERIALS = "library.json"
-NODES = "cops.json"
 SECTION_FOLDERS = {    # THE table: a section's database, and the folder for what its rows own
     MATERIALS: "materials",
     NODES: "nodes",
-    "code.json": "code",
-    "gradients.json": "colors",
+    CODE: "code",
+    COLORS: "colors",
 }
-ASSET_SECTIONS = (MATERIALS, NODES)    # whose rows own asset files: `database.ASSET_FILE_OWNERS`
+LABELS = {MASTER: "Library", MATERIALS: "Materials", NODES: "Nodes", CODE: "Code",
+          COLORS: "Colors", FILES: "Files"}    # what the user reads for each database
+NOUNS = {MASTER: "user", MATERIALS: "material", NODES: "node", CODE: "snippet",
+         COLORS: "color", FILES: "location"}    # what one counted entry is called
+ASSET_SECTIONS = (MATERIALS, NODES)    # whose rows own asset files
 ORPHAN_SECTION = MATERIALS    # where a file no database names goes, and is reported from
 
 VERSIONS = "versions"    # a section folder's one sub-folder; its top holds the asset files
 RENDER_FOLDER = "img"    # `img/comments/`, which no section owns
 CAPTURE_FOLDER = "captures"    # `captures/file_<hex>.png`, the Files section's
-CODE_FOLDER = SECTION_FOLDERS["code.json"]
+CODE_FOLDER = SECTION_FOLDERS[CODE]
 PACKAGE_FOLDER = "matX"    # a permanent store: the check does not enter it, the audit looks for scratch only
 COMMENT_FOLDER = "comments"    # `img/comments/`, the pictures pasted into comments; `notes.IMAGE_DIR`
 IMPORT_FOLDER = "import"    # where Package Import writes plain files: a File location, its contents the user's
@@ -53,12 +55,8 @@ OS_NOISE = (".DS_Store", "Thumbs.db", "desktop.ini", ".Spotlight-V100",    # the
             ".fseventsd", ".TemporaryItems")
 
 LIST = "list"    # the kinds that belong in a library
-SIDE_TABLE = "side-table"
-POLICY_FILE = "policy"
-MARKER = "marker"
-BACKUP = "backup"            # `<file>.bak-1` .. `.bak-first`
-UNDO = "undo"                # `<file>.bak-before-restore-<stamp>`
-PRESERVED = "preserved"      # `<file>.unreadable[.n]`
+JOURNAL_FILE = "journal"
+BACKUP = "backup"            # anything in `backup/`
 ASSET = "asset"              # `materials/<id>.mat`
 RECORD = "record"            # `materials/<id>.json`
 COMPANION = "companion"
@@ -77,18 +75,26 @@ OS_NOISE_KIND = "os-noise"
 UNREADABLE = "unreadable"    # a folder `walk` could not list; its detail is the error
 SUPERSEDED = "superseded"    # what the format 4 conversion left behind; `library_conversion` names it
 
-KNOWN = frozenset((LIST, SIDE_TABLE, POLICY_FILE, MARKER, BACKUP, UNDO, PRESERVED,
-                   ASSET, RECORD, COMPANION, RENDER, FILE_CAPTURE, COMMENT_IMAGE,
-                   VERSION, VERSION_LEDGER, PACKAGE, FOLDER))
-COPIES = frozenset((BACKUP, UNDO, PRESERVED))    # a duplicate of one of these is swept whatever its bytes
+KNOWN = frozenset((LIST, JOURNAL_FILE, BACKUP, ASSET, RECORD, COMPANION, RENDER, FILE_CAPTURE,
+                   COMMENT_IMAGE, VERSION, VERSION_LEDGER, PACKAGE, FOLDER))
+COPIES = frozenset((BACKUP,))    # a duplicate of one of these is swept whatever its bytes
 OUT_OF_PLACE = frozenset((SCRATCH, PRE_ADOPT_COPY, DUPLICATE, UNKNOWN))    # `walk` stats these, and only these
 
-_UNDO = re.compile(r"^%s-\d{8}-\d{6}(-\d+)?$" % re.escape(UNDO_TIER))
-_PRESERVED = re.compile(r"^unreadable(\.\d+)?$")
 _STEM = re.compile(r"^(?:[^\W_]+-)?\d+$")    # a version stem: `<writer>-<n>` or `<n>`, the writer alphanumeric
 _FILE_CAPTURE = re.compile(r"^file_[0-9a-f]{40}\.png$")
 _COMMENT_IMAGE = re.compile(r"^[0-9a-f]{32}\.\w+$")
 _COPY_NUMBER = re.compile(r" \d+(?=\.|$)")
+
+
+def section_label(database: str) -> str:
+    """What the user reads for a database, like `Nodes`; the name itself for one unknown."""
+    return LABELS.get(database, database)
+
+
+def section_noun(database: str, count: int = 2) -> str:
+    """What one of its entries is called, singular or plural by `count`: `material`, `nodes`."""
+    noun = NOUNS.get(database, "saved thing")
+    return noun if count == 1 else noun + "s"
 
 
 def section_of_folder(name: str) -> str:
@@ -125,31 +131,18 @@ def is_os_noise(name: str) -> bool:
     return name in OS_NOISE or name.startswith("._")
 
 
-def _copy_kind(name: str, bases: tuple):
-    """(kind, base) for a backup tier, undo copy or preserved copy of one of `bases`, else None."""
-    for base in bases:
-        if not name.startswith(base + "."):
-            continue
-        rest = name[len(base) + 1:]
-        if rest in TIERS:
-            return BACKUP, base
-        if _UNDO.match(rest):
-            return UNDO, base
-        if _PRESERVED.match(rest):
-            return PRESERVED, base
+def _root(name: str):
+    if name in DATABASES:
+        return LIST, name
+    if name == JOURNAL:
+        return JOURNAL_FILE, name
     return None
 
 
-def _root(name: str):
-    if name in LISTS:
-        return LIST, name
-    if name in SIDE_TABLES:
-        return SIDE_TABLE, name
-    if name == POLICY:
-        return POLICY_FILE, name
-    if name in MARKERS:
-        return MARKER, name
-    return _copy_kind(name, ROOT_FILES)
+def _backup(name: str):
+    """(BACKUP, the database it copies) for a file in `backup/`; None for one of no database."""
+    base = next((one for one in DATABASES if name.startswith(one + ".")), "")
+    return (BACKUP, base) if base else None
 
 
 def _asset_folder(name: str):
@@ -175,9 +168,6 @@ def _picture(name: str):
 def _version_folder(name: str, suffixes: tuple):
     if name == LEDGER:
         return VERSION_LEDGER, name
-    copy = _copy_kind(name, (LEDGER,))
-    if copy:
-        return copy
     for suffix in suffixes:
         if name.endswith(suffix) and _STEM.match(name[: -len(suffix)]):
             return VERSION, name[: -len(suffix)]
@@ -190,8 +180,9 @@ def _folder(parts: list) -> bool:
     top = parts[0]
     if depth == 1:
         return top in tuple(SECTION_FOLDERS.values()) + (
-            RENDER_FOLDER, CAPTURE_FOLDER, PACKAGE_FOLDER, IMPORT_FOLDER)
-    if top == PACKAGE_FOLDER:
+            RENDER_FOLDER, CAPTURE_FOLDER, PACKAGE_FOLDER, IMPORT_FOLDER, BACKUP_FOLDER,
+            TRASH_FOLDER)
+    if top in (PACKAGE_FOLDER, TRASH_FOLDER):
         return True
     if parts == [RENDER_FOLDER, COMMENT_FOLDER]:
         return True
@@ -206,6 +197,8 @@ def _plain(parts: list):
     if depth == 1:
         return _root(name)
     top = parts[0]
+    if depth == 2 and top == BACKUP_FOLDER:
+        return _backup(name)
     if depth == 2 and owns_assets(top):
         return _asset_folder(name)
     if depth == 2 and section_of_folder(top):    # Code and Colors own a captured picture at most
@@ -240,7 +233,7 @@ def classify(relative: str, is_dir: bool = False) -> tuple:
         return OS_NOISE_KIND, ""
     if is_scratch(name):
         return SCRATCH, ""
-    if parts[0] in (PACKAGE_FOLDER, IMPORT_FOLDER) and len(parts) > 1:
+    if parts[0] in (PACKAGE_FOLDER, IMPORT_FOLDER, TRASH_FOLDER) and len(parts) > 1:
         return (FOLDER if is_dir else PACKAGE), ""
     if is_dir:
         return (FOLDER, "") if _folder(parts) else (UNKNOWN, "folder")
@@ -273,7 +266,9 @@ def walk(library_dir: str, packages: bool = False):
                 is_dir = False
             kind, detail = classify(join(here), is_dir)
             if is_dir and kind == FOLDER:
-                if here[0] != PACKAGE_FOLDER or packages:
+                if here[0] == TRASH_FOLDER:
+                    pass    # the trash is the guard's: counted by it, never entered here
+                elif here[0] != PACKAGE_FOLDER or packages:
                     pending.append(here)
                 yield join(here), kind, detail, None
                 continue

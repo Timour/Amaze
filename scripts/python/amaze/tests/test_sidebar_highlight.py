@@ -15,7 +15,7 @@ _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 import hou  # noqa: E402
 
-from amaze.core import category, database, file_moves, matx_sources, model_registry  # noqa: E402
+from amaze.core import category, file_moves, matx_sources, model_registry  # noqa: E402
 from amaze.helpers import ui_helpers  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
@@ -194,12 +194,11 @@ class _AssetSidebarPaths(_HighlightCase):
         path = os.path.join(self.panel.prefs.dir, categories.DB_FILENAME)
         with open(path, encoding="utf-8-sig") as handle:
             document = json.load(handle)
-        document["categories"].append(name)
+        document.setdefault("categories", {})[name] = {"order": len(document["categories"])}
         with open(path, "w", encoding="utf-8") as handle:
             json.dump(document, handle, indent=4)
-        db = database.DatabaseConnector(categories.DB_FILENAME)
-        self.assertTrue(db.refresh(), "premise: the merge did not read the other machine's write")
-        model_registry.apply_merged(db)
+        self.assertTrue(model_registry.refresh_all(self.panel.prefs),
+                        "premise: the merge did not read the other machine's write")
 
     def test_every_path_leaves_the_highlight_on_the_grids_row(self):
         panel, section = self.panel, self.panel.active_section()

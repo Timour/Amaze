@@ -13,17 +13,16 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])    # ▸p/first-app-picks-the-platform
 
 
-def _document(panel, filename="library.json"):
+def _document(panel, filename="materials.json"):
     """The section database as it is ON DISK right now, read without the app."""
     with open(os.path.join(panel.prefs.dir, filename),
               encoding="utf-8-sig") as handle:
         return json.load(handle)
 
 
-def _rows(panel, filename="library.json"):
-    """Disk rows by id as a string; the fixture carries an int id, `Material.mat_id` a str."""
-    return {str(row.get("id")): row
-            for row in _document(panel, filename)["assets"]}
+def _rows(panel, filename="materials.json"):
+    """Disk rows by id as a string, `Material.mat_id`'s spelling."""
+    return {str(key): row for key, row in _document(panel, filename)["assets"].items()}
 
 
 def _second_panel(testcase):
@@ -86,12 +85,8 @@ class TwoPanelsShareOneLibraryTest(unittest.TestCase):
         """One model per library, so there is no second saver to spend it."""
         index, model = self._named_asset(self.a)
         target = model._assets[index.row()].mat_id
-        from amaze.core import database
-
-        connector = database.DatabaseConnector(model.DB_FILENAME)
-        connector.forget(target)
-        self.assertIn(target, connector._forgotten,
-                      "premise: the mark was not made")
+        model._unlist_row(index.row())
+        self.assertIn(str(target), model._forgotten, "premise: the mark was not made")
 
         self.assertTrue(self.b.material_model.save(),
                         "the other panel's save was refused")

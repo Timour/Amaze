@@ -132,7 +132,7 @@ class _Library(unittest.TestCase):
 class StoppedAtEveryStepTest(unittest.TestCase):
     """Each operation, stopped at each step in turn: the library reopens all old or all new."""
 
-    OPERATIONS = ("one_database", "a_new_database", "many_files", "a_restore")
+    OPERATIONS = ("one_database", "a_new_database", "many_files", "a_restore", "a_taken_file")
 
     def one_database(self, g):
         reading = g.read(MATERIALS)
@@ -156,6 +156,14 @@ class StoppedAtEveryStepTest(unittest.TestCase):
 
     def a_restore(self, g):
         g.restore(MATERIALS, g.backups(MATERIALS)[0][0])
+
+    def a_taken_file(self, g):
+        written = put(g.dir, "materials/A009.mat.houdini" + guard.SCRATCH, b"nodes Houdini wrote")
+        change = g.change("u1")
+        change.put(g.read(MATERIALS).ticket, assets(7, "saved"))
+        change.take("materials/A009.mat", written)
+        change.put_file("materials/A009.json", b'{"metadata": {"name": "saved 6"}}')
+        change.commit()
 
     def library(self) -> str:
         folder = tempfile.mkdtemp(prefix="amaze_guard_stop_")
@@ -452,6 +460,55 @@ class TrashTest(_Library):
         self.clock.forward(days=2)
         self.assertEqual(1, self.guard.expire_trash())
         self.assertEqual([], os.listdir(self.at(guard.TRASH_DIR)))
+
+    def test_a_folder_goes_whole_and_the_trash_counts_what_it_holds(self):
+        put(self.dir, "materials/versions/A001/1.mat", b"first")
+        put(self.dir, "materials/versions/A001/versions.json", b"{}")
+        self.trash("materials/versions/A001")
+        self.assertFalse(os.path.exists(self.at("materials", "versions", "A001")))
+        held = self.guard.trash_held()
+        self.assertEqual(2, held["files"])
+        self.assertEqual([("2026-11-16", "2026-12-17", 2, 7)], held["days"])
+
+
+class TakenFileTest(_Library):
+    """A file Houdini already wrote lands with the rest of a change, or not at all."""
+
+    def test_a_scratch_inside_the_library_is_moved_into_place(self):
+        written = put(self.dir, "materials/A007.mat.h" + guard.SCRATCH, b"from Houdini")
+        change = self.guard.change("u1")
+        change.put(self.guard.read(MATERIALS).ticket, assets(8))
+        change.take("materials/A007.mat", written)
+        change.commit()
+        self.assertEqual(b"from Houdini", open(self.at("materials", "A007.mat"), "rb").read())
+        self.assertFalse(os.path.exists(written))
+
+    def test_a_file_outside_the_library_is_copied_in_and_left_alone(self):
+        outside = tempfile.mkdtemp(prefix="amaze_guard_out_")
+        self.addCleanup(shutil.rmtree, outside, True)
+        written = put(outside, "A007.mat", b"from a temp folder")
+        change = self.guard.change("u1")
+        change.take("materials/A007.mat", written)
+        change.commit()
+        self.assertEqual(b"from a temp folder",
+                         open(self.at("materials", "A007.mat"), "rb").read())
+        self.assertTrue(os.path.exists(written))
+
+    def test_a_moved_database_takes_no_file_either(self):
+        written = put(self.dir, "materials/A007.mat.h" + guard.SCRATCH, b"from Houdini")
+        reading = self.guard.read(MATERIALS)
+        put(self.dir, MATERIALS, assets(9, "peer"))
+        change = self.guard.change("u1")
+        change.put(reading.ticket, assets(8))
+        change.take("materials/A007.mat", written)
+        with self.assertRaises(guard.Moved):
+            change.commit()
+        self.assertFalse(os.path.exists(self.at("materials", "A007.mat")))
+        self.assertTrue(os.path.exists(written), "kept for the merge and the second try")
+
+    def test_a_database_is_never_taken_as_a_file(self):
+        with self.assertRaises(guard.Refused):
+            self.guard.change("u1").take(MATERIALS, self.at("materials", "A001.mat"))
 
 
 class HealthTest(_Library):

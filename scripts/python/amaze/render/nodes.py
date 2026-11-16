@@ -666,15 +666,25 @@ class NodeHandler:
                 raise hou.OperationFailed(
                     "the material file was not written (%s)" % mat_path
                 )
+            staged = []    # (target, a file written whole) and (record, its sections): one unit
             pending = getattr(self, "_pending_cop_promote", None)
             if pending:
-                hostos.promote_scratch(pending[0], pending[1])
+                staged.append((asset_record.TAKE, pending[1], pending[0]))
                 self._pending_cop_promote = None
+            staged.append((asset_record.TAKE, mat_path, tmp_mat))
             if record_path:    # read-replace-write: the metadata beside it is kept
-                asset_record.write_section(record_path, asset_record.BUILDER, builder)
-            hostos.promote_scratch(tmp_mat, mat_path)
+                staged.append((asset_record.RECORD, record_path, {asset_record.BUILDER: builder}))
+            if getattr(self, "staging", None) is not None:
+                self.staging.extend(staged)    # the caller lands them with the row
+            elif preferences is not None:
+                asset_record.land(preferences, staged)
+            else:
+                for kind, target, held in staged:
+                    hostos.promote_scratch(held, target)
+            tmp_mat = ""
         finally:
-            hostos.discard_scratch(tmp_mat)
+            if tmp_mat:
+                hostos.discard_scratch(tmp_mat)
             self._discard_pending_cop_promote()
 
     def after_save_thumbnail(self, update: bool, label: str, asset_id,
@@ -712,6 +722,7 @@ class NodeHandler:
 
     def __init__(self, preferences: prefs.Prefs) -> None:
         self._preferences = preferences
+        self.staging = None    # a list: an asset's files wait there for the caller to land with its row
         self.supplied_thumbnail = ""    # a picture an import brought, saved instead of a render
         self.render_after_save = True    # False: a new save skips its render, a batch follows
         self._builder_node = None

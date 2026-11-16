@@ -6,7 +6,8 @@ import shutil
 import zipfile
 
 from amaze import branding, messages
-from amaze.core import asset_record, database, debug, library_conversion, material, notes, texstore
+from amaze.core import asset_record, debug, library_conversion, library_files, material, notes
+from amaze.core import texstore
 from amaze.helpers import hostos, wording
 
 FORMAT = 4    # the newest this build reads; 4: add-on rows (groups, Add-On tab icons), core/addons.py
@@ -25,6 +26,13 @@ class PackageError(Exception):
 
 
 def collect_asset(model, mat_id) -> dict:
+    """One asset's row, comments, files and builder, as an export packs them; saves wait first."""
+    from amaze.core import library_db
+    library_db.flush(model.preferences)    # its `<id>.json` holds every change made before the export
+    return _collected(model, mat_id)
+
+
+def _collected(model, mat_id) -> dict:
     """One exportable entry for a library asset: its record, its existing files, textures and note."""
     mat_id = str(mat_id)
     asset = next((a for a in model.assets
@@ -50,7 +58,7 @@ def collect_asset(model, mat_id) -> dict:
     page = notes.note_for(model.preferences,
                           notes.note_key(model.NOTES_SECTION, mat_id))
     builder = (asset_record.saved_builder(model.preferences, mat_id, model.DB_FILENAME)
-               if model.DB_FILENAME in database.ASSET_FILE_OWNERS else {})
+               if model.DB_FILENAME in library_files.ASSET_SECTIONS else {})
     return {"type": "asset", "section": model.NOTES_SECTION,
             "id": mat_id, "record": record,
             "note": page, "sources": sources, "textures": textures, "builder": builder}
@@ -396,7 +404,7 @@ def _small_member(bundle, member) -> bytes:
 
 def _land_builder(model, mat_id, held: dict) -> None:
     """The builder a package carries into `<id>.json`; an old shape is read by the converter."""
-    if not held or model.DB_FILENAME not in database.ASSET_FILE_OWNERS:
+    if not held or model.DB_FILENAME not in library_files.ASSET_SECTIONS:
         return
     builder = library_conversion.builder_from_members(held)
     if builder:
