@@ -423,7 +423,16 @@ class ALegacyRedshiftMaterialGoesIntoSolaris(unittest.TestCase):
         cls.prefs = test_support.fixture_prefs(cls)
         cls.model = library_mod.MaterialLibrary(preferences=cls.prefs)
         cls.parent = hou.node("/mat") or hou.node("/").createNode("mat")
-        legacy = cls.parent.createNode("redshift_vopnet")
+        legacy = cls._legacy()
+        held = test_support.asset_ids(cls.model)
+        material_actions.add_asset(cls.model, legacy, "Test", "", False, name="legacy_rs")
+        cls.row = cls.model.find_asset_row_by_id(
+            test_support.arrived(cls.model, held)[0].mat_id)
+        legacy.destroy()
+
+    def _legacy(self):
+        """A classic container: the classic output fed by a shader and a bump, a texture behind."""
+        legacy = self.parent.createNode("redshift_vopnet")
         for child in list(legacy.children()):
             if child.type().name() != "redshift_material":
                 child.destroy()
@@ -436,11 +445,7 @@ class ALegacyRedshiftMaterialGoesIntoSolaris(unittest.TestCase):
         bump = legacy.createNode("redshift::BumpMap", "bump")
         classic.setNamedInput("Surface", shader, 0)
         classic.setNamedInput("Bump Map", bump, 0)
-        held = test_support.asset_ids(cls.model)
-        material_actions.add_asset(cls.model, legacy, "Test", "", False, name="legacy_rs")
-        cls.row = cls.model.find_asset_row_by_id(
-            test_support.arrived(cls.model, held)[0].mat_id)
-        legacy.destroy()
+        return legacy
 
     def _imported(self):
         stage = hou.node("/stage")
@@ -461,10 +466,10 @@ class ALegacyRedshiftMaterialGoesIntoSolaris(unittest.TestCase):
 
     def test_it_lands_in_a_lop_library_as_the_usd_container(self):
         handler = nodes.NodeHandler(self.prefs)
-        self.assertEqual("redshift_vopnet",
+        self.assertEqual("rs_usd_material_builder",
                          material_files.get_saved_node_type(
                              self.prefs, self.model.assets[self.row], library_files.MATERIALS),
-                         "the saved files no longer say the classic container")
+                         "a classic container was saved as it is, not as the USD builder")
         self.assertEqual({"mat", "lop"},
                          handler.import_targets(self.model.assets[self.row]))
         node = self._imported()
@@ -487,7 +492,17 @@ class ALegacyRedshiftMaterialGoesIntoSolaris(unittest.TestCase):
     def test_the_library_conversion_rewrites_its_files_as_the_usd_container(self):
         from amaze.core import renderers
         from amaze.render import classic_rebuild
+        from amaze.core import asset_record, material
         asset = self.model.assets[self.row]
+        legacy = self._legacy()    # an older library's files: the classic container's own items
+        legacy.saveItemsToFile(legacy.allItems(), material.payload_path(
+            self.prefs, asset.mat_id, self.prefs.ext, library_files.MATERIALS))
+        asset_record.write_section(
+            asset_record.path_for(self.prefs, asset.mat_id, library_files.MATERIALS),
+            asset_record.BUILDER, nodes.capture_builder(legacy))
+        legacy.destroy()
+        self.assertEqual("redshift_vopnet", material_files.get_saved_node_type(
+            self.prefs, asset, library_files.MATERIALS), "premise: a classic container on disk")
         rebuilder = classic_rebuild.Rebuilder(self.prefs, lambda _count, _renderer: True)
         self.assertTrue(rebuilder.loaded(renderers.REDSHIFT))
         before = {n.path() for n in hou.node("/obj").children()}

@@ -597,9 +597,21 @@ class TheBoxesTest(_OldLibrary):
         with mock.patch.object(panel_mod, "hou", fake):
             answer = panel_mod.AmazePanel.ensure_library_user(types.SimpleNamespace(
                 prefs=self.prefs, set_library=lambda: opened.append(True)))
-        self.assertEqual(("", []), (answer, shown),
+        self.assertEqual(("", [], []), (answer, shown, opened),
                          "a library left unconverted was asked about its user")
+        holder = types.SimpleNamespace(prefs=self.prefs, open_library=lambda needs_user: False,
+                                       set_library=lambda: opened.append(True))
+        with mock.patch.object(panel_mod, "hou", fake):
+            self.assertFalse(panel_mod.AmazePanel._open_at_start(holder))
         self.assertEqual([True], opened, "Preferences, where Apply converts it, did not open")
+
+    def test_the_conversion_is_never_asked_inside_the_pane_s_build(self):
+        import inspect
+        from amaze.panel import panel as panel_mod
+        build = inspect.getsource(panel_mod.AmazePanel._build)
+        self.assertIn("library_conversion.needs_conversion(self.prefs.dir)", build)
+        self.assertLess(build.index("needs_conversion"), build.index("_defer_open_library()"),
+                        "a library to convert is opened inside the build, where its box holds the pane")
 
     def test_preferences_lists_the_older_library_s_users_and_nothing_is_written_to_it(self):
         from amaze.core import library_settings

@@ -252,12 +252,12 @@ class OctanesOwnBuilderRoundTrips(unittest.TestCase):
                    for o in UsdShade.Material(prim).GetOutputs()]
         self.assertIn("outputs:Octane:surface", outputs)
 
-    def test_the_classic_container_keeps_its_shape(self):
-        """`octane_vopnet` still saves its contents and rebuilds by type in /mat."""
+    def test_the_classic_container_is_saved_as_the_solaris_builder(self):
+        """`octane_vopnet` is rebuilt while saving; the library holds the Solaris builder alone."""
         asset = self._saved(self.mat.createNode("octane_vopnet"))
-        self.assertEqual("octane_vopnet", material_files.get_saved_node_type(self.prefs, asset, library_files.MATERIALS))
-        self.assertEqual("octane_vopnet", self._imported(asset).type().name())
-        self.assertEqual("Octane:Standard Surface", self.model.renderer_label(asset))
+        self.assertEqual(renderers.OCTANE.usd_builder, material_files.get_saved_node_type(
+            self.prefs, asset, library_files.MATERIALS))
+        self.assertEqual(renderers.OCTANE.usd_builder, self._imported(asset).type().name())
 
     def test_the_classic_container_is_rebuilt_on_its_way_into_solaris(self):
         """Copy To /stage: the classic one becomes the Solaris builder, its shader kept."""

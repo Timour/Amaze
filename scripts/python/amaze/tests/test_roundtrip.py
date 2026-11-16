@@ -202,13 +202,13 @@ class TestRoundTrip(unittest.TestCase):
 
         created = [c for c in mat_ctx.children() if c.path() not in before]  # by PATH: hou.Node wrappers are not identity-stable
         loose = [c for c in created
-                 if c.type().name() != "redshift_vopnet"]
+                 if c.type().name() != "rs_usd_material_builder"]    # a classic one is saved as it
         self.assertEqual(
             [], [c.name() for c in loose],
             "the import dumped loose VOPs into /mat instead of "
             "rebuilding a material")
         builders = [c for c in created
-                    if c.type().name() == "redshift_vopnet"]
+                    if c.type().name() == "rs_usd_material_builder"]
         self.assertEqual(1, len(builders), "expected exactly one builder")
         self.assertTrue(
             builders[0].children(),

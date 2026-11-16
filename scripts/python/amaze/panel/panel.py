@@ -232,9 +232,11 @@ class AmazePanel(QtWidgets.QWidget):
         hostos.set_cache_override(self.prefs.cache_dir)    # set before any cache is touched
         if loaded:
             self.init_ui()
+            from amaze.core import library_conversion
             if (library_actions.index_unreadable(self.prefs.dir)
-                    or library_actions.list_not_arrived(self.prefs.dir)):
-                self._defer_open_library()
+                    or library_actions.list_not_arrived(self.prefs.dir)
+                    or library_conversion.needs_conversion(self.prefs.dir)):
+                self._defer_open_library()    # a question asked inside the build holds the pane
                 opened = False    # the pane opens without a library; what it says follows
             else:
                 opened = self._open_at_start()
@@ -274,7 +276,12 @@ class AmazePanel(QtWidgets.QWidget):
 
     def _open_at_start(self) -> bool:
         """Open the library only with this computer's user picked; `ensure_library_user` asks."""
-        return self.open_library(needs_user=True)
+        from amaze.core import library_conversion
+        opened = self.open_library(needs_user=True)
+        if not opened and getattr(hou, "ui", None) is not None \
+                and library_conversion.needs_conversion(self.prefs.dir):
+            self.set_library()    # left unconverted: Preferences, where Apply converts it
+        return opened
 
     def serves(self, folder: str) -> bool:
         """Whether the models are open on `folder`."""
@@ -905,9 +912,7 @@ class AmazePanel(QtWidgets.QWidget):
         preferences = self.prefs
         from amaze.core import library_conversion
         if library_conversion.needs_conversion(preferences.dir):
-            if getattr(hou, "ui", None) is not None:
-                self.set_library()    # left unconverted: Preferences, where Apply converts it
-            return ""
+            return ""    # its conversion is asked by the deferred open, and its users read after it
         uid = users.current(preferences)
         if uid or not library_actions.index_present(preferences.dir):
             return uid or ""    # no library to ask about: the pane's own blank says where to set one

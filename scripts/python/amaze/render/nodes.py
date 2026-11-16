@@ -802,9 +802,6 @@ class NodeHandler:
             return {"mat"}
         if saved_as_own_builder(found, saved_type):    # lives in both, as Karma's does
             return {"mat", "lop"}
-        if found.usd_builder and node_type_available(
-                found.usd_builder):    # a classic container is rebuilt as it in a LOP library
-            return {"mat", "lop"}
         return {"mat"}
 
     def _payload_or_refusal(self, mat, section=MATERIALS) -> tuple:
@@ -1149,7 +1146,7 @@ class NodeHandler:
         if saved_as_own_builder(found, saved_type):
             self.load_own_builder(mat)
         else:
-            self.load_interface_other(mat, found.classic_container, saved_type)
+            self.load_interface_other(mat, found.usd_builder, saved_type)
             self.load_items_file(mat)
         return (True, "")
 
@@ -1206,9 +1203,6 @@ class NodeHandler:
         texstore.resolve_parms(    # the whole container, before it moves
             self._builder_node, self._preferences, helpers.houdini_path)
 
-        if self._import_path.type().name() == "materiallibrary":    # a classic container is rebuilt
-            from amaze.render.material_conversion import engine    # late: its APIs import this module
-            self._builder_node = engine.ready_for_solaris(self._builder_node, mat.renderer)
         new_mat = hou.moveNodesTo((self._builder_node,), self._import_path)  # type: ignore
         if not new_mat:
             raise hou.OperationFailed(
@@ -1792,6 +1786,11 @@ class NodeHandler:
         try:    # all after the create, so the copy is always removed
             root = (copy_network(sources, staging) if loose
                     else hou.copyNodesTo((node,), staging)[0])  # type: ignore
+            if kind == renderer.classic_container:    # saved as the USD builder; the scene node stays
+                from amaze.render.material_conversion import engine    # late: its APIs import this module
+                root = engine.ready_for_solaris(root, renderer.key)
+                if root.type().name() != renderer.usd_builder:
+                    raise hou.OperationFailed("it could not be rebuilt as %s" % renderer.usd_builder)
             if path_map:
                 self.rewrite_cop_refs((root,), path_map)
             self.texture_inventory = texstore.adopt(    # on the copy: the scene node stays untouched
