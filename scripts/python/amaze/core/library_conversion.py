@@ -273,6 +273,12 @@ def _old_databases_left(library_dir: str) -> list:
     return left
 
 
+def holds_old_databases(library_dir: str) -> bool:
+    """Whether an older library's root files are here: one look at the folder, for every save."""
+    return bool(library_dir) and os.path.isdir(library_dir) and bool(
+        _old_databases_left(library_dir))
+
+
 def needs_conversion(library_dir: str) -> bool:
     """Whether anything older than 2.0 is left: an old database, or a format 3 file."""
     library_dir = str(library_dir or "")
@@ -283,6 +289,16 @@ def needs_conversion(library_dir: str) -> bool:
     if _converted_databases(library_dir):
         return False    # what a finished run left, set aside or claimed twice, is Check Library's
     return bool(_plan_ids(library_dir) or _old_version_folders(library_dir))
+
+
+def old_users(library_dir: str) -> dict:
+    """`{uid: name}` of an older library, for picking who converts it."""
+    try:
+        table = _old_table(str(library_dir or ""), "users.json")
+    except (OSError, ValueError):
+        return {}
+    return {str(uid): str(record["name"]).strip() for uid, record in table.items()
+            if isinstance(record, dict) and str(record.get("name") or "").strip()}
 
 
 def old_version(library_dir: str) -> int:
@@ -475,8 +491,12 @@ def _convert_one(library_dir: str, asset_id: str, section: str, rows: dict,
                          counts), old_files
     if shown and not filecmp.cmp(shown, picture, shallow=False):
         return _kept(asset_id, "the picture did not read back byte for byte", counts), old_files
-    counts["deleted"] += _remove(list(old.values()) + [source for source, _t, _n in moves]
-                                 + pictures)
+    for path in list(old.values()) + [source for source, _t, _n in moves] + pictures:
+        try:    # the new files are proven: an old one that will not go is a leftover, never a failure
+            counts["deleted"] += _remove([path])
+        except OSError as exc:
+            counts["left"] += 1
+            debug.event("convert", "an old file could not be deleted", path=path, error=str(exc))
     counts["converted"] += 1
     return True, []
 
@@ -493,9 +513,12 @@ def _classics(library_dir: str, rows: dict) -> dict:
         old = {suffix: next((path for path in (os.path.join(folder, asset_id + suffix)
                                                for folder in folders) if os.path.lexists(path)), "")
                for suffix in (BUILDER, INTERFACE)}
-        builder = asset_record.read(asset_record.path_for(
-            _Prefs(library_dir), asset_id, library_files.MATERIALS))[asset_record.BUILDER] \
-            or _old_builder(old[BUILDER], old[INTERFACE])
+        try:
+            builder = asset_record.read(asset_record.path_for(
+                _Prefs(library_dir), asset_id, library_files.MATERIALS))[asset_record.BUILDER] \
+                or _old_builder(old[BUILDER], old[INTERFACE])
+        except (OSError, ValueError, hostos.PathEscape):
+            continue    # an id that names no file here: its own turn sets it aside
         renderer = CLASSIC.get(builder.get("type", ""))
         if renderer is not None:
             found[asset_id] = renderer
@@ -693,7 +716,8 @@ def convert(directory: str, confirm, progress=None, user: str = "",
     faces = _stored_faces(library_dir)
     counts = {"converted": 0, "deleted": 0, "kept": 0, "left": 0}
     set_aside = []
-    units = [("asset", asset_id) for asset_id in sorted(_plan_ids(library_dir))] + [
+    units = [("asset", asset_id)    # a classic one an interrupted run left converted is rebuilt now
+             for asset_id in sorted(_plan_ids(library_dir) | set(classics))] + [
         ("versions", folder) for folder in _old_version_folders(library_dir)]
     for done, (kind, item) in enumerate(units):
         if progress is not None:    # shown only: a conversion is not stopped partway by choice
@@ -721,7 +745,8 @@ def convert(directory: str, confirm, progress=None, user: str = "",
             continue
         row = rows.get(owner, {}).get(item)
         if item in doomed:
-            doomed[item] = SetAside(item, owner, row, _old_files(library_dir, item, owner))
+            doomed[item] = SetAside(item, owner, row, sorted(set(
+                _old_files(library_dir, item, owner) + _new_files(library_dir, item, owner))))
             continue
         ok, old_files = _convert_asset(library_dir, item, owner, rows, faces, counts)
         if ok and item in classics:
@@ -738,8 +763,14 @@ def convert(directory: str, confirm, progress=None, user: str = "",
                  for section in library_files.ASSET_SECTIONS] + [
                      os.path.join(library_dir, library_files.CODE_FOLDER, library_files.VERSIONS)]:
         for asset_id in _listing(root):
-            _rename_versions(os.path.join(root, asset_id))
-    counts["deleted"] += _remove_old_backups(os.path.join(library_dir, OLD_FOLDER))
+            try:
+                _rename_versions(os.path.join(root, asset_id))
+            except (OSError, ValueError) as exc:    # a held file: Check Library names what stays
+                _kept(asset_id, "its version files were not renamed: %s" % exc, counts)
+    try:
+        counts["deleted"] += _remove_old_backups(os.path.join(library_dir, OLD_FOLDER))
+    except OSError as exc:
+        debug.event("convert", "an old backup could not be deleted", error=str(exc))
     for folder in (os.path.join(library_dir, OLD_FOLDER, library_files.VERSIONS),
                    os.path.join(library_dir, OLD_FOLDER),
                    os.path.join(library_dir, OLD_CAPTURES)):

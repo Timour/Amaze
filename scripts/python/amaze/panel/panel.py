@@ -580,6 +580,9 @@ class AmazePanel(QtWidgets.QWidget):
         if ui is None:    # a script or a test converts by calling the converter, not by opening
             debug.event("session", "library not opened - it needs converting", dir=folder)
             return False
+        if not self.prefs.library_user:    # the one converting owns what was saved before users
+            debug.event("session", "library not converted - no user picked", dir=folder)
+            return False
 
         def confirm():
             return ui.displayMessage(
@@ -612,6 +615,7 @@ class AmazePanel(QtWidgets.QWidget):
                 machine_stars=library_conversion.machine_stars(self.prefs),
                 show_unknown=self.prefs.file_show_unknown,
                 classic=classic_rebuild.Rebuilder(self.prefs, trash_classic))
+        library_db.release(self.prefs)    # what was read of it before is not what it holds now
         if outcome.status == library_conversion.BLOCKED:
             ui.displayMessage(messages.CONVERT_LIBRARY_BLOCKED % outcome.why,
                               severity=hou.severityType.Warning, title=messages.TITLE_AMAZE)
@@ -899,6 +903,11 @@ class AmazePanel(QtWidgets.QWidget):
     def ensure_library_user(self) -> str:
         """After the first paint: this computer's user, or the question that opens Preferences on Library."""
         preferences = self.prefs
+        from amaze.core import library_conversion
+        if library_conversion.needs_conversion(preferences.dir):
+            if getattr(hou, "ui", None) is not None:
+                self.set_library()    # left unconverted: Preferences, where Apply converts it
+            return ""
         uid = users.current(preferences)
         if uid or not library_actions.index_present(preferences.dir):
             return uid or ""    # no library to ask about: the pane's own blank says where to set one

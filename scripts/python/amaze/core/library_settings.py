@@ -109,6 +109,9 @@ def set_value(preferences, key: str, value) -> bool:
 
 def takes_writes(preferences) -> bool:
     """May a shared setting be kept now? When False, keep the local copy and retry later."""
+    from amaze.core import library_conversion
+    if library_conversion.holds_old_databases(str(getattr(preferences, "dir", "") or "")):
+        return False    # an older library is written by its conversion and by nothing before it
     return library_db.accepts(preferences, library_files.MASTER)
 
 

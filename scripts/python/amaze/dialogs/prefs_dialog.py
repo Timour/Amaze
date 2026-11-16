@@ -299,6 +299,9 @@ class PrefsDialog(base_dialog.AssetDialog):
         """`{uid: name}` in `folder`; nobody in a folder out of reach."""
         if not folder or not os.path.isdir(folder):
             return {}
+        from amaze.core import library_conversion
+        if library_conversion.needs_conversion(folder):    # Apply converts it, as this user
+            return library_conversion.old_users(folder)
         return users.all_users(self._prefs, library=folder)
 
     def _preselected(self, known: dict, folder: str) -> str:

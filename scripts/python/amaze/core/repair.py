@@ -28,7 +28,7 @@ RECOVERED_CATEGORY = "Recovered"
 RECOVERED_NAME = "Recovered"    # followed by its id: an asset whose metadata cannot be read
 
 _STATE = {guard.CORRUPT: "unreadable", guard.MISSING: "absent-but-known", guard.NEWER: "newer",
-          guard.FRESH: "absent"}
+          guard.FRESH: "absent", guard.HELD: "held"}
 
 
 class RestoreRefused(Exception):

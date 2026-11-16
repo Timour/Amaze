@@ -587,6 +587,34 @@ class TheBoxesTest(_OldLibrary):
             opened = panel_mod.AmazePanel._converted(holder, self.dir)
         return opened, shown
 
+    def test_a_cancelled_conversion_asks_nothing_about_the_user(self):
+        from amaze.panel import panel as panel_mod
+        self.database("library.json", ["MAT1"])
+        self.old_asset("MAT1")
+        shown, opened = [], []
+        fake = types.SimpleNamespace(ui=types.SimpleNamespace(
+            displayMessage=lambda text, **kwargs: shown.append(text) or 1))
+        with mock.patch.object(panel_mod, "hou", fake):
+            answer = panel_mod.AmazePanel.ensure_library_user(types.SimpleNamespace(
+                prefs=self.prefs, set_library=lambda: opened.append(True)))
+        self.assertEqual(("", []), (answer, shown),
+                         "a library left unconverted was asked about its user")
+        self.assertEqual([True], opened, "Preferences, where Apply converts it, did not open")
+
+    def test_preferences_lists_the_older_library_s_users_and_nothing_is_written_to_it(self):
+        from amaze.core import library_settings
+        write(self.at("users.json"), {"users": {test_support.FIXTURE_USER: {"name": "Anna"}}})
+        self.database("library.json", ["MAT1"])
+        self.old_asset("MAT1")
+        self.assertEqual({test_support.FIXTURE_USER: "Anna"},
+                         library_conversion.old_users(self.dir))
+        before = listing(self.dir)
+        self.assertFalse(library_settings.takes_writes(self.prefs))
+        self.prefs.rendersize = 512
+        self.prefs.save()
+        self.assertEqual(before, listing(self.dir),
+                         "a save wrote into a library that is not converted yet")
+
     def test_the_assets_set_aside_are_named_and_move_to_trash_takes_them(self):
         self.database("library.json", ["GOOD1", "BAD1"], BAD1="Broken Brick")
         self.old_asset("GOOD1")

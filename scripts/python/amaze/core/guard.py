@@ -173,7 +173,7 @@ class Guard:
         self.disk = disk or Disk()
         self._now = now or datetime.datetime.now
         self._lock = threading.RLock()
-        self.recover()
+        self._quietly(self.recover)    # a change still waiting on a file reads as HELD, never raises here
 
     def stamp(self) -> str:
         """Now, as the text every date the guard and the documents write is spelled in."""
@@ -471,7 +471,9 @@ class Change:
     def commit(self) -> dict:
         """Apply the change; {name: Ticket} for each database written. `Moved`: read and redo."""
         guard, disk = self.guard, self.guard.disk
-        with guard._lock, hostos.file_lock(guard.path(JOURNAL)):
+        with guard._lock, hostos.file_lock(guard.path(JOURNAL)) as locked:
+            if not locked:    # another session here is mid-change: nothing is written beside it
+                raise OSError("another Amaze session on this computer is writing to the library")
             guard._finish_journal()
             steps, tickets, written = [], {}, []
             try:
@@ -484,6 +486,8 @@ class Change:
                         tail = UNDO_TAIL if undo else BACKUP_TAIL
                         steps += guard._backup_steps(name, old, tail, name not in self._forced)
                     tickets[name] = Ticket(name, data)
+                steps += [{"op": "move", "from": relative, "to": self._trash_target(relative)}
+                          for relative in self._trashed]    # first: a file written to the same place stays
                 for relative, data in list(writes.items()) + list(self._files.items()):
                     payload = data[1] if isinstance(data, tuple) else data
                     scratch = "%s.%s%s" % (relative, uuid.uuid4().hex[:8], SCRATCH)
@@ -496,9 +500,7 @@ class Change:
                         disk.write(guard._relative(inside), disk.read(source))
                     steps.append({"op": "swap", "from": inside, "to": relative})
                 steps += [{"op": "remove", "to": relative} for relative in self._removals]
-                steps += [{"op": "move", "from": relative, "to": self._trash_target(relative)}
-                          for relative in self._trashed]
-                written = [step["from"] for step in steps if step["op"] == "swap"]
+                written =[step["from"] for step in steps if step["op"] == "swap"]
                 if len(steps) == 1:
                     guard._apply(steps)    # one rename is whole by itself
                 elif steps:
