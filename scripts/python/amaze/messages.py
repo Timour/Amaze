@@ -97,13 +97,13 @@ PACKAGE_NOT_READABLE ='"%s" is not a package Amaze can read.'
 PACKAGE_TOO_LARGE = "This package unpacks to %s, more than the %s Amaze imports at once."
 DOWNLOAD_TOO_LARGE = "This download is larger than the %s Amaze imports at once."
 MATERIAL_PRESETS_FOUND = "No material presets found in: %s"
-IMPORT_MATERIAL_PRESETS_FROM = "Import %d material presets from:\n%s\n\n%s\n\nPreviews aren't generated during import — select the new materials afterwards and use Update Render."
+IMPORT_MATERIAL_PRESETS_FROM = "Import %d material presets from:\n%s\n\n%s\n\nPreviews aren't generated during import — select the new materials afterwards and use Thumbnail ▸ Render Image."
 IMPORT_MATERIAL_PRESETS_FROM_RENDERING = 'Import %d material presets from:\n%s\n\n%s\n\nNote: Thumbnails are rendered in one batch once the import finishes.'
 
-GALLERY_IMPORT_FINISHED_IMPORTED_SKIPPED = "Gallery import complete.\nImported: %d\nSkipped: %d\nFailed: %d\n\nSelect the new materials and use Update Render to render them."
+GALLERY_IMPORT_FINISHED_IMPORTED_SKIPPED = "Gallery import complete.\nImported: %d\nSkipped: %d\nFailed: %d\n\nSelect the new materials and use Thumbnail ▸ Render Image to render them."
 GALLERY_IMPORT_FINISHED_RENDERING = 'Gallery import complete.\n\nImported: %d\nSkipped: %d\nFailed: %d\n\nTheir thumbnails are rendering now.'
 
-GALLERY_IMPORT_INTERRUPTED = 'Gallery import stopped.\n\nImported: %d\nSkipped: %d\nFailed: %d\n\nTo render them, select the new materials and use Update Render.'
+GALLERY_IMPORT_INTERRUPTED = 'Gallery import stopped.\n\nImported: %d\nSkipped: %d\nFailed: %d\n\nTo render them, select the new materials and use Thumbnail ▸ Render Image.'
 
 NO_LIBRARY_OPEN = "Open a library first."
 AMAZE_COULD_NOT = "%d of %d items could not be imported."
@@ -408,7 +408,7 @@ CODE_VERSION_UNREADABLE = "That version's file could not be read. The editor kee
 
 SNIPPET_RUN_FAILED = "\"%s\" stopped: %s"
 CONFIRM_CLEAR_THUMBNAIL_CACHE = "This deletes all cached thumbnails from disk. They regenerate as you browse."
-NO_SCENE_VIEWER_FOR_THUMBNAIL = "Thumbnails render with a Scene Viewer's color settings, and none is open. Open one, then use Update Render."
+NO_SCENE_VIEWER_FOR_THUMBNAIL = "Thumbnails render with a Scene Viewer's color settings, and none is open. Open one, then use Thumbnail ▸ Render Image."
 THUMBNAIL_RENDERER_NOT_LOADED = '"%s" was not rendered because %s isn\'t loaded in this Houdini session.'
 
 NEW_NAME_HAS_A_SLASH = '"%s" cannot be a name here: a slash divides folders.'

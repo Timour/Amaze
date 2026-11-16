@@ -47,7 +47,7 @@ PREFS_GEOMETRY_SHADING = 'How geometry thumbnails are drawn: shaded, wireframe, 
 
 PREFS_GEOMETRY_BACKGROUND = 'The background behind geometry thumbnails.'
 
-PREFS_RENDER_ON_IMPORT = 'Render thumbnails as soon as you import materials. Turn off to render them later with Update Render.'
+PREFS_RENDER_ON_IMPORT = 'Render thumbnails as soon as you import materials. Turn off to render them later with Thumbnail ▸ Render Image.'
 
 PREFS_CONVERSION_THREADS = 'How many textures (EXR/HDR) are turned into thumbnails at the same time.'
 
