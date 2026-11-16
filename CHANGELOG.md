@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.33.33
+
+- The right-click entry that brings a tile into the scene is named **Load Asset** in every section: it replaces Load in Node and Code, Import in File, and Apply in Color. Color's Apply as is **Load Asset as**.
+- In Material, Copy To is named **Load Asset to** and Convert to is named **Convert**.
+- In File, the entry that opens a scene file is named **Open Scene** and sits above Save Scene.
+
 ## 1.33.32
 
 - The Code section's right-click **Apply** is named **Load**.
