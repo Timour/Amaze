@@ -371,7 +371,7 @@ class PanelEnvTest(unittest.TestCase):
 
 
 class EverySwitchPublishesTheVariable(unittest.TestCase):
-    """Reload Library, Preferences' Apply and Test Library point $AMAZELIB at the library they open."""
+    """Reload Library and Preferences' Apply point $AMAZELIB at the library they open."""
 
     def setUp(self):
         previous = hou.getenv("AMAZELIB")
@@ -406,19 +406,6 @@ class EverySwitchPublishesTheVariable(unittest.TestCase):
         other = test_support.seeded_library(self)
         self.assertTrue(test_support.apply_library(self, self.panel, other))
         self._assert_published(other)
-
-    def test_test_library(self):
-        from amaze.dialogs import prefs_dialog
-        from amaze.prefs import prefs as prefs_mod
-        folder = _scratch_library(self)
-        ok, what = prefs_mod.seed_test_folder(folder)
-        self.assertTrue(ok, what)
-        self.panel.prefs.test_dir = folder
-        self._write_settings(test_mode=True, test_dir=folder)    # the switch re-reads settings
-        dialog = prefs_dialog.PrefsDialog(self.panel.prefs, panel=self.panel)
-        self.addCleanup(dialog.deleteLater)
-        dialog.set_test_mode(True)
-        self._assert_published(prefs_mod.test_library_dir(folder))
 
 
 if __name__ == "__main__":

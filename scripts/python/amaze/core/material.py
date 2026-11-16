@@ -15,24 +15,10 @@ DATE_FORMAT = "%Y-%m-%d %H:%M:%S"    # the stored `date`, seconds always present
 CM_TO_SCENE_UNITS = 0.01    # a measured scattering radius is in cm, a scene in metres ▸r/rgl-values
 
 
-def is_surface_shader_type(type_name: str) -> bool:
-    """Whether a Redshift node type name looks like a surface material."""
-    return "Material" in type_name or "PBR" in type_name
-
-
 def redshift_terminal(container):
     """The first Redshift terminal of either form among `container`'s children, or None."""
     for child in container.children():
         if child.type().name() in REDSHIFT_TERMINALS:
-            return child
-    return None
-
-
-def redshift_surface_shader(container):
-    """The first child whose type reads as a surface material, terminals skipped, or None."""
-    for child in container.children():
-        type_name = child.type().name()
-        if type_name not in REDSHIFT_TERMINALS and is_surface_shader_type(type_name):
             return child
     return None
 

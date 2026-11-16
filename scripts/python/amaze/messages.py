@@ -68,17 +68,17 @@ USER_NAME_TAKEN = "A user named \"%s\" already exists in this library. Choose an
 NO_USER_PICKED = "No user is picked for this library. Open Preferences, pick or create your user, and press Apply."
 MATERIAL_VERSIONS_TURN_ON_CONFIRM = "Turn on Material Versions for this library?"
 LIBRARY_SETTING_NOT_WRITTEN = "The setting could not be written to the library folder, so it was not changed."
-TEST_FOLDER_NOT_PREPARED = "That folder could not be prepared:\n\n%s"
 PICTURE_NOT_COPIED_TO_LIBRARY = "That picture could not be copied into the library, so it was not added."
 PICTURE_COPIED_BUT_UNREADABLE = "That file was copied but couldn't be read as a picture, so it was not added."
-LIBRARY_INDEX_UNREADABLE = "The library's database file is corrupt/unreadable. Repair restores the newest backup or, if no backup reads, rebuilds the database from each asset's metadata. Category names survive; their order and colors may not. The broken file is preserved as a backup. Open Without Library opens Amaze without touching the folder."
-LIBRARY_INDEX_REPAIRED = 'The library database can be read again: %s.'
-
-REPAIR_COULD_NOT_FIX_THE_LIST = "Repair could not fix the database: %s.\n\nAmaze will open without a library. Close Amaze and run Check Library on the Amaze shelf for details."
-INDEX_UNREADABLE_AFTER_REPAIR = "The repaired database still could not be read. Amaze opens without a library; close Amaze and run Check Library on the Amaze shelf for details."
-LIBRARY_INDEX_UNREADABLE_SWITCHING = "The library's database file is corrupt/unreadable.\n\nRepair restores the newest backup or, if no backup reads, rebuilds the database from each asset's metadata. Category names survive; their order and colors may not. The broken file is preserved as a backup.\n\nCancel leaves the folder unchanged and keeps the current library open."
-REPAIR_COULD_NOT_FIX_THE_LIST_SWITCHING = "Repair could not fix the database: %s.\n\nAmaze keeps the library you have open. Check This Library looks at the one that failed and offers the fixes that apply."
-INDEX_UNREADABLE_AFTER_REPAIR_SWITCHING = "The repaired database still could not be read.\n\nAmaze keeps the library you have open. Check This Library looks at the one that failed and offers the fixes that apply."
+LIBRARY_INDEX_UNREADABLE = "The library's Materials database is corrupt/unreadable. Repair opens Check Library on it: you pick a backup to restore, or a rebuild from each asset's metadata. Open Without Library opens Amaze without touching the folder."
+DATABASE_STILL_UNREADABLE = "The Materials database still cannot be read, so Amaze opens without a library. Check Library on the Amaze shelf can restore a backup or rebuild it."
+LIBRARY_INDEX_UNREADABLE_SWITCHING = "The library's Materials database is corrupt/unreadable.\n\nRepair opens Check Library on it: you pick a backup to restore, or a rebuild from each asset's metadata.\n\nCancel leaves the folder unchanged and keeps the current library open."
+DATABASE_STILL_UNREADABLE_SWITCHING = "That library's Materials database still cannot be read, so Amaze keeps the library you have open."
+CONFIRM_REBUILD_DATABASE = "Rebuild the %s database from each asset's metadata?"
+HELP_REBUILD_DATABASE = "The %s database is replaced by one built from the metadata saved beside each asset's files in its folder. Category names come back; their order and colors may not."
+DATABASE_REBUILT_DONE = "The %s database is rebuilt from each asset's metadata: %s."
+DATABASE_REBUILT_SOME_UNREAD = " The metadata of %s could not be read."
+PICK_DATABASE_TO_REBUILD = "Which database should Amaze rebuild from each asset's metadata?"
 LIBRARY_INDEX_READ_NOT_PERMITTED = 'this account is not allowed to read it:\n%s\n\nThe permissions on the file, or on a folder above it, have to let this account read it.'
 
 LIBRARY_NOT_OPENED = 'The library could not be opened because %s\n\nAmaze will open without a library.'
@@ -231,6 +231,10 @@ SAVE_DID_NOT_COMPLETE_LINE = '"%s": the save did not complete'
 
 CONVERSION_CRASHED_LINE = '"%s": crashed - %s'
 
+MATX_RESOLUTION_SUBSTITUTED = '%s is not available for "%s"; %s was downloaded.'
+
+CONVERSION_NO_WIRED_SURFACE ='no shader is wired into the Surface input of the Redshift material'
+
 ASSET_FAILED_TO_IMPORT_LINE = '"%s" failed to import: %s'
 
 NAMELESS_NODE_ASSET = 'node asset'
@@ -297,6 +301,8 @@ BUTTON_REPAIR_ADD_BACK = 'Add %s Back'
 
 BUTTON_REPAIR_PUT_COPY_BACK = 'Restore Backup'
 
+BUTTON_REBUILD_FROM_METADATA = 'Rebuild from Metadata'
+
 BUTTON_REPAIR_ADD_TO_SECTION = 'Add %s to a Section'
 
 BUTTON_REPAIR_MOVE_ASIDE = 'Move %s to Trash'
@@ -352,7 +358,7 @@ BUTTONS_REPAIR_OR_OPEN_WITHOUT = ('Repair', 'Open Without Library')
 
 BUTTONS_REPAIR_OR_CANCEL = ('Repair', 'Cancel')
 
-BUTTONS_CHECK_THIS_LIBRARY = ('Check This Library', 'Close')
+BUTTONS_REBUILD = ('Rebuild', 'Cancel')
 
 BUTTONS_IMPORT = ('Import', 'Cancel')
 

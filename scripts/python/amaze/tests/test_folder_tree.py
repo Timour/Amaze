@@ -20,6 +20,7 @@ from amaze.tests import test_support  # noqa: E402 - arms the sandbox
 from amaze.tests.test_file_section import _Prefs  # noqa: E402
 
 COUNT = category.SIDEBAR_COUNT_ROLE
+KNOWN_KINDS = (locations.KIND_IMAGE, locations.KIND_GEO, locations.KIND_HIP)    # Other Files off
 
 
 def _tree(testcase, layout) -> str:
@@ -43,7 +44,9 @@ def _model(testcase, *layouts):
     """A File sidebar over one fresh location per layout: (model, prefs, pointers)."""
     roots = [_tree(testcase, layout) for layout in layouts]
     prefs = _Prefs(roots)
-    prefs.file_show_unknown = False
+    prefs.file_show_unknown = False    # what a folder no location holds lists, the scene's
+    for root in roots:
+        prefs.set_file_folder_kinds(root, KNOWN_KINDS)
     model = file_library.FileFolders(prefs)
     testcase.addCleanup(lambda: test_support.pump_until(lambda: not getattr(model, "_walking", None)))
     return model, prefs, list(model._folders())
@@ -468,7 +471,7 @@ class TheGridBrowsesASubfolderByItsLocationsRules(unittest.TestCase):
         self.loc = _tree(self, {"A": {"a.png": None, "b.xyz": None,
                                       "deeper": {"c.png": None}}, "top.png": None})
         self.prefs = _Prefs([self.loc])
-        self.prefs.file_show_unknown = False
+        self.prefs.set_file_folder_kinds(self.loc, KNOWN_KINDS)
         self.files = file_library.FileFiles(self.prefs)
         self.sub = _child(self.loc, "A")
 

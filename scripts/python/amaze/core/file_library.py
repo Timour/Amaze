@@ -172,23 +172,13 @@ def carry_thumbnails(preferences, pairs) -> int:
 file_moves.carriers["thumbnails"] = carry_thumbnails    # a move takes the cached pictures along
 
 
-def shows_all_files(preferences, location: str) -> bool:
-    """The rule before Show ▸: the location's Show All Files override, else `file_show_unknown`."""
-    override = locations.record(preferences, location).get("show_all")
-    if override is not None:
-        return bool(override)
-    return bool(getattr(preferences, "file_show_unknown", True))
-
-
 def location_kinds(preferences, location: str) -> frozenset:
-    """The kinds one location lists: its Show ▸ ticks, else what it listed before Show ▸ existed."""
-    kinds = locations.record(preferences, location).get("kinds")
-    if kinds is not None:
-        return frozenset(kinds)
-    shown = set(locations.PRE_SHOW_KINDS)
-    if shows_all_files(preferences, location):
-        shown.add(locations.KIND_OTHER)
-    return frozenset(shown)
+    """A location's recorded Show ▸ ticks, else none; a folder no location holds, the global switch."""
+    record = locations.record(preferences, location) if location else {}
+    if not record:
+        return frozenset(locations.KNOWN_KINDS + (
+            (locations.KIND_OTHER,) if preferences.file_show_unknown else ()))
+    return frozenset(record.get("kinds") or ())
 
 
 class FileFolders(folders.FolderTreeModel):

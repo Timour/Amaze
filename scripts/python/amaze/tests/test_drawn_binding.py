@@ -474,7 +474,7 @@ class PreferencesIsBuiltFromTheDocument(unittest.TestCase):
     def test_every_line_edit_is_the_drawn_field_height(self):
         dialog = self._dialog()
         want = theme.ui_px(amazetheme.PREFS_FIELD_H)
-        for name in ("line_cache", "line_test_dir"):
+        for name in ("line_cache",):
             with self.subTest(field=name):
                 field = getattr(dialog, name)
                 self.assertEqual(want, field.height(),

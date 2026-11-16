@@ -225,88 +225,15 @@ class AnUnchangedSaveDoesNotTouchTheStore(SharedPrefsCase):
                          "push")
 
 
-class TheTestLibrarySwitchKeepsEachLibrarysSettings(SharedPrefsCase):
-    """Test Library moves what `dir` answers, through the Preferences switch a user flips."""
+class EverySharedRowIsReread(SharedPrefsCase):
+    """Preferences re-reads every shared setting's row when the library changes."""
 
     def setUp(self):
         super().setUp()
-        folder = tempfile.mkdtemp(prefix="amaze_shared_test_lib_")
-        self.addCleanup(shutil.rmtree, folder, ignore_errors=True)
-        ok, what = prefs_mod.seed_test_folder(folder)
-        self.assertTrue(ok, what)
-        self.test_lib = prefs_mod.test_library_dir(folder)
         self.prefs = self.machine(self.home_a)
-        self.prefs.rendersize = 300
-        self.prefs.save()
-        self.prefs.test_dir = folder
         from amaze.dialogs import prefs_dialog
         self.dialog = prefs_dialog.PrefsDialog(self.prefs, panel=None)
         self.addCleanup(self.dialog.deleteLater)
-
-    def switch_on(self):
-        self.dialog.set_test_mode(True)
-        self.assertEqual(self.test_lib, self.prefs.dir,
-                         "premise: Test Library is on")
-
-    def real_bytes(self):
-        library_db.flush()
-        with open(os.path.join(self.lib, STORE), "rb") as handle:
-            return handle.read()
-
-    def stored_in_test_lib(self, key):
-        library_db.flush()
-        with open(os.path.join(self.test_lib, STORE),
-                  encoding="utf-8") as handle:
-            return json.load(handle)["settings"][key]["value"]
-
-    def test_switching_off_leaves_the_real_library_alone(self):
-        self.switch_on()
-        self.dialog.line_rendersize.setValue(512)
-        self.prefs.save()
-        before = self.real_bytes()
-        self.dialog.set_test_mode(False)
-        self.assertEqual(
-            before, self.real_bytes(),
-            "a setting changed in the test library was written into the "
-            "real library when Test Library was switched off")
-        self.assertEqual(300, self.prefs.rendersize,
-                         "the session still answers the test library's "
-                         "setting after switching back")
-        self.assertEqual(300, self.dialog.line_rendersize.value(),
-                         "Preferences still shows the test library's value")
-        self.assertEqual(512, self.stored_in_test_lib("rendersize"))
-
-    def test_an_unsaved_change_lands_in_the_library_it_was_made_in(self):
-        self.switch_on()
-        self.dialog.line_rendersize.setValue(512)
-        before = self.real_bytes()
-        self.dialog.set_test_mode(False)
-        self.assertEqual(before, self.real_bytes(),
-                         "the unsaved change went into the real library")
-        self.assertEqual(
-            512, self.stored_in_test_lib("rendersize"),
-            "the change made with Test Library on was lost instead of "
-            "kept in the test library")
-
-    def test_switching_on_shows_the_test_librarys_own_settings(self):
-        other = prefs_mod.Prefs()
-        other.path = self.home_b
-        other.library_user = "u-elsewhere"
-        other.dir = self.test_lib
-        other.rendersize = 512
-        other.save()
-        test_support.reset_database_singletons()
-        before = self.real_bytes()
-        self.switch_on()
-        self.assertEqual(512, self.prefs.rendersize,
-                         "the session answers the real library's setting "
-                         "with Test Library on")
-        self.assertEqual(512, self.dialog.line_rendersize.value(),
-                         "Preferences shows the real library's value")
-        self.assertEqual(512, self.stored_in_test_lib("rendersize"),
-                         "switching on wrote the real library's setting "
-                         "over the test library's")
-        self.assertEqual(before, self.real_bytes())
 
     def test_every_shared_setting_preferences_shows_is_reread(self):
         from amaze.prefs import persistence

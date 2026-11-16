@@ -838,51 +838,6 @@ class HoudiniPathTest(unittest.TestCase):
         self.assertTrue(collapsed.startswith("$HOME/"),
                         "the default style is not $HOME: %r" % collapsed)
 
-    def test_the_test_library_switch_rests_the_library_rows(self):
-        """Test Library on: the Library and User rows rest, the Cache Path row stays live."""
-        import os
-        import shutil
-        import tempfile
-        from amaze.dialogs import prefs_dialog
-        from amaze.prefs import prefs as prefs_mod
-
-        p = test_support.fixture_prefs(self)
-        real_library = p.dir
-        dlg = prefs_dialog.PrefsDialog(p, panel=None)
-        self.addCleanup(dlg.deleteLater)
-        resting = (dlg.cbb_library, dlg._btn_add_library, dlg._btn_manage_libraries,
-                   dlg.cbb_library_user)
-
-        self.assertEqual("Test Library", dlg._cbx_test_mode.text())
-        self.assertTrue(all(widget.isEnabled() for widget in resting),
-                        "the Library rows start resting")
-        self.assertEqual(real_library, dlg._picked_library())
-
-        folder = tempfile.mkdtemp(prefix="amaze_switch_")
-        self.addCleanup(shutil.rmtree, folder, True)
-        prefs_mod.seed_test_folder(folder)
-        p.test_dir = folder
-        p.test_mode = True
-        dlg._sync_test_mode_rows()
-
-        self.assertEqual(
-            test_support.posix_path(os.path.join(folder, "lib") + "/"),    # forward-slashed, as p.dir answers
-            p.dir)
-        self.assertEqual(real_library, dlg._picked_library(),
-                         "the Library list left the real library")
-        self.assertFalse(any(widget.isEnabled() for widget in resting
-                             + (dlg._btn_apply_library, dlg._btn_accept_library)),
-                         "a Library row is live while Test Library is on")
-        self.assertTrue(dlg.line_cache.isEnabled(),
-                        "the Cache Path row was frozen - the cache "
-                        "does not move with the library")
-
-        p.test_mode = False
-        dlg._sync_test_mode_rows()
-        self.assertEqual(real_library, p.dir,
-                         "the real library did not come back")
-        self.assertTrue(all(widget.isEnabled() for widget in resting))
-
     def test_default_puts_the_cache_path_back(self):
         """Default on the Cache Path row clears the preference, so the cache follows this machine."""
         from amaze.dialogs import prefs_dialog
@@ -1041,7 +996,9 @@ class _Prefs:
         return table
 
     def add_file_folder(self, path):
-        locations_mod.register(self, path)
+        if locations_mod.register(self, path) and locations_mod.record(
+                self, path).get("kinds") is None:    # born with Show ▸'s ticks, as the product's
+            self.set_file_folder_kinds(path, locations_mod.SHOWN_BY_DEFAULT)
 
     def remove_file_folder(self, path):
         locations_mod.unregister(self, path)
@@ -2038,13 +1995,13 @@ class CountsWalkOffTheGuiThreadTest(unittest.TestCase):
                          "the removed location kept the count its walk brought back")
 
     def test_a_count_walked_under_an_old_rule_is_dropped(self):
-        """The location's Show All Files changes mid-walk: the walk lands stale, a fresh one counts."""
+        """The location's Show ticks change mid-walk: the walk lands stale, a fresh one counts."""
         root = tempfile.mkdtemp(prefix="amaze_walk_rule_")
         self.addCleanup(shutil.rmtree, root, ignore_errors=True)
         for name in ("a.png", "b.xyz"):
             open(os.path.join(root, name), "w").close()
         prefs = _Prefs([root])
-        prefs.file_show_unknown = False
+        prefs.set_file_folder_kinds(root, (locations_mod.KIND_IMAGE,))
         model = file_library.FileFolders(prefs)
         key = model._folders()[0]
         shown = []
@@ -2055,7 +2012,7 @@ class CountsWalkOffTheGuiThreadTest(unittest.TestCase):
             model.data(model.index(1, 0), model.COUNT_ROLE)
             self.assertTrue(test_support.pump_until(entered.is_set),
                             "the walk never ran on a worker")
-            prefs.set_file_folder_show_all(root, True)
+            prefs.set_file_folder_kinds(root, locations_mod.SHOWN_BY_DEFAULT)
             model.refresh_counts()
             release.set()
             counts = _landed_counts(model)
@@ -2623,46 +2580,6 @@ class CheckLibrarySetsAFolderMissingHereAsideTest(unittest.TestCase):
         self.assertEqual("", locations_mod.location_id(self.prefs, self.folder))
 
 
-class ShowUnknownFilesSwitchTest(unittest.TestCase):
-    """`file_show_unknown`, read by a location saved before Show ▸: the count agrees either way."""
-
-    def _folder(self):
-        tmp = tempfile.mkdtemp(prefix="amaze_unknown_")
-        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
-        for name in ("a.png", "b.obj", "c.hip", "d.bvh", "e.txt"):
-            with open(os.path.join(tmp, name), "w") as handle:
-                handle.write("x")
-        return tmp
-
-    def test_the_default_shows_everything_and_off_shows_the_known_kinds(self):
-        self.assertTrue(prefs_module.Prefs().file_show_unknown,
-                        "the default hides files - the merge's whole "
-                        "point was a folder showing what is in it")
-        tmp = self._folder()
-        prefs = _Prefs([tmp])
-        prefs.file_show_unknown = False
-        model = file_library.FileFiles(prefs)
-        model.set_folder(tmp)
-        names = [model.data(model.index(i, 0),
-                            QtCore.Qt.ItemDataRole.DisplayRole)
-                 for i in range(model.rowCount())]
-        self.assertEqual(["a.png", "b.obj", "c.hip"], names,
-                         "hiding unknown files did not restore the "
-                         "recognised-kinds-only view: %r" % names)
-
-    def test_the_count_agrees_with_the_grid_in_both_states(self):
-        tmp = self._folder()
-        prefs = _Prefs([tmp])
-        for show, expected in ((True, 5), (False, 3)):
-            prefs.file_show_unknown = show
-            folders_model = file_library.FileFolders(prefs)
-            count = _landed_counts(folders_model)[1]
-            self.assertEqual(
-                expected, count,
-                "show_unknown=%s: the sidebar says %s while the grid "
-                "shows %s tiles" % (show, count, expected))
-
-
 class ShowTicksTest(unittest.TestCase):
     """Show ▸'s kinds combine freely: a location lists exactly what is ticked, and counts it."""
 
@@ -2695,19 +2612,15 @@ class ShowTicksTest(unittest.TestCase):
             with self.subTest(kinds=kinds):
                 self.assertEqual(expected, self._listed(kinds))
 
-    def test_a_location_saved_before_Show_keeps_what_it_showed(self):
-        """No ticks: the three known kinds, plus Other Files where the old rule showed all files."""
-        known = set(locations_mod.PRE_SHOW_KINDS)
-        for show_unknown, override, expected in (
-                (True, None, known | {locations_mod.KIND_OTHER}),
-                (False, None, known),
-                (False, True, known | {locations_mod.KIND_OTHER}),
-                (True, False, known)):
+    def test_a_location_with_no_ticks_lists_nothing(self):
+        """Only the recorded Show ticks decide; no ticks recorded is no kind, whatever else is set."""
+        locations_mod.set_field(self.prefs, self.tmp, "kinds", None)
+        for show_unknown, override in ((True, None), (True, True)):
             with self.subTest(show_unknown=show_unknown, override=override):
                 self.prefs.file_show_unknown = show_unknown
                 self.prefs.set_file_folder_show_all(self.tmp, override)
-                self.assertEqual(expected, set(
-                    file_library.location_kinds(self.prefs, self.tmp)))
+                self.assertIsNone(locations_mod.record(self.prefs, self.tmp).get("kinds"))
+                self.assertEqual(frozenset(), file_library.location_kinds(self.prefs, self.tmp))
 
     def test_pathname_names_the_row_by_its_path_even_over_a_rename(self):
         self.prefs.path_style = "absolute"
@@ -3011,44 +2924,6 @@ class LocationColorTest(unittest.TestCase):
                          int(file_library.FileFiles.CategoryColorRole))
         self.assertEqual(expected,
                          int(grad_mod.GradientLibrary.CategoryColorRole))
-
-
-class ShowAllFilesTest(unittest.TestCase):
-    """Per-location Show All Files shows what the global preference hides, and the count agrees."""
-
-    def setUp(self):
-        self.tmp = tempfile.mkdtemp(prefix="amaze_showall_")
-        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
-        for name in ("pic.exr", "mystery.xyz"):
-            with open(os.path.join(self.tmp, name), "w") as handle:
-                handle.write("x")
-        self.prefs = _Prefs([self.tmp])
-        self.prefs.file_show_unknown = False
-
-    def _grid_names(self):
-        files = file_library.FileFiles(self.prefs)
-        files.set_folder(self.tmp)
-        return [files._files[row][1]
-                for row in range(len(files._files))]
-
-    def test_the_override_shows_what_the_global_hides_and_counts_it(self):
-        folders = file_library.FileFolders(self.prefs)
-        self.assertNotIn(
-            "mystery.xyz", self._grid_names(),
-            "with the global off and no override, the unknown file "
-            "must stay hidden")
-        self.assertEqual(
-            1, _landed_counts(folders)[1],
-            "hidden unknown files must leave the count too")
-        self.prefs.set_file_folder_show_all(self.tmp, True)
-        self.assertIn(
-            "mystery.xyz", self._grid_names(),
-            "the location's own Show All Files must override the "
-            "global preference")
-        folders.refresh_counts()
-        self.assertEqual(
-            2, _landed_counts(folders)[1],
-            "a location showing all files must count all files")
 
 
 class ABarePrefsLoadWritesNothingButItsOwnFile(unittest.TestCase):

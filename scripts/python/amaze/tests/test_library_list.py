@@ -97,10 +97,10 @@ class OpeningALibraryPutsItFirst(unittest.TestCase):
         self.panel = test_support.fixture_panel(self)
 
     def test_the_open_library_is_listed_first(self):
-        self.assertEqual(self.panel.prefs.real_dir, self.panel.prefs.libraries[0])
+        self.assertEqual(self.panel.prefs.dir, self.panel.prefs.libraries[0])
 
     def test_a_switch_puts_the_new_library_first(self):
-        first = self.panel.prefs.real_dir
+        first = self.panel.prefs.dir
         other = test_support.fresh_library(self)
         self.panel.prefs.dir = other
         path = os.path.join(self.panel.prefs.path, "settings.json")
@@ -111,18 +111,6 @@ class OpeningALibraryPutsItFirst(unittest.TestCase):
             json.dump(data, handle)
         self.assertTrue(self.panel.open_library())
         self.assertEqual([other, first], self.panel.prefs.libraries[:2])
-
-    def test_the_test_library_is_not_listed(self):
-        from amaze.dialogs import prefs_dialog
-        folder = test_support.scratch_dir("amaze_listed_test_lib_")
-        self.addCleanup(shutil.rmtree, folder, True)
-        listed = self.panel.prefs.libraries
-        self.panel.prefs.test_dir = folder
-        dialog = prefs_dialog.PrefsDialog(self.panel.prefs, panel=self.panel)
-        self.addCleanup(dialog.deleteLater)
-        dialog.set_test_mode(True)
-        self.assertEqual(listed, self.panel.prefs.libraries,
-                         "turning Test Library on changed the Library list")
 
 
 class ManageLibrariesTest(unittest.TestCase):

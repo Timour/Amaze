@@ -2,12 +2,10 @@
 
 import os
 
-from amaze.core import debug
 from amaze.core import library_files
 from amaze.core import renderers
 from amaze.helpers import hostos
 from amaze.prefs.persistence import (
-    IMG_SUBDIR,
     SHARED_KEYS,
     _INTRODUCED_SECTIONS,
     _Persistence,
@@ -15,8 +13,6 @@ from amaze.prefs.persistence import (
     _normalised_dir,
 )
 
-
-TEST_LIB_SUBDIR = "lib"  # the library inside a test folder; the dialog, seeder and overlay share it
 
 RENDERSIZE_RANGE = (64, 1024)  # the setter clamps to it, and the Preferences row offers it
 RAM_CACHE_RANGE = (64, 4096)
@@ -30,13 +26,6 @@ def _clamped(value, bounds) -> int:
     """`value` as an int inside `bounds`; junk raises, so `_through_setter` uses the default."""
     low, high = bounds
     return max(low, min(high, int(value)))
-
-
-def test_library_dir(folder: str) -> str:
-    """The library inside a test folder, with the trailing separator. ▸r/atomic-writes"""
-    if not folder:
-        return ""
-    return _normalised_dir(os.path.join(folder, TEST_LIB_SUBDIR))
 
 
 def can_hold_a_library(folder: str) -> bool:
@@ -61,32 +50,6 @@ def create_library(lib_dir: str) -> bool:
         library_settings.VERSION_ENTRY: version}})
     change.commit()
     return True
-
-
-def seed_test_folder(folder: str) -> tuple:
-    """Make `folder` a whole test library, adding only what is missing. ▸p/library-creation-doors"""
-    if not folder:
-        return (False, "no folder")
-    made = []
-    try:
-        path = os.path.join(folder, TEST_LIB_SUBDIR)
-        if not os.path.isdir(path):
-            os.makedirs(path, exist_ok=True)
-            made.append(TEST_LIB_SUBDIR + "/")
-        for tail in (IMG_SUBDIR,) + tuple(library_files.SECTION_FOLDERS[section] + "/"
-                                         for section in library_files.ASSET_SECTIONS):
-            folder_path = os.path.join(path, tail)
-            if not os.path.isdir(folder_path):
-                made.append(tail)
-            os.makedirs(folder_path, exist_ok=True)
-        if not os.path.exists(os.path.join(path, library_files.MASTER)):
-            create_library(path)
-            made.append(library_files.MASTER)
-    except OSError as exc:
-        debug.event("prefs", "test folder could not be seeded",
-                    folder=folder, error=str(exc))
-        return (False, str(exc))
-    return (True, ", ".join(made) if made else "already complete")
 
 
 def _renderer_settings(cls):
@@ -133,8 +96,6 @@ class Prefs(_Persistence):
         self._sidebar_counts = True  # entry counts on INDIVIDUAL categories/folders; "All" always shows its total regardless
         self._cache_dir = ""  # "" = this OS's own convention via hostos.cache_root()
         self._libraries: list[str] = []  # the Library list, the most recently opened first
-        self._test_mode = False  # the test library overlay; `_directory` keeps the real path, the cache stays
-        self._test_dir = ""
         self._hide_empty_categories = True  # for Materials, "empty" respects the active renderer filter
         self._enabled_sections = _default_sections()
         self._sections_seen = {  # every section starts seen; load() recomputes from the active user's block
@@ -149,21 +110,13 @@ class Prefs(_Persistence):
 
     @property
     def dir(self) -> str:
-        """The library directory, the test one in Test Mode, with the trailing separator. ▸r/atomic-writes"""
-        if getattr(self, "_test_mode", False) and getattr(  # getattr: a Prefs built through __new__ must answer too
-                self, "_test_dir", ""):
-            return test_library_dir(self._test_dir)
+        """The library directory, with the trailing separator. ▸r/atomic-writes"""
         return self._directory
 
     @dir.setter
     def dir(self, val: str) -> None:
-        self._directory = val  # the real path, always, never the overlay
+        self._directory = val
         self._adopt_shared()  # take the library's answers before this machine's defaults are saved
-
-    @property
-    def real_dir(self) -> str:
-        """The configured library, ignoring the Test Mode overlay."""
-        return self._directory
 
     @property
     def libraries(self) -> list[str]:
@@ -192,26 +145,6 @@ class Prefs(_Persistence):
             return False
         self._libraries = kept
         return True
-
-    @property
-    def test_mode(self) -> bool:
-        """The LIBRARY points at the test folder instead; the cache does not move with it ▸ `cache_dir`."""
-        return self._test_mode
-
-    @test_mode.setter
-    def test_mode(self, val: bool) -> None:
-        self._test_mode = bool(val)
-        self._adopt_shared()    # it moves what `dir` answers, as the `dir` setter does
-
-    @property
-    def test_dir(self) -> str:
-        """The folder holding `lib/`; "" = none chosen."""
-        return self._test_dir
-
-    @test_dir.setter
-    def test_dir(self, val: str) -> None:
-        self._test_dir = str(val or "")
-        self._adopt_shared()    # with Test Library on, it moves what `dir` answers
 
     @property
     def rendersize(self) -> int:

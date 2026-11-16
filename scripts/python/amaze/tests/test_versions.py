@@ -546,8 +546,8 @@ class VersionFilesCarryTheirWriterTest(_Case):
         self.assertEqual(b"THE OTHER MACHINES VERSION",
                          self._base_bytes())
 
-    def test_legacy_bare_numbers_still_switch(self):
-        """Pre-signing archives, 1.mat with rows lacking a stem, still switch; readers accept them."""
+    def test_a_row_lacking_its_stem_finds_no_files(self):
+        """A row with no recorded stem is not matched to `1.mat` by its number: it does not switch."""
         self.prefs.library_user ="Crimson"
         versions.create_version(self.prefs, self.mat_id)
         folder = versions.versions_dir(self.prefs, self.mat_id)
@@ -567,10 +567,9 @@ class VersionFilesCarryTheirWriterTest(_Case):
         with open(ledger_path, "w", encoding="utf-8") as fh:
             json.dump(ledger, fh)
         self._rewrite_base(b"EDITED PAST VERSION ONE")
-        self.assertTrue(
+        self.assertFalse(
             versions.switch_active(self.prefs, self.mat_id, 1))
-        self.assertNotEqual(b"EDITED PAST VERSION ONE",
-                            self._base_bytes())
+        self.assertEqual(b"EDITED PAST VERSION ONE", self._base_bytes())
 
     def test_one_listdir_seeds_the_tile_caches(self):
         """One listdir at model build answers for unversioned assets; only versioned ones read a ledger."""

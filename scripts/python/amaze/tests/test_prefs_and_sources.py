@@ -427,30 +427,43 @@ class APointerMovedInOnePaneStaysMoved(unittest.TestCase):
         self.assertEqual(second, b.dir, "pane B still points at the previous library")
 
 
-class TheTestLibrarySwitchIsAnOverlay(unittest.TestCase):
-    """One switch, one folder; the real library and cache paths stay untouched while it is on."""
+class TheLibraryIsTheOneTheSettingsName(unittest.TestCase):
+    """There is no second library beside the configured one; old Test Library keys are read by nobody."""
 
-    REAL_LIB = "/Users/someone/Cloud/3D/Library/"
-    REAL_CACHE = "/Users/someone/Library/Caches/Amaze"
-
-    def _prefs(self):
+    def test_prefs_have_no_test_library(self):
         p = prefs_mod.Prefs()
-        p.dir = self.REAL_LIB
-        p.cache_dir = self.REAL_CACHE
-        return p
+        for gone in ("test_mode", "test_dir", "real_dir"):
+            self.assertFalse(hasattr(p, gone), gone)
+        for gone in ("test_library_dir", "seed_test_folder", "TEST_LIB_SUBDIR"):
+            self.assertFalse(hasattr(prefs_mod, gone), gone)
 
-    def test_on_moves_the_library_into_the_folder(self):
-        p = self._prefs()
-        p.test_dir = "/tmp/amaze_probe"
-        p.test_mode = True
-        self.assertEqual("/tmp/amaze_probe/lib/", p.dir)
-        self.assertEqual(
-            self.REAL_CACHE, p.cache_dir,
-            "the cache moved with the library, but File thumbnails are "
-            "keyed by file path and say nothing about the library")
+    def test_settings_that_still_carry_the_old_keys_open_the_configured_library(self):
+        root = tempfile.mkdtemp(prefix="amaze_old_keys_")
+        self.addCleanup(shutil.rmtree, root, True)
+        real, other, settings = (os.path.join(root, name) for name in ("real", "other", "cfg"))
+        for folder in (real, os.path.join(other, "lib"), settings):
+            os.makedirs(folder)
+        prefs_mod.create_library(real)
+        prefs_mod.create_library(os.path.join(other, "lib"))
+        p = prefs_mod.Prefs()
+        p.path = settings
+        p.dir = real
+        p.save()
+        path = os.path.join(settings, "settings.json")
+        with open(path, encoding="utf-8") as handle:
+            document = json.load(handle)
+        self.assertNotIn("test_mode", document)
+        self.assertNotIn("test_dir", document)
+        document.update(test_mode=True, test_dir=other)
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(document, handle)
+        fresh = prefs_mod.Prefs()
+        fresh.path = settings
+        self.assertTrue(fresh.load())
+        self.assertEqual(os.path.normpath(real), os.path.normpath(fresh.dir))
 
-    def test_the_overlay_and_the_saved_pointer_take_one_shape(self):
-        """The test path and the saved `directory` are shaped by one helper, as each copy did."""
+    def test_the_saved_pointer_takes_one_shape(self):
+        """The saved `directory` is shaped by one helper."""
         from amaze.prefs import persistence
         for raw, shaped in (("C:\\Lib\\3D", "C:/Lib/3D/"),
                             ("/srv/lib/", "/srv/lib/"),
@@ -461,94 +474,7 @@ class TheTestLibrarySwitchIsAnOverlay(unittest.TestCase):
             self.addCleanup(shutil.rmtree, p.path, True)
             p._directory = raw
             p.refresh_data()
-            self.assertEqual(shaped, p.real_dir,
-                             "the saved pointer took another shape")
-        self.assertEqual("C:/Lib/lib/", prefs_mod.test_library_dir("C:\\Lib"))
-
-    def test_the_real_paths_survive_the_round_trip(self):
-        """The one that would cost a real library if it broke."""
-        p = self._prefs()
-        self.assertFalse(p.test_mode, "the test library is on by default")
-        p.test_dir = "/tmp/amaze_probe"
-        p.test_mode = True
-        p.test_mode = False
-        self.assertEqual(self.REAL_LIB, p.dir)
-        self.assertEqual(self.REAL_CACHE, p.cache_dir)
-
-    def test_on_with_no_folder_chosen_changes_nothing(self):
-        """On with no folder yet: answering `/lib/` would point the library at the filesystem root."""
-        p = self._prefs()
-        p.test_mode = True
-        self.assertEqual(self.REAL_LIB, p.dir)
-        self.assertEqual(self.REAL_CACHE, p.cache_dir)
-
-    def test_a_fresh_folder_is_seeded_into_a_real_library(self):
-        folder = tempfile.mkdtemp(prefix="amaze_testlib_seed_")
-        self.addCleanup(shutil.rmtree, folder, True)
-
-        ok, what = prefs_mod.seed_test_folder(folder)
-
-        self.assertTrue(ok, what)
-        self.assertTrue(os.path.isdir(os.path.join(folder, "lib")))
-        self.assertFalse(
-            os.path.isdir(os.path.join(folder, "cache")),
-            "a cache folder was made - the cache does not move")
-        from amaze.core import guard, library_files
-        index = os.path.join(folder, "lib", library_files.MASTER)
-        self.assertTrue(os.path.isfile(index),
-                        "no %s - the library would not load" % library_files.MASTER)
-        self.assertEqual(guard.FINE, guard.Guard(os.path.join(folder, "lib")).read(
-            library_files.MASTER).verdict, "the seeded library does not read as whole")
-
-    def test_seeding_never_overwrites_what_is_already_there(self):
-        """Run twice, or on a folder already holding test materials, the second pass adds nothing."""
-        import json
-        folder = tempfile.mkdtemp(prefix="amaze_testlib_reseed_")
-        self.addCleanup(shutil.rmtree, folder, True)
-        from amaze.core import library_files
-        prefs_mod.seed_test_folder(folder)
-        index = os.path.join(folder, "lib", library_files.MASTER)
-        with open(index, encoding="utf-8") as handle:
-            document = json.load(handle)
-        document["users"] = {"mat_001": {"name": "kept"}}
-        with open(index, "w", encoding="utf-8") as handle:
-            json.dump(document, handle)
-
-        ok, _what = prefs_mod.seed_test_folder(folder)
-
-        self.assertTrue(ok)
-        with open(index, encoding="utf-8") as handle:
-            kept = json.load(handle)
-        self.assertEqual({"mat_001": {"name": "kept"}}, kept["users"],
-                         "re-seeding erased the test library's content")
-
-    def test_a_test_library_loads_where_no_real_one_was_ever_configured(self):
-        """load() asks `dir`, not the raw field: with no real library ever set, the two disagree."""
-        folder = tempfile.mkdtemp(prefix="amaze_testlib_load_")
-        self.addCleanup(shutil.rmtree, folder, True)
-        settings = tempfile.mkdtemp(prefix="amaze_testlib_settings_")
-        self.addCleanup(shutil.rmtree, settings, True)
-        prefs_mod.seed_test_folder(folder)
-
-        p = prefs_mod.Prefs()
-        p.path = settings
-        p.test_dir = folder
-        p.test_mode = True
-        p.save()
-
-        fresh = prefs_mod.Prefs()
-        fresh.path = settings
-        self.assertTrue(
-            fresh.load(),
-            "a seeded test library did not load on a machine with no "
-            "real library, so the panel opens libraryless over it")
-        self.assertEqual(prefs_mod.test_library_dir(folder), fresh.dir,
-                         "the switch is on but the overlay is not what "
-                         "the library reads")
-        self.assertEqual(
-            "", fresh.real_dir,
-            "the fixture stopped proving the bug - it now configures a "
-            "REAL library, and that case passed before the fix too")
+            self.assertEqual(shaped, p.dir, "the saved pointer took another shape")
 
 
 class TheHomeLayoutsLiveInHostos(unittest.TestCase):
@@ -1429,27 +1355,6 @@ class TheUserRowCreatesAndDeletes(unittest.TestCase):
         self.assertEqual("", str(p.library_user or ""))
 
 
-class ACancelledTestFolderPickIsANoOp(unittest.TestCase):
-    """Cancelling the Test Library folder ask applied nothing, so the revert switches no model."""
-
-    def test_the_revert_does_not_switch_the_library(self):
-        from amaze.dialogs import prefs_dialog
-        from amaze.tests import test_support
-        p = test_support.fixture_prefs(self)
-        dlg = prefs_dialog.PrefsDialog(p, panel=None)
-        self.addCleanup(dlg.deleteLater)
-        applied = []
-        dlg._apply_test_mode = lambda: applied.append(True)
-        dlg.change_test_path = lambda: None
-        dlg._cbx_test_mode.setChecked(True)
-        self.assertFalse(p.test_mode)
-        self.assertFalse(dlg._cbx_test_mode.isChecked())
-        self.assertEqual(
-            [], applied,
-            "the revert re-entered set_test_mode and ran the full "
-            "library switch for a gesture that applied nothing")
-
-
 class TheOverwriteSwitchFollowsTheLibrary(unittest.TestCase):
     """A library switch under the open dialog re-reads the overwrite policy for the new library."""
 
@@ -1465,11 +1370,8 @@ class TheOverwriteSwitchFollowsTheLibrary(unittest.TestCase):
                          "premise: the first library forbids overwrite")
         folder = test_support.scratch_dir("amaze_policy_switch_")
         self.addCleanup(shutil.rmtree, folder, True)
-        ok, _ = prefs_mod.seed_test_folder(folder)
-        self.assertTrue(ok, "premise: the test folder seeds")
-        p.test_dir = folder
-        p.test_mode = True
-        dlg._apply_test_mode()
+        self.assertTrue(prefs_mod.create_library(folder), "premise: the other library is made")
+        dlg._switch_library(folder, p.library_user)
         self.assertTrue(
             dlg._cbx_allow_overwrite.isChecked(),
             "the switch still shows the PREVIOUS library's policy - a "
@@ -1696,17 +1598,6 @@ class ThePickersStartInAForwardSlashPath(unittest.TestCase):
             "the cache picker opens on a native Windows path; selectFile "
             "requires forward slashes there and ignores the rest")
 
-    def test_the_test_folder_picker_starts_in_a_forward_slash_path(self):
-        from amaze.tests import test_support
-        p = test_support.fixture_prefs(self)
-        p.test_dir = "D:\\shots\\amaze_test"   # a stored absolute comes back as written, backslashes and all
-        dlg = self._dialog(p)
-        start = self._started_in(dlg.change_test_path)
-        self.assertEqual(
-            "D:/shots/amaze_test", start,
-            "the test-folder picker opens on a native Windows path; "
-            "selectFile requires forward slashes there and ignores the rest")
-
 
 class APickedRootKeepsItsSlash(unittest.TestCase):
     """Only a trailing slash that is not the root goes: `D:` is relative to drive D's current folder."""
@@ -1717,10 +1608,9 @@ class APickedRootKeepsItsSlash(unittest.TestCase):
         from amaze.dialogs import prefs_dialog
         from amaze.tests import test_support
         p = test_support.fixture_prefs(self)
-        p.cache_dir = p.test_dir = "/start"    # so neither picker asks for the machine's cache root
+        p.cache_dir = "/start"    # so the picker does not ask for the machine's cache root
         dlg = prefs_dialog.PrefsDialog(p, panel=None)
         self.addCleanup(dlg.deleteLater)
-        seeded = []
         ui = types.SimpleNamespace(selectFile=lambda *_a, **_k: answer,
                                    displayMessage=lambda *_a, **_k: 0)
         with contextlib.ExitStack() as stack:
@@ -1728,17 +1618,14 @@ class APickedRootKeepsItsSlash(unittest.TestCase):
             stack.enter_context(mock.patch.object(p, "save", lambda: None))
             stack.enter_context(mock.patch.object(
                 prefs_dialog.hostos, "set_cache_override", lambda _path: None))
-            stack.enter_context(mock.patch.object(
-                prefs_dialog.prefs_mod, "seed_test_folder",
-                lambda folder: seeded.append(folder) or (False, "refused")))
             if windows:
                 stack.enter_context(mock.patch.object(
                     prefs_dialog.hostos, "os", self.WINDOWS_OS))
             getattr(dlg, method)()
-        return p.cache_dir if method == "change_cache_path" else seeded[0]
+        return p.cache_dir
 
     def test_a_picked_root_is_kept_whole(self):
-        for method in ("change_cache_path", "change_test_path"):
+        for method in ("change_cache_path",):
             for answer, windows, kept in (
                     ("/", False, "/"), ("D:/", True, "D:/"),
                     ("/Volumes/cache/", False, "/Volumes/cache"),

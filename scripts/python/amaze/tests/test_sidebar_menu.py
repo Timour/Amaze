@@ -267,7 +267,8 @@ class EachSubmenuRowWritesWhatItSays(unittest.TestCase):
     def test_each_show_tick_writes_its_own_field(self):
         context, path = self._on_row("file")
         prefs = self.panel.prefs
-        prefs.set_file_folder_kinds(path, locations.PRE_SHOW_KINDS)    # Other Files off to start
+        prefs.set_file_folder_kinds(path, (locations.KIND_IMAGE, locations.KIND_GEO,
+                                           locations.KIND_HIP))    # Other Files off to start
         self._choose("Show", "Images")
         self._choose("Show", "Other Files")
         self.assertEqual({locations.KIND_GEO, locations.KIND_HIP,

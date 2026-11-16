@@ -93,12 +93,10 @@ IMG_SUBDIR = "img/"  # with each asset section's folder, what a library needs â–
 
 _UNSEEN = object()  # a shared key this session never adopted nor pushed: the next push carries it
 
-POINTERS = (  # settings.json's own scalars as (stored key, setter, decode); test_mode last, as a switch
+POINTERS = (  # settings.json's own scalars as (stored key, setter, decode)
     ("library_user", "library_user", lambda value: str(value or "")),
     ("cache_dir", "cache_dir", _decode_path),
-    ("test_dir", "test_dir", _decode_path),
     ("directory", "dir", lambda value: _normalised_dir(_decode_path(value))),
-    ("test_mode", "test_mode", bool),
 )
 
 SHARED_KEYS = {  # truth in the library's shared settings: stored key -> (property or None, attr, default)
@@ -434,8 +432,6 @@ class _Persistence:
             for stored, (_prop, attr, _default) in SHARED_KEYS.items()}
         self.data["library_user"] = self._library_user
         self.data["cache_dir"] = _encode_path(self._cache_dir)
-        self.data["test_mode"] = self._test_mode
-        self.data["test_dir"] = _encode_path(self._test_dir)
         if self._library_user:  # into the user's block, keeping keys it already carried; flat while nobody is picked
             block = dict(self._users_blocks.get(self._library_user, {}))
             block.update(self._user_state_document())
@@ -483,8 +479,6 @@ class _Persistence:
             else:
                 _through_setter(self, prop, value, default)
         self._cache_dir = _decode_path(data.get("cache_dir", ""))
-        self._test_mode = bool(data.get("test_mode", False))
-        self._test_dir = _decode_path(data.get("test_dir", ""))
         self._libraries = _listed_libraries(data.get("libraries"))
 
         if not isinstance(self._directory, str):  # _decode_path passes a non-str straight through, and `null`, `{}` or `[]` then reach os.path.exists
@@ -492,7 +486,7 @@ class _Persistence:
         self._directory = _normalised_dir(self._directory)    # a folder saved without its slash glues onto file names
         self._settle_user_blocks()
         self._adopt_shared()  # a pure read: load() never writes the library
-        library = self.dir  # the overlay-aware property, never the raw field
+        library = self.dir
         if library and os.path.exists(library):
             return True
         return False

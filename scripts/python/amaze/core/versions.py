@@ -272,8 +272,8 @@ def _stem(tag: str, number: int) -> str:
 
 
 def _row_stem(row: dict) -> str:
-    """The stem a ledger row's files use: the recorded one, else the bare number."""
-    return str(row.get("file") or int(row.get("n", 0)))
+    """The stem a ledger row's files use, as recorded; "" when none is, so no file is found."""
+    return str(row.get("file") or "")
 
 
 def _row_for(ledger: dict, number: int) -> dict | None:
@@ -285,7 +285,9 @@ def _row_for(ledger: dict, number: int) -> dict | None:
 
 def _archive_paths(preferences, mat_id: str, stem,
                    section: Section = MATERIAL) -> dict:
-    """The archive file set for one stem, `<writer>-<n>` or a bare `<n>` when unsigned."""
+    """The archive file set for one stem, `<writer>-<n>` or a bare `<n>` when unsigned; none for ""."""
+    if not stem:
+        return {}
     folder = versions_dir(preferences, mat_id, section)
     return {kind: os.path.join(folder, "%s%s" % (stem, kind))
             for kind, _required in section.kinds}
@@ -414,6 +416,10 @@ def switch_active(preferences, mat_id: str, number: int, section: Section = MATE
         debug.event("versions", "switch refused - no such version",
                     mat_id=str(mat_id), n=number)
         return False
+    if not _row_stem(row):
+        debug.event("versions", "switch refused - the row names no files, so none can be found",
+                    mat_id=str(mat_id), n=number)
+        return False
     base = base_paths or _base_paths(preferences, mat_id, section)
     if not keep_base(preferences, mat_id, section, base, base_name):
         debug.event("versions", "switch refused - the base holds "
@@ -472,7 +478,7 @@ def record_base(preferences, mat_id: str, kind: str, section: Section = MATERIAL
             return False
         active = int(ledger.get("active", 0) or 0)
         active_row = _row_for(ledger, active)
-        if active_row is None:
+        if active_row is None or not _row_stem(active_row):
             return False
         source = source or _base_paths(preferences, mat_id, section).get(kind)
         if not source or not os.path.exists(source):
@@ -515,7 +521,7 @@ def version_file(preferences, mat_id: str, number: int,
                  section: Section = MATERIAL) -> str:
     """Version `number`'s payload file; "" when it has no row or the file is gone."""
     row = _row_for(read_ledger(preferences, mat_id, section), number)
-    if row is None:
+    if row is None or not _row_stem(row):
         return ""
     path = _archive_paths(preferences, mat_id, _row_stem(row),
                           section)[section.payload()]

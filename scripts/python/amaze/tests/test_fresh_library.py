@@ -18,53 +18,21 @@ from amaze.prefs import prefs as prefs_mod
 from amaze.tests import test_support
 
 
-class TheTestLibraryDoorMakesAWholeLibrary(unittest.TestCase):
-    """`seed_test_folder` is a creation door in its own right, and it built half a library."""
-
-    def setUp(self):
-        self.folder = tempfile.mkdtemp(prefix="amaze_fresh_seed_")
-        self.addCleanup(shutil.rmtree, self.folder, ignore_errors=True)
-        self.lib = os.path.join(self.folder, prefs_mod.TEST_LIB_SUBDIR)
-
-    def _master(self):
-        with open(os.path.join(self.lib, "DataBase.json"), encoding="utf-8") as handle:
-            return json.load(handle)
-
-    def test_it_creates_the_asset_folder(self):
-        """Without its section folders the first save raises out of mkstemp, uncaught."""
-        prefs_mod.seed_test_folder(self.folder)
-        for tail in ("materials", "nodes", "img"):
-            self.assertTrue(
-                os.path.isdir(os.path.join(self.lib, tail)),
-                "%s/ was not created, so the library is half made" % tail)
-        self.assertFalse(os.path.exists(os.path.join(self.lib, "mat")),
-                         "a library was born with format 3's shared mat/")
-
-    def test_it_is_born_at_this_amazes_version(self):
-        """A library with no version recorded reads as one to convert."""
-        prefs_mod.seed_test_folder(self.folder)
-        master = self._master()
-        self.assertEqual(library_policy.LIBRARY_VERSION,
-                         master["policy"]["library"]["version"])
-        self.assertEqual(branding.LIBRARY_FORMAT, master.get("format"))
-
-    def test_it_still_adds_only_what_is_missing(self):
-        """Existing files are never touched - the door's own promise, and a second run must keep it."""
-        prefs_mod.seed_test_folder(self.folder)
-        with open(os.path.join(self.lib, "DataBase.json"), "rb") as handle:
-            before = handle.read()
-        ok, _what = prefs_mod.seed_test_folder(self.folder)
-        with open(os.path.join(self.lib, "DataBase.json"), "rb") as handle:
-            self.assertTrue(ok)
-            self.assertEqual(before, handle.read(), "the library's database was rewritten")
-
-
 class EveryNewLibraryIsBornThroughOneDoor(unittest.TestCase):
     """`create_library` writes the library's own database and nothing else."""
 
     def setUp(self):
         self.lib = tempfile.mkdtemp(prefix="amaze_fresh_starter_")
         self.addCleanup(shutil.rmtree, self.lib, ignore_errors=True)
+
+    def test_it_is_born_at_this_amazes_version(self):
+        """A library with no version recorded reads as one to convert."""
+        prefs_mod.create_library(self.lib)
+        with open(os.path.join(self.lib, "DataBase.json"), encoding="utf-8") as handle:
+            master = json.load(handle)
+        self.assertEqual(library_policy.LIBRARY_VERSION,
+                         master["policy"]["library"]["version"])
+        self.assertEqual(branding.LIBRARY_FORMAT, master.get("format"))
 
     def test_it_writes_only_the_librarys_database(self):
         self.assertTrue(prefs_mod.create_library(self.lib))

@@ -283,8 +283,8 @@ class AmazePanel(QtWidgets.QWidget):
                 == hostos.comparable_path(str(folder or "")))
 
     def _repaired(self, folder: str) -> bool:
-        """Ask about the list in `folder` that will not read; True once Repair put a readable one back."""
-        from amaze.core import repair
+        """Ask about the list in `folder` that will not read; True once the fix picked made it read."""
+        from amaze.dialogs import repair_dialog
         switching = getattr(self, "material_model", None) is not None    # a library is open
         debug.event("session", "library index unreadable", dir=folder, switching=switching)
         ui = getattr(hou, "ui", None)
@@ -301,37 +301,15 @@ class AmazePanel(QtWidgets.QWidget):
         if choice != 0:
             debug.event("session", "index repair declined")
             return False
-        ok, how = repair.repair_index(folder, guard=False)
-        if not ok:
-            self._say_repair_failed(
-                ui, folder, switching,
-                messages.REPAIR_COULD_NOT_FIX_THE_LIST_SWITCHING % how if switching
-                else messages.REPAIR_COULD_NOT_FIX_THE_LIST % how)
-            return False
+        repair_dialog.check_failed_library(folder, self.prefs)    # the user picks the fix there
         if library_actions.index_unreadable(folder):
-            debug.event("session", "index still unreadable after repair", dir=folder)
-            self._say_repair_failed(
-                ui, folder, switching,
-                messages.INDEX_UNREADABLE_AFTER_REPAIR_SWITCHING if switching
-                else messages.INDEX_UNREADABLE_AFTER_REPAIR)
+            debug.event("session", "index still unreadable after Check Library", dir=folder)
+            ui.displayMessage(messages.DATABASE_STILL_UNREADABLE_SWITCHING if switching
+                              else messages.DATABASE_STILL_UNREADABLE,
+                              severity=hou.severityType.Warning, title=messages.TITLE_AMAZE)
             return False
-        ui.displayMessage(messages.LIBRARY_INDEX_REPAIRED % how,
-                          title=messages.TITLE_AMAZE, severity=hou.severityType.Message)
-        debug.event("session", "index repaired", how=how, dir=folder)
+        debug.event("session", "index repaired", dir=folder)
         return True
-
-    def _say_repair_failed(self, ui, folder: str, switching: bool, text: str) -> None:
-        """Say Repair failed; on a switch, offer Check Library on the library that failed."""
-        if not switching:
-            ui.displayMessage(text, severity=hou.severityType.Warning, title=messages.TITLE_AMAZE)
-            return
-        choice = ui.displayMessage(
-            text, buttons=messages.BUTTONS_CHECK_THIS_LIBRARY,
-            severity=hou.severityType.Warning, default_choice=1, close_choice=1,
-            title=messages.TITLE_AMAZE)
-        if choice == 0:
-            from amaze.dialogs import repair_dialog
-            repair_dialog.check_failed_library(folder, self.prefs)
 
     MENU_ICON_FILES = {    # menu title -> icon asset with a baked-in "opens a menu" triangle
         "View": "icon_renderer.svg",
@@ -587,7 +565,7 @@ class AmazePanel(QtWidgets.QWidget):
         texstore.publish_env(self.prefs)    # $AMAZELIB names the library the models now serve
         self._update_library()    # before any tile paints
         self._seed_curated_content()    # once per library, marker-guarded
-        if not self.prefs.test_mode and self.prefs.note_library_opened(self.prefs.real_dir):
+        if self.prefs.note_library_opened(self.prefs.dir):
             self.prefs.save()    # the Library list, the most recently opened first
         return True
 
@@ -620,7 +598,8 @@ class AmazePanel(QtWidgets.QWidget):
                     pass
             outcome = library_conversion.convert(
                 folder, confirm, progress, user=self.prefs.library_user,
-                machine_stars=library_conversion.machine_stars(self.prefs))
+                machine_stars=library_conversion.machine_stars(self.prefs),
+                show_unknown=self.prefs.file_show_unknown)
         if outcome.status == library_conversion.BLOCKED:
             ui.displayMessage(messages.CONVERT_LIBRARY_BLOCKED % outcome.why,
                               severity=hou.severityType.Warning, title=messages.TITLE_AMAZE)
@@ -675,16 +654,13 @@ class AmazePanel(QtWidgets.QWidget):
         return ""
 
     def _stay_closed(self, why: str = "") -> bool:
-        """False; an open library is kept, its Library Path and Test Library put back, `why` said."""
+        """False; an open library is kept, its Library Path put back, `why` said."""
         switching = getattr(self, "material_model", None) is not None
         if library_db.key_of(self.prefs) != library_db.key_of(
                 types.SimpleNamespace(dir=getattr(self, "_models_dir", ""))):
             library_db.release(self.prefs)    # read while deciding, never opened: not held
         if switching:
-            real, test_mode, test_dir = self._models_pointers
-            self.prefs.test_dir = test_dir
-            self.prefs.dir = real
-            self.prefs.test_mode = test_mode    # last, so the shared settings adopted are that library's
+            self.prefs.dir = self._models_dir
             self.prefs.save()
             debug.event("session", "library kept", dir=self.prefs.dir)
         if why:    # deferred by the sink: a modal inside the pane's build draws black ▸r/modal-in-pane-build
@@ -695,7 +671,6 @@ class AmazePanel(QtWidgets.QWidget):
     def _note_models_library(self) -> None:
         """The library the models now serve, for closing Preferences and for a Cancel."""
         self._models_dir = self.prefs.dir
-        self._models_pointers = (self.prefs.real_dir, self.prefs.test_mode, self.prefs.test_dir)
 
     def library_models(self) -> tuple:
         """Every library-backed model that exists now, from each section's `library_model_attrs`."""

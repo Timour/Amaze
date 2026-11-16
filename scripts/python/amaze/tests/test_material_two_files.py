@@ -654,6 +654,42 @@ class TheBoxesTest(_OldLibrary):
         self.assertEqual(messages.CONVERT_LIBRARY_DONE, shown[-1][0])
 
 
+class EveryLedgerRowIsNamedTest(_OldLibrary):
+    """The converter writes each old ledger row's file name; a row with none has no files."""
+
+    def lay_out(self):
+        self.database("library.json", ["MAT2"])
+        self.old_asset("MAT2")
+        folder = os.path.join(self.old, "versions", "MAT2")
+        for number in (1, 2):
+            write(os.path.join(folder, "%d.mat" % number), "version %d\n" % number)
+            write(os.path.join(folder, "%d.interface" % number), INTERFACE)
+        write(os.path.join(folder, "versions.json"),
+              {"active": 2, "versions": [{"n": 1, "name": "V1"},
+                                         {"n": 2, "name": "V2", "file": "2"}]})
+
+    def ledger(self, *parts) -> dict:
+        with open(os.path.join(*parts, "versions.json"), encoding="utf-8") as handle:
+            return json.load(handle)
+
+    def test_the_converter_names_every_old_row(self):
+        self.lay_out()
+        self.assertEqual(library_conversion.DONE, self.convert()[0].status)
+        rows = self.ledger(self.materials, "versions", "MAT2")["versions"]
+        self.assertEqual(["1", "2"], [row.get("file") for row in rows])
+        self.assertTrue(versions.version_file(self.prefs, "MAT2", 1).endswith("1.mat"))
+
+    def test_a_row_with_no_name_finds_no_files(self):
+        self.lay_out()
+        self.convert()
+        folder = os.path.join(self.materials, "versions", "MAT2")
+        ledger = self.ledger(folder)
+        del ledger["versions"][0]["file"]
+        write(os.path.join(folder, "versions.json"), ledger)
+        self.assertEqual("", versions.version_file(self.prefs, "MAT2", 1))
+        self.assertFalse(versions.switch_active(self.prefs, "MAT2", 1))
+
+
 class OnlyTheConverterNamesFormat3Test(unittest.TestCase):
     """Every module but the converter reads 2.0 only: no old file, copy, key or module named."""
 
@@ -998,9 +1034,29 @@ class EveryOldStoreArrivesTest(unittest.TestCase):
         files = self.built()[library_files.FILES]
         self.assertEqual({"L1": {"path": "/proj/tex"}, "L3": {"path": "/lib"}}, files["paths"],
                          "two ids at one path were not collapsed to one")
-        self.assertEqual({self.PEER: {"loc:L1": {"registered": True, "label": "Textures"}},
-                          self.USER: {"loc:L3": {"registered": True}}}, files["locations"])
+        every = ["geometry", "hip", "image", "other"]
+        self.assertEqual({self.PEER: {"loc:L1": {"registered": True, "label": "Textures",
+                                                 "kinds": every}},
+                          self.USER: {"loc:L3": {"registered": True, "kinds": every}}},
+                         files["locations"])
         self.assertEqual(["loc:L1/a.exr", "loc:L1/b.exr"], sorted(files["comments"]))
+
+    def test_a_location_from_before_show_is_given_the_ticks_it_listed_by(self):
+        known = ["geometry", "hip", "image"]
+        for show_all, show_unknown, kinds in ((None, True, known + ["other"]),
+                                              (None, False, known),
+                                              (True, False, known + ["other"]),
+                                              (False, True, known),
+                                              ("ticked", True, ["image"])):
+            with self.subTest(show_all=show_all, show_unknown=show_unknown):
+                record = {"registered": True}
+                if show_all == "ticked":
+                    record["kinds"] = ["image"]
+                elif show_all is not None:
+                    record["show_all"] = show_all
+                self.lay("locations.json", {"locations": {"loc:L3": record}})
+                built = self.built(show_unknown=show_unknown)[library_files.FILES]
+                self.assertEqual(kinds, built["locations"][self.USER]["loc:L3"]["kinds"])
 
     def test_users(self):
         self.lay("users.json", {"users": {self.PEER: {"name": "  First User "},

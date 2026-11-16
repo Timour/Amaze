@@ -93,10 +93,6 @@ PREFS_SAVE_LOG = 'Copy the debug log to a folder you choose. The copy is named f
 
 PREFS_CLEAR_LOG = 'Clear the log and start fresh.'
 
-PREFS_TEST_LIBRARY = 'Try things out on a throwaway library instead of your real one. Point it at any folder: Amaze uses its lib/ folder as the library and creates it if it is missing. The preview cache is not moved. Your real library, cache, and folders are not touched and come back when you turn this off.'
-
-PREFS_TEST_FOLDER = 'The folder that holds the test library.'
-
 PREFS_ADDON_BETAS = 'Which version of each add-on Check for Updates on the Add-On tab installs: the newest beta when on, the newest release when off.'
 
 CUSTOMIZE_TILE_NAME = 'Rename this tile. The name drives the grid, the sidebar count, and every search.'   # ▸ Customize dialog (D02)

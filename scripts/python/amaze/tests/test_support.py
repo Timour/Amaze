@@ -43,31 +43,8 @@ def pump_until(done, timeout=10.0) -> bool:
     return bool(done())
 
 
-def _adopt_suite_root() -> str:
-    """Point `TMPDIR` at `<test_dir>/suite/` at import, when a folder is set. ▸p/suite-debris-home"""
-    try:
-        with open(os.path.join(hostos.real_config_root(), "settings.json"),
-                  encoding="utf-8") as handle:
-            configured = str(json.load(handle).get("test_dir", "") or "")
-    except (OSError, ValueError):
-        return ""
-    if not configured:
-        return ""
-    root = os.path.join(os.path.expanduser(configured), "suite")
-    try:
-        os.makedirs(root, exist_ok=True)
-    except OSError:
-        return ""
-    os.environ["TMPDIR"] = root
-    tempfile.tempdir = None    # gettempdir() re-reads the environment on its next ask
-    return root
-
-
-SUITE_ROOT = _adopt_suite_root()
-
-
 def scratch_dir(prefix: str) -> str:
-    """Every directory this module mints, under the adopted tempdir. ▸p/suite-debris-home"""
+    """Every directory this module mints, in the system temp folder. ▸p/suite-debris-home"""
     return tempfile.mkdtemp(prefix=prefix)
 
 
@@ -468,12 +445,11 @@ def plain_python() -> str:
 
 
 def live_library_to_rehearse_on(testcase):
-    """The configured real library (`real_dir`, never the overlay), or a skip. ▸p/harness-isolation"""
+    """The configured library, or a skip. ▸p/harness-isolation"""
     live = prefs.Prefs()
     live.path = hostos.real_config_root()    # the user's own settings, read only - the sandbox refuses a write
     live.load()
-    live.test_mode = False    # this instance's own overlay switch, so every `live.dir` downstream is the real library
-    directory = getattr(live, "real_dir", "") or live.dir
+    directory = live.dir
     if not directory or not os.path.isdir(directory):
         testcase.skipTest("no library configured on this machine")
     from amaze.core import guard, library_conversion
@@ -564,7 +540,8 @@ def with_fixture_location(library, folder) -> None:
                                    last_known_folders=[folder],
                                    keep_last_known=lambda *_args: None)
     locations.forget()
-    if not locations.set_record(holder, folder, {"registered": True}):
+    if not locations.set_record(holder, folder, {"registered": True,
+                                                 "kinds": list(locations.SHOWN_BY_DEFAULT)}):
         raise RuntimeError("the fixture location could not be registered in %s" % library)
     library_db.flush(holder)
     library_db.release(holder)

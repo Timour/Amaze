@@ -334,18 +334,6 @@ class OneLibraryChangeIsOneSwitch(unittest.TestCase):
         self.assertEqual(1, self._switches_while_open(apply),
                          "closing Preferences re-read every model a second time")
 
-    def test_test_library(self):
-        folder = test_support.scratch_dir("amaze_switch_test_lib_")
-        self.addCleanup(shutil.rmtree, folder, True)
-
-        def turn_on(dialog):
-            self.panel.prefs.test_dir = folder
-            _write_settings(self.panel, test_mode=True, test_dir=folder)    # the save the fixture panel switches off
-            dialog.set_test_mode(True)
-
-        self.assertEqual(1, self._switches_while_open(turn_on),
-                         "closing Preferences re-read every model a second time")
-
     def test_a_folder_changed_behind_preferences_is_switched_to_at_close(self):
         other = test_support.seeded_library(self)
         self.assertEqual(
@@ -418,17 +406,6 @@ class EveryWayOntoALibraryTakesOneOrder(unittest.TestCase):
         QtWidgets.QApplication.processEvents()
         self._assert_order("closing Preferences")
 
-    def test_test_library(self):
-        from amaze.dialogs import prefs_dialog
-        folder = test_support.scratch_dir("amaze_order_test_lib_")
-        self.addCleanup(shutil.rmtree, folder, True)
-        self.panel.prefs.test_dir = folder
-        dialog = prefs_dialog.PrefsDialog(self.panel.prefs, panel=self.panel)
-        self.addCleanup(dialog.deleteLater)
-        del self.order[:]
-        dialog.set_test_mode(True)
-        self._assert_order("Test Library")
-
 
 class AnUnreadableListIsAskedAboutBeforeTheSwitch(unittest.TestCase):
     """A library whose list will not read asks Repair or Cancel; Cancel keeps the open library."""
@@ -493,13 +470,26 @@ class AnUnreadableListIsAskedAboutBeforeTheSwitch(unittest.TestCase):
         self.assertEqual([], saves, "the settings were saved, which writes into the picked folder")
         self.assertEqual(before, self.panel.prefs.dir, "the library moved")
 
-    def test_repair_opens_the_picked_library(self):
+    def test_repair_restores_the_backup_picked_and_opens_the_library(self):
         self.panel.prefs.save = lambda *a, **k: _write_settings(
-            self.panel, directory=self.panel.prefs.real_dir)    # the save the fixture panel switches off
-        self._answering(0, self._add_and_apply)
+            self.panel, directory=self.panel.prefs.dir)    # the save the fixture panel switches off
+        self._answering_in_turn(["Repair", messages.BUTTON_REPAIR_PUT_COPY_BACK,
+                                 messages.BUTTONS_PUT_COPY_BACK[0]], self._add_and_apply)
         self.assertEqual(os.path.normpath(self.broken),
                          os.path.normpath(self.panel._models_dir),
                          "Repair did not open the picked library")
+
+    def test_repair_chooses_nothing_itself(self):
+        opened = self.panel.prefs.dir
+        asked = self._answering_in_turn(["Repair"], self._add_and_apply)
+        report, buttons = asked[1]
+        self.assertIn(os.path.normpath(self.broken), report, "Check Library did not report on it")
+        self.assertIn(messages.BUTTON_REPAIR_PUT_COPY_BACK, buttons)
+        self.assertIn(messages.BUTTON_REBUILD_FROM_METADATA, buttons)
+        with open(os.path.join(self.broken, library_files.MATERIALS), "rb") as handle:
+            self.assertEqual(b"{ this is not json", handle.read(), "Repair chose a fix itself")
+        self.assertEqual((messages.DATABASE_STILL_UNREADABLE_SWITCHING, ()), asked[-1])
+        self.assertEqual(opened, self.panel._models_dir, "the panel left the open library")
 
     def _answering_in_turn(self, presses, action):
         """Press each dialog's button by label in turn; past the list, its last button."""
@@ -526,25 +516,26 @@ class AnUnreadableListIsAskedAboutBeforeTheSwitch(unittest.TestCase):
             QtWidgets.QApplication.processEvents()
         return asked
 
-    def test_a_failed_repair_checks_and_fixes_the_picked_library(self):
-        from amaze.core import repair
+    def test_repair_rebuilds_from_metadata_when_that_is_picked(self):
         opened = self.panel.prefs.dir
         held = os.path.join(opened, library_files.MATERIALS)
         with open(held, "rb") as handle:
             held_bytes = handle.read()
-        with mock.patch.object(repair, "repair_index", return_value=(False, "no copy reads")):
-            asked = self._answering_in_turn(
-                ["Repair", messages.BUTTONS_CHECK_THIS_LIBRARY[0],
-                 messages.BUTTON_REPAIR_PUT_COPY_BACK, messages.BUTTONS_PUT_COPY_BACK[0]],
-                self._add_and_apply)
-        self.assertIn((messages.REPAIR_COULD_NOT_FIX_THE_LIST_SWITCHING % "no copy reads",
-                       messages.BUTTONS_CHECK_THIS_LIBRARY), asked)
-        self.assertTrue(any(os.path.normpath(self.broken) in text for text, _b in asked[2:]),
-                        "Check Library did not report on the library that failed")
+        self.panel.prefs.save = lambda *a, **k: _write_settings(
+            self.panel, directory=self.panel.prefs.dir)    # the save the fixture panel switches off
+        from amaze.core import asset_record
+        folder = os.path.join(self.broken, "materials")
+        for name in os.listdir(folder):
+            if name.endswith(".json"):
+                asset_record.write_section(os.path.join(folder, name), asset_record.METADATA,
+                                           {"id": name[:-5], "name": "Rebuilt " + name[:-5]})
+        self._answering_in_turn(["Repair", messages.BUTTON_REBUILD_FROM_METADATA,
+                                 messages.BUTTONS_REBUILD[0]], self._add_and_apply)
         with open(os.path.join(self.broken, library_files.MATERIALS), encoding="utf-8") as handle:
-            json.load(handle)    # the saved copy is back, so the list reads
-        self.assertEqual(opened, self.panel.prefs.dir, "the open library changed")
-        self.assertEqual(opened, self.panel._models_dir, "the panel left the open library")
+            self.assertTrue(json.load(handle)["assets"], "the rebuilt database holds nothing")
+        self.assertEqual(os.path.normpath(self.broken),
+                         os.path.normpath(self.panel._models_dir),
+                         "the rebuilt library did not open")
         with open(held, "rb") as handle:
             self.assertEqual(held_bytes, handle.read(), "the open library's list was written")
 
@@ -563,24 +554,6 @@ class AnUnreadableListIsAskedAboutBeforeTheSwitch(unittest.TestCase):
         from amaze.core import repair
         self.assertTrue(repair.session_holds(self.panel.prefs.dir))
         self.assertFalse(repair.session_holds(self.broken))
-
-    def test_cancel_turns_test_library_back_off(self):
-        from amaze.dialogs import prefs_dialog
-        from amaze.prefs import prefs as prefs_mod
-        folder = test_support.scratch_dir("amaze_broken_test_lib_")
-        self.addCleanup(shutil.rmtree, folder, True)
-        prefs_mod.seed_test_folder(folder)
-        with open(os.path.join(prefs_mod.test_library_dir(folder), library_files.MATERIALS),
-                  "wb") as handle:
-            handle.write(b"{ this is not json")
-        self.panel.prefs.test_dir = folder
-        before = self.panel.prefs.dir
-        dialog = prefs_dialog.PrefsDialog(self.panel.prefs, panel=self.panel)
-        self.addCleanup(dialog.deleteLater)
-        self._answering(1, lambda: dialog._cbx_test_mode.setChecked(True))
-        self.assertFalse(self.panel.prefs.test_mode, "Cancel left Test Library on")
-        self.assertFalse(dialog._cbx_test_mode.isChecked(), "the switch still shows Test Library on")
-        self.assertEqual(before, self.panel.prefs.dir, "Cancel left the open library")
 
 
 class AListThatWillNotOpenIsNotSwitchedTo(unittest.TestCase):

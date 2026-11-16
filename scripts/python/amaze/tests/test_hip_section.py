@@ -36,6 +36,7 @@ class _Prefs:
         self.file_recursive_folders = list(folders) if subfolders else []  # recursion is per LOCATION: the stub's flag marks every registered folder recursive
         self.file_folder_names = {}
         self.last_file_folder = ""
+        self.file_show_unknown = True    # a folder no location holds lists by this switch
         self.rendersize = 256
         self.icon_line_weight = "template"
         self.texture_parallel_conversions = 1  # the image/geo pipelines' knobs, read at _load even when the folder holds only scenes

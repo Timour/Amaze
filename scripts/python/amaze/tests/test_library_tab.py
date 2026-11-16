@@ -232,24 +232,6 @@ class NothingSwitchesBeforeApply(unittest.TestCase):
         self.assertEqual(made["Sage"], self.panel.prefs.library_user)
 
 
-class TestLibraryKeepsTheUserByName(unittest.TestCase):
-    """The test library uses the user of the same name, made there when missing, and back."""
-
-    def test_on_and_off_keep_the_name(self):
-        prefs = test_support.fixture_prefs(self)
-        mine = prefs.library_user = users.create(prefs, "Plum")
-        folder = test_support.scratch_dir("amaze_tab_test_lib_")
-        self.addCleanup(shutil.rmtree, folder, True)
-        prefs.test_dir = folder
-        dialog = _dialog(self, prefs)
-        dialog.set_test_mode(True)
-        self.assertNotEqual(mine, prefs.library_user)
-        self.assertEqual("Plum", users.name_for(prefs, prefs.library_user),
-                         "the test library has no Plum")
-        dialog.set_test_mode(False)
-        self.assertEqual(mine, prefs.library_user, "turning it off left the test user")
-
-
 class AStartWithoutAUserOpensNoLibrary(unittest.TestCase):
     """At start a library opens only with this computer's user; without one, the pane asks."""
 
@@ -319,7 +301,7 @@ class ManageUpdatesTheList(unittest.TestCase):
         prefs = test_support.fixture_prefs(self)
         other, _made = _library_with(self, "Sage")
         prefs.note_library_opened(other)
-        prefs.note_library_opened(prefs.real_dir)
+        prefs.note_library_opened(prefs.dir)
         dialog = _dialog(self, prefs)
         self.assertEqual(2, dialog.cbb_library.count())
 
@@ -334,7 +316,7 @@ class ManageUpdatesTheList(unittest.TestCase):
 
         with mock.patch.object(prefs_dialog.library_dialog, "ManageLibrariesDialog", Removing):
             dialog.manage_libraries()
-        self.assertEqual([prefs.real_dir], [dialog.cbb_library.itemData(row)
+        self.assertEqual([prefs.dir], [dialog.cbb_library.itemData(row)
                                             for row in range(dialog.cbb_library.count())])
 
 

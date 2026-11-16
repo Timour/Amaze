@@ -563,12 +563,7 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
             ("QPushButton ▸ text", 416, 327, 47, 15, "Clear Log"),
             ("QWidget ▸ group divider", 20, 359, 450, 1, None),
             ("ToggleSwitch", 148, 374, 23, 15, None),
-            ("ToggleSwitch ▸ text", 179, 374, 59, 15, "Test Library"),
-            ("QLineEdit", 260, 371, 180, 22, None),
-            ("QPushButton", 442, 371, 28, 22, None),
-            ("QPushButton ▸ text", 452, 375, 9, 15, "..."),
-            ("ToggleSwitch", 148, 403, 23, 15, None),
-            ("ToggleSwitch ▸ text", 179, 403, 107, 15, "Add-On beta versions"),
+            ("ToggleSwitch ▸ text", 179, 374, 107, 15, "Add-On beta versions"),
         ),
     },
     "D09": {   # Save to Amaze - the Section row picks where the save lands

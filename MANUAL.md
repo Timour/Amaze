@@ -789,11 +789,7 @@ in the browser with the Amaze, Houdini and OS versions filled in; the
 report is sent with **Submit** on that page.
 
 **Debug Mode**, **Open Log**, **Save Log...** and **Clear Log** control
-the debug log. **Test Library** switches Amaze to a test library in the
-folder next to it, with the user of the same name, which it creates
-there when the test library has none; switched off, Amaze returns to the
-library picked on the Library tab, its Cache Path and registered
-folders. **Add-On beta versions** sets which
+the debug log. **Add-On beta versions** sets which
 version of each add-on Check for Updates on the Add-On tab installs: the
 newest beta when on, the newest release when off.
 

@@ -15,8 +15,10 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
+from amaze import messages  # noqa: E402
 from amaze.core import material  # noqa: E402
-from amaze.render import nodes  # noqa: E402
+from amaze.render import material_converter, nodes  # noqa: E402
+from amaze.render.material_conversion.report import ConversionReport  # noqa: E402
 from amaze.tests import test_support  # noqa: E402 - redirects the log
 
 
@@ -151,7 +153,7 @@ class AContainerWithNoTerminalAnswersNone(unittest.TestCase):
             subnet = hou.node("/obj").createNode("subnet")
         self.addCleanup(subnet.destroy)
         self.assertIsNone(material.redshift_terminal(subnet))
-        self.assertIsNone(material.redshift_surface_shader(subnet))
+        self.assertIsNone(material_converter.find_redshift_shader(subnet))
 
 
 @unittest.skipUnless(test_support.renderer_loaded("Redshift"),
@@ -174,12 +176,35 @@ class OneLookupFindsTheTerminalAndTheShader(unittest.TestCase):
             with self.subTest(terminal=terminal):
                 self.assertEqual(terminal, material.redshift_terminal(builder).type().name())
 
-    def test_the_stock_shader_is_found_and_no_terminal_is_taken_for_it(self):
+    def _stock(self):
         parent = hou.node("/mat") or hou.node("/").createNode("mat")
         builder = self._container(parent, "redshift_vopnet")
-        shader = material.redshift_surface_shader(builder)
-        self.assertNotIn(shader.type().name(), material.REDSHIFT_TERMINALS)
-        self.assertTrue(material.is_surface_shader_type(shader.type().name()))
+        return builder, material.redshift_terminal(builder)
+
+    def test_the_shader_is_the_node_wired_into_surface(self):
+        builder, terminal = self._stock()
+        wired = material.terminal_input(material_converter._named_inputs(terminal), "surface")
+        self.assertIsNotNone(wired)
+        self.assertEqual(wired, material_converter.find_redshift_shader(builder))
+
+    def test_an_unwired_shader_is_not_found_by_its_type_name(self):
+        builder, terminal = self._stock()
+        terminal.setInput(0, None)
+        self.assertIsNone(material_converter.find_redshift_shader(builder))
+
+    def test_a_node_wired_into_surface_is_taken_whatever_its_type_name(self):
+        builder, terminal = self._stock()
+        sampler = builder.createNode("redshift::TextureSampler")
+        terminal.setNamedInput("Surface", sampler, 0)
+        self.assertEqual(sampler, material_converter.find_redshift_shader(builder))
+
+    def test_no_wired_shader_is_said_in_the_conversion_report(self):
+        builder, terminal = self._stock()
+        terminal.setInput(0, None)
+        report = ConversionReport("unwired")
+        self.assertEqual((None, None),
+                         material_converter.convert_redshift_container(builder, None, report))
+        self.assertEqual([messages.CONVERSION_NO_WIRED_SURFACE], report.skipped)
 
 
 if __name__ == "__main__":

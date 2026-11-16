@@ -4,6 +4,7 @@ import inspect
 
 import hou
 
+from amaze import messages
 from amaze.core import debug
 from amaze.core import material
 from amaze.core import renderers
@@ -35,13 +36,11 @@ def _octane_type_available() -> bool:
 
 
 def find_redshift_shader(vopnet: hou.Node) -> hou.Node | None:
-    """The surface shader inside a rebuilt redshift_vopnet: what feeds Surface, else a name scan."""
+    """The node wired into the Redshift terminal's Surface input, or None when nothing is."""
     terminal = material.redshift_terminal(vopnet)
-    inputs = terminal.inputs() if terminal is not None else ()
-    if inputs and inputs[0] is not None:
-        if material.is_surface_shader_type(inputs[0].type().name()):    # with only displacement wired, index 0 is not Surface
-            return inputs[0]
-    return material.redshift_surface_shader(vopnet)
+    if terminal is None:
+        return None
+    return material.terminal_input(_named_inputs(terminal), "surface")
 
 
 _UBER_CONVERTERS = {}    # Redshift material shader -> its converter; filled at the bottom
@@ -1392,10 +1391,7 @@ def convert_redshift_container(vopnet, prefs_dir_parent, report):
     shader = find_redshift_shader(vopnet)
     if shader is None:
         reason = out_of_scope_reason(vopnet)
-        report.skip(
-            reason or "no surface shader node found inside the "
-            "saved network"
-        )
+        report.skip(reason or messages.CONVERSION_NO_WIRED_SURFACE)
         return None, None
     shader_type = shader.type().name()
     converter = _shader_converter(shader_type)

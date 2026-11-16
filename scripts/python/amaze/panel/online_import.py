@@ -105,12 +105,13 @@ class OnlineImport:
             return (source, None, "")     # nothing to download
         if record.kind in ("values", "amazepkg"):
             return (source, None, "")     # downloads, but picks no resolution
-        resolution = matx_sources.pick_resolution(
-            source.resolutions(record), self.panel.prefs.matx_resolution
-        )
+        wanted = self.panel.prefs.matx_resolution
+        resolution = matx_sources.pick_resolution(source.resolutions(record), wanted)
         if resolution is None:
             return (None, None,
                     messages.NO_DOWNLOADABLE_PACKAGE % record.title)
+        if not matx_sources.is_resolution(resolution, wanted):
+            debug.status(messages.MATX_RESOLUTION_SUBSTITUTED % (wanted, record.title, resolution))
         return (source, resolution, "")
 
     def import_records_to_scene(self, records,

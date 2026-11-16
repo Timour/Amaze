@@ -22,7 +22,7 @@ from amaze.tests import test_support  # noqa: E402,F401 - redirects the log
 
 
 _VOLATILE = {
-    "dir", "real_dir",          # a fixture points these at a temp folder
+    "dir",                      # a fixture points it at a temp folder
     "path",                     # where the settings file itself lives
     "data",                     # the raw document, compared separately
 }

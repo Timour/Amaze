@@ -778,7 +778,7 @@ class TheAboutTabOffersTheUpdateInOnePlace(unittest.TestCase):
                              "Amaze versions older than 9.8.0.", text)
             self.assertEqual(("Continue", "Cancel"), tuple(kwargs["buttons"]))
 
-    def test_the_about_form_keeps_ONE_divider_above_test_library(self):
+    def test_the_about_form_keeps_ONE_divider_above_the_beta_switch(self):
         from PySide6 import QtWidgets
 
         dialog = self._dialog()
@@ -790,17 +790,17 @@ class TheAboutTabOffersTheUpdateInOnePlace(unittest.TestCase):
         self.assertEqual(
             1, len(dividers),
             "the About form draws %d dividers; the document draws one, "
-            "above Test Library" % len(dividers))
+            "above Add-On beta versions" % len(dividers))
         rows = [form.getWidgetPosition(widget)[0] for widget in (
             dialog._lbl_version, dialog._btn_update.parentWidget(),
-            dialog._cbx_debug.parentWidget(), dialog._cbx_test_mode.parentWidget())]
+            dialog._cbx_debug.parentWidget(), dialog._cbx_addon_betas)]
         self.assertNotIn(-1, rows, "a row was not found on the form")
         self.assertEqual(sorted(rows), rows,
                          "the rows do not run version, buttons, debug, "
-                         "Test Library: %s" % rows)
+                         "Add-On beta versions: %s" % rows)
         self.assertEqual([rows[2] + 1, rows[3] - 1], [dividers[0]] * 2,
                          "the divider does not sit between the debug row "
-                         "and Test Library")
+                         "and Add-On beta versions")
 
 
 class TheShelfToolAsksTheSameQuestion(unittest.TestCase):

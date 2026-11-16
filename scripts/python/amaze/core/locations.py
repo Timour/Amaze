@@ -19,8 +19,8 @@ KIND_IMAGE = "image"  # the kinds a record's `kinds` field lists; stored in file
 KIND_GEO = "geometry"
 KIND_HIP = "hip"
 KIND_OTHER = "other"
-PRE_SHOW_KINDS = (KIND_IMAGE, KIND_GEO, KIND_HIP)    # what a record saved before Show ▸ existed lists
-SHOWN_BY_DEFAULT = PRE_SHOW_KINDS + (KIND_OTHER,)    # what Show ▸ ticks on a new location: every kind
+KNOWN_KINDS = (KIND_IMAGE, KIND_GEO, KIND_HIP)    # the kinds Amaze pictures; Other Files is the rest
+SHOWN_BY_DEFAULT = KNOWN_KINDS + (KIND_OTHER,)    # a new location's Show ▸ ticks
 EVERY_KIND = SHOWN_BY_DEFAULT    # the Import location's ticks: a package carries any file
 
 _generation = globals().get("_generation", 0)    # moves on every location write; the paint path's token

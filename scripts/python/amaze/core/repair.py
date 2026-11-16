@@ -450,7 +450,10 @@ def rebuild_from_stamps(directory: str, index_filename: str = naming.MATERIALS) 
     """A section database rebuilt from each asset's metadata; refused while one is unreadable."""
     assets, damaged = {}, []
     categories = []
-    by_id = _metadata_names(directory)
+    home = naming.SECTION_FOLDERS.get(index_filename)
+    by_id = {asset_id: [folder for folder in folders if os.path.basename(folder) == home]
+             for asset_id, folders in _metadata_names(directory).items()}
+    by_id = {asset_id: folders for asset_id, folders in by_id.items() if folders}
     owned_elsewhere = set()
     by_file, unreadable = ids_claimed_by(directory)
     unreadable = [name for name in unreadable if name != index_filename]
@@ -467,8 +470,6 @@ def rebuild_from_stamps(directory: str, index_filename: str = naming.MATERIALS) 
         if record is None:
             damaged.append(asset_id)
             continue
-        if _list_of(record) not in ("", index_filename):
-            continue    # metadata that names another database goes in that one
         record.setdefault("id", asset_id)
         assets[asset_id] = record
         for cat in record.get("categories") or []:
@@ -482,55 +483,35 @@ def rebuild_from_stamps(directory: str, index_filename: str = naming.MATERIALS) 
             "unreadable": sorted(unreadable)}
 
 
-def _readable_backups(held: guard.Guard, name: str) -> list:
-    """The backups of a database that read, newest first; those holding nothing last."""
-    found = []
-    for order, (entry, when) in enumerate(held.backups(name)):
-        if entry.endswith(guard.UNDO_TAIL):
-            continue
-        facts = _backup_facts(held, name, entry, when)
-        if facts["error"]:
-            continue
-        found.append((not facts["count"], order, entry))
-    return [entry for *_key, entry in sorted(found)]
+def rebuildable(findings: dict) -> list:
+    """The Material and Node databases that are corrupt/unreadable: each can be rebuilt."""
+    return [entry["filename"] for entry in findings.get("lists", ())
+            if entry["state"] == "unreadable" and entry["filename"] in naming.ASSET_SECTIONS]
 
 
-def repair_index(directory: str, guard_session: bool = True, name: str = naming.MATERIALS,
-                 **legacy) -> tuple:
-    """The newest backup holding assets, else one that reads, else a rebuild; (ok, how)."""
+def rebuild(directory: str, name: str = naming.MATERIALS, guard_session: bool = True,
+            **legacy) -> dict:
+    """`name` rebuilt from each asset's metadata as one change; {assets, damaged}, else ValueError."""
     if legacy.get("guard", guard_session):
         _refuse_a_houdini_that_holds_the_library()
-    held = _guard(directory)
-    for entry in _readable_backups(held, name):
-        try:
-            held.restore(name, entry)
-        except (guard.Refused, OSError) as exc:
-            debug.event("repair", "backup refused for the rebuild", backup=entry, error=str(exc))
-            continue
-        debug.event("repair", "database restored from a backup", backup=entry)
-        return True, _after_a_put_back(directory, name, "the newest backup was restored")["said"]
     document = rebuild_from_stamps(directory, name)
     if document["unreadable"]:
         debug.event("repair", "rebuild refused - a sibling database is unreadable",
                     files=document["unreadable"])
-        return False, ("%s cannot be read, so a rebuild cannot tell its "
-                       "assets from this database's"
-                       % wording.and_list(document["unreadable"]))
+        raise ValueError("%s cannot be read, so a rebuild cannot tell its assets from this "
+                         "database's" % wording.and_list(document["unreadable"]))
     if not document["assets"]:
-        return False, "no backup can be read and no asset metadata was found"
+        raise ValueError("no asset metadata was found in its folder")
     try:
-        change = held.change("")
+        change = _guard(directory).change("")
         change.replace(name, {ROWS: document["assets"], "categories": document["categories"]})
         change.commit()
     except OSError as exc:
         debug.event("repair", "rebuilt database could not be written", error=str(exc))
-        return False, "the rebuilt database could not be written"
-    how = "the database was rebuilt from each asset's metadata"
-    if document["damaged"]:
-        how += " (%d could not be read)" % len(document["damaged"])
-    debug.event("repair", "database rebuilt from asset metadata",
+        raise ValueError("the rebuilt database could not be written") from exc
+    debug.event("repair", "database rebuilt from asset metadata", file=name,
                 assets=len(document["assets"]), damaged=len(document["damaged"]))
-    return True, how
+    return {"assets": len(document["assets"]), "damaged": len(document["damaged"])}
 
 
 def _edit(directory: str, name: str, edit) -> bool:
@@ -1280,20 +1261,17 @@ def materials_on_record(findings: dict) -> list:
 
 
 def on_record(findings: dict, filename: str) -> list:
-    """The unlisted pairs whose readable metadata belongs in `filename`, as `(id, record)`."""
-    if "asset_dirs" not in findings:
+    """The unlisted pairs in `filename`'s folder whose metadata reads, as `(id, record)`."""
+    if "asset_dirs" not in findings or filename not in naming.ASSET_SECTIONS:
         return []
-    stamps = _stamps(findings)
-    return [(asset_id, stamps[asset_id]) for asset_id in complete_pairs(findings)
-            if stamps.get(asset_id) is not None and _list_of(stamps[asset_id]) == filename]
-
-
-def _list_of(record: dict) -> str:
-    """The database a record goes in: a renderer Amaze knows is a material's, else a node's."""
-    renderer = record.get("renderer")
-    if renderers.get(renderer):
-        return naming.MATERIALS
-    return naming.NODES if renderer else ""
+    key = naming.SECTION_FOLDERS[filename] + "/"
+    folder = os.path.join(findings["directory"], key)
+    found = []
+    for asset_id in _pairs_by_folder(findings).get(key, []):
+        record = metadata_of([folder], asset_id)
+        if record is not None:
+            found.append((asset_id, record))
+    return found
 
 
 def stamped_unlisted(findings: dict) -> list:
@@ -1435,6 +1413,11 @@ def list_is_missing(findings: dict, filename: str) -> bool:
 
 def complete_pairs(findings: dict) -> list:
     """The unclaimed ids with a `.mat` and an `<id>.json` in ONE folder, in a stable order."""
+    return sorted({asset_id for ids in _pairs_by_folder(findings).values() for asset_id in ids})
+
+
+def _pairs_by_folder(findings: dict) -> dict:
+    """{folder key: [id]} of the unclaimed `.mat` and `<id>.json` pairs each asset folder holds."""
     halves = {}
     for key in findings.get("asset_dirs", ()):
         for name in findings["unaccounted"].get(key, []):
@@ -1443,8 +1426,11 @@ def complete_pairs(findings: dict) -> list:
                 kind, asset_id = naming.RECORD, asset_id or metadata_stem(name)
             if kind in (naming.ASSET, naming.RECORD) and asset_id:
                 halves.setdefault((key, asset_id), set()).add(kind)
-    return sorted({asset_id for (_key, asset_id), seen in halves.items()
-                   if {naming.ASSET, naming.RECORD} <= seen})
+    pairs = {}
+    for (key, asset_id), seen in sorted(halves.items()):
+        if {naming.ASSET, naming.RECORD} <= seen:
+            pairs.setdefault(key, []).append(asset_id)
+    return pairs
 
 
 def unsorted_pairs(findings: dict) -> list:

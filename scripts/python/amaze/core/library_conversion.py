@@ -10,7 +10,7 @@ import uuid
 
 from amaze import branding
 from amaze.core import asset_record, debug, guard, library_files, library_policy, material
-from amaze.core import notes
+from amaze.core import locations, notes
 from amaze.helpers import hostos
 
 OLD_FOLDER = "mat"    # format 3: every section's asset files and version folders, together
@@ -527,7 +527,29 @@ def _convert_versions(library_dir: str, folder: str, section: str, rows: dict,
             return _kept(asset_id, "a version's new file did not read back as built", counts)
         counts["deleted"] += _remove([path for path in (builder_path, interface_path)
                                       if os.path.lexists(path)])
+    _name_ledger_rows(folder)
     return True
+
+
+def _name_ledger_rows(folder: str) -> None:
+    """Each ledger row with no file name gets the bare number its files were saved under."""
+    path = os.path.join(folder, "versions.json")
+    if not os.path.isfile(path):
+        return
+    try:
+        with open(path, encoding="utf-8-sig") as handle:
+            ledger = json.load(handle)
+        rows = ledger.get("versions")
+    except (OSError, ValueError, AttributeError):
+        return    # an unreadable ledger is the version store's to say
+    named = 0
+    for row in rows if isinstance(rows, list) else ():
+        if isinstance(row, dict) and not row.get("file") and str(row.get("n", "")).isdigit():
+            row["file"] = str(int(row["n"]))
+            named += 1
+    if named:
+        hostos.write_json_atomic(path, ledger)
+        debug.event("convert", "version rows named", folder=folder, rows=named)
 
 
 def _stored_faces(library_dir: str) -> dict:
@@ -573,7 +595,7 @@ def _remove_empty(folder: str) -> None:
 
 
 def convert(directory: str, confirm, progress=None, user: str = "",
-            machine_stars=()) -> Outcome:
+            machine_stars=(), show_unknown: bool = True) -> Outcome:
     """Convert an older library to 2.0 whole once `confirm()` says yes; `progress(done, total)`."""
     library_dir = str(directory or "")
     if not needs_conversion(library_dir):
@@ -611,6 +633,11 @@ def convert(directory: str, confirm, progress=None, user: str = "",
         ok, old_files = _convert_asset(library_dir, item, owner, rows, faces, counts)
         if not ok:
             set_aside.append(SetAside(item, owner, rows.get(owner, {}).get(item), old_files))
+    for root in [material.section_folder(library_dir, section, library_files.VERSIONS)
+                 for section in library_files.ASSET_SECTIONS] + [
+                     os.path.join(library_dir, library_files.CODE_FOLDER, library_files.VERSIONS)]:
+        for asset_id in _listing(root):
+            _name_ledger_rows(os.path.join(root, asset_id))
     counts["deleted"] += _remove_old_backups(os.path.join(library_dir, OLD_FOLDER))
     for folder in (os.path.join(library_dir, OLD_FOLDER, library_files.VERSIONS),
                    os.path.join(library_dir, OLD_FOLDER),
@@ -619,7 +646,8 @@ def convert(directory: str, confirm, progress=None, user: str = "",
     counts["left"] += len(_listing(os.path.join(library_dir, OLD_FOLDER)))
     if not _converted_databases(library_dir):
         built = build_databases(library_dir, {(one.section, one.asset_id) for one in set_aside
-                                              if one.row is not None}, user, machine_stars)
+                                              if one.row is not None}, user, machine_stars,
+                                show_unknown)
         _write_databases(library_dir, built, user)
         if not _read_back(library_dir, built):
             debug.event("convert", "the new databases did not read back - the old files stay")
@@ -762,7 +790,20 @@ def _categories_of(row: dict) -> list:
     return [one.strip() for one in (found or []) if isinstance(one, str) and one.strip()]
 
 
-def build_databases(library_dir: str, set_aside=(), user: str = "", machine_stars=()) -> dict:
+PRE_SHOW_KINDS = locations.KNOWN_KINDS    # what a location listed before Show ▸, Other Files aside
+
+
+def _show_ticks(record: dict, show_unknown: bool) -> dict:
+    """A location record with the ticks it listed by before Show ▸: Other Files as Show All said."""
+    if isinstance(record.get("kinds"), (list, tuple)):
+        return record
+    shows_all = record.get("show_all")
+    every = show_unknown if shows_all is None else bool(shows_all)
+    return dict(record, kinds=sorted(PRE_SHOW_KINDS + ((locations.KIND_OTHER,) if every else ())))
+
+
+def build_databases(library_dir: str, set_aside=(), user: str = "", machine_stars=(),
+                    show_unknown: bool = True) -> dict:
     """The six 2.0 databases, {name: document}, built from every old root file in one pass."""
     sections = {name: {"assets": {}, "categories": {}, "comments": {}, "icons": {}, "stars": {}}
                 for name, _prefix in OLD_SECTIONS.values()}
@@ -807,7 +848,8 @@ def build_databases(library_dir: str, set_aside=(), user: str = "", machine_star
         if not owner or not isinstance(record, dict) or not record:
             continue
         home = bare if bare.startswith(LOC) else LOC + paths.id_for(bare)
-        files["locations"].setdefault(owner, {})[paths.file_key(home)] = dict(record)
+        files["locations"].setdefault(owner, {})[paths.file_key(home)] = _show_ticks(
+            dict(record), show_unknown)
     for key, page in _old_table(library_dir, "notes.json").items():
         items = _first_shape(page)
         if items:

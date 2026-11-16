@@ -42,6 +42,11 @@ def _res_rank(label: str) -> int:
 COLOUR_MAP_STEMS = ("col1", "coll1", "albedo")    # Poly Haven colour maps named `diff` ▸r/matx-source-quirks
 
 
+def is_resolution(label: str, wanted: str) -> bool:
+    """Whether `label` names the resolution `wanted` names, `2K-JPG` and `2k` alike."""
+    return _res_rank(label) > 0 and _res_rank(label) == _res_rank(wanted)
+
+
 def pick_resolution(available, preferred: str) -> str | None:
     """Exact match, else the next highest, else the highest below; None only when none exist."""
     if not available:

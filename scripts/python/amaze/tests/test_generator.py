@@ -978,6 +978,37 @@ class NoNetworkBeforeTheProgressBarTest(unittest.TestCase):
                     self._records(named.name, count=1)[0]))
 
 
+class AnotherResolutionIsSaidOnTheStatusLine(unittest.TestCase):
+    """When the set resolution does not exist, the next one is downloaded and the status line says so."""
+
+    def _source_for(self, available):
+        import types
+        from unittest import mock
+        from amaze import messages
+        panel = test_support.fixture_panel(self)
+        panel.prefs.matx_resolution = "2k"
+        source = types.SimpleNamespace(needs_download=lambda _record: True,
+                                       resolutions=lambda _record: list(available))
+        record = types.SimpleNamespace(kind="", title="Rust", source="Somewhere")
+        module = sys.modules[type(panel.online_import).__module__]
+        with mock.patch.object(panel.matx_online_model, "source_for", lambda _r: source), \
+                mock.patch.object(module.debug, "status") as status:
+            found = panel.online_import.source_for(record)
+        return found[1], [call.args[0] for call in status.call_args_list], messages
+
+    def test_a_substitute_is_downloaded_and_said_once(self):
+        used, said, messages = self._source_for(["1k", "4k"])
+        self.assertEqual("4k", used)
+        self.assertEqual([messages.MATX_RESOLUTION_SUBSTITUTED % ("2k", "Rust", "4k")], said)
+
+    def test_the_set_resolution_says_nothing(self):
+        for available, wanted in ((["1k", "2k", "4k"], "2k"), (["1K-JPG", "2K-JPG"], "2K-JPG")):
+            with self.subTest(available=available):
+                used, said, _messages = self._source_for(available)
+                self.assertEqual(wanted, used)
+                self.assertEqual([], said)
+
+
 class CertificateVerificationTest(unittest.TestCase):
     """Online requests verify certificates, never a CERT_NONE retry ▸r/matx-network-hardening"""
 

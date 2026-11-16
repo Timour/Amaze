@@ -140,12 +140,6 @@ def current(preferences):
     return str(preferences.library_user)
 
 
-def adopt_named(preferences, name: str) -> str:
-    """Adopt the user called `name` here, creating them when missing; "" for no name."""
-    uid = named(preferences, name) or create(preferences, name)
-    return adopt(preferences, uid) if uid else ""
-
-
 def adopt(preferences, uid):
     """Point this machine at `uid` and remember it - what the picker calls once the user has chosen."""
     uid = str(uid)

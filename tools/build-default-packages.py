@@ -15,6 +15,7 @@ from PySide6 import QtWidgets  # noqa: E402
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
+from amaze.actions import library as library_actions  # noqa: E402
 from amaze.core import code_library, gradient_library, packages  # noqa: E402
 from amaze.prefs import prefs as prefs_mod  # noqa: E402
 
@@ -34,9 +35,10 @@ def main() -> int:
     os.makedirs(out_dir, exist_ok=True)
     scratch = tempfile.mkdtemp(prefix="amaze_defaults_build_")
     try:
-        prefs_mod.seed_test_folder(scratch)
+        prefs_mod.create_library(scratch)
         prefs = prefs_mod.Prefs()
-        prefs.dir = os.path.join(scratch, prefs_mod.TEST_LIB_SUBDIR, "")    # keep the trailing separator: the connector appends the filename
+        prefs.dir = os.path.join(scratch, "")    # keep the trailing separator: the connector appends the filename
+        library_actions.ensure_library_dirs(prefs)
         gradients = gradient_library.GradientLibrary(prefs)
         gradients.seed_curated_palettes(_Cats())
         code = code_library.CodeLibrary(prefs)

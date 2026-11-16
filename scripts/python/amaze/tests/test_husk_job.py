@@ -21,7 +21,7 @@ sys.path.insert(
 
 from amaze import preview  # noqa: E402
 from amaze.core import library_files, material, tile_icons  # noqa: E402
-from amaze.render import husk_job, thumbs  # noqa: E402
+from amaze.render import husk_job, material_converter, thumbs  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
 OCIO = {"display": hou.Color.ocio_defaultDisplay(), "view": hou.Color.ocio_defaultView(),
@@ -64,10 +64,10 @@ def _redshift(testcase, colour, classic=False):
     kind = "redshift_vopnet" if classic else "rs_usd_material_builder"
     builder = hou.node("/mat").createNode(kind)
     testcase.addCleanup(test_support.drop_node, builder)
-    shader = material.redshift_surface_shader(builder)
+    terminal = material.redshift_terminal(builder)
+    shader = material_converter.find_redshift_shader(builder)
     if shader is None:
         shader = builder.createNode("redshift::StandardMaterial")
-    terminal = material.redshift_terminal(builder)
     if terminal is not None and not any(
             c.inputNode() is shader for c in terminal.inputConnections()):
         terminal.setNamedInput("Surface", shader, 0)

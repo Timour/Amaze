@@ -186,6 +186,8 @@ def _every_choice(findings: dict, may_change: bool):
                   % repair.count_on_a_button(len(on_record), naming.MATERIALS), "add-back")
         if repair.offered_copies(findings):
             offer(messages.BUTTON_REPAIR_PUT_COPY_BACK, "restore")
+        if repair.rebuildable(findings):
+            offer(messages.BUTTON_REBUILD_FROM_METADATA, "rebuild")
         if repair.unsorted_pairs(findings) and not repair.why_nothing_can_be_added(findings):
             offer(messages.BUTTON_REPAIR_ADD_TO_SECTION % repair.files_on_a_button(
                 len(repair.reattachable_files(findings))), "reattach")
@@ -218,7 +220,8 @@ def act(findings: dict, action: str, guard: bool = True, changed=None) -> bool:
     if action == "holding":
         ui_helpers.reveal(findings["holding"]["path"])
         return False
-    done = {"add-back": _do_add_back, "restore": _do_restore, "reattach": _do_reattach,
+    done = {"add-back": _do_add_back, "restore": _do_restore, "rebuild": _do_rebuild,
+            "reattach": _do_reattach,
             "trash": _do_move_aside, "unknown": _do_move_unknown,
             "set-aside": _do_set_aside, "stars": _do_set_aside,
             "uncategorised": _do_uncategorised}[action]
@@ -275,6 +278,36 @@ def _do_restore(findings: dict, guard: bool, changed) -> None:
                   % naming.section_label(offer[0]), messages.COLUMN_OLDER_SAVED_COPIES)
     if offer is not None:
         _put_copy_back(findings, offer, guard, changed)
+
+
+def _do_rebuild(findings: dict, guard: bool, changed) -> None:
+    """Pick the corrupt/unreadable database, confirm, rebuild it from each asset's metadata."""
+    names = repair.rebuildable(findings)
+    if len(names) > 1:
+        chosen = hou.ui.selectFromList(                   # type: ignore
+            [naming.section_label(name) for name in names], exclusive=True,
+            clear_on_cancel=True, title=messages.TITLE_CHECK_LIBRARY,
+            message=messages.PICK_DATABASE_TO_REBUILD, column_header=messages.COLUMN_SECTION)
+        names = [names[chosen[0]]] if chosen else []
+    if not names:
+        return
+    name = names[0]
+    label = naming.section_label(name)
+    if not _confirmed(messages.CONFIRM_REBUILD_DATABASE % label, messages.BUTTONS_REBUILD,
+                      messages.HELP_REBUILD_DATABASE % label, warn=True):
+        return
+    try:
+        done = repair.rebuild(findings["directory"], name, guard=guard)
+    except ValueError as exc:
+        _say(messages.SECTION_LIST_UNCHANGED_REASON % (label, exc), hou.severityType.Warning)
+        return
+    changed()
+    def counted(count):
+        return "%d %s" % (count, naming.section_noun(name, count))
+    said = messages.DATABASE_REBUILT_DONE % (label, counted(done["assets"]))
+    if done["damaged"]:
+        said += messages.DATABASE_REBUILT_SOME_UNREAD % counted(done["damaged"])
+    _say(said)
 
 
 def _pick(offers: list, message: str, header: str, sections: bool = False):

@@ -259,9 +259,8 @@ counts (every row zero). A ninth model joins by declaring itself;
 the newer-library refusal, `actions/library.py`'s `prepare`, the models
 built (`setup`) or switched (`switch_all_models`), `$AMAZELIB`, the
 version update, then the shipped starters. Opening the pane, Reload
-Library, Apply on Preferences ▸ Library, closing Preferences on another
-library and Test Library all call it, and `test_switch_rereads` pins the
-order for all five. What stays with the caller: Reload Library saves
+Library, Apply on Preferences ▸ Library and closing Preferences on another
+library all call it, and `test_switch_rereads` pins the order for all four. What stays with the caller: Reload Library saves
 first, opening the pane and closing Preferences apply the log and cache
 settings, and Apply asks `takes_library` before it writes anything.
 
@@ -709,9 +708,8 @@ model (§5, the one model set). Lives in `core/grid_engine.py`.
 `DataBase.json` ▸ `policy` ▸ `library` ▸ `version` (`library_policy`)
 says what this build may do: a library stamped ahead opens read-only
 and points at the updater. There is no schema chain; an older library
-is converted once by `core/library_conversion.py`, and every creation
-door (`prefs.create_library`, `prefs.seed_test_folder`) stamps the
-current version.
+is converted once by `core/library_conversion.py`, and the creation
+door (`prefs.create_library`) stamps the current version.
 
 ---
 
