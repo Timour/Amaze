@@ -699,7 +699,6 @@
     <addaction name="action_open" />
     <addaction name="separator" />
     <addaction name="action_prefs" />
-    <addaction name="action_check_library" />
     <addaction name="separator" />
     <addaction name="action_open_folder" />
     <addaction name="separator" />
@@ -727,11 +726,6 @@
   <action name="action_about">
    <property name="text">
     <string>About</string>
-   </property>
-  </action>
-  <action name="action_check_library">
-   <property name="text">
-    <string>Check Library…</string>
    </property>
   </action>
   <action name="action_open_folder">

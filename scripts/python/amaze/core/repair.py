@@ -1102,7 +1102,7 @@ def _folder_name(folder: str) -> str:
 
 _SESSION_HOLDS_THE_LIBRARY = (
     "this Houdini session has already read the library, so open Amaze and use "
-    "Library ▸ Check Library…")
+    "Check in Preferences ▸ Library")
 
 
 def _refuse_a_houdini_that_holds_the_library(refusal=ValueError) -> None:

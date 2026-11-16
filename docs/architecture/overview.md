@@ -865,7 +865,7 @@ contracts other code and the docs lean on:
 - **One engine, two doors.** `repair.survey` walks the library once
   (`library_files.walk`, one `os.scandir` per folder) and every report,
   button and count reads that one dict. The panel door is Preferences ▸
-  Library's Databases row (`Library ▸ Check Library…` opens that tab):
+  Library's Databases row:
   its button saves every model first (`check.let_go`), surveys, and
   shows `library_check.summary` as three lights; once something can be
   fixed it reads Repair and opens `repair_dialog.repair_found`, whose

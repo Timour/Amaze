@@ -543,7 +543,7 @@ class AmazePanel(QtWidgets.QWidget):
         debug.event("session", "library reloaded")
 
     def set_library(self) -> None:
-        """Library ▸ Set Library: Preferences on its Library tab, where a library is picked with its user."""
+        """Preferences on its Library tab, where a library is picked with its user."""
         self.show_prefs()
         dialog = getattr(self, "_prefs_dialog", None)
         if dialog is not None:
@@ -1345,9 +1345,6 @@ class AmazePanel(QtWidgets.QWidget):
         self.action_catview = self.ui.action_show_cat  # type: ignore
         self.action_catview.triggered.connect(self.toggle_catview)
 
-        self.action_check_library = self.ui.action_check_library  # type: ignore
-        self.action_check_library.triggered.connect(self.check_library)
-
         self.action_open_folder = self.ui.action_open_folder  # type: ignore
         self.action_open_folder.triggered.connect(self.open_usdlib_folder)
 
@@ -2054,10 +2051,6 @@ class AmazePanel(QtWidgets.QWidget):
             ui.displayMessage(said, title=messages.TITLE_AMAZE,
                               severity=hou.severityType.Warning if failed else hou.severityType.Message)
         library.say_unlisted(unlisted)    # the status line, last
-
-    def check_library(self) -> None:
-        """Library ▸ Check Library…: Preferences on its Library tab, at the Databases row."""
-        self.set_library()
 
     def stand_again(self) -> None:
         """The shown section's highlight back on what its grid shows, after the rows were read again."""

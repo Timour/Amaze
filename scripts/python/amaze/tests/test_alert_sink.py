@@ -531,11 +531,11 @@ class TheTenSitesAreConvertedTest(unittest.TestCase):
     }
 
     def test_a_database_that_does_not_read_says_how_to_get_it_back(self):
-        """Each database is judged by one door, whose read-only sentences point at Check Library."""
+        """Each database is judged by one door, whose read-only sentences point at the check."""
         from amaze import messages
         for text in (messages.DATABASE_CORRUPT_READ_ONLY, messages.DATABASE_MISSING_READ_ONLY,
                      messages.DATABASE_SHRUNK):
-            self.assertIn("Check Library", text,
+            self.assertIn("Check in Preferences ▸ Library", text,
                           "a database the user cannot write says nothing of how to get it back")
         source = open(os.path.join(self.ROOT, "core", "library_db.py"), encoding="utf-8").read()
         for name in ("DATABASE_CORRUPT_READ_ONLY", "DATABASE_MISSING_READ_ONLY",

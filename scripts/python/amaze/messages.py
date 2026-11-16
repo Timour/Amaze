@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-DATABASE_CORRUPT_READ_ONLY = "Your %s database is corrupt/unreadable, so Amaze has opened it read-only; changes made now stay in memory only. Restore a backup with Library ▸ Check Library… in the Amaze panel."
-DATABASE_MISSING_READ_ONLY = "Your %s database is missing from the library folder, though Amaze can see it was there before. If the folder syncs, it may not have finished yet. Until it is back the database is read-only; if it does not come back, use Library ▸ Check Library… in the Amaze panel."
-DATABASE_SHRUNK = "Your %s database holds %d %s, but its newest backup holds %d %s. If you did not remove them yourself, use Library ▸ Check Library… before you change anything - it can restore that backup."
+DATABASE_CORRUPT_READ_ONLY = "Your %s database is corrupt/unreadable, so Amaze has opened it read-only; changes made now stay in memory only. Restore a backup with Check in Preferences ▸ Library."
+DATABASE_MISSING_READ_ONLY = "Your %s database is missing from the library folder, though Amaze can see it was there before. If the folder syncs, it may not have finished yet. Until it is back the database is read-only; if it does not come back, use Check in Preferences ▸ Library."
+DATABASE_SHRUNK = "Your %s database holds %d %s, but its newest backup holds %d %s. If you did not remove them yourself, use Check in Preferences ▸ Librarybefore you change anything - it can restore that backup."
 LIBRARY_FORMAT_AHEAD_READ_ONLY = "This library was saved by a newer Amaze, so this machine opens it read-only to protect it. Update Amaze to work with it normally."
 CONFIRM_CONVERT_LIBRARY = "This library will be converted to format 2.0. Amaze older than %s cannot open it afterwards, so update Amaze on every computer that uses this library. If the library is in a synced folder, make sure it has finished syncing before you convert."
 BUTTONS_CONVERT_LIBRARY = ("Convert", "Cancel")
@@ -18,16 +18,16 @@ OLD_TRASH_QUESTION = "The old trash for this library holds %d files (%s) on this
 BUTTONS_OLD_TRASH = ("Delete", "Leave")
 CONVERT_LIBRARY_BLOCKED ="This library cannot be converted yet: %s Use Check Library from the Amaze shelf, then open the library again."
 LIBRARY_WRITE_FAILED = "Amaze could not save the library: %s The change is still in memory and goes into the next save that works, but it is lost if Houdini closes first."
-PALETTE_NOT_SAVED = "Amaze could not save \"%s\": the colors database is read-only right now. Use Library ▸ Check Library… in the Amaze panel, then try again."
-PALETTE_NOT_DELETED = "\"%s\" was not deleted because the colors database is read-only right now. Use Library ▸ Check Library… in the Amaze panel, then try again."
-ASSET_NOT_SAVED_DATABASE_REFUSED = "\"%s\" was not saved: its database is read-only right now, so neither its files nor its entry were written. Use Library ▸ Check Library… in the Amaze panel, then save again."
-ASSET_NOT_DELETED_LIST_NOT_UPDATED = "\"%s\" was not deleted because its database could not be updated. Use Library ▸ Check Library… in the Amaze panel, then try again."
+PALETTE_NOT_SAVED = "Amaze could not save \"%s\": the colors database is read-only right now. Use Check in Preferences ▸ Library, then try again."
+PALETTE_NOT_DELETED = "\"%s\" was not deleted because the colors database is read-only right now. Use Check in Preferences ▸ Library, then try again."
+ASSET_NOT_SAVED_DATABASE_REFUSED = "\"%s\" was not saved: its database is read-only right now, so neither its files nor its entry were written. Use Check in Preferences ▸ Library, then save again."
+ASSET_NOT_DELETED_LIST_NOT_UPDATED = "\"%s\" was not deleted because its database could not be updated. Use Check in Preferences ▸ Library, then try again."
 EDIT_CONFLICT_KEPT_YOURS = "Someone else changed \"%s\" while you had it open.\n\nAmaze kept your version and discarded theirs."
 EDIT_CONFLICT_KEPT_YOURS_BY = "%s changed \"%s\" while you had it open.\n\nAmaze kept your version and discarded theirs."
 UNSAFE_ARCHIVE_PATHS_SKIPPED = "%d file(s) in this download tried to write outside your library folder and were skipped. Nothing outside the library was touched; the rest imported normally. If the material looks wrong, delete it and download again."
 NO_LIBRARY_FOLDER_CONFIGURED = "Amaze has no library folder set. Pick one in Preferences (Amaze panel), then run Check Library again."
 LIBRARY_FOLDER_UNREACHABLE = "Amaze can't reach its library folder:\n%s\nIf it's on a drive or in a synced folder, connect it and run Check Library again. If you moved the library, point Preferences at the new location."
-CHECK_LIBRARY_IN_THE_PANEL = 'Amaze is open, so use Library ▸ Check Library… in the Amaze panel instead.'
+CHECK_LIBRARY_IN_THE_PANEL = 'Amaze is open, so use Check in Preferences ▸ Library instead.'
 
 CHOSEN_SAVED_COPY_CANNOT_BE_READ = "That backup of the %s database cannot be read. Try another backup."
 CONFIRM_PUT_SAVED_COPY_BACK = "Restore the %s database from the backup of %s?"
@@ -276,7 +276,7 @@ LOG_SAVED_AS = 'Saved as:\n%s'
 
 LOG_NOT_CLEARED = 'the debug log could not be cleared (%s). It is still there, and Debug Mode keeps writing to it.'
 
-CHECK_LIBRARY_ONLY_A_REPORT = 'This Houdini session has already read this library, so this is only a report: open Amaze and use Library ▸ Check Library… to act on it.'
+CHECK_LIBRARY_ONLY_A_REPORT = 'This Houdini session has already read this library, so this is only a report: open Amaze and use Check in Preferences ▸ Libraryto act on it.'
 
 RECOVER_WRITES_A_NEW_DATABASE = ' There is no %s database in the library folder, so Amaze writes a new one with these in it.'
 
