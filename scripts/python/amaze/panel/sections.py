@@ -47,10 +47,7 @@ MenuEntry = collections.namedtuple(
 SEPARATOR = MenuEntry("")  # the empty label is what makes it a divider
 
 GRID_MENU_TAIL = (
-    MenuEntry("Update Render", verb="menu_update_preview",
-              shown="menu_offers_preview"),
-    MenuEntry("Capture", verb="menu_capture", needs="menu_capture_enabled"),
-    MenuEntry("Customize", verb="menu_customize"),
+    MenuEntry("Thumbnail", verb="menu_thumbnail", children="thumbnail_actions"),    # the tile's picture: render, capture, customize
     MenuEntry("Favorite", verb="menu_favourite"),
     MenuEntry("Delete", verb="menu_delete", shown="deletes_rows"),
 )
@@ -77,6 +74,8 @@ class Section:
     takes_filter_menu = True  # the entries describe the LOCAL section under it
     kind_filter_menu = False  # the online world answers True: the eye offers All/Materials/Colors/Nodes/Code there
     takes_capture = True    # Capture puts the Scene View on a tile ▸r/tile-captures
+    takes_generate = False  # the toolbar's Generate Material is live in the Material section alone
+    exports_categories = False    # the View menu's Export Category is live where the sidebar holds categories
 
     empty_noun = "items"  # what the shared empty-state blanks call these
     EMPTY: dict = {}      # `nothing-yet`: (headline, sentence, button, verb)
@@ -428,6 +427,20 @@ class Section:
     def menu_capture(self, indexes, current, payload=None) -> None:
         self.panel.tile_capture.onto_tile(self, current)
 
+    def thumbnail_actions(self, indexes, current) -> tuple:
+        """The Thumbnail submenu's rows, each naming the verb it runs; Render Image only where one renders."""
+        rows = []
+        if self.menu_offers_preview(indexes, current):
+            rows.append(("Render Image", "menu_update_preview", "", bool(indexes)))
+        rows.append(("Capture Scene", "menu_capture", "",
+                     self.menu_capture_enabled(indexes, current)))
+        rows.append(("Customize", "menu_customize", "", bool(indexes)))
+        return tuple(rows)
+
+    def menu_thumbnail(self, indexes, current, payload=None) -> None:
+        if payload:
+            getattr(self, payload)(indexes, current)
+
     def menu_favourite(self, indexes, current, payload=None) -> None:
         self.panel.grid_toggle_favourite(indexes)
 
@@ -501,9 +514,6 @@ class AssetSection(Section):
                   needs="always"),
         SEPARATOR,
         MenuEntry("Label", verb="menu_label_colour", children="label_colours"),
-        SEPARATOR,
-        MenuEntry("Export Category", verb="menu_export_category",
-                  needs="one"),
     )
 
     def menu_add_category(self, indexes, current, payload=None) -> None:
@@ -568,11 +578,16 @@ class AssetSection(Section):
             return 0
         return packages.write_package(path, items)
 
-    def menu_export_category(self, indexes, current, payload=None) -> None:
-        """Ask half: the clicked row names the category (All exports all); the panel picks where."""
-        name = self.sidebar_key(current) if current is not None else None
-        if not name or category.is_all(name):
-            name = None
+    exports_categories = True
+
+    def standing_category(self):
+        """The one category selected in the sidebar, or None for All, no row, or several."""
+        rows = self.sidebar_selection()
+        name = self.sidebar_key(rows[0]) if len(rows) == 1 else None
+        return None if not name or category.is_all(name) else name
+
+    def export_category(self, name) -> None:
+        """Ask half: `name` is the category (None exports the whole section); the panel picks where."""
         path = self.panel.package_import.ask_destination()
         if path:
             self._say_export(lambda: self.export_category_to(name, path), path)
@@ -733,6 +748,7 @@ class MaterialSection(AssetSection):
     key = "material"
     label = section_list.label(key)
     empty_noun = "material"
+    takes_generate = True
     EMPTY = amazetheme.EMPTY_MATERIAL    # no button: save_asset needs a selected node and says so when there is none ▸p/one-design-document
     QUOTE = amazetheme.QUOTE_MATERIAL
 
@@ -2283,9 +2299,6 @@ class GradientSection(AssetSection):
         SEPARATOR,
         MenuEntry("Label", verb="menu_label_colour", children="label_colours",
                   shown="on_a_category"),
-        SEPARATOR,
-        MenuEntry("Export Category", verb="menu_export_category",
-                  needs="one"),
     )
 
     def on_a_category(self, indexes, current) -> bool:

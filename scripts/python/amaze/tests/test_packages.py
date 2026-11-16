@@ -234,7 +234,7 @@ class PackageReaderTest(unittest.TestCase):
 
 
 class ExportMenuTest(unittest.TestCase):
-    """The doors: Export Package on the View menu, Export Category on the sidebar, headless verbs."""
+    """The doors: Export Asset and Export Category on the View menu, and the headless verbs."""
 
     @classmethod
     def setUpClass(cls):
@@ -249,11 +249,11 @@ class ExportMenuTest(unittest.TestCase):
                                  "%s still exports from its right-click menu" % cls_.key)
                 self.assertTrue(cls_.exports_selection,
                                 "%s cannot export its selection" % cls_.key)
-                if issubclass(cls_, sections.AssetSection):
-                    self.assertIn(
-                        "Export Category",
-                        [entry.label for entry in cls_.SIDEBAR_MENU],
-                        "%s sidebar offers no category export" % cls_.key)
+                self.assertNotIn("Export Category",
+                                 [entry.label for entry in cls_.SIDEBAR_MENU],
+                                 "%s still exports from its sidebar menu" % cls_.key)
+                self.assertEqual(issubclass(cls_, sections.AssetSection), cls_.exports_categories,
+                                 "%s is wrong about having categories to export" % cls_.key)
         restore = [e for e in sections.OnlineContext.GRID_MENU
                    if e.label == "Restore"]
         self.assertTrue(restore, "the online grid offers no Restore")
@@ -283,7 +283,30 @@ class ExportMenuTest(unittest.TestCase):
                          "the click did not export the selected row")
         with mock.patch.object(panel, "active_section", lambda: panel.online_context):
             panel.sync_package_export()
-            self.assertFalse(action.isEnabled(), "Export Package is live on the online grid")
+            self.assertFalse(action.isEnabled(), "Export Asset is live on the online grid")
+
+    def test_the_View_menu_exports_the_category_the_sidebar_stands_on(self):
+        """Live where the section has categories; All, or no row, exports the whole section."""
+        from unittest import mock
+        panel = self.panel
+        action = panel.action_category_export
+        section = panel.active_section()
+        self.assertTrue(section.exports_categories, "premise: the fixture opens on a category section")
+        panel.sync_package_export()
+        self.assertTrue(action.isEnabled(), "Export Category is greyed in a section with categories")
+        for expected in (None, "Metal"):    # None is All: the whole section
+            with self.subTest(standing=expected or "All"), \
+                    mock.patch.object(type(section), "standing_category", lambda _s, e=expected: e), \
+                    mock.patch.object(type(section), "export_category") as export:
+                action.trigger()
+                self.assertEqual((expected,), export.call_args[0])
+        for key in ("file",):
+            with mock.patch.object(panel, "active_section", lambda k=key: panel.sections[k]):
+                panel.sync_package_export()
+                self.assertFalse(action.isEnabled(), "Export Category is live in %s" % key)
+        with mock.patch.object(panel, "active_section", lambda: panel.online_context):
+            panel.sync_package_export()
+            self.assertFalse(action.isEnabled(), "Export Category is live on the online grid")
 
     def test_the_grid_act_door_writes_the_selection(self):
         from amaze.core import packages
@@ -328,7 +351,7 @@ class ExportMenuTest(unittest.TestCase):
             section.export_selection([index])
             self.assertEqual((messages.PACKAGE_EXPORTED_ONE % os.path.basename(out),
                               hou.severityType.Message), said(), "a finished export said nothing")
-            section.menu_export_category([], None)
+            section.export_category(None)
             self.assertEqual(messages.PACKAGE_EXPORTED % (self.panel.gradient_model.rowCount(),
                                                           os.path.basename(out)), said()[0])
             section.export_selection([])
