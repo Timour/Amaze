@@ -1,4 +1,4 @@
-"""One set of source models per library per process; proxies stay per panel. ▸p/one-model-set"""
+"""One set of source models per library per process; proxies are per panel. ▸p/one-model-set"""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ _models: dict = globals().get("_models", {})    # survives the panel's module re
 def models_for(preferences) -> dict:
     """`{attribute: model}` for this library - built once, then handed to every panel."""
     key = library_db.key_of(preferences)
-    library_db.library_for(preferences)    # the Prefs every database asks for its user
+    library_db.library_for(preferences)    # stores the Prefs each database reads its user name from
     library_db.use(preferences)
     found = _models.get(key)
     if found is None:
@@ -34,31 +34,31 @@ def models_for(preferences) -> dict:
         _models[key] = found
     else:
         for model in found.values():
-            model.preferences = preferences    # the panel that built these may be gone; the live one's Prefs is the one that answers
+            model.preferences = preferences    # the panel that built these may be closed; use the caller's Prefs
     return found
 
 
 def rebind(preferences, model) -> None:
-    """File the set holding `model` under `preferences.dir` after a library switch moved it."""
+    """Re-key the set holding `model` to `preferences.dir` after a library switch changed the folder."""
     key = library_db.key_of(preferences)
     library_db.use(preferences)
     for old, models in list(_models.items()):
         if old != key and any(held is model for held in models.values()):
             _models.pop(old)
             _models[key] = models
-            library_db._in_use.discard(old)    # the models left it: no longer held
+            library_db._in_use.discard(old)    # no model uses the old key any more
             return
 
 
 def apply_merged(preferences, name: str, also=None) -> list:
-    """Every model of this library on database `name` takes what is held now; the ones that moved."""
+    """Run `apply_refresh` on each model of this library on database `name`; return those that changed."""
     sharing = [] if also is None else [also]
     for model in (_models.get(library_db.key_of(preferences)) or {}).values():
         if getattr(model, "DB_FILENAME", None) == name and not any(
                 model is held for held in sharing):
             sharing.append(model)
     sharing.sort(key=lambda model: not isinstance(
-        model, QtCore.QAbstractListModel))    # sidebars first: a grid's signal handler can read one
+        model, QtCore.QAbstractListModel))    # sidebar models first: a grid's signal handler may read one
     moved = []
     for model in sharing:
         apply_refresh = getattr(model, "apply_refresh", None)
@@ -74,7 +74,7 @@ def apply_merged(preferences, name: str, also=None) -> list:
 
 
 def refresh_all(preferences=None) -> list:
-    """Read other sessions' saves into every database and model; what moved. ▸r/peer-read"""
+    """Read other sessions' saves into every database and model; return what changed. ▸r/peer-read"""
     moved = []
     for key, changed in library_db.refresh(preferences).items():
         held = library_db.preferences_of(key)
@@ -82,7 +82,7 @@ def refresh_all(preferences=None) -> list:
         for name in changed:
             moved.append(name)
             if name == library_files.FILES:
-                locations.touch()    # the Files section's keys and records are read afresh
+                locations.touch()    # Files keys and records are recomputed on next use
             if held is None:
                 continue
             shared = apply_merged(held, name)
@@ -92,7 +92,7 @@ def refresh_all(preferences=None) -> list:
 
 
 def _after_save(key: str, name: str) -> None:
-    """A save merged another session's work in: every model on that database takes it."""
+    """After a save merged another session's changes, refresh every model on that database."""
     held = library_db.preferences_of(key)
     if held is not None and key in _models:
         apply_merged(held, name)

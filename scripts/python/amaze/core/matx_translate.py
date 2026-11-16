@@ -11,7 +11,7 @@ from amaze.helpers import hostos
 
 
 _TYPE_OVERRIDES = {  # categories whose VOP type is not mtlx<category> or its ::2.0
-    "surfacematerial": None,       # the material prim - the builder IS this
+    "surfacematerial": None,       # the material prim - the builder node is the material, none is made
 }
 
 _TYPE_TO_SIGNATURE = {  # mtlx `type` -> mtlximage `signature`; a color3 image reads sRGB, others raw
@@ -38,7 +38,7 @@ def _vop_type_for(category: str, parent: hou.Node) -> str | None:
 
 
 def _signature(mnode) -> str | None:
-    """A node's VOP signature; `convert` names its input type, then its own. ▸r/simready-graph"""
+    """A node's VOP signature; for `convert`, its input type then its own type. ▸r/simready-graph"""
     inp = mnode.getInput("in") if mnode.getCategory() == "convert" else None
     if inp is not None:
         return inp.getType() + mnode.getType()
@@ -46,7 +46,7 @@ def _signature(mnode) -> str | None:
 
 
 def _resolve_file(value: str, mtlx_dir: str, prefix: str) -> str:
-    """A .mtlx file value as a path inside `mtlx_dir`; "" when it escapes, logged, never raised."""
+    """A .mtlx file value as a path inside `mtlx_dir`; empty when outside it, logged, never raised."""
     if not value:
         return value
     value = value.replace("\\", "/")    # a Windows-authored `textures\map.png` must resolve on Unix
@@ -76,9 +76,9 @@ def _set_value(node: hou.Node, parm_name: str, mtlx_type: str, value_str: str):
         return
     try:
         if mtlx_type in ("color3", "vector3", "color4", "vector4",
-                         "vector2"):    # one body for every tuple width - the truncation to len(pt) is what sizes it
+                         "vector2"):    # one branch for every tuple width - slicing to len(pt) sizes it
             parts = [float(v) for v in value_str.split(",")]
-            pt = node.parmTuple("%s_%s" % (parm_name, mtlx_type))    # the typed slot first ▸r/mtlx-vop-tuple-parms
+            pt = node.parmTuple("%s_%s" % (parm_name, mtlx_type))    # the type-suffixed parm first ▸r/mtlx-vop-tuple-parms
             if pt is None or len(pt) < len(parts):
                 pt = node.parmTuple(parm_name)
             if pt is not None:
@@ -103,7 +103,7 @@ def _set_value(node: hou.Node, parm_name: str, mtlx_type: str, value_str: str):
         _DROPPED.append("%s.%s (%s)" % (node.name(), parm_name, exc))
 
 
-_DROPPED: list = []  # inputs _set_value dropped during the current build; build_material drains and reports them
+_DROPPED: list = []  # inputs _set_value dropped during the current build; build_material reports and clears them
 
 
 def _named_few(items, limit: int = 6) -> str:
@@ -186,7 +186,7 @@ def build_material(mtlx_path: str, builder: hou.Node, name: str):
                 fp = vnode.parm(inp.getName())
                 if fp is not None:
                     fp.set(resolved)
-                cs = inp.getAttribute("colorspace")    # the file's own; with none, the signature decides
+                cs = inp.getAttribute("colorspace")    # the input's own; without one, the signature sets it
                 csp = vnode.parm("filecolorspace")
                 if cs and csp is not None:
                     try:
@@ -204,7 +204,7 @@ def build_material(mtlx_path: str, builder: hou.Node, name: str):
             "Everything else in the material was built."
             % (len(skipped), "" if len(skipped) == 1 else "s",
                _named_few(skipped)))
-    if _DROPPED:  # note() is the half the user sees with Debug Mode off
+    if _DROPPED:  # note() is the message the user sees with Debug Mode off
         debug.event("import", "mtlx inputs dropped", inputs=list(_DROPPED))
         debug.note(
             "left %d MaterialX input%s at the default value: %s. The "
@@ -253,7 +253,7 @@ def build_material(mtlx_path: str, builder: hou.Node, name: str):
     for mnode, _prefix in all_mtlx_nodes:  # pass 2: wire connections, now that every node exists
         _wire_from(mnode)
 
-    shader = displacement = None  # find the surface shader and displacement to hand back to the engine
+    shader = displacement = None  # find the surface shader and displacement to return to the caller
     for mnode, _prefix in all_mtlx_nodes:
         cat = mnode.getCategory()
         vnode = vop_by_path.get(mnode.getNamePath())

@@ -7,7 +7,7 @@ from amaze.helpers import helpers, wording
 
 
 def name_new_assign(lopnet, before, assign_path) -> None:
-    """Name the one assignmaterial not in `before` after the path it assigns; others keep theirs."""
+    """Name the one assignmaterial not in `before` after the path it assigns; others are not renamed."""
     new = [
         n for n in lopnet.children()
         if n.type().name() == "assignmaterial" and n not in before
@@ -45,7 +45,7 @@ def bound_materials_under(stage, primpath):
             prims_of[mat].append(path)
 
     def direct(prim):
-        """Materials bound on this prim, plain or collection binding; a failure keeps what it found."""
+        """Materials bound on this prim, plain or collection binding; on an error, those found so far."""
         found = []
         try:
             for rel in prim.GetRelationships():
@@ -116,7 +116,7 @@ def _assigns_geometry(liblop, index: int) -> bool:
 
 
 def _bound_on_stage(node, matprimpath) -> bool:
-    """Whether any prim on `node`'s cooked stage resolves to `matprimpath`; True when it cannot tell."""
+    """Whether any prim on `node`'s cooked stage resolves to `matprimpath`; True if it cannot be read."""
     try:
         from pxr import UsdShade
         prims = list(node.stage().Traverse())
@@ -135,7 +135,7 @@ def _bound_on_stage(node, matprimpath) -> bool:
 
 def remove_unreferenced_material(lopnet, liblop,
                                   matprimpath) -> bool:
-    """Delete a material's explicit entries and VOP when nothing still uses it; whether it went."""
+    """Delete a material's explicit entries and VOP when nothing still uses it; whether it did."""
     matsparm = liblop.parm("materials")
     if matsparm is None:
         return False
@@ -177,7 +177,7 @@ def remove_unreferenced_material(lopnet, liblop,
                 return False
     if _bound_on_stage(lopnet.displayNode() or liblop, matprimpath):
         debug.event("lop", "material kept - the stage still binds it", material=matprimpath)
-        return False    # a file the network loads binds it: no node shows that, the stage does
+        return False    # a file the network loads may bind it; only the cooked stage shows that
     if vop is not None and not vop.path().startswith(
             liblop.path() + "/"):
         vop = None
@@ -219,7 +219,7 @@ def remove_unreferenced_material(lopnet, liblop,
 
 
 def drop_choices(stage, primpath):
-    """A drop's menu as `(kind, label, payload)`: swaps first, then assigns up the ancestors."""
+    """A drop's menu as `(kind, label, payload)`: swaps first, then one assign per ancestor prim."""
     choices = []
     if not primpath or stage is None:
         return choices

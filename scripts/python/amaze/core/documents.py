@@ -1,4 +1,4 @@
-"""Documents: each database as keyed sections, changed by a user, merged and saved via the guard."""
+"""Documents: each database as keyed sections, changed by a user, merged and saved via guard.py."""
 
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ class Saved:
 
 
 def _bare(value):
-    """An entry without its stamps, so two are compared by what they hold."""
+    """An entry without its stamps, so two are compared by content."""
     if isinstance(value, dict):
         return {key: one for key, one in value.items() if key not in STAMPS}
     return value
@@ -46,7 +46,7 @@ def _same(one, other) -> bool:
 
 
 def _copy(value):
-    """A deep copy, with the absent mark kept as the one object it is."""
+    """A deep copy; the `_GONE` marker is returned as is, not copied."""
     return value if value is _GONE else copy.deepcopy(value)
 
 
@@ -57,7 +57,7 @@ def _identified(value) -> bool:
 
 
 def _merge_items(ours: list, theirs: list, base) -> list:
-    """Two lists of identified items against their base; an item both changed stays ours."""
+    """Two lists of identified items against their base; an item both sides changed keeps ours."""
     by_id = [{str(item["id"]): item for item in side}
              for side in (ours, theirs, base if _identified(base) else [])]
     merged = _merge_table(by_id[0], by_id[1], by_id[2], None)
@@ -65,7 +65,7 @@ def _merge_items(ours: list, theirs: list, base) -> list:
 
 
 def _merge_fields(ours: dict, theirs: dict, base, key, collide) -> dict:
-    """One entry field by field; a field both changed stays ours and is reported."""
+    """One entry field by field; a field both sides changed keeps ours and is reported."""
     base = base if isinstance(base, dict) else {}
     out, took, kept = {}, False, False
     for field in list(ours) + [name for name in theirs if name not in ours]:
@@ -92,7 +92,7 @@ def _merge_fields(ours: dict, theirs: dict, base, key, collide) -> dict:
 
 
 def _merge_entry(ours, theirs, base, key, collide):
-    """One entry three ways; `_GONE` stands for absent, and an edit outranks a removal."""
+    """One entry three ways; `_GONE` marks absent, and an edit is kept over a removal."""
     if _same(theirs, base):
         return ours
     if _same(ours, base):
@@ -120,19 +120,19 @@ def _merge_table(ours: dict, theirs: dict, base: dict, collide) -> dict:
 
 
 class Document:
-    """One database, held in memory as its sections; every change is a user's."""
+    """One database, held in memory as its sections; every change is stamped with a user."""
 
     def __init__(self, guard_: guard.Guard, name: str, user, defer=None) -> None:
         self.guard = guard_
         self.name = name
         self.kind = guard.DATABASES[name]
         self._user = user
-        self._defer = defer    # `defer(save)`: the caller's timer, so a burst is one save
+        self._defer = defer    # `defer(save)`: the caller's timer, so many quick changes make one save
         self.collisions = []
         self.load()
 
     def user(self) -> str:
-        """Who is making changes now; "" when nobody is picked."""
+        """Who is making changes now; empty when no user is selected."""
         return str((self._user() if callable(self._user) else self._user) or "")
 
     def load(self) -> None:
@@ -165,7 +165,7 @@ class Document:
         return self._dirty
 
     def _may_change(self, section: str, how: str) -> str:
-        """The user making a change to a section of this kind, or "" when it is refused."""
+        """The user making a change to a section of this kind, or empty when it is not allowed."""
         if self.kind.sections.get(section) != how:
             raise KeyError("%s has no %s section %r" % (self.name, how, section))
         return self.user() if self.writable else ""
@@ -176,14 +176,14 @@ class Document:
             self._defer(self.save)
 
     def table(self, section: str) -> dict:
-        """A shared section as it is held: read it, never change it in place."""
+        """A shared section as held in memory: read it, never change it in place."""
         return self._data[section]
 
     def get(self, section: str, key: str, default=None):
         return self._data[section].get(key, default)
 
     def put(self, section: str, key: str, entry: dict) -> bool:
-        """Store one shared entry as this user's change; False when refused or nothing changed."""
+        """Store one shared entry as this user's change; False when not allowed or nothing changed."""
         user = self._may_change(section, guard.SHARED)
         if not isinstance(entry, dict):
             raise TypeError("a shared entry is a table, not %s" % type(entry).__name__)
@@ -207,7 +207,7 @@ class Document:
         return True
 
     def mine(self, section: str) -> dict:
-        """This user's own table in a per-user section; empty when nobody is picked."""
+        """This user's own table in a per-user section; empty when no user is selected."""
         self._may_change(section, guard.PER_USER)
         return self._data[section].get(self.user(), {})
 
@@ -231,18 +231,18 @@ class Document:
         return True
 
     def changed(self, section: str) -> list:
-        """The keys of a section held unlike the file as last read: what the next save writes."""
+        """The keys of a section that differ from the file as last read: what the next save writes."""
         ours, base = self._data[section], self._base.get(section) or {}
         return sorted(key for key in set(ours) | set(base)
                       if not _same(ours.get(key, _GONE), base.get(key, _GONE)))
 
     def take_collisions(self) -> list:
-        """Each field two users changed at once where ours was kept, handed over once."""
+        """Each field two users changed at once where ours was kept; returned once, then cleared."""
         found, self.collisions = self.collisions, []
         return found
 
     def _merge(self, theirs_document: dict) -> None:
-        """Fold what is on disk into what is held; disk becomes the base of the next merge."""
+        """Merge the file on disk into memory; the disk copy becomes the base of the next merge."""
         theirs, extra = self._split(theirs_document)
         me, merged = self.user(), {}
         for section, how in self.kind.sections.items():
@@ -264,7 +264,7 @@ class Document:
         self._extra = dict(extra, **self._extra)
 
     def refresh(self) -> bool:
-        """Take in what another session saved; True when what is held changed."""
+        """Read in what another session saved; True when the data in memory changed."""
         reading = self.guard.read(self.name)
         if (self._ticket is not None and reading.ticket is not None
                 and reading.ticket.raw == self._ticket.raw):
@@ -273,7 +273,7 @@ class Document:
             moved = (self.verdict, self.writable) != (reading.verdict, reading.writable)
             if reading.verdict == guard.NEWER and not self._dirty:
                 self._adopt(reading)
-            else:    # what is held stays as it is while the file does not read
+            else:    # the data in memory is kept while the file cannot be read
                 self.verdict, self.why, self._ticket = reading.verdict, reading.why, None
             return moved
         if self._ticket is None and not self._dirty:
@@ -286,7 +286,7 @@ class Document:
         return self._data != before
 
     def save(self, also=None) -> Saved:
-        """Write what changed, folding in what another session saved; `also(change)` adds files."""
+        """Write what changed, merging in what another session saved; `also(change)` adds files."""
         if not self._dirty and also is None:
             return Saved(True, UNCHANGED)
         if not self.writable:
@@ -325,7 +325,7 @@ class Document:
 
 
 class Library:
-    """One library's documents: one of each, one user, one way to hold a save back."""
+    """One library's documents: one per database, one user, one way to delay a save."""
 
     def __init__(self, library_dir: str, user, defer=None, disk=None, now=None) -> None:
         self.guard = guard.Guard(library_dir, disk=disk, now=now)
@@ -335,7 +335,7 @@ class Library:
         self._open = {}
 
     def document(self, name: str) -> Document:
-        """The one `Document` of a database in this library, read on first ask."""
+        """The one `Document` of a database in this library, read on first use."""
         if name not in self._open:
             self._open[name] = Document(self.guard, name, self._user, self._deferred)
         return self._open[name]
@@ -362,5 +362,5 @@ class Library:
         return {name: document.save() for name, document in self._open.items() if document.dirty}
 
     def refresh(self) -> list:
-        """Take in what other sessions saved; the names of the documents that changed."""
+        """Read in what other sessions saved; the names of the documents that changed."""
         return [name for name, document in self._open.items() if document.refresh()]

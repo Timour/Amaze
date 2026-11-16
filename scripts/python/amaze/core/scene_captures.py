@@ -1,4 +1,4 @@
-"""Photographing the Scene View as a tile's picture, and which scene is open. ▸r/tile-captures"""
+"""Scene View screenshots as tile thumbnails, and which scene is open. ▸r/tile-captures"""
 
 import os
 import time
@@ -76,7 +76,7 @@ def viewer_context(viewer) -> str:
         category = pwd.childTypeCategory() if pwd else None
         return category.name().lower() if category else ""
     except Exception as exc:                             # noqa: BLE001
-        debug.event("hip", "could not read the viewer context",  # say WHY: "not a 3D context" and "we could not ask" must not look the same
+        debug.event("hip", "could not read the viewer context",  # logged so a failed read differs from a non-3D context
                     error="%s: %s" % (type(exc).__name__, exc))
         return ""
 
@@ -139,7 +139,7 @@ def _looks_blank(png_path: str) -> bool:
 
 
 def capture_viewport(out: str, viewer=None) -> str:
-    """Photograph the Scene View into the PNG `out`; raises CaptureRefused. ▸r/tile-captures"""
+    """Save a Scene View screenshot to the PNG `out`; raises CaptureRefused. ▸r/tile-captures"""
     if not out:
         raise CaptureRefused("No file was given for the capture.")
     try:
@@ -150,7 +150,7 @@ def capture_viewport(out: str, viewer=None) -> str:
             "This Houdini has no husd.assetutils (%s), so the viewport "
             "cannot be captured." % exc)
     try:
-        if viewer is None:  # pass the viewer the guard checked, or the capture may use another
+        if viewer is None:  # pass the viewer _viewer_for_capture checked, or the capture may use another
             viewer = scene_viewer()
     except Exception as exc:                             # noqa: BLE001
         raise CaptureRefused(
@@ -234,7 +234,7 @@ def capture_viewport(out: str, viewer=None) -> str:
         _discard(scratch)
         raise CaptureRefused(
             "The thumbnail could not be put in place: %s" % exc)
-    _discard(out + ".prev")  # sweeps the scratch names older versions left behind
+    _discard(out + ".prev")  # removes the scratch files older versions left behind
     _discard(out + ".new")
     _discard(_legacy_capture_scratch(out))
     debug.event("hip", "thumbnail captured", png=out,
@@ -249,13 +249,13 @@ def _capture_scratch(out: str) -> str:
 
 
 def _legacy_capture_scratch(out: str) -> str:
-    """The fixed scratch name older versions used, for sweeping."""
+    """The fixed scratch name older versions used, so it can be removed."""
     root, ext = os.path.splitext(out)
     return root + ".capturing" + (ext or ".png")
 
 
 def _discard(path: str) -> None:
-    """Remove a scratch file, logging why if it will not go."""
+    """Remove a scratch file, logging why if it cannot be removed."""
     try:
         if os.path.isfile(path):
             os.remove(path)
@@ -265,7 +265,7 @@ def _discard(path: str) -> None:
 
 
 def capture_open_scene(preferences, target: str = "") -> str:
-    """The open scene onto its File tile, every refusal in one place; `target` must be it."""
+    """Capture the open scene for its File tile, all scene checks here; `target` must be it."""
     opened = current_scene_path()
     if not target:
         if not opened:
@@ -292,14 +292,14 @@ def capture_open_scene(preferences, target: str = "") -> str:
 
 
 def capture_tile(out: str, key: str) -> str:
-    """Photograph the Scene View as the picture of the tile keyed `key`, then tell every model."""
+    """Capture the Scene View as the thumbnail of tile `key`, then signal every model."""
     path = capture_viewport(out, _viewer_for_capture())
     captures.announce(key)    # the engine serves a decoded copy until the model drops it
     return path
 
 
 def _viewer_for_capture():
-    """The Scene View to photograph, read BEFORE asking it for a frame: every route renders."""
+    """The Scene View to capture, checked BEFORE asking it for a frame: every capture renders."""
     viewer = scene_viewer()
     state = viewport_state(viewer)
     if state.get("blocking"):

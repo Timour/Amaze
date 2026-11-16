@@ -1,4 +1,4 @@
-"""The thumbnail engine: keyed images in one byte-capped LRU; missing sticks until `discard()`."""
+"""The thumbnail engine: keyed images in one byte-capped LRU; missing stays until `discard()`."""
 
 import functools
 import os
@@ -9,13 +9,13 @@ from PySide6 import QtCore, QtGui
 from amaze.core import debug, workers
 from amaze.helpers import hostos
 
-CACHE_PNG_QUALITY = 80    # the zlib level only - PNG is lossless, so the picture is the same at any
+CACHE_PNG_QUALITY = 80    # the zlib level only - PNG is lossless, so the image is the same at any level
 
 
 class _FileLoader(QtCore.QThread):
-    """Loads image files for a batch of keys off the main thread, naming each one that fails."""
+    """Loads image files for a batch of keys off the main thread, emitting `failed` for each failure."""
 
-    loaded = QtCore.Signal(object, QtGui.QImage, int)    # (key, image, the token it was asked under)
+    loaded = QtCore.Signal(object, QtGui.QImage, int)    # (key, image, the token it was requested with)
     failed = QtCore.Signal(object, int)
 
     def __init__(self, items) -> None:
@@ -24,7 +24,7 @@ class _FileLoader(QtCore.QThread):
         self._canceled = False
 
     def requests(self):
-        """(key, token) for every item - what a verdict on this loader may judge."""
+        """(key, token) for every item - the requests this loader handles."""
         return [(item[0], item[-1]) for item in self._items]
 
     def cancel(self) -> None:
@@ -43,14 +43,14 @@ class _FileLoader(QtCore.QThread):
 
 
 def _encoded(image, dest: str, source: str):
-    """`image` as a PNG in a scratch beside `dest`: (scratch, dest), or None, said, when it won't save."""
+    """`image` as a PNG in a scratch beside `dest`: (scratch, dest), or None, logged, if it fails."""
     try:
         os.makedirs(os.path.dirname(dest), exist_ok=True)
         scratch = hostos.unique_scratch(dest)
     except (OSError, hostos.SandboxRefused) as exc:
         why = str(exc)
     else:
-        if image.save(scratch, "PNG", CACHE_PNG_QUALITY):    # False, not a raise ▸r/model-contracts
+        if image.save(scratch, "PNG", CACHE_PNG_QUALITY):    # returns False, does not raise ▸r/model-contracts
             return scratch, dest
         hostos.discard_scratch(scratch)
         why = "the PNG did not save"
@@ -63,12 +63,12 @@ class _ConvertLoader(QtCore.QThread):
     """The CONVERT worker: converts and encodes each cache PNG off the UI thread, never the manifest."""
 
     loaded = QtCore.Signal(object, QtGui.QImage, int, object)    # (key, image, token, (scratch, dest) or None)
-    attempted = QtCore.Signal(object, int)    # after EVERY item, or the progress bar stalls short of 100%
+    attempted = QtCore.Signal(object, int)    # after EVERY item, or the progress bar stops before 100%
     failed = QtCore.Signal(object, int)
 
     def __init__(self, items, hfs) -> None:
         super().__init__()
-        self._items = items  # [(key, full_path, size, dest, token)]; dest "" asks for no PNG
+        self._items = items  # [(key, full_path, size, dest, token)]; an empty dest means no PNG
         self._hfs = hfs
         self._canceled = False    # the one stop flag, read by `_prune_threads` and the run loop
 
@@ -92,7 +92,7 @@ class _ConvertLoader(QtCore.QThread):
                     full_path, size, cancelled=self._cancelled,
                     hfs=self._hfs)
                 image = result.image
-            except Exception as exc:                          # noqa: BLE001 - a backstop only
+            except Exception as exc:                          # noqa: BLE001 - a last-resort catch only
                 debug.event(
                     "texture", "thumbnail failed", file=full_path, error=str(exc)
                 )
@@ -109,8 +109,8 @@ class _ConvertLoader(QtCore.QThread):
 
 
 class ThumbnailEngine(QtCore.QObject):
-    converted = QtCore.Signal(object, str)    # (key, png): a conversion's PNG is filed where it was asked
-    ready = QtCore.Signal(object)    # a key's image arrived or failed: repaint it
+    converted = QtCore.Signal(object, str)    # (key, png): a conversion's PNG is saved at the requested path
+    ready = QtCore.Signal(object)    # a key's image loaded or failed: repaint it
     convert_attempted = QtCore.Signal(object)    # a convert item was attempted, success or failure - drives the texture progress bar
 
     def __init__(self, budget_mb: int = 256) -> None:
@@ -118,13 +118,13 @@ class ThumbnailEngine(QtCore.QObject):
         self._lru = OrderedDict()  # key -> (QImage, nbytes)
         self._bytes = 0
         self._budget = int(budget_mb) * 1024 * 1024
-        self._states = {}  # key -> "pending" | "done" | "missing"
-        self._generations = {}  # key -> times discarded; a delivery counts only under the current one
+        self._states = {}  # key -> `pending` | `done` | `missing`
+        self._generations = {}  # key -> times discarded; a result is used only under the current count
         self._file_queue = []  # [(key, path, token)] awaiting dispatch
         self._dispatch_scheduled = False
         self._convert_queue = []  # [(key, full_path, size, dest, token)]
         self._convert_scheduled = False
-        self._convert_hfs = ""    # convert options, pushed by the texture model per batch
+        self._convert_hfs = ""    # convert options, set by the texture model per batch
         self._convert_parallel = 4
         self._threads = []    # threads stay referenced until finished ▸r/model-contracts
 
@@ -168,7 +168,7 @@ class ThumbnailEngine(QtCore.QObject):
         state = self._states.get(key)
         if state == "pending" or state == "missing":
             return None
-        self._states[key] = "pending"    # never requested - or delivered once and since evicted: load
+        self._states[key] = "pending"    # never requested - or loaded once and since evicted: load
         self._file_queue.append((key, path, self._generations.get(key, 0)))
         if not self._dispatch_scheduled:
             self._dispatch_scheduled = True
@@ -186,11 +186,11 @@ class ThumbnailEngine(QtCore.QObject):
         return self._states.get(key) == "missing"
 
     def _current(self, key, token) -> bool:
-        """Whether a delivery asked under `token` still answers the key's open request."""
+        """Whether a result requested with `token` still matches the key's pending request."""
         return self._states.get(key) == "pending" and self._generations.get(key, 0) == token
 
     def deposit(self, key, image) -> None:
-        """Cache a finished image from the main thread, mark it done and announce it."""
+        """Cache a finished image from the main thread, mark it done and emit `ready`."""
         self._cache_put(key, image)
         self._states[key] = "done"
         QtCore.QTimer.singleShot(0, lambda k=key: self.ready.emit(k))    # deferred: safe from inside data()
@@ -201,7 +201,7 @@ class ThumbnailEngine(QtCore.QObject):
         if old is not None:
             self._bytes -= old[1]
         self._states.pop(key, None)
-        self._generations[key] = self._generations.get(key, 0) + 1    # a load already in flight is stale
+        self._generations[key] = self._generations.get(key, 0) + 1    # a load already running is now stale
 
     def clear(self) -> None:
         self._lru.clear()
@@ -219,7 +219,7 @@ class ThumbnailEngine(QtCore.QObject):
         if self._states.get(key) == "pending":
             return
         self._states[key] = "pending"
-        self._convert_queue.append(    # `dest`: where its PNG is filed, `converted` says so; "" for none
+        self._convert_queue.append(    # `dest`: where its PNG is saved; `converted` emits it; empty for none
             (key, full_path, size, dest, self._generations.get(key, 0)))
         if not self._convert_scheduled:
             self._convert_scheduled = True
@@ -270,7 +270,7 @@ class ThumbnailEngine(QtCore.QObject):
             loader.start()
 
     def _on_convert_attempted(self, key, token) -> None:
-        if self._generations.get(key, 0) == token:    # a superseded attempt is not this request's
+        if self._generations.get(key, 0) == token:    # an attempt for an older request is ignored
             self.convert_attempted.emit(key)
 
     FILE_LOADER_LIMIT = 4    # concurrent _FileLoader threads at most
@@ -286,7 +286,7 @@ class ThumbnailEngine(QtCore.QObject):
             if isinstance(t, _FileLoader) and not workers.finished(t)
         )
         if live >= self.FILE_LOADER_LIMIT:
-            self._file_queue = items + self._file_queue    # back on the queue: it drains into free slots instead of spawning a thread per turn
+            self._file_queue = items + self._file_queue    # back on the queue: it waits for a free slot instead of starting a thread per turn
             if not self._dispatch_scheduled:
                 self._dispatch_scheduled = True
                 QtCore.QTimer.singleShot(16, self._dispatch_files)    # one frame, never zero
@@ -307,7 +307,7 @@ class ThumbnailEngine(QtCore.QObject):
         self.ready.emit(key)
 
     def _on_loaded(self, key, image, token, written=None) -> None:
-        if not self._current(key, token):    # discarded while in flight, or re-asked since: stale
+        if not self._current(key, token):    # discarded while loading, or requested again since: stale
             if written:
                 hostos.discard_scratch(written[0])    # so a stale PNG never replaces a fresh one
             return
@@ -318,7 +318,7 @@ class ThumbnailEngine(QtCore.QObject):
         self.ready.emit(key)
 
     def _file_png(self, key, scratch, dest) -> None:
-        """Promote a current conversion's scratch PNG to `dest` and say so; a failure is logged."""
+        """Promote a current conversion's scratch PNG to `dest` and emit `converted`; a failure is logged."""
         try:
             hostos.promote_scratch(scratch, dest)
         except (OSError, hostos.SandboxRefused) as exc:
@@ -331,7 +331,7 @@ class ThumbnailEngine(QtCore.QObject):
         """Stop every worker and wait for it; safe twice and when idle ▸r/model-contracts"""
         workers.stop(self._threads, "thumbnails")
         self._threads = []
-        self._lru.clear()    # the cache dies with the engine
+        self._lru.clear()    # the cache is cleared with the engine
         self._bytes = 0
         self._states = {}
         self._generations = {}
@@ -341,35 +341,35 @@ class ThumbnailEngine(QtCore.QObject):
         self._convert_scheduled = False
 
     def _prune_threads(self, finisher=None) -> None:
-        """A finished loader's own unanswered keys are asked for again; a sibling's are left alone."""
+        """A finished loader's own unloaded keys are reset to be requested again; other loaders' are kept."""
         if finisher is None:
             finisher = self.sender()    # fallback for a direct call; the connect sites pass the loader explicitly
-        self._threads = [t for t in self._threads    # a finished sibling stays until its own signal
+        self._threads = [t for t in self._threads    # another finished loader stays until its own signal
                          if t is not finisher and not workers.gone(t)]
         if finisher is None:
             return
         try:
             thread_requests = finisher.requests()
         except RuntimeError:
-            return            # cannot ask a deleted object what it held
+            return            # a deleted object cannot report its requests
         if getattr(finisher, "_canceled", False):
-            return    # cancelled work is unrequested, not missing - the revisit re-queues it
+            return    # cancelled work is unrequested, not missing - the next repaint queues it again
 
         def _forget(requests=tuple(thread_requests)):
             for key, token in requests:
                 if self._current(key, token):    # never a newer request's key, still loading elsewhere
-                    self._states.pop(key, None)    # unanswered, not failed: the next paint asks again
+                    self._states.pop(key, None)    # not loaded, not failed: the next paint requests it again
                     try:
                         self.ready.emit(key)
                     except RuntimeError:
-                        return   # the engine's C++ side died between turns - a reload handover; nothing left to repaint
-        QtCore.QTimer.singleShot(0, _forget)    # one turn later: its own queued deliveries land first ▸p/prune-outran-deliveries
+                        return   # the engine's C++ object was deleted by a reload between turns; nothing to repaint
+        QtCore.QTimer.singleShot(0, _forget)    # one event-loop turn later: its own queued loads are handled first ▸p/prune-outran-deliveries
 
 
-_previous_engine = globals().get("engine")    # its relays are let go below; install() stops it
+_previous_engine = globals().get("engine")    # its signals are disconnected below; install() stops it
 
 class _EngineSignals(QtCore.QObject):
-    """Reload-stable engine signals: models connect here; a method here would freeze. ▸r/module-reload"""
+    """Signals kept across reloads: models connect here; a method would keep old code ▸r/module-reload"""
 
     ready = QtCore.Signal(object)
     convert_attempted = QtCore.Signal(object)

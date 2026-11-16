@@ -1,4 +1,4 @@
-"""Models for the File section: a folder-pointer list and a files model whose rows act by kind."""
+"""Models for the File section: a folder list and a files model whose rows behave by file kind."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ def kind_for(name: str) -> str:
 
 
 def _stat_once(known: dict):
-    """An `os.stat` that asks the disk once per path, `known` holding the answers; a gone file raises."""
+    """An `os.stat` that reads the disk once per path, cached in `known`; a missing file raises."""
     def stat_of(path):
         if path not in known:
             try:
@@ -73,7 +73,7 @@ def sweep_folder_cache(preferences, folder: str, remaining) -> int:
             debug.event("file", "sweep skipped an unreadable manifest",
                         dir=name, error=str(exc))
             continue
-        live = texture_library.live_caches(cache_dir)    # a grid's own cache would save them back
+        live = texture_library.live_caches(cache_dir)    # an open grid's cache would otherwise write them back
         held = set(manifest)
         for cache in live:
             held.update(cache.paths())
@@ -111,7 +111,7 @@ def sweep_folder_cache(preferences, folder: str, remaining) -> int:
 
 
 def carry_thumbnails(preferences, pairs) -> int:
-    """Moved files keep their cached pictures: in every cache here, each picture and entry follow."""
+    """Move the cached pictures of moved files: in every cache, each picture and manifest entry."""
     key = texture_library.ThumbnailCache._key
     moves = {key(old): key(new) for old, new in pairs if key(old) != key(new)}
     root = hostos.cache_root()
@@ -127,13 +127,13 @@ def carry_thumbnails(preferences, pairs) -> int:
         cache_dir = os.path.join(root, name)
         live = texture_library.live_caches(cache_dir)
         for cache in live:
-            cache.save()    # what an open cache holds unwritten reaches the file first
+            cache.save()    # an open cache writes its unsaved entries to the file first
         manifest_path = os.path.join(cache_dir, "manifest.json")
         try:
             with open(manifest_path, encoding="utf-8") as handle:
                 manifest = json_mod.load(handle)
         except (OSError, ValueError):
-            continue    # none yet, or one the cache itself refuses to read
+            continue    # none yet, or one the cache itself cannot read
         if not isinstance(manifest, dict):
             continue
 
@@ -150,7 +150,7 @@ def carry_thumbnails(preferences, pairs) -> int:
                 try:
                     os.replace(picture(old), picture(new))
                 except OSError:
-                    continue    # no picture to carry: the entry goes, and the file renders anew
+                    continue    # no picture to move: the entry is dropped, and the file is rendered again
             manifest[new] = entry
             carried += 1
         if not changed:
@@ -162,18 +162,18 @@ def carry_thumbnails(preferences, pairs) -> int:
             continue
         for cache in live:
             cache.moved(moves)
-            for path in [*moves, *moves.values()]:    # the grid's decoded copies, both ends
+            for path in [*moves, *moves.values()]:    # the grid's decoded copies, old and new paths
                 thumbnails.engine.discard(
                     ("geo", path, cache.cache_dir) if name.startswith("geo_")
                     else ("tex", path, cache.size))
     return carried
 
 
-file_moves.carriers["thumbnails"] = carry_thumbnails    # a move takes the cached pictures along
+file_moves.carriers["thumbnails"] = carry_thumbnails    # a file move also moves its cached pictures
 
 
 def location_kinds(preferences, location: str) -> frozenset:
-    """A location's recorded Show ▸ ticks, else none; a folder no location holds, the global switch."""
+    """A location's saved Show ▸ kinds, else none; for a folder in no location, the global setting."""
     record = locations.record(preferences, location) if location else {}
     if not record:
         return frozenset(locations.KNOWN_KINDS + (
@@ -182,7 +182,7 @@ def location_kinds(preferences, location: str) -> frozenset:
 
 
 class FileFolders(folders.FolderTreeModel):
-    """The File section's sidebar: each location, and each subfolder, counts by its location's ticks."""
+    """The File section's sidebar: each location and subfolder counts by its location's ticked kinds."""
 
     folders_attr = "file_folders"
     favorites_attr = "file_favorites"
@@ -191,14 +191,14 @@ class FileFolders(folders.FolderTreeModel):
     remove_folder_method = "remove_file_folder"
     relocate_folder_method = "relocate_file_folder"
     move_folder_method = "move_file_folder"
-    write_path = None    # Write Paths As, which needs Houdini: the panel hands it in, else the path
+    write_path = None    # Write Paths As, which needs Houdini: the panel sets it, else the plain path
 
     def matches(self, filename: str) -> bool:
-        """The flat contract: with no location to ask, the global preference answers via matches_in."""
+        """The flat contract: with no location, the global preference applies via matches_in."""
         return self.matches_in("", filename)
 
 
-    def matches_in(self, path: str, filename: str) -> bool:  # asks the location's rule, so the sidebar count matches the grid
+    def matches_in(self, path: str, filename: str) -> bool:  # uses the location's rule, so the sidebar count matches the grid
         if filename.startswith("."):
             return False
         return kind_for(filename) in location_kinds(self.preferences, self.location_of(path))
@@ -224,23 +224,23 @@ class FileFolders(folders.FolderTreeModel):
     def remove_folder(self, row: int) -> bool:
         path = self.registered_at(row)
         if not path:
-            return False    # All and the scene row are no pointers
+            return False    # All and the scene row are not locations
         if not super().remove_folder(row):
-            return False    # a refused removal keeps the pointer, so every key under it stays
+            return False    # a failed removal keeps the location, so every key under it stays
         if not locations.rehome_covered(self.preferences, path):
-            return True    # a refused move retires nothing, so no file a remaining location lists loses a key
+            return True    # a failed move removes no keys, so no file a remaining location lists loses its key
         locations.retire_prefix(self.preferences, path)    # what is still keyed under it, then its path row
-        sweep_folder_cache(    # its cached thumbnails, bar what a remaining location covers; captures stay
+        sweep_folder_cache(    # its cached thumbnails, except those a remaining location covers; captures stay
             self.preferences, path, list(self._folders()))
         return True
 
     def _on_folder_relocated(self, old_path: str, new_path: str) -> None:
-        """Nothing to re-home: every file key is a location id, which a move leaves alone."""
+        """Nothing to update: every file key uses a location id, which a relocate does not change."""
 
 
 class FileFiles(grid_engine.GridEngine,
                QtCore.QAbstractTableModel):
-    """All files in the selected folder, or every registered folder in All mode, each acting by kind."""
+    """All files in the selected folder, or every registered folder in All mode, each handled by kind."""
 
     COLUMN_ROLES = {
         "name": QtCore.Qt.ItemDataRole.DisplayRole,
@@ -284,10 +284,10 @@ class FileFiles(grid_engine.GridEngine,
         self._progress_done = 0
         self._progress_total = 0
         self._os_icons: dict = {}
-        self.hfs = os.environ.get("HFS", "")    # Houdini's install, for the converter; the panel hands in $HFS
-        self.open_scene = lambda: ""    # the scene Houdini has open; the panel hands in the live answer
-        self.render_geo = None    # the geometry render pass; the panel hands it in, a bare model renders none
-        self.os_icon = None    # the system's file icons; the panel hands them in, a bare model draws none
+        self.hfs = os.environ.get("HFS", "")    # Houdini's install, for the converter; the panel sets $HFS
+        self.open_scene = lambda: ""    # the scene Houdini has open; the panel sets the live function
+        self.render_geo = None    # the geometry render pass; the panel sets it, a model without it renders none
+        self.os_icon = None    # the system's file icons; the panel sets them, a model without them draws none
         self._colour_cache: dict = {}  # folder -> owning location's colour band; paint path; cleared on rescan and by colours_changed()
         thumbnails.signals.ready.connect(self._on_thumb_key_ready)  # the relay, not the engine a reload replaces
         thumbnails.signals.convert_attempted.connect(
@@ -357,7 +357,7 @@ class FileFiles(grid_engine.GridEngine,
                             "read", folder=folder, reason="not there")
             return results
         self._unreadable_folders.discard(folder)
-        owner = locations.owner_of(self.preferences, folder) or folder    # a subfolder: its location's tick
+        owner = locations.owner_of(self.preferences, folder) or folder    # a subfolder uses its location's setting
         if locations.record(self.preferences, owner).get("recursive"):
             for dirpath, dirnames, filenames in \
                     folders.walk_following_links(folder):
@@ -461,7 +461,7 @@ class FileFiles(grid_engine.GridEngine,
                 if cached_png is not None:
                     self._row_specs.append((key, "file", cached_png))
                 elif geo_cache.known_failure(full, stat=stat_of):
-                    self._row_specs.append((key, "missing", full))    # rendered nothing as it stands
+                    self._row_specs.append((key, "missing", full))    # rendered nothing in its current state
                 else:
                     self._row_specs.append((key, "render", full))
                     geo_misses.append((row, full))
@@ -490,7 +490,7 @@ class FileFiles(grid_engine.GridEngine,
         )
 
     def _on_thumb_key_ready(self, key) -> None:
-        """Engine delivery: repaint every row holding the key."""
+        """The engine loaded a key: repaint every row with that key."""
         rows = self._key_rows.get(key) or ()
         if not rows:
             return
@@ -499,11 +499,11 @@ class FileFiles(grid_engine.GridEngine,
             self.row_changed(index.row(), [QtCore.Qt.ItemDataRole.DecorationRole])
 
     def _on_converted(self, key, png) -> None:
-        """A conversion's PNG landed: filed in this model's manifest, on the GUI thread, if it asked."""
+        """A conversion's PNG was written: add it to this model's manifest, on the GUI thread, if ours."""
         full_path = self._pending_writes.pop(key, None)
         if full_path is None or self._image_cache is None:
             return
-        if not self._image_cache.adopt(full_path, png):    # another cache's PNG, or the file went
+        if not self._image_cache.adopt(full_path, png):    # another cache's PNG, or the file was removed
             debug.event("file", "converted image not cached", png=png, path=full_path)
 
     def _on_convert_attempted(self, key) -> None:
@@ -522,7 +522,7 @@ class FileFiles(grid_engine.GridEngine,
             self._flush_image_cache("batch complete")
 
     def cancel_conversions(self, why: str = "cancelled") -> None:
-        """Abandon the running image batch: flush the manifest, cancel, then drive the bar to complete."""
+        """Abandon the running image batch: flush the manifest, cancel, then set the bar to complete."""
         self._flush_image_cache(why)
         thumbnails.engine.cancel_pending_converts()
         self._progress_keys = set()
@@ -555,7 +555,7 @@ class FileFiles(grid_engine.GridEngine,
         return colour
 
     def colours_changed(self) -> None:
-        """A location's colour moved: drop the paint-path cache; the caller emits the repaint."""
+        """A location's colour changed: drop the paint-path cache; the caller emits the repaint."""
         self._colour_cache = {}
 
     def clear_cache(self) -> None:
@@ -566,7 +566,7 @@ class FileFiles(grid_engine.GridEngine,
         thumbnails.engine.clear()
 
     def capture_path(self, row: int) -> str:
-        """Where this row's capture lives in the library; "" for a row that does not exist."""
+        """Where this row's capture is stored in the library; `""` for a row that does not exist."""
         key = self.file_key(row) if 0 <= row < len(self._files) else ""
         return captures.file_path(self.preferences, key) if key else ""
 
@@ -580,7 +580,7 @@ class FileFiles(grid_engine.GridEngine,
         return None if image.isNull() else image
 
     def _capture_tile_image(self, row: int):
-        """The tile's capture through the engine, its row registered for the delivery."""
+        """The tile's capture through the engine, its row registered for the repaint once loaded."""
         path = self.capture_path(row)
         key = ("capture", path)
         rows = self._key_rows.setdefault(key, [])
@@ -589,10 +589,10 @@ class FileFiles(grid_engine.GridEngine,
         image = thumbnails.engine.request_file(key, path) if path else None
         if image is not None:
             return image
-        return self.preview_image(row)    # no capture, or not landed yet: the file's own preview
+        return self.preview_image(row)    # no capture, or not loaded yet: the file's own preview
 
     def _on_capture_landed(self, key) -> None:
-        """A capture landed for `key`: drop the old picture and repaint the rows showing that file."""
+        """A capture was saved for `key`: drop the old picture and repaint the rows showing that file."""
         thumbnails.engine.discard(("capture", captures.file_path(self.preferences, str(key))))
         for row in range(len(self._files)):
             if self.file_key(row) == str(key):
@@ -721,7 +721,7 @@ class FileFiles(grid_engine.GridEngine,
         return self.set_tile_icons([row], spec) == 0
 
     def set_tile_icons(self, rows, spec) -> int:
-        """Give every row in `rows` the icon `spec` in ONE store write; answers how many were not written."""
+        """Give every row in `rows` the icon `spec` in ONE store write; returns how many were not written."""
         keyed = {}
         for row in rows:
             key = self.file_key(row)
@@ -729,7 +729,7 @@ class FileFiles(grid_engine.GridEngine,
                 keyed[row] = (key, tile_icons.choice_for(self, row, spec))
         if not keyed:
             return len(rows)
-        held = tile_icons.set_overrides(  # what really landed - a read-only library must not take icons
+        held = tile_icons.set_overrides(  # what was really written - a read-only library must not accept icons
             self.preferences, dict(keyed.values()), locations.FILES)
         for row in keyed:
             self.row_changed(row, [QtCore.Qt.ItemDataRole.DecorationRole])
@@ -739,7 +739,7 @@ class FileFiles(grid_engine.GridEngine,
         """Signature parity with the asset models; already persisted."""
 
     def rerender_tile_icons(self) -> int:
-        """Repaint every file wearing an icon; they compose in memory, so nothing is written."""
+        """Repaint every file with a custom icon; icons are composed in memory, so nothing is written."""
         return tile_icons.repaint_custom(self)
 
     def _kind(self, row: int) -> str:
@@ -758,7 +758,7 @@ class FileFiles(grid_engine.GridEngine,
         return "image"
 
     def preview_image(self, row: int):
-        """The row's own picture as far as it has landed: the tile's Preview, and Customize's."""
+        """The row's own picture as far as it has loaded: the tile's Preview, and Customize's."""
         if not 0 <= row < len(self._row_specs):
             return None
         key, source, payload = self._row_specs[row]
@@ -768,7 +768,7 @@ class FileFiles(grid_engine.GridEngine,
             return tile_icons.generic_image(self.tile_face_art(row))    # unreadable, or a scene
         if source == "file":
             return thumbnails.engine.request_file(key, payload)
-        image = thumbnails.engine.peek(key)    # convert/render rows: what has landed so far
+        image = thumbnails.engine.peek(key)    # convert/render rows: what has loaded so far
         if image is not None:
             return image
         if source == "convert":
@@ -795,7 +795,7 @@ class FileFiles(grid_engine.GridEngine,
         if role == QtCore.Qt.ItemDataRole.DecorationRole:
             if tile_icons.face_for(self, row) != "image":
                 return tile_icons.chosen_image(self, row)
-            return self._capture_tile_image(row)    # the engine answers a missing capture, no stat
+            return self._capture_tile_image(row)    # the engine handles a missing capture, no stat
         if role == self.FormatRole:
             if kind == locations.KIND_GEO:
                 return geo_library.matched_extension(
@@ -819,7 +819,7 @@ class FileFiles(grid_engine.GridEngine,
         if role == self.KindRole:
             return kind
         if role == self.CropRole:
-            return (tile_icons.face_for(self, row) == "image"    # a landed capture fills the tile
+            return (tile_icons.face_for(self, row) == "image"    # a loaded capture fills the tile
                     and thumbnails.engine.peek(("capture", self.capture_path(row))) is not None)
         if role == self.NotesRole:
             from amaze.core import notes

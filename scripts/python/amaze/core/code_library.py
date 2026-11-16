@@ -1,4 +1,4 @@
-"""The Code section's library: snippets inline in code.json, the `renderer` field their language."""
+"""The Code section's library: snippets inline in code.json, the `renderer` field is the language."""
 
 import os
 import json
@@ -52,7 +52,7 @@ def paint_code_preview(code: str) -> QtGui.QImage:
             if not expanded:
                 y += line_h  # blank line still takes a row
                 continue
-            char_colors = [default] * len(expanded)  # per-character color from the syntax spans, so coloring survives the wrap
+            char_colors = [default] * len(expanded)  # per-character color from the syntax spans, so wrapped rows keep their coloring
             for start, length, color in vex_syntax.spans(expanded):
                 for i in range(start, min(start + length, len(expanded))):
                     char_colors[i] = color
@@ -82,7 +82,7 @@ def paint_code_preview(code: str) -> QtGui.QImage:
 
 
 def _staged(text) -> dict:
-    """A snippet's text as the one file the version engine copies, {suffix: path}; {} failed."""
+    """A snippet's text written to one temp file for versions.py, {suffix: path}; {} on failure."""
     folder = ""
     try:
         folder = tempfile.mkdtemp(prefix="amaze_code_base_")
@@ -132,7 +132,7 @@ class CodeLibrary(library.AssetLibrary):
         return (language or "Code") if self.add_snippet(code, name, language, cats, tags) else ""
 
     def add_snippet(self, code: str, name: str, language: str, cats: str, tags: str) -> str:
-        """Register a snippet and answer its id, empty for no code. A refused list write is said."""
+        """Add a snippet and return its id, empty for no code; a failed code.json save is reported."""
         if not code.strip():
             return ""
         new_mat = material.Material()
@@ -140,13 +140,13 @@ class CodeLibrary(library.AssetLibrary):
                          language or "Code")
         new_mat.code = code
         self._append_record(new_mat)
-        if not self.save():    # inline, so it lives in memory until the next save that works
+        if not self.save():    # inline, so it stays in memory until a later save succeeds
             self.report_refused_index_write(new_mat)
         return str(new_mat.mat_id)
 
     def save_from_editor(self, mat_id: str, version, code: str, name: str, language: str,
                          cats: str, tags: str) -> str:
-        """One Apply in the code dialog: a new snippet for an empty id, else into `version`."""
+        """Apply in the code dialog: a new snippet for an empty id, else saved into `version`."""
         if not mat_id:
             return self.add_snippet(code, name, language, cats, tags)
         row = self.find_asset_row_by_id(mat_id)    # a save can move rows
@@ -175,13 +175,13 @@ class CodeLibrary(library.AssetLibrary):
         return True
 
     def _write_snippet(self, asset, code, name, language, cats, tags) -> bool:
-        """Set a snippet's text and fields and save the list; True when the save landed."""
+        """Set a snippet's text and fields and save the list; True when the save succeeded."""
         asset.set_data(name.strip() or asset.name, cats, self.sanitize_tags(tags),
                        asset.fav, language or "Code")
         return self._store_text(asset, code)
 
     def _store_text(self, asset, code: str) -> bool:
-        key_before = self._preview_key(asset)    # the OLD content's key: taken after, it misses
+        key_before = self._preview_key(asset)    # the OLD content's key: read after the change, it would not match
         asset.code = code
         thumbnails.engine.discard(key_before)
         self.rebuild_thumbs()
@@ -196,7 +196,7 @@ class CodeLibrary(library.AssetLibrary):
             with open(versions.version_file(self.preferences, mat_id, number, versions.CODE),
                       encoding="utf-8", newline="") as handle:
                 return handle.read()
-        except (OSError, ValueError) as exc:    # "" names no file, and lands here too
+        except (OSError, ValueError) as exc:    # an empty path is no file and is caught here too
             debug.event("versions", "code version unreadable", mat_id=mat_id, n=number,
                         error=str(exc))
             return None
@@ -261,7 +261,7 @@ class CodeLibrary(library.AssetLibrary):
             self._versions_changed(asset)
 
     def row_data(self, row, role):
-        """The tooltip is the snippet's own comment ▸p/d03-retired; the rest is the base's."""
+        """The tooltip is the snippet's own comment ▸p/d03-retired; the rest is AssetLibrary's."""
         if role == QtCore.Qt.ItemDataRole.ToolTipRole:
             from amaze.core import notes
 
@@ -276,7 +276,7 @@ class CodeLibrary(library.AssetLibrary):
         return super().row_data(row, role)
 
     def seed_starter_snippets(self, category_model) -> None:
-        """Seed an "Examples" category of snippets once per library, marked in it; never raises."""
+        """Add an `Examples` category of snippets once per library, recorded as a mark; never raises."""
         from amaze.core import library_settings, notes
         try:
             lib_dir = self.preferences.dir
@@ -304,7 +304,7 @@ class CodeLibrary(library.AssetLibrary):
                     snip.get("language", "VEX"),
                 )
                 mat.code = code
-                mat._extra["curated"] = (    # the stable identity a restore matches on, riding the record's extra-keys courtesy
+                mat._extra["curated"] = (    # the stable id a restore matches on, kept in the record's extra keys, which saves preserve
                     "starter/%s" % snip.get("name", "Snippet"))
                 text = str(snip.get("description", "") or "").strip()
                 if text:    # a snippet's description is its comment
@@ -313,7 +313,7 @@ class CodeLibrary(library.AssetLibrary):
                 self._append_record(mat)
                 added += 1
             if added:
-                if not self.save():  # no mark unless the snippets are kept
+                if not self.save():  # no mark unless the snippets were saved
                     debug.event("session", "starter snippets not marked - the save was refused")
                     return
                 library_db.flush(self.preferences)
@@ -332,21 +332,21 @@ class CodeLibrary(library.AssetLibrary):
 
     @staticmethod
     def _preview_key(asset):
-        """The preview key from the code text and language, so an edit mints a new one."""
+        """The preview key from the code text and language, so an edit makes a new key."""
         return ("code", asset.mat_id, hash(asset.code), asset.renderer)
 
     def _decoration_image(self, row: int):
-        """The tile image: a chosen icon, else the painted code preview, painted on a miss."""
+        """The tile image: a chosen icon, else the code preview, painted when not cached."""
         asset = self._assets[row]
         face = tile_icons.face_for(self, row)
         if face != "image":
             return self._missing_thumb_image(row)
-        held = self._thumb_key(row)    # a capture replaces the painted preview; the engine asks, not paint
+        held = self._thumb_key(row)    # a capture replaces the painted preview; thumbnails.engine loads its file
         captured = thumbnails.engine.request_file(held, self._mat_paths[row])
         if captured is not None:
             return captured
         if not thumbnails.engine.is_missing(held):
-            return None    # still being read: its delivery repaints the tile
+            return None    # still being read: the tile repaints when it is loaded
         key = self._preview_key(asset)
         image = thumbnails.engine.peek(key)
         if image is not None:

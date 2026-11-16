@@ -1,4 +1,4 @@
-"""What counts as a geometry file and how one loads; the longest extension match wins."""
+"""What counts as a geometry file and how one loads; the longest matching extension is used."""
 
 from amaze.helpers import hostos
 

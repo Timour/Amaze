@@ -94,7 +94,7 @@ def _values_to_conductor_surface(values: dict, builder: hou.Node) -> hou.Node:
         _set_tuple("extinction", (ci[1], ci[3], ci[5]))   # k per channel
     roughness = values.get("roughness")
     if roughness is not None:
-        _set_tuple("roughness", (roughness, roughness))   # a vector2: the one scalar on both axes
+        _set_tuple("roughness", (roughness, roughness))   # a vector2: the same value on both axes
 
     surface = builder.createNode("mtlxsurface")
     surface.setNamedInput("bsdf", conductor, 0)   # the caller wires this mtlxsurface to the terminal
@@ -113,7 +113,7 @@ def _values_to_conductor_surface(values: dict, builder: hou.Node) -> hou.Node:
 
 
 def record_name(record) -> str:
-    """The node and USD name a record builds under; not unique, so never a directory name."""
+    """The node and USD name a record is built with; not unique, so never a directory name."""
     return hostos.safe_filename(
         wording.sanitize_usd_path(record.title) or "Material")
 
@@ -132,7 +132,7 @@ def _producer_for(record, source, resolution, preferences, progress=None):
         try:
             fetched_values = source.fetch(record, None, None, progress)
         except hou.OperationInterrupted:
-            raise    # the Esc belongs to the batch loop, not to this record
+            raise    # Esc is handled by the batch loop, not per record
         except Exception as exc:                        # noqa: BLE001
             debug.exception("measurement download", exc, uid=record.uid)
             return (None, "", "Could not read the measurement for %s: %s"
@@ -140,7 +140,7 @@ def _producer_for(record, source, resolution, preferences, progress=None):
         values = fetched_values.get("values", {})
         if not values.get("color"):
             return (None, "", "%s has no usable measurement" % record.title)
-        note = fetched_values.get("note", "")   # how derived numbers were derived; goes on the material
+        note = fetched_values.get("note", "")   # how derived numbers were derived; stored on the material
 
         def produce(builder):
             if values.get("complexIor"):   # measured metals become a conductor BSDF
@@ -153,7 +153,7 @@ def _producer_for(record, source, resolution, preferences, progress=None):
     if os.path.isdir(dest) and os.listdir(dest):   # already downloaded: reused, never extracted over
         debug.event("import", "package already on disk - reusing",
                     dest=dest)
-        found = matx_sources._find_mtlx(dest)    # the one home for "the first .mtlx under a directory", shared with the fresh-fetch path
+        found = matx_sources._find_mtlx(dest)    # the only function that finds the first .mtlx under a folder, also used after a new download
         if found:
             fetched = {"mtlx": found}
         else:
@@ -168,12 +168,12 @@ def _producer_for(record, source, resolution, preferences, progress=None):
                                    progress=progress)
         except hou.OperationInterrupted:
             shutil.rmtree(scratch, ignore_errors=True)
-            raise    # the Esc belongs to the batch loop, not to this record
+            raise    # Esc is handled by the batch loop, not per record
         except Exception as exc:                        # noqa: BLE001
             debug.exception("download", exc, url=record.payload, dest=dest)
             shutil.rmtree(scratch, ignore_errors=True)
             return (None, "", "Download failed: %s" % exc)
-        scratch_mtlx = (fetched or {}).get("mtlx")   # checked before the rename, so a failure leaves dest
+        scratch_mtlx = (fetched or {}).get("mtlx")   # checked before the rename, so a failure leaves dest unchanged
         if not scratch_mtlx or not os.path.exists(scratch_mtlx):
             shutil.rmtree(scratch, ignore_errors=True)
             debug.event("import", "download held no .mtlx - scratch "
@@ -184,7 +184,7 @@ def _producer_for(record, source, resolution, preferences, progress=None):
             if os.path.isdir(dest):
                 shutil.rmtree(dest, ignore_errors=True)   # dest is empty here
             os.rename(scratch, dest)
-        fetched = {   # the fetch answered scratch paths; the files live at dest now
+        fetched = {   # the fetch returned scratch paths; the files are at dest now
             key: (dest + value[len(scratch):]
                   if isinstance(value, str) and value.startswith(scratch)
                   else value)
@@ -199,7 +199,7 @@ def _producer_for(record, source, resolution, preferences, progress=None):
                     material=name, repairs=repairs)
         unresolved = [r for r in repairs if not r["fixed_to"]]
         if unresolved:
-            debug.note(   # the one consequence sentence; repair_mtlx_references states the cause
+            debug.note(   # the only message about the effect; repair_mtlx_references reports the cause
                 "%d of the textures for %s were not downloaded and "
                 "could not be matched, so those inputs render black. "
                 "The rest of the material came through."
@@ -212,7 +212,7 @@ def _producer_for(record, source, resolution, preferences, progress=None):
 
 
 def to_renderer(builder, scratch, name: str, renderer: str):
-    """MaterialX's builder, or its `renderer` twin made in `scratch`: (builder, shader, wired, report)."""
+    """MaterialX's builder, or its `renderer` copy made in `scratch`: (builder, shader, wired, report)."""
     if renderers.normalized(renderer) == conversion_engine.HUB:
         return builder, None, None, None
     made = conversion_engine.convert(builder, conversion_engine.HUB, renderer, scratch, name)
@@ -226,21 +226,21 @@ def to_renderer(builder, scratch, name: str, renderer: str):
     report = made.report
     if report.skipped or report.approximated:
         debug.alert("\n".join(report.summary_lines()),
-                    key=renderer.lower() + "-conversion")    # on screen: `note` is silent on Windows
+                    key=renderer.lower() + "-conversion")    # on screen: `note` shows nothing on Windows
     return made.builder, made.shader, made.wired, report
 
 
 @contextlib.contextmanager
 def _staged_build(record, source, resolution, preferences, progress,
                   renderer):
-    """Fetch, then build in an /obj staging matnet, twin and warn: yields (builder, note, error)."""
+    """Download, build in a staging matnet in /obj, convert, warn: yields (builder, note, error)."""
     name = record_name(record)
     produce, note, error = _producer_for(
         record, source, resolution, preferences, progress)
     if error:
         yield None, note, error
         return
-    with hou.undos.disabler():    # staging stays off the undo stack ▸r/undo-groups
+    with hou.undos.disabler():    # the staging matnet is not recorded for undo ▸r/undo-groups
         scratch = hou.node("/obj").createNode("matnet")
     try:
         builder, shader, wired = nodes_mod.build_karma_material(
@@ -248,7 +248,7 @@ def _staged_build(record, source, resolution, preferences, progress,
         if shader is None:
             yield None, note, "Could not build a shading network for " + name
             return
-        if renderers.normalized(renderer) != conversion_engine.HUB:    # MaterialX is the way in
+        if renderers.normalized(renderer) != conversion_engine.HUB:    # every import is built in MaterialX first
             builder, shader, wired, _report = to_renderer(
                 builder, scratch, name, renderer)
             if shader is None:
@@ -288,10 +288,10 @@ def build_in_scene(record, source, resolution, destination, preferences,
                     % (name, destination.path()))
         builder = moved[0]
         helpers.auto_place(builder)
-        if destination.type().name() == "materiallibrary":   # registered, or it may render nowhere
+        if destination.type().name() == "materiallibrary":   # registered, or it may not render
             nodes_mod.register_in_materiallibrary(destination, builder)
         try:
-            comment = _credit_text(record, source)   # the node comment carries credit and licence
+            comment = _credit_text(record, source)   # the node comment holds credit and licence
             if record.licence:
                 comment += "\nLicense: %s" % record.licence
             if note:
@@ -305,7 +305,7 @@ def build_in_scene(record, source, resolution, destination, preferences,
 
 
 def hosted_picture(record, source, renderer) -> str:
-    """Amaze's own render of `record` in a temp file, for a MaterialX import; "" when none."""
+    """Amaze's own render of `record` in a temp file, for a MaterialX import; empty when none."""
     if renderers.normalized(renderer) != conversion_engine.HUB:
         return ""
     if not (getattr(record, "payload", None) or {}).get("preview"):
@@ -324,7 +324,7 @@ def hosted_picture(record, source, renderer) -> str:
 
 def import_record(record, source, resolution, library, preferences,
                   progress=None, renderer: str = renderers.HUB.key, *, save, render=True):
-    """One record saved by `save` into `library`: (ok, why); on ok, why names it if unlisted."""
+    """One record saved by `save` into `library`: (ok, why); on ok, why is its name if not listed."""
     name = record_name(record)
     debug.event("import", "start", title=record.title, name=name,
                 source=record.source, kind=record.kind,
@@ -351,14 +351,14 @@ def import_record(record, source, resolution, library, preferences,
             return (False, "%s could not be saved to your library, so "
                            "it was not added. Your scene is unchanged."
                            % name)
-        listed = True    # unknown when the credit raises: the library's own alert has spoken
+        listed = True    # unknown when crediting raises: the library has already shown its own alert
         try:
             credited = library.assets[row]
             credited.license = record.licence or ""
             extra = credited._extra
             extra["source"] = record.source or ""    # where it came from and which one, on the row
             extra["online_uid"] = str(record.uid or "")    # not `uid`: that spelling is the pre-connector id, which packages.py strips on import
-            listed = library.save()    # writes the whole list: an earlier refusal lands here too
+            listed = library.save()    # writes the whole database: an earlier failed save is written here too
             from amaze.core import notes
             notes.set_note(preferences, notes.note_key(library.NOTES_SECTION, stamped), [
                 {"t": "text", "text": text}
@@ -368,4 +368,4 @@ def import_record(record, source, resolution, library, preferences,
             debug.event("import", "credit not written", error=str(exc))
         debug.event("import", "registered", name=name,
                     rows=library.rowCount(), listed=listed)
-        return (True, "" if listed else name)    # ok with a name: it landed, but its list did not
+        return (True, "" if listed else name)    # ok with a name: the asset was saved, but its database was not

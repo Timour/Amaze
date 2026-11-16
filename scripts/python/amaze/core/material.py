@@ -1,4 +1,4 @@
-"""One asset record (Material) and the family's shared constants."""
+"""One asset record (Material) and constants shared by the library modules."""
 
 from __future__ import annotations
 import os
@@ -46,30 +46,30 @@ _SAFE_ASSET_ID = re.compile(r"[0-9A-Za-z._-]{1,64}\Z")
 
 
 def is_safe_asset_id(raw) -> bool:
-    """True when this id can compose into a filename: no separators, no traversal."""
+    """True when this id can be used in a filename: no separators, no `.` or `..`."""
     text = str(raw)
     if text in (".", ".."):
         return False
     return bool(_SAFE_ASSET_ID.match(text))
 
 
-RECORD_SUFFIX = library_files.RECORD_SUFFIX    # `<id>.json`, through `core/asset_record.py` alone
+RECORD_SUFFIX = library_files.RECORD_SUFFIX    # `<id>.json`, read and written only by `core/asset_record.py`
 
 
 def section_folder(library_dir: str, section: str, area: str = "") -> str:
-    """`<library>/<section folder>[/<area>]`; KeyError for a database that owns no folder."""
+    """`<library>/<section folder>[/<area>]`; KeyError for a database that has no folder."""
     folder = os.path.join(str(library_dir), library_files.SECTION_FOLDERS[section])
     return os.path.join(folder, area) if area else folder
 
 
 def owned_path(preferences, section: str, area: str, name: str) -> str:
-    """`name` in a section's folder or its `area`, refused if it escapes."""
+    """`name` in a section's folder or its `area`; `PathEscape` if the path is outside it."""
     from amaze.helpers import hostos
     return hostos.contained_join(section_folder(preferences.dir, section, area), name)
 
 
 def payload_path(preferences, asset_id, suffix: str, section: str) -> str:
-    """`<section folder>/<id><suffix>`, refused if it escapes."""
+    """`<section folder>/<id><suffix>`; `PathEscape` if the path is outside that folder."""
     return owned_path(preferences, section, "", str(asset_id) + suffix)
 
 
@@ -222,7 +222,7 @@ class Material:
 
     @property
     def date(self) -> str:
-        """The save-time date string; assigning "" stamps now."""
+        """The save-time date string; assigning an empty string stores the current time."""
         return self._date
 
     @date.setter
@@ -235,7 +235,7 @@ class Material:
 
     @property
     def fav(self) -> bool:
-        """In-memory fallback only; stars live per user in the section's database."""
+        """In-memory fallback only; stars are stored per user in the section's database."""
         return self._fav
 
     @fav.setter
@@ -281,7 +281,7 @@ class Material:
 
     @property
     def categories(self) -> list[str]:
-        """The one category as a list of at most one entry; several collapse to the first."""
+        """The one category as a list of at most one entry; of several, only the first is kept."""
         return self._cats
 
     @categories.setter

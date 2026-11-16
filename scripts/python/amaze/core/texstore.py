@@ -1,4 +1,4 @@
-"""The texture store: referenced files adopted into `matX/` as `$AMAZELIB/...`. ▸r/texture-refs"""
+"""The texture store: referenced files copied into `matX/` as `$AMAZELIB/...`. ▸r/texture-refs"""
 
 import filecmp
 import os
@@ -26,7 +26,7 @@ def store_dir(prefs) -> str:
 
 
 def asset_folder(name: str, asset_id: str) -> str:
-    """The store folder a save adopts into: `<name>__<id prefix>`."""
+    """The store folder a save copies files into: `<name>__<id prefix>`."""
     return "%s__%s" % (hostos.safe_filename(str(name) or "asset"),
                        str(asset_id)[:12])
 
@@ -102,7 +102,7 @@ def adopt_file(source: str, prefs, folder: str) -> str:
 
 
 def adopt(node, prefs, folder: str) -> list:
-    """Adopt every outside file the node references, rewrite its parms; the token list."""
+    """Copy every outside file the node references into the store, rewrite its parms; the tokens."""
     import hou
     inventory = []
     for parm, raw in references(node):
@@ -114,13 +114,13 @@ def adopt(node, prefs, folder: str) -> list:
             debug.event("texstore", "referenced file missing",
                         parm=parm.path(), raw=raw)
             continue
-        if _set(parm, token, node):    # a refused rewrite stays out of the inventory
+        if _set(parm, token, node):    # a parm that was not rewritten is not added to the inventory
             _remember(inventory, token)
     return inventory
 
 
 def resolve_parms(node, prefs, write_path=None) -> int:
-    """Every `$AMAZELIB/...` reference under the node made a path `write_path` spells; the count."""
+    """Each `$AMAZELIB/...` reference under the node set to the `write_path` result; the count."""
     style = getattr(prefs, "path_style", "home")    # Write Paths As, which needs Houdini to apply
     changed = 0
     for parm, raw in references(node):
@@ -132,7 +132,7 @@ def resolve_parms(node, prefs, write_path=None) -> int:
 
 
 def _landing(destination: str, source: str) -> str:
-    """Where `source` lands: its basename, bumped when a different file holds the name."""
+    """The target path for `source`: its basename, numbered when a different file has the name."""
     name = hostos.safe_filename(os.path.basename(source))
     target = os.path.join(destination, name)
     stem, ext = os.path.splitext(name)
@@ -157,7 +157,7 @@ def _set(parm, value: str, root) -> bool:
 
 
 def _lands_under(parm, root) -> bool:
-    """Does the end of `parm`'s reference chain sit on `root` or a node under it?"""
+    """Whether the end of `parm`'s reference chain is `root` or a node under it."""
     seen = {parm.path()}
     target = parm.getReferencedParm()
     while target.path() not in seen:    # a chain, as `set()` follows it; a cycle ends it

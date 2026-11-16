@@ -12,10 +12,10 @@ from amaze import branding
 from amaze.core import debug
 
 RELEASES_URL = "https://api.github.com/repos/Timour/Amaze/releases/latest"    # unauthenticated, rate-limited per IP ▸p/updater-shape
-NEW_ISSUE_URL = "https://github.com/Timour/Amaze/issues/new"    # the repo URLs live HERE; pre-fillable with `?body=` ▸r/github-issue-url
+NEW_ISSUE_URL = "https://github.com/Timour/Amaze/issues/new"    # the repo URLs are defined HERE; pre-fillable with `?body=` ▸r/github-issue-url
 LIBRARY_POLICY_URL = "https://raw.githubusercontent.com/Timour/Amaze/%s/scripts/python/amaze/core/library_policy.py"    # a release's own code
 
-UP_TO_DATE = "up-to-date"    # the verdicts `check` can answer with
+UP_TO_DATE = "up-to-date"    # the verdicts `check` can return
 NEWER = "newer"
 NO_RELEASE = "no-release"
 UNREACHABLE = "unreachable"
@@ -30,9 +30,9 @@ class Update:
         self.version = version
         self.url = url
         self.sentence = sentence
-        self.digest = digest    # `sha256:<hex>` for an uploaded asset, "" for the zipball ▸r/release-digest
+        self.digest = digest    # `sha256:<hex>` for an uploaded asset, empty for the zipball ▸r/release-digest
         self.size = size        # the asset's declared byte count, 0 when unknown
-        self.library_version = library_version    # what the release updates libraries to; 0 unread
+        self.library_version = library_version    # what the release updates libraries to; 0 when not read
         self.library_since = library_since or version    # the first Amaze that reads that version
 
     def __bool__(self):
@@ -107,7 +107,7 @@ def check(current: str = "") -> Update:
 
 
 def release_library(tag: str) -> tuple:
-    """The library version release `tag` updates to, and the first Amaze reading it; 0 unread."""
+    """The library version release `tag` updates to, and the first Amaze reading it; 0 if unread."""
     try:
         with _open(LIBRARY_POLICY_URL % tag) as response:
             text = response.read().decode("utf-8", "replace")
@@ -120,7 +120,7 @@ def release_library(tag: str) -> tuple:
 
 
 def updates_library(found, library_dir: str) -> bool:
-    """Installing `found` updates the library at `library_dir`: the red Install Update."""
+    """Whether installing `found` updates the library at `library_dir`: the red Install Update."""
     from amaze.core import library_settings
     wanted = int(getattr(found, "library_version", 0) or 0)
     return (bool(found) and bool(library_dir)
@@ -128,7 +128,7 @@ def updates_library(found, library_dir: str) -> bool:
 
 
 def configured_library() -> str:
-    """The library the settings name; "" when unread, since no setting may stop an update."""
+    """The library the settings name; empty when unreadable, since no setting may block an update."""
     try:
         from amaze.core import repair
         return repair.configured_library()
@@ -138,7 +138,7 @@ def configured_library() -> str:
 
 
 def offer_line(found, library_dir: str) -> str:
-    """The check's answer in one line, worded as P06 draws it when the library is updated too."""
+    """The check's result in one line, worded as P06 shows it when the library is updated too."""
     from amaze import messages
     from amaze.core import library_settings
     if updates_library(found, library_dir):
@@ -154,12 +154,12 @@ def _unreachable_sentence(exc) -> str:
             "again; nothing has been changed.")
 
 
-MAX_DOWNLOAD_BYTES = 256 * 1024 * 1024    # the most a release may weigh downloaded ▸r/release-digest
+MAX_DOWNLOAD_BYTES = 256 * 1024 * 1024    # the largest download a release may be ▸r/release-digest
 MAX_UNPACKED_BYTES = 512 * 1024 * 1024
 
 
 def _verify_digest(path: str, digest: str) -> None:
-    """Refuse `path` unless it hashes to `digest` (`sha256:<hex>`); no digest refuses ▸r/release-digest"""
+    """Raise OSError unless `path` hashes to `digest` (`sha256:<hex>`); none raises ▸r/release-digest"""
     algorithm, _, expected = str(digest or "").partition(":")
     if not expected:
         raise OSError(
@@ -224,13 +224,13 @@ INSTALL_ENTRIES = ("scripts", "python_panels", "toolbar", "OPmenu.xml")    # wha
 
 
 def _archive_root(names) -> str:
-    """The single top-level folder of an archive, or "" when it is flat ▸p/updater-shape"""
+    """The single top-level folder of an archive, or empty when it is flat ▸p/updater-shape"""
     tops = {name.split("/", 1)[0] for name in names if name.strip("/")}
     return tops.pop() if len(tops) == 1 else ""
 
 
 def stage_release(archive: str, into: str) -> str:
-    """Extract `archive`, contained and capped: the staged path ▸p/updater-shape ▸r/release-digest"""
+    """Unzip `archive`, paths kept inside, size-capped: staged path ▸p/updater-shape ▸r/release-digest"""
     import zipfile
 
     from amaze.helpers import hostos
@@ -244,7 +244,7 @@ def stage_release(archive: str, into: str) -> str:
         with zipfile.ZipFile(archive) as bundle:
             names = bundle.namelist()
             for name in names:
-                hostos.contained_join(unpacked, name)    # refused rather than skipped: a release that cannot be unpacked whole is not one to install half of
+                hostos.contained_join(unpacked, name)    # raises rather than skips: a release that cannot be unpacked whole is not installed in part
             expanded = sum(info.file_size for info in bundle.infolist())
             if expanded > MAX_UNPACKED_BYTES:    # checked before extracting ▸r/release-digest
                 raise OSError(
@@ -301,7 +301,7 @@ def fetch_and_stage(url: str, workspace: str,
 
 
 def install_root() -> str:
-    """Where this Amaze is installed, from `$AMAZE`; `""` when it cannot be told."""
+    """Where this Amaze is installed, from `$AMAZE`; `""` when it cannot be found."""
     try:
         import hou
     except ImportError:
@@ -326,7 +326,7 @@ def install(found, into: str = "") -> None:
             staged = fetch_and_stage(found.url, workspace,
                                      digest=getattr(found, "digest", ""),
                                      size=getattr(found, "size", 0), on_bytes=on_bytes)
-        return apply_update(staged, into)    # never under Esc: half a rename is half an install
+        return apply_update(staged, into)    # Esc cannot cancel this: a stopped rename leaves a partial install
     finally:    # the workspace is always removed
         shutil.rmtree(workspace, ignore_errors=True)
 
@@ -337,9 +337,9 @@ def apply_update(staged: str, install: str) -> None:
         raise OSError("the staged update is not there: %s" % staged)
     aside = install.rstrip("/\\") + ".replacing"
     if os.path.isdir(aside):
-        _carry_addons(aside, install)    # an older build's failed carry left the only copy here
-    shutil.rmtree(aside, ignore_errors=True)    # a leftover from a run that died mid-swap
-    _carry_addons(install, staged)    # part of the swap: a carry that fails refuses the update
+        _carry_addons(aside, install)    # an older build's failed add-on copy left the only copy here
+    shutil.rmtree(aside, ignore_errors=True)    # a leftover from a run that stopped mid-swap
+    _carry_addons(install, staged)    # part of the swap: if the add-on copy fails, nothing is installed
     os.rename(install, aside)    # same parent as the install, so this one never crosses a volume
     try:
         try:
@@ -347,15 +347,15 @@ def apply_update(staged: str, install: str) -> None:
         except OSError:
             shutil.move(staged, install)    # works across volumes ▸r/cross-volume-move
     except OSError:
-        shutil.rmtree(install, ignore_errors=True)    # a half-copied install is not one to leave in place
-        os.rename(aside, install)    # PUT IT BACK - the window between the two renames is the only moment this is not whole
+        shutil.rmtree(install, ignore_errors=True)    # a half-copied install is removed
+        os.rename(aside, install)    # RESTORE THE OLD INSTALL - between the two renames is the only time no complete install exists
         raise
     shutil.rmtree(aside, ignore_errors=True)    # only once the new one is IN PLACE, so the rollback above is still reachable until here
     debug.event("updater", "update applied", install=install)
 
 
 def _carry_addons(old: str, new: str) -> None:
-    """Copy the add-ons `new` lacks out of `old`; raises OSError with a finished sentence."""
+    """Copy the add-ons `new` lacks out of `old`; raises OSError with a complete sentence."""
     from amaze.core import addons
     try:
         addons.carry(old, new)

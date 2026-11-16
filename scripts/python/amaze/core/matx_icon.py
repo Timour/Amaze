@@ -52,7 +52,7 @@ def _srgb_hex(color) -> str:
 
 
 def _fill(svg: str, placeholder: str, paint: str) -> str:
-    """Every `fill` naming `placeholder`, in either case - Figma writes hex in capitals."""
+    """Replace every `fill` set to `placeholder`, in either case - Figma writes hex in capitals."""
     return re.sub('fill="%s"' % re.escape(placeholder), lambda _m: paint, svg,
                   flags=re.IGNORECASE)
 

@@ -1,4 +1,4 @@
-"""The asset sections' proxy: several role filters at once, over the shared grid invariant."""
+"""The asset sections' proxy: several role filters at once, built on grid_proxy.GridProxyModel."""
 
 from PySide6 import QtCore
 
@@ -19,7 +19,7 @@ class MultiFilterProxyModel(grid_proxy.GridProxyModel):
     def __init__(self, parent: QtCore.QObject | None = None) -> None:
         super().__init__(parent)
         self._filters = {}
-        self._folded = {}  # role -> a string filter lowered once at set time
+        self._folded = {}  # role -> a string filter lowercased once when it is set
 
     def watched_roles(self):
         """What this proxy reads: the roles it filters on now, and the name."""
@@ -32,7 +32,7 @@ class MultiFilterProxyModel(grid_proxy.GridProxyModel):
             return
         if filter_role in self._filters \
                 and self._filters[filter_role] == filter_value:
-            return    # the value it already holds: no pass
+            return    # the same value is already set: no re-filter
         self._filters[filter_role] = filter_value
         self._folded[filter_role] = (filter_value.lower()
                                      if isinstance(filter_value, str)
@@ -52,7 +52,7 @@ class MultiFilterProxyModel(grid_proxy.GridProxyModel):
             self.refilter()    # at once, or rows stay hidden by the removed filter
 
     def _name_matches(self, needle: str, index) -> bool:
-        """Does this row answer the search text? A section may override it; `needle` is lowered."""
+        """Whether the row's name contains `needle`, already lowercase; a section may override it."""
         name = index.data(QtCore.Qt.ItemDataRole.DisplayRole) or ""
         return needle in name.lower()
 

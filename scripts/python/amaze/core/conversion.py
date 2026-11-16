@@ -18,20 +18,20 @@ from amaze.helpers import hostos
 FIT = "fit"    # what the file needs, measured, never read off the extension ▸r/conversion-internals
 FORMAT = "format"
 
-REASON_NONE = ""                       # there is an image; the rest decide retry vs missing ▸p/conversion-shape
+REASON_NONE = ""                       # there is an image; the other reasons decide retry or missing ▸p/conversion-shape
 REASON_CANCELLED = "cancelled"
 REASON_TOO_LARGE = "too-large"
 REASON_UNREADABLE = "unreadable"
-REASON_STALLED = "stalled"    # a converter's child outlived its kill: the file's reads are stuck
+REASON_STALLED = "stalled"    # a converter's child process survived being killed: reads of the file hang
 
-MAX_RESCUE_MEGABYTES = 1024    # the most any route may decode in full ▸r/conversion-internals
+MAX_RESCUE_MEGABYTES = 1024    # the largest image any converter may decode in full ▸r/conversion-internals
 
 CONVERT_TIMEOUT_MS = 30000    # how long any one converter may run before it is killed
 READ_PROBE_SECONDS = 2.0    # how long a raw read of the file may take before its reads count as stuck
 
 
 class Conversion:
-    """What :func:`convert_image` answers: truthy with an image, else `reason` is a REASON_*."""
+    """What :func:`convert_image` returns: truthy with an image, else `reason` is a REASON_*."""
 
     __slots__ = ("image", "via", "need", "reason", "attempts", "uniform")
 
@@ -42,7 +42,7 @@ class Conversion:
         self.need = need
         self.reason = REASON_NONE if image is not None else reason
         self.attempts = tuple(attempts)
-        self.uniform = uniform    # delivered although every pixel is identical ▸p/conversion-shape
+        self.uniform = uniform    # returned although every pixel is identical ▸p/conversion-shape
 
     def __bool__(self) -> bool:
         return self.image is not None
@@ -134,27 +134,27 @@ def _reads_promptly(path: str, seconds: float = READ_PROBE_SECONDS) -> bool:
             pass    # an error came back, so the reads are not stuck
         done.set()
 
-    threading.Thread(target=_read, name="amaze-read-probe", daemon=True).start()    # a stuck read keeps only this thread
+    threading.Thread(target=_read, name="amaze-read-probe", daemon=True).start()    # a hung read blocks only this thread
     return done.wait(seconds)
 
 
 @contextlib.contextmanager
 def _scratch_png():
-    """THE temp-file lifetime, for every adapter that needs one. ▸p/conversion-shape"""
+    """THE temp file creation and removal, for every adapter that needs one. ▸p/conversion-shape"""
     fd, path = tempfile.mkstemp(suffix=".png")
     os.close(fd)
     try:
         yield path
     finally:
         if os.path.exists(path):
-            try:    # a held temp never masks the result ▸p/conversion-shape
+            try:    # a temp file that cannot be removed never changes the result ▸p/conversion-shape
                 os.remove(path)
             except OSError:
                 debug.event("convert", "temp png cleanup skipped", path=path)
 
 
 class _Child(QtCore.QProcess):
-    """A QProcess that can be told its exit was reaped elsewhere. ▸r/conversion-internals"""
+    """A QProcess that can be marked exited when its exit was reaped elsewhere. ▸r/conversion-internals"""
 
     def mark_reaped_elsewhere(self):
         self.setProcessState(QtCore.QProcess.ProcessState.NotRunning)
@@ -165,7 +165,7 @@ ABANDONED = "timed out, and its child outlived the kill - the file's reads are s
 
 def _run_process(program: str, args: list, timeout_ms: int = CONVERT_TIMEOUT_MS,
                  cancelled=None) -> tuple:
-    """(success, stderr_text) from `_wait_for`, or (False, ABANDONED) when its child was parked."""
+    """(success, stderr_text) from `_wait_for`, or (False, ABANDONED) if its child is in `_ABANDONED`."""
     process = _Child()
     answer = _wait_for(process, program, args, timeout_ms, cancelled)
     if answer[1] != "cancelled" and process in _ABANDONED:
@@ -195,7 +195,7 @@ def _wait_for(process, program: str, args: list, timeout_ms: int,
 
     timer.timeout.connect(_on_timeout)
 
-    def _check():    # the watchdog, always on: cancel and liveness ▸r/conversion-internals
+    def _check():    # runs every 100 ms: checks cancel and whether the child exists ▸r/conversion-internals
         if cancelled is not None and cancelled():
             state["cancelled"] = True
             _quit()
@@ -209,7 +209,7 @@ def _wait_for(process, program: str, args: list, timeout_ms: int,
                 state["vanished"] = True
                 _quit()
             except OSError:
-                pass          # alive but not ours to signal
+                pass          # alive, but this process may not signal it
 
     watchdog = QtCore.QTimer()
     watchdog.setInterval(100)
@@ -226,7 +226,7 @@ def _wait_for(process, program: str, args: list, timeout_ms: int,
             return (False, "cancelled")
 
         if state.get("vanished"):
-            debug.event("convert", "a child's exit was reaped elsewhere",    # the child's work is the verdict; marked NotRunning ▸r/conversion-internals
+            debug.event("convert", "a child's exit was reaped elsewhere",    # the child's output decides the result; marked NotRunning ▸r/conversion-internals
                         program=program, waited_ms=timeout_ms)
             process.mark_reaped_elsewhere()
             return (True, "")
@@ -270,14 +270,14 @@ def _wait_for(process, program: str, args: list, timeout_ms: int,
 
         return True, ""
     finally:
-        _reap_or_abandon(process)    # the child is dead before this returns, on every path ▸r/conversion-internals
+        _reap_or_abandon(process)    # the child has exited before this returns, on every path ▸r/conversion-internals
 
 
-_ABANDONED: list = []    # killed children that outlived their reap, parked ▸r/conversion-internals
+_ABANDONED: list = []    # killed child processes that did not exit in time, kept ▸r/conversion-internals
 
 
 def _reap_or_abandon(process) -> bool:
-    """True when dead and reaped; False when parked in `_ABANDONED`. ▸r/conversion-internals"""
+    """True when exited and reaped; False when kept in `_ABANDONED`. ▸r/conversion-internals"""
     if process.state() == QtCore.QProcess.ProcessState.NotRunning:
         return True
     process.kill()
@@ -298,7 +298,7 @@ def _reap_or_abandon(process) -> bool:
     process.finished.connect(_gone)
     debug.event("convert", "helper abandoned to the graveyard",
                 program=process.program(), args=process.arguments())
-    if process.state() == QtCore.QProcess.ProcessState.NotRunning:    # it may have died between the failed wait and the connect, so the signal is never coming
+    if process.state() == QtCore.QProcess.ProcessState.NotRunning:    # it may have exited between the failed wait and the connect, so `finished` will not come
         _gone()
     return False
 
@@ -355,18 +355,18 @@ def _produce_icp(source: str, out_path: str, ctx) -> tuple:
     return (True, "") if ok else (False, err)
 
 
-_PILLOW_GUARD = threading.Lock()    # the bomb ceiling is process-global and converters run in threads
+_PILLOW_GUARD = threading.Lock()    # the decompression-bomb limit is process-global; converters use threads
 
 
 def _open_unguarded(source: str):
-    """`Image.open` past Pillow's bomb ceiling, lifted for this open only. ▸r/conversion-internals"""
+    """`Image.open` with Pillow's pixel limit lifted for this open only. ▸r/conversion-internals"""
     from PIL import Image
 
     with _PILLOW_GUARD:
         previous = Image.MAX_IMAGE_PIXELS
         Image.MAX_IMAGE_PIXELS = None    # the file came from the user's own library
         try:
-            return Image.open(source)    # open and crop check the ceiling; this path never crops
+            return Image.open(source)    # open and crop check the limit; this path never crops
         finally:
             Image.MAX_IMAGE_PIXELS = previous
 
@@ -397,13 +397,13 @@ _SIPS_FIT = functools.partial(_produce_sips, resample=True)
 _SIPS_FORMAT = functools.partial(_produce_sips, resample=False)
 
 
-_FIT_ADAPTERS = (    # resamplers only, sips first; sips takes only the headers it reads ▸r/conversion-internals
+_FIT_ADAPTERS = (    # resamplers only, sips first; sips only for headers it can read ▸r/conversion-internals
     ("sips (resampling)", _SIPS_FIT),
     ("pillow", _produce_pillow),
     ("icp (resampling)", _produce_icp),
 )
 
-_FORMAT_ADAPTERS = (    # Pillow first: it declines fastest ▸r/conversion-internals
+_FORMAT_ADAPTERS = (    # Pillow first: it fails fastest on a file it cannot read ▸r/conversion-internals
     ("pillow", _produce_pillow),
     ("sips (format only)", _SIPS_FORMAT),
     ("iconvert", _produce_iconvert),
@@ -412,7 +412,7 @@ _FORMAT_ADAPTERS = (    # Pillow first: it declines fastest ▸r/conversion-inte
 
 
 class _Ctx:
-    """One conversion's working state: the contract, the cancel hook, and the attempt trail."""
+    """One conversion's working state: the target size, the cancel callback, and the attempts."""
 
     def __init__(self, path, size, cancelled, hfs) -> None:
         self.path = path
@@ -420,7 +420,7 @@ class _Ctx:
         self._cancelled = cancelled
         self.hfs = hfs if hfs is not None else os.environ.get("HFS", "")
         self.attempts = []
-        self.need = ""    # what this file turned out to need; first answer wins ▸r/conversion-internals
+        self.need = ""    # what this file turned out to need; the first value set is kept ▸r/conversion-internals
         self.fallback = None    # a uniform image kept in case nothing does better ▸p/conversion-shape
         self.fallback_via = ""
         self.declared = {}    # path -> the size Qt declared for it, which icp scales from
@@ -460,7 +460,7 @@ class _Step:
 
 
 def _fit_to_contract(image: QtGui.QImage, size: int) -> QtGui.QImage:
-    """The size contract; called from `_read_qt` and nowhere else. ▸p/conversion-shape"""
+    """Scale down to fit `size`; called from `_read_qt` and nowhere else. ▸p/conversion-shape"""
     if image.width() <= size and image.height() <= size:
         return image
     return image.scaled(
@@ -488,7 +488,7 @@ def _uniform(image: QtGui.QImage) -> bool:
 
 
 def _judge(image: QtGui.QImage) -> str:
-    """Is an adapter's output acceptable? "" when it is, else why not. ▸p/conversion-shape"""
+    """Is an adapter's output acceptable? Empty when it is, else why not. ▸p/conversion-shape"""
     if image is None or image.isNull():
         return "null image"
     if image.width() <= 0 or image.height() <= 0:
@@ -519,7 +519,7 @@ def _read_qt(path: str, size: int) -> tuple:
 
 def _run_adapters(adapters, source: str, ctx: _Ctx, need: str,
                   reread) -> _Step:
-    """Try each adapter, judge it via `reread`, stop at the first good one. ▸r/conversion-internals"""
+    """Try each adapter, check it via `reread`, stop at the first good one. ▸r/conversion-internals"""
     for name, produce in adapters:
         if ctx.cancelled():
             return _Step(need=need, reason=REASON_CANCELLED)
@@ -530,7 +530,7 @@ def _run_adapters(adapters, source: str, ctx: _Ctx, need: str,
                     ctx.tried(name, why)
                     return _Step(need=need, reason=REASON_CANCELLED)
                 ctx.tried(name, why)
-                if why == ABANDONED:    # the FILE is measured: a stuck read gets no second converter
+                if why == ABANDONED:    # the FILE is tested: if its reads hang, no second converter runs
                     if not _reads_promptly(source):
                         return _Step(need=need, reason=REASON_STALLED)
                     debug.event("convert", "a converter was abandoned on a file that reads - the next one runs",
@@ -544,10 +544,10 @@ def _run_adapters(adapters, source: str, ctx: _Ctx, need: str,
             if verdict:
                 ctx.tried(name, verdict)
                 if ctx.fallback is None:
-                    ctx.fallback = step.image    # kept, not delivered ▸p/conversion-shape
+                    ctx.fallback = step.image    # kept, not returned ▸p/conversion-shape
                     ctx.fallback_via = name
                 continue
-            via = name    # names both adapters when the read escalated ▸r/conversion-internals
+            via = name    # names both adapters when the reread used a converter too ▸r/conversion-internals
             if step.via and step.via != "qt":
                 via = "%s -> %s" % (name, step.via)
             return _Step(image=step.image, via=via)
@@ -555,14 +555,14 @@ def _run_adapters(adapters, source: str, ctx: _Ctx, need: str,
 
 
 def _fitted(path: str, ctx: _Ctx) -> _Step:
-    """Read `path` at the size contract, resampling if Qt refuses. ▸r/conversion-internals"""
+    """Read `path` at the target size, resampling if Qt cannot. ▸r/conversion-internals"""
     image, declared, error = _read_qt(path, ctx.size)
     if image is not None:
         return _Step(image=image, via="qt")
 
     declared_mb = _decoded_megabytes(declared)
     if declared_mb <= QtGui.QImageReader.allocationLimit():
-        ctx.tried("qt", error or "Qt could not read this file at all")    # a null read is a foreign format or a damaged file alike ▸p/conversion-shape
+        ctx.tried("qt", error or "Qt could not read this file at all")    # a null read means an unsupported format or a damaged file ▸p/conversion-shape
         ctx.needs(FORMAT)
         return _Step(need=FORMAT, reason=REASON_UNREADABLE)
 
@@ -580,7 +580,7 @@ def _fitted(path: str, ctx: _Ctx) -> _Step:
         return _Step(need=FIT, reason=REASON_TOO_LARGE)
 
     def _reread(produced, inner_ctx):
-        # a resampler's output is read plainly, with no second escalation
+        # a resampler's output is read by Qt only, with no second converter
         img, _declared, err = _read_qt(produced, inner_ctx.size)
         return _Step(image=img, reason=err or REASON_UNREADABLE)
 
@@ -595,7 +595,7 @@ def convert_image(path: str, size: int, cancelled=None, hfs=None) -> Conversion:
     if step.image is not None:
         return _answered(ctx, step)
     if step.need != FORMAT:
-        return _unanswered(ctx, step.need, step.reason)    # FIT already ran its whole order inside _fitted
+        return _unanswered(ctx, step.need, step.reason)    # FIT already tried every converter inside _fitted
 
     declared_mb = _decoded_megabytes(_exr_size(path))    # Qt declares no size for an EXR; its header does
     if declared_mb > MAX_RESCUE_MEGABYTES:
@@ -610,7 +610,7 @@ def convert_image(path: str, size: int, cancelled=None, hfs=None) -> Conversion:
 
 
 def _answered(ctx: _Ctx, step: _Step) -> Conversion:
-    """Log who answered and why the one before did not, when there was one. ▸p/conversion-shape"""
+    """Log which converter succeeded and why the first try failed, if any. ▸p/conversion-shape"""
     if ctx.attempts:
         debug.event("convert", "converted by a fallback",
                     path=ctx.path, via=step.via, need=ctx.need,
@@ -620,7 +620,7 @@ def _answered(ctx: _Ctx, step: _Step) -> Conversion:
 
 
 def _unanswered(ctx: _Ctx, need: str, reason: str) -> Conversion:
-    """No adapter produced a picture; a kept uniform answer is delivered here. ▸p/conversion-shape"""
+    """No adapter produced a picture; a kept uniform image is returned here. ▸p/conversion-shape"""
     if reason in (REASON_UNREADABLE, REASON_STALLED) and ctx.fallback is not None:
         debug.event("convert", "converted, but every pixel is identical",
                     path=ctx.path, via=ctx.fallback_via, need=need,
@@ -635,7 +635,7 @@ def _unanswered(ctx: _Ctx, need: str, reason: str) -> Conversion:
     if reason != REASON_TOO_LARGE:
         said = ("no thumbnail - a converter stalled on its reads" if reason == REASON_STALLED
                 else "no thumbnail - nothing could read it")
-        debug.event("convert", said,    # TOO_LARGE has already said its piece, with its ceiling
+        debug.event("convert", said,    # TOO_LARGE was already logged, with its limit
                     path=ctx.path, need=need,
                     why=ctx.attempts[0][1] if ctx.attempts else "",
                     tried=ctx.trail(),

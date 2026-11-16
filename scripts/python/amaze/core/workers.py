@@ -1,14 +1,14 @@
-"""How every engine stops its QThreads, and hands itself over on a reload. ▸r/model-contracts"""
+"""How every engine stops its QThreads, and is replaced on a reload. ▸r/model-contracts"""
 
 import atexit
 import time
 
 from amaze.core import debug
 
-WAIT_MS = 3000    # ONE window for all of them at once: a stuck socket must not hold up a quit
-TERMINATE_MS = 500    # the window after terminate(), shared the same way
+WAIT_MS = 3000    # ONE timeout shared by all threads: a blocked socket must not delay quitting
+TERMINATE_MS = 500    # the timeout after terminate(), also shared by all threads
 
-_unstoppable: list = globals().get("_unstoppable", [])    # parked FOREVER, across reloads ▸r/module-reload
+_unstoppable: list = globals().get("_unstoppable", [])    # kept until exit, across reloads ▸r/module-reload
 _installed: dict = globals().get("_installed", {})    # name -> the engine install() made last
 
 
@@ -30,7 +30,7 @@ def finished(thread) -> bool:
 
 
 def stop(threads, label: str, cancel: bool = True) -> None:
-    """Ask every thread to stop, then wait them out together; one that will not end is parked."""
+    """Ask every thread to stop, then wait for all at once; one that won't end goes in `_unstoppable`."""
     threads = list(threads)
     for thread in threads:
         try:
@@ -47,13 +47,13 @@ def stop(threads, label: str, cancel: bool = True) -> None:
         except RuntimeError:
             pass
     unstopped = _running_after(running, TERMINATE_MS)
-    if unstopped:    # dropped while it runs, it is freed inside run() and aborts ▸r/model-contracts
+    if unstopped:    # a QThread freed while it runs aborts the process ▸r/model-contracts
         _unstoppable.extend(unstopped)
         debug.event(label, "threads would not stop - parked", count=len(unstopped))
 
 
 def _running_after(threads, window_ms: int) -> list:
-    """The threads still running once `window_ms` has passed, the one window shared by all."""
+    """The threads still running once `window_ms` has passed, one deadline shared by all."""
     deadline = time.monotonic() + window_ms / 1000.0
     running = []
     for thread in threads:
@@ -67,10 +67,10 @@ def _running_after(threads, window_ms: int) -> list:
 
 
 def install(name: str, make, app, keep=None):
-    """`make()` as the process's one `name` engine; the last one is stopped and unhooked first."""
+    """`make()` as the process's one `name` engine; the previous one is stopped and disconnected."""
     old = _installed.get(name)
     if old is not None and keep is not None and keep(old):
-        return old    # carries on as it is, quit hooks and all
+        return old    # the running engine is kept, with its quit hooks
     if old is not None:
         _retire(old, app)
     engine = make()
@@ -82,10 +82,10 @@ def install(name: str, make, app, keep=None):
 
 
 def _retire(engine, app) -> None:
-    """Stop `engine` and take back its quit hooks, or each reload adds a dead engine to them."""
+    """Stop `engine` and remove its quit hooks, or each reload adds a stopped engine to them."""
     try:
         engine.shutdown()
-    except Exception:                                    # noqa: BLE001 - the new engine comes anyway
+    except Exception:                                    # noqa: BLE001 - the new engine is built anyway
         pass
     atexit.unregister(engine.shutdown)
     if app is not None:

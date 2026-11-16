@@ -1,4 +1,4 @@
-"""Models for the Colors section over colors.json; curated sets seed once as user gradients."""
+"""Models for the Colors section over colors.json; curated sets are added once as user gradients."""
 
 import json
 import os
@@ -19,7 +19,7 @@ from amaze.helpers import hostos
 from amaze import messages
 
 THUMB_SIZE = 256
-EMPTY_SWATCH = "#444444"    # under whatever a palette cannot paint
+EMPTY_SWATCH = "#444444"    # the background where a palette paints nothing
 
 
 def _def_path(filename: str) -> str:
@@ -27,7 +27,7 @@ def _def_path(filename: str) -> str:
     return amaze.package_file("res", "def", filename)
 
 
-CURATED_SETS = (  # display order; each needs its JSON in res/def/, "label" names its categories
+CURATED_SETS = (  # display order; each needs its JSON in res/def/, `label` names its categories
     {"key": "wada", "label": "Wada", "file": "sanzo_wada.json"},
     {"key": "klee", "label": "Klee", "file": "paul_klee.json"},
     {"key": "albers", "label": "Albers", "file": "josef_albers.json"},
@@ -47,7 +47,7 @@ def _palette_ramp_data(colors: list) -> dict:
 
 
 def _has_rgb(value) -> bool:
-    """Whether a ramp value carries the three channels a colour needs; a shorter one is left out."""
+    """Whether a ramp value has the three channels a colour needs; a shorter one is left out."""
     return isinstance(value, (list, tuple)) and len(value) >= 3
 
 
@@ -100,15 +100,15 @@ class GradientLibrary(library.AssetLibrary):
 
     @staticmethod
     def _asset_from_row(row: dict):
-        """A palette rides as a `Material`, `colors` and `ramp` among its carried-through keys."""
+        """A palette is stored as a `Material`, with `colors` and `ramp` among its extra keys."""
         mat = material.Material.from_dict(dict(row))
         if not str(row.get("date") or ""):
-            mat._date = ""  # a stored row without a date keeps an empty one, rather than Material fabricating today's
+            mat._date = ""  # a stored row without a date keeps an empty one, rather than Material filling in today's
         return mat
 
     @property
     def _load_failed(self) -> bool:
-        """Whether the database takes no change now."""
+        """Whether the database accepts no change now."""
         if self.preferences is None:
             return False
         return not library_db.accepts(self.preferences, self.DB_FILENAME)
@@ -116,14 +116,14 @@ class GradientLibrary(library.AssetLibrary):
     _SEED_MARK = "gradient_seed_v1"  # in the library's marks; bump when the seed contents change
 
     def seed_curated_palettes(self, category_model) -> None:
-        """Once per library, marked in it: every curated combination becomes a user gradient."""
+        """Once per library, recorded as a mark: every curated combination becomes a user gradient."""
         from amaze.core import library_settings, notes
         try:
             lib_dir = self.preferences.dir
             if not lib_dir:
                 return
             if self._load_failed:
-                return  # a refused database must not earn a PERMANENT mark for a save that never happened
+                return  # a database that accepts no change must not get a PERMANENT mark for a save that never happened
             if library_settings.marked(self.preferences, self._SEED_MARK):
                 return
             seeded = 0
@@ -151,7 +151,7 @@ class GradientLibrary(library.AssetLibrary):
                         "categories": [cat_name],
                         "colors": colors,
                         "ramp": _palette_ramp_data(colors),
-                        "curated": "%s/%s" % (curated["key"],    # the stable identity a restore matches on - ids are minted per library, this tag is not
+                        "curated": "%s/%s" % (curated["key"],    # the stable id a restore matches on - ids are made per library, this tag is not
                                               combo.get("id") or name),
                     })
                     text = str(combo.get("note", "") or "").strip()
@@ -163,14 +163,14 @@ class GradientLibrary(library.AssetLibrary):
                     seeded += 1
             if not seeded:
                 return  # def files unreachable this run: leave the marker off and retry next launch
-            if not self.save():  # the mark is PERMANENT, so it is never made for a save refused
+            if not self.save():  # the mark is PERMANENT, so it is never made for a failed save
                 debug.event("gradient", "curated seed not marked - the save was refused")
                 return
             if not all(saved for saved in library_db.flush(self.preferences).values()):
                 debug.event("gradient", "curated seed not marked - the save did not land")
                 return
             if pages:
-                notes.set_notes(self.preferences, pages)  # after the rows: a page for a palette never kept is an orphan
+                notes.set_notes(self.preferences, pages)  # after the rows: a comment for a palette that was not saved belongs to no row
             for cat_name in categories:
                 category_model.check_add_category(cat_name)
         except Exception as exc:                        # noqa: BLE001
@@ -183,7 +183,7 @@ class GradientLibrary(library.AssetLibrary):
 
     @staticmethod
     def _colors_of(asset) -> list:
-        """The palette's colour dicts - carried through on the record beside the fields the family knows."""
+        """The palette's colour dicts - kept in the record beside the fields Material knows."""
         colors = asset._extra.get("colors")
         return colors if isinstance(colors, list) else []
 
@@ -242,7 +242,7 @@ class GradientLibrary(library.AssetLibrary):
                      False, "")
         mat._extra = {"colors": colors, "ramp": ramp_data}
         self._append_record(mat)
-        if not self.save():  # nothing reached disk, so nothing stays on screen
+        if not self.save():  # nothing was saved, so the row is removed from the view too
             self._take_back_refused_append(mat)
             debug.alert(
                 messages.PALETTE_NOT_SAVED % (name or "this palette"),
@@ -251,25 +251,25 @@ class GradientLibrary(library.AssetLibrary):
         self.row_changed(0)
 
     def _owned_paths(self, mat_id) -> list:
-        """A palette owns its captured picture at most: the rest is stored inline."""
+        """A palette has at most one file, its captured picture: the rest is stored inline."""
         try:
             return list(self.asset_files(mat_id).values())
         except hostos.PathEscape:
             return []
 
     def _report_refused_delete(self, asset) -> None:
-        """A palette's refused delete, in Colors' words."""
+        """A palette's failed delete, reported with the Colors section's message."""
         debug.alert(
             messages.PALETTE_NOT_DELETED % (asset.name or "That palette"),
             key="colors-delete-refused")
 
     def _tile_icon_landed(self, row: int, spec, stored: bool) -> bool:
-        """No PNG is written for a palette; the row is re-pointed, as a Capture face reads a file."""
+        """No PNG is written for a palette; the row's paths are refreshed, as a Capture face reads a file."""
         self._add_thumb_paths(row, base_changed=False)    # also repaints the tile
         return stored
 
     def rerender_tile_icons(self) -> int:
-        """Repaint every palette wearing an icon; the base would write PNGs a palette never has."""
+        """Repaint every palette showing an icon; AssetLibrary's would write PNGs a palette never has."""
         return tile_icons.repaint_custom(self)
 
     @staticmethod
@@ -300,13 +300,13 @@ class GradientLibrary(library.AssetLibrary):
     def _decoration_image(self, row: int):
         """The painted swatch, its capture, or its chosen icon."""
         face = tile_icons.face_for(self, row)
-        if face == "image":    # a capture took the swatch's place; the engine asks, not paint
+        if face == "image":    # a capture replaces the swatch; thumbnails.engine loads its file
             held = self._thumb_key(row)
             captured = thumbnails.engine.request_file(held, self._mat_paths[row])
             if captured is not None:
                 return captured
             if not thumbnails.engine.is_missing(held):
-                return None    # still being read: its delivery repaints the tile
+                return None    # still being read: the tile repaints when it is loaded
         key = self._swatch_key(row)
         image = thumbnails.engine.peek(key)
         if image is not None:
@@ -333,7 +333,7 @@ class GradientLibrary(library.AssetLibrary):
         keys = list(ramp_data.get("keys") or [])
         values = list(ramp_data.get("values") or [])
         bases = ramp_data.get("bases", [])
-        width = min(len(keys), len(values))    # the width both hold, as data_to_ramp ▸r/ramp-and-walk-edges
+        width = min(len(keys), len(values))    # the length both lists share, as data_to_ramp ▸r/ramp-and-walk-edges
         keys, values = keys[:width], values[:width]
         if not width:
             painter.fillRect(0, 0, THUMB_SIZE, THUMB_SIZE,
@@ -366,7 +366,7 @@ class GradientLibrary(library.AssetLibrary):
         if role == QtCore.Qt.ItemDataRole.DisplayRole:
             return asset.name or "Gradient"
         if role in (self.RendererLabelRole, self.RendererRole):
-            return "Gradient"  # the KIND of thing; its set or size is the Category column's
+            return "Gradient"  # the KIND of thing; its set or size is shown in the Category column
         if role == QtCore.Qt.ItemDataRole.ToolTipRole:
             return ", ".join(
                 str(c.get("name", "")) for c in self._colors_of(asset))
@@ -377,7 +377,7 @@ class GradientLibrary(library.AssetLibrary):
 
 
 class GradientFilterProxyModel(multifilterproxy_model.MultiFilterProxyModel):
-    """The family proxy plus a palette-size filter and a search that matches colour names."""
+    """MultiFilterProxyModel plus a palette-size filter and a search that matches colour names."""
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)

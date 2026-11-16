@@ -13,12 +13,12 @@ from amaze import messages
 from amaze.core import debug, material
 from amaze.helpers import hostos
 
-ICON_DIR = amaze.package_file("ui", "feather")  # the icon set, through the package's one path join
+ICON_DIR = amaze.package_file("ui", "feather")  # the icon set, joined by amaze.package_file
 
 CANVAS = 512
 ICON_SCALE = 12.5  # 24-unit grid on CANVAS: 250px of ink; a change re-renders every tile
-STROKE_UNITS = 0.8  # the thin stroke - the one number that is a LOOK rather than a measurement
-FEATHER_STROKE_UNITS = 2.0  # Feather's own default weight, the other half of the Look preference
+STROKE_UNITS = 0.8  # the thin stroke - the one value chosen by eye rather than measured
+FEATHER_STROKE_UNITS = 2.0  # Feather's own default weight, the other option of the Look preference
 INK_SPAN = 250.0      # no icon's ink spans more pixels than this on a 512 tile
 
 INKS = {  # ink colours, stored by token name; light is for dark backgrounds
@@ -29,7 +29,7 @@ DEFAULT_INK = "dark"
 
 
 def ink_colour(token: str) -> str:
-    """Hex for an ink token, falling back to dark for anything odd."""
+    """Hex for an ink token; dark for any unknown token."""
     return INKS.get(str(token or "").strip().lower(), INKS[DEFAULT_INK])
 
 
@@ -77,12 +77,12 @@ def chosen_image(model, row: int):
     """A row's face when it shows no preview: its custom icon composed in memory, else generic."""
     spec = model.tile_icon(row)
     if is_custom(spec):
-        return compose_for(model.preferences, spec)    # in memory: painting never writes
+        return compose_for(model.preferences, spec)    # in memory: painting never writes a file
     return generic_image(model.tile_face_art(row))
 
 
 def repaint_custom(model) -> int:
-    """Repaint every row of `model` wearing a custom icon, for a model that composes in memory."""
+    """Repaint every row of `model` showing a custom icon, for a model that composes in memory."""
     rows = [row for row in range(model.rowCount())
             if is_custom(model.tile_icon(row))]
     for row in rows:
@@ -103,7 +103,7 @@ _composed_bytes = 0
 
 
 def _composed_cost(image) -> int:
-    """Bytes an entry occupies. A False (no such icon) marker is free."""
+    """Bytes an entry occupies. A False (no such icon) marker counts as 0."""
     try:
         return int(image.sizeInBytes()) if image else 0
     except Exception:                                   # noqa: BLE001
@@ -164,7 +164,7 @@ def _ink_span_px(body: str, scale: float, stroke: float) -> float:
 
 
 def _fit(name: str, stroke_units: float):
-    """(scale, stroke) for this icon: the template's, both shrunk together past INK_SPAN."""
+    """(scale, stroke) for this icon: the template's, both scaled together to fit INK_SPAN."""
     key = (name, float(stroke_units))
     cached = _fits.get(key)
     if cached is not None:
@@ -210,7 +210,7 @@ def compose(name: str, background: str, size: int = CANVAS,
     key = (str(name), str(background), int(size), stroke_units, str(ink))
     cached = _composed.get(key)
     if cached is not None:
-        _composed.move_to_end(key)      # LRU: a hit is not old
+        _composed.move_to_end(key)      # LRU: a cache hit becomes the most recent
         return cached or None
     svg = compose_svg(name, background, stroke_units, ink)
     image = None
@@ -234,12 +234,12 @@ def compose(name: str, background: str, size: int = CANVAS,
 
 def write(path: str, name: str, background: str, size: int = CANVAS,
           stroke_units: float = 0.0, ink: str = DEFAULT_INK) -> bool:
-    """Compose and save; False, logged, on any failure, and never a raise."""
+    """Compose and save; False, logged, on any failure; never raises."""
     image = compose(name, background, size, stroke_units, ink)
     if image is None:
         debug.event("icons", "no such tile icon", icon=name)  # an event: the tile keeps its icon
         return False
-    why = ""  # the OSError cause when there is one; Qt's False names none ▸r/failed-write
+    why = ""  # the OSError cause when there is one; Qt's False return gives none ▸r/failed-write
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         if not image.save(path, "PNG"):
@@ -298,13 +298,13 @@ def _picture_name(preferences, asset_id) -> str:
 
 
 def thumbnail_path(preferences, asset_id: str, section: str) -> str:
-    """The asset's one picture, `<section folder>/<id>.png`, render or capture; contained."""
+    """The asset's one picture, `<section folder>/<id>.png`, render or capture; via contained_join."""
     return hostos.contained_join(material.section_folder(preferences.dir, section),
                                  _picture_name(preferences, asset_id))
 
 
 def tile_read_path(preferences, asset_id: str, section: str) -> str:
-    """A tile's picture path, no realpath; "" for an unsafe id, which plain joins could not hold."""
+    """A tile's picture path, no realpath; empty for an unsafe id, which a plain join cannot contain."""
     if not material.is_safe_asset_id(asset_id):
         return ""
     return os.path.join(material.section_folder(preferences.dir, section),
@@ -351,7 +351,7 @@ def override_for(preferences, key: str, database: str) -> dict:
     if not isinstance(found, dict):
         return {}
     return normalise({field: value for field, value in found.items()
-                      if field not in (documents.BY, documents.AT)})    # the stamps are the engine's
+                      if field not in (documents.BY, documents.AT)})    # the stamps are set by documents.py
 
 
 def set_override(preferences, key: str, spec, database: str) -> bool:
@@ -372,6 +372,6 @@ def set_overrides(preferences, specs: dict, database: str) -> dict:
                 held.put(SECTION, str(key), chosen)
             else:
                 held.drop(SECTION, str(key))
-    library_db.changed(preferences, database)    # the panel timer saves it with the rest of the gesture
+    library_db.changed(preferences, database)    # the panel timer saves it with the rest of the user's action
     return {str(key): override_for(preferences, key, database) == normalise(spec)
             for key, spec in specs.items()}

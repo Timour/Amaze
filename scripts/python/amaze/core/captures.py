@@ -1,4 +1,4 @@
-"""Captures: a photo of the Scene View kept as a tile's picture, in the library. ▸r/tile-captures"""
+"""Captures: a Scene View screenshot stored in the library as a tile's thumbnail. ▸r/tile-captures"""
 
 import hashlib
 import os
@@ -30,7 +30,7 @@ def file_path(preferences, key: str) -> str:
 
 
 def exists(path: str) -> bool:
-    """A non-empty file at `path`: a zero-byte file is no capture."""
+    """A non-empty file at `path`: a zero-byte file does not count as a capture."""
     try:
         return bool(path) and os.path.isfile(path) and os.path.getsize(path) > 0
     except OSError:
@@ -38,7 +38,7 @@ def exists(path: str) -> bool:
 
 
 def move_file_capture(preferences, old_key: str, new_key: str) -> bool:
-    """A moved file's capture follows its key; one already under the new key goes to the trash."""
+    """Move a moved file's capture to its new key; a capture already at the new key is trashed."""
     from amaze.core import library_db
     old, new = file_path(preferences, old_key), file_path(preferences, new_key)
     if not exists(old):
@@ -58,14 +58,14 @@ def move_file_capture(preferences, old_key: str, new_key: str) -> bool:
 
 
 class _Signals(QtCore.QObject):
-    """Announces a landed capture by its tile key, so every live model repaints that tile."""
+    """Emits a tile key when a new capture is saved, so every open model repaints that tile."""
 
     landed = QtCore.Signal(object)
 
 
 _RELAY_VERSION = 1    # bumped when a signal is added, removed or changes arity
 
-signals = globals().get("signals")    # reload-stable: a reload must not strand the old connections
+signals = globals().get("signals")    # kept across a module reload, so connections made before it keep working
 if signals is None or getattr(signals, "version", None) != _RELAY_VERSION:
     signals = _Signals()
     signals.version = _RELAY_VERSION

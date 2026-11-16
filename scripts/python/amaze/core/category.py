@@ -44,10 +44,10 @@ class Categories(QtCore.QAbstractListModel):
         self._seen = list(self._categories)    # the database's order as last read or saved
         self._colour_table = self._read_colours()
         self._removed = set()    # names this model took out, dropped from the database at its save
-        self._shown = list(self._categories)    # what the views have been told; `apply_refresh` compares
+        self._shown = list(self._categories)    # the rows the views last showed; `apply_refresh` compares
         self.CatSortRole = QtCore.Qt.ItemDataRole.UserRole  # 256
-        self._renderer_filter = ""  # lowercased; "" = no filter. Pushed in by the panel so counts agree with the grid
-        self._count_cache = None  # category -> visible count, "_All" = total; dropped on every mutation path
+        self._renderer_filter = ""  # lowercased; empty = no filter. Set by the panel so counts match the grid
+        self._count_cache = None  # category -> visible count, `_All` = total; cleared on every change
         self.layoutChanged.connect(self.drop_count_cache)
 
     def rowCount(
@@ -71,7 +71,7 @@ class Categories(QtCore.QAbstractListModel):
             return self.color_of(self._categories[index.row()])
 
     def set_renderer_filter(self, render_filter: str) -> None:
-        """Store the grid's renderer filter, the value MultiFilterProxyModel gets ("all_renderers")."""
+        """Store the grid's renderer filter, the value MultiFilterProxyModel gets (`all_renderers`)."""
         self._renderer_filter = str(render_filter or "").lower()
         self.drop_count_cache()
 
@@ -95,13 +95,13 @@ class Categories(QtCore.QAbstractListModel):
         return (not rf) or ("all_renderers" in rf)
 
     def _category_count(self, raw_name: str) -> int:
-        """How many visible assets live in this category; "_All" counts every visible asset."""
+        """How many visible assets are in this category; `_All` counts every visible asset."""
         counts = self._count_cache
         if counts is None:
             counts = {}
             total = 0
             for asset in self._doc().table("assets").values():
-                if not isinstance(asset, dict):    # skips junk rows, as the model does
+                if not isinstance(asset, dict):    # skips rows that are not tables, as the model does
                     continue
                 if not self._asset_matches_renderer(asset):
                     continue
@@ -123,7 +123,7 @@ class Categories(QtCore.QAbstractListModel):
         return counts.get(raw_name.strip(), 0)
 
     def _doc(self) -> documents.Document:
-        """This sidebar's database, as the library holds it."""
+        """This sidebar's database, as library_db holds it in memory."""
         return library_db.document(self.preferences, self.DB_FILENAME)
 
     def _read_colours(self) -> dict:
@@ -138,13 +138,13 @@ class Categories(QtCore.QAbstractListModel):
             self._seen = list(self._categories)
             self._colour_table = self._read_colours()
             self._removed = set()
-            self._shown = list(self._categories)    # a switch has told the views everything already
+            self._shown = list(self._categories)    # the model reset has already updated the views
             self.drop_count_cache()
         finally:
             self.endResetModel()
 
     def apply_refresh(self) -> bool:
-        """Take in the names and colours the database holds now; True when the sidebar moved."""
+        """Read in the names and colours the database holds now; True when the sidebar changed."""
         colours = self._read_colours()
         recoloured = colours != self._colour_table
         self._colour_table = colours
@@ -167,7 +167,7 @@ class Categories(QtCore.QAbstractListModel):
         return True
 
     def _told_views(self) -> None:
-        """The views now know these rows: every local door ends here, so only a merge resets."""
+        """Record that the views show these rows: every local change calls this, so only a merge resets."""
         self._shown = list(self._categories)
 
     def remove_category(self, cat: str) -> None:
@@ -186,7 +186,7 @@ class Categories(QtCore.QAbstractListModel):
         self.save()
 
     def rename_category(self, old: str, new: str) -> None:
-        """Rename a category here and in every asset; renamed onto one that exists, the two become one."""
+        """Rename a category here and in every asset; renaming onto an existing name merges the two."""
         merging = new != old and new in self._categories
         for count in reversed(range(len(self._categories))):
             if self._categories[count] != old:
@@ -239,7 +239,7 @@ class Categories(QtCore.QAbstractListModel):
             return False
         if from_row == to_row:
             return False
-        destination = to_row if to_row < from_row else to_row + 1  # beginMoveRows speaks PRE-move coordinates ▸r/press-gestures
+        destination = to_row if to_row < from_row else to_row + 1  # beginMoveRows takes PRE-move row numbers ▸r/press-gestures
         if not self.beginMoveRows(QtCore.QModelIndex(), from_row,
                                   from_row, QtCore.QModelIndex(),
                                   destination):
@@ -263,7 +263,7 @@ class Categories(QtCore.QAbstractListModel):
         self.save()
 
     def order_snapshot(self) -> list:
-        """The order as it stands, copied - what Esc puts back."""
+        """The current order, copied - what Esc restores."""
         return list(self._categories)
 
     def restore_order(self, snapshot: list) -> None:
@@ -278,14 +278,14 @@ class Categories(QtCore.QAbstractListModel):
         self._told_views()
 
     def _recolor(self, old_name: str, new_name: str) -> None:
-        """Carry a colour across a rename, or drop it on a removal (empty new_name)."""
+        """Keep a colour through a rename, or drop it on a removal (empty new_name)."""
         table = self.colors()
         color = table.pop(str(old_name), "")
         if color and new_name:
-            table.setdefault(str(new_name), color)    # a merge keeps the surviving row's own colour
+            table.setdefault(str(new_name), color)    # a merge keeps the colour of the row that remains
 
     def stored_name(self, typed: str) -> str:
-        """The stored category a TYPED name means: itself, or the one that reads as it (`_WIP` reads WIP)."""
+        """The stored category a TYPED name means: itself, or the one shown as it (`_WIP` shows as WIP)."""
         typed = str(typed or "").strip()
         if typed in self._categories:
             return typed
@@ -338,7 +338,7 @@ class Categories(QtCore.QAbstractListModel):
         return None
 
     def save(self) -> bool:
-        """Hand the names, order and colours to the database; False when it takes no change now."""
+        """Write the names, order and colours to the database; False when it accepts no change now."""
         if not library_db.accepts(self.preferences, self.DB_FILENAME):
             return False
         held = self._doc()
@@ -379,7 +379,7 @@ class CategoriesSidebarProxy(QtCore.QSortFilterProxyModel):
         model = self.sourceModel()
         if model is None:
             return True
-        if model.showing_all_renderers():  # All reveals every category, empty ones included
+        if model.showing_all_renderers():  # All shows every category, empty ones included
             return True
         raw = model.index(source_row, 0).data(model.CatSortRole)
         if is_all(raw):

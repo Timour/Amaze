@@ -1,4 +1,4 @@
-"""Every renderer Amaze offers, in menu order: the one place to hide, show, rename or add one."""
+"""Every renderer Amaze offers, in menu order; a renderer is hidden, shown, renamed or added here."""
 from typing import NamedTuple
 
 
@@ -17,7 +17,7 @@ class Renderer(NamedTuple):
     samples_range: tuple
     samples_tip: str
     aliases: tuple = ()
-    badge: str = ""    # the tile badge naming this renderer, art in `ui/`
+    badge: str = ""    # the tile badge naming this renderer, an image in `ui/`
     classic_container: str = ""    # the /mat-only VOP container its plugin makes
     usd_builder: str = ""    # its LOP-capable container, which a classic one is rebuilt as
     builder_mark: str = ""    # user data marking its own builder, a plain subnet ▸r/octane-builder
@@ -54,7 +54,7 @@ def can_hold_a_render(context) -> bool:
 
 
 def get(stored):
-    """The Renderer a stored value names, older spellings included; None for one Amaze lacks."""
+    """The Renderer a stored value names, older spellings included; None when ALL has no match."""
     name = str(stored or "")
     for renderer in ALL:
         if any(known in name for known in (renderer.key,) + renderer.aliases):
@@ -73,17 +73,17 @@ def normalized(stored) -> str:
 
 
 def label(stored) -> str:
-    """What a stored value is called on screen; one Amaze does not know reads as stored."""
+    """What a stored value is called on screen; an unknown value is shown as stored."""
     found = get(stored)
     return found.label if found is not None else str(stored or "")
 
 
 def icon(stored) -> str:
-    """The ui/ icon a stored value wears in every menu that lists it; "" for one without."""
+    """The ui/ icon shown for a stored value in every menu that lists it; empty when it has none."""
     found = get(stored)
     return found.icon if found is not None else ""
 
 
 def offered(prefs) -> tuple:
-    """The renderers Preferences leaves on: every menu, row and switch that names one lists these."""
+    """The renderers switched on in Preferences: every menu, row and switch that names one lists these."""
     return tuple(renderer for renderer in ALL if getattr(prefs, renderer.switch, False))

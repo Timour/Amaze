@@ -1,4 +1,4 @@
-"""The guard: the one door to a library's files - read with a ticket, change as one unit, judge."""
+"""Guard: all access to a library's files - read with a Ticket, change as one unit, give verdicts."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ HELD = "held"    # there, but it cannot be opened now: another program has it, o
 SHARED, PER_USER = "shared", "per-user"
 
 MASTER = "DataBase.json"
-MANIFEST = "manifest"    # in MASTER: the databases this library has, so a lost one is known lost
+MANIFEST = "manifest"    # in MASTER: the databases this library has, so a missing one is detected
 BACKUP_DIR, TRASH_DIR = "backup", "trash"
 JOURNAL = ".amaze-journal"    # present only while a change of several files is being applied
 SCRATCH = ".writing"
@@ -58,15 +58,15 @@ DATABASES = {
 
 
 class Refused(Exception):
-    """A read or a change the guard does not allow; its text says why."""
+    """A read or a change Guard does not allow; its message is the reason."""
 
 
 class Moved(Refused):
-    """The file is no longer what the ticket read: read it again, merge, and try once more."""
+    """The file differs from what the ticket read: read it again, merge, and try once more."""
 
 
 class Disk:
-    """The filesystem as the guard uses it; a test substitutes one that stops at a chosen step."""
+    """The filesystem as Guard uses it; a test substitutes one that stops at a chosen step."""
 
     def read(self, path: str) -> bytes:
         with open(path, "rb") as handle:
@@ -93,7 +93,7 @@ class Disk:
     def swap(self, scratch: str, target: str) -> None:
         """`scratch` becomes `target` in one rename, keeping the replaced file's mode."""
         hostos.check_sandbox(target)
-        os.makedirs(os.path.dirname(target), exist_ok=True)    # a taken file may land in a new folder
+        os.makedirs(os.path.dirname(target), exist_ok=True)    # a file added by `take` may go into a new folder
         hostos.promote_scratch(scratch, target)
 
     def move(self, source: str, target: str) -> None:
@@ -111,7 +111,7 @@ class Disk:
 
 
 class Ticket:
-    """Proof of one read: a database's name and exactly the bytes it held, None when absent."""
+    """The record of one read: a database's name and exactly the bytes it held, None when absent."""
 
     __slots__ = ("name", "raw")
 
@@ -130,7 +130,7 @@ class Reading:
         self.document = document
         self.ticket = ticket
         self.why = why
-        self.shrunk = shrunk    # (holds, its newest backup holds) when under half, else None
+        self.shrunk = shrunk    # (its count, its newest backup's count) when under half, else None
 
     @property
     def writable(self) -> bool:
@@ -138,7 +138,7 @@ class Reading:
 
 
 def encode(document: dict) -> bytes:
-    """A document as the bytes of its file, stamped with the format: one spelling on every OS."""
+    """A document as the bytes of its file, stamped with the format: the same bytes on every OS."""
     stamped = dict(document, format=max(_format_of(document), branding.LIBRARY_FORMAT))
     return (json.dumps(stamped, indent=1, sort_keys=True, ensure_ascii=False) + "\n").encode("utf-8")
 
@@ -151,7 +151,7 @@ def _format_of(document) -> int:
 
 
 def _parse(raw: bytes, kind: Kind) -> tuple:
-    """(document, "") for a database of this kind, else (None, why it is not one)."""
+    """(document, empty text) for a database of this kind, else (None, why it is not one)."""
     try:
         document = json.loads(raw.decode("utf-8-sig"))
     except (UnicodeDecodeError, ValueError) as exc:
@@ -176,11 +176,11 @@ class Guard:
         self._quietly(self.recover)    # a change still waiting on a file reads as HELD, never raises here
 
     def stamp(self) -> str:
-        """Now, as the text every date the guard and the documents write is spelled in."""
+        """Now, in the text format of every date that Guard and documents.py write."""
         return self._now().strftime(STAMP)
 
     def path(self, *parts: str) -> str:
-        """A path inside the library; `hostos.PathEscape` for one that would leave it."""
+        """A path inside the library; `hostos.PathEscape` for one outside it."""
         return hostos.contained_join(self.dir, *parts)
 
     def _relative(self, relative: str) -> str:
@@ -188,7 +188,7 @@ class Guard:
         return self.path(*parts)
 
     def inside(self, path: str) -> str:
-        """`path` relative to the library, "/" separated; "" for one outside it."""
+        """`path` relative to the library, `/` separated; empty for one outside it."""
         try:
             relative = os.path.relpath(os.path.abspath(str(path)), os.path.abspath(self.dir))
         except ValueError:    # another drive on Windows
@@ -209,7 +209,7 @@ class Guard:
             return self._finish_journal()
 
     def _waiting(self) -> bool:
-        """Whether a recorded change is still not all in place, after one more try at it."""
+        """Whether a recorded change is still not fully applied, after one more attempt."""
         journal = self.path(JOURNAL)
         if not self.disk.exists(journal):
             return False
@@ -245,7 +245,7 @@ class Guard:
                 elif step["op"] == "remove" and self.disk.exists(target):
                     self.disk.remove(target)
             except FileNotFoundError:
-                continue    # gone between the look and the act: another run took the step
+                continue    # removed between the check and the step: another run did it
 
     def _quietly(self, act, *args) -> bool:
         try:
@@ -256,7 +256,7 @@ class Guard:
             return False
 
     def read(self, name: str) -> Reading:
-        """One database, judged as it is now; only a fine or a fresh one comes with a ticket."""
+        """One database, checked as it is now; only a FINE or FRESH one comes with a ticket."""
         kind = DATABASES.get(name)
         if kind is None:
             raise Refused("%s is no database of a library" % name)
@@ -296,7 +296,7 @@ class Guard:
 
     def _known(self, name: str) -> bool:
         """Whether an absent database is known to have existed: the manifest names it."""
-        if name == MASTER:    # another database that reads as one: a same-named older file is none
+        if name == MASTER:    # known if another database reads; a same-named older file alone does not count
             return any(self._reads(other) for other in DATABASES if other != MASTER)
         try:
             document, _why = _parse(self.disk.read(self.path(MASTER)), DATABASES[MASTER])
@@ -346,7 +346,7 @@ class Guard:
         now = self._now()
         newest = self._plain_backups(name)
         if spaced and newest:
-            if 0 <= (now - newest[0][1]).total_seconds() < BACKUP_SPACING_S:    # a backup dated ahead: a clock, not a spacing
+            if 0 <= (now - newest[0][1]).total_seconds() < BACKUP_SPACING_S:    # a backup dated in the future means a clock change, not a recent backup
                 return []
             try:
                 if self.disk.read(self.path(BACKUP_DIR, newest[0][0])) == raw:
@@ -359,7 +359,7 @@ class Guard:
         return [{"op": "swap", "from": scratch, "to": target}]
 
     def _prune_backups(self, name: str) -> None:
-        """Keep the newest few backups and one a day for the days kept; remove the rest."""
+        """Keep the newest few backups and one a day for DAILY_BACKUP_DAYS; remove the rest."""
         now = self._now()
         keep, days = set(), set()
         for index, (entry, when) in enumerate(self._plain_backups(name)):
@@ -377,7 +377,7 @@ class Guard:
         return Change(self, user)
 
     def restore(self, name: str, backup: str) -> None:
-        """Put one backup back as its database, keeping what is there now as an undo copy."""
+        """Restore one backup as its database, keeping the current file as an undo copy."""
         kind = DATABASES.get(name)
         if kind is None or not any(backup == entry for entry, _when in self.backups(name)):
             raise Refused("%s is no backup of %s" % (backup, name))
@@ -412,7 +412,7 @@ class Guard:
         return found
 
     def expire_trash(self) -> int:
-        """Remove the trash's day folders older than the days kept; how many went."""
+        """Remove the trash's day folders older than TRASH_DAYS; how many were removed."""
         cutoff = (self._now() - datetime.timedelta(days=TRASH_DAYS)).strftime("%Y-%m-%d")
         gone = 0
         for day in self.disk.names(self.path(TRASH_DIR)):
@@ -422,7 +422,7 @@ class Guard:
 
 
 class Change:
-    """Files to write, remove and trash as ONE unit: all of it lands, or none of it does."""
+    """Files to write, remove and trash as ONE unit: all of it is applied, or none of it is."""
 
     def __init__(self, guard: Guard, user: str) -> None:
         self.guard = guard
@@ -472,7 +472,7 @@ class Change:
         """Apply the change; {name: Ticket} for each database written. `Moved`: read and redo."""
         guard, disk = self.guard, self.guard.disk
         with guard._lock, hostos.file_lock(guard.path(JOURNAL)) as locked:
-            if not locked:    # another session here is mid-change: nothing is written beside it
+            if not locked:    # another session here is mid-change: nothing is written at the same time
                 raise OSError("another Amaze session on this computer is writing to the library")
             guard._finish_journal()
             steps, tickets, written = [], {}, []
@@ -480,14 +480,14 @@ class Change:
                 writes = self._judged()
                 for name, (old, data) in writes.items():
                     if old and name in self._replacing and _parse(old, DATABASES[name])[0] is None:
-                        old = None    # a replaced file that did not read: no backup of what is not one
+                        old = None    # a replaced file that could not be parsed is not backed up
                     if old:
                         undo = name in self._forced and name not in self._replacing
                         tail = UNDO_TAIL if undo else BACKUP_TAIL
                         steps += guard._backup_steps(name, old, tail, name not in self._forced)
                     tickets[name] = Ticket(name, data)
                 steps += [{"op": "move", "from": relative, "to": self._trash_target(relative)}
-                          for relative in self._trashed]    # first: a file written to the same place stays
+                          for relative in self._trashed]    # first: so a file written to the same path is kept
                 for relative, data in list(writes.items()) + list(self._files.items()):
                     payload = data[1] if isinstance(data, tuple) else data
                     scratch = "%s.%s%s" % (relative, uuid.uuid4().hex[:8], SCRATCH)
@@ -502,17 +502,17 @@ class Change:
                 steps += [{"op": "remove", "to": relative} for relative in self._removals]
                 written =[step["from"] for step in steps if step["op"] == "swap"]
                 if len(steps) == 1:
-                    guard._apply(steps)    # one rename is whole by itself
+                    guard._apply(steps)    # one rename is atomic by itself
                 elif steps:
                     journal = guard.path(JOURNAL)
                     scratch = "%s.%s%s" % (journal, uuid.uuid4().hex[:8], SCRATCH)
                     disk.write(scratch, json.dumps({"steps": steps}).encode("utf-8"))
-                    written = []    # from here the journal owns the scratches
+                    written = []    # from here journal recovery handles the scratch files
                     disk.swap(scratch, journal)
                     try:
                         guard._apply(steps)
                         disk.remove(journal)
-                    except OSError as exc:    # the journal is the decision: the next read finishes it
+                    except OSError as exc:    # the journal is written, so the change stands: the next read finishes it
                         debug.event("guard", "a change waits on a file", error=str(exc))
                         self.waiting = str(exc)
             except OSError:
@@ -546,7 +546,7 @@ class Change:
         return writes
 
     def _list_in_manifest(self, created: list, writes: dict) -> None:
-        """Name each database being created in the master's manifest, in this same change."""
+        """List each database being created in the DataBase.json manifest, in this same change."""
         guard = self.guard
         if MASTER in writes:
             old, data = writes[MASTER]
@@ -566,7 +566,7 @@ class Change:
         writes[MASTER] = (old, encode(dict(document, **{MANIFEST: manifest})))
 
     def _trash_target(self, relative: str) -> str:
-        """Where a trashed file lands: today's folder, its path kept, a number added if taken."""
+        """Where a trashed file is moved: today's folder, its path kept, a number added if taken."""
         guard = self.guard
         day = guard._now().strftime("%Y-%m-%d")
         clean = "/".join(part for part in relative.replace("\\", "/").split("/") if part)

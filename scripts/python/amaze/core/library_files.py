@@ -1,4 +1,4 @@
-"""The one naming convention of a library folder; stdlib only, the audit tool loads it by path."""
+"""The file and folder names of a library folder; stdlib only, the audit tool loads it by path."""
 
 import os
 import re
@@ -16,7 +16,7 @@ JOURNAL = ".amaze-journal"    # `guard.JOURNAL`: there only while a change is be
 BACKUP_FOLDER = "backup"    # `guard.BACKUP_DIR`
 TRASH_FOLDER = "trash"    # `guard.TRASH_DIR`, one folder per day
 
-SECTION_FOLDERS = {    # THE table: a section's database, and the folder for what its rows own
+SECTION_FOLDERS = {    # THE table: each section database, and the folder for the files of its rows
     MATERIALS: "materials",
     NODES: "nodes",
     CODE: "code",
@@ -26,8 +26,8 @@ LABELS = {MASTER: "Library", MATERIALS: "Materials", NODES: "Nodes", CODE: "Code
           COLORS: "Colors", FILES: "Files"}    # what the user reads for each database
 NOUNS = {MASTER: "user", MATERIALS: "material", NODES: "node", CODE: "snippet",
          COLORS: "color", FILES: "location"}    # what one counted entry is called
-ASSET_SECTIONS = (MATERIALS, NODES)    # whose rows own asset files
-ORPHAN_SECTION = MATERIALS    # where a file no database names goes, and is reported from
+ASSET_SECTIONS = (MATERIALS, NODES)    # whose rows have asset files
+ORPHAN_SECTION = MATERIALS    # the section a file that no database lists is moved to and reported under
 
 VERSIONS = "versions"    # a section folder's sub-folder of archives; its top holds the asset files
 FILES_FOLDER = "files"    # the Files section's: `files/<sha1 of the file's key>.png`, a file's capture
@@ -45,13 +45,13 @@ COMPANION_TAIL = "_cop"    # `<id>_cop.mat`, a material's companion COP network
 VERSION_SUFFIXES = (".mat", RECORD_SUFFIX, PICTURE_SUFFIX)
 CODE_VERSION_SUFFIX = ".txt"
 
-SCRATCH_TAILS = (".writing", ".capturing", ".tmp", ".temp", ".new", ".part",    # a write of ours that died partway
+SCRATCH_TAILS = (".writing", ".capturing", ".tmp", ".temp", ".new", ".part",    # a write by Amaze that stopped partway
                  ".partial", ".lock", ".swp", "~", ".repairing", ".rollback")
 SCRATCH_INFIXES = (".rendering.", ".capturing.")    # a render or capture scratch keeps its image extension last
 SCRATCH_PREFIX = ".amaze_scratch"
 
 OS_NOISE = (".DS_Store", "Thumbs.db", "desktop.ini", ".Spotlight-V100",    # the system's own, left alone and not reported
-            ".fseventsd", ".TemporaryItems", "Icon\r",    # `Icon\r` carries a folder's icon on macOS,
+            ".fseventsd", ".TemporaryItems", "Icon\r",    # `Icon\r` stores a folder's icon on macOS,
             "amaze_folder.ico")    # and this with `desktop.ini` on Windows: `hostos.WINDOWS_FOLDER_ICON`
 
 LIST = "list"    # the kinds that belong in a library
@@ -76,7 +76,7 @@ SUPERSEDED = "superseded"    # what the format 4 conversion left behind; `librar
 
 KNOWN = frozenset((LIST, JOURNAL_FILE, BACKUP, ASSET, RECORD, COMPANION, RENDER, FILE_CAPTURE,
                    COMMENT_IMAGE, VERSION, VERSION_LEDGER, PACKAGE, FOLDER))
-COPIES = frozenset((BACKUP,))    # a duplicate of one of these is swept whatever its bytes
+COPIES = frozenset((BACKUP,))    # a duplicate of one of these is removed without comparing contents
 OUT_OF_PLACE = frozenset((SCRATCH, DUPLICATE, UNKNOWN))    # `walk` stats these, and only these
 
 _VERSION_STEM = re.compile(r"^([^\W_]+)_(\d+)$")    # `<id>_<n>`, the id its folder's name
@@ -196,7 +196,7 @@ def _folder(parts: list) -> bool:
 
 
 def _plain(parts: list):
-    """(kind, detail) for a file name the convention names where it stands, else None."""
+    """(kind, detail) for a file name the convention allows at its location, else None."""
     name, depth = parts[-1], len(parts)
     if depth == 1:
         return _root(name)
@@ -205,7 +205,7 @@ def _plain(parts: list):
         return _backup(name)
     if depth == 2 and owns_assets(top):
         return _asset_folder(name)
-    if depth == 2 and section_of_folder(top):    # Code and Colors own a captured picture at most
+    if depth == 2 and section_of_folder(top):    # the Code and Colors folders hold at most a captured picture
         return _picture(name)
     if depth == 2 and top == FILES_FOLDER:
         return (FILE_CAPTURE, "") if _FILE_CAPTURE.match(name) else None
@@ -271,7 +271,7 @@ def walk(library_dir: str, packages: bool = False):
             kind, detail = classify(join(here), is_dir)
             if is_dir and kind == FOLDER:
                 if here[0] == TRASH_FOLDER:
-                    pass    # the trash is the guard's: counted by it, never entered here
+                    pass    # `trash/` is counted by guard.py; `walk` never lists its contents
                 elif here[0] != PACKAGE_FOLDER or packages:
                     pending.append(here)
                 yield join(here), kind, detail, None

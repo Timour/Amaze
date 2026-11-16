@@ -14,19 +14,19 @@ FORMAT = 4    # the newest this build reads; 4: add-on rows (groups, Add-On tab 
 ASSETS_FORMAT = 2    # what a package of library assets is written as, so an older Amaze still reads it
 SUFFIX = ".amazepkg"
 MANIFEST = "package.json"
-RECORD_KIND = "json"    # `<id>.json` holding the builder alone: the row rides in the manifest
+RECORD_KIND = "json"    # `<id>.json` holding the builder alone: the row is stored in the manifest
 DERIVED = (RECORD_KIND,)    # composed for the package, never copied: the library's copy holds the metadata
-MAX_UNPACKED_BYTES = 16 * 1024 ** 3    # the most one import may unpack, by the zip's own sizes ▸r/zip-declared-size
+MAX_UNPACKED_BYTES = 16 * 1024 ** 3    # the largest one import may unpack, by the sizes the zip declares ▸r/zip-declared-size
 OBJECTS = ("record", "note", "files", "textures")    # what an entry holds as an object, or leaves out
 PIECE = 1024 * 1024    # how much of a member is in memory at once while it is compared
 
 
 class PackageError(Exception):
-    """A package this build cannot read or write - the message carries the reason whole."""
+    """A package this build cannot read or write - the message holds the complete reason."""
 
 
 def collect_asset(model, mat_id) -> dict:
-    """One asset's row, comments, files and builder, as an export packs them; saves wait first."""
+    """One asset's row, comments, files and builder, as an export packs them; flushes saves first."""
     from amaze.core import library_db
     library_db.flush(model.preferences)    # its `<id>.json` holds every change made before the export
     return _collected(model, mat_id)
@@ -53,7 +53,7 @@ def _collected(model, mat_id) -> dict:
             debug.event("packages", "inventory texture missing",
                         token=str(token), mat_id=mat_id)
     if len(textures) != len(record.get("textures") or ()):
-        record = dict(record)    # the packed record must not promise a texture the package does not carry
+        record = dict(record)    # the packed record must not list a texture the package does not contain
         record["textures"] = sorted(textures)
     page = notes.note_for(model.preferences,
                           notes.note_key(model.NOTES_SECTION, mat_id))
@@ -65,7 +65,7 @@ def _collected(model, mat_id) -> dict:
 
 
 def collect_file(path: str, kind: str) -> dict:
-    """One exportable entry for a plain file row - the file rides whole under its kind."""
+    """One exportable entry for a plain file row - the whole file is stored under its kind."""
     if not os.path.isfile(path):
         raise PackageError("not a file: %s" % path)
     return {"type": "file", "kind": str(kind or "other"),
@@ -73,7 +73,7 @@ def collect_file(path: str, kind: str) -> dict:
 
 
 def write_package(out_path: str, items) -> int:
-    """Write collector items as one package, landed whole; returns how many entries went in."""
+    """Write collector items as one package, in one atomic step; returns how many entries went in."""
     hostos.check_sandbox(out_path)
     entries = []
     payload = []
@@ -98,7 +98,7 @@ def write_package(out_path: str, items) -> int:
             texarcs = {}
             for t, (token, source) in enumerate(
                     sorted(entry.pop("textures", {}).items())):
-                arc = "assets/%s/%s/textures/%d_%s" % (    # the index keeps basenames apart; land by token
+                arc = "assets/%s/%s/textures/%d_%s" % (    # the index keeps equal basenames apart; import places by token
                     entry["section"], entry["id"], t,
                     os.path.basename(source))
                 texarcs[token] = arc
@@ -127,7 +127,7 @@ def write_package(out_path: str, items) -> int:
 
 
 def manifest_from(bundle, path: str) -> dict:
-    """The manifest of an open bundle; PackageError when missing, unreadable, too new or misshapen."""
+    """The manifest of an open bundle; PackageError when missing, unreadable, too new or malformed."""
     try:
         raw = bundle.read(MANIFEST)
     except KeyError:
@@ -159,7 +159,7 @@ def _whole_number(value) -> bool:
 
 
 def _shape_problems(manifest) -> list:
-    """What in a parsed manifest a reader would trip on, one phrase each; [] when nothing."""
+    """What in a parsed manifest would make a reader fail, one phrase each; [] when nothing."""
     if not isinstance(manifest, dict):
         return ["the manifest is not an object"]
     found = [] if _whole_number(manifest.get("format")) \
@@ -174,7 +174,7 @@ def _shape_problems(manifest) -> list:
 
 
 def _entry_problems(entry) -> list:
-    """What in one manifest entry a reader would trip on: the fields it walks, by their types."""
+    """What in one manifest entry would make a reader fail: the fields it reads, by their types."""
     if not isinstance(entry, dict):
         return ["not an object"]
     found = ["%s is not an object" % key for key in OBJECTS
@@ -225,7 +225,7 @@ def _holds(bundle, member, path) -> bool:
 
 
 def read_manifest(path: str) -> dict:
-    """The package's manifest, through one open of the file."""
+    """The package's manifest, opening the file once."""
     try:
         with zipfile.ZipFile(path) as bundle:
             return manifest_from(bundle, path)
@@ -234,14 +234,14 @@ def read_manifest(path: str) -> dict:
 
 
 def import_package(models, prefs, path: str, restore: bool = False) -> dict:
-    """Import a package, new ids under `Import` or own ids with `restore`; PackageError if not whole."""
+    """Import a package, new ids under `Import` or own ids with `restore`; PackageError if incomplete."""
     if not getattr(prefs, "dir", ""):
         raise PackageError("no library set - nowhere to import into")
     try:
         bundle = zipfile.ZipFile(path)
     except (OSError, zipfile.BadZipFile) as exc:
         raise PackageError("cannot read %s: %s" % (path, exc)) from None
-    with bundle:    # one open serves manifest, verify and import
+    with bundle:    # one open file for the manifest, the check and the import
         manifest = manifest_from(bundle, path)
         if manifest.get("kind"):
             raise PackageError("%s is an add-on, not library assets"
@@ -257,16 +257,16 @@ def import_package(models, prefs, path: str, restore: bool = False) -> dict:
 
 def import_entries(models, prefs, bundle, entries,
                    restore: bool = False) -> dict:
-    """Import chosen entries of an open package; a failing entry counts `refused`, the rest go on."""
+    """Import chosen entries of an open package; a failing entry adds to `refused`, the rest go on."""
     if not getattr(prefs, "dir", ""):
         raise PackageError("no library set - nowhere to import into")
     needed = unpacked_bytes(bundle, [arc for entry in entries for arc in _arcs(entry)])
-    if needed > MAX_UNPACKED_BYTES:    # before the first write, so a refusal leaves the library as it was
+    if needed > MAX_UNPACKED_BYTES:    # before the first write, so a rejected import leaves the library unchanged
         raise PackageError(messages.PACKAGE_TOO_LARGE % (
             wording.byte_size(needed), wording.byte_size(MAX_UNPACKED_BYTES)))
     summary = {"imported": 0, "skipped": 0, "files": 0, "refused": 0,
                "categories": {}, "problems": []}
-    staged = []    # appended rows and their written files, landed once per model by `_commit_assets`
+    staged = []    # appended rows and their written files, committed once per model by `_commit_assets`
     taken = set()    # texture targets already staged: two entries may share one
     for entry in entries:
         name = str((entry.get("record") or {}).get("name")
@@ -295,7 +295,7 @@ def import_entries(models, prefs, bundle, entries,
 
 
 def _land_model(prefs, model, items) -> bool:
-    """One model's appended rows and every file they brought, as ONE change; False: none landed."""
+    """One model's appended rows and every file they brought, as ONE change; False: none saved."""
     from amaze.core import library_db
     if not library_db.accepts(prefs, model.DB_FILENAME):
         return False
@@ -311,7 +311,7 @@ def _land_model(prefs, model, items) -> bool:
 
 
 def _commit_assets(prefs, staged, summary) -> None:
-    """Land each model's rows and files once, then the notes of those that landed; refused, back."""
+    """Save each model's rows and files once, then the saved ones' notes; failed rows are removed."""
     pages = {}
     by_model = {}
     for item in staged:
@@ -333,7 +333,7 @@ def _commit_assets(prefs, staged, summary) -> None:
             summary["refused"] += len(items)
             continue
         for _model, asset, entry, row, _written in items:
-            model._content_state[str(asset.mat_id)] = model._content_stat(asset.mat_id)    # landed now
+            model._content_state[str(asset.mat_id)] = model._content_stat(asset.mat_id)    # saved now
             page = entry.get("note") or {}
             section = str(entry.get("section") or "")
             if page.get("items"):
@@ -371,12 +371,12 @@ def _import_asset(models, prefs, bundle, entry, restore, summary, taken):
             return
     else:
         row.pop("id", None)
-        row.pop("uid", None)    # the old id spelling, which readers adopt onto `id`
+        row.pop("uid", None)    # the old id key, which readers copy into `id`
         row["categories"] = ["Import"]
     asset = model._asset_from_row(row)
     targets = model.asset_files(asset.mat_id)
-    held = {}    # the builder's members, read into `<id>.json` rather than landed as files
-    written = []    # (asset_record.TAKE, target, scratch) and the record: landed with the row
+    held = {}    # the builder's members, read into `<id>.json` rather than written as files
+    written = []    # (asset_record.TAKE, target, scratch) and the record: committed with the row
     try:
         for kind, arcname in (entry.get("files") or {}).items():
             if kind == RECORD_KIND or kind in library_conversion.OLD_MEMBER_KINDS:
@@ -388,9 +388,9 @@ def _import_asset(models, prefs, bundle, entry, restore, summary, taken):
             written.append(_staged_member(bundle, arcname, target))
         store_prefix = texstore.TOKEN_PREFIX + texstore.STORE_DIR_NAME + "/"
         for token, arcname in (entry.get("textures") or {}).items():
-            if not str(token).startswith(store_prefix):    # only store tokens may land
+            if not str(token).startswith(store_prefix):    # only store tokens may be written
                 raise PackageError("not a store texture token: %r" % token)
-            target = hostos.contained_join(    # PathEscape on `..`; the entry counts refused
+            target = hostos.contained_join(    # PathEscape on `..`; the entry counts in `refused`
                 prefs.dir, *str(token)[len(texstore.TOKEN_PREFIX):].split("/"))
             if target in taken:
                 continue
@@ -410,7 +410,7 @@ def _import_asset(models, prefs, bundle, entry, restore, summary, taken):
 
 
 def _staged_member(bundle, member, target) -> tuple:
-    """`member` written whole into a scratch beside `target`, staged to land there."""
+    """`member` written whole into a scratch beside `target`, staged to replace it on commit."""
     hostos.check_sandbox(target)
     os.makedirs(os.path.dirname(target), exist_ok=True)
     scratch = hostos.unique_scratch(target)
@@ -436,7 +436,7 @@ def _small_member(bundle, member) -> bytes:
 
 
 def _staged_builder(model, mat_id, held: dict) -> list:
-    """The asset's `<id>.json`, with the builder a package carries; an old shape is the converter's."""
+    """The asset's `<id>.json`, with the builder a package holds; old formats via library_conversion."""
     if model.DB_FILENAME not in library_files.ASSET_SECTIONS:
         return []
     builder = library_conversion.builder_from_members(held) if held else {}
@@ -446,7 +446,7 @@ def _staged_builder(model, mat_id, held: dict) -> list:
 
 
 def _import_file(prefs, bundle, entry, summary) -> None:
-    """One plain-file entry into `<library>/import/`, a numbered suffix keeping an existing name safe."""
+    """One plain-file entry into `<library>/import/`, a numbered suffix avoiding an existing name."""
     folder = os.path.join(prefs.dir, "import")
     os.makedirs(folder, exist_ok=True)
     name = os.path.basename(str(entry.get("name") or "package_file"))
@@ -464,7 +464,7 @@ def _import_file(prefs, bundle, entry, summary) -> None:
 
 
 def _arcs(entry) -> list:
-    """The members one entry lands: a file entry its `arc`, an asset entry its files and textures."""
+    """The members one entry writes: a file entry its `arc`, an asset entry its files and textures."""
     if entry.get("type") == "file":
         return [entry.get("arc")]
     return (list((entry.get("files") or {}).values())
@@ -472,7 +472,7 @@ def _arcs(entry) -> list:
 
 
 def _verify(bundle, manifest) -> list:
-    """Every manifest member an open bundle lacks, one sentence each; [] means whole."""
+    """Every manifest member an open bundle lacks, one sentence each; [] means none is missing."""
     problems = []
     held = set(bundle.namelist())
     for entry in manifest.get("entries", ()):
@@ -483,6 +483,6 @@ def _verify(bundle, manifest) -> list:
 
 
 def verify_package(path: str) -> list:
-    """Problems, one sentence each, through one open of the file; [] means whole."""
+    """Missing members, one sentence each, opening the file once; [] means none is missing."""
     with zipfile.ZipFile(path) as bundle:
         return _verify(bundle, manifest_from(bundle, path))

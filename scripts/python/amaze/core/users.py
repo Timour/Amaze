@@ -10,13 +10,13 @@ from amaze.core import documents, library_db, library_files
 
 SECTION = "users"
 
-RESOLVED = "resolved"    # the pointer names someone this library knows...
-MINT = "mint"            # ...the library has nobody yet...
-ASK = "ask"              # ...or it has people and this machine is none of them
+RESOLVED = "resolved"    # `library_user` names a user of this library...
+MINT = "mint"            # ...the library has no users yet...
+ASK = "ask"              # ...or it has users and `library_user` is none of them
 
 
 def uid_shaped(value: str) -> bool:
-    """Is this a minted UID, the 32-hex `uuid4().hex` shape?"""
+    """Is this a generated UID, the 32-hex `uuid4().hex` form?"""
     value = str(value or "")
     return len(value) == 32 and all(c in "0123456789abcdef" for c in value)
 
@@ -40,7 +40,7 @@ def all_users(preferences, library: str = "") -> dict:
 def roster(preferences) -> set:
     """Every uid the library's users section holds now; empty when it cannot be read."""
     held = _master(preferences)
-    held.refresh()    # a prune acts on it: a roster read before another session's change is stale
+    held.refresh()    # callers prune by this set, so reread to include other sessions' changes
     return set(all_users(preferences)) if held.writable else set()
 
 
@@ -62,7 +62,7 @@ def named(preferences, name: str, library: str = "", besides: str = "") -> str:
 
 
 def _put(preferences, uid: str, record: dict) -> bool:
-    """Store one user's record; with nobody picked yet, the newcomer signs their own row."""
+    """Store one user's record; with no user chosen yet, the row's author is the new UID itself."""
     held = _master(preferences)
     if held.user():
         if not held.put(SECTION, uid, record):
@@ -97,7 +97,7 @@ def create(preferences, name: str) -> str:
 
 
 def delete(preferences, uid) -> bool:
-    """Remove a user; what they starred stays theirs in the file, never another user's to change."""
+    """Remove a user; their stars stay in the file under their UID, not given to another user."""
     uid = str(uid)
     held = _master(preferences)
     if not held.get(SECTION, uid):
@@ -109,12 +109,12 @@ def delete(preferences, uid) -> bool:
     try:
         preferences.forget_user(uid)
     except (AttributeError, OSError):
-        pass    # the next open lands in ASK either way
+        pass    # `first_run_state` returns ASK on the next open either way
     return True
 
 
 def rename(preferences, uid, name: str) -> bool:
-    """Relink a UID's name; nothing they own is touched."""
+    """Change a UID's name; nothing they own is changed."""
     uid = str(uid)
     name = str(name or "").strip()
     record = _master(preferences).get(SECTION, uid)
@@ -134,18 +134,18 @@ def first_run_state(preferences) -> str:
 
 
 def current(preferences):
-    """This machine's user in this library, or None when it names nobody here; nobody is made."""
+    """This machine's user in this library, or None if `library_user` is no user here; none is created."""
     if first_run_state(preferences) != RESOLVED:
         return None
     return str(preferences.library_user)
 
 
 def adopt(preferences, uid):
-    """Point this machine at `uid` and remember it - what the picker calls once the user has chosen."""
+    """Set and save `library_user` to `uid`; the user picker calls this once the user has chosen."""
     uid = str(uid)
     try:
         preferences.library_user = uid
         preferences.save()
     except (AttributeError, OSError):
-        return uid    # the session still works; the next one asks again
+        return uid    # this session still uses `uid`; the next session asks again
     return uid

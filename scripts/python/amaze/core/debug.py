@@ -27,7 +27,7 @@ _path = os.path.join(DEFAULT_DIR, DEFAULT_NAME)
 _session = ""
 _seq = 0
 _excepthook_installed = globals().get("_excepthook_installed", False)
-_crash_counts: dict = globals().get("_crash_counts", {})    # survives reload, like the two counters below
+_crash_counts: dict = globals().get("_crash_counts", {})    # kept across a module reload, like the two counters below
 
 FLOOD_VERBATIM = 5
 FLOOD_MARKER_EVERY = 1000
@@ -39,7 +39,7 @@ _flood_lock = globals().get("_flood_lock") or threading.RLock()    # the three c
 
 
 def _flood_key(kind: str, exc_type_name: str, tb_text: str) -> str:
-    """One failure's identity: its kind, its type and the frame that raised it."""
+    """One failure's key: its kind, its type and the frame that raised it."""
     lines = tb_text.splitlines()
     frame = lines[-2].strip() if len(lines) >= 2 else ""
     return "%s|%s|%s" % (kind, exc_type_name, frame)
@@ -77,7 +77,7 @@ def _suppressed_for(kind: str, exc_type_name: str, tb_text: str, count: int) -> 
 
 def _record_crash(kind: str, exc_type_name: str, tb_text: str, msg: str,
                   data: dict) -> None:
-    """Write one exception record unless the flood guard holds it back; a repeat carries its counts."""
+    """Write one exception record unless `_flood_check` rate-limits it; a repeat includes its counts."""
     keep, count = _flood_check(kind, exc_type_name, tb_text)
     if not keep:
         return
@@ -91,7 +91,7 @@ def _record_crash(kind: str, exc_type_name: str, tb_text: str, msg: str,
 
 
 def _flush_repeat(key: str) -> None:
-    """A key's exact total, filed by the key so ordinary events never count as crashes."""
+    """Write a key's exact total, in the key's category so ordinary events never count as crashes."""
     count = _crash_counts.get(key)
     if not count:
         return
@@ -171,7 +171,7 @@ def guarded(where: str):
 
 
 def probe() -> dict:
-    """Live engine state; a `module_id` unlike the header's means two modules ▸r/module-reload"""
+    """Live log state; a `module_id` unlike the header's means two module copies ▸r/module-reload"""
     return {
         "module_id": id(sys.modules.get(__name__)),
         "module_name": __name__,
@@ -224,7 +224,7 @@ def export_log(dest_dir: str) -> str:
 
 
 def _houdini_version_tag() -> str:
-    """The running Houdini version, filename-safe, or "unknown"."""
+    """The running Houdini version, filename-safe, or `unknown`."""
     try:
         return str(_ui.houdini_version()).replace(".", "-")
     except Exception:                                    # noqa: BLE001
@@ -237,7 +237,7 @@ def log_path() -> str:
 
 
 def _blank_slate(forget_alerts: bool = False) -> None:
-    """The state a new file starts from; only a clear drops alerts ▸p/log-blank-slate"""
+    """Reset to the state of a new log file; only clear_log clears alerts ▸p/log-blank-slate"""
     global _session, _seq, _rotation_blocked
     _session = ""
     _seq = 0
@@ -250,7 +250,7 @@ def _blank_slate(forget_alerts: bool = False) -> None:
 
 
 def clear_log() -> tuple:
-    """Empty the log and head a fresh session over it; (ok, reason), reason "" on success."""
+    """Empty the log and start a new session in it; (ok, reason), reason empty on success."""
     try:
         if os.path.exists(_path):
             os.remove(_path)
@@ -267,7 +267,7 @@ def is_on() -> bool:
 
 
 def install() -> None:
-    """Arm the crash recorder once; it captures uncaught exceptions whatever Debug Mode says."""
+    """Install the crash recorder once; it records uncaught exceptions with Debug Mode on or off."""
     global _installed
     if _installed:
         return
@@ -433,7 +433,7 @@ def prefs_snapshot(preferences) -> None:
 
 
 def event(category: str, message: str, /, **data) -> None:
-    """A structured entry, silent with Debug Mode off; **data may reuse category and message."""
+    """A structured entry, not written with Debug Mode off; **data may reuse category and message."""
     if not _enabled or _rotation_blocked:
         return
     keep, count = _flood_check("event:%s" % category, message, "")
@@ -445,7 +445,7 @@ def event(category: str, message: str, /, **data) -> None:
 
 
 def ledger(category: str, message: str, /, **data) -> None:
-    """An `event` never rate-limited: for a record the log promises once per occurrence."""
+    """An `event` never rate-limited: for a record that must appear once per occurrence."""
     if not _enabled or _rotation_blocked:
         return
     _write({"cat": category, "msg": message, "data": data})
@@ -474,7 +474,7 @@ _ui = globals().get("_ui")    # what `hand_over` was given, kept across a reload
 
 
 def hand_over(ui) -> None:
-    """Who shows alerts and refusals and describes the host; until one is handed over, they print."""
+    """Set the object that shows alerts and refusals and describes the host; until then, they print."""
     global _ui
     _ui = ui
 
@@ -492,7 +492,7 @@ def alert(message: str, /, key: str = "", **data) -> bool:
     try:
         _ui.dialog(message)
         return True
-    except Exception:                                    # noqa: BLE001 - none handed over, or no screen
+    except Exception:                                    # noqa: BLE001 - no UI set, or no screen
         _print(message)
         return True
 
@@ -504,7 +504,7 @@ class Damage(str):
 
 
 def refuse(reason: str, /, **data) -> bool:
-    """Say a gesture did not land, True when it spoke; repeats and never raises ▸p/refusal-sink"""
+    """Report that a user action failed, True when shown; repeats and never raises ▸p/refusal-sink"""
     damage = isinstance(reason, Damage)
     if _enabled and not _rotation_blocked:
         _write({"cat": "refuse", "msg": str(reason),
@@ -515,17 +515,17 @@ def refuse(reason: str, /, **data) -> bool:
         else:
             _ui.status(str(reason))
         return True
-    except Exception:                                    # noqa: BLE001 - none handed over, or no screen
+    except Exception:                                    # noqa: BLE001 - no UI set, or no screen
         _print(str(reason))
         return True
 
 
 def status(message: str, /) -> bool:
-    """Say on the status line what a gesture is doing, True when it spoke; never recorded or raised."""
+    """Show on the status line what a user action is doing, True when shown; never logged or raised."""
     try:
         _ui.status(str(message))
         return True
-    except Exception:                                    # noqa: BLE001 - none handed over, or no screen
+    except Exception:                                    # noqa: BLE001 - no UI set, or no screen
         return False
 
 
@@ -638,7 +638,7 @@ def node_snapshot(node, depth: int = 1) -> dict:
 
 
 def _install_excepthook() -> None:
-    """Capture propagating exceptions; its state survives reload ▸r/module-reload"""
+    """Capture propagating exceptions; its state is kept across a reload ▸r/module-reload"""
     global _excepthook_installed, _previous_excepthook
     if _excepthook_installed:
         return
@@ -648,7 +648,7 @@ def _install_excepthook() -> None:
     _previous_excepthook = sys.excepthook
 
     def hook(exc_type, exc_value, exc_tb):
-        """Record ALWAYS, flood-guarded, then chain to whatever was there before."""
+        """Record ALWAYS, rate-limited, then call the previous `sys.excepthook`."""
         try:
             _ensure_session()
             tb_text = "".join(

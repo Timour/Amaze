@@ -1,4 +1,4 @@
-"""Check Library: the guard's judgement of the databases and the folder, and fixes through it."""
+"""Check Library: the guard's report on the databases and folder, and fixes made through it."""
 
 import filecmp
 import json
@@ -22,7 +22,7 @@ _MISSING = ("absent", "absent-but-known")
 
 _IN_TROUBLE = ("unreadable", "absent-but-known", "newer", "no-library")    # empty: only with a copy
 
-_SETTINGS = "settings.json"    # machine-local; Check Library says when it will not read
+_SETTINGS = "settings.json"    # machine-local; Check Library reports when it cannot be read
 
 RECOVERED_CATEGORY = "Recovered"
 RECOVERED_NAME = "Recovered"    # followed by its id: an asset whose metadata cannot be read
@@ -32,7 +32,7 @@ _STATE = {guard.CORRUPT: "unreadable", guard.MISSING: "absent-but-known", guard.
 
 
 class RestoreRefused(Exception):
-    """A restore not done; `str()` is a sentence for a dialog."""
+    """A restore that was not done; `str()` is the message for a dialog."""
 
 
 def configured_library(preferences=None) -> str:
@@ -47,8 +47,8 @@ SCRATCH_MIN_AGE = 60 * 60    # a younger scratch may be another session's live w
 
 UNCATEGORISED = "Uncategorized"
 
-_ASSET_KINDS = (naming.ASSET, naming.RECORD, naming.COMPANION, naming.RENDER)    # owned by id
-_PICTURE_SECTIONS = tuple(section for section in naming.SECTION_FOLDERS    # a capture is all they own
+_ASSET_KINDS = (naming.ASSET, naming.RECORD, naming.COMPANION, naming.RENDER)    # files named by asset id
+_PICTURE_SECTIONS = tuple(section for section in naming.SECTION_FOLDERS    # these hold captures only
                           if section not in naming.ASSET_SECTIONS)
 
 
@@ -58,7 +58,7 @@ def asset_folders(directory: str = "") -> list:
 
 
 def _unlistable(directory: str) -> tuple:
-    """(folder, the kinds in it an asset owns by id, whether it must be there to be listed)."""
+    """(folder, the file kinds in it named by asset id, whether the folder must exist)."""
     return tuple((folder, _ASSET_KINDS, folder == naming.SECTION_FOLDERS[naming.MATERIALS])
                  for folder in asset_folders(directory)) + tuple(
         (naming.SECTION_FOLDERS[section], (naming.RENDER,), False)
@@ -148,7 +148,7 @@ def _walk(directory: str) -> dict:
         parts = naming.split(relative)
         names.setdefault(naming.join(parts[:-1]), {})[parts[-1]] = (kind, detail)
         if kind == naming.FOLDER:
-            names.setdefault(relative, {})    # entered: an empty one is listed, and empty
+            names.setdefault(relative, {})    # walked into: an empty folder is listed with no names
         elif kind in naming.OUT_OF_PLACE:
             out_of_place.append((relative, kind, detail, info))
     if "" not in unreadable:
@@ -170,7 +170,7 @@ def _versions_no_ledger_names(directory: str, listing: dict) -> dict:
             continue
         numbers = _ledger_numbers(os.path.join(directory, *parts))
         if numbers is None:
-            continue    # an unreadable ledger cannot say which files it names
+            continue    # an unreadable ledger gives no version numbers to check
         orphaned = sorted(name for name, (kind, _detail) in names.items()
                           if kind == naming.VERSION
                           and naming.version_number(name, parts[2], suffixes) not in numbers)
@@ -201,7 +201,7 @@ def metadata_stem(name: str) -> str:
 
 
 def _records_by_content(directory: str, names: dict, out_of_place: list) -> None:
-    """An `<id>.json` holding metadata is an asset's, whatever its id spells."""
+    """An `<id>.json` holding metadata is an asset record, whatever characters its id has."""
     found = set()
     for folder in asset_folders(directory):
         here = names.get(folder) or {}
@@ -215,7 +215,7 @@ def _records_by_content(directory: str, names: dict, out_of_place: list) -> None
 
 
 def _superseded(out_of_place: list) -> None:
-    """What the format 4 conversion left: leftovers Amaze made, never read for content."""
+    """Mark files left by the format 4 conversion as SUPERSEDED, without reading their content."""
     from amaze.core import library_conversion
     out_of_place[:] = [(relative, naming.SUPERSEDED, detail, info)
                        if kind == naming.UNKNOWN and library_conversion.old_shape(relative)
@@ -240,7 +240,7 @@ def metadata_of(folders, asset_id: str):
 
 
 def _stamps_of_unlisted_pairs(findings: dict, listing: dict) -> dict:
-    """{id: record or None} for each unlisted pair or lone metadata: all a survey opens."""
+    """{id: record or None} for each unlisted pair or lone metadata: the only files a survey opens."""
     folders = [path for _key, path in _folders_of(findings)]
     return {asset_id: metadata_of(folders, asset_id)
             for asset_id in _ids_with_a_stamp(findings)}
@@ -293,7 +293,7 @@ def _categories_of(row: dict) -> list:
 
 
 def _out_of_place(directory: str, listing: dict) -> dict:
-    """Leftovers to sweep, duplicates held back, and the files and folders no name fits."""
+    """Leftovers to remove, duplicates kept, and the files and folders matching no known name."""
     leftovers, held_back, unknown, unknown_folders = [], [], [], []
     now = time.time()
     for relative, kind, detail, info in listing["out_of_place"]:
@@ -319,7 +319,7 @@ def _out_of_place(directory: str, listing: dict) -> dict:
 
 
 def _why_a_duplicate_stays(directory: str, relative: str, original: str, listing=None) -> str:
-    """Empty when the duplicate may go, else `alone` or `differs`."""
+    """Empty when the duplicate may be removed, else `alone` or `differs`."""
     parts = naming.split(original)
     if listing is not None:
         present = parts[-1] in listing["names"].get(naming.join(parts[:-1]), {})
@@ -350,7 +350,7 @@ def _folder_size(path: str) -> tuple:
 
 
 def _files_section(preferences) -> dict:
-    """The Files section's folders not on this computer or on a drive away, and stars gone."""
+    """The Files section's folders missing or on an unmounted drive, and starred files gone."""
     found = {"dead_folders": [], "unmounted_folders": [], "dead_stars": []}
     if preferences is None:
         return found
@@ -358,7 +358,7 @@ def _files_section(preferences) -> dict:
     for path in locations.registered_paths(preferences):
         if os.path.isdir(path):
             continue
-        if hostos.volume_unreachable(path):    # unreachable is not gone: a blinking network share
+        if hostos.volume_unreachable(path):    # unreachable is not missing: a network share may be briefly offline
             found["unmounted_folders"].append(path)
         else:
             found["dead_folders"].append(path)
@@ -405,7 +405,7 @@ def stored(row: dict) -> dict:
 
 
 def _survey_one(held: guard.Guard, reading) -> dict:
-    """One database as the guard judges it: its state, what it holds, and its backups."""
+    """One database as the guard reads it: its state, what it holds, and its backups."""
     name = reading.name
     path = held.path(name)
     exists = os.path.lexists(path)
@@ -463,7 +463,7 @@ def _metadata_names(directory: str) -> dict:
 
 
 def ids_claimed_by(directory: str) -> tuple:
-    """`(by_file, unreadable)`: ids per section database that reads, and those that do not."""
+    """`(by_file, unreadable)`: ids per readable section database, and the unreadable ones."""
     held = _guard(directory)
     by_file, unreadable = {}, []
     for name in naming.LISTS:
@@ -478,7 +478,7 @@ def ids_claimed_by(directory: str) -> tuple:
 
 
 def rebuild_from_stamps(directory: str, index_filename: str = naming.MATERIALS) -> dict:
-    """A section database rebuilt from each asset's metadata; refused while one is unreadable."""
+    """A section database rebuilt from each asset's metadata; `unreadable` names unread siblings."""
     assets, damaged = {}, []
     categories = []
     home = naming.SECTION_FOLDERS.get(index_filename)
@@ -560,7 +560,7 @@ def _edit(directory: str, name: str, edit) -> bool:
 
 
 def _rows_against_their_stamps(directory: str, name: str, folders: list) -> tuple:
-    """(rows that took their newer metadata, names of rows with no .mat and no metadata)."""
+    """(rows updated from newer metadata, names of rows with no .mat and no metadata)."""
     taken, gone = [0], []
 
     def edit(document):
@@ -573,7 +573,7 @@ def _rows_against_their_stamps(directory: str, name: str, folders: list) -> tupl
             if record is None:
                 if not any(os.path.exists(os.path.join(one, asset_id + ".mat"))
                            for one in folders):
-                    gone.append(str(row.get("name") or asset_id))    # listed, never dropped
+                    gone.append(str(row.get("name") or asset_id))    # reported, never removed
                 continue
             if str(record.get("id", asset_id)) != asset_id:
                 continue
@@ -587,7 +587,7 @@ def _rows_against_their_stamps(directory: str, name: str, folders: list) -> tupl
         return bool(taken[0])
     try:
         _edit(directory, name, edit)
-    except (OSError, ValueError) as exc:    # the backup is back either way
+    except (OSError, ValueError) as exc:    # the backup stays restored either way
         debug.event("repair", "newer records not taken", error=str(exc))
         taken[0] = 0
     debug.event("repair", "rows checked against their metadata", taken=taken[0], gone=len(gone))
@@ -595,7 +595,7 @@ def _rows_against_their_stamps(directory: str, name: str, folders: list) -> tupl
 
 
 def _after_a_put_back(directory: str, filename: str, how=None) -> dict:
-    """A Material or Node database put back: newer metadata taken, later rows added back."""
+    """After a Material or Node database is restored: newer metadata applied, later rows re-added."""
     if filename not in naming.ASSET_SECTIONS:
         return {"refreshed": 0, "newer": 0, "gone": [],
                 "said": how if how is not None else ""}
@@ -608,7 +608,7 @@ def _after_a_put_back(directory: str, filename: str, how=None) -> dict:
 
 def _put_back_sentence(refreshed: int, newer: int, gone: list,
                        filename: str = naming.MATERIALS, how=None) -> str:
-    """`how`, then what came after the backup and the rows whose files are gone."""
+    """`how`, then the rows updated or re-added after the backup, and the rows whose files are gone."""
     def counted(count, after):
         return "the %d %s %s after it %s" % (
             count, naming.section_noun(filename, count), after,
@@ -633,14 +633,14 @@ def _put_back_sentence(refreshed: int, newer: int, gone: list,
 
 
 def _rows_newer_than_the_copy(directory: str, filename: str) -> int:
-    """The rows a restored backup predates, added from their metadata; how many came back."""
+    """Re-add rows saved after the restored backup, from their metadata; returns how many."""
     findings = survey(directory)
     ids = [asset_id for asset_id, _record in on_record(findings, filename)]
     if not ids or why_nothing_can_be_added(findings, filename):
         return 0
     try:
         return len(_add_rows(findings, filename, ids)["added"])
-    except (OSError, ValueError) as exc:    # the backup is back either way; these stay for Repair
+    except (OSError, ValueError) as exc:    # the backup stays restored either way; Repair can add these later
         debug.event("repair", "rows newer than the backup not added",
                     file=filename, error=str(exc))
         return 0
@@ -660,7 +660,7 @@ def restorable(findings: dict) -> list:
 
 
 def _document_of(path: str):
-    """A database file's sections, without its format stamp; None when it does not read."""
+    """A database file's sections, without its format stamp; None when it cannot be read."""
     try:
         with open(path, "rb") as handle:
             document = json.loads(handle.read().decode("utf-8-sig"))
@@ -672,12 +672,12 @@ def _document_of(path: str):
 
 
 def offered_copies(findings: dict) -> list:
-    """`restorable` less a backup that changes nothing; while a database is in trouble, its own."""
+    """`restorable` minus backups that change nothing; with a damaged database, only its backups."""
     entries = {entry["filename"]: entry for entry in findings["lists"]}
     offers, held = [], {}
     for offer in restorable(findings):
         filename, tier, snap, _now = offer
-        undo = tier.endswith(guard.UNDO_TAIL)    # the done-dialog promises it back
+        undo = tier.endswith(guard.UNDO_TAIL)    # the dialog after a restore says this copy can be restored
         if snap["error"] or not (undo or snap["count"]):
             continue
         document = _document_of(snap["path"])
@@ -692,7 +692,7 @@ def offered_copies(findings: dict) -> list:
     troubled = {filename for filename, entry in entries.items()
                 if entry["state"] in _IN_TROUBLE} | {
                     offer[0] for offer in offers if entries[offer[0]]["state"] != "ok"}
-    if complete_pairs(findings):    # unlisted pairs are a Material or Node database's loss
+    if complete_pairs(findings):    # unlisted pairs mean a Material or Node database lost rows
         troubled |= set(naming.ASSET_SECTIONS)
     if troubled:
         offers = [offer for offer in offers if offer[0] in troubled
@@ -725,13 +725,13 @@ def _snapshot_line(entry: dict) -> str:
     parts = []
     for _tier, snap in entry["snapshots"]:
         part = copy_named_by_what_it_holds(entry["filename"], snap)
-        if part not in parts:    # two backups alike read as one
+        if part not in parts:    # two identical backup descriptions are shown once
             parts.append(part)
     return "%s: backups - %s." % (entry["label"], "; ".join(parts))
 
 
 def report_lines(findings: dict) -> list:
-    """The whole report, in the user's words, never the program's."""
+    """The whole report, in words the user knows, never internal names."""
     lines = ["Amaze looked at the library in %s. It keeps a database for each of its "
              "sections - Materials, Nodes, Code, Colors and Files - and one for the "
              "library itself." % os.path.normpath(str(findings["directory"])), ""]
@@ -794,7 +794,7 @@ def _orphaned(count: int) -> str:
             else "are orphaned: no database names them")
 
 
-_TROUBLE_LINES = {    # a database's state, and the line it gets when it is in trouble
+_TROUBLE_LINES = {    # a database's state, and its report line when it has a problem
     "empty": "%s: the database is there and holds nothing.",
     "unreadable": "%s: the database is corrupt/unreadable.",
     "absent-but-known": (
@@ -808,7 +808,7 @@ _TROUBLE_LINES = {    # a database's state, and the line it gets when it is in t
 
 
 def _lists_line(lists: list, others: bool) -> str:
-    """One line for every database that reads fine, each count in its own noun."""
+    """One line for every readable database, each count with its section's noun."""
     held = [_counted(entry["info"]["count"] or 0, entry["filename"])
             for entry in lists if entry["state"] == "ok"]
     unsaved = [entry["label"] for entry in lists if entry["state"] == "absent"]
@@ -842,7 +842,7 @@ def per_section(found: dict) -> str:
 
 
 def _every_section() -> str:
-    """`material and node`: the nouns of the databases that own asset files."""
+    """`material and node`: the nouns of the databases that have asset files."""
     return wording.and_list([naming.section_noun(filename, 1)
                              for filename in naming.ASSET_SECTIONS])
 
@@ -863,7 +863,7 @@ def _limited(lines: list) -> list:
 
 
 def _check_lines(findings: dict) -> tuple:
-    """(problems, all-well lines) of what only a full survey asks; a check with none says so."""
+    """(problems, all-well lines) for checks only a full survey makes; a passed check adds a line."""
     if "leftovers" not in findings:
         return [], []
     said, well = [], []
@@ -993,7 +993,7 @@ def _files_section_lines(findings: dict) -> list:
 
 
 def _holding_line(held: dict) -> str:
-    """The trash's line: what it holds, when the oldest day goes, and where it is."""
+    """The trash's report line: what it holds, when the oldest files are deleted, and its path."""
     if not held["files"]:
         return ("The library's trash is empty. Files moved to it are deleted "
                 "after %d days: %s" % (guard.TRASH_DAYS, held["path"]))
@@ -1048,7 +1048,7 @@ def _and_folders(names: list) -> str:
 
 
 def files_by_folder(findings: dict) -> str:
-    """Folder by folder, never one total, each folder's names while there are few."""
+    """A count per folder, never one total, with the file names when there are 6 or fewer."""
     parts = []
     for folder, names in findings["unaccounted"].items():
         if not names:
@@ -1061,7 +1061,7 @@ def files_by_folder(findings: dict) -> str:
 
 
 def _what_can_be_recovered(findings: dict) -> list:
-    """The line that keeps the buttons apart: what Recover takes, by name, then the rest."""
+    """The line that tells the buttons apart: what Recover adds, by name, then the rest."""
     if why_nothing_can_be_added(findings):
         return []
     found = recoverable(findings)
@@ -1083,7 +1083,7 @@ def _what_can_be_recovered(findings: dict) -> list:
 
 
 def _recover_sentence(findings: dict, found: dict) -> str:
-    """What Recover puts in each database, by name while there are few to read."""
+    """What Recover puts in each database, by name when there are 6 or fewer."""
     stamps = _stamps(findings)
     few = sum(len(ids) for ids in found.values()) <= 6
     parts = []
@@ -1106,13 +1106,13 @@ _SESSION_HOLDS_THE_LIBRARY = (
 
 
 def _refuse_a_houdini_that_holds_the_library(refusal=ValueError) -> None:
-    """Every action enforces this for itself; the button logic is a courtesy."""
+    """Every action checks this itself; a disabled button is not relied on."""
     if session_has_a_library_open():
         raise refusal(_SESSION_HOLDS_THE_LIBRARY)
 
 
 def movable(findings: dict) -> dict:
-    """`findings` less the files of each unlisted pair whose metadata reads: those go back."""
+    """`findings` minus the files of unlisted pairs with readable metadata: Recover adds those."""
     kept = set(_files_of(findings, stamped_unlisted(findings)))
     if not kept:
         return findings
@@ -1128,10 +1128,10 @@ def files_to_move_aside(findings: dict) -> int:
 
 
 def why_unlisted_stay(findings: dict) -> str:
-    """Empty when unlisted files may go to the trash; else why a database may still own them."""
+    """Empty when unlisted files may be trashed; else why they may belong to a database."""
     if not findings.get("complete"):
         return "one of the library's databases cannot be read, so these files may belong to it"
-    empty = [entry["label"] for entry in findings.get("lists", ())    # only its own folder is held
+    empty = [entry["label"] for entry in findings.get("lists", ())    # only its own folder's files are kept
              if entry["state"] == "empty" and entry["filename"] in naming.ASSET_SECTIONS
              and findings["unaccounted"].get(naming.SECTION_FOLDERS[entry["filename"]] + "/")]
     if empty:
@@ -1181,14 +1181,14 @@ def move_aside(findings: dict, what, guard_session: bool = True) -> dict:
             for name in names:
                 relative = folder.rstrip("/\\") + "/" + name
                 if naming.classify(relative)[1] in claimed:
-                    taken.append(name)    # a database claims it since the check
+                    taken.append(name)    # a database has listed it since the check
                     continue
                 take(relative, name)
     if "leftovers" in asked:
         for relative, kind, _size, _when in findings.get("leftovers", ()):
             if kind == naming.DUPLICATE and _why_a_duplicate_stays(
                     directory, relative, naming.classify(relative)[1]):
-                failed.append(relative)    # it changed since the check: a second version now
+                failed.append(relative)    # changed since the check: it now differs from the original
                 continue
             take(relative, relative)
     if "unknown" in asked:
@@ -1209,14 +1209,14 @@ def move_aside(findings: dict, what, guard_session: bool = True) -> dict:
 
 
 def set_aside_folders(findings: dict, guard_session: bool = True) -> list:
-    """Drop the Files section's pointer to each folder not on this computer; files untouched."""
+    """Remove each folder not on this computer from the Files section; its files are untouched."""
     if guard_session:
         _refuse_a_houdini_that_holds_the_library()
     preferences = findings["preferences"]
     done = []
     for path in findings.get("dead_folders", ()):
         if os.path.isdir(path) or hostos.volume_unreachable(path):
-            continue    # it came back since the check
+            continue    # it is there again since the check
         preferences.remove_file_folder(path)
         done.append(path)
     debug.event("repair", "folders set aside", folders=done)
@@ -1307,7 +1307,7 @@ def drop_rows_without_files(findings: dict, guard_session: bool = True) -> dict:
 
 
 def recoverable(findings: dict) -> dict:
-    """{database: [id]} of the orphaned pairs in each asset section's folder: the folder names it."""
+    """{database: [id]} of the orphaned pairs in each asset section's folder: the folder sets it."""
     if "asset_dirs" not in findings:
         return {}
     pairs = _pairs_by_folder(findings)
@@ -1335,7 +1335,7 @@ def recover(findings: dict, guard_session: bool = True) -> dict:
 
 
 def on_record(findings: dict, filename: str) -> list:
-    """The unlisted pairs in `filename`'s folder whose metadata reads, as `(id, record)`."""
+    """The unlisted pairs in `filename`'s folder with readable metadata, as `(id, record)`."""
     if "asset_dirs" not in findings or filename not in naming.ASSET_SECTIONS:
         return []
     key = naming.SECTION_FOLDERS[filename] + "/"
@@ -1349,7 +1349,7 @@ def on_record(findings: dict, filename: str) -> list:
 
 
 def stamped_unlisted(findings: dict) -> list:
-    """The unlisted ids whose metadata reads, a pair or alone: what can still be recovered."""
+    """The unlisted ids with readable metadata, in a pair or alone: what can still be recovered."""
     if "asset_dirs" not in findings:
         return []
     stamps = _stamps(findings)
@@ -1363,7 +1363,7 @@ def _unaccounted_assets(findings: dict) -> list:
 
 
 def _ids_with_a_stamp(findings: dict) -> list:
-    """The unlisted complete pairs, and the ids whose unlisted metadata sits alone, by id."""
+    """The unlisted complete pairs, and the ids whose unlisted metadata has no `.mat`, by id."""
     alone = [metadata_stem(name) for name in _unaccounted_assets(findings)]
     return sorted(set(complete_pairs(findings)) | {one for one in alone if one})
 
@@ -1378,7 +1378,7 @@ def _stamps(findings: dict) -> dict:
 
 
 def why_nothing_can_be_added(findings: dict, filename: str = "") -> str:
-    """Empty when unlisted files may go in `filename`, or in any database; else why not."""
+    """Empty when unlisted files may be added to `filename`, or to any database; else why not."""
     if findings.get("unreadable_folders"):
         return ("Amaze could not look inside the %s, so it cannot tell which "
                 "files are orphaned" % _and_folders(findings["unreadable_folders"]))
@@ -1397,7 +1397,7 @@ def why_nothing_can_be_added(findings: dict, filename: str = "") -> str:
 
 
 def _add_rows(findings: dict, filename: str, ids: list) -> dict:
-    """The rows of `ids` added to `filename` from their metadata, their files moved home, ONE change."""
+    """Add the rows of `ids` to `filename` from metadata, files moved to its folder, as ONE change."""
     held = _guard(findings["directory"])
     change = held.change("")
     staged = set()
@@ -1409,7 +1409,7 @@ def _add_rows(findings: dict, filename: str, ids: list) -> dict:
 
 def _stage_rows(findings: dict, held: guard.Guard, change, filename: str, ids: list,
                 staged: set) -> dict:
-    """`_add_rows` into `change`, uncommitted; `staged` holds the ids taken so far, and gains these."""
+    """`_add_rows` into `change`, uncommitted; `staged` holds the ids added so far, these included."""
     reason = why_nothing_can_be_added(findings, filename)
     if reason:
         raise ValueError(reason)
@@ -1433,7 +1433,7 @@ def _stage_rows(findings: dict, held: guard.Guard, change, filename: str, ids: l
             taken |= claimed
     added, minted = [], []
     home = [os.path.join(directory, naming.SECTION_FOLDERS[filename])]
-    claimed = [one for one in ids if one in taken]    # a database took them since the check
+    claimed = [one for one in ids if one in taken]    # a database has listed them since the check
     categories = document.setdefault("categories", {})
     for asset_id in [one for one in ids if one not in taken]:
         record = metadata_of(home, asset_id)
@@ -1445,7 +1445,7 @@ def _stage_rows(findings: dict, held: guard.Guard, change, filename: str, ids: l
         record["id"] = asset_id
         rows[asset_id] = record
         added.append(asset_id)
-        for cat in record.get("categories") or []:    # a row with metadata brings its own back
+        for cat in record.get("categories") or []:    # a row with metadata restores its own categories
             if cat and cat not in categories:
                 categories[cat] = {"order": len(categories)}
     if minted and RECOVERED_CATEGORY not in categories:
@@ -1461,7 +1461,7 @@ def _stage_rows(findings: dict, held: guard.Guard, change, filename: str, ids: l
 
 
 def _move_home(findings: dict, held: guard.Guard, change, filename: str, ids: list) -> None:
-    """The files of rows just added to `filename` into its section's folder, same change."""
+    """Move the files of rows just added to `filename` into its section's folder, same change."""
     if filename not in naming.ASSET_SECTIONS:
         return
     home = os.path.join(findings["directory"], naming.SECTION_FOLDERS[filename])
@@ -1491,7 +1491,7 @@ def _state_of(findings: dict, filename: str) -> str:
 
 
 def list_is_missing(findings: dict, filename: str) -> bool:
-    """Whether adding back to `filename` writes the database new."""
+    """Whether adding rows to `filename` creates the database file."""
     return _state_of(findings, filename) in _MISSING
 
 
@@ -1518,7 +1518,7 @@ def _pairs_by_folder(findings: dict) -> dict:
 
 
 def _files_of(findings: dict, ids) -> list:
-    """Every unaccounted file the assets in `ids` own: the builder, metadata and picture too."""
+    """Every unaccounted file of the assets in `ids`: the builder, metadata and picture too."""
     ids = set(ids)
     covered = []
     for folder, names in findings["unaccounted"].items():
@@ -1531,12 +1531,12 @@ def _files_of(findings: dict, ids) -> list:
 
 
 def target_of(findings: dict, filename: str) -> str:
-    """The file a backup goes back over: a database in the library."""
+    """The file a restored backup replaces: a database in the library."""
     return os.path.join(findings["directory"], filename)
 
 
 def put_back(findings: dict, filename: str, tier: str, guard_session: bool = True) -> dict:
-    """One backup restored through the guard, then for a Material or Node one the rows after."""
+    """Restore one backup through the guard; for Materials or Nodes, then re-add later rows."""
     if guard_session:
         _refuse_a_houdini_that_holds_the_library(
             lambda phrase: RestoreRefused("Nothing was restored: %s." % phrase))
@@ -1558,7 +1558,7 @@ def put_back(findings: dict, filename: str, tier: str, guard_session: bool = Tru
 
 
 def undo_facts(findings: dict, filename: str, undo: str) -> dict:
-    """What the undo copy a restore kept is, for the done message; {} for none."""
+    """Facts about the undo copy a restore kept, for the result message; {} for none."""
     if not undo:
         return {}
     held = _guard(findings["directory"])
@@ -1569,12 +1569,12 @@ def undo_facts(findings: dict, filename: str, undo: str) -> dict:
 
 
 def session_has_a_library_open() -> bool:
-    """Whether anything in this session holds a library's databases, a closed panel too."""
+    """Whether anything in this session uses a library's databases, a closed panel included."""
     return bool(library_db.held_libraries())
 
 
 def session_holds(directory: str) -> bool:
-    """Whether this session holds the databases of the library in `directory`."""
+    """Whether this session uses the databases of the library in `directory`."""
     wanted = hostos.canonical_path_key(str(directory or ""))
     return any(key == wanted for key in library_db.held_libraries())
 

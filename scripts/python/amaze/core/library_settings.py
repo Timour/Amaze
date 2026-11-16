@@ -23,7 +23,7 @@ def _folder(library_dir: str):
 
 
 def version_label(version: int) -> str:
-    """How a library version reads to the user: 4 is `2.0`, an older one its own number."""
+    """A library version as shown to the user: 4 is `2.0`, an older one its own number."""
     version = int(version or 0)
     if version >= library_policy.LIBRARY_VERSION:
         return "2.%d" % (version - library_policy.LIBRARY_VERSION)
@@ -50,7 +50,7 @@ def stamp_version(preferences) -> bool:
 
 
 def allow_overwrite(library_dir_or_preferences) -> bool:
-    """Whether saving over an existing asset is allowed HERE; a policy that will not read says no."""
+    """Whether this library allows saving over an existing asset; False if its policy cannot be read."""
     preferences = library_dir_or_preferences
     if isinstance(preferences, str):
         if not preferences:
@@ -69,7 +69,7 @@ def allow_overwrite(library_dir_or_preferences) -> bool:
 
 
 def set_allow_overwrite(preferences, allowed: bool) -> bool:
-    """Keep the setting in the LIBRARY; True when it was saved."""
+    """Save the overwrite setting in the library's policy; True when it was saved."""
     held = _master(preferences)
     if not held.writable or not held.user():
         return False
@@ -78,7 +78,7 @@ def set_allow_overwrite(preferences, allowed: bool) -> bool:
 
 
 def value_of(preferences, key: str, default=None):
-    """One shared setting, or `default` when the library has no answer."""
+    """One shared setting, or `default` when the library has no value for it."""
     entry = _master(preferences).get(SETTINGS, str(key))
     if not isinstance(entry, dict) or "value" not in entry:
         return default
@@ -105,9 +105,9 @@ def set_value(preferences, key: str, value) -> bool:
 
 
 def takes_writes(preferences) -> bool:
-    """May a shared setting be kept now? When False, keep the local copy and retry later."""
+    """Can a shared setting be saved now? When False, keep the local copy and retry later."""
     if _master(preferences).verdict != guard.FINE:
-        return False    # no `DataBase.json` yet: a library's creation or conversion writes the first
+        return False    # no `DataBase.json` yet: creating or converting a library writes the first one
     return library_db.accepts(preferences, library_files.MASTER)
 
 
@@ -127,7 +127,7 @@ def clear(preferences, keys) -> bool:
 
 
 def marked(preferences, mark: str) -> bool:
-    """Whether the library records `mark`: a starter offered here once."""
+    """Whether the library records `mark`, set once a starter was offered in this library."""
     return bool(_master(preferences).get(MARKS, mark))
 
 
@@ -137,6 +137,6 @@ def mark(preferences, mark: str, **facts) -> bool:
     if held.get(MARKS, mark):
         return True
     if not held.put(MARKS, mark, dict(facts, offered=True)):
-        return False    # a database that takes no change: not recorded, so not claimed
+        return False    # the database refused the change: nothing recorded, so return False
     saved = library_db.save(preferences, library_files.MASTER)
     return bool(saved) or saved.reason == documents.UNCHANGED

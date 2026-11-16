@@ -1,4 +1,4 @@
-"""The shared asset model every library section runs on, plus `MaterialLibrary`."""
+"""The base asset model of every library section, plus `MaterialLibrary`."""
 
 import json
 import os
@@ -36,13 +36,13 @@ def as_stored(record: dict) -> dict:
 
 
 class ListNotSaved(str):
-    """The answer of a save whose files were written but whose list entry was not saved."""
+    """The return value of a save whose files were written but whose list entry was not saved."""
 
     __slots__ = ()
 
 
 def say_unlisted(names, updated: bool = False) -> None:
-    """One status line for the rows a batch left unlisted: each waits for the next save that works."""
+    """One status line for the rows a batch left unlisted: the next successful save lists them."""
     if not names:
         return
     if updated and len(names) == 1:
@@ -57,7 +57,7 @@ def say_unlisted(names, updated: bool = False) -> None:
 
 class AssetLibrary(grid_engine.GridEngine,
                    QtCore.QAbstractTableModel):
-    """The shared asset model every library section runs on; nothing renderer-shaped lives here."""
+    """The base asset model of every library section; no renderer-specific code is here."""
 
     COLUMN_ROLES = {
         "name": QtCore.Qt.ItemDataRole.DisplayRole,
@@ -73,7 +73,7 @@ class AssetLibrary(grid_engine.GridEngine,
     }
     GRID_ROWS = ("_assets", "_mat_paths", "_row_keys")
     TILE_FIELDS = ("name", "tags", "category")
-    VERSION_SECTION = versions.MATERIAL    # where this model's versions live ▸r/version-store
+    VERSION_SECTION = versions.MATERIAL    # where this model's versions are stored ▸r/version-store
     TILE_FACE = ""      # the section's generic face, `ui/<TILE_FACE>.svg` from its T frame ▸r/tile-faces
     NOTES_SECTION = "" # this model's notes-store key prefix; every subclass names its own
     ROW_NOUN = "material"    # what a message calls one row of this section; counts pluralise it
@@ -103,18 +103,18 @@ class AssetLibrary(grid_engine.GridEngine,
         self._colours_seen = self._colours()
         self._remember_content_state()
 
-        self._thumb_rows = {}  # maps engine deliveries, by key, back to the row to repaint
+        self._thumb_rows = {}  # maps each loaded thumbnail's key back to the row to repaint
         thumbnails.signals.ready.connect(self._on_thumb_key_ready)  # through the relay, never the engine singleton, which a module reload replaces
         captures.signals.landed.connect(self._on_capture_landed)    # from any panel or the shelf
         self.rebuild_thumbs()
         self.order_rows()    # in the grid's order before any view has the rows
 
     def _doc(self) -> documents.Document:
-        """This model's database, as the library holds it."""
+        """This model's database, from `library_db`."""
         return library_db.document(self.preferences, self.DB_FILENAME)
 
     def _read_rows(self) -> list:
-        """One record per row the database holds; a row that will not read is skipped."""
+        """One record per row in the database; an unreadable row is skipped."""
         found = []
         self._served = library_db.key_of(self.preferences)    # the library these rows came from
         for key, row in self._doc().table(ROWS).items():
@@ -135,7 +135,7 @@ class AssetLibrary(grid_engine.GridEngine,
 
     @staticmethod
     def _asset_from_row(row: dict):
-        """One stored row becomes one record - the reader every load path shares."""
+        """One stored row as one record; every load path uses this."""
         return material.Material.from_dict(row)
 
     def _tile_image_path(self, row: int, spec=None) -> str:
@@ -153,7 +153,7 @@ class AssetLibrary(grid_engine.GridEngine,
         return tile_icons.thumbnail_path(self.preferences, mat_id, self.DB_FILENAME)
 
     def _on_capture_landed(self, key) -> None:
-        """A capture landed for `key`: re-point and repaint that tile, dropping the old picture."""
+        """A capture was saved for `key`: refresh that tile's paths, drop its cached picture, repaint."""
         for row in range(self.rowCount()):
             if self.tile_key(row) == str(key):
                 self._add_thumb_paths(row, base_changed=False)
@@ -185,7 +185,7 @@ class AssetLibrary(grid_engine.GridEngine,
         self._mat_paths = [self._tile_image_path(row, spec)
                            for row, spec in enumerate(specs)]
         self._row_keys = [self._thumb_key(row, spec)
-                          for row, spec in enumerate(specs)]    # row -> its key, the map read backwards
+                          for row, spec in enumerate(specs)]    # row -> its key, the reverse of `_thumb_rows`
         self.rows_reordered()
 
     def rows_reordered(self) -> None:
@@ -196,14 +196,14 @@ class AssetLibrary(grid_engine.GridEngine,
         if not 0 <= row < self.rowCount():
             return
         mat_id = self._assets[row].mat_id
-        spec = self.tile_icon(row)    # one store read serves the path and the key
+        spec = self.tile_icon(row)    # one store read for both the path and the key
         entry = self._tile_image_path(row, spec)
         if row < len(self._mat_paths):
             self._mat_paths[row] = entry
         elif row == len(self._mat_paths):
             self._mat_paths.append(entry)    # add_asset appends the row first, so the maps grow by one here
         else:
-            self.rebuild_thumbs()    # the maps fell out of step with the rows - resync whole
+            self.rebuild_thumbs()    # the maps no longer match the rows - rebuild them all
         key = self._thumb_key(row, spec)
         if row < len(self._row_keys):
             stale = self._row_keys[row]
@@ -213,14 +213,14 @@ class AssetLibrary(grid_engine.GridEngine,
         else:
             self._row_keys.append(key)
         self._thumb_rows[key] = row
-        if base_changed:    # the ACTIVE version's archive slot follows a fresh base picture
+        if base_changed:    # a new base picture is also recorded for the ACTIVE version
             versions.record_render(self.preferences, mat_id, self.VERSION_SECTION)
         thumbnails.engine.discard(key)
         self.row_changed(
             row, [QtCore.Qt.ItemDataRole.DecorationRole])
 
     def _on_thumb_key_ready(self, key) -> None:
-        """The engine delivered (or failed) a key: repaint its row if it belongs to this model."""
+        """The engine loaded (or failed to load) a key: repaint its row if it is in this model."""
         row = self._thumb_rows.get(key)
         if row is None or not 0 <= row < self.rowCount():
             return
@@ -280,7 +280,7 @@ class AssetLibrary(grid_engine.GridEngine,
         return str(self._assets[row].name or "")
 
     def set_tile_name(self, row: int, name: str, save: bool = True) -> bool:
-        """Rename one asset, then the save chain; a blank or unchanged name is a no-op."""
+        """Rename one asset, then save; a blank or unchanged name is a no-op."""
         name = (name or "").strip()
         if not 0 <= row < len(self._assets) or not name:
             return False
@@ -317,7 +317,7 @@ class AssetLibrary(grid_engine.GridEngine,
         return str(cats[0]) if cats else ""
 
     def set_tile_category(self, row: int, name: str, save: bool = True) -> bool:
-        """Move one asset to category `name`, then the save chain; a blank is a no-op."""
+        """Move one asset to category `name`, then save; a blank is a no-op."""
         name = (name or "").strip()
         if not 0 <= row < len(self._assets) or not name:
             return False
@@ -365,7 +365,7 @@ class AssetLibrary(grid_engine.GridEngine,
             [asset for asset in self._assets if str(asset.mat_id) in wanted])
 
     def _saved_rows_changed(self, assets, roles=None) -> bool:
-        """Save, then repaint each record on the row the save LEFT it on: a save adopts and drops rows."""
+        """Save, then repaint each record at its row AFTER the save: a save can add and remove rows."""
         stored = self.save()
         rows = {str(asset.mat_id): row for row, asset in enumerate(self._assets)}
         for asset in assets:
@@ -373,13 +373,13 @@ class AssetLibrary(grid_engine.GridEngine,
         return stored
 
     def tile_key(self, row: int) -> str:
-        """The key for this row's tile icons: the asset id, "" for no row. Hold this, never a row number."""
+        """The key for this row's tile icons: the asset id, "" for no row. Store this, never a row number."""
         if not 0 <= row < len(self._assets):
             return ""
         return str(self._assets[row].mat_id)
 
     def set_tile_icon(self, index, spec, save: bool = True) -> bool:
-        """One asset's icon ({} clears); False when not written. `save` is unused: no record moves."""
+        """One asset's icon ({} clears); False when not written. `save` is unused: no record changes."""
         row = index.row() if hasattr(index, "row") else int(index)
         if not 0 <= row < len(self._assets):
             return False
@@ -391,7 +391,7 @@ class AssetLibrary(grid_engine.GridEngine,
         if not valid:
             return len(rows)
         chosen = {row: tile_icons.choice_for(self, row, spec) for row in valid}
-        held = tile_icons.set_overrides(  # the database is the one home, so a clear here is the whole delete
+        held = tile_icons.set_overrides(  # icons are stored only in the database, so a clear here deletes the icon
             self.preferences,
             {str(self._assets[row].mat_id): choice
              for row, choice in chosen.items()}, self.DB_FILENAME)
@@ -408,7 +408,7 @@ class AssetLibrary(grid_engine.GridEngine,
         return stored
 
     def commit_tile_icons(self, rows=None) -> None:
-        """Nothing to commit: `set_tile_icons` wrote the icon store, and no record field moved."""
+        """Nothing to commit: `set_tile_icons` wrote the icon store, and no record field changed."""
 
     def rerender_tile_icons(self) -> int:
         """Recompose every icon in this library, for when the look changed rather than the choice."""
@@ -446,7 +446,7 @@ class AssetLibrary(grid_engine.GridEngine,
         """Take one row out of the model, marked for removal at the next save; maps NOT rebuilt."""
         if not 0 <= row < len(self._assets):
             return False
-        self._forgotten.add(str(self._assets[row].mat_id))    # SAY THE DELETE: a row only left out stays
+        self._forgotten.add(str(self._assets[row].mat_id))    # RECORD THE DELETE: a row only removed from the model stays saved
         self.beginRemoveRows(QtCore.QModelIndex(), row, row)  # del by INDEX: by value drops the first EQUAL one
         del self._assets[row]
         self.endRemoveRows()
@@ -522,7 +522,7 @@ class AssetLibrary(grid_engine.GridEngine,
         return None
 
     def _stage_rows(self, held) -> None:
-        """Every record into the database as this user's change, the removed rows out; not saved."""
+        """Put every record in the database as this user's change, drop the removed rows; not saved."""
         for asset in self._assets:
             held.put(ROWS, str(asset.mat_id), as_stored(asset.get_as_dict()))
         for key in self._forgotten:
@@ -530,13 +530,13 @@ class AssetLibrary(grid_engine.GridEngine,
         self._forgotten = set()
 
     def save(self) -> bool:
-        """Hand the records to the database, saved by the timer; False when it takes no change now."""
+        """Stage the records in the database for the timer to save; False when it accepts no change."""
         if not library_db.accepts(self.preferences, self.DB_FILENAME):
             return False
         if getattr(self, "_served", None) not in (None, library_db.key_of(self.preferences)):
             debug.event("library", "save refused - the rows are another library's",
                         store=self.DB_FILENAME, dir=str(self.preferences.dir))
-            return False    # moved under the model without a switch: these rows are not this library's
+            return False    # the folder changed without a switch: these rows are from another library
         held = self._doc()
         with library_db.library_for(self.preferences).holding():
             self._stage_rows(held)
@@ -544,7 +544,7 @@ class AssetLibrary(grid_engine.GridEngine,
         return True
 
     def apply_refresh(self) -> bool:
-        """Take in what the database holds that this model does not; True when the model moved."""
+        """Load the database's changes that this model lacks; True when the model changed."""
         rows = {key: dict(stored(row), id=row.get("id", key))
                 for key, row in self._doc().table(ROWS).items() if isinstance(row, dict)}
         have = {str(asset.mat_id): asset for asset in self._assets}
@@ -569,14 +569,14 @@ class AssetLibrary(grid_engine.GridEngine,
         return bool(adopted or fields or gone or recoloured)
 
     def repaint_category_colours(self) -> None:
-        """Repaint every tile's category band, role-scoped: a colour never moves a column width."""
+        """Repaint every tile's category band, for that role only: a colour never resizes a column."""
         if self.rowCount():
             self.dataChanged.emit(
                 self.index(0, 0), self.index(self.rowCount() - 1, 0),
                 [self.CategoryColorRole])
 
     def _adopt_fields(self, fields: list) -> None:
-        """Apply peer `(id, field, value)` changes onto the records in place, and tell the views."""
+        """Apply other sessions' `(id, field, value)` changes to the records in place; notify views."""
         if not isinstance(fields, list) or not fields:  # a list, by contract, like `_adopt_rows`
             return
         wanted: dict = {}
@@ -595,10 +595,10 @@ class AssetLibrary(grid_engine.GridEngine,
                             asset_id=str(asset.mat_id))
                 continue
             asset.__dict__.update(fresh.__dict__)
-            self.row_changed(row)    # the whole row: an adopted field can reach any column
+            self.row_changed(row)    # the whole row: a loaded field can affect any column
 
     def _append_record(self, record) -> int:
-        """Add a new record, sorted into place at once; answers the row it holds NOW."""
+        """Add a new record, sorted into place at once; returns its row AFTER the sort."""
         row = len(self._assets)
         self.beginInsertRows(QtCore.QModelIndex(), row, row)
         try:
@@ -606,13 +606,13 @@ class AssetLibrary(grid_engine.GridEngine,
         finally:
             self.endInsertRows()
         self._add_thumb_paths(row)
-        moved = self.resort()    # now, so no caller holds a row that is about to move
+        moved = self.resort()    # now, so no caller keeps a row number that is about to change
         self._content_state[str(record.mat_id)] = self._content_stat(
             record.mat_id)
         return moved.get(row, row) if moved else row
 
     def _take_back_refused_append(self, record) -> None:
-        """Take a refused new record back out of the model and the database, by identity."""
+        """Remove a new record whose save failed from the model and the database, by identity."""
         row = next((i for i, held in enumerate(self._assets)
                     if held is record), -1)
         if row >= 0:
@@ -627,7 +627,7 @@ class AssetLibrary(grid_engine.GridEngine,
             self._doc().drop(ROWS, str(record.mat_id))
 
     def add_saved(self, record, staged: list) -> bool:
-        """A new record and the files its save staged, landed as ONE unit; False: neither landed."""
+        """Save a new record and the files its save staged as ONE change; False: neither was saved."""
         if not library_db.accepts(self.preferences, self.DB_FILENAME):
             asset_record.discard(staged)
             return False
@@ -746,7 +746,7 @@ class AssetLibrary(grid_engine.GridEngine,
         return changed
 
     def report_refused_index_write(self, asset, updated: bool = False) -> None:
-        """Say on the status line that an inline asset's list write was refused; it waits in memory."""
+        """Show on the status line that an inline asset's list write failed; it is kept in memory."""
         name = asset.name or "The asset"
         debug.event("save", "inline asset not saved - the index write "
                     "was refused", name=name, mat_id=asset.mat_id,
@@ -777,14 +777,14 @@ class AssetLibrary(grid_engine.GridEngine,
         return held
 
     def asset_directories(self, mat_id: str) -> dict:
-        """{kind: absolute path} for every directory asset `mat_id` owns, the version store today."""
+        """{kind: absolute path} of every directory of asset `mat_id`: now only the version store."""
         mat_id = str(mat_id)
         if not material.is_safe_asset_id(mat_id):
             return {}
         try:
             return {"versions": versions.versions_dir(
                 self.preferences, mat_id, self.VERSION_SECTION)}
-        except hostos.PathEscape as exc:  # owns no directory we can name; must not raise out of remove_asset
+        except hostos.PathEscape as exc:  # no valid directory path; must not raise out of remove_asset
             debug.event("library", "version store path refused",
                         mat_id=mat_id, error=str(exc))
             return {}
@@ -795,7 +795,7 @@ class AssetLibrary(grid_engine.GridEngine,
             self.remove_rows([index.row()])
 
     def remove_rows(self, rows) -> int:
-        """Delete these rows and move their files to the library's trash as ONE unit; how many went."""
+        """Delete these rows and move their files to the library's trash as ONE change; how many."""
         going = [(row, self._assets[row])
                  for row in sorted({int(r) for r in rows})
                  if 0 <= row < len(self._assets)]
@@ -807,7 +807,7 @@ class AssetLibrary(grid_engine.GridEngine,
         guard = library_db.guard_of(self.preferences)
         owned = [guard.inside(path) for _row, asset in going
                  for path in self._owned_paths(asset.mat_id) if os.path.lexists(path)]
-        for row, _asset in reversed(going):    # highest first, so every row number still holds
+        for row, _asset in reversed(going):    # highest first, so every row number stays valid
             self._unlist_row(row)
         self.rebuild_thumbs()
         with library_db.library_for(self.preferences).holding():
@@ -818,13 +818,13 @@ class AssetLibrary(grid_engine.GridEngine,
                 if relative:
                     change.trash(relative)
         if not library_db.save(self.preferences, self.DB_FILENAME, also=trash):
-            self._take_back_refused_removals(going)    # nothing on disk moved: the change is whole or none
+            self._take_back_refused_removals(going)    # nothing on disk changed: the change is all or nothing
             self._report_refused_delete(going[-1][1])
             return 0
         return len(going)
 
     def _owned_paths(self, mat_id) -> list:
-        """Every file and folder a deleted asset takes with it, from `asset_files()`."""
+        """Every file and folder deleted with an asset, from `asset_files()`."""
         return list(self.asset_files(mat_id).values()) + list(
             self.asset_directories(mat_id).values())
 
@@ -838,8 +838,8 @@ class AssetLibrary(grid_engine.GridEngine,
             key="delete-refused-index-write")
 
     def _take_back_refused_removals(self, going) -> None:
-        """Put back `(row, record)` pairs whose delete the save refused, in the model and the database."""
-        for row, asset in going:    # ascending, so each lands where it stood
+        """Put back `(row, record)` pairs whose delete failed to save, in the model and the database."""
+        for row, asset in going:    # ascending, so each returns to its old row
             row = min(max(row, 0), len(self._assets))
             self.beginInsertRows(QtCore.QModelIndex(), row, row)
             try:
@@ -849,7 +849,7 @@ class AssetLibrary(grid_engine.GridEngine,
         self.rebuild_thumbs()
         self.resort()
         with library_db.library_for(self.preferences).holding():
-            self._stage_rows(self._doc())    # else the next save carries out the declined delete
+            self._stage_rows(self._doc())    # else the next save performs the failed delete
 
     def remove_category(self, cat: str) -> None:
         """Take this category off every asset in the library. Does not save."""
@@ -877,7 +877,7 @@ class AssetLibrary(grid_engine.GridEngine,
                 versions.active_version(self.preferences, mat_id, self.VERSION_SECTION))
 
     def switch_version(self, row: int, number: int) -> bool:
-        """Make version `number` active for the asset at `row`, and tell everything downstream."""
+        """Make version `number` active for the asset at `row`, and refresh its caches and tile."""
         if not 0 <= row < len(self._assets):
             return False
         mat = self._assets[row]
@@ -892,7 +892,7 @@ class AssetLibrary(grid_engine.GridEngine,
         return True
 
     def rename_version(self, row: int, number: int, name: str) -> bool:
-        """Rename one version, evict the cache and tell the view."""
+        """Rename one version, clear the cache and repaint the view."""
         if not 0 <= row < len(self._assets):
             return False
         mat = self._assets[row]
@@ -911,7 +911,7 @@ class AssetLibrary(grid_engine.GridEngine,
                          [self.VersionsRole, self.ActiveVersionRole])
 
     def _content_stat(self, mat_id: str):
-        """(mtime_ns, size) of an asset's .mat, or None when absent; composes that one path only."""
+        """(mtime_ns, size) of an asset's .mat, or None when absent; builds that one path only."""
         if not material.is_safe_asset_id(str(mat_id)):
             return None
         try:
@@ -921,7 +921,7 @@ class AssetLibrary(grid_engine.GridEngine,
             return None
 
     def _remember_content_state(self) -> None:
-        """Baseline the content stale-write guard and clear the two per-id version caches."""
+        """Record each .mat's state for the stale-write check; clear the two per-id version caches."""
         self._content_state = {
             str(asset.mat_id): self._content_stat(asset.mat_id)
             for asset in self._assets
@@ -958,7 +958,7 @@ class AssetLibrary(grid_engine.GridEngine,
 
 
 class MaterialLibrary(AssetLibrary):
-    """The Material tab's model: records, their renderer labels, and the repaint a render asks for."""
+    """The Material tab's model: records, their renderer labels, and the repaint after a render."""
 
     NOTES_SECTION = "material"
     TILE_FACE = "face_material"    # T06
@@ -971,7 +971,7 @@ class MaterialLibrary(AssetLibrary):
         self._shader_type_cache = {}
 
     def _on_thumbnail_written(self, asset_id: str) -> None:
-        """A background render's PNG landed: repaint that one tile, wherever its row is now."""
+        """A background render's PNG was written: repaint that one tile, wherever its row is now."""
         row = self.find_asset_row_by_id(asset_id)
         if row >= 0:
             self._add_thumb_paths(row)

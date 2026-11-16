@@ -69,20 +69,20 @@ class ThumbnailCache:
         return list(self._manifest)
 
     def forget(self, paths) -> None:
-        """Drop entries a sweep took off disk, adopting the disk first so no save writes them back."""
+        """Drop entries a cleanup deleted, reading the disk manifest first so no save writes them back."""
         self._adopt_from_disk()
         for path in paths:
             self._manifest.pop(self._key(path), None)
 
     def moved(self, moves: dict) -> None:
-        """Entries a move re-filed on disk: both ends dropped, then the disk read in, the move's own."""
+        """Entries a move renamed on disk: old and new keys dropped, then the move's own read from disk."""
         for old, new in moves.items():
             self._manifest.pop(self._key(old), None)
-            self._manifest.pop(self._key(new), None)    # a stale entry here would outlive the carry
+            self._manifest.pop(self._key(new), None)    # a stale entry here would be kept over the moved one
         self._adopt_from_disk()
 
     def _load_manifest(self) -> dict:
-        """The manifest, or {}; one that exists but will not parse sets `_unreadable`, blocking saves."""
+        """The manifest, or {}; one that exists but cannot be parsed sets `_unreadable`, blocking saves."""
         self._unreadable = False
         self._disk_state = None
         if not os.path.exists(self.manifest_path):
@@ -106,12 +106,12 @@ class ThumbnailCache:
             return {}
 
     def _adopt_from_disk(self) -> None:
-        """Fold in entries another writer added since this read; only adds, and a shared key keeps ours."""
+        """Merge in entries another writer added since our read; only adds, and a key in both keeps ours."""
         answer = hostos.peer_read(self.manifest_path,    # ▸r/peer-read
                                   getattr(self, "_disk_state", None))
         self._disk_state = answer.fingerprint    # the read just made, never a second one
         if answer.verdict != hostos.PEER_CHANGED:
-            return      # unchanged, absent, or an unreadable peer, which is _load_manifest's
+            return      # unchanged, absent, or unreadable, which _load_manifest handles
         adopted = 0
         for key, value in answer.document.items():
             key = self._key(key)
@@ -131,7 +131,7 @@ class ThumbnailCache:
         if not self.ensure_dir():
             return
         try:
-            self._adopt_from_disk()  # sessions share this path; the atomic writer keeps it whole
+            self._adopt_from_disk()  # sessions share this path; write_json_atomic never leaves a partial file
             self._disk_state = hostos.write_json_atomic(    # what we wrote, never a re-read
                 self.manifest_path, self._manifest, indent=None)
             self._dirty = False
@@ -145,18 +145,18 @@ class ThumbnailCache:
 
     @staticmethod
     def _key(full_path: str) -> str:
-        """How the manifest spells a source file; every way in goes through this."""
+        """The manifest key for a source file; every lookup goes through this."""
         return hostos.canonical_path_key(full_path)
 
     def _cache_path(self, full_path: str) -> str:
         return os.path.join(self.cache_dir, self._cache_filename(full_path))
 
     def png_path(self, full_path: str) -> str:
-        """Where `full_path`'s thumbnail PNG lives in this cache - what a convert worker writes."""
+        """Where `full_path`'s thumbnail PNG is in this cache - what a convert worker writes."""
         return self._cache_path(self._key(full_path))
 
     def adopt(self, full_path: str, png: str) -> bool:
-        """Record the worker's PNG for `full_path`; False when `png` is not its file here, or it is gone."""
+        """Record a worker PNG for `full_path`; False if `png` is not its file here or no source exists."""
         full_path = self._key(full_path)
         if hostos.comparable_path(png) != hostos.comparable_path(self._cache_path(full_path)):
             return False
@@ -175,7 +175,7 @@ class ThumbnailCache:
         if not entry:
             return None
         try:
-            st = (stat or os.stat)(full_path)    # a caller's own stat answers for one it already made
+            st = (stat or os.stat)(full_path)    # a caller passes its own stat to reuse one it already made
         except OSError:
             return None
         if entry.get("mtime") != st.st_mtime or entry.get("size") != st.st_size:
@@ -186,7 +186,7 @@ class ThumbnailCache:
         return cache_path
 
     def ensure_dir(self) -> bool:
-        """Recreate the cache directory if it has gone; False when it cannot be made."""
+        """Recreate the cache directory if it is missing; False when it cannot be made."""
         if os.path.isdir(self.cache_dir):
             return True
         try:
@@ -242,7 +242,7 @@ class ThumbnailCache:
         self._dirty = True
 
     def known_failure(self, full_path: str, stat=None) -> bool:
-        """True when this exact file has already defeated every converter."""
+        """True when every converter has already failed on this exact file."""
         entry = self._manifest.get(self._key(full_path))
         if not entry or not entry.get("failed"):
             return False
@@ -269,7 +269,7 @@ class ThumbnailCache:
 
         stale = []
         for full_path, entry in self._manifest.items():
-            current_full = wanted.get(hostos.canonical_path_key(  # through the same funnel, so an entry written by an older build still matches
+            current_full = wanted.get(hostos.canonical_path_key(  # through the same canonical_path_key, so an entry written by an older build still matches
                 os.path.dirname(full_path)))
             if current_full is None:
                 continue          # not a directory we were asked about

@@ -1,4 +1,4 @@
-"""Library format 3 to 4, the one place that knows the old shapes: read, converted, removed."""
+"""Library format 3 to 4; the only module that knows the old layouts: read, converted, removed."""
 
 import filecmp
 import hashlib
@@ -23,7 +23,7 @@ BUILDER = ".builder.json"    # the builder as data, its interface under `dialog_
 STAMP = ".stamp.json"    # the row, written beside the asset files
 OLD_SUFFIXES = (BUILDER, STAMP, INTERFACE)
 ICON_TAIL = "_icon"    # `img/<id>_icon.png`: a custom icon composed to disk
-OLD_FACES = ("preview", "capture")    # stored tile choices that read as `image` now
+OLD_FACES = ("preview", "capture")    # stored tile choices that are treated as `image` now
 PRE_ADOPT = ".pre-adopt"    # `mat/<id>.mat.pre-adopt`: backups an earlier texture update left
 UPGRADE_BACKUP = "backup-redshift-vopnet-"    # `mat/<this><date>/`: backups a builder upgrade left
 OLD_MEMBER_KINDS = ("builder", "interface", "stamp", "tile_icon", "capture")    # an old package's
@@ -55,7 +55,7 @@ def interface_type(raw: bytes) -> str:
 
 
 def builder_from_bytes(raw: bytes, interface, stale: bool = False, where: str = "") -> dict:
-    """The builder section from `.builder.json`'s bytes; `interface()` answers `.interface`'s."""
+    """The builder section from `.builder.json`'s bytes; `interface()` returns `.interface`'s."""
     data = {}
     if raw:
         try:
@@ -76,7 +76,7 @@ def builder_from_bytes(raw: bytes, interface, stale: bool = False, where: str = 
 
 
 def builder_from_members(held: dict) -> dict:
-    """The builder a package's members carry: a new `json`, else format 3's `builder`/`interface`."""
+    """The builder in a package's members: a new `json`, else format 3's `builder`/`interface`."""
     if held.get("json"):
         try:
             document = json.loads(held["json"].decode("utf-8-sig"))
@@ -127,12 +127,12 @@ def _id_of(name: str, suffixes: tuple) -> str:
 
 
 def old_shape(relative: str) -> bool:
-    """Whether a library path is one only format 3 wrote: a leftover the conversion did not take."""
+    """Whether a library path is one only format 3 wrote: a leftover the conversion did not use."""
     parts = library_files.split(relative)
     if not parts:
         return False
     top, name = parts[0], parts[-1]
-    if top == OLD_FOLDER:    # what the conversion left there is unknown to it: named, never swept
+    if top == OLD_FOLDER:    # files left in `mat/` are unknown to the conversion: reported, never removed
         return False
     if len(parts) == 2 and library_files.owns_assets(top) and name.endswith(PRE_ADOPT):
         return bool(_id_of(name[: -len(PRE_ADOPT)], (".mat",)))
@@ -174,7 +174,7 @@ _MINT_NAMESPACE = uuid.uuid5(uuid.NAMESPACE_URL, "amaze:minted-asset-id")    # n
 
 
 def _read_old(library_dir: str, name: str):
-    """(document, why) of one old root file: why is empty when it read, both when it is absent."""
+    """(document, why) of one old root file: why is empty when read; `({}, "")` when absent."""
     path = os.path.join(library_dir, name)
     if not os.path.lexists(path):
         return {}, ""
@@ -196,7 +196,7 @@ def _old_traces(library_dir: str, name: str) -> list:
 
 
 def _row_id(row: dict, index: int) -> str:
-    """A row's id: `id`, the older `mat_id` or `uid`, else one minted from the row and its place."""
+    """A row's id: `id`, the older `mat_id` or `uid`, else one derived from the row and its index."""
     found = str(row.get("id", row.get("mat_id", row.get("uid", ""))) or "")
     if found:
         return found
@@ -403,7 +403,7 @@ def _convert_asset(library_dir: str, asset_id: str, section: str, rows: dict,
         ok, old_files = _kept(asset_id, str(exc), counts), _old_files(library_dir, asset_id,
                                                                       section)
     if not ok:
-        for path in created:    # what this asset's turn wrote; its format 3 files stay untouched
+        for path in created:    # the files written for this asset; its format 3 files stay untouched
             try:
                 hostos.remove_file(path)
             except OSError:
@@ -426,7 +426,7 @@ def _old_files(library_dir: str, asset_id: str, section: str) -> list:
 
 def _convert_one(library_dir: str, asset_id: str, section: str, rows: dict,
                  faces: dict, counts: dict, created: list) -> tuple:
-    """`_convert_asset`'s work; every file it writes new is listed in `created`."""
+    """`_convert_asset`'s work; every new file it writes is listed in `created`."""
     old_files = _old_files(library_dir, asset_id, section)
     old_dir = os.path.join(library_dir, OLD_FOLDER)
     home = material.section_folder(library_dir, section)
@@ -457,7 +457,7 @@ def _convert_one(library_dir: str, asset_id: str, section: str, rows: dict,
         if not newer:
             created.append(target)
             _copy_in(source, target)
-    shown = shown if shown and not os.path.lexists(picture) else ""    # one there already is newer
+    shown = shown if shown and not os.path.lexists(picture) else ""    # a picture already there is newer
     if shown:
         created.append(picture)
         _copy_in(shown, picture)
@@ -487,7 +487,7 @@ def _convert_one(library_dir: str, asset_id: str, section: str, rows: dict,
     if shown and not filecmp.cmp(shown, picture, shallow=False):
         return _kept(asset_id, "the picture did not read back byte for byte", counts), old_files
     for path in list(old.values()) + [source for source, _t, _n in moves] + pictures:
-        try:    # the new files are proven: an old one that will not go is a leftover, never a failure
+        try:    # the new files read back: an old file that cannot be deleted is a leftover, not a failure
             counts["deleted"] += _remove([path])
         except OSError as exc:
             counts["left"] += 1
@@ -513,7 +513,7 @@ def _classics(library_dir: str, rows: dict) -> dict:
                 _Prefs(library_dir), asset_id, library_files.MATERIALS))[asset_record.BUILDER] \
                 or _old_builder(old[BUILDER], old[INTERFACE])
         except (OSError, ValueError, hostos.PathEscape):
-            continue    # an id that names no file here: its own turn sets it aside
+            continue    # an id with no file here: its own conversion step sets it aside
         renderer = CLASSIC.get(builder.get("type", ""))
         if renderer is not None:
             found[asset_id] = renderer
@@ -569,7 +569,7 @@ def _convert_versions(library_dir: str, folder: str, section: str, rows: dict,
     if not section:
         owner = _owner(rows, asset_id) if asset_id.isalnum() else None
         if owner not in library_files.ASSET_SECTIONS:
-            counts["left"] += 1    # two sections name it, or it is no asset's: Check Library names it
+            counts["left"] += 1    # two sections list it, or no asset has it: Check Library reports it
             return True
         target = os.path.join(material.section_folder(library_dir, owner, library_files.VERSIONS),
                               asset_id)
@@ -612,7 +612,7 @@ def _rename_versions(folder: str) -> None:
                 ledger = json.load(handle)
             rows = ledger.get("versions")
         except (OSError, ValueError, AttributeError):
-            return    # an unreadable ledger is the version store's to say
+            return    # the version store reports an unreadable ledger
         if not isinstance(rows, list):
             return
     rows = [row for row in rows if isinstance(row, dict) and str(row.get("n", "")).isdigit()]
@@ -626,7 +626,7 @@ def _rename_versions(folder: str) -> None:
         number = named.get(stem)
         old = OLD_VERSION_STEM.match(stem)
         if number is None and old and int(old.group(1)) not in numbers:
-            number = int(old.group(1))    # a file no row names: orphaned, under its new name
+            number = int(old.group(1))    # a file no row lists: orphaned, but renamed too
         target = os.path.join(folder, "%s_%d%s" % (asset_id, number or 0, suffix))
         if number is None or os.path.lexists(target):
             continue
@@ -641,7 +641,7 @@ def _rename_versions(folder: str) -> None:
 
 
 def _stored_faces(library_dir: str) -> dict:
-    """{key: face} as format 3 stored them in icons.json, read raw: the store refuses old faces."""
+    """{key: face} from format 3's icons.json, read directly: the icon store rejects old faces."""
     try:
         with open(os.path.join(library_dir, "icons.json"), encoding="utf-8-sig") as handle:
             table = (json.load(handle) or {}).get("icons") or {}
@@ -715,7 +715,7 @@ def convert(directory: str, confirm, progress=None, user: str = "",
              for asset_id in sorted(_plan_ids(library_dir) | set(classics))] + [
         ("versions", folder) for folder in _old_version_folders(library_dir)]
     for done, (kind, item) in enumerate(units):
-        if progress is not None:    # shown only: a conversion is not stopped partway by choice
+        if progress is not None:    # display only: the user cannot stop a conversion partway
             progress(done, len(units))
         if kind == "versions" and os.path.basename(item[0]) in classics:
             held = doomed.get(os.path.basename(item[0]))
@@ -736,7 +736,7 @@ def convert(directory: str, confirm, progress=None, user: str = "",
             debug.event("convert", "two sections name one id - its files stay", mat_id=item)
             continue
         if not _is_asset(library_dir, item, owner, rows):
-            counts["left"] += 1    # a picture or a stamp of nothing: Check Library names it
+            counts["left"] += 1    # a picture or stamp with no asset: Check Library reports it
             continue
         row = rows.get(owner, {}).get(item)
         if item in doomed:
@@ -760,7 +760,7 @@ def convert(directory: str, confirm, progress=None, user: str = "",
         for asset_id in _listing(root):
             try:
                 _rename_versions(os.path.join(root, asset_id))
-            except (OSError, ValueError) as exc:    # a held file: Check Library names what stays
+            except (OSError, ValueError) as exc:    # a locked file: Check Library reports what is left
                 _kept(asset_id, "its version files were not renamed: %s" % exc, counts)
     try:
         counts["deleted"] += _remove_old_backups(os.path.join(library_dir, OLD_FOLDER))
@@ -783,7 +783,7 @@ def convert(directory: str, confirm, progress=None, user: str = "",
     counts["deleted"] += _remove_old_root_files(library_dir, user)
     try:
         rehome_pictures(library_dir, user)
-    except (OSError, guard.Refused) as exc:    # they stay where they were, for Check Library to name
+    except (OSError, guard.Refused) as exc:    # they stay where they were, for Check Library to report
         debug.event("convert", "pictures not moved into their sections", error=str(exc))
     debug.event("convert", "library conversion", set_aside=len(set_aside), **counts)
     return Outcome(DONE, set_aside=set_aside, counts=counts, old_trash=old_trash)
@@ -795,7 +795,7 @@ class SetAside:
     def __init__(self, asset_id: str, section: str, row, files: list) -> None:
         self.asset_id = asset_id
         self.section = section
-        self.row = row    # None for files no database named
+        self.row = row    # None for files no database listed
         self.files = list(files)
 
     @property
@@ -804,7 +804,7 @@ class SetAside:
 
 
 def trash_set_aside(library_dir: str, set_aside: list) -> int:
-    """The set-aside assets' old files into the library's trash, at the user's word; how many moved."""
+    """Move the set-aside assets' old files to the library's trash once confirmed; how many moved."""
     held = guard.Guard(library_dir)
     change = held.change("")
     moved = 0
@@ -824,7 +824,7 @@ def trash_set_aside(library_dir: str, set_aside: list) -> int:
 
 
 def machine_stars(preferences) -> list:
-    """The stars this computer's settings kept beside the library's, which the conversion takes in."""
+    """The stars this computer's settings kept beside the library's, which the conversion adds."""
     data = getattr(preferences, "data", None)
     found = data.get("material_favorites") if isinstance(data, dict) else None
     return [str(one) for one in found or () if str(one).strip()] if isinstance(
@@ -839,7 +839,7 @@ def _is_file_key(key: str) -> bool:
 
 
 class _Paths:
-    """The Files section's location paths, collapsed to one id per path, and keys re-homed on them."""
+    """The Files section's location paths, one id per path, and old keys rewritten to use them."""
 
     def __init__(self, table: dict) -> None:
         self.rows, self.winner = {}, {}
@@ -857,7 +857,7 @@ class _Paths:
         self.by_path = by_path
 
     def id_for(self, path: str) -> str:
-        """The id of the location at `path`, minted when it has none."""
+        """The id of the location at `path`, created when it has none."""
         identity = str(path).rstrip("/") or "/"
         if identity not in self.by_path:
             lid = hashlib.sha1(("amaze:location:" + identity).encode("utf-8")).hexdigest()[:32]
@@ -866,7 +866,7 @@ class _Paths:
         return self.by_path[identity]
 
     def file_key(self, key: str) -> str:
-        """An old file key on a location id: a path under the innermost location, a rival id collapsed."""
+        """An old file key on a location id: under the innermost location, a duplicate id merged."""
         key = str(key)
         if key.startswith(LOC):
             head, sep, rel = key[len(LOC):].partition("/")
@@ -889,7 +889,7 @@ def _old_table(library_dir: str, name: str) -> dict:
 
 
 def _owner_and_key(key: str, user: str) -> tuple:
-    """(user, key) of an old per-user key; an entry from before users goes to the one converting."""
+    """(user, key) of an old per-user key; an entry from before users goes to the converting user."""
     owner, sep, rest = str(key).partition(USER_SEP)
     if sep and len(owner) == 32 and all(c in "0123456789abcdef" for c in owner):
         return owner, rest
@@ -897,7 +897,7 @@ def _owner_and_key(key: str, user: str) -> tuple:
 
 
 def _first_shape(page) -> list:
-    """A comment page's items; the first build's text-and-todos shape read as items."""
+    """A comment page's items; the first version's text-and-todos layout converted to items."""
     if not isinstance(page, dict):
         return []
     items = page.get("items")
@@ -926,7 +926,7 @@ PRE_SHOW_KINDS = locations.KNOWN_KINDS    # what a location listed before Show �
 
 
 def _show_ticks(record: dict, show_unknown: bool) -> dict:
-    """A location record with the ticks it listed by before Show ▸: Other Files as Show All said."""
+    """A location record with the kinds it showed before Show ▸; Other Files as Show All set it."""
     record = dict(record)
     shows_all = record.pop("show_all", None)    # the old override: read here, never carried over
     if isinstance(record.get("kinds"), (list, tuple)):
@@ -992,7 +992,7 @@ def build_databases(library_dir: str, set_aside=(), user: str = "", machine_star
         for text in reversed(texts):
             if not any(item.get("t") == "text" and str(item.get("text", "")).strip() == text
                        for item in items if isinstance(item, dict)):
-                items.insert(0, {"t": "text", "text": text})    # carried once, first
+                items.insert(0, {"t": "text", "text": text})    # added once, at the top
     for key, items in pages.items():
         prefix, _sep, ident = key.partition(":")
         kept = notes.normalise_items([dict(item) for item in items])
@@ -1004,7 +1004,7 @@ def build_databases(library_dir: str, set_aside=(), user: str = "", machine_star
         name = notes.DATABASE_OF.get(prefix)
         if name in sections and (name, ident) not in set_aside:
             sections[name]["comments"][ident] = {"items": kept}
-    old_faces = ("preview", "capture")    # stored tile choices that read as `image` now
+    old_faces = ("preview", "capture")    # stored tile choices that are treated as `image` now
     for key, spec in _old_table(library_dir, "icons.json").items():
         if not isinstance(spec, dict) or not spec or spec.get("face") in old_faces:
             continue
@@ -1040,7 +1040,7 @@ def build_databases(library_dir: str, set_aside=(), user: str = "", machine_star
     built = {library_files.MASTER: master}
     if any(files.values()):
         built[library_files.FILES] = files
-    for filename, (name, _prefix) in OLD_SECTIONS.items():    # an empty one is born at its first save
+    for filename, (name, _prefix) in OLD_SECTIONS.items():    # an empty one is created at its first save
         if any(sections[name].values()) or os.path.lexists(os.path.join(library_dir, filename)):
             built[name] = sections[name]
     return built
@@ -1116,7 +1116,7 @@ def rehome_pictures(library_dir: str, user: str = "") -> int:
                     change.take(target, source)
                     used.add(name)
                     moved += 1
-                elif name in pictures:    # one picture in two sections' comments: each gets its own
+                elif name in pictures:    # one picture in two sections' comments: each gets its own copy
                     change.put_file(target, _bytes(source))
         if changed:
             change.put(reading.ticket, document)
@@ -1124,7 +1124,7 @@ def rehome_pictures(library_dir: str, user: str = "") -> int:
         change.trash(prefix + name)
     change.commit()
     for name in _listing(os.path.join(library_dir, OLD_PICTURES)):
-        if name.endswith(".lock"):    # what an old render left beside a picture long gone
+        if name.endswith(".lock"):    # lock files an old render left beside a deleted picture
             _remove([os.path.join(library_dir, OLD_PICTURES, name)])
     for home in (library_files.SECTION_FOLDERS[name] for name in library_files.LISTS):
         root = os.path.join(library_dir, home, library_files.VERSIONS)
@@ -1175,7 +1175,7 @@ def size_text(count: int) -> str:
 
 
 def delete_old_trash(folder: str) -> bool:
-    """The old trash folder removed whole, at the user's word; whether it went."""
+    """Remove the whole old trash folder once the user confirms; whether it was removed."""
     try:
         hostos.check_sandbox(folder)
         shutil.rmtree(folder)

@@ -1,4 +1,4 @@
-"""Files moved between folders on disk, never over a name already taken. ▸r/cross-volume-move"""
+"""Move files between folders on disk, never replacing an existing file. ▸r/cross-volume-move"""
 
 import collections
 import errno
@@ -13,14 +13,14 @@ from amaze.core import captures, debug, locations, workers
 from amaze.helpers import hostos
 
 Result = collections.namedtuple("Result", "moved skipped failed")    # pairs, pairs, (source, why)
-PART = ".amaze-part"    # a cross-drive copy's suffix until it is whole and placed
+PART = ".amaze-part"    # suffix of a cross-drive copy until it is complete and renamed to its name
 CHUNK = 4 << 20    # bytes per read: one stop check and one progress tick between reads
 HELD_WAITS = (0.05, 0.15, 0.35)    # seconds between tries at a file Windows says is in use
-carriers = globals().get("carriers", {})    # name -> fn(preferences, pairs), a higher layer's share
+carriers = globals().get("carriers", {})    # name -> fn(preferences, pairs), set by higher-level modules
 
 
 class Stopped(Exception):
-    """Told to stop: the file in hand stays where it was."""
+    """Raised when the move is stopped: the file being copied stays at its source."""
 
 
 def targets(paths, folder: str) -> list:
@@ -43,7 +43,7 @@ def back(pairs) -> list:
 
 
 def same_drive(path: str, folder: str) -> bool:
-    """Whether a rename can carry `path` into `folder`. ▸r/cross-volume-move"""
+    """Whether a rename can move `path` into `folder`. ▸r/cross-volume-move"""
     try:
         return os.stat(path).st_dev == os.stat(folder).st_dev
     except OSError:
@@ -51,39 +51,39 @@ def same_drive(path: str, folder: str) -> bool:
 
 
 def _patiently(call, *args):
-    """`call(*args)`, retried while Windows says the file is held, then once more, raising."""
+    """`call(*args)`, retried while Windows says the file is in use, then a last try that raises."""
     for wait in HELD_WAITS if hostos.is_windows() else ():
         try:
             return call(*args)
-        except PermissionError:    # a thumbnail read or a sync scanner holding it for a moment
+        except PermissionError:    # a thumbnail read or a sync scanner has it open for a moment
             time.sleep(wait)
     return call(*args)
 
 
 def place(source: str, dest: str) -> bool:
-    """Move a file within one drive; False, and nothing changed, when `dest` is taken."""
+    """Move a file within one drive; False, and nothing changed, when `dest` exists."""
     try:
         return _patiently(hostos.rename_exclusive, source, dest)    # one call ▸r/no-replace-rename
     except hostos.NoExclusiveRename:
         pass
     try:
-        os.link(source, dest)    # a hard link refuses a taken name too
+        os.link(source, dest)    # a hard link also fails when `dest` exists
     except FileExistsError:
         return False
-    except OSError:    # neither: exFAT, FAT32, a network share on a Mac ▸r/no-replace-rename
+    except OSError:    # neither is supported: exFAT, FAT32, a network share on a Mac ▸r/no-replace-rename
         return _claimed(source, dest)
     try:
         os.unlink(source)
     except OSError:
-        os.unlink(dest)    # one file, where it was
+        os.unlink(dest)    # remove the link: the file is left only at its source
         raise
     return True
 
 
 def _claimed(source: str, dest: str) -> bool:
-    """Take `dest` with an empty file first, then rename over it; False when taken."""
+    """Create an empty file at `dest` first, then rename over it; False when `dest` exists."""
     try:
-        claim = os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)    # refuses a taken name
+        claim = os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)    # fails if `dest` exists
     except FileExistsError:
         return False
     try:
@@ -91,17 +91,17 @@ def _claimed(source: str, dest: str) -> bool:
     finally:
         os.close(claim)
     try:
-        os.rename(source, dest)    # replaces the empty claim and nothing else
+        os.rename(source, dest)    # replaces only the empty file created above
     except OSError as exc:
         _unclaim(dest, mine)
-        if isinstance(exc, FileExistsError):    # a share removed the claim and the name was taken
+        if isinstance(exc, FileExistsError):    # a share removed the empty file and another file got the name
             return False
         raise
     return True
 
 
 def _unclaim(dest: str, mine) -> None:
-    """Remove the claim, but only while it is still the same empty file."""
+    """Remove the empty file `_claimed` created, but only while it is still that same empty file."""
     try:
         now = os.lstat(dest)
     except OSError:
@@ -111,11 +111,11 @@ def _unclaim(dest: str, mine) -> None:
 
 
 def copy_across(source: str, dest: str, tick=None, stopped=lambda: False) -> bool:
-    """Copy `source` whole beside `dest`, place it, then remove the source; False if `dest` is taken."""
+    """Copy `source` to a part file, rename it to `dest`, delete `source`; False if `dest` exists."""
     if os.path.lexists(dest):
         return False
-    _patiently(hostos.check_deletable, source)    # held open on Windows: copying would only make a second file
-    part = hostos.unique_scratch(    # a fresh name each copy: a part an interrupted one left blocks nothing
+    _patiently(hostos.check_deletable, source)    # open elsewhere on Windows: the copy would leave two files
+    part = hostos.unique_scratch(    # a new name per copy: a part file left by an interrupted copy is no conflict
         os.path.join(os.path.dirname(dest), "." + os.path.basename(dest)), PART, create=False)
     made = False
     try:
@@ -134,7 +134,7 @@ def copy_across(source: str, dest: str, tick=None, stopped=lambda: False) -> boo
             os.fsync(writer.fileno())
         try:
             shutil.copystat(source, part)
-        except OSError as exc:    # the content is whole; dates and flags are not worth the move
+        except OSError as exc:    # the content is complete; missing dates and flags do not stop the move
             debug.event("move", "dates not copied", file=source, error=str(exc))
         if not place(part, dest):
             return False
@@ -143,7 +143,7 @@ def copy_across(source: str, dest: str, tick=None, stopped=lambda: False) -> boo
         if made:
             _remove(part)
     try:
-        hostos.remove_file(source)    # a read-only original goes too, as it does on POSIX
+        hostos.remove_file(source)    # a read-only source is removed too, as on POSIX
     except OSError as exc:
         raise OSError(exc.errno, messages.MOVE_KEPT_BOTH % (exc.strerror or exc)) from exc
     return True
@@ -152,12 +152,12 @@ def copy_across(source: str, dest: str, tick=None, stopped=lambda: False) -> boo
 def _remove(path: str) -> None:
     try:
         hostos.remove_file(path)
-    except OSError as exc:    # left behind, hidden; the next copy of that name takes another
+    except OSError as exc:    # the hidden part file stays; the next copy to that name uses a new one
         debug.event("move", "a part could not be removed", file=path, error=str(exc))
 
 
 def _move_one(source: str, dest: str, tick, stopped) -> bool:
-    """Placed on one drive, copied whole across two; False when `dest` is taken."""
+    """Renamed within one drive, copied and deleted across two; False when `dest` exists."""
     if not same_drive(source, os.path.dirname(dest)):
         return copy_across(source, dest, tick, stopped)
     try:
@@ -169,7 +169,7 @@ def _move_one(source: str, dest: str, tick, stopped) -> bool:
 
 
 def move(pairs, tick=None, stopped=lambda: False) -> Result:
-    """Each (source, destination) in turn: placed on one drive, copied whole across two."""
+    """Move each (source, destination) in turn: renamed within one drive, copied across two."""
     moved, skipped, failed = [], [], []
     for source, dest in pairs:
         if stopped():
@@ -186,7 +186,7 @@ def move(pairs, tick=None, stopped=lambda: False) -> Result:
 
 
 def carry(preferences, pairs) -> None:
-    """What Amaze keeps about each moved file follows it: star, comment, icon, capture, pictures."""
+    """Re-key what Amaze stores for each moved file: star, comment, icon, capture, thumbnails."""
     keys = {}
     for old, new in pairs:
         before = captures.file_key(preferences, old)
@@ -204,7 +204,7 @@ def carry(preferences, pairs) -> None:
     for name, follow in list(carriers.items()):
         try:
             follow(preferences, pairs)
-        except Exception as exc:                          # noqa: BLE001 - one carrier failing leaves the rest theirs
+        except Exception as exc:                          # noqa: BLE001 - one failing carrier does not stop the rest
             debug.event("move", "a carrier failed", carrier=name, error=str(exc))
 
 
@@ -216,7 +216,7 @@ def _size(path: str) -> int:
 
 
 class _MoveWorker(QtCore.QThread):
-    """One batch off the GUI thread; a stop leaves the file in hand where it was."""
+    """Moves one batch off the GUI thread; when stopped, the file being copied stays at its source."""
 
     ticked = QtCore.Signal(object, object)    # (bytes copied, bytes to copy)
     landed = QtCore.Signal(object)    # the Result
@@ -243,7 +243,7 @@ class _MoveWorker(QtCore.QThread):
 
         try:
             result = move(self.pairs, tick, self._stopped)
-        except Exception as exc:                          # noqa: BLE001 - logged; the batch still lands
+        except Exception as exc:                          # noqa: BLE001 - logged; `landed` is still emitted
             debug.event("move", "move failed", error=str(exc))
             result = Result([], [], [(source, str(exc)) for source, _dest in self.pairs])
         self.landed.emit(result)
@@ -265,7 +265,7 @@ class _MoveEngine(QtCore.QObject):
         if self._worker is not None:
             return False
         worker = _MoveWorker(pairs)
-        worker.ticked.connect(self._ticked)    # BOUND slots, so each arrives on this thread
+        worker.ticked.connect(self._ticked)    # BOUND slots, so each call runs on this object's thread
         worker.landed.connect(self._landed)
         worker.finished.connect(self._finished)
         self._worker, self._job = worker, (preferences, ticked, landed)
@@ -280,10 +280,10 @@ class _MoveEngine(QtCore.QObject):
         if self._job is None:
             return
         preferences, _ticked, landed = self._job
-        carry(preferences, result.moved)    # here, on the GUI thread the stores are written from
+        carry(preferences, result.moved)    # on the GUI thread, the one the stores are written from
         try:
             landed(result)
-        except RuntimeError:    # the panel that asked is gone; the files and their keys moved
+        except RuntimeError:    # the calling panel was deleted; the files and their keys have moved
             pass
 
     def _finished(self) -> None:
@@ -294,9 +294,9 @@ class _MoveEngine(QtCore.QObject):
     def shutdown(self) -> None:
         """Stop the move, THEN wait; safe twice and with nothing running."""
         if self._worker is not None:
-            workers.stop([self._worker], "move")    # one that will not stop is parked, never dropped
+            workers.stop([self._worker], "move")    # one that will not stop is kept in `_unstoppable`
         self._worker, self._job = None, None
 
 
 mover = workers.install(__name__, _MoveEngine, QtCore.QCoreApplication.instance(),
-                        keep=lambda old: old.busy())    # a move under way ends on the engine it began on
+                        keep=lambda old: old.busy())    # a reload keeps the engine while it runs a move

@@ -10,7 +10,7 @@ class CopCategories(category.Categories):
 
 
 class CopLibrary(library.AssetLibrary):
-    """The Cop section's asset model - the shared engine over nodes.json."""
+    """The Cop section's asset model - the shared AssetLibrary model, reading nodes.json."""
 
     TILE_FACE = "icon_nodes"    # T07
 
@@ -22,10 +22,10 @@ class CopLibrary(library.AssetLibrary):
 
     ROW_NOUN = "node setup"    # the manual's name for a row of this section
 
-    RENDERABLE = renderers.RENDERABLE_CONTEXTS    # the one set, which Check Library reads too
+    RENDERABLE = renderers.RENDERABLE_CONTEXTS    # defined in renderers.py; Check Library reads it too
 
     def can_preview(self, row: int) -> bool:
-        """Only a renderable context can hold a picture; any other node asset shows its node icon."""
+        """Only a renderable context has a rendered thumbnail; other node assets show the node icon."""
         if not 0 <= row < len(self._assets):
             return False
         return renderers.can_hold_a_render(self._assets[row].renderer)

@@ -1,4 +1,4 @@
-"""The files one asset owns, by kind; the library model and the version store both ask here."""
+"""The files one asset owns, by kind; used by library.py and versions.py."""
 
 from amaze.core import debug, library_files, material, tile_icons
 
@@ -6,7 +6,7 @@ from amaze.core import debug, library_files, material, tile_icons
 def asset_files_for(preferences, mat_id: str, section: str) -> dict:
     """{kind: path} of every FILE a `section` row owns; {} for an unsafe id."""
     mat_id = str(mat_id)
-    if not material.is_safe_asset_id(mat_id):    # read verbatim from a database: `../x` escapes
+    if not material.is_safe_asset_id(mat_id):    # read verbatim from a database: `../x` points outside the folder
         debug.event("library", "asset id cannot name a file - it owns "
                     "no paths", mat_id=mat_id)
         return {}

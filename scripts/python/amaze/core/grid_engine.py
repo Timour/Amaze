@@ -26,7 +26,7 @@ class GridEngine:
 
     COLUMN_ROLES: dict = {}    #: {column key: role attribute name or Qt role int} ▸p/list-columns
 
-    COLOUR_COLUMNS = {"category": "CategoryColorRole"}    #: {column key: its ink role}
+    COLOUR_COLUMNS = {"category": "CategoryColorRole"}    #: {column key: its text colour role}
 
     TICK_COLUMNS = ("favorite", "open", "comments")    #: painted as a tick by `TickCellDelegate`
 
@@ -57,7 +57,7 @@ class GridEngine:
         return None
 
     def _column_role(self, key):
-        """The role this model answers a column with, or None."""
+        """The role this model reads for a column, or None."""
         named = self.COLUMN_ROLES.get(key)
         if named is None:
             return None
@@ -81,9 +81,9 @@ class GridEngine:
             self.dataChanged.emit(top, bottom, roles)
 
     def data(self, index, role=DISPLAY):
-        """The one data(): column 0 is the row's answer, a later column its cell's."""
+        """The only data(): column 0 returns `row_data`, a later column `cell_data`."""
         row = index.row()
-        if not 0 <= row < self.rowCount():    # an invalid index is row -1; an index outlives a shrink
+        if not 0 <= row < self.rowCount():    # row -1: invalid; an old index can be past the end
             return None
         column = index.column()
         if column <= 0:
@@ -91,11 +91,11 @@ class GridEngine:
         return self.cell_data(row, column, role)
 
     def row_data(self, row: int, role):
-        """What `row` answers for `role`; the one method a grid model writes. `row` is in range."""
+        """What `row` holds for `role`; the only method a grid model writes. `row` is in range."""
         return None
 
     def cell_data(self, row: int, column: int, role):
-        """A later column: its text, its ink and the row's tooltip, all asked of `row_data`."""
+        """A later column: text, text colour and the row's tooltip, all read from `row_data`."""
         if not 0 < column < len(grid_columns.KEYS):
             return None
         key = grid_columns.KEYS[column]
@@ -106,9 +106,9 @@ class GridEngine:
             colour = QtGui.QColor(str(value)) if value else None
             return colour if colour is not None and colour.isValid() else None
         if role == QtCore.Qt.ItemDataRole.ToolTipRole:
-            return self.row_data(row, role)    # list mode hides column 0; the pointer rests on a cell
+            return self.row_data(row, role)    # list mode hides column 0, so every cell returns the row's tooltip
         if role != DISPLAY:
-            return None    # decoration and the rest stay column 0's ▸p/list-columns
+            return None    # decoration and the rest come from column 0 only ▸p/list-columns
         mapped = self._column_role(key)
         if mapped is None:
             return None    # this model has no such column - not an error
@@ -126,7 +126,7 @@ class GridEngine:
 
     def sort(self, column: int, order=ASCENDING) -> None:
         """Sort the rows themselves; the header reaches here through the grid proxy."""
-        self._sort_column = NAME if column <= 0 else column    # column 0 answers the name
+        self._sort_column = NAME if column <= 0 else column    # column 0 shows the name
         self._sort_order = order
         self.resort()
 
@@ -134,14 +134,14 @@ class GridEngine:
         return self._column_role(grid_columns.KEYS[self._sort_column])
 
     def _sorted_rows(self) -> list:
-        """Today's rows as old row numbers, in sort order: one key each, stable both ways."""
+        """The current rows as old row numbers, in sort order: one key each, stable both ways."""
         keys = [sort_key(self.cell_data(row, self._sort_column, DISPLAY))
                 for row in range(self.rowCount())]
         return sorted(range(len(keys)), key=keys.__getitem__,
                       reverse=self._sort_order == DESCENDING)
 
     def _in_step(self) -> bool:
-        """Every row list holds one entry per row; a list out of step would move to wrong rows."""
+        """Every row list holds one entry per row; a list of another length would mix up rows."""
         count = self.rowCount()
         for name in self.GRID_ROWS:
             held = len(getattr(self, name))
@@ -155,7 +155,7 @@ class GridEngine:
     def _take_order(self, order: list) -> None:
         for name in self.GRID_ROWS:
             rows = getattr(self, name)
-            rows[:] = [rows[old] for old in order]    # in place: a holder of the list sees it move
+            rows[:] = [rows[old] for old in order]    # in place, so other holders see it
 
     def order_rows(self) -> dict | None:
         """Sort with NO signal, for a model building its rows; {old row: new row} or None."""
@@ -169,7 +169,7 @@ class GridEngine:
         return moved
 
     def resort(self) -> dict | None:
-        """Sort NOW, as one layout change carrying every bookmark; {old: new row} or None."""
+        """Sort NOW in one layout change, persistent indexes moved; {old: new row} or None."""
         self._resort_due = False
         if not self._in_step():
             return None
@@ -188,19 +188,19 @@ class GridEngine:
         return moved
 
     def rows_reordered(self) -> None:
-        """Rebuild what this model keys BY ROW once `GRID_ROWS` moved."""
+        """Rebuild what this model indexes BY ROW after the `GRID_ROWS` lists are reordered."""
 
     def _schedule_resort(self, *_args) -> None:
         """Sort on the next turn, ONCE however many rows came. No timer of its own. ▸r/grid-sort-cost"""
         if self._resort_due:
             return
         self._resort_due = True
-        QtCore.QTimer.singleShot(0, self._resort_if_due)    # holds the model until it runs
+        QtCore.QTimer.singleShot(0, self._resort_if_due)    # keeps the model alive until it runs
 
     def _resort_if_due(self) -> None:
         if self._resort_due:
             self.resort()
 
     def _rows_changed(self, _top, _bottom, roles=()) -> None:
-        if not roles or self._sort_role() in roles:    # a thumbnail landing reads nothing it sorts by
+        if not roles or self._sort_role() in roles:    # a thumbnail update changes no sort column
             self._schedule_resort()

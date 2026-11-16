@@ -13,14 +13,14 @@ from amaze.core import packages
 from amaze.helpers import hostos, wording
 
 KIND = "houdini-package"
-MAX_UNPACKED_BYTES = 512 * 1024 * 1024    # the most an add-on may unpack, as a release may ▸r/zip-declared-size
+MAX_UNPACKED_BYTES = 512 * 1024 * 1024    # the largest unpacked size of an add-on, as of a release ▸r/zip-declared-size
 ROOT = "addons"    #: the add-ons' folder, in Amaze's install and in the package store alike
 REQUIRED = ("name", "folder", "version", "author", "houdini", "houdini_min", "changelog")
 NODE_KEYS = ("label", "type", "file", "addon_icon", "short_description", "description")
-SHOWN = ("addon_icon", "short_description")    #: what a group's row shows; its nodes must agree
+SHOWN = ("addon_icon", "short_description")    #: what a group's row shows; its nodes must match
 PICTURES = (".svg", ".png")    #: what the Add-On tab draws; a node's Houdini icon stays in its .hda
-OFF = "off"    #: a switched-off row's files wait here, where Houdini does not look
-BETA = "-beta"    #: a beta's version ends in it, `1.2.4-beta`, and may sit beside the release `1.2.4`
+OFF = "off"    #: a switched-off row's files are moved here, where Houdini does not load them
+BETA = "-beta"    #: a beta's version ends in it, `1.2.4-beta`, and may exist beside the release `1.2.4`
 _FOLDER = re.compile(r"[a-z0-9_]+$")
 _STORE_NAME = re.compile(r"(?P<name>.+)-(?P<version>\d+\.\d+\.\d+(?:-beta)?)\.amazepkg$")
 _VERSION = re.compile(r"\d+\.\d+\.\d+(?:-beta)?$")
@@ -61,7 +61,7 @@ def problems(manifest) -> list:
 
 
 def _texts(values) -> set:
-    """The members of a list that are text, as a set; anything else is refused by name elsewhere."""
+    """The members of a list that are text, as a set; other members are rejected by name elsewhere."""
     return {value for value in values if isinstance(value, str)}
 
 
@@ -90,13 +90,13 @@ def _node_problems(nodes, files) -> list:
 
 
 def _group(node) -> str:
-    """The group `node` is in, or "" when it is in none and is a row of its own."""
+    """The group `node` is in, or empty when it is in none and has a row of its own."""
     group = node.get("group") if isinstance(node, dict) else ""
     return group.strip() if isinstance(group, str) else ""
 
 
 def _group_problems(nodes) -> list:
-    """A group is one row showing one icon and one short description, so its nodes must agree."""
+    """A group is one row showing one icon and one short description, so its nodes must match."""
     first, found = {}, []
     for node in nodes:
         if not _group(node):
@@ -111,7 +111,7 @@ def _group_problems(nodes) -> list:
 
 
 def rows(manifest) -> list:
-    """The Add-On tab's rows in package order: a group is listed once under its name, others alone."""
+    """The Add-On tab's rows in package order: a group is listed once under its name, others one each."""
     found, index = [], {}
     for node in manifest["nodes"]:
         key = ("group", _group(node)) if _group(node) else ("node", node["type"])
@@ -129,7 +129,7 @@ def file_name(manifest) -> str:
 
 
 def write(out_dir: str, fields: dict, root: str, files) -> str:
-    """The ONE add-on package writer: `files`, relative to `root`, into `out_dir`; answers the path."""
+    """The ONE add-on package writer: `files`, relative to `root`, into `out_dir`; returns the path."""
     manifest = dict(fields, format=packages.FORMAT, kind=KIND, app=branding.APP_VERSION,
                     files=sorted(set(files)))
     found = problems(manifest)
@@ -148,7 +148,7 @@ def write(out_dir: str, fields: dict, root: str, files) -> str:
 
 
 def _checked(bundle, path) -> dict:
-    """The manifest of an OPEN package, refused whole unless it is a whole, installable add-on."""
+    """The manifest of an OPEN package; PackageError unless it is a complete, installable add-on."""
     manifest = packages.manifest_from(bundle, path)
     found = problems(manifest)
     files = manifest.get("files")
@@ -158,7 +158,7 @@ def _checked(bundle, path) -> dict:
     found += ["missing member %s" % member for member in sorted(listed - members)]
     found += ["member %s is not listed" % member for member in sorted(members - listed)]
     needed = packages.unpacked_bytes(bundle, listed)
-    if needed > MAX_UNPACKED_BYTES:    # read off the zip before a write ▸r/zip-declared-size
+    if needed > MAX_UNPACKED_BYTES:    # read from the zip before any file is written ▸r/zip-declared-size
         found.append(messages.ADDON_TOO_LARGE % (
             wording.byte_size(needed), wording.byte_size(MAX_UNPACKED_BYTES)))
     if found:
@@ -168,7 +168,7 @@ def _checked(bundle, path) -> dict:
 
 
 def read(path: str) -> dict:
-    """An add-on package's manifest, through one open of the file, refused whole unless it is one."""
+    """An add-on package's manifest, opening the file once; PackageError unless it is one."""
     try:
         with zipfile.ZipFile(path) as bundle:
             return _checked(bundle, path)
@@ -177,7 +177,7 @@ def read(path: str) -> dict:
 
 
 def install(path: str, amaze_root: str, running=None) -> dict:
-    """Install `path` as `<amaze_root>/addons/<folder>`, whole; `running` is the caller's Houdini."""
+    """Install `path` as `<amaze_root>/addons/<folder>`, all or nothing; `running`: Houdini's version."""
     try:
         bundle = zipfile.ZipFile(path)
     except (OSError, zipfile.BadZipFile) as exc:
@@ -185,7 +185,7 @@ def install(path: str, amaze_root: str, running=None) -> dict:
     with bundle:
         manifest = _checked(bundle, path)
         needed = tuple(int(part) for part in manifest["houdini_min"].split("."))
-        if running and tuple(running[:2]) < needed:    # a Houdini not known is let through
+        if running and tuple(running[:2]) < needed:    # an unknown Houdini version is allowed
             raise packages.PackageError("%s %s needs Houdini %s or newer" % (
                 manifest["name"], manifest["version"], manifest["houdini_min"]))
         target = os.path.join(amaze_root, ROOT, manifest["folder"])
@@ -220,7 +220,7 @@ def package_file(amaze_root: str, folder: str) -> str:
 
 
 def _swap(staging: str, target: str) -> None:
-    """Put `staging` where `target` is; the old folder stands aside only for the swap, then goes."""
+    """Put `staging` where `target` is; the old folder is renamed aside for the swap, then deleted."""
     aside = target + ".replacing"
     shutil.rmtree(aside, ignore_errors=True)
     if os.path.isdir(target):
@@ -247,7 +247,7 @@ def installed(amaze_root: str, folder: str):
 
 
 def installed_all(amaze_root: str) -> list:
-    """(folder, manifest) for every add-on installed under `<amaze_root>/addons/` that reads whole."""
+    """(folder, manifest) for every add-on under `<amaze_root>/addons/` whose manifest is valid."""
     try:
         folders = sorted(os.listdir(os.path.join(amaze_root, ROOT)))
     except OSError:
@@ -258,7 +258,7 @@ def installed_all(amaze_root: str) -> list:
 
 
 def carry(old_root: str, new_root: str) -> list:
-    """Copy the add-ons `new_root` lacks out of `old_root`, all or none; answers the names copied."""
+    """Copy the add-ons `new_root` lacks out of `old_root`, all or none; returns the names copied."""
     source, dest = os.path.join(old_root, ROOT), os.path.join(new_root, ROOT)
     if not os.path.isdir(source):
         return []
@@ -302,7 +302,7 @@ def number(version) -> tuple:
 
 
 def wanted(installed, offer: str) -> bool:
-    """Whether Update installs `offer` over `installed`: always across kinds, else only newer."""
+    """Whether Update installs `offer` over `installed`: always if just one is a beta, else if newer."""
     if not installed or is_beta(installed) != is_beta(offer):
         return True
     return number(offer) > number(installed)
@@ -327,7 +327,7 @@ def store_versions(betas: bool = False) -> dict:
 
 def fetch_and_install(url: str, amaze_root: str, running=None, temp_dir=None,
                       downloading=contextlib.nullcontext) -> dict:
-    """Download one package into `temp_dir` and install it; `downloading()` wraps the download alone."""
+    """Download one package into `temp_dir` and install it; `downloading()` wraps only the download."""
     import tempfile
     from amaze.core import matx_sources
     scratch = tempfile.mkdtemp(prefix="amaze_addon_", dir=temp_dir or None)
@@ -346,13 +346,13 @@ def fetch_and_install(url: str, amaze_root: str, running=None, temp_dir=None,
 
 
 def _place(amaze_root: str, folder: str, node, on: bool) -> str:
-    """Where `node`'s file sits when its row is on, or off in `off/`, out of Houdini's reach."""
+    """Where `node`'s file is when its row is on, or when off: in `off/`, which Houdini does not load."""
     parts = node["file"].split("/")
     return os.path.join(amaze_root, ROOT, folder, *([] if on else [OFF]) + parts)
 
 
 def _off_types(amaze_root: str, folder: str) -> set:
-    """The node types of the installed `folder` whose files sit in `off/`."""
+    """The node types of the installed `folder` whose files are in `off/`."""
     manifest = installed(amaze_root, folder) or {}
     return {node.get("type") for node in manifest.get("nodes") or ()
             if isinstance(node, dict) and isinstance(node.get("file"), str)
@@ -365,7 +365,7 @@ def is_on(amaze_root: str, folder: str, row) -> bool:
 
 
 def set_on(amaze_root: str, folder: str, row, on: bool) -> None:
-    """Move the row's node files into place, or into `off/`; Houdini follows at its next start."""
+    """Move the row's node files into place, or into `off/`; Houdini applies it at its next start."""
     for node in row["nodes"]:
         source, dest = (_place(amaze_root, folder, node, not on),
                         _place(amaze_root, folder, node, on))

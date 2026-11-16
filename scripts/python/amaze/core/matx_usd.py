@@ -17,13 +17,13 @@ _MX_TYPES = {    # a USD value type's MaterialX name
     "color4f": "color4", "float2": "vector2", "float3": "vector3",
     "vector3f": "vector3", "normal3f": "vector3", "float4": "vector4",
 }
-_DATA_TYPES = {"color3": "vector3", "color4": "vector4"}    # a raw colour map reads as data
+_DATA_TYPES = {"color3": "vector3", "color4": "vector4"}    # a raw colour map is loaded as vector data
 _DATA_SPACES = ("raw", "linear", "lin_rec709", "scene_linear")    # spaces Karma must not transform
-_FLOAT_MIN = 1.17549435e-38    # float32's smallest normal value; MaterialX refuses less but 0
+_FLOAT_MIN = 1.17549435e-38    # float32's smallest normal value; MaterialX rejects any smaller value except 0
 
 
 class Unread(ValueError):
-    """A shader input driven by something this walk does not translate."""
+    """A shader input driven by a node this module does not translate."""
 
 
 def _driver(inp):
@@ -36,7 +36,7 @@ def _driver(inp):
 
 
 def _driving_prim(inp, owner):
-    """The prim wired into `inp`; an unwired one is a graph this walk does not know."""
+    """The prim wired into `inp`; an unwired `inp` raises Unread, as this module cannot translate it."""
     driven = _driver(inp)
     if driven is None:
         raise Unread("%s.%s is not wired" % (owner.GetName(), inp.GetBaseName()))
@@ -106,7 +106,7 @@ def _flipped_image(prim, material):
         pick = UsdShade.Shader(choice[0])
         same = (bool(_input_value(pick, "value1", material))
                 == bool(_input_value(pick, "value2", material)))
-        picked = _driver(pick.GetInput("in1" if same else "in2"))    # ifequal answers in1 when equal
+        picked = _driver(pick.GetInput("in1" if same else "in2"))    # ifequal outputs in1 when equal
         if picked is None or _shader_id(picked[0]) != SEPARATE or picked[1] != axis:
             raise Unread("%s does not pick channel %s" % (choice[0].GetName(), axis))
         source = _driving_prim(UsdShade.Shader(picked[0]).GetInput("in"), picked[0])
@@ -140,7 +140,7 @@ def _normal(prim, material):
 
 
 def material_spec(usda_path: str) -> dict:
-    """The material's constants, images and normal maps, off its composed OpenPBR graph."""
+    """The material's constants, images and normal maps, read from its composed OpenPBR graph."""
     from pxr import Usd, UsdShade
     stage = Usd.Stage.Open(usda_path)
     prim = stage.GetDefaultPrim()
@@ -201,7 +201,7 @@ def _mx_value(mx, kind: str, value):
 
 
 def _add_image(doc, mx, name: str, image: dict):
-    """A tiledimage for one map; a raw colour map reads as data, then converts."""
+    """A tiledimage for one map; a raw colour map loads as vector data, then a convert node."""
     space = image["colorspace"].lower()
     data = _DATA_TYPES.get(image["type"]) if space in _DATA_SPACES else None
     node = doc.addNode("tiledimage", "tiledimage_" + name, data or image["type"])

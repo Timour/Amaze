@@ -14,10 +14,10 @@ from PySide6 import QtCore, QtGui
 from amaze.core import debug, matx_sources, renderers, thumbnails, workers
 from amaze.core import grid_engine
 
-PREVIEW_DIR_NAME = "matx_previews"    # a NAME only - where it lives resolves per call in preview_cache(), like CATALOGUE_NAME below
+PREVIEW_DIR_NAME = "matx_previews"    # a NAME only - its folder is resolved per call in preview_cache(), like CATALOGUE_NAME below
 
 
-from amaze.core.multifilterproxy_model import split_search  # noqa: E402 - re-exported; callers and tests reach it here
+from amaze.core.multifilterproxy_model import split_search  # noqa: E402 - re-exported; callers and tests import it from here
 
 
 def preview_cache() -> str:
@@ -37,11 +37,11 @@ SECTION_TILE_LABELS = {"gradient": "Color", "cop": "Node",
 CATALOGUE_NAME = "matx_catalogue_v3.json"    # the on-disk catalogue; _v3 is the record shape; its path resolves per call
 
 _LEGACY_CATALOGUE_NAMES = ["matx_catalogue.json",
-                           "matx_catalogue_v2.json"]    # older-shape filenames, swept once on first construction
+                           "matx_catalogue_v2.json"]    # older-shape filenames, removed when the model is created
 
 
 def catalogue_cache() -> str:
-    """Where the on-disk catalogue lives right now."""
+    """Where the on-disk catalogue is right now."""
     return os.path.join(hostos.cache_root(), CATALOGUE_NAME)
 
 
@@ -55,14 +55,14 @@ def _purge_legacy_caches():
             pass
 
 
-CATALOGUE_CAP = 4000    # records asked of each source; none holds more today ▸r/matx-source-quirks
+CATALOGUE_CAP = 4000    # records requested from each source; none has more today ▸r/matx-source-quirks
 
 
 class _CatalogueWorker(QtCore.QThread):
     """Every source's whole catalogue off the UI thread, ~3600 records (SimReady 1705), no paging."""
 
     done = QtCore.Signal(object, object, int)   # (records, errors, generation)
-    progressed = QtCore.Signal(int, int, int)    # (sources listed, sources, generation): the bar
+    progressed = QtCore.Signal(int, int, int)    # (sources listed, sources, generation): for the progress bar
 
     def __init__(self, sources, generation, previous=()):
         super().__init__()
@@ -75,7 +75,7 @@ class _CatalogueWorker(QtCore.QThread):
         self.progressed.emit(0, len(self._sources), self._generation)
         for listed, src in enumerate(self._sources, 1):
             if self.isInterruptionRequested():
-                return    # a quit: no `done`, or a listing cut short is cached as the whole
+                return    # on quit: no `done`, or a partial listing is cached as complete
             try:
                 src.remember([r for r in self._previous if r.source == src.name])
             except Exception as exc:                    # noqa: BLE001
@@ -102,7 +102,7 @@ class _PreviewWorker(QtCore.QThread):
     """Fetches preview images by URL or callable reader; reports them by thumbnail-engine key."""
 
     ready = QtCore.Signal(object, object)   # (key, QImage)
-    failed = QtCore.Signal(object)          # (key): the job brought no picture
+    failed = QtCore.Signal(object)          # (key): the job produced no picture
     attempted = QtCore.Signal()             # per job, success OR failure
 
     def __init__(self, jobs):
@@ -112,10 +112,10 @@ class _PreviewWorker(QtCore.QThread):
     def run(self):
         for key, fetch, path in self._jobs:
             if self.isInterruptionRequested():
-                return    # a quit: the pictures not yet fetched stay unfetched
+                return    # on quit: the remaining pictures are not fetched
             try:
                 if not os.path.exists(path):
-                    if callable(fetch):    # an Amaze tile's thumbnail is one ranged member read, not a URL
+                    if callable(fetch):    # an Amaze tile's thumbnail is one ranged read of a package member, not a URL
                         fetch(path)
                     else:
                         matx_sources.download(fetch, path)
@@ -126,7 +126,7 @@ class _PreviewWorker(QtCore.QThread):
                     except OSError:
                         pass
                     debug.event("online", "preview did not decode",
-                                url=getattr(fetch, "label", None)    # a reader carries its label - str() of a lambda names nothing
+                                url=getattr(fetch, "label", None)    # a reader has a `label` - str() of a lambda says nothing useful
                                 or str(fetch), path=path)
                     self.failed.emit(key)
                 else:
@@ -137,7 +137,7 @@ class _PreviewWorker(QtCore.QThread):
                                 or str(fetch), path=path)
                 self.failed.emit(key)
             finally:
-                self.attempted.emit()    # drives the bar - must fire even on failure, or a timed-out preview stalls it short of 100%
+                self.attempted.emit()    # updates the progress bar - emitted even on failure, or a timed-out preview stops it below 100%
 
 
 class MatxOnlineLibrary(grid_engine.GridEngine,
@@ -158,7 +158,7 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
     DateRole = QtCore.Qt.ItemDataRole.UserRole + 5      # 261
     RendererLabelRole = QtCore.Qt.ItemDataRole.UserRole + 6  # 262
 
-    progress_changed = QtCore.Signal(int, int)    # (done, total) preview downloads for the thin bar - rolling, previews load as tiles scroll in
+    progress_changed = QtCore.Signal(int, int)    # (done, total) preview downloads for the thin bar - previews load as tiles scroll into view
 
     def __init__(self, parent=None, preferences=None):
         super().__init__(parent)
@@ -168,7 +168,7 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
         self._source = self._sources[0]
         self._all = []           # every record, every source (cached)
         self._records = []       # the filtered view actually shown
-        self._key_rows = {}      # preview key -> row (delivery lookup)
+        self._key_rows = {}      # preview key -> row (looked up when a preview loads)
         self._search = ""
         self._source_filter = None   # show only this source (View submenu)
         self._kind_filter = None     # the online eye's kind (None = All); session-held
@@ -176,19 +176,19 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
         self._loaded = False
         self._loading = False
         self._workers = []
-        # a QThread destroyed while running takes Houdini with it; shutdown() runs at aboutToQuit
+        # a QThread destroyed while running crashes Houdini; shutdown() runs at aboutToQuit
         app = QtCore.QCoreApplication.instance()
         if app is not None:
             app.aboutToQuit.connect(self.shutdown)
         self._error = ""
-        self._requested = set()      # keys already asked for
-        self._hosted = {}            # key -> whether its hosted picture may still be asked this session
-        self._preview_total = 0      # preview downloads queued this burst
+        self._requested = set()      # keys already requested
+        self._hosted = {}            # key -> whether its hosted picture may still be requested this session
+        self._preview_total = 0      # preview downloads queued in this batch
         self._preview_done = 0       # ...and attempted (ok or failed)
         self._pending = []           # records awaiting the next dispatch
         self._pending_scheduled = False
         self._preview_workers = []   # bounded download pool
-        thumbnails.signals.ready.connect(self._on_preview_ready)    # the relay, not the engine a reload replaces
+        thumbnails.signals.ready.connect(self._on_preview_ready)    # the module's `signals` object, not the engine a reload replaces
 
     @property
     def sources(self):
@@ -205,7 +205,7 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
 
     @property
     def error(self):
-        """Last network error, '' when fine."""
+        """Last network error, empty when none."""
         return self._error
 
     def set_search(self, text):
@@ -217,7 +217,7 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
         self._apply_filter()
 
     def set_source(self, source_name):
-        """Show only this source from the next `reload`, which the online activation always runs."""
+        """Show only this source from the next `reload`, which opening the online view always calls."""
         self._source_filter = source_name
 
     def set_kind_filter(self, section) -> None:
@@ -258,7 +258,7 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
         self.beginResetModel()
         self._records = rows
         self.order_rows()    # in the grid's order before any view sees them; maps the keys
-        self.endResetModel()    # no eager queueing after this - data() asks for what it paints
+        self.endResetModel()    # no eager queueing after this - data() requests what it paints
 
     def rows_reordered(self) -> None:
         self._key_rows = {
@@ -271,7 +271,7 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
             self._apply_filter()
             return
 
-        if not self._loaded:    # instant path - the last fetch off disk; the refresh below replaces it if the remote changed
+        if not self._loaded:    # instant path - the last fetch from disk; the refresh below replaces it if the remote changed
             cached = self._load_cache()
             if cached:
                 self._all = cached
@@ -282,7 +282,7 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
             return
         self._loading = True
         self._generation += 1
-        worker = _CatalogueWorker(    # Refresh is the user asking to LOOK, so it reuses nothing
+        worker = _CatalogueWorker(    # Refresh is the user asking for a new listing, so it reuses nothing
             self._sources, self._generation, () if force else self._all)
         worker.done.connect(self._on_catalogue)
         worker.progressed.connect(self._on_catalogue_progress)
@@ -311,7 +311,7 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
                         error=str(exc))
 
     def _on_catalogue_progress(self, listed, sources, generation):
-        """The listing's steps on the thin bar, a source each, unless a burst of pictures holds it."""
+        """The listing's steps on the thin bar, one per source, unless preview downloads are using it."""
         if generation == self._generation and not self._preview_total:
             self.progress_changed.emit(listed, sources)
 
@@ -327,14 +327,14 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
             if errors:
                 debug.event("online", "sources unavailable", errors=errors)
             return
-        def _sig(recs):    # content identity: uid, title and preview_url
+        def _sig(recs):    # content signature: uid, title and preview_url
             return [(r.source, r.uid, r.title, r.preview_url, _preview_crc(r)) for r in recs]
 
         changed = _sig(records) != _sig(self._all)
         self._all = records
         self._loaded = True
         if partial:
-            debug.note(    # shown this session, never the accepted baseline; one note explains a short list
+            debug.note(    # shown this session, never cached; one note explains a short list
                 "could not reach %d of the online material sites, so "
                 "this list is missing whatever they hold. What loaded "
                 "is shown but not kept, so reopening Online Materials "
@@ -348,12 +348,12 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
         debug.event("online", "catalogue loaded", total=len(records),
                     by_source=by_source, errors=errors, changed=changed)
         self._error = ", ".join(errors) if errors else ""
-        if changed or not self._records:    # only rebuild if the data changed - a no-change background refresh must not disturb the screen
+        if changed or not self._records:    # only rebuild if the data changed - a no-change background refresh must not reset the view
             self._apply_filter()
 
     def shutdown(self) -> None:
         """Stop every worker and wait for it; safe to call twice or when nothing runs."""
-        workers.stop(self._workers, "online", cancel=False)    # its workers read the interruption alone
+        workers.stop(self._workers, "online", cancel=False)    # its workers check only isInterruptionRequested
         self._workers = []
         self._loading = False
 
@@ -361,7 +361,7 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
         if worker in self._workers:
             self._workers.remove(worker)
         if isinstance(worker, _CatalogueWorker):
-            # `finished` fires even when run() dies before `done`
+            # `finished` is emitted even when run() raises before `done`
             self._loading = False
 
     @staticmethod
@@ -381,7 +381,7 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
             digest + ".png")
 
     def _prune_previews(self, records) -> None:
-        """Remove each listed source's cached pictures that no record names; a re-render orphans one."""
+        """Remove each listed source's cached pictures that no record names; a re-render leaves one unused."""
         keep = {}
         for rec in records:
             for path in (self._cache_path(rec), self._cache_path(rec, hosted=False)):
@@ -392,7 +392,7 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
             try:
                 with os.scandir(folder) as found:
                     stale = [entry.path for entry in found if entry.name.endswith(".png")
-                             and entry.name not in keep[folder]]    # a download in flight is not a .png
+                             and entry.name not in keep[folder]]    # a download in progress has no .png name
             except OSError:
                 continue
             for path in stale:
@@ -411,7 +411,7 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
             return 256
 
     def _preview(self, rec):
-        """Cached preview, requested lazily on a miss; requests coalesce on a zero-timer."""
+        """Cached preview, requested when not cached; requests are batched by a zero-delay timer."""
         key = self._preview_key(rec)
         image = thumbnails.engine.peek(key)
         if image is not None:
@@ -419,12 +419,12 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
         if key in self._requested:
             return None
 
-        if rec.preview_url:    # a preview already on disk never goes back to the download worker
+        if rec.preview_url:    # a preview already on disk is never downloaded again
             path = self._cache_path(rec)
             if not thumbnails.engine.is_missing(key) and (
                     thumbnails.engine.is_pending(key)
                     or os.path.exists(path)):
-                return thumbnails.engine.request_file(key, path)    # read off-thread; a miss lands back here
+                return thumbnails.engine.request_file(key, path)    # read off-thread; a failed read comes back here as missing
 
         self._requested.add(key)
         self._pending.append(rec)
@@ -456,7 +456,7 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
         if worker in self._preview_workers:
             self._preview_workers.remove(worker)
         self._retire(worker)
-        # A finished worker frees a slot - keep the pool fed.
+        # A finished worker frees a slot - dispatch more pending requests.
         if self._pending and not self._pending_scheduled:
             self._pending_scheduled = True
             QtCore.QTimer.singleShot(0, self._flush_pending)
@@ -469,7 +469,7 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
             if thumbnails.engine.peek(key) is not None:
                 continue
             if rec.kind == "amazepkg":
-                member = rec.payload.get("thumb_member")    # first: a named member outranks every drawn stand-in
+                member = rec.payload.get("thumb_member")    # first: a named member is used before any drawn placeholder
                 source = self.source_for(rec)
                 if member and source is not None:
                     reader = (lambda path, s=source, r=rec:
@@ -535,7 +535,7 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
                 self._deposit_face(key, "material")    # a source that ships no picture
                 continue
             url = rec.preview_url.replace("format=webp", "format=png")    # Qt reads no WebP ▸r/matx-source-quirks
-            jobs.append((key, url, self._cache_path(rec, hosted=False)))    # never the hosted file's place
+            jobs.append((key, url, self._cache_path(rec, hosted=False)))    # never the hosted file's path
         if not jobs:
             return
         self._preview_total += len(jobs)
@@ -558,7 +558,7 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
         self._requested.discard(key)
 
     def _on_preview_attempted(self):
-        """One preview download finished: advance the bar, reset it when the burst drains."""
+        """One preview download finished: advance the bar, reset it when all queued ones are done."""
         self._preview_done += 1
         self.progress_changed.emit(self._preview_done, self._preview_total)
         if self._preview_done >= self._preview_total and not self._pending:
@@ -567,10 +567,10 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
 
     def _deposit_preview(self, key, image):
         thumbnails.engine.deposit(key, image)
-        self._requested.discard(key)    # drop the marker so the next paint re-asks after an eviction
+        self._requested.discard(key)    # drop the marker so the next paint requests it again after an eviction
 
     def _on_preview_failed(self, key):
-        """A hosted picture that did not arrive: the next paint falls through to the tile's own face."""
+        """A hosted picture that did not download: the next paint uses the tile's own face."""
         if not self._hosted.get(key):
             return    # any other failure keeps its marker, or every repaint would fetch it again
         self._hosted[key] = False
@@ -625,7 +625,7 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
                 return SECTION_TILE_LABELS.get(section, "Amaze")
             return rec.source if rec.kind == "package" else rec.source + " (values)"
         if role == self.RendererRole:
-            return renderers.HUB.key    # what an import becomes, so the Filter reads it as the library
+            return renderers.HUB.key    # what an import becomes, so the Filter treats it like library rows
         if role == self.CategoryRole:
             return [rec.category]
         if role == self.TagRole:
@@ -648,7 +648,7 @@ class MatxOnlineLibrary(grid_engine.GridEngine,
 
 
 class MatxSidebarModel(QtCore.QAbstractListModel):
-    """The online browser's sidebar: row 0 is "All", the rest the selected source's categories."""
+    """The online browser's sidebar: row 0 is `All`, the rest the selected source's categories."""
 
     def __init__(self, online_model, parent=None):
         super().__init__(parent)
@@ -668,7 +668,7 @@ class MatxSidebarModel(QtCore.QAbstractListModel):
         return len(self._rows)
 
     def category_at(self, row):
-        """The category for a row, or None for the "All" row."""
+        """The category for a row, or None for the `All` row."""
         if 0 <= row < len(self._rows):
             return None if row == 0 else self._rows[row]
         return None

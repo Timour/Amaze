@@ -1,4 +1,4 @@
-"""WHAT IS SHOWN, held however the rows change; the ORDER is the grid engine's. ▸r/proxy-invariant"""
+"""Which rows are shown, kept right as rows change; grid_engine sets the order. ▸r/proxy-invariant"""
 
 import contextlib
 
@@ -8,7 +8,7 @@ from PySide6 import QtCore
 class GridProxyModel(QtCore.QSortFilterProxyModel):
     """Base for every Grid proxy: it FILTERS, in the order its model keeps. ▸p/grid-engine"""
 
-    refiltered = QtCore.Signal()    # after every filter pass, even one that moved no row
+    refiltered = QtCore.Signal()    # after every filter pass, even one that hid or showed no row
 
     PASSIVE_ROLES = frozenset({    # roles that cannot change what is shown ▸r/proxy-invariant
         QtCore.Qt.ItemDataRole.DecorationRole,
@@ -22,7 +22,7 @@ class GridProxyModel(QtCore.QSortFilterProxyModel):
         self._pass_scheduled = False
         self._batching = False      # inside `one_pass`: a filter setter defers instead of running the pass
         self._batch_wanted = False
-        self._pass_timer = QtCore.QTimer(self)    # owned, so a queued pass dies with it ▸r/model-parent
+        self._pass_timer = QtCore.QTimer(self)    # deleted with the proxy ▸r/model-parent
         self._pass_timer.setSingleShot(True)
         self._pass_timer.setInterval(0)
         self._pass_timer.timeout.connect(self._pass_now)
@@ -39,10 +39,10 @@ class GridProxyModel(QtCore.QSortFilterProxyModel):
             try:
                 previous.dataChanged.disconnect(self._source_data_changed)
             except (RuntimeError, TypeError):
-                pass                     # never connected, or already gone
+                pass                     # never connected, or already deleted
         super().setSourceModel(model)
         if model is not None:
-            model.dataChanged.connect(self._source_data_changed)    # a row coming IN is not here yet
+            model.dataChanged.connect(self._source_data_changed)    # for changed rows; Qt itself filters an inserted row
 
     def _source_data_changed(self, _first, _last, roles=()) -> None:
         if self._matters(roles):
@@ -63,7 +63,7 @@ class GridProxyModel(QtCore.QSortFilterProxyModel):
 
     @contextlib.contextmanager
     def one_pass(self):
-        """Hold the pass to the end of the block, then run it ONCE. ▸p/filter-pass-cost"""
+        """Defer the filter pass to the end of the block, then run it ONCE. ▸p/filter-pass-cost"""
         if self._batching:
             yield                        # already inside one; the outermost runs it
             return
@@ -92,6 +92,6 @@ class GridProxyModel(QtCore.QSortFilterProxyModel):
         self._pass_timer.start()
 
     def _pass_now(self) -> None:
-        self._pass_scheduled = False    # cleared first: a change during the pass earns its own
+        self._pass_scheduled = False    # cleared first: a change during the pass schedules another
         self.invalidateFilter()
         self.refiltered.emit()

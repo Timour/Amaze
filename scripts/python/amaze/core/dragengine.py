@@ -42,7 +42,7 @@ PICK_LOG_HITS_PER_GESTURE = 4
 
 
 def _pick_log_budget(hit=None) -> bool:
-    """True while this gesture may still record a pick diagnostic; hits have their own reserve."""
+    """True while this gesture may still record a pick diagnostic; hits have their own limit."""
     key = "logged_hit" if hit else "logged"
     cap = PICK_LOG_HITS_PER_GESTURE if hit else PICK_LOG_PER_GESTURE
     if _hover.get(key, 0) >= cap:
@@ -52,7 +52,7 @@ def _pick_log_budget(hit=None) -> bool:
 
 
 def _dbg_on() -> bool:
-    """Guard for records whose DATA costs something to gather."""
+    """Whether debug logging is on, for records whose DATA is costly to gather."""
     try:
         from amaze.core import debug
         return debug.is_on()
@@ -71,12 +71,12 @@ def begin(section_key: str, ids=()) -> None:
     _hover["snap_failure_said"] = False
     _reset_move()
     _move["snap_pos"] = None
-    _move["landing"] = None    # the previous release has had its answer
+    _move["landing"] = None    # the previous release has already read it
 
 
 def end() -> None:
-    """End of gesture, however it ended: the highlight back, the snap point kept as the landing."""
-    landing = _move.get("snap_pos")    # the release asks for it after this clears the outline
+    """End a gesture, however it ended: restore the highlight, keep the snap point for the drop."""
+    landing = _move.get("snap_pos")    # the release reads it after this clears the outline
     _restore_highlight()
     ghost_clear()
     _reset_move()
@@ -94,7 +94,7 @@ _move = {
     "pane_kind": None,
     "pane_rect": None,
     "snap_pos": None,    # the drawn outline's snapped centre, while one is drawn
-    "landing": None,    # the snap point at end(), answered until the next begin()
+    "landing": None,    # the snap point at end(), returned until the next begin()
     "snap_view": None,    # (editor, network, visible bounds) that `snap_rects` were fetched for
     "snap_rects": [],
 }
@@ -122,7 +122,7 @@ PANE_REVALIDATE = 0.25
 
 
 def pane_under_cursor_tracked(now=None):
-    """(pane, kind, fresh) for the per-move pane question, cached on the pane's rect. ▸p/drag-move-cost"""
+    """(pane, kind, fresh) for the pane lookup on each move, cached by pane rect. ▸p/drag-move-cost"""
     from PySide6 import QtGui
 
     now = time.time() if now is None else now
@@ -131,7 +131,7 @@ def pane_under_cursor_tracked(now=None):
     if rect is not None:
         if age < PANE_REVALIDATE and rect.contains(QtGui.QCursor.pos()):
             return _move["pane"], _move["pane_kind"], False
-    elif _move["pane_at"] and age < PICK_INTERVAL:    # a MISS holds only a pick interval, so entering the editor from dead space is never 250ms blind
+    elif _move["pane_at"] and age < PICK_INTERVAL:    # a MISS is cached for one pick interval only, so entering the editor is never missed for 250ms
         return None, None, False
     _move["pane_at"] = now
     tab = pane_tab_under_cursor()
@@ -149,7 +149,7 @@ def pane_under_cursor_tracked(now=None):
 
 
 def ghost_tick(editor, now=None) -> bool:
-    """True when the ghost's target answers are stale, once per PICK_INTERVAL. ▸p/drag-move-cost"""
+    """True when the ghost's cached target results are stale, once per PICK_INTERVAL. ▸p/drag-move-cost"""
     now = time.time() if now is None else now
     try:
         same = _move["editor"] is not None and editor == _move["editor"]
@@ -163,7 +163,7 @@ def ghost_tick(editor, now=None) -> bool:
 
 
 def set_ghost_answers(blocked, target, type_name) -> None:
-    """The tick's findings, held for the moves between ticks."""
+    """The tick's results, kept for the moves between ticks."""
     _move["blocked"] = bool(blocked)
     _move["target"] = target
     _move["type_name"] = type_name or ""
@@ -240,7 +240,7 @@ def _snap_candidates(entries, rect, radius) -> list:
 
 
 def ghost_snap_position():
-    """The drawn ghost's snapped centre, else the landing `end()` kept, else None."""
+    """The drawn ghost's snapped centre, else the snap point `end()` kept, else None."""
     if _move.get("snap_pos") is not None:
         return _move["snap_pos"]
     return _move.get("landing")
@@ -264,7 +264,7 @@ _shape_cache: dict = {}
 
 
 def _shape_for(type_name: str) -> str:
-    """The node shape a created carrier would wear, or "" for a box; cached per type. ▸r/overlay-shapes"""
+    """The node shape a created carrier node has, or `""` for a box; cached per type. ▸r/overlay-shapes"""
     if not type_name:
         return ""
     if type_name in _shape_cache:
@@ -298,7 +298,7 @@ def ghost_show(editor, position, type_name: str = "",
             position.x() + half[0], position.y() + half[1])
         _move["snap_pos"] = None
         delta = _snap_delta(editor, rect)
-        if delta is not None:    # aligned to neighbours like the host's ghost; the release lands on the same point
+        if delta is not None:    # aligned to neighbours like the host's ghost; the release uses the same point
             rect.translate(delta)
             _move["snap_pos"] = hou.Vector2(position.x() + delta.x(),
                                             position.y() + delta.y())
@@ -316,7 +316,7 @@ def ghost_show(editor, position, type_name: str = "",
 
 
 def ghost_clear() -> None:
-    """Give every borrowed overlay back - on EVERY exit path."""
+    """Clear every overlay and drop highlight this module set - on EVERY exit path."""
     _move["snap_pos"] = None
     _forget_snap_rects()
     while _ghosted:
@@ -332,7 +332,7 @@ DROP_TARGET_RADIUS = 0.25
 
 
 def _drop_items_at(editor, position):
-    """Every network item within the drop radius of `position`, or None when the editor cannot say."""
+    """Every network item within the drop radius of `position`, or None when the editor call fails."""
     try:
         spot = editor.posToScreen(position)
         radius = editor.lengthToScreen(DROP_TARGET_RADIUS)
@@ -345,7 +345,7 @@ def _drop_items_at(editor, position):
 
 
 def wire_under_cursor(editor, position, exclude=()):
-    """The connection a release at `position` would land on, or (None, "", -1). ▸r/drop-targets"""
+    """The connection a release at `position` would drop onto, or `(None, "", -1)`. ▸r/drop-targets"""
     if editor is None or position is None:
         return (None, "", -1)
     if not _drop_on_wire_allowed(editor):
@@ -366,7 +366,7 @@ def wire_under_cursor(editor, position, exclude=()):
 
 
 def connector_under_cursor(editor, position, exclude=()):
-    """The connector a release at `position` would land on, or (None, "", -1). ▸r/drop-targets"""
+    """The connector a release at `position` would drop onto, or `(None, "", -1)`. ▸r/drop-targets"""
     if editor is None or position is None:
         return (None, "", -1)
     found = _drop_items_at(editor, position)
@@ -423,7 +423,7 @@ def drop_group(label: str):
 
 
 def connect_to_neighbour(target, nodes, editor=None) -> bool:
-    """Wire what landed to its connector; an occupied input is replaced. ▸r/drop-targets"""
+    """Wire the dropped nodes to the target connector; an occupied input is replaced. ▸r/drop-targets"""
     node, name, index = target
     nodes = [n for n in nodes if n is not None]
     if node is None or not nodes:
@@ -441,7 +441,7 @@ def connect_to_neighbour(target, nodes, editor=None) -> bool:
                     node.setInput(index, last)
                 else:
                     return False
-    except (AttributeError, hou.InvalidInput,    # a connector the node lost since the hover lands here
+    except (AttributeError, hou.InvalidInput,    # a connector the node lost since the hover is caught here
             hou.OperationFailed, hou.PermissionError,
             hou.ObjectWasDeleted):
         return False
@@ -452,7 +452,7 @@ def connect_to_neighbour(target, nodes, editor=None) -> bool:
 
 
 def _fit_after_wiring(nodes, editor=None) -> None:
-    """Settle newly wired nodes like the host's drop; pass the drop's editor. ▸r/drop-targets"""
+    """Move newly wired nodes apart as the host's drop does; pass the drop's editor. ▸r/drop-targets"""
     if not nodes:
         return
     try:
@@ -469,7 +469,7 @@ def _fit_after_wiring(nodes, editor=None) -> None:
 
 
 def _drop_on_wire_allowed(editor) -> bool:
-    """The artist's Drop On Wire preference; True when it cannot be asked. ▸r/drop-targets"""
+    """The artist's Drop On Wire preference; True when it cannot be read. ▸r/drop-targets"""
     try:
         import nodegraphprefs
         return bool(nodegraphprefs.allowDropOnWireNetworkSpecific(
@@ -479,7 +479,7 @@ def _drop_on_wire_allowed(editor) -> bool:
 
 
 def wire_highlight(editor, target) -> None:
-    """Light the wire a release would splice into, remembering the editor. ▸r/overlay-shapes"""
+    """Highlight the wire a release would splice into, remembering the editor. ▸r/overlay-shapes"""
     item, name, index = target
     try:
         editor.setDropTargetItem(item, name, index)
@@ -713,7 +713,7 @@ def _clean_prim_path(path: str) -> str:
 
 
 def _viewport_at(viewer, x, y, scale=1.0, widget_h=0):
-    """(viewport, x, y, height) holding a viewer-space point, in logical pixels. ▸r/pick-boundary"""
+    """(viewport, x, y, height) containing a viewer-space point, in logical pixels. ▸r/pick-boundary"""
     try:
         vps = viewer.viewports()
     except AttributeError:
@@ -742,7 +742,7 @@ def _viewport_at(viewer, x, y, scale=1.0, widget_h=0):
 
 
 def _pick_trace(world, x, y, result, viewer=None):
-    """One record per pick: what was PASSED beside what came back, with the cursor read only here."""
+    """One record per pick: the coordinates PASSED and the result, the cursor read only here."""
     if not (_dbg_on() and _pick_log_budget(hit=bool(result))):
         return
     data = _cursor_truth(viewer) if viewer is not None else {}
@@ -838,7 +838,7 @@ def hover_update(panel, section_key, pane_tab=None,
 
 
 def _set_highlight(viewer, world, target, now, force_clear=False):
-    """Drive the highlight for one pick, LOP or OBJ. ▸r/pick-boundary"""
+    """Update the highlight for one pick, LOP or OBJ. ▸r/pick-boundary"""
     if _hover["serial"] != serial or (
         viewer is not None
         and _hover["viewer"] is not None
@@ -933,7 +933,7 @@ def viewport_release_target(panel):
 
 @functools.cache
 def _load_stock_lop():
-    """`lop_dragdrop.py` loaded from $HH, or None when the load fails; either answer is kept."""
+    """`lop_dragdrop.py` loaded from $HH, or None when the load fails; either result is cached."""
     path = os.path.join(hou.getenv("HH"), "scripts", "scene", "lop_dragdrop.py")
     try:
         spec = importlib.util.spec_from_file_location(

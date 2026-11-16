@@ -1,8 +1,8 @@
-"""The Grid's COLUMNS, the one order; the models answer them through `grid_engine`. ▸p/list-columns"""
+"""The Grid's columns in their order; the models fill them through `grid_engine`. ▸p/list-columns"""
 
 from __future__ import annotations
 
-COLUMNS = (    #: THE COLUMN ORDER, once: (key, header label); an empty label has no heading
+COLUMNS = (    #: the column order, defined only here: (key, header label); an empty label has no heading
     ("thumb", ""),
     ("name", "Name"),
     ("type", "Type"),
@@ -22,7 +22,7 @@ LABELS = tuple(label for _key, label in COLUMNS)
 
 
 def selected_rows(selection) -> list:
-    """The grid selection as ONE index per row, at column 0 - every reader comes through here."""
+    """The grid selection as ONE index per row, at column 0; every caller reads the selection here."""
     if selection is None:
         return []
     return [index for index in selection.selectedIndexes()

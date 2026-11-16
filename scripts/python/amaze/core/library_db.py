@@ -9,23 +9,23 @@ from amaze.core import debug, documents, guard, library_files
 from amaze.helpers import hostos
 
 _libraries: dict = globals().get("_libraries", {})    # library key -> documents.Library
-_preferences: dict = globals().get("_preferences", {})    # library key -> the Prefs that answers last
+_preferences: dict = globals().get("_preferences", {})    # library key -> the Prefs last passed in
 _schedulers: list = globals().get("_schedulers", [])    # the panels' save timers, newest last
 _said: dict = globals().get("_said", {})    # (library key, database) -> the verdict last alerted
-_listeners: dict = globals().get("_listeners", {})    # told after each save: the models
-_in_use: set = globals().get("_in_use", set())    # library keys a panel's models serve
-_present: set = globals().get("_present", set())    # library folders seen there; `look_again` drops them
+_listeners: dict = globals().get("_listeners", {})    # called after each save: the models
+_in_use: set = globals().get("_in_use", set())    # library keys in use by a panel's models
+_present: set = globals().get("_present", set())    # folders found on disk; `look_again` clears
 
 TROUBLE = (guard.CORRUPT, guard.MISSING, guard.NEWER)
 
 
 def key_of(preferences) -> str:
-    """The key a library is held under: its folder, canonical."""
+    """The key a library is stored under in this module: its folder, canonical."""
     return hostos.canonical_path_key(str(getattr(preferences, "dir", "") or ""))
 
 
 def _user_of(key: str) -> str:
-    """The user making changes in the library at `key`, "" with no folder; a folder seen stays seen."""
+    """The user making changes at `key`; `""` with no folder; a found folder is not rechecked."""
     preferences = _preferences.get(key)
     folder = str(getattr(preferences, "dir", "") or "")
     if not folder or (folder not in _present and not os.path.isdir(folder)):
@@ -35,12 +35,12 @@ def _user_of(key: str) -> str:
 
 
 def look_again() -> None:
-    """The next change asks the filesystem whether each library folder is still there."""
+    """Make the next change check on disk whether each library folder still exists."""
     _present.clear()
 
 
 def library_for(preferences) -> documents.Library:
-    """This library's one `documents.Library`, made on first ask."""
+    """This library's one `documents.Library`, created on the first call."""
     key = key_of(preferences)
     _preferences[key] = preferences
     found = _libraries.get(key)
@@ -52,7 +52,7 @@ def library_for(preferences) -> documents.Library:
 
 
 def document(preferences, name: str) -> documents.Document:
-    """One database of this library, its trouble said to the user once."""
+    """One database of this library; `judge` alerts the user once about its problems."""
     found = library_for(preferences).document(name)
     judge(key_of(preferences), found)
     return found
@@ -64,7 +64,7 @@ def guard_of(preferences) -> guard.Guard:
 
 
 def accepts(preferences, name: str) -> bool:
-    """Whether a change to database `name` can be kept now: it reads, and a user is picked."""
+    """Whether a change to database `name` can be kept now: it is writable and a user is set."""
     found = document(preferences, name)
     return found.writable and bool(found.user())
 
@@ -84,7 +84,7 @@ def drop_scheduler(schedule=None) -> None:
 
 
 def on_saved(listener) -> None:
-    """`listener(key, database)` after every save: the models take what the save merged in."""
+    """`listener(key, database)` after every save: the models load what the save merged in."""
     _listeners[listener.__module__ + "." + listener.__qualname__] = listener    # a reload replaces it
 
 
@@ -105,14 +105,14 @@ def _deferred(save) -> None:
 
 
 def changed(preferences, name: str) -> None:
-    """A change made while holding is due: the panel's timer saves it, or with no panel now."""
+    """A changed database is due: the panel's timer saves it, or at once with no panel."""
     held = document(preferences, name)
     if held.dirty:
         _deferred(held.save)
 
 
 def _records(key: str, held: documents.Document):
-    """`also` for a section owning asset files: each changed row's metadata into its `<id>.json`."""
+    """`also` for a section with asset files: writes each changed row's metadata to its `<id>.json`."""
     if held.name not in library_files.ASSET_SECTIONS:
         return None
     folder = library_files.SECTION_FOLDERS[held.name]
@@ -123,7 +123,7 @@ def _records(key: str, held: documents.Document):
             row = held.get("assets", asset_id)
             relative = "%s/%s%s" % (folder, asset_id, library_files.RECORD_SUFFIX)
             if row is None or not material.is_safe_asset_id(asset_id):
-                continue    # a deleted row's files leave with the delete itself
+                continue    # the delete itself removes a deleted row's files
             path = held.guard.path(folder, asset_id + library_files.RECORD_SUFFIX)
             if not os.path.exists(path) and not os.path.exists(
                     held.guard.path(folder, asset_id + ".mat")):
@@ -139,7 +139,7 @@ def _records(key: str, held: documents.Document):
 
 
 def _save_one(key: str, held: documents.Document, also=None) -> documents.Saved:
-    """Save one database with its records' metadata and the caller's files, then say how it went."""
+    """Save one database, its records' metadata and the caller's files, then report via `told`."""
     records = _records(key, held)
     if records is None or not held.dirty:
         both = also
@@ -148,7 +148,7 @@ def _save_one(key: str, held: documents.Document, also=None) -> documents.Saved:
     else:
         def both(change):
             records(change)
-            also(change)    # last: a record the caller writes whole outranks the metadata above
+            also(change)    # last: a record the caller writes whole overrides the metadata above
     saved = held.save(also=both)
     told(saved, held.name)
     judge(key, held)
@@ -180,7 +180,7 @@ def save(preferences, name: str, also=None) -> documents.Saved:
 
 
 def told(saved, name: str = "") -> None:
-    """A save's outcome said: a write the disk refused alerts; a refused database alerts elsewhere."""
+    """Report a save: a failed disk write alerts; a read-only database is alerted by `judge`."""
     for key, found in list(_libraries.items()):
         for held in found.opened().values():
             say_collisions(key, held)
@@ -193,7 +193,7 @@ def told(saved, name: str = "") -> None:
 
 
 def say_collisions(key: str, held: documents.Document) -> None:
-    """Each field two users changed at once, said once, naming the other user."""
+    """Each field two users changed at once, alerted once, naming the other user."""
     for collision in held.take_collisions():
         entry = held.get(collision.section, collision.key) \
             if held.kind.sections.get(collision.section) == guard.SHARED else None
@@ -218,14 +218,14 @@ def display_name(key: str, uid: str) -> str:
 
 
 def judge(key: str, held: documents.Document) -> None:
-    """Say a database's trouble once per file per session; one that reads again is forgotten."""
+    """Alert a database's problem once per file per session; cleared when it reads again."""
     where = (key, held.name)
     verdict = held.verdict
     if verdict == guard.HELD:
         _said.pop(where, None)
         debug.event("database", "database not opened - access refused", file=held.name,
                     why=held.why)
-        return    # access, not damage: read-only until a read opens it; the library's door says why
+        return    # access, not damage: read-only until it opens; a save attempt alerts with `why`
     if verdict not in TROUBLE:
         _said.pop(where, None)
     elif _said.get(where) != verdict:
@@ -253,7 +253,7 @@ def judge(key: str, held: documents.Document) -> None:
 
 
 def refresh(preferences=None) -> dict:
-    """Take in other sessions' saves; {library key: [databases that changed]}."""
+    """Load other sessions' saves; {library key: [databases that changed]}."""
     look_again()
     moved = {}
     for key, found in list(_libraries.items()):
@@ -271,22 +271,22 @@ def refresh(preferences=None) -> dict:
 
 
 def preferences_of(key: str):
-    """The Prefs that last asked for the library at `key`, or None."""
+    """The Prefs last passed in for the library at `key`, or None."""
     return _preferences.get(key)
 
 
 def use(preferences) -> None:
-    """A panel's models now serve this library: it is held until released."""
+    """A panel's models now use this library: it stays in `_in_use` until `release`."""
     _in_use.add(key_of(preferences))
 
 
 def held_libraries() -> list:
-    """The keys of every library whose databases models in this session serve."""
+    """The keys of every library whose databases models in this session use."""
     return [key for key in _libraries if key in _in_use]
 
 
 def release(preferences=None) -> None:
-    """Forget the databases held: a library switch onto another tree, or a test."""
+    """Drop the cached databases: on a switch to another library folder, or in a test."""
     look_again()
     if preferences is None:
         _libraries.clear()

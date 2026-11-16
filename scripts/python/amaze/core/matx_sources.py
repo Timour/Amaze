@@ -83,7 +83,7 @@ ALLOWED_SCHEMES = ("https",)    # remote JSON supplies every URL here ▸r/matx-
 
 
 def _checked_url(url: str) -> str:
-    """`url` when it is one we may fetch, else ""; the first request and every redirect ask it."""
+    """`url` when its scheme is allowed, else `""`; checked for the first request and each redirect."""
     scheme = urllib.parse.urlparse(str(url or "")).scheme.lower()
     if scheme in ALLOWED_SCHEMES:
         return str(url)
@@ -93,7 +93,7 @@ def _checked_url(url: str) -> str:
 
 
 class _HttpsOnlyRedirects(urllib.request.HTTPRedirectHandler):
-    """A redirect may not downgrade the scheme - verification is only worth what the last hop kept."""
+    """A redirect to a non-https URL is not followed: TLS verification needs https on every hop."""
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         if not _checked_url(newurl):
@@ -152,7 +152,7 @@ def repair_mtlx_references(mtlx_path: str, dest_dir: str) -> list:
         return repairs
 
     base = os.path.dirname(mtlx_path)    # a reference is relative to its document, as translated
-    on_disk = {}    # what we actually have, indexed by stem
+    on_disk = {}    # the downloaded files, indexed by file stem
     for root, _dirs, files in os.walk(dest_dir):
         for name in files:
             stem = os.path.splitext(name)[0]
@@ -194,7 +194,7 @@ def repair_mtlx_references(mtlx_path: str, dest_dir: str) -> list:
 
 
 class ShortDownload(OSError):
-    """A body that ended before the length its server declared; `read` and `total` say where."""
+    """A response body shorter than its declared Content-Length; `read` and `total` hold the counts."""
 
     def __init__(self, url: str, read: int, total: int) -> None:
         super().__init__("truncated download: got %d of %d bytes from %s"
@@ -204,7 +204,7 @@ class ShortDownload(OSError):
 
 
 class DownloadTooLarge(OSError):
-    """A body over the ceiling its caller set, refused as declared or as it arrives."""
+    """A response body over the caller's `ceiling`, by its Content-Length or by the bytes received."""
 
     def __init__(self, ceiling: int) -> None:
         super().__init__(messages.DOWNLOAD_TOO_LARGE % wording.byte_size(ceiling))
@@ -231,11 +231,11 @@ def stream_into(url: str, path: str, on_bytes=None, ceiling: int = 0) -> int:
             total = int(resp.headers.get("Content-Length") or 0)
         except (TypeError, ValueError):
             total = 0
-        if ceiling and total > ceiling:    # the server's own word, before a byte is read
+        if ceiling and total > ceiling:    # the declared Content-Length, checked before any byte is read
             raise DownloadTooLarge(ceiling)
 
         def counted(read, total):
-            if ceiling and read > ceiling:    # what arrives, whatever the server declared
+            if ceiling and read > ceiling:    # the bytes received, whatever Content-Length said
                 raise DownloadTooLarge(ceiling)
             if on_bytes is not None:
                 on_bytes(read, total)
@@ -257,7 +257,7 @@ def ranged_reader(url: str):
                 chunks = []
                 _drain(resp, chunks.append, on_bytes, want)
                 data = b"".join(chunks)
-        if len(data) != want:    # a host that ignores Range answers the whole object
+        if len(data) != want:    # a host that ignores Range returns the whole object
             raise ShortDownload(url, len(data), want)
         return data
     return get_range
@@ -288,7 +288,7 @@ def spanned_reader(parts):
 
 
 def report_unsafe(kind: str, paths) -> None:
-    """One log line and ONE alert for remote paths refused for leaving the library."""
+    """One log line and ONE alert for remote paths skipped because they point outside the library."""
     if not paths:
         return
     debug.event("online", "skipped %s paths outside the library" % kind,
@@ -298,12 +298,12 @@ def report_unsafe(kind: str, paths) -> None:
 
 
 def download(url: str, dest_path: str, on_bytes=None, ceiling=None) -> str:
-    """A URL streamed to `dest_path` through a scratch beside it, refused past an import's own cap."""
+    """Stream a URL to `dest_path` via a scratch file beside it; DownloadTooLarge past `ceiling`."""
     if ceiling is None:
         from amaze.core import packages
-        ceiling = packages.MAX_UNPACKED_BYTES    # one figure for what one import brings in ▸r/zip-declared-size
+        ceiling = packages.MAX_UNPACKED_BYTES    # the same byte limit as one package import ▸r/zip-declared-size
     os.makedirs(os.path.dirname(dest_path), exist_ok=True)
-    with hostos.scratch_beside(dest_path) as tmp_path:    # a fixed .part name was one shared buffer between concurrent fetches
+    with hostos.scratch_beside(dest_path) as tmp_path:    # a fixed .part name was shared by concurrent downloads
         stream_into(url, tmp_path, on_bytes, ceiling)
     return dest_path
 
@@ -410,14 +410,14 @@ class MatxSource:
         return " ".join(w[:1].upper() + w[1:] for w in name.split())
     def refresh(self):
         """Drop this source's caches so the next listing rebuilds; never fetches; subclasses call it."""
-        self._previews = None    # the hosted pictures' places, owned here: a subclass calls super()
+        self._previews = None    # the hosted previews' zip offsets, cleared here: each subclass calls super()
 
     def needs_download(self, record) -> bool:
         """True when importing `record` downloads bytes."""
         return getattr(record, "kind", "") != "values"
 
     def with_previews(self, records) -> list:
-        """`records`, each one with a hosted picture carrying its place in PREVIEWS."""
+        """`records`; each with a hosted preview gets its location in the PREVIEWS zip."""
         places = self._preview_places() if self.PREVIEWS else {}
         for record in records:
             place = places.get(record.uid + ".jpg")
@@ -426,7 +426,7 @@ class MatxSource:
         return records
 
     def _preview_places(self) -> dict:
-        """Each hosted picture's place {offset, size, crc} off the zip's directory; {} unread."""
+        """Each hosted preview's {offset, size, crc} from the zip's directory; {} when unreadable."""
         if getattr(self, "_previews", None) is None:
             try:
                 bundle, _remote = open_remote_zip([(self.PREVIEWS, remote_size(self.PREVIEWS))])
@@ -489,7 +489,7 @@ class GPUOpenSource(MatxSource):
         except Exception as exc:                            # noqa: BLE001
             debug.event("online", "category lookup failed",
                         source=self.name, url=self.API, error=str(exc))
-            # Uncategorized in the US spelling, matching every other surface AND the label this sentence quotes
+            # Uncategorized in the US spelling, matching the rest of the UI AND the label in the note below
             debug.note(
                 "could not read the categories from %s (%s), so its "
                 "materials are all listed under Uncategorized for "
@@ -551,7 +551,7 @@ class GPUOpenSource(MatxSource):
             debug.event("online", "package lookup failed",
                         source=self.name, title=record.title,
                         errors=failures[:3])
-            debug.note(    # the site's name in the sentence, the HTTP text in the data
+            debug.note(    # the site's name in the message, the HTTP errors in the log data
                 "could not reach %s, so no download sizes are listed "
                 "for %s. Try again in a moment."
                 % (self.name, record.title), errors=failures[:3])
@@ -568,7 +568,7 @@ class GPUOpenSource(MatxSource):
         return found
 
     def resolutions(self, record):
-        pkgs = self._resolved_packages(record)    # 8- and 16-bit collapse to one resolution
+        pkgs = self._resolved_packages(record)    # 8- and 16-bit packages count as one resolution
         seen = []
         for res, _pid, _url in pkgs:
             if res not in seen:
@@ -598,14 +598,14 @@ class GPUOpenSource(MatxSource):
                 skipped = []
                 for member in zf.namelist():
                     try:
-                        hostos.contained_join(dest_dir, member)    # realpaths, not normpath - a planted symlink cannot be the hop out
+                        hostos.contained_join(dest_dir, member)    # realpaths, not normpath, so a symlink cannot lead outside dest_dir
                     except hostos.PathEscape:
                         skipped.append(member)
                     else:
                         safe.append(member)
                 from amaze.core import packages
                 needed = packages.unpacked_bytes(zf, safe)
-                if needed > packages.MAX_UNPACKED_BYTES:    # before the alert, which says the rest imported
+                if needed > packages.MAX_UNPACKED_BYTES:    # checked before report_unsafe, whose alert says the rest was imported
                     raise OSError(messages.PACKAGE_TOO_LARGE % (
                         wording.byte_size(needed), wording.byte_size(packages.MAX_UNPACKED_BYTES)))
                 report_unsafe("archive", skipped)
@@ -672,7 +672,7 @@ class PolyHavenSource(MatxSource):
                 key=_res_rank,
             )
         except Exception as exc:                            # noqa: BLE001
-            # a failure is said aloud; [] alone means no mtlx variants ▸r/matx-source-quirks
+            # a failure is shown in a note; [] alone means no mtlx variants ▸r/matx-source-quirks
             debug.event("online", "resolution lookup failed",
                         source=self.name, title=record.title,
                         url=self.API, error=str(exc))
@@ -847,7 +847,7 @@ class RGLSource(MatxSource):
     PREVIEWS = ("https://github.com/Timour/AmazePackages/releases/download/"
                 "rgl-previews/rgl-previews.zip")
 
-    METAL_WORDS = (    # whole words that infer a metal
+    METAL_WORDS = (    # whole words that mark a material as metal
         "metal", "metallic", "aluminium", "aluminum", "copper", "steel",
         "brass", "bronze", "chrome", "gold", "golden", "silver", "nickel",
         "iron", "titanium", "tin", "zinc", "foil",
@@ -868,7 +868,7 @@ class RGLSource(MatxSource):
         super().refresh()
 
     def needs_download(self, record) -> bool:
-        return str(getattr(record, "uid", "")) not in self.table()    # an unknown one fetches its BSDF
+        return str(getattr(record, "uid", "")) not in self.table()    # a uid not in the table downloads its BSDF
 
     def __init__(self):
         self._names = None
@@ -978,12 +978,12 @@ class RGLSource(MatxSource):
         try:
             values, note = self.values_from_bsdf(target, uid)
         except (struct.error, ValueError, KeyError, IndexError, TypeError,
-                ZeroDivisionError) as exc:    # the magic with a body that will not parse
+                ZeroDivisionError) as exc:    # the header matches but the body does not parse
             try:
                 os.remove(target)
             except OSError:
                 pass
-            if fresh or os.path.exists(target):    # one download a fetch, never a loop
+            if fresh or os.path.exists(target):    # at most one download per fetch, never a loop
                 raise ValueError(unread) from exc
             debug.event("online", "cached RGL measurement does not parse - "
                         "refetching", uid=uid, path=target, error=str(exc))
@@ -1086,7 +1086,7 @@ class RGLSource(MatxSource):
         mirror = [max(0.0, sum(rgb[c * plane + row * width] for row in range(height)) / height)
                   for c in range(channels)]    # each channel down column s.x = 0, the mirror
         tint = [round(m / max(max(mirror), 1e-9), 5) for m in mirror]
-        painted = uid.startswith("satin_") and min(tint) < 0.8    # a pearl film's colour, there only
+        painted = uid.startswith("satin_") and min(tint) < 0.8    # a pearl film's colour, on satin materials only
         metal = cls.infer_metal(uid, description, colour)
         values = {
             "color": [round(0.75 * t, 5) for t in tint] if painted else colour,
@@ -1150,7 +1150,7 @@ class RangedFile:
         return twin
 
     def seed_tail(self, tail: bytes) -> None:
-        """Hold the bytes already read off the end - every block, when the tail is the file."""
+        """Cache the bytes already read from the end - every block, when the tail is the whole file."""
         if len(tail) == self.size:
             for n in range(0, self.size, RANGED_BLOCK):
                 self._blocks[n // RANGED_BLOCK] = tail[n:n + RANGED_BLOCK]
@@ -1159,7 +1159,7 @@ class RangedFile:
         self._blocks[last] = tail[-(self.size - last * RANGED_BLOCK):]
 
     def prefetch(self, start: int, end: int, on_bytes=None) -> None:
-        """The blocks under start..end in ONE request; on_bytes streams it so a UI can pump."""
+        """The blocks under start..end in ONE request; on_bytes streams it so a UI can process events."""
         first, last = start // RANGED_BLOCK, min(end, self.size - 1) // RANGED_BLOCK
         missing = [i for i in range(first, last + 1) if i not in self._blocks]
         if not missing:
@@ -1215,7 +1215,7 @@ END_OF_ARCHIVE = b"PK\x05\x06"
 
 
 def remote_size(url: str) -> int:
-    """A ranged object's whole size, off the Content-Range of its first byte."""
+    """A ranged object's whole size, from the Content-Range of a request for its first byte."""
     with _request(url, {"Range": "bytes=0-0"}) as resp:
         found = re.search(r"/(\d+)\s*$", str(resp.headers.get("Content-Range") or ""))
     if not found:
@@ -1230,7 +1230,7 @@ def open_remote_zip(parts):
         starts.append(total)
         total += int(size)
     get_range = spanned_reader(parts)
-    tail = get_range(max(0, total - RANGED_BLOCK), total - 1)    # explicit: a suffix range 501s
+    tail = get_range(max(0, total - RANGED_BLOCK), total - 1)    # an explicit range: a suffix range returns HTTP 501
     remote = RangedFile(total, get_range)
     remote.seed_tail(tail)
     at = tail.rfind(END_OF_ARCHIVE)
@@ -1252,14 +1252,14 @@ def open_remote_zip(parts):
     if last:
         end = starts[last] + cd_offset
         for info in sorted(bundle.infolist(), key=lambda i: i.header_offset, reverse=True):
-            if hasattr(info, "_end_offset"):    # zipfile's overlap guard, re-aimed ▸r/simready-release
+            if hasattr(info, "_end_offset"):    # zipfile's overlap check, set to the next member ▸r/simready-release
                 info._end_offset = end
             end = info.header_offset
     return bundle, remote
 
 
 def member_share(before: int, size: int, read: int, span: int) -> float:
-    """Member bytes done once `read` of a `span` fetching a `size` member is in - never past it."""
+    """`before` plus the bytes of a `size` member that `read` of its `span` covers, at most `size`."""
     return before + size * min(1.0, read / span) if span else before
 
 
@@ -1286,7 +1286,7 @@ class AmazeSource(MatxSource):
         self._lock = threading.Lock()    # the reader caches are shared with worker threads
         self.refresh()    # declares every cache; add new ones there
 
-    PACKAGES_ROOT = "packages"    # categories live UNDER this folder, so the repo root stays free for infrastructure
+    PACKAGES_ROOT = "packages"    # category folders are UNDER this folder, so the repo root stays free for infrastructure
 
     @classmethod
     def _tree_rows(cls, nodes) -> list:
@@ -1334,7 +1334,7 @@ class AmazeSource(MatxSource):
                 except urllib.error.HTTPError as exc:
                     if exc.code != 416:
                         raise
-                    with _request(checked) as response:    # 416: the whole package is its tail ▸r/github-ranged-store
+                    with _request(checked) as response:    # 416: the package is smaller than the range, so fetch it whole ▸r/github-ranged-store
                         tail = response.read()
                     size = len(tail)
 
@@ -1348,29 +1348,29 @@ class AmazeSource(MatxSource):
         return bundle
 
     def import_reader(self, url: str, notify=None):
-        """A reader of the caller's own over one package, so no worker's block download can hold it."""
+        """A separate reader over one package, so no worker's block download can delay the caller."""
         shared = self._open_package(url)
         with self._lock:
             remote = (self._remotes.get(url)
                       if self._bundles.get(url) is shared else None)
         if remote is None:
-            return shared    # nothing ranged behind it to copy
+            return shared    # no RangedFile behind it to copy
         return zipfile.ZipFile(remote.copy(notify=notify))
 
     def _manifest(self, url: str) -> dict:
         if url not in self._manifests:
             from amaze.core import packages
-            self._manifests[url] = packages.manifest_from(    # refuses a newer format, as a local read does
+            self._manifests[url] = packages.manifest_from(    # PackageError on a newer format, as for a local file
                 self._open_package(url), url)
         return self._manifests[url]
 
     def refresh(self):
-        with self._lock:    # one swap, so no opener pairs a new cache with an old one
+        with self._lock:    # reset together, so no reader mixes a new cache with an old one
             self._paths = None
             self._manifests = {}
             self._bundles = {}
             self._remotes = {}    # url -> the RangedFile under each bundle, which import_reader copies
-        self._sizes = {}    # url -> byte size off the tree listing
+        self._sizes = {}    # url -> byte size from the tree listing
 
     def list_materials(self, search="", offset=0, limit=60) -> list:
         if self._paths is None:
@@ -1397,7 +1397,7 @@ class AmazeSource(MatxSource):
                 if colors:
                     payload["colors"] = colors
                 files = entry.get("files") or {}
-                thumb = files.get("tile_icon") or files.get("thumbnail")    # the CHOSEN icon outranks the render, the way every local section ranks it
+                thumb = files.get("tile_icon") or files.get("thumbnail")    # the CHOSEN icon before the render, the same order as in every local section
                 if thumb:
                     payload["thumb_member"] = thumb
                 rows.append(MatxRecord(
@@ -1444,7 +1444,7 @@ class SimReadySource(MatxSource):
         super().refresh()
 
     def remember(self, records) -> None:
-        """An archive whose parts are unchanged lists what it listed last time. ▸r/simready-release"""
+        """Reuse an archive's last listing while its parts are unchanged. ▸r/simready-release"""
         names = {}
         for record in records:
             payload = record.payload if isinstance(record.payload, dict) else {}
@@ -1531,7 +1531,7 @@ class SimReadySource(MatxSource):
             raise RuntimeError("no archive is known for " + record.title)
         bundle, remote = open_remote_zip(parts)
         usda = self._extract(bundle, remote, member, dest_dir)
-        self._extract(bundle, remote, self.BASE_CLASS, dest_dir)    # its relative path stays NVIDIA's
+        self._extract(bundle, remote, self.BASE_CLASS, dest_dir)    # extracted at NVIDIA's relative path
         spec = matx_usd.material_spec(usda)
         folder, held = posixpath.dirname(member), set(bundle.namelist())
         textures, unsafe = [], []
@@ -1564,7 +1564,7 @@ class SimReadySource(MatxSource):
                 % (len(spec["unread"]), "" if len(spec["unread"]) == 1 else "s",
                    record.title, "; ".join(spec["unread"])))
         if not record.tags:
-            record.tags = spec["labels"]    # the material's own labels land on the library asset
+            record.tags = spec["labels"]    # the material's own labels become the library asset's tags
         mtlx = matx_usd.write_mtlx(spec, os.path.splitext(usda)[0] + ".mtlx")
         if progress:
             progress(1.0)

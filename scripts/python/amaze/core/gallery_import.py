@@ -73,15 +73,15 @@ def _category_of(entry) -> str:
 def import_entries(save, entries, staging_parent=None,
                    progress=None, summary=None, library=None) -> dict:
     """Each (entry, type_name, category) saved through `save`, staged and undo-free. ▸r/gallery-entries"""
-    summary = summary if summary is not None else {}    # the caller's: an Esc keeps what landed
+    summary = summary if summary is not None else {}    # the caller's dict: after Esc it keeps the counts so far
     for key in ("imported", "skipped", "failed"):
         summary.setdefault(key, 0)
     summary.setdefault("categories", {})
-    asked = {} if library is None else {"render": False}    # `library`: ONE batch renders after
+    asked = {} if library is None else {"render": False}    # `library`: one batch render after
     landed = []
     if save is None or not entries:
         return summary
-    with hou.undos.disabler():    # the container joins the disabler at BOTH ends, or one Ctrl+Z resurrects it ▸r/undo-groups
+    with hou.undos.disabler():    # make and destroy undo-free, or Ctrl+Z restores it ▸r/undo-groups
         parent = staging_parent or hou.node("/obj").createNode("matnet")
     owns_parent = staging_parent is None
     try:
@@ -107,7 +107,7 @@ def import_entries(save, entries, staging_parent=None,
                     summary["categories"][category] = summary[
                         "categories"
                     ].get(category, 0) + 1
-                    landed.append(node.userData("assetlib_id") or "")    # the save's own stamp
+                    landed.append(node.userData("assetlib_id") or "")    # the id the save wrote on the node
                 except (AttributeError, hou.Error) as exc:    # one entry fails, not the run ▸r/gallery-entries
                     summary["failed"] += 1
                     debug.event("gallery", "entry import failed",

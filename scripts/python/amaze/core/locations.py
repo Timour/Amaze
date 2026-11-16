@@ -20,16 +20,16 @@ KIND_IMAGE = "image"  # the kinds a record's `kinds` field lists; stored in file
 KIND_GEO = "geometry"
 KIND_HIP = "hip"
 KIND_OTHER = "other"
-KNOWN_KINDS = (KIND_IMAGE, KIND_GEO, KIND_HIP)    # the kinds Amaze pictures; Other Files is the rest
+KNOWN_KINDS = (KIND_IMAGE, KIND_GEO, KIND_HIP)    # the kinds Amaze makes thumbnails for; Other Files is the rest
 SHOWN_BY_DEFAULT = KNOWN_KINDS + (KIND_OTHER,)    # a new location's Show ▸ ticks
-EVERY_KIND = SHOWN_BY_DEFAULT    # the Import location's ticks: a package carries any file
+EVERY_KIND = SHOWN_BY_DEFAULT    # the Import location's ticks: a package may contain any file
 
-_generation = globals().get("_generation", 0)    # moves on every location write; the paint path's token
+_generation = globals().get("_generation", 0)    # increases on every location write; a token for painting
 _id_map: tuple = ("", -1, {})    # (library, generation, {path identity: smallest id at it})
 
 
 def normalise(value) -> dict:
-    """A well-formed location record, or {} for junk; unknown fields pass."""
+    """A well-formed location record, or {} for a non-dict; unknown fields are kept."""
     if not isinstance(value, dict):
         return {}
     record = {k: v for k, v in value.items() if k not in FIELDS}
@@ -52,12 +52,12 @@ def normalise(value) -> dict:
 
 
 def path_identity(path) -> str:
-    """The spelling two location paths compare by: trailing `/` off, the root kept as `/`."""
+    """The form two location paths are compared in: trailing `/` removed, the root kept as `/`."""
     return str(path).rstrip("/") or "/"
 
 
 def _boundary(prefix: str) -> str:
-    """A folder prefix that cannot match a SIBLING: without it `/a/tex` takes `/a/textures`."""
+    """A folder prefix that cannot match a SIBLING: without it `/a/tex` matches `/a/textures`."""
     return prefix.rstrip("/") + "/"
 
 
@@ -66,13 +66,13 @@ def _files(preferences):
 
 
 def library_present(preferences) -> bool:
-    """Is the library folder there to be read? Asked of the filesystem."""
+    """Does the library folder exist? Checked on the filesystem."""
     directory = str(getattr(preferences, "dir", "") or "")
     return bool(directory) and os.path.isdir(directory)
 
 
 def ready(preferences) -> bool:
-    """Whether file keys can be read and written now: files.json reads and a user is picked."""
+    """Whether file keys can be read and written now: files.json is readable and a user is selected."""
     if not str(getattr(preferences, "library_user", "") or ""):
         return False
     held = _files(preferences)
@@ -80,12 +80,12 @@ def ready(preferences) -> bool:
 
 
 def showing_last_known(preferences) -> bool:
-    """Whether the Files section has no library answer to show right now."""
+    """Whether the Files section cannot read the library right now."""
     return not ready(preferences)
 
 
 def generation() -> int:
-    """A number that moves whenever any location record moves."""
+    """A number that increases whenever any location record changes."""
     return _generation
 
 
@@ -117,7 +117,7 @@ def _id_table(preferences) -> dict:
 
 
 def location_id(preferences, path: str, mint: bool = False) -> str:
-    """The id of the location at `path`, "" for none; `mint=True` creates one, shared by all users."""
+    """The id of the location at `path`, empty for none; `mint=True` creates one, shared by all users."""
     global _generation
     wanted = hostos.storage_path_key(str(path))
     best = _id_table(preferences).get(path_identity(wanted), "")
@@ -131,12 +131,12 @@ def location_id(preferences, path: str, mint: bool = False) -> str:
 
 
 def location_path_for(preferences, locid: str) -> str:
-    """The STORAGE-spelling path a location id points at, "" for an unknown id."""
+    """The STORAGE-spelling path stored for a location id, empty for an unknown id."""
     return str((_files(preferences).get(PATHS, str(locid)) or {}).get("path") or "")
 
 
 def _path_of_key(preferences, key: str) -> str:
-    """The storage-spelling path a `loc:<id>[/<relative>]` key means today; a plain path as it is."""
+    """The storage-spelling path a `loc:<id>[/<relative>]` key resolves to now; a plain path as is."""
     key = str(key)
     if not key.startswith(LOC_PREFIX):
         return key
@@ -148,7 +148,7 @@ def _path_of_key(preferences, key: str) -> str:
 
 
 def _ident_under(owners: dict, stored: str) -> str:
-    """The `loc:` key of a stored path under the innermost of `owners` ({path: id}), or ""."""
+    """The `loc:` key of a stored path under the innermost of `owners` ({path: id}), or empty."""
     best, found = "", ""
     for base, lid in owners.items():
         if (stored == base or stored.startswith(base + "/")) and len(base) > len(best):
@@ -160,7 +160,7 @@ def _ident_under(owners: dict, stored: str) -> str:
 
 
 def innermost(bases, path: str) -> str:
-    """The longest of `bases` that is `path` or a folder above it, as given; "" for none."""
+    """The longest of `bases` that is `path` or a folder above it, as given; empty for none."""
     key = hostos.canonical_path_key(str(path)).rstrip("/")
     best, length = "", -1
     for base in bases:
@@ -171,12 +171,12 @@ def innermost(bases, path: str) -> str:
 
 
 def owner_of(preferences, path: str) -> str:
-    """The registered location a folder belongs to - the innermost when they nest - or ""."""
+    """The registered location a folder belongs to - the innermost when they nest - or empty."""
     return innermost(registered_paths(preferences), path)
 
 
 def file_ident(preferences, full_path: str) -> str:
-    """`loc:<id>/<relative>` under the innermost location, or ""; every per-file key."""
+    """`loc:<id>/<relative>` under the innermost location, or empty; the form of every per-file key."""
     if not ready(preferences):
         return ""
     return _ident_under(_id_table(preferences), hostos.storage_path_key(str(full_path)))
@@ -191,7 +191,7 @@ def record(preferences, path: str) -> dict:
 
 
 def paths(preferences) -> list:
-    """Every location this user has a record for, registered or not, as absolutes."""
+    """Every location this user has a record for, registered or not, as absolute paths."""
     out = []
     for key in _mine(preferences, LOCATIONS):
         path = _path_of_key(preferences, key)
@@ -251,19 +251,19 @@ def move_registered(preferences, path: str, row: int) -> bool:
 
 
 def commit_registered_order(preferences) -> None:
-    """Persist the order `move_registered` staged; call once per gesture, on release."""
+    """Persist the order `move_registered` staged; call once per drag, on mouse release."""
     preferences.save()
 
 
 def _keep_order(preferences, order=None) -> None:
-    """This machine's sidebar order follows what is registered now; saved with the settings."""
+    """Update this machine's sidebar order to the locations registered now; saved with the settings."""
     keep = getattr(preferences, "keep_last_known", None)
     if callable(keep):
         keep(None, order if order is not None else _registered_stored(preferences), None)
 
 
 def set_record(preferences, path: str, value) -> bool:
-    """Write one location's whole record for this user; an empty one forgets it."""
+    """Write one location's whole record for this user; an empty one removes it."""
     global _generation
     _generation += 1
     if not ready(preferences):
@@ -282,14 +282,14 @@ def set_record(preferences, path: str, value) -> bool:
 
 
 def register(preferences, path: str) -> bool:
-    """Register a location, keeping whatever the record already carries."""
+    """Register a location, keeping whatever the record already holds."""
     current = record(preferences, path)
     current["registered"] = True
     return set_record(preferences, path, current)
 
 
 def unregister(preferences, path: str) -> bool:
-    """Forget this user's record of a location; what is keyed under it goes with `retire_prefix`."""
+    """Remove this user's record of a location; `retire_prefix` removes the keys under it."""
     return set_record(preferences, path, {})
 
 
@@ -306,7 +306,7 @@ def set_field(preferences, path: str, field: str, value) -> bool:
 
 
 def relocate_record(preferences, old: str, new: str) -> bool:
-    """Move ONE location: its path row, and every row under it, follow for every user."""
+    """Move ONE location: its path row and every row under it are updated for every user."""
     global _generation
     old, new = hostos.storage_path_key(old), hostos.storage_path_key(new)
     if not old or not new or old == new or not ready(preferences):
@@ -368,7 +368,7 @@ def set_favourite(preferences, key, on: bool, database: str = FILES) -> bool:
 
 
 def set_favourites(preferences, wanted: dict, database: str = FILES) -> bool:
-    """Star or unstar every `{key: on}` as ONE change of this user's stars; later keys win."""
+    """Star or unstar every `{key: on}` as ONE change of this user's stars; a later key overrides."""
     held = library_db.document(preferences, database)
     if not held.writable or not held.user():
         return False
@@ -381,7 +381,7 @@ def set_favourites(preferences, wanted: dict, database: str = FILES) -> bool:
 
 
 def files_moved(preferences, keys: dict) -> bool:
-    """Files moved on disk: their comments, icons and this user's stars follow `{old: new}`."""
+    """Files moved on disk: their comments, icons and this user's stars are re-keyed `{old: new}`."""
     held = _files(preferences)
     if not keys or not held.writable or not held.user():
         return not keys
@@ -391,7 +391,7 @@ def files_moved(preferences, keys: dict) -> bool:
             for section in (COMMENTS, ICONS):
                 entry = held.get(section, old)
                 if entry is not None:
-                    held.put(section, new, entry)    # a moved file's own entry over one left behind
+                    held.put(section, new, entry)    # a moved file's entry overwrites an old one at the new key
                     held.drop(section, old)
             if held.mine(FAVORITES).get(old):
                 held.put_mine(FAVORITES, new, True)
@@ -411,7 +411,7 @@ def _under(key: str, lid: str, prefix: str) -> bool:
 
 
 def retire_prefix(preferences, path: str) -> bool:
-    """A location is gone: its comments, icons and this user's stars go; its path row when unused."""
+    """A location was removed: drop its comments, icons, this user's stars, and its path row if unused."""
     global _generation
     held = _files(preferences)
     if not held.writable or not held.user():
@@ -438,7 +438,7 @@ def retire_prefix(preferences, path: str) -> bool:
 
 
 def rehome_covered(preferences, path: str) -> bool:
-    """Move each key a REMAINING location covers off the one at `path`; False when it was refused."""
+    """Move keys under the location at `path` to a REMAINING location covering them; False on failure."""
     if not library_present(preferences) or not ready(preferences):
         return True
     held = _files(preferences)

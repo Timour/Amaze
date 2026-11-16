@@ -1,4 +1,4 @@
-"""The one reader and writer of an asset's `<id>.json`: its metadata and its builder."""
+"""The only module that reads and writes an asset's `<id>.json`: its metadata and its builder."""
 
 import json
 import os
@@ -51,7 +51,7 @@ def encode(document: dict) -> bytes:
 
 
 def with_sections(path: str, sections: dict) -> bytes:
-    """The bytes of `path`'s record with `sections` replaced and the rest kept; an empty one goes."""
+    """The bytes of `path`'s record with `sections` replaced; an empty section is removed."""
     for section in sections:
         if section not in SECTIONS:
             raise ValueError("an asset record has no %r section" % section)
@@ -66,13 +66,13 @@ def with_sections(path: str, sections: dict) -> bytes:
 
 
 def guard_for(path: str):
-    """The guard of the library an `<id>.json` sits in: two folders up, `<library>/<section>/`."""
+    """The guard of the library holding an `<id>.json`: two folders up, `<library>/<section>/`."""
     from amaze.core import guard
     return guard.Guard(os.path.dirname(os.path.dirname(os.path.abspath(path))))
 
 
 def unreadable(path: str) -> str:
-    """Why a record that is there does not read; "" when it reads or is absent."""
+    """Why an existing record cannot be read; `""` when it reads or is absent."""
     return _load(path)[1]
 
 
@@ -80,7 +80,7 @@ def write_section(path: str, section: str, data: dict, user: str = "") -> None:
     """Replace one section and keep the other, through the guard; OSError propagates."""
     with LOCK:
         why = unreadable(path)
-        if why:    # what did not read is never written over
+        if why:    # an unreadable record is never overwritten
             raise OSError("%s does not read (%s), so it was not written" % (path, why))
         held = guard_for(path)
         relative = held.inside(path)
@@ -110,14 +110,14 @@ def add_staged(change, held, staged: list, metadata=None) -> None:
 
 
 def discard(staged: list) -> None:
-    """Remove the written files a staged save leaves when it does not land."""
+    """Remove the written files a staged save leaves when its commit fails."""
     for kind, _target, what in staged:
         if kind == TAKE:
             hostos.discard_scratch(what)
 
 
 def land(preferences, staged: list) -> None:
-    """An asset's staged files as one unit, its row unchanged; OSError when it did not land."""
+    """Commit an asset's staged files as one change, its row unchanged; OSError when it fails."""
     from amaze.core import guard, library_db
     held = library_db.guard_of(preferences)
     change = held.change(str(getattr(preferences, "library_user", "") or ""))
@@ -131,7 +131,7 @@ def land(preferences, staged: list) -> None:
 
 
 def builder_section(found: dict) -> dict:
-    """`found` in the section's shape; {} for none, and a type that is not text names none."""
+    """`found` in the section's shape; {} for none; a type that is not a string becomes empty."""
     if not isinstance(found, dict) or not found:
         return {}
     values = found.get("values")

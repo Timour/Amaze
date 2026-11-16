@@ -9,7 +9,7 @@ from amaze.core import debug, library_db, library_files
 
 SECTION = "comments"
 
-DATABASE_OF = {    # a note key's section prefix -> the database its comments live in
+DATABASE_OF = {    # a note key's section prefix -> the database its comments are stored in
     "material": library_files.MATERIALS,
     "cop": library_files.NODES,
     "code": library_files.CODE,
@@ -24,13 +24,13 @@ def note_key(section: str, ident) -> str:
 
 
 def _split(key: str) -> tuple:
-    """(database, key in it) for a note key; ("", "") for one of no section."""
+    """(database, key in it) for a note key; two empty strings for a key of no known section."""
     section, _sep, ident = str(key).partition(":")
     return DATABASE_OF.get(section, ""), ident
 
 
 def normalise_items(items) -> list:
-    """The items kept: text, a todo, an image; each with its `id` and its author."""
+    """The valid text, todo and image items, each with its `id` and its author; others dropped."""
     kept = []
     for item in items if isinstance(items, list) else []:
         if not isinstance(item, dict):
@@ -62,7 +62,7 @@ def normalise_items(items) -> list:
 
 
 def _same_item(old: dict, new: dict) -> bool:
-    """Whether the editor sent `old` back: the same kind and words; a ticked todo is still itself."""
+    """Whether `new` is `old` sent back by the editor: same kind and text; `done` is not compared."""
     return all(old.get(field) == new.get(field) for field in ("t", "text", "label", "src"))
 
 
@@ -104,7 +104,7 @@ def has_note(preferences, key: str) -> bool:
 
 
 def _stage(held, ident: str, items) -> bool:
-    """One page into a document; an empty page removes it. Whether it was taken."""
+    """Put one page into a document; an empty page removes it. Whether the document accepted it."""
     author = held.user()
     if not author or not held.writable:
         return False
@@ -113,7 +113,7 @@ def _stage(held, ident: str, items) -> bool:
     kept = []
     for item in normalise_items([dict(item) for item in (items or [])
                                  if isinstance(item, dict)]):
-        if not item.get("author"):    # minted just now: an item the editor sent back unchanged keeps its own
+        if not item.get("author"):    # an unchanged item takes back its stored id and author; a new one gets this user
             same = next((old for old in pool if _same_item(old, item)), None)
             if same is not None:
                 pool.remove(same)
@@ -130,7 +130,7 @@ def _stage(held, ident: str, items) -> bool:
 
 
 def set_note(preferences, key: str, items: list, library: str = "") -> bool:
-    """Store one page; an empty page removes it. Whether the database took it."""
+    """Store one page; an empty page removes it. Whether the database accepted it."""
     database, ident = _split(key)
     if not database:
         return False
@@ -156,12 +156,12 @@ def set_notes(preferences, pages: dict) -> bool:
 
 
 def image_folder(database: str) -> str:
-    """`<section folder>/comments`, where the pictures of `database`'s comments are kept."""
+    """`<section folder>/comments`, where the images of `database`'s comments are stored."""
     return "%s/%s" % (library_files.COMMENT_HOMES[database], library_files.COMMENT_FOLDER)
 
 
 def adopt_image(preferences, source: str, key: str) -> str:
-    """Copy `source` into the section of comment `key`; its library-relative path, or ""."""
+    """Copy image `source` into the comments folder of `key`'s section; its relative path, or empty."""
     import os
 
     library = str(getattr(preferences, "dir", "") or "")

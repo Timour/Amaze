@@ -1,4 +1,4 @@
-"""What a saved material's own files say, read as text: its builder type and its shader type."""
+"""Reads a saved material's files as text to find its builder type and its shader type."""
 
 from amaze.core import library_files, material, renderers
 
