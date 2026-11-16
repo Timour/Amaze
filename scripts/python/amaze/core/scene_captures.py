@@ -220,7 +220,7 @@ def capture_viewport(out: str, viewer=None) -> str:
         debug.event("hip", "capture wrote nothing", **detail)
         raise CaptureRefused(
             "Houdini reported the capture finished but no image was "
-            "written.\n\nNothing was changed. The debug log has the "
+            "written.\n\nThe debug log has the "
             "viewport details - Preferences > Save Log... if you want "
             "to send them on.")
     if _looks_blank(scratch):

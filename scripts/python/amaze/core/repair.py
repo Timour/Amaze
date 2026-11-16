@@ -549,7 +549,7 @@ def _edit(directory: str, name: str, edit) -> bool:
     held = _guard(directory)
     reading = held.read(name)
     if not reading.writable:
-        raise ValueError("that database cannot be read, so nothing was changed in it")
+        raise ValueError("that database cannot be read")
     document = json.loads(json.dumps(reading.document or {}))
     if not edit(document):
         return False
