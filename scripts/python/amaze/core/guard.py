@@ -172,6 +172,10 @@ class Guard:
         self._lock = threading.RLock()
         self.recover()
 
+    def stamp(self) -> str:
+        """Now, as the text every date the guard and the documents write is spelled in."""
+        return self._now().strftime(STAMP)
+
     def path(self, *parts: str) -> str:
         """A path inside the library; `hostos.PathEscape` for one that would leave it."""
         return hostos.contained_join(self.dir, *parts)
