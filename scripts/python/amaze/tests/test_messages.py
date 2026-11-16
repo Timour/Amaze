@@ -474,11 +474,43 @@ class CheckLibrarySaysWhereFilesGo(unittest.TestCase):
                 self.assertIn("library's trash", getattr(messages, name),
                               "it places the trash somewhere other than the library's own folder")
 
-    def test_no_sentence_names_a_tool_that_is_gone(self):
+    def _said(self):
+        """Every sentence a user reads by name: the messages, the tooltips, each shelf tool's help."""
+        import xml.etree.ElementTree as ET
         from amaze import tooltips
         for module in (messages, tooltips):
             for name, text in vars(module).items():
                 if name.isupper() and isinstance(text, str):
-                    for gone in ("Clean Library", "Clean Up", "Repair tool", "run Repair",
-                                 "Repair Library", "Open Preferences to find"):
-                        self.assertNotIn(gone, text, "%s names %s" % (name, gone))
+                    yield name, text
+        shelf = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(_PKG))),
+                             "toolbar", "Amaze.shelf")
+        for tool in ET.parse(shelf).getroot().findall("tool"):
+            yield "shelf ▸ " + tool.get("label", ""), tool.findtext("helpText") or ""
+
+    def test_no_sentence_names_a_tool_that_is_gone(self):
+        said = dict(self._said())
+        self.assertTrue(any(name.startswith("shelf ▸ ") and text for name, text in said.items()),
+                        "premise: the shelf's help texts are read")
+        for name, text in said.items():
+            for gone in ("Clean Library", "Clean Up", "Repair tool", "run Repair",
+                         "Repair Library", "Open Preferences to find",
+                         "Library ▸ Check Library"):    # a menu the panel has never shown
+                self.assertNotIn(gone, text, "%s names %s" % (name, gone))
+
+    def test_a_quoted_place_ends_before_the_next_word(self):
+        """`Preferences ▸ Library` run into the word after it reads as one word on screen."""
+        glued = re.compile(r"▸ (?:Library|Render|Show/Hide|Look|Add-On|About)[A-Za-z]")
+        for name, text in self._said():
+            self.assertIsNone(glued.search(text), "%s runs a tab's name into the next word" % name)
+
+    def test_the_panel_declares_no_menu_it_never_shows(self):
+        """The menu bar is hidden and only View opens from the toolbar, so View is its one menu."""
+        import xml.etree.ElementTree as ET
+        root = ET.parse(os.path.join(_PKG, "ui", "amaze.ui")).getroot()
+        bar = next(w for w in root.iter("widget") if w.get("class") == "QMenuBar")
+        self.assertEqual(["menuView"],
+                         [w.get("name") for w in bar.findall("widget") if w.get("class") == "QMenu"])
+        wired = open(os.path.join(_PKG, "panel", "panel.py"), encoding="utf-8").read()
+        for action in root.iter("action"):
+            self.assertIn("self.ui." + action.get("name"), wired,
+                          "%s is declared and nothing in the panel reaches it" % action.get("name"))

@@ -7,6 +7,7 @@
 - **Generate Material** is live in every section.
 - The `matX` folder shows its own icon. On Windows the library folder and `matX` show their icons too.
 - A 2.0 library no longer holds `policy.json`.
+- The Check Library shelf tool's help points to **Check** in Preferences ▸ Library.
 
 ## 1.34.1
 

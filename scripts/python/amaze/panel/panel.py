@@ -1339,20 +1339,8 @@ class AmazePanel(QtWidgets.QWidget):
             pass
 
         self.menu = self.ui.findChild(QtWidgets.QMenuBar, "menubar")    # hidden below; never styled
-        self.action_prefs = self.ui.action_prefs  # type: ignore
-        self.action_prefs.triggered.connect(self.show_prefs)
-
         self.action_catview = self.ui.action_show_cat  # type: ignore
         self.action_catview.triggered.connect(self.toggle_catview)
-
-        self.action_open_folder = self.ui.action_open_folder  # type: ignore
-        self.action_open_folder.triggered.connect(self.open_usdlib_folder)
-
-        self.action_open = self.ui.action_open  # type: ignore
-        self.action_open.triggered.connect(self.open)
-
-        self.action_set_library = self.ui.action_set_library  # type: ignore
-        self.action_set_library.triggered.connect(self.set_library)
 
         self.centralwidget = self.ui.centralwidget  # type: ignore
 

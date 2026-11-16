@@ -52,7 +52,7 @@ else:
 
   <tool name="amaze_repair_library" label="Check Library"
         icon="$AMAZE/scripts/python/amaze/ui/icon_repair.svg">
-    <helpText><![CDATA[Check the Amaze library when the Amaze panel will not open: what is wrong, and the fixes that apply. With Amaze open, use Library ▸ Check Library… in the panel instead.]]></helpText>
+    <helpText><![CDATA[Check the Amaze library when the Amaze panel will not open: what is wrong, and the fixes that apply. With Amaze open, use Check in Preferences ▸ Library instead.]]></helpText>
     <script scriptType="python"><![CDATA[import hou
 
 # Every check and sentence lives in the module. It must NOT import or

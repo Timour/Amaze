@@ -4,7 +4,7 @@ from __future__ import annotations
 
 DATABASE_CORRUPT_READ_ONLY = "Your %s database is corrupt/unreadable, so Amaze has opened it read-only; changes made now stay in memory only. Restore a backup with Check in Preferences ▸ Library."
 DATABASE_MISSING_READ_ONLY = "Your %s database is missing from the library folder, though Amaze can see it was there before. If the folder syncs, it may not have finished yet. Until it is back the database is read-only; if it does not come back, use Check in Preferences ▸ Library."
-DATABASE_SHRUNK = "Your %s database holds %d %s, but its newest backup holds %d %s. If you did not remove them yourself, use Check in Preferences ▸ Librarybefore you change anything - it can restore that backup."
+DATABASE_SHRUNK = "Your %s database holds %d %s, but its newest backup holds %d %s. If you did not remove them yourself, use Check in Preferences ▸ Library before you change anything - it can restore that backup."
 LIBRARY_FORMAT_AHEAD_READ_ONLY = "This library was saved by a newer Amaze, so this machine opens it read-only to protect it. Update Amaze to work with it normally."
 CONFIRM_CONVERT_LIBRARY = "This library will be converted to format 2.0. Amaze older than %s cannot open it afterwards, so update Amaze on every computer that uses this library. If the library is in a synced folder, make sure it has finished syncing before you convert."
 BUTTONS_CONVERT_LIBRARY = ("Convert", "Cancel")
@@ -276,7 +276,7 @@ LOG_SAVED_AS = 'Saved as:\n%s'
 
 LOG_NOT_CLEARED = 'the debug log could not be cleared (%s). It is still there, and Debug Mode keeps writing to it.'
 
-CHECK_LIBRARY_ONLY_A_REPORT = 'This Houdini session has already read this library, so this is only a report: open Amaze and use Check in Preferences ▸ Libraryto act on it.'
+CHECK_LIBRARY_ONLY_A_REPORT = 'This Houdini session has already read this library, so this is only a report: open Amaze and use Check in Preferences ▸ Library to act on it.'
 
 RECOVER_WRITES_A_NEW_DATABASE = ' There is no %s database in the library folder, so Amaze writes a new one with these in it.'
 
