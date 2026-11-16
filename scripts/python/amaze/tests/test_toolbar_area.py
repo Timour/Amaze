@@ -40,7 +40,7 @@ class TheToolbarIsATable(unittest.TestCase):
                     "changes" % (control, fact))
         listed = {control for control, _f, _v in table}
         for control in ("cb_favsonly", "btn_notes", "btn_filter",
-                        "btn_hip_capture", "btn_generate"):
+                        "btn_hip_capture"):
             self.assertIn(control, listed,
                           "%s no longer follows the context table, so it "
                           "silently stops following its context" % control)
@@ -76,12 +76,6 @@ class EveryContextDeclaresWhatItOffers(unittest.TestCase):
                      and not getattr(sections, name).takes_capture]
         self.assertEqual(["OnlineContext"], declining,
                          "Capture is withheld by %s" % declining)
-        generating = [name for name in dir(sections)    # a material is generated into the Material section's world only
-                      if isinstance(getattr(sections, name), type)
-                      and issubclass(getattr(sections, name), sections.Section)
-                      and getattr(sections, name).takes_generate]
-        self.assertEqual(["MaterialSection"], generating,
-                         "Generate Material is live in %s" % generating)
 
 
 class TheToolbarFollowsTheContextLive(unittest.TestCase):

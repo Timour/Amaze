@@ -74,7 +74,6 @@ class Section:
     takes_filter_menu = True  # the entries describe the LOCAL section under it
     kind_filter_menu = False  # the online world answers True: the eye offers All/Materials/Colors/Nodes/Code there
     takes_capture = True    # Capture puts the Scene View on a tile ▸r/tile-captures
-    takes_generate = False  # the toolbar's Generate Material is live in the Material section alone
     exports_categories = False    # the View menu's Export Category is live where the sidebar holds categories
 
     empty_noun = "items"  # what the shared empty-state blanks call these
@@ -748,7 +747,6 @@ class MaterialSection(AssetSection):
     key = "material"
     label = section_list.label(key)
     empty_noun = "material"
-    takes_generate = True
     EMPTY = amazetheme.EMPTY_MATERIAL    # no button: save_asset needs a selected node and says so when there is none ▸p/one-design-document
     QUOTE = amazetheme.QUOTE_MATERIAL
 

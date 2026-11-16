@@ -86,7 +86,7 @@ The **toolbar**, from left to right:
 | <img src="docs/images/Icon-slider.svg" width="20"> | **Size slider** | Sets the thumbnail size, 64–512 px, and the row height in list view. |
 | <img src="scripts/python/amaze/ui/icon_search.svg" width="20"> | **Search** | Searches names and tags in the current section. A leading colon searches tags only: `:metal` finds everything tagged metal. |
 | <img src="scripts/python/amaze/ui/icon_screenshot.svg" width="20"> | **Capture** | Captures the Scene View as the selected tile's picture. In the File section with no tile selected, captures it as the open scene's picture. |
-| <img src="scripts/python/amaze/ui/icon_generate.svg" width="20"> | **Generate Material** | Builds a [generated material](#generate-material). Greyed outside the Material section. |
+| <img src="scripts/python/amaze/ui/icon_generate.svg" width="20"> | **Generate Material** | Builds a [generated material](#generate-material). |
 | <img src="scripts/python/amaze/ui/icon_library.svg" width="20"> | **Preferences** | Opens [Preferences](#preferences). |
 
 The **Import/Export** and **Filter** menus:

@@ -1122,7 +1122,7 @@ class AmazePanel(QtWidgets.QWidget):
                 tooltips.PANEL_PREFERENCES))
             self.toolbar_layout.addWidget(btn_prefs)
             self.toolbar_layout.addSpacing(theme.ui_px(self._TOOLBAR["gap"]))
-            self.btn_generate = ui_helpers.IconMenuButton(    # the Material section alone: one generated material into the scene
+            self.btn_generate = ui_helpers.IconMenuButton(    # one generated material into the scene
                 None,
                 self._ui_icon_path("icon_generate.svg"),
                 on_click=self.generate_random_material,
@@ -2238,7 +2238,6 @@ class AmazePanel(QtWidgets.QWidget):
         ("btn_notes", "takes_comments", "enabled"),
         ("btn_filter", "takes_filter_menu", "enabled"),
         ("btn_hip_capture", "takes_capture", "enabled"),
-        ("btn_generate", "takes_generate", "enabled"),
     )
 
     def _sync_toolbar(self, context) -> None:
