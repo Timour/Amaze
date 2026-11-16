@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.33.34
+
+- Every right-click menu has a **Thumbnail** submenu holding **Render Image** (was Update Render), **Capture Scene** (was Capture) and **Customize**.
+- **Export Category (.amazepkg)** is in the Import/Export menu and no longer in the sidebar's right-click menu. It exports the category selected in the sidebar, or the whole section when All is selected.
+- Export Package (.amazepkg) is named **Export Asset (.amazepkg)**.
+- **Generate Material** is a toolbar button, live in the Material section, and no longer in the Import/Export menu.
+
 ## 1.33.33
 
 - The right-click entry that brings a tile into the scene is named **Load Asset** in every section: it replaces Load in Node and Code, Import in File, and Apply in Color. Color's Apply as is **Load Asset as**.

@@ -77,7 +77,7 @@ The **toolbar**, from left to right:
 | | | |
 |:--:|---|---|
 | <img src="scripts/python/amaze/ui/icon_categories.svg" width="20"> | **Show Categories** | Shows and hides the sidebar. |
-| <img src="scripts/python/amaze/ui/icon_renderer.svg" width="20"> | **Import/Generate** | Gallery Import (.gal), Import Package (.amazepkg), Export Package (.amazepkg) and Generate Material. |
+| <img src="scripts/python/amaze/ui/icon_renderer.svg" width="20"> | **Import/Export** | Gallery Import (.gal), Import Package (.amazepkg), Export Asset (.amazepkg) and Export Category (.amazepkg). |
 | <img src="scripts/python/amaze/ui/icon_view.svg" width="20"> | **Filter** | Filters the grid: Material by renderer, Color by the number of colors, Node by network type, Code by language and File by kind. |
 | <img src="scripts/python/amaze/ui/icon_online.svg" width="20"> | **Online** | Switches between the library and the online sources. |
 | <img src="scripts/python/amaze/ui/icon_comments.svg" width="20"> | **Comments** | Opens and closes the [Comments pane](#comments). Purple while the pane is open. |
@@ -86,9 +86,10 @@ The **toolbar**, from left to right:
 | <img src="docs/images/Icon-slider.svg" width="20"> | **Size slider** | Sets the thumbnail size, 64–512 px, and the row height in list view. |
 | <img src="scripts/python/amaze/ui/icon_search.svg" width="20"> | **Search** | Searches names and tags in the current section. A leading colon searches tags only: `:metal` finds everything tagged metal. |
 | <img src="scripts/python/amaze/ui/icon_screenshot.svg" width="20"> | **Capture** | Captures the Scene View as the selected tile's picture. In the File section with no tile selected, captures it as the open scene's picture. |
+| <img src="scripts/python/amaze/ui/icon_generate.svg" width="20"> | **Generate Material** | Builds a [generated material](#generate-material). Greyed outside the Material section. |
 | <img src="scripts/python/amaze/ui/icon_library.svg" width="20"> | **Preferences** | Opens [Preferences](#preferences). |
 
-The **Import/Generate** and **Filter** menus:
+The **Import/Export** and **Filter** menus:
 
 <img src="docs/images/menu_import_generate.png" width="256">
 <img src="docs/images/menu_filter.png" width="200">
@@ -202,8 +203,9 @@ materials and snippets.
 
 ### Tile menu
 
-**Load Asset to**, **Convert**, **Thumbnail** (**Render Image**,
-**Capture Scene**, **Customize**), **Favorite** and **Delete**.
+**Load Asset to**, **Convert**, **Thumbnail**, **Favorite** and
+**Delete**. **Thumbnail ▸** holds **Render Image**, **Capture Scene** and
+**Customize**.
 
 <img src="docs/images/menu_material_tile.png" width="200">
 <img src="docs/images/menu_copy_to.png" width="230">
@@ -275,16 +277,17 @@ Every import records its source, author, link and license.
 
 ### Gallery Import (.gal)
 
-**Import/Generate ▸ Gallery Import (.gal)** reads a Houdini gallery
+**Import/Export ▸ Gallery Import (.gal)** reads a Houdini gallery
 file, including the Material Palette's own, and adds every material
-preset in it to the library. **Thumbnail ▸ Render Image** renders their previews.
+preset in it to the library. **Thumbnail ▸ Render Image** renders their
+previews.
 
 ---
 
 ## Generate Material
 
-**Import/Generate ▸ Generate Material** builds a test material in the
-current material library.
+The **Generate Material** button on the toolbar builds a test material
+in the current material library.
 
 Generation starts from one of 148 measured materials, 86 PhysicallyBased
 reference values and 62 RGL measurements, and varies it within its
@@ -324,8 +327,8 @@ The right-click menu:
   Linear, CatmullRom, MonotoneCubic, Bezier, BSpline or Hermite.
 - **Copy Color ▸** lists the swatches by name and hex code, and copies
   the chosen hex code to the clipboard.
-- **Thumbnail** (**Capture Scene**, **Customize**), **Favorite** and
-  **Delete**.
+- **Thumbnail ▸** holds **Capture Scene** and **Customize**.
+- **Favorite** and **Delete**.
 
 <img src="docs/images/menu_color_tile.png" width="200">
 <img src="docs/images/menu_apply_as.png" width="200">
@@ -377,8 +380,8 @@ The right-click menu:
   Category and Tags above the code. In the editor, **Apply** saves the
   snippet and the editor stays open. The tabs above the fields hold the
   snippet's [versions](#versions).
-- **Thumbnail** (**Capture Scene**, **Customize**), **Favorite** and
-  **Delete**.
+- **Thumbnail ▸** holds **Capture Scene** and **Customize**.
+- **Favorite** and **Delete**.
 
 <img src="docs/images/menu_code_tile.png" width="200">
 <img src="docs/images/dialog_edit_snippet.png" width="480">
@@ -414,7 +417,8 @@ Browses folders on disk.
 - **Scenes** (.hip, .hiplc, .hipnc) open on **double-click** or **Open
   Scene**, with Houdini's own prompt for unsaved changes. The open scene has a tick on
   its tile.
-  A scene's picture is a capture: **Thumbnail ▸ Capture Scene** on the right-click menu, or
+  A scene's picture is a capture: **Thumbnail ▸ Capture Scene** on the
+  right-click menu, or
   the <img src="scripts/python/amaze/ui/icon_screenshot.svg" width="14">
   **Capture** button, takes one from the Scene View while that scene is
   open.
@@ -428,8 +432,9 @@ Browses folders on disk.
   showing, since there is no one folder to make them in.
 
 The right-click menu: **New Folder**, **Open Scene**, **Save Scene**,
-**Load Asset**, **Copy Path**, **Show Location**, **Thumbnail**
-(**Render Image**, **Capture Scene**, **Customize**) and **Favorite**.
+**Load Asset**, **Copy Path**, **Show Location**, **Thumbnail** and
+**Favorite**. **Thumbnail ▸** holds **Render Image** for images and
+geometry, **Capture Scene** and **Customize**.
 
 <img src="docs/images/menu_file_tile.png" width="210">
 
@@ -502,12 +507,13 @@ A **package** is a single `.amazepkg` file that carries assets with their
 files, previews, categories, tags and comments. Packages move assets
 between machines, libraries and people.
 
-**Import/Generate ▸ Export Package (.amazepkg)** writes the selected
-tiles to a package. It is greyed while nothing is selected, and in the
-online browser. **Export Category**, on the sidebar's right-click menu,
-writes a whole category.
+**Import/Export ▸ Export Asset (.amazepkg)** writes the selected tiles
+to a package. It is greyed while nothing is selected, and in the online
+browser. **Import/Export ▸ Export Category (.amazepkg)** writes the
+category selected in the sidebar, or the whole section when All is
+selected. It is greyed in the File section and in the online browser.
 
-**Import/Generate ▸ Import Package (.amazepkg)** adds a package to the
+**Import/Export ▸ Import Package (.amazepkg)** adds a package to the
 library. Imported assets get new identities and are filed under the
 **Import** category, so a package imported twice gives two copies. The
 package's files go into an **Import** folder in the library, which the
@@ -550,8 +556,8 @@ described in the [README](README.md)'s installation steps.
 
 ## Tile icons
 
-**Thumbnail ▸ Customize**, on every tile's right-click menu, opens the Customize
-dialog.
+**Thumbnail ▸ Customize**, on every tile's right-click menu, opens the
+Customize dialog.
 
 <img src="docs/images/dialog_customize.png" width="460">
 
@@ -609,7 +615,7 @@ its colour with it.
 An asset has one category. Tags place an asset in several groups at
 once.
 
-**Export Category**, on the same menu, writes the whole category to a
+**Import/Export ▸ Export Category (.amazepkg)** writes the whole category to a
 [package](#packages).
 
 ---

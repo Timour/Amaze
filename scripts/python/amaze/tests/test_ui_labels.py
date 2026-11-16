@@ -18,7 +18,7 @@ RETIRED = {    # retired label -> current name, quoted on failure ▸p/quoted-st
     "Rerender Thumbnail": "Render Image",
     "Render Thumbnail": "Render Image",
     "Update Preview": "Render Image",    # a render beside a capture
-    "Update Render": "Render Image",    # under Thumbnail since library format 4
+    "Update Render": "Render Image",
     "Delete Entry": "Delete",
     "Edit Info": "Info",
     "Toggle Favorite": "Favorite",
