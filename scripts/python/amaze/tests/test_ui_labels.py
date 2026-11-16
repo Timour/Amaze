@@ -24,8 +24,8 @@ RETIRED = {    # retired label -> current name, quoted on failure ▸p/quoted-st
     "Edit Icon": "Customize",
     "New Snippet": "New File",
     "Apply to Selected Node": "Load Asset",
-    "Import to MAT": "Copy To /mat",    # case matters: lower-cased, it matches a live entry
-    "Import to LOP": "Copy To /stage",
+    "Import to MAT": "Load Asset to /mat",    # case matters: lower-cased, it matches a live entry
+    "Import to LOP": "Load Asset to /stage",
 }
 
 DEFERRED = set()    # (module, label) pairs waived for now ▸p/line-keyed-register

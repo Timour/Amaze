@@ -194,14 +194,14 @@ materials and snippets.
 ### Loading
 
 - **Double-click** loads the material into the current network.
-- **Copy To ▸ /mat** loads it into /mat; **Copy To ▸ /stage/materiallibrary**
-  loads it into the Material Library you are in.
+- **Load Asset to ▸ /mat** loads it into /mat; **Load Asset to ▸
+  /stage/materiallibrary** loads it into the Material Library you are in.
 - **Dragging** the tile onto an object assigns the material; dragging it
   into a network loads it there. See [Drag and drop](#drag-and-drop).
 
 ### Tile menu
 
-**Copy To**, **Convert to**, **Update Render**, **Capture**,
+**Load Asset to**, **Convert**, **Update Render**, **Capture**,
 **Customize**, **Favorite** and **Delete**.
 
 <img src="docs/images/menu_material_tile.png" width="200">
@@ -213,7 +213,7 @@ tile onto a category in the sidebar moves it to that category.
 
 ### Converting
 
-**Convert to ▸ MaterialX**, **Redshift** or **Octane** builds a copy of
+**Convert ▸ MaterialX**, **Redshift** or **Octane** builds a copy of
 the material for that renderer next to the original, with the same name
 and textures. Anything that cannot be converted is listed in a report.
 
@@ -747,7 +747,7 @@ Two sub-tabs set which renderers and sections Amaze shows.
 
 - **Renderer** has a switch for each renderer. A renderer that is
   switched off is removed from the [Filter](#the-panel-at-a-glance)
-  menu, Convert to, Import to Materials and Import to Scene, and its
+  menu, Convert, Import to Materials and Import to Scene, and its
   Samples row is removed from the Render tab.
 - **Sections** has a switch for each section. A section that is
   switched off has no tab in the panel.

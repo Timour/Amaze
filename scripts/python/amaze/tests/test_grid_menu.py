@@ -207,20 +207,20 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
         """Every entry acts on the whole selection and stays live."""
         for rows, expected in (
                 ((0,),
-                 ["Copy To > [/mat, /stage/materiallibrary]",
-                  "Convert to > [MaterialX(off), Redshift(off), Octane(off)](off)",    # neither renderer
+                 ["Load Asset to > [/mat, /stage/materiallibrary]",
+                  "Convert > [MaterialX(off), Redshift(off), Octane(off)](off)",    # neither renderer
                   "----",
                   "Update Render", "Capture", "Customize", "Favorite",
                   "Delete"]),
                 ((0, 1),
-                 ["Copy To > [/mat, /stage/materiallibrary]",
-                  "Convert to > [MaterialX(off), Redshift, Octane]",
+                 ["Load Asset to > [/mat, /stage/materiallibrary]",
+                  "Convert > [MaterialX(off), Redshift, Octane]",
                   "----",
                   "Update Render", "Capture(off)", "Customize", "Favorite",    # one capture, one tile
                   "Delete"]),
                 ((),
-                 ["Copy To > [/mat, /stage/materiallibrary](off)",
-                  "Convert to > [MaterialX(off), Redshift(off), Octane(off)](off)", "----",
+                 ["Load Asset to > [/mat, /stage/materiallibrary](off)",
+                  "Convert > [MaterialX(off), Redshift(off), Octane(off)](off)", "----",
                   "Update Render(off)", "Capture(off)", "Customize(off)",
                   "Favorite(off)", "Delete(off)"])):
             with self.subTest(selected=len(rows)):
@@ -465,18 +465,18 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
             indexes = context.grid_selection()
             menu, _verbs = grid.build_grid_menu(
                 panel, context, indexes, None)
-        row = [r for r in render(menu) if r.startswith("Convert to")]
+        row = [r for r in render(menu) if r.startswith("Convert >")]
         return row[0] if row else None
 
     def test_convert_to_greys_the_renderer_the_selection_already_is(self):
         """Drawn as C01b: the child naming what the selection already is greys; the others are live."""
-        self.assertEqual("Convert to > [MaterialX(off), Redshift, Octane]",
+        self.assertEqual("Convert > [MaterialX(off), Redshift, Octane]",
                          self._material_convert_children("Karma"))
-        self.assertEqual("Convert to > [MaterialX, Redshift(off), Octane]",
+        self.assertEqual("Convert > [MaterialX, Redshift(off), Octane]",
                          self._material_convert_children("Redshift"))
-        self.assertEqual("Convert to > [MaterialX, Redshift, Octane]",
+        self.assertEqual("Convert > [MaterialX, Redshift, Octane]",
                          self._material_convert_children("Karma", "Redshift"))
-        self.assertEqual("Convert to > [MaterialX, Redshift, Octane(off)]",
+        self.assertEqual("Convert > [MaterialX, Redshift, Octane(off)]",
                          self._material_convert_children("Octane"))
 
     def _select_karma_rows(self, count):
@@ -506,8 +506,8 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
         with plugins_loaded():
             menu, _verbs = grid.build_grid_menu(
                 panel, panel.active_section(), indexes, indexes[0])
-        row = [r for r in render(menu) if r.startswith("Convert to")]
-        self.assertEqual(["Convert to > [MaterialX(off), Redshift(off), Octane(off)](off)"], row)
+        row = [r for r in render(menu) if r.startswith("Convert >")]
+        self.assertEqual(["Convert > [MaterialX(off), Redshift(off), Octane(off)](off)"], row)
 
     def test_convert_to_dispatches_by_the_child_picked(self):
         """One verb, the payload names the renderer: each child reaches its own converter and no other."""
@@ -626,7 +626,7 @@ class EveryRendererRowWEARSTheFilterMenusIcon(unittest.TestCase):
             for renderer in self.RENDERERS:
                 self.assertFalse(filtered[renderer].icon().isNull(),
                                  "premise: C13 draws %s's icon" % renderer)
-            for menu, name in ((material_menu, "Convert to"),
+            for menu, name in ((material_menu, "Convert"),
                                (online_menu, "Import to Materials"),
                                (online_menu, "Import to Scene")):
                 rows = self._rows(menu, name)
@@ -650,7 +650,7 @@ class EveryRendererRowWEARSTheFilterMenusIcon(unittest.TestCase):
                 setattr(panel.prefs, hidden.switch, False)
                 filter_menu, material_menu, online_menu = self._build()
                 self.assertNotIn(hidden.label, [act.text() for act in filter_menu.actions()])
-                for menu, name in ((material_menu, "Convert to"),
+                for menu, name in ((material_menu, "Convert"),
                                    (online_menu, "Import to Materials"),
                                    (online_menu, "Import to Scene")):
                     rows = self._rows(menu, name)

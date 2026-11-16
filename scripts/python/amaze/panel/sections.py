@@ -747,8 +747,8 @@ class MaterialSection(AssetSection):
                 "not affected." % count)
 
     GRID_MENU = (    # the section's work, a divider, then the shared tail - drawn C01/C01b
-        MenuEntry("Copy To", verb="menu_copy_to", children="copy_to_targets"),
-        MenuEntry("Convert to", verb="menu_convert_to",
+        MenuEntry("Load Asset to", verb="menu_copy_to", children="copy_to_targets"),
+        MenuEntry("Convert", verb="menu_convert_to",
                   children="convert_targets",
                   needs="selection_is_convertible"),
         SEPARATOR,
