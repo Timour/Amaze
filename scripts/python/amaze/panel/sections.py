@@ -52,7 +52,6 @@ GRID_MENU_TAIL = (
     MenuEntry("Capture", verb="menu_capture", needs="menu_capture_enabled"),
     MenuEntry("Customize", verb="menu_customize"),
     MenuEntry("Favorite", verb="menu_favourite"),
-    MenuEntry("Export Package", verb="menu_export_package"),
     MenuEntry("Delete", verb="menu_delete", shown="deletes_rows"),
 )
 
@@ -186,7 +185,9 @@ class Section:
     def library_switched(self) -> None:
         """The models now serve another library: a grid they do not re-point is shown afresh here."""
 
-    def menu_export_package(self, indexes, current, payload=None) -> None:
+    exports_selection = False    # the View menu's Export Package is live on this grid's selection
+
+    def export_selection(self, indexes) -> None:
         """Ask half of the grid export: the panel picks the destination, `export_package_to` acts."""
         path = self.panel.package_import.ask_destination()
         if path:
@@ -537,6 +538,8 @@ class AssetSection(Section):
         st.model.save()    # AFTER the pair: a save adopts a peer's rows, and an insert in it segfaults H21
         self.stand_on_key(new_name if standing in names else standing)    # a renamed row by its new name
         self.panel.refresh_sidebar_categories()    # counts and empty-category hiding follow the rename
+
+    exports_selection = True
 
     def export_package_to(self, indexes, path: str) -> int:
         """Act half: the selected rows leave as one `.amazepkg`; answers the entry count."""
@@ -1792,6 +1795,8 @@ class FileSection(FolderSection):
         locations.KIND_OTHER: _PATH_ONLY,
         "": _PATH_ONLY,
     }
+
+    exports_selection = True
 
     def export_package_to(self, indexes, path: str) -> int:    # the File flavour: each selected row's file rides whole under its kind
         items = []

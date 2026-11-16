@@ -211,18 +211,18 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
                   "Convert to > [MaterialX(off), Redshift(off), Octane(off)](off)",    # neither renderer
                   "----",
                   "Update Render", "Capture", "Customize", "Favorite",
-                  "Export Package", "Delete"]),
+                  "Delete"]),
                 ((0, 1),
                  ["Copy To > [/mat, /stage/materiallibrary]",
                   "Convert to > [MaterialX(off), Redshift, Octane]",
                   "----",
                   "Update Render", "Capture(off)", "Customize", "Favorite",    # one capture, one tile
-                  "Export Package", "Delete"]),
+                  "Delete"]),
                 ((),
                  ["Copy To > [/mat, /stage/materiallibrary](off)",
                   "Convert to > [MaterialX(off), Redshift(off), Octane(off)](off)", "----",
                   "Update Render(off)", "Capture(off)", "Customize(off)",
-                  "Favorite(off)", "Export Package(off)", "Delete(off)"])):
+                  "Favorite(off)", "Delete(off)"])):
             with self.subTest(selected=len(rows)):
                 with plugins_loaded("Redshift", "Octane"):
                     shown = self._show("material", rows)
@@ -234,7 +234,7 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
             ["Apply",
              "Apply as > [Constant, Linear, CatmullRom, MonotoneCubic, "
              "Bezier, BSpline, Hermite]",
-             "----", "Capture", "Customize", "Favorite", "Export Package",
+             "----", "Capture", "Customize", "Favorite",
              "Delete"],
             [row for row in shown if not row.startswith("Copy Color")])
         swatches = [row for row in shown if row.startswith("Copy Color")]
@@ -247,7 +247,7 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
         shown = self._show("gradient", (0, 1))
         self.assertEqual(
             ["Apply(off)", "----", "Capture(off)", "Customize", "Favorite",
-             "Export Package", "Delete"],
+             "Delete"],
             [row for row in shown
              if not row.startswith(("Apply as", "Copy Color"))])
         for row in shown:
@@ -259,16 +259,16 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
         """The fixture has no Node assets, so this is the empty case, which once produced no menu."""
         self.assertEqual(
             ["Load(off)", "----", "Update Render(off)", "Capture(off)",
-             "Customize(off)", "Favorite(off)", "Export Package(off)",
+             "Customize(off)", "Favorite(off)",
              "Delete(off)"],
             self._show("cop"))
 
     def test_code_with_one_or_two_selected(self):
         for rows, expected in (
                 ((0,), ["New File", "----", "Apply", "Edit", "----", "Capture",
-                        "Customize", "Favorite", "Export Package", "Delete"]),
+                        "Customize", "Favorite", "Delete"]),
                 ((0, 1), ["New File", "----", "Apply(off)", "Edit(off)", "----",
-                          "Capture(off)", "Customize", "Favorite", "Export Package",
+                          "Capture(off)", "Customize", "Favorite",
                           "Delete"])):
             with self.subTest(selected=len(rows)):
                 self.assertEqual(expected, self._show("code", rows))
@@ -288,23 +288,19 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
         for kind, count, expected in (
                 (locations.KIND_IMAGE, 1,
                  top + ["Import", "Copy Path", "----", "Show Location",
-                        "Update Render", "Capture", "Customize", "Favorite",
-                        "Export Package"]),
+                        "Update Render", "Capture", "Customize", "Favorite"]),
                 (locations.KIND_IMAGE, 2,    # an image loads onto ONE node parameter
                  top + ["Import(off)", "Copy Path", "----", "Show Location(off)",
-                        "Update Render", "Capture(off)", "Customize", "Favorite",
-                        "Export Package"]),
+                        "Update Render", "Capture(off)", "Customize", "Favorite"]),
                 (locations.KIND_GEO, 2,      # geometry imports the whole selection
                  top + ["Import", "Copy Path", "----", "Show Location(off)",
-                        "Update Render", "Capture(off)", "Customize", "Favorite",
-                        "Export Package"]),
+                        "Update Render", "Capture(off)", "Customize", "Favorite"]),
                 (locations.KIND_HIP, 1,      # a scene captures only while it is the open one
                  top + ["Load", "Copy Path", "----", "Show Location",
-                        "Capture(off)", "Customize", "Favorite",
-                        "Export Package"]),
+                        "Capture(off)", "Customize", "Favorite"]),
                 (locations.KIND_OTHER, 1,    # what Houdini cannot open is absent, not greyed
                  top + ["Copy Path", "----", "Show Location", "Capture", "Customize",
-                        "Favorite", "Export Package"])):
+                        "Favorite"])):
             with self.subTest(kind=kind, selected=count):
                 rows = self._rows_of_kind(kind)
                 self.assertGreaterEqual(len(rows), count,

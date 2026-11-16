@@ -234,7 +234,7 @@ class PackageReaderTest(unittest.TestCase):
 
 
 class ExportMenuTest(unittest.TestCase):
-    """The doors: Export Package on every section, Export Category on the sidebar, headless verbs."""
+    """The doors: Export Package on the View menu, Export Category on the sidebar, headless verbs."""
 
     @classmethod
     def setUpClass(cls):
@@ -244,9 +244,11 @@ class ExportMenuTest(unittest.TestCase):
         from amaze.panel import sections
         for cls_ in sections.SECTION_CLASSES:
             with self.subTest(section=cls_.key):
-                self.assertIn("Export Package",
-                              [entry.label for entry in cls_.GRID_MENU],
-                              "%s offers no package export" % cls_.key)
+                self.assertNotIn("Export Package",
+                                 [entry.label for entry in cls_.GRID_MENU],
+                                 "%s still exports from its right-click menu" % cls_.key)
+                self.assertTrue(cls_.exports_selection,
+                                "%s cannot export its selection" % cls_.key)
                 if issubclass(cls_, sections.AssetSection):
                     self.assertIn(
                         "Export Category",
@@ -257,6 +259,31 @@ class ExportMenuTest(unittest.TestCase):
         self.assertTrue(restore, "the online grid offers no Restore")
         self.assertEqual("selection_is_amaze_packages", restore[0].shown,
                          "Restore must hide for material sources")
+
+    def test_the_View_menu_exports_the_active_grid_selection(self):
+        """Live only while the shown grid has a selection that can leave; the click exports it."""
+        from unittest import mock
+        panel = self.panel
+        action = panel.action_package_export
+        section = panel.active_section()
+        selection = section.grid_selection_model()
+        index = selection.model().index(0, 0)
+        self.assertTrue(index.isValid(), "the fixture grid is empty")
+        self.addCleanup(selection.clearSelection)
+        selection.clearSelection()
+        panel.sync_package_export()
+        self.assertFalse(action.isEnabled(), "Export Package is live with nothing selected")
+        selection.select(index, QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect
+                         | QtCore.QItemSelectionModel.SelectionFlag.Rows)
+        panel.sync_package_export()
+        self.assertTrue(action.isEnabled(), "Export Package is greyed on a selected tile")
+        with mock.patch.object(type(section), "export_selection") as export:
+            action.trigger()
+        self.assertEqual([index], list(export.call_args[0][0]),
+                         "the click did not export the selected row")
+        with mock.patch.object(panel, "active_section", lambda: panel.online_context):
+            panel.sync_package_export()
+            self.assertFalse(action.isEnabled(), "Export Package is live on the online grid")
 
     def test_the_grid_act_door_writes_the_selection(self):
         from amaze.core import packages
@@ -298,17 +325,17 @@ class ExportMenuTest(unittest.TestCase):
 
         with mock.patch.object(hou, "ui", ui, create=True), \
                 mock.patch.object(self.panel.package_import, "ask_destination", lambda: out):
-            section.menu_export_package([index], index)
+            section.export_selection([index])
             self.assertEqual((messages.PACKAGE_EXPORTED_ONE % os.path.basename(out),
                               hou.severityType.Message), said(), "a finished export said nothing")
             section.menu_export_category([], None)
             self.assertEqual(messages.PACKAGE_EXPORTED % (self.panel.gradient_model.rowCount(),
                                                           os.path.basename(out)), said()[0])
-            section.menu_export_package([], None)
+            section.export_selection([])
             self.assertEqual((messages.PACKAGE_EXPORT_EMPTY, hou.severityType.Warning), said(),
                              "an export of nothing said nothing")
             with mock.patch("amaze.core.packages.write_package", side_effect=OSError("no room")):
-                section.menu_export_package([index], index)
+                section.export_selection([index])
             self.assertEqual((messages.PACKAGE_NOT_SAVED % "no room", hou.severityType.Warning),
                              said(), "an export that could not be written left the panel silent")
 

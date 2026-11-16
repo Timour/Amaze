@@ -1038,11 +1038,16 @@ class AmazePanel(QtWidgets.QWidget):
                 self.import_galleries
             )
             self.action_package_import = self.online_menu.addAction(
-                "Package Import (.amazepkg)"
+                "Import Package (.amazepkg)"
             )
             self.action_package_import.triggered.connect(
                 self.package_import.import_package
             )
+            self.action_package_export = self.online_menu.addAction(
+                "Export Package (.amazepkg)"
+            )
+            self.action_package_export.triggered.connect(self.export_package)
+            menu_view.aboutToShow.connect(self.sync_package_export)    # live only on a selection that can leave
             self.online_menu.addSeparator()    # generating gets its own group
             self.action_generate_material = self.online_menu.addAction(
                 "Generate Material"
@@ -1053,6 +1058,23 @@ class AmazePanel(QtWidgets.QWidget):
             menu_view.removeAction(self.action_catview)    # the action stays, driven by the toolbar chip; only its row goes
             self.online_source_group.triggered.connect(self._on_online_source)
 
+
+    def _exportable_selection(self) -> tuple:
+        """(the shown context, its grid selection) when that selection can leave as a package."""
+        section = self.active_section()
+        if section is None or not section.exports_selection:
+            return section, []
+        return section, section.grid_selection()
+
+    def sync_package_export(self) -> None:
+        """Grey the View menu's Export Package unless the shown grid has tiles selected to export."""
+        self.action_package_export.setEnabled(bool(self._exportable_selection()[1]))
+
+    def export_package(self) -> None:
+        """View ▸ Export Package: the shown grid's selected tiles leave as one `.amazepkg`."""
+        section, indexes = self._exportable_selection()
+        if indexes:
+            section.export_selection(indexes)
 
     def _build_view_toggles(self) -> None:
         """The favorites chip and the grid/list toggle."""

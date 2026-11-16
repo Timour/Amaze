@@ -76,7 +76,7 @@ The **toolbar**, from left to right:
 | | | |
 |:--:|---|---|
 | <img src="scripts/python/amaze/ui/icon_categories.svg" width="20"> | **Show Categories** | Shows and hides the sidebar. |
-| <img src="scripts/python/amaze/ui/icon_renderer.svg" width="20"> | **Import/Generate** | Gallery Import (.gal), Package Import (.amazepkg) and Generate Material. |
+| <img src="scripts/python/amaze/ui/icon_renderer.svg" width="20"> | **Import/Generate** | Gallery Import (.gal), Import Package (.amazepkg), Export Package (.amazepkg) and Generate Material. |
 | <img src="scripts/python/amaze/ui/icon_view.svg" width="20"> | **Filter** | Filters the grid: Material by renderer, Color by the number of colors, Node by network type, Code by language and File by kind. |
 | <img src="scripts/python/amaze/ui/icon_online.svg" width="20"> | **Online** | Switches between the library and the online sources. |
 | <img src="scripts/python/amaze/ui/icon_comments.svg" width="20"> | **Comments** | Opens and closes the [Comments pane](#comments). Purple while the pane is open. |
@@ -202,7 +202,7 @@ materials and snippets.
 ### Tile menu
 
 **Copy To**, **Convert to**, **Update Render**, **Capture**,
-**Customize**, **Favorite**, **Export Package** and **Delete**.
+**Customize**, **Favorite** and **Delete**.
 
 <img src="docs/images/menu_material_tile.png" width="200">
 <img src="docs/images/menu_copy_to.png" width="230">
@@ -323,8 +323,7 @@ The right-click menu:
   Linear, CatmullRom, MonotoneCubic, Bezier, BSpline or Hermite.
 - **Copy Color ▸** lists the swatches by name and hex code, and copies
   the chosen hex code to the clipboard.
-- **Capture**, **Customize**, **Favorite**, **Export Package** and
-  **Delete**.
+- **Capture**, **Customize**, **Favorite** and **Delete**.
 
 <img src="docs/images/menu_color_tile.png" width="200">
 <img src="docs/images/menu_apply_as.png" width="200">
@@ -376,8 +375,7 @@ The right-click menu:
   Category and Tags above the code. In the editor, **Apply** saves the
   snippet and the editor stays open. The tabs above the fields hold the
   snippet's [versions](#versions).
-- **Capture**, **Customize**, **Favorite**, **Export Package** and
-  **Delete**.
+- **Capture**, **Customize**, **Favorite** and **Delete**.
 
 <img src="docs/images/menu_code_tile.png" width="200">
 <img src="docs/images/dialog_edit_snippet.png" width="480">
@@ -427,8 +425,8 @@ Browses folders on disk.
   showing, since there is no one folder to make them in.
 
 The right-click menu: **New Folder**, **Save Scene**, **Load**,
-**Copy Path**, **Show Location**, **Capture**, **Customize**,
-**Favorite** and **Export Package**.
+**Copy Path**, **Show Location**, **Capture**, **Customize** and
+**Favorite**.
 
 <img src="docs/images/menu_file_tile.png" width="210">
 
@@ -501,11 +499,12 @@ A **package** is a single `.amazepkg` file that carries assets with their
 files, previews, categories, tags and comments. Packages move assets
 between machines, libraries and people.
 
-**Export Package**, on the right-click menu of every section, writes the
-selected assets to a package. **Export Category**, on the sidebar's
-right-click menu, writes a whole category.
+**Import/Generate ▸ Export Package (.amazepkg)** writes the selected
+tiles to a package. It is greyed while nothing is selected, and in the
+online browser. **Export Category**, on the sidebar's right-click menu,
+writes a whole category.
 
-**Import/Generate ▸ Package Import (.amazepkg)** adds a package to the
+**Import/Generate ▸ Import Package (.amazepkg)** adds a package to the
 library. Imported assets get new identities and are filed under the
 **Import** category, so a package imported twice gives two copies. The
 package's files go into an **Import** folder in the library, which the
