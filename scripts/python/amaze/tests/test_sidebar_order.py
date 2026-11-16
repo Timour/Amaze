@@ -679,6 +679,48 @@ class FolderOrderTest(unittest.TestCase):
                          prefs.file_folders)
         self.assertEqual(model.SCENE_LABEL, model.index(1, 0).data())
 
+    def test_sort_by_name_orders_the_locations_by_the_label_shown(self):
+        """A one-off, below All and the scene row; a renamed location sorts as its rename reads."""
+        from amaze.core import file_library
+        base = self._base()
+        cherry, apple, zebra, hip = (os.path.join(base, n) for n in ("cherry", "Apple", "zebra", "hip"))
+        prefs = self._prefs([cherry, zebra, apple])
+        os.makedirs(hip)
+        model = file_library.FileFolders(prefs)
+        self.assertTrue(model.set_scene_folder(hip), "premise: no scene row")
+        prefs.set_file_folder_name(zebra, "Banana")
+        self.assertEqual("Banana", model.display_name(test_support.posix_path(zebra)),
+                         "premise: the rename is the label")
+        with mock.patch.object(prefs, "save") as save:
+            self.assertTrue(model.sort_folders())
+        save.assert_not_called()    # staged like a move; the verb commits once
+        self.assertEqual([test_support.posix_path(p) for p in (apple, zebra, cherry)],
+                         prefs.file_folders)
+        self.assertEqual(model.SCENE_LABEL, model.index(1, 0).data(), "the scene row moved")
+        self.assertEqual(["Apple", "Banana", "cherry"],
+                         [model.index(row, 0).data() for row in (2, 3, 4)])
+        self.assertFalse(model.sort_folders(), "an already sorted list was sorted again")
+
+    def test_the_file_menu_verb_sorts_and_saves_once(self):
+        from amaze.core import file_library, locations
+        from amaze.panel import sections
+        base = self._base()
+        two, one = (os.path.join(base, n) for n in ("2", "1"))
+        prefs = self._prefs([two, one])
+        model = file_library.FileFolders(prefs)
+        section = sections.FileSection.__new__(sections.FileSection)    # the verb alone: no panel behind it
+        with mock.patch.object(sections.FileSection, "_p", lambda _s, _name: model), \
+                mock.patch.object(sections.FileSection, "standing_key", lambda _s: ""), \
+                mock.patch.object(sections.FileSection, "stand_on_key") as stand, \
+                mock.patch.object(sections.FileSection, "panel", mock.Mock(prefs=prefs), create=True), \
+                mock.patch.object(locations, "commit_registered_order") as commit:
+            section.menu_sort_locations([], None)
+            commit.assert_called_once()
+            stand.assert_called_once_with("")
+            section.menu_sort_locations([], None)
+            commit.assert_called_once()    # nothing moved, nothing saved
+        self.assertEqual([test_support.posix_path(p) for p in (one, two)], prefs.file_folders)
+
 
 class EverySidebarSourceMovesCategories(unittest.TestCase):
     """`_sidebar_categories` hands back any source it finds, and the reorder calls `move_category`."""

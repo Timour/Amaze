@@ -119,8 +119,8 @@ that column, and dragging the edge of a heading sets its width.
 The **sidebar** holds categories (Material, Node, Code), registered
 folders and the folders inside them (File) or palette groups (Color). Its right-click menu adds,
 renames, deletes and [colours](#category-colors) categories; File's
-folders have a menu of [their own](#locations). **Sort by name** sorts
-the categories alphabetically, with All at the top. Preferences ▸ Look
+folders have a menu of [their own](#locations). **Sort by name**, in
+every section, sorts the rows alphabetically, with All at the top. Preferences ▸ Look
 sets the category counts and hides empty categories.
 
 Sidebar rows are reordered by dragging. A press of about half a second
@@ -450,6 +450,8 @@ The sidebar's right-click menu:
 - **Remove** unregisters the folder and clears its name, colour, Show
   settings, favorites, comments, tile icons and cached thumbnails.
   Captures are kept.
+- **Sort by name** sorts the locations alphabetically by the name each
+  shows, below All and $HIP.
 - **Show ▸** sets what the location lists:
   - **Pathname** shows the full path as the name, written as set in
     **Write Paths As**.

@@ -1932,6 +1932,9 @@ class FileSection(FolderSection):
         MenuEntry("Remove", verb="menu_remove_location",
                   needs="on_a_location"),
         SEPARATOR,
+        MenuEntry("Sort by name", verb="menu_sort_locations",
+                  needs="always"),
+        SEPARATOR,
         MenuEntry("Show", verb="menu_show", children="show_actions",
                   needs="on_a_location"),
         SEPARATOR,
@@ -1942,6 +1945,18 @@ class FileSection(FolderSection):
     SHOW_KINDS = (("Images", locations.KIND_IMAGE),    # Show ▸'s kind ticks, in menu order
                   ("Geometry", locations.KIND_GEO),
                   ("HIP", locations.KIND_HIP))
+
+    def menu_sort_locations(self, indexes, current, payload=None) -> None:
+        """The one-off Sort by name: the locations below All and the scene row, whatever row was pressed."""
+        from amaze.core import locations
+        folders = self._p(self.sidebar_attr)
+        if folders is None:
+            return
+        standing = self.standing_key()    # the grid's folder: a right press moved only the sidebar
+        if not folders.sort_folders():    # a model reset, which clears the sidebar's selection
+            return
+        locations.commit_registered_order(self.panel.prefs)    # one write, as a drag's release makes
+        self.stand_on_key(standing)
 
     def _selected_location(self, current) -> str:
         return self.sidebar_key(current) if current is not None else ""

@@ -763,6 +763,15 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
             self.endResetModel()
         return moved
 
+    def sort_folders(self) -> bool:
+        """Sort the locations by the label each shows; staged like a move, True if any moved."""
+        current = list(self._folders())
+        ordered = sorted(current, key=lambda path: str(self.display_name(path)).lower())
+        if ordered == current:
+            return False
+        self.restore_folder_order(ordered)    # a reset: the caller stands the sidebar back
+        return True
+
     def restore_folder_order(self, paths) -> None:
         """Put a snapshot's order back: the reorder's Esc, a reset. ▸p/folder-sidebar"""
         if not self.move_folder_method:

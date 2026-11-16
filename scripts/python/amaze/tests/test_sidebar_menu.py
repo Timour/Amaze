@@ -116,7 +116,7 @@ class TheSidebarMenusAreWhatSHIPPED(unittest.TestCase):
 
     FILE_NO_LOCATION = ["Add", "Locate(off)",
                         "Rename > [Edit, ----, Set to Default(off)](off)",
-                        "Remove(off)", "----",
+                        "Remove(off)", "----", "Sort by name", "----",
                         "Show > [Pathname[ ], Subfolder[ ], ----, Other Files[ ], "
                         "----, Images[ ], Geometry[ ], HIP[ ]](off)", "----",
                         LABEL + "(off)"]
@@ -138,7 +138,7 @@ class TheSidebarMenusAreWhatSHIPPED(unittest.TestCase):
                 ("file", (1,), None, self.FILE_NO_LOCATION),    # the scene row: Add only
                 ("file", (2,), self._file_location,
                  ["Add", "Locate", "Rename > [Edit, ----, Set to Default(off)]",
-                  "Remove", "----", SHOW_NEW, "----", LABEL])):
+                  "Remove", "----", "Sort by name", "----", SHOW_NEW, "----", LABEL])):
             with self.subTest(section=key, rows=rows):
                 if prepare:
                     prepare()
