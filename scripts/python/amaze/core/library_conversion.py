@@ -790,7 +790,7 @@ def convert(directory: str, confirm, progress=None, user: str = "",
     counts["deleted"] += _remove_old_root_files(library_dir, user)
     try:
         rehome_pictures(library_dir, user)
-    except (OSError, guard.Refused) as exc:    # they stay where they were; the next open moves them
+    except (OSError, guard.Refused) as exc:    # they stay where they were, for Check Library to name
         debug.event("convert", "pictures not moved into their sections", error=str(exc))
     debug.event("convert", "library conversion", set_aside=len(set_aside), **counts)
     return Outcome(DONE, set_aside=set_aside, counts=counts, old_trash=old_trash)
@@ -1091,12 +1091,6 @@ def _remove_old_root_files(library_dir: str, user: str) -> int:
         change.remove(name)
     change.commit()
     return len(gone)
-
-
-def needs_rehoming(library_dir: str) -> bool:
-    """Whether a 2.0 library still has `captures/` or `img/`, the two folders no section owned."""
-    return any(os.path.isdir(os.path.join(str(library_dir or ""), name))
-               for name in (OLD_CAPTURES, OLD_PICTURES)) if library_dir else False
 
 
 def rehome_pictures(library_dir: str, user: str = "") -> int:

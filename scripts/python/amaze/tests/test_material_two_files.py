@@ -1108,7 +1108,6 @@ class PicturesLiveInTheirSectionTest(_Library):
         change = held.change(test_support.FIXTURE_USER)
         change.put(reading.ticket, document)
         change.commit()
-        self.assertTrue(library_conversion.needs_rehoming(self.dir))
         self.assertEqual(2, library_conversion.rehome_pictures(self.dir, test_support.FIXTURE_USER))
         self.assertEqual(b"a file's capture", read_bytes(self.at("files", capture + ".png")))
         self.assertEqual(b"a picture in a comment",
@@ -1117,7 +1116,6 @@ class PicturesLiveInTheirSectionTest(_Library):
         self.assertEqual("materials/comments/" + shown, item["src"])
         self.assertEqual(1, trashed(self.dir), "the picture no comment shows did not go to the trash")
         self.assertFalse(os.path.exists(self.at("img")) or os.path.exists(self.at("captures")))
-        self.assertFalse(library_conversion.needs_rehoming(self.dir))
         for relative in ("files/%s.png" % capture, "materials/comments/" + shown):
             self.assertNotEqual(library_files.UNKNOWN, library_files.classify(relative)[0], relative)
 

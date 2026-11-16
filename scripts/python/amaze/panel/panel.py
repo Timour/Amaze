@@ -562,7 +562,6 @@ class AmazePanel(QtWidgets.QWidget):
             return self._stay_closed()
         if not self._converted(self.prefs.dir):
             return self._stay_closed()    # a library is used in format 4 only, once whole
-        self._rehome_pictures()
         library_actions.prepare(self.prefs)
         if not library_actions.index_present(self.prefs.dir):    # prepare could not set one up
             return self._stay_closed()
@@ -654,19 +653,6 @@ class AmazePanel(QtWidgets.QWidget):
                 library_conversion.trash_set_aside(folder, left)
         self._offer_old_trash(ui, outcome.old_trash)
         return True
-
-    def _rehome_pictures(self) -> None:
-        """A 2.0 library made before sections kept their own pictures: its two old folders, emptied."""
-        from amaze.core import guard, library_conversion
-        folder = self.prefs.dir
-        if not library_conversion.needs_rehoming(folder) or \
-                not library_actions.index_present(folder):
-            return
-        try:
-            library_conversion.rehome_pictures(folder, self.prefs.library_user)
-        except (OSError, guard.Refused) as exc:
-            debug.event("session", "pictures not moved into their sections", error=str(exc))
-        library_db.release(self.prefs)
 
     def _offer_old_trash(self, ui, held: str) -> None:
         """This computer's old trash for the library, deleted or left at the user's word, once."""
