@@ -945,8 +945,8 @@ class CopSection(AssetSection):
     empty_noun = "node asset"
     EMPTY = amazetheme.EMPTY_NODE    # no button, for the same reason as Material
     QUOTE = amazetheme.QUOTE_NODE
-    GRID_MENU = (    # the material menu without renderer-specific entries; Load is live on a multi-selection
-        MenuEntry("Load", verb="menu_load"),
+    GRID_MENU = (    # the material menu without renderer-specific entries; Load Asset is live on a multi-selection
+        MenuEntry("Load Asset", verb="menu_load"),
         SEPARATOR,
     ) + GRID_MENU_TAIL
 
@@ -1082,10 +1082,10 @@ class CodeSection(AssetSection):
     label = section_list.label(key)
     empty_noun = "snippet"
     EMPTY = amazetheme.EMPTY_CODE    # New File acts on nothing, so it always works
-    GRID_MENU = (    # Load and Edit act on one snippet; New File acts on nothing and stays live
+    GRID_MENU = (    # Load Asset and Edit act on one snippet; New File acts on nothing and stays live
         MenuEntry("New File", verb="menu_new_snippet", needs="always"),
         SEPARATOR,
-        MenuEntry("Load", verb="menu_apply", needs="one"),
+        MenuEntry("Load Asset", verb="menu_apply", needs="one"),
         MenuEntry("Edit", verb="menu_edit", needs="one"),
         SEPARATOR,
     ) + GRID_MENU_TAIL
@@ -1765,12 +1765,13 @@ class FileSection(FolderSection):
 
     GRID_MENU = UNDO_MOVE + (  # the selection's KINDS pick the actions; no Delete: the user's own files
         MenuEntry("New Folder", verb="menu_new_folder", needs="menu_new_enabled"),
+        SEPARATOR,
+        MenuEntry("Open Scene", verb="menu_load_scene", needs="one",
+                  shown="selection_has_scene"),
         MenuEntry("Save Scene", verb="menu_save_scene", needs="menu_new_enabled"),
         SEPARATOR,
-        MenuEntry("Import", verb="menu_import", needs="menu_import_enabled",
+        MenuEntry("Load Asset", verb="menu_import", needs="menu_import_enabled",
                   shown="selection_has_importable"),
-        MenuEntry("Load", verb="menu_load_scene", needs="one",
-                  shown="selection_has_scene"),
         MenuEntry("Copy Path", verb="menu_copy_path"),
         SEPARATOR,
         MenuEntry("Show Location", verb="menu_reveal", needs="one"),
@@ -2176,8 +2177,8 @@ class GradientSection(AssetSection):
 
     offers_preview_update = False  # drawn from its ramp; nothing to re-render
     GRID_MENU = (  # both submenus are built per entry, so `children` names a method
-        MenuEntry("Apply", verb="menu_apply_ramp", needs="one"),
-        MenuEntry("Apply as", verb="menu_apply_ramp", children="ramp_bases",
+        MenuEntry("Load Asset", verb="menu_apply_ramp", needs="one"),
+        MenuEntry("Load Asset as", verb="menu_apply_ramp", children="ramp_bases",
                   needs="one"),
         MenuEntry("Copy Color", verb="menu_copy_swatch",
                   children="palette_swatches", needs="one"),

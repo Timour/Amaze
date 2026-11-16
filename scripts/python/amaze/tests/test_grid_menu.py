@@ -231,8 +231,8 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
     def test_color_with_one_selected(self):
         shown = self._show("gradient", (0,))
         self.assertEqual(
-            ["Apply",
-             "Apply as > [Constant, Linear, CatmullRom, MonotoneCubic, "
+            ["Load Asset",
+             "Load Asset as > [Constant, Linear, CatmullRom, MonotoneCubic, "
              "Bezier, BSpline, Hermite]",
              "----", "Capture", "Customize", "Favorite",
              "Delete"],
@@ -246,28 +246,28 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
         """The per-entry actions grey; Customize, Favorite and Delete act on the whole selection."""
         shown = self._show("gradient", (0, 1))
         self.assertEqual(
-            ["Apply(off)", "----", "Capture(off)", "Customize", "Favorite",
+            ["Load Asset(off)", "----", "Capture(off)", "Customize", "Favorite",
              "Delete"],
             [row for row in shown
-             if not row.startswith(("Apply as", "Copy Color"))])
+             if not row.startswith(("Load Asset as", "Copy Color"))])
         for row in shown:
-            if row.startswith(("Apply as", "Copy Color")):
+            if row.startswith(("Load Asset as", "Copy Color")):
                 self.assertTrue(row.endswith("(off)"),
                                 "%r stayed live on a multi-selection" % row)
 
     def test_node_keeps_its_shape(self):
         """The fixture has no Node assets, so this is the empty case, which once produced no menu."""
         self.assertEqual(
-            ["Load(off)", "----", "Update Render(off)", "Capture(off)",
+            ["Load Asset(off)", "----", "Update Render(off)", "Capture(off)",
              "Customize(off)", "Favorite(off)",
              "Delete(off)"],
             self._show("cop"))
 
     def test_code_with_one_or_two_selected(self):
         for rows, expected in (
-                ((0,), ["New File", "----", "Load", "Edit", "----", "Capture",
+                ((0,), ["New File", "----", "Load Asset", "Edit", "----", "Capture",
                         "Customize", "Favorite", "Delete"]),
-                ((0, 1), ["New File", "----", "Load(off)", "Edit(off)", "----",
+                ((0, 1), ["New File", "----", "Load Asset(off)", "Edit(off)", "----",
                           "Capture(off)", "Customize", "Favorite",
                           "Delete"])):
             with self.subTest(selected=len(rows)):
@@ -284,20 +284,21 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
 
     def test_file_menus_follow_the_kind_and_the_count_and_never_delete(self):
         """No Delete for any kind: these are the user's own files, and an os.remove once took some."""
-        top = ["New Folder", "Save Scene", "----"]    # the folder shown, whatever is selected
+        top = ["New Folder", "----", "Save Scene", "----"]    # the folder shown, whatever is selected
         for kind, count, expected in (
                 (locations.KIND_IMAGE, 1,
-                 top + ["Import", "Copy Path", "----", "Show Location",
+                 top + ["Load Asset", "Copy Path", "----", "Show Location",
                         "Update Render", "Capture", "Customize", "Favorite"]),
                 (locations.KIND_IMAGE, 2,    # an image loads onto ONE node parameter
-                 top + ["Import(off)", "Copy Path", "----", "Show Location(off)",
+                 top + ["Load Asset(off)", "Copy Path", "----", "Show Location(off)",
                         "Update Render", "Capture(off)", "Customize", "Favorite"]),
-                (locations.KIND_GEO, 2,      # geometry imports the whole selection
-                 top + ["Import", "Copy Path", "----", "Show Location(off)",
+                (locations.KIND_GEO, 2,      # geometry loads the whole selection
+                 top + ["Load Asset", "Copy Path", "----", "Show Location(off)",
                         "Update Render", "Capture(off)", "Customize", "Favorite"]),
                 (locations.KIND_HIP, 1,      # a scene captures only while it is the open one
-                 top + ["Load", "Copy Path", "----", "Show Location",
-                        "Capture(off)", "Customize", "Favorite"]),
+                 ["New Folder", "----", "Open Scene", "Save Scene", "----",
+                  "Copy Path", "----", "Show Location",
+                  "Capture(off)", "Customize", "Favorite"]),
                 (locations.KIND_OTHER, 1,    # what Houdini cannot open is absent, not greyed
                  top + ["Copy Path", "----", "Show Location", "Capture", "Customize",
                         "Favorite"])):

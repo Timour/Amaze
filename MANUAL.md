@@ -316,10 +316,10 @@ Johannes Itten.
 
 The right-click menu:
 
-- **Apply** applies the palette to the selected node's ramp parameter. On
-  a node with no ramp parameter, it creates a ramp node, as a
-  double-click on the tile does.
-- **Apply as ▸** applies the palette with an interpolation: Constant,
+- **Load Asset** applies the palette to the selected node's ramp
+  parameter. On a node with no ramp parameter, it creates a ramp node, as
+  a double-click on the tile does.
+- **Load Asset as ▸** applies the palette with an interpolation: Constant,
   Linear, CatmullRom, MonotoneCubic, Bezier, BSpline or Hermite.
 - **Copy Color ▸** lists the swatches by name and hex code, and copies
   the chosen hex code to the clipboard.
@@ -347,7 +347,7 @@ tile.
 network container (a `geo`, `copnet`, `lopnet` or `subnet`) or the
 selected nodes.
 
-**Double-click**, a drag, or **Load** on the right-click menu loads the
+**Double-click**, a drag, or **Load Asset** on the right-click menu loads the
 nodes into the network under the pointer, or into a new container of
 the right type.
 
@@ -370,7 +370,7 @@ previews on the tiles. A new library includes a set of **examples**.
 The right-click menu:
 
 - **New File** opens the editor on a new snippet.
-- **Load** writes the snippet into the selected node's code parameter.
+- **Load Asset** writes the snippet into the selected node's code parameter.
 - **Edit** opens the snippet in the editor, with Name, Language,
   Category and Tags above the code. In the editor, **Apply** saves the
   snippet and the editor stays open. The tabs above the fields hold the
@@ -398,7 +398,7 @@ Browses folders on disk.
 <img src="docs/images/file_grid.png" width="820">
 
 - **Images** (PNG, JPG, EXR, HDR, TGA, RAT, PSD, PIC and more) get cached
-  thumbnails. **Double-click** or **Load to Node** sets the file on the
+  thumbnails. **Double-click** or **Load Asset** sets the file on the
   selected node's image parameter, and a drag sets it on any parameter
   field. Formats Qt cannot read are converted in the background, and
   Preferences ▸ Render sets how many convert at once. **Cancel**, at the
@@ -406,10 +406,10 @@ Browses folders on disk.
   thumbnails already made.
 - **Geometry** (.bgeo, .obj, .fbx, .abc, .usd, .usdz, .glb and more) gets
   viewport-rendered thumbnails, wireframe over shaded. **Double-click**,
-  or a drag into a network, imports it in context. Esc interrupts a long
+  **Load Asset**, or a drag into a network, imports it in context. Esc interrupts a long
   first scan, which resumes later.
-- **Scenes** (.hip, .hiplc, .hipnc) open on **double-click**, with
-  Houdini's own prompt for unsaved changes. The open scene has a tick on
+- **Scenes** (.hip, .hiplc, .hipnc) open on **double-click** or **Open
+  Scene**, with Houdini's own prompt for unsaved changes. The open scene has a tick on
   its tile.
   A scene's picture is a capture: **Capture** on the right-click menu, or
   the <img src="scripts/python/amaze/ui/icon_screenshot.svg" width="14">
@@ -424,9 +424,9 @@ Browses folders on disk.
   file becomes the one you are working in. Both are greyed while All is
   showing, since there is no one folder to make them in.
 
-The right-click menu: **New Folder**, **Save Scene**, **Load**,
-**Copy Path**, **Show Location**, **Capture**, **Customize** and
-**Favorite**.
+The right-click menu: **New Folder**, **Open Scene**, **Save Scene**,
+**Load Asset**, **Copy Path**, **Show Location**, **Capture**,
+**Customize** and **Favorite**.
 
 <img src="docs/images/menu_file_tile.png" width="210">
 

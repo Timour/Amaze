@@ -2041,14 +2041,14 @@ class LoadOnTheGridMenuOpensTheSceneTest(unittest.TestCase):
         loaded = []
 
         def _pick(menu, *_args, **_kwargs):
-            return next(a for a in menu.actions() if a.text() == "Load")
+            return next(a for a in menu.actions() if a.text() == "Open Scene")
 
         with mock.patch.object(QtWidgets.QMenu, "exec_", _pick), \
                 mock.patch.object(hou.hipFile, "load",
                                   lambda path, **_kwargs: loaded.append(path)):
             panel.active_section().rc_menu()
         self.assertEqual([proxy.index(row, 0).data(path_role)], loaded,
-                         "Load did not open the scene it was picked on")
+                         "Open Scene did not open the scene it was picked on")
 
 
 class SectionListIsSingleSourcedTest(unittest.TestCase):
