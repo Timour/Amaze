@@ -164,23 +164,31 @@ class OneLayoutIsReadAndWritten(PerUserCase):
                 self.assertEqual("grid", p.view_mode)
 
 
-class NobodyPickedKeepsTheFlatShape(PerUserCase):
+class PerUserSettingsHaveOneHome(PerUserCase):
 
-    def test_a_userless_save_writes_flat_and_mints_no_block(self):
-        """A session that cancelled the ask dialog keeps the old flat persistence; nothing is lost."""
+    def test_nobody_picked_reads_and_writes_no_per_user_setting(self):
+        """Per-user settings live in a user's block alone: none is read or written outside one."""
         self.write_settings({"view_mode": "list", "thumbsize": 300})
         p = self.prefs()
         p.load()
+        self.assertEqual((128, "grid"), (p.thumbsize, p.view_mode),
+                         "a per-user setting was read from outside a user's block")
         p.thumbsize = 200
         p.save()
         doc = self.read_settings()
-        self.assertEqual(200, doc.get("thumbsize"),
-                         "a userless save stopped persisting view "
-                         "state")
-        self.assertEqual("list", doc.get("view_mode"))
+        self.assertEqual(300, doc.get("thumbsize"),
+                         "a per-user setting was written outside a user's block")
         self.assertEqual({}, doc.get("users", {}),
-                         "a userless save minted a block under a "
-                         "blank key")
+                         "a save with nobody picked made a block under a blank key")
+
+    def test_the_first_pick_files_what_is_on_screen_under_that_user(self):
+        p = self.prefs()
+        p.thumbsize = 200
+        p.library_user = UID_A
+        p.save()
+        doc = self.read_settings()
+        self.assertEqual(200, doc["users"][UID_A]["thumbsize"])
+        self.assertNotIn("thumbsize", doc)
 
 
 class ASwitchToAnUnknownUserKeepsTheCurrentState(PerUserCase):

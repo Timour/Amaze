@@ -218,6 +218,25 @@ def open_path(path: str) -> None:
             reveal_path(path)
 
 
+FOLDER_ICON_FILE = "Icon\r"    # macOS: the file inside a folder that carries the folder's own icon
+_SET_FOLDER_ICON = (    # NSWorkspace writes that file and marks the folder, through the system's own JavaScript
+    'ObjC.import("AppKit"); function run(argv) { return $.NSWorkspace.sharedWorkspace'
+    ".setIconForFileOptions($.NSImage.alloc.initWithContentsOfFile(argv[0]), argv[1], 0); }")
+
+
+def give_folder_icon(folder: str, icns: str) -> bool:
+    """macOS: `folder` shown with the icon in `icns`, unless it carries one; whether it was set now."""
+    if not is_macos() or not os.path.isdir(folder) or not os.path.isfile(icns) \
+            or os.path.lexists(os.path.join(folder, FOLDER_ICON_FILE)):
+        return False
+    try:
+        return subprocess.run(
+            ["/usr/bin/osascript", "-l", "JavaScript", "-e", _SET_FOLDER_ICON, icns, folder],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
 def _call(argv: list) -> int:
     """`subprocess.call` that cannot raise: the exit code, or 1 when the program is missing."""
     try:

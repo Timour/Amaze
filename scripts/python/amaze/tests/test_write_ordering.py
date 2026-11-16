@@ -174,7 +174,7 @@ class SwitchingVersionsIsAllOrNothing(unittest.TestCase):
         finally:
             hostos.promote_scratch = real_promote
 
-        self.assertFalse(switched, "switch_active reported success")
+        self.assertTrue(switched, "a recorded switch that waits on one file was reported as failed")
         self._released()
         self.assertEqual(
             self._holds(".mat"), self._holds(".json"),
@@ -228,7 +228,7 @@ class SwitchingVersionsIsAllOrNothing(unittest.TestCase):
         finally:
             hostos.promote_scratch = real_promote
 
-        self.assertFalse(switched, "premise: the held file refuses the switch")
+        self.assertTrue(switched, "a recorded switch that waits on one file was reported as failed")
         self._released()
         self.assertEqual((1, 1), (self._holds(".mat"), self._holds(".json")),
                          "the switch landed in part: a material made of two versions")

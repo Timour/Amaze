@@ -84,7 +84,7 @@ class TheReportIsTheGuardsJudgementTest(_Library):
         self.assertIn("Materials: the database is corrupt/unreadable.",
                       "\n".join(repair.report_lines(findings)))
         with self.assertRaises(ValueError):
-            repair.move_aside(findings, "unlisted", guard=False)
+            repair.move_aside(findings, "unlisted", guard_session=False)
         self.assertTrue(os.path.exists(os.path.join(self.materials, "ORPHAN1.mat")))
 
     def test_a_newer_database_is_named_and_read_only(self):
@@ -111,7 +111,7 @@ class TheFixesActThroughTheGuardTest(_Library):
         offers = repair.offered_copies(findings)
         self.assertTrue(offers, "the backup of the two materials is not offered")
         filename, backup, _snap, _now = offers[0]
-        done = repair.put_back(findings, filename, backup, guard=False)
+        done = repair.put_back(findings, filename, backup, guard_session=False)
         self.assertEqual({"AAA1", "AAA2"}, set(_read(self.dir, MATERIALS)["assets"]))
         self.assertTrue(done["undo"].endswith(guard.UNDO_TAIL), "nothing kept to undo")
 
@@ -120,7 +120,7 @@ class TheFixesActThroughTheGuardTest(_Library):
             handle.write(b"x")
         findings = self.survey()
         self.assertEqual(["STRAY1.png"], findings["unaccounted"]["materials/"])
-        result = repair.move_aside(findings, "unlisted", guard=False)
+        result = repair.move_aside(findings, "unlisted", guard_session=False)
         self.assertEqual(["STRAY1.png"], result["moved"])
         self.assertFalse(os.path.exists(os.path.join(self.materials, "STRAY1.png")))
         self.assertTrue(self.trash_holds("materials/STRAY1.png"))
@@ -130,7 +130,7 @@ class TheFixesActThroughTheGuardTest(_Library):
                             "renderer": "Karma"})
         findings = self.survey()
         self.assertEqual({MATERIALS: ["NEW1"]}, repair.recoverable(findings))
-        result = repair.recover(findings, guard=False)
+        result = repair.recover(findings, guard_session=False)
         self.assertEqual(["NEW1"], result[MATERIALS]["added"])
         stored = _read(self.dir, MATERIALS)
         self.assertEqual("Slate", stored["assets"]["NEW1"]["name"])
@@ -147,7 +147,7 @@ class TheFixesActThroughTheGuardTest(_Library):
         findings = self.survey()
         self.assertEqual({MATERIALS: ["MAT9"], NODES: [long_id, "RIG1"]},
                          repair.recoverable(findings))
-        result = repair.recover(findings, guard=False)
+        result = repair.recover(findings, guard_session=False)
         self.assertEqual([long_id, "RIG1"], sorted(result[NODES]["added"]))
         self.assertEqual(["MAT9"], result[MATERIALS]["added"])
         node_rows = _read(self.dir, NODES)["assets"]
@@ -165,7 +165,7 @@ class TheFixesActThroughTheGuardTest(_Library):
                                   "renderer": "Karma"})
         with open(os.path.join(self.dir, MATERIALS), "w", encoding="utf-8") as handle:
             handle.write("{ ruined")
-        done = repair.rebuild(self.dir, MATERIALS, guard=False)
+        done = repair.rebuild(self.dir, MATERIALS, guard_session=False)
         self.assertEqual({"assets": 2, "damaged": 0}, done)
         self.assertEqual({"AAA1", "AAA2"}, set(_read(self.dir, MATERIALS)["assets"]))
 
@@ -187,7 +187,7 @@ class TheFixesActThroughTheGuardTest(_Library):
         stored["assets"]["AAA2"]["categories"] = []
         _write(self.dir, MATERIALS, stored)
         findings = self.survey()
-        done = repair.rescue_uncategorised(findings, guard=False)
+        done = repair.rescue_uncategorised(findings, guard_session=False)
         self.assertEqual({MATERIALS: 1}, done)
         self.assertEqual([repair.UNCATEGORISED],
                          _read(self.dir, MATERIALS)["assets"]["AAA2"]["categories"])
@@ -385,7 +385,7 @@ class EverySentenceOfTheReportTest(_Library):
 
     def test_the_trash_line_once_it_holds_files(self):
         _make(os.path.join(self.materials, "STRAY1.png"))
-        repair.move_aside(self.survey(), "unlisted", guard=False)
+        repair.move_aside(self.survey(), "unlisted", guard_session=False)
         self.assertIn("The library's trash holds 1 file (1 KB), moved there on 1 day. Each "
                       "day's files are deleted after 30 days, and the oldest go on ", self.text())
 
@@ -457,15 +457,31 @@ class TheFixesKeepTheirWordTest(_Library):
 
     def test_leftovers_go_to_the_trash(self):
         _make(os.path.join(self.materials, "AAA1.interface"))
-        result = repair.move_aside(self.survey(), "leftovers", guard=False)
+        result = repair.move_aside(self.survey(), "leftovers", guard_session=False)
         self.assertEqual(["materials/AAA1.interface"], result["moved"])
         self.assertTrue(self.trash_holds("materials/AAA1.interface"))
         self.assertFalse(os.path.exists(os.path.join(self.materials, "AAA1.interface")))
 
+    def test_the_folder_s_icon_is_the_system_s_own_file_and_stays(self):
+        from amaze import package_file
+        from amaze.helpers import hostos
+        carrier = os.path.join(self.dir, hostos.FOLDER_ICON_FILE)
+        if hostos.is_macos():
+            self.assertTrue(hostos.give_folder_icon(self.dir, package_file(
+                "ui", "library_folder.icns")), "the folder was given no icon")
+            self.assertTrue(os.path.exists(carrier))
+            self.assertFalse(hostos.give_folder_icon(self.dir, package_file(
+                "ui", "library_folder.icns")), "a folder that carries its icon was given one again")
+        else:
+            _make(carrier)
+        result = repair.move_aside(self.survey(), "unknown", guard_session=False)
+        self.assertEqual([], result["moved"])
+        self.assertTrue(os.path.exists(carrier))
+
     def test_unknown_files_and_folders_go_to_the_trash(self):
         _make(os.path.join(self.dir, "notes.txt"))
         _make(os.path.join(self.dir, "stuff", "a.bin"))
-        result = repair.move_aside(self.survey(), "unknown", guard=False)
+        result = repair.move_aside(self.survey(), "unknown", guard_session=False)
         self.assertEqual(["notes.txt", "stuff"], sorted(result["moved"]))
         self.assertTrue(self.trash_holds("notes.txt"))
         self.assertTrue(self.trash_holds("stuff/a.bin"))
@@ -479,7 +495,7 @@ class TheFixesKeepTheirWordTest(_Library):
         findings = repair.survey(prefs)
         self.assertIn("This starred file is gone from its folder:\n  %s" % os.path.normpath(star),
                       "\n".join(repair.report_lines(findings)))
-        self.assertEqual([star], repair.drop_dead_stars(findings, guard=False))
+        self.assertEqual([star], repair.drop_dead_stars(findings, guard_session=False))
         self.assertNotIn(star, prefs.file_favorites)
 
     def test_a_location_whose_folder_is_gone_is_set_aside(self):
@@ -492,7 +508,7 @@ class TheFixesKeepTheirWordTest(_Library):
         self.assertIn("This folder in the Files section is not on this computer. Setting it "
                       "aside keeps its comments, icons and favorites, and they come back when "
                       "the folder is added again:", "\n".join(repair.report_lines(findings)))
-        done = repair.set_aside_folders(findings, guard=False)
+        done = repair.set_aside_folders(findings, guard_session=False)
         self.assertEqual(1, len(done))
         self.assertNotIn(os.path.normpath(gone),
                          [os.path.normpath(path) for path in prefs.file_folders])
@@ -500,7 +516,7 @@ class TheFixesKeepTheirWordTest(_Library):
     def test_show_holding_folder_reveals_the_trash(self):
         from amaze.dialogs import repair_dialog
         _make(os.path.join(self.materials, "STRAY1.png"))
-        repair.move_aside(self.survey(), "unlisted", guard=False)
+        repair.move_aside(self.survey(), "unlisted", guard_session=False)
         findings = self.survey()
         labels, keys = repair_dialog._every_choice(findings, True)
         self.assertIn("holding", keys)

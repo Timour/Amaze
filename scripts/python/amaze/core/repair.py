@@ -523,10 +523,9 @@ def rebuildable(findings: dict) -> list:
             if entry["state"] == "unreadable" and entry["filename"] in naming.ASSET_SECTIONS]
 
 
-def rebuild(directory: str, name: str = naming.MATERIALS, guard_session: bool = True,
-            **legacy) -> dict:
+def rebuild(directory: str, name: str = naming.MATERIALS, guard_session: bool = True) -> dict:
     """`name` rebuilt from each asset's metadata as one change; {assets, damaged}, else ValueError."""
-    if legacy.get("guard", guard_session):
+    if guard_session:
         _refuse_a_houdini_that_holds_the_library()
     document = rebuild_from_stamps(directory, name)
     if document["unreadable"]:
@@ -1151,9 +1150,9 @@ def unknown_to_move_aside(findings: dict) -> int:
 MOVABLE = ("unlisted", "leftovers", "unknown")
 
 
-def move_aside(findings: dict, what, guard_session: bool = True, **legacy) -> dict:
+def move_aside(findings: dict, what, guard_session: bool = True) -> dict:
     """What `what` names, one of MOVABLE or several, into the library's trash as ONE change."""
-    if legacy.get("guard", guard_session):
+    if guard_session:
         _refuse_a_houdini_that_holds_the_library()
     asked = (what,) if isinstance(what, str) else tuple(what)
     for one in asked:
@@ -1211,9 +1210,9 @@ def move_aside(findings: dict, what, guard_session: bool = True, **legacy) -> di
     return {"folder": root, "moved": moved, "failed": failed, "claimed": taken}
 
 
-def set_aside_folders(findings: dict, guard_session: bool = True, **legacy) -> list:
+def set_aside_folders(findings: dict, guard_session: bool = True) -> list:
     """Drop the Files section's pointer to each folder not on this computer; files untouched."""
-    if legacy.get("guard", guard_session):
+    if guard_session:
         _refuse_a_houdini_that_holds_the_library()
     preferences = findings["preferences"]
     done = []
@@ -1226,9 +1225,9 @@ def set_aside_folders(findings: dict, guard_session: bool = True, **legacy) -> l
     return done
 
 
-def drop_dead_stars(findings: dict, guard_session: bool = True, **legacy) -> list:
+def drop_dead_stars(findings: dict, guard_session: bool = True) -> list:
     """Unstar each starred file gone from a folder that is still here, as one change."""
-    if legacy.get("guard", guard_session):
+    if guard_session:
         _refuse_a_houdini_that_holds_the_library()
     from amaze.core import locations
     gone = [path for path in findings.get("dead_stars", ())
@@ -1239,9 +1238,9 @@ def drop_dead_stars(findings: dict, guard_session: bool = True, **legacy) -> lis
     return gone
 
 
-def rescue_uncategorised(findings: dict, guard_session: bool = True, **legacy) -> dict:
+def rescue_uncategorised(findings: dict, guard_session: bool = True) -> dict:
     """Each row with no category put in Uncategorized, database by database; {database: n}."""
-    if legacy.get("guard", guard_session):
+    if guard_session:
         _refuse_a_houdini_that_holds_the_library()
     done = {}
     for filename, rows in findings.get("uncategorised", {}).items():
@@ -1278,9 +1277,9 @@ def recoverable(findings: dict) -> dict:
     return found
 
 
-def recover(findings: dict, guard_session: bool = True, **legacy) -> dict:
+def recover(findings: dict, guard_session: bool = True) -> dict:
     """Every `recoverable` pair into its folder's database as ONE change: {database: rows added}."""
-    if legacy.get("guard", guard_session):
+    if guard_session:
         _refuse_a_houdini_that_holds_the_library()
     found = recoverable(findings)
     held = _guard(findings["directory"])
@@ -1494,10 +1493,9 @@ def target_of(findings: dict, filename: str) -> str:
     return os.path.join(findings["directory"], filename)
 
 
-def put_back(findings: dict, filename: str, tier: str, guard_session: bool = True,
-             **legacy) -> dict:
+def put_back(findings: dict, filename: str, tier: str, guard_session: bool = True) -> dict:
     """One backup restored through the guard, then for a Material or Node one the rows after."""
-    if legacy.get("guard", guard_session):
+    if guard_session:
         _refuse_a_houdini_that_holds_the_library(
             lambda phrase: RestoreRefused("Nothing was restored: %s." % phrase))
     held = _guard(findings["directory"])

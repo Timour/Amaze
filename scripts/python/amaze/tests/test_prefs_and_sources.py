@@ -1163,7 +1163,6 @@ class OneRuleForWhatBelongsInAFolder(unittest.TestCase):
     def test_the_two_answers_cannot_disagree(self):
         class Prefs:
             file_show_unknown = False
-            file_folder_show_all = {}
 
         model = file_library.FileFolders.__new__(file_library.FileFolders)
         model.preferences = Prefs()

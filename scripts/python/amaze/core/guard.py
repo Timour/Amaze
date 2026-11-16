@@ -208,6 +208,14 @@ class Guard:
                 return False    # another session on this machine is applying it now
             return self._finish_journal()
 
+    def _waiting(self) -> bool:
+        """Whether a recorded change is still not all in place, after one more try at it."""
+        journal = self.path(JOURNAL)
+        if not self.disk.exists(journal):
+            return False
+        self._quietly(self.recover)
+        return self.disk.exists(journal)
+
     def _finish_journal(self) -> bool:
         """`recover`'s work, for a caller that already holds the machine lock."""
         journal = self.path(JOURNAL)
@@ -252,6 +260,8 @@ class Guard:
         kind = DATABASES.get(name)
         if kind is None:
             raise Refused("%s is no database of a library" % name)
+        if self._waiting():
+            return Reading(name, HELD, why="a change is waiting on a file that is in use")
         path = self.path(name)
         if not self.disk.exists(path):
             if self._known(name):
@@ -418,6 +428,7 @@ class Change:
         self._taken = {}    # relative path -> a file already written whole, moved into place
         self._removals = []
         self._trashed = []
+        self.waiting = ""    # after `commit`: why the recorded change is not yet all in place
 
     def put(self, ticket: Ticket, document: dict) -> None:
         """A database's new content; it needs the ticket of the read this content is based on."""
@@ -490,8 +501,12 @@ class Change:
                     disk.write(scratch, json.dumps({"steps": steps}).encode("utf-8"))
                     written = []    # from here the journal owns the scratches
                     disk.swap(scratch, journal)
-                    guard._apply(steps)
-                    disk.remove(journal)
+                    try:
+                        guard._apply(steps)
+                        disk.remove(journal)
+                    except OSError as exc:    # the journal is the decision: the next read finishes it
+                        debug.event("guard", "a change waits on a file", error=str(exc))
+                        self.waiting = str(exc)
             except OSError:
                 for scratch in written:
                     guard._quietly(disk.remove, guard._relative(scratch))

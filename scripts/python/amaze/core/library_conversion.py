@@ -10,7 +10,7 @@ import uuid
 
 from amaze import branding
 from amaze.core import asset_record, debug, guard, library_files, library_policy, material
-from amaze.core import locations, notes
+from amaze.core import locations, notes, renderers
 from amaze.helpers import hostos
 
 OLD_FOLDER = "mat"    # format 3: every section's asset files and version folders, together
@@ -481,6 +481,56 @@ def _convert_one(library_dir: str, asset_id: str, section: str, rows: dict,
     return True, []
 
 
+CLASSIC = {each.classic_container: each for each in renderers.ALL if each.classic_container}
+
+
+def _classics(library_dir: str, rows: dict) -> dict:
+    """{id: its Renderer} for each Material saved in a classic container, which 2.0 does not read."""
+    found = {}
+    folders = (os.path.join(library_dir, OLD_FOLDER),
+               material.section_folder(library_dir, library_files.MATERIALS))
+    for asset_id in rows.get(library_files.MATERIALS, {}):
+        old = {suffix: next((path for path in (os.path.join(folder, asset_id + suffix)
+                                               for folder in folders) if os.path.lexists(path)), "")
+               for suffix in (BUILDER, INTERFACE)}
+        builder = asset_record.read(asset_record.path_for(
+            _Prefs(library_dir), asset_id, library_files.MATERIALS))[asset_record.BUILDER] \
+            or _old_builder(old[BUILDER], old[INTERFACE])
+        renderer = CLASSIC.get(builder.get("type", ""))
+        if renderer is not None:
+            found[asset_id] = renderer
+    return found
+
+
+def _new_files(library_dir: str, asset_id: str, section: str) -> list:
+    """The 2.0 files of one asset that are there."""
+    home = material.section_folder(library_dir, section)
+    return [path for path in (os.path.join(home, asset_id + suffix)
+                              for suffix in (".mat", "_cop.mat", ".json", ".png"))
+            if os.path.lexists(path)]
+
+
+def _rebuilt(classic, library_dir: str, asset_id: str, renderer, row, counts: dict) -> bool:
+    """A converted classic Material rewritten as its USD builder through `classic`; whether it was."""
+    why = "its classic builder is rebuilt in Houdini alone"
+    if classic is not None:
+        try:
+            classic.rebuild(asset_id, str((row or {}).get("name") or asset_id), renderer)
+            saved = asset_record.read(asset_record.path_for(
+                _Prefs(library_dir), asset_id, library_files.MATERIALS))[asset_record.BUILDER]
+            if saved.get("type") == renderer.usd_builder:
+                return True
+            why = "its saved builder is still %s" % saved.get("type")
+        except Exception as exc:    # noqa: BLE001 - Houdini's errors, which this module cannot name
+            why = "its classic builder could not be rebuilt: %s" % exc
+    counts["converted"] -= 1
+    return _kept(asset_id, why, counts)
+
+
+def _files_under(folder: str) -> list:
+    return [os.path.join(root, name) for root, _dirs, names in os.walk(folder) for name in names]
+
+
 def _kept(asset_id: str, why: str, counts: dict) -> bool:
     counts["kept"] += 1
     debug.event("convert", "an asset's old files are kept", mat_id=asset_id, why=why)
@@ -615,7 +665,7 @@ def _remove_empty(folder: str) -> None:
 
 
 def convert(directory: str, confirm, progress=None, user: str = "",
-            machine_stars=(), show_unknown: bool = True) -> Outcome:
+            machine_stars=(), show_unknown: bool = True, classic=None) -> Outcome:
     """Convert an older library to 2.0 whole once `confirm()` says yes; `progress(done, total)`."""
     library_dir = str(directory or "")
     if not needs_conversion(library_dir):
@@ -627,6 +677,18 @@ def convert(directory: str, confirm, progress=None, user: str = "",
     if not confirm():
         debug.event("convert", "conversion declined - nothing was changed")
         return Outcome(CANCELLED)
+    classics = _classics(library_dir, rows)
+    rebuilt = set()
+    doomed = {}    # id -> SetAside: classic Materials whose renderer is not loaded, sent to the trash
+    for renderer in renderers.ALL:
+        ids = [asset_id for asset_id, found in classics.items() if found is renderer]
+        if not ids or classic is None or classic.loaded(renderer):
+            continue
+        if not classic.ask(len(ids), renderer):
+            debug.event("convert", "conversion declined - a renderer is not loaded",
+                        renderer=renderer.key)
+            return Outcome(CANCELLED)
+        doomed.update({asset_id: None for asset_id in ids})
     old_trash = old_trash_of(library_dir)
     faces = _stored_faces(library_dir)
     counts = {"converted": 0, "deleted": 0, "kept": 0, "left": 0}
@@ -636,6 +698,13 @@ def convert(directory: str, confirm, progress=None, user: str = "",
     for done, (kind, item) in enumerate(units):
         if progress is not None:    # shown only: a conversion is not stopped partway by choice
             progress(done, len(units))
+        if kind == "versions" and os.path.basename(item[0]) in classics:
+            held = doomed.get(os.path.basename(item[0]))
+            if held is not None:    # to the trash with its asset
+                held.files.extend(_files_under(item[0]))
+            elif os.path.basename(item[0]) in rebuilt:    # archives no 2.0 Amaze can load
+                shutil.rmtree(item[0], ignore_errors=True)
+            continue    # of a Material set aside: left with its files
         if kind == "versions":
             try:
                 _convert_versions(library_dir, item[0], item[1], rows, counts)
@@ -650,9 +719,21 @@ def convert(directory: str, confirm, progress=None, user: str = "",
         if not _is_asset(library_dir, item, owner, rows):
             counts["left"] += 1    # a picture or a stamp of nothing: Check Library names it
             continue
+        row = rows.get(owner, {}).get(item)
+        if item in doomed:
+            doomed[item] = SetAside(item, owner, row, _old_files(library_dir, item, owner))
+            continue
         ok, old_files = _convert_asset(library_dir, item, owner, rows, faces, counts)
+        if ok and item in classics:
+            if _rebuilt(classic, library_dir, item, classics[item], row, counts):
+                rebuilt.add(item)
+            else:
+                ok, old_files = False, _new_files(library_dir, item, owner)
         if not ok:
-            set_aside.append(SetAside(item, owner, rows.get(owner, {}).get(item), old_files))
+            set_aside.append(SetAside(item, owner, row, old_files))
+    trashed = [one for one in doomed.values() if one is not None]
+    if trashed:
+        trash_set_aside(library_dir, trashed)
     for root in [material.section_folder(library_dir, section, library_files.VERSIONS)
                  for section in library_files.ASSET_SECTIONS] + [
                      os.path.join(library_dir, library_files.CODE_FOLDER, library_files.VERSIONS)]:
@@ -665,7 +746,8 @@ def convert(directory: str, confirm, progress=None, user: str = "",
         _remove_empty(folder)
     counts["left"] += len(_listing(os.path.join(library_dir, OLD_FOLDER)))
     if not _converted_databases(library_dir):
-        built = build_databases(library_dir, {(one.section, one.asset_id) for one in set_aside
+        built = build_databases(library_dir, {(one.section, one.asset_id)
+                                              for one in set_aside + trashed
                                               if one.row is not None}, user, machine_stars,
                                 show_unknown)
         _write_databases(library_dir, built, user)
@@ -815,9 +897,10 @@ PRE_SHOW_KINDS = locations.KNOWN_KINDS    # what a location listed before Show â
 
 def _show_ticks(record: dict, show_unknown: bool) -> dict:
     """A location record with the ticks it listed by before Show â–¸: Other Files as Show All said."""
+    record = dict(record)
+    shows_all = record.pop("show_all", None)    # the old override: read here, never carried over
     if isinstance(record.get("kinds"), (list, tuple)):
         return record
-    shows_all = record.get("show_all")
     every = show_unknown if shows_all is None else bool(shows_all)
     return dict(record, kinds=sorted(PRE_SHOW_KINDS + ((locations.KIND_OTHER,) if every else ())))
 

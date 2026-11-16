@@ -448,6 +448,9 @@ the container, the wiring, activation and verification; each input is an
     as Redshift through `matx_import`'s `renderer` switch.
   - **Values Adapter** (`matx_import._values_to_standard_surface`) —
     PhysicallyBased measured values → a preset shader.
+  - **Classic Rebuild** (`render/classic_rebuild.py`) — the library
+    conversion's node work: a Material saved in a classic container is
+    loaded, rebuilt as its renderer's USD builder and saved back.
 - **The Builder** — the container the engine makes:
   `make_karma_builder()` → a MaterialX Material Builder subnet matching
   **KARMA_REF** (see §8). Wired via `wire_builder_output()`; verified by

@@ -12,7 +12,7 @@ FILES = library_files.FILES
 LOCATIONS, PATHS, STARS, COMMENTS, ICONS = "locations", "paths", "stars", "comments", "icons"
 LOC_PREFIX = "loc:"    # `loc:<id>[/<relative>]`: a location's own key, and every file key under it
 
-FIELDS = ("registered", "name", "color", "show_all", "recursive",
+FIELDS = ("registered", "name", "color", "recursive",
           "kinds", "pathname")  # the record's fields, each with its own branch in normalise()
 
 KIND_IMAGE = "image"  # the kinds a record's `kinds` field lists; stored in files.json, so fixed
@@ -28,7 +28,7 @@ _id_map: tuple = ("", -1, {})    # (library, generation, {path identity: smalles
 
 
 def normalise(value) -> dict:
-    """A well-formed location record, or {} for junk; `show_all` keeps False, unknown fields pass."""
+    """A well-formed location record, or {} for junk; unknown fields pass."""
     if not isinstance(value, dict):
         return {}
     record = {k: v for k, v in value.items() if k not in FIELDS}
@@ -40,8 +40,6 @@ def normalise(value) -> dict:
     color = value.get("color")
     if isinstance(color, str) and color.strip():
         record["color"] = color
-    if value.get("show_all") is not None:
-        record["show_all"] = bool(value.get("show_all"))
     if value.get("recursive"):
         record["recursive"] = True
     kinds = value.get("kinds")
@@ -299,7 +297,7 @@ def set_field(preferences, path: str, field: str, value) -> bool:
     if field not in FIELDS:
         raise ValueError("%r is not a location field" % (field,))
     current = record(preferences, path)
-    if value is None or value == "" or value is False and field != "show_all":
+    if value is None or value == "" or value is False:
         current.pop(field, None)
     else:
         current[field] = value

@@ -253,7 +253,7 @@ class TheRealLibraryRehearsalTest(_ConversionRehearsal, unittest.TestCase):
                          "files no section lists: %r" % {
                              folder: names[:5]
                              for folder, names in findings["unaccounted"].items()})
-        self.assertEqual([], repair.move_aside(findings, "unlisted", guard=False)["moved"])
+        self.assertEqual([], repair.move_aside(findings, "unlisted", guard_session=False)["moved"])
 
 
 class TheRealLibrarysWholeShapeTest(_ConversionRehearsal, unittest.TestCase):
@@ -294,6 +294,7 @@ class TheRealLibrarysWholeShapeTest(_ConversionRehearsal, unittest.TestCase):
         outcome = library_conversion.convert(self.dir, confirm=lambda: True)
         self.assertIn(outcome.status, (library_conversion.DONE, library_conversion.NOTHING),
                       outcome.why)
+        library_conversion.trash_set_aside(self.dir, outcome.set_aside)    # the end box's Move to Trash
         test_support.reset_database_singletons()
         started = time.perf_counter()
         findings = repair.survey(self.dir, "img/")

@@ -197,7 +197,8 @@ class ASwitchPutsTheWholeVersionOnTheBase(_Case):
             return real(disk, path)
 
         with mock.patch.object(guard.Disk, "remove", held):
-            self.assertFalse(versions.switch_active(self.prefs, self.mat_id, 1))
+            self.assertTrue(versions.switch_active(self.prefs, self.mat_id, 1),
+                            "a recorded switch that waits on one file was reported as failed")
         self.assertTrue(library_db.guard_of(self.prefs).recover(),
                         "the half-applied switch left no journal to finish")
         self.assertEqual({"builder": False, ".png": False}, self._in_base(),

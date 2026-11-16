@@ -582,8 +582,6 @@ class GPUOpenSource(MatxSource):
             if res == resolution:
                 chosen = url
                 break
-        if chosen is None and pkgs:
-            chosen = pkgs[-1][2]
         if not chosen:
             raise RuntimeError("no downloadable package for " + record.title)
         os.makedirs(dest_dir, exist_ok=True)
@@ -689,7 +687,7 @@ class PolyHavenSource(MatxSource):
         if not mtlx_all:
             raise RuntimeError(
                 "no .mtlx variants listed for " + record.title)
-        entry = mtlx_all.get(resolution) or next(iter(mtlx_all.values()))
+        entry = mtlx_all.get(resolution)
         doc = entry.get("mtlx") if isinstance(entry, dict) else None
         if not doc:
             raise RuntimeError("no .mtlx for " + record.title)

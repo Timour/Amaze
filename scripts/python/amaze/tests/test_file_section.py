@@ -100,7 +100,7 @@ class LocationsLiveInTheFilesDatabaseTest(unittest.TestCase):
             "/photo/2023/": {"registered": True, "recursive": True,
                              "color": "#134d4d"},
             "/models/obj/": {"registered": True, "recursive": True,
-                             "show_all": False},
+                             "kinds": []},
             "/houdini/exercise/": {"registered": True},
             "/tex/hdr/": {"registered": True},
         },
@@ -115,9 +115,9 @@ class LocationsLiveInTheFilesDatabaseTest(unittest.TestCase):
         for path, record in self.REAL_SHAPE["file_location_records"].items():
             self.assertTrue(locations_mod.set_record(prefs, path, record), path)
         self.assertEqual(sorted(self.REAL_SHAPE["file_folders"]), sorted(prefs.file_folders))
-        self.assertEqual({"registered": True, "show_all": False, "recursive": True},
+        self.assertEqual({"registered": True, "kinds": [], "recursive": True},
                          locations_mod.record(prefs, "/models/obj/"),
-                         "a Show All Files override set to FALSE was dropped as falsy")
+                         "Show with no kind ticked was dropped as empty")
         with open(os.path.join(library, "files.json"), encoding="utf-8") as handle:
             written = json.load(handle)
         mine = written["locations"][test_support.FIXTURE_USER]
@@ -983,10 +983,6 @@ class _Prefs:
     def file_folder_colors(self):
         return self._table("color")
 
-    @property
-    def file_folder_show_all(self):
-        return self._table("show_all")
-
     def _table(self, field):
         table = {}
         for path in locations_mod.paths(self):
@@ -1019,10 +1015,6 @@ class _Prefs:
 
     def set_file_folder_color(self, path, color):
         locations_mod.set_field(self, path, "color", str(color or "").strip())
-
-    def set_file_folder_show_all(self, path, value):
-        locations_mod.set_field(self, path, "show_all",
-                                None if value is None else bool(value))
 
     def set_file_folder_recursive(self, path, on):
         locations_mod.set_field(self, path, "recursive", bool(on) or None)
@@ -1809,11 +1801,9 @@ class LocationManagementTest(unittest.TestCase):
         tmp = self._tmpdir()
         kept = self._tmpdir()    # two locations, so the assertions read the survivor
         model, prefs = self._folders_model(tmp, kept)
-        for path, name, colour, show, in ((tmp, "Custom", "#ff8000", True),
-                                          (kept, "Kept", "#0080ff", False)):
+        for path, name, colour in ((tmp, "Custom", "#ff8000"), (kept, "Kept", "#0080ff")):
             prefs.set_file_folder_name(path, name)
             prefs.set_file_folder_color(path, colour)
-            prefs.set_file_folder_show_all(path, show)
             prefs.set_file_folder_recursive(path, True)
         prefs.save = lambda: None
         from unittest import mock
@@ -1834,10 +1824,6 @@ class LocationManagementTest(unittest.TestCase):
             "the same path comes back amber with nothing having said "
             "the colour was kept - or the removal took the neighbour's "
             "colour with it")
-        self.assertEqual(
-            {kept: False}, prefs.file_folder_show_all,
-            "the Show All Files override outlived its folder, or the "
-            "removal reached its neighbour")
         sweep.assert_called_once_with(prefs, tmp, [kept])
 
 
@@ -2472,7 +2458,7 @@ class CheckLibraryDropsOnlyFileStarsTest(unittest.TestCase):
         from amaze.core import repair
         findings = repair.survey(panel.prefs)
         lines = repair.report_lines(findings)
-        repair.drop_dead_stars(findings, guard=False)
+        repair.drop_dead_stars(findings, guard_session=False)
 
         self.assertTrue(
             locations_mod.is_favourite(panel.prefs, mat_id, model.DB_FILENAME),
@@ -2541,7 +2527,7 @@ class CheckLibrarySetsAFolderMissingHereAsideTest(unittest.TestCase):
         findings = dict(repair._files_section(self.prefs), preferences=self.prefs, leftovers=[])
         lines = repair.report_lines(dict(findings, directory=self.prefs.dir, lists=[],
                                          unreadable_folders=[], unaccounted={}, complete=True))
-        repair.set_aside_folders(findings, guard=False)
+        repair.set_aside_folders(findings, guard_session=False)
         return lines
 
     def test_the_pointer_goes_and_what_its_files_carry_stays(self):
@@ -2609,10 +2595,9 @@ class ShowTicksTest(unittest.TestCase):
     def test_a_location_with_no_ticks_lists_nothing(self):
         """Only the recorded Show ticks decide; no ticks recorded is no kind, whatever else is set."""
         locations_mod.set_field(self.prefs, self.tmp, "kinds", None)
-        for show_unknown, override in ((True, None), (True, True)):
-            with self.subTest(show_unknown=show_unknown, override=override):
+        for show_unknown in (True, False):
+            with self.subTest(show_unknown=show_unknown):
                 self.prefs.file_show_unknown = show_unknown
-                self.prefs.set_file_folder_show_all(self.tmp, override)
                 self.assertIsNone(locations_mod.record(self.prefs, self.tmp).get("kinds"))
                 self.assertEqual(frozenset(), file_library.location_kinds(self.prefs, self.tmp))
 

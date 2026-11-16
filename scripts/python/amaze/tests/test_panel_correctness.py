@@ -31,7 +31,7 @@ from amaze.helpers import theme, ui_helpers  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
 
-def _location_prefs(case, names, colors, show_all, recursive):
+def _location_prefs(case, names, colors, recursive):
     """Only what a location record composes; a real `Prefs` finds the install."""
     prefs = prefs_mod.Prefs.__new__(prefs_mod.Prefs)
     prefs.save = lambda: None
@@ -46,14 +46,12 @@ def _location_prefs(case, names, colors, show_all, recursive):
     case.addCleanup(shutil.rmtree, prefs._directory, True)
     case.addCleanup(library_db.release)
     case.addCleanup(locations.forget)
-    for path in sorted(set(names) | set(colors) | set(show_all) | set(recursive)):
+    for path in sorted(set(names) | set(colors) | set(recursive)):
         record = {"registered": True}
         if path in names:
             record["name"] = names[path]
         if path in colors:
             record["color"] = colors[path]
-        if path in show_all:
-            record["show_all"] = show_all[path]
         if path in recursive:
             record["recursive"] = True
         case.assertTrue(locations.set_record(prefs, path, record),
@@ -664,15 +662,14 @@ class LocateFolderKeepsEveryPerLocationSetting(unittest.TestCase):
     def test_the_record_names_every_field_once(self):
         """Every field is named once, where the record is defined."""
         self.assertEqual(
-            ("registered", "name", "color", "show_all", "recursive",
+            ("registered", "name", "color", "recursive",
              "kinds", "pathname"),
             locations.FIELDS,
             "a per-location fact is missing from the one list that "
             "defines a location's record")
 
     def test_a_relocate_carries_them(self):
-        prefs = _location_prefs(self, {"/old/": "Bokeh"}, {"/old/": "#ff8000"},
-                                {"/old/": True}, ["/old/"])
+        prefs = _location_prefs(self, {"/old/": "Bokeh"}, {"/old/": "#ff8000"}, ["/old/"])
         locations.set_field(prefs, "/old/", "kinds", ["hip", "image"])
         locations.set_field(prefs, "/old/", "pathname", True)
         model = file_library.FileFolders.__new__(file_library.FileFolders)
@@ -684,16 +681,14 @@ class LocateFolderKeepsEveryPerLocationSetting(unittest.TestCase):
                          "the old path kept its record after the move")
         self.assertEqual(
             {"registered": True, "name": "Bokeh", "color": "#ff8000",
-             "show_all": True, "recursive": True,
+             "recursive": True,
              "kinds": ["hip", "image"], "pathname": True},
             locations.record(prefs, "/new/"),
-            "a per-location fact did not survive Locate Folder - the "
-            "colour and the Show All Files override are the two that "
-            "were added after the hook was written")
+            "a per-location fact did not survive Locate Folder")
 
     def test_a_relocate_carries_the_comments_and_the_tile_icons_too(self):
         """Comments and icons key on the path, so a relocate must carry them."""
-        prefs = _location_prefs(self, {"/old/": "Plates"}, {}, {}, [])
+        prefs = _location_prefs(self, {"/old/": "Plates"}, {}, [])
         key = locations.file_ident(prefs, "/old/shot.exr")
         self.assertTrue(key.startswith(locations.LOC_PREFIX), "premise: /old/ owns no file")
 
@@ -726,8 +721,7 @@ class LocateFolderKeepsEveryPerLocationSetting(unittest.TestCase):
     def test_removing_a_location_takes_all_four_and_spares_a_sibling(self):
         """A removal takes every field, or re-adding the folder inherits them."""
         prefs = _location_prefs(self, {"/a/tex/": "Bokeh", "/a/textures/": "two"},
-                                {"/a/tex/": "#ff8000"}, {"/a/tex/": True},
-                                ["/a/tex/"])
+                                {"/a/tex/": "#ff8000"}, ["/a/tex/"])
         locations.retire_prefix(prefs, "/a/tex/")
         self.assertEqual(
             {}, locations.record(prefs, "/a/tex/"),

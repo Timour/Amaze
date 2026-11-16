@@ -294,12 +294,13 @@ class RememberedFilterSettingsTest(unittest.TestCase):
         return p
 
     def test_the_stored_filters_are_what_loads(self):
-        p = self._prefs({"section_filters": {"material": "Karma", "code": "VEX"}})
+        p = self._prefs({"library_user": "u1", "users": {"u1": {
+            "section_filters": {"material": "Karma", "code": "VEX"}}}})
         self.assertEqual("Karma", p.section_filter("material"))
         self.assertEqual("VEX", p.section_filter("code"))
 
     def test_what_is_set_is_what_is_saved(self):
-        p = self._prefs({})
+        p = self._prefs({"library_user": "u1"})
         self.assertEqual("", p.section_filter("gradient"),
                          "an unvisited section claims a filter it was "
                          "never given")

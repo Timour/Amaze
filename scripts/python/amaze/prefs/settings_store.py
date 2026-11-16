@@ -15,11 +15,8 @@ READ, FRESH, BLIND = "read", "fresh", "blind"    # parsed; absent; there and unr
 
 COMBINE, FIELDS = "combine", "fields"    # a list: ours, then theirs; a table: field by field
 RULES = {    # another pane's save, folded per key; a key no rule names keeps ours where both moved
-    "file_folders": COMBINE,
-    "file_favorites": COMBINE,
     "users/*/file_folders": COMBINE,
     "users/*/file_favorites": COMBINE,
-    "file_location_records": FIELDS,
     "users/*/file_location_records": FIELDS,
     "users": FIELDS,
 }

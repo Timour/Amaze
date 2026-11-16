@@ -51,7 +51,7 @@ SCRATCH_INFIXES = (".rendering.", ".capturing.")    # a render or capture scratc
 SCRATCH_PREFIX = ".amaze_scratch"
 
 OS_NOISE = (".DS_Store", "Thumbs.db", "desktop.ini", ".Spotlight-V100",    # the system's own, left alone and not reported
-            ".fseventsd", ".TemporaryItems")
+            ".fseventsd", ".TemporaryItems", "Icon\r")    # the last carries a folder's icon on macOS
 
 LIST = "list"    # the kinds that belong in a library
 JOURNAL_FILE = "journal"

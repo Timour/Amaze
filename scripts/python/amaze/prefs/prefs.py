@@ -351,15 +351,6 @@ class Prefs(_Persistence):
     def file_folder_colors(self) -> dict:
         return self._field_table("color")
 
-    @property
-    def file_folder_show_all(self) -> dict:
-        return self._field_table("show_all")
-
-    def set_file_folder_show_all(self, path: str, value) -> None:
-        """The old Show All Files override, which a location saved before Show ▸ still lists by."""
-        self._set_location_field(
-            path, "show_all", None if value is None else bool(value))
-
     def set_file_folder_kinds(self, path: str, kinds) -> None:
         """The file kinds Show ▸ lists for one location, as `locations`' KIND_* values."""
         self._set_location_field(path, "kinds", sorted(set(kinds)))

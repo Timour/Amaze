@@ -245,7 +245,7 @@ def _do_recover(findings: dict, guard: bool, changed) -> None:
                                                written_new)):
         return
     try:
-        result = repair.recover(findings, guard=guard)
+        result = repair.recover(findings, guard_session=guard)
     except ValueError as exc:
         _say(messages.NOTHING_CHANGED_REASON % exc, hou.severityType.Warning)
         return
@@ -304,7 +304,7 @@ def _do_rebuild(findings: dict, guard: bool, changed) -> None:
                       messages.HELP_REBUILD_DATABASE % label, warn=True):
         return
     try:
-        done = repair.rebuild(findings["directory"], name, guard=guard)
+        done = repair.rebuild(findings["directory"], name, guard_session=guard)
     except ValueError as exc:
         _say(messages.SECTION_LIST_UNCHANGED_REASON % (label, exc), hou.severityType.Warning)
         return
@@ -364,7 +364,7 @@ def _put_copy_back(findings: dict, offer: tuple, guard: bool, changed, older: bo
     if picked != 0:
         return None
     try:
-        done = repair.put_back(findings, filename, tier, guard=guard)
+        done = repair.put_back(findings, filename, tier, guard_session=guard)
     except repair.RestoreRefused as exc:
         _say(str(exc), hou.severityType.Warning)
         return None
@@ -418,7 +418,7 @@ def _do_move_aside(findings: dict, guard: bool, changed) -> None:
         return
     what = (("unlisted",) if unlisted else ()) + (("leftovers",) if leftovers else ())
     try:
-        result = repair.move_aside(findings, what, guard=guard)
+        result = repair.move_aside(findings, what, guard_session=guard)
     except ValueError as exc:
         _say(messages.NOTHING_MOVED_ASIDE_REASON % exc, hou.severityType.Warning)
         return
@@ -435,7 +435,7 @@ def _do_move_unknown(findings: dict, guard: bool, changed) -> None:
                       messages.HELP_MOVE_UNKNOWN_ASIDE % ", ".join(sorted(names)), warn=True):
         return
     try:
-        result = repair.move_aside(findings, "unknown", guard=guard)
+        result = repair.move_aside(findings, "unknown", guard_session=guard)
     except ValueError as exc:
         _say(messages.NOTHING_MOVED_ASIDE_REASON % exc, hou.severityType.Warning)
         return
@@ -457,8 +457,8 @@ def _do_set_aside(findings: dict, guard: bool, changed) -> None:
     if not asked:
         return
     try:
-        folders = repair.set_aside_folders(findings, guard=guard) if dead else []
-        gone = repair.drop_dead_stars(findings, guard=guard) if stars else []
+        folders = repair.set_aside_folders(findings, guard_session=guard) if dead else []
+        gone = repair.drop_dead_stars(findings, guard_session=guard) if stars else []
     except ValueError as exc:
         _say(messages.NOTHING_CHANGED_REASON % exc, hou.severityType.Warning)
         return
@@ -481,7 +481,7 @@ def _do_uncategorised(findings: dict, guard: bool, changed) -> None:
                       messages.BUTTONS_PUT_THEM_THERE, messages.HELP_PUT_IN_UNCATEGORIZED):
         return
     try:
-        done = repair.rescue_uncategorised(findings, guard=guard)
+        done = repair.rescue_uncategorised(findings, guard_session=guard)
     except ValueError as exc:
         _say(messages.NOTHING_CHANGED_REASON % exc, hou.severityType.Warning)
         return

@@ -484,6 +484,30 @@ class ALegacyRedshiftMaterialGoesIntoSolaris(unittest.TestCase):
                           if c.type().name() == "redshift_material"],
                          "the classic terminal came along")
 
+    def test_the_library_conversion_rewrites_its_files_as_the_usd_container(self):
+        from amaze.core import renderers
+        from amaze.render import classic_rebuild
+        asset = self.model.assets[self.row]
+        rebuilder = classic_rebuild.Rebuilder(self.prefs, lambda _count, _renderer: True)
+        self.assertTrue(rebuilder.loaded(renderers.REDSHIFT))
+        before = {n.path() for n in hou.node("/obj").children()}
+        rebuilder.rebuild(asset.mat_id, asset.name, renderers.REDSHIFT)
+        self.assertEqual(before, {n.path() for n in hou.node("/obj").children()},
+                         "the rebuild left its scratch network in the scene")
+        self.assertEqual("rs_usd_material_builder", material_files.get_saved_node_type(
+            self.prefs, asset, library_files.MATERIALS))
+        node = self._imported()
+        self.assertEqual("rs_usd_material_builder", node.type().name())
+        terminal = [c for c in node.children() if c.type().name() == "redshift_usd_material"]
+        self.assertEqual(1, len(terminal), "the saved file holds no single USD terminal")
+        self.assertEqual({"Surface": "SM", "BumpMap": "bump"},
+                         {c.outputName(): c.inputNode().name()
+                          for c in terminal[0].inputConnections()})
+        self.assertEqual((0.1, 0.9, 0.3), tuple(
+            round(v, 3) for v in node.node("SM").parmTuple("base_color").eval()))
+        self.assertFalse([c for c in node.children() if c.type().name() == "redshift_material"],
+                         "the classic terminal was saved with it")
+
 
 @unittest.skipUnless(test_support.renderer_loaded("Redshift"),
                      "the Redshift plugin is not loaded")

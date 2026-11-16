@@ -14,6 +14,7 @@ SAVE_TRIES = 3    # reads of a file that keeps moving before a save gives up
 SAVE_DELAY_MS = 300    # how long a caller's timer waits after the last change before it saves
 
 SAVED, UNCHANGED, NO_USER, MOVED, DENIED = "", "unchanged", "no-user", "moved", "denied"
+UNFINISHED = "unfinished"    # recorded in the journal; the next read or save puts the files in place
 
 _GONE = object()
 
@@ -319,7 +320,7 @@ class Document:
             self._base = copy.deepcopy(self._data)
             self._dirty = False
             self.verdict = guard.FINE
-            return Saved(True)
+            return Saved(True, UNFINISHED if change.waiting else SAVED, change.waiting)
         return Saved(False, MOVED)
 
 

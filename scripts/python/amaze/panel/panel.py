@@ -567,6 +567,8 @@ class AmazePanel(QtWidgets.QWidget):
         self._seed_curated_content()    # once per library, marker-guarded
         if self.prefs.note_library_opened(self.prefs.dir):
             self.prefs.save()    # the Library list, the most recently opened first
+        if hou.isUIAvailable():    # once per library and computer: the file that carries it does not sync
+            hostos.give_folder_icon(self.prefs.dir, amaze.package_file("ui", "library_folder.icns"))
         return True
 
     def _converted(self, folder: str) -> bool:
@@ -585,6 +587,15 @@ class AmazePanel(QtWidgets.QWidget):
                 buttons=messages.BUTTONS_CONVERT_LIBRARY, default_choice=0, close_choice=1,
                 severity=hou.severityType.Message, title=messages.TITLE_AMAZE) == 0    # closing: Cancel
 
+        def trash_classic(count, renderer):
+            return ui.displayMessage(
+                messages.CONVERT_CLASSIC_NEEDS_RENDERER % (
+                    "%d %s" % (count, library_files.section_noun(library_files.MATERIALS, count)),
+                    renderer.label, renderer.label),
+                buttons=messages.BUTTONS_CLASSIC_NEEDS_RENDERER, default_choice=1, close_choice=1,
+                severity=hou.severityType.Warning, title=messages.TITLE_AMAZE) == 0
+
+        from amaze.render import classic_rebuild
         with contextlib.ExitStack() as shown:    # the progress opens after the box, at the first asset
             held = []
 
@@ -599,7 +610,8 @@ class AmazePanel(QtWidgets.QWidget):
             outcome = library_conversion.convert(
                 folder, confirm, progress, user=self.prefs.library_user,
                 machine_stars=library_conversion.machine_stars(self.prefs),
-                show_unknown=self.prefs.file_show_unknown)
+                show_unknown=self.prefs.file_show_unknown,
+                classic=classic_rebuild.Rebuilder(self.prefs, trash_classic))
         if outcome.status == library_conversion.BLOCKED:
             ui.displayMessage(messages.CONVERT_LIBRARY_BLOCKED % outcome.why,
                               severity=hou.severityType.Warning, title=messages.TITLE_AMAZE)

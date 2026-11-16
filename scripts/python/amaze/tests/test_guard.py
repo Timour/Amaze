@@ -214,6 +214,51 @@ class StoppedAtEveryStepTest(unittest.TestCase):
         self.assertNotEqual(before, after)
 
 
+class BusyDisk(guard.Disk):
+    """A real disk on which one file is in use: it cannot be removed until `free` is set."""
+
+    def __init__(self, busy: str) -> None:
+        self.busy, self.free = busy, False
+
+    def remove(self, path):
+        if not self.free and path.replace(os.sep, "/").endswith(self.busy):
+            raise PermissionError("%s is in use" % self.busy)
+        super().remove(path)
+
+
+class AChangeThatWaitsOnAFileTest(_Library):
+    """A change with one file in use is recorded: it reports done, and lands when the file is free."""
+
+    def test_it_is_not_reported_failed_and_lands_once_the_file_is_free(self):
+        disk = BusyDisk("materials/A002.mat")
+        held = guard.Guard(self.dir, disk=disk, now=self.clock)
+        change = held.change("u1")
+        change.put(held.read(MATERIALS).ticket, assets(3, "tile"))
+        change.put_file("materials/A009.mat", b"nodes of A009")
+        change.remove("materials/A002.mat")
+        tickets = change.commit()
+        self.assertIn(MATERIALS, tickets)
+        self.assertTrue(change.waiting, "the change did not say it waits on a file")
+        self.assertEqual(guard.HELD, held.read(MATERIALS).verdict,
+                         "a database read as settled while a change on it is half in place")
+        disk.free = True
+        reading = held.read(MATERIALS)
+        self.assertEqual(guard.FINE, reading.verdict)
+        self.assertEqual(tickets[MATERIALS].raw, reading.ticket.raw)
+        self.assertFalse(os.path.exists(self.at("materials", "A002.mat")))
+        self.assertFalse(os.path.exists(self.at(guard.JOURNAL)))
+
+    def test_a_single_file_change_that_is_refused_fails_and_changes_nothing(self):
+        disk = BusyDisk("materials/A002.mat")
+        held = guard.Guard(self.dir, disk=disk, now=self.clock)
+        before = state(self.dir)
+        change = held.change("u1")
+        change.remove("materials/A002.mat")
+        with self.assertRaises(OSError):
+            change.commit()
+        self.assertEqual(before, state(self.dir))
+
+
 class NoTicketNoWriteTest(_Library):
     """Only a database that read fine, or is new, can be written."""
 

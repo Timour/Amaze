@@ -30,7 +30,7 @@ OLD_BUILDER = {"format": 1, "type": "rs_usd_material_builder",
                "dialog_script": "{ name parms }", "values": {"tabmenumask": {"str": "rs"}}}
 CONVERTED_BUILDER = {"type": "rs_usd_material_builder", "interface": "{ name parms }",
                      "values": {"tabmenumask": {"str": "rs"}}}
-INTERFACE = "node = hou_parent.createNode('redshift_vopnet', 'x')\n"
+INTERFACE = "node = hou_parent.createNode('rs_usd_material_builder', 'x')\n"
 PACKAGE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(PACKAGE)))
 
@@ -247,7 +247,7 @@ class AFullConversionTest(_OldLibrary):
         archive = asset_record.read(os.path.join(moved, "MAT1_1.json"))
         self.assertEqual(CONVERTED_BUILDER, archive["builder"])
         self.assertEqual({}, archive["metadata"], "a version archived metadata")
-        self.assertEqual("redshift_vopnet", asset_record.read(os.path.join(
+        self.assertEqual("rs_usd_material_builder", asset_record.read(os.path.join(
             self.nodes, "versions", "NODE1", "NODE1_2.json"))["builder"]["type"])
         self.assertFalse(os.path.exists(os.path.join(self.nodes, "versions", "NODE1",
                                                      "2.interface")))
@@ -653,6 +653,90 @@ class TheBoxesTest(_OldLibrary):
         opened, shown = self.run_panel([0])
         self.assertTrue(opened)
         self.assertEqual(messages.CONVERT_LIBRARY_DONE, shown[-1][0])
+
+
+class _Classic:
+    """A stand-in for the Houdini side: is the renderer loaded, what the box answers, the rebuild."""
+
+    def __init__(self, test, loaded=True, trash=True, fails=False) -> None:
+        self.test, self.is_loaded, self.trash, self.fails = test, loaded, trash, fails
+        self.asked, self.rebuilt = [], []
+
+    def loaded(self, renderer) -> bool:
+        return self.is_loaded
+
+    def ask(self, count, renderer) -> bool:
+        self.asked.append((count, renderer.label))
+        return self.trash
+
+    def rebuild(self, asset_id, name, renderer) -> None:
+        if self.fails:
+            raise RuntimeError("the node could not be made")
+        self.rebuilt.append(asset_id)
+        path = asset_record.path_for(self.test.prefs, asset_id, MATERIALS)
+        asset_record.write_section(path, asset_record.BUILDER, dict(
+            CONVERTED_BUILDER, type=renderer.usd_builder))
+
+
+class AClassicMaterialIsRebuiltTest(_OldLibrary):
+    """A Material saved in a classic container is rebuilt, trashed at the user's word, or set aside."""
+
+    def setUp(self):
+        super().setUp()
+        self.database("library.json", ["USD1", "OLD1"], OLD1="Old Brick")
+        self.old_asset("USD1")
+        self.classic_files = self.old_asset("OLD1", stamp=False)
+        write(os.path.join(self.old, "OLD1.builder.json"), dict(OLD_BUILDER, type="redshift_vopnet"))
+        self.version = write(os.path.join(self.old, "versions", "OLD1", "1.mat"), "version one\n")
+        write(os.path.join(self.old, "versions", "OLD1", "versions.json"),
+              {"active": 1, "versions": [{"n": 1, "name": "V1", "file": "1"}]})
+
+    def test_with_its_renderer_loaded_it_is_rebuilt_and_its_classic_versions_go(self):
+        classic = _Classic(self)
+        outcome, _asked = self.convert(classic=classic)
+        self.assertEqual((library_conversion.DONE, []), (outcome.status, outcome.set_aside))
+        self.assertEqual((["OLD1"], []), (classic.rebuilt, classic.asked))
+        self.assertEqual("rs_usd_material_builder", self.record("OLD1")["builder"]["type"])
+        self.assertEqual({"USD1", "OLD1"}, set(self.rows("library.json")))
+        self.assertFalse(os.path.exists(os.path.join(self.materials, "versions", "OLD1")),
+                         "a version only a classic container can load was kept")
+        self.assertEqual(0, trashed(self.dir))
+
+    def test_cancel_at_the_renderer_box_changes_nothing(self):
+        before = listing(self.dir)
+        classic = _Classic(self, loaded=False, trash=False)
+        outcome, asked = self.convert(classic=classic)
+        self.assertEqual(library_conversion.CANCELLED, outcome.status)
+        self.assertEqual(([1], [(1, "Redshift")]), (asked, classic.asked))
+        self.assertEqual(before, listing(self.dir))
+
+    def test_move_to_trash_takes_them_out_and_converts_the_rest(self):
+        classic = _Classic(self, loaded=False, trash=True)
+        outcome, _asked = self.convert(classic=classic)
+        self.assertEqual((library_conversion.DONE, []), (outcome.status, outcome.set_aside))
+        self.assertEqual({"USD1"}, set(self.rows("library.json")))
+        self.assertEqual([], classic.rebuilt)
+        for path in self.classic_files + [self.version]:
+            self.assertFalse(os.path.exists(path), "%s was left in the library" % path)
+        self.assertGreaterEqual(trashed(self.dir), len(self.classic_files) + 1)
+        self.assertFalse(os.path.exists(os.path.join(self.materials, "OLD1.mat")))
+
+    def test_a_rebuild_that_fails_sets_the_material_aside(self):
+        outcome, _asked = self.convert(classic=_Classic(self, fails=True))
+        self.assertEqual(["Old Brick"], [one.name for one in outcome.set_aside])
+        self.assertEqual({"USD1"}, set(self.rows("library.json")))
+        self.assertTrue(all(os.path.exists(path) for path in outcome.set_aside[0].files))
+        self.assertIn(os.path.join(self.materials, "OLD1.mat"), outcome.set_aside[0].files)
+        self.assertTrue(os.path.exists(self.version), "a set-aside material lost its versions")
+
+    def test_the_box_names_how_many_and_the_renderer(self):
+        from amaze.render import classic_rebuild
+        with mock.patch.object(classic_rebuild.Rebuilder, "loaded", lambda _self, _r: False):
+            opened, shown = TheBoxesTest.run_panel(self, [0, 1])    # Convert, then Cancel
+        self.assertFalse(opened)
+        self.assertEqual(messages.CONVERT_CLASSIC_NEEDS_RENDERER % (
+            "1 material", "Redshift", "Redshift"), shown[1][0])
+        self.assertEqual(messages.BUTTONS_CLASSIC_NEEDS_RENDERER, tuple(shown[1][1]["buttons"]))
 
 
 class EveryVersionFileIsRenamedTest(_OldLibrary):

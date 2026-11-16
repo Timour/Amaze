@@ -203,8 +203,7 @@ class _Persistence:
             uid: dict(block) for uid, block in stored.items()
             if isinstance(uid, str) and isinstance(block, dict)
         } if isinstance(stored, dict) else {}
-        block = (self._users_blocks.get(self._library_user, {})  # the File copies sit in the block once a user is picked, flat until then
-                 if self._library_user else self.data)
+        block = self._users_blocks.get(self._library_user, {})
         folders = block.get("file_folders")
         if isinstance(folders, list):
             self._file_folders = _decode_paths(folders)
@@ -284,7 +283,7 @@ class _Persistence:
         return out
 
     def _apply_user_block(self, block: dict) -> None:
-        """Apply the per-user state from `block`: the user's own, or the flat document with none picked."""
+        """Apply the per-user state from `block`, a user's own; an empty one gives the defaults."""
         def stored_value(key, default):
             return block.get(key, default)
 
@@ -393,12 +392,10 @@ class _Persistence:
             for stored, (_prop, attr, _default) in SHARED_KEYS.items()}
         self.data["library_user"] = self._library_user
         self.data["cache_dir"] = _encode_path(self._cache_dir)
-        if self._library_user:  # into the user's block, keeping keys it already carried; flat while nobody is picked
+        if self._library_user:  # a user's block is the one home of view state; nobody picked: memory only
             block = dict(self._users_blocks.get(self._library_user, {}))
             block.update(self._user_state_document())
             self._users_blocks[self._library_user] = block
-        else:
-            self.data.update(self._user_state_document())
         self._settle_user_blocks()
         self.data["users"] = {
             uid: dict(block) for uid, block in self._users_blocks.items()}
@@ -427,8 +424,7 @@ class _Persistence:
             uid: dict(block) for uid, block in data.get("users", {}).items()
             if isinstance(uid, str) and isinstance(block, dict)
         }
-        self._apply_user_block(
-            self._users_blocks.get(self._library_user, {}) if self._library_user else data)
+        self._apply_user_block(self._users_blocks.get(self._library_user, {}))
         self._directory = _decode_path(data.get("directory", ""))
         for stored, (prop, attr, default) in SHARED_KEYS.items():
             value = shared.get(stored, default)

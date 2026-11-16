@@ -712,19 +712,12 @@ class TwoPanesEditSettingsWithoutClobberTest(unittest.TestCase):
         return p
 
     def test_every_collected_key_has_a_backing_attribute(self):
-        """Every collected key is reachable flat with nobody picked and under `users/<uid>/` once picked."""
+        """Every collected key sits under `users/<uid>/`, the one home of per-user settings."""
         from amaze.prefs import settings_store
         rules = settings_store.RULES
-        flat = {key for key in rules if "/" not in key and key != "users"}
-        nested = {key.split("/")[-1] for key in rules if "/" in key}
         self.assertEqual(
-            set(), flat - nested,
-            "a collected key is folded flat but not inside a user "
-            "block - unreachable on any machine that has a user")
-        self.assertEqual(
-            set(), nested - flat,
-            "a collected key is folded inside a user block but not "
-            "flat - unreachable while nobody is picked")
+            ["users"], [key for key in rules if "/" not in key],
+            "a per-user key is folded outside a user block, a second place to store it")
         self.assertEqual("fields", rules.get("users"),
                          "a uid this pane has never seen must arrive "
                          "whole, or a second user is invisible")
@@ -739,6 +732,7 @@ class TwoPanesEditSettingsWithoutClobberTest(unittest.TestCase):
     def test_a_scalar_takes_the_saving_pane(self):
         """Scalars are not a fight: the pane being touched wins the single-choice keys."""
         pane_a = self._prefs()
+        pane_a.library_user = "u-one"
         pane_a.save()
         pane_b = self._prefs()
 
