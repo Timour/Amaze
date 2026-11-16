@@ -140,6 +140,7 @@ def mark(preferences, mark: str, **facts) -> bool:
     held = _master(preferences)
     if held.get(MARKS, mark):
         return True
-    held.put(MARKS, mark, dict(facts, offered=True))
+    if not held.put(MARKS, mark, dict(facts, offered=True)):
+        return False    # a database that takes no change: not recorded, so not claimed
     saved = library_db.save(preferences, library_files.MASTER)
     return bool(saved) or saved.reason == documents.UNCHANGED

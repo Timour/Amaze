@@ -806,6 +806,8 @@ _TROUBLE_LINES = {    # a database's state, and the line it gets when it is in t
         "a minute and run Check Library again."),
     "newer": "%s: the database was saved by a newer Amaze, so it is read-only here. "
              "Update Amaze to change it.",
+    "held": "%s: the database is in use right now. It has not been changed. "
+            "Run Check Library again in a moment.",
 }
 
 

@@ -424,7 +424,8 @@ class _Persistence:
             uid: dict(block) for uid, block in data.get("users", {}).items()
             if isinstance(uid, str) and isinstance(block, dict)
         }
-        self._apply_user_block(self._users_blocks.get(self._library_user, {}))
+        if self._library_user:    # nobody picked: what is on screen is the only copy, and it stays
+            self._apply_user_block(self._users_blocks.get(self._library_user, {}))
         self._directory = _decode_path(data.get("directory", ""))
         for stored, (prop, attr, default) in SHARED_KEYS.items():
             value = shared.get(stored, default)

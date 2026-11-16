@@ -6,10 +6,12 @@ import hou
 
 from amaze import messages
 from amaze.core import debug, repair
+from amaze.core import guard as guard_mod
 from amaze.core import library_files as naming
 from amaze.helpers import ui_helpers, wording
 
 MOST_BUTTONS = 5    # actions one report shows before Choose an Action lists them instead
+FIX_FAILED = (ValueError, OSError, guard_mod.Refused)    # what a fix raises when it did not land
 
 
 def open_panel_tab():
@@ -246,7 +248,7 @@ def _do_recover(findings: dict, guard: bool, changed) -> None:
         return
     try:
         result = repair.recover(findings, guard_session=guard)
-    except ValueError as exc:
+    except FIX_FAILED as exc:
         _say(messages.NOTHING_CHANGED_REASON % exc, hou.severityType.Warning)
         return
     changed()
@@ -305,7 +307,7 @@ def _do_rebuild(findings: dict, guard: bool, changed) -> None:
         return
     try:
         done = repair.rebuild(findings["directory"], name, guard_session=guard)
-    except ValueError as exc:
+    except FIX_FAILED as exc:
         _say(messages.SECTION_LIST_UNCHANGED_REASON % (label, exc), hou.severityType.Warning)
         return
     changed()
@@ -419,7 +421,7 @@ def _do_move_aside(findings: dict, guard: bool, changed) -> None:
     what = (("unlisted",) if unlisted else ()) + (("leftovers",) if leftovers else ())
     try:
         result = repair.move_aside(findings, what, guard_session=guard)
-    except ValueError as exc:
+    except FIX_FAILED as exc:
         _say(messages.NOTHING_MOVED_ASIDE_REASON % exc, hou.severityType.Warning)
         return
     if result["moved"]:
@@ -436,7 +438,7 @@ def _do_move_unknown(findings: dict, guard: bool, changed) -> None:
         return
     try:
         result = repair.move_aside(findings, "unknown", guard_session=guard)
-    except ValueError as exc:
+    except FIX_FAILED as exc:
         _say(messages.NOTHING_MOVED_ASIDE_REASON % exc, hou.severityType.Warning)
         return
     if result["moved"]:
@@ -459,7 +461,7 @@ def _do_set_aside(findings: dict, guard: bool, changed) -> None:
     try:
         folders = repair.set_aside_folders(findings, guard_session=guard) if dead else []
         gone = repair.drop_dead_stars(findings, guard_session=guard) if stars else []
-    except ValueError as exc:
+    except FIX_FAILED as exc:
         _say(messages.NOTHING_CHANGED_REASON % exc, hou.severityType.Warning)
         return
     if folders or gone:
@@ -482,7 +484,7 @@ def _do_uncategorised(findings: dict, guard: bool, changed) -> None:
         return
     try:
         done = repair.rescue_uncategorised(findings, guard_session=guard)
-    except ValueError as exc:
+    except FIX_FAILED as exc:
         _say(messages.NOTHING_CHANGED_REASON % exc, hou.severityType.Warning)
         return
     if done:

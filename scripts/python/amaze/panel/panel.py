@@ -9,6 +9,7 @@ import importlib
 import contextlib
 import functools
 import sys
+import threading
 import types
 
 from PySide6 import QtWidgets, QtGui, QtCore
@@ -176,6 +177,7 @@ _reload(delegates)
 FILTER_DEBOUNCE_MS = 180    #: the search box's pause before it filters ▸p/filter-pass-cost
 
 MIN_PANEL_WIDTH = 500    #: design px through `theme.ui_px` at use; the grid pane has none ▸r/qt-windows-macos
+_ICON_ASKED = globals().get("_ICON_ASKED", set())    # library folders given their icon this session
 
 
 
@@ -574,8 +576,10 @@ class AmazePanel(QtWidgets.QWidget):
         self._seed_curated_content()    # once per library, marker-guarded
         if self.prefs.note_library_opened(self.prefs.dir):
             self.prefs.save()    # the Library list, the most recently opened first
-        if hou.isUIAvailable():    # once per library and computer: the file that carries it does not sync
-            hostos.give_folder_icon(self.prefs.dir, amaze.package_file("ui", "library_folder.icns"))
+        if hou.isUIAvailable() and self.prefs.dir not in _ICON_ASKED:    # once a session, off the UI thread
+            _ICON_ASKED.add(self.prefs.dir)
+            threading.Thread(target=hostos.give_folder_icon, daemon=True, args=(
+                self.prefs.dir, amaze.package_file("ui", "library_folder.icns"))).start()
         return True
 
     def _converted(self, folder: str) -> bool:

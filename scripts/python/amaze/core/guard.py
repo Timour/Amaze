@@ -346,7 +346,7 @@ class Guard:
         now = self._now()
         newest = self._plain_backups(name)
         if spaced and newest:
-            if (now - newest[0][1]).total_seconds() < BACKUP_SPACING_S:
+            if 0 <= (now - newest[0][1]).total_seconds() < BACKUP_SPACING_S:    # a backup dated ahead: a clock, not a spacing
                 return []
             try:
                 if self.disk.read(self.path(BACKUP_DIR, newest[0][0])) == raw:
