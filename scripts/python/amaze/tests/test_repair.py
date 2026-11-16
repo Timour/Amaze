@@ -117,7 +117,7 @@ class _Census:
             self.rows[name] = set(document.get("assets") or {})
             for ident, page in (document.get("comments") or {}).items():
                 self.comments[(name, ident)] = _words((page or {}).get("items"))
-            for owner, own in (document.get("stars") or {}).items():
+            for owner, own in (document.get("favorites") or {}).items():
                 self.stars.update((name, owner, key) for key in own or {})
             for key, spec in (document.get("icons") or {}).items():
                 self.icons[(name, key)] = spec

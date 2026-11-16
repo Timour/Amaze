@@ -838,7 +838,7 @@ report, with a button for each fix that applies. The report covers:
 - **No category.** Materials and node setups with no category, which
   show only under All.
 - **The File section.** File locations whose folder is not on this
-  computer, and starred files gone from a folder that is. Locations on
+  computer, and favorited files gone from a folder that is. Locations on
   a drive that is not connected are named and left as they are.
 - **The trash.** The library's `trash` folder: what it holds, and when
   its oldest files are deleted.
@@ -869,7 +869,7 @@ The fixes, each shown only when it applies:
 - **Set Aside *N* Folders** takes the File locations whose folder is not
   on this computer out of the sidebar. Their comments, tile icons and
   favorites are kept and come back when the folder is added again.
-  Favorites of starred files that are gone are removed with them; when
+  Favorites of files that are gone are removed with them; when
   no location is set aside, **Remove *N* Favorites of Missing Files**
   removes those alone.
 - **Put *N* in Uncategorized** puts the materials and node setups with

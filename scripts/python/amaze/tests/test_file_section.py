@@ -2179,7 +2179,7 @@ class RemovingANestedLocationTest(unittest.TestCase):
             (True, True, "activity"), self._shown(prefs, self.outer),
             "removing the nested location retired the star, comment or "
             "icon of a file the outer location still lists")
-        stars = library_db.document(prefs, locations_mod.FILES).everyones(locations_mod.STARS)
+        stars = library_db.document(prefs, locations_mod.FILES).everyones(locations_mod.FAVORITES)
         self.assertIn(key, stars.get(self.OTHER, {}),
                       "another user's star on that file was retired")
 
@@ -2213,7 +2213,7 @@ class RemovingANestedLocationTest(unittest.TestCase):
         prefs = self._nested(self.outer, self.inner)
         spelled = hostos.storage_path_key(self.file)
         held = library_db.document(prefs, locations_mod.FILES)
-        held.put_mine(locations_mod.STARS, spelled, True)
+        held.put_mine(locations_mod.FAVORITES, spelled, True)
         library_db.save(prefs, locations_mod.FILES)
         notes.set_note(prefs, notes.note_key("file", spelled), [{"t": "text", "text": "kept"}])
         tile_icons.set_override(prefs, spelled, self.ICON, locations_mod.FILES)
@@ -2224,7 +2224,7 @@ class RemovingANestedLocationTest(unittest.TestCase):
                  + "/tex/plate.txt")
         self.assertEqual(
             [True, True, True],
-            [moved in held.mine(locations_mod.STARS),
+            [moved in held.mine(locations_mod.FAVORITES),
              moved in held.table(locations_mod.COMMENTS),
              moved in held.table(locations_mod.ICONS)],
             "a path-spelled key the outer location covers stayed behind "
@@ -2321,7 +2321,7 @@ class ALocationWriteIsAnnouncedOnlyWhenItLandsTest(unittest.TestCase):
             document = json.load(handle)
         user = str(self.prefs.library_user)
         return (sorted(document.get(locations_mod.LOCATIONS, {}).get(user, {})),
-                sorted(document.get(locations_mod.STARS, {}).get(user, {})))
+                sorted(document.get(locations_mod.FAVORITES, {}).get(user, {})))
 
     def test_a_refused_remove_waits_whole_and_lands_as_one(self):
         from amaze.core import library_db

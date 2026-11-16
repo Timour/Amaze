@@ -40,7 +40,7 @@ def _colors_document(document: dict) -> dict:
         order.extend(name for name in row.get("categories") or [] if name not in order)
     return {"assets": rows,
             "categories": {name: {"order": at} for at, name in enumerate(order)},
-            "comments": {}, "icons": {}, "stars": {}}
+            "comments": {}, "icons": {}, "favorites": {}}
 
 
 def _lay(path: str, document: dict) -> None:
@@ -739,7 +739,7 @@ class AColourStarSurvivesAReloadTest(unittest.TestCase):
 
     def _disk_stars(self):
         with open(self.path, encoding="utf-8") as fh:
-            return json.load(fh).get("stars", {})
+            return json.load(fh).get("favorites", {})
 
     def test_a_star_lands_in_the_store_and_survives_a_reload(self):
         self._one_warm_palette()

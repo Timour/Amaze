@@ -516,7 +516,7 @@ class WhatAmazeKeepsFollowsTheFileTest(unittest.TestCase):
         model.toggle_favorite(row)
         self.prefs.library_user = test_support.FIXTURE_USER
         new = self._moved()
-        stored = library_db.document(self.prefs, locations_mod.FILES).everyones(locations_mod.STARS)
+        stored = library_db.document(self.prefs, locations_mod.FILES).everyones(locations_mod.FAVORITES)
         self.assertEqual({old: True}, {key: value for key, value in
                                        stored.get(OTHER_USER, {}).items()
                                        if key in (old, new)},

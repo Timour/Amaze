@@ -704,7 +704,7 @@ class DeletingAUser(unittest.TestCase):
         self.assertTrue(users.delete(self.prefs, anna))
 
         self.assertEqual({bo: "Bo"}, users.all_users(self.prefs))
-        stars = library_db.document(self.prefs, library_files.FILES).everyones(locations.STARS)
+        stars = library_db.document(self.prefs, library_files.FILES).everyones(locations.FAVORITES)
         self.assertTrue(stars.get(bo), "the deletion took the survivor's stars: %s" % stars)
         self.assertTrue(stars.get(anna), "the deletion rewrote another user's rows: %s" % stars)
         self.assertTrue(locations.is_favourite(self.prefs, "m-bo"))

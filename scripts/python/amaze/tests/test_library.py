@@ -752,7 +752,7 @@ class AMaterialStarLivesInTheLibraryStoreTest(unittest.TestCase):
             "the toggle did not light the star through the store")
         test_support.settle_stamps()
         with open(os.path.join(self.prefs.dir, library_files.MATERIALS), encoding="utf-8") as fh:
-            stars = json.load(fh).get("stars", {}).get(test_support.FIXTURE_USER, {})
+            stars = json.load(fh).get("favorites", {}).get(test_support.FIXTURE_USER, {})
         self.assertTrue(
             stars.get(mat_id),
             "the star is lit but the database does not carry it - "
@@ -1310,7 +1310,7 @@ class FavouritesArePerUserTest(unittest.TestCase):
                          "a favourite toggle wrote the shared rows - "
                          "my star still collides with yours")
         self.assertIn(str(model.assets[0].mat_id),
-                      after.get("stars", {}).get(test_support.FIXTURE_USER, {}))
+                      after.get("favorites", {}).get(test_support.FIXTURE_USER, {}))
         self.assertTrue(model.data(model.index(0, 0), model.FavoriteRole))
 
 

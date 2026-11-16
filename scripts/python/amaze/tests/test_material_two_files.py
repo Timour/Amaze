@@ -1227,8 +1227,8 @@ class EveryOldStoreArrivesTest(unittest.TestCase):
             self.PEER + "|A1": True, self.PEER + "|/x/a.exr": True, "A2": True}})
         built = self.built()
         self.assertEqual({self.PEER: {"A1": True}, self.USER: {"A2": True}},
-                         built[MATERIALS]["stars"], "a star from before users is not the converter")
-        self.assertEqual({self.PEER: {"/x/a.exr": True}}, built[library_files.FILES]["stars"])
+                         built[MATERIALS]["favorites"], "a star from before users is not the converter")
+        self.assertEqual({self.PEER: {"/x/a.exr": True}}, built[library_files.FILES]["favorites"])
 
     def test_the_stars_this_computer_kept_in_its_settings_arrive(self):
         """The machine stars of the settings file become the converting user, and only theirs."""
@@ -1237,7 +1237,7 @@ class EveryOldStoreArrivesTest(unittest.TestCase):
         stars = library_conversion.machine_stars(held)
         self.assertEqual(["A1"], stars)
         built = self.built(machine_stars=stars)
-        self.assertEqual({self.USER: {"A1": True}}, built[MATERIALS]["stars"])
+        self.assertEqual({self.USER: {"A1": True}}, built[MATERIALS]["favorites"])
         self.assertEqual([], library_conversion.machine_stars(types.SimpleNamespace(data={})))
 
     def test_locations_and_their_paths(self):
@@ -1337,7 +1337,7 @@ class EveryOldStoreArrivesTest(unittest.TestCase):
         self.section([{"id": "A1", "favorite": True, "icon": {"name": "box"}, "builder": {}}])
         built = self.built()[MATERIALS]
         self.assertEqual({"id": "A1"}, built["assets"]["A1"])
-        self.assertEqual({}, built["stars"], "a row field star became a star")
+        self.assertEqual({}, built["favorites"], "a row field star became a star")
 
     def test_older_spellings_of_the_id_and_a_row_with_none(self):
         self.section([{"mat_id": "M1"}, {"uid": "U1"}, {"name": "bare"}, {"id": "K1"}],

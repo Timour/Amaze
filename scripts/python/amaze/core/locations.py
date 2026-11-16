@@ -9,7 +9,8 @@ from amaze.core import debug, library_db, library_files
 from amaze.helpers import hostos
 
 FILES = library_files.FILES
-LOCATIONS, PATHS, STARS, COMMENTS, ICONS = "locations", "paths", "stars", "comments", "icons"
+LOCATIONS, PATHS, FAVORITES, COMMENTS, ICONS = (
+    "locations", "paths", "favorites", "comments", "icons")
 LOC_PREFIX = "loc:"    # `loc:<id>[/<relative>]`: a location's own key, and every file key under it
 
 FIELDS = ("registered", "name", "color", "recursive",
@@ -332,7 +333,7 @@ def relocate_record(preferences, old: str, new: str) -> bool:
 
 def _stars(preferences, database: str) -> dict:
     held = library_db.document(preferences, database)
-    return held.mine(STARS) if held.user() else {}
+    return held.mine(FAVORITES) if held.user() else {}
 
 
 def _file_star_key(preferences, key: str) -> str:
@@ -374,7 +375,7 @@ def set_favourites(preferences, wanted: dict, database: str = FILES) -> bool:
     with library_db.library_for(preferences).holding():
         for key, on in wanted.items():
             home = str(key) if database != FILES else _file_star_key(preferences, key)
-            held.put_mine(STARS, home, True if on else None)
+            held.put_mine(FAVORITES, home, True if on else None)
     saved = library_db.save(preferences, database)
     return bool(saved) or saved.reason == "unchanged"
 
@@ -392,9 +393,9 @@ def files_moved(preferences, keys: dict) -> bool:
                 if entry is not None:
                     held.put(section, new, entry)    # a moved file's own entry over one left behind
                     held.drop(section, old)
-            if held.mine(STARS).get(old):
-                held.put_mine(STARS, new, True)
-                held.put_mine(STARS, old, None)
+            if held.mine(FAVORITES).get(old):
+                held.put_mine(FAVORITES, new, True)
+                held.put_mine(FAVORITES, old, None)
     saved = library_db.save(preferences, FILES)
     return bool(saved) or saved.reason == "unchanged"
 
@@ -423,8 +424,8 @@ def retire_prefix(preferences, path: str) -> bool:
             for section in (COMMENTS, ICONS):
                 for key in [k for k in held.table(section) if _under(k, lid, prefix)]:
                     held.drop(section, key)
-            for key in [k for k in held.mine(STARS) if _under(k, lid, prefix)]:
-                held.put_mine(STARS, key, None)
+            for key in [k for k in held.mine(FAVORITES) if _under(k, lid, prefix)]:
+                held.put_mine(FAVORITES, key, None)
             for key in [k for k in held.mine(LOCATIONS) if _under(k, lid, prefix)]:
                 held.put_mine(LOCATIONS, key, None)
             others = [own for user, own in held.everyones(LOCATIONS).items()
@@ -446,7 +447,7 @@ def rehome_covered(preferences, path: str) -> bool:
                if path_identity(str((row or {}).get("path") or "")) == gone}
     owners = {base: lid for base, lid in _id_table(preferences).items() if base != gone}
     moves = {}
-    for key in list(held.table(COMMENTS)) + list(held.table(ICONS)) + list(held.mine(STARS)):
+    for key in list(held.table(COMMENTS)) + list(held.table(ICONS)) + list(held.mine(FAVORITES)):
         if key.startswith(LOC_PREFIX):
             head, _, rel = key[len(LOC_PREFIX):].partition("/")
             full = gone + "/" + rel if head in leaving and rel else ""

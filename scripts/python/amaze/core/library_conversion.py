@@ -939,9 +939,9 @@ def _show_ticks(record: dict, show_unknown: bool) -> dict:
 def build_databases(library_dir: str, set_aside=(), user: str = "", machine_stars=(),
                     show_unknown: bool = True) -> dict:
     """The six 2.0 databases, {name: document}, built from every old root file in one pass."""
-    sections = {name: {"assets": {}, "categories": {}, "comments": {}, "icons": {}, "stars": {}}
+    sections = {name: {"assets": {}, "categories": {}, "comments": {}, "icons": {}, "favorites": {}}
                 for name, _prefix in OLD_SECTIONS.values()}
-    files = {"locations": {}, "paths": {}, "comments": {}, "icons": {}, "stars": {}}
+    files = {"locations": {}, "paths": {}, "comments": {}, "icons": {}, "favorites": {}}
     master = {"policy": {}, "settings": {}, "users": {}, "marks": {}}
     owner_of = {}
     pages, retired = {}, {}    # note key -> its items; note key -> its row's text, now a comment
@@ -1020,9 +1020,9 @@ def build_databases(library_dir: str, set_aside=(), user: str = "", machine_star
         if not owner or not value:
             continue
         if bare in owner_of:
-            sections[owner_of[bare]]["stars"].setdefault(owner, {})[bare] = True
+            sections[owner_of[bare]]["favorites"].setdefault(owner, {})[bare] = True
         elif _is_file_key(bare):
-            files["stars"].setdefault(owner, {})[paths.file_key(bare)] = True
+            files["favorites"].setdefault(owner, {})[paths.file_key(bare)] = True
     files["paths"] = dict(paths.rows)
     for uid, record in _old_table(library_dir, "users.json").items():
         if isinstance(record, dict) and str(record.get("name") or "").strip():

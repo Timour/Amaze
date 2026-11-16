@@ -43,7 +43,7 @@ class Kind:
 
 
 _ASSETS = {"assets": SHARED, "categories": SHARED, "comments": SHARED, "icons": SHARED,
-           "stars": PER_USER}
+           "favorites": PER_USER}
 
 DATABASES = {
     MASTER: Kind({"policy": SHARED, "settings": SHARED, "users": SHARED, MANIFEST: SHARED,
@@ -53,7 +53,7 @@ DATABASES = {
     "code.json": Kind(_ASSETS, "assets"),
     "colors.json": Kind(_ASSETS, "assets"),
     "files.json": Kind({"locations": PER_USER, "paths": SHARED, "comments": SHARED,
-                        "icons": SHARED, "stars": PER_USER}, "locations"),
+                        "icons": SHARED, "favorites": PER_USER}, "locations"),
 }
 
 
