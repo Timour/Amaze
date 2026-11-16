@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.34.1
+
+- **Sort by name** is in the File sidebar's right-click menu too. It sorts the locations alphabetically by the name each shows, below All and $HIP.
+
 ## 1.34.0
 
 - **Library format 2.0.** A material or node is three files in its section's folder: `<id>.mat`, `<id>.json` and `<id>.png`. Each section has one database that also holds its comments, tile icons and stars. `DataBase.json` holds the library's users and shared settings. Backups are in `backup/`, deleted items in `trash/` for 30 days.
