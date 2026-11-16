@@ -823,7 +823,7 @@ with the same `versions.json`. Check Library walks every folder,
 `core/library_files.py` names a version file as one whose stem is
 `<writer>-<n>` or `<n>` with a version suffix, in a folder named for an
 alphanumeric id. Only the unlisted asset files of `materials/`, `nodes/`,
-`mat/` while it is there, `img/` and `captures/` are counted against the lists; a version file is a known
+`mat/` while it is there are counted against the lists; a version file is a known
 name and never one of them. Settled ahead of the Versions build so
 that the classifier could be written against a shape that is known
 rather than guessed: without a decided name, the first sweep after
@@ -922,8 +922,8 @@ reports them too (`--strict` exits non-zero, so it can gate).
 | `mat/` | **format 3's shared asset folder**, every section's files together, with `<id>.interface`, `<id>.builder.json` and `<id>.stamp.json` beside each `.mat`. The conversion (`library_conversion.convert`, from the panel's `open_library`, never by a headless open) moves each id's files and version folder to the folder of the database that names it, a file no database names to `materials/`; an id two databases name stays and is logged. It runs only while every database reads. An empty `mat/` is removed; one with anything unknown left in it stays, and Check Library calls it a leftover. The library stays below library version 3 until the conversion finishes, so a crash resumes it |
 | `code/versions/<id>/<n>.txt` + `versions.json` | a snippet's versions: each one's text, and the same ledger. The snippet's text in `code.json` is always the active version's; deleting the snippet takes the folder with it |
 | `materials/<id>.png` (and `nodes/`, `code/`, `colors/`) | **the asset's one picture**, beside its files: a render or a capture, each replacing the other in place (`tile_icons.thumbnail_path`). The Icon menu's Image face shows it; Generic and Custom are composed for display and write no file. Code and Colors rows paint their own preview and own a picture only once one is captured |
-| `img/comments/` | the pictures pasted into comments; no section owns them |
-| `captures/file_<40 hex>.png` | a File row's scene capture, by the SHA-1 of its key |
+| `<section folder>/comments/` | the pictures pasted into that section's comments (`materials/`, `nodes/`, `code/`, `colors/`, `files/`) |
+| `files/<40 hex>.png` | a File row's scene capture, by the SHA-1 of its key |
 | `img/<id>.png` `img/<id>_icon.png` `captures/<id>.png` | format 3's pictures. The conversion keeps the one each tile showed as `<section>/<id>.png` and removes the rest |
 | `matX/<package>/…` | MaterialX packages and their textures; Check Library does not enter it, the audit tool reports scratch there only |
 
