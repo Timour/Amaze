@@ -94,8 +94,6 @@ STATE_UNLOADED = 4    # a picture whose file would not load: words stand in, `sr
 _UNLOADED_SRC = QtGui.QTextFormat.Property.UserProperty.value + 1
 _UNLOADED_TEXT = QtGui.QTextFormat.Property.UserProperty.value + 2
 
-IMAGE_DIR = "img/comments"    # inside the library, beside the thumbnails `img/` already holds ▸p/comment-images
-
 ADD_ITEMS = (    # what the + offers, in order - a new item type joins by adding ONE line here ▸p/comment-images
     ("Bullet point", "_add_todo"),
     ("Image", "_add_image"),
@@ -668,7 +666,7 @@ class NotesPanel(ui_helpers.HeldPane):
         chosen = hou.text.expandString(chosen or "").strip()
         if not chosen:
             return
-        src = notes.adopt_image(self.preferences, chosen)
+        src = notes.adopt_image(self.preferences, chosen, self._key)
         if not src:
             ui.displayMessage(
                 messages.PICTURE_NOT_COPIED_TO_LIBRARY,

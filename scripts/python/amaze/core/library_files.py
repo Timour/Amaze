@@ -13,6 +13,7 @@ LISTS = (MATERIALS, NODES, CODE, COLORS)    # the sections whose rows are assets
 DATABASES = (MASTER,) + LISTS + (FILES,)    # `guard.DATABASES`, held equal by a test
 ROOT_FILES = DATABASES
 JOURNAL = ".amaze-journal"    # `guard.JOURNAL`: there only while a change is being applied
+FENCE = "policy.json"    # one line an Amaze from before 2.0 reads, and stays out
 BACKUP_FOLDER = "backup"    # `guard.BACKUP_DIR`
 TRASH_FOLDER = "trash"    # `guard.TRASH_DIR`, one folder per day
 
@@ -29,12 +30,12 @@ NOUNS = {MASTER: "user", MATERIALS: "material", NODES: "node", CODE: "snippet",
 ASSET_SECTIONS = (MATERIALS, NODES)    # whose rows own asset files
 ORPHAN_SECTION = MATERIALS    # where a file no database names goes, and is reported from
 
-VERSIONS = "versions"    # a section folder's one sub-folder; its top holds the asset files
-RENDER_FOLDER = "img"    # `img/comments/`, which no section owns
-CAPTURE_FOLDER = "captures"    # `captures/file_<hex>.png`, the Files section's
+VERSIONS = "versions"    # a section folder's sub-folder of archives; its top holds the asset files
+FILES_FOLDER = "files"    # the Files section's: `files/<sha1 of the file's key>.png`, a file's capture
 CODE_FOLDER = SECTION_FOLDERS[CODE]
 PACKAGE_FOLDER = "matX"    # a permanent store: the check does not enter it, the audit looks for scratch only
-COMMENT_FOLDER = "comments"    # `img/comments/`, the pictures pasted into comments; `notes.IMAGE_DIR`
+COMMENT_FOLDER = "comments"    # `<section folder>/comments/`: the pictures pasted into its comments
+COMMENT_HOMES = dict(SECTION_FOLDERS, **{FILES: FILES_FOLDER})    # every database, and its folder
 IMPORT_FOLDER = "import"    # where Package Import writes plain files: a File location, its contents the user's
 LEDGER = "versions.json"
 
@@ -79,7 +80,7 @@ COPIES = frozenset((BACKUP,))    # a duplicate of one of these is swept whatever
 OUT_OF_PLACE = frozenset((SCRATCH, DUPLICATE, UNKNOWN))    # `walk` stats these, and only these
 
 _VERSION_STEM = re.compile(r"^([^\W_]+)_(\d+)$")    # `<id>_<n>`, the id its folder's name
-_FILE_CAPTURE = re.compile(r"^file_[0-9a-f]{40}\.png$")
+_FILE_CAPTURE = re.compile(r"^[0-9a-f]{40}\.png$")
 _COMMENT_IMAGE = re.compile(r"^[0-9a-f]{32}\.\w+$")
 _COPY_NUMBER = re.compile(r" \d+(?=\.|$)")
 
@@ -132,7 +133,7 @@ def is_os_noise(name: str) -> bool:
 def _root(name: str):
     if name in DATABASES:
         return LIST, name
-    if name == JOURNAL:
+    if name in (JOURNAL, FENCE):
         return JOURNAL_FILE, name
     return None
 
@@ -183,12 +184,11 @@ def _folder(parts: list) -> bool:
     depth = len(parts)
     top = parts[0]
     if depth == 1:
-        return top in tuple(SECTION_FOLDERS.values()) + (
-            RENDER_FOLDER, CAPTURE_FOLDER, PACKAGE_FOLDER, IMPORT_FOLDER, BACKUP_FOLDER,
-            TRASH_FOLDER)
+        return top in tuple(COMMENT_HOMES.values()) + (
+            PACKAGE_FOLDER, IMPORT_FOLDER, BACKUP_FOLDER, TRASH_FOLDER)
     if top in (PACKAGE_FOLDER, TRASH_FOLDER):
         return True
-    if parts == [RENDER_FOLDER, COMMENT_FOLDER]:
+    if depth == 2 and parts[1] == COMMENT_FOLDER and top in COMMENT_HOMES.values():
         return True
     if (owns_assets(top) or top == CODE_FOLDER) and parts[1] == VERSIONS:
         return depth == 2 or (depth == 3 and parts[2].isalnum())
@@ -207,9 +207,9 @@ def _plain(parts: list):
         return _asset_folder(name)
     if depth == 2 and section_of_folder(top):    # Code and Colors own a captured picture at most
         return _picture(name)
-    if depth == 2 and top == CAPTURE_FOLDER:
+    if depth == 2 and top == FILES_FOLDER:
         return (FILE_CAPTURE, "") if _FILE_CAPTURE.match(name) else None
-    if depth == 3 and parts[:2] == [RENDER_FOLDER, COMMENT_FOLDER]:
+    if depth == 3 and parts[1] == COMMENT_FOLDER and top in COMMENT_HOMES.values():
         return (COMMENT_IMAGE, "") if _COMMENT_IMAGE.match(name.lower()) else None
     if depth == 4 and parts[1] == VERSIONS and parts[2].isalnum():
         if top == CODE_FOLDER:

@@ -217,8 +217,8 @@ class TheRealLibraryRehearsalTest(_ConversionRehearsal, unittest.TestCase):
                         name.startswith(one + ".") for one in library_conversion.OLD_ROOT_FILES)):
                 shutil.copy2(source, os.path.join(self.dir, name))
         folders = [library_files.SECTION_FOLDERS[section] for section in library_files.LISTS] + [
-            library_files.RENDER_FOLDER, library_files.CAPTURE_FOLDER,
-            library_conversion.OLD_FOLDER]
+            library_conversion.OLD_PICTURES, library_conversion.OLD_CAPTURES,
+            library_files.FILES_FOLDER, library_conversion.OLD_FOLDER]
         for folder in folders:
             if not os.path.isdir(os.path.join(live.dir, folder)):
                 continue    # a section that has saved nothing yet

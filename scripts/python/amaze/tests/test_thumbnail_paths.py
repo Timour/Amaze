@@ -91,7 +91,7 @@ class TheThumbnailPathIsComposedInOnePlace(unittest.TestCase):
         home = tile_icons.thumbnail_path(self.prefs, "abc", library_files.NODES)
         self.assertEqual(os.path.join("nodes", "abc.png"),
                          os.path.relpath(home, root))
-        for folder in (library_files.CAPTURE_FOLDER, library_files.RENDER_FOLDER):
+        for folder in ("captures", "img"):
             os.makedirs(os.path.join(root, folder), exist_ok=True)
             old = os.path.join(root, folder, "abc.png")
             with open(old, "wb") as handle:
@@ -714,7 +714,7 @@ class ACapturePathCostsNoDisk(unittest.TestCase):
         """Captures live in the library, so two libraries never share one."""
         one = captures.file_path(self._prefs("/libraries/one"), "loc:abc/a.hip")
         two = captures.file_path(self._prefs("/libraries/two"), "loc:abc/a.hip")
-        self.assertEqual(os.path.join("/libraries/one", "captures"), os.path.dirname(one))
+        self.assertEqual(os.path.join("/libraries/one", "files"), os.path.dirname(one))
         self.assertEqual(os.path.basename(one), os.path.basename(two))
         self.assertNotEqual(one, two)
 

@@ -1454,10 +1454,13 @@ class APictureIsCOPIEDIntoTheLibrary(unittest.TestCase):
         self.assertTrue(image.save(path, "PNG"))
         return path
 
-    def test_the_file_is_copied_under_img_comments(self):
+    KEY = "material:X1"    # the comment the picture is added to: its section's folder takes it
+
+    def test_the_file_is_copied_into_its_section_s_comments(self):
         original = self._a_picture_outside_the_library()
-        src = self.notes.adopt_image(self.prefs, original)
-        self.assertTrue(src.startswith("img/comments/"), src)
+        self.assertEqual(self.KEY, self.notes.note_key("material", "X1"), "premise: the key's shape")
+        src = self.notes.adopt_image(self.prefs, original, self.KEY)
+        self.assertTrue(src.startswith("materials/comments/"), src)
         landed = os.path.join(self.prefs.dir, *src.split("/"))
         self.assertTrue(os.path.isfile(landed), "nothing was copied in")
         self.assertTrue(os.path.isfile(original),
@@ -1465,16 +1468,16 @@ class APictureIsCOPIEDIntoTheLibrary(unittest.TestCase):
 
     def test_two_pictures_of_the_same_name_do_not_collide(self):
         first = self.notes.adopt_image(
-            self.prefs, self._a_picture_outside_the_library("same.png"))
+            self.prefs, self._a_picture_outside_the_library("same.png"), self.KEY)
         second = self.notes.adopt_image(
-            self.prefs, self._a_picture_outside_the_library("same.png"))
+            self.prefs, self._a_picture_outside_the_library("same.png"), self.KEY)
         self.assertNotEqual(first, second,
                             "the second picture overwrote the first")
 
     def test_a_file_that_is_not_there_is_refused_not_guessed(self):
         self.assertEqual(
             "", self.notes.adopt_image(self.prefs,
-                                       os.path.join(self.outside, "nope.png")))
+                                       os.path.join(self.outside, "nope.png"), self.KEY))
 
     def test_no_half_copied_picture_is_left_where_a_note_points(self):
         """The copy promotes on completion, so a failure leaves nothing at the target."""
@@ -1488,10 +1491,10 @@ class APictureIsCOPIEDIntoTheLibrary(unittest.TestCase):
             raise OSError("the disk filled up")
 
         with mock.patch.object(guard.Disk, "write", dying_write):
-            src = self.notes.adopt_image(self.prefs, original)
+            src = self.notes.adopt_image(self.prefs, original, self.KEY)
 
         self.assertEqual("", src, "a failed copy reported a path anyway")
-        folder = os.path.join(self.prefs.dir, "img", "comments")
+        folder = os.path.join(self.prefs.dir, "materials", "comments")
         left = os.listdir(folder) if os.path.isdir(folder) else []
         self.assertEqual(
             [], [name for name in left if not name.endswith(guard.SCRATCH)],

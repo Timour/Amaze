@@ -43,8 +43,6 @@ def configured_library(preferences=None) -> str:
     return str(getattr(preferences, "dir", "") or "")
 
 
-CAPTURES_DIR = naming.CAPTURE_FOLDER + "/"
-
 SCRATCH_MIN_AGE = 60 * 60    # a younger scratch may be another session's live write
 
 UNCATEGORISED = "Uncategorized"
@@ -100,7 +98,6 @@ def survey(preferences_or_directory, img_dir: str = "img/") -> dict:
 
     folders = asset_folders(directory)
     keys = {folder: folder + "/" for folder, _kinds, _needed in _unlistable(directory)}
-    keys.update({naming.RENDER_FOLDER: img_dir, naming.CAPTURE_FOLDER: CAPTURES_DIR})
     unaccounted = {}
     unreadable_folders = []
     for folder, kinds, needed in _unlistable(directory):

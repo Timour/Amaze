@@ -14,8 +14,10 @@ from amaze.core import locations, notes, renderers
 from amaze.helpers import hostos
 
 OLD_FOLDER = "mat"    # format 3: every section's asset files and version folders, together
-OLD_PICTURES = library_files.RENDER_FOLDER    # format 3: `img/<id>.png` and `img/<id>_icon.png`
-OLD_CAPTURES = library_files.CAPTURE_FOLDER    # format 3: `captures/<id>.png`
+OLD_PICTURES = "img"    # format 3: `img/<id>.png`, `img/<id>_icon.png`, `img/comments/<hex>.<ext>`
+OLD_CAPTURES = "captures"    # format 3: `captures/<id>.png` and `captures/file_<sha1>.png`
+OLD_COMMENT_PICTURES = OLD_PICTURES + "/comments"
+OLD_FILE_CAPTURE = re.compile(r"^file_([0-9a-f]{40})\.png$")
 INTERFACE = ".interface"    # the builder as `asCode()` Python: read for its type, never executed
 BUILDER = ".builder.json"    # the builder as data, its interface under `dialog_script`
 STAMP = ".stamp.json"    # the row, written beside the asset files
@@ -786,6 +788,10 @@ def convert(directory: str, confirm, progress=None, user: str = "",
             debug.event("convert", "the new databases did not read back - the old files stay")
             return Outcome(BLOCKED, "the new databases did not read back as they were written.")
     counts["deleted"] += _remove_old_root_files(library_dir, user)
+    try:
+        rehome_pictures(library_dir, user)
+    except (OSError, guard.Refused) as exc:    # they stay where they were; the next open moves them
+        debug.event("convert", "pictures not moved into their sections", error=str(exc))
     debug.event("convert", "library conversion", set_aside=len(set_aside), **counts)
     return Outcome(DONE, set_aside=set_aside, counts=counts, old_trash=old_trash)
 
@@ -1085,6 +1091,68 @@ def _remove_old_root_files(library_dir: str, user: str) -> int:
         change.remove(name)
     change.commit()
     return len(gone)
+
+
+def needs_rehoming(library_dir: str) -> bool:
+    """Whether a 2.0 library still has `captures/` or `img/`, the two folders no section owned."""
+    return any(os.path.isdir(os.path.join(str(library_dir or ""), name))
+               for name in (OLD_CAPTURES, OLD_PICTURES)) if library_dir else False
+
+
+def rehome_pictures(library_dir: str, user: str = "") -> int:
+    """File captures into `files/`, comment pictures into their section, as one change; how many."""
+    held = guard.Guard(library_dir)
+    change = held.change(user)
+    moved = 0
+    for name in _listing(os.path.join(library_dir, OLD_CAPTURES)):
+        match = OLD_FILE_CAPTURE.match(name)
+        target = "%s/%s.png" % (library_files.FILES_FOLDER, match.group(1)) if match else ""
+        if target and not os.path.lexists(os.path.join(library_dir, *target.split("/"))):
+            change.take(target, os.path.join(library_dir, OLD_CAPTURES, name))
+            moved += 1
+    pictures = set(_listing(os.path.join(library_dir, OLD_COMMENT_PICTURES)))
+    used = set()
+    prefix = OLD_COMMENT_PICTURES + "/"
+    for database in library_files.COMMENT_HOMES:
+        reading = held.read(database)
+        if reading.verdict != guard.FINE:
+            continue
+        document, changed = json.loads(json.dumps(reading.document)), False
+        for page in (document.get("comments") or {}).values():
+            for item in (page.get("items") or []) if isinstance(page, dict) else []:
+                src = str(item.get("src") or "") if isinstance(item, dict) else ""
+                if not src.startswith(prefix):
+                    continue
+                name = src[len(prefix):]
+                target = "%s/%s" % (notes.image_folder(database), name)
+                item["src"], changed = target, True
+                source = os.path.join(library_dir, OLD_PICTURES, "comments", name)
+                if name in pictures and name not in used:
+                    change.take(target, source)
+                    used.add(name)
+                    moved += 1
+                elif name in pictures:    # one picture in two sections' comments: each gets its own
+                    change.put_file(target, _bytes(source))
+        if changed:
+            change.put(reading.ticket, document)
+    for name in sorted(pictures - used):    # a picture no comment shows
+        change.trash(prefix + name)
+    change.commit()
+    for name in _listing(os.path.join(library_dir, OLD_PICTURES)):
+        if name.endswith(".lock"):    # what an old render left beside a picture long gone
+            _remove([os.path.join(library_dir, OLD_PICTURES, name)])
+    for home in (library_files.SECTION_FOLDERS[name] for name in library_files.LISTS):
+        root = os.path.join(library_dir, home, library_files.VERSIONS)
+        for asset_id in _listing(root):    # the copies the old engine kept beside a version ledger
+            _remove([os.path.join(root, asset_id, name)
+                     for name in _listing(os.path.join(root, asset_id))
+                     if name.startswith(library_files.LEDGER + ".")
+                     and name.endswith(OLD_COPY_TAILS)])
+    for folder in (os.path.join(library_dir, OLD_PICTURES, "comments"),
+                   os.path.join(library_dir, OLD_PICTURES), os.path.join(library_dir, OLD_CAPTURES)):
+        _remove_empty(folder)
+    debug.event("convert", "pictures moved into their sections", moved=moved)
+    return moved
 
 
 def old_trash_of(library_dir: str) -> str:

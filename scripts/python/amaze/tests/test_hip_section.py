@@ -159,7 +159,7 @@ class CaptureStoreTest(unittest.TestCase):
         import hashlib
         key = captures.file_key(self.prefs, self.scene)
         path = captures.file_path(self.prefs, key)
-        self.assertEqual("file_" + hashlib.sha1(key.encode("utf-8")).hexdigest() + ".png",
+        self.assertEqual(hashlib.sha1(key.encode("utf-8")).hexdigest() + ".png",
                          os.path.basename(path))
         self.assertEqual(captures.folder(self.prefs), os.path.dirname(path))
         other = self.tmp.touch("other.hiplc")

@@ -55,7 +55,7 @@ def newer_version(preferences) -> int:
 def starter_would_overwrite(lib_dir: str) -> list:
     """The evidence that `lib_dir` has held a library, or []; `prepare` asks this before seeding."""
     found = []
-    for name in (library_files.BACKUP_FOLDER, library_files.RENDER_FOLDER) + tuple(
+    for name in (library_files.BACKUP_FOLDER,) + tuple(
             library_files.SECTION_FOLDERS[section] for section in library_files.ASSET_SECTIONS):
         folder = os.path.join(lib_dir, name)
         if os.path.isdir(folder) and os.listdir(folder):

@@ -259,7 +259,7 @@ class AFullConversionTest(_OldLibrary):
                          sorted(os.listdir(self.old)),
                          "mat/ holds more than the id two sections name and the set-aside one")
         self.assertFalse(os.path.exists(self.at("captures")), "an emptied captures/ stayed")
-        left_in_img = sorted(os.listdir(self.at("img")))
+        left_in_img = sorted(os.listdir(self.at("img"))) if os.path.isdir(self.at("img")) else []
         self.assertEqual([], [name for name in left_in_img if name.endswith(".png")],
                          "a format 3 picture or _icon.png stayed in img/")
         for name in ("SIDE1.interface", "SIDE1.builder.json"):
@@ -871,6 +871,8 @@ class OnlyTheConverterNamesFormat3Test(unittest.TestCase):
             checked += 1
             with open(path, encoding="utf-8") as handle:
                 for number, line in enumerate(handle, 1):
+                    if line.startswith("FENCE = "):    # a 2.0 library's own file, kept for older Amaze
+                        continue
                     for name in self.NAMES:
                         if name in line:
                             offenders.append("%s:%d %s" % (os.path.relpath(path, REPO),
@@ -1086,6 +1088,50 @@ class OnePicturePerAssetTest(_Library):
         self.assertIn(self.ASSET,
                       [one for one, _name in findings["missing_renders"][MATERIALS]])
         self.assertIn("ORPHANPIC1.png", findings["unaccounted"]["materials/"])
+
+
+class PicturesLiveInTheirSectionTest(_Library):
+    """File captures are `files/<key hash>.png`; a comment's picture is in its section's `comments`."""
+
+    def test_the_two_old_folders_are_emptied_into_the_sections(self):
+        capture, shown, stray = "ab" * 20, "c" * 32 + ".png", "d" * 32 + ".png"
+        write(self.at("captures", "file_%s.png" % capture), b"a file's capture")
+        write(self.at("img", "comments", shown), b"a picture in a comment")
+        write(self.at("img", "comments", stray), b"a picture no comment shows")
+        write(self.at("img", "0123.png.lock"), b"")
+        held = guard.Guard(self.dir)
+        reading = held.read(MATERIALS)
+        asset_id = sorted(reading.document["assets"])[0]
+        document = json.loads(json.dumps(reading.document))
+        document.setdefault("comments", {})[asset_id] = {"items": [
+            {"t": "image", "src": "img/comments/" + shown, "text": ""}]}
+        change = held.change(test_support.FIXTURE_USER)
+        change.put(reading.ticket, document)
+        change.commit()
+        self.assertTrue(library_conversion.needs_rehoming(self.dir))
+        self.assertEqual(2, library_conversion.rehome_pictures(self.dir, test_support.FIXTURE_USER))
+        self.assertEqual(b"a file's capture", read_bytes(self.at("files", capture + ".png")))
+        self.assertEqual(b"a picture in a comment",
+                         read_bytes(self.at("materials", "comments", shown)))
+        item = guard.Guard(self.dir).read(MATERIALS).document["comments"][asset_id]["items"][0]
+        self.assertEqual("materials/comments/" + shown, item["src"])
+        self.assertEqual(1, trashed(self.dir), "the picture no comment shows did not go to the trash")
+        self.assertFalse(os.path.exists(self.at("img")) or os.path.exists(self.at("captures")))
+        self.assertFalse(library_conversion.needs_rehoming(self.dir))
+        for relative in ("files/%s.png" % capture, "materials/comments/" + shown):
+            self.assertNotEqual(library_files.UNKNOWN, library_files.classify(relative)[0], relative)
+
+    def test_a_new_comment_picture_lands_in_its_section(self):
+        from amaze.core import captures, notes
+        source = write(os.path.join(test_support.scratch_dir("amaze_pic_"), "p.png"), b"png")
+        self.addCleanup(shutil.rmtree, os.path.dirname(source), True)
+        for section, folder in (("material", "materials"), ("gradient", "colors"),
+                                ("file", "files")):
+            src = notes.adopt_image(self.prefs, source, notes.note_key(section, "X1"))
+            self.assertTrue(src.startswith(folder + "/comments/"), (section, src))
+            self.assertTrue(os.path.isfile(self.at(*src.split("/"))))
+        self.assertEqual("files", os.path.basename(os.path.dirname(
+            captures.file_path(self.prefs, "loc:L1/a.exr"))))
 
 
 class AFreshLibraryTest(unittest.TestCase):

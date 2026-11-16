@@ -155,18 +155,21 @@ def set_notes(preferences, pages: dict) -> bool:
     return taken
 
 
-IMAGE_DIR = "img/comments"    # ▸p/comment-images
+def image_folder(database: str) -> str:
+    """`<section folder>/comments`, where the pictures of `database`'s comments are kept."""
+    return "%s/%s" % (library_files.COMMENT_HOMES[database], library_files.COMMENT_FOLDER)
 
 
-def adopt_image(preferences, source: str) -> str:
-    """Copy `source` into the library through the guard; its library-relative path, or ""."""
+def adopt_image(preferences, source: str, key: str) -> str:
+    """Copy `source` into the section of comment `key`; its library-relative path, or ""."""
     import os
 
     library = str(getattr(preferences, "dir", "") or "")
-    if not library or not source or not os.path.isfile(source):
+    database = _split(key)[0]
+    if not library or not database or not source or not os.path.isfile(source):
         return ""
     extension = os.path.splitext(source)[1].lower() or ".png"
-    relative = "%s/%s%s" % (IMAGE_DIR, uuid.uuid4().hex, extension)
+    relative = "%s/%s%s" % (image_folder(database), uuid.uuid4().hex, extension)
     try:
         with open(source, "rb") as handle:
             data = handle.read()

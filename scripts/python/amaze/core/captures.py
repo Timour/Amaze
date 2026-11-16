@@ -5,15 +5,14 @@ import os
 
 from PySide6 import QtCore
 
-from amaze.core import debug
+from amaze.core import debug, library_files
 from amaze.helpers import hostos
 
-FOLDER = "captures"    # <library>/captures: a File row's capture; an asset's is its one picture
-FILE_PREFIX = "file_"    # a File row has no asset id, so its key is hashed into the name
+FOLDER = library_files.FILES_FOLDER    # <library>/files: a File row's capture, named by its key's hash
 
 
 def folder(preferences) -> str:
-    """`<library>/captures`."""
+    """`<library>/files`."""
     return os.path.join(str(preferences.dir), FOLDER)
 
 
@@ -25,9 +24,9 @@ def file_key(preferences, path: str) -> str:
 
 
 def file_path(preferences, key: str) -> str:
-    """`<library>/captures/file_<sha1 of the key>.png` for a File row's key."""
+    """`<library>/files/<sha1 of the key>.png` for a File row's key."""
     digest = hashlib.sha1(str(key).encode("utf-8")).hexdigest()
-    return os.path.join(folder(preferences), FILE_PREFIX + digest + ".png")
+    return os.path.join(folder(preferences), digest + ".png")
 
 
 def exists(path: str) -> bool:
