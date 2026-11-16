@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.34.0
+
+- **Library format 2.0.** A material or node is three files in its section's folder: `<id>.mat`, `<id>.json` and `<id>.png`. Each section has one database that also holds its comments, tile icons and stars. `DataBase.json` holds the library's users and shared settings. Backups are in `backup/`, deleted items in `trash/` for 30 days.
+- A library from before 1.40 is converted with **Convert pre-1.40** in Preferences ▸ About. Amaze older than 1.40 cannot open a converted library.
+- A new library is made in an empty folder.
+- An asset has one picture. **Render Image** and **Capture Scene** each replace it. The Image menu in Customize offers **Image**, **Generic Icon** and **Custom Icon**.
+- A classic Redshift or Octane builder is saved as its USD builder.
+- A picture pasted into a comment is kept in that section's `comments` folder, and a file's capture in `files/`.
+- Check Library: **Recover** replaces Add Back.
+- **Test Library** is removed from Preferences ▸ About.
+- The File section's right-click menu gains **Open Scene**, **Save Scene**, **New Folder**, **Undo Move** and **Show Location**.
+- macOS: the library folder shows the Amaze library icon.
+
 ## 1.33.34
 
 - Every right-click menu has a **Thumbnail** submenu holding **Render Image** (was Update Render), **Capture Scene** (was Capture) and **Customize**.
