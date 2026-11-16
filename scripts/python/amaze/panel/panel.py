@@ -1090,6 +1090,17 @@ class AmazePanel(QtWidgets.QWidget):
                 tooltips.PANEL_PREFERENCES))
             self.toolbar_layout.addWidget(btn_prefs)
             self.toolbar_layout.addSpacing(theme.ui_px(self._TOOLBAR["gap"]))
+            self.btn_generate = ui_helpers.IconMenuButton(    # the Material section alone: one generated material into the scene
+                None,
+                self._ui_icon_path("icon_generate.svg"),
+                on_click=self.generate_random_material,
+                fallback_label="Generate Material",
+                name="btn_generate",
+            )
+            self.btn_generate.setToolTip(ui_helpers.tooltip_text(
+                tooltips.PANEL_GENERATE))
+            self.toolbar_layout.addWidget(self.btn_generate)
+            self.toolbar_layout.addSpacing(theme.ui_px(self._TOOLBAR["gap"]))
             self.btn_categories = ui_helpers.ChipToggleButton(name="btn_categories")    # drives action_catview
             self.btn_categories.setToolTip(ui_helpers.tooltip_text(
                 tooltips.PANEL_CATEGORIES))
@@ -1145,21 +1156,54 @@ class AmazePanel(QtWidgets.QWidget):
                 self.import_galleries
             )
             self.action_package_import = self.online_menu.addAction(
-                "Package Import (.amazepkg)"
+                "Import Package (.amazepkg)"
             )
             self.action_package_import.triggered.connect(
                 self.package_import.import_package
             )
-            self.online_menu.addSeparator()    # generating gets its own group
-            self.action_generate_material = self.online_menu.addAction(
-                "Generate Material"
+            self.action_package_export = self.online_menu.addAction(
+                "Export Asset (.amazepkg)"
             )
-            self.action_generate_material.triggered.connect(
-                self.generate_random_material
+            self.action_package_export.triggered.connect(self.export_package)
+            self.action_category_export = self.online_menu.addAction(
+                "Export Category (.amazepkg)"
             )
+            self.action_category_export.triggered.connect(self.export_category)
+            menu_view.aboutToShow.connect(self.sync_package_export)    # each live only on what it can export
             menu_view.removeAction(self.action_catview)    # the action stays, driven by the toolbar chip; only its row goes
             self.online_source_group.triggered.connect(self._on_online_source)
 
+
+    def _exportable_selection(self) -> tuple:
+        """(the shown context, its grid selection) when that selection can leave as a package."""
+        section = self.active_section()
+        if section is None or not section.exports_selection:
+            return section, []
+        return section, section.grid_selection()
+
+    def _exports_category(self):
+        """The shown context when its sidebar holds categories and at most one row is selected, else None."""
+        section = self.active_section()
+        if section is None or not section.exports_categories or len(section.sidebar_selection()) > 1:
+            return None
+        return section
+
+    def sync_package_export(self) -> None:
+        """Grey the View menu's two exports unless the shown context has what each writes."""
+        self.action_package_export.setEnabled(bool(self._exportable_selection()[1]))
+        self.action_category_export.setEnabled(self._exports_category() is not None)
+
+    def export_package(self) -> None:
+        """View ▸ Export Asset: the shown grid's selected tiles leave as one `.amazepkg`."""
+        section, indexes = self._exportable_selection()
+        if indexes:
+            section.export_selection(indexes)
+
+    def export_category(self) -> None:
+        """View ▸ Export Category: the sidebar's selected category, or the whole section on All."""
+        section = self._exports_category()
+        if section is not None:
+            section.export_category(section.standing_category())
 
     def _build_view_toggles(self) -> None:
         """The favorites chip and the grid/list toggle."""
@@ -1471,7 +1515,8 @@ class AmazePanel(QtWidgets.QWidget):
             self.toolbar_layout.insertItem(i_box, gap_item)
             self.toolbar_layout.insertItem(i_box, label_item)
         self._move_to_toolbar_end(getattr(self, "btn_hip_capture", None))    # capture stays the outermost control
-        self._move_to_toolbar_end(self._toolbar_widget("btn_prefs"))    # capture first, then the gear, so the row ends ... stretch, Capture, gear
+        self._move_to_toolbar_end(getattr(self, "btn_generate", None))
+        self._move_to_toolbar_end(self._toolbar_widget("btn_prefs"))    # capture first, then generate, then the gear, so the row ends ... stretch, Capture, Generate, gear
 
         edge = theme.ui_px(self._TOOLBAR["edge"])    # both edges hold a control once the capture button is back at the end
         self.toolbar_layout.setContentsMargins(edge, 0, edge, 0)
@@ -2177,6 +2222,7 @@ class AmazePanel(QtWidgets.QWidget):
         ("btn_notes", "takes_comments", "enabled"),
         ("btn_filter", "takes_filter_menu", "enabled"),
         ("btn_hip_capture", "takes_capture", "enabled"),
+        ("btn_generate", "takes_generate", "enabled"),
     )
 
     def _sync_toolbar(self, context) -> None:

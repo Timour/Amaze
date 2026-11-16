@@ -46,17 +46,9 @@ MenuEntry = collections.namedtuple(
 
 SEPARATOR = MenuEntry("")  # the empty label is what makes it a divider
 
-THUMBNAIL_MENU = (    # the tile's picture, one submenu in every section's tail
-    MenuEntry("Render Image", verb="menu_update_preview",
-              shown="menu_offers_preview"),
-    MenuEntry("Capture Scene", verb="menu_capture", needs="menu_capture_enabled"),
-    MenuEntry("Customize", verb="menu_customize"),
-)
-
 GRID_MENU_TAIL = (
-    MenuEntry("Thumbnail", children=THUMBNAIL_MENU),
+    MenuEntry("Thumbnail", verb="menu_thumbnail", children="thumbnail_actions"),    # the tile's picture: render, capture, customize
     MenuEntry("Favorite", verb="menu_favourite"),
-    MenuEntry("Export Package", verb="menu_export_package"),
     MenuEntry("Delete", verb="menu_delete", shown="deletes_rows"),
 )
 
@@ -82,6 +74,8 @@ class Section:
     takes_filter_menu = True  # the entries describe the LOCAL section under it
     kind_filter_menu = False  # the online world answers True: the eye offers All/Materials/Colors/Nodes/Code there
     takes_capture = True    # Capture puts the Scene View on a tile ▸r/tile-captures
+    takes_generate = False  # the toolbar's Generate Material is live in the Material section alone
+    exports_categories = False    # the View menu's Export Category is live where the sidebar holds categories
 
     empty_noun = "items"  # what the shared empty-state blanks call these
     EMPTY: dict = {}      # `nothing-yet`: (headline, sentence, button, verb)
@@ -190,7 +184,9 @@ class Section:
     def library_switched(self) -> None:
         """The models now serve another library: a grid they do not re-point is shown afresh here."""
 
-    def menu_export_package(self, indexes, current, payload=None) -> None:
+    exports_selection = False    # the View menu's Export Package is live on this grid's selection
+
+    def export_selection(self, indexes) -> None:
         """Ask half of the grid export: the panel picks the destination, `export_package_to` acts."""
         path = self.panel.package_import.ask_destination()
         if path:
@@ -431,6 +427,20 @@ class Section:
     def menu_capture(self, indexes, current, payload=None) -> None:
         self.panel.tile_capture.onto_tile(self, current)
 
+    def thumbnail_actions(self, indexes, current) -> tuple:
+        """The Thumbnail submenu's rows, each naming the verb it runs; Render Image only where one renders."""
+        rows = []
+        if self.menu_offers_preview(indexes, current):
+            rows.append(("Render Image", "menu_update_preview", "", bool(indexes)))
+        rows.append(("Capture Scene", "menu_capture", "",
+                     self.menu_capture_enabled(indexes, current)))
+        rows.append(("Customize", "menu_customize", "", bool(indexes)))
+        return tuple(rows)
+
+    def menu_thumbnail(self, indexes, current, payload=None) -> None:
+        if payload:
+            getattr(self, payload)(indexes, current)
+
     def menu_favourite(self, indexes, current, payload=None) -> None:
         self.panel.grid_toggle_favourite(indexes)
 
@@ -504,9 +514,6 @@ class AssetSection(Section):
                   needs="always"),
         SEPARATOR,
         MenuEntry("Label", verb="menu_label_colour", children="label_colours"),
-        SEPARATOR,
-        MenuEntry("Export Category", verb="menu_export_category",
-                  needs="one"),
     )
 
     def menu_add_category(self, indexes, current, payload=None) -> None:
@@ -542,6 +549,8 @@ class AssetSection(Section):
         self.stand_on_key(new_name if standing in names else standing)    # a renamed row by its new name
         self.panel.refresh_sidebar_categories()    # counts and empty-category hiding follow the rename
 
+    exports_selection = True
+
     def export_package_to(self, indexes, path: str) -> int:
         """Act half: the selected rows leave as one `.amazepkg`; answers the entry count."""
         from amaze.core import packages
@@ -569,11 +578,16 @@ class AssetSection(Section):
             return 0
         return packages.write_package(path, items)
 
-    def menu_export_category(self, indexes, current, payload=None) -> None:
-        """Ask half: the clicked row names the category (All exports all); the panel picks where."""
-        name = self.sidebar_key(current) if current is not None else None
-        if not name or category.is_all(name):
-            name = None
+    exports_categories = True
+
+    def standing_category(self):
+        """The one category selected in the sidebar, or None for All, no row, or several."""
+        rows = self.sidebar_selection()
+        name = self.sidebar_key(rows[0]) if len(rows) == 1 else None
+        return None if not name or category.is_all(name) else name
+
+    def export_category(self, name) -> None:
+        """Ask half: `name` is the category (None exports the whole section); the panel picks where."""
         path = self.panel.package_import.ask_destination()
         if path:
             self._say_export(lambda: self.export_category_to(name, path), path)
@@ -734,6 +748,7 @@ class MaterialSection(AssetSection):
     key = "material"
     label = section_list.label(key)
     empty_noun = "material"
+    takes_generate = True
     EMPTY = amazetheme.EMPTY_MATERIAL    # no button: save_asset needs a selected node and says so when there is none ▸p/one-design-document
     QUOTE = amazetheme.QUOTE_MATERIAL
 
@@ -748,8 +763,8 @@ class MaterialSection(AssetSection):
                 "not affected." % count)
 
     GRID_MENU = (    # the section's work, a divider, then the shared tail - drawn C01/C01b
-        MenuEntry("Copy To", verb="menu_copy_to", children="copy_to_targets"),
-        MenuEntry("Convert to", verb="menu_convert_to",
+        MenuEntry("Load Asset to", verb="menu_copy_to", children="copy_to_targets"),
+        MenuEntry("Convert", verb="menu_convert_to",
                   children="convert_targets",
                   needs="selection_is_convertible"),
         SEPARATOR,
@@ -946,8 +961,8 @@ class CopSection(AssetSection):
     empty_noun = "node asset"
     EMPTY = amazetheme.EMPTY_NODE    # no button, for the same reason as Material
     QUOTE = amazetheme.QUOTE_NODE
-    GRID_MENU = (    # the material menu without renderer-specific entries; Load is live on a multi-selection
-        MenuEntry("Load", verb="menu_load"),
+    GRID_MENU = (    # the material menu without renderer-specific entries; Load Asset is live on a multi-selection
+        MenuEntry("Load Asset", verb="menu_load"),
         SEPARATOR,
     ) + GRID_MENU_TAIL
 
@@ -1083,10 +1098,10 @@ class CodeSection(AssetSection):
     label = section_list.label(key)
     empty_noun = "snippet"
     EMPTY = amazetheme.EMPTY_CODE    # New File acts on nothing, so it always works
-    GRID_MENU = (    # Apply and Edit act on one snippet; New File acts on nothing and stays live
+    GRID_MENU = (    # Load Asset and Edit act on one snippet; New File acts on nothing and stays live
         MenuEntry("New File", verb="menu_new_snippet", needs="always"),
         SEPARATOR,
-        MenuEntry("Apply", verb="menu_apply", needs="one"),
+        MenuEntry("Load Asset", verb="menu_apply", needs="one"),
         MenuEntry("Edit", verb="menu_edit", needs="one"),
         SEPARATOR,
     ) + GRID_MENU_TAIL
@@ -1766,12 +1781,13 @@ class FileSection(FolderSection):
 
     GRID_MENU = UNDO_MOVE + (  # the selection's KINDS pick the actions; no Delete: the user's own files
         MenuEntry("New Folder", verb="menu_new_folder", needs="menu_new_enabled"),
+        SEPARATOR,
+        MenuEntry("Open Scene", verb="menu_load_scene", needs="one",
+                  shown="selection_has_scene"),
         MenuEntry("Save Scene", verb="menu_save_scene", needs="menu_new_enabled"),
         SEPARATOR,
-        MenuEntry("Import", verb="menu_import", needs="menu_import_enabled",
+        MenuEntry("Load Asset", verb="menu_import", needs="menu_import_enabled",
                   shown="selection_has_importable"),
-        MenuEntry("Open", verb="menu_load_scene", needs="one",
-                  shown="selection_has_scene"),
         MenuEntry("Copy Path", verb="menu_copy_path"),
         SEPARATOR,
         MenuEntry("Open Location", verb="menu_reveal", needs="one"),
@@ -1796,6 +1812,8 @@ class FileSection(FolderSection):
         locations.KIND_OTHER: _PATH_ONLY,
         "": _PATH_ONLY,
     }
+
+    exports_selection = True
 
     def export_package_to(self, indexes, path: str) -> int:    # the File flavour: each selected row's file rides whole under its kind
         items = []
@@ -2175,8 +2193,8 @@ class GradientSection(AssetSection):
 
     offers_preview_update = False  # drawn from its ramp; nothing to re-render
     GRID_MENU = (  # both submenus are built per entry, so `children` names a method
-        MenuEntry("Apply", verb="menu_apply_ramp", needs="one"),
-        MenuEntry("Apply as", verb="menu_apply_ramp", children="ramp_bases",
+        MenuEntry("Load Asset", verb="menu_apply_ramp", needs="one"),
+        MenuEntry("Load Asset as", verb="menu_apply_ramp", children="ramp_bases",
                   needs="one"),
         MenuEntry("Copy Color", verb="menu_copy_swatch",
                   children="palette_swatches", needs="one"),
@@ -2281,9 +2299,6 @@ class GradientSection(AssetSection):
         SEPARATOR,
         MenuEntry("Label", verb="menu_label_colour", children="label_colours",
                   shown="on_a_category"),
-        SEPARATOR,
-        MenuEntry("Export Category", verb="menu_export_category",
-                  needs="one"),
     )
 
     def on_a_category(self, indexes, current) -> bool:

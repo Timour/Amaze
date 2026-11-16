@@ -1048,7 +1048,7 @@ class CaptureButtonTest(unittest.TestCase):
             ["btn_categories", "btn_menu_view", "btn_menu_filter",
              "btn_online", "btn_notes", "cb_viewmode", "cb_favsonly",
              "click_slider", "filter_label", "line_filter", "stretch",
-             "btn_hip_capture", "btn_prefs"],
+             "btn_hip_capture", "btn_generate", "btn_prefs"],
             row,
             "the toolbar row is not in the designed order")
 
@@ -1931,14 +1931,14 @@ class LoadOnTheGridMenuOpensTheSceneTest(unittest.TestCase):
         loaded = []
 
         def _pick(menu, *_args, **_kwargs):
-            return next(a for a in menu.actions() if a.text() == "Open")
+            return next(a for a in menu.actions() if a.text() == "Open Scene")
 
         with mock.patch.object(QtWidgets.QMenu, "exec_", _pick), \
                 mock.patch.object(hou.hipFile, "load",
                                   lambda path, **_kwargs: loaded.append(path)):
             panel.active_section().rc_menu()
         self.assertEqual([proxy.index(row, 0).data(path_role)], loaded,
-                         "Load did not open the scene it was picked on")
+                         "Open Scene did not open the scene it was picked on")
 
 
 class SectionListIsSingleSourcedTest(unittest.TestCase):

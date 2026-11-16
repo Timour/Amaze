@@ -576,7 +576,7 @@ class TheOnlineWorld(unittest.TestCase):
                         "Comments did not come back")
 
     def test_the_View_menu_is_down_to_the_one_shot_actions(self):
-        """The View menu holds only the one-shot actions: the two importers and Generate Material."""
+        """The View menu holds only the one-shot actions: a gallery in, packages in and out."""
         menu = self.panel.ui.findChild(QtWidgets.QMenu, "menuView")
         self.assertIsNotNone(menu)
         rows = [a.text() for a in menu.actions() if not a.isSeparator()]
@@ -587,8 +587,8 @@ class TheOnlineWorld(unittest.TestCase):
                 "%s is still a View menu row - it has a button or a "
                 "tab of its own now" % gone)
         self.assertEqual(
-            ["Gallery Import (.gal)", "Package Import (.amazepkg)",
-             "Generate Material"],
+            ["Gallery Import (.gal)", "Import Package (.amazepkg)",
+             "Export Asset (.amazepkg)", "Export Category (.amazepkg)"],
             [r for r in rows if r],
             "the View menu is not the one-shot actions")
         self.assertFalse(

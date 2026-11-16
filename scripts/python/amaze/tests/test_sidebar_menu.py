@@ -112,7 +112,7 @@ class TheSidebarMenusAreWhatSHIPPED(unittest.TestCase):
 
     SPINE = ["Add", "Rename", "Delete", "----",
              "Sort by name", "----",
-             LABEL, "----", "Export Category"]
+             LABEL]
 
     FILE_NO_LOCATION = ["Add", "Locate(off)",
                         "Rename > [Edit, ----, Set to Default(off)](off)",
@@ -130,9 +130,9 @@ class TheSidebarMenusAreWhatSHIPPED(unittest.TestCase):
                 ("material", (0, 1), None,
                  ["Add", "Rename(off)", "Delete", "----",
                   "Sort by name", "----",
-                  LABEL, "----", "Export Category(off)"]),
+                  LABEL]),
                 ("gradient", (0,), None,
-                 ["Add", "----", "Sort by name", "----", "Export Category"]),
+                 ["Add", "----", "Sort by name"]),
                 ("gradient", (1,), None, self.SPINE),
                 ("file", (0,), None, self.FILE_NO_LOCATION),
                 ("file", (1,), None, self.FILE_NO_LOCATION),    # the scene row: Add only

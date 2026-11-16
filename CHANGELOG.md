@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.33.33
+
+- The right-click entry that brings a tile into the scene is named **Load Asset** in every section: it replaces Load in Node and Code, Import in File, and Apply in Color. Color's Apply as is **Load Asset as**.
+- In Material, Copy To is named **Load Asset to** and Convert to is named **Convert**.
+- In File, the entry that opens a scene file is named **Open Scene** and sits above Save Scene.
+
+## 1.33.32
+
+- The Code section's right-click **Apply** is named **Load**.
+
+## 1.33.31
+
+- **Export Package (.amazepkg)** is in the Import/Generate menu, next to the import, and no longer in the right-click menus. It exports the selected tiles.
+- Package Import is named **Import Package (.amazepkg)**.
+
 ## 1.33.30
 
 - Check Library says backup and restore: **Restore Backup**, **Restore** and **Older Backups...** replace Put a Saved Copy Back, Put This Copy Back and Older Copies....

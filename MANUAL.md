@@ -77,7 +77,7 @@ The **toolbar**, from left to right:
 | | | |
 |:--:|---|---|
 | <img src="scripts/python/amaze/ui/icon_categories.svg" width="20"> | **Show Categories** | Shows and hides the sidebar. |
-| <img src="scripts/python/amaze/ui/icon_renderer.svg" width="20"> | **Import/Generate** | Gallery Import (.gal), Package Import (.amazepkg) and Generate Material. |
+| <img src="scripts/python/amaze/ui/icon_renderer.svg" width="20"> | **Import/Generate** | Gallery Import (.gal), Import Package (.amazepkg), Export Package (.amazepkg) and Generate Material. |
 | <img src="scripts/python/amaze/ui/icon_view.svg" width="20"> | **Filter** | Filters the grid: Material by renderer, Color by the number of colors, Node by network type, Code by language and File by kind. |
 | <img src="scripts/python/amaze/ui/icon_online.svg" width="20"> | **Online** | Switches between the library and the online sources. |
 | <img src="scripts/python/amaze/ui/icon_comments.svg" width="20"> | **Comments** | Opens and closes the [Comments pane](#comments). Purple while the pane is open. |
@@ -195,15 +195,15 @@ materials and snippets.
 ### Loading
 
 - **Double-click** loads the material into the current network.
-- **Copy To ▸ /mat** loads it into /mat; **Copy To ▸ /stage/materiallibrary**
-  loads it into the Material Library you are in.
+- **Load Asset to ▸ /mat** loads it into /mat; **Load Asset to ▸
+  /stage/materiallibrary** loads it into the Material Library you are in.
 - **Dragging** the tile onto an object assigns the material; dragging it
   into a network loads it there. See [Drag and drop](#drag-and-drop).
 
 ### Tile menu
 
-**Copy To**, **Convert to**, **Thumbnail** (**Render Image**, **Capture
-Scene**, **Customize**), **Favorite**, **Export Package** and **Delete**.
+**Load Asset to**, **Convert**, **Thumbnail** (**Render Image**,
+**Capture Scene**, **Customize**), **Favorite** and **Delete**.
 
 <img src="docs/images/menu_material_tile.png" width="200">
 <img src="docs/images/menu_copy_to.png" width="230">
@@ -214,7 +214,7 @@ tile onto a category in the sidebar moves it to that category.
 
 ### Converting
 
-**Convert to ▸ MaterialX**, **Redshift** or **Octane** builds a copy of
+**Convert ▸ MaterialX**, **Redshift** or **Octane** builds a copy of
 the material for that renderer next to the original, with the same name
 and textures. Anything that cannot be converted is listed in a report.
 
@@ -317,15 +317,15 @@ Johannes Itten.
 
 The right-click menu:
 
-- **Apply** applies the palette to the selected node's ramp parameter. On
-  a node with no ramp parameter, it creates a ramp node, as a
-  double-click on the tile does.
-- **Apply as ▸** applies the palette with an interpolation: Constant,
+- **Load Asset** applies the palette to the selected node's ramp
+  parameter. On a node with no ramp parameter, it creates a ramp node, as
+  a double-click on the tile does.
+- **Load Asset as ▸** applies the palette with an interpolation: Constant,
   Linear, CatmullRom, MonotoneCubic, Bezier, BSpline or Hermite.
 - **Copy Color ▸** lists the swatches by name and hex code, and copies
   the chosen hex code to the clipboard.
-- **Thumbnail** (**Capture Scene**, **Customize**), **Favorite**,
-  **Export Package** and **Delete**.
+- **Thumbnail** (**Capture Scene**, **Customize**), **Favorite** and
+  **Delete**.
 
 <img src="docs/images/menu_color_tile.png" width="200">
 <img src="docs/images/menu_apply_as.png" width="200">
@@ -349,7 +349,7 @@ tile.
 network container (a `geo`, `copnet`, `lopnet` or `subnet`) or the
 selected nodes.
 
-**Double-click**, a drag, or **Load** on the right-click menu loads the
+**Double-click**, a drag, or **Load Asset** on the right-click menu loads the
 nodes into the network under the pointer, or into a new container of
 the right type.
 
@@ -372,13 +372,13 @@ previews on the tiles. A new library includes a set of **examples**.
 The right-click menu:
 
 - **New File** opens the editor on a new snippet.
-- **Apply** writes the snippet into the selected node's code parameter.
+- **Load Asset** writes the snippet into the selected node's code parameter.
 - **Edit** opens the snippet in the editor, with Name, Language,
   Category and Tags above the code. In the editor, **Apply** saves the
   snippet and the editor stays open. The tabs above the fields hold the
   snippet's [versions](#versions).
-- **Thumbnail** (**Capture Scene**, **Customize**), **Favorite**,
-  **Export Package** and **Delete**.
+- **Thumbnail** (**Capture Scene**, **Customize**), **Favorite** and
+  **Delete**.
 
 <img src="docs/images/menu_code_tile.png" width="200">
 <img src="docs/images/dialog_edit_snippet.png" width="480">
@@ -401,7 +401,7 @@ Browses folders on disk.
 <img src="docs/images/file_grid.png" width="820">
 
 - **Images** (PNG, JPG, EXR, HDR, TGA, RAT, PSD, PIC and more) get cached
-  thumbnails. **Double-click** or **Load to Node** sets the file on the
+  thumbnails. **Double-click** or **Load Asset** sets the file on the
   selected node's image parameter, and a drag sets it on any parameter
   field. Formats Qt cannot read are converted in the background, and
   Preferences ▸ Render sets how many convert at once. **Cancel**, at the
@@ -409,10 +409,10 @@ Browses folders on disk.
   thumbnails already made.
 - **Geometry** (.bgeo, .obj, .fbx, .abc, .usd, .usdz, .glb and more) gets
   viewport-rendered thumbnails, wireframe over shaded. **Double-click**,
-  or a drag into a network, imports it in context. Esc interrupts a long
+  **Load Asset**, or a drag into a network, imports it in context. Esc interrupts a long
   first scan, which resumes later.
-- **Scenes** (.hip, .hiplc, .hipnc) open on **double-click**, with
-  Houdini's own prompt for unsaved changes. The open scene has a tick on
+- **Scenes** (.hip, .hiplc, .hipnc) open on **double-click** or **Open
+  Scene**, with Houdini's own prompt for unsaved changes. The open scene has a tick on
   its tile.
   A scene's picture is a capture: **Thumbnail ▸ Capture Scene** on the right-click menu, or
   the <img src="scripts/python/amaze/ui/icon_screenshot.svg" width="14">
@@ -427,9 +427,9 @@ Browses folders on disk.
   file becomes the one you are working in. Both are greyed while All is
   showing, since there is no one folder to make them in.
 
-The right-click menu: **New Folder**, **Save Scene**, **Open**,
-**Copy Path**, **Open Location**, **Thumbnail** (**Render Image**,
-**Capture Scene**, **Customize**), **Favorite** and **Export Package**.
+The right-click menu: **New Folder**, **Open Scene**, **Save Scene**,
+**Load Asset**, **Copy Path**, **Open Location**, **Thumbnail**
+(**Render Image**, **Capture Scene**, **Customize**) and **Favorite**.
 
 <img src="docs/images/menu_file_tile.png" width="210">
 
@@ -502,11 +502,12 @@ A **package** is a single `.amazepkg` file that carries assets with their
 files, previews, categories, tags and comments. Packages move assets
 between machines, libraries and people.
 
-**Export Package**, on the right-click menu of every section, writes the
-selected assets to a package. **Export Category**, on the sidebar's
-right-click menu, writes a whole category.
+**Import/Generate ▸ Export Package (.amazepkg)** writes the selected
+tiles to a package. It is greyed while nothing is selected, and in the
+online browser. **Export Category**, on the sidebar's right-click menu,
+writes a whole category.
 
-**Import/Generate ▸ Package Import (.amazepkg)** adds a package to the
+**Import/Generate ▸ Import Package (.amazepkg)** adds a package to the
 library. Imported assets get new identities and are filed under the
 **Import** category, so a package imported twice gives two copies. The
 package's files go into an **Import** folder in the library, which the
@@ -747,7 +748,7 @@ Two sub-tabs set which renderers and sections Amaze shows.
 
 - **Renderer** has a switch for each renderer. A renderer that is
   switched off is removed from the [Filter](#the-panel-at-a-glance)
-  menu, Convert to, Import to Materials and Import to Scene, and its
+  menu, Convert, Import to Materials and Import to Scene, and its
   Samples row is removed from the Render tab.
 - **Sections** has a switch for each section. A section that is
   switched off has no tab in the panel.

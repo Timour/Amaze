@@ -84,15 +84,11 @@ class OnlyASectionThatRENDERSOffersUpdatePreview(unittest.TestCase):
                     "selection" % name)
 
     def _preview_gate(self, name):
-        """Update Render is one row of the shared tail, so the row's `shown` gate is what decides."""
-        entry = next(e for e in sections.THUMBNAIL_MENU
-                     if e.label == "Render Image")
-        self.assertTrue(
-            entry.shown,
-            "Update Render is unconditional in the shared tail, so "
-            "every section offers it whatever it can do")
+        """Render Image is one row of the shared Thumbnail submenu; whether it is listed is the gate."""
+        entry = next(e for e in sections.GRID_MENU_TAIL
+                     if e.label == "Thumbnail")
         context = getattr(sections, name)(None)  # a panel-less instance: the gate reads the section, and False for an absent model
-        return getattr(context, entry.shown)([], None)
+        return "Render Image" in [row[0] for row in getattr(context, entry.children)([], None)]
 
 
 class DeleteIsONEShapeWithFourSetsOfWORDS(unittest.TestCase):

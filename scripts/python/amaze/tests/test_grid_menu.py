@@ -220,22 +220,22 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
         """Every entry acts on the whole selection and stays live."""
         for rows, expected in (
                 ((0,),
-                 ["Copy To > [/mat, /stage/materiallibrary]",
-                  "Convert to > [MaterialX(off), Redshift(off), Octane(off)](off)",    # neither renderer
+                 ["Load Asset to > [/mat, /stage/materiallibrary]",
+                  "Convert > [MaterialX(off), Redshift(off), Octane(off)](off)",    # neither renderer
                   "----",
                   "Thumbnail > [Render Image, Capture Scene, Customize]", "Favorite",
-                  "Export Package", "Delete"]),
+                  "Delete"]),
                 ((0, 1),
-                 ["Copy To > [/mat, /stage/materiallibrary]",
-                  "Convert to > [MaterialX(off), Redshift, Octane]",
+                 ["Load Asset to > [/mat, /stage/materiallibrary]",
+                  "Convert > [MaterialX(off), Redshift, Octane]",
                   "----",
-                  "Thumbnail > [Render Image, Capture Scene(off), Customize]",    # one capture, one tile
-                  "Favorite", "Export Package", "Delete"]),
+                  "Thumbnail > [Render Image, Capture Scene(off), Customize]", "Favorite",    # one capture, one tile
+                  "Delete"]),
                 ((),
-                 ["Copy To > [/mat, /stage/materiallibrary](off)",
-                  "Convert to > [MaterialX(off), Redshift(off), Octane(off)](off)", "----",
+                 ["Load Asset to > [/mat, /stage/materiallibrary](off)",
+                  "Convert > [MaterialX(off), Redshift(off), Octane(off)](off)", "----",
                   "Thumbnail > [Render Image(off), Capture Scene(off), Customize(off)](off)",
-                  "Favorite(off)", "Export Package(off)", "Delete(off)"])):
+                  "Favorite(off)", "Delete(off)"])):
             with self.subTest(selected=len(rows)):
                 with plugins_loaded("Redshift", "Octane"):
                     shown = self._show("material", rows)
@@ -244,10 +244,10 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
     def test_color_with_one_selected(self):
         shown = self._show("gradient", (0,))
         self.assertEqual(
-            ["Apply",
-             "Apply as > [Constant, Linear, CatmullRom, MonotoneCubic, "
+            ["Load Asset",
+             "Load Asset as > [Constant, Linear, CatmullRom, MonotoneCubic, "
              "Bezier, BSpline, Hermite]",
-             "----", "Thumbnail > [Capture Scene, Customize]", "Favorite", "Export Package",
+             "----", "Thumbnail > [Capture Scene, Customize]", "Favorite",
              "Delete"],
             [row for row in shown if not row.startswith("Copy Color")])
         swatches = [row for row in shown if row.startswith("Copy Color")]
@@ -259,31 +259,30 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
         """The per-entry actions grey; Customize, Favorite and Delete act on the whole selection."""
         shown = self._show("gradient", (0, 1))
         self.assertEqual(
-            ["Apply(off)", "----", "Thumbnail > [Capture Scene(off), Customize]", "Favorite",
-             "Export Package", "Delete"],
+            ["Load Asset(off)", "----", "Thumbnail > [Capture Scene(off), Customize]",
+             "Favorite", "Delete"],
             [row for row in shown
-             if not row.startswith(("Apply as", "Copy Color"))])
+             if not row.startswith(("Load Asset as", "Copy Color"))])
         for row in shown:
-            if row.startswith(("Apply as", "Copy Color")):
+            if row.startswith(("Load Asset as", "Copy Color")):
                 self.assertTrue(row.endswith("(off)"),
                                 "%r stayed live on a multi-selection" % row)
 
     def test_node_keeps_its_shape(self):
         """The fixture has no Node assets, so this is the empty case, which once produced no menu."""
         self.assertEqual(
-            ["Load(off)", "----",
+            ["Load Asset(off)", "----",
              "Thumbnail > [Render Image(off), Capture Scene(off), Customize(off)](off)",
-             "Favorite(off)", "Export Package(off)", "Delete(off)"],
+             "Favorite(off)", "Delete(off)"],
             self._show("cop"))
 
     def test_code_with_one_or_two_selected(self):
         for rows, expected in (
-                ((0,), ["New File", "----", "Apply", "Edit", "----",
-                        "Thumbnail > [Capture Scene, Customize]",
-                        "Favorite", "Export Package", "Delete"]),
-                ((0, 1), ["New File", "----", "Apply(off)", "Edit(off)", "----",
+                ((0,), ["New File", "----", "Load Asset", "Edit", "----",
+                        "Thumbnail > [Capture Scene, Customize]", "Favorite", "Delete"]),
+                ((0, 1), ["New File", "----", "Load Asset(off)", "Edit(off)", "----",
                           "Thumbnail > [Capture Scene(off), Customize]", "Favorite",
-                          "Export Package", "Delete"])):
+                          "Delete"])):
             with self.subTest(selected=len(rows)):
                 self.assertEqual(expected, self._show("code", rows))
 
@@ -298,28 +297,24 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
 
     def test_file_menus_follow_the_kind_and_the_count_and_never_delete(self):
         """No Delete for any kind: these are the user's own files, and an os.remove once took some."""
-        top = ["New Folder", "Save Scene", "----"]    # the folder shown, whatever is selected
+        top = ["New Folder", "----", "Save Scene", "----"]    # the folder shown, whatever is selected
         for kind, count, expected in (
                 (locations.KIND_IMAGE, 1,
-                 top + ["Import", "Copy Path", "----", "Open Location",
-                        "Thumbnail > [Render Image, Capture Scene, Customize]", "Favorite",
-                        "Export Package"]),
+                 top + ["Load Asset", "Copy Path", "----", "Open Location",
+                        "Thumbnail > [Render Image, Capture Scene, Customize]", "Favorite"]),
                 (locations.KIND_IMAGE, 2,    # an image loads onto ONE node parameter
-                 top + ["Import(off)", "Copy Path", "----", "Open Location(off)",
-                        "Thumbnail > [Render Image, Capture Scene(off), Customize]",
-                        "Favorite", "Export Package"]),
-                (locations.KIND_GEO, 2,      # geometry imports the whole selection
-                 top + ["Import", "Copy Path", "----", "Open Location(off)",
-                        "Thumbnail > [Render Image, Capture Scene(off), Customize]",
-                        "Favorite", "Export Package"]),
+                 top + ["Load Asset(off)", "Copy Path", "----", "Open Location(off)",
+                        "Thumbnail > [Render Image, Capture Scene(off), Customize]", "Favorite"]),
+                (locations.KIND_GEO, 2,      # geometry loads the whole selection
+                 top + ["Load Asset", "Copy Path", "----", "Open Location(off)",
+                        "Thumbnail > [Render Image, Capture Scene(off), Customize]", "Favorite"]),
                 (locations.KIND_HIP, 1,      # a scene captures only while it is the open one
-                 top + ["Open", "Copy Path", "----", "Open Location",
-                        "Thumbnail > [Capture Scene(off), Customize]", "Favorite",
-                        "Export Package"]),
+                 ["New Folder", "----", "Open Scene", "Save Scene", "----",
+                  "Copy Path", "----", "Open Location",
+                  "Thumbnail > [Capture Scene(off), Customize]", "Favorite"]),
                 (locations.KIND_OTHER, 1,    # what Houdini cannot open is absent, not greyed
                  top + ["Copy Path", "----", "Open Location",
-                        "Thumbnail > [Capture Scene, Customize]",
-                        "Favorite", "Export Package"])):
+                        "Thumbnail > [Capture Scene, Customize]", "Favorite"])):
             with self.subTest(kind=kind, selected=count):
                 rows = self._rows_of_kind(kind)
                 self.assertGreaterEqual(len(rows), count,
@@ -483,18 +478,18 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
             indexes = context.grid_selection()
             menu, _verbs = grid.build_grid_menu(
                 panel, context, indexes, None)
-        row = [r for r in render(menu) if r.startswith("Convert to")]
+        row = [r for r in render(menu) if r.startswith("Convert >")]
         return row[0] if row else None
 
     def test_convert_to_greys_the_renderer_the_selection_already_is(self):
         """Drawn as C01b: the child naming what the selection already is greys; the others are live."""
-        self.assertEqual("Convert to > [MaterialX(off), Redshift, Octane]",
+        self.assertEqual("Convert > [MaterialX(off), Redshift, Octane]",
                          self._material_convert_children("Karma"))
-        self.assertEqual("Convert to > [MaterialX, Redshift(off), Octane]",
+        self.assertEqual("Convert > [MaterialX, Redshift(off), Octane]",
                          self._material_convert_children("Redshift"))
-        self.assertEqual("Convert to > [MaterialX, Redshift, Octane]",
+        self.assertEqual("Convert > [MaterialX, Redshift, Octane]",
                          self._material_convert_children("Karma", "Redshift"))
-        self.assertEqual("Convert to > [MaterialX, Redshift, Octane(off)]",
+        self.assertEqual("Convert > [MaterialX, Redshift, Octane(off)]",
                          self._material_convert_children("Octane"))
 
     def _select_karma_rows(self, count):
@@ -524,8 +519,8 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
         with plugins_loaded():
             menu, _verbs = grid.build_grid_menu(
                 panel, panel.active_section(), indexes, indexes[0])
-        row = [r for r in render(menu) if r.startswith("Convert to")]
-        self.assertEqual(["Convert to > [MaterialX(off), Redshift(off), Octane(off)](off)"], row)
+        row = [r for r in render(menu) if r.startswith("Convert >")]
+        self.assertEqual(["Convert > [MaterialX(off), Redshift(off), Octane(off)](off)"], row)
 
     def test_convert_to_dispatches_by_the_child_picked(self):
         """One verb, the payload names the renderer: each child reaches its own converter and no other."""
@@ -644,7 +639,7 @@ class EveryRendererRowWEARSTheFilterMenusIcon(unittest.TestCase):
             for renderer in self.RENDERERS:
                 self.assertFalse(filtered[renderer].icon().isNull(),
                                  "premise: C13 draws %s's icon" % renderer)
-            for menu, name in ((material_menu, "Convert to"),
+            for menu, name in ((material_menu, "Convert"),
                                (online_menu, "Import to Materials"),
                                (online_menu, "Import to Scene")):
                 rows = self._rows(menu, name)
@@ -668,7 +663,7 @@ class EveryRendererRowWEARSTheFilterMenusIcon(unittest.TestCase):
                 setattr(panel.prefs, hidden.switch, False)
                 filter_menu, material_menu, online_menu = self._build()
                 self.assertNotIn(hidden.label, [act.text() for act in filter_menu.actions()])
-                for menu, name in ((material_menu, "Convert to"),
+                for menu, name in ((material_menu, "Convert"),
                                    (online_menu, "Import to Materials"),
                                    (online_menu, "Import to Scene")):
                     rows = self._rows(menu, name)
@@ -781,13 +776,11 @@ class EveryVerbREACHESItsOwner(unittest.TestCase):
         selection.setCurrentIndex(proxy.index(0, 0), flags.NoUpdate)
 
         def _exec(menu, *_a, **_k):
-            rows = list(menu.actions())
-            while rows:    # the Thumbnail submenu's rows are picked the same way
-                action = rows.pop(0)
-                if action.text() == label:
-                    return action
-                if action.menu() is not None:
-                    rows.extend(action.menu().actions())
+            for action in menu.actions():
+                rows = action.menu().actions() if action.menu() is not None else [action]    # a submenu's rows are entries too
+                for row in rows:
+                    if row.text() == label:
+                        return row
             raise AssertionError("%s has no %r entry" % (key, label))
 
         with mock.patch.object(QtWidgets.QMenu, "exec_", _exec):
