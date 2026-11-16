@@ -1082,10 +1082,10 @@ class CodeSection(AssetSection):
     label = section_list.label(key)
     empty_noun = "snippet"
     EMPTY = amazetheme.EMPTY_CODE    # New File acts on nothing, so it always works
-    GRID_MENU = (    # Apply and Edit act on one snippet; New File acts on nothing and stays live
+    GRID_MENU = (    # Load and Edit act on one snippet; New File acts on nothing and stays live
         MenuEntry("New File", verb="menu_new_snippet", needs="always"),
         SEPARATOR,
-        MenuEntry("Apply", verb="menu_apply", needs="one"),
+        MenuEntry("Load", verb="menu_apply", needs="one"),
         MenuEntry("Edit", verb="menu_edit", needs="one"),
         SEPARATOR,
     ) + GRID_MENU_TAIL

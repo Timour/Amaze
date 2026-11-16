@@ -23,7 +23,7 @@ RETIRED = {    # retired label -> current name, quoted on failure ▸p/quoted-st
     "Toggle Favorite": "Favorite",
     "Edit Icon": "Customize",
     "New Snippet": "New File",
-    "Apply to Selected Node": "Apply",
+    "Apply to Selected Node": "Load",
     "Import to MAT": "Copy To /mat",    # case matters: lower-cased, it matches a live entry
     "Import to LOP": "Copy To /stage",
 }

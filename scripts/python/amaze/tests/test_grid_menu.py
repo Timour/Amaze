@@ -265,9 +265,9 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
 
     def test_code_with_one_or_two_selected(self):
         for rows, expected in (
-                ((0,), ["New File", "----", "Apply", "Edit", "----", "Capture",
+                ((0,), ["New File", "----", "Load", "Edit", "----", "Capture",
                         "Customize", "Favorite", "Delete"]),
-                ((0, 1), ["New File", "----", "Apply(off)", "Edit(off)", "----",
+                ((0, 1), ["New File", "----", "Load(off)", "Edit(off)", "----",
                           "Capture(off)", "Customize", "Favorite",
                           "Delete"])):
             with self.subTest(selected=len(rows)):

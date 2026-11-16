@@ -370,7 +370,7 @@ previews on the tiles. A new library includes a set of **examples**.
 The right-click menu:
 
 - **New File** opens the editor on a new snippet.
-- **Apply** writes the snippet into the selected node's code parameter.
+- **Load** writes the snippet into the selected node's code parameter.
 - **Edit** opens the snippet in the editor, with Name, Language,
   Category and Tags above the code. In the editor, **Apply** saves the
   snippet and the editor stays open. The tabs above the fields hold the
