@@ -288,10 +288,16 @@ class Guard:
         """A `Reading` for every database a library can hold, in the order they are declared."""
         return [self.read(name) for name in DATABASES]
 
+    def _reads(self, name: str) -> bool:
+        try:
+            return _parse(self.disk.read(self.path(name)), DATABASES[name])[0] is not None
+        except OSError:
+            return False
+
     def _known(self, name: str) -> bool:
         """Whether an absent database is known to have existed: the manifest names it."""
-        if name == MASTER:
-            return any(self.disk.exists(self.path(other)) for other in DATABASES if other != MASTER)
+        if name == MASTER:    # another database that reads as one: a same-named older file is none
+            return any(self._reads(other) for other in DATABASES if other != MASTER)
         try:
             document, _why = _parse(self.disk.read(self.path(MASTER)), DATABASES[MASTER])
         except OSError:

@@ -259,6 +259,16 @@ class AChangeThatWaitsOnAFileTest(_Library):
         self.assertEqual(before, state(self.dir))
 
 
+class AnOlderLibraryHasNoMissingMasterTest(unittest.TestCase):
+    """An older library's `code.json` shares a 2.0 name; it is no proof a master was here."""
+
+    def test_its_master_reads_fresh(self):
+        folder = tempfile.mkdtemp(prefix="amaze_guard_old_")
+        self.addCleanup(shutil.rmtree, folder, True)
+        put(folder, "code.json", {"format": 3, "assets": [{"id": "C1"}], "categories": ["_All"]})
+        self.assertEqual(guard.FRESH, guard.Guard(folder, now=Clock()).read(guard.MASTER).verdict)
+
+
 class NoTicketNoWriteTest(_Library):
     """Only a database that read fine, or is new, can be written."""
 
