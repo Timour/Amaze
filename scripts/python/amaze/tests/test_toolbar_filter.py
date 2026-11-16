@@ -293,17 +293,9 @@ class RememberedFilterSettingsTest(unittest.TestCase):
         p.load()
         return p
 
-    def test_an_old_settings_file_keeps_its_renderer_unless_the_new_key_is_there(self):
-        """Both keys present means the file was written since the upgrade - the new one is the truth."""
-        p = self._prefs({"last_renderer": "Redshift"})
-        self.assertEqual(
-            "Redshift", p.section_filter("material"),
-            "the remembered renderer was dropped on upgrade")
-        p = self._prefs({"last_renderer": "Redshift",
-                         "section_filters": {"material": "Karma",
-                                             "code": "VEX"}})
-        self.assertEqual("Karma", p.section_filter("material"),
-                         "the retired key overrode the live one")
+    def test_the_stored_filters_are_what_loads(self):
+        p = self._prefs({"section_filters": {"material": "Karma", "code": "VEX"}})
+        self.assertEqual("Karma", p.section_filter("material"))
         self.assertEqual("VEX", p.section_filter("code"))
 
     def test_what_is_set_is_what_is_saved(self):

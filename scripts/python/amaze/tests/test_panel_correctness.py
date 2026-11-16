@@ -1030,8 +1030,8 @@ class LeavingOnlineLandsOnAShownSection(unittest.TestCase):
         settings = os.path.join(self.panel.prefs.path, "settings.json")
         with open(settings, encoding="utf-8") as handle:
             data = json.load(handle)
-        data["enabled_sections"] = [k for k in data["enabled_sections"]
-                                    if k != key]
+        block = data["users"][self.panel.prefs.library_user]
+        block["enabled_sections"] = [k for k in block["enabled_sections"] if k != key]
         with open(settings, "w", encoding="utf-8") as handle:
             json.dump(data, handle)
         self.panel._prefs_dialog_closed()
@@ -1083,7 +1083,9 @@ class ClosingPreferencesRescansTheFileFolderOnce(unittest.TestCase):
         settings = os.path.join(self.panel.prefs.path, "settings.json")
         with open(settings, encoding="utf-8") as handle:
             data = json.load(handle)
-        data.update(directory=library, file_folders=[theirs], last_file_folder=theirs)
+        data.update(directory=library)
+        data["users"][self.panel.prefs.library_user].update(file_folders=[theirs],
+                                                            last_file_folder=theirs)
         with open(settings, "w", encoding="utf-8") as handle:
             json.dump(data, handle)
         scans = self._scans_while(self.panel._prefs_dialog_closed)

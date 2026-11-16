@@ -103,13 +103,20 @@ class OnlineImport:
             return (None, None, messages.ONLINE_SOURCE_UNKNOWN_NAMED % record.source)
         if not source.needs_download(record):    # ask the source; sources override it
             return (source, None, "")     # nothing to download
-        if record.kind in ("values", "amazepkg"):
+        if not source.picks_resolution(record):
             return (source, None, "")     # downloads, but picks no resolution
         wanted = self.panel.prefs.matx_resolution
-        resolution = matx_sources.pick_resolution(source.resolutions(record), wanted)
-        if resolution is None:
+        available = source.resolutions(record)
+        if not available:
             return (None, None,
                     messages.NO_DOWNLOADABLE_PACKAGE % record.title)
+        resolution = matx_sources.pick_resolution(available, wanted)
+        if resolution is None:
+            refused = (messages.MATX_NO_RESOLUTION_OFFERED % record.title
+                       if matx_sources.names_a_resolution(wanted)
+                       else messages.MATX_RESOLUTION_SETTING_UNREADABLE % (wanted, record.title))
+            debug.status(refused)
+            return (None, None, refused)
         if not matx_sources.is_resolution(resolution, wanted):
             debug.status(messages.MATX_RESOLUTION_SUBSTITUTED % (wanted, record.title, resolution))
         return (source, resolution, "")

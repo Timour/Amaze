@@ -78,7 +78,7 @@ KNOWN = frozenset((LIST, JOURNAL_FILE, BACKUP, ASSET, RECORD, COMPANION, RENDER,
 COPIES = frozenset((BACKUP,))    # a duplicate of one of these is swept whatever its bytes
 OUT_OF_PLACE = frozenset((SCRATCH, DUPLICATE, UNKNOWN))    # `walk` stats these, and only these
 
-_STEM = re.compile(r"^(?:[^\W_]+-)?\d+$")    # a version stem: `<writer>-<n>` or `<n>`, the writer alphanumeric
+_VERSION_STEM = re.compile(r"^([^\W_]+)_(\d+)$")    # `<id>_<n>`, the id its folder's name
 _FILE_CAPTURE = re.compile(r"^file_[0-9a-f]{40}\.png$")
 _COMMENT_IMAGE = re.compile(r"^[0-9a-f]{32}\.\w+$")
 _COPY_NUMBER = re.compile(r" \d+(?=\.|$)")
@@ -160,12 +160,21 @@ def _picture(name: str):
     return (RENDER, found) if found else None
 
 
-def _version_folder(name: str, suffixes: tuple):
+def version_number(name: str, owner: str, suffixes: tuple):
+    """The version number `<owner>_<n><suffix>` names, or None for any other name."""
+    for suffix in suffixes:
+        if name.endswith(suffix):
+            found = _VERSION_STEM.match(name[: -len(suffix)])
+            if found and found.group(1) == owner:
+                return int(found.group(2))
+    return None
+
+
+def _version_folder(name: str, suffixes: tuple, owner: str):
     if name == LEDGER:
         return VERSION_LEDGER, name
-    for suffix in suffixes:
-        if name.endswith(suffix) and _STEM.match(name[: -len(suffix)]):
-            return VERSION, name[: -len(suffix)]
+    if version_number(name, owner, suffixes) is not None:
+        return VERSION, name[: name.rindex(".")]
     return None
 
 
@@ -204,9 +213,9 @@ def _plain(parts: list):
         return (COMMENT_IMAGE, "") if _COMMENT_IMAGE.match(name.lower()) else None
     if depth == 4 and parts[1] == VERSIONS and parts[2].isalnum():
         if top == CODE_FOLDER:
-            return _version_folder(name, (CODE_VERSION_SUFFIX,))
+            return _version_folder(name, (CODE_VERSION_SUFFIX,), parts[2])
         if owns_assets(top):
-            return _version_folder(name, VERSION_SUFFIXES)
+            return _version_folder(name, VERSION_SUFFIXES, parts[2])
     return None
 
 

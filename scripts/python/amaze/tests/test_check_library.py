@@ -125,27 +125,39 @@ class TheFixesActThroughTheGuardTest(_Library):
         self.assertFalse(os.path.exists(os.path.join(self.materials, "STRAY1.png")))
         self.assertTrue(self.trash_holds("materials/STRAY1.png"))
 
-    def test_orphaned_materials_are_added_back_from_their_metadata(self):
+    def test_orphaned_materials_are_recovered_from_their_metadata(self):
         self.asset("NEW1", {"id": "NEW1", "name": "Slate", "categories": ["Roofs"],
                             "renderer": "Karma"})
         findings = self.survey()
-        self.assertEqual(["NEW1"], [one for one, _record in repair.materials_on_record(findings)])
-        result = repair.add_materials_back(findings, guard=False)
-        self.assertEqual(["NEW1"], result["added"])
+        self.assertEqual({MATERIALS: ["NEW1"]}, repair.recoverable(findings))
+        result = repair.recover(findings, guard=False)
+        self.assertEqual(["NEW1"], result[MATERIALS]["added"])
         stored = _read(self.dir, MATERIALS)
         self.assertEqual("Slate", stored["assets"]["NEW1"]["name"])
         self.assertIn("Roofs", stored["categories"])
 
-    def test_orphaned_pairs_go_into_the_section_picked_with_their_files(self):
-        self.asset("NODE1")
+    def test_each_folder_s_pairs_are_recovered_into_its_own_section(self):
+        """No question asked: the materials folder's pairs go to Materials, the nodes folder's to Nodes."""
+        nodes = os.path.join(self.dir, "nodes")
+        long_id = "ABCDEF0123456789ABCDEF0123456789"
+        self.asset(long_id, folder=nodes)
+        self.asset("RIG1", {"id": "RIG1", "name": "Rig", "renderer": "Karma"}, nodes)
+        os.rename(os.path.join(nodes, "RIG1.png"), os.path.join(self.materials, "RIG1.png"))
+        self.asset("MAT9")
         findings = self.survey()
-        self.assertEqual(["NODE1"], repair.unsorted_pairs(findings))
-        result = repair.reattach(findings, NODES, only=["NODE1"], guard=False)
-        self.assertEqual(["NODE1"], result["added"])
-        self.assertIn("NODE1", _read(self.dir, NODES)["assets"])
-        self.assertTrue(os.path.exists(os.path.join(self.dir, "nodes", "NODE1.mat")),
-                        "the files did not move home with the row")
-        self.assertFalse(os.path.exists(os.path.join(self.materials, "NODE1.mat")))
+        self.assertEqual({MATERIALS: ["MAT9"], NODES: [long_id, "RIG1"]},
+                         repair.recoverable(findings))
+        result = repair.recover(findings, guard=False)
+        self.assertEqual([long_id, "RIG1"], sorted(result[NODES]["added"]))
+        self.assertEqual(["MAT9"], result[MATERIALS]["added"])
+        node_rows = _read(self.dir, NODES)["assets"]
+        self.assertEqual("Recovered " + long_id, node_rows[long_id]["name"],
+                         "an asset whose metadata cannot be read is not named by its whole id")
+        self.assertEqual("Rig", node_rows["RIG1"]["name"])
+        self.assertEqual("Recovered MAT9", _read(self.dir, MATERIALS)["assets"]["MAT9"]["name"])
+        self.assertTrue(os.path.exists(os.path.join(nodes, "RIG1.png")),
+                        "a file in the other folder did not move home with the row")
+        self.assertFalse(os.path.exists(os.path.join(self.materials, "RIG1.png")))
 
     def test_a_lost_database_is_rebuilt_from_each_assets_metadata(self):
         for asset_id, name in (("AAA1", "Brick"), ("AAA2", "Oak")):
@@ -188,18 +200,40 @@ class TheFolderDecidesTheSectionTest(_Library):
         super().setUp()
         self.nodes = os.path.join(self.dir, "nodes")
 
-    def test_a_pair_in_the_nodes_folder_is_not_added_to_materials(self):
+    def test_a_pair_in_the_nodes_folder_is_not_recovered_into_materials(self):
         self.asset("NODE2", {"id": "NODE2", "name": "Rig", "renderer": "Karma"}, self.nodes)
         findings = self.survey()
-        self.assertEqual([], repair.materials_on_record(findings))
+        self.assertEqual({NODES: ["NODE2"]}, repair.recoverable(findings))
         self.assertEqual(["NODE2"], [one for one, _record in repair.on_record(findings, NODES)])
 
     def test_a_pair_in_the_materials_folder_is_a_material_whatever_its_renderer(self):
         self.asset("NEW2", {"id": "NEW2", "name": "Glass", "renderer": ""})
         self.asset("NEW3", {"id": "NEW3", "name": "Moss", "renderer": "sop"})
         findings = self.survey()
-        self.assertEqual(["NEW2", "NEW3"],
-                         [one for one, _record in repair.materials_on_record(findings)])
+        self.assertEqual({MATERIALS: ["NEW2", "NEW3"]}, repair.recoverable(findings))
+
+    def test_one_recover_button_and_no_question_about_the_section(self):
+        from amaze import messages
+        from amaze.dialogs import repair_dialog
+        self.asset("NEW2", {"id": "NEW2", "name": "Glass", "renderer": ""})
+        self.asset("NODE2", None, self.nodes)
+        findings = self.survey()
+        labels, keys = repair_dialog._every_choice(findings, True)
+        self.assertEqual(["recover"], [key for key in keys if key in (
+            "recover", "add-back", "reattach")])
+        self.assertIn(messages.BUTTON_REPAIR_RECOVER % "1 Material and 1 Node", labels)
+        asked = []
+
+        def display(text, **kwargs):
+            asked.append(text)
+            return 0
+        fake_ui = mock.Mock(displayMessage=display,
+                            selectFromList=mock.Mock(side_effect=AssertionError("asked")))
+        with mock.patch.object(repair_dialog.hou, "ui", fake_ui, create=True):
+            self.assertTrue(repair_dialog.act(findings, "recover", guard=False))
+        self.assertEqual(messages.CONFIRM_RECOVER % "1 material and 1 node", asked[0])
+        self.assertIn("NEW2", _read(self.dir, MATERIALS)["assets"])
+        self.assertIn("NODE2", _read(self.dir, NODES)["assets"])
 
     def test_a_rebuild_takes_only_the_metadata_in_its_own_folder(self):
         self.asset("NODE3", {"id": "NODE3", "name": "Rig", "renderer": "Karma"}, self.nodes)
@@ -355,19 +389,23 @@ class EverySentenceOfTheReportTest(_Library):
         self.assertIn("The library's trash holds 1 file (1 KB), moved there on 1 day. Each "
                       "day's files are deleted after 30 days, and the oldest go on ", self.text())
 
-    def test_what_can_be_added_back(self):
+    def test_what_can_be_recovered(self):
         self.asset("NEW1", {"id": "NEW1", "name": "Slate", "renderer": "Karma"})
         self.asset("NODE1")
+        self.asset("RIG1", {"id": "RIG1", "name": "Rig", "renderer": "Karma"},
+                   os.path.join(self.dir, "nodes"))
         _make(os.path.join(self.materials, "LONE1.png"))
         text = self.text()
-        self.assertIn("The files include 1 material with its metadata saved beside it: Slate. "
-                      "Add 1 Material Back puts it in the Materials database.", text)
-        self.assertIn("3 more files can be added back to a section.", text)
+        self.assertIn("Recover puts 2 materials (Slate and NODE1) in the Materials database "
+                      "and 1 node (Rig) in the Nodes database: each goes by the folder its "
+                      "files are in.", text)
         self.assertIn("The rest are halves of an asset whose other file is not in the folder, "
                       "so they can only be moved to the trash.", text)
-        self.assertIn("Moving files to the trash leaves 3 files where they are: the metadata "
-                      "of what they belong to is saved beside them, so they can still be added "
-                      "back.", text)
+        self.assertIn("Moving files to the trash leaves 6 files where they are: the metadata "
+                      "of what they belong to is saved beside them, so they can still be "
+                      "recovered.", text)
+        for old in ("add back", "added back", "put back", "to a section"):
+            self.assertNotIn(old, text.lower(), "the report still says " + old)
 
 
 def _read_raw_rows(case) -> dict:
@@ -479,10 +517,12 @@ class EachFixGoesRedWhenItIsBrokenTest(unittest.TestCase):
          "amaze.core.guard.Guard.restore", lambda *_a, **_k: None),
         ("test_orphaned_files_go_to_the_librarys_trash",
          "amaze.core.guard.Change.trash", lambda *_a, **_k: None),
-        ("test_orphaned_materials_are_added_back_from_their_metadata",
+        ("test_orphaned_materials_are_recovered_from_their_metadata",
          "amaze.core.guard.Change.put", lambda *_a, **_k: None),
-        ("test_orphaned_pairs_go_into_the_section_picked_with_their_files",
+        ("test_each_folder_s_pairs_are_recovered_into_its_own_section",
          "amaze.core.guard.Change.take", lambda *_a, **_k: None),
+        ("test_each_folder_s_pairs_are_recovered_into_its_own_section",
+         "amaze.core.guard.Change.put", lambda *_a, **_k: None),
         ("test_a_lost_database_is_rebuilt_from_each_assets_metadata",
          "amaze.core.guard.Change.replace", lambda *_a, **_k: None),
         ("test_rows_with_no_category_are_put_in_uncategorized",

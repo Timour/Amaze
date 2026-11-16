@@ -47,19 +47,20 @@ def is_resolution(label: str, wanted: str) -> bool:
     return _res_rank(label) > 0 and _res_rank(label) == _res_rank(wanted)
 
 
+def names_a_resolution(label: str) -> bool:
+    """Whether `label` reads as a resolution, like `2k` or `4K-JPG`."""
+    return _res_rank(label) > 0
+
+
 def pick_resolution(available, preferred: str) -> str | None:
-    """Exact match, else the next highest, else the highest below; None only when none exist."""
-    if not available:
-        return None
+    """Exact, else the next higher, else the highest below; None when either is no resolution."""
     ranked = sorted(
-        ((_res_rank(a), a) for a in available if _res_rank(a) > 0),
+        ((_res_rank(a), a) for a in available or () if names_a_resolution(a)),
         key=lambda t: t[0],
     )
-    if not ranked:
-        return list(available)[0]
     want = _res_rank(preferred)
-    if want <= 0:
-        want = 2
+    if not ranked or want <= 0:
+        return None
     for rank, label in ranked:          # exact, then next highest
         if rank >= want:
             return label
@@ -392,6 +393,10 @@ class MatxSource:
 
     def resolutions(self, record) -> list:
         return []
+
+    def picks_resolution(self, record) -> bool:
+        """Whether importing `record` downloads one of several resolutions; values and packages do not."""
+        return getattr(record, "kind", "") not in ("values", "amazepkg")
 
     def fetch(self, record, resolution, dest_dir, progress=None) -> dict:
         """Fetch one record: {"mtlx": path} or {"values": {...}}; progress(0..1) over its download."""
@@ -1454,8 +1459,8 @@ class SimReadySource(MatxSource):
     def page_url(self, record) -> str:
         return self.HOME    # no per-material page
 
-    def resolutions(self, record):
-        return ["original"]    # one texture set per material
+    def picks_resolution(self, record) -> bool:
+        return False    # one texture set per material
 
     @classmethod
     def _archives(cls, release) -> dict:

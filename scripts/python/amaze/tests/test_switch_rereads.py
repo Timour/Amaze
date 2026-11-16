@@ -179,7 +179,9 @@ class AfterASwitchFileShowsTheNewLibrarysLocation(unittest.TestCase):
             data = json.load(handle)
         other = test_support.seeded_library(self)
         test_support.with_fixture_location(other, theirs)    # the location lives in its library
-        data.update(directory=other, file_folders=[theirs], last_file_folder=theirs)
+        data.update(directory=other)
+        data["users"][panel.prefs.library_user].update(file_folders=[theirs],
+                                                       last_file_folder=theirs)
         with open(settings, "w", encoding="utf-8") as handle:
             json.dump(data, handle)
         panel.switch_all_models()

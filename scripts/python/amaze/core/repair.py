@@ -25,6 +25,7 @@ _IN_TROUBLE = ("unreadable", "absent-but-known", "newer", "no-library")    # emp
 _SETTINGS = "settings.json"    # machine-local; Check Library says when it will not read
 
 RECOVERED_CATEGORY = "Recovered"
+RECOVERED_NAME = "Recovered"    # followed by its id: an asset whose metadata cannot be read
 
 _STATE = {guard.CORRUPT: "unreadable", guard.MISSING: "absent-but-known", guard.NEWER: "newer",
           guard.FRESH: "absent"}
@@ -114,6 +115,7 @@ def survey(preferences_or_directory, img_dir: str = "img/") -> dict:
         unaccounted[keys[folder]] = sorted(
             name for name, (kind, owner) in (names or {}).items()
             if kind in kinds and owner not in ids)
+    unaccounted.update(_versions_no_ledger_names(directory, listing))
 
     findings = {
         "directory": directory,
@@ -159,6 +161,38 @@ def _walk(directory: str) -> dict:
     _records_by_content(directory, names, out_of_place)
     _superseded(out_of_place)
     return {"names": names, "out_of_place": out_of_place, "unreadable": unreadable}
+
+
+def _versions_no_ledger_names(directory: str, listing: dict) -> dict:
+    """{`<section>/versions/<id>/`: [name]} of each version file its folder's ledger does not name."""
+    found = {}
+    suffixes = naming.VERSION_SUFFIXES + (naming.CODE_VERSION_SUFFIX,)
+    for folder, names in listing["names"].items():
+        parts = naming.split(folder)
+        if len(parts) != 3 or parts[1] != naming.VERSIONS:
+            continue
+        numbers = _ledger_numbers(os.path.join(directory, *parts))
+        if numbers is None:
+            continue    # an unreadable ledger cannot say which files it names
+        orphaned = sorted(name for name, (kind, _detail) in names.items()
+                          if kind == naming.VERSION
+                          and naming.version_number(name, parts[2], suffixes) not in numbers)
+        if orphaned:
+            found[folder + "/"] = orphaned
+    return found
+
+
+def _ledger_numbers(folder: str):
+    """The version numbers a folder's ledger has rows for; empty with no ledger, None unreadable."""
+    path = os.path.join(folder, naming.LEDGER)
+    if not os.path.exists(path):
+        return set()
+    try:
+        with open(path, encoding="utf-8-sig") as handle:
+            rows = json.load(handle).get("versions")
+        return {int(row.get("n", 0)) for row in rows}
+    except (OSError, ValueError, TypeError, AttributeError):
+        return None
 
 
 def metadata_stem(name: str) -> str:
@@ -729,19 +763,19 @@ def report_lines(findings: dict) -> list:
             % _and_folders(findings["unreadable_folders"]))
     elif total and findings["complete"]:
         held = ["None of them will be moved to the trash while a database that may own "
-                "them holds nothing: restore a backup of it, or add them to a section."
+                "them holds nothing: restore a backup of it, or recover them."
                 ] if why_unlisted_stay(findings) else []
         problems.append(" ".join(["%s %s. Either they belong to something "
                                   "whose database was lost, or nothing needs them any more."
                                   % (files_by_folder(findings), _orphaned(total))]
-                                 + _what_can_be_added_back(findings) + held))
+                                 + _what_can_be_recovered(findings) + held))
     elif total:
         problems.append(" ".join([
             "%s %s. Amaze could not check the %s database either, "
             "so some of those files may be its. Nothing will be moved "
             "while that is true."
             % (files_by_folder(findings), _orphaned(total), wording.and_list(unchecked))]
-            + _what_can_be_added_back(findings)))
+            + _what_can_be_recovered(findings)))
     elif findings["unaccounted"]:
         well.append("There are no orphaned files in %s."
                     % wording.and_list(["`%s`" % folder for folder in findings["unaccounted"]]))
@@ -804,7 +838,7 @@ def _counted(count: int, filename: str) -> str:
     return "%d %s" % (count, naming.section_noun(filename, count))
 
 
-def _per_section(found: dict) -> str:
+def per_section(found: dict) -> str:
     """`3 materials and 1 node`, a count per database in its own noun, empty ones left out."""
     return wording.and_list([_counted(len(rows), filename)
                              for filename, rows in found.items() if rows])
@@ -850,7 +884,7 @@ def _check_lines(findings: dict) -> tuple:
         total = sum(len(rows) for rows in renders.values())
         said.append("No thumbnail image yet for %s - select %s in Amaze and use Thumbnail "
                     "▸ Render Image when convenient, since a render takes time."
-                    % (_per_section(renders), "it" if total == 1 else "them"))
+                    % (per_section(renders), "it" if total == 1 else "them"))
     if not any(missing.values()) and not any(renders.values()):
         well.append("Every %s in the databases has its files, and every one that can have a "
                     "render has one." % _every_section())
@@ -865,7 +899,7 @@ def _check_lines(findings: dict) -> tuple:
     if any(loose.values()):
         total = sum(len(rows) for rows in loose.values())
         said.append("%s %s no category, so %s can be put in %s."
-                    % (_per_section(loose), "has" if total == 1 else "have",
+                    % (per_section(loose), "has" if total == 1 else "have",
                        "it" if total == 1 else "they", UNCATEGORISED))
     else:
         well.append("Every %s has a category." % _every_section())
@@ -1009,7 +1043,7 @@ def on_a_button(counted: str) -> str:
 
 def uncategorised_count(findings: dict) -> str:
     """`3 materials and 1 node`: the rows with no category, each database in its own noun."""
-    return _per_section(findings.get("uncategorised") or {})
+    return per_section(findings.get("uncategorised") or {})
 
 
 def _and_folders(names: list) -> str:
@@ -1029,19 +1063,14 @@ def files_by_folder(findings: dict) -> str:
     return wording.and_list(parts)
 
 
-def _what_can_be_added_back(findings: dict) -> list:
-    """The line that keeps the buttons apart: materials by name, then pairs, then the rest."""
+def _what_can_be_recovered(findings: dict) -> list:
+    """The line that keeps the buttons apart: what Recover takes, by name, then the rest."""
     if why_nothing_can_be_added(findings):
         return []
-    on_record_now = materials_on_record(findings)
-    addable = reattachable_files(findings)
-    rest = unaccounted_total(findings) - len(addable) - len(
-        _files_of(findings, [asset_id for asset_id, _record in on_record_now]))
-    said = [_materials_sentence(on_record_now)] if on_record_now else []
-    if addable and (rest or on_record_now):
-        said.append("%s can be added back to a section."
-                    % (files(len(addable)).replace(" ", " more ", 1) if on_record_now
-                       else "Of those, " + files(len(addable))))
+    found = recoverable(findings)
+    rest = unaccounted_total(findings) - len(
+        _files_of(findings, [one for ids in found.values() for one in ids]))
+    said = [_recover_sentence(findings, found)] if found else []
     if rest and said:
         said.append("The rest are halves of an asset whose other file is not "
                     "in the folder, so they can only be moved to the trash.")
@@ -1049,27 +1078,25 @@ def _what_can_be_added_back(findings: dict) -> list:
     if spared:
         one = spared == 1
         said.append("Moving files to the trash leaves %s where %s: the metadata of what "
-                    "%s to is saved beside %s, so %s can still be added back."
+                    "%s to is saved beside %s, so %s can still be recovered."
                     % (files(spared), "it is" if one else "they are",
                        "it belongs" if one else "they belong", "it" if one else "them",
                        "it" if one else "they"))
     return [" ".join(said)] if said else []
 
 
-def _materials_sentence(on_record_now: list) -> str:
-    """The materials Add Back puts in the database, by name while there are few to read."""
-    count = len(on_record_now)
-    one = count == 1
-    names = ""
-    if count <= 6:
-        names = ": " + wording.and_list([str(record.get("name") or asset_id)
-                                          for asset_id, record in on_record_now])
-    return ("The files include %d %s with %s metadata saved "
-            "beside %s%s. Add %s Back puts %s in the %s database."
-            % (count, naming.section_noun(naming.MATERIALS, count),
-               "its" if one else "their", "it" if one else "them", names,
-               count_on_a_button(count, naming.MATERIALS), "it" if one else "them",
-               naming.section_label(naming.MATERIALS)))
+def _recover_sentence(findings: dict, found: dict) -> str:
+    """What Recover puts in each database, by name while there are few to read."""
+    stamps = _stamps(findings)
+    few = sum(len(ids) for ids in found.values()) <= 6
+    parts = []
+    for filename, ids in found.items():
+        names = " (%s)" % wording.and_list([str((stamps.get(one) or {}).get("name") or one)
+                                            for one in ids]) if few else ""
+        parts.append("%s%s in the %s database"
+                     % (_counted(len(ids), filename), names, naming.section_label(filename)))
+    return ("Recover puts %s: each goes by the folder its files are in."
+            % wording.and_list(parts))
 
 
 def _folder_name(folder: str) -> str:
@@ -1238,26 +1265,32 @@ def rescue_uncategorised(findings: dict, guard_session: bool = True, **legacy) -
     return done
 
 
-def reattach(findings: dict, filename: str, only=None, guard_session: bool = True,
-             **legacy) -> dict:
-    """Add the unclaimed pairs, or the ids in `only`, to `filename` from their metadata."""
+def recoverable(findings: dict) -> dict:
+    """{database: [id]} of the orphaned pairs in each asset section's folder: the folder names it."""
+    if "asset_dirs" not in findings:
+        return {}
+    pairs = _pairs_by_folder(findings)
+    found = {}
+    for filename in naming.ASSET_SECTIONS:
+        ids = pairs.get(naming.SECTION_FOLDERS[filename] + "/")
+        if ids:
+            found[filename] = list(ids)
+    return found
+
+
+def recover(findings: dict, guard_session: bool = True, **legacy) -> dict:
+    """Every `recoverable` pair into its folder's database as ONE change: {database: rows added}."""
     if legacy.get("guard", guard_session):
         _refuse_a_houdini_that_holds_the_library()
-    return _add_rows(findings, filename,
-                     complete_pairs(findings) if only is None else list(only))
-
-
-def add_materials_back(findings: dict, guard_session: bool = True, **legacy) -> dict:
-    """Put every material `materials_on_record` finds in the Materials database."""
-    if legacy.get("guard", guard_session):
-        _refuse_a_houdini_that_holds_the_library()
-    return _add_rows(findings, naming.MATERIALS,
-                     [asset_id for asset_id, _record in materials_on_record(findings)])
-
-
-def materials_on_record(findings: dict) -> list:
-    """`on_record` for the Materials database: what Add Back puts there."""
-    return on_record(findings, naming.MATERIALS)
+    found = recoverable(findings)
+    held = _guard(findings["directory"])
+    change = held.change("")
+    staged = set()
+    done = {filename: _stage_rows(findings, held, change, filename, ids, staged)
+            for filename, ids in found.items()}
+    if staged:
+        change.commit()
+    return done
 
 
 def on_record(findings: dict, filename: str) -> list:
@@ -1275,7 +1308,7 @@ def on_record(findings: dict, filename: str) -> list:
 
 
 def stamped_unlisted(findings: dict) -> list:
-    """The unlisted ids whose metadata reads, a pair or alone: what can still be put back."""
+    """The unlisted ids whose metadata reads, a pair or alone: what can still be recovered."""
     if "asset_dirs" not in findings:
         return []
     stamps = _stamps(findings)
@@ -1323,12 +1356,23 @@ def why_nothing_can_be_added(findings: dict, filename: str = "") -> str:
 
 
 def _add_rows(findings: dict, filename: str, ids: list) -> dict:
-    """`reattach` without the session check: rows added, their files moved home, ONE change."""
+    """The rows of `ids` added to `filename` from their metadata, their files moved home, ONE change."""
+    held = _guard(findings["directory"])
+    change = held.change("")
+    staged = set()
+    done = _stage_rows(findings, held, change, filename, ids, staged)
+    if staged:
+        change.commit()
+    return done
+
+
+def _stage_rows(findings: dict, held: guard.Guard, change, filename: str, ids: list,
+                staged: set) -> dict:
+    """`_add_rows` into `change`, uncommitted; `staged` holds the ids taken so far, and gains these."""
     reason = why_nothing_can_be_added(findings, filename)
     if reason:
         raise ValueError(reason)
     directory = findings["directory"]
-    held = _guard(directory)
     reading = held.read(filename)
     if reading.verdict == guard.MISSING:
         raise ValueError("the database has not synced to the library folder yet, so nothing "
@@ -1342,19 +1386,19 @@ def _add_rows(findings: dict, filename: str, ids: list) -> dict:
         raise ValueError("one of the library's databases cannot be read, so these "
                          "files may belong to it")
     rows = document.setdefault(ROWS, {})
-    taken = set(rows)
+    taken = set(rows) | staged
     for other, claimed in by_file.items():
         if other != filename:
             taken |= claimed
     added, minted = [], []
-    places = [path for _key, path in _folders_of(findings)]
+    home = [os.path.join(directory, naming.SECTION_FOLDERS[filename])]
     claimed = [one for one in ids if one in taken]    # a database took them since the check
     categories = document.setdefault("categories", {})
     for asset_id in [one for one in ids if one not in taken]:
-        record = metadata_of(places, asset_id)
+        record = metadata_of(home, asset_id)
         if record is None:
             record = material.Material(
-                name="Recovered %s" % asset_id[:8], cats=RECOVERED_CATEGORY, tags=[],
+                name="%s %s" % (RECOVERED_NAME, asset_id), cats=RECOVERED_CATEGORY, tags=[],
                 fav=False, renderer="", mat_id=asset_id).get_as_dict()
             minted.append(asset_id)
         record["id"] = asset_id
@@ -1366,11 +1410,10 @@ def _add_rows(findings: dict, filename: str, ids: list) -> dict:
     if minted and RECOVERED_CATEGORY not in categories:
         categories[RECOVERED_CATEGORY] = {"order": len(categories)}
     if added:
-        change = held.change("")
         change.put(reading.ticket, document)
         _move_home(findings, held, change, filename, added)
-        change.commit()
-    debug.event("repair", "unlisted files added back to a database",
+        staged.update(added)
+    debug.event("repair", "orphaned files recovered into a database",
                 file=filename, added=len(added), from_metadata=len(added) - len(minted),
                 written_new=reading.verdict == guard.FRESH)
     return {"added": added, "path": held.path(filename), "minted": minted, "claimed": claimed}
@@ -1431,17 +1474,6 @@ def _pairs_by_folder(findings: dict) -> dict:
         if {naming.ASSET, naming.RECORD} <= seen:
             pairs.setdefault(key, []).append(asset_id)
     return pairs
-
-
-def unsorted_pairs(findings: dict) -> list:
-    """The complete pairs `materials_on_record` leaves: only the user can name their section."""
-    named_already = {asset_id for asset_id, _record in materials_on_record(findings)}
-    return [asset_id for asset_id in complete_pairs(findings) if asset_id not in named_already]
-
-
-def reattachable_files(findings: dict) -> list:
-    """Every file adding the unsorted pairs back accounts for, counted like the other button."""
-    return _files_of(findings, unsorted_pairs(findings))
 
 
 def _files_of(findings: dict, ids) -> list:

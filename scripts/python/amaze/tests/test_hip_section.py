@@ -1993,7 +1993,7 @@ class SectionListIsSingleSourcedTest(unittest.TestCase):
 class CheckLibraryConfirmsBeforeChangingTest(unittest.TestCase):
     """Source-derived: every action Check Library runs is confirmed first, Cancel on Return and Esc."""
 
-    ACTIONS = ("repair.move_aside(", "repair.add_materials_back(", "repair.reattach(",
+    ACTIONS = ("repair.move_aside(", "repair.recover(",
                "repair.put_back(", "repair.set_aside_folders(", "repair.drop_dead_stars(",
                "repair.rescue_uncategorised(")
     GATES = ("_confirmed(", "**_copy_buttons(")
@@ -2013,7 +2013,7 @@ class CheckLibraryConfirmsBeforeChangingTest(unittest.TestCase):
 
     def test_it_confirms_before_doing_any_work(self):
         bodies = list(self._bodies())
-        self.assertGreaterEqual(len(bodies), 7, "premise: the actions were not found")
+        self.assertGreaterEqual(len(bodies), 6, "premise: the actions were not found")
         for name, body, work in bodies:
             with self.subTest(name=name):
                 gate = min((body.find(g) for g in self.GATES if g in body), default=-1)

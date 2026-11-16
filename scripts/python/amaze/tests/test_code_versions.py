@@ -74,15 +74,19 @@ class TheStoreSitsBesideTheMaterialStore(_Case):
     def materials(self):
         return material.section_folder(self.prefs.dir, library_files.MATERIALS)
 
-    def test_a_text_file_the_ledger_lacks_is_adopted(self):
-        """A sync can lose a ledger row; the file is still a version."""
+    def test_a_text_file_the_ledger_lacks_is_no_version(self):
+        """Only the ledger names a version; a file it does not name is an orphaned file."""
         os.makedirs(self.store)
-        with open(os.path.join(self.store, "Other-4.txt"), "w", encoding="utf-8") as handle:
+        with open(os.path.join(self.store, "%s_4.txt" % self.mat_id), "w",
+                  encoding="utf-8") as handle:
             handle.write(SECOND)
-        with open(os.path.join(self.store, "Other-5.mat"), "w", encoding="utf-8") as handle:
-            handle.write("not code")
-        self.assertEqual([(4, "Version 4")], self._listed(),
-                         "the adoption read a file that is not a code version, or none")
+        self.assertEqual([], self._listed(), "a file the ledger does not name became a version")
+
+    def test_a_code_version_is_named_by_its_id_and_number(self):
+        self.assertTrue(self._save(self.model.NEW_VERSION, SECOND, "helper fast"))
+        self.assertEqual(["%s_1.txt" % self.mat_id, "%s_2.txt" % self.mat_id],
+                         sorted(name for name in os.listdir(self.store)
+                                if name.endswith(versions.CODE_SUFFIX)))
 
 
 class TheEditorSavesVersions(_Case):

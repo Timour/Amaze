@@ -172,9 +172,8 @@ class ASwitchPutsTheWholeVersionOnTheBase(_Case):
         return {"builder": bool(self._base_builder()), ".png": os.path.exists(self.png)}
 
     def _archived_png(self, number):
-        stem = {int(r["n"]): r["file"] for r in versions.list_versions(self.prefs, self.mat_id)}
         return os.path.exists(os.path.join(versions.versions_dir(self.prefs, self.mat_id),
-                                           stem[number] + ".png"))
+                                           versions.file_stem(self.mat_id, number) + ".png"))
 
     def test_a_kind_the_version_lacks_leaves_the_base(self):
         self.assertTrue(versions.switch_active(self.prefs, self.mat_id, 1))
@@ -223,9 +222,8 @@ class AVersionHoldsTheBuilderAndNeverTheMetadata(_Case):
     """`<stem>.json` is the builder alone, so a switch keeps the base's own metadata."""
 
     def _archive(self, number, suffix):
-        stem = {int(r["n"]): r["file"] for r in versions.list_versions(self.prefs, self.mat_id)}
         return os.path.join(versions.versions_dir(self.prefs, self.mat_id),
-                            stem[number] + suffix)
+                            versions.file_stem(self.mat_id, number) + suffix)
 
     def _set_metadata(self, name):
         asset_record.write_section(self.base_record, asset_record.METADATA,
@@ -311,7 +309,7 @@ class TheArchiveIsEachVersionsDurableThumbnail(_Case):
             fh.write(b"V2-RENDER-FRESH")
         self.assertTrue(versions.record_render(self.prefs, self.mat_id))
         rows = versions.list_versions(self.prefs, self.mat_id)
-        stems = {int(r["n"]): r["file"] for r in rows}
+        stems = {int(r["n"]): versions.file_stem(self.mat_id, r["n"]) for r in rows}
         with open(os.path.join(folder, stems[2] + ".png"), "rb") as fh:
             self.assertEqual(
                 b"V2-RENDER-FRESH", fh.read(),
@@ -328,7 +326,7 @@ class TheArchiveIsEachVersionsDurableThumbnail(_Case):
         with open(base, "wb") as fh:
             fh.write(b"SAME-PICTURE")
         versions.create_version(self.prefs, self.mat_id)
-        stem = versions.list_versions(self.prefs, self.mat_id)[0]["file"]
+        stem = versions.file_stem(self.mat_id, 1)
         slot = os.path.join(folder, stem + ".png")
         before = os.stat(slot).st_mtime_ns
         self.assertTrue(versions.record_render(self.prefs, self.mat_id))
@@ -368,7 +366,7 @@ class TheArchiveIsEachVersionsDurableThumbnail(_Case):
         row = next(i for i, a in enumerate(model.assets)
                    if str(a.mat_id) == self.mat_id)
         model._add_thumb_paths(row)
-        stem = versions.list_versions(self.prefs, self.mat_id)[0]["file"]
+        stem = versions.file_stem(self.mat_id, 1)
         with open(os.path.join(folder, stem + ".png"), "rb") as fh:
             self.assertEqual(
                 b"FRESH-PICTURE", fh.read(),
@@ -392,7 +390,8 @@ class TheBaseFilesFollowTheLibrarysExtensions(_Case):
             fh.write(b"RENDER-AS-JPEG")
 
     def _archived(self, kind):
-        stem = versions.list_versions(self.prefs, self.mat_id)[-1]["file"]
+        stem = versions.file_stem(self.mat_id,
+                                  versions.list_versions(self.prefs, self.mat_id)[-1]["n"])
         with open(os.path.join(versions.versions_dir(self.prefs, self.mat_id),
                                stem + kind), "rb") as fh:
             return fh.read()
@@ -418,10 +417,11 @@ class StoreTest(_Case):
         n = versions.create_version(self.prefs, self.mat_id)
         self.assertEqual(1, n)
         self.assertEqual(1, versions.active_version(self.prefs, self.mat_id))
-        stem = versions.list_versions(self.prefs, self.mat_id)[0]["file"]
+        row = versions.list_versions(self.prefs, self.mat_id)[0]
+        self.assertNotIn("file", row, "the ledger row still names its files")
         archived = os.path.join(
             versions.versions_dir(self.prefs, self.mat_id),
-            stem + ".mat")
+            "%s_1.mat" % self.mat_id)
         with open(archived, "rb") as fh:
             self.assertEqual(self._base_bytes(), fh.read(),
                              "the archive is not a copy of the base")
@@ -486,24 +486,26 @@ class StoreTest(_Case):
         self.prefs.library_user = ""
         versions.create_version(self.prefs, self.mat_id)
         row = versions.list_versions(self.prefs, self.mat_id)[0]
-        self.assertEqual(("", "1"), (row["author"], row["file"]))
+        self.assertEqual("", row["author"])
         self.assertEqual({}, users.all_users(self.prefs), "saving a version made a user")
 
 
-class VersionFilesCarryTheirWriterTest(_Case):
-    """The archive stem is writer-n; two writers stay apart by stepping past a stem on disk."""
+class VersionFilesAreNamedByIdAndNumberTest(_Case):
+    """A version's files are `<id>_<n>.*`; the ledger names no file, and names only its rows."""
 
-    def test_the_stem_carries_the_writer(self):
+    def test_the_files_carry_the_id_and_the_number(self):
         from amaze.core import users
         self.prefs.library_user = users.create(self.prefs, "Crimson")
         versions.create_version(self.prefs, self.mat_id)
         row = versions.list_versions(self.prefs, self.mat_id)[0]
         self.assertEqual("Crimson", row.get("author"),
                          "the author did not ride from prefs")
-        self.assertEqual("Crimson-1", row.get("file"))
+        self.assertNotIn("file", row)
+        self.assertEqual("%s_1" % self.mat_id, versions.file_stem(self.mat_id, 1))
         folder = versions.versions_dir(self.prefs, self.mat_id)
-        self.assertTrue(
-            os.path.exists(os.path.join(folder, "Crimson-1.mat")))
+        self.assertEqual({"%s_1.mat" % self.mat_id, "%s_1.json" % self.mat_id},
+                         {name for name in os.listdir(folder)
+                          if name.endswith((".mat", ".json")) and name != versions.LEDGER})
 
     def test_two_writers_same_number_never_collide(self):
         """Two real user records writing the same version number never collide on disk."""
@@ -522,51 +524,43 @@ class VersionFilesCarryTheirWriterTest(_Case):
             fh.write(frozen)
         folder = versions.versions_dir(self.prefs, self.mat_id)
         self.assertTrue(
-            os.path.exists(os.path.join(folder, "Crimson-1.mat")))
+            os.path.exists(os.path.join(folder, "%s_1.mat" % self.mat_id)))
         self.assertTrue(
-            os.path.exists(os.path.join(folder, "Cobalt-2.mat")),
+            os.path.exists(os.path.join(folder, "%s_2.mat" % self.mat_id)),
             "the second writer's file survived the ledger overwrite")
 
-    def test_a_stray_archive_is_adopted_on_read(self):
-        """A version file the ledger does not know becomes a row on read, writer parsed from its stem."""
-        self.prefs.library_user ="Crimson"
+    def test_a_file_the_ledger_does_not_name_is_an_orphaned_file(self):
+        """It is no version: never a row, never switched to; Check Library names it orphaned."""
+        from amaze.core import repair
+        self.prefs.library_user = "Crimson"
         versions.create_version(self.prefs, self.mat_id)
         folder = versions.versions_dir(self.prefs, self.mat_id)
-        with open(os.path.join(folder, "Cobalt-2.mat"), "wb") as fh:
+        stray = "%s_2.mat" % self.mat_id
+        with open(os.path.join(folder, stray), "wb") as fh:
             fh.write(b"THE OTHER MACHINES VERSION")
-        rows = versions.list_versions(self.prefs, self.mat_id)
-        self.assertEqual(2, len(rows))
-        adopted = rows[-1]
-        self.assertEqual("Cobalt-2", adopted.get("file"))
-        self.assertEqual("Cobalt", adopted.get("author"))
-        self.assertTrue(
-            versions.switch_active(self.prefs, self.mat_id,
-                                   int(adopted["n"])),
-            "an adopted version must be switchable")
-        self.assertEqual(b"THE OTHER MACHINES VERSION",
-                         self._base_bytes())
+        self.assertEqual([1], [int(row["n"]) for row in
+                               versions.list_versions(self.prefs, self.mat_id)])
+        before = self._base_bytes()
+        self.assertFalse(versions.switch_active(self.prefs, self.mat_id, 2))
+        self.assertEqual(before, self._base_bytes())
+        key = "materials/versions/%s/" % self.mat_id
+        self.assertEqual([stray], repair.survey(self.prefs.dir)["unaccounted"].get(key))
+        self.assertEqual(3, versions.create_version(self.prefs, self.mat_id),
+                         "a new version wrote over the orphaned file")
+        with open(os.path.join(folder, stray), "rb") as fh:
+            self.assertEqual(b"THE OTHER MACHINES VERSION", fh.read())
 
-    def test_a_row_lacking_its_stem_finds_no_files(self):
-        """A row with no recorded stem is not matched to `1.mat` by its number: it does not switch."""
-        self.prefs.library_user ="Crimson"
+    def test_a_file_under_an_older_name_is_not_read(self):
+        """`1.mat` is not version 1's file: only `<id>_1.mat` is."""
+        self.prefs.library_user = "Crimson"
         versions.create_version(self.prefs, self.mat_id)
         folder = versions.versions_dir(self.prefs, self.mat_id)
-        row = versions.list_versions(self.prefs, self.mat_id)[0]
-        legacy = os.path.join(folder, "1.mat")
-        os.rename(os.path.join(folder, "%s.mat" % row["file"]), legacy)
-        for kind in (".json", ".interface", ".builder.json", ".png"):
-            source = os.path.join(folder, "%s%s" % (row["file"], kind))
-            if os.path.exists(source):
-                os.rename(source,
-                          os.path.join(folder, "1%s" % kind))
-        ledger_path = os.path.join(folder, versions.LEDGER)
-        with open(ledger_path, encoding="utf-8") as fh:
-            ledger = json.load(fh)
-        for entry in ledger["versions"]:
-            entry.pop("file", None)
-        with open(ledger_path, "w", encoding="utf-8") as fh:
-            json.dump(ledger, fh)
+        for name in os.listdir(folder):
+            if name.startswith(self.mat_id + "_1."):
+                os.rename(os.path.join(folder, name),
+                          os.path.join(folder, name[len(self.mat_id) + 1:]))
         self._rewrite_base(b"EDITED PAST VERSION ONE")
+        self.assertEqual("", versions.version_file(self.prefs, self.mat_id, 1))
         self.assertFalse(
             versions.switch_active(self.prefs, self.mat_id, 1))
         self.assertEqual(b"EDITED PAST VERSION ONE", self._base_bytes())

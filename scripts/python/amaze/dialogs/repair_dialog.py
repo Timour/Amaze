@@ -7,7 +7,7 @@ import hou
 from amaze import messages
 from amaze.core import debug, repair
 from amaze.core import library_files as naming
-from amaze.helpers import ui_helpers
+from amaze.helpers import ui_helpers, wording
 
 MOST_BUTTONS = 5    # actions one report shows before Choose an Action lists them instead
 
@@ -180,17 +180,14 @@ def _every_choice(findings: dict, may_change: bool):
         keys.append(key)
 
     if may_change:
-        on_record = repair.materials_on_record(findings)
-        if on_record and not repair.why_nothing_can_be_added(findings, naming.MATERIALS):
-            offer(messages.BUTTON_REPAIR_ADD_BACK
-                  % repair.count_on_a_button(len(on_record), naming.MATERIALS), "add-back")
+        found = repair.recoverable(findings)
+        if found and not repair.why_nothing_can_be_added(findings):
+            offer(messages.BUTTON_REPAIR_RECOVER
+                  % repair.on_a_button(repair.per_section(found)), "recover")
         if repair.offered_copies(findings):
             offer(messages.BUTTON_REPAIR_PUT_COPY_BACK, "restore")
         if repair.rebuildable(findings):
             offer(messages.BUTTON_REBUILD_FROM_METADATA, "rebuild")
-        if repair.unsorted_pairs(findings) and not repair.why_nothing_can_be_added(findings):
-            offer(messages.BUTTON_REPAIR_ADD_TO_SECTION % repair.files_on_a_button(
-                len(repair.reattachable_files(findings))), "reattach")
         aside = repair.files_to_move_aside(findings)
         if aside:
             offer(messages.BUTTON_REPAIR_MOVE_ASIDE % repair.files_on_a_button(aside),
@@ -220,8 +217,7 @@ def act(findings: dict, action: str, guard: bool = True, changed=None) -> bool:
     if action == "holding":
         ui_helpers.reveal(findings["holding"]["path"])
         return False
-    done = {"add-back": _do_add_back, "restore": _do_restore, "rebuild": _do_rebuild,
-            "reattach": _do_reattach,
+    done = {"recover": _do_recover, "restore": _do_restore, "rebuild": _do_rebuild,
             "trash": _do_move_aside, "unknown": _do_move_unknown,
             "set-aside": _do_set_aside, "stars": _do_set_aside,
             "uncategorised": _do_uncategorised}[action]
@@ -236,25 +232,36 @@ def act(findings: dict, action: str, guard: bool = True, changed=None) -> bool:
     return bool(landed)
 
 
-def _do_add_back(findings: dict, guard: bool, changed) -> None:
-    """Confirm, put the materials back from what is saved beside their files, and say how many."""
-    count = len(repair.materials_on_record(findings))
-    label = naming.section_label(naming.MATERIALS)
-    written_new = (messages.ADD_BACK_WRITES_A_NEW_LIST % label
-                   if repair.list_is_missing(findings, naming.MATERIALS) else "")
-    if not _confirmed(messages.CONFIRM_ADD_UNLISTED_TO_SECTION
-                      % (count, naming.section_noun(naming.MATERIALS, count), label),
-                      messages.BUTTONS_ADD_BACK, messages.HELP_ADD_BACK % written_new):
+def _do_recover(findings: dict, guard: bool, changed) -> None:
+    """Confirm, put each orphaned pair in its folder's database, and say how many."""
+    found = repair.recoverable(findings)
+    missing = [naming.section_label(name) for name in found
+               if repair.list_is_missing(findings, name)]
+    written_new = (messages.RECOVER_WRITES_A_NEW_DATABASE % wording.and_list(missing)
+                   if missing else "")
+    if not _confirmed(messages.CONFIRM_RECOVER % repair.per_section(found),
+                      messages.BUTTONS_RECOVER,
+                      messages.HELP_RECOVER % (repair.RECOVERED_CATEGORY, repair.RECOVERED_NAME,
+                                               written_new)):
         return
     try:
-        result = repair.add_materials_back(findings, guard=guard)
+        result = repair.recover(findings, guard=guard)
     except ValueError as exc:
-        _say(messages.SECTION_LIST_UNCHANGED_REASON % (label, exc), hou.severityType.Warning)
+        _say(messages.NOTHING_CHANGED_REASON % exc, hou.severityType.Warning)
         return
     changed()
-    added = len(result["added"])
-    _added(messages.UNLISTED_FILES_ADDED_BACK_DONE
-           % (added, naming.section_noun(naming.MATERIALS, added), label), result)
+    added = {name: done["added"] for name, done in result.items()}
+    recovered = wording.and_list(["%s to %s" % (repair.per_section({name: ids}),
+                                                naming.section_label(name))
+                                  for name, ids in added.items() if ids])
+    minted = sum(len(done["minted"]) for done in result.values())
+    if minted:
+        said = messages.ORPHANED_FILES_RECOVERED_SOME_UNNAMED % (
+            recovered, minted, repair.RECOVERED_CATEGORY, repair.RECOVERED_NAME)
+    else:
+        said = messages.ORPHANED_FILES_RECOVERED_DONE % recovered
+    _added(said, {"added": [one for ids in added.values() for one in ids],
+                  "claimed": [one for done in result.values() for one in done["claimed"]]})
 
 
 def _do_restore(findings: dict, guard: bool, changed) -> None:
@@ -386,7 +393,7 @@ def _moved(result: dict) -> None:
 
 
 def _added(said: str, result: dict) -> None:
-    """What an Add Back did, and that the library changed when a list took files since the check."""
+    """What a Recover did, and that the library changed when a database took files since the check."""
     claimed = result.get("claimed")
     if result["added"] or not claimed:
         _say(said)
@@ -485,39 +492,3 @@ def _do_uncategorised(findings: dict, guard: bool, changed) -> None:
             filename: [None] * count for filename, count in done.items()}}),
         repair.UNCATEGORISED))
 
-
-def _do_reattach(findings: dict, guard: bool, changed) -> None:
-    """Pick the section the unsorted pairs belong to, confirm, add them, and say how many."""
-    pairs = repair.unsorted_pairs(findings)
-    owners = naming.ASSET_SECTIONS
-    labels = [naming.section_label(name) for name in owners]
-    chosen = hou.ui.selectFromList(                       # type: ignore
-        labels, exclusive=True, title=messages.TITLE_CHECK_LIBRARY,
-        message=messages.PICK_SECTION_FOR_FILES
-                % repair.files(len(repair.reattachable_files(findings))),
-        column_header=messages.COLUMN_SECTION)
-    if not chosen:
-        return
-    filename = owners[chosen[0]]
-    label = naming.section_label(filename)
-    noun = naming.section_noun(filename, len(pairs))
-    if not _confirmed(messages.CONFIRM_ADD_UNLISTED_TO_SECTION % (len(pairs), noun, label),
-                      messages.BUTTONS_ADD_BACK,
-                      messages.HELP_ADD_TO_SECTION
-                      % (repair.RECOVERED_CATEGORY, repair.RECOVERED_CATEGORY, label)):
-        return
-    try:
-        result = repair.reattach(findings, filename, only=pairs, guard=guard)
-    except ValueError as exc:
-        _say(messages.SECTION_LIST_UNCHANGED_REASON % (label, exc), hou.severityType.Warning)
-        return
-    changed()
-    count = len(result["added"])
-    noun = naming.section_noun(filename, count)
-    minted = len(result["minted"])
-    if minted:
-        said = messages.UNLISTED_FILES_ADDED_BACK_SOME_UNNAMED % (
-            count, noun, label, minted, repair.RECOVERED_CATEGORY)
-    else:
-        said = messages.UNLISTED_FILES_ADDED_BACK_DONE % (count, noun, label)
-    _added(said, result)

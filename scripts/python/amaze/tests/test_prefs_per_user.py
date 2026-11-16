@@ -113,34 +113,55 @@ class TwoUsersKeepTheirOwnViewState(PerUserCase):
                          "unsaved change")
 
 
-class AFlatFileMigratesOnTheFirstSaveWithAUser(PerUserCase):
+class OneLayoutIsReadAndWritten(PerUserCase):
+    """With a user picked their view state is their block's alone; keys it does not know stay put."""
 
-    def test_flat_values_reach_the_block_and_the_spellings_retire(self):
+    def test_a_flat_value_beside_a_picked_user_is_not_read(self):
         self.write_settings({
             "library_user": UID_A,
             "view_mode": "list",
             "thumbsize": 300,
-            "scroll_speed": 1.5,
+            "users": {UID_A: {"scroll_speed": 1.5}},
         })
         p = self.prefs()
         p.load()
-        self.assertEqual("list", p.view_mode,
-                         "the flat fallback stopped loading - the "
-                         "migration source was dropped before the "
-                         "migration ran")
-        self.assertEqual(300, p.thumbsize)
+        self.assertEqual("grid", p.view_mode, "a flat key was read as the user's")
+        self.assertEqual(128, p.thumbsize)
+        self.assertEqual(1.5, p.scroll_speed)
+
+    def test_no_older_key_is_read_and_each_stays_in_the_file(self):
+        older = {"version_author": "Plum", "rendersize": 512, "texture_folders": ["/tex/a/"],
+                 "last_renderer": "Redshift", "file_section_migrated": True}
+        self.write_settings(dict(older, users={}))
+        p = self.prefs()
+        p.load()
+        self.assertEqual("", p.library_user, "an older key named the user")
+        self.assertEqual(256, p.rendersize, "a flat shared key was read")
+        self.assertEqual("", p.section_filter("material"))
         p.save()
         doc = self.read_settings()
-        block = doc.get("users", {}).get(UID_A, {})
-        self.assertEqual("list", block.get("view_mode"),
-                         "the first save with a user did not carry "
-                         "the flat values into the block")
-        self.assertEqual(300, block.get("thumbsize"))
-        self.assertEqual(1.5, block.get("scroll_speed"))
-        for flat in ("view_mode", "thumbsize", "scroll_speed"):
-            self.assertNotIn(flat, doc,
-                             "a migrated flat spelling was written "
-                             "back - two homes for one value")
+        self.assertEqual(older, {key: doc.get(key) for key in older},
+                         "a key the settings code does not know was changed or removed")
+
+    def test_enabled_sections_read_as_stored(self):
+        self.write_settings({"library_user": UID_A,
+                             "users": {UID_A: {"enabled_sections": ["material"]}}})
+        p = self.prefs()
+        p.load()
+        self.assertEqual(["material"], p.enabled_sections)
+
+    def test_a_layout_it_cannot_use_reads_as_no_settings(self):
+        library = tempfile.mkdtemp(prefix="amaze_no_settings_")
+        self.addCleanup(shutil.rmtree, library, True)
+        for broken in ({"directory": library, "users": ["not", "blocks"]},
+                       {"directory": library, "shared_settings": "flat"},
+                       {"directory": ["a"], "library_user": UID_A}):
+            with self.subTest(broken=broken):
+                self.write_settings(broken)
+                p = self.prefs()
+                self.assertFalse(p.load())
+                self.assertEqual(("", ""), (p.dir, p.library_user))
+                self.assertEqual("grid", p.view_mode)
 
 
 class NobodyPickedKeepsTheFlatShape(PerUserCase):
@@ -184,38 +205,6 @@ class ASwitchToAnUnknownUserKeepsTheCurrentState(PerUserCase):
         self.assertEqual(256, users.get(UID_A, {}).get("thumbsize"))
 
 
-class TheSectionIntroductionIsPerUser(PerUserCase):
-
-    def test_a_seen_flag_in_the_block_stops_the_introduction(self):
-        self.write_settings({
-            "library_user": UID_A,
-            "users": {UID_A: {
-                "enabled_sections": ["material"],
-                "enabled_sections_seen_file": True,
-            }}})
-        p = self.prefs()
-        p.load()
-        self.assertNotIn("file", p.enabled_sections,
-                         "a section this user deliberately disabled "
-                         "was re-introduced")
-
-    def test_a_user_without_the_flag_gets_the_introduction_once(self):
-        self.write_settings({
-            "library_user": UID_A,
-            "users": {UID_A: {"enabled_sections": ["material"]}},
-        })
-        p = self.prefs()
-        p.load()
-        self.assertIn("file", p.enabled_sections,
-                      "a section added after this block was written "
-                      "stayed invisible")
-        p.save()
-        block = self.read_settings()["users"][UID_A]
-        self.assertTrue(block.get("enabled_sections_seen_file"),
-                        "the introduction was not recorded, so it "
-                        "would repeat and an OFF could never stick")
-
-
 class ABlocksUnknownKeysSurviveTheRebuild(PerUserCase):
 
     def test_a_newer_builds_block_key_is_kept(self):
@@ -245,30 +234,6 @@ class TheCopiesFollowTheirUser(PerUserCase):
         "file_location_records": {"/tex/a/": {"registered": True,
                                               "recursive": True}},
     }
-
-    def test_the_three_copies_land_in_the_block(self):
-        self.write_settings(dict(self.FLAT))
-        p = self.prefs()
-        p.load()
-        self.assertEqual(["/tex/a/"], p.last_known_folders,
-                         "the flat copy fallback stopped loading")
-        self.assertEqual({"registered": True, "recursive": True},
-                         p.last_known_records.get("/tex/a/"))
-        p.save()
-        doc = self.read_settings()
-        block = doc.get("users", {}).get(UID_A, {})
-        self.assertEqual(["/tex/a/"], block.get("file_folders"),
-                         "the folders copy did not follow its user")
-        self.assertEqual(
-            {"/tex/a/": {"registered": True, "recursive": True}},
-            block.get("file_location_records"))
-        self.assertEqual(self.FLAT["file_favorites"],
-                         block.get("file_favorites"))
-        for flat in ("file_folders", "file_favorites",
-                     "file_location_records"):
-            self.assertNotIn(flat, doc,
-                             "a copied spelling stayed flat beside "
-                             "its block home")
 
     def test_a_userless_save_keeps_the_copies_flat(self):
         flat = dict(self.FLAT)
@@ -364,55 +329,6 @@ class ASaveAsksTheDiskOnlyAboutPathsItCouldReHome(PerUserCase):
             p.save()
         self.assertEqual([here + "/job/"], list(p.last_known_folders),
                          "a save kept a dead path after its folder appeared here")
-
-
-class TheFiveDerivedKeysAreGone(PerUserCase):
-    """The derived keys were the location record in an older spelling - the record is the one home."""
-
-    FIVE = ("file_folder_names", "file_folder_colors",
-            "file_folder_show_all", "file_recursive_folders",
-            "file_include_subfolders")
-
-    def test_no_derived_spelling_survives_a_save(self):
-        self.write_settings({
-            "library_user": UID_A,
-            "file_location_records": {"/tex/a/": {"registered": True}},
-            "file_folder_names": {"/tex/a/": "Alpha"},
-            "file_folder_colors": {"/tex/a/": "#112233"},
-            "file_folder_show_all": {"/tex/a/": True},
-            "file_recursive_folders": ["/tex/a/"],
-            "file_include_subfolders": True,
-        })
-        p = self.prefs()
-        p.load()
-        p.save()
-        doc = self.read_settings()
-        block = doc.get("users", {}).get(UID_A, {})
-        for key in self.FIVE:
-            self.assertNotIn(key, doc,
-                             "%s is still written flat" % key)
-            self.assertNotIn(key, block,
-                             "%s moved into the block instead of "
-                             "dying" % key)
-
-    def test_the_five_die_with_nobody_picked_too(self):
-        """Unconditional retirement - these are derived outputs, never migration sources."""
-        self.write_settings({
-            "file_location_records": {"/tex/a/": {"registered": True}},
-            "file_folder_names": {"/tex/a/": "Alpha"},
-            "file_include_subfolders": True,
-        })
-        p = self.prefs()
-        p.load()
-        p.save()
-        doc = self.read_settings()
-        for key in self.FIVE:
-            self.assertNotIn(key, doc,
-                             "%s survived a userless save" % key)
-        self.assertEqual(
-            {"/tex/a/": {"registered": True}},
-            doc.get("file_location_records"),
-            "the record the five derive from was lost with them")
 
 
 class DeletingAUserDropsTheirBlock(PerUserCase):

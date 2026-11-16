@@ -77,8 +77,8 @@ class AChangeReachesTheNextMachine(SharedPrefsCase):
                          "a falsy shared value did not survive")
 
 
-class TheFlatSpellingsRetire(SharedPrefsCase):
-    """`settings.json` keeps bootstrap and the copy; the save that moves the flat keys drops them."""
+class TheSharedKeysAreWrittenAsTheCopyAlone(SharedPrefsCase):
+    """`settings.json` keeps bootstrap and the copy of the shared keys, never a flat spelling."""
 
     def test_settings_json_carries_the_copy_not_the_flat_keys(self):
         a = self.machine(self.home_a)
@@ -97,30 +97,6 @@ class TheFlatSpellingsRetire(SharedPrefsCase):
                       "bootstrap must stay flat - it is how the "
                       "library is found at all")
 
-    def test_an_old_flat_file_loads_and_the_first_save_moves_it(self):
-        """The migration: flat values are the load fallback; one save carries them to store and copy."""
-        with open(os.path.join(self.home_a, "settings.json"), "w",
-                  encoding="utf-8") as handle:
-            json.dump({"directory": self.lib + "/",
-                       "rendersize": 300,
-                       "renderer_octane": False}, handle)
-        p = prefs_mod.Prefs()
-        p.path = self.home_a
-        p.load()
-        p.library_user = "u-home"
-        self.assertEqual(300, p.rendersize,
-                         "the flat value no longer loads - the "
-                         "migration source was dropped before the "
-                         "migration ran")
-        self.assertFalse(p.renderer_octane_enabled)
-        p.save()
-        raw = self.store_doc()["prefs"]
-        self.assertEqual(300, raw.get("rendersize", {}).get("value"),
-                         "the first save did not seed the store")
-        doc = self.settings_doc(self.home_a)
-        self.assertNotIn("rendersize", doc)
-        self.assertEqual(
-            300, doc.get("shared_settings", {}).get("rendersize"))
 
 
 class TheCopyServesAnUnreachableLibrary(SharedPrefsCase):

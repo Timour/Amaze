@@ -6,15 +6,12 @@ import contextlib
 import filecmp
 import json
 import os
-import re
 import tempfile
 import time
 
 from amaze.core import asset_files, asset_record, debug, library_files, material, users
 from amaze.core.material import RECORD_SUFFIX
 from amaze.helpers import hostos
-
-_STEM_NUMBER = re.compile(r"(?:^|-)(\d+)$")    # a stem is `<writer>-<n>` or bare `<n>`; the trailing number is the version
 
 _KINDS = ((".mat", True), (RECORD_SUFFIX, False),    # the kinds a version archives; only .mat is required
           (".png", False))
@@ -90,64 +87,18 @@ def read_ledger(preferences, mat_id: str, section: Section = MATERIAL) -> dict:
     """The ledger, or an empty one; an unreadable one reads as empty and create and switch refuse."""
     path = _ledger_path(preferences, mat_id, section)
     if not os.path.exists(path):
-        data = {"active": 0, "versions": []}
-        _adopt_strays(preferences, mat_id, data, section)
-        return data
+        return {"active": 0, "versions": []}
     try:
         with open(path, encoding="utf-8-sig") as handle:
             data = json.load(handle)
         if not isinstance(data, dict) or \
                 not isinstance(data.get("versions"), list):
             raise ValueError("not a ledger")
-        _adopt_strays(preferences, mat_id, data, section)
         return data
     except (OSError, ValueError) as exc:
         debug.event("versions", "ledger unreadable - versions hidden "
                     "this session", mat_id=str(mat_id), error=str(exc))
         return {"active": 0, "versions": [], "unreadable": True}
-
-
-def _adopt_strays(preferences, mat_id: str, ledger: dict,
-                  section: Section = MATERIAL) -> None:
-    """Rows for version files the ledger lacks: a sync loses rows, never files. ▸r/version-store"""
-    try:
-        names = os.listdir(versions_dir(preferences, mat_id, section))
-    except OSError:
-        return
-    rows = ledger.get("versions", [])
-    known = {_row_stem(row) for row in rows}
-    taken = {int(row.get("n", 0)) for row in rows}
-    adopted = 0
-    payload = section.payload()
-    for filename in sorted(names):
-        if not filename.endswith(payload):
-            continue
-        stem = filename[:-len(payload)]
-        if stem in known:
-            continue
-        match = _STEM_NUMBER.search(stem)
-        if not match:
-            continue          # not a version file - never guess
-        number = int(match.group(1))
-        writer = stem[:match.start()].rstrip("-")
-        if number in taken:
-            number = max(taken | {0}) + 1
-        taken.add(number)
-        known.add(stem)
-        rows.append({
-            "n": number,
-            "name": "Version %d" % number,
-            "author": writer,
-            "date": "",
-            "file": stem,
-        })
-        adopted += 1
-    if not adopted:
-        return
-    rows.sort(key=lambda row: int(row.get("n", 0)))
-    debug.event("versions", "stray archives adopted into the ledger",
-                mat_id=str(mat_id), adopted=adopted)
-    _write_ledger(preferences, mat_id, ledger, section)
 
 
 def _ledger_bytes(ledger: dict) -> bytes:
@@ -255,25 +206,9 @@ def _archive_document(sources: dict) -> dict:
         else {"format": asset_record.FORMAT}
 
 
-def writer_tag(preferences) -> str:
-    """The library user's name, alphanumerics only, that signs version files; "" with no user."""
-    try:
-        uid = users.current(preferences)
-    except (AttributeError, OSError):
-        return ""
-    if not uid:
-        return ""
-    author = users.name_for(preferences, uid)
-    return "".join(ch for ch in str(author or "") if ch.isalnum())[:24]
-
-
-def _stem(tag: str, number: int) -> str:
-    return "%s-%d" % (tag, int(number)) if tag else "%d" % int(number)
-
-
-def _row_stem(row: dict) -> str:
-    """The stem a ledger row's files use, as recorded; "" when none is, so no file is found."""
-    return str(row.get("file") or "")
+def file_stem(mat_id: str, number: int) -> str:
+    """The name every file of version `number` carries, its suffix aside: `<id>_<n>`."""
+    return "%s_%d" % (mat_id, int(number))
 
 
 def _row_for(ledger: dict, number: int) -> dict | None:
@@ -283,14 +218,12 @@ def _row_for(ledger: dict, number: int) -> dict | None:
     return None
 
 
-def _archive_paths(preferences, mat_id: str, stem,
+def _archive_paths(preferences, mat_id: str, number: int,
                    section: Section = MATERIAL) -> dict:
-    """The archive file set for one stem, `<writer>-<n>` or a bare `<n>` when unsigned; none for ""."""
-    if not stem:
-        return {}
+    """Version `number`'s file set by suffix, each named by `file_stem`."""
     folder = versions_dir(preferences, mat_id, section)
-    return {kind: os.path.join(folder, "%s%s" % (stem, kind))
-            for kind, _required in section.kinds}
+    stem = file_stem(mat_id, number)
+    return {kind: os.path.join(folder, stem + kind) for kind, _required in section.kinds}
 
 
 def _copy_set(preferences, sources: dict, targets: dict, kinds: tuple = _KINDS,
@@ -329,15 +262,11 @@ def create_version(preferences, mat_id: str, name: str = "",
         return 0
     number = max([int(v.get("n", 0)) for v in ledger["versions"]] or [0]) + 1
     sources = source_paths or _base_paths(preferences, mat_id, section)
-    tag = writer_tag(preferences)    # the row records the stem it wrote
-    stem = _stem(tag, number)
-    while any(os.path.exists(path) for path    # steps past a stem already on disk ▸r/version-store
-              in _archive_paths(preferences, mat_id, stem, section).values()):
-        debug.event("versions", "version stem already on disk - taking "
-                                "the next number", mat_id=str(mat_id),
-                    stem=stem)
+    while any(os.path.exists(path) for path    # an orphaned file is never written over
+              in _archive_paths(preferences, mat_id, number, section).values()):
+        debug.event("versions", "a version file is already on disk - taking "
+                                "the next number", mat_id=str(mat_id), n=number)
         number += 1
-        stem = _stem(tag, number)
     author = ""    # the writer's name, frozen into the row at write time
     try:
         writer = users.current(preferences)
@@ -350,12 +279,11 @@ def create_version(preferences, mat_id: str, name: str = "",
         "name": name or ("Version %d" % number),
         "author": author,
         "date": time.strftime("%Y-%m-%d %H:%M"),
-        "file": stem,
     })
     ledger["active"] = number
     with _staged_record(sources, _archive_document(sources), section) as staged:
         copied = _copy_set(preferences, staged,
-                           _archive_paths(preferences, mat_id, stem, section), section.kinds,
+                           _archive_paths(preferences, mat_id, number, section), section.kinds,
                            ledger=(_ledger_path(preferences, mat_id, section), ledger))
     if not copied:
         return 0
@@ -370,7 +298,7 @@ def _base_is_archived(preferences, mat_id: str, ledger: dict,
     row = _row_for(ledger, ledger.get("active", 0))
     if row is None:
         return False
-    archive = _archive_paths(preferences, mat_id, _row_stem(row), section)
+    archive = _archive_paths(preferences, mat_id, row.get("n", 0), section)
     base = base or _base_paths(preferences, mat_id, section)
     if RECORD_SUFFIX in dict(section.kinds) and _builder_of(base) != _builder_of(archive):
         return False
@@ -416,10 +344,6 @@ def switch_active(preferences, mat_id: str, number: int, section: Section = MATE
         debug.event("versions", "switch refused - no such version",
                     mat_id=str(mat_id), n=number)
         return False
-    if not _row_stem(row):
-        debug.event("versions", "switch refused - the row names no files, so none can be found",
-                    mat_id=str(mat_id), n=number)
-        return False
     base = base_paths or _base_paths(preferences, mat_id, section)
     if not keep_base(preferences, mat_id, section, base, base_name):
         debug.event("versions", "switch refused - the base holds "
@@ -432,7 +356,7 @@ def switch_active(preferences, mat_id: str, number: int, section: Section = MATE
     if row is None:
         return False
     ledger["active"] = int(number)
-    if not _restore(preferences, mat_id, _row_stem(row), base, section, ledger):
+    if not _restore(preferences, mat_id, int(number), base, section, ledger):
         debug.event("versions", "switch refused - nothing changed", mat_id=str(mat_id),
                     n=int(number))
         return False
@@ -441,10 +365,10 @@ def switch_active(preferences, mat_id: str, number: int, section: Section = MATE
     return True
 
 
-def _restore(preferences, mat_id: str, stem, base: dict, section: Section,
+def _restore(preferences, mat_id: str, number: int, base: dict, section: Section,
              ledger: dict) -> bool:
     """One archive over the base and the ledger naming it, as one unit; the metadata is kept."""
-    archive = _archive_paths(preferences, mat_id, stem, section)
+    archive = _archive_paths(preferences, mat_id, number, section)
     named = (_ledger_path(preferences, mat_id, section), ledger)
     if RECORD_SUFFIX not in dict(section.kinds):
         return _copy_set(preferences, archive, base, section.kinds, ledger=named)
@@ -478,13 +402,12 @@ def record_base(preferences, mat_id: str, kind: str, section: Section = MATERIAL
             return False
         active = int(ledger.get("active", 0) or 0)
         active_row = _row_for(ledger, active)
-        if active_row is None or not _row_stem(active_row):
+        if active_row is None:
             return False
         source = source or _base_paths(preferences, mat_id, section).get(kind)
         if not source or not os.path.exists(source):
             return False
-        target = _archive_paths(preferences, mat_id,
-                                _row_stem(active_row), section)[kind]
+        target = _archive_paths(preferences, mat_id, active, section)[kind]
         if os.path.exists(target) and filecmp.cmp(source, target,
                                                   shallow=False):
             return True
@@ -520,9 +443,7 @@ def rename_version(preferences, mat_id: str, number: int,
 def version_file(preferences, mat_id: str, number: int,
                  section: Section = MATERIAL) -> str:
     """Version `number`'s payload file; "" when it has no row or the file is gone."""
-    row = _row_for(read_ledger(preferences, mat_id, section), number)
-    if row is None or not _row_stem(row):
+    if _row_for(read_ledger(preferences, mat_id, section), number) is None:
         return ""
-    path = _archive_paths(preferences, mat_id, _row_stem(row),
-                          section)[section.payload()]
+    path = _archive_paths(preferences, mat_id, number, section)[section.payload()]
     return path if os.path.exists(path) else ""

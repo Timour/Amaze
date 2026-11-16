@@ -845,10 +845,13 @@ report, with a button for each fix that applies. The report covers:
 
 The fixes, each shown only when it applies:
 
-- **Add *N* Materials Back** puts orphaned materials back in the
-  Material database, with the metadata saved beside each one: name,
-  category and tags. It writes a new Material database when there is
-  none.
+- **Recover *N* Materials and *N* Nodes** puts orphaned pairs of `.mat`
+  and `.json` files in the database of the folder they are in: the
+  `materials` folder in the Material database, the `nodes` folder in the
+  Node database. Each keeps the metadata saved beside its files: name,
+  category and tags. One whose metadata cannot be read is recovered in a
+  category called Recovered, named Recovered followed by its id. It
+  writes a new database when there is none.
 - **Restore Backup** restores a database from its newest backup. The
   confirmation says how many items the backup holds and how many the
   database holds now, and **Older Backups...** lists the earlier ones.
@@ -857,15 +860,10 @@ The fixes, each shown only when it applies:
   databases, items saved after the backup come back from the metadata
   saved beside their files, and items changed after it are brought up
   to date.
-- **Add *N* Files to a Section** adds orphaned pairs of `.mat` and
-  `.json` files to the section you pick, Material or Node. Each one
-  keeps the metadata saved beside its files; one with no metadata comes
-  back in a category called Recovered, named Recovered plus the start of
-  its file name.
 - **Move *N* Files to Trash** moves the orphaned files and the leftovers
   into the trash. Orphaned files stay while a database that may own
-  them is corrupt or holds nothing, and so do files whose metadata can
-  still add them back to a database.
+  them is corrupt or holds nothing, and so do files whose metadata means
+  they can still be recovered.
 - **Move *N* Unknown Files to Trash** moves the unknown files and
   folders into the trash, after a confirmation that names each one.
 - **Set Aside *N* Folders** takes the File locations whose folder is not

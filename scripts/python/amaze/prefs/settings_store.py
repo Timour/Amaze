@@ -146,7 +146,7 @@ class SettingsFile:
             if key not in theirs and key in base and staged[key] == base[key]:
                 staged.pop(key)    # their delete of what we left alone
 
-    def replace(self, document: dict, retire=(), settle=None) -> bool:
+    def replace(self, document: dict, settle=None) -> bool:
         """Write a whole document, another pane's save folded in; False when it was refused."""
         if not self.writable:
             return False
@@ -158,8 +158,6 @@ class SettingsFile:
             return False
         if theirs is not None:
             self._merge(staged, theirs)
-        for key in retire:
-            staged.pop(str(key), None)
         if settle is not None:
             settle(staged)
         try:

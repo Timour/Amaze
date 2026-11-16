@@ -27,6 +27,8 @@ UPGRADE_BACKUP = "backup-redshift-vopnet-"    # `mat/<this><date>/`: backups a b
 OLD_MEMBER_KINDS = ("builder", "interface", "stamp", "tile_icon", "capture")    # an old package's
 STALE_SIDECAR_S = 60    # one format 3 save wrote `.builder.json` and `.interface` moments apart
 
+OLD_VERSION_STEM = re.compile(r"^(?:[^\W_]+-)?(\d+)$")    # a version file `<n>` or `<writer>-<n>`
+OLD_VERSION_SUFFIXES = library_files.VERSION_SUFFIXES + (library_files.CODE_VERSION_SUFFIX,)
 _CREATE_NODE = re.compile(rb'createNode\(\s*[\'"]([^\'"]+)[\'"]')
 
 DONE, NOTHING, BLOCKED, CANCELLED = ("done", "nothing", "blocked", "cancelled")
@@ -527,29 +529,47 @@ def _convert_versions(library_dir: str, folder: str, section: str, rows: dict,
             return _kept(asset_id, "a version's new file did not read back as built", counts)
         counts["deleted"] += _remove([path for path in (builder_path, interface_path)
                                       if os.path.lexists(path)])
-    _name_ledger_rows(folder)
+    _rename_versions(folder)
     return True
 
 
-def _name_ledger_rows(folder: str) -> None:
-    """Each ledger row with no file name gets the bare number its files were saved under."""
-    path = os.path.join(folder, "versions.json")
-    if not os.path.isfile(path):
-        return
-    try:
-        with open(path, encoding="utf-8-sig") as handle:
-            ledger = json.load(handle)
-        rows = ledger.get("versions")
-    except (OSError, ValueError, AttributeError):
-        return    # an unreadable ledger is the version store's to say
-    named = 0
-    for row in rows if isinstance(rows, list) else ():
-        if isinstance(row, dict) and not row.get("file") and str(row.get("n", "")).isdigit():
-            row["file"] = str(int(row["n"]))
-            named += 1
-    if named:
+def _rename_versions(folder: str) -> None:
+    """Each old version file renamed `<id>_<n>`, and `file` dropped from the ledger rows."""
+    asset_id = os.path.basename(folder)
+    path = os.path.join(folder, library_files.LEDGER)
+    ledger, rows = None, []
+    if os.path.isfile(path):
+        try:
+            with open(path, encoding="utf-8-sig") as handle:
+                ledger = json.load(handle)
+            rows = ledger.get("versions")
+        except (OSError, ValueError, AttributeError):
+            return    # an unreadable ledger is the version store's to say
+        if not isinstance(rows, list):
+            return
+    rows = [row for row in rows if isinstance(row, dict) and str(row.get("n", "")).isdigit()]
+    named = {str(row.get("file") or int(row["n"])): int(row["n"]) for row in rows}
+    numbers = set(named.values())
+    renamed = 0
+    for name in _listing(folder):
+        stem, suffix = os.path.splitext(name)
+        if suffix not in OLD_VERSION_SUFFIXES:
+            continue
+        number = named.get(stem)
+        old = OLD_VERSION_STEM.match(stem)
+        if number is None and old and int(old.group(1)) not in numbers:
+            number = int(old.group(1))    # a file no row names: orphaned, under its new name
+        target = os.path.join(folder, "%s_%d%s" % (asset_id, number or 0, suffix))
+        if number is None or os.path.lexists(target):
+            continue
+        os.replace(os.path.join(folder, name), target)
+        renamed += 1
+    if ledger is not None and any("file" in row for row in rows):
+        for row in rows:
+            row.pop("file", None)
         hostos.write_json_atomic(path, ledger)
-        debug.event("convert", "version rows named", folder=folder, rows=named)
+    if renamed:
+        debug.event("convert", "version files renamed", folder=folder, files=renamed)
 
 
 def _stored_faces(library_dir: str) -> dict:
@@ -637,7 +657,7 @@ def convert(directory: str, confirm, progress=None, user: str = "",
                  for section in library_files.ASSET_SECTIONS] + [
                      os.path.join(library_dir, library_files.CODE_FOLDER, library_files.VERSIONS)]:
         for asset_id in _listing(root):
-            _name_ledger_rows(os.path.join(root, asset_id))
+            _rename_versions(os.path.join(root, asset_id))
     counts["deleted"] += _remove_old_backups(os.path.join(library_dir, OLD_FOLDER))
     for folder in (os.path.join(library_dir, OLD_FOLDER, library_files.VERSIONS),
                    os.path.join(library_dir, OLD_FOLDER),

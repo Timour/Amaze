@@ -981,20 +981,46 @@ class NoNetworkBeforeTheProgressBarTest(unittest.TestCase):
 class AnotherResolutionIsSaidOnTheStatusLine(unittest.TestCase):
     """When the set resolution does not exist, the next one is downloaded and the status line says so."""
 
-    def _source_for(self, available):
+    def _found(self, available, wanted="2k", source=None):
         import types
         from unittest import mock
         from amaze import messages
         panel = test_support.fixture_panel(self)
-        panel.prefs.matx_resolution = "2k"
-        source = types.SimpleNamespace(needs_download=lambda _record: True,
-                                       resolutions=lambda _record: list(available))
-        record = types.SimpleNamespace(kind="", title="Rust", source="Somewhere")
+        panel.prefs.matx_resolution = wanted
+        source = source or types.SimpleNamespace(
+            needs_download=lambda _record: True, picks_resolution=lambda _record: True,
+            resolutions=lambda _record: list(available))
+        record = types.SimpleNamespace(kind="package", title="Rust", source="Somewhere")
         module = sys.modules[type(panel.online_import).__module__]
         with mock.patch.object(panel.matx_online_model, "source_for", lambda _r: source), \
                 mock.patch.object(module.debug, "status") as status:
             found = panel.online_import.source_for(record)
-        return found[1], [call.args[0] for call in status.call_args_list], messages
+        return found, [call.args[0] for call in status.call_args_list], messages
+
+    def _source_for(self, available):
+        found, said, messages = self._found(available)
+        return found[1], said, messages
+
+    def test_no_offered_label_that_is_a_resolution_picks_nothing(self):
+        found, said, messages = self._found(["original", "8b"])
+        refused = messages.MATX_NO_RESOLUTION_OFFERED % "Rust"
+        self.assertEqual((None, None, refused), found)
+        self.assertEqual([refused], said)
+        self.assertIsNone(matx_sources.pick_resolution(["original", "8b"], "2k"))
+
+    def test_a_set_resolution_that_does_not_parse_picks_nothing(self):
+        found, said, messages = self._found(["1k", "2k", "4k"], wanted="best")
+        refused = messages.MATX_RESOLUTION_SETTING_UNREADABLE % ("best", "Rust")
+        self.assertEqual((None, None, refused), found)
+        self.assertEqual([refused], said)
+        self.assertIsNone(matx_sources.pick_resolution(["1k", "2k"], "best"))
+
+    def test_simready_picks_no_resolution(self):
+        """Its one texture set is fetched as it is: no resolution is asked for or picked."""
+        source = matx_sources.SimReadySource()
+        found, said, _messages = self._found([], source=source)
+        self.assertEqual((source, None, ""), found)
+        self.assertEqual([], said)
 
     def test_a_substitute_is_downloaded_and_said_once(self):
         used, said, messages = self._source_for(["1k", "4k"])

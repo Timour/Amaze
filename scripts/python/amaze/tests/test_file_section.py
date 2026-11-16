@@ -1424,8 +1424,8 @@ class EveryDelegateCapsTheWordsItsItemsSay(unittest.TestCase):
 class StarRowsLeftPreferencesTest(unittest.TestCase):
     """The badges draw the star as drawn, so the star-colour rows and keys left the preferences."""
 
-    def test_stale_star_keys_drop_and_future_keys_survive_a_save(self):
-        """save() keeps a newer build's unknown keys but drops the retired ones in `_RETIRED_KEYS`."""
+    def test_every_key_the_settings_code_does_not_know_survives_a_save(self):
+        """save() leaves a key it does not know as it is: no list of older names is kept."""
         import json
         p = test_support.fixture_prefs(self)
         p.save()
@@ -1434,7 +1434,7 @@ class StarRowsLeftPreferencesTest(unittest.TestCase):
             raw = json.load(handle)
         raw["star_color_mode"] = "custom"
         raw["star_custom_color"] = "#123456"
-        raw["texture_folders"] = ["/tex/a/"]    # the merged sections' retired quartets - a real pre-sweep settings.json carries these
+        raw["texture_folders"] = ["/tex/a/"]
         raw["geometry_favorites"] = ["/geo/c/rock.bgeo"]
         raw["hip_include_subfolders"] = True
         raw["file_section_migrated"] = True
@@ -1444,17 +1444,11 @@ class StarRowsLeftPreferencesTest(unittest.TestCase):
         p.save()
         with open(final, encoding="utf-8") as handle:
             after = json.load(handle)
-        for gone in ("star_color_mode", "star_custom_color",
-                     "texture_folders", "geometry_favorites",
-                     "hip_include_subfolders", "file_section_migrated"):
-            self.assertNotIn(
-                gone, after,
-                "a retired key rode the unknown-key courtesy back "
-                "into settings.json - it will now live there forever")
-        self.assertEqual(
-            "kept", after.get("key_from_a_newer_build"),
-            "the courtesy for a NEWER build's keys broke - retirement "
-            "must name its keys, not drop everything unknown")
+        for key in ("star_color_mode", "star_custom_color", "texture_folders",
+                    "geometry_favorites", "hip_include_subfolders", "file_section_migrated",
+                    "key_from_a_newer_build"):
+            self.assertEqual(raw[key], after.get(key),
+                             "%s was changed or removed by a save" % key)
 
 
 class PrefsComboFocusTest(unittest.TestCase):

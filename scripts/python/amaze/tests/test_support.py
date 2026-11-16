@@ -583,12 +583,12 @@ def fixture_panel(testcase, render_geometry=False):
     with open(os.path.join(config, "settings.json"), "w",
               encoding="utf-8") as handle:
         json.dump({"directory": library,
-                   "enabled_sections": list(ALL_SECTION_KEYS),
                    "library_user": FIXTURE_USER,    # in the settings file: the panel builds and loads its own Prefs
-                   "file_folders": [files],
-                   "file_location_records": {
-                       files: {"registered": True}},
-                   "last_file_folder": files}, handle)
+                   "users": {FIXTURE_USER: {
+                       "enabled_sections": list(ALL_SECTION_KEYS),
+                       "file_folders": [files],
+                       "file_location_records": {files: {"registered": True}},
+                       "last_file_folder": files}}}, handle)
 
     real_config_root = hostos_mod.config_root
     hostos_mod.config_root = lambda: config

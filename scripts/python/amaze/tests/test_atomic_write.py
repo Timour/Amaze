@@ -780,20 +780,6 @@ class TheLibraryUserIsTheOneIdentityTest(unittest.TestCase):
         p.save()
         self.assertEqual("Chosen Name", self._prefs_at(home).library_user)
 
-    def test_an_existing_version_author_is_adopted(self):
-        """The adopted name BECOMES the user; the retired key is dropped on the next save."""
-        home = self._home()
-        self._write_settings(home, {"version_author": "Plum"})
-        p = self._prefs_at(home)
-        self.assertEqual("Plum", p.library_user)
-        p.save()
-        with open(os.path.join(home, "settings.json"),
-                  encoding="utf-8") as handle:
-            stored = json.load(handle)
-        self.assertNotIn("version_author", stored,
-                         "the retired key survived a save")
-        self.assertEqual("Plum", stored.get("library_user"))
-
     def test_no_identity_source_touches_the_author_path(self):
         """No identity reads the account or machine name in any module. ▸p/identity-is-chosen"""
         import io
@@ -939,14 +925,6 @@ class TheUserIsAUidWithANameTest(unittest.TestCase):
         p.library_user = uid
         self.assertEqual(users.RESOLVED, users.first_run_state(p))
         self.assertEqual(uid, users.current(p))
-
-    def test_versions_sign_with_the_readable_name(self):
-        """The UID identifies, the name signs; a UID stem is unreadable and matches nothing on disk."""
-        from amaze.core import users, versions
-        p = self._prefs()
-        uid = users.create(p, "Plum")
-        p.library_user = uid
-        self.assertEqual("Plum", versions.writer_tag(p))
 
 
 class TheUserListRowsTest(unittest.TestCase):

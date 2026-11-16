@@ -55,13 +55,13 @@ DEAD_STARS_REMOVED_DONE = 'Removed %s of files that are gone.'
 
 PUT_IN_UNCATEGORIZED_DONE = 'Put %s in %s.'
 
-CONFIRM_ADD_UNLISTED_TO_SECTION = "Add %d %s back to %s?"
+CONFIRM_RECOVER = "Recover %s?"
 SECTION_LIST_UNCHANGED_REASON = "Amaze did not change the %s database: %s."
 NOTHING_CHANGED_REASON = 'Amaze changed nothing: %s.'
 LIBRARY_CHANGED_SINCE_CHECK = "Something changed in the library since the check. Run Check Library again."
 
-UNLISTED_FILES_ADDED_BACK_DONE = "%d %s restored to %s. Each came back with the metadata saved beside its files: name, category and tags."
-UNLISTED_FILES_ADDED_BACK_SOME_UNNAMED = "%d %s restored to %s.\n\n%d of them had no metadata beside the files: they're in the %s category, named after their file — rename them as needed."
+ORPHANED_FILES_RECOVERED_DONE = "Recovered %s. Each came back with the metadata saved beside its files: name, category and tags."
+ORPHANED_FILES_RECOVERED_SOME_UNNAMED = "Recovered %s.\n\n%d of them had no metadata that could be read beside the files: they are in the %s category, named %s followed by their id. Rename them as needed."
 TILE_ICON_NOT_SAVED = "The tile icon could not be saved: %s The tile keeps its previous icon."
 USER_DELETE_CONFIRM = "Delete user \"%s\" from this library?"
 USER_NAME_TAKEN = "A user named \"%s\" already exists in this library. Choose another name."
@@ -70,10 +70,10 @@ MATERIAL_VERSIONS_TURN_ON_CONFIRM = "Turn on Material Versions for this library?
 LIBRARY_SETTING_NOT_WRITTEN = "The setting could not be written to the library folder, so it was not changed."
 PICTURE_NOT_COPIED_TO_LIBRARY = "That picture could not be copied into the library, so it was not added."
 PICTURE_COPIED_BUT_UNREADABLE = "That file was copied but couldn't be read as a picture, so it was not added."
-LIBRARY_INDEX_UNREADABLE = "The library's Materials database is corrupt/unreadable. Repair opens Check Library on it: you pick a backup to restore, or a rebuild from each asset's metadata. Open Without Library opens Amaze without touching the folder."
-DATABASE_STILL_UNREADABLE = "The Materials database still cannot be read, so Amaze opens without a library. Check Library on the Amaze shelf can restore a backup or rebuild it."
-LIBRARY_INDEX_UNREADABLE_SWITCHING = "The library's Materials database is corrupt/unreadable.\n\nRepair opens Check Library on it: you pick a backup to restore, or a rebuild from each asset's metadata.\n\nCancel leaves the folder unchanged and keeps the current library open."
-DATABASE_STILL_UNREADABLE_SWITCHING = "That library's Materials database still cannot be read, so Amaze keeps the library you have open."
+LIBRARY_INDEX_UNREADABLE = "The library's Materials database is corrupt/unreadable."
+DATABASE_STILL_UNREADABLE = "The Materials database cannot be read. Create a new Library or use Check Library on the Amaze shelf to restore a backup or rebuild it."
+LIBRARY_INDEX_UNREADABLE_SWITCHING = "The library's Materials database is corrupt/unreadable."
+DATABASE_STILL_UNREADABLE_SWITCHING = "The Materials database cannot be read."
 CONFIRM_REBUILD_DATABASE = "Rebuild the %s database from each asset's metadata?"
 HELP_REBUILD_DATABASE = "The %s database is replaced by one built from the metadata saved beside each asset's files in its folder. Category names come back; their order and colors may not."
 DATABASE_REBUILT_DONE = "The %s database is rebuilt from each asset's metadata: %s."
@@ -233,6 +233,10 @@ CONVERSION_CRASHED_LINE = '"%s": crashed - %s'
 
 MATX_RESOLUTION_SUBSTITUTED = '%s is not available for "%s"; %s was downloaded.'
 
+MATX_NO_RESOLUTION_OFFERED = 'None of the downloads offered for "%s" names a resolution, so it was not imported.'
+
+MATX_RESOLUTION_SETTING_UNREADABLE = 'The texture resolution set in Preferences, %s, is not a resolution, so "%s" was not imported.'
+
 CONVERSION_NO_WIRED_SURFACE ='no shader is wired into the Surface input of the Redshift material'
 
 ASSET_FAILED_TO_IMPORT_LINE = '"%s" failed to import: %s'
@@ -269,7 +273,7 @@ LOG_NOT_CLEARED = 'the debug log could not be cleared (%s). It is still there, a
 
 CHECK_LIBRARY_ONLY_A_REPORT = 'This Houdini session has already read this library, so this is only a report: open Amaze and use Library ▸ Check Library… to act on it.'
 
-ADD_BACK_WRITES_A_NEW_LIST = ' There is no %s database in the library folder, so Amaze writes a new one with these in it.'
+RECOVER_WRITES_A_NEW_DATABASE = ' There is no %s database in the library folder, so Amaze writes a new one with these in it.'
 
 PICK_AN_ACTION = 'What should Amaze do?'
 
@@ -278,8 +282,6 @@ COLUMN_ACTION = 'Action'
 PICK_LIST_TO_PUT_BACK = "Which database should Amaze restore? Each line is that database's newest backup."
 
 PICK_OLDER_COPY_TO_PUT_BACK = 'Which older backup of the %s database should Amaze restore?'
-
-PICK_SECTION_FOR_FILES = 'Which section do these %s belong in? Amaze cannot tell from the files themselves - a saved material and a saved node look the same in the folder.'
 
 COLUMN_NEWEST_SAVED_COPIES = 'Newest backups'
 
@@ -297,13 +299,11 @@ NO_EARLIER_LIST = 'There was no database here before, so there is nothing to go 
 
 BUTTON_SHOW_IN_FOLDER = 'Show in Folder'
 
-BUTTON_REPAIR_ADD_BACK = 'Add %s Back'
+BUTTON_REPAIR_RECOVER = 'Recover %s'
 
 BUTTON_REPAIR_PUT_COPY_BACK = 'Restore Backup'
 
 BUTTON_REBUILD_FROM_METADATA = 'Rebuild from Metadata'
-
-BUTTON_REPAIR_ADD_TO_SECTION = 'Add %s to a Section'
 
 BUTTON_REPAIR_MOVE_ASIDE = 'Move %s to Trash'
 
@@ -352,7 +352,7 @@ BUTTONS_REMOVE = ('Remove Them', 'Cancel')
 
 BUTTONS_PUT_THEM_THERE = ('Put Them There', 'Cancel')
 
-BUTTONS_ADD_BACK = ('Add Them Back', 'Cancel')
+BUTTONS_RECOVER = ('Recover', 'Cancel')
 
 BUTTONS_REPAIR_OR_OPEN_WITHOUT = ('Repair', 'Open Without Library')
 
@@ -390,8 +390,6 @@ HELP_DELETE_USER = 'Their favorites and registered folders are removed from this
 
 HELP_LOG_SAVED = 'It contains your file paths, asset and material names - check before sharing it.'
 
-HELP_ADD_BACK = 'Each one comes back with the metadata saved beside its files: name, category and tags.%s'
-
 HELP_PUT_SAVED_COPY_BACK = "That backup is from %s and holds %d %s. %s\n\nYour %s' own files and thumbnails are not touched either way, and the database you have now is backed up in the library folder first - run Check Library again and it offers that backup."
 
 HELP_MOVE_FILES_ASIDE = "%s They move into the library's trash folder and are deleted after 30 days. To restore one before then, copy it back into the library.\n\nEverything showing in Amaze stays.%s"
@@ -410,7 +408,7 @@ HELP_DEAD_STARS_GO_TOO = ' Favorites of files that are gone from a folder still 
 
 HELP_PUT_IN_UNCATEGORIZED = 'Each one has no category now, so it shows only under All.'
 
-HELP_ADD_TO_SECTION = 'Each one keeps the metadata saved beside its files (name, category and tags), and comes back where it was. Anything with no metadata comes back in a new category called %s, named %s plus the start of its file name, with no renderer badge until you save it again - rename those afterwards.\n\nIf there is a backup of the %s database from before they went missing, restoring that instead is still the closest match. Nothing here is deleted or overwritten either way.'
+HELP_RECOVER = 'Each one goes in the database of the folder its files are in: the materials folder in Materials, the nodes folder in Nodes. Each keeps the metadata saved beside its files: name, category and tags. One whose metadata cannot be read is recovered in a category called %s, named %s followed by its id, with no renderer badge until you save it again.%s\n\nIf there is a backup of a database from before they went missing, restoring that instead is still the closest match. Nothing here is deleted or overwritten either way.'
 
 
 SNIPPET_HAS_NO_CODE = "No code to save."

@@ -7,7 +7,6 @@ from amaze.core import renderers
 from amaze.helpers import hostos
 from amaze.prefs.persistence import (
     SHARED_KEYS,
-    _INTRODUCED_SECTIONS,
     _Persistence,
     _default_sections,
     _normalised_dir,
@@ -81,7 +80,7 @@ class Prefs(_Persistence):
         self._show_categories = True
         self._section_filters: dict = {}  # the Filter menu's choice per section key, as the entry's id
         self._view_mode = "grid"
-        self._thumbsize = 128  # grid (the legacy key); `_thumbsize_list` is the list view. Both match ClickSlider.DEFAULT_VALUE
+        self._thumbsize = 128  # the grid view; `_thumbsize_list` is the list view. Both match ClickSlider.DEFAULT_VALUE
         self._thumbsize_list = 128
         self._library_user = ""  # who this is; blank = nobody picked yet, never backfilled ▸p/identity-is-chosen
         self._file_folders: list[str] = []  # the File section's one folder/favourite/last quartet, and since 2026-08-12 the only one
@@ -98,9 +97,6 @@ class Prefs(_Persistence):
         self._libraries: list[str] = []  # the Library list, the most recently opened first
         self._hide_empty_categories = True  # for Materials, "empty" respects the active renderer filter
         self._enabled_sections = _default_sections()
-        self._sections_seen = {  # every section starts seen; load() recomputes from the active user's block
-            "enabled_sections_seen_%s" % key: True
-            for key in _INTRODUCED_SECTIONS}
         self._accent_color = "#5d7abd"  # size slider / progress bar; matches ClickSlider.LEFT_COLOR
         self._scroll_speed = 0.75  # wheel factor for the grid/list, settled by live tuning and shown as a percent in Preferences
         self._step_size = True  # the toolbar size slider rests only on its marks
@@ -179,7 +175,7 @@ class Prefs(_Persistence):
 
     @property
     def thumbsize(self) -> int:
-        """Icon size for GRID view, kept under the legacy 'thumbsize' key."""
+        """Icon size for GRID view, stored as `thumbsize`."""
         return self._thumbsize
 
     @thumbsize.setter

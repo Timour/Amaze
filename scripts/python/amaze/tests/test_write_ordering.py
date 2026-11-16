@@ -201,8 +201,7 @@ class SwitchingVersionsIsAllOrNothing(unittest.TestCase):
         ledger = versions.read_ledger(self.prefs, self.mat_id)
         archived = []
         for row in ledger["versions"]:
-            paths = versions._archive_paths(self.prefs, self.mat_id,
-                                            versions._row_stem(row))
+            paths = versions._archive_paths(self.prefs, self.mat_id, row["n"])
             if os.path.exists(paths[".mat"]):
                 with open(paths[".mat"], encoding="utf-8") as fh:
                     archived.append(fh.read(64))

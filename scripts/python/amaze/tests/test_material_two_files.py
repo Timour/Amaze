@@ -242,12 +242,13 @@ class AFullConversionTest(_OldLibrary):
         self.assertFalse(os.path.exists(os.path.join(self.nodes, "BOTH1.mat")))
 
         moved = os.path.join(self.materials, "versions", "MAT1")
-        self.assertEqual(["1.json", "1.mat", "versions.json"], sorted(os.listdir(moved)))
-        archive = asset_record.read(os.path.join(moved, "1.json"))
+        self.assertEqual(["MAT1_1.json", "MAT1_1.mat", "versions.json"],
+                         sorted(os.listdir(moved)))
+        archive = asset_record.read(os.path.join(moved, "MAT1_1.json"))
         self.assertEqual(CONVERTED_BUILDER, archive["builder"])
         self.assertEqual({}, archive["metadata"], "a version archived metadata")
         self.assertEqual("redshift_vopnet", asset_record.read(os.path.join(
-            self.nodes, "versions", "NODE1", "2.json"))["builder"]["type"])
+            self.nodes, "versions", "NODE1", "NODE1_2.json"))["builder"]["type"])
         self.assertFalse(os.path.exists(os.path.join(self.nodes, "versions", "NODE1",
                                                      "2.interface")))
 
@@ -654,40 +655,60 @@ class TheBoxesTest(_OldLibrary):
         self.assertEqual(messages.CONVERT_LIBRARY_DONE, shown[-1][0])
 
 
-class EveryLedgerRowIsNamedTest(_OldLibrary):
-    """The converter writes each old ledger row's file name; a row with none has no files."""
+class EveryVersionFileIsRenamedTest(_OldLibrary):
+    """The converter names each old version file `<id>_<n>.*` and drops `file` from the rows."""
 
     def lay_out(self):
         self.database("library.json", ["MAT2"])
+        self.database("code.json", ["CODE2"])
         self.old_asset("MAT2")
         folder = os.path.join(self.old, "versions", "MAT2")
         for number in (1, 2):
             write(os.path.join(folder, "%d.mat" % number), "version %d\n" % number)
             write(os.path.join(folder, "%d.interface" % number), INTERFACE)
+        write(os.path.join(folder, "Crimson-4.mat"), "version 4\n")
+        write(os.path.join(folder, "Crimson-4.png"), b"picture 4")
+        write(os.path.join(folder, "Cobalt-3.mat"), "a file no row names\n")
         write(os.path.join(folder, "versions.json"),
               {"active": 2, "versions": [{"n": 1, "name": "V1"},
-                                         {"n": 2, "name": "V2", "file": "2"}]})
+                                         {"n": 2, "name": "V2", "file": "2"},
+                                         {"n": 4, "name": "V4", "file": "Crimson-4"}]})
+        code = self.at("code", "versions", "CODE2")
+        write(os.path.join(code, "1.txt"), "print(1)\n")
+        write(os.path.join(code, "Crimson-2.txt"), "print(2)\n")
+        write(os.path.join(code, "versions.json"),
+              {"active": 2, "versions": [{"n": 1, "name": "V1"},
+                                         {"n": 2, "name": "V2", "file": "Crimson-2"}]})
 
     def ledger(self, *parts) -> dict:
         with open(os.path.join(*parts, "versions.json"), encoding="utf-8") as handle:
             return json.load(handle)
 
-    def test_the_converter_names_every_old_row(self):
+    def test_every_old_file_takes_the_new_name(self):
         self.lay_out()
         self.assertEqual(library_conversion.DONE, self.convert()[0].status)
-        rows = self.ledger(self.materials, "versions", "MAT2")["versions"]
-        self.assertEqual(["1", "2"], [row.get("file") for row in rows])
-        self.assertTrue(versions.version_file(self.prefs, "MAT2", 1).endswith("1.mat"))
-
-    def test_a_row_with_no_name_finds_no_files(self):
-        self.lay_out()
-        self.convert()
         folder = os.path.join(self.materials, "versions", "MAT2")
-        ledger = self.ledger(folder)
-        del ledger["versions"][0]["file"]
-        write(os.path.join(folder, "versions.json"), ledger)
-        self.assertEqual("", versions.version_file(self.prefs, "MAT2", 1))
-        self.assertFalse(versions.switch_active(self.prefs, "MAT2", 1))
+        self.assertEqual(["MAT2_1.json", "MAT2_1.mat", "MAT2_2.json", "MAT2_2.mat",
+                          "MAT2_3.mat", "MAT2_4.mat", "MAT2_4.png", "versions.json"],
+                         sorted(os.listdir(folder)))
+        rows = self.ledger(folder)["versions"]
+        self.assertEqual([[], [], []], [[key for key in row if key == "file"] for row in rows])
+        self.assertTrue(versions.version_file(self.prefs, "MAT2", 1).endswith("MAT2_1.mat"))
+        self.assertTrue(versions.version_file(self.prefs, "MAT2", 4).endswith("MAT2_4.mat"))
+        code = self.at("code", "versions", "CODE2")
+        self.assertEqual(["CODE2_1.txt", "CODE2_2.txt", "versions.json"],
+                         sorted(os.listdir(code)))
+        self.assertEqual([None, None], [row.get("file") for row in self.ledger(code)["versions"]])
+
+    def test_the_new_names_are_the_only_version_names(self):
+        for relative, kind in (("materials/versions/MAT2/MAT2_3.mat", library_files.VERSION),
+                               ("nodes/versions/N1/N1_12.json", library_files.VERSION),
+                               ("code/versions/C1/C1_2.txt", library_files.VERSION),
+                               ("materials/versions/MAT2/3.mat", library_files.UNKNOWN),
+                               ("materials/versions/MAT2/Crimson-3.mat", library_files.UNKNOWN),
+                               ("materials/versions/MAT2/OTHER_3.mat", library_files.UNKNOWN)):
+            with self.subTest(relative=relative):
+                self.assertEqual(kind, library_files.classify(relative)[0])
 
 
 class OnlyTheConverterNamesFormat3Test(unittest.TestCase):
@@ -732,6 +753,30 @@ class OnlyTheConverterNamesFormat3Test(unittest.TestCase):
                                                            number, name))
         self.assertGreater(checked, 50, "premise: the package was found")
         self.assertEqual([], offenders, "format 3 named outside the converter:\n"
+                         + "\n".join(offenders))
+
+    SETTINGS_NAMES = ("texture_folders", "texture_favorites", "last_texture_folder",
+                      "texture_include_subfolders", "geometry_folders", "geometry_favorites",
+                      "last_geometry_folder", "geometry_include_subfolders", "hip_folders",
+                      "hip_favorites", "last_hip_folder", "hip_include_subfolders",
+                      "file_section_migrated", "version_author", '"asset_dir"',
+                      "star_color_mode", "star_custom_color", '"file_folder_names"',
+                      '"file_folder_colors"', '"file_folder_show_all"',
+                      '"file_recursive_folders"', "file_include_subfolders", "last_renderer",
+                      "enabled_sections_seen", "migrat", "legacy", "retired", "retire")
+
+    def test_the_settings_code_names_no_older_layout(self):
+        """`prefs/` reads and writes one settings layout: no older key, and no code to move one."""
+        folder = os.path.join(PACKAGE, "prefs")
+        offenders = []
+        for name in sorted(os.listdir(folder)):
+            if not name.endswith(".py"):
+                continue
+            with open(os.path.join(folder, name), encoding="utf-8") as handle:
+                for number, line in enumerate(handle, 1):
+                    offenders += ["prefs/%s:%d %s" % (name, number, old)
+                                  for old in self.SETTINGS_NAMES if old in line.lower()]
+        self.assertEqual([], offenders, "an older settings layout named in prefs/:\n"
                          + "\n".join(offenders))
 
 
@@ -784,7 +829,8 @@ class AMetadataEditMakesNoVersionTest(_Library):
         self.assertTrue(versions.keep_base(self.prefs, self.ASSET))
         self.assertEqual(1, versions.version_count(self.prefs, self.ASSET),
                          "a metadata edit was archived as a new version")
-        with open(os.path.join(versions.versions_dir(self.prefs, self.ASSET), "1.json"),
+        with open(os.path.join(versions.versions_dir(self.prefs, self.ASSET),
+                               self.ASSET + "_1.json"),
                   encoding="utf-8") as handle:
             self.assertNotIn("metadata", json.load(handle))
 
