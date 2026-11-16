@@ -498,6 +498,16 @@ def with_fixture_user(library) -> str:
     return library
 
 
+def repair_from_preferences(testcase, panel):
+    """Preferences on `panel`, its Databases button pressed twice: Check, then Repair."""
+    from amaze.dialogs import prefs_dialog
+    dialog = prefs_dialog.PrefsDialog(panel.prefs, panel=panel)
+    testcase.addCleanup(dialog.deleteLater)
+    dialog.check_or_repair()
+    dialog.check_or_repair()
+    return dialog
+
+
 def backup_now(library, name: str) -> str:
     """Database `name` as it is now, kept as a backup Check Library offers; the backup's path."""
     import datetime

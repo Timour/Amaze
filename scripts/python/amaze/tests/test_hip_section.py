@@ -2039,10 +2039,11 @@ class CheckLibraryConfirmsBeforeChangingTest(unittest.TestCase):
     def test_it_does_not_announce_a_finish_with_nothing_to_say(self):
         self.assertNotIn("displayMessage(", self._source("actions", "check.py"))
         code = self._source("dialogs", "repair_dialog.py")
-        door = code[code.find("def check_in_panel("):code.find("\ndef ", code.find("def check_in_panel("))]
-        self.assertTrue(door, "premise: the panel door is gone")
-        self.assertNotIn("displayMessage(", door,
-                         "the panel door speaks beyond the report and what each action did")
+        start = code.find("def repair_found(")
+        door = code[start:code.find("\ndef ", start)]
+        self.assertTrue(door, "premise: the Repair dialog is gone")
+        self.assertEqual(2, door.count("displayMessage("),
+                         "the Repair dialog speaks beyond what it found and what the fix did")
 
 
 if __name__ == "__main__":

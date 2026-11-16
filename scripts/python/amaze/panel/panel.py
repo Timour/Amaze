@@ -2050,17 +2050,8 @@ class AmazePanel(QtWidgets.QWidget):
         library.say_unlisted(unlisted)    # the status line, last
 
     def check_library(self) -> None:
-        """Library ▸ Check Library…: the report and its actions, every model read again after each."""
-        ui = getattr(hou, "ui", None)
-        if ui is None:
-            return
-        if not self.material_model:
-            ui.displayMessage(messages.NO_LIBRARY_OPEN,
-                              title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
-            return
-        from amaze.dialogs import repair_dialog
-        library_db.flush()    # Check Library reads the databases as they are on disk
-        repair_dialog.check_in_panel(self)
+        """Library ▸ Check Library…: Preferences on its Library tab, at the Databases row."""
+        self.set_library()
 
     def stand_again(self) -> None:
         """The shown section's highlight back on what its grid shows, after the rows were read again."""

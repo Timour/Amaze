@@ -254,8 +254,9 @@ class _AssetSidebarPaths(_HighlightCase):
 
         def clean_up():
             self.stand()
-            with mock.patch.object(hou, "ui", _check_ui("Uncategorized", "Put Them There"), create=True):
-                panel.check_library()
+            panel.prefs.add_file_favorite(os.path.join(panel.prefs.file_folders[0], "gone.exr"))
+            with mock.patch.object(hou, "ui", _check_ui("Fix Safe"), create=True):
+                test_support.repair_from_preferences(self, panel)
         self.check("Check Library", clean_up, grid="")    # a re-read stands on the first row, as Reload does
 
         def tab_and_back():
@@ -490,8 +491,8 @@ class FileSidebarTest(_HighlightCase, unittest.TestCase):
         def clean_up():
             self.stand(gone)
             shutil.rmtree(gone)
-            with mock.patch.object(hou, "ui", _check_ui("Set Aside", "Set Them Aside"), create=True):
-                panel.check_library()
+            with mock.patch.object(hou, "ui", _check_ui("Fix Safe"), create=True):
+                test_support.repair_from_preferences(self, panel)
         self.check("Check Library sets the browsed location aside", clean_up)
 
         missing = tempfile.mkdtemp(prefix="amaze_missing_location_")

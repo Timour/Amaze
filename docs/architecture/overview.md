@@ -864,12 +864,15 @@ contracts other code and the docs lean on:
   files back, rebuild a lost database from each asset's `<id>.json`.
 - **One engine, two doors.** `repair.survey` walks the library once
   (`library_files.walk`, one `os.scandir` per folder) and every report,
-  button and count reads that one dict. The panel door
-  (Preferences ▸ Library ▸ Check → `panel.check_library` →
-  `repair_dialog.check_in_panel`) saves every model first
-  (`check.let_go`), acts with `guard=False`, and reads every model again
-  after each action (`check.read_again`), so nothing waits for a
-  restart. The shelf door (`repair_dialog.run`) acts with `guard=True`,
+  button and count reads that one dict. The panel door is Preferences ▸
+  Library's Databases row (`Library ▸ Check Library…` opens that tab):
+  its button saves every model first (`check.let_go`), surveys, and
+  shows `library_check.summary` as three lights; once something can be
+  fixed it reads Repair and opens `repair_dialog.repair_found`, whose
+  Fix Safe and Fix All act with `guard=False`, read every model again
+  (`check.read_again`) and check again. A part that cannot be judged
+  (a database in use, a folder that cannot be listed) is never fixed.
+  The shelf door (`repair_dialog.run`) acts with `guard=True`,
   refuses while an Amaze pane is open, and only reports once this
   session holds a list.
 - **The default Move Aside takes only what Amaze made**: unlisted asset
@@ -1127,11 +1130,15 @@ core/repair.py            CHECK LIBRARY's engine: one `survey` from one
                           `move_aside`, set aside, uncategorised), each
                           taking `guard`; the only module that opens a
                           format 3 stamp; no `hou`, no Qt, no dialog
-dialogs/repair_dialog.py  Check Library's report, buttons, confirms
-                          and answers for both doors: the shelf tool's
-                          `run`, the panel's `check_in_panel`; past
-                          `MOST_BUTTONS` actions, Choose an Action;
-                          never imports the pane
+core/library_check.py     Preferences' Databases row over `repair`: the
+                          three lights (`summary`: Errors, Files, Ref),
+                          the Repair dialog's lines, and the two fixes,
+                          `fix_safe` and `fix_all`; no `hou`, no Qt
+dialogs/repair_dialog.py  the shelf tool's report, buttons, confirms
+                          and answers (`run`, `check_failed_library`;
+                          past `MOST_BUTTONS` actions, Choose an
+                          Action), and `repair_found`, the Repair dialog
+                          Preferences opens; never imports the pane
 core/updater.py           is a newer Amaze released, and can this one
                           become it - asked only on request, never at
                           launch (shelf tool + the About tab button)

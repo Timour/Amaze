@@ -14,7 +14,8 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze.core import asset_record, guard, library_files, repair  # noqa: E402
+from amaze import messages  # noqa: E402
+from amaze.core import asset_record, guard, library_check, library_files, repair  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
 MATERIALS = library_files.MATERIALS
@@ -523,6 +524,335 @@ class TheFixesKeepTheirWordTest(_Library):
         with mock.patch.object(repair_dialog.ui_helpers, "reveal") as reveal:
             repair_dialog.act(findings, "holding")
         reveal.assert_called_once_with(findings["holding"]["path"])
+
+
+def _corrupt(directory: str, name: str = MATERIALS) -> None:
+    with open(os.path.join(directory, name), "w", encoding="utf-8") as handle:
+        handle.write("{ ruined")
+
+
+class TheThreeLightsTest(_Library):
+    """Errors, Files and Ref: each light's state and count, the line, and whether Repair shows."""
+
+    def lights(self, findings=None) -> dict:
+        return library_check.summary(findings or self.survey())
+
+    def files_prefs(self):
+        test_support.reset_database_singletons()
+        prefs = test_support.fixture_prefs(self)
+        folder = test_support.scratch_dir("amaze_check_lights_")
+        self.addCleanup(shutil.rmtree, folder, True)
+        return prefs, folder
+
+    def test_a_clean_library_is_green_with_nothing_to_repair(self):
+        found = self.lights()
+        self.assertEqual((library_check.CLEAN, 0), found["lights"][library_check.ERRORS])
+        self.assertEqual((library_check.CLEAN, 0), found["lights"][library_check.FILES])
+        self.assertEqual(messages.CHECK_NOTHING_TO_REPAIR, found["info"])
+        self.assertEqual([], found["lines"])
+        self.assertFalse(found["fixable"])
+
+    def test_references_are_not_judged_without_the_files_section(self):
+        self.assertEqual((library_check.UNJUDGED, None),
+                         self.lights()["lights"][library_check.REFS])
+
+    def test_a_corrupt_database_is_one_error_and_leaves_the_files_unjudged(self):
+        _corrupt(self.dir)
+        self.asset("ORPHAN1")
+        found = self.lights()
+        self.assertEqual((library_check.FOUND, 1), found["lights"][library_check.ERRORS])
+        self.assertEqual((library_check.UNJUDGED, None), found["lights"][library_check.FILES])
+        self.assertEqual("The Materials database is corrupt.", found["info"])
+        self.assertEqual(["The Materials database is corrupt."], found["lines"])
+        self.assertTrue(found["fixable"], "a rebuild from the assets' files is not offered")
+
+    def test_a_missing_database_is_an_error(self):
+        os.remove(os.path.join(self.dir, MATERIALS))
+        found = self.lights()
+        self.assertEqual((library_check.FOUND, 1), found["lights"][library_check.ERRORS])
+        self.assertEqual("The Materials database is missing.", found["info"])
+
+    def test_a_newer_database_is_an_error_nothing_here_fixes(self):
+        _write(self.dir, NODES, {"assets": {}, "format": 99})
+        found = self.lights()
+        self.assertEqual((library_check.FOUND, 1), found["lights"][library_check.ERRORS])
+        self.assertEqual("The Nodes database is from a newer Amaze.", found["info"])
+        self.assertFalse(found["fixable"])
+
+    def test_a_database_in_use_turns_every_light_amber_and_offers_no_fix(self):
+        self.asset("ORPHAN1", {"id": "ORPHAN1", "name": "Slate"})
+        with mock.patch.object(guard.Guard, "_waiting", lambda self: True):
+            findings = self.survey()
+        found = self.lights(findings)
+        for part in library_check.PARTS:
+            self.assertEqual((library_check.UNJUDGED, None), found["lights"][part], part)
+        self.assertEqual("The Library database is in use.", found["info"])
+        self.assertEqual([], found["lines"])
+        self.assertFalse(found["fixable"])
+        self.assertEqual([], library_check.all_fixes(findings))
+        before = _read(self.dir, MATERIALS)
+        done = library_check.fix_all(findings, guard_session=False)
+        self.assertEqual([], library_check.done_lines(done))
+        self.assertEqual(before, _read(self.dir, MATERIALS))
+
+    def test_a_folder_that_cannot_be_listed_leaves_the_files_unjudged(self):
+        if hasattr(os, "getuid") and os.getuid() == 0:
+            self.skipTest("root lists every folder")
+        os.chmod(self.materials, 0)
+        self.addCleanup(os.chmod, self.materials, 0o755)
+        found = self.lights()
+        self.assertEqual((library_check.UNJUDGED, None), found["lights"][library_check.FILES])
+        self.assertEqual("The materials folder cannot be read.", found["info"])
+        self.assertFalse(found["fixable"])
+
+    def test_a_row_whose_mat_is_gone(self):
+        os.remove(os.path.join(self.materials, "AAA1.mat"))
+        found = self.lights()
+        self.assertEqual((library_check.FOUND, 1), found["lights"][library_check.FILES])
+        self.assertEqual("1 material listed in the database has no files.", found["info"])
+        self.assertTrue(found["fixable"])
+        self.assertFalse(found["safe"], "removing an entry is not a safe fix")
+
+    def test_files_no_database_lists(self):
+        self.asset("NEW1", {"id": "NEW1", "name": "Slate"})
+        found = self.lights()
+        self.assertEqual((library_check.FOUND, 3), found["lights"][library_check.FILES])
+        self.assertEqual("3 files in materials/ are in no database.", found["info"])
+        self.assertTrue(found["safe"])
+
+    def test_a_row_with_no_picture_is_found_and_not_fixable(self):
+        os.remove(os.path.join(self.materials, "AAA1.png"))
+        found = self.lights()
+        self.assertEqual((library_check.FOUND, 1), found["lights"][library_check.FILES])
+        self.assertEqual("1 material has no picture.", found["info"])
+        self.assertFalse(found["fixable"])
+
+    def test_leftovers_unknown_files_and_conflict_copies(self):
+        _make(os.path.join(self.materials, "AAA1.interface"))
+        _make(os.path.join(self.dir, "notes.txt"))
+        _make(os.path.join(self.dir, "stuff", "a.bin"))
+        _make(os.path.join(self.materials, "AAA1 2.png"), b"y")
+        found = self.lights()
+        self.assertEqual((library_check.FOUND, 4), found["lights"][library_check.FILES])
+        self.assertEqual(["1 file is left over from Amaze's own work.",
+                          "1 file and 1 folder are not known to Amaze.",
+                          "1 conflict copy from a sync service."], found["lines"])
+        self.assertTrue(found["fixable"])
+
+    def test_the_most_serious_finding_is_the_line(self):
+        os.remove(os.path.join(self.materials, "AAA1.mat"))
+        _make(os.path.join(self.dir, "notes.txt"))
+        found = self.lights()
+        self.assertEqual(found["lines"][0], found["info"])
+        self.assertIn("has no files", found["lines"][0])
+
+    def test_a_favorite_of_a_file_that_is_gone(self):
+        prefs, folder = self.files_prefs()
+        prefs.add_file_folder(folder)
+        star = _make(os.path.join(folder, "shot.exr"))
+        prefs.add_file_favorite(star)
+        clean = library_check.lights(repair.survey(prefs))[library_check.REFS]
+        self.assertEqual((library_check.CLEAN, 0), clean)
+        os.remove(star)
+        findings = repair.survey(prefs)
+        self.assertEqual((library_check.FOUND, 1),
+                         library_check.lights(findings)[library_check.REFS])
+        self.assertIn("1 favorite is of a file that is gone.",
+                      library_check.finding_lines(findings))
+        self.assertIn("favorites", library_check.safe_fixes(findings))
+
+    def test_a_folder_of_the_files_section_that_is_gone(self):
+        prefs, folder = self.files_prefs()
+        gone = os.path.join(folder, "gone")
+        os.makedirs(gone)
+        prefs.add_file_folder(gone)
+        os.rmdir(gone)
+        findings = repair.survey(prefs)
+        self.assertEqual((library_check.FOUND, 1),
+                         library_check.lights(findings)[library_check.REFS])
+        self.assertIn("1 folder in the Files section is gone.",
+                      library_check.finding_lines(findings))
+
+    def test_a_drive_that_is_not_connected_leaves_the_references_unjudged(self):
+        prefs, folder = self.files_prefs()
+        away = os.path.join(folder, "away")
+        prefs.add_file_folder(away)
+        with mock.patch.object(repair.hostos, "volume_unreachable",
+                               lambda path: os.path.normpath(path) == os.path.normpath(away)):
+            findings = repair.survey(prefs)
+        self.assertEqual((library_check.UNJUDGED, None),
+                         library_check.lights(findings)[library_check.REFS])
+
+
+class _Broken(_Library):
+    """The small library with an unlisted pair, a row with no `.mat`, a leftover and unknowns."""
+
+    def setUp(self):
+        super().setUp()
+        self.asset("NEW1", {"id": "NEW1", "name": "Slate", "categories": ["Roofs"],
+                            "renderer": "Karma"})
+        os.remove(os.path.join(self.materials, "AAA1.mat"))
+        _make(os.path.join(self.materials, "AAA2.interface"))
+        _make(os.path.join(self.dir, "notes.txt"))
+        _make(os.path.join(self.dir, "stuff", "a.bin"))
+
+    def trashed(self) -> list:
+        root = os.path.join(self.dir, "trash")
+        return sorted(name for _here, _dirs, names in os.walk(root) for name in names)
+
+
+class TheTwoFixesTest(_Broken):
+    """Fix Safe adds and tidies only; Fix All also removes, trashes and brings a database back."""
+
+    def test_fix_safe_recovers_and_trashes_removes_and_replaces_nothing(self):
+        with mock.patch.object(guard.Guard, "restore") as restore, \
+                mock.patch.object(guard.Change, "replace") as replace, \
+                mock.patch.object(guard.Change, "trash") as trash:
+            done = library_check.fix_safe(self.survey(), guard_session=False)
+        self.assertEqual(["1 material added to the database."], library_check.done_lines(done))
+        stored = _read(self.dir, MATERIALS)
+        self.assertEqual("Slate", stored["assets"]["NEW1"]["name"])
+        self.assertIn("AAA1", stored["assets"], "Fix Safe removed an entry")
+        self.assertEqual([], self.trashed(), "Fix Safe moved something to the trash")
+        for kept in ("materials/AAA2.interface", "notes.txt", "stuff/a.bin", "materials/AAA1.png"):
+            self.assertTrue(os.path.exists(os.path.join(self.dir, *kept.split("/"))), kept)
+        for step in (restore, replace, trash):
+            step.assert_not_called()
+
+    def test_fix_all_also_removes_the_entry_and_trashes_the_leftovers(self):
+        done = library_check.fix_all(self.survey(), guard_session=False)
+        self.assertEqual(["1 material added to the database.",
+                          "1 material removed from the database.",
+                          "4 files and 1 folder moved to the trash."],
+                         library_check.done_lines(done))
+        stored = _read(self.dir, MATERIALS)
+        self.assertEqual({"AAA2", "NEW1"}, set(stored["assets"]))
+        self.assertEqual(["AAA1.json", "AAA1.png", "AAA2.interface", "a.bin", "notes.txt"],
+                         self.trashed())
+        self.assertFalse(os.path.exists(os.path.join(self.dir, "stuff")))
+        after = library_check.summary(self.survey())
+        self.assertEqual((library_check.CLEAN, 0), after["lights"][library_check.FILES])
+        self.assertFalse(after["fixable"])
+
+    def test_fix_all_restores_the_newest_backup_of_a_corrupt_database(self):
+        test_support.backup_now(self.dir, MATERIALS)
+        _corrupt(self.dir)
+        done = library_check.fix_all(self.survey(), guard_session=False)
+        self.assertEqual([MATERIALS], done["restored"])
+        self.assertEqual([], done["rebuilt"])
+        self.assertIn("1 database restored from its backup.", library_check.done_lines(done))
+        self.assertEqual({"AAA2", "NEW1"}, set(_read(self.dir, MATERIALS)["assets"]),
+                         "the files were not repaired once the database read again")
+
+    def test_fix_all_restores_a_missing_database(self):
+        test_support.backup_now(self.dir, MATERIALS)
+        os.remove(os.path.join(self.dir, MATERIALS))
+        done = library_check.fix_all(self.survey(), guard_session=False)
+        self.assertEqual([MATERIALS], done["restored"])
+        self.assertIn("AAA2", _read(self.dir, MATERIALS)["assets"])
+
+    def test_fix_all_rebuilds_a_corrupt_database_that_has_no_backup(self):
+        _corrupt(self.dir)
+        done = library_check.fix_all(self.survey(), guard_session=False)
+        self.assertEqual([MATERIALS], done["rebuilt"])
+        self.assertIn("1 database rebuilt from the assets' own files.",
+                      library_check.done_lines(done))
+        self.assertEqual({"AAA2", "NEW1"}, set(_read(self.dir, MATERIALS)["assets"]))
+
+    def test_fix_safe_leaves_a_corrupt_database_as_it_is(self):
+        _corrupt(self.dir)
+        done = library_check.fix_safe(self.survey(), guard_session=False)
+        self.assertEqual([], library_check.done_lines(done))
+        with open(os.path.join(self.dir, MATERIALS), encoding="utf-8") as handle:
+            self.assertEqual("{ ruined", handle.read())
+
+
+class TheRepairDialogTest(_Broken):
+    """The Repair dialog through a stand-in `hou.ui`: its text, its buttons, what each one does."""
+
+    def run_dialog(self, pick: int, findings=None) -> list:
+        from amaze.dialogs import repair_dialog
+        shown = []
+
+        def display(text, **kwargs):
+            shown.append((text, kwargs))
+            return pick if len(shown) == 1 else 0
+
+        changed = []
+        with mock.patch.object(repair_dialog.hou, "ui",
+                               mock.Mock(displayMessage=display), create=True):
+            self.landed = repair_dialog.repair_found(
+                findings or self.survey(), guard=False, changed=lambda: changed.append(1))
+        self.changed = len(changed)
+        return shown
+
+    def test_the_text_and_the_buttons_with_cancel_the_default_and_the_close(self):
+        shown = self.run_dialog(2)
+        text, asked = shown[0]
+        self.assertEqual(
+            "Check Library found:\n\n"
+            "1 material listed in the database has no files.\n"
+            "3 files in materials/ are in no database.\n"
+            "1 file is left over from Amaze's own work.\n"
+            "1 file and 1 folder are not known to Amaze.", text)
+        self.assertEqual(("Fix All", "Fix Safe", "Cancel"), tuple(asked["buttons"]))
+        self.assertEqual((2, 2), (asked["default_choice"], asked["close_choice"]))
+        self.assertEqual("Amaze", asked["title"])
+        self.assertEqual(1, len(shown), "Cancel said something")
+        self.assertEqual((False, 0), (self.landed, self.changed))
+        self.assertIn("AAA1", _read(self.dir, MATERIALS)["assets"])
+        self.assertEqual([], self.trashed())
+
+    def test_fix_safe_says_what_it_did_as_counts(self):
+        shown = self.run_dialog(1)
+        self.assertEqual(["1 material added to the database."],
+                         [text for text, _asked in shown[1:]])
+        self.assertEqual("Amaze", shown[1][1]["title"])
+        self.assertEqual((True, 1), (self.landed, self.changed))
+        self.assertEqual([], self.trashed())
+
+    def test_fix_all_says_what_it_did_as_counts(self):
+        shown = self.run_dialog(0)
+        self.assertEqual(["1 material added to the database.\n"
+                          "1 material removed from the database.\n"
+                          "4 files and 1 folder moved to the trash."],
+                         [text for text, _asked in shown[1:]])
+        self.assertNotIn("AAA1", _read(self.dir, MATERIALS)["assets"])
+
+    def test_with_nothing_safe_to_do_fix_safe_is_not_offered(self):
+        os.remove(os.path.join(self.materials, "NEW1.mat"))
+        os.remove(os.path.join(self.materials, "NEW1.json"))
+        shown = self.run_dialog(1)
+        self.assertEqual(("Fix All", "Cancel"), tuple(shown[0][1]["buttons"]))
+        self.assertEqual(1, len(shown))
+
+
+class EachRepairGoesRedWhenItIsBrokenTest(unittest.TestCase):
+    """Sabotage: each of the two fixes' tests fails when the step it stands on does nothing."""
+
+    SABOTAGES = (
+        ("test_fix_safe_recovers_and_trashes_removes_and_replaces_nothing",
+         "amaze.core.guard.Change.put", lambda *_a, **_k: None),
+        ("test_fix_all_also_removes_the_entry_and_trashes_the_leftovers",
+         "amaze.core.guard.Change.trash", lambda *_a, **_k: None),
+        ("test_fix_all_also_removes_the_entry_and_trashes_the_leftovers",
+         "amaze.core.repair.drop_rows_without_files", lambda *_a, **_k: {}),
+        ("test_fix_all_restores_the_newest_backup_of_a_corrupt_database",
+         "amaze.core.guard.Guard.restore", lambda *_a, **_k: None),
+        ("test_fix_all_restores_a_missing_database",
+         "amaze.core.guard.Guard.restore", lambda *_a, **_k: None),
+        ("test_fix_all_rebuilds_a_corrupt_database_that_has_no_backup",
+         "amaze.core.guard.Change.replace", lambda *_a, **_k: None),
+    )
+
+    def test_every_repair_test_catches_its_sabotage(self):
+        for name, target, broken in self.SABOTAGES:
+            with self.subTest(name=name, target=target):
+                result = unittest.TestResult()
+                with mock.patch(target, broken):
+                    TheTwoFixesTest(name).run(result)
+                self.assertTrue(result.failures or result.errors,
+                                "%s stayed green with %s broken" % (name, target))
 
 
 class EachFixGoesRedWhenItIsBrokenTest(unittest.TestCase):

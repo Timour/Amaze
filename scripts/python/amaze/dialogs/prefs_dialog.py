@@ -10,8 +10,9 @@ from PySide6.QtGui import QCloseEvent
 import amaze
 from amaze import amazetheme
 from amaze import branding
-from amaze.core import (debug, library_policy, library_settings, model_registry, renderers,
-                        section_list, texture_library, users)
+from amaze.core import (debug, library_check, library_policy, library_settings, model_registry,
+                        renderers, repair, section_list, texture_library, users)
+from amaze.actions import check as check_actions
 from amaze.actions import library as library_actions
 from amaze.dialogs import base_dialog, library_dialog, user_dialog
 from amaze.helpers import hostos
@@ -30,6 +31,7 @@ PREFS_FRAMES = ("P01", "P02", "P03a", "P03b", "P04", "P05", "P06")   # the drawn
 VERSION_STEM = branding.APP_NAME + " v"   # what the drawn version line opens with
 FORMAT_STEM = amazetheme.LABEL_LIBRARY_FORMAT.split("%")[0]    # P01's drawn Format line opens with it
 APPLY_LINE_STEM = amazetheme.LABEL_UPGRADES_LIBRARY.split("%")[0]    # and the line beside Apply
+CHECK_INFO_STEM = "Info box"    # P01's drawn sample of the Databases row's line opens with it
 
 _logo_cache = None   # rendered once, reused as a QTextDocument resource for the About page
 
@@ -120,13 +122,40 @@ def _ink(label, color: str) -> None:
                         % (ink.red(), ink.green(), ink.blue(), ink.alpha()))
 
 
-def _content_holder(inner) -> QtWidgets.QWidget:
+def _content_holder(inner, width: int = amazetheme.PREFS_CONTENT_WIDTH) -> QtWidgets.QWidget:
     """`inner` (a layout) inside a widget pinned to the drawn content column. ▸r/tabwidget-adds-eight"""
     holder = QtWidgets.QWidget()
     inner.setContentsMargins(0, 0, 0, 0)    # the page already carries the drawn margin
     holder.setLayout(inner)
-    holder.setFixedWidth(theme.ui_px(amazetheme.PREFS_CONTENT_WIDTH))
+    holder.setFixedWidth(theme.ui_px(width))
     return holder
+
+
+def _drawn_reach(frame_key: str) -> int:
+    """How far right of the inset a frame's widest drawn row reaches, never under the column."""
+    right = max(x + w for kind, x, _y, w, _h, _text in amazetheme.DIALOG_LAYOUT[frame_key]["nodes"]
+                if not kind.startswith(("QTabBar", "QWidget")))
+    return max(right - amazetheme.PREFS_INSET, amazetheme.PREFS_CONTENT_WIDTH)
+
+
+class CheckLight(QtWidgets.QWidget):
+    """One light of the Databases row: a filled circle, grey until its part is judged."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.fill = amazetheme.P01_LIGHT_IDLE
+
+    def set_fill(self, color: str) -> None:
+        self.fill = color
+        self.update()
+
+    def paintEvent(self, _event) -> None:
+        painter = QtGui.QPainter(self)
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+        painter.setPen(QtCore.Qt.PenStyle.NoPen)
+        painter.setBrush(QtGui.QColor(self.fill))
+        painter.drawEllipse(self.rect())
+        painter.end()
 
 
 ADDON_ROW = ("add-on picture", "ToggleSwitch", "add-on version", "add-on author",
@@ -196,6 +225,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         self._tab_built: dict = {}    # each tab's widgets per kind in creation order, matched to the frame's drawn rects
         self._sliders: dict = {}      # the slider `_field_slider_row` built beside each spin box
         self._path_rows: list = []    # every field-and-buttons row, re-spaced once its widgets wear their drawn widths
+        self._drawn_rows: list = []   # rows spanning the column, each widget put on its drawn x
 
         tabs = QtWidgets.QTabWidget()
         tabs.setDocumentMode(True)
@@ -221,14 +251,14 @@ class PrefsDialog(base_dialog.AssetDialog):
         )
 
 
-    def _tab_page(self):
+    def _tab_page(self, width: int = amazetheme.PREFS_CONTENT_WIDTH):
         """(page widget, its form layout): one top-aligned form with the shared label column."""
         page = QtWidgets.QWidget()
         outer = QtWidgets.QVBoxLayout(page)
         _m = theme.ui_px(amazetheme.PREFS_PAGE_MARGIN)
         outer.setContentsMargins(_m, _m, _m, _m)
         form = self._make_form()
-        outer.addWidget(_content_holder(form),
+        outer.addWidget(_content_holder(form, width),
                         alignment=QtCore.Qt.AlignmentFlag.AlignLeft)
         outer.addStretch()
         return page, form
@@ -294,6 +324,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         self._new_user = ""
         self._reload_library_users()
         self.refresh_library_version()
+        self._clear_check()
 
     def _known_users(self, folder: str) -> dict:
         """`{uid: name}` in `folder`; nobody in a folder out of reach."""
@@ -568,45 +599,32 @@ class PrefsDialog(base_dialog.AssetDialog):
             _show_quietly(self._cbx_allow_overwrite, not checked)
 
     def _build_library_tab(self) -> QtWidgets.QWidget:
-        page, form = self._tab_page()
+        page, form = self._tab_page(_drawn_reach("P01"))
         self._added_libraries: list = []    # folders Add put in the Library list, until applied
         self._new_user = ""                  # a user named for the picked library, created on Apply
         self._last_user_pick = None
 
         self.cbb_library = ui_helpers.DesignedComboBox()    # each folder by name, its path as tooltip
         self.cbb_library.setToolTip(ui_helpers.tooltip_text(tooltips.PREFS_LIBRARY))
+        self._btn_manage_libraries = self._library_button(
+            "Manage", self.manage_libraries, tooltips.PREFS_MANAGE_LIBRARIES)
         self._btn_add_library = self._library_button(
             "Add", self.add_library, tooltips.PREFS_ADD_LIBRARY)
         form.addRow(self._label("Library"),
-                    self._path_row(self.cbb_library, self._btn_add_library))
+                    self._path_row(self.cbb_library, self._btn_manage_libraries,
+                                   self._btn_add_library))
 
-        self._btn_check = self._library_button(
-            "Check", self._panel_call("check_library"), tooltips.PREFS_CHECK_LIBRARY)
         self._btn_reload = self._library_button(
             "Reload", self._panel_call("open"), tooltips.PREFS_RELOAD_LIBRARY)
         self._btn_show_folder = self._library_button(
             "Show Folder", self._panel_call("open_usdlib_folder"),
             tooltips.PREFS_OPEN_LIBRARY_FOLDER)
-        self._btn_manage_libraries = self._library_button(
-            "Manage", self.manage_libraries, tooltips.PREFS_MANAGE_LIBRARIES)
-        form.addRow(self._label(""), self._button_row(
-            self._btn_check, self._btn_reload, self._btn_show_folder,
-            self._btn_manage_libraries))
-        self._lbl_library_format = QtWidgets.QLabel()    # filled by refresh_library_version
-        form.addRow(self._label(""), self._lbl_library_format)
+        self._lbl_library_format = self._label("")    # filled by refresh_library_version
+        form.addRow(self._lbl_library_format,
+                    self._button_row(self._btn_reload, self._btn_show_folder))
+        self._build_check_rows(form)
 
         self._add_divider(form)
-        # NOT A PREFERENCE: it lives in the library's policy and travels with it
-        self._cbx_allow_overwrite = ui_helpers.ToggleSwitch(
-            amazetheme.LABEL_VERSIONS)
-        self._cbx_allow_overwrite.setChecked(
-            library_settings.allow_overwrite(self._prefs))
-        self._cbx_allow_overwrite.setToolTip(ui_helpers.tooltip_text(
-            tooltips.PREFS_MATERIAL_VERSIONS))
-        self._cbx_allow_overwrite.toggled.connect(self.set_allow_overwrite)
-        form.addRow(self._label(""),
-                    self._cbx_allow_overwrite)
-
         self.cbb_library_user = QtWidgets.QComboBox()   # shows the NAME, never the UID that everything is tagged with
         self.cbb_library_user.setToolTip(ui_helpers.tooltip_text(
             tooltips.PREFS_LIBRARY_USER))
@@ -638,16 +656,25 @@ class PrefsDialog(base_dialog.AssetDialog):
         self._default_cache.clicked.connect(self.reset_cache_path)
         self._default_cache.setToolTip(ui_helpers.tooltip_text(
             tooltips.PREFS_DEFAULT_CACHE))
+        self._btn_clear_cache = self._library_button(
+            amazetheme.BTN_DELETE_CACHE, self.clear_texture_cache,
+            tooltips.PREFS_DELETE_LOCAL_CACHE)
         form.addRow(self._label("Cache Path"),
                     self._path_row(self.line_cache, browse_cache,
-                                   self._default_cache))
-        clear_cache_btn = QtWidgets.QPushButton("Delete Local Cache")
-        clear_cache_btn.clicked.connect(self.clear_texture_cache)
-        clear_cache_btn.setToolTip(ui_helpers.tooltip_text(
-            tooltips.PREFS_DELETE_LOCAL_CACHE))
-        form.addRow(self._label(""), clear_cache_btn)
+                                   self._default_cache, self._btn_clear_cache))
 
         self._add_divider(form)
+        # NOT A PREFERENCE: it lives in the library's policy and travels with it
+        self._cbx_allow_overwrite = ui_helpers.ToggleSwitch(
+            amazetheme.LABEL_VERSIONS)
+        self._cbx_allow_overwrite.setChecked(
+            library_settings.allow_overwrite(self._prefs))
+        self._cbx_allow_overwrite.setToolTip(ui_helpers.tooltip_text(
+            tooltips.PREFS_MATERIAL_VERSIONS))
+        self._cbx_allow_overwrite.toggled.connect(self.set_allow_overwrite)
+        form.addRow(self._label(""),
+                    self._cbx_allow_overwrite)
+
         self._lbl_library_apply = QtWidgets.QLabel()    # what Apply will do, when it warns
         self._lbl_library_apply.setAlignment(    # ending at Apply, as drawn
             QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
@@ -655,12 +682,13 @@ class PrefsDialog(base_dialog.AssetDialog):
             amazetheme.BTN_APPLY, self.apply_library, tooltips.PREFS_APPLY_LIBRARY)
         self._btn_accept_library = self._library_button(
             amazetheme.BTN_ACCEPT, self.accept_library, tooltips.PREFS_ACCEPT_LIBRARY)
-        form.addRow(self._apply_row(self._lbl_library_apply, self._btn_apply_library,
-                                    self._btn_accept_library))
+        self._stand_at_the_bottom(page, self._apply_row(
+            self._lbl_library_apply, self._btn_apply_library, self._btn_accept_library))
 
         self._tab_built["P01"] = {
             "QLineEdit": (self.line_cache,),
             "QComboBox": (self.cbb_library, self.cbb_library_user),
+            "CheckLight": tuple(self._check_lights),
         }
         self._fill_libraries()
         self.cbb_library.currentIndexChanged.connect(self._stage_library)
@@ -672,6 +700,127 @@ class PrefsDialog(base_dialog.AssetDialog):
         button.clicked.connect(clicked)
         button.setToolTip(ui_helpers.tooltip_text(tooltip))
         return button
+
+    def _spanning_row(self, form, *widgets) -> QtWidgets.QWidget:
+        """Widgets in one row from the column's left edge; `_space_drawn_row` puts each on its x."""
+        row = QtWidgets.QWidget()
+        h = QtWidgets.QHBoxLayout(row)
+        h.setContentsMargins(0, 0, 0, 0)
+        h.setSpacing(0)
+        for widget in widgets:
+            h.addWidget(widget)
+        h.addStretch(1)
+        form.addRow(row)
+        self._drawn_rows.append(row)
+        return row
+
+    def _dim_label(self, text: str = "") -> QtWidgets.QLabel:
+        label = QtWidgets.QLabel(text)
+        _ink(label, amazetheme.P01_DIM_INK)
+        return label
+
+    def _build_check_rows(self, form: QtWidgets.QFormLayout) -> None:
+        """The Databases row - three lights, their counts, a line, a button - under its headings."""
+        self._check_heads = [self._dim_label(text) for text in amazetheme.LABEL_CHECK_PARTS]
+        for label in self._check_heads:
+            label.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight
+                               | QtCore.Qt.AlignmentFlag.AlignVCenter)
+        self._spanning_row(form, *self._check_heads)
+        self._lbl_databases = QtWidgets.QLabel(amazetheme.LABEL_DATABASES)
+        self._check_lights = [CheckLight() for _part in library_check.PARTS]
+        self._check_counts = [self._dim_label() for _part in library_check.PARTS]
+        self._lbl_check_info = self._dim_label()
+        self._lbl_check_info.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight
+                                          | QtCore.Qt.AlignmentFlag.AlignVCenter)
+        self._btn_check = self._library_button(
+            amazetheme.BTN_CHECK, self.check_or_repair, tooltips.PREFS_CHECK_LIBRARY)
+        self._check_found = None    # what the last check found, while Repair can fix some of it
+        pairs = [widget for pair in zip(self._check_lights, self._check_counts) for widget in pair]
+        self._spanning_row(form, self._lbl_databases, *pairs, self._lbl_check_info,
+                           self._btn_check)
+
+    def _stand_at_the_bottom(self, page, row) -> None:
+        """`row` under the page's stretch, its buttons ending where the frame draws them."""
+        outer = page.layout()
+        row.setFixedWidth(theme.ui_px(amazetheme.PREFS_CONTENT_WIDTH))
+        outer.addWidget(row, alignment=QtCore.Qt.AlignmentFlag.AlignLeft)
+        _x, top, _w, height = amazetheme.drawn_boxes("P01")[("QPushButton", amazetheme.BTN_APPLY)]
+        under = amazetheme.PREFS_FRAME[1] - (top + height) - amazetheme.PREFS_DIALOG_MARGIN
+        margins = outer.contentsMargins()
+        margins.setBottom(theme.ui_px(max(under, 0)))
+        outer.setContentsMargins(margins)
+
+    def _clear_check(self) -> None:
+        """The Databases row before a check: grey lights, no counts, no line, `Check`."""
+        if getattr(self, "_btn_check", None) is None:
+            return
+        self._check_found = None
+        for light, count in zip(self._check_lights, self._check_counts):
+            light.set_fill(amazetheme.P01_LIGHT_IDLE)
+            count.setText("")
+        self._set_check_info("")
+        self._set_check_button(False)
+
+    def _set_check_info(self, text: str) -> None:
+        """The row's one line, cut with an ellipsis at its drawn width; the tooltip has it whole."""
+        label = self._lbl_check_info
+        label.setText(label.fontMetrics().elidedText(
+            text, QtCore.Qt.TextElideMode.ElideRight, label.maximumWidth()))
+        label.setToolTip(ui_helpers.tooltip_text(text) if text else text)
+
+    def _set_check_button(self, fixable: bool) -> None:
+        """`Check`, or a red `Repair` once a check found what can be fixed; one drawn box."""
+        self._btn_check.setText(amazetheme.BTN_REPAIR if fixable else amazetheme.BTN_CHECK)
+        self._btn_check.setStyleSheet(
+            "QPushButton { background-color: %s; color: %s; }"
+            % (amazetheme.P01_LIGHT_FOUND, amazetheme.P01_REPAIR_INK) if fixable else "")
+
+    def _show_check(self, findings: dict) -> None:
+        """Fill the row from one survey: each light's colour and count, the line, the button."""
+        found = library_check.summary(findings)
+        fills = {library_check.CLEAN: amazetheme.P01_LIGHT_CLEAN,
+                 library_check.FOUND: amazetheme.P01_LIGHT_FOUND,
+                 library_check.UNJUDGED: amazetheme.P01_LIGHT_UNJUDGED}
+        for part, light, count in zip(library_check.PARTS, self._check_lights,
+                                      self._check_counts):
+            state, number = found["lights"][part]
+            light.set_fill(fills[state])
+            count.setText(amazetheme.LABEL_UNJUDGED if number is None else str(number))
+        self._set_check_info(found["info"])
+        self._check_found = findings if found["fixable"] else None
+        self._set_check_button(found["fixable"])
+
+    def _survey_open_library(self) -> dict:
+        """One survey of the open library on disk, the panel's waiting changes saved first."""
+        if self._panel is not None:
+            check_actions.let_go(self._panel)
+        findings = repair.survey(self._prefs)
+        debug.event("repair", "surveyed", complete=findings["complete"],
+                    unaccounted=repair.unaccounted_total(findings),
+                    states={entry["filename"]: entry["state"] for entry in findings["lists"]})
+        return findings
+
+    @debug.guarded("prefs.check_databases")
+    def check_databases(self) -> None:
+        """Check the open library once and show what it found in the Databases row."""
+        if self._picked_is_open():
+            self._show_check(self._survey_open_library())
+
+    @debug.guarded("prefs.check_or_repair")
+    def check_or_repair(self) -> None:
+        """The row's button: `Check` checks; `Repair` opens the Repair dialog, then checks again."""
+        if self._check_found is None or not self._picked_is_open():
+            self.check_databases()
+            return
+        from amaze.dialogs import repair_dialog
+        findings = self._survey_open_library()
+        if library_check.summary(findings)["fixable"]:
+            panel = self._panel
+            repair_dialog.repair_found(
+                findings, guard=False,
+                changed=None if panel is None else lambda: check_actions.read_again(panel))
+            findings = self._survey_open_library()
+        self._show_check(findings)
 
     def refresh_library_version(self) -> None:
         """Re-read the picked library's format: an update can land while this window is open."""
@@ -1235,10 +1384,40 @@ class PrefsDialog(base_dialog.AssetDialog):
                                   FORMAT_STEM, height=False)
         ui_helpers.pin_drawn_stem(self._lbl_library_apply, "P01", "QLabel",
                                   APPLY_LINE_STEM, height=False)
+        for label in self._check_heads + [self._lbl_databases]:
+            ui_helpers.pin_drawn(label, "P01", "QLabel", label.text(), height=False)
+        ui_helpers.pin_drawn_stem(self._lbl_check_info, "P01", "QLabel",
+                                  CHECK_INFO_STEM, height=False)
         ui_helpers.pin_drawn(self._addon_list, "P05", "QTextBrowser", None, height=False)
         ui_helpers.pin_drawn(self._lbl_addons, "P05", "QLabel", None, height=False)
         for row in self._path_rows:
             self._space_pinned_row(row)
+        for row in self._drawn_rows:
+            self._space_drawn_row(row)
+
+    def _space_drawn_row(self, row) -> None:
+        """Each pinned widget of a spanning row on its drawn x; an unpinned one fills the gap."""
+        layout = row.layout()
+        widgets = [layout.itemAt(i).widget() for i in range(layout.count())]
+        widgets = [widget for widget in widgets if widget is not None]
+        at = amazetheme.PREFS_INSET
+        plan = []
+        for index, widget in enumerate(widgets):
+            box = getattr(widget, "drawn_box", None)
+            if box is not None:
+                plan.append((widget, box[0] - at))
+                at = box[0] + box[2]
+                continue
+            ahead = next((getattr(later, "drawn_box", None) for later in widgets[index + 1:]
+                          if getattr(later, "drawn_box", None) is not None), None)
+            if ahead is None:
+                continue    # nothing drawn after it says where it ends
+            widget.setFixedWidth(theme.ui_px(ahead[0] - at))
+            widget.setIndent(theme.ui_px(amazetheme.P01_LIGHT_COUNT_GAP))
+            at = ahead[0]
+        for widget, gap in reversed(plan):
+            if gap > 0:
+                layout.insertSpacing(layout.indexOf(widget), theme.ui_px(gap))
 
     def _space_pinned_row(self, row) -> None:
         """Give the row the drawn gap between each pair, so every widget lands on its drawn x."""
@@ -1343,6 +1522,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         divider.setStyleSheet("background-color: %s;"
                               % amazetheme.PREFS_DIVIDER_INK)
         divider.setFixedHeight(theme.ui_px(amazetheme.PREFS_DIVIDER_H))
+        divider.setFixedWidth(theme.ui_px(amazetheme.PREFS_CONTENT_WIDTH))    # the drawn rule
         v.addWidget(divider)
         form.addRow(box)
 

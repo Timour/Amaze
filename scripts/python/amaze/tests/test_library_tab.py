@@ -144,6 +144,105 @@ class WhatActsOnALibraryWaitsForIt(unittest.TestCase):
                          "these act on a library that is only picked")
 
 
+class TheDatabasesRowShowsOneCheck(unittest.TestCase):
+    """Grey lights until Check is pressed; then each light's colour and count, and a red Repair."""
+
+    def setUp(self):
+        self.prefs = test_support.fixture_prefs(self)
+        self.prefs.library_user = users.create(self.prefs, "Plum")
+        self.folder = test_support.scratch_dir("amaze_check_row_")
+        self.addCleanup(shutil.rmtree, self.folder, True)
+        self.prefs.add_file_folder(self.folder)
+        self.dialog = _dialog(self, self.prefs)
+
+    def row(self):
+        dialog = self.dialog
+        return ([light.fill for light in dialog._check_lights],
+                [count.text() for count in dialog._check_counts],
+                dialog._lbl_check_info.toolTip(), dialog._btn_check.text())
+
+    def dead_favorite(self):
+        star = os.path.join(self.folder, "shot.exr")
+        with open(star, "wb") as handle:
+            handle.write(b"x")
+        self.prefs.add_file_favorite(star)
+        os.remove(star)
+        return star
+
+    def assert_unchecked(self):
+        self.assertEqual(([amazetheme.P01_LIGHT_IDLE] * 3, [""] * 3, "", "Check"), self.row())
+        self.assertEqual("", self.dialog._btn_check.styleSheet())
+
+    def test_nothing_is_checked_until_the_button_is_pressed(self):
+        self.dead_favorite()
+        self.assert_unchecked()
+        self.assertEqual(["Errors", "Files", "Ref"],
+                         [label.text() for label in self.dialog._check_heads])
+        self.assertEqual("Databases", self.dialog._lbl_databases.text())
+
+    def test_a_check_fills_the_lights_and_turns_the_button_into_a_red_repair(self):
+        self.dead_favorite()
+        self.dialog._btn_check.click()
+        fills, counts, info, button = self.row()
+        self.assertEqual(amazetheme.P01_LIGHT_CLEAN, fills[0])
+        self.assertEqual("0", counts[0])
+        self.assertEqual((amazetheme.P01_LIGHT_FOUND, "1"), (fills[2], counts[2]))
+        self.assertNotIn(amazetheme.P01_LIGHT_IDLE, fills)
+        self.assertTrue(info, "the row says nothing about what it found")
+        self.assertEqual("Repair", button)
+        sheet = self.dialog._btn_check.styleSheet()
+        self.assertIn(amazetheme.P01_LIGHT_FOUND, sheet)
+        self.assertIn(amazetheme.P01_REPAIR_INK, sheet)
+
+    def test_repair_opens_the_dialog_and_checks_again_after_the_fix(self):
+        star = self.dead_favorite()
+        self.dialog._btn_check.click()
+        asked = []
+
+        def display(text, **kwargs):
+            asked.append((text, tuple(kwargs.get("buttons") or ())))
+            return list(kwargs["buttons"]).index("Fix Safe") if kwargs.get("buttons") else 0
+
+        with mock.patch.object(hou, "ui", mock.Mock(displayMessage=display), create=True):
+            self.dialog._btn_check.click()
+        self.assertTrue(asked[0][0].startswith("Check Library found:\n\n"))
+        self.assertIn("1 favorite is of a file that is gone.", asked[0][0])
+        self.assertEqual("Fix Safe", asked[0][1][-2])
+        self.assertIn("1 favorite removed.", asked[1][0])
+        self.assertNotIn(star, self.prefs.file_favorites)
+        fills, counts, _info, _button = self.row()
+        self.assertEqual((amazetheme.P01_LIGHT_CLEAN, "0"), (fills[2], counts[2]),
+                         "the row still shows what the repair fixed")
+
+    def test_a_clean_part_is_green_and_the_button_stays_check(self):
+        self.dialog._btn_check.click()
+        fills, counts, _info, _button = self.row()
+        self.assertEqual((amazetheme.P01_LIGHT_CLEAN, "0"), (fills[2], counts[2]))
+        if amazetheme.P01_LIGHT_FOUND not in fills:
+            self.assertEqual(messages.CHECK_NOTHING_TO_REPAIR, self.row()[2])
+        from amaze.core import library_check, repair
+        if not library_check.summary(repair.survey(self.prefs))["fixable"]:
+            self.assertEqual("Check", self.dialog._btn_check.text())
+            self.assertEqual("", self.dialog._btn_check.styleSheet())
+
+    def test_a_part_that_cannot_be_judged_is_amber_with_a_dash(self):
+        from amaze.core import guard
+        with mock.patch.object(guard.Guard, "_waiting", lambda self: True):
+            self.dialog._btn_check.click()
+        fills, counts, _info, button = self.row()
+        self.assertEqual([amazetheme.P01_LIGHT_UNJUDGED] * 3, fills)
+        self.assertEqual([amazetheme.LABEL_UNJUDGED] * 3, counts)
+        self.assertEqual("Check", button)
+
+    def test_picking_another_library_empties_the_row(self):
+        self.dead_favorite()
+        self.dialog._btn_check.click()
+        other, _made = _library_with(self, "Plum")
+        self.dialog.pick_library(other)
+        self.assert_unchecked()
+        self.assertFalse(self.dialog._btn_check.isEnabled())
+
+
 class AddPutsAFolderInTheList(unittest.TestCase):
 
     def setUp(self):

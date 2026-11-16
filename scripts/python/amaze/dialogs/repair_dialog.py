@@ -1,11 +1,11 @@
-"""Check Library's report, confirms and answers, for both doors; the checks are core/repair.py's."""
+"""The shelf's Check Library report and its fixes, and the Repair dialog Preferences opens."""
 
 import os
 
 import hou
 
 from amaze import messages
-from amaze.core import debug, repair
+from amaze.core import debug, library_check, repair
 from amaze.core import guard as guard_mod
 from amaze.core import library_files as naming
 from amaze.helpers import ui_helpers, wording
@@ -112,18 +112,34 @@ def run(preferences=None) -> None:
         act(findings, action)
 
 
-def check_in_panel(panel) -> None:
-    """Library ▸ Check Library…: report, act and report again until Close, re-reading after each."""
-    from amaze.actions import check
-    check.let_go(panel)
-    while True:
-        findings = repair.survey(panel.prefs)
-        findings["settings"] = repair.settings_survey(panel.prefs)
-        surveyed(findings)
-        action = report(findings)
-        if action is None:
-            return
-        act(findings, action, guard=False, changed=lambda: check.read_again(panel))
+def repair_found(findings: dict, guard: bool = True, changed=None) -> bool:
+    """Preferences' Repair: what the check found, Fix All or Fix Safe, then what was done."""
+    found = library_check.summary(findings)
+    buttons = ((messages.BUTTON_FIX_ALL,)
+               + ((messages.BUTTON_FIX_SAFE,) if found["safe"] else ())
+               + (messages.BUTTON_FIX_CANCEL,))
+    picked = hou.ui.displayMessage(                       # type: ignore
+        "\n".join([messages.CHECK_FOUND_HEAD, ""] + found["lines"]), buttons=buttons,
+        default_choice=len(buttons) - 1, close_choice=len(buttons) - 1,
+        title=messages.TITLE_AMAZE, severity=hou.severityType.Message)    # type: ignore
+    if not 0 <= picked < len(buttons) - 1:
+        return False
+    fix = (library_check.fix_all if buttons[picked] == messages.BUTTON_FIX_ALL
+           else library_check.fix_safe)
+    done = fix(findings, guard_session=guard)
+    if changed is not None:
+        changed()
+    lines = library_check.done_lines(done)
+    if lines:
+        said, severity = "\n".join(lines), hou.severityType.Message    # type: ignore
+    elif done["failed"]:
+        said = messages.NOTHING_CHANGED_REASON % done["failed"][0]
+        severity = hou.severityType.Warning               # type: ignore
+    else:
+        said = messages.LIBRARY_CHANGED_SINCE_CHECK
+        severity = hou.severityType.Warning               # type: ignore
+    hou.ui.displayMessage(said, title=messages.TITLE_AMAZE, severity=severity)    # type: ignore
+    return bool(lines)
 
 
 def check_failed_library(folder: str, preferences) -> None:

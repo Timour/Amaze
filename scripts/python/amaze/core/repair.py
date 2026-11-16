@@ -1262,6 +1262,50 @@ def rescue_uncategorised(findings: dict, guard_session: bool = True) -> dict:
     return done
 
 
+def rows_without_a_mat(findings: dict) -> dict:
+    """{database: [id]} of the listed rows whose `.mat` is not in its section's folder now."""
+    found = {}
+    for filename, rows in (findings.get("missing_files") or {}).items():
+        home = os.path.join(findings["directory"], naming.SECTION_FOLDERS[filename])
+        ids = [asset_id for asset_id, _name in rows
+               if not os.path.lexists(os.path.join(home, asset_id + ".mat"))]
+        if ids:
+            found[filename] = ids
+    return found
+
+
+def drop_rows_without_files(findings: dict, guard_session: bool = True) -> dict:
+    """Each row whose `.mat` is gone out of its database, its files trashed; {removed, moved}."""
+    if guard_session:
+        _refuse_a_houdini_that_holds_the_library()
+    directory = findings["directory"]
+    done, moved = {}, []
+    for filename, ids in rows_without_a_mat(findings).items():
+        held = _guard(directory)
+        reading = held.read(filename)
+        if not reading.writable:
+            raise ValueError("that database cannot be read")
+        document = json.loads(json.dumps(reading.document or {}))
+        rows = document.get(ROWS) or {}
+        gone = [asset_id for asset_id in ids if asset_id in rows]
+        if not gone:
+            continue
+        for asset_id in gone:
+            del rows[asset_id]
+        change = held.change("")
+        change.put(reading.ticket, document)
+        folder = naming.SECTION_FOLDERS[filename]
+        theirs = [folder + "/" + name for name in _listdir(os.path.join(directory, folder))
+                  if naming.asset_id(name, ASSET_SIDECARS + (".png",), "_cop") in gone]
+        for relative in theirs:
+            change.trash(relative)
+        change.commit()
+        done[filename] = len(gone)
+        moved.extend(theirs)
+    debug.event("repair", "rows whose files are gone removed", lists=done, moved=len(moved))
+    return {"removed": done, "moved": moved}
+
+
 def recoverable(findings: dict) -> dict:
     """{database: [id]} of the orphaned pairs in each asset section's folder: the folder names it."""
     if "asset_dirs" not in findings:

@@ -74,8 +74,7 @@ class TheGuardedPanelRefusesHeadlessTest(unittest.TestCase):
         panel = self.panel
         geo = hou.node("/obj").createNode("geo", "headless_convert_geo")    # no conversion route: the refusal is said
         self.addCleanup(geo.destroy)
-        doors = (("check_library", lambda: panel.check_library()),
-                 ("open_usdlib_folder", lambda: panel.open_usdlib_folder()),
+        doors = (("open_usdlib_folder", lambda: panel.open_usdlib_folder()),
                  ("_active_network_pwd", lambda: self.assertIsNone(panel._active_network_pwd())),
                  ("locate_folder_user", lambda: panel.locate_folder_user(None)),
                  ("rc_calls.convert(None)", lambda: rc_calls.convert(None, "Karma")),
@@ -112,10 +111,10 @@ class TheGuardStillOpensTheDialogTest(unittest.TestCase):
         self.shown.append(text)
         return 1
 
-    def test_check_library_still_says_it_when_there_is_a_screen(self):
+    def test_open_folder_still_says_it_when_there_is_a_screen(self):
         self.panel.material_model = None
         with mock.patch.object(hou, "ui", self._ui(), create=True):
-            self.panel.check_library()
+            self.panel.open_usdlib_folder()
         self.assertEqual(1, len(self.shown),
                          "the guard swallowed the dialog in a session that "
                          "HAS a ui, which a headless-only test cannot see")
@@ -175,9 +174,10 @@ class TheCheckReportHeadingIsTrueOfEveryLine(unittest.TestCase):
         left = os.path.join(mats, "LEFTOVERHERE1.mat")
         with open(left, "w", encoding="utf-8") as handle:
             handle.write("in no list at all\n")    # beside an empty Node list: nothing moves
+        from amaze.dialogs import repair_dialog
         screen = types.SimpleNamespace(displayMessage=self._answer)
         with mock.patch.object(hou, "ui", screen, create=True):
-            self.panel.check_library()
+            repair_dialog.check_failed_library(self.panel.prefs.dir, self.panel.prefs)
         report = self.shown[-1]
         self.assertIn("LEFTOVERHERE1.mat", report, "premise: the report did not name the file")
         self.assertTrue(os.path.exists(left), "the report moved what it names")

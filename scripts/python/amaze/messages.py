@@ -334,6 +334,58 @@ TITLE_AMAZE = 'Amaze'
 
 TITLE_CHECK_LIBRARY = 'Check Library'
 
+CHECK_FOUND_HEAD = 'Check Library found:'
+
+BUTTON_FIX_ALL = 'Fix All'
+
+BUTTON_FIX_SAFE = 'Fix Safe'
+
+BUTTON_FIX_CANCEL = 'Cancel'
+
+CHECK_NOTHING_TO_REPAIR = 'Nothing to repair.'
+
+CHECK_DATABASE_CORRUPT = 'The %s database is corrupt.'
+
+CHECK_DATABASE_MISSING = 'The %s database is missing.'
+
+CHECK_DATABASE_NEWER = 'The %s database is from a newer Amaze.'
+
+CHECK_DATABASE_IN_USE = 'The %s database is in use.'
+
+CHECK_FOLDER_UNREAD = 'The %s folder cannot be read.'
+
+CHECK_DRIVE_NOT_CONNECTED = "A folder's drive is not connected."
+
+CHECK_NO_FILES = '%s listed in the database %s no files.'
+
+CHECK_IN_NO_DATABASE = '%s in %s %s in no database.'
+
+CHECK_NO_PICTURE = '%s %s no picture.'
+
+CHECK_LEFTOVERS = "%s %s left over from Amaze's own work."
+
+CHECK_UNKNOWN = '%s %s not known to Amaze.'
+
+CHECK_CONFLICT_COPIES = '%s from a sync service.'
+
+CHECK_DEAD_FAVORITES = '%s %s of %s gone.'
+
+CHECK_DEAD_FOLDERS = '%s in the Files section %s gone.'
+
+FIXED_RESTORED = '%s restored from %s.'
+
+FIXED_REBUILT = "%s rebuilt from the assets' own files."
+
+FIXED_RECOVERED = '%s added to the database.'
+
+FIXED_REMOVED = '%s removed from the database.'
+
+FIXED_TRASHED = '%s moved to the trash.'
+
+FIXED_FAVORITES = '%s removed.'
+
+FIXED_FOLDERS = '%s removed from the Files section.'
+
 TITLE_LOG_NOT_SAVED = 'Log not saved'
 
 TITLE_LOG_SAVED = 'Log saved'

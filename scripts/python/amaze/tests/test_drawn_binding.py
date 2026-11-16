@@ -36,14 +36,14 @@ PREFS_FRAMES = ("P01", "P02", "P03a", "P03b", "P04", "P05", "P06")
 
 PINNED_BUTTONS = {    # every text button Preferences takes from the document; a lost pin fails here
     "P01": ("Add", "Check", "Reload", "Show Folder", "Manage", "Rename",
-            "Delete", "Default", "Delete Local Cache", "Apply", "Accept"),
+            "Default", "Apply", "Accept"),    # `Delete` is drawn twice and has its own test
     "P05": ("Check for Updates",),
     "P06": ("Check for Updates", "Report a Bug...", "Open Log",
             "Save Log...", "Clear Log"),
 }
 
 PREFS_COMBOS = {    # (frame, attribute, drawn width) - the combos each tab builds, in creation order
-    "P01": (("cbb_library", 260), ("cbb_library_user", 196)),
+    "P01": (("cbb_library", 199), ("cbb_library_user", 196)),
     "P02": (("_combo_geo_shading", 165), ("_combo_geo_bg", 165),
             ("cbb_matx_res", 72)),
     "P04": (("_combo_path_style", 105), ("_combo_icon_weight", 145)),
@@ -72,6 +72,9 @@ STRETCHED_FIELDS = {    # frame and kind whose fields fill the column instead of
 LOOSE_LABELS = {    # (frame, kind, x, y) of a label drawn BESIDE or ABOVE its control rather than in a column
     ("D02", "QLabel", 202, 165),
     ("D02", "QLabel", 212, 196),
+    ("P01", "QLabel", 108, 124),    # the three lights' counts, each as wide as its number
+    ("P01", "QLabel", 147, 124),
+    ("P01", "QLabel", 186, 124),
 }
 
 
@@ -443,6 +446,26 @@ class PreferencesIsBuiltFromTheDocument(unittest.TestCase):
                         "%s %r is not the box the document draws"
                         % (frame_key, label))
 
+    def test_both_deletes_wear_their_own_box(self):
+        """P01 draws `Delete` twice: the user's is the first box, the cache's the second."""
+        dialog = self._dialog()
+        user, cache = amazetheme.drawn_repeats("P01", "QPushButton", "Delete")
+        self.assertNotEqual(user[2], cache[2], "premise: the two are drawn alike")
+        self.assertEqual((theme.ui_px(user[2]), theme.ui_px(user[3])),
+                         pinned(self, dialog._btn_delete_user))
+        self.assertEqual((theme.ui_px(cache[2]), theme.ui_px(cache[3])),
+                         pinned(self, dialog._btn_clear_cache))
+
+    def test_the_check_button_is_one_geometry_in_both_readings(self):
+        """`Check` and `Repair` share one drawn box."""
+        dialog = self._dialog()
+        first = pinned(self, dialog._btn_check)
+        dialog._set_check_button(True)
+        self.assertEqual(amazetheme.BTN_REPAIR, dialog._btn_check.text())
+        self.assertEqual(first, pinned(self, dialog._btn_check))
+        box = amazetheme.drawn_boxes("P01")[("QPushButton", amazetheme.BTN_CHECK)]
+        self.assertEqual((theme.ui_px(box[2]), theme.ui_px(box[3])), first)
+
     def test_the_update_button_is_one_geometry_in_both_readings(self):
         """`Check for Updates` and `Install Update` share one drawn box, so the geometry never moves."""
         dialog = self._dialog()
@@ -794,9 +817,9 @@ class MovingADrawnNodeMovesTheWidget(unittest.TestCase):
             dialog = prefs_dialog.PrefsDialog(prefs, panel=None)
             self.addCleanup(dialog.deleteLater)
             button = [b for b in dialog.findChildren(QtWidgets.QPushButton)
-                      if b.text() == "Check"][0]
+                      if b.text() == "Reload"][0]
             self.assertEqual(
-                theme.ui_px(63 + 5), pinned(self, button)[0],
+                theme.ui_px(48 + 5), pinned(self, button)[0],
                 "the drawn rect was widened and the built button did not "
                 "follow, so the dialog is not reading the document")
 

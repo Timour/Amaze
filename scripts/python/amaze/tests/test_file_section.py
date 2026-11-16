@@ -2393,16 +2393,17 @@ class CheckLibraryResetsTheFolderModelTest(unittest.TestCase):
         told = []
         model.rowsRemoved.connect(lambda *_a: told.append("rows"))
         model.modelReset.connect(lambda: told.append("reset"))
-        from amaze.dialogs import repair_dialog
-        real = repair_dialog._say
+        screen = _check_ui("Fix Safe")
+        answer = screen.displayMessage
 
-        def say(text):
-            told.append("said")
-            real(text)
+        def said(text, *args, **kwargs):
+            if not kwargs.get("buttons"):
+                told.append("said")
+            return answer(text, *args, **kwargs)
 
-        with mock.patch.object(hou, "ui", _check_ui("Set Aside", "Set Them Aside"), create=True), \
-                mock.patch.object(repair_dialog, "_say", say):
-            panel.check_library()
+        screen.displayMessage = said
+        with mock.patch.object(hou, "ui", screen, create=True):
+            test_support.repair_from_preferences(self, panel)
 
         self.assertIn("said", told, "premise: nothing was set aside")
         self.assertNotEqual("said", told[0], "the done box came up before the model was told, "
@@ -2429,15 +2430,16 @@ class CheckLibraryReachesTheFoldersTest(unittest.TestCase):
         panel.file_folders_model.add_folder(dead)
         shutil.rmtree(dead)
 
-        screen = _check_ui("Set Aside", "Set Them Aside")
+        screen = _check_ui("Fix Safe")
         with mock.patch.object(hou, "ui", screen, create=True):
-            panel.check_library()
+            test_support.repair_from_preferences(self, panel)
 
         self.assertNotIn(hostos.canonical_path_key(dead), list(panel.prefs.file_folders),
                          "Check Library left a location whose folder is gone")
-        self.assertIn(dead, screen.shown[0], "the report does not name the location")
-        self.assertTrue([text for text in screen.shown if text.startswith("Set aside 1 folder")],
-                        "nothing says the location was set aside")
+        self.assertIn("1 folder in the Files section is gone.", screen.shown[0],
+                      "the Repair dialog does not count the location")
+        self.assertIn("1 folder removed from the Files section.", screen.shown,
+                      "nothing says the location was set aside")
 
 
 class CheckLibraryDropsOnlyFileStarsTest(unittest.TestCase):
