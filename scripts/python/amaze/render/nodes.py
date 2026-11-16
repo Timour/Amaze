@@ -8,7 +8,7 @@ import hou
 
 
 from amaze import messages
-from amaze.core import material, material_files
+from amaze.core import asset_record, library_files, material, material_files
 from amaze.core import renderers
 from amaze.core import texstore
 from amaze.prefs import prefs
@@ -168,7 +168,7 @@ def is_octane_builder(node) -> bool:
 
 
 def saved_as_own_builder(renderer, saved_type) -> bool:
-    """A `renderer` asset whose .interface starts with a plain subnet: its own builder, saved whole."""
+    """A `renderer` asset whose saved builder is a plain subnet: its own builder, saved whole."""
     return bool(renderer.builder_mark) and saved_type == "subnet"
 
 
@@ -214,14 +214,7 @@ def activate_shader_inputs(builder) -> int:
     return count
 
 
-
-
-BUILDER_FORMAT = 1
-
-
-def builder_sidecar_path(preferences, mat_id: str) -> str:
-    """Where an asset's builder sidecar lives, contained."""
-    return material.payload_path(preferences, mat_id, material.BUILDER_SUFFIX)
+MATERIALS, NODES = library_files.MATERIALS, library_files.NODES    # the two sections this module saves
 
 
 def ensure_asset_folder(preferences, path: str) -> None:
@@ -238,8 +231,8 @@ def ensure_asset_folder(preferences, path: str) -> None:
     os.makedirs(folder, exist_ok=True)
 
 
-def capture_builder(node) -> str:
-    """Type, interface, non-default values as JSON. ▸p/structure-signature"""
+def capture_builder(node) -> dict:
+    """The `builder` section: type, interface, non-default values. ▸p/structure-signature"""
     values = {}
     for parm in node.parms():
         try:
@@ -274,12 +267,11 @@ def capture_builder(node) -> str:
         except (hou.Error, TypeError, ValueError) as exc:
             debug.event("save", "parm could not be captured",
                         parm=parm.name(), error=str(exc))
-    return json.dumps({
-        "format": BUILDER_FORMAT,
+    return {
         "type": node.type().name(),
-        "dialog_script": node.parmTemplateGroup().asDialogScript(),
+        "interface": node.parmTemplateGroup().asDialogScript(),
         "values": values,
-    }, indent=2, sort_keys=True)
+    }
 
 
 def _keyed_spec(parm, keys) -> dict:
@@ -303,30 +295,9 @@ def _restore_keys(parm, keys) -> None:
     parm.setKeyframes(made)
 
 
-def read_builder_sidecar(path: str) -> dict:
-    """The sidecar as a dict, or {}; absent is ordinary, unusable logs."""
-    if not os.path.exists(path):
-        return {}
-    try:
-        with open(path, "r", encoding="utf-8") as handle:
-            data = json.load(handle)
-    except (OSError, ValueError) as exc:
-        debug.event("import", "builder sidecar unreadable",
-                    path=path, error=str(exc))
-        return {}
-    if not isinstance(data, dict) or "dialog_script" not in data:
-        debug.event("import", "builder sidecar has the wrong shape",
-                    path=path)
-        return {}
-    if data.get("format", 1) > BUILDER_FORMAT:      # newer Amaze; read anyway
-        debug.event("import", "builder sidecar from a newer format",
-                    path=path, format=data.get("format"))
-    return data
-
-
 def apply_builder(node, data: dict) -> None:
-    """Restore interface then values, in that order; failures are per-parm."""
-    script = data.get("dialog_script") or ""
+    """Restore a `builder` section's interface then values, in that order; failures are per-parm."""
+    script = data.get("interface") or ""
     if script:
         try:
             group = node.parmTemplateGroup()
@@ -393,20 +364,17 @@ def staged_asset(preferences, mat, loader) -> "object":
     with hou.undos.disabler():      # else undo resurrects it ▸r/undo-groups
         staging = hou.node("/obj").createNode("matnet")
         try:
-            handler = NodeHandler(preferences)
-            saved_type = material_files.get_saved_node_type(preferences, mat)
+            saved = asset_record.saved_builder(preferences, mat.mat_id, MATERIALS)
+            saved_type = saved.get("type", "")
             if saved_type and node_type_available(saved_type):
                 builder = staging.createNode(saved_type)
                 for child in builder.children():
                     child.destroy()
-                apply_builder(
-                    builder,
-                    read_builder_sidecar(
-                        handler._builder_sidecar(mat)))
+                apply_builder(builder, saved)
             else:
                 builder = make_karma_builder(staging, mat.name or "staged")
             file_name = material.payload_path(
-                preferences, mat.mat_id, preferences.ext)
+                preferences, mat.mat_id, preferences.ext, MATERIALS)
             problem = load_items_strict(builder, file_name)
             if problem:
                 raise hou.OperationFailed(problem)
@@ -672,34 +640,27 @@ def ocio_set() -> bool:
 class NodeHandler:
     """Save, import and convert, against the user's live scene."""
 
-    def save_asset_pair(self, interface_path, mat_path, interface_text,
-                        write_mat, builder_node=None, asset_id="") -> None:
-        """Write an asset's files as one unit, promoted once all are written ▸p/asset-write-unit"""
-        builder_path = builder_text = ""
-        if builder_node is not None and asset_id:
+    def save_asset_pair(self, mat_path, write_mat, builder_node=None, asset_id="",
+                        section=MATERIALS) -> None:
+        """Write `.mat` and the `builder` of `<id>.json` as one unit ▸p/asset-write-unit"""
+        record_path, builder = "", {}
+        preferences = getattr(self, "_preferences", None)    # a partial handler writes no builder
+        if builder_node is not None and asset_id and preferences is not None:
             try:
-                builder_path = builder_sidecar_path(
-                    self._preferences, str(asset_id))
-                builder_text = capture_builder(builder_node)
+                record_path = asset_record.path_for(
+                    preferences, str(asset_id), section)
+                builder = capture_builder(builder_node)
             except (hou.Error, hostos.PathEscape, OSError) as exc:
-                debug.event("save", "builder sidecar not written",
+                debug.event("save", "builder not captured - the asset keeps its .mat",
                             asset_id=str(asset_id), error=str(exc))
-                builder_path = builder_text = ""
+                record_path, builder = "", {}
 
-        tmp_interface = tmp_mat = tmp_builder = ""
+        tmp_mat = ""
         try:
-            preferences = getattr(self, "_preferences", None)  # may be absent; then nothing is created
-            for destination in (interface_path, mat_path, builder_path):
-                if destination and preferences is not None:  # mat/ may not exist yet
+            for destination in (mat_path, record_path):
+                if destination and preferences is not None:  # the section folder may not exist yet
                     ensure_asset_folder(preferences, destination)
-            tmp_interface = hostos.unique_scratch(interface_path)
             tmp_mat = hostos.unique_scratch(mat_path)
-            if builder_path:
-                tmp_builder = hostos.unique_scratch(builder_path)
-                with open(tmp_builder, "w", encoding="utf-8", newline="\n") as handle:    # one file's bytes whichever OS saved it: the versions compare them
-                    handle.write(builder_text)
-            with open(tmp_interface, "w", encoding="utf-8", newline="\n") as handle:
-                handle.write(interface_text)
             write_mat(tmp_mat)
             if not os.path.exists(tmp_mat) or os.path.getsize(tmp_mat) == 0:
                 raise hou.OperationFailed(
@@ -709,19 +670,17 @@ class NodeHandler:
             if pending:
                 hostos.promote_scratch(pending[0], pending[1])
                 self._pending_cop_promote = None
-            if tmp_builder:
-                hostos.promote_scratch(tmp_builder, builder_path)
-            hostos.promote_scratch(tmp_interface, interface_path)
+            if record_path:    # read-replace-write: the metadata beside it is kept
+                asset_record.write_section(record_path, asset_record.BUILDER, builder)
             hostos.promote_scratch(tmp_mat, mat_path)
         finally:
-            for leftover in (tmp_interface, tmp_mat, tmp_builder):
-                hostos.discard_scratch(leftover)
+            hostos.discard_scratch(tmp_mat)
             self._discard_pending_cop_promote()
 
     def after_save_thumbnail(self, update: bool, label: str, asset_id,
-                             node_path: str, render) -> None:
+                             node_path: str, render, section=MATERIALS) -> None:
         """Render a saved asset's thumbnail: True, False, or None ▸p/after-save-thumbnail"""
-        if self.supplied_thumbnail and self._supply_thumbnail(asset_id):
+        if self.supplied_thumbnail and self._supply_thumbnail(asset_id, section):
             return
         if not update and not (self.render_after_save and self._preferences.render_on_import):
             return
@@ -739,12 +698,12 @@ class NodeHandler:
             debug.note("%s thumbnail did not render - asset saved and "
                        "registered without one." % label)
 
-    def _supply_thumbnail(self, asset_id) -> bool:
+    def _supply_thumbnail(self, asset_id, section=MATERIALS) -> bool:
         """The hosted picture an import brought, saved as the asset's thumbnail; False if not."""
         from PySide6 import QtGui
         from amaze.core import tile_icons
         image = QtGui.QImage(self.supplied_thumbnail)
-        target = tile_icons.thumbnail_path(self._preferences, str(asset_id))
+        target = tile_icons.thumbnail_path(self._preferences, str(asset_id), section)
         os.makedirs(os.path.dirname(target), exist_ok=True)
         saved = not image.isNull() and image.save(target, "PNG")
         debug.event("save", "thumbnail from the hosted picture",
@@ -761,7 +720,7 @@ class NodeHandler:
         self._hou_parent = None
         self._use_existing_node = False
         self._cop_info = {}
-        # Promoted with the .mat/.interface unit ▸p/asset-write-unit
+        # Promoted with the .mat/.json unit ▸p/asset-write-unit
         self._pending_cop_promote = None
         self._context_override = None
 
@@ -823,7 +782,7 @@ class NodeHandler:
         if renderers.is_karma(mat.renderer):
             return {"mat", "lop"}
         if saved_type is None:
-            saved_type = material_files.get_saved_node_type(self._preferences, mat)
+            saved_type = self._saved_builder(mat).get("type", "")
         if saved_type in material_files.LOP_CAPABLE_NODE_TYPES:
             return {"mat", "lop"}
         found = renderers.get(mat.renderer)
@@ -836,7 +795,7 @@ class NodeHandler:
             return {"mat", "lop"}
         return {"mat"}
 
-    def _payload_or_refusal(self, mat) -> tuple:
+    def _payload_or_refusal(self, mat, section=MATERIALS) -> tuple:
         """(path, "") or ("", sentence) - ONE door. ▸p/material-import-door"""
         if not material.is_safe_asset_id(mat.mat_id):
             debug.event("import", "refused unsafe asset id",
@@ -848,7 +807,7 @@ class NodeHandler:
                         "be inside your library" % mat.name))
         try:
             return (material.payload_path(
-                self._preferences, mat.mat_id, self._preferences.ext), "")
+                self._preferences, mat.mat_id, self._preferences.ext, section), "")
         except hostos.PathEscape:
             debug.event("import", "refused escaping asset path",
                         material=mat.name, mat_id=str(mat.mat_id)[:120])
@@ -866,10 +825,12 @@ class NodeHandler:
         """The import seam: (ok, reason, created); [] on refusal."""
         self._builder_node = None
         self._context_override = context_node    # the network the target is read from, this import only
+        self._held_builder = {}    # the builder is read once for this import, and only for it
         try:
             ok, reason = self._import_asset_to_scene_inner(mat, target)
         finally:
             self._context_override = None
+            self._held_builder = None
         created = ([self._builder_node]
                    if ok and self._builder_node is not None else [])
         return ok, reason, created
@@ -893,7 +854,7 @@ class NodeHandler:
                         '"%s" cannot be imported: its material file could '
                         "not be read (%s)" % (mat.name, exc)))
 
-        saved_type = material_files.get_saved_node_type(self._preferences, mat)
+        saved_type = self._saved_builder(mat).get("type", "")
         if saved_type and not node_type_available(saved_type):
             return (False,
                     '"%s" needs the "%s" node type, which is not '
@@ -1148,14 +1109,15 @@ class NodeHandler:
             self._import_path = hou.node("/mat")
             self._use_existing_node = True
 
-    def _builder_sidecar(self, mat: material.Material) -> str:
-        """The sidecar path, or "" if the id escapes containment."""
-        try:
-            return builder_sidecar_path(self._preferences, mat.mat_id)
-        except (hostos.PathEscape, TypeError) as exc:
-            debug.event("import", "builder sidecar path refused",
-                        material=mat.name, error=str(exc))
-            return ""
+    def _saved_builder(self, mat: material.Material) -> dict:
+        """A material's `builder`, `<id>.json` first; held only while one import or rebuild runs."""
+        held = getattr(self, "_held_builder", None)
+        if held is None:    # outside an import nothing is held, so nothing can go stale
+            return asset_record.saved_builder(self._preferences, mat.mat_id, MATERIALS)
+        key = str(mat.mat_id)
+        if key not in held:
+            held[key] = asset_record.saved_builder(self._preferences, mat.mat_id, MATERIALS)
+        return held[key]
 
     def _load_saved(self, mat: material.Material, saved_type=None) -> tuple:
         """Rebuild the saved builder under `_hou_parent` by its renderer's record: (ok, refusal)."""
@@ -1171,7 +1133,7 @@ class NodeHandler:
             self.load_items_file_mtlx(mat)
             return (True, "")
         if found.builder_mark and saved_type is None:    # only a renderer with its own builder asks
-            saved_type = material_files.get_saved_node_type(self._preferences, mat)
+            saved_type = self._saved_builder(mat).get("type", "")
         if saved_as_own_builder(found, saved_type):
             self.load_own_builder(mat)
         else:
@@ -1184,7 +1146,11 @@ class NodeHandler:
         self._hou_parent = scratch
         self._import_path = scratch
         self._use_existing_node = True
-        ok, refusal = self._load_saved(mat)
+        self._held_builder = {}
+        try:
+            ok, refusal = self._load_saved(mat)
+        finally:
+            self._held_builder = None
         if not ok:
             raise hou.OperationFailed(refusal)
         return self._builder_node
@@ -1194,24 +1160,20 @@ class NodeHandler:
         self._builder_node = make_karma_builder(
             self._hou_parent, mat.name
         )
-        apply_builder(
-            self._builder_node,
-            read_builder_sidecar(self._builder_sidecar(mat)),
-        )
+        apply_builder(self._builder_node, self._saved_builder(mat))
 
     def load_interface_other(self, mat: material.Material, builder_name: str,
                              saved_type=None) -> None:
         """Rebuild the saved container bare, no exec; a type this session lacks gets `builder_name`."""
         if saved_type is None:
-            saved_type = material_files.get_saved_node_type(self._preferences, mat)
+            saved_type = self._saved_builder(mat).get("type", "")
         saved_type = saved_type or builder_name
         known = node_type_available(saved_type)
         builder = self._hou_parent.createNode(saved_type if known else builder_name)
         for node in builder.children():
             node.destroy()
         if known:
-            apply_builder(
-                builder, read_builder_sidecar(self._builder_sidecar(mat)))
+            apply_builder(builder, self._saved_builder(mat))
 
         builder.setName(      # `setName` takes node names only, so a display name is sanitized
             wording.sanitize_usd_path(mat.name) or "material", unique_name=True)
@@ -1222,8 +1184,7 @@ class NodeHandler:
     def load_items_file(self, mat: material.Material) -> None:
         """Load the .mat into the builder and move the builder, never its children, into place."""
         file_name = material.payload_path(
-            self._preferences, mat.mat_id, self._preferences.ext
-        )
+            self._preferences, mat.mat_id, self._preferences.ext, MATERIALS)
 
         problem = load_items_strict(self._builder_node, file_name)  # names an unreadable file; it raises no OSError
         from amaze.helpers import helpers
@@ -1248,8 +1209,7 @@ class NodeHandler:
     def _load_into_holder(self, mat: material.Material) -> list:
         """Load the .mat into the holder `_builder_node`: the nodes it added, textures resolved."""
         file_name = material.payload_path(
-            self._preferences, mat.mat_id, self._preferences.ext
-        )
+            self._preferences, mat.mat_id, self._preferences.ext, MATERIALS)
         pre_existing = set(self._builder_node.children())
         problem = load_items_strict(self._builder_node, file_name)
         if problem:
@@ -1400,8 +1360,7 @@ class NodeHandler:
                 containers.append(container)
 
         file_name = material.payload_path(
-            self._preferences, asset_id, "_cop" + self._preferences.ext
-        )
+            self._preferences, asset_id, "_cop" + self._preferences.ext, MATERIALS)
 
         with hou.undos.disabler():
             staging_parent = hou.node("/obj").createNode("subnet")
@@ -1522,8 +1481,7 @@ class NodeHandler:
         if not info or not info.get("name"):
             return
         file_name = material.payload_path(      # the writer's own call
-            self._preferences, mat.mat_id, "_cop" + self._preferences.ext
-        )
+            self._preferences, mat.mat_id, "_cop" + self._preferences.ext, MATERIALS)
         if not os.path.exists(file_name):
             debug.note("COP companion file missing for " + mat.name + " - skipped")
             return
@@ -1592,19 +1550,15 @@ class NodeHandler:
                                       title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
                 return False
         file_name = material.payload_path(
-            self._preferences, str(asset_id), self._preferences.ext
-        )
-        parms_file_name = material.payload_path(
-            self._preferences, str(asset_id), ".interface"
-        )
+            self._preferences, str(asset_id), self._preferences.ext, NODES)
         saved_items = items if items is not None else net.allItems()
         self.save_asset_pair(
-            parms_file_name, file_name, net.asCode(),
+            file_name,
             lambda path: net.saveItemsToFile(
                 saved_items, path,
                 save_hda_fallbacks=hda_fallbacks_needed(saved_items),
             ),
-            builder_node=net, asset_id=str(asset_id),
+            builder_node=net, asset_id=str(asset_id), section=NODES,
         )
 
         self._cop_info = {}
@@ -1621,7 +1575,7 @@ class NodeHandler:
             lambda: thumbs.ThumbNailRenderer(
                 self._preferences).render_network_thumbnail(
                     cop_nodes.context_of(node, items),
-                    asset_id, self._cop_info.get("thumb_node", "")))
+                    asset_id, self._cop_info.get("thumb_node", "")), NODES)
         return True
 
     def import_cop_asset(
@@ -1645,7 +1599,7 @@ class NodeHandler:
     ):
         """Rebuild a COP asset: direct into a matching context, else boxed."""
         from amaze.helpers import helpers
-        file_name, refusal = self._payload_or_refusal(mat)
+        file_name, refusal = self._payload_or_refusal(mat, NODES)
         if refusal:
             return (False, refusal)
         if not os.path.exists(file_name):
@@ -1656,7 +1610,7 @@ class NodeHandler:
             return (False, debug.Damage('"%s": %s.' % (mat.name, problem)))
         context = str(getattr(mat, "renderer", "") or "").strip().title() \
             or "Cop"
-        net_type = material_files.get_saved_node_type(self._preferences, mat) or \
+        net_type = material_files.get_saved_node_type(self._preferences, mat, NODES) or \
             cop_nodes.CONTAINER_FOR.get(context, "copnet")
 
         dest = context_node
@@ -1812,8 +1766,8 @@ class NodeHandler:
         whole = not loose and (renderer is renderers.KARMA or is_marked_builder(node, renderer))
         sources = ([n for n in helpers.get_connected_nodes(node) if n.type().name() not in CONNECTORS]
                    if loose else [node])    # a list stays a list: the thumbnail stage reads it so
-        file_name = material.payload_path(self._preferences, asset_id, self._preferences.ext)
-        parms_file_name = material.payload_path(self._preferences, asset_id, ".interface")
+        file_name = material.payload_path(
+            self._preferences, asset_id, self._preferences.ext, MATERIALS)
         path_map = self.prepare_cop_companion(tuple(sources), asset_id, node.name())
         with hou.undos.disabler():
             staging = hou.node("/obj").createNode("matnet")
@@ -1827,7 +1781,7 @@ class NodeHandler:
             holder, items = ((staging, (root,)) if whole    # a builder subnet keeps its own data
                              else (root, root.allItems()))    # NOT children(): a dot is no child ▸r/node-items
             self.save_asset_pair(
-                parms_file_name, file_name, root.asCode(),
+                file_name,
                 lambda path: holder.saveItemsToFile(
                     items, path, save_hda_fallbacks=hda_fallbacks_needed(items)),
                 builder_node=root, asset_id=asset_id)

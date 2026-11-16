@@ -601,9 +601,7 @@ class FileFiles(grid_engine.GridEngine,
         image = thumbnails.engine.request_file(key, path) if path else None
         if image is not None:
             return image
-        if not path or thumbnails.engine.is_missing(key):
-            return tile_icons.generic_image(self.tile_face_art(row))    # not captured yet
-        return None
+        return self.preview_image(row)    # no capture, or not landed yet: the file's own preview
 
     def _on_capture_landed(self, key) -> None:
         """A capture landed for `key`: drop the old picture and repaint the rows showing that file."""
@@ -764,12 +762,12 @@ class FileFiles(grid_engine.GridEngine,
         return "icon_hip" if self._kind(row) == locations.KIND_HIP else "face_file"
 
     def can_preview(self, row: int) -> bool:
-        """Every file but a scene has one: a render, the image, or the system's icon for its type."""
-        return self._kind(row) != locations.KIND_HIP
+        """Every file has an image: its capture, else a render, the image, or its type's icon."""
+        return True
 
     def default_face(self, row: int) -> str:
-        """Capture for a scene, Render for every other file: its picture, or the system's icon."""
-        return "capture" if self._kind(row) == locations.KIND_HIP else "preview"
+        """Image for every file: a scene's capture, any other file's picture or system icon."""
+        return "image"
 
     def preview_image(self, row: int):
         """The row's own picture as far as it has landed: the tile's Preview, and Customize's."""
@@ -807,12 +805,9 @@ class FileFiles(grid_engine.GridEngine,
         if role == QtCore.Qt.ItemDataRole.DisplayRole:
             return name
         if role == QtCore.Qt.ItemDataRole.DecorationRole:
-            face = tile_icons.face_for(self, row)
-            if face == "capture":
-                return self._capture_tile_image(row)
-            if face != "preview":
+            if tile_icons.face_for(self, row) != "image":
                 return tile_icons.chosen_image(self, row)
-            return self.preview_image(row)
+            return self._capture_tile_image(row)    # the engine answers a missing capture, no stat
         if role == self.FormatRole:
             if kind == locations.KIND_GEO:
                 return geo_library.matched_extension(
@@ -836,7 +831,8 @@ class FileFiles(grid_engine.GridEngine,
         if role == self.KindRole:
             return kind
         if role == self.CropRole:
-            return tile_icons.face_for(self, row) == "capture"    # viewport-shaped: it fills the tile
+            return (tile_icons.face_for(self, row) == "image"    # a landed capture fills the tile
+                    and thumbnails.engine.peek(("capture", self.capture_path(row))) is not None)
         if role == self.NotesRole:
             from amaze.core import notes
             return notes.has_note(

@@ -74,7 +74,7 @@ class ThumbNailRenderer:
         finally:
             with hou.undos.disabler():    # a bare destroy brings the scaffold back on Ctrl+Z
                 scaffold["net"].destroy()
-        frames = [(asset_id, tile_icons.thumbnail_path(preferences, asset_id))
+        frames = [(asset_id, tile_icons.thumbnail_path(preferences, asset_id, nodes.MATERIALS))
                   for (asset_id, _node), prim in zip(items, batch["prims"]) if prim]
         batch["prims"] = [prim for prim in batch["prims"] if prim]
         if not frames:    # no material node in any of them
@@ -404,10 +404,9 @@ class ThumbNailRenderer:
     @_undo_free
     def create_thumb_sop(self, asset_id: str) -> bool:
         """Thumbnail for a saved SOP asset, from the archive; False means no thumbnail, not a failure."""
-        out_path = tile_icons.thumbnail_path(self._preferences, asset_id)
+        out_path = tile_icons.thumbnail_path(self._preferences, asset_id, nodes.NODES)
         file_name = material.payload_path(
-            self._preferences, str(asset_id), self._preferences.ext
-        )
+            self._preferences, str(asset_id), self._preferences.ext, nodes.NODES)
         if not os.path.exists(file_name):
             debug.note("SOP thumbnail - asset file missing")
             return False
@@ -465,10 +464,9 @@ class ThumbNailRenderer:
     @_undo_free
     def create_thumb_cop(self, asset_id: str, source_name: str = "") -> bool:
         """Thumbnail for a COP asset: its own output image; False means no thumbnail, not a failure."""
-        out_path = tile_icons.thumbnail_path(self._preferences, asset_id)
+        out_path = tile_icons.thumbnail_path(self._preferences, asset_id, nodes.NODES)
         file_name = material.payload_path(
-            self._preferences, str(asset_id), self._preferences.ext
-        )
+            self._preferences, str(asset_id), self._preferences.ext, nodes.NODES)
         temp = None
         try:
             with hou.undos.disabler():  # off the undo stack, like create_thumb_sop's container ▸r/undo-groups

@@ -20,6 +20,9 @@ _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])    # ▸p
 import hou  # noqa: E402
 from amaze.tests import test_support  # noqa: E402,F401 - import redirects the debug log
 from amaze.actions import materials as material_actions  # noqa: E402
+from amaze.core import library_files, material  # noqa: E402
+
+MATERIALS_KEY = library_files.SECTION_FOLDERS[library_files.MATERIALS] + "/"    # "materials/"
 
 
 class TestMaterialLibrary(unittest.TestCase):
@@ -52,7 +55,6 @@ class TestMaterialLibrary(unittest.TestCase):
                        "assets": [{"id": "mat_001"}]}, handle)
         self.mock_prefs.dir = self._library_dir + os.sep
         self.mock_prefs.img_dir = os.path.join(self._library_dir, "img", "")    # absolute, inside temp
-        self.mock_prefs.asset_dir = os.path.join(self._library_dir, "assets", "")
         self.mock_prefs.ext = ".mat"
         self.mock_prefs.img_ext = ".png"
         self.mock_prefs.render_on_import = False
@@ -330,7 +332,7 @@ class CheckLibraryMovesAndNeverDeletesTest(unittest.TestCase):
         test_support.reset_database_singletons()
         self.addCleanup(test_support.reset_database_singletons)
         self.dir = self.prefs.dir
-        self.mat_dir = os.path.join(self.dir, self.prefs.asset_dir)
+        self.mat_dir = material.section_folder(self.dir, library_files.MATERIALS)
         self.img_dir = os.path.join(self.dir, self.prefs.img_dir)
         self.index = os.path.join(self.dir, "library.json")
         _without_the_legacy_row(self.prefs)
@@ -339,7 +341,7 @@ class CheckLibraryMovesAndNeverDeletesTest(unittest.TestCase):
 
     def _survey(self):
         from amaze.core import repair
-        return repair.survey(self.dir, self.prefs.asset_dir, self.prefs.img_dir)
+        return repair.survey(self.dir, self.prefs.img_dir)
 
     def _write(self, path, text="x"):
         with open(path, "w", encoding="utf-8") as handle:
@@ -350,10 +352,11 @@ class CheckLibraryMovesAndNeverDeletesTest(unittest.TestCase):
         """A move aside that is wrong is undone from the holding folder; an unlink is not."""
         from amaze.core import quarantine, repair
         stray = [self._write(os.path.join(self.mat_dir, "orphan.mat")),
-                 self._write(os.path.join(self.img_dir, "orphan.png"))]
+                 self._write(os.path.join(self.mat_dir, "orphan.png"))]
         findings = self._survey()
         self.assertTrue(findings["complete"], "premise: every list reads")
-        self.assertIn("orphan.mat", findings["unaccounted"][self.prefs.asset_dir])
+        self.assertIn("orphan.mat", findings["unaccounted"][MATERIALS_KEY])
+        self.assertIn("orphan.png", findings["unaccounted"][MATERIALS_KEY])
         with patch("os.remove") as removed, patch("os.unlink") as unlinked:
             result = repair.move_aside(findings, "unlisted")
         self.assertFalse(removed.called or unlinked.called,
@@ -364,7 +367,7 @@ class CheckLibraryMovesAndNeverDeletesTest(unittest.TestCase):
             self.assertFalse(os.path.exists(path), path)
         root = quarantine.quarantine_folder(self.dir)
         self.assertIn(quarantine.QUARANTINE_PREFIX, root)
-        self.assertTrue(os.path.isfile(os.path.join(root, self.prefs.asset_dir, "orphan.mat")))
+        self.assertTrue(os.path.isfile(os.path.join(root, MATERIALS_KEY, "orphan.mat")))
         self.assertFalse(os.path.realpath(root).startswith(os.path.realpath(self.dir)),
                          "the holding folder is inside the library, so it would sync")
 
@@ -384,7 +387,8 @@ class CheckLibraryMovesAndNeverDeletesTest(unittest.TestCase):
         with open(self.index, encoding="utf-8-sig") as handle:
             self.assertEqual(rows_before, json.load(handle)["assets"],
                              "a row was dropped on one missing file")
-        self.assertTrue(os.path.exists(os.path.join(self.mat_dir, self.first_id + ".interface")),
+        self.assertTrue(os.path.exists(os.path.join(self.mat_dir,
+                                                    self.first_id + material.RECORD_SUFFIX)),
                         "the surviving half of a half-synced asset was moved")
 
     def test_an_unreadable_asset_folder_holds_everything_back(self):
@@ -394,7 +398,7 @@ class CheckLibraryMovesAndNeverDeletesTest(unittest.TestCase):
         with open(self.index, "rb") as handle:
             before = handle.read()
         findings = self._survey()
-        self.assertEqual([self.prefs.asset_dir], findings["unreadable_folders"])
+        self.assertEqual([MATERIALS_KEY], findings["unreadable_folders"])
         self.assertFalse(findings["complete"])
         self.assertEqual(len(findings["leftovers"]), repair.files_to_move_aside(findings))
         with self.assertRaises(ValueError):
@@ -572,7 +576,7 @@ class ACommaInsideOneCategoryNameStaysWholeTest(unittest.TestCase):
         with open(index, "w", encoding="utf-8") as handle:
             json.dump(document, handle, indent=4)
         test_support.reset_database_singletons()    # an action refuses a library this process holds
-        findings = repair.survey(self.prefs.dir, self.prefs.asset_dir, self.prefs.img_dir)
+        findings = repair.survey(self.prefs.dir, self.prefs.img_dir)
         self.assertNotIn(self.asset.mat_id,
                          [one for one, _name in findings["uncategorised"]["library.json"]],
                          "a name holding a comma was read as no category")
@@ -621,7 +625,7 @@ class AnInlineSectionHasNoFilesToMissTest(unittest.TestCase):
         before = self._rows(filename)
         self.assertTrue(before, "premise: the list holds nothing to keep")
         test_support.reset_database_singletons()    # an action refuses a library this process holds
-        findings = repair.survey(self.prefs.dir, self.prefs.asset_dir, self.prefs.img_dir)
+        findings = repair.survey(self.prefs.dir, self.prefs.img_dir)
         self.assertEqual(set(database.ASSET_FILE_OWNERS), set(findings["missing_files"]),
                          "an inline list was checked for files it never has")
         self.assertNotIn(filename, findings["missing_renders"])
@@ -1102,7 +1106,9 @@ class TwoMachineMergeTest(unittest.TestCase):
 
 
 class CheckLibraryRefusesOnIncompleteKnowledgeTest(unittest.TestCase):
-    """Materials and Nodes share mat/ and img/, so every list's ids decide what no list holds."""
+    """Materials and Nodes share img/, so every list's ids decide what no list holds."""
+
+    NODES = library_files.SECTION_FOLDERS[library_files.NODES]
 
     def setUp(self):
         from amaze.tests import test_support
@@ -1113,13 +1119,14 @@ class CheckLibraryRefusesOnIncompleteKnowledgeTest(unittest.TestCase):
 
     def _write_sibling(self, name, text):
         path = os.path.join(self.prefs.dir, name)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w", encoding="utf-8") as handle:
             handle.write(text)
         return path
 
     def _survey(self):
         from amaze.core import repair
-        return repair.survey(self.prefs.dir, self.prefs.asset_dir, self.prefs.img_dir)
+        return repair.survey(self.prefs.dir, self.prefs.img_dir)
 
     def _entry(self, findings, filename):
         return next(entry for entry in findings["lists"] if entry["filename"] == filename)
@@ -1127,7 +1134,7 @@ class CheckLibraryRefusesOnIncompleteKnowledgeTest(unittest.TestCase):
     def test_an_unreadable_sibling_is_reported_not_skipped(self):
         from amaze.core import repair
         self._write_sibling("cops.json", '{"assets": [{"id": "COPASSET1"}')
-        self._write_sibling(os.path.join(self.prefs.asset_dir, "COPASSET1.mat"), "x")
+        self._write_sibling(os.path.join(self.NODES, "COPASSET1.mat"), "x")
         findings = self._survey()
         self.assertEqual("unreadable", self._entry(findings, "cops.json")["state"])
         self.assertFalse(findings["complete"],
@@ -1140,11 +1147,12 @@ class CheckLibraryRefusesOnIncompleteKnowledgeTest(unittest.TestCase):
 
     def test_a_readable_sibling_contributes_its_ids(self):
         self._write_sibling("cops.json", '{"assets": [{"id": "COPASSET1"}]}')
-        self._write_sibling(os.path.join(self.prefs.asset_dir, "COPASSET1.mat"), "x")
+        self._write_sibling(os.path.join(self.NODES, "COPASSET1.mat"), "x")
+        self._write_sibling(os.path.join(self.NODES, "COPASSET1.json"), "{}")
         findings = self._survey()
         self.assertIn("COPASSET1", findings["ids"],
                       "a sibling's ids did not reach the unlisted check")
-        self.assertNotIn("COPASSET1.mat", findings["unaccounted"][self.prefs.asset_dir])
+        self.assertEqual([], findings["unaccounted"][self.NODES + "/"])
 
     def test_an_absent_sibling_is_not_an_error(self):
         """Absent owns nothing; only present-but-unparseable is unsafe."""

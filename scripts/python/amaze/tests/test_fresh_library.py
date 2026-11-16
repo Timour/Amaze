@@ -32,12 +32,14 @@ class TheTestLibraryDoorMakesAWholeLibrary(unittest.TestCase):
             return json.load(handle)
 
     def test_it_creates_the_asset_folder(self):
-        """Without `mat/` the first save raises FileNotFoundError out of mkstemp, uncaught."""
+        """Without its section folders the first save raises out of mkstemp, uncaught."""
         prefs_mod.seed_test_folder(self.folder)
-        for tail in ("mat", "img"):
+        for tail in ("materials", "nodes", "img"):
             self.assertTrue(
                 os.path.isdir(os.path.join(self.lib, tail)),
                 "%s/ was not created, so the library is half made" % tail)
+        self.assertFalse(os.path.exists(os.path.join(self.lib, "mat")),
+                         "a format 4 library was born with format 3's shared mat/")
 
     def test_its_index_is_born_at_the_current_schema(self):
         """A versionless index reads as legacy 1, and _MIGRATIONS has no step below 4 to climb."""
@@ -143,14 +145,25 @@ class TheAssetWriterMakesItsFolderInsideTheLibraryOnly(unittest.TestCase):
 
     def _save(self, folder):
         handler = self.nodes.NodeHandler(self.prefs)
-        handler.save_asset_pair(
-            os.path.join(folder, "7.interface"), os.path.join(folder, "7.mat"),
-            "interface", self._write_mat)
+        handler.save_asset_pair(os.path.join(folder, "7.mat"), self._write_mat)
 
     def test_a_first_save_into_a_library_with_no_asset_folder_succeeds(self):
-        """The reported crash: three logged exceptions, all mkstemp on an absent mat/."""
-        self._save(os.path.join(self.root, "mat"))
-        self.assertTrue(os.path.isfile(os.path.join(self.root, "mat", "7.mat")))
+        """The reported crash: three logged exceptions, all mkstemp on an absent asset folder."""
+        self._save(os.path.join(self.root, "materials"))
+        self.assertTrue(os.path.isfile(os.path.join(self.root, "materials", "7.mat")))
+
+    def test_a_first_save_makes_the_builder_record_beside_it(self):
+        """The `<id>.json` lands in the section folder the same first save just made."""
+        import hou
+        from amaze.core import asset_record
+        staging = hou.node("/obj").createNode("subnet", "fresh_builder")
+        self.addCleanup(staging.destroy)
+        handler = self.nodes.NodeHandler(self.prefs)
+        handler.save_asset_pair(os.path.join(self.root, "materials", "7.mat"),
+                                self._write_mat, staging, "7")
+        record = asset_record.read(os.path.join(self.root, "materials", "7.json"))
+        self.assertEqual("subnet", record["builder"].get("type"),
+                         "the first save left no builder beside its .mat")
 
     def test_a_refused_destination_is_not_created(self):
         """Refusing after making the folder would be the same bug with a better error message."""
@@ -163,9 +176,7 @@ class TheAssetWriterMakesItsFolderInsideTheLibraryOnly(unittest.TestCase):
         handler = self.nodes.NodeHandler.__new__(self.nodes.NodeHandler)
         target = os.path.join(self.root, "unmade")
         with self.assertRaises(FileNotFoundError):
-            handler.save_asset_pair(
-                os.path.join(target, "7.interface"),
-                os.path.join(target, "7.mat"), "interface", self._write_mat)
+            handler.save_asset_pair(os.path.join(target, "7.mat"), self._write_mat)
         self.assertFalse(os.path.exists(target))
 
 
@@ -258,7 +269,7 @@ class EveryWayIntoAnEmptyFolderReadiesIt(unittest.TestCase):
             json.dump(data, handle)
 
     def _assert_ready(self):
-        for name in ("library.json", "img", "mat"):
+        for name in ("library.json", "img", "materials", "nodes"):
             self.assertTrue(os.path.exists(os.path.join(self.empty, name)),
                             "the empty folder was opened without its %s" % name)
 

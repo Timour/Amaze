@@ -6,7 +6,7 @@ import re
 import uuid
 import datetime
 
-from amaze.core import renderers
+from amaze.core import library_files, renderers
 
 REDSHIFT_TERMINALS = ("redshift_material", "redshift_usd_material")
 
@@ -67,15 +67,24 @@ def is_safe_asset_id(raw) -> bool:
     return bool(_SAFE_ASSET_ID.match(text))
 
 
-BUILDER_SUFFIX = ".builder.json"      # read, never exec'd ▸r/interface-contents
-STAMP_SUFFIX = ".stamp.json"    # a recovery stamp, write-only: only repair.py opens one ▸p/recovery-stamp
+RECORD_SUFFIX = library_files.RECORD_SUFFIX    # `<id>.json`, through `core/asset_record.py` alone
 
 
-def payload_path(preferences, asset_id, suffix: str) -> str:
-    """The path `mat/<id><suffix>`, refused if it escapes the asset folder."""
+def section_folder(library_dir: str, section: str, area: str = "") -> str:
+    """`<library>/<section folder>[/<area>]`; KeyError for a database that owns no folder."""
+    folder = os.path.join(str(library_dir), library_files.SECTION_FOLDERS[section])
+    return os.path.join(folder, area) if area else folder
+
+
+def owned_path(preferences, section: str, area: str, name: str) -> str:
+    """`name` in a section's folder or its `area`, refused if it escapes."""
     from amaze.helpers import hostos
-    assets = os.path.join(preferences.dir, preferences.asset_dir)
-    return hostos.contained_join(assets, str(asset_id) + suffix)
+    return hostos.contained_join(section_folder(preferences.dir, section, area), name)
+
+
+def payload_path(preferences, asset_id, suffix: str, section: str) -> str:
+    """`<section folder>/<id><suffix>`, refused if it escapes."""
+    return owned_path(preferences, section, "", str(asset_id) + suffix)
 
 
 class Material:

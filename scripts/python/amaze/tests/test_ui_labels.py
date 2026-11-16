@@ -15,9 +15,10 @@ PACKAGE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(PACKAGE)))
 
 RETIRED = {    # retired label -> current name, quoted on failure ▸p/quoted-strings-go-stale
-    "Rerender Thumbnail": "Update Render",
-    "Render Thumbnail": "Update Render",
-    "Update Preview": "Update Render",    # a render beside a capture
+    "Rerender Thumbnail": "Render Image",
+    "Render Thumbnail": "Render Image",
+    "Update Preview": "Render Image",    # a render beside a capture
+    "Update Render": "Render Image",    # under Thumbnail since library format 4
     "Delete Entry": "Delete",
     "Edit Info": "Info",
     "Toggle Favorite": "Favorite",

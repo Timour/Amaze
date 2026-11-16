@@ -16,7 +16,7 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze.core import lop_assign  # noqa: E402
+from amaze.core import library_files, lop_assign, material  # noqa: E402
 from amaze.tests import test_support  # noqa: E402,F401 - import redirects the debug log
 
 
@@ -346,8 +346,8 @@ class TestLockedContextIsRefused(unittest.TestCase):
         handler.update_context = refuse
         asset = None   # files must exist, or the import refuses before `update_context`
         for candidate in model.assets:
-            payload = os.path.join(
-                prefs.dir, prefs.asset_dir, str(candidate.mat_id) + prefs.ext)
+            payload = material.payload_path(
+                prefs, candidate.mat_id, prefs.ext, library_files.MATERIALS)
             if os.path.exists(payload) and os.path.getsize(payload) > 0:
                 asset = candidate
                 break

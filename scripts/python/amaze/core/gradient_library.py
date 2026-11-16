@@ -263,12 +263,11 @@ class GradientLibrary(library.AssetLibrary):
         self.row_changed(0)
 
     def _owned_paths(self, mat_id) -> tuple:
-        """A palette owns its stamp and nothing else on disk: it is stored inline."""
+        """A palette owns its captured picture at most: the rest is stored inline."""
         try:
-            stamp = self.asset_files(mat_id).get("stamp", "")
+            return self.asset_files(mat_id), {}
         except hostos.PathEscape:
-            stamp = ""
-        return ({"stamp": stamp} if stamp else {}), {}
+            return {}, {}
 
     def _report_refused_delete(self, asset) -> None:
         """A palette's refused delete, in Colors' words."""
@@ -312,13 +311,19 @@ class GradientLibrary(library.AssetLibrary):
 
     def _decoration_image(self, row: int):
         """The painted swatch, its capture, or its chosen icon."""
-        if tile_icons.face_for(self, row) == "capture":
-            return super()._decoration_image(row)    # the capture PNG, through the shared loader
+        face = tile_icons.face_for(self, row)
+        if face == "image":    # a capture took the swatch's place; the engine asks, not paint
+            held = self._thumb_key(row)
+            captured = thumbnails.engine.request_file(held, self._mat_paths[row])
+            if captured is not None:
+                return captured
+            if not thumbnails.engine.is_missing(held):
+                return None    # still being read: its delivery repaints the tile
         key = self._swatch_key(row)
         image = thumbnails.engine.peek(key)
         if image is not None:
             return image
-        if tile_icons.face_for(self, row) != "preview":
+        if face != "image":
             face = self._missing_thumb_image(row)
             if face is not None:
                 thumbnails.engine.deposit(key, face)

@@ -127,7 +127,7 @@ def check_in_panel(panel) -> None:
 def check_failed_library(folder: str, preferences) -> None:
     """Check Library on a library a switch left closed; fixes only while nothing here holds it."""
     while True:
-        findings = repair.survey(folder, preferences.asset_dir, preferences.img_dir)
+        findings = repair.survey(folder, preferences.img_dir)
         findings["settings"] = None
         surveyed(findings)
         action = report(findings, may_change=not repair.session_holds(folder))

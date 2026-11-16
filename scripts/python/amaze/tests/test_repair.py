@@ -25,6 +25,7 @@ import hou                                                # noqa: E402
 
 from amaze import messages                                # noqa: E402
 from amaze.core import category, database, material, quarantine, repair  # noqa: E402
+from amaze.core import asset_record, library_conversion, library_files  # noqa: E402
 from amaze.core import library as library_mod             # noqa: E402
 from amaze.core import multifilterproxy_model             # noqa: E402
 from amaze.dialogs import repair_dialog                   # noqa: E402
@@ -36,6 +37,22 @@ from amaze.tests import test_support                      # noqa: E402
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__))))))
 SHELF = os.path.join(REPO, "toolbar", "Amaze.shelf")
+
+MATERIALS_DIR = library_files.SECTION_FOLDERS[library_files.MATERIALS] + "/"    # "materials/"
+NODES_DIR = library_files.SECTION_FOLDERS[library_files.NODES] + "/"    # "nodes/"
+LEGACY_DIR = "mat/"    # format 3's shared folder: only the converter reads it now
+BUILDER = {"type": "subnet", "interface": "", "values": {}}
+
+
+def write_record(folder, asset_id, metadata=None, builder=BUILDER):
+    """A format 4 `<id>.json`: the builder, and the metadata when given; its path."""
+    os.makedirs(folder, exist_ok=True)
+    path = os.path.join(folder, asset_id + material.RECORD_SUFFIX)
+    if builder:
+        asset_record.write_section(path, asset_record.BUILDER, dict(builder))
+    if metadata is not None:
+        asset_record.write_section(path, asset_record.METADATA, dict(metadata))
+    return path
 
 
 class _Case(unittest.TestCase):
@@ -49,20 +66,29 @@ class _Case(unittest.TestCase):
         test_support.reset_database_singletons()
         self.addCleanup(test_support.reset_database_singletons)
         self.dir = self.prefs.dir
-        self.mat_dir = os.path.join(self.dir, self.prefs.asset_dir)
+        self.mat_dir = material.section_folder(self.dir, library_files.MATERIALS)
+        self.nodes_dir = material.section_folder(self.dir, library_files.NODES)
+        self.legacy_dir = os.path.join(self.dir, "mat")
         self.img_dir = os.path.join(self.dir, self.prefs.img_dir)
         self.cops = os.path.join(self.dir, "cops.json")
 
     def _survey(self):
-        return repair.survey(self.dir, self.prefs.asset_dir,
-                             self.prefs.img_dir)
+        return repair.survey(self.dir, self.prefs.img_dir)
 
-    def _pair(self, asset_id=None):
-        """The two files an asset owns, listed by nothing."""
+    def _pair(self, asset_id=None, legacy=False, folder=None):
+        """The two files an asset owns, listed by nothing; `legacy`, format 3's in `mat/`."""
         asset_id = asset_id or self.COP_ID
+        if not legacy:
+            folder = folder or self.mat_dir
+            os.makedirs(folder, exist_ok=True)
+            path = os.path.join(folder, asset_id + ".mat")
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write("owned by " + asset_id + "\n")
+            return [path, write_record(folder, asset_id)]
+        os.makedirs(self.legacy_dir, exist_ok=True)
         paths = []
         for suffix in (".mat", ".interface"):
-            path = os.path.join(self.mat_dir, asset_id + suffix)
+            path = os.path.join(self.legacy_dir, asset_id + suffix)
             with open(path, "w", encoding="utf-8") as handle:
                 handle.write("owned by " + asset_id + "\n")
             paths.append(path)
@@ -107,7 +133,8 @@ class TheReportSaysWhatIsWrongTest(_Case):
         self.assertEqual(0, repair.unaccounted_total(findings))
         text = "\n".join(repair.report_lines(findings))
         self.assertIn("Every database reads fine: ", text)
-        self.assertIn("There are no orphaned files in `mat/`, `img/` and `captures/`.", text)
+        self.assertIn("There are no orphaned files in `materials/`, `nodes/`, `code/` "
+                      "and `colors/`.", text)
         choices, actions = repair_dialog._choices(findings, may_change=True)
         self.assertEqual(["Close"], choices,
                          "Repair offered an action on a library with "
@@ -120,7 +147,7 @@ class TheReportSaysWhatIsWrongTest(_Case):
         findings = self._survey()
         text = "\n".join(repair.report_lines(findings))
         self.assertIn("Node: the database is there and holds nothing.", text)
-        self.assertIn("2 files in the mat folder", text,
+        self.assertIn("2 files in the materials folder", text,
                       "the report does not say how many files, in which "
                       "folder - a combined total cannot be checked against "
                       "the refusal that sent the reader here, which counts "
@@ -251,14 +278,14 @@ class TheReportSaysWhatIsWrongTest(_Case):
         self._without_the_legacy_row()
         shutil.rmtree(self.mat_dir)
         findings = self._survey()
-        self.assertEqual([self.prefs.asset_dir],
+        self.assertEqual([MATERIALS_DIR],
                          findings["unreadable_folders"])
         self.assertFalse(
             findings["complete"],
             "a folder Amaze could not look inside left the union looking "
             "complete, so files could have been moved on a guess")
         text = "\n".join(repair.report_lines(findings))
-        self.assertIn("could not look inside the mat folder", text)
+        self.assertIn("could not look inside the materials folder", text)
         self.assertNotIn("There are no orphaned files", text,
                          "Repair reported a folder it could not read as "
                          "accounted for")
@@ -275,7 +302,7 @@ class TheReportSaysWhatIsWrongTest(_Case):
         self._pair()
         with open(os.path.join(self.mat_dir, "HALFONLY2.mat"), "w",
                   encoding="utf-8") as handle:
-            handle.write("no .interface beside me\n")
+            handle.write("no .json beside me\n")
         findings = self._survey()
         self.assertEqual(3, repair.unaccounted_total(findings),
                          "premise: one of the three files must be half a "
@@ -287,6 +314,42 @@ class TheReportSaysWhatIsWrongTest(_Case):
         self.assertIn("Of those, 2 files can be added back", text,
                       "nothing tells the reader the two buttons cover "
                       "different files")
+
+    def test_format_3_s_mat_folder_is_no_asset_folder(self):
+        """Check Library reads the new shape only: a `mat/` left over is one unknown folder."""
+        self._cops(self.KEPT)
+        self._pair(legacy=True)
+        findings = self._survey()
+        self.assertEqual([MATERIALS_DIR, NODES_DIR], findings["asset_dirs"])
+        self.assertNotIn(LEGACY_DIR, findings["unaccounted"])
+        self.assertEqual([], repair.complete_pairs(findings),
+                         "a pair in `mat/` was read as an asset")
+        self.assertEqual([("mat", 2)], [(entry[0], entry[1])
+                                        for entry in findings["unknown_folders"]],
+                         "mat/ is not one unknown folder holding its two files")
+        self.assertNotIn("mat", [entry[0] for entry in findings["leftovers"]],
+                         "a leftover mat/ was offered for sweeping as superseded")
+        self.assertEqual(1, repair.unknown_to_move_aside(findings))
+
+    def test_older_files_beside_their_json_are_leftovers_not_orphans(self):
+        """What a `.json` replaced is swept as a leftover; nothing calls it unlisted."""
+        self._without_the_legacy_row()
+        listed = "139888336268658010"
+        for suffix in (".interface", ".builder.json", ".stamp.json"):
+            with open(os.path.join(self.mat_dir, listed + suffix), "w",
+                      encoding="utf-8") as handle:
+                handle.write("{}\n")
+        findings = self._survey()
+        self.assertEqual(0, repair.unaccounted_total(findings),
+                         "a file a `.json` replaced was reported as orphaned")
+        self.assertEqual(
+            sorted(MATERIALS_DIR + listed + suffix for suffix in
+                   (".interface", ".builder.json", ".stamp.json")),
+            sorted(entry[0] for entry in findings["leftovers"]
+                   if entry[1] == library_files.SUPERSEDED))
+        self.assertIn("files of the older format whose content is now in their asset's .json",
+                      "\n".join(repair.report_lines(findings)))
+        self.assertEqual(3, repair.files_to_move_aside(findings))
 
 
 class RepairNeverDeletesTest(unittest.TestCase):
@@ -341,8 +404,7 @@ class MovingFilesAsideTest(_Case):
         for path in paths:
             self.assertFalse(os.path.exists(path),
                              "%s was left where it was" % path)
-        moved_dir = os.path.join(result["folder"],
-                                 self.prefs.asset_dir.rstrip("/\\"))
+        moved_dir = os.path.join(result["folder"], MATERIALS_DIR.rstrip("/\\"))
         for name, content in before.items():
             landed = os.path.join(moved_dir, name)
             self.assertTrue(os.path.exists(landed),
@@ -489,39 +551,36 @@ class AddingUnlistedFilesBackTest(_Case):
                          "the files are still unclaimed after being added "
                          "back, so Clean Library would still refuse")
 
-    def test_the_stamp_beside_the_files_names_the_asset(self):
-        """▸p/recovery-stamp: Repair is the sanctioned reader, and this is a repair."""
-        import json as json_mod
+    STAMPED = {"id": "COPOWNED1", "name": "Brushed Copper",
+               "categories": ["Metals"], "tags": ["copper", "pbr"],
+               "description": "the one from the kitchen shot", "renderer": "Karma"}
 
+    def _named_back(self):
+        """Reattach to Materials, then the row it wrote and the list."""
+        repair.reattach(self._survey(), "library.json")
+        document = self._read(os.path.join(self.dir, "library.json"))
+        return [r for r in document["assets"] if r.get("id") == self.COP_ID][0], document
+
+    def test_the_metadata_beside_the_files_names_the_asset(self):
+        """▸p/recovery-stamp: Repair is the sanctioned reader, and this is a repair."""
         self._cops([])
         self._pair()
-        with open(os.path.join(self.mat_dir,
-                               self.COP_ID + ".stamp.json"), "w",
-                  encoding="utf-8") as handle:
-            json_mod.dump({"id": self.COP_ID, "name": "Brushed Copper",
-                           "categories": ["Metals"], "tags": ["copper", "pbr"],
-                           "description": "the one from the kitchen shot",
-                           "renderer": "Karma"}, handle)
-
-        repair.reattach(self._survey(), "library.json")
-
-        document = self._read(os.path.join(self.dir, "library.json"))
-        row = [r for r in document["assets"]
-               if r.get("id") == self.COP_ID][0]
+        write_record(self.mat_dir, self.COP_ID, metadata=self.STAMPED)
+        row, document = self._named_back()
         self.assertEqual(
             "Brushed Copper", row.get("name"),
-            "the name sat in the stamp beside the files and Repair minted a "
-            "placeholder instead; the next save then rewrites that stamp")
+            "the name sat in the `.json` beside the files and Repair minted a "
+            "placeholder instead; the next save then rewrites that metadata")
         self.assertEqual(["Metals"], row.get("categories"))
         self.assertIn("Metals", document["categories"])
         self.assertEqual(["copper", "pbr"], row.get("tags"))
 
     def test_a_pair_with_no_stamp_still_comes_back_named(self):
-        """The fallback: no stamp, or one that will not parse, still reattaches."""
+        """The fallback: no metadata, or a `.json` that will not parse, still reattaches."""
         self._cops([])
         self._pair()
         with open(os.path.join(self.mat_dir,
-                               self.COP_ID + ".stamp.json"), "w",
+                               self.COP_ID + material.RECORD_SUFFIX), "w",
                   encoding="utf-8") as handle:
             handle.write("{not json")
 
@@ -540,15 +599,19 @@ class AddingUnlistedFilesBackTest(_Case):
         self._cops([])
         for why, files, pairs in (
                 ("half a pair", ("HALFONLY1.mat",), []),
-                ("a COP companion beside an interface",
-                 ("PAIRCOP1_cop.mat", "PAIRCOP1.interface"), []),
+                ("a COP companion beside a record",
+                 ("PAIRCOP1_cop.mat", "PAIRCOP1.json"), []),
                 ("a real pair beside its companion",
-                 ("PAIRFULL1.mat", "PAIRFULL1.interface",
-                  "PAIRFULL1_cop.mat"), ["PAIRFULL1"])):
+                 ("PAIRFULL1.mat", "PAIRFULL1.json",
+                  "PAIRFULL1_cop.mat"), ["PAIRFULL1"]),
+                ("an unconverted pair in mat/ is no asset",
+                 ("../mat/PAIROLD1.mat", "../mat/PAIROLD1.interface"),
+                 ["PAIRFULL1"])):
             with self.subTest(why):
                 for name in files:
-                    with open(os.path.join(self.mat_dir, name), "w",
-                              encoding="utf-8") as handle:
+                    path = os.path.normpath(os.path.join(self.mat_dir, name))
+                    os.makedirs(os.path.dirname(path), exist_ok=True)
+                    with open(path, "w", encoding="utf-8") as handle:
                         handle.write("owned by %s\n" % name)
                 findings = self._survey()
                 self.assertEqual(pairs, repair.complete_pairs(findings))
@@ -597,8 +660,11 @@ class AddingUnlistedFilesBackTest(_Case):
     def test_the_list_it_writes_is_still_loadable_by_the_app(self):
         """Written through `Material.get_as_dict`; a hand-built row drifts."""
         self._cops([])
-        self._pair()
+        paths = self._pair()
         repair.reattach(self._survey(), "cops.json")
+        for path in paths:
+            self.assertTrue(os.path.exists(os.path.join(self.nodes_dir, os.path.basename(path))),
+                            "Add Back to Nodes left %s outside the Nodes folder" % path)
         from amaze.core import cop_library
         model = cop_library.CopLibrary(preferences=self.prefs)
         self.assertIn(self.COP_ID, [str(a.mat_id) for a in model.assets],
@@ -617,23 +683,26 @@ class AMissingListComesBackFromItsFilesTest(_Case):
     def setUp(self):
         super().setUp()
         self.index = os.path.join(self.dir, "library.json")
-        for folder in (self.mat_dir, self.img_dir):    # a new library: only what this test saves
-            shutil.rmtree(folder)
-            os.makedirs(folder)
+        shutil.rmtree(self.mat_dir)    # a new library: only what this test saves
+        os.makedirs(self.mat_dir)
+        shutil.rmtree(self.img_dir, ignore_errors=True)    # format 4 keeps no picture in img/
         self._write(self.index, self.EMPTY)
 
     def _saved(self, asset_id, name, renderer):
-        """The files a save leaves: the pair, the builder, the record and the picture."""
-        for suffix in (".mat", ".interface", material.BUILDER_SUFFIX):
-            with open(os.path.join(self.mat_dir, asset_id + suffix), "w",
-                      encoding="utf-8") as handle:
-                handle.write("owned by %s\n" % asset_id)
-        self._write(os.path.join(self.mat_dir, asset_id + material.STAMP_SUFFIX),
-                    {"id": asset_id, "name": name, "categories": ["Fabric"],
-                     "tags": ["cloth"], "renderer": renderer,
-                     "date": "2026-10-24 00:24:58"})
-        with open(os.path.join(self.img_dir, asset_id + ".png"), "wb") as handle:
+        """A save's `.mat`, `.json` and `<id>.png`."""
+        row = {"id": asset_id, "name": name, "categories": ["Fabric"],
+               "tags": ["cloth"], "renderer": renderer, "date": "2026-10-24 00:24:58"}
+        folder = self.mat_dir
+        os.makedirs(folder, exist_ok=True)
+        with open(os.path.join(folder, asset_id + ".mat"), "w", encoding="utf-8") as handle:
+            handle.write("owned by %s\n" % asset_id)
+        write_record(folder, asset_id, metadata=row)
+        with open(os.path.join(folder, asset_id + ".png"), "wb") as handle:
             handle.write(b"\x89PNG\r\n")
+
+    def _metadata(self, asset_id):
+        return asset_record.read(os.path.join(
+            self.mat_dir, asset_id + material.RECORD_SUFFIX))[asset_record.METADATA]
 
     def _lose_the_list(self):
         """The incident: both saved copies predate every material, then the list is moved out."""
@@ -749,7 +818,7 @@ class AMissingListComesBackFromItsFilesTest(_Case):
         for asset_id, name, renderer in self.LOST:
             self._saved(asset_id, name, renderer)
         findings = self._survey()
-        self.assertEqual(15, repair.unaccounted_total(findings), "premise")
+        self.assertEqual(9, repair.unaccounted_total(findings), "premise: .mat, .json, .png")
         text = "\n".join(repair.report_lines(findings))
         self.assertNotIn("halves of an asset", text)
         self.assertIn("Crushed Velvet", text, "the materials it can put back are not named")
@@ -761,7 +830,7 @@ class AMissingListComesBackFromItsFilesTest(_Case):
             self._saved(asset_id, name, renderer)
         half = os.path.join(self.mat_dir, "HALFONLY1.mat")
         with open(half, "w", encoding="utf-8") as handle:
-            handle.write("no .interface beside me\n")
+            handle.write("no .json beside me\n")
         self._write(self.index, dict(self.EMPTY, assets=[    # an empty list would hold them all
             {"id": "KEEPER01", "name": "Keeper", "categories": ["Fabric"]}]))
         findings = self._survey()
@@ -814,7 +883,7 @@ class AMissingListComesBackFromItsFilesTest(_Case):
                                  "categories": ["Fabric"], "renderer": "Karma"}]))
         with open(self.index, "w", encoding="utf-8") as handle:
             handle.write('{"assets": [')
-        ok, how = repair.repair_index(self.dir, self.prefs.asset_dir)
+        ok, how = repair.repair_index(self.dir)
         self.assertTrue(ok, how)
         ids = [row["id"] for row in self._read(self.index)["assets"]]
         self.assertEqual(sorted(["OLDONE01", "FABRIC01", "FABRIC02", "VELVET01"]),
@@ -826,21 +895,20 @@ class AMissingListComesBackFromItsFilesTest(_Case):
         self._write(self.index + ".bak-1", dict(self.EMPTY, assets=rows))
         with open(self.index, "w", encoding="utf-8") as handle:
             handle.write('{"assets": [')
-        ok, how = repair.repair_index(self.dir, self.prefs.asset_dir)
+        ok, how = repair.repair_index(self.dir)
         self.assertTrue(ok, how)
         return {row["id"]: row for row in self._read(self.index)["assets"]}, how
 
     def test_a_row_edited_after_the_copy_comes_back_as_its_stamp_says(self):
-        """A stamp is written only after its list landed, so it is never older than a copy."""
+        """Metadata is written only after its list landed, so it is never older than a copy."""
         for asset_id, name, renderer in self.LOST:
             self._saved(asset_id, name, renderer)
-        stamped = os.path.join(self.mat_dir, "FABRIC01" + material.STAMP_SUFFIX)
-        stamp = dict(self._read(stamped), categories=["Woven"])
-        self._write(stamped, stamp)
+        stamp = dict(self._metadata("FABRIC01"), categories=["Woven"])
+        write_record(self.mat_dir, "FABRIC01", metadata=stamp, builder=None)
         older = dict(stamp, name="Herringbone", categories=["Before"])
         rows, how = self._put_back_over([older])
         self.assertEqual(stamp, rows["FABRIC01"],
-                         "the copy's older record came back over the newer one its stamp holds")
+                         "the copy's older record came back over the newer one its .json holds")
         self.assertIn("Woven", self._read(self.index)["categories"],
                       "the newer record's category is missing from the list")
 
@@ -860,12 +928,13 @@ class AMissingListComesBackFromItsFilesTest(_Case):
                                       "after the copy for a second run")
         self.assertIn("the 3 materials saved after it were added back", done["said"])
 
-    def test_the_shelf_s_put_back_takes_a_row_edited_after_the_copy_from_its_stamp(self):
+    def test_the_shelf_s_put_back_takes_a_row_edited_after_the_copy_from_its_record(self):
+        """An asset's `<id>.json` metadata is the newer row."""
         for asset_id, name, renderer in self.LOST:
             self._saved(asset_id, name, renderer)
-        stamped = os.path.join(self.mat_dir, "FABRIC01" + material.STAMP_SUFFIX)
-        stamp = dict(self._read(stamped), categories=["Woven"])
-        self._write(stamped, stamp)
+        stamp = dict(self._metadata("FABRIC01"), categories=["Woven"])
+        asset_record.write_section(os.path.join(self.mat_dir, "FABRIC01" + material.RECORD_SUFFIX),
+                                   asset_record.METADATA, stamp)
         self._write(self.index + ".bak-1", dict(
             self.EMPTY, assets=[dict(stamp, name="Herringbone", categories=["Before"])]))
         with open(self.index, "w", encoding="utf-8") as handle:
@@ -1199,7 +1268,6 @@ class TheGuardsTest(_Case):
 
 class _NoLibraryPrefs:
     dir = ""
-    asset_dir = "mat/"
     img_dir = "img/"
 
 
@@ -1299,7 +1367,6 @@ class TheWholeFlowTest(_Case):
 
 class _SettingsPrefs:
     """A Preferences stand-in naming a settings folder and a library."""
-    asset_dir = "mat/"
     img_dir = "img/"
 
     def __init__(self, path, directory=""):
@@ -1563,13 +1630,14 @@ class TheShelfToolAndWhatItReportsTest(_Case):
     def test_an_empty_list_is_named_and_its_files_wait_until_it_is_settled(self):
         """The whole route in one test, every step the real code."""
         self._cops([])
-        paths = self._pair()
+        paths = self._pair(folder=self.nodes_dir)    # in the empty database's own folder
         findings = self._survey()
         text = "\n".join(repair.report_lines(findings))
         self.assertIn("Node: the database is there and holds nothing.", text)
         self.assertIn("COPOWNED1.mat", text, "the files left behind are not named")
         self.assertEqual(2, repair.unaccounted_total(findings),
                          "the report and the move disagree about the folder")
+        self.assertIn("Node", repair.why_unlisted_stay(findings))
         with self.assertRaises(ValueError):
             repair.move_aside(findings, "unlisted")
         for path in paths:
@@ -1577,24 +1645,41 @@ class TheShelfToolAndWhatItReportsTest(_Case):
         self.assertIn("reattach", repair_dialog._choices(findings, may_change=True)[1])
         repair.reattach(findings, "cops.json")
 
-        leftover = os.path.join(self.img_dir, "GONEMATERIAL1.png")
+        leftover = os.path.join(self.mat_dir, "GONEMATERIAL1.png")
         with open(leftover, "wb") as handle:
             handle.write(b"a thumbnail whose material is gone")
+        for path in paths:
+            self.assertTrue(os.path.exists(path), "the pair added to Nodes left the Nodes folder")
         again = self._survey()
-        self.assertEqual(["GONEMATERIAL1.png"], again["unaccounted"][self.prefs.img_dir])
-        self.assertEqual([], again["unaccounted"][self.prefs.asset_dir],
-                         "files moved aside are still reported, so the way out does not work")
+        self.assertEqual(["GONEMATERIAL1.png"], again["unaccounted"][MATERIALS_DIR])
+        self.assertEqual([], again["unaccounted"][NODES_DIR],
+                         "files added back are still reported, so the way out does not work")
         repair.move_aside(again, "unlisted")
         self.assertFalse(os.path.exists(leftover), "the next round did not move the stray")
 
-    def test_a_later_leftover_waits_while_a_list_is_empty(self):
-        """An empty list may own a file in the asset folder, so it stays until the list is settled."""
+    def test_a_stray_elsewhere_does_not_wait_for_an_empty_list(self):
+        """An empty Node list holds back nodes/ alone: a stray in materials/ may go."""
         self._cops([])
-        later = os.path.join(self.mat_dir, "GENUINELEFTOVER2.mat")
+        stray = os.path.join(self.mat_dir, "GENUINELEFTOVER3.mat")
+        with open(stray, "w", encoding="utf-8") as handle:
+            handle.write("in no list at all\n")
+        findings = self._survey()
+        self.assertEqual([], findings["unaccounted"].get(NODES_DIR, []))
+        self.assertEqual("", repair.why_unlisted_stay(findings))
+        self.assertEqual(1, repair.files_to_move_aside(findings))
+        self.assertEqual(["GENUINELEFTOVER3.mat"],
+                         repair.move_aside(findings, "unlisted")["moved"])
+        self.assertFalse(os.path.exists(stray))
+
+    def test_a_later_leftover_waits_while_a_list_is_empty(self):
+        """An empty list may own a file in its own folder: it stays until the list is settled."""
+        self._cops([])
+        os.makedirs(self.nodes_dir, exist_ok=True)
+        later = os.path.join(self.nodes_dir, "GENUINELEFTOVER2.mat")
         with open(later, "w", encoding="utf-8") as handle:
             handle.write("in no list at all\n")
         findings = self._survey()
-        self.assertIn("GENUINELEFTOVER2.mat", findings["unaccounted"][self.prefs.asset_dir])
+        self.assertIn("GENUINELEFTOVER2.mat", findings["unaccounted"][NODES_DIR])
         self.assertEqual(0, repair.files_to_move_aside(findings))
         with self.assertRaises(ValueError):
             repair.move_aside(findings, "unlisted")
@@ -1616,12 +1701,12 @@ class TheShelfToolAndWhatItReportsTest(_Case):
                       encoding="utf-8") as handle:
                 handle.write(body)
         findings = self._survey()
-        mine = findings["unaccounted"][self.prefs.asset_dir]
+        mine = findings["unaccounted"][MATERIALS_DIR]
         self.assertIn("STRAY2_cop.mat", mine,
                       "premise: a companion file must be in the set, or "
                       "this is not comparing the tail-stripping rule")
-        self.assertIn("STRAY3.builder.json", mine,
-                      "premise: a stray builder sidecar must be in the set")
+        self.assertNotIn("STRAY3.builder.json", mine,
+                         "premise: a format 3 sidecar is a superseded leftover, not unlisted")
         self.assertNotIn("STRAY1.mat.writing", mine,
                          "premise: a scratch file must be out of the set")
         self.assertNotIn("notes.txt", mine, "premise: an unknown file is not unlisted")
@@ -1654,7 +1739,7 @@ class TheShelfToolAndWhatItReportsTest(_Case):
                       "see there was one here before.", "\n".join(repair.report_lines(findings)))
 
     def test_a_saved_palette_does_not_hold_back_an_empty_list(self):
-        """The Colors list claims a palette's stamp, so it is neither unlisted nor moved."""
+        """Colors owns no asset folder, so a palette leaves no file to call unlisted."""
         from amaze.core import gradient_library
         self._cops([])
         palettes = gradient_library.GradientLibrary(self.prefs)
@@ -1662,22 +1747,130 @@ class TheShelfToolAndWhatItReportsTest(_Case):
             "Ochre Probe", "Uncategorized",
             {"keys": [0.0, 1.0], "values": [[1, 0, 0], [0, 0, 1]],
              "bases": ["Linear", "Linear"]})
-        stamp = os.path.join(self.mat_dir, str(palettes.assets[0].mat_id)
-                             + material.STAMP_SUFFIX)
-        self.assertTrue(os.path.exists(stamp),
-                        "premise: a saved palette writes a recovery stamp")
+        palette = str(palettes.assets[0].mat_id)
+        test_support.settle_stamps()
+        for folder in (self.mat_dir, self.nodes_dir, self.legacy_dir):
+            for suffix in (material.RECORD_SUFFIX, ".stamp.json"):
+                self.assertFalse(os.path.exists(os.path.join(folder, palette + suffix)),
+                                 "a saved palette wrote %s%s into an asset folder"
+                                 % (palette, suffix))
         test_support.reset_database_singletons()    # an action refuses a library this process holds
         findings = self._survey()
         self.assertTrue(findings["complete"], "one saved palette held the whole move back")
-        self.assertNotIn(os.path.basename(stamp),
-                         findings["unaccounted"][self.prefs.asset_dir],
-                         "a palette the Colors list holds was called unlisted")
+        self.assertEqual(0, repair.unaccounted_total(findings),
+                         "a palette the Colors list holds left a file called unlisted")
         self.assertNotIn("Ochre Probe", "\n".join(repair.report_lines(findings)))
-        repair.move_aside(findings, "unlisted")
-        self.assertTrue(os.path.exists(stamp))
+        self.assertEqual([], repair.move_aside(findings, "unlisted")["moved"])
 
 
-class TheRealLibraryRehearsalTest(unittest.TestCase):
+def _sizes(directory: str) -> dict:
+    """{relative path: size} of every file under `directory`."""
+    found = {}
+    for here, _dirs, names in os.walk(directory):
+        for name in names:
+            path = os.path.join(here, name)
+            found[os.path.relpath(path, directory).replace(os.sep, "/")] = os.path.getsize(path)
+    return found
+
+
+def _rows_of(directory: str) -> dict:
+    """{database filename: {id: row}} of every database the library holds."""
+    found = {}
+    for filename in database.DATABASES:
+        path = os.path.join(directory, filename)
+        if os.path.exists(path):
+            with open(path, encoding="utf-8-sig") as handle:
+                found[filename] = {database.row_id(row): row
+                                   for row in json.load(handle).get("assets") or []
+                                   if isinstance(row, dict)}
+    return found
+
+
+class _ConversionRehearsal:
+    """The format 3 to 4 conversion run on a private copy of the real library, then proven."""
+
+    def _old_pictures(self, sizes: dict) -> list:
+        return [path for path in sizes
+                if path.split("/")[0] in (library_conversion.OLD_PICTURES,
+                                          library_conversion.OLD_CAPTURES)
+                and library_conversion.old_shape(path)]
+
+    def _had_picture(self, directory: str, section: str, asset_id: str) -> bool:
+        return any(os.path.exists(path) for path in (
+            os.path.join(directory, library_conversion.OLD_PICTURES, asset_id + ".png"),
+            os.path.join(directory, library_conversion.OLD_CAPTURES, asset_id + ".png"),
+            os.path.join(material.section_folder(directory, section), asset_id + ".png")))
+
+    def rehearse(self, directory: str, label: str):
+        """Convert `directory`, assert the result whole, print a summary; the outcome."""
+        from amaze.core import library_policy
+        before_rows = _rows_of(directory)
+        before_sizes = _sizes(directory)
+        pictured = {(section, asset_id) for section in library_files.ASSET_SECTIONS
+                    for asset_id in before_rows.get(section, {})
+                    if self._had_picture(directory, section, asset_id)}
+        version_folders = len(library_conversion._old_version_folders(directory))
+        old_pictures = self._old_pictures(before_sizes)
+        section_pictures = sum(1 for path in before_sizes if path.split("/")[0] in (
+            library_files.SECTION_FOLDERS[section] for section in library_files.ASSET_SECTIONS)
+            and len(path.split("/")) == 2 and path.endswith(".png"))
+        started = time.perf_counter()
+        outcome = library_conversion.convert(directory, confirm=lambda: True)
+        took = time.perf_counter() - started
+        self.assertIn(outcome.status, (library_conversion.DONE, library_conversion.NOTHING),
+                      "the conversion did not run: %s %s" % (outcome.status, outcome.why))
+
+        after_rows = _rows_of(directory)
+        after_sizes = _sizes(directory)
+        aside = {}
+        for one in outcome.set_aside:
+            if one.row is not None:
+                aside[one.section] = aside.get(one.section, 0) + 1
+        for section in library_files.ASSET_SECTIONS:
+            with self.subTest(section=section):
+                self.assertEqual(len(before_rows.get(section, {})),
+                                 len(after_rows.get(section, {})) + aside.get(section, 0),
+                                 "rows went missing beyond the set-aside ones")
+                home = material.section_folder(directory, section)
+                missing = [asset_id for asset_id in after_rows.get(section, {})
+                           for suffix in (".mat", material.RECORD_SUFFIX)
+                           if not os.path.exists(os.path.join(home, asset_id + suffix))]
+                self.assertEqual([], missing[:20], "rows whose files are not in their folder")
+                lost = [asset_id for asset_id in after_rows.get(section, {})
+                        if (section, asset_id) in pictured
+                        and not os.path.exists(os.path.join(home, asset_id + ".png"))]
+                self.assertEqual([], lost[:20], "rows that lost their picture")
+        kept_aside = {os.path.normpath(path) for one in outcome.set_aside for path in one.files}
+        old_left = [path for path in after_sizes if library_conversion.old_shape(path)
+                    and os.path.normpath(os.path.join(directory, path)) not in kept_aside]
+        self.assertEqual([], old_left[:20], "format 3 files left that no one set aside")
+        self.assertFalse(library_conversion.needs_conversion(directory))
+        self.assertEqual(3, library_policy.library_version(directory))
+
+        again = library_conversion.convert(directory, confirm=lambda: True)
+        self.assertEqual(library_conversion.NOTHING, again.status)
+        self.assertEqual(after_sizes, _sizes(directory), "a second conversion changed a file")
+
+        kept = sum(1 for path in after_sizes if path.split("/")[0] in (
+            library_files.SECTION_FOLDERS[section] for section in library_files.ASSET_SECTIONS)
+            and len(path.split("/")) == 2 and path.endswith(".png")) - section_pictures
+        dropped = len(old_pictures) - len(self._old_pictures(after_sizes)) - kept
+        sections = ", ".join("%s %d" % (database.section_label(name), len(rows))
+                             for name, rows in after_rows.items())
+        names = "; ".join(one.name for one in outcome.set_aside) or "none"
+        sys.stderr.write(
+            "\n  Conversion rehearsal (%s): %s\n"
+            "    assets per section after: %s\n"
+            "    converted %d, set aside %d (%s)\n"
+            "    pictures kept %d, dropped %d; version folders rewritten %d\n"
+            "    %.1f s; %d bytes before, %d after; second convert: %s\n"
+            % (label, outcome.status, sections, outcome.counts.get("converted", 0),
+               len(outcome.set_aside), names, kept, dropped, version_folders, took,
+               sum(before_sizes.values()), sum(after_sizes.values()), again.status))
+        return outcome
+
+
+class TheRealLibraryRehearsalTest(_ConversionRehearsal, unittest.TestCase):
     """The same route against the real library's shape, which is only ever read."""
 
     LISTS = database.DATABASES
@@ -1697,10 +1890,19 @@ class TheRealLibraryRehearsalTest(unittest.TestCase):
                     shutil.copy2("%s.%s" % (source, tier),
                                  os.path.join(self.dir,
                                               "%s.%s" % (name, tier)))
-        for folder in (live.asset_dir, live.img_dir):
+        self.asset_dirs = [folder + "/" for folder in repair.asset_folders(live.dir)]
+        old_shape = [folder + "/" for folder in (library_conversion.OLD_FOLDER,
+                                                 library_conversion.OLD_CAPTURES)
+                     if os.path.isdir(os.path.join(live.dir, folder))]    # the converter's input
+        for folder in self.asset_dirs + [live.img_dir] + old_shape:
             os.makedirs(os.path.join(self.dir, folder), exist_ok=True)
+            if not os.path.isdir(os.path.join(live.dir, folder)):
+                continue    # a section that has saved nothing yet
             for entry in os.listdir(os.path.join(live.dir, folder)):
-                if entry.endswith(".stamp.json"):    # stamps stay whole: the census reads them, and a 0-byte stand-in reads as unreadable
+                if os.path.isdir(os.path.join(live.dir, folder, entry)):
+                    continue
+                # metadata stays whole: the census reads it, and a 0-byte stand-in reads as unreadable
+                if entry.endswith(material.RECORD_SUFFIX):
                     shutil.copy2(os.path.join(live.dir, folder, entry),
                                  os.path.join(self.dir, folder, entry))
                 else:
@@ -1712,12 +1914,25 @@ class TheRealLibraryRehearsalTest(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.prefs.path, True)
         test_support.reset_database_singletons()
         self.addCleanup(test_support.reset_database_singletons)
-        self.mat_dir = os.path.join(self.dir, self.prefs.asset_dir)
         self.cops = os.path.join(self.dir, "cops.json")
 
     def _survey(self):
-        return repair.survey(self.dir, self.prefs.asset_dir,
-                             self.prefs.img_dir)
+        return repair.survey(self.dir, self.prefs.img_dir)
+
+    def _asset_files(self):
+        """(folder key, name) of every file in the copy's asset folders a `.json` did not replace."""
+        found = []
+        for folder in self.asset_dirs:
+            names = set(os.listdir(os.path.join(self.dir, folder)))
+            for name in names:
+                if library_conversion.old_shape(folder + name):
+                    continue    # a leftover the conversion did not take
+                found.append((folder, name))
+        return sorted(found)
+
+    def _unaccounted_assets(self, findings):
+        return sorted((folder, name) for folder in self.asset_dirs
+                      for name in findings["unaccounted"].get(folder, ()))
 
     def _cop_ids(self):
         with open(os.path.join(self.live.dir, "cops.json"),
@@ -1725,8 +1940,21 @@ class TheRealLibraryRehearsalTest(unittest.TestCase):
             return {str(row.get("id"))
                     for row in json.load(handle).get("assets", [])}
 
+    def _converted(self):
+        """The copy in format 4, as the panel's first open leaves it."""
+        outcome = library_conversion.convert(self.dir, confirm=lambda: True)
+        self.assertIn(outcome.status, (library_conversion.DONE, library_conversion.NOTHING),
+                      outcome.why)
+        test_support.reset_database_singletons()
+        return outcome
+
+    def test_the_conversion_rehearsed_on_the_copy(self):
+        """Databases whole, the rest of each folder's top level as empty stand-ins."""
+        self.rehearse(self.dir, "databases and top-level stand-ins")
+
     def test_the_real_library_is_coherent_and_nothing_moves(self):
         """The accept path: if anything is unlisted here, the engine is broken."""
+        self._converted()
         findings = self._survey()
         self.assertTrue(findings["complete"])
         self.assertEqual(
@@ -1734,21 +1962,21 @@ class TheRealLibraryRehearsalTest(unittest.TestCase):
             "the real library has files no section lists: %r"
             % {folder: names[:5]
                for folder, names in findings["unaccounted"].items()})
-        before = len(os.listdir(self.mat_dir))
+        before = self._asset_files()
         result = repair.move_aside(findings, "unlisted")
         self.assertEqual([], result["moved"])
-        self.assertEqual(before, len(os.listdir(self.mat_dir)),
+        self.assertEqual(before, self._asset_files(),
                          "files moved from a library where every one of them is listed")
 
     def test_the_incident_itself_is_reported_and_put_back_undoes_it(self):
         """A list seeded over a sync placeholder: named, nothing moved, and put back."""
         from amaze.dialogs import repair_dialog
-        owned = sorted(
-            name for name in os.listdir(self.mat_dir)
-            if database.asset_id_for_file(
-                name, repair.ASSET_SIDECARS, "_cop") in self._cop_ids())
+        self._converted()
+        kinds = repair.ASSET_SIDECARS + (".png",)    # format 4: the picture is in the folder too
+        owned = [(folder, name) for folder, name in self._asset_files()
+                 if database.asset_id_for_file(name, kinds, "_cop") in self._cop_ids()]
         self.assertTrue(owned, "premise: the real cops.json owns files in "
-                               "the asset folder")
+                               "an asset folder")
         with open(self.cops, "w", encoding="utf-8") as handle:
             json.dump({"version": 2, "categories": ["_All"], "tags": [],
                        "assets": []}, handle)
@@ -1756,17 +1984,16 @@ class TheRealLibraryRehearsalTest(unittest.TestCase):
         findings = self._survey()
         text = "\n".join(repair.report_lines(findings))
         self.assertIn("Node: the database is there and holds nothing.", text)
-        for name in owned:
+        for folder, name in owned:
             self.assertTrue(
-                os.path.exists(os.path.join(self.mat_dir, name)),
+                os.path.exists(os.path.join(self.dir, folder, name)),
                 "%s moved before anyone chose to move it" % name)
         self.assertEqual(
-            owned, findings["unaccounted"][self.prefs.asset_dir],
+            owned, self._unaccounted_assets(findings),
             "the report does not name the same asset files the empty list left behind")
-        self.assertGreater(repair.unaccounted_total(findings), len(owned),
-                           "the thumbnails those assets own are not "
-                           "reported, so the report is narrower than the "
-                           "loss was")
+        self.assertTrue(any(name.endswith(".png") for _folder, name in owned),
+                        "the pictures those assets own are not reported, so the report "
+                        "is narrower than the loss was")
         tiers = [tier for tier, _snap in restore_lib.snapshots(self.cops)]
         self.assertIn("bak-1", tiers,
                       "premise: the real cops.json has a saved copy")
@@ -1777,12 +2004,11 @@ class TheRealLibraryRehearsalTest(unittest.TestCase):
         after = self._survey()
         self.assertTrue(after["complete"])
         after_ids = after["ids"]
-        still_unlisted = sorted(
-            name for name in owned
-            if database.asset_id_for_file(
-                name, repair.ASSET_SIDECARS, "_cop") not in after_ids)
+        still_unlisted = [
+            (folder, name) for folder, name in owned
+            if database.asset_id_for_file(name, kinds, "_cop") not in after_ids]
         self.assertEqual(
-            still_unlisted, after["unaccounted"][self.prefs.asset_dir],
+            still_unlisted, self._unaccounted_assets(after),
             "putting the saved copy back did not account for the files "
             "its rows own, so the recovery does not recover")
         self.assertNotIn("Node: the database is there and holds nothing.",
@@ -1790,7 +2016,7 @@ class TheRealLibraryRehearsalTest(unittest.TestCase):
                          "the Node list is still reported empty after it was put back")
 
 
-class TheRealLibrarysWholeShapeTest(unittest.TestCase):
+class TheRealLibrarysWholeShapeTest(_ConversionRehearsal, unittest.TestCase):
     """Check Library on the real library's whole shape: lists and stamps copied, the rest empty."""
 
     def setUp(self):
@@ -1812,7 +2038,8 @@ class TheRealLibrarysWholeShapeTest(unittest.TestCase):
                 target = os.path.join(here, name)
                 if name == library_files.POLICY:
                     continue    # its library id would share this copy's holding folder
-                if relative == "." or name.endswith(material.STAMP_SUFFIX):
+                kind = library_files.classify(os.path.join(relative, name))[0]
+                if relative == "." or kind == library_files.RECORD:
                     shutil.copy2(source, target)    # what the survey reads
                 else:
                     open(target, "wb").close()
@@ -1822,9 +2049,17 @@ class TheRealLibrarysWholeShapeTest(unittest.TestCase):
         test_support.reset_database_singletons()
         self.addCleanup(test_support.reset_database_singletons)
 
+    def test_the_conversion_rehearsed_on_the_whole_shape(self):
+        """Every folder and version folder, databases and root files whole, the rest stand-ins."""
+        self.rehearse(self.dir, "whole shape")
+
     def test_unlisted_files_leftovers_and_unknowns_are_told_apart(self):
+        outcome = library_conversion.convert(self.dir, confirm=lambda: True)
+        self.assertIn(outcome.status, (library_conversion.DONE, library_conversion.NOTHING),
+                      outcome.why)
+        test_support.reset_database_singletons()
         started = time.perf_counter()
-        findings = repair.survey(self.dir, "mat/", "img/")
+        findings = repair.survey(self.dir, "img/")
         took = time.perf_counter() - started
         sys.stderr.write("\n  Check Library's survey of the real library's shape: "
                          "%.0f ms over %d files\n" % (took * 1000, self.files))
@@ -1842,7 +2077,7 @@ class TheRealLibrarysWholeShapeTest(unittest.TestCase):
         self.assertEqual(set(), leftovers & unknown,
                          "one file was called both a leftover and unknown")
         self.assertLessEqual({entry[1] for entry in findings["leftovers"]},
-                             {"scratch", "pre-adopt", "duplicate"})
+                             {"scratch", "pre-adopt", "duplicate", library_files.SUPERSEDED})
         text = "\n".join(repair.report_lines(findings))
         self.assertIn("nothing needs any more", text)
         self.assertTrue("not files Amaze knows" in text or "not a file Amaze knows" in text,
@@ -1918,61 +2153,71 @@ class TestLibraryManifest(unittest.TestCase):
             "library.json.bak-1", "library.json.bak-2", "library.json.bak-3",
             "library.json.bak-first", "cops.json.bak-first",
             "code.json.unreadable", ".amaze_gradient_seed_v1",
-            os.path.join("mat", "abc.mat"),
-            os.path.join("mat", "abc.interface"),
-            os.path.join("img", "abc.png"),
+            os.path.join("materials", "abc.mat"),
+            os.path.join("materials", "abc.json"),
+            os.path.join("nodes", "abc.mat"),
+            os.path.join("nodes", "abc_cop.mat"),
+            os.path.join("nodes", "abc.json"),
             os.path.join("matX", "pack", "tex.exr"))
         for rel in checked:
             self.assertIn(library_files.classify(rel)[0], library_files.KNOWN, rel)
+        for folder in ("materials", "nodes", "code", "colors"):    # the one picture
+            self.assertEqual((library_files.RENDER, "abc"),
+                             library_files.classify(os.path.join(folder, "abc.png")), folder)
         for rel, kind in (
                 (os.path.join("img", "140024152983962990.png.lock"), "scratch"),
-                (os.path.join("mat", "abc.writing"), "scratch"),
-                (os.path.join("mat", "abc.mat.capturing"), "scratch"),
+                (os.path.join("materials", "abc.mat.capturing"), "scratch"),
+                (os.path.join("materials", "abc.writing"), "scratch"),
+                (os.path.join("materials", "notes.txt"), "unknown"),
+                (os.path.join("code", "abc.json"), "unknown"),
                 (os.path.join("matX", "pack", "half.tmp"), "scratch"),
                 ("stray.txt", "unknown"),
-                (os.path.join("mat", "notes.txt"), "unknown"),
+                (os.path.join("mat", "abc.mat"), "unknown"),    # format 3: the converter's only
+                (os.path.join("mat", "abc.interface"), "unknown"),
+                (os.path.join("img", "abc.png"), "unknown"),
                 ("notes.md", "unknown"),
                 (".DS_Store", "os-noise")):
             self.assertEqual(kind, library_files.classify(rel)[0], rel)
 
 
 class TheRebuildDrillTest(unittest.TestCase):
-    """Delete the index outright and put the library back from its stamps."""
+    """Delete the index outright and put the library back from each asset's metadata."""
 
     def setUp(self):
         self.prefs = test_support.fixture_prefs(self)
         test_support.reset_database_singletons()
         self.addCleanup(test_support.reset_database_singletons)
         self.model = library_mod.MaterialLibrary(preferences=self.prefs)
-        # One save stamps every record, and none exists yet: the unchanged ones on a worker.
+        # One save writes every row's metadata, none there yet: the unchanged ones on a worker.
         self.assertTrue(self.model.save(), "premise: the fixture saves")
         test_support.settle_stamps()
-        self.mat_dir = os.path.join(self.prefs.dir, self.prefs.asset_dir)
+        self.mat_dir = material.section_folder(self.prefs.dir, library_files.MATERIALS)
+        self.nodes_dir = material.section_folder(self.prefs.dir, library_files.NODES)
+        self.code_dir = os.path.join(self.prefs.dir, library_files.CODE_FOLDER)
 
     def _stamps(self):
+        """The `<id>.json` in the Materials folder that hold metadata."""
         return sorted(n for n in os.listdir(self.mat_dir)
-                      if n.endswith(material.STAMP_SUFFIX))
+                      if n.endswith(material.RECORD_SUFFIX)
+                      and asset_record.read(os.path.join(self.mat_dir, n))[
+                          asset_record.METADATA])
 
     def test_a_rebuild_leaves_the_other_sections_assets_alone(self):
-        """`mat/` is shared by three sections, so a rebuild may not claim it all."""
+        """Metadata another section's list claims is that section's, wherever it lies."""
         import json as json_mod
         mine = {str(a.mat_id) for a in self.model.assets}
         self.assertTrue(mine, "premise: this library has materials")
 
         stranger = "c0de0000000040008000000000000001"
-        with open(os.path.join(self.prefs.dir, self.prefs.asset_dir,
-                               stranger + ".stamp.json"), "w",
-                  encoding="utf-8") as handle:
-            json_mod.dump({"id": stranger, "name": "Jitter Points",
-                           "categories": ["Toolbox"], "renderer": "VEX",
-                           "code": "// snippet"}, handle)
+        write_record(self.mat_dir, stranger, metadata={
+            "id": stranger, "name": "Jitter Points", "categories": ["Toolbox"],
+            "renderer": "VEX", "code": "// snippet"})
         with open(os.path.join(self.prefs.dir, "code.json"), "w",
                   encoding="utf-8") as handle:
             json_mod.dump({"version": 2, "categories": ["_All"], "tags": [],
                            "assets": [{"id": stranger}]}, handle)
 
-        rebuilt = repair.rebuild_from_stamps(self.prefs.dir,
-                                             self.prefs.asset_dir)
+        rebuilt = repair.rebuild_from_stamps(self.prefs.dir)
 
         ids = {str(r.get("id")) for r in rebuilt["assets"]}
         self.assertNotIn(
@@ -1987,18 +2232,20 @@ class TheRebuildDrillTest(unittest.TestCase):
             "a category that belongs to Code came with it")
 
     def test_a_rebuild_leaves_a_saved_palette_to_colors(self):
-        """Palettes stamp the shared asset folder too, and `gradients.json` claims them."""
+        """A palette's metadata in the Materials folder is claimed by `gradients.json`."""
         from amaze.core import gradient_library
         palettes = gradient_library.GradientLibrary(preferences=self.prefs)
         palettes.add_user_gradient("Dusk", "",
                                    {"values": [[0.1, 0.2, 0.3]], "keys": [0.0]})
         palette = str(next(a for a in palettes.assets
                            if a.name == "Dusk").mat_id)
-        self.assertIn(palette + material.STAMP_SUFFIX, self._stamps(),
-                      "premise: the palette's stamp is in the asset folder")
+        test_support.settle_stamps()
+        self.assertNotIn(palette + material.RECORD_SUFFIX, os.listdir(self.mat_dir),
+                         "a palette wrote metadata into the Materials folder")
+        write_record(self.mat_dir, palette,
+                     metadata={"id": palette, "name": "Dusk", "categories": []})
 
-        rebuilt = repair.rebuild_from_stamps(self.prefs.dir,
-                                             self.prefs.asset_dir)
+        rebuilt = repair.rebuild_from_stamps(self.prefs.dir)
 
         ids = {str(r.get("id")) for r in rebuilt["assets"]}
         self.assertNotIn(palette, ids,
@@ -2017,8 +2264,7 @@ class TheRebuildDrillTest(unittest.TestCase):
             if os.path.exists(path):
                 os.remove(path)
 
-        ok, sentence = repair.repair_index(self.prefs.dir,
-                                           self.prefs.asset_dir, guard=False)
+        ok, sentence = repair.repair_index(self.prefs.dir, guard=False)
         self.assertTrue(ok, sentence)
         with open(os.path.join(self.prefs.dir, "library.json"),
                   encoding="utf-8") as handle:
@@ -2040,8 +2286,7 @@ class TheRebuildDrillTest(unittest.TestCase):
             os.path.exists(os.path.join(self.prefs.dir, "library.json")),
             "premise: the index really is gone")
 
-        rebuilt = repair.rebuild_from_stamps(self.prefs.dir,
-                                             self.prefs.asset_dir)
+        rebuilt = repair.rebuild_from_stamps(self.prefs.dir)
         self.assertEqual([], rebuilt["damaged"])
         self.assertEqual(len(before), len(rebuilt["assets"]))
 
@@ -2050,8 +2295,26 @@ class TheRebuildDrillTest(unittest.TestCase):
         for mat_id, original in before.items():
             self.assertEqual(
                 original, by_id[mat_id],
-                "asset %s came back with a different record - the stamp "
+                "asset %s came back with a different record - its metadata "
                 "is not carrying the whole row" % mat_id)
+
+    def test_a_rebuild_reads_the_json_alone_and_never_a_stamp(self):
+        """`<id>.json` is the one source; a format 3 stamp anywhere is never read."""
+        asset = next(a for a in self.model.assets if str(a.mat_id).isalnum())
+        kept = str(asset.mat_id)
+        legacy = os.path.join(self.prefs.dir, "mat")
+        for folder, asset_id in ((self.mat_dir, kept), (legacy, "LEGACYM1")):
+            os.makedirs(folder, exist_ok=True)
+            with open(os.path.join(folder, asset_id + ".stamp.json"), "w",
+                      encoding="utf-8") as handle:
+                json.dump({"id": asset_id, "name": "An Older Name", "categories": ["Old"],
+                           "renderer": "Karma"}, handle)
+        os.remove(os.path.join(self.prefs.dir, "library.json"))
+        by_id = {str(r.get("id")): r
+                 for r in repair.rebuild_from_stamps(self.prefs.dir)["assets"]}
+        self.assertEqual(asset.name, by_id[kept]["name"],
+                         "a stamp beside the `.json` was read over the `.json`'s metadata")
+        self.assertNotIn("LEGACYM1", by_id, "a format 3 stamp in mat/ was read")
 
     def test_every_per_asset_FIELD_survives_including_the_soft_ones(self):
         """Ids and names alone are a file listing; the favourite is per-user."""
@@ -2063,8 +2326,7 @@ class TheRebuildDrillTest(unittest.TestCase):
         self.assertTrue(self.model.save())
 
         os.remove(os.path.join(self.prefs.dir, "library.json"))
-        rebuilt = repair.rebuild_from_stamps(self.prefs.dir,
-                                             self.prefs.asset_dir)
+        rebuilt = repair.rebuild_from_stamps(self.prefs.dir)
         back = next(r for r in rebuilt["assets"]
                     if str(r.get("id")) == str(asset.mat_id))
         self.assertEqual("a description that lives nowhere else",
@@ -2077,18 +2339,17 @@ class TheRebuildDrillTest(unittest.TestCase):
     def test_one_corrupt_stamp_costs_only_its_own_asset(self):
         """The rebuild completes and names the casualty, rather than refusing."""
         stamps = self._stamps()
-        self.assertTrue(stamps, "premise: there are stamps to corrupt")
+        self.assertTrue(stamps, "premise: there is metadata to corrupt")
         victim = stamps[0]
         with open(os.path.join(self.mat_dir, victim), "w",
                   encoding="utf-8") as handle:
             handle.write("{ this is not json")
 
-        rebuilt = repair.rebuild_from_stamps(self.prefs.dir,
-                                             self.prefs.asset_dir)
+        rebuilt = repair.rebuild_from_stamps(self.prefs.dir)
         self.assertEqual(len(stamps) - 1, len(rebuilt["assets"]),
-                         "a corrupt stamp cost more than its own asset")
+                         "a corrupt `.json` cost more than its own asset")
         self.assertEqual(
-            [victim[: -len(material.STAMP_SUFFIX)]], rebuilt["damaged"],
+            [victim[: -len(material.RECORD_SUFFIX)]], rebuilt["damaged"],
             "the rebuild did not name the asset it could not recover")
 
     def test_a_stamp_is_never_read_in_normal_operation(self):
@@ -2120,19 +2381,14 @@ class TheRebuildDrillTest(unittest.TestCase):
 
     def test_a_rebuild_refuses_while_a_sibling_list_is_unreadable(self):
         """An unreadable sibling claims NOTHING, so its assets read as ours."""
-        import json as json_mod
-
         stranger = "c0de0000000040008000000000000002"
-        with open(os.path.join(self.mat_dir, stranger + ".stamp.json"), "w",
-                  encoding="utf-8") as handle:
-            json_mod.dump({"id": stranger, "name": "A COP network",
-                           "categories": ["Nodes"]}, handle)
+        write_record(self.nodes_dir, stranger, metadata={
+            "id": stranger, "name": "A COP network", "categories": ["Nodes"]})
         with open(os.path.join(self.prefs.dir, "cops.json"), "w",  # EXISTS and will not parse - not the absent case ▸p/clean-library-sweep
                   encoding="utf-8") as handle:
             handle.write('{"assets": [{"id": "c0de00000')
 
-        document = repair.rebuild_from_stamps(self.prefs.dir,
-                                              self.prefs.asset_dir)
+        document = repair.rebuild_from_stamps(self.prefs.dir)
         self.assertEqual(
             ["cops.json"], document["unreadable"],
             "the rebuild did not report the sibling it could not read, so "
@@ -2144,8 +2400,7 @@ class TheRebuildDrillTest(unittest.TestCase):
             path = os.path.join(self.prefs.dir, name)
             if os.path.exists(path):
                 os.remove(path)
-        ok, sentence = repair.repair_index(self.prefs.dir,
-                                           self.prefs.asset_dir, guard=False)
+        ok, sentence = repair.repair_index(self.prefs.dir, guard=False)
         self.assertFalse(
             ok, "the index was rebuilt while a sibling could not be read, so "
                 "that sibling's assets are now rows in this list")
@@ -2157,11 +2412,10 @@ class TheRebuildDrillTest(unittest.TestCase):
     NODE = "c0de0000000040008000000000000003"
 
     def _a_node_stamp_and_no_material_copies(self):
-        """One node stamp in the asset folder, and the Material list gone with every copy."""
-        with open(os.path.join(self.mat_dir, self.NODE + ".stamp.json"), "w",
-                  encoding="utf-8") as handle:
-            json.dump({"id": self.NODE, "name": "A COP network",
-                       "categories": ["Nodes"], "renderer": "COP"}, handle)
+        """One node's metadata in the Nodes folder, and the Material list gone with every copy."""
+        write_record(self.nodes_dir, self.NODE, metadata={
+            "id": self.NODE, "name": "A COP network", "categories": ["Nodes"],
+            "renderer": "COP"})
         for name in ("library.json", "library.json.bak-1", "library.json.bak-2",
                      "library.json.bak-3", "library.json.bak-first", "cops.json"):
             path = os.path.join(self.prefs.dir, name)
@@ -2174,8 +2428,7 @@ class TheRebuildDrillTest(unittest.TestCase):
         with open(os.path.join(self.prefs.dir, "cops.json.bak-1"), "w",
                   encoding="utf-8") as handle:
             json.dump({"assets": [{"id": self.NODE}]}, handle)
-        ok, sentence = repair.repair_index(self.prefs.dir,
-                                           self.prefs.asset_dir, guard=False)
+        ok, sentence = repair.repair_index(self.prefs.dir, guard=False)
         self.assertFalse(
             ok, "the index was rebuilt while the Node list was still arriving: %s" % sentence)
         self.assertFalse(os.path.exists(os.path.join(self.prefs.dir, "library.json")),
@@ -2184,7 +2437,7 @@ class TheRebuildDrillTest(unittest.TestCase):
     def test_a_rebuild_takes_no_stamp_that_belongs_on_another_list(self):
         """A node stamp is the Node list's, even when no list names it."""
         self._a_node_stamp_and_no_material_copies()
-        rebuilt = repair.rebuild_from_stamps(self.prefs.dir, self.prefs.asset_dir)
+        rebuilt = repair.rebuild_from_stamps(self.prefs.dir)
         ids = {str(r.get("id")) for r in rebuilt["assets"]}
         self.assertNotIn(self.NODE, ids, "the rebuilt Material list took a node in")
         self.assertEqual({str(a.mat_id) for a in self.model.assets}, ids)
@@ -2201,8 +2454,7 @@ class TheRebuildDrillTest(unittest.TestCase):
         with open(target, "wb") as handle:
             handle.write(damaged)
 
-        ok, sentence = repair.repair_index(self.prefs.dir,
-                                           self.prefs.asset_dir, guard=False)
+        ok, sentence = repair.repair_index(self.prefs.dir, guard=False)
         self.assertTrue(ok, sentence)
 
         kept = target + ".unreadable"
@@ -2219,11 +2471,12 @@ class TheRebuildDrillTest(unittest.TestCase):
 class TheSuffixesAndTiersHaveOneHome(unittest.TestCase):
 
     def test_the_sidecar_list_is_the_one_it_was(self):
-        self.assertEqual(
-            (".mat", ".interface", material.BUILDER_SUFFIX,
-             material.STAMP_SUFFIX), repair.ASSET_SIDECARS)
-        self.assertEqual((".builder.json", ".stamp.json"),
-                         (material.BUILDER_SUFFIX, material.STAMP_SUFFIX))
+        """Repair's suffixes are the convention's: `.mat` and format 4's `.json`, nothing else."""
+        self.assertIs(library_files.ASSET_SUFFIXES, repair.ASSET_SIDECARS)
+        self.assertEqual((".mat", material.RECORD_SUFFIX), repair.ASSET_SIDECARS)
+        self.assertEqual(".json", material.RECORD_SUFFIX)
+        for gone in ("BUILDER_SUFFIX", "STAMP_SUFFIX"):
+            self.assertFalse(hasattr(material, gone), "material still names format 3's " + gone)
         self.assertEqual(("bak-1", "bak-2", "bak-3", "bak-first"),
                          restore_lib.TIERS)
 
@@ -2354,7 +2607,7 @@ class DeadScratchesAreMovedWithAnAgeGateTest(unittest.TestCase):
         real = hostos.config_root
         hostos.config_root = lambda: self.config
         self.addCleanup(setattr, hostos, "config_root", real)
-        self.mat_dir = os.path.join(self.prefs.dir, self.prefs.asset_dir)
+        self.mat_dir = material.section_folder(self.prefs.dir, library_files.MATERIALS)
 
     def _scratch(self, name, hours_old):
         full = os.path.join(self.mat_dir, name)
@@ -2370,11 +2623,11 @@ class DeadScratchesAreMovedWithAnAgeGateTest(unittest.TestCase):
         live = self._scratch("b.mat.abc456.writing", hours_old=0)
         before = sorted(name for name in os.listdir(self.mat_dir)
                         if name != os.path.basename(dead))
-        findings = repair.survey(self.prefs.dir, self.prefs.asset_dir, self.prefs.img_dir)
-        self.assertEqual([self.prefs.asset_dir + "a.mat.xyz123.writing"],
+        findings = repair.survey(self.prefs.dir, self.prefs.img_dir)
+        self.assertEqual([MATERIALS_DIR + "a.mat.xyz123.writing"],
                          [entry[0] for entry in findings["leftovers"]])
         result = repair.move_aside(findings, "leftovers")
-        self.assertEqual([self.prefs.asset_dir + "a.mat.xyz123.writing"], result["moved"])
+        self.assertEqual([MATERIALS_DIR + "a.mat.xyz123.writing"], result["moved"])
         self.assertFalse(os.path.exists(dead),
                          "a five-hour-old scratch survived - they "
                          "accumulate forever after every hard kill")

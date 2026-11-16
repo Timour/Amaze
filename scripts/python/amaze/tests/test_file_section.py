@@ -1501,7 +1501,7 @@ class OsIconTest(unittest.TestCase):
 
     def test_one_icon_is_composed_per_extension_not_per_file(self):
         model = self._model_with("a.log", "b.log", "c.log")
-        with mock.patch.object(model, "tile_icon", return_value={"face": "preview"}):
+        with mock.patch.object(model, "tile_icon", return_value={"face": "image"}):
             for row in range(3):
                 model.data(model.index(row, 0),
                            QtCore.Qt.ItemDataRole.DecorationRole)

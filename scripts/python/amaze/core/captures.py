@@ -10,7 +10,7 @@ from PySide6 import QtCore
 from amaze.core import debug
 from amaze.helpers import hostos
 
-FOLDER = "captures"    # <library>/captures, beside img/ and mat/
+FOLDER = "captures"    # <library>/captures: a File row's capture; an asset's is its one picture
 FILE_PREFIX = "file_"    # a File row has no asset id, so its key is hashed into the name
 LEGACY_FOLDER = "hip_thumbnails"    # where a machine kept its scene captures before 1.9
 LEGACY_MANIFEST = "manifest.json"    # in that folder: scene path -> {"thumbnail": <png name>}
@@ -19,11 +19,6 @@ LEGACY_MANIFEST = "manifest.json"    # in that folder: scene path -> {"thumbnail
 def folder(preferences) -> str:
     """`<library>/captures`."""
     return os.path.join(str(preferences.dir), FOLDER)
-
-
-def asset_path(preferences, asset_id) -> str:
-    """`<library>/captures/<id>.png`; raises hostos.PathEscape for an id leaving the folder."""
-    return hostos.contained_join(folder(preferences), str(asset_id) + ".png")
 
 
 def file_key(preferences, path: str) -> str:

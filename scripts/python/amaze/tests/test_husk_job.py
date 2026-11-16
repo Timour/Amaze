@@ -20,7 +20,7 @@ sys.path.insert(
         os.path.dirname(os.path.abspath(__file__)))))
 
 from amaze import preview  # noqa: E402
-from amaze.core import material, tile_icons  # noqa: E402
+from amaze.core import library_files, material, tile_icons  # noqa: E402
 from amaze.render import husk_job, thumbs  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
@@ -43,7 +43,8 @@ def _plastic(testcase, colour):
     """The plastic fixture in a plain holder, its base colour set."""
     holder = hou.node("/mat").createNode("subnet")
     testcase.addCleanup(test_support.drop_node, holder)
-    holder.loadItemsFromFile(os.path.join(test_support.FIXTURE_DIR, "mat", PLASTIC + ".mat"))
+    holder.loadItemsFromFile(os.path.join(material.section_folder(
+        test_support.FIXTURE_DIR, library_files.MATERIALS), PLASTIC + ".mat"))
     surface = next(c for c in holder.children() if c.type().name() == "mtlxstandard_surface")
     surface.parmTuple("base_color").set(colour)
     return holder
@@ -314,7 +315,8 @@ class OneHuskRendersEachMaterial(unittest.TestCase):
         self.assertEqual(before, set(hou.node("/obj").children()),
                          "the batch left nodes behind in /obj")
         self.assertFalse(husk_job.jobs.busy())
-        return [_hue(tile_icons.thumbnail_path(self.prefs, asset_id)) for asset_id, _ in items]
+        return [_hue(tile_icons.thumbnail_path(self.prefs, asset_id, library_files.MATERIALS))
+                for asset_id, _ in items]
 
     def test_two_karma_materials_are_two_pictures(self):
         items = [("RED_PROBE", _plastic(self, RED)), ("GREEN_PROBE", _plastic(self, GREEN))]
@@ -429,7 +431,7 @@ class TheBackgroundQueue(unittest.TestCase):
         items = [("A_CANCEL", _plastic(self, RED)), ("B_CANCEL", _plastic(self, GREEN))]
         old = []
         for asset_id, _ in items:
-            path = tile_icons.thumbnail_path(self.prefs, asset_id)
+            path = tile_icons.thumbnail_path(self.prefs, asset_id, library_files.MATERIALS)
             os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, "wb") as fh:
                 fh.write(b"old picture")

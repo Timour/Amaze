@@ -25,10 +25,12 @@ from amaze import messages  # noqa: E402
 from amaze.core import library as library_mod  # noqa: E402
 from amaze.actions import materials as material_actions  # noqa: E402
 from amaze.core import material_files  # noqa: E402
-from amaze.core import material, renderers  # noqa: E402
+from amaze.core import asset_record, library_files, material, renderers  # noqa: E402
 from amaze.helpers import hostos  # noqa: E402
 from amaze.render import nodes  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
+
+MATERIALS = library_files.MATERIALS
 
 SPEC = {  # distinctive non-default values: the point is that these numbers survive disk
     "base_color": (0.123, 0.456, 0.789),
@@ -86,12 +88,14 @@ class TestRoundTrip(unittest.TestCase):
     # -- the pair is one unit -------------------------------------------
 
     def test_a_mat_write_that_fails_or_writes_nothing_keeps_the_old_pair(self):
-        """The .interface and the .mat ARE one asset: neither half may move alone. ▸p/asset-write-unit"""
-        base = os.path.join(self.prefs.dir, self.prefs.asset_dir)
+        """The builder and the .mat ARE one asset: neither half may move alone. ▸p/asset-write-unit"""
+        base = material.section_folder(self.prefs.dir, MATERIALS)
         os.makedirs(base, exist_ok=True)
-        interface = os.path.join(base, "pairtest.interface")
+        record = asset_record.path_for(self.prefs, "pairtest", MATERIALS)
         mat = os.path.join(base, "pairtest" + self.prefs.ext)
+        old = {"type": "subnet", "interface": "OLD INTERFACE", "values": {}}
         handler = nodes.NodeHandler(self.prefs)
+        builder = self.staging.createNode("subnet", "pair_builder")
 
         def refuse(path):
             raise hou.OperationFailed("disk full")
@@ -99,32 +103,34 @@ class TestRoundTrip(unittest.TestCase):
         for why, writer in (("the write raises", refuse),
                             ("the writer returns with no file", lambda path: None)):
             with self.subTest(why):
-                with open(interface, "w", encoding="utf-8") as handle:
-                    handle.write("OLD INTERFACE")
+                asset_record.write_section(record, asset_record.BUILDER, old)
                 with open(mat, "w", encoding="utf-8") as handle:
                     handle.write("OLD MAT")
                 with self.assertRaises(hou.Error):
-                    handler.save_asset_pair(interface, mat, "NEW INTERFACE", writer)
-                with open(interface, encoding="utf-8") as handle:
-                    self.assertEqual(
-                        "OLD INTERFACE", handle.read(),
-                        "a failed .mat write destroyed the previous .interface")
+                    handler.save_asset_pair(mat, writer, builder, "pairtest")
+                self.assertEqual(
+                    old, asset_record.read(record)["builder"],
+                    "a failed .mat write replaced the previous builder")
                 with open(mat, encoding="utf-8") as handle:
                     self.assertEqual("OLD MAT", handle.read())
                 self.assertEqual([], [n for n in os.listdir(base) if n.endswith(".writing")],
                                  "temp files survived a failed save")
 
     def test_a_good_save_updates_both(self):
-        base = os.path.join(self.prefs.dir, self.prefs.asset_dir)
-        os.makedirs(base, exist_ok=True)
-        interface = os.path.join(base, "good.interface")
+        base = material.section_folder(self.prefs.dir, MATERIALS)
         mat = os.path.join(base, "good" + self.prefs.ext)
         handler = nodes.NodeHandler(self.prefs)
+        builder = self.staging.createNode("subnet", "good_builder")
         handler.save_asset_pair(
-            interface, mat, "NEW INTERFACE",
-            lambda path: open(path, "w", encoding="utf-8").write("NEW MAT"))
-        with open(interface, encoding="utf-8") as handle:
-            self.assertEqual("NEW INTERFACE", handle.read())
+            mat, lambda path: open(path, "w", encoding="utf-8").write("NEW MAT"),
+            builder, "good")
+        saved = asset_record.read(asset_record.path_for(self.prefs, "good", MATERIALS))
+        self.assertEqual("subnet", saved["builder"].get("type"))
+        self.assertEqual(builder.parmTemplateGroup().asDialogScript(),
+                         saved["builder"].get("interface"))
+        self.assertEqual({}, saved["metadata"], "a save of the pair invented metadata")
+        self.assertFalse(os.path.exists(os.path.join(base, "good.interface")),
+                         "a format 4 save still wrote the retired .interface")
         with open(mat, encoding="utf-8") as handle:
             self.assertEqual("NEW MAT", handle.read())
 
@@ -232,7 +238,7 @@ class TestRoundTrip(unittest.TestCase):
         asset = next(a for a in self.model.assets
                      if renderers.is_karma(a.renderer))
         payload = material.payload_path(self.prefs, asset.mat_id,
-                                        self.prefs.ext)
+                                        self.prefs.ext, MATERIALS)
         with open(payload, "w", encoding="utf-8") as handle:
             handle.write("not an items file")
         ok, _reason, _created = nodes.NodeHandler(
@@ -371,10 +377,16 @@ class TestRoundTrip(unittest.TestCase):
         mat_id = str(test_support.arrived(self.model, held)[0].mat_id)
         self.assertEqual(builder.userData("assetlib_id"), mat_id)
 
-        base = os.path.join(self.prefs.dir, self.prefs.asset_dir, mat_id)  # both halves of the archive exist and are non-empty
-        for path in (base + self.prefs.ext, base + ".interface"):
+        base = os.path.join(material.section_folder(self.prefs.dir, MATERIALS), mat_id)  # both halves exist, non-empty
+        for path in (base + self.prefs.ext, base + ".json"):
             self.assertTrue(os.path.exists(path), path)
             self.assertGreater(os.path.getsize(path), 0, path)
+        self.assertEqual(builder.type().name(),
+                         asset_record.read(base + ".json")["builder"].get("type"),
+                         "the save's .json does not name the builder it saved")
+        for retired in (".interface", ".builder.json"):
+            self.assertFalse(os.path.exists(base + retired),
+                             "a format 4 save still wrote %s" % retired)
 
         test_support.reset_database_singletons()  # persistence: a fresh model over the same dir, so the row comes from library.json
         reloaded = library_mod.MaterialLibrary(preferences=self.prefs)
@@ -435,7 +447,7 @@ class TestRoundTrip(unittest.TestCase):
         index_path = os.path.join(self.prefs.dir, "library.json")
         index_before = open(index_path, "rb").read()
 
-        mats_dir = os.path.join(self.prefs.dir, self.prefs.asset_dir)
+        mats_dir = material.section_folder(self.prefs.dir, MATERIALS)
         builder = _build_material(self.staging, "doomed_mat")
         os.chmod(mats_dir, stat.S_IRUSR | stat.S_IXUSR)   # no write
         self.addCleanup(os.chmod, mats_dir,
@@ -462,8 +474,7 @@ class TestRoundTrip(unittest.TestCase):
         material_actions.add_asset(self.model, builder, "RoundTrip", "", False)
         mat_id = str(test_support.arrived(self.model, held)[0].mat_id)
         row = self.model.find_asset_row_by_id(mat_id)
-        os.remove(os.path.join(self.prefs.dir, self.prefs.asset_dir,
-                               mat_id + self.prefs.ext))
+        os.remove(material.payload_path(self.prefs, mat_id, self.prefs.ext, MATERIALS))
         ok, reason, _created = material_actions.import_asset_to_scene(self.model,
             self.model.index(row, 0), target="mat"
         )
@@ -498,7 +509,7 @@ class EveryMaterialSaveIsOneSave(unittest.TestCase):
 
 
 class ARedshiftImportReadsItsInterfaceOnce(unittest.TestCase):
-    """A Redshift or Octane import reads its `.interface` once, and logs its routing only when on."""
+    """A Redshift or Octane import reads its `<id>.json` once, and logs its routing only when on."""
 
     def setUp(self):
         self.prefs = test_support.fixture_prefs(self)
@@ -510,18 +521,21 @@ class ARedshiftImportReadsItsInterfaceOnce(unittest.TestCase):
                         if a.name == "Metal")
 
     def _import(self, renderer):
-        """Import the fixture's Metal as `renderer` into /mat; answers the `.interface` read count."""
-        self.model.assets[self.row].renderer = renderer
+        """Import the fixture's Metal as `renderer` into /mat; answers its `<id>.json` read count."""
+        asset = self.model.assets[self.row]
+        asset.renderer = renderer
+        record = asset.mat_id + ".json"
         reads = []
         real_open = open
 
         def counting_open(path, *args, **kwargs):
-            if str(path).endswith(".interface"):
+            if os.path.basename(str(path)) in (record, asset.mat_id + ".interface"):
                 reads.append(path)
             return real_open(path, *args, **kwargs)
 
         with mock.patch.object(nodes, "open", counting_open, create=True), \
-                mock.patch.object(material_files, "open", counting_open, create=True):
+                mock.patch.object(material_files, "open", counting_open, create=True), \
+                mock.patch.object(asset_record, "open", counting_open, create=True):
             ok, reason, created = material_actions.import_asset_to_scene(self.model,
                 self.model.index(self.row, 0), target="mat")
         for node in created:
@@ -533,7 +547,7 @@ class ARedshiftImportReadsItsInterfaceOnce(unittest.TestCase):
         for renderer in ("Redshift", "Octane"):
             with self.subTest(renderer=renderer):
                 self.assertEqual(1, self._import(renderer),
-                                 "the import re-read its .interface")
+                                 "the import re-read its builder record")
 
 
 class TestUnsafeAssetIds(unittest.TestCase):
@@ -552,16 +566,16 @@ class TestUnsafeAssetIds(unittest.TestCase):
         """The symlink the shape check cannot see: a clean id, and a link planted in the asset folder."""
         base = tempfile.mkdtemp(prefix="amaze_contain_")
         self.addCleanup(shutil.rmtree, base, True)
-        inside = hostos.contained_join(base, "mat/", "asset.mat")
+        inside = hostos.contained_join(base, "materials/", "asset.mat")
         self.assertTrue(inside.startswith(base))
         with self.assertRaises(hostos.PathEscape):
-            hostos.contained_join(base, "mat/", "../../escaped.mat")
+            hostos.contained_join(base, "materials/", "../../escaped.mat")
         outside = tempfile.mkdtemp(prefix="amaze_outside_")
         self.addCleanup(shutil.rmtree, outside, True)
-        os.makedirs(os.path.join(base, "mat"))
-        os.symlink(outside, os.path.join(base, "mat", "away"))
+        os.makedirs(os.path.join(base, "materials"))
+        os.symlink(outside, os.path.join(base, "materials", "away"))
         with self.assertRaises(hostos.PathEscape):
-            hostos.contained_join(base, "mat", "away", "asset.mat")
+            hostos.contained_join(base, "materials", "away", "asset.mat")
 
     def test_payload_path_composes_with_or_without_a_separator_and_contains(self):
         """Concatenation gave `<lib>mat/abc.mat` for a dir saved without its separator."""
@@ -569,29 +583,43 @@ class TestUnsafeAssetIds(unittest.TestCase):
         self.addCleanup(shutil.rmtree, base, True)
 
         class _P:
-            asset_dir = "mat/"
             ext = ".mat"
             dir = base + os.sep
 
-        for suffix in (_P.ext, ".interface", ".builder.json",
-                       "_cop" + _P.ext):
-            self.assertEqual(
-                _P.dir + _P.asset_dir + "abc" + suffix,
-                material.payload_path(_P, "abc", suffix),
-                "payload_path no longer composes what the twenty "
-                "hand-written concatenations did, for %r" % suffix)
+        for section, folder in ((MATERIALS, "materials"), (library_files.NODES, "nodes")):
+            for suffix in (_P.ext, ".json", "_cop" + _P.ext):
+                self.assertEqual(
+                    os.path.normpath(os.path.join(base, folder, "abc" + suffix)),
+                    os.path.normpath(material.payload_path(_P, "abc", suffix, section)),
+                    "payload_path put %r outside its section folder" % suffix)
 
         class _Unslashed(_P):
             dir = base                      # no trailing separator
 
-        self.assertEqual(    # normpath BOTH sides: asset_dir carries a literal "mat/"
-            os.path.normpath(os.path.join(base, "mat", "abc.mat")),
+        self.assertEqual(
+            os.path.normpath(os.path.join(base, "materials", "abc.mat")),
             os.path.normpath(material.payload_path(_Unslashed, "abc",
-                                                   ".mat")),
+                                                   ".mat", MATERIALS)),
             "a library path without its trailing separator composed "
             "wrong - which is what concatenation did here")
         with self.assertRaises(hostos.PathEscape):    # the PATH guard, beside the RECORD's
-            material.payload_path(_P, "../../.ssh/authorized_keys", ".mat")
+            material.payload_path(_P, "../../.ssh/authorized_keys", ".mat", MATERIALS)
+
+    def test_nothing_is_read_from_the_old_shared_folder(self):
+        """Format 3's `mat/` is the converter's alone: a path is the section folder's, always."""
+        base = tempfile.mkdtemp(prefix="amaze_payload_legacy_")
+        self.addCleanup(shutil.rmtree, base, True)
+
+        class _P:
+            dir = base + os.sep
+
+        os.makedirs(os.path.join(base, "mat"))
+        with open(os.path.join(base, "mat", "old.mat"), "w", encoding="utf-8") as handle:
+            handle.write("nodes\n")
+        self.assertEqual(
+            os.path.join(base, "materials", "old.mat"),
+            os.path.normpath(material.payload_path(_P, "old", ".mat", MATERIALS)),
+            "a path fell back to format 3's shared folder")
 
     def test_an_import_with_a_traversal_id_is_refused(self):
         """End to end: a traversal id is refused by name, nothing is created, the file is never opened."""
@@ -633,18 +661,20 @@ class TestInterfaceIsNeverExecuted(unittest.TestCase):
         marker = os.path.join(tempfile.mkdtemp(prefix="amaze_exec_"), "ran")
         self.addCleanup(shutil.rmtree, os.path.dirname(marker), True)
 
+        from amaze.core import library_conversion
+        payload = ("import pathlib\n"
+                   "pathlib.Path(%r).write_text('executed')\n"
+                   "hou_node = hou_parent.createNode('subnet')\n" % marker).encode("utf-8")
+        self.assertEqual("subnet", library_conversion.interface_type(payload))
+        self.assertEqual("subnet", library_conversion.builder_from_members(
+            {"interface": payload})["type"], "an old package's interface member was not read")
         row = next(r for r in range(self.model.rowCount())
                    if str(self.model.assets[r].renderer))
         asset = self.model.assets[row]
-        target = os.path.join(self.prefs.dir, self.prefs.asset_dir,
-                              asset.mat_id + ".interface")
-        self.assertTrue(os.path.exists(target), "premise: the pair exists")
-        with open(target, "w", encoding="utf-8") as handle:
-            handle.write(
-                "import pathlib\n"
-                "pathlib.Path(%r).write_text('executed')\n"
-                "hou_node = hou_parent.createNode('subnet')\n" % marker)
-
+        record = asset_record.path_for(self.prefs, asset.mat_id, MATERIALS)
+        os.remove(record)    # no `<id>.json`: an import has no builder and reads nothing else
+        with open(os.path.join(os.path.dirname(record), asset.mat_id + ".interface"), "wb") as fh:
+            fh.write(payload)
         material_actions.import_asset_to_scene(self.model, self.model.index(row, 0), target="mat")  # succeed or refuse; only the payload running fails, so do not assert it imports
         self.assertFalse(
             os.path.exists(marker),
@@ -664,12 +694,14 @@ class TestInterfaceIsNeverExecuted(unittest.TestCase):
         builder.parm("amaze_probe").set(0.75)
 
         captured = nodes.capture_builder(builder)
-        self.assertIn("amaze_probe", captured)
+        self.assertIn("amaze_probe", captured["interface"])
+        self.assertEqual({"val": 0.75}, captured["values"].get("amaze_probe"))
+        json.dumps(captured)    # the section is written as JSON, so it must serialise
 
         fresh = staging.createNode("subnet")
         self.assertIsNone(fresh.parm("amaze_probe"),
                           "premise: the spare parm is not there by default")
-        nodes.apply_builder(fresh, json.loads(captured))
+        nodes.apply_builder(fresh, captured)
         self.assertIsNotNone(fresh.parm("amaze_probe"),
                              "the sidecar did not restore the interface")
         self.assertAlmostEqual(0.75, fresh.parm("amaze_probe").eval(), 5,
@@ -708,7 +740,7 @@ class TestInterfaceIsNeverExecuted(unittest.TestCase):
         """`setExpression` without a language reads Python as HScript; several keys are no expression."""
         staging, builder = self._animated_builder()
         self.addCleanup(hou.setFrame, hou.frame())
-        captured = json.loads(nodes.capture_builder(builder))
+        captured = nodes.capture_builder(builder)
         fresh = staging.createNode("subnet")
         nodes.apply_builder(fresh, captured)
         py = fresh.parm("amaze_py")
@@ -729,13 +761,15 @@ class TestInterfaceIsNeverExecuted(unittest.TestCase):
     def test_a_sidecar_stays_readable_on_both_sides_of_the_keyframe_change(self):
         """An old sidecar loads as before, and every new value still carries a field an old reader reads."""
         staging, builder = self._animated_builder()
-        for name, spec in json.loads(nodes.capture_builder(builder))["values"].items():
+        for name, spec in nodes.capture_builder(builder)["values"].items():
             self.assertTrue({"expr", "str", "val"} & set(spec),
                             "%s has nothing an older Amaze can apply: %r" % (name, spec))
         old = {"dialog_script": builder.parmTemplateGroup().asDialogScript(),
                "values": {"amaze_keyed": {"expr": "$F * 2"}, "amaze_py": {"val": 0.5}}}
         fresh = staging.createNode("subnet")
-        nodes.apply_builder(fresh, old)
+        from amaze.core import library_conversion    # an old sidecar is read by the converter
+        nodes.apply_builder(fresh, library_conversion.builder_from_bytes(
+            json.dumps(old).encode("utf-8"), lambda: b""))
         self.assertEqual("$F * 2", fresh.parm("amaze_keyed").expression())
         self.assertEqual(hou.exprLanguage.Hscript, fresh.parm("amaze_keyed").expressionLanguage())
         self.assertAlmostEqual(0.5, fresh.parm("amaze_py").eval(), 5)
@@ -754,10 +788,10 @@ class TestInterfaceIsNeverExecuted(unittest.TestCase):
             hou.Ramp((hou.rampBasis.Linear, hou.rampBasis.Linear),
                      (0.0, 1.0), (0.2, 0.9)))
 
-        captured = nodes.capture_builder(builder)          # must not raise
-        document = json.loads(captured)
+        document = nodes.capture_builder(builder)          # must not raise
+        json.dumps(document)
         self.assertIn(
-            "amaze_ramp", document["dialog_script"],
+            "amaze_ramp", document["interface"],
             "the ramp's shape is not in the captured interface")
         self.assertTrue(
             [k for k in document["values"] if k.startswith("amaze_ramp")],
@@ -796,20 +830,26 @@ class TestInterfaceIsNeverExecuted(unittest.TestCase):
         with patch.object(hou.Parm, "eval", poisoned):
             captured = nodes.capture_builder(builder)      # must not raise
         self.assertNotIn(
-            "amaze_keeps", json.loads(captured)["values"],
+            "amaze_keeps", captured["values"],
             "the unserialisable parm was captured anyway")
 
     def test_an_absent_sidecar_is_not_an_error(self):
         """Assets saved before the sidecar format have none; the loader degrades rather than refusing."""
-        self.assertEqual({}, nodes.read_builder_sidecar(
-            os.path.join(self.prefs.dir, "does-not-exist.builder.json")))
-        broken = os.path.join(self.prefs.dir, "broken.builder.json")
-        with open(broken, "w", encoding="utf-8") as handle:
+        self.assertEqual({}, asset_record.saved_builder(self.prefs, "does-not-exist", MATERIALS))
+        from amaze.core import library_conversion
+        self.assertEqual({}, library_conversion.builder_from_bytes(b"", lambda: b""))
+        with test_support.captured_log() as log:
+            self.assertEqual({}, library_conversion.builder_from_bytes(
+                b"{not json at all", lambda: b"", where="broken"))
+        self.assertTrue(log.matching("builder sidecar unreadable", "convert"),
+                        "a damaged sidecar was swallowed silently")
+        record = os.path.join(self.prefs.dir, "broken.json")
+        with open(record, "w", encoding="utf-8") as handle:
             handle.write("{not json at all")
         with test_support.captured_log() as log:
-            self.assertEqual({}, nodes.read_builder_sidecar(broken))
-        self.assertTrue(log.matching("builder sidecar unreadable", "import"),
-                        "a damaged sidecar was swallowed silently")
+            self.assertEqual({"metadata": {}, "builder": {}}, asset_record.read(record))
+        self.assertTrue(log.matching("asset record corrupt/unreadable", "library"),
+                        "a damaged <id>.json was swallowed silently")
 
 
 class UpdateExistingIsGuardedAgainstTheOtherSessionTest(unittest.TestCase):
@@ -1222,8 +1262,10 @@ class AnImportLandsInTheNetworkTheArtistHasOpen(unittest.TestCase):
                 self.assertEqual(where, nodes.karma_destination(self.prefs))
 
 
-class TheBuilderTypeIsReadFromTheSidecarFirst(unittest.TestCase):
-    """The sidecar's `type` names the saved builder; the `.interface` regex answers older assets."""
+class TheBuilderTypeIsReadFromTheRecordFirst(unittest.TestCase):
+    """`<id>.json` names the saved builder; format 3's sidecar, then `.interface`, answer older."""
+
+    INTERFACE = "node = hou_parent.createNode('subnet', 'x')\n"
 
     def setUp(self):
         self.prefs = test_support.fixture_prefs(self)
@@ -1231,50 +1273,79 @@ class TheBuilderTypeIsReadFromTheSidecarFirst(unittest.TestCase):
         self.addCleanup(test_support.reset_database_singletons)
         self.model = library_mod.MaterialLibrary(preferences=self.prefs)
         self.asset = next(a for a in self.model.assets if renderers.is_karma(a.renderer))
-        self.sidecar = material.payload_path(self.prefs, self.asset.mat_id,
-                                             material.BUILDER_SUFFIX)
+        self.record = asset_record.path_for(self.prefs, self.asset.mat_id, MATERIALS)
+        folder = os.path.dirname(self.record)
+        self.sidecar = os.path.join(folder, self.asset.mat_id + ".builder.json")
+        self.iface = os.path.join(folder, self.asset.mat_id + ".interface")
 
-    def _sidecar(self, text):
-        with open(self.sidecar, "w", encoding="utf-8") as handle:
+    def _type(self):
+        return material_files.get_saved_node_type(self.prefs, self.asset, MATERIALS)
+
+    def _write(self, path, text):
+        with open(path, "w", encoding="utf-8") as handle:
             handle.write(text)
 
-    def test_the_sidecar_wins_and_anything_unusable_falls_back(self):
+    def _make_format_3(self):
+        """The asset as an unconverted library holds it: no `<id>.json`, an `.interface`."""
+        os.remove(self.record)
+        self._write(self.iface, self.INTERFACE)
+
+    def _converted_type(self, sidecar=None, stale=False, interface=INTERFACE):
+        """The type the converter reads from format 3's sidecar bytes and `.interface`."""
+        from amaze.core import library_conversion
+        raw = sidecar.encode("utf-8") if sidecar is not None else b""
+        return library_conversion.builder_from_bytes(
+            raw, lambda: interface.encode("utf-8"), stale).get("type", "")
+
+    def test_format_3_files_alone_name_no_builder(self):
+        """No fallback: an asset without `<id>.json` has no builder until converted."""
+        self._make_format_3()
+        self._write(self.sidecar, json.dumps({"type": "x", "dialog_script": ""}))
+        self.assertEqual("", self._type(), "a format 3 file was read outside the converter")
+
+    def test_the_record_names_the_builder(self):
         usd = renderers.REDSHIFT.usd_builder
-        self.assertEqual("subnet", material_files.get_saved_node_type(self.prefs, self.asset),
-                         "premise: the fixture's .interface names a subnet")
-        self.assertFalse(os.path.exists(self.sidecar), "premise: no sidecar yet")
-        self._sidecar(json.dumps({"format": 1, "type": usd, "dialog_script": "", "values": {}}))
-        self.assertEqual(usd, material_files.get_saved_node_type(self.prefs, self.asset))
+        self.assertEqual("subnet", self._type(), "premise: the fixture's record names a subnet")
+        asset_record.write_section(self.record, asset_record.BUILDER,
+                                   {"type": usd, "interface": "", "values": {}})
+        self.assertEqual(usd, self._type())
         self.assertTrue(self.model.is_usd_material(self.asset))
+
+    def test_an_unusable_record_names_no_builder(self):
+        for unusable in ("not json", json.dumps(["a list"]),
+                         json.dumps({"builder": {"type": ""}}),
+                         json.dumps({"builder": {"type": 7}})):
+            with self.subTest(unusable):
+                self._write(self.record, unusable)
+                self.assertEqual("", self._type())
+
+    def test_the_converter_takes_the_sidecar_and_falls_back_to_the_interface(self):
+        usd = renderers.REDSHIFT.usd_builder
+        self.assertEqual("subnet", self._converted_type(), "premise: the .interface names a subnet")
+        self.assertEqual(usd, self._converted_type(json.dumps(
+            {"format": 1, "type": usd, "dialog_script": "", "values": {}})))
         for unusable in ("not json", json.dumps(["a list"]), json.dumps({"type": ""}),
                          json.dumps({"type": 7})):
             with self.subTest(unusable):
-                self._sidecar(unusable)
-                self.assertEqual("subnet",
-                                 material_files.get_saved_node_type(self.prefs, self.asset))
+                self.assertEqual("subnet", self._converted_type(unusable))
 
-    def test_a_sidecar_older_than_its_interface_is_not_believed(self):
-        """An Amaze that writes no sidecar re-saved the asset: the newer .interface answers."""
-        self._sidecar(json.dumps({"type": renderers.REDSHIFT.usd_builder}))
-        iface = material.payload_path(self.prefs, self.asset.mat_id, ".interface")
-        now = os.path.getmtime(iface)
-        os.utime(self.sidecar, (now - 86400, now - 86400))
-        self.assertEqual("subnet", material_files.get_saved_node_type(self.prefs, self.asset))
+    def test_the_converter_disbelieves_a_sidecar_older_than_its_interface(self):
+        """An Amaze that wrote no sidecar re-saved the asset: the newer .interface answers."""
+        sidecar = json.dumps({"type": renderers.REDSHIFT.usd_builder, "dialog_script": ""})
+        self.assertEqual("subnet", self._converted_type(sidecar, stale=True))
 
-    def test_a_linked_sidecar_is_not_followed_and_a_long_preamble_still_reads(self):
-        if hasattr(os, "symlink") and getattr(os, "O_NOFOLLOW", 0):
-            outside = os.path.join(self.prefs.path, "elsewhere.json")
-            with open(outside, "w", encoding="utf-8") as handle:
-                handle.write(json.dumps({"type": "rs_usd_material_builder"}, indent=2))
-            os.symlink(outside, self.sidecar)
-            self.assertEqual("subnet", material_files.get_saved_node_type(self.prefs, self.asset))
-            os.remove(self.sidecar)
-        iface = material.payload_path(self.prefs, self.asset.mat_id, ".interface")
-        with open(iface, encoding="utf-8") as handle:
-            script = handle.read()
-        with open(iface, "w", encoding="utf-8") as handle:
-            handle.write("#" * 9000 + "\n" + script)
-        self.assertEqual("subnet", material_files.get_saved_node_type(self.prefs, self.asset))
+    def test_a_linked_record_is_not_followed(self):
+        if not (hasattr(os, "symlink") and getattr(os, "O_NOFOLLOW", 0)):
+            self.skipTest("no symlinks here")
+        outside = os.path.join(self.prefs.path, "elsewhere.json")
+        self._write(outside, json.dumps({"builder": {"type": "rs_usd_material_builder"}}))
+        os.remove(self.record)
+        os.symlink(outside, self.record)
+        self.assertEqual("", self._type(), "a linked <id>.json was followed out of the library")
+
+    def test_a_long_preamble_still_reads(self):
+        self.assertEqual("subnet", self._converted_type(
+            interface="#" * 9000 + "\n" + self.INTERFACE))
 
 
 class ALooseKarmaLoadKeepsItsArrangement(unittest.TestCase):

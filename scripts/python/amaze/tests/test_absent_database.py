@@ -23,7 +23,7 @@ from PySide6 import QtWidgets
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 from amaze import messages                                # noqa: E402
-from amaze.core import database, debug, material          # noqa: E402
+from amaze.core import asset_record, database, debug, library_files, material  # noqa: E402
 from amaze.core import gradient_library                   # noqa: E402
 from amaze.core import library as library_mod             # noqa: E402
 from amaze.helpers import hostos                          # noqa: E402
@@ -35,7 +35,6 @@ SCHEMA = database.SCHEMA_VERSION  # read, never typed: a literal goes stale at t
 class _Prefs:  # never a real Prefs: one built under hython resolves $AMAZE to the live install
     """The attributes the family model reads."""
 
-    asset_dir = "mat/"
     img_dir = "img/"
     img_ext = ".png"
     ext = ".mat"
@@ -94,14 +93,11 @@ class TheUnreadableIndexDialogTest(unittest.TestCase):  # sabotage: drop `_build
         index_path = os.path.join(first.prefs.dir, "library.json")
         first.material_model.save()  # a SAVE is what writes stamps - _StampWriter refreshes after a successful index write, never before
         test_support.settle_stamps()    # the stamps a save did not change are written on a worker
-        premise = os.path.join(
-            first.prefs.dir, first.prefs.asset_dir)
-        mine = {str(a.mat_id) for a in first.material_model.assets}  # material stamps only: mat/ is shared with Nodes and Code
-        stamps = [name for name in os.listdir(premise)
-                  if name.endswith(".stamp.json")
-                  and name[: -len(".stamp.json")] in mine]
-        self.assertTrue(stamps, "premise: the first build must have "
-                        "stamped its own materials")
+        stamped = [str(a.mat_id) for a in first.material_model.assets
+                   if asset_record.read(asset_record.path_for(
+                       first.prefs, a.mat_id, library_files.MATERIALS))[asset_record.METADATA]]
+        self.assertTrue(stamped, "premise: the first build must have "
+                        "written its materials' metadata")
         with open(index_path, "wb") as handle:
             handle.write(b"{ this is not json")
         test_support.reset_database_singletons()
@@ -431,7 +427,10 @@ class SecondaryDatabaseAbsenceTest(unittest.TestCase):
 
 def _survey(prefs):
     from amaze.core import repair
-    return repair.survey(prefs.dir, prefs.asset_dir, prefs.img_dir)
+    return repair.survey(prefs.dir, prefs.img_dir)
+
+
+MATERIALS_KEY = library_files.SECTION_FOLDERS[library_files.MATERIALS] + "/"    # "materials/"
 
 
 def _list_entry(findings, filename):
@@ -447,7 +446,7 @@ class SiblingAbsenceHoldsTheMoveAsideBackTest(unittest.TestCase):
         self.prefs = test_support.fixture_prefs(self)
         test_support.reset_database_singletons()
         self.addCleanup(test_support.reset_database_singletons)
-        self.mat_dir = os.path.join(self.prefs.dir, self.prefs.asset_dir)
+        self.mat_dir = material.section_folder(self.prefs.dir, library_files.MATERIALS)
         self.orphan = os.path.join(self.mat_dir, self.ORPHAN + ".mat")
         with open(self.orphan, "w", encoding="utf-8") as handle:
             handle.write("not owned by any index\n")
@@ -463,7 +462,7 @@ class SiblingAbsenceHoldsTheMoveAsideBackTest(unittest.TestCase):
         findings = _survey(self.prefs)
         self.assertEqual("absent-but-known", _list_entry(findings, "cops.json")["state"])
         self.assertFalse(findings["complete"])
-        self.assertIn(self.ORPHAN + ".mat", findings["unaccounted"][self.prefs.asset_dir])
+        self.assertIn(self.ORPHAN + ".mat", findings["unaccounted"][MATERIALS_KEY])
         self.assertEqual(len(findings["leftovers"]), repair.files_to_move_aside(findings),
                          "unlisted files were counted to move while cops.json had not arrived")
         with self.assertRaises(ValueError):
@@ -498,9 +497,9 @@ class SiblingAbsenceHoldsTheMoveAsideBackTest(unittest.TestCase):
 
 
 class ANodeListNotYetHereKeepsItsFilesTest(unittest.TestCase):
-    """Node files sit in the shared mat/ folder, so a missing Node list holds them all back."""
+    """A missing Node list holds back every unlisted file, its own `nodes/` folder's too."""
 
-    COP_ID = "COPOWNED1"    # a node setup stores its .mat and .interface in mat/ like a material
+    COP_ID = "COPOWNED1"    # a node setup stores its .mat and .json in nodes/
 
     def setUp(self):
         self.prefs = test_support.fixture_prefs(self)
@@ -509,10 +508,11 @@ class ANodeListNotYetHereKeepsItsFilesTest(unittest.TestCase):
         self.cops = os.path.join(self.prefs.dir, "cops.json")
         self.assertFalse(os.path.exists(self.cops),
                          "premise: the fixture has no cops.json")
-        self.mat_dir = os.path.join(self.prefs.dir, self.prefs.asset_dir)
-        self.owned = os.path.join(self.mat_dir, self.COP_ID + ".mat")
-        self.owned_interface = os.path.join(self.mat_dir, self.COP_ID + ".interface")
-        for path in (self.owned, self.owned_interface):
+        self.node_dir = material.section_folder(self.prefs.dir, library_files.NODES)
+        os.makedirs(self.node_dir, exist_ok=True)
+        self.owned = os.path.join(self.node_dir, self.COP_ID + ".mat")
+        self.owned_record = os.path.join(self.node_dir, self.COP_ID + material.RECORD_SUFFIX)
+        for path in (self.owned, self.owned_record):
             with open(path, "w", encoding="utf-8") as handle:
                 handle.write("owned by a node setup that has not arrived\n")
 
@@ -532,7 +532,7 @@ class ANodeListNotYetHereKeepsItsFilesTest(unittest.TestCase):
         self.assertFalse(findings["complete"])
         with self.assertRaises(ValueError):
             repair.move_aside(findings, ("unlisted", "leftovers"))
-        self.assertTrue(os.path.exists(self.owned) and os.path.exists(self.owned_interface),
+        self.assertTrue(os.path.exists(self.owned) and os.path.exists(self.owned_record),
                         "files the absent Node list owns were moved")
         self.assertIn("Amaze could not check the Node database either",
                       "\n".join(repair.report_lines(findings)),
@@ -544,7 +544,7 @@ class ANodeListNotYetHereKeepsItsFilesTest(unittest.TestCase):
         with open(self.cops, "w", encoding="utf-8") as handle:
             json.dump({"categories": ["_All"], "tags": [],
                        "assets": [{"id": self.COP_ID}]}, handle)
-        genuine = os.path.join(self.mat_dir, "GENUINEORPHAN.mat")
+        genuine = os.path.join(self.node_dir, "GENUINEORPHAN.mat")
         with open(genuine, "w", encoding="utf-8") as handle:
             handle.write("in no index at all\n")
         findings = _survey(self.prefs)
@@ -558,14 +558,16 @@ class ANodeListNotYetHereKeepsItsFilesTest(unittest.TestCase):
         from amaze.core import repair
         self.assertEqual([], glob.glob(self.cops + ".bak-*"),
                          "premise: nothing may say cops.json was here")
-        for path in (self.owned, self.owned_interface):
+        for path in (self.owned, self.owned_record):
             os.remove(path)
-        leftover = os.path.join(self.prefs.dir, self.prefs.img_dir, "GONEMATERIAL9.png")
+        pictures = material.section_folder(self.prefs.dir, library_files.MATERIALS)
+        os.makedirs(pictures, exist_ok=True)
+        leftover = os.path.join(pictures, "GONEMATERIAL9.png")
         with open(leftover, "wb") as handle:
             handle.write(b"a thumbnail whose material is gone")
         self._seed_a_new_node_list()
         findings = _survey(self.prefs)
-        self.assertIn("GONEMATERIAL9.png", findings["unaccounted"][self.prefs.img_dir])
+        self.assertIn("GONEMATERIAL9.png", findings["unaccounted"]["materials/"])
         repair.move_aside(findings, "unlisted")
         self.assertFalse(os.path.exists(leftover), "a stray stayed beside a brand-new Node list")
 
@@ -584,7 +586,7 @@ class ANodeListNotYetHereKeepsItsFilesTest(unittest.TestCase):
         self.assertIn(self.COP_ID + ".mat", text, "the files left behind are not named")
         _labels, keys = repair_dialog._choices(findings, may_change=True)
         self.assertIn("reattach", keys, "nothing offers to put the node files back on a list")
-        for path in (self.owned, self.owned_interface):
+        for path in (self.owned, self.owned_record):
             self.assertTrue(os.path.exists(path),
                             "%s moved before anyone chose to move it" % os.path.basename(path))
 
@@ -1064,7 +1066,10 @@ class ExistedBeforeTest(unittest.TestCase):
 
 
 class TheLibraryFoldersAreEnsuredNotAssumed(unittest.TestCase):
-    """`img/` and `mat/` are each ENSURED, never assumed from the presence of the other."""
+    """`img/` and each asset section's folder are ENSURED, never assumed from another's presence."""
+
+    FOLDERS = ("img",) + tuple(library_files.SECTION_FOLDERS[section]
+                               for section in library_files.ASSET_SECTIONS)
 
     def setUp(self):
         self.dir = tempfile.mkdtemp(prefix="amaze_libdirs_")  # each folder ensured: a bare os.mkdir on an existing mat/ raised FileExistsError
@@ -1072,7 +1077,6 @@ class TheLibraryFoldersAreEnsuredNotAssumed(unittest.TestCase):
 
     class _Prefs:
         img_dir = "img/"
-        asset_dir = "mat/"
 
         def __init__(self, directory):
             self.dir = directory
@@ -1085,19 +1089,20 @@ class TheLibraryFoldersAreEnsuredNotAssumed(unittest.TestCase):
         return os.path.isdir(os.path.join(self.dir, name))
 
     def test_each_folder_is_ensured_whichever_is_already_there(self):
-        for present in (("mat",), ("img",), ()):
+        for present in tuple((name,) for name in self.FOLDERS) + ((),):
             with self.subTest(present=present):
-                for name in ("img", "mat"):
+                for name in self.FOLDERS:
                     if self._exists(name):
                         os.rmdir(os.path.join(self.dir, name))
                 for name in present:
                     os.mkdir(os.path.join(self.dir, name))
                 self._ensure()
                 self._ensure()    # a second run changes nothing
-                self.assertTrue(self._exists("img"), "img/ was not created")
-                self.assertTrue(
-                    self._exists("mat"),
-                    "mat/ was never created, so every material save would fail")
+                for name in self.FOLDERS:
+                    self.assertTrue(self._exists(name),
+                                    "%s/ was never created, so every save there would fail" % name)
+                self.assertFalse(self._exists("mat"),
+                                 "format 3's mat/ was made in a format 4 library")
 
 
 class StarterMustNotSeedOverALibraryTest(unittest.TestCase):
@@ -1124,13 +1129,16 @@ class StarterMustNotSeedOverALibraryTest(unittest.TestCase):
                       "prepare() no longer calls the folder guard")
 
     def test_only_a_library_with_no_trace_and_no_files_is_seeded(self):
-        """An empty mat/ is what the panel itself creates a moment later, not evidence of a library."""
+        """An empty materials/ is what the panel creates a moment later, not evidence of a library."""
         root = self.dir
         for case, files, seeds in (
                 ("a .bak-first: its index had not arrived", ("library.json.bak-first",), False),
-                ("a mat/ holding files", ("mat/a.mat",), False),
+                ("a format 3 mat/ holding files", ("mat/a.mat",), False),
+                ("a materials/ holding files", ("materials/a.json",), False),
+                ("a nodes/ holding files", ("nodes/a.mat",), False),
                 ("a brand-new empty directory", (), True),
-                ("an EMPTY mat/", ("mat/",), True)):
+                ("an EMPTY mat/", ("mat/",), True),
+                ("an EMPTY materials/", ("materials/",), True)):
             with self.subTest(case):
                 self.dir = tempfile.mkdtemp(dir=root)
                 for name in files:
@@ -1204,26 +1212,29 @@ class UnmountedVolumesAreNotGoneTest(unittest.TestCase):
             "unreachable")
 
 
-class AStampedAssetIsNotAStrayTest(unittest.TestCase):
-    """A pair with a READABLE recovery stamp is not a leftover: it is an asset that can be put back."""
+class AnAssetWithMetadataIsNotAStrayTest(unittest.TestCase):
+    """A pair with READABLE metadata in `<id>.json` is not a leftover: it can be put back."""
 
     STAMPED = "STAMPEDASSET1"    # a refused index write leaves this shape: files and stamp, no row
     LEFTOVER = "LEFTOVER1"    # the control: no stamp, so it must still move
+    FOLDER = library_files.SECTION_FOLDERS[library_files.MATERIALS]
+    PAYLOAD = (".mat",)
+    STAMP = material.RECORD_SUFFIX
 
     def setUp(self):
         self.prefs = test_support.fixture_prefs(self)
         test_support.reset_database_singletons()
         self.addCleanup(test_support.reset_database_singletons)
-        self.mat_dir = os.path.join(self.prefs.dir, self.prefs.asset_dir)
-        self.img_dir = os.path.join(self.prefs.dir, self.prefs.img_dir)
-        os.makedirs(self.img_dir, exist_ok=True)
+        self.mat_dir = os.path.join(self.prefs.dir, self.FOLDER)
+        os.makedirs(self.mat_dir, exist_ok=True)
+        self.img_dir = self.mat_dir    # format 4: the picture is beside the asset files
         self.files = {}
-        for suffix in (".mat", ".interface", material.STAMP_SUFFIX):
+        for suffix in self.PAYLOAD + (self.STAMP,):
             path = os.path.join(self.mat_dir, self.STAMPED + suffix)
             self.files[suffix] = path
         self._write_stamp({"id": self.STAMPED, "name": "Refused Save",
                            "categories": ["Uncategorized"], "tags": []})
-        for suffix in (".mat", ".interface"):
+        for suffix in self.PAYLOAD:
             with open(self.files[suffix], "w", encoding="utf-8") as handle:
                 handle.write("asset content\n")
         self.icon = os.path.join(self.img_dir, self.STAMPED + ".png")
@@ -1235,13 +1246,17 @@ class AStampedAssetIsNotAStrayTest(unittest.TestCase):
         self.assertNotIn(self.STAMPED, _survey(self.prefs)["ids"],
                          "premise: no row anywhere claims the stamped asset")
 
+    def _stamp_document(self, record):
+        return {"format": 1, "metadata": record,
+                "builder": {"type": "subnet", "interface": "", "values": {}}}
+
     def _write_stamp(self, record):
-        path = os.path.join(self.mat_dir, self.STAMPED + material.STAMP_SUFFIX)
+        path = os.path.join(self.mat_dir, self.STAMPED + self.STAMP)
         with open(path, "w", encoding="utf-8") as handle:
             if isinstance(record, str):
                 handle.write(record)
             else:
-                json.dump(record, handle)
+                json.dump(self._stamp_document(record), handle)
 
     def _move_aside(self):
         from amaze.core import repair
@@ -1278,9 +1293,9 @@ class AStampedAssetIsNotAStrayTest(unittest.TestCase):
 
     def test_a_stamp_with_no_payload_beside_it_is_spared_too(self):
         """A lone stamp is the normal shape for a Code snippet or a palette, not a leftover."""
-        for suffix in (".mat", ".interface"):
+        for suffix in self.PAYLOAD:
             os.remove(self.files[suffix])    # Code and Colors keep their content inline
-        stamp = self.files[material.STAMP_SUFFIX]
+        stamp = self.files[self.STAMP]
         self.assertTrue(os.path.exists(stamp), "premise: the stamp is there")
         self._move_aside()
         self.assertTrue(os.path.exists(stamp),

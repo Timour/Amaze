@@ -8,14 +8,15 @@ import time
 from amaze import branding
 from amaze.core import database, debug, keyed_store, material, renderers
 from amaze.core import library_files as naming
-from amaze.core.material import BUILDER_SUFFIX, STAMP_SUFFIX
+from amaze.core import asset_record
+from amaze.core.material import RECORD_SUFFIX
 from amaze.helpers import hostos, restore as restore_lib, wording
 from amaze.prefs import prefs as prefs_module
 
 
 DATABASES = database.DATABASES
 
-ASSET_SIDECARS = (".mat", ".interface", BUILDER_SUFFIX, STAMP_SUFFIX)
+ASSET_SIDECARS = naming.ASSET_SUFFIXES
 
 _MISSING = ("absent", "absent-but-known")
 
@@ -46,21 +47,32 @@ SCRATCH_MIN_AGE = 60 * 60    # a younger scratch may be another session's live w
 
 UNCATEGORISED = "Uncategorized"
 
-_UNLISTABLE = (    # (folder, the kinds in it that belong to an asset by id)
-    (naming.ASSET_FOLDER, (naming.ASSET, naming.BUILDER, naming.STAMP, naming.COMPANION)),
-    (naming.RENDER_FOLDER, (naming.RENDER, naming.TILE_ICON)),
-    (naming.CAPTURE_FOLDER, (naming.CAPTURE,)))
+_ASSET_KINDS = (naming.ASSET, naming.RECORD, naming.COMPANION, naming.RENDER)    # owned by id
+_PICTURE_SECTIONS = tuple(section for section in naming.SECTION_FOLDERS    # a capture is all they own
+                          if section not in naming.ASSET_SECTIONS)
 
 
-def survey(preferences_or_directory, asset_dir: str = "mat/",
-           img_dir: str = "img/") -> dict:
+def asset_folders(directory: str = "") -> list:
+    """Each asset section's folder: `["materials", "nodes"]`."""
+    return [naming.SECTION_FOLDERS[section] for section in naming.ASSET_SECTIONS]
+
+
+def _unlistable(directory: str) -> tuple:
+    """(folder, the kinds in it an asset owns by id, whether it must be there to be listed)."""
+    return tuple((folder, _ASSET_KINDS, folder == naming.SECTION_FOLDERS[naming.MATERIALS])
+                 for folder in asset_folders(directory)) + tuple(
+        (naming.SECTION_FOLDERS[section], (naming.RENDER,), False)
+        for section in _PICTURE_SECTIONS)
+
+
+def survey(preferences_or_directory, img_dir: str = "img/") -> dict:
     """Everything Check Library reports, from one walk; with preferences the Files section too."""
     preferences = None
     directory = preferences_or_directory
     if not isinstance(preferences_or_directory, (str, os.PathLike)):
         preferences = preferences_or_directory
         directory = str(preferences.dir or "")
-        asset_dir, img_dir = preferences.asset_dir, preferences.img_dir
+        img_dir = preferences.img_dir
     directory = str(directory)
     from amaze.core import quarantine as holding
     holding.prune_quarantine(directory)
@@ -77,14 +89,14 @@ def survey(preferences_or_directory, asset_dir: str = "mat/",
         if entry["state"] in ("unreadable", "absent-but-known"):
             complete = False
 
-    keys = {naming.ASSET_FOLDER: asset_dir, naming.RENDER_FOLDER: img_dir,
-            naming.CAPTURE_FOLDER: CAPTURES_DIR}
+    folders = asset_folders(directory)
+    keys = {folder: folder + "/" for folder, _kinds, _needed in _unlistable(directory)}
+    keys.update({naming.RENDER_FOLDER: img_dir, naming.CAPTURE_FOLDER: CAPTURES_DIR})
     unaccounted = {}
     unreadable_folders = []
-    for folder, kinds in _UNLISTABLE:
+    for folder, kinds, needed in _unlistable(directory):
         names = listing["names"].get(folder)
-        if names is None and (folder != naming.CAPTURE_FOLDER
-                              or folder in listing["unreadable"]):
+        if names is None and (needed or folder in listing["unreadable"]):
             debug.event("repair", "folder could not be listed",
                         path=os.path.join(directory, folder))
             unreadable_folders.append(keys[folder])
@@ -97,7 +109,7 @@ def survey(preferences_or_directory, asset_dir: str = "mat/",
 
     findings = {
         "directory": directory,
-        "asset_dir": asset_dir,
+        "asset_dirs": [keys[folder] for folder in folders],
         "img_dir": img_dir,
         "lists": lists,
         "ids": ids,
@@ -141,38 +153,93 @@ def _walk(directory: str) -> dict:
         names.setdefault("", {})
     for relative in unreadable:
         names.pop(relative, None)
+    _records_by_content(directory, names, out_of_place)
+    _superseded(out_of_place)
     return {"names": names, "out_of_place": out_of_place, "unreadable": unreadable}
 
 
+def metadata_stem(name: str) -> str:
+    """The id of an `<id>.json` for any safe id, however it is spelled; else ""."""
+    if not name.endswith(RECORD_SUFFIX):
+        return ""
+    stem = name[: -len(RECORD_SUFFIX)]
+    return stem if material.is_safe_asset_id(stem) else ""
+
+
+def _records_by_content(directory: str, names: dict, out_of_place: list) -> None:
+    """An `<id>.json` holding metadata is an asset's, whatever its id spells."""
+    found = set()
+    for folder in asset_folders(directory):
+        here = names.get(folder) or {}
+        for name, (kind, _detail) in list(here.items()):
+            stem = metadata_stem(name) if kind == naming.UNKNOWN else ""
+            if stem and asset_record.read(
+                    os.path.join(directory, folder, name))[asset_record.METADATA]:
+                here[name] = (naming.RECORD, stem)
+                found.add(folder + "/" + name)
+    out_of_place[:] = [entry for entry in out_of_place if entry[0] not in found]
+
+
+def _superseded(out_of_place: list) -> None:
+    """What the format 4 conversion left: leftovers Amaze made, never read for content."""
+    from amaze.core import library_conversion
+    out_of_place[:] = [(relative, naming.SUPERSEDED, detail, info)
+                       if kind == naming.UNKNOWN and library_conversion.old_shape(relative)
+                       else (relative, kind, detail, info)
+                       for relative, kind, detail, info in out_of_place]
+
+
+def _folders_of(findings: dict) -> list:
+    """(folder key, absolute path) of each asset folder the survey listed."""
+    return [(key, os.path.join(findings["directory"], key))
+            for key in findings.get("asset_dirs", ())]
+
+
+def metadata_of(folders, asset_id: str):
+    """The metadata an asset's `<id>.json` holds; None when none in `folders` holds any."""
+    for folder in folders:
+        found = asset_record.read(os.path.join(folder, asset_id + RECORD_SUFFIX))[
+            asset_record.METADATA]
+        if found:
+            return found
+    return None
+
+
 def _stamps_of_unlisted_pairs(findings: dict, listing: dict) -> dict:
-    """{id: record or None} for each unlisted pair or lone stamp: the only stamps a survey opens."""
-    names = listing["names"].get(naming.ASSET_FOLDER) or {}
-    folder = os.path.join(findings["directory"], findings["asset_dir"])
-    return {asset_id: (read_stamp(os.path.join(folder, asset_id + STAMP_SUFFIX))
-                       if asset_id + STAMP_SUFFIX in names else None)
+    """{id: record or None} for each unlisted pair or lone metadata: the only ones a survey opens."""
+    folders = [path for _key, path in _folders_of(findings)]
+    return {asset_id: metadata_of(folders, asset_id)
             for asset_id in _ids_with_a_stamp(findings)}
+
+
+def _on_disk(listing: dict, folders: list, names: tuple) -> bool:
+    """Whether any of `names` is in any of the asset `folders` the walk listed."""
+    return any(name in (listing["names"].get(folder) or {}) for folder in folders
+               for name in names)
 
 
 def _listed_rows_checked(lists: list, listing: dict) -> dict:
     """Per Material and Node list: rows whose files are gone, renders missing, no category."""
-    assets = listing["names"].get(naming.ASSET_FOLDER)
-    renders = listing["names"].get(naming.RENDER_FOLDER)
     missing_files, missing_renders, uncategorised = {}, {}, {}
     for entry in lists:
         filename = entry["filename"]
         if filename not in database.ASSET_FILE_OWNERS:
             continue
+        home = naming.SECTION_FOLDERS[filename]
+        folders = [home]
+        listed = home in listing["names"]
         gone, unrendered, loose = [], [], []
         for row in entry.get("rows", ()):
             asset_id = database.row_id(row)
             named = (asset_id, str(row.get("name") or asset_id))
             if not _categories_of(row):
                 loose.append(named)
-            if assets is None or not material.is_safe_asset_id(asset_id):
+            if not listed or not material.is_safe_asset_id(asset_id):
                 continue
-            if asset_id + ".mat" not in assets or asset_id + ".interface" not in assets:
+            if not _on_disk(listing, folders, (asset_id + ".mat", )) or not _on_disk(
+                    listing, folders, (asset_id + RECORD_SUFFIX,)):
                 gone.append(named)
-            elif (renders is not None and asset_id + ".png" not in renders
+            elif (not _on_disk(listing, folders, (asset_id + naming.PICTURE_SUFFIX,))
                   and (filename == "library.json"
                        or renderers.can_hold_a_render(row.get("renderer")))):
                 unrendered.append(named)
@@ -200,7 +267,7 @@ def _out_of_place(directory: str, listing: dict) -> dict:
         if kind == naming.SCRATCH:
             if info is not None and now - when >= SCRATCH_MIN_AGE:
                 leftovers.append((relative, kind, size, when))
-        elif kind == naming.PRE_ADOPT_COPY:
+        elif kind in (naming.PRE_ADOPT_COPY, naming.SUPERSEDED):
             leftovers.append((relative, kind, size, when))
         elif kind == naming.DUPLICATE:
             why = _why_a_duplicate_stays(directory, relative, detail, listing)
@@ -338,33 +405,30 @@ def _survey_one(directory: str, filename: str, names=None) -> dict:
     return entry
 
 
-def read_stamp(path: str) -> dict | None:
-    """One recovery stamp, or None: the only opener of a stamp in the package."""
-    try:
-        with open(path, encoding="utf-8-sig") as handle:
-            record = json.load(handle)
-        if not isinstance(record, dict):
-            raise ValueError("top level is not an object")
-    except (OSError, ValueError) as exc:
-        debug.event("repair", "recovery stamp unreadable",
-                    file=path, error=str(exc))
-        return None
-    return record
+def _metadata_names(directory: str) -> dict:
+    """{id: [folder, ...]} of every `<id>.json` and format 3 stamp in the asset folders."""
+    found = {}
+    for folder in asset_folders(directory):
+        path = os.path.join(directory, folder)
+        try:
+            names = sorted(os.listdir(path))
+        except OSError as exc:
+            debug.event("repair", "cannot read an asset folder for a rebuild",
+                        folder=path, error=str(exc))
+            continue
+        for name in names:
+            asset_id = metadata_stem(name)    # by content, as the old rebuild matched every stamp
+            if asset_id and path not in found.get(asset_id, ()):
+                found.setdefault(asset_id, []).append(path)
+    return found
 
 
-def rebuild_from_stamps(directory: str, asset_dir: str = "mat/",
-                        index_filename: str = "library.json") -> dict:
-    """One index rebuilt from stamps; never write it while `unreadable` is set. ▸p/clean-library-sweep"""
-    folder = os.path.join(directory, asset_dir)
+def rebuild_from_stamps(directory: str, index_filename: str = "library.json") -> dict:
+    """One index rebuilt from each asset's metadata; never write it while `unreadable` is set."""
+    folder = directory
     assets, damaged = [], []
     categories = []
-    try:
-        names = sorted(os.listdir(folder))
-    except OSError as exc:
-        debug.event("repair", "cannot read the asset folder for a rebuild",
-                    folder=folder, error=str(exc))
-        return {"assets": [], "categories": [], "damaged": [],
-                "unreadable": []}
+    by_id = _metadata_names(directory)
 
     owned_elsewhere = set()
     by_file, unreadable = database.ids_claimed_by(directory)
@@ -378,13 +442,10 @@ def rebuild_from_stamps(directory: str, asset_dir: str = "mat/",
         debug.event("repair", "a sibling database could not be read "
                                "while rebuilding", files=unreadable)
 
-    for name in names:
-        if not name.endswith(STAMP_SUFFIX):
-            continue
-        asset_id = name[: -len(STAMP_SUFFIX)]
+    for asset_id, folders in sorted(by_id.items()):
         if asset_id in owned_elsewhere:
             continue
-        record = read_stamp(os.path.join(folder, name))
+        record = metadata_of(folders, asset_id)
         if record is None:
             damaged.append(asset_id)
             continue
@@ -423,7 +484,7 @@ def _copies_by_what_they_hold(target: str) -> list:
     return [tier for *_key, tier in sorted(found)]
 
 
-def repair_index(directory: str, asset_dir: str = "mat/", guard: bool = True) -> tuple:
+def repair_index(directory: str, guard: bool = True) -> tuple:
     """The newest copy holding materials, else the newest that parses, else a rebuild; (ok, how)."""
     if guard:
         _refuse_a_houdini_that_holds_the_library()
@@ -437,9 +498,9 @@ def repair_index(directory: str, asset_dir: str = "mat/", guard: bool = True) ->
             continue
         debug.event("repair", "index restored from a snapshot",
                     tier=tier, undo=outcome.get("undo", ""))
-        return True, _after_a_put_back(directory, asset_dir, "library.json",
+        return True, _after_a_put_back(directory, "library.json",
                                        "the newest backup was restored")["said"]
-    document = rebuild_from_stamps(directory, asset_dir)
+    document = rebuild_from_stamps(directory)
     if document["unreadable"]:  # an unparsed list claims nothing ▸p/clean-library-sweep
         debug.event("repair", "rebuild refused - a sibling list is "
                     "unreadable", files=document["unreadable"])
@@ -471,8 +532,8 @@ def repair_index(directory: str, asset_dir: str = "mat/", guard: bool = True) ->
     return True, how
 
 
-def _rows_against_their_stamps(target: str, folder: str) -> tuple:
-    """(listed rows that took their stamp's record, names of rows with no .mat and no stamp)."""
+def _rows_against_their_stamps(target: str, folders: list) -> tuple:
+    """(listed rows that took their metadata, names of rows with no .mat and no metadata)."""
     document, error = restore_lib.read_document(target)
     if error or database.wrong_shape(document):
         return 0, []
@@ -483,12 +544,11 @@ def _rows_against_their_stamps(target: str, folder: str) -> tuple:
         asset_id = database.row_id(row) if isinstance(row, dict) else ""
         if not material.is_safe_asset_id(asset_id):
             continue
-        stamp = os.path.join(folder, asset_id + STAMP_SUFFIX)
-        if not os.path.exists(stamp):
-            if not os.path.exists(os.path.join(folder, asset_id + ".mat")):
+        record = metadata_of(folders, asset_id)    # written only after its list landed
+        if record is None:
+            if not any(os.path.exists(os.path.join(one, asset_id + ".mat")) for one in folders):
                 gone.append(str(row.get("name") or asset_id))    # listed, never dropped
             continue
-        record = read_stamp(stamp)    # written only after its list landed: never older than a copy
         if record is None or str(record.get("id", asset_id)) != asset_id:
             continue
         record["id"] = row.get("id", asset_id)
@@ -508,11 +568,12 @@ def _rows_against_their_stamps(target: str, folder: str) -> tuple:
     return taken, sorted(gone)
 
 
-def _after_a_put_back(directory: str, asset_dir: str, filename: str, how=None) -> dict:
-    """A Material or Node list just put back: newer stamps taken, rows saved after it added back."""
+def _after_a_put_back(directory: str, filename: str, how=None) -> dict:
+    """A Material or Node list just put back: newer metadata taken, rows saved after it added back."""
     target = os.path.join(directory, filename)
-    refreshed, gone = _rows_against_their_stamps(target, os.path.join(directory, asset_dir))
-    newer = _rows_newer_than_the_copy(directory, asset_dir, filename)
+    folders = [os.path.join(directory, naming.SECTION_FOLDERS[filename])]
+    refreshed, gone = _rows_against_their_stamps(target, folders)
+    newer = _rows_newer_than_the_copy(directory, filename)
     return {"refreshed": refreshed, "newer": newer, "gone": gone,
             "said": _put_back_sentence(refreshed, newer, gone, filename, how)}
 
@@ -543,9 +604,9 @@ def _put_back_sentence(refreshed: int, newer: int, gone: list,
     return said
 
 
-def _rows_newer_than_the_copy(directory: str, asset_dir: str, filename: str) -> int:
-    """The rows a put-back copy predates, added from their stamps; how many came back."""
-    findings = survey(directory, asset_dir)
+def _rows_newer_than_the_copy(directory: str, filename: str) -> int:
+    """The rows a put-back copy predates, added from their metadata; how many came back."""
+    findings = survey(directory)
     ids = [asset_id for asset_id, _record in on_record(findings, filename)]
     if not ids or why_nothing_can_be_added(findings, filename):
         return 0
@@ -801,8 +862,8 @@ def _check_lines(findings: dict) -> tuple:
     renders = findings.get("missing_renders") or {}
     if any(renders.values()):
         total = sum(len(rows) for rows in renders.values())
-        said.append("No thumbnail image yet for %s - select %s in Amaze and use Update "
-                    "Render when convenient, since a render takes time."
+        said.append("No thumbnail image yet for %s - select %s in Amaze and use Thumbnail ▸ "
+                    "Render Image when convenient, since a render takes time."
                     % (_per_section(renders), "it" if total == 1 else "them"))
     if not any(missing.values()) and not any(renders.values()):
         well.append("Every %s in the databases has its files, and every one that can have a "
@@ -840,6 +901,8 @@ _LEFTOVER_KINDS = (    # (kind, one, more)
      "temporary files from saves that did not finish"),
     (naming.PRE_ADOPT_COPY, "backup kept from before an earlier texture update",
      "backups kept from before an earlier texture update"),
+    (naming.SUPERSEDED, "file of the older format whose content is now in the asset's .json",
+     "files of the older format whose content is now in their asset's .json"),
     (naming.DUPLICATE, "conflict copy a sync service made of a file still here",
      "conflict copies a sync service made of files still here"),
 )
@@ -1067,9 +1130,10 @@ def why_unlisted_stay(findings: dict) -> str:
     """Empty when unlisted files may be moved aside; else why a list may still own them."""
     if not findings.get("complete"):
         return "one of the library's databases cannot be read, so these files may belong to it"
-    empty = [entry["label"] for entry in findings.get("lists", ())
-             if entry["state"] == "empty" and entry["filename"] in database.ASSET_FILE_OWNERS]
-    if empty and findings["unaccounted"].get(findings.get("asset_dir")):
+    empty = [entry["label"] for entry in findings.get("lists", ())    # only its own folder is held
+             if entry["state"] == "empty" and entry["filename"] in database.ASSET_FILE_OWNERS
+             and findings["unaccounted"].get(naming.SECTION_FOLDERS[entry["filename"]] + "/")]
+    if empty:
         return ("the %s database holds nothing, so these files may belong to it"
                 % wording.and_list(empty))
     return ""
@@ -1219,8 +1283,8 @@ def materials_on_record(findings: dict) -> list:
 
 
 def on_record(findings: dict, filename: str) -> list:
-    """The unlisted pairs whose readable stamp belongs on `filename`, as `(id, record)`, by id."""
-    if "asset_dir" not in findings:
+    """The unlisted pairs whose readable metadata belongs on `filename`, as `(id, record)`."""
+    if "asset_dirs" not in findings:
         return []
     stamps = _stamps(findings)
     return [(asset_id, stamps[asset_id]) for asset_id in complete_pairs(findings)
@@ -1236,30 +1300,31 @@ def _list_of(record: dict) -> str:
 
 
 def stamped_unlisted(findings: dict) -> list:
-    """The unlisted ids whose stamp reads, a pair or a stamp alone: what can still be put back."""
-    if "asset_dir" not in findings:
+    """The unlisted ids whose metadata reads, a pair or alone: what can still be put back."""
+    if "asset_dirs" not in findings:
         return []
     stamps = _stamps(findings)
     return sorted(asset_id for asset_id, record in stamps.items() if record is not None)
 
 
+def _unaccounted_assets(findings: dict) -> list:
+    """Every unlisted name in the asset folders."""
+    return [name for key in findings.get("asset_dirs", ())
+            for name in findings["unaccounted"].get(key, [])]
+
+
 def _ids_with_a_stamp(findings: dict) -> list:
-    """The unlisted complete pairs, and the ids whose unlisted stamp sits alone, by id."""
-    stamps = [name[: -len(STAMP_SUFFIX)]
-              for name in findings["unaccounted"].get(findings.get("asset_dir"), [])
-              if name.endswith(STAMP_SUFFIX)]
-    return sorted(set(complete_pairs(findings)) | {one for one in stamps
-                                                   if material.is_safe_asset_id(one)})
+    """The unlisted complete pairs, and the ids whose unlisted metadata sits alone, by id."""
+    alone = [metadata_stem(name) for name in _unaccounted_assets(findings)]
+    return sorted(set(complete_pairs(findings)) | {one for one in alone if one})
 
 
 def _stamps(findings: dict) -> dict:
-    """The stamps of the unlisted pairs, read once per survey; a hand-made findings reads them here."""
+    """The metadata of the unlisted pairs, read once per survey; hand-made findings read it here."""
     if "stamps" not in findings:
-        folder = os.path.join(findings["directory"], findings["asset_dir"])
-        findings["stamps"] = {}
-        for asset_id in _ids_with_a_stamp(findings):
-            path = os.path.join(folder, asset_id + STAMP_SUFFIX)
-            findings["stamps"][asset_id] = read_stamp(path) if os.path.exists(path) else None
+        folders = [path for _key, path in _folders_of(findings)]
+        findings["stamps"] = {asset_id: metadata_of(folders, asset_id)
+                              for asset_id in _ids_with_a_stamp(findings)}
     return findings["stamps"]
 
 
@@ -1311,10 +1376,10 @@ def _add_rows(findings: dict, filename: str, ids: list) -> dict:
         if other != filename:
             taken |= claimed
     added, minted, rows = [], [], []
-    folder = os.path.join(findings["directory"], findings["asset_dir"])
+    folders = [path for _key, path in _folders_of(findings)]
     claimed = [one for one in ids if one in taken]    # a list took them since the check
     for asset_id in [one for one in ids if one not in taken]:
-        record = read_stamp(os.path.join(folder, asset_id + STAMP_SUFFIX))
+        record = metadata_of(folders, asset_id)
         if record is None:
             record = material.Material(
                 name="Recovered %s" % asset_id[:8],
@@ -1341,10 +1406,41 @@ def _add_rows(findings: dict, filename: str, ids: list) -> dict:
             prefs_module.write_fresh_index(path, document)    # the one door a new list is born by
         else:
             _write_json(path, document)
+        _move_home(findings, filename, added)
     debug.event("repair", "unlisted files added back to a list",
                 file=filename, added=len(added), from_stamps=len(added) - len(minted),
                 written_new=missing)
     return {"added": added, "path": path, "minted": minted, "claimed": claimed}
+
+
+def _move_home(findings: dict, filename: str, ids: list) -> None:
+    """The files of rows just added to `filename` into its section's folder, from wherever they lay."""
+    if filename not in naming.ASSET_SECTIONS:
+        return
+    home = os.path.join(findings["directory"], naming.SECTION_FOLDERS[filename])
+    wanted = set(ids)
+    for _key, folder in _folders_of(findings):
+        if folder == home:
+            continue
+        for name in _listdir(folder):
+            if database.asset_id_for_file(name, ASSET_SIDECARS + (".png",), "_cop") not in wanted:
+                continue
+            target = os.path.join(home, name)
+            if os.path.lexists(target):
+                continue
+            try:
+                os.makedirs(home, exist_ok=True)
+                os.replace(os.path.join(folder, name), target)
+            except OSError as exc:
+                debug.event("repair", "an added file stays where it was",
+                            file=name, error=str(exc))
+
+
+def _listdir(folder: str) -> list:
+    try:
+        return sorted(os.listdir(folder))
+    except OSError:
+        return []
 
 
 def _state_of(findings: dict, filename: str) -> str:
@@ -1358,19 +1454,17 @@ def list_is_missing(findings: dict, filename: str) -> bool:
 
 
 def complete_pairs(findings: dict) -> list:
-    """The unclaimed ids with both halves present, in a stable order."""
+    """The unclaimed ids with a `.mat` and an `<id>.json` in ONE folder, in a stable order."""
     halves = {}
-    for name in findings["unaccounted"].get(findings.get("asset_dir"), []):    # none for settings
-        asset_id = database.asset_id_for_file(
-            name, (".mat", ".interface"), "_cop")
-        if not asset_id:
-            continue
-        if os.path.splitext(name)[0] != asset_id:
-            continue
-        halves.setdefault(asset_id, set()).add(
-            os.path.splitext(name)[1].lower())
-    return sorted(asset_id for asset_id, seen in halves.items()
-                  if {".mat", ".interface"} <= seen)
+    for key in findings.get("asset_dirs", ()):    # none for settings
+        for name in findings["unaccounted"].get(key, []):
+            kind, asset_id = naming.classify(key + name)
+            if kind == naming.RECORD or (kind == naming.UNKNOWN and metadata_stem(name)):
+                kind, asset_id = naming.RECORD, asset_id or metadata_stem(name)
+            if kind in (naming.ASSET, naming.RECORD) and asset_id:
+                halves.setdefault((key, asset_id), set()).add(kind)
+    return sorted({asset_id for (_key, asset_id), seen in halves.items()
+                   if {naming.ASSET, naming.RECORD} <= seen})
 
 
 def unsorted_pairs(findings: dict) -> list:
@@ -1390,8 +1484,8 @@ def _files_of(findings: dict, ids) -> list:
     ids = set(ids)
     covered = []
     for folder, names in findings["unaccounted"].items():
-        extensions, tail = (ASSET_SIDECARS, "_cop") \
-            if folder == findings["asset_dir"] else ((".png",), "_icon")
+        extensions, tail = (ASSET_SIDECARS + (".png",), "_cop") \
+            if folder in findings.get("asset_dirs", ()) else ((".png",), "_icon")
         for name in names:
             if ids and database.asset_id_for_file(name, extensions, tail) in ids:
                 covered.append(name)
@@ -1426,8 +1520,7 @@ def put_back(findings: dict, filename: str, tier: str, guard: bool = True) -> di
     done["said"] = ""
     if (filename in database.ASSET_FILE_OWNERS
             and target == os.path.join(findings["directory"], filename)):
-        done.update(_after_a_put_back(findings["directory"],
-                                      findings.get("asset_dir") or "mat/", filename))
+        done.update(_after_a_put_back(findings["directory"], filename))
     return done
 
 

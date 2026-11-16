@@ -4,7 +4,8 @@ import json
 import os
 
 from amaze import messages
-from amaze.core import captures, database, debug, library_policy, locations
+from amaze.core import captures, database, debug, library_conversion, library_files
+from amaze.core import library_policy, locations, material
 from amaze.helpers import hostos
 from amaze.prefs import prefs as prefs_mod
 
@@ -64,7 +65,8 @@ def starter_would_overwrite(lib_dir: str) -> list:
     evidence = database.absent_but_known(lib_dir, "library.json")
     if evidence:
         found.append(evidence)
-    for name in ("mat", "img"):
+    for name in (library_conversion.OLD_FOLDER, library_files.RENDER_FOLDER) + tuple(
+            library_files.SECTION_FOLDERS[section] for section in library_files.ASSET_SECTIONS):
         folder = os.path.join(lib_dir, name)
         if os.path.isdir(folder) and os.listdir(folder):
             found.append(name + "/")
@@ -97,10 +99,11 @@ def prepare(preferences) -> None:
 
 
 def ensure_library_dirs(preferences) -> bool:
-    """img/ and mat/ made, each asked on its own rather than as a pair; True if either was made."""
+    """img/ and each asset section's folder made, each asked on its own; True if one was made."""
     made = False
-    for tail in (preferences.img_dir, preferences.asset_dir):
-        folder = os.path.join(preferences.dir, tail)
+    for folder in [os.path.join(preferences.dir, preferences.img_dir)] + [
+            material.section_folder(preferences.dir, section)
+            for section in library_files.ASSET_SECTIONS]:
         if not os.path.isdir(folder):
             made = True
         os.makedirs(folder, exist_ok=True)
@@ -115,10 +118,7 @@ def update(preferences) -> bool:
     if captures.machine_capture_count():    # no question: installing this Amaze was the choice
         captures.adopt_machine_captures(preferences)
     library_policy.library_id(library_dir)    # minted once: the holding folder follows a moved library
-    if library_policy.library_version(library_dir) < library_policy.LIBRARY_VERSION:
-        library_policy.set_library_version(library_dir, library_policy.LIBRARY_VERSION)
-        return True
-    return False
+    return library_conversion.settle_version(library_dir)    # nothing of format 3 left: version 3
 
 
 def seed_starters(code_model, code_categories, gradient_model, gradient_categories) -> None:

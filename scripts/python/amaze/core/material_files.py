@@ -1,10 +1,6 @@
 """What a saved material's own files say, read as text: its builder type and its shader type."""
 
-import json
-import os
-import re
-
-from amaze.core import material, renderers
+from amaze.core import library_files, material, renderers
 
 LOP_CAPABLE_NODE_TYPES = tuple(each.usd_builder for each in renderers.ALL if each.usd_builder)
 
@@ -41,56 +37,10 @@ SHADER_TYPE_LABELS = {    # renderer -> (type in the saved .mat, label); the fir
 }
 
 
-_CREATE_NODE = re.compile(rb'createNode\(\s*[\'"]([^\'"]+)[\'"]')
-_SIDECAR_TYPE = re.compile(rb'\n  "type": "([^"\\]*)"')    # a top-level key, as `capture_builder` indents it
-_NO_FOLLOW = getattr(os, "O_NOFOLLOW", 0)
-
-
-STALE_SIDECAR_S = 60    # one save writes both files moments apart
-
-
-def get_saved_node_type(preferences, mat: material.Material) -> str:
-    """The builder type the builder sidecar records, else the .interface's first createNode, or ""."""
-    iface = material.payload_path(preferences, mat.mat_id, ".interface")
-    recorded = _sidecar_type(preferences, mat, iface)
-    if recorded:
-        return recorded
-    try:    # an asset saved before the sidecar
-        with open(iface, "rb") as fh:
-            text = fh.read(4096)    # the builder's createNode opens the script
-            match = _CREATE_NODE.search(text)
-            if match is None:
-                text += fh.read()
-                match = _CREATE_NODE.search(text)
-    except OSError:
-        return ""
-    return match.group(1).decode("utf-8", "replace") if match else ""
-
-
-def _sidecar_type(preferences, mat: material.Material, iface: str) -> str:
-    """The sidecar's `type`, or "" when absent or unusable; per row, so no log and one open."""
-    try:
-        if _NO_FOLLOW:    # the contained .interface's sibling, never through a link
-            stem = iface[:-len(".interface")]
-            fh = os.fdopen(os.open(stem + material.BUILDER_SUFFIX, os.O_RDONLY | _NO_FOLLOW), "rb")
-        else:
-            fh = open(material.payload_path(
-                preferences, mat.mat_id, material.BUILDER_SUFFIX), "rb")
-        with fh:
-            if os.fstat(fh.fileno()).st_mtime < os.stat(iface).st_mtime - STALE_SIDECAR_S:
-                return ""    # re-saved by an Amaze that writes no sidecar: the .interface is newer
-            data = fh.read()
-    except OSError:
-        return ""
-    match = _SIDECAR_TYPE.search(data)
-    if match:
-        return match.group(1).decode("utf-8", "replace")
-    try:    # written some other way: parse it
-        parsed = json.loads(data)
-    except ValueError:
-        return ""
-    kind = parsed.get("type") if isinstance(parsed, dict) else None
-    return kind if isinstance(kind, str) else ""
+def get_saved_node_type(preferences, mat: material.Material, section: str) -> str:
+    """The builder type the asset's builder records, from `<id>.json` or format 3's files, or ""."""
+    from amaze.core import asset_record
+    return asset_record.saved_builder(preferences, mat.mat_id, section).get("type", "")
 
 
 def shader_type_table(renderer) -> tuple:
@@ -106,8 +56,7 @@ def get_shader_type_label(preferences, mat: material.Material) -> str:
     if not table:
         return ""
     mat_path = material.payload_path(
-        preferences, mat.mat_id, preferences.ext
-    )
+        preferences, mat.mat_id, preferences.ext, library_files.MATERIALS)
     try:
         with open(mat_path, "rb") as fh:
             data = fh.read()

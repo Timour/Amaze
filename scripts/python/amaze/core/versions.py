@@ -2,27 +2,28 @@
 
 from __future__ import annotations
 
+import contextlib
 import filecmp
 import json
 import os
 import re
 import shutil
+import tempfile
 import time
 
 from amaze import messages
-from amaze.core import asset_files, debug, users
-from amaze.core.material import BUILDER_SUFFIX
+from amaze.core import asset_files, asset_record, debug, library_files, material, users
+from amaze.core.material import RECORD_SUFFIX
 from amaze.helpers import hostos
 
 _STEM_NUMBER = re.compile(r"(?:^|-)(\d+)$")    # a stem is `<writer>-<n>` or bare `<n>`; the trailing number is the version
 
-_KINDS = ((".mat", True), (".interface", False),    # the kinds a version archives; only .mat is required
-          (BUILDER_SUFFIX, False), (".png", False))
+_KINDS = ((".mat", True), (RECORD_SUFFIX, False),    # the kinds a version archives; only .mat is required
+          (".png", False))
 
 SOURCE_KINDS = {    # `asset_files()` kind -> archive suffix; a kind absent here is not versioned
     "mat": ".mat",
-    "interface": ".interface",
-    "builder": BUILDER_SUFFIX,
+    "json": RECORD_SUFFIX,    # archived as its builder alone ▸r/version-store
     "thumbnail": ".png",
 }
 
@@ -34,24 +35,36 @@ CODE_SUFFIX = ".txt"    # a code version is its snippet's text, one file
 class Section:
     """Where one section keeps its versions, and the files one version holds."""
 
-    __slots__ = ("folder", "kinds", "source_kinds")
+    __slots__ = ("folder", "kinds", "source_kinds", "database")
 
-    def __init__(self, folder, kinds: tuple, source_kinds: dict) -> None:
+    def __init__(self, folder, kinds: tuple, source_kinds: dict, database: str) -> None:
         self.folder = folder                # preferences -> the store's path parts in the library
         self.kinds = kinds                  # ((suffix, required), ...)
         self.source_kinds = source_kinds    # asset_files() kind -> suffix; {}: the caller hands it in
+        self.database = database            # the section's database, which names its folder
 
     def payload(self) -> str:
         """The suffix without which a set of files is not a version."""
         return next(suffix for suffix, required in self.kinds if required)
 
 
-MATERIAL = Section(lambda preferences: (preferences.asset_dir, "versions"), _KINDS, SOURCE_KINDS)
-CODE = Section(lambda preferences: ("code", "versions"), ((CODE_SUFFIX, True),), {})    # in code.json
+def _asset_section(database: str) -> Section:
+    return Section(lambda preferences: (library_files.SECTION_FOLDERS[database],
+                                        library_files.VERSIONS),
+                   _KINDS, SOURCE_KINDS, database)
+
+
+MATERIAL = _asset_section(library_files.MATERIALS)
+NODE = _asset_section(library_files.NODES)
+CODE = Section(lambda preferences: (library_files.CODE_FOLDER, library_files.VERSIONS),
+               ((CODE_SUFFIX, True),), {}, "code.json")    # its text is in code.json
 
 
 def versions_dir(preferences, mat_id: str, section: Section = MATERIAL) -> str:
-    """mat/versions/<id>/ or code/versions/<id>/ - contained, like every id-derived path."""
+    """`<section folder>/versions/<id>/`, contained like every id-derived path."""
+    if section.database in library_files.ASSET_SECTIONS:
+        return material.owned_path(preferences, section.database, library_files.VERSIONS,
+                                   str(mat_id))
     return hostos.contained_join(
         preferences.dir, *section.folder(preferences), str(mat_id))
 
@@ -59,6 +72,16 @@ def versions_dir(preferences, mat_id: str, section: Section = MATERIAL) -> str:
 def store_root(preferences, section: Section = MATERIAL) -> str:
     """The folder every store of `section` sits in: one listing tells which assets have one."""
     return os.path.join(preferences.dir, *section.folder(preferences))
+
+
+def stored_ids(preferences, section: Section = MATERIAL) -> set:
+    """The ids with a store, by one listing of `store_root`."""
+    found = set()
+    try:
+        found = set(os.listdir(store_root(preferences, section)))
+    except OSError:
+        pass
+    return found
 
 
 def _ledger_path(preferences, mat_id: str, section: Section = MATERIAL) -> str:
@@ -182,9 +205,37 @@ def _base_paths(preferences, mat_id: str, section: Section = MATERIAL) -> dict:
     """The asset's own files by archive suffix; {} where the caller hands the base in."""
     if not section.source_kinds:
         return {}
-    owned = asset_files.asset_files_for(preferences, mat_id)
+    owned = asset_files.asset_files_for(preferences, mat_id, section.database)
     return {suffix: owned[kind] for kind, suffix in section.source_kinds.items()
             if kind in owned}
+
+
+def _builder_of(paths: dict) -> dict:
+    """The builder a set of files holds in its `.json`; {} for none."""
+    return asset_record.builder_section(
+        asset_record.read(paths.get(RECORD_SUFFIX) or "")[asset_record.BUILDER])
+
+
+@contextlib.contextmanager
+def _staged_record(paths: dict, document: dict, section: Section):
+    """`paths` with its `.json` swapped for a scratch holding `document`; the scratch removed after."""
+    if RECORD_SUFFIX not in dict(section.kinds):
+        yield paths
+        return
+    handle, scratch = tempfile.mkstemp(prefix="amaze_version_", suffix=RECORD_SUFFIX)
+    try:
+        with os.fdopen(handle, "wb") as stream:
+            stream.write(asset_record.encode(document))
+        yield dict(paths, **{RECORD_SUFFIX: scratch})
+    finally:
+        hostos.discard_scratch(scratch)
+
+
+def _archive_document(sources: dict) -> dict:
+    """What a version's `<stem>.json` holds: the builder alone, never the metadata."""
+    builder = _builder_of(sources)
+    return {"format": asset_record.FORMAT, asset_record.BUILDER: builder} if builder \
+        else {"format": asset_record.FORMAT}
 
 
 def writer_tag(preferences) -> str:
@@ -315,9 +366,10 @@ def create_version(preferences, mat_id: str, name: str = "",
                     stem=stem)
         number += 1
         stem = _stem(tag, number)
-    if not _copy_set(sources,
-                     _archive_paths(preferences, mat_id, stem, section),
-                     section.kinds):
+    with _staged_record(sources, _archive_document(sources), section) as staged:
+        copied = _copy_set(staged, _archive_paths(preferences, mat_id, stem, section),
+                           section.kinds)
+    if not copied:
         return 0
     author = ""    # the writer's name, frozen into the row at write time
     try:
@@ -349,8 +401,10 @@ def _base_is_archived(preferences, mat_id: str, ledger: dict,
         return False
     archive = _archive_paths(preferences, mat_id, _row_stem(row), section)
     base = base or _base_paths(preferences, mat_id, section)
+    if RECORD_SUFFIX in dict(section.kinds) and _builder_of(base) != _builder_of(archive):
+        return False
     for kind, _required in section.kinds:
-        if kind == ".png":    # record_render refreshes it on its own clock
+        if kind in (".png", RECORD_SUFFIX):    # the render on its own clock; the builder above
             continue
         base_path, archive_path = base.get(kind), archive.get(kind)
         in_base = bool(base_path) and os.path.exists(base_path)
@@ -401,9 +455,7 @@ def switch_active(preferences, mat_id: str, number: int, section: Section = MATE
     if row is None:
         return False
     previous = ledger.get("active")
-    if not _copy_set(
-            _archive_paths(preferences, mat_id, _row_stem(row), section),
-            base, section.kinds):
+    if not _restore(preferences, mat_id, _row_stem(row), base, section):
         return False
     ledger["active"] = int(number)
     if not _write_ledger(preferences, mat_id, ledger, section):    # the previous archive is whole
@@ -411,10 +463,7 @@ def switch_active(preferences, mat_id: str, number: int, section: Section = MATE
                         if previous is not None else None)
         rolled_back = (
             previous_row is not None
-            and _copy_set(
-                _archive_paths(preferences, mat_id,
-                               _row_stem(previous_row), section),
-                base, section.kinds))
+            and _restore(preferences, mat_id, _row_stem(previous_row), base, section))
         debug.event("versions",
                     "switch refused - ledger write failed",
                     mat_id=str(mat_id), n=int(number),
@@ -428,9 +477,28 @@ def switch_active(preferences, mat_id: str, number: int, section: Section = MATE
     return True
 
 
-def record_render(preferences, mat_id: str) -> bool:
+def _restore(preferences, mat_id: str, stem, base: dict, section: Section) -> bool:
+    """Copy one archive over the base; the base's `.json` keeps its metadata, takes the builder."""
+    archive = _archive_paths(preferences, mat_id, stem, section)
+    if RECORD_SUFFIX not in dict(section.kinds):
+        return _copy_set(archive, base, section.kinds)
+    target = base.get(RECORD_SUFFIX) or asset_record.path_for(
+        preferences, mat_id, section.database)
+    with asset_record.LOCK:    # no metadata write lands between the read and the copy
+        document = {"format": asset_record.FORMAT}
+        metadata = asset_record.read(target)[asset_record.METADATA]
+        builder = _builder_of(archive)
+        if metadata:
+            document[asset_record.METADATA] = metadata
+        if builder:
+            document[asset_record.BUILDER] = builder
+        with _staged_record(archive, document, section) as staged:
+            return _copy_set(staged, dict(base, **{RECORD_SUFFIX: target}), section.kinds)
+
+
+def record_render(preferences, mat_id: str, section: Section = MATERIAL) -> bool:
     """Copy the base thumbnail into the active archive: a version is minted before its render lands."""
-    return record_base(preferences, mat_id, ".png")
+    return record_base(preferences, mat_id, ".png", section)
 
 
 def record_base(preferences, mat_id: str, kind: str, section: Section = MATERIAL,

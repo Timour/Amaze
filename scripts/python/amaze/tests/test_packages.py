@@ -20,6 +20,7 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
+from amaze.core import asset_record  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 from amaze.actions import materials as material_actions  # noqa: E402
 
@@ -80,6 +81,13 @@ class PackageExportTest(unittest.TestCase):
             self.assertTrue(entry["files"], "a built material owns real "
                                             "payload files - none packed")
             for kind, arcname in entry["files"].items():
+                if kind == packages.RECORD_KIND:    # the builder alone, composed from `<id>.json`
+                    self.assertEqual(asset_record.encode(
+                        {"format": asset_record.FORMAT,
+                         asset_record.BUILDER: asset_record.saved_builder(
+                             model.preferences, asset.mat_id, model.DB_FILENAME)}),
+                        bundle.read(arcname))
+                    continue
                 source = model.asset_files(asset.mat_id)[kind]
                 self.assertEqual(
                     _bytes(source), bundle.read(arcname),

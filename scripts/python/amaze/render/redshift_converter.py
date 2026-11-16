@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import NamedTuple
 
 import hou
-import json
 
 from amaze.core import debug, material, renderers, texstore
 from amaze.helpers import wording
@@ -493,7 +492,7 @@ def upgrade_to_usd_builder(builder: hou.Node) -> hou.Node:
     except hou.Error as exc:
         debug.event("redshift", "container look not carried", error=str(exc))
     try:    # and its interface: spare parms and container values
-        nodes.apply_builder(fresh, json.loads(nodes.capture_builder(builder)))
+        nodes.apply_builder(fresh, nodes.capture_builder(builder))
     except Exception as exc:                          # noqa: BLE001
         debug.event("redshift", "container interface not carried", error=str(exc))
     _bypass_dots(builder)    # moveNodesTo takes nodes only, so a wire through a network dot would die with the old container

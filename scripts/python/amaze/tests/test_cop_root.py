@@ -18,7 +18,7 @@ sys.path.insert(
 
 import hou  # noqa: E402
 
-from amaze.core import material  # noqa: E402
+from amaze.core import library_files, material  # noqa: E402
 from amaze.render import nodes  # noqa: E402
 from amaze.tests import test_support  # noqa: E402 - redirects the log
 
@@ -62,7 +62,7 @@ class ACompanionLandsBesideItsMaterial(unittest.TestCase):
         self.prefs = test_support.fixture_prefs(self)
         self.handler = nodes.NodeHandler(self.prefs)
         file_name = material.payload_path(self.prefs, "companionhome",
-                                          "_cop" + self.prefs.ext)
+                                          "_cop" + self.prefs.ext, library_files.MATERIALS)
         nodes.ensure_asset_folder(self.prefs, file_name)
         source = hou.node("/obj").createNode("copnet")
         source.createNode("constant")
@@ -209,7 +209,8 @@ class ALooseSurfaceSaveKeepsAWireThroughADot(unittest.TestCase):
         handler._renderer = "Karma"
         self.assertTrue(handler.save_node(surface, "dotprobe", False), "premise: no save")
         restored = self.home.createNode("subnet", "restored")
-        restored.loadItemsFromFile(material.payload_path(self.prefs, "dotprobe", self.prefs.ext))
+        restored.loadItemsFromFile(material.payload_path(
+            self.prefs, "dotprobe", self.prefs.ext, library_files.MATERIALS))
         copy = next(c for c in restored.children() if c.type().name() == "mtlxstandard_surface")
         fed = copy.input(copy.inputIndex("base_color"))
         self.assertEqual("mtlximage", fed.type().name() if fed is not None else None,
@@ -345,7 +346,7 @@ class AFailedSaveLeavesNoCompanionScratch(unittest.TestCase):
 
     def _scratches(self):
         folder = os.path.dirname(material.payload_path(
-            self.prefs, self.ASSET, self.prefs.ext))
+            self.prefs, self.ASSET, self.prefs.ext, library_files.MATERIALS))
         return [name for name in os.listdir(folder)
                 if name.startswith(self.ASSET + "_cop")]
 

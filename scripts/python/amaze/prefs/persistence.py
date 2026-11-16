@@ -96,8 +96,7 @@ RENDERER_DEFAULTS = {"_" + r.switch: True for r in renderers.ALL}  # every rende
 
 RENDERER_KEYS = {"_" + r.switch: r.switch_stored for r in renderers.ALL}  # data on disk, never tidied
 
-IMG_SUBDIR = "img/"  # the two folders a library needs ▸p/library-creation-doors
-ASSET_SUBDIR = "mat/"
+IMG_SUBDIR = "img/"  # with each asset section's folder, what a library needs ▸p/library-creation-doors
 
 _UNSEEN = object()  # a shared key this session never adopted nor pushed: the next push carries it
 
@@ -113,7 +112,6 @@ SHARED_KEYS = {  # truth in the library's prefs.json: stored key -> (property or
     "extension": (None, "_ext", ".mat"),
     "img_extension": (None, "_img_ext", ".png"),
     "img_dir": (None, "_img_dir", IMG_SUBDIR),
-    "asset_dir": (None, "_asset_dir", ASSET_SUBDIR),
     "rendersize": ("rendersize", "_rendersize", 256),
     "render_on_import": ("render_on_import", "_render_on_import", 1),
     "obj_drag_outline": ("obj_drag_outline", "_obj_drag_outline", 1),
@@ -247,6 +245,7 @@ class _Persistence:
         "hip_include_subfolders",
         "file_section_migrated",
         "version_author",  # load() adopts the value into `library_user` first
+        "asset_dir",  # the asset folders are per section since library format 4
     )
 
     _RETIRED_KEYS = _RETIRED_KEYS + tuple(SHARED_KEYS) + (  # flat shared spellings; the same save writes `shared_settings` and the library

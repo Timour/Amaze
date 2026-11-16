@@ -18,7 +18,7 @@ sys.path.insert(
 
 from amaze.core import library as library_mod  # noqa: E402
 from amaze.actions import materials as material_actions  # noqa: E402
-from amaze.core import material_files  # noqa: E402
+from amaze.core import library_files, material_files  # noqa: E402
 from amaze.core import matx_import  # noqa: E402
 from amaze.core import renderers  # noqa: E402
 from amaze.render import nodes  # noqa: E402
@@ -374,7 +374,8 @@ class TheOctaneTwinLivesInTheLibrary(unittest.TestCase):
         self.assertEqual("Octane", self.twin.renderer)
         self.assertEqual(source.name, self.twin.name)
         self.assertEqual(list(source.categories), list(self.twin.categories))
-        self.assertEqual("subnet", material_files.get_saved_node_type(self.prefs, self.twin))
+        self.assertEqual("subnet", material_files.get_saved_node_type(
+            self.prefs, self.twin, library_files.MATERIALS))
 
     def test_it_comes_back_as_octanes_builder(self):
         imported = self._imported()

@@ -18,9 +18,12 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
+from amaze.core import asset_record  # noqa: E402
 from amaze.core import database  # noqa: E402
 from amaze.core import library as library_mod  # noqa: E402
+from amaze.core import library_files  # noqa: E402
 from amaze.core import library_policy  # noqa: E402
+from amaze.core import material  # noqa: E402
 from amaze.core import texture_library  # noqa: E402
 from amaze.core import versions  # noqa: E402
 from amaze.helpers import hostos  # noqa: E402
@@ -44,8 +47,8 @@ class _LibraryCase(unittest.TestCase):
             doc = json.load(fh)
         for asset in doc["assets"]:
             mat_id = str(asset.get("id"))
-            payload = os.path.join(self.prefs.dir, self.prefs.asset_dir,
-                                   mat_id + ".mat")
+            payload = material.payload_path(self.prefs, mat_id, ".mat",
+                                            library_files.MATERIALS)
             if os.path.exists(payload):
                 return mat_id
         self.fail("the fixture library has no asset with a payload - this "
@@ -147,7 +150,7 @@ class RemoveAssetHonoursTheIndexWrite(_LibraryCase):
         self.assertNotIn(self.mat_id, self._on_disk_ids())
         self.assertFalse(
             os.path.isdir(store),
-            "mat/versions/<id>/ survived the asset. Nothing else removes "
+            "materials/versions/<id>/ survived the asset. Nothing else removes "
             "it, and its id is now in no list - so no later run can ever "
             "decide it is safe to take")
 
@@ -178,34 +181,46 @@ class SwitchingVersionsIsAllOrNothing(unittest.TestCase):
         self.mat_id = ""
         for asset in doc["assets"]:
             mat_id = str(asset.get("id"))
-            if os.path.exists(os.path.join(self.prefs.dir,
-                                           self.prefs.asset_dir,
-                                           mat_id + ".mat")):
+            if os.path.exists(material.payload_path(self.prefs, mat_id, ".mat",
+                                                    library_files.MATERIALS)):
                 self.mat_id = mat_id
                 break
         self.assertTrue(self.mat_id, "no fixture asset with a payload")
         self.base = versions._base_paths(self.prefs, self.mat_id)
 
         self.assertEqual(1, versions.create_version(self.prefs, self.mat_id))
-        for kind in (".mat", ".interface"):
-            with open(self.base[kind], "w", encoding="utf-8") as fh:
-                fh.write("VERSION-2 %s" % kind)
+        for kind in (".mat", ".json"):
+            self._write(kind, "VERSION-2 %s" % kind)
         self.assertEqual(2, versions.create_version(self.prefs, self.mat_id))
 
-    def _holds(self, kind):
+    def _write(self, kind, text):
+        """`.mat` takes `text` whole; `.json` takes it as its builder's interface."""
+        if kind == ".json":
+            asset_record.write_section(self.base[kind], asset_record.BUILDER,
+                                       {"type": "subnet", "interface": text, "values": {}})
+            return
+        with open(self.base[kind], "w", encoding="utf-8") as fh:
+            fh.write(text)
+
+    def _text(self, kind):
+        if kind == ".json":
+            return asset_record.read(self.base[kind])["builder"].get("interface", "")
         with open(self.base[kind], encoding="utf-8") as fh:
-            return 2 if "VERSION-2" in fh.read(64) else 1
+            return fh.read(64)
+
+    def _holds(self, kind):
+        return 2 if "VERSION-2" in self._text(kind) else 1
 
     def test_a_held_file_leaves_the_base_on_one_version(self):
-        """A sync client holding one file must not leave .mat and .interface on different versions."""
+        """A sync client holding one file must not leave .mat and .json on different versions."""
         real_promote = hostos.promote_scratch
 
-        def held_interface(scratch, target):
-            if target.endswith(".interface"):
+        def held_record(scratch, target):
+            if target.endswith(".json") and self.mat_id in os.path.basename(target):
                 raise PermissionError("held by another process")
             return real_promote(scratch, target)
 
-        hostos.promote_scratch = held_interface
+        hostos.promote_scratch = held_record
         self.addCleanup(setattr, hostos, "promote_scratch", real_promote)
         try:
             switched = versions.switch_active(self.prefs, self.mat_id, 1)
@@ -214,16 +229,15 @@ class SwitchingVersionsIsAllOrNothing(unittest.TestCase):
 
         self.assertFalse(switched, "switch_active reported success")
         self.assertEqual(
-            self._holds(".mat"), self._holds(".interface"),
+            self._holds(".mat"), self._holds(".json"),
             "the base is a MIXTURE of two versions: its .mat and its "
-            ".interface come from different ones, so importing it builds "
+            "builder come from different ones, so importing it builds "
             "one version's network behind another's parameters")
 
     def test_an_unarchived_base_is_archived_before_the_switch(self):
         """A structural update mints no version, so the base may be the only copy: archive it first."""
-        for kind in (".mat", ".interface"):
-            with open(self.base[kind], "w", encoding="utf-8") as fh:
-                fh.write("STRUCTURAL %s" % kind)
+        for kind in (".mat", ".json"):
+            self._write(kind, "STRUCTURAL %s" % kind)
 
         self.assertTrue(versions.switch_active(self.prefs, self.mat_id, 1))
         self.assertEqual(1, self._holds(".mat"))
@@ -244,12 +258,12 @@ class SwitchingVersionsIsAllOrNothing(unittest.TestCase):
 
     def test_a_failed_switch_removes_the_kinds_it_created(self):
         """The rollback also removes a kind promoted onto a target that did not exist before."""
-        os.remove(self.base[".interface"])
+        os.remove(self.base[".json"])
 
         real_promote = hostos.promote_scratch
 
         def held_png(scratch, target):
-            if target.endswith(".png") and "/img" in target.replace(os.sep, "/"):    # the img dir is joined with `/`, so a Windows path is mixed
+            if target.endswith(".png") and "/versions/" not in target.replace(os.sep, "/"):    # the base picture
                 raise PermissionError("held by another process")
             return real_promote(scratch, target)
 
@@ -262,14 +276,14 @@ class SwitchingVersionsIsAllOrNothing(unittest.TestCase):
 
         self.assertFalse(switched, "premise: the held file refuses the switch")
         self.assertFalse(
-            os.path.exists(self.base[".interface"]),
-            "the failed switch left version 1's .interface beside the "
+            os.path.exists(self.base[".json"]),
+            "the failed switch left version 1's .json beside the "
             "restored base .mat - a material made of two versions")
 
     def test_an_ordinary_switch_still_works(self):
         self.assertTrue(versions.switch_active(self.prefs, self.mat_id, 1))
         self.assertEqual(1, self._holds(".mat"))
-        self.assertEqual(1, self._holds(".interface"))
+        self.assertEqual(1, self._holds(".json"))
         self.assertEqual(1, versions.active_version(self.prefs, self.mat_id))
 
 

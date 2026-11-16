@@ -12,7 +12,7 @@ from PySide6 import QtCore, QtWidgets  # noqa: E402
 import hou  # noqa: E402
 
 from amaze import messages, preview  # noqa: E402
-from amaze.core import dragengine, material  # noqa: E402
+from amaze.core import dragengine, library_files, material  # noqa: E402
 from amaze.render import nodes, thumbs  # noqa: E402
 from amaze.utils import rc_calls  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
@@ -171,7 +171,7 @@ class TheCheckReportHeadingIsTrueOfEveryLine(unittest.TestCase):
         return kwargs.get("close_choice", 0)    # Close, and Cancel on any confirm
 
     def test_the_heading_claims_nothing_its_lines_deny(self):
-        mats = os.path.join(self.panel.prefs.dir, self.panel.prefs.asset_dir)
+        mats = material.section_folder(self.panel.prefs.dir, library_files.MATERIALS)
         left = os.path.join(mats, "LEFTOVERHERE1.mat")
         with open(left, "w", encoding="utf-8") as handle:
             handle.write("in no list at all\n")    # beside an empty Node list: nothing moves

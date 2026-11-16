@@ -22,7 +22,7 @@ from amaze import preview  # noqa: E402
 from amaze.actions import materials as material_actions  # noqa: E402
 from amaze.core import material_files  # noqa: E402
 from amaze.core import library as library_mod  # noqa: E402
-from amaze.core import material, renderers  # noqa: E402
+from amaze.core import library_files, material, renderers  # noqa: E402
 from amaze.prefs import persistence  # noqa: E402
 from amaze.prefs import prefs as prefs_mod  # noqa: E402
 from amaze.render import material_converter  # noqa: E402
@@ -61,7 +61,7 @@ def _a_viewer_octane_offers():
 
 
 def _write_mat(prefs, asset_id, text):
-    path = material.payload_path(prefs, asset_id, prefs.ext)
+    path = material.payload_path(prefs, asset_id, prefs.ext, library_files.MATERIALS)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="latin-1") as handle:
         handle.write(text)
@@ -221,7 +221,7 @@ class OctanesOwnBuilderRoundTrips(unittest.TestCase):
         _shader(source).parmTuple("baseColor").set(RED)
         asset = self._saved(source)
         self.assertEqual("Octane:Standard Surface", self.model.renderer_label(asset))
-        self.assertEqual("subnet", material_files.get_saved_node_type(self.prefs, asset))
+        self.assertEqual("subnet", material_files.get_saved_node_type(self.prefs, asset, library_files.MATERIALS))
         imported = self._imported(asset)
         self.assertEqual("1", imported.userData(renderers.OCTANE.builder_mark),
                          "the import lost Octane's marker")
@@ -255,7 +255,7 @@ class OctanesOwnBuilderRoundTrips(unittest.TestCase):
     def test_the_classic_container_keeps_its_shape(self):
         """`octane_vopnet` still saves its contents and rebuilds by type in /mat."""
         asset = self._saved(self.mat.createNode("octane_vopnet"))
-        self.assertEqual("octane_vopnet", material_files.get_saved_node_type(self.prefs, asset))
+        self.assertEqual("octane_vopnet", material_files.get_saved_node_type(self.prefs, asset, library_files.MATERIALS))
         self.assertEqual("octane_vopnet", self._imported(asset).type().name())
         self.assertEqual("Octane:Standard Surface", self.model.renderer_label(asset))
 
@@ -308,7 +308,7 @@ class AMarkedSubnetSavesWholeWithoutThePlugin(unittest.TestCase):
         self.assertEqual("Octane", material_actions.add_asset(
             self.model, self.builder, "", "", False))
         asset, = test_support.arrived(self.model, held)
-        self.assertEqual("subnet", material_files.get_saved_node_type(self.prefs, asset))
+        self.assertEqual("subnet", material_files.get_saved_node_type(self.prefs, asset, library_files.MATERIALS))
         self.assertEqual({"mat", "lop"}, nodes.NodeHandler(self.prefs).import_targets(asset))
         ok, reason, created = nodes.NodeHandler(self.prefs).import_asset_to_scene(
             asset, target="mat")

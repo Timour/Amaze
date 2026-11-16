@@ -85,8 +85,8 @@ class OnlyASectionThatRENDERSOffersUpdatePreview(unittest.TestCase):
 
     def _preview_gate(self, name):
         """Update Render is one row of the shared tail, so the row's `shown` gate is what decides."""
-        entry = next(e for e in sections.GRID_MENU_TAIL
-                     if e.label == "Update Render")
+        entry = next(e for e in sections.THUMBNAIL_MENU
+                     if e.label == "Render Image")
         self.assertTrue(
             entry.shown,
             "Update Render is unconditional in the shared tail, so "

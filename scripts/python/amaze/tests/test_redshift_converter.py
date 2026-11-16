@@ -16,7 +16,7 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze.core import material  # noqa: E402
+from amaze.core import library_files, material  # noqa: E402
 from amaze.actions import materials as material_actions  # noqa: E402
 from amaze.core import material_files  # noqa: E402
 from amaze.render import nodes  # noqa: E402
@@ -306,9 +306,10 @@ class TheLibraryDoorMakesANewRedshiftEntry(unittest.TestCase):
         self.assertEqual(list(source.categories), list(twin.categories))
         handler = nodes.NodeHandler(self.prefs)    # a redshift_vopnet twin was refused a LOP library
         self.assertEqual("rs_usd_material_builder",
-                         material_files.get_saved_node_type(self.prefs, twin))
+                         material_files.get_saved_node_type(self.prefs, twin,
+                                                            library_files.MATERIALS))
         self.assertEqual({"mat", "lop"}, handler.import_targets(twin))
-        path = material.payload_path(self.prefs, twin.mat_id, self.prefs.ext)
+        path = material.payload_path(self.prefs, twin.mat_id, self.prefs.ext, library_files.MATERIALS)
         seen = set(self.parent.children())
         self.parent.loadItemsFromFile(path)
         loaded = [n for n in self.parent.children() if n not in seen]
@@ -459,7 +460,8 @@ class ALegacyRedshiftMaterialGoesIntoSolaris(unittest.TestCase):
     def test_it_lands_in_a_lop_library_as_the_usd_container(self):
         handler = nodes.NodeHandler(self.prefs)
         self.assertEqual("redshift_vopnet",
-                         material_files.get_saved_node_type(self.prefs, self.model.assets[self.row]),
+                         material_files.get_saved_node_type(
+                             self.prefs, self.model.assets[self.row], library_files.MATERIALS),
                          "the saved files no longer say the classic container")
         self.assertEqual({"mat", "lop"},
                          handler.import_targets(self.model.assets[self.row]))
@@ -716,7 +718,7 @@ class AnOnlineMaterialCanLandAsRedshift(unittest.TestCase):
         self.assertEqual(before + 1, len(self.model.assets))
         twin, = test_support.arrived(self.model, held)
         self.assertEqual("Redshift", twin.renderer)
-        path = material.payload_path(self.prefs, twin.mat_id, self.prefs.ext)
+        path = material.payload_path(self.prefs, twin.mat_id, self.prefs.ext, library_files.MATERIALS)
         parent = hou.node("/mat") or hou.node("/").createNode("mat")
         seen = set(parent.children())
         parent.loadItemsFromFile(path)
@@ -743,7 +745,7 @@ class AnOnlineMaterialCanLandAsRedshift(unittest.TestCase):
         self.assertTrue(ok, reason)
         twin, = test_support.arrived(self.model, held)
         self.assertEqual("Redshift", twin.renderer)
-        path = material.payload_path(self.prefs, twin.mat_id, self.prefs.ext)
+        path = material.payload_path(self.prefs, twin.mat_id, self.prefs.ext, library_files.MATERIALS)
         parent = hou.node("/mat") or hou.node("/").createNode("mat")
         seen = set(parent.children())
         parent.loadItemsFromFile(path)

@@ -19,7 +19,7 @@ _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 import hou  # noqa: E402,F401
 from amaze.actions import files as files_actions  # noqa: E402
-from amaze.core import captures, file_library, locations, scene_captures, scene_files, section_list, thumbnails  # noqa: E402
+from amaze.core import captures, file_library, locations, scene_captures, scene_files, section_list, thumbnails, tile_icons  # noqa: E402
 from amaze.helpers import hostos, ui_helpers  # noqa: E402
 from amaze.panel import sections  # noqa: E402
 from amaze.tests import test_support  # noqa: E402,F401
@@ -130,7 +130,7 @@ def _settled_decoration(model, row, seconds=5.0, key=None):
     key = key or ("capture", model.capture_path(row))    # a File row's; an asset row passes its own
     deadline = time.time() + seconds
     shown = model.data(model.index(row, 0), role)
-    while shown is None and time.time() < deadline:
+    while (shown is None or thumbnails.engine.is_pending(key)) and time.time() < deadline:
         QtWidgets.QApplication.processEvents()
         time.sleep(0.005)
         if not thumbnails.engine.is_pending(key):    # answered, or forgotten to be asked again
@@ -165,11 +165,15 @@ class CaptureStoreTest(unittest.TestCase):
         self.assertNotEqual(path, captures.file_path(
             self.prefs, captures.file_key(self.prefs, other)))
 
-    def test_an_asset_capture_is_named_by_its_id_inside_the_folder(self):
-        self.assertEqual(os.path.join(captures.folder(self.prefs), "abc123.png"),
-                         captures.asset_path(self.prefs, "abc123"))
-        with self.assertRaises(hostos.PathEscape):
-            captures.asset_path(self.prefs, "../../escape")
+    def test_an_asset_capture_is_named_by_its_id_inside_its_section_folder(self):
+        """An asset's capture is its one picture, `<section folder>/<id>.png`."""
+        for section, folder in (("library.json", "materials"), ("cops.json", "nodes"),
+                                ("code.json", "code"), ("gradients.json", "colors")):
+            with self.subTest(section=section):
+                self.assertEqual(os.path.join(str(self.prefs.dir), folder, "abc123.png"),
+                                 tile_icons.thumbnail_path(self.prefs, "abc123", section))
+                with self.assertRaises(hostos.PathEscape):
+                    tile_icons.thumbnail_path(self.prefs, "../../escape", section)
 
     def test_the_shelf_and_the_tile_reach_one_file(self):
         """The shelf names a scene by its path and the menu by its row: one key, or two files."""
@@ -645,7 +649,8 @@ class SlowCapturePromptTest(unittest.TestCase):
         captures.signals.landed.connect(heard)
         self.addCleanup(captures.signals.landed.disconnect, heard)
         with self.assertRaises(scene_captures.CaptureRefused):
-            scene_captures.capture_tile(captures.asset_path(self.prefs, "abc"), "abc")
+            scene_captures.capture_tile(tile_icons.thumbnail_path(
+                self.prefs, "abc", "library.json"), "abc")
         self.assertEqual([], landed, "a refused capture was announced as landed")
 
 
@@ -699,15 +704,29 @@ class TileCropTest(unittest.TestCase):
                         for _f, n in model._files]
 
         def crops():
+            import time
+            from PySide6 import QtCore
+            role = QtCore.Qt.ItemDataRole.DecorationRole
+            deadline = time.time() + 5.0
+            while time.time() < deadline and any(    # a paint asks the engine; crop reads its answer
+                    thumbnails.engine.is_pending(("capture", model.capture_path(i)))
+                    or model.data(model.index(i, 0), role) is None for i in range(4)):
+                QtWidgets.QApplication.processEvents()
+                time.sleep(0.005)
             return [bool(model.data(model.index(i, 0), model.CropRole)) for i in range(4)]
 
+        self.assertEqual([False, False, False, False], crops(),
+                         "a row with no capture crops its square picture")
+        _write_png(model.capture_path(0), _two_tone_png_bytes())
+        captures.announce(model.tile_key(0))    # as a capture does: the remembered answer goes
         self.assertEqual([True, False, False, False], crops(),
-                         "only a scene shows its capture until another tile is given one")
-        model.tile_icon = lambda row: {"face": "capture"} if row == 1 else {}
+                         "a scene showing its capture does not fill the tile")
+        _write_png(model.capture_path(1), _two_tone_png_bytes())
+        captures.announce(model.tile_key(1))
         self.assertEqual([True, True, False, False], crops(),
                          "an image showing its capture does not fill the tile")
         model.tile_icon = lambda row: {"face": "generic"} if row == 0 else {}
-        self.assertEqual([False, False, False, False], crops(),
+        self.assertEqual([False, True, False, False], crops(),
                          "a scene showing its generic face still crops")
 
 
@@ -1733,14 +1752,26 @@ class LibraryUpdateTest(unittest.TestCase):
         _patch(self, captures, "machine_capture_count", lambda: 3)
         self.panel._update_library()
         self.assertEqual(1, len(self.moved), "the captures were not moved")
-        self.assertEqual(2, self.policy.library_version(self.dir))
+        self.assertEqual(self.policy.LIBRARY_VERSION, self.policy.library_version(self.dir))
         self.assertEqual([], self.asked, "the update asked first")
 
     def test_with_nothing_to_move_only_the_version_changes(self):
         _patch(self, captures, "machine_capture_count", lambda: 0)
         self.panel._update_library()
         self.assertEqual([], self.moved)
-        self.assertEqual(2, self.policy.library_version(self.dir))
+        self.assertEqual(self.policy.LIBRARY_VERSION, self.policy.library_version(self.dir))
+
+    def test_a_library_with_format_3_files_left_is_not_raised(self):
+        """Format 3 files left: the version stays below 3, the mark of a conversion to finish."""
+        _patch(self, captures, "machine_capture_count", lambda: 0)
+        old = os.path.join(self.dir, "mat", "OLDLEFT1.mat")
+        os.makedirs(os.path.dirname(old), exist_ok=True)
+        with open(old, "w", encoding="utf-8") as handle:
+            handle.write("nodes\n")
+        self.addCleanup(shutil.rmtree, os.path.dirname(old), True)
+        self.panel._update_library()
+        self.assertEqual(1, self.policy.library_version(self.dir),
+                         "the version was raised while format 3 files are left")
 
     def test_an_updated_library_still_takes_this_computers_captures(self):
         """Another computer updated it first; this computer's own captures are still outside."""
@@ -1754,7 +1785,7 @@ class LibraryUpdateTest(unittest.TestCase):
         _patch(self, captures, "machine_capture_count", lambda: 3)
         test_support.reopened_panel(self)
         self.assertEqual(1, len(self.moved), "the panel was built over an old library")
-        self.assertEqual(2, self.policy.library_version(self.dir))
+        self.assertEqual(self.policy.LIBRARY_VERSION, self.policy.library_version(self.dir))
         self.assertEqual([], self.asked, "building the panel asked a question")
 
     def test_an_open_preferences_window_shows_the_new_version(self):
@@ -1765,7 +1796,8 @@ class LibraryUpdateTest(unittest.TestCase):
         self.addCleanup(dialog.close)
         self.assertEqual("Format: v1", dialog._lbl_library_format.text())
         self.panel._update_library()
-        self.assertEqual("Format: v2", dialog._lbl_library_format.text())
+        self.assertEqual("Format: v%d" % self.policy.LIBRARY_VERSION,
+                         dialog._lbl_library_format.text())
 
 
 class NewerLibraryTest(unittest.TestCase):
@@ -1849,7 +1881,7 @@ class NewerLibraryTest(unittest.TestCase):
 
 
 class AssetCaptureTest(unittest.TestCase):
-    """Any library tile can show a capture, kept as `captures/<id>.png`, filling the tile."""
+    """Any library tile can show a capture, kept as its one picture `materials/<id>.png`."""
 
     def setUp(self):
         from amaze.core import library
@@ -1858,20 +1890,26 @@ class AssetCaptureTest(unittest.TestCase):
         self.assertGreater(self.model.rowCount(), 0, "the fixture library is empty")
 
     def test_the_capture_is_kept_under_the_asset_id(self):
-        self.assertEqual(captures.asset_path(self.prefs, self.model.tile_key(0)),
+        self.assertEqual(os.path.join(str(self.prefs.dir), "materials",
+                                      self.model.tile_key(0) + ".png"),
+                         self.model.capture_path(0))
+        self.assertEqual(tile_icons.thumbnail_path(self.prefs, self.model.tile_key(0),
+                                                   self.model.DB_FILENAME),
                          self.model.capture_path(0))
 
-    def test_the_capture_face_reads_the_capture_and_fills_the_tile(self):
-        rendered = self.model._thumb_key(0)
-        self.assertFalse(self.model.data(self.model.index(0, 0), self.model.CropRole))
-        self.assertTrue(self.model.set_tile_icon(0, {"face": "capture"}))
-        self.assertEqual(self.model.capture_path(0), self.model._mat_paths[0])
+    def test_the_image_face_reads_the_one_picture_and_fills_the_tile(self):
+        """Render or capture, the tile reads one file; Image crops, the other faces do not."""
+        self.assertEqual(self.model.capture_path(0), self.model._mat_paths[0],
+                         "the tile reads another file than a capture writes")
         self.assertTrue(self.model.data(self.model.index(0, 0), self.model.CropRole))
-        self.assertNotEqual(rendered, self.model._thumb_key(0),
-                            "the capture shares the render's cached picture")
+        self.assertTrue(self.model.set_tile_icon(0, {"face": "generic"}))
+        self.addCleanup(self.model.set_tile_icon, 0, {})
+        self.assertFalse(self.model.data(self.model.index(0, 0), self.model.CropRole),
+                         "a generic face still crops")
+        self.assertEqual(self.model.capture_path(0), self.model._mat_paths[0])
 
     def test_a_landed_capture_repaints_the_asset(self):
-        self.model.set_tile_icon(0, {"face": "capture"})
+        self.model.set_tile_icon(0, {"face": "image"})
         dropped, painted = [], []
         original = thumbnails.engine.discard
         thumbnails.engine.discard = dropped.append
@@ -1883,15 +1921,23 @@ class AssetCaptureTest(unittest.TestCase):
 
     def test_the_capture_is_one_of_the_files_an_asset_owns(self):
         """Delete, Copy To and packages walk this list, so the capture goes with its asset."""
-        self.assertEqual(captures.asset_path(self.prefs, "abc"),
-                         self.model.asset_files("abc")["capture"])
+        owned = self.model.asset_files("abc")
+        self.assertEqual(tile_icons.thumbnail_path(self.prefs, "abc", self.model.DB_FILENAME),
+                         owned["thumbnail"])
+        self.assertEqual([], sorted(set(owned) & {"capture", "tile_icon"}),
+                         "an asset still owns a second picture")
 
-    def test_capture_is_offered_once_the_tile_has_one(self):
-        self.assertFalse(self.model.has_capture(0))
-        self.assertIsNone(self.model.capture_image(0))
-        _write_png(self.model.capture_path(0), _two_tone_png_bytes())
-        self.assertTrue(self.model.has_capture(0))
-        self.assertIsNotNone(self.model.capture_image(0))
+    def test_a_capture_replaces_the_picture_customize_shows(self):
+        row = next(row for row in range(self.model.rowCount())
+                   if os.path.exists(self.model.capture_path(row)))    # a row with a render
+        before = self.model.preview_image(row)
+        self.assertIsNotNone(before, "premise: the fixture asset has a render")
+        self.assertNotEqual((4, 4), (before.width(), before.height()))
+        _write_png(self.model.capture_path(row), _two_tone_png_bytes())
+        after = self.model.preview_image(row)
+        self.assertIsNotNone(after)
+        self.assertEqual((4, 4), (after.width(), after.height()),
+                         "the capture did not replace the render in place")
 
 
 class CaptureFromTheMenuTest(unittest.TestCase):
@@ -1969,18 +2015,18 @@ class CaptureFromTheMenuTest(unittest.TestCase):
         self.addCleanup(model.set_tile_icons, [row], {})
         self.panel.tile_capture.onto_tile(context, chosen[0])
         self.assertEqual([(model.capture_path(row), model.tile_key(row))], taken)
-        self.assertEqual("capture", tile_icons.face_for(model, row),
-                         "the tile went on showing its render")
+        self.assertEqual("image", tile_icons.face_for(model, row),
+                         "the tile does not show the picture the capture replaced")
 
     def test_every_kind_of_asset_tile_paints_its_capture(self):
-        """Code and Color paint their own pictures in RAM; their Capture face reads the file."""
+        """Code and Color paint their own pictures in RAM; a capture's file wins over that."""
         for name in ("material_model", "code_model", "gradient_model"):    # the fixture has no Nodes
             with self.subTest(model=name):
                 model = getattr(self.panel, name)
                 self.assertGreater(model.rowCount(), 0, "the fixture has no %s rows" % name)
                 _write_png(model.capture_path(0), _two_tone_png_bytes())
                 self.addCleanup(model.set_tile_icons, [0], {})
-                self.assertTrue(model.set_tile_icon(0, {"face": "capture"}))
+                self.assertTrue(model.set_tile_icon(0, {"face": "image"}))
                 shown = _settled_decoration(model, 0, key=model._thumb_key(0))
                 self.assertIsNotNone(shown, "the capture never painted")
                 self.assertEqual((4, 4), (shown.width(), shown.height()),
@@ -2041,7 +2087,7 @@ class LoadOnTheGridMenuOpensTheSceneTest(unittest.TestCase):
         loaded = []
 
         def _pick(menu, *_args, **_kwargs):
-            return next(a for a in menu.actions() if a.text() == "Load")
+            return next(a for a in menu.actions() if a.text() == "Open")
 
         with mock.patch.object(QtWidgets.QMenu, "exec_", _pick), \
                 mock.patch.object(hou.hipFile, "load",

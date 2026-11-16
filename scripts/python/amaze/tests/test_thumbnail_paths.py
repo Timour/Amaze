@@ -20,7 +20,7 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze.core import captures, thumbnails, tile_icons  # noqa: E402
+from amaze.core import captures, library_files, thumbnails, tile_icons  # noqa: E402
 from amaze.core import library as library_mod  # noqa: E402
 from amaze.core import texture_library  # noqa: E402
 from amaze.helpers import hostos  # noqa: E402
@@ -65,31 +65,40 @@ class TheThumbnailPathIsComposedInOnePlace(unittest.TestCase):
         model = library_mod.MaterialLibrary(preferences=self.prefs)
         root = self.prefs.dir.rstrip(os.sep)
 
-        answers, icons = set(), set()
+        answers = set()
         for value in (root, root + os.sep):
             self.prefs.dir = value
             answers.add(os.path.normpath(
                 model.asset_files("abc")["thumbnail"]))
-            answers.add(os.path.normpath(
-                tile_icons.thumbnail_path(self.prefs, "abc")))
-            icons.add(os.path.normpath(
-                tile_icons.icon_image_path(self.prefs, "abc")))
+            answers.add(os.path.normpath(tile_icons.thumbnail_path(
+                self.prefs, "abc", model.DB_FILENAME)))
         self.assertEqual(
             1, len(answers),
             "the renderers and asset_files() resolve a thumbnail to "
             "different places depending on a trailing separator: %s"
             % sorted(answers))
-        self.assertEqual(
-            1, len(icons),
-            "the composed icon resolves to different places depending "
-            "on a trailing separator: %s" % sorted(icons))
+        self.assertEqual(os.path.normpath(os.path.join(root, "materials", "abc.png")),
+                         answers.pop(), "a material's one picture is not `materials/<id>.png`")
 
     def test_an_unsafe_id_cannot_escape_the_image_directory(self):
-        """The icon path refuses an escaping id too - `render_for` writes it and `clear_for` removes it."""
-        for compose in (tile_icons.thumbnail_path, tile_icons.icon_image_path):
-            with self.subTest(path=compose.__name__):
-                with self.assertRaises(hostos.PathEscape):
-                    compose(self.prefs, "../../../Documents/x")
+        """The picture path refuses an escaping id, for the readers and the writers alike."""
+        with self.assertRaises(hostos.PathEscape):
+            tile_icons.thumbnail_path(self.prefs, "../../../Documents/x", "library.json")
+
+    def test_a_format_3_picture_is_never_read(self):
+        """img/ and captures/ are the converter's: the one picture is in the section folder."""
+        root = str(self.prefs.dir)
+        home = tile_icons.thumbnail_path(self.prefs, "abc", "cops.json")
+        self.assertEqual(os.path.join("nodes", "abc.png"),
+                         os.path.relpath(home, root))
+        for folder in (library_files.CAPTURE_FOLDER, library_files.RENDER_FOLDER):
+            os.makedirs(os.path.join(root, folder), exist_ok=True)
+            old = os.path.join(root, folder, "abc.png")
+            with open(old, "wb") as handle:
+                handle.write(b"png")
+            with self.subTest(folder=folder):
+                self.assertEqual(home, tile_icons.thumbnail_path(self.prefs, "abc", "cops.json"),
+                                 "a format 3 picture was read")
 
     def _tile_reads(self, model, row):
         asked = []
@@ -106,7 +115,8 @@ class TheThumbnailPathIsComposedInOnePlace(unittest.TestCase):
         self.prefs.dir = self.prefs.dir.rstrip(os.sep)
         model.rebuild_thumbs()
         self.assertEqual(
-            [tile_icons.thumbnail_path(self.prefs, model.assets[row].mat_id)],
+            [tile_icons.thumbnail_path(self.prefs, model.assets[row].mat_id,
+                                       model.DB_FILENAME)],
             self._tile_reads(model, row),
             "the tile composes its image path by hand, and without a "
             "trailing separator it reads a file the renderers never write")
@@ -145,17 +155,16 @@ class TheThumbnailPathIsComposedInOnePlace(unittest.TestCase):
             "row after every delete" % len(calls))
 
     def test_the_tile_reads_what_the_contained_paths_name(self):
-        """For a safe id the tile's path is `thumbnail_path` or `icon_image_path`; "" when unsafe."""
+        """For a safe id the tile's path is what `thumbnail_path` reads; "" when unsafe."""
         root = self.prefs.dir.rstrip(os.sep)
         for value in (root, root + os.sep):
             self.prefs.dir = value
-            self.assertEqual(tile_icons.thumbnail_path(self.prefs, "abc"),
-                             tile_icons.tile_read_path(self.prefs, "abc", False))
-            self.assertEqual(tile_icons.icon_image_path(self.prefs, "abc"),
-                             tile_icons.tile_read_path(self.prefs, "abc", True))
+            for section in library_files.SECTION_FOLDERS:
+                self.assertEqual(tile_icons.thumbnail_path(self.prefs, "abc", section),
+                                 tile_icons.tile_read_path(self.prefs, "abc", section))
         for unsafe in ("../../../Documents/x", "..", "a/b"):
             self.assertEqual("", tile_icons.tile_read_path(
-                self.prefs, unsafe, False))
+                self.prefs, unsafe, "library.json"))
 
 
 class TheCacheKeyCarriesTheLibrary(unittest.TestCase):
@@ -444,7 +453,7 @@ class AKarmaThumbnailLeavesTheSceneAsItFoundIt(unittest.TestCase):
 
     def _asset_with_a_companion(self):
         """A Karma fixture asset whose saved COP companion restores as a COP Network object in /obj."""
-        from amaze.core import material, renderers
+        from amaze.core import library_files, material, renderers
         self._sweep_companion()
         self.addCleanup(self._sweep_companion)
         test_support.reset_database_singletons()
@@ -455,7 +464,7 @@ class AKarmaThumbnailLeavesTheSceneAsItFoundIt(unittest.TestCase):
             source = hou.node("/obj").createNode("copnet")
             source.createNode("constant")
         source.saveItemsToFile(source.allItems(), material.payload_path(
-            self.prefs, asset.mat_id, "_cop" + self.prefs.ext))
+            self.prefs, asset.mat_id, "_cop" + self.prefs.ext, library_files.MATERIALS))
         test_support.drop_node(source)
         asset.cop_net = {"name": self.COMPANION, "type": "copnet"}
         return asset

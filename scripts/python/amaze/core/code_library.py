@@ -352,10 +352,14 @@ class CodeLibrary(library.AssetLibrary):
         """The tile image: a chosen icon, else the painted code preview, painted on a miss."""
         asset = self._assets[row]
         face = tile_icons.face_for(self, row)
-        if face == "capture":
-            return super()._decoration_image(row)    # the capture PNG, through the shared loader
-        if face != "preview":    # no thumbnail FILE to swap here
+        if face != "image":
             return self._missing_thumb_image(row)
+        held = self._thumb_key(row)    # a capture replaces the painted preview; the engine asks, not paint
+        captured = thumbnails.engine.request_file(held, self._mat_paths[row])
+        if captured is not None:
+            return captured
+        if not thumbnails.engine.is_missing(held):
+            return None    # still being read: its delivery repaints the tile
         key = self._preview_key(asset)
         image = thumbnails.engine.peek(key)
         if image is not None:

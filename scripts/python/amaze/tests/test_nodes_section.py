@@ -19,7 +19,7 @@ sys.path.insert(        # three dirnames reach python/; four would test the inst
 
 from amaze.actions import nodes as node_actions  # noqa: E402
 from amaze.core import cop_library  # noqa: E402
-from amaze.core import material  # noqa: E402
+from amaze.core import library_files, material  # noqa: E402
 from amaze.core import renderers  # noqa: E402
 from amaze.render import cop_nodes  # noqa: E402
 from amaze.render import nodes  # noqa: E402
@@ -63,8 +63,8 @@ class NodesSectionTest(unittest.TestCase):
         self.addCleanup(test_support.clear_obj)
 
     def _image_for(self, asset) -> str:
-        return os.path.join(self.prefs.dir, self.prefs.img_dir,
-                            str(asset.mat_id) + self.prefs.img_ext)
+        return os.path.join(material.section_folder(self.prefs.dir, library_files.NODES),
+                            str(asset.mat_id) + self.prefs.img_ext)    # `nodes/<id>.png`
 
 
     def test_context_of_reads_the_containing_network(self):
@@ -495,7 +495,7 @@ class NodesSectionTest(unittest.TestCase):
         self.assertIsNotNone(face, "ui/%s.svg does not render" % self.model.TILE_FACE)
         self.assertEqual(face, self.model._missing_thumb_image(0))
         self.assertEqual(face, self.model._missing_thumb_image(1))
-        self.assertEqual(("generic", "preview"),
+        self.assertEqual(("generic", "image"),
                          (self.model.default_face(0), self.model.default_face(1)),
                          "a LOP tile can have no picture, a SOP tile can")
 
@@ -750,7 +750,7 @@ class WhatCountsAsAFailure(unittest.TestCase):
             description="Amaze suite probe")
         mat = material.Material(name=name, renderer="SOP")
         payload = material.payload_path(
-            self.prefs, mat.mat_id, self.prefs.ext)
+            self.prefs, mat.mat_id, self.prefs.ext, library_files.NODES)
         os.makedirs(os.path.dirname(payload), exist_ok=True)
         source.saveItemsToFile([instance], payload,
                                save_hda_fallbacks=False)    # with fallbacks the definition rides along and nothing warns
@@ -877,7 +877,8 @@ class ANodeAssetThatLoadsNothingIsRefused(unittest.TestCase):
 
     def _asset(self, name, content):
         mat = material.Material(name=name, renderer="SOP")
-        payload = material.payload_path(self.prefs, mat.mat_id, self.prefs.ext)
+        payload = material.payload_path(self.prefs, mat.mat_id, self.prefs.ext,
+                                        library_files.NODES)
         os.makedirs(os.path.dirname(payload), exist_ok=True)
         with open(payload, "wb") as handle:
             handle.write(content)

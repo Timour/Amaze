@@ -6,14 +6,15 @@ import shutil
 import zipfile
 
 from amaze import branding, messages
-from amaze.core import debug, notes, texstore
+from amaze.core import asset_record, database, debug, library_conversion, material, notes, texstore
 from amaze.helpers import hostos, wording
 
 FORMAT = 4    # the newest this build reads; 4: add-on rows (groups, Add-On tab icons), core/addons.py
 ASSETS_FORMAT = 2    # what a package of library assets is written as, so an older Amaze still reads it
 SUFFIX = ".amazepkg"
 MANIFEST = "package.json"
-DERIVED = ("stamp",)    # regenerated from the record on every save, so packing one ships an instantly-stale copy
+RECORD_KIND = "json"    # `<id>.json` holding the builder alone: the row rides in the manifest
+DERIVED = (RECORD_KIND,)    # composed for the package, never copied: the library's copy holds the metadata
 MAX_UNPACKED_BYTES = 16 * 1024 ** 3    # the most one import may unpack, by the zip's own sizes ▸r/zip-declared-size
 OBJECTS = ("record", "note", "files", "textures")    # what an entry holds as an object, or leaves out
 PIECE = 1024 * 1024    # how much of a member is in memory at once while it is compared
@@ -48,9 +49,11 @@ def collect_asset(model, mat_id) -> dict:
         record["textures"] = sorted(textures)
     page = notes.note_for(model.preferences,
                           notes.note_key(model.NOTES_SECTION, mat_id))
+    builder = (asset_record.saved_builder(model.preferences, mat_id, model.DB_FILENAME)
+               if model.DB_FILENAME in database.ASSET_FILE_OWNERS else {})
     return {"type": "asset", "section": model.NOTES_SECTION,
             "id": mat_id, "record": record,
-            "note": page, "sources": sources, "textures": textures}
+            "note": page, "sources": sources, "textures": textures, "builder": builder}
 
 
 def collect_file(path: str, kind: str) -> dict:
@@ -66,6 +69,7 @@ def write_package(out_path: str, items) -> int:
     hostos.check_sandbox(out_path)
     entries = []
     payload = []
+    written = []    # (arc, bytes) composed here rather than copied from a file
     for n, item in enumerate(items):
         entry = dict(item)
         if entry.get("type") == "asset":
@@ -76,6 +80,12 @@ def write_package(out_path: str, items) -> int:
                     os.path.basename(source))
                 arcs[kind] = arc
                 payload.append((arc, source))
+            builder = entry.pop("builder", None)
+            if builder:
+                arcs[RECORD_KIND] = "assets/%s/%s/%s%s" % (
+                    entry["section"], entry["id"], entry["id"], material.RECORD_SUFFIX)
+                written.append((arcs[RECORD_KIND], asset_record.encode(
+                    {"format": asset_record.FORMAT, asset_record.BUILDER: builder})))
             entry["files"] = arcs
             texarcs = {}
             for t, (token, source) in enumerate(
@@ -103,6 +113,8 @@ def write_package(out_path: str, items) -> int:
             bundle.writestr(MANIFEST, json.dumps(manifest, indent=2))
             for arc, source in payload:
                 bundle.write(source, arc)
+            for arc, raw in written:
+                bundle.writestr(arc, raw)
     return len(entries)
 
 
@@ -336,9 +348,13 @@ def _import_asset(models, prefs, bundle, entry, restore, summary):
         row["categories"] = ["Import"]
     asset = model._asset_from_row(row)
     targets = model.asset_files(asset.mat_id)
+    held = {}    # the builder's members, read into `<id>.json` rather than landed as files
     for kind, arcname in (entry.get("files") or {}).items():
+        if kind == RECORD_KIND or kind in library_conversion.OLD_MEMBER_KINDS:
+            held[kind] = _small_member(bundle, arcname)
+            continue
         target = targets.get(kind)
-        if not target:
+        if not target or kind in DERIVED:
             continue
         hostos.check_sandbox(target)
         os.makedirs(os.path.dirname(target), exist_ok=True)
@@ -361,8 +377,32 @@ def _import_asset(models, prefs, bundle, entry, restore, summary):
         with hostos.scratch_beside(target) as scratch:
             with open(scratch, "wb") as handle:
                 copy_member(bundle, arcname, handle)
+    _land_builder(model, asset.mat_id, held)
     model._append_record(asset)
     return model, asset, entry, row
+
+
+BUILDER_MEMBER_MAX = 16 * 1024 * 1024    # a builder is text; anything larger is not one
+
+
+def _small_member(bundle, member) -> bytes:
+    """A builder member's bytes, read through a bounded stream; PackageError past the bound."""
+    with bundle.open(member) as source:
+        raw = source.read(BUILDER_MEMBER_MAX + 1)
+    if len(raw) > BUILDER_MEMBER_MAX:
+        raise PackageError("%s is too large to be a builder" % member)
+    return raw
+
+
+def _land_builder(model, mat_id, held: dict) -> None:
+    """The builder a package carries into `<id>.json`; an old shape is read by the converter."""
+    if not held or model.DB_FILENAME not in database.ASSET_FILE_OWNERS:
+        return
+    builder = library_conversion.builder_from_members(held)
+    if builder:
+        asset_record.write_section(asset_record.path_for(
+            model.preferences, mat_id, model.DB_FILENAME),
+            asset_record.BUILDER, builder)
 
 
 def _import_file(prefs, bundle, entry, summary) -> None:

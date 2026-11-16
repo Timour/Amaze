@@ -131,16 +131,28 @@ class ChoiceTest(unittest.TestCase):
         saved, = test_support.arrived(self.model, held)
         return self.model.find_asset_row_by_id(saved.mat_id)
 
-    def test_setting_an_icon_swaps_the_tile_path(self):
-        before = self.model._mat_paths[self.row]
+    def _files(self):
+        return {os.path.join(top, name) for top, _dirs, names in os.walk(str(self.prefs.dir))
+                for name in names}
+
+    def test_setting_an_icon_shows_it_and_writes_no_file(self):
+        """A custom icon is composed in memory for display; the library gains no picture."""
+        before_path = self.model._mat_paths[self.row]
+        before_files = self._files()
         self.model.set_tile_icon(self.row, {"name": "layers", "bg": "#4af2a1"})
-        after = self.model._mat_paths[self.row]
-        self.assertNotEqual(before, after)
-        self.assertTrue(after.endswith("_icon.png"))
-        self.assertTrue(os.path.exists(after), "the icon PNG was not written")
+        self.assertEqual(before_path, self.model._mat_paths[self.row],
+                         "the tile left its one picture path")
+        self.assertEqual([], sorted(path for path in self._files() - before_files
+                                    if path.endswith(".png")),
+                         "a custom icon wrote a picture into the library")
+        shown = self.model.data(self.model.index(self.row, 0),
+                                QtCore.Qt.ItemDataRole.DecorationRole)
+        self.assertIsNotNone(shown, "the tile shows nothing")
+        self.assertEqual("#4af2a1", QtGui.QColor(shown.pixel(4, 4)).name(),
+                         "the tile does not show the composed icon")
 
     def test_the_render_underneath_is_never_touched(self):
-        """An icon is written beside the thumbnail, and clearing brings the original path back."""
+        """An icon leaves the picture as it was, and clearing keeps the one picture path."""
         render_path = self.model._mat_paths[self.row]
         with open(render_path, "wb") as handle:
             handle.write(b"pretend this is a rendered thumbnail")
@@ -190,6 +202,9 @@ class ChoiceTest(unittest.TestCase):
                 ({"name": "box", "bg": "???"},    # a bad COLOUR is recoverable: keep the icon, fix the bg
                  {"name": "box", "bg": tile_icons.PRESETS[0][1], "ink": "dark"}),
                 ({"face": "generic"}, {"face": "generic"}),
+                ({"face": "image"}, {"face": "image"}),
+                ({"face": "preview"}, {}),    # format 3's names: only the converter rewrites them
+                ({"face": "capture"}, {}),
                 ({"face": "sideways"}, {}),
                 (dict(white, ink="puce"), dict(white, ink="dark")),
                 (white, dict(white, ink="dark")),    # saved before ink existed, so it rendered dark
@@ -206,25 +221,29 @@ class ChoiceTest(unittest.TestCase):
                          fresh.tile_icon(len(fresh.assets) - 1))
 
     def test_a_library_without_its_png_files_still_shows_icons(self):
-        """A library copied without its _icon.png files composes them again from the stored choice."""
+        """A row with no picture on disk composes its icon from the stored choice."""
         self.model.set_tile_icon(self.row, {"name": "layers", "bg": "#4af2a1"})
-        os.remove(self.model._mat_paths[self.row])
+        path = self.model._mat_paths[self.row]
+        if os.path.exists(path):
+            os.remove(path)
         image = self.model._missing_thumb_image(self.row)
         self.assertIsNotNone(image)
         self.assertEqual("#4af2a1", QtGui.QColor(image.pixel(4, 4)).name())
 
 
 class FaceRuleTest(unittest.TestCase):
-    """Preview, Generic or Custom: one rule decides which face a tile shows ▸r/tile-faces."""
+    """Image, Generic or Custom: one rule decides which face a tile shows ▸r/tile-faces."""
 
     def test_one_rule_picks_the_face(self):
         icon = {"name": "box", "bg": "#4af2a1"}
         for spec, default, can_preview, face in (
-                (icon, "preview", True, "custom"),    # a custom icon wins over any default
+                (icon, "image", True, "custom"),    # a custom icon wins over any default
                 (icon, "generic", True, "custom"),
                 ({}, "generic", True, "generic"),    # nothing stored shows the row's default
-                ({"face": "generic"}, "preview", True, "generic"),
-                ({"face": "preview"}, "preview", False, "generic")):    # a row with no picture
+                ({"face": "generic"}, "image", True, "generic"),
+                ({"face": "preview"}, "generic", True, "generic"),    # format 3 names: unknown
+                ({"face": "capture"}, "generic", True, "generic"),
+                ({"face": "image"}, "image", False, "generic")):    # a row with no picture
             with self.subTest(spec=spec, default=default, can_preview=can_preview):
                 kwargs = {} if can_preview else {"can_preview": False}
                 self.assertEqual(
@@ -265,23 +284,30 @@ class FaceChoiceTest(unittest.TestCase):
 
     def test_generic_reaches_the_tile_and_writes_no_picture(self):
         row = self._asset("geo")
-        self.assertEqual("preview", tile_icons.face_for(self.model, row))
+        self.assertEqual("image", tile_icons.face_for(self.model, row))
+        before = {os.path.join(top, name) for top, _d, names in os.walk(str(self.prefs.dir))
+                  for name in names}
         self.model.set_tile_icon(row, {"face": "generic"})
         self.assertEqual({"face": "generic"}, self.model.tile_icon(row))
         self.assertEqual(tile_icons.generic_image(self.model.TILE_FACE), self._shown(row))
-        self.assertFalse(os.path.exists(tile_icons.icon_image_path(
-            self.prefs, self.model.assets[row].mat_id)), "Generic composed an icon file")
+        after = {os.path.join(top, name) for top, _d, names in os.walk(str(self.prefs.dir))
+                 for name in names}
+        self.assertEqual([], sorted(p for p in after - before if p.endswith(".png")),
+                         "Generic wrote a picture")
 
     def test_the_rows_own_default_is_not_stored(self):
         row = self._asset("geo")
-        self.model.set_tile_icon(row, {"face": "generic"})
-        self.model.set_tile_icon(row, {"face": "preview"})
-        self.assertEqual({}, self.model.tile_icon(row), "choosing the default left an entry")
+        for default in ("image", "preview"):    # an unknown name stores nothing either
+            with self.subTest(default=default):
+                self.model.set_tile_icon(row, {"face": "generic"})
+                self.model.set_tile_icon(row, {"face": default})
+                self.assertEqual({}, self.model.tile_icon(row),
+                                 "choosing the default left an entry")
 
     def test_a_lop_setup_has_no_preview_to_choose(self):
         row = self._asset("lopnet")
         self.assertEqual("generic", tile_icons.face_for(self.model, row))
-        self.model.set_tile_icon(row, {"face": "preview"})
+        self.model.set_tile_icon(row, {"face": "image"})
         self.assertEqual({}, self.model.tile_icon(row), "a Preview it cannot show was stored")
         self.assertEqual(tile_icons.generic_image(self.model.TILE_FACE), self._shown(row))
 
@@ -436,10 +462,10 @@ class DialogTest(unittest.TestCase):
     def test_the_dialog_opens_on_the_tile_s_face(self):
         dialog = self._dialog({"name": "box", "bg": "#ef8878"})
         self.assertEqual("custom", dialog.face_combo.currentData())
-        self._pick(dialog, "preview")
+        self._pick(dialog, "image")
         dialog.accept_button.click()
         self.assertFalse(dialog.canceled)
-        self.assertEqual({"face": "preview"}, dialog.spec)
+        self.assertEqual({"face": "image"}, dialog.spec)
         generic = icon_dialog.IconDialog(None, face="generic")    # Generic is a choice of its own
         self.addCleanup(generic.deleteLater)
         self.assertEqual("generic", generic.face_combo.currentData())
@@ -448,8 +474,8 @@ class DialogTest(unittest.TestCase):
 
     def test_only_custom_has_an_icon_and_colours_to_choose(self):
         dialog = self._dialog()
-        self.assertEqual("preview", dialog.face_combo.currentData())
-        self.assertFalse(dialog._chooser_area.isEnabled(), "the chooser is live on Preview")
+        self.assertEqual("image", dialog.face_combo.currentData())
+        self.assertFalse(dialog._chooser_area.isEnabled(), "the chooser is live on Image")
         self.assertFalse(dialog.light_toggle.isEnabled())
         self._pick(dialog, "custom")
         self.assertTrue(dialog._chooser_area.isEnabled())
@@ -458,58 +484,62 @@ class DialogTest(unittest.TestCase):
     def _item(self, dialog, face):
         return dialog.face_combo.model().item(tile_icons.FACES.index(face))
 
-    def test_preview_is_greyed_where_no_picture_can_exist(self):
-        dialog = icon_dialog.IconDialog(None, face="generic", can_preview=False, can_capture=True)
+    def test_image_is_greyed_where_no_picture_can_exist(self):
+        dialog = icon_dialog.IconDialog(None, face="generic", can_preview=False)
         self.addCleanup(dialog.deleteLater)
-        self.assertFalse(self._item(dialog, "preview").isEnabled())
-        for face in ("capture", "generic", "custom"):
-            self.assertTrue(self._item(dialog, face).isEnabled(), "%s greyed with Preview" % face)
+        self.assertFalse(self._item(dialog, "image").isEnabled())
+        for face in ("generic", "custom"):
+            self.assertTrue(self._item(dialog, face).isEnabled(), "%s greyed with Image" % face)
+        live = icon_dialog.IconDialog(None, face="generic")
+        self.addCleanup(live.deleteLater)
+        self.assertTrue(self._item(live, "image").isEnabled(),
+                        "Image greyed on a row that can have a picture")
 
-    def test_capture_is_greyed_until_the_tile_has_one(self):
-        for can_capture in (False, True):
-            with self.subTest(can_capture=can_capture):
-                dialog = icon_dialog.IconDialog(None, face="generic", can_capture=can_capture)
-                self.addCleanup(dialog.deleteLater)
-                self.assertEqual(can_capture, self._item(dialog, "capture").isEnabled())
-                self.assertTrue(self._item(dialog, "preview").isEnabled(),
-                                "a missing capture greyed Preview as well")
+    def test_an_old_render_or_capture_choice_opens_on_image(self):
+        """A face stored before format 4 opens on Image and is written back as image."""
+        for stored in ("preview", "capture"):
+            with self.subTest(stored=stored):
+                dialog = self._dialog({"face": stored})
+                self.assertEqual("image", dialog.face_combo.currentData())
+                dialog.accept_button.click()
+                self.assertEqual({"face": "image"}, dialog.spec)
 
-    def test_the_icon_menu_reads_render_capture_generic_custom(self):
-        """The stored names stay: a library written by an older Amaze keeps its choices."""
+    def test_the_icon_menu_reads_image_generic_custom(self):
+        """Three faces; Render and Capture became the one Image."""
         dialog = icon_dialog.IconDialog(None)
         self.addCleanup(dialog.deleteLater)
         combo = dialog.face_combo
-        self.assertEqual(["Render", "Capture", "Generic", "Custom"],
+        self.assertEqual(["Image", "Generic Icon", "Custom Icon"],
                          [combo.itemText(i) for i in range(combo.count())])
-        self.assertEqual(["preview", "capture", "generic", "custom"],
+        self.assertEqual(["image", "generic", "custom"],
                          [combo.itemData(i) for i in range(combo.count())])
 
     def test_the_preview_square_shows_the_capture(self):
+        """A capture is the row's picture, so Image shows it."""
         image = QtGui.QImage(64, 64, QtGui.QImage.Format.Format_RGB32)
         image.fill(QtGui.QColor("#f59f00"))
-        dialog = icon_dialog.IconDialog(None, face="capture", faces={"capture": image},
-                                        can_capture=True)
+        dialog = icon_dialog.IconDialog(None, face="image", faces={"image": image})
         self.addCleanup(dialog.deleteLater)
         shown = dialog.preview.pixmap().toImage()
         self.assertEqual("#f59f00", shown.pixelColor(shown.width() // 2,
                                                      shown.height() // 2).name())
 
     def test_the_preview_square_shows_the_chosen_face(self):
-        """Preview shows the tile's own picture, Generic the section's face, Custom the composed icon."""
+        """Image shows the tile's own picture, Generic the section's face, Custom the icon."""
         def solid(colour):
             image = QtGui.QImage(64, 64, QtGui.QImage.Format.Format_RGB32)
             image.fill(QtGui.QColor(colour))
             return image
 
         dialog = icon_dialog.IconDialog(
-            None, faces={"preview": solid("#12b886"), "generic": solid("#1c7ed6")})
+            None, faces={"image": solid("#12b886"), "generic": solid("#1c7ed6")})
         self.addCleanup(dialog.deleteLater)
 
         def middle():
             shown = dialog.preview.pixmap().toImage()
             return shown.pixelColor(shown.width() // 2, shown.height() // 2).name()
 
-        self.assertEqual("#12b886", middle(), "Preview does not show the tile's picture")
+        self.assertEqual("#12b886", middle(), "Image does not show the tile's picture")
         self.assertTrue(dialog.preview.isEnabled(), "the real face must not draw greyed")
         self._pick(dialog, "generic")
         self.assertEqual("#1c7ed6", middle(), "Generic does not show the section's face")
@@ -810,7 +840,7 @@ class MenuWiringTest(unittest.TestCase):
             self.assertEqual(tile_icons.face_for(model, row), given["face"], model_attr)
             self.assertEqual(tile_icons.generic_image(model.tile_face_art(row)),
                              given["faces"]["generic"], model_attr)
-            self.assertIn("preview", given["faces"], model_attr)
+            self.assertIn("image", given["faces"], model_attr)
             self.assertEqual(model.can_preview(row), given["can_preview"], model_attr)
             checked += 1
         self.assertTrue(checked, "no section had a tile - this test proves nothing")

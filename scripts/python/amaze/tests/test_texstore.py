@@ -297,7 +297,7 @@ class SaveDoorTest(unittest.TestCase):
         return builder, image
 
     def test_saving_adopts_and_the_scene_node_stays_untouched(self):
-        from amaze.core import material
+        from amaze.core import library_files, material
         model = self.panel.material_model
         prefs = model.preferences
         source = self._outside_texture()
@@ -319,7 +319,7 @@ class SaveDoorTest(unittest.TestCase):
         self.assertTrue(os.path.isfile(landed),
                         "the referenced file was not adopted")
         mat_file = material.payload_path(prefs, str(row.mat_id),
-                                         prefs.ext)
+                                         prefs.ext, library_files.MATERIALS)
         with open(mat_file, "rb") as handle:
             payload = handle.read()
         self.assertIn(b"$AMAZELIB/matX/", payload,

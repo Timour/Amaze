@@ -44,9 +44,10 @@ Pick your user or create one, then press **Apply**. The library belongs
 outside the plugin folder, which updates replace. Cloud-synced folders
 are supported.
 
-The library holds a JSON database per section and one Houdini node
-archive per asset (`.mat` and `.interface`). Both are standard Houdini
-files.
+The library holds a JSON database per section and, for each material
+or node setup, two files in its section's folder (`materials/` or
+`nodes/`): a standard Houdini node archive (`.mat`), and a `.json`
+holding its metadata and builder.
 
 The **Amaze shelf** has five tools:
 
@@ -166,7 +167,7 @@ Previews render in the background, one render per renderer for the
 whole selection. A progress bar above the grid follows the render, and
 each tile updates when its preview is done.
 
-**Update Render** renders the selected materials again. **Cancel**, at
+**Thumbnail ▸ Render Image** renders the selected materials again. **Cancel**, at
 the right end of the tab row, stops the render.
 
 ### Versions
@@ -201,8 +202,8 @@ materials and snippets.
 
 ### Tile menu
 
-**Copy To**, **Convert to**, **Update Render**, **Capture**,
-**Customize**, **Favorite**, **Export Package** and **Delete**.
+**Copy To**, **Convert to**, **Thumbnail** (**Render Image**, **Capture
+Scene**, **Customize**), **Favorite**, **Export Package** and **Delete**.
 
 <img src="docs/images/menu_material_tile.png" width="200">
 <img src="docs/images/menu_copy_to.png" width="230">
@@ -276,7 +277,7 @@ Every import records its source, author, link and license.
 
 **Import/Generate ▸ Gallery Import (.gal)** reads a Houdini gallery
 file, including the Material Palette's own, and adds every material
-preset in it to the library. **Update Render** renders their previews.
+preset in it to the library. **Thumbnail ▸ Render Image** renders their previews.
 
 ---
 
@@ -323,8 +324,8 @@ The right-click menu:
   Linear, CatmullRom, MonotoneCubic, Bezier, BSpline or Hermite.
 - **Copy Color ▸** lists the swatches by name and hex code, and copies
   the chosen hex code to the clipboard.
-- **Capture**, **Customize**, **Favorite**, **Export Package** and
-  **Delete**.
+- **Thumbnail** (**Capture Scene**, **Customize**), **Favorite**,
+  **Export Package** and **Delete**.
 
 <img src="docs/images/menu_color_tile.png" width="200">
 <img src="docs/images/menu_apply_as.png" width="200">
@@ -376,8 +377,8 @@ The right-click menu:
   Category and Tags above the code. In the editor, **Apply** saves the
   snippet and the editor stays open. The tabs above the fields hold the
   snippet's [versions](#versions).
-- **Capture**, **Customize**, **Favorite**, **Export Package** and
-  **Delete**.
+- **Thumbnail** (**Capture Scene**, **Customize**), **Favorite**,
+  **Export Package** and **Delete**.
 
 <img src="docs/images/menu_code_tile.png" width="200">
 <img src="docs/images/dialog_edit_snippet.png" width="480">
@@ -413,7 +414,7 @@ Browses folders on disk.
 - **Scenes** (.hip, .hiplc, .hipnc) open on **double-click**, with
   Houdini's own prompt for unsaved changes. The open scene has a tick on
   its tile.
-  A scene's picture is a capture: **Capture** on the right-click menu, or
+  A scene's picture is a capture: **Thumbnail ▸ Capture Scene** on the right-click menu, or
   the <img src="scripts/python/amaze/ui/icon_screenshot.svg" width="14">
   **Capture** button, takes one from the Scene View while that scene is
   open.
@@ -426,9 +427,9 @@ Browses folders on disk.
   file becomes the one you are working in. Both are greyed while All is
   showing, since there is no one folder to make them in.
 
-The right-click menu: **New Folder**, **Save Scene**, **Load**,
-**Copy Path**, **Show Location**, **Capture**, **Customize**,
-**Favorite** and **Export Package**.
+The right-click menu: **New Folder**, **Save Scene**, **Open**,
+**Copy Path**, **Open Location**, **Thumbnail** (**Render Image**,
+**Capture Scene**, **Customize**), **Favorite** and **Export Package**.
 
 <img src="docs/images/menu_file_tile.png" width="210">
 
@@ -548,7 +549,7 @@ described in the [README](README.md)'s installation steps.
 
 ## Tile icons
 
-**Customize**, on every tile's right-click menu, opens the Customize
+**Thumbnail ▸ Customize**, on every tile's right-click menu, opens the Customize
 dialog.
 
 <img src="docs/images/dialog_customize.png" width="460">
@@ -557,25 +558,25 @@ dialog.
 
 The **Image** menu sets what the tile shows:
 
-- **Render**: the tile's own picture. That is a material's or a node
+- **Image**: the tile's own picture. That is a material's or a node
   network's render, a snippet's code, a palette's swatches or a file's
-  preview.
-- **Capture**: a picture of the Scene View, taken with **Capture** on the
-  tile's right-click menu or the toolbar. Greyed for a tile without one.
-- **Generic**: the section's icon.
-- **Custom**: one of 287 Feather icons on a background colour, from four
+  preview, or a capture of the Scene View taken with **Thumbnail ▸
+  Capture Scene** or the toolbar's **Capture**. A render and a capture
+  replace each other.
+- **Generic Icon**: the section's icon.
+- **Custom Icon**: one of 287 Feather icons on a background colour, from four
   presets or any colour through the chip next to **Custom Color**.
   **Light Icons** draws the symbol light.
 
-Render is the default where Amaze makes a picture, and a tile shows its
-Generic icon until its picture exists. Scenes default to Capture. Node
-networks outside SOP and COP default to Generic, with Render greyed.
-Other files default to Render, which is the system icon for the file
-type. Taking a capture switches the tile to Capture. The preview square
-shows the finished tile.
+Image is the default, and a tile shows its Generic icon until its
+picture exists. Node networks outside SOP and COP default to Generic
+Icon, with Image greyed. A scene's image is its capture; any other
+file's is its preview, which is the system icon for the file type.
+Taking a capture switches the tile to Image. The preview square shows
+the finished tile.
 
-Captures are stored in the library's `captures` folder, so every computer
-using the library shows them.
+A material's or node setup's picture is `<id>.png` beside its files in
+the library, so every computer using the library shows it.
 
 The dialog also sets the asset's **Name**, **Category** and **Tags**. On
 a multi-selection, Category moves every selected tile and Tags adds to
@@ -816,11 +817,11 @@ report, with a button for each fix that applies. The report covers:
   missing, with its backups. A section's database that holds under half
   of what its newest backup holds is named as well.
 - **Missing files and renders.** A material or node setup in a database
-  whose `.mat` or `.interface` file is not in the library is named and
+  whose `.mat` or `.json` file is not in the library is named and
   stays in the database; **Delete** removes it. Materials and node setups
-  that can have a render and have none are counted; **Update Render**
-  renders them.
-- **Orphaned files.** Files in the `mat`, `img` and `captures` folders
+  that can have a render and have none are counted; **Thumbnail ▸ Render
+  Image** renders them.
+- **Orphaned files.** Files in the `materials`, `nodes`, `img` and `captures` folders
   that no database names.
 - **Leftovers.** Files Amaze made that nothing needs any more:
   temporary files from a save that did not finish, once they are an
@@ -855,7 +856,7 @@ The fixes, each shown only when it applies:
   saved beside their files, and items changed after it are brought up
   to date.
 - **Add *N* Files to a Section** adds orphaned pairs of `.mat` and
-  `.interface` files to the section you pick, Material or Node. Each one
+  `.json` files to the section you pick, Material or Node. Each one
   keeps the metadata saved beside its files; one with no metadata comes
   back in a category called Recovered, named Recovered plus the start of
   its file name.

@@ -6,5 +6,5 @@ APP_TAGLINE = "Browse it, save it, drag it."    # one-line subtitle, shown under
 
 APP_VERSION = "1.33.30"    # the RELEASED version, MAJOR.MINOR.PATCH ▸p/version-scheme
 
-LIBRARY_FORMAT = 3    # the on-disk stamp; bump only when the on-disk shape changes ▸p/branding-stamps
+LIBRARY_FORMAT = 4    # the on-disk stamp; bump only when the on-disk shape changes ▸p/branding-stamps
 

@@ -16,21 +16,32 @@ MARKERS = (".amaze_gradient_seed_v1", ".amaze_code_starter_v1",    # "the starte
 TIERS = ("bak-1", "bak-2", "bak-3", "bak-first")    # `restore.TIERS`, held equal by a test
 UNDO_TIER = "bak-before-restore"
 
-ASSET_FOLDER = "mat"
-RENDER_FOLDER = "img"
-CAPTURE_FOLDER = "captures"
-CODE_FOLDER = "code"
-VERSIONS = "versions"
+MATERIALS = "library.json"
+NODES = "cops.json"
+SECTION_FOLDERS = {    # THE table: a section's database, and the folder for what its rows own
+    MATERIALS: "materials",
+    NODES: "nodes",
+    "code.json": "code",
+    "gradients.json": "colors",
+}
+ASSET_SECTIONS = (MATERIALS, NODES)    # whose rows own asset files: `database.ASSET_FILE_OWNERS`
+ORPHAN_SECTION = MATERIALS    # where a file no database names goes, and is reported from
+
+VERSIONS = "versions"    # a section folder's one sub-folder; its top holds the asset files
+RENDER_FOLDER = "img"    # `img/comments/`, which no section owns
+CAPTURE_FOLDER = "captures"    # `captures/file_<hex>.png`, the Files section's
+CODE_FOLDER = SECTION_FOLDERS["code.json"]
 PACKAGE_FOLDER = "matX"    # a permanent store: the check does not enter it, the audit looks for scratch only
 COMMENT_FOLDER = "comments"    # `img/comments/`, the pictures pasted into comments; `notes.IMAGE_DIR`
 IMPORT_FOLDER = "import"    # where Package Import writes plain files: a File location, its contents the user's
 LEDGER = "versions.json"
 
-ASSET_SUFFIXES = (".mat", ".interface", ".builder.json", ".stamp.json")    # `repair.ASSET_SIDECARS`
-COMPANION_TAIL = "_cop"    # `<id>_cop.mat`, a node asset's companion network
-ICON_TAIL = "_icon"    # `img/<id>_icon.png`, a chosen tile icon
-PRE_ADOPT = ".pre-adopt"    # the backups the August texture adoption left beside `.mat` and `.builder.json`
-VERSION_SUFFIXES = (".mat", ".interface", ".builder.json", ".png")
+RECORD_SUFFIX = ".json"    # `<id>.json`: metadata and builder, `core/asset_record.py`
+PICTURE_SUFFIX = ".png"    # `<id>.png`: the asset's one picture, rendered or captured
+ASSET_SUFFIXES = (".mat", RECORD_SUFFIX)    # `repair.ASSET_SIDECARS`
+COMPANION_TAIL = "_cop"    # `<id>_cop.mat`, a material's companion COP network
+PRE_ADOPT = ".pre-adopt"    # the backups an earlier texture adoption left beside `.mat`
+VERSION_SUFFIXES = (".mat", RECORD_SUFFIX, PICTURE_SUFFIX)
 CODE_VERSION_SUFFIX = ".txt"
 
 SCRATCH_TAILS = (".writing", ".capturing", ".tmp", ".temp", ".new", ".part",    # a write of ours that died partway
@@ -48,13 +59,10 @@ MARKER = "marker"
 BACKUP = "backup"            # `<file>.bak-1` .. `.bak-first`
 UNDO = "undo"                # `<file>.bak-before-restore-<stamp>`
 PRESERVED = "preserved"      # `<file>.unreadable[.n]`
-ASSET = "asset"              # `mat/<id>.mat`, `mat/<id>.interface`
-BUILDER = "builder"
-STAMP = "stamp"
+ASSET = "asset"              # `materials/<id>.mat`
+RECORD = "record"            # `materials/<id>.json`
 COMPANION = "companion"
-RENDER = "render"            # `img/<id>.png`
-TILE_ICON = "tile-icon"
-CAPTURE = "capture"          # `captures/<id>.png`
+RENDER = "render"            # `materials/<id>.png`, the asset's one picture
 FILE_CAPTURE = "file-capture"    # `captures/file_<40 hex>.png`
 COMMENT_IMAGE = "comment-image"    # `img/comments/<32 hex>.<ext>`
 VERSION = "version"
@@ -67,10 +75,11 @@ DUPLICATE = "duplicate"      # a known name with ` <n>` before its last suffix: 
 UNKNOWN = "unknown"
 OS_NOISE_KIND = "os-noise"
 UNREADABLE = "unreadable"    # a folder `walk` could not list; its detail is the error
+SUPERSEDED = "superseded"    # what the format 4 conversion left behind; `library_conversion` names it
 
 KNOWN = frozenset((LIST, SIDE_TABLE, POLICY_FILE, MARKER, BACKUP, UNDO, PRESERVED,
-                   ASSET, BUILDER, STAMP, COMPANION, RENDER, TILE_ICON, CAPTURE,
-                   FILE_CAPTURE, COMMENT_IMAGE, VERSION, VERSION_LEDGER, PACKAGE, FOLDER))
+                   ASSET, RECORD, COMPANION, RENDER, FILE_CAPTURE, COMMENT_IMAGE,
+                   VERSION, VERSION_LEDGER, PACKAGE, FOLDER))
 COPIES = frozenset((BACKUP, UNDO, PRESERVED))    # a duplicate of one of these is swept whatever its bytes
 OUT_OF_PLACE = frozenset((SCRATCH, PRE_ADOPT_COPY, DUPLICATE, UNKNOWN))    # `walk` stats these, and only these
 
@@ -80,6 +89,16 @@ _STEM = re.compile(r"^(?:[^\W_]+-)?\d+$")    # a version stem: `<writer>-<n>` or
 _FILE_CAPTURE = re.compile(r"^file_[0-9a-f]{40}\.png$")
 _COMMENT_IMAGE = re.compile(r"^[0-9a-f]{32}\.\w+$")
 _COPY_NUMBER = re.compile(r" \d+(?=\.|$)")
+
+
+def section_of_folder(name: str) -> str:
+    """The section database whose folder is called `name`, or ""."""
+    return next((db for db, folder in SECTION_FOLDERS.items() if folder == name), "")
+
+
+def owns_assets(top: str) -> bool:
+    """Whether top folder `top` is an asset section's folder."""
+    return section_of_folder(top) in ASSET_SECTIONS
 
 
 def asset_id(name: str, extensions: tuple, tail: str = ""):
@@ -135,35 +154,22 @@ def _root(name: str):
 
 def _asset_folder(name: str):
     if name.endswith(PRE_ADOPT):
-        found = asset_id(name[: -len(PRE_ADOPT)], (".mat", ".builder.json"))
+        found = asset_id(name[: -len(PRE_ADOPT)], (".mat",))
         return (PRE_ADOPT_COPY, found) if found else None
-    for suffix, kind in ((".builder.json", BUILDER), (".stamp.json", STAMP),
-                         (".interface", ASSET), (".mat", ASSET)):
-        found = asset_id(name, (suffix,))
-        if found:
-            return kind, found
     if name[: -len(".mat")].endswith(COMPANION_TAIL):
         found = asset_id(name, (".mat",), COMPANION_TAIL)
         if found:
             return COMPANION, found
+    for suffix, kind in ((".mat", ASSET), (RECORD_SUFFIX, RECORD), (PICTURE_SUFFIX, RENDER)):
+        found = asset_id(name, (suffix,))
+        if found:
+            return kind, found
     return None
 
 
-def _render_folder(name: str):
-    if not name.endswith(".png"):
-        return None
-    if name[: -len(".png")].endswith(ICON_TAIL):
-        found = asset_id(name, (".png",), ICON_TAIL)
-        return (TILE_ICON, found) if found else None
-    found = asset_id(name, (".png",))
+def _picture(name: str):
+    found = asset_id(name, (PICTURE_SUFFIX,))
     return (RENDER, found) if found else None
-
-
-def _capture_folder(name: str):
-    if _FILE_CAPTURE.match(name):
-        return FILE_CAPTURE, ""
-    found = asset_id(name, (".png",))
-    return (CAPTURE, found) if found else None
 
 
 def _version_folder(name: str, suffixes: tuple):
@@ -181,14 +187,15 @@ def _version_folder(name: str, suffixes: tuple):
 def _folder(parts: list) -> bool:
     """Whether the folder at `parts` is one the convention names."""
     depth = len(parts)
+    top = parts[0]
     if depth == 1:
-        return parts[0] in (ASSET_FOLDER, RENDER_FOLDER, CAPTURE_FOLDER,
-                            CODE_FOLDER, PACKAGE_FOLDER, IMPORT_FOLDER)
-    if parts[0] == PACKAGE_FOLDER:
+        return top in tuple(SECTION_FOLDERS.values()) + (
+            RENDER_FOLDER, CAPTURE_FOLDER, PACKAGE_FOLDER, IMPORT_FOLDER)
+    if top == PACKAGE_FOLDER:
         return True
     if parts == [RENDER_FOLDER, COMMENT_FOLDER]:
         return True
-    if parts[0] in (ASSET_FOLDER, CODE_FOLDER) and parts[1] == VERSIONS:
+    if (owns_assets(top) or top == CODE_FOLDER) and parts[1] == VERSIONS:
         return depth == 2 or (depth == 3 and parts[2].isalnum())
     return False
 
@@ -199,19 +206,19 @@ def _plain(parts: list):
     if depth == 1:
         return _root(name)
     top = parts[0]
-    if depth == 2 and top == ASSET_FOLDER:
+    if depth == 2 and owns_assets(top):
         return _asset_folder(name)
-    if depth == 2 and top == RENDER_FOLDER:
-        return _render_folder(name)
+    if depth == 2 and section_of_folder(top):    # Code and Colors own a captured picture at most
+        return _picture(name)
     if depth == 2 and top == CAPTURE_FOLDER:
-        return _capture_folder(name)
+        return (FILE_CAPTURE, "") if _FILE_CAPTURE.match(name) else None
     if depth == 3 and parts[:2] == [RENDER_FOLDER, COMMENT_FOLDER]:
         return (COMMENT_IMAGE, "") if _COMMENT_IMAGE.match(name.lower()) else None
     if depth == 4 and parts[1] == VERSIONS and parts[2].isalnum():
-        if top == ASSET_FOLDER:
-            return _version_folder(name, VERSION_SUFFIXES)
         if top == CODE_FOLDER:
             return _version_folder(name, (CODE_VERSION_SUFFIX,))
+        if owns_assets(top):
+            return _version_folder(name, VERSION_SUFFIXES)
     return None
 
 

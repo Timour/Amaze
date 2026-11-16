@@ -169,7 +169,7 @@ BTN_SELECT = "Select"
 LABEL_TAGS = "Tags"                 # ▸ field labels and placeholders
 LABEL_CATEGORY = "Category"
 LABEL_ICON = "Image"                # the D02 menu choosing the tile's face
-FACE_LABELS = ("Render", "Capture", "Generic", "Custom")    # its items, in `tile_icons.FACES` order
+FACE_LABELS = ("Image", "Generic Icon", "Custom Icon")    # its items, in `tile_icons.FACES` order
 LABEL_LIGHT_ICON = "Light Icons"    # the D02 toggle that replaced the Lines dropdown: OFF = dark lines, ON = light
 LABEL_NAME = "Name"
 PLACEHOLDER_SEARCH_ICONS = "Search"     # D02 drew the count in it; it does not any more

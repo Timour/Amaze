@@ -756,7 +756,7 @@ class EveryToolSpeaksTheResolver(unittest.TestCase):
                     "houdini-env.sh", text,
                     "%s reaches for hython without sourcing the "
                     "resolver" % name)
-        self.assertGreaterEqual(checked, 4,
+        self.assertGreaterEqual(checked, 3,    # houdini-env, run-tests, sync-install
                                 "the tools directory scan went vacuous")
 
 

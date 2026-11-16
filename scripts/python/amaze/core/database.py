@@ -149,10 +149,10 @@ _SECTION_HOLDS = {name: holds
                   for name, _label, holds in SECTION_DATABASES}
 
 
-ASSET_FILE_OWNERS = ("library.json", "cops.json")
+ASSET_FILE_OWNERS = library_files.ASSET_SECTIONS    # each owns `library_files.SECTION_FOLDERS`' folder
 
 
-ID_CLAIMING_DATABASES = DATABASES    # every section's list claims ids: a saved palette stamps `mat/` too
+ID_CLAIMING_DATABASES = DATABASES    # every section's list claims ids: a format 3 palette stamped `mat/`
 
 
 def category_label(stored) -> str:

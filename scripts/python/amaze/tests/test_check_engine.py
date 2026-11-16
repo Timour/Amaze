@@ -30,6 +30,9 @@ REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__))))))
 AUDIT = os.path.join(REPO, "tools", "library-audit.py")
 HOUR = 60 * 60
+MATS = library_files.SECTION_FOLDERS[library_files.MATERIALS]    # "materials"
+NODES = library_files.SECTION_FOLDERS[library_files.NODES]    # "nodes"
+OLD = "mat"    # format 3's shared folder: only the converter reads it now
 
 
 class _Library(unittest.TestCase):
@@ -40,7 +43,8 @@ class _Library(unittest.TestCase):
         test_support.reset_database_singletons()
         self.addCleanup(test_support.reset_database_singletons)
         self.dir = self.prefs.dir
-        self.mat_dir = os.path.join(self.dir, "mat")
+        self.mat_dir = material.section_folder(self.dir, library_files.MATERIALS)
+        self.old_dir = os.path.join(self.dir, OLD)
         self.img_dir = os.path.join(self.dir, "img")
         self.index = os.path.join(self.dir, "library.json")
         document = self._read(self.index)
@@ -67,8 +71,24 @@ class _Library(unittest.TestCase):
             os.utime(path, (when, when))
         return path
 
+    def _asset(self, folder, asset_id, metadata=None):
+        """A format 4 asset: `<id>.mat` and `<id>.json`, a metadata section only if given."""
+        record = {"format": 1, "builder": {"type": "subnet", "interface": "", "values": {}}}
+        if metadata is not None:
+            record["metadata"] = dict(metadata, id=asset_id)
+        self._file("%s/%s.mat" % (folder, asset_id))
+        self._file("%s/%s.json" % (folder, asset_id), json.dumps(record))
+
+    def _old_asset(self, asset_id, stamp=None):
+        """A format 3 asset in `mat/`: `.mat` and `.interface`, a stamp only if given."""
+        for suffix in (".mat", ".interface"):
+            self._file("%s/%s%s" % (OLD, asset_id, suffix))
+        if stamp is not None:
+            self._file("%s/%s.stamp.json" % (OLD, asset_id),
+                       json.dumps(dict(stamp, id=asset_id)))
+
     def _survey(self):
-        return repair.survey(self.dir, self.prefs.asset_dir, self.prefs.img_dir)
+        return repair.survey(self.dir, self.prefs.img_dir)
 
     def _leftovers(self, findings):
         return sorted(entry[0] for entry in findings["leftovers"])
@@ -119,48 +139,69 @@ class TheConventionHasOneHomeTest(unittest.TestCase):
                  "library.json.bak-before-restore-20261106-101010",
                  "library.json.bak-before-restore-20261106-101010-2",
                  ".amaze_gradient_seed_v1", ".assetlib_code_starter_v1",
-                 "mat/abc.mat", "mat/abc.interface", "mat/abc.builder.json",
-                 "mat/abc.stamp.json", "mat/abc_cop.mat",
-                 "mat/versions/abc/Writer-3.mat", "mat/versions/abc/3.png",
-                 "mat/versions/abc/2.builder.json", "mat/versions/abc/versions.json",
-                 "mat/versions/abc/versions.json.bak-2",
-                 "img/abc.png", "img/abc_icon.png",
-                 "captures/abc.png", "captures/file_" + "0a" * 20 + ".png",
+                 "materials/abc.mat", "materials/abc.json", "nodes/abc.json",
+                 "materials/abc_cop.mat", "nodes/abc_cop.mat",
+                 "materials/versions/abc/2.json", "materials/versions/abc/Writer-3.mat",
+                 "materials/versions/abc/3.png", "materials/versions/abc/versions.json",
+                 "materials/versions/abc/versions.json.bak-2",
+                 "materials/abc.png", "nodes/abc.png", "code/abc.png", "colors/abc.png",
+                 "captures/file_" + "0a" * 20 + ".png",
                  "code/versions/abc/4.txt", "code/versions/abc/versions.json",
                  "matX/pack/tex.exr")
         for relative in known:
             kind, _detail = library_files.classify(relative)
             self.assertIn(kind, library_files.KNOWN, relative)
-        for relative in ("mat", "img", "captures", "mat/versions", "mat/versions/abc",
-                         "code/versions/abc", "matX/pack"):
+        for relative in ("materials", "nodes", "code", "colors", "img", "captures",
+                         "materials/versions/abc", "code/versions/abc", "matX/pack"):
             self.assertEqual(library_files.FOLDER,
                              library_files.classify(relative, is_dir=True)[0], relative)
+
+    def test_format_3_names_are_unknown_here_and_old_shapes_to_the_converter(self):
+        from amaze.core import library_conversion
+        for relative in ("mat/abc.mat", "mat/abc.interface", "mat/abc.builder.json",
+                         "mat/abc.stamp.json", "mat/abc_cop.mat",
+                         "mat/versions/abc/2.builder.json"):
+            with self.subTest(relative):    # what is left in mat/ is unknown, never swept
+                self.assertEqual(library_files.UNKNOWN, library_files.classify(relative)[0])
+                self.assertFalse(library_conversion.old_shape(relative))
+        for relative in ("materials/abc.interface",
+                         "materials/abc.builder.json", "nodes/abc.stamp.json",
+                         "materials/versions/abc/2.builder.json",
+                         "img/abc.png", "img/abc_icon.png", "captures/abc.png"):
+            with self.subTest(relative):
+                self.assertEqual(library_files.UNKNOWN, library_files.classify(relative)[0])
+                self.assertTrue(library_conversion.old_shape(relative))
+        for relative in ("mat", "mat/versions", "mat/versions/abc"):
+            self.assertEqual(library_files.UNKNOWN,
+                             library_files.classify(relative, is_dir=True)[0], relative)
+        for relative in ("captures/file_" + "0a" * 20 + ".png", "materials/abc.json",
+                         "img/comments/" + "0a" * 16 + ".png", "stray.txt"):
+            self.assertFalse(library_conversion.old_shape(relative), relative)
 
     def test_the_rest_is_named_by_what_it_is(self):
         for relative, kind in (
                 ("img/140024152983962990.png.lock", library_files.SCRATCH),
-                ("mat/abc.mat.x1y2.writing", library_files.SCRATCH),
+                ("materials/abc.mat.x1y2.writing", library_files.SCRATCH),
                 ("img/abc.png.x1y2.rendering.png", library_files.SCRATCH),
                 ("matX/pack/half.tmp", library_files.SCRATCH),
-                ("mat/abc.mat.pre-adopt", library_files.PRE_ADOPT_COPY),
-                ("mat/abc.builder.json.pre-adopt", library_files.PRE_ADOPT_COPY),
+                ("materials/abc.mat.pre-adopt", library_files.PRE_ADOPT_COPY),
                 ("notes.json 2.bak-3", library_files.DUPLICATE),
                 ("library 2.json", library_files.DUPLICATE),
-                ("mat/abc 2.mat", library_files.DUPLICATE),
-                ("mat/abc 2.stamp.json", library_files.DUPLICATE),
+                ("materials/abc 2.mat", library_files.DUPLICATE),
+                ("materials/abc 2.json", library_files.DUPLICATE),
                 ("stray.txt", library_files.UNKNOWN),
-                ("mat/notes.txt", library_files.UNKNOWN),
-                ("mat/library (conflicted copy).mat", library_files.UNKNOWN),
+                ("materials/notes.txt", library_files.UNKNOWN),
+                ("materials/library (conflicted copy).mat", library_files.UNKNOWN),
                 ("img/abc.jpg", library_files.UNKNOWN),
                 (".DS_Store", library_files.OS_NOISE_KIND),
-                ("mat/._abc.mat", library_files.OS_NOISE_KIND)):
+                ("materials/._abc.mat", library_files.OS_NOISE_KIND)):
             self.assertEqual(kind, library_files.classify(relative)[0], relative)
         self.assertEqual("notes.json.bak-3",
                          library_files.classify("notes.json 2.bak-3")[1])
-        self.assertEqual("mat/abc.stamp.json",
-                         library_files.classify("mat/abc 2.stamp.json")[1])
+        self.assertEqual("materials/abc.json",
+                         library_files.classify("materials/abc 2.json")[1])
         self.assertEqual((library_files.UNKNOWN, "folder"),
-                         library_files.classify("mat/backup-2026-09-04", is_dir=True))
+                         library_files.classify("materials/backup-2026-09-04", is_dir=True))
 
 
 class DuplicatesTest(_Library):
@@ -200,13 +241,13 @@ class DuplicatesTest(_Library):
         self.assertIn("`cops.json`", text)
 
     def test_a_lone_duplicate_is_named_and_left(self):
-        self._file("mat/LONEASSET1 2.mat", "net")
+        self._file(MATS + "/LONEASSET1 2.mat", "net")
         findings = self._survey()
         self.assertEqual([], self._leftovers(findings))
-        self.assertIn("mat/LONEASSET1 2.mat", self._held(findings))
+        self.assertIn(MATS + "/LONEASSET1 2.mat", self._held(findings))
         repair.move_aside(findings, "leftovers")
         self.assertTrue(os.path.exists(os.path.join(self.mat_dir, "LONEASSET1 2.mat")))
-        self.assertIn("`mat/LONEASSET1 2.mat`", "\n".join(repair.report_lines(findings)))
+        self.assertIn("`%s/LONEASSET1 2.mat`" % MATS, "\n".join(repair.report_lines(findings)))
 
     def test_a_duplicate_that_changed_after_the_check_is_not_moved(self):
         with open(self.index, "rb") as handle:
@@ -236,24 +277,38 @@ class LeftoversTest(_Library):
         self.assertTrue(os.path.exists(fresh))
 
     def test_a_pre_adopt_backup_is_moved(self):
-        path = self._file("mat/%s.mat.pre-adopt" % self.first_id)
+        """The August adoption left these beside `.mat`; one in `materials/` goes."""
+        for folder in (MATS,):
+            with self.subTest(folder=folder):
+                relative = "%s/%s.mat.pre-adopt" % (folder, self.first_id)
+                path = self._file(relative)
+                findings = self._survey()
+                self.assertIn(relative, self._leftovers(findings))
+                repair.move_aside(findings, "leftovers")
+                self.assertFalse(os.path.exists(path))
+                self.assertTrue(self._holding_has(relative))
+
+    def test_a_format_3_file_beside_its_asset_s_json_is_a_leftover(self):
+        relative = "%s/%s.interface" % (MATS, self.first_id)
+        path = self._file(relative)
         findings = self._survey()
-        self.assertIn("mat/%s.mat.pre-adopt" % self.first_id, self._leftovers(findings))
+        self.assertEqual([(relative, library_files.SUPERSEDED)],
+                         [(entry[0], entry[1]) for entry in findings["leftovers"]])
+        self.assertEqual([], findings["unaccounted"][MATS + "/"])
         repair.move_aside(findings, "leftovers")
         self.assertFalse(os.path.exists(path))
-        self.assertTrue(self._holding_has("mat/%s.mat.pre-adopt" % self.first_id))
 
     def test_an_unknown_folder_is_named_and_left_until_its_own_sweep(self):
         for n in range(3):
-            self._file("mat/backup-2026-09-04/%d.mat" % n, "abc")
+            self._file(MATS + "/backup-2026-09-04/%d.mat" % n, "abc")
         stray = self._file("img/comments.txt", "hello")
         findings = self._survey()
         folders = {entry[0]: entry for entry in findings["unknown_folders"]}
-        self.assertEqual(3, folders["mat/backup-2026-09-04"][1], "its file count")
-        self.assertEqual(9, folders["mat/backup-2026-09-04"][2], "its size")
+        self.assertEqual(3, folders[MATS + "/backup-2026-09-04"][1], "its file count")
+        self.assertEqual(9, folders[MATS + "/backup-2026-09-04"][2], "its size")
         self.assertEqual(["img/comments.txt"], [entry[0] for entry in findings["unknown"]])
         text = "\n".join(repair.report_lines(findings))
-        self.assertIn("`mat/backup-2026-09-04/`", text)
+        self.assertIn("`%s/backup-2026-09-04/`" % MATS, text)
         self.assertIn("`img/comments.txt`", text)
         repair.move_aside(findings, "leftovers")
         repair.move_aside(findings, "unlisted")
@@ -263,15 +318,29 @@ class LeftoversTest(_Library):
         result = repair.move_aside(findings, "unknown")
         self.assertFalse(os.path.exists(os.path.join(self.mat_dir, "backup-2026-09-04")))
         self.assertFalse(os.path.exists(stray))
-        self.assertTrue(self._holding_has("mat/backup-2026-09-04/2.mat"))
+        self.assertTrue(self._holding_has(MATS + "/backup-2026-09-04/2.mat"))
         self.assertEqual([], result["failed"])
 
-    def test_a_capture_no_list_knows_is_unlisted(self):
+    def test_a_format_3_capture_is_a_leftover_and_a_file_capture_is_known(self):
         self._file("captures/NOBODYS1.png")
         self._file("captures/%s.png" % self.first_id)
         self._file("captures/file_%s.png" % ("ab" * 20))
         findings = self._survey()
-        self.assertEqual(["NOBODYS1.png"], findings["unaccounted"]["captures/"])
+        self.assertEqual(["captures/%s.png" % self.first_id, "captures/NOBODYS1.png"],
+                         sorted(entry[0] for entry in findings["leftovers"]
+                                if entry[1] == library_files.SUPERSEDED))
+        self.assertNotIn("captures/", findings["unaccounted"])
+
+    def test_a_picture_no_list_knows_is_unlisted_in_every_section_folder(self):
+        """`<id>.png` belongs to its id; code/ and colors/ are looked through too."""
+        for folder in (MATS, NODES, "code", "colors"):
+            self._file("%s/NOBODYS2.png" % folder)
+        findings = self._survey()
+        for folder in (MATS, NODES, "code", "colors"):
+            with self.subTest(folder=folder):
+                self.assertEqual(["NOBODYS2.png"], findings["unaccounted"][folder + "/"])
+        self.assertNotIn("%s.png" % self.first_id, findings["unaccounted"][MATS + "/"],
+                         "a listed asset's own picture was called orphaned")
 
     def test_the_folder_package_import_writes_into_is_not_offered_to_move(self):
         """Package Import writes plain files into import/ and registers it as a File location."""
@@ -302,7 +371,7 @@ class LeftoversTest(_Library):
 
     def test_the_os_s_own_files_are_neither_named_nor_moved(self):
         self._file(".DS_Store")
-        self._file("mat/._x.mat")
+        self._file(MATS + "/._x.mat")
         findings = self._survey()
         self.assertEqual([], findings["unknown"])
         self.assertEqual([], findings["leftovers"])
@@ -312,7 +381,8 @@ class OneWalkTest(_Library):
     """Every folder listed once, and a stamp opened only where a list lost its pair."""
 
     def test_each_folder_is_listed_once(self):
-        self._file("mat/versions/%s/1.mat" % self.first_id)
+        self._file(MATS + "/versions/%s/1.mat" % self.first_id)
+        self._old_asset("OLDSHAPE1")    # `mat/` is an unknown folder now: listed once, to size it
         self._file("captures/%s.png" % self.first_id)
         listed = []
         real_scandir, real_listdir = os.scandir, os.listdir
@@ -339,35 +409,45 @@ class OneWalkTest(_Library):
 
         with patch.object(os, "scandir", scandir), patch.object(os, "listdir", listdir), \
                 patch.object(glob_mod, "glob", glob):
-            self._survey()
+            findings = self._survey()
         twice = sorted({path for path in listed if listed.count(path) > 1})
         self.assertEqual([], twice, "listed more than once: %s" % twice)
-        self.assertIn("mat", listed)
+        self.assertIn(MATS, listed)
+        self.assertEqual([OLD], [entry[0] for entry in findings["unknown_folders"]],
+                         "format 3's mat/ is not one unknown folder, sized by one listing")
+        self.assertNotIn(OLD, findings.get("asset_dirs", ()), "mat/ was read as asset files")
 
-    def test_a_stamp_is_read_only_for_an_unlisted_pair(self):
-        for asset_id in ("LISTEDA1", "LISTEDA2"):
-            self._file("mat/%s.stamp.json" % asset_id, json.dumps({"id": asset_id}))
-        document = self._read(self.index)
-        document["assets"] += [{"id": "LISTEDA1", "name": "a", "categories": ["x"]},
-                               {"id": "LISTEDA2", "name": "b", "categories": ["x"]}]
-        self._write(self.index, document)
-        for suffix in (".mat", ".interface"):
-            self._file("mat/UNLISTED1" + suffix)
-        self._file("mat/UNLISTED1.stamp.json", json.dumps(
-            {"id": "UNLISTED1", "name": "Back", "renderer": "Karma"}))
+    def _opened_metadata(self):
+        """The metadata files on disk one survey, its report and Add Back open, by name."""
         opened = []
         real_open = builtins.open
 
         def counting(path, *args, **kwargs):
-            if str(path).endswith(material.STAMP_SUFFIX):
-                opened.append(os.path.basename(str(path)))
+            name = os.path.basename(str(path))
+            if os.path.dirname(os.path.abspath(str(path))) in (self.mat_dir, self.old_dir) \
+                    and name.endswith(material.RECORD_SUFFIX) \
+                    and os.path.exists(str(path)):
+                opened.append(name)
             return real_open(path, *args, **kwargs)
 
         with patch.object(builtins, "open", counting):
             findings = self._survey()
             repair.report_lines(findings)
             repair.materials_on_record(findings)
-        self.assertEqual(["UNLISTED1.stamp.json"], opened)
+        return opened
+
+    def _listed(self, *asset_ids):
+        document = self._read(self.index)
+        document["assets"] += [{"id": one, "name": one, "categories": ["x"]}
+                               for one in asset_ids]
+        self._write(self.index, document)
+
+    def test_a_stamp_is_read_only_for_an_unlisted_pair(self):
+        for asset_id in ("LISTEDA1", "LISTEDA2"):
+            self._asset(MATS, asset_id, {"name": asset_id})
+        self._listed("LISTEDA1", "LISTEDA2")
+        self._asset(MATS, "UNLISTED1", {"name": "Back", "renderer": "Karma"})
+        self.assertEqual(["UNLISTED1.json"], self._opened_metadata())
 
 
 class TheSurveyAnswersEverythingTest(_Library):
@@ -378,8 +458,7 @@ class TheSurveyAnswersEverythingTest(_Library):
                     {"version": 8, "categories": ["_All"], "tags": [], "assets": rows})
 
     def _pair(self, asset_id):
-        for suffix in (".mat", ".interface"):
-            self._file("mat/" + asset_id + suffix)
+        self._asset(NODES, asset_id)
 
     def test_listed_rows_whose_files_are_gone_are_named(self):
         os.remove(os.path.join(self.mat_dir, self.first_id + ".mat"))
@@ -390,8 +469,48 @@ class TheSurveyAnswersEverythingTest(_Library):
         self.assertIn("1 material", text)
         self.assertIn(name, text)
 
+    def test_a_row_whose_builder_file_is_gone_is_named(self):
+        os.remove(os.path.join(self.mat_dir, self.first_id + material.RECORD_SUFFIX))
+        findings = self._survey()
+        self.assertEqual([self.first_id],
+                         [one for one, _name in findings["missing_files"]["library.json"]])
+
+    def test_a_row_whose_files_are_only_in_format_3_s_folder_is_missing_them(self):
+        for suffix in (".mat", material.RECORD_SUFFIX):
+            os.remove(os.path.join(self.mat_dir, self.first_id + suffix))
+        self._old_asset(self.first_id)
+        findings = self._survey()
+        self.assertEqual([self.first_id],
+                         [one for one, _name in findings["missing_files"]["library.json"]],
+                         "a file in mat/ was read as the asset's: there is no fallback")
+
+    def test_a_node_row_is_looked_for_in_the_node_folder(self):
+        self._pair("SOPSETUP1")
+        self._file("%s/LOSTNODE1.mat" % MATS)
+        self._file("%s/LOSTNODE1.json" % MATS, "{}")
+        self._cops([{"id": "SOPSETUP1", "name": "Rock", "renderer": "SOP", "categories": ["a"]},
+                    {"id": "LOSTNODE1", "name": "Lost", "renderer": "SOP", "categories": ["a"]}])
+        findings = self._survey()
+        self.assertEqual(["LOSTNODE1"],
+                         [one for one, _name in findings["missing_files"]["cops.json"]],
+                         "a node's files in the Material folder were taken as its own")
+
+    def test_a_format_3_picture_is_no_render_and_is_a_leftover(self):
+        """A picture in img/ or captures/ is never read: the render is missed, the file superseded."""
+        os.remove(os.path.join(self.mat_dir, self.first_id + ".png"))
+        for folder in ("img", "captures"):
+            with self.subTest(folder=folder):
+                old = self._file("%s/%s.png" % (folder, self.first_id))
+                findings = self._survey()
+                self.assertEqual([self.first_id], [one for one, _name in
+                                                   findings["missing_renders"]["library.json"]],
+                                 "a picture still in %s/ was read as the render" % folder)
+                self.assertIn(("%s/%s.png" % (folder, self.first_id), library_files.SUPERSEDED),
+                              [(entry[0], entry[1]) for entry in findings["leftovers"]])
+                os.remove(old)
+
     def test_a_render_is_missed_only_where_a_tile_can_hold_one(self):
-        os.remove(os.path.join(self.img_dir, self.first_id + ".png"))
+        os.remove(os.path.join(self.mat_dir, self.first_id + ".png"))
         self._pair("LOPSETUP1")
         self._pair("SOPSETUP1")
         self._cops([{"id": "LOPSETUP1", "name": "Stage", "renderer": "LOP", "categories": ["a"]},
@@ -505,7 +624,7 @@ class AnActionRefusesAHeldLibraryUnlessThePanelSaysItLetGoTest(_Library):
             self.assertIs(True, parameters["guard"].default, name)
 
     def test_the_guard_refuses_and_guard_false_acts(self):
-        self._file("mat/%s.mat.pre-adopt" % self.first_id)
+        self._file(MATS + "/%s.mat.pre-adopt" % self.first_id)
         findings = self._survey()
         with patch.object(repair, "session_has_a_library_open", return_value=True):
             with self.assertRaises(ValueError):
@@ -522,7 +641,7 @@ class RepairIndexTest(_Library):
         self._write(self.index + ".bak-2", document)
         with open(self.index, "w", encoding="utf-8") as handle:
             handle.write('{"assets": [')
-        ok, how = repair.repair_index(self.dir, "mat/")
+        ok, how = repair.repair_index(self.dir)
         self.assertTrue(ok, how)
         self.assertEqual(len(document["assets"]), len(self._read(self.index)["assets"]),
                          "an empty copy was put back while a full one sat beside it")
@@ -532,9 +651,9 @@ class RepairIndexTest(_Library):
         self._write(self.index + ".bak-1", dict(document, assets=[]))
         with open(self.index, "w", encoding="utf-8") as handle:
             handle.write('{"assets": [')
-        ok, how = repair.repair_index(self.dir, "mat/")
+        ok, how = repair.repair_index(self.dir)
         self.assertTrue(ok, how)
-        self.assertEqual([], self._read(self.index)["assets"][:0])
+        self.assertEqual([],self._read(self.index)["assets"][:0])
 
 
 class TheHoldingFolderTest(_Library):
@@ -561,7 +680,7 @@ class TheHoldingFolderTest(_Library):
         self.assertFalse(os.path.exists(old))
 
     def test_the_survey_says_what_it_holds_and_when_each_day_goes(self):
-        self._file("mat/%s.mat.pre-adopt" % self.first_id, "abcd")
+        self._file(MATS + "/%s.mat.pre-adopt" % self.first_id, "abcd")
         repair.move_aside(self._survey(), "leftovers")
         holding = self._survey()["holding"]
         self.assertEqual((1, 4), (holding["files"], holding["bytes"]))
@@ -619,11 +738,8 @@ class PutBackTest(_Library):
     def test_the_shelf_s_put_back_adds_the_materials_saved_after_the_copy(self):
         document = self._read(self.index)
         self._write(self.index + ".bak-1", document)
-        for suffix in (".mat", ".interface"):
-            self._file("mat/NEWER001" + suffix)
-        self._file("mat/NEWER001.stamp.json", json.dumps(
-            {"id": "NEWER001", "name": "Saved Later", "renderer": "Karma",
-             "categories": ["Later"]}))
+        self._asset(MATS, "NEWER001", {"name": "Saved Later", "renderer": "Karma",
+                                       "categories": ["Later"]})
         with open(self.index, "w", encoding="utf-8") as handle:
             handle.write("{ broken")
         done = repair.put_back(self._survey(), "library.json", "bak-1")
@@ -648,38 +764,36 @@ class TheShrinkIsSaidAtLoadTest(_Library):
 class MoveAsideSparesWhatCanBePutBackTest(_Library):
     """A pair whose stamp reads is put back by Add Back or Add to a Section, never moved aside."""
 
-    def _pair(self, asset_id, stamp=None):
-        for suffix in (".mat", ".interface"):
-            self._file("mat/" + asset_id + suffix)
-        if stamp is not None:
-            self._file("mat/%s%s" % (asset_id, material.STAMP_SUFFIX), json.dumps(
-                dict(stamp, id=asset_id)))
-
     def test_material_and_node_pairs_with_a_stamp_stay_and_the_rest_go(self):
-        self._pair("MATSTAMP1", {"name": "Brick", "renderer": "Karma", "categories": ["a"]})
-        self._pair("NODESTAMP1", {"name": "Scatter", "renderer": "SOP", "categories": ["a"]})
-        self._pair("NOSTAMP1")
-        self._file("mat/HALFONLY1.mat")
+        self._asset(MATS, "MATSTAMP1",
+                    {"name": "Brick", "renderer": "Karma", "categories": ["a"]})
+        self._asset(NODES, "NODESTAMP1",
+                    {"name": "Scatter", "renderer": "SOP", "categories": ["a"]})
+        self._asset(MATS, "NOSTAMP1")    # a builder section and no metadata
+        self._file(MATS + "/HALFONLY1.mat")
         findings = self._survey()
         aside = repair.movable(findings)
-        self.assertEqual(sorted(["NOSTAMP1.mat", "NOSTAMP1.interface", "HALFONLY1.mat"]),
-                         sorted(aside["unaccounted"]["mat/"]),
+        self.assertEqual(sorted(["NOSTAMP1.mat", "NOSTAMP1.json", "HALFONLY1.mat"]),
+                         sorted(aside["unaccounted"][MATS + "/"]),
                          "Move Files Aside counts a pair that can still be put back")
+        self.assertEqual([], aside["unaccounted"][NODES + "/"])
         self.assertEqual(3, repair.files_to_move_aside(findings))
         self.assertIn("can still be added back", "\n".join(repair.report_lines(findings)))
         repair.move_aside(findings, ("unlisted", "leftovers"))
-        for kept in ("MATSTAMP1.mat", "NODESTAMP1.mat", "NODESTAMP1.interface"):
-            self.assertTrue(os.path.exists(os.path.join(self.mat_dir, kept)),
+        for kept in (MATS + "/MATSTAMP1.mat", MATS + "/MATSTAMP1.json",
+                     NODES + "/NODESTAMP1.mat", NODES + "/NODESTAMP1.json"):
+            self.assertTrue(os.path.exists(os.path.join(self.dir, kept)),
                             "%s was moved aside though it could be put back" % kept)
         self.assertFalse(os.path.exists(os.path.join(self.mat_dir, "NOSTAMP1.mat")))
 
-    def test_a_readable_stamp_alone_stays(self):
-        self._file("mat/SNIPPET1.stamp.json", json.dumps({"id": "SNIPPET1", "name": "A"}))
+    def test_a_readable_metadata_file_alone_stays(self):
+        self._file(MATS + "/PALETTE1.json", json.dumps(
+            {"format": 1, "metadata": {"id": "PALETTE1", "name": "B"}}))
         findings = self._survey()
         self.assertEqual(0, repair.files_to_move_aside(findings))
         repair.move_aside(findings, "unlisted")
-        self.assertTrue(os.path.exists(os.path.join(self.mat_dir, "SNIPPET1.stamp.json")),
-                        "the only record of a snippet or a palette was moved aside")
+        self.assertTrue(os.path.exists(os.path.join(self.mat_dir, "PALETTE1.json")),
+                        "the only record of an asset was moved aside")
 
 
 class AListInTroubleHoldsItsFilesTest(_Library):
@@ -691,20 +805,18 @@ class AListInTroubleHoldsItsFilesTest(_Library):
 
     def test_an_empty_node_list_beside_unlisted_files_moves_none_of_them(self):
         self._cops([])
-        for suffix in (".mat", ".interface"):
-            self._file("mat/NODELOST1" + suffix)
+        self._asset(NODES, "NODELOST1")
         findings = self._survey()
         self.assertTrue(findings["complete"], "premise: an empty list reads")
         self.assertEqual(0, repair.files_to_move_aside(findings))
         with self.assertRaises(ValueError):
             repair.move_aside(findings, "unlisted")
-        self.assertTrue(os.path.exists(os.path.join(self.mat_dir, "NODELOST1.mat")))
+        self.assertTrue(os.path.exists(os.path.join(self.dir, NODES, "NODELOST1.mat")))
         self.assertIn("None of them will be moved to the trash", "\n".join(repair.report_lines(findings)))
 
     def test_a_list_still_on_its_way_holds_back_adding_to_another(self):
         self._write(os.path.join(self.dir, "cops.json.bak-1"), {"assets": [{"id": "X"}]})
-        for suffix in (".mat", ".interface"):
-            self._file("mat/NODELOST2" + suffix)
+        self._asset(NODES, "NODELOST2")
         findings = self._survey()
         self.assertTrue(repair.why_nothing_can_be_added(findings))
         self.assertTrue(repair.why_nothing_can_be_added(findings, "library.json"))
@@ -724,7 +836,7 @@ class EachButtonOnlyWithItsFindingTest(_Library):
 
     def test_each_finding_brings_its_own_button(self):
         cases = (
-            ("quarantine", lambda: self._file("mat/%s.mat.pre-adopt" % self.first_id)),
+            ("quarantine", lambda: self._file(MATS + "/%s.mat.pre-adopt" % self.first_id)),
             ("unknown", lambda: self._file("img/comments.txt")),
             ("holding", lambda: repair.move_aside(self._survey(), "leftovers")),
         )
@@ -736,8 +848,7 @@ class EachButtonOnlyWithItsFindingTest(_Library):
         document["assets"][0]["categories"] = []
         self._write(self.index, document)
         self.assertIn("uncategorised", self._keys())
-        for suffix in (".mat", ".interface"):
-            self._file("mat/NOSTAMP2" + suffix)
+        self._asset(MATS, "NOSTAMP2")
         self.assertIn("reattach", self._keys())
 
     def test_past_five_one_button_lists_them_all(self):
@@ -829,7 +940,7 @@ class CheckLibraryInThePanelTest(unittest.TestCase):
 
     def test_a_second_pane_open_does_not_stop_it(self):
         from amaze.dialogs import repair_dialog
-        stray = os.path.join(self.dir, "mat", "STRAY0001.mat.pre-adopt")
+        stray = os.path.join(self.dir, MATS, "STRAY0001.mat.pre-adopt")
         with open(stray, "w", encoding="utf-8") as handle:
             handle.write("x")
         self.assertTrue(repair.session_has_a_library_open(), "premise")
@@ -843,15 +954,14 @@ class CheckLibraryInThePanelTest(unittest.TestCase):
                 {"id": "KEPTNODE1", "name": "Kept", "categories": ["Kept"]}]}, handle)
         self.panel.open()    # a Node list that is not empty lets unlisted files move
         model = self.panel.material_model
-        files = [os.path.join(self.dir, "mat", "UNSAVED01" + suffix)
-                 for suffix in (".mat", ".interface")]
-        files.append(os.path.join(self.dir, "img", "UNSAVED01.png"))
+        files = [os.path.join(self.dir, MATS, "UNSAVED01" + suffix)
+                 for suffix in (".mat", material.RECORD_SUFFIX, ".png")]
         for path in files:
             with open(path, "w", encoding="utf-8") as handle:
                 handle.write("x")
         model._append_record(model._asset_from_row(
             {"id": "UNSAVED01", "name": "Unsaved", "categories": ["Karma_Mats"]}))
-        stray = os.path.join(self.dir, "mat", "STRAY0002.mat.pre-adopt")
+        stray = os.path.join(self.dir, MATS, "STRAY0002.mat.pre-adopt")
         with open(stray, "w", encoding="utf-8") as handle:
             handle.write("x")
         self.assertNotIn("UNSAVED01", [str(row["id"]) for row in self._read(self.index)["assets"]],
@@ -900,11 +1010,8 @@ class ThePutBackSaysWhatCameAfterTest(_Library):
         from amaze.dialogs import repair_dialog
         document = self._read(self.index)
         self._write(self.index + ".bak-1", document)
-        for suffix in (".mat", ".interface"):
-            self._file("mat/NEWER002" + suffix)
-        self._file("mat/NEWER002.stamp.json", json.dumps(
-            {"id": "NEWER002", "name": "Saved Later", "renderer": "Karma",
-             "categories": ["Later"]}))
+        self._asset(MATS, "NEWER002", {"name": "Saved Later", "renderer": "Karma",
+                                       "categories": ["Later"]})
         with open(self.index, "w", encoding="utf-8") as handle:
             handle.write("{ broken")
         screen = _Screen(messages.BUTTON_REPAIR_PUT_COPY_BACK, messages.BUTTONS_PUT_COPY_BACK[0])
@@ -931,8 +1038,9 @@ class TheReportSaysProblemsFirstTest(_Library):
     def test_the_folders_line_names_the_folders_and_what_they_hold(self):
         text = "\n".join(repair.report_lines(self._survey()))
         self.assertNotIn("accounted for by a section", text)
-        for folder in ("`mat/`", "`img/`", "`captures/`"):
-            self.assertIn(folder, text)
+        for folder in ("`%s/`" % MATS, "`%s/`" % NODES, "`code/`", "`colors/`"):
+            self.assertIn(folder, text)    # img/ and captures/ hold no asset's picture now
+        self.assertNotIn("`%s/`" % OLD, text, "a folder that is not there was named")
         self.assertIn("There are no orphaned files in", text)
 
     def test_a_problem_comes_before_every_all_well_line(self):
@@ -955,22 +1063,16 @@ class OnePutBackForMaterialsAndNodesTest(_Library):
         cops = os.path.join(self.dir, "cops.json")
         self._write(cops + ".bak-1", {"version": 8, "categories": ["_All"], "tags": [],
                                       "assets": []})
-        for suffix in (".mat", ".interface"):
-            self._file("mat/NEWNODE1" + suffix)
-        self._file("mat/NEWNODE1.stamp.json", json.dumps(
-            {"id": "NEWNODE1", "name": "Saved Later", "renderer": "SOP",
-             "categories": ["Later"]}))
+        self._asset(NODES, "NEWNODE1", {"name": "Saved Later", "renderer": "SOP",
+                                        "categories": ["Later"]})
         self._file("cops.json", "{ broken")
         done = repair.put_back(self._survey(), "cops.json", "bak-1")
         self.assertEqual(["NEWNODE1"], [row["id"] for row in self._read(cops)["assets"]])
         self.assertIn("added back", done["said"])
 
     def test_each_list_reads_its_own_pairs_through_one_function(self):
-        for asset_id, renderer in (("MATSTAMP2", "Karma"), ("NODESTAMP2", "SOP")):
-            for suffix in (".mat", ".interface"):
-                self._file("mat/" + asset_id + suffix)
-            self._file("mat/%s.stamp.json" % asset_id, json.dumps(
-                {"id": asset_id, "name": asset_id, "renderer": renderer}))
+        self._asset(MATS, "MATSTAMP2", {"name": "MATSTAMP2", "renderer": "Karma"})
+        self._asset(NODES, "NODESTAMP2", {"name": "NODESTAMP2", "renderer": "SOP"})
         findings = self._survey()
         self.assertEqual(["MATSTAMP2"],
                          [one for one, _r in repair.on_record(findings, "library.json")])
@@ -993,7 +1095,7 @@ class TheAuditToolTest(unittest.TestCase):
 
     def test_one_of_each_kind_fails_and_is_named(self):
         library = test_support.fresh_library(self)
-        for relative in ("mat/a.mat.x1.writing", "mat/a.mat.pre-adopt",
+        for relative in ("materials/a.mat.x1.writing", "materials/a.mat.pre-adopt",
                          "notes.json 2.bak-3", "stray.txt", "matX/pack/half.tmp"):
             path = os.path.join(library, *relative.split("/"))
             os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -1002,8 +1104,8 @@ class TheAuditToolTest(unittest.TestCase):
         os.makedirs(os.path.join(library, "img", "elsewhere"))
         done = self._run(library)
         self.assertEqual(1, done.returncode, done.stdout + done.stderr)
-        for kind, relative in (("scratch", "mat/a.mat.x1.writing"),
-                               ("pre-adopt", "mat/a.mat.pre-adopt"),
+        for kind, relative in (("scratch", "materials/a.mat.x1.writing"),
+                               ("pre-adopt", "materials/a.mat.pre-adopt"),
                                ("duplicate", "notes.json 2.bak-3"),
                                ("unknown", "stray.txt"),
                                ("scratch", "matX/pack/half.tmp"),

@@ -11,7 +11,7 @@ sys.path.insert(
         os.path.dirname(os.path.abspath(__file__)))))
 
 from amaze import branding
-from amaze.core import database
+from amaze.core import asset_record, database, library_files, material
 from amaze.render import nodes as nodes_mod
 from amaze.tests import make_file_fixtures as guard
 
@@ -56,10 +56,11 @@ def build_material(parent: hou.Node, name: str, colour) -> hou.Node:
 
 
 def save_pair(builder: hou.Node, asset_id: str, folder: str) -> None:
-    """The .mat + .interface unit, written the way render/nodes.py writes it. ▸p/asset-write-unit"""
-    with open(os.path.join(folder, asset_id + ".interface"), "w",
-              encoding="utf-8") as handle:
-        handle.write(builder.asCode())
+    """The .mat and the builder of `<id>.json`, the type alone as format 3 left it. ▸p/asset-write-unit"""
+    document = {"format": asset_record.FORMAT,
+                "builder": {"type": builder.type().name(), "interface": "", "values": {}}}
+    with open(os.path.join(folder, asset_id + ".json"), "wb") as handle:
+        handle.write(asset_record.encode(document))
     builder.saveItemsToFile(builder.allItems(),
                             os.path.join(folder, asset_id + ".mat"))
 
@@ -80,8 +81,8 @@ def make_thumbnail(path: str, colour) -> None:
 def main() -> int:
     if os.path.isdir(OUT):
         shutil.rmtree(OUT)
-    os.makedirs(os.path.join(OUT, "mat"))
-    os.makedirs(os.path.join(OUT, "img"))
+    assets = material.section_folder(OUT, library_files.MATERIALS)
+    os.makedirs(assets)
 
     hou.hipFile.clear(suppress_save_prompt=True)
     scratch = guard.neutral_scratch("library")
@@ -90,12 +91,12 @@ def main() -> int:
     written = []
     for asset_id, name, _category, colour in MATERIALS:
         builder = build_material(parent, name, colour)
-        save_pair(builder, asset_id, os.path.join(OUT, "mat"))
-        thumb = os.path.join(OUT, "img", asset_id + ".png")
+        save_pair(builder, asset_id, assets)
+        thumb = os.path.join(assets, asset_id + ".png")    # the asset's one picture, beside its files
         make_thumbnail(thumb, colour)
         builder.destroy()
-        written += [os.path.join(OUT, "mat", asset_id + ".mat"),
-                    os.path.join(OUT, "mat", asset_id + ".interface"),
+        written += [os.path.join(assets, asset_id + ".mat"),
+                    os.path.join(assets, asset_id + ".json"),
                     thumb]
         print("%s  %s" % (asset_id, name))
 

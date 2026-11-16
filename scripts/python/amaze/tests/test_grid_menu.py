@@ -54,6 +54,19 @@ def render(menu) -> list:
     return out
 
 
+def rows_of(table):
+    """Every row of a table, a fixed submenu's own rows included after the row that holds them."""
+    for entry in table:
+        yield entry
+        if isinstance(entry.children, tuple):
+            yield from rows_of(entry.children)
+
+
+def holds_rows(entry) -> bool:
+    """A fixed submenu: its rows carry the verbs, so it carries none of its own."""
+    return isinstance(entry.children, tuple)
+
+
 class TheTableIsWellFormED(unittest.TestCase):
     """Every name in a menu table resolves on the class that declares it; no panel, no Qt."""
 
@@ -68,8 +81,8 @@ class TheTableIsWellFormED(unittest.TestCase):
     def test_every_named_verb_exists_on_the_context(self):
         for name in MENU_CONTEXTS:
             context = getattr(sections, name)
-            for entry in context.GRID_MENU:
-                if not entry.label:
+            for entry in rows_of(context.GRID_MENU):
+                if not entry.label or holds_rows(entry):
                     continue
                 with self.subTest(context=name, entry=entry.label):
                     self.assertTrue(
@@ -82,10 +95,10 @@ class TheTableIsWellFormED(unittest.TestCase):
         """A missing name reads as False: a missing `shown` deletes the entry, a missing `needs` greys it."""
         for name in MENU_CONTEXTS:
             context = getattr(sections, name)
-            for entry in context.GRID_MENU:
+            for entry in rows_of(context.GRID_MENU):
                 if not entry.label:
                     continue
-                names = [entry.shown, entry.children]
+                names = [entry.shown, "" if holds_rows(entry) else entry.children]
                 if entry.needs not in ("any", "one", "always"):
                     names.append(entry.needs)
                 for fact in [n for n in names if n]:
@@ -99,8 +112,8 @@ class TheTableIsWellFormED(unittest.TestCase):
         """A submenu's children dispatch through the parent's verb, so a parent with children needs one."""
         for name in MENU_CONTEXTS:
             context = getattr(sections, name)
-            for entry in context.GRID_MENU:
-                if entry.children:
+            for entry in rows_of(context.GRID_MENU):
+                if entry.children and not holds_rows(entry):
                     with self.subTest(context=name, entry=entry.label):
                         self.assertTrue(
                             entry.verb,
@@ -210,18 +223,18 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
                  ["Copy To > [/mat, /stage/materiallibrary]",
                   "Convert to > [MaterialX(off), Redshift(off), Octane(off)](off)",    # neither renderer
                   "----",
-                  "Update Render", "Capture", "Customize", "Favorite",
+                  "Thumbnail > [Render Image, Capture Scene, Customize]", "Favorite",
                   "Export Package", "Delete"]),
                 ((0, 1),
                  ["Copy To > [/mat, /stage/materiallibrary]",
                   "Convert to > [MaterialX(off), Redshift, Octane]",
                   "----",
-                  "Update Render", "Capture(off)", "Customize", "Favorite",    # one capture, one tile
-                  "Export Package", "Delete"]),
+                  "Thumbnail > [Render Image, Capture Scene(off), Customize]",    # one capture, one tile
+                  "Favorite", "Export Package", "Delete"]),
                 ((),
                  ["Copy To > [/mat, /stage/materiallibrary](off)",
                   "Convert to > [MaterialX(off), Redshift(off), Octane(off)](off)", "----",
-                  "Update Render(off)", "Capture(off)", "Customize(off)",
+                  "Thumbnail > [Render Image(off), Capture Scene(off), Customize(off)](off)",
                   "Favorite(off)", "Export Package(off)", "Delete(off)"])):
             with self.subTest(selected=len(rows)):
                 with plugins_loaded("Redshift", "Octane"):
@@ -234,7 +247,7 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
             ["Apply",
              "Apply as > [Constant, Linear, CatmullRom, MonotoneCubic, "
              "Bezier, BSpline, Hermite]",
-             "----", "Capture", "Customize", "Favorite", "Export Package",
+             "----", "Thumbnail > [Capture Scene, Customize]", "Favorite", "Export Package",
              "Delete"],
             [row for row in shown if not row.startswith("Copy Color")])
         swatches = [row for row in shown if row.startswith("Copy Color")]
@@ -246,7 +259,7 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
         """The per-entry actions grey; Customize, Favorite and Delete act on the whole selection."""
         shown = self._show("gradient", (0, 1))
         self.assertEqual(
-            ["Apply(off)", "----", "Capture(off)", "Customize", "Favorite",
+            ["Apply(off)", "----", "Thumbnail > [Capture Scene(off), Customize]", "Favorite",
              "Export Package", "Delete"],
             [row for row in shown
              if not row.startswith(("Apply as", "Copy Color"))])
@@ -258,18 +271,19 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
     def test_node_keeps_its_shape(self):
         """The fixture has no Node assets, so this is the empty case, which once produced no menu."""
         self.assertEqual(
-            ["Load(off)", "----", "Update Render(off)", "Capture(off)",
-             "Customize(off)", "Favorite(off)", "Export Package(off)",
-             "Delete(off)"],
+            ["Load(off)", "----",
+             "Thumbnail > [Render Image(off), Capture Scene(off), Customize(off)](off)",
+             "Favorite(off)", "Export Package(off)", "Delete(off)"],
             self._show("cop"))
 
     def test_code_with_one_or_two_selected(self):
         for rows, expected in (
-                ((0,), ["New File", "----", "Apply", "Edit", "----", "Capture",
-                        "Customize", "Favorite", "Export Package", "Delete"]),
+                ((0,), ["New File", "----", "Apply", "Edit", "----",
+                        "Thumbnail > [Capture Scene, Customize]",
+                        "Favorite", "Export Package", "Delete"]),
                 ((0, 1), ["New File", "----", "Apply(off)", "Edit(off)", "----",
-                          "Capture(off)", "Customize", "Favorite", "Export Package",
-                          "Delete"])):
+                          "Thumbnail > [Capture Scene(off), Customize]", "Favorite",
+                          "Export Package", "Delete"])):
             with self.subTest(selected=len(rows)):
                 self.assertEqual(expected, self._show("code", rows))
 
@@ -287,23 +301,24 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
         top = ["New Folder", "Save Scene", "----"]    # the folder shown, whatever is selected
         for kind, count, expected in (
                 (locations.KIND_IMAGE, 1,
-                 top + ["Import", "Copy Path", "----", "Show Location",
-                        "Update Render", "Capture", "Customize", "Favorite",
+                 top + ["Import", "Copy Path", "----", "Open Location",
+                        "Thumbnail > [Render Image, Capture Scene, Customize]", "Favorite",
                         "Export Package"]),
                 (locations.KIND_IMAGE, 2,    # an image loads onto ONE node parameter
-                 top + ["Import(off)", "Copy Path", "----", "Show Location(off)",
-                        "Update Render", "Capture(off)", "Customize", "Favorite",
-                        "Export Package"]),
+                 top + ["Import(off)", "Copy Path", "----", "Open Location(off)",
+                        "Thumbnail > [Render Image, Capture Scene(off), Customize]",
+                        "Favorite", "Export Package"]),
                 (locations.KIND_GEO, 2,      # geometry imports the whole selection
-                 top + ["Import", "Copy Path", "----", "Show Location(off)",
-                        "Update Render", "Capture(off)", "Customize", "Favorite",
-                        "Export Package"]),
+                 top + ["Import", "Copy Path", "----", "Open Location(off)",
+                        "Thumbnail > [Render Image, Capture Scene(off), Customize]",
+                        "Favorite", "Export Package"]),
                 (locations.KIND_HIP, 1,      # a scene captures only while it is the open one
-                 top + ["Load", "Copy Path", "----", "Show Location",
-                        "Capture(off)", "Customize", "Favorite",
+                 top + ["Open", "Copy Path", "----", "Open Location",
+                        "Thumbnail > [Capture Scene(off), Customize]", "Favorite",
                         "Export Package"]),
                 (locations.KIND_OTHER, 1,    # what Houdini cannot open is absent, not greyed
-                 top + ["Copy Path", "----", "Show Location", "Capture", "Customize",
+                 top + ["Copy Path", "----", "Open Location",
+                        "Thumbnail > [Capture Scene, Customize]",
                         "Favorite", "Export Package"])):
             with self.subTest(kind=kind, selected=count):
                 rows = self._rows_of_kind(kind)
@@ -766,9 +781,13 @@ class EveryVerbREACHESItsOwner(unittest.TestCase):
         selection.setCurrentIndex(proxy.index(0, 0), flags.NoUpdate)
 
         def _exec(menu, *_a, **_k):
-            for action in menu.actions():
+            rows = list(menu.actions())
+            while rows:    # the Thumbnail submenu's rows are picked the same way
+                action = rows.pop(0)
                 if action.text() == label:
                     return action
+                if action.menu() is not None:
+                    rows.extend(action.menu().actions())
             raise AssertionError("%s has no %r entry" % (key, label))
 
         with mock.patch.object(QtWidgets.QMenu, "exec_", _exec):
@@ -779,7 +798,7 @@ class EveryVerbREACHESItsOwner(unittest.TestCase):
                 ("Favorite", "grid_toggle_favourite",
                  ("material", "gradient", "code", "file")),
                 ("Delete", "grid_delete", ("material", "gradient", "code")),
-                ("Update Render", "grid_update_preview", ("material", "file"))):
+                ("Render Image", "grid_update_preview", ("material", "file"))):
             for key in keys:
                 with self.subTest(section=key, entry=label):
                     with mock.patch.object(type(self.panel), owner) as verb:

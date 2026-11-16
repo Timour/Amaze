@@ -46,11 +46,15 @@ MenuEntry = collections.namedtuple(
 
 SEPARATOR = MenuEntry("")  # the empty label is what makes it a divider
 
-GRID_MENU_TAIL = (
-    MenuEntry("Update Render", verb="menu_update_preview",
+THUMBNAIL_MENU = (    # the tile's picture, one submenu in every section's tail
+    MenuEntry("Render Image", verb="menu_update_preview",
               shown="menu_offers_preview"),
-    MenuEntry("Capture", verb="menu_capture", needs="menu_capture_enabled"),
+    MenuEntry("Capture Scene", verb="menu_capture", needs="menu_capture_enabled"),
     MenuEntry("Customize", verb="menu_customize"),
+)
+
+GRID_MENU_TAIL = (
+    MenuEntry("Thumbnail", children=THUMBNAIL_MENU),
     MenuEntry("Favorite", verb="menu_favourite"),
     MenuEntry("Export Package", verb="menu_export_package"),
     MenuEntry("Delete", verb="menu_delete", shown="deletes_rows"),
@@ -1766,11 +1770,11 @@ class FileSection(FolderSection):
         SEPARATOR,
         MenuEntry("Import", verb="menu_import", needs="menu_import_enabled",
                   shown="selection_has_importable"),
-        MenuEntry("Load", verb="menu_load_scene", needs="one",
+        MenuEntry("Open", verb="menu_load_scene", needs="one",
                   shown="selection_has_scene"),
         MenuEntry("Copy Path", verb="menu_copy_path"),
         SEPARATOR,
-        MenuEntry("Show Location", verb="menu_reveal", needs="one"),
+        MenuEntry("Open Location", verb="menu_reveal", needs="one"),
     ) + GRID_MENU_TAIL
 
     _PATH_ONLY = DropRule(on_node="drop_file_path_on_node",    # per row kind: every kind hands its path to the node; the no-node door differs

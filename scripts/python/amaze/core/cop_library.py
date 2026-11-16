@@ -1,6 +1,6 @@
 """Models for the Nodes section: node-network assets of any context. ▸p/nodes-section"""
 
-from amaze.core import library, category, renderers
+from amaze.core import library, category, renderers, versions
 
 
 class CopCategories(category.Categories):
@@ -16,7 +16,9 @@ class CopLibrary(library.AssetLibrary):
 
     NOTES_SECTION = "cop"    # every `cop` name here is in saved data; never rename it
 
-    DB_FILENAME = "cops.json"    # its own database; the asset files share the material folders
+    DB_FILENAME = "cops.json"    # its own database, and its own folder of asset files
+
+    VERSION_SECTION = versions.NODE
 
     ROW_NOUN = "node setup"    # the manual's name for a row of this section
 

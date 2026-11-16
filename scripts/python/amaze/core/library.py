@@ -10,6 +10,7 @@ from typing import Any
 from PySide6 import QtCore, QtGui
 
 from amaze.core import asset_files
+from amaze.core import asset_record
 from amaze.core import captures
 from amaze.core import debug
 from amaze.core import grid_engine
@@ -22,42 +23,41 @@ from amaze import messages
 from amaze.prefs import prefs
 
 
-_STAMPED: dict = {}    # (library dir, asset id) -> repr of the record its stamp was last seen holding
-_STAMP_LOCK = threading.Lock()    # held by a worker across one stamp's check-and-write
+_STAMPED: dict = {}    # (library dir, asset id) -> repr of the record its metadata was last seen holding
+_STAMP_LOCK = threading.Lock()    # held by a worker across one asset's check-and-write
 
 
-def _holds(path: str, payload: str) -> bool:
-    """Whether the stamp at `path` reads exactly `payload`; an absent or unreadable one does not."""
+def _holds(path: str, record: dict) -> bool:
+    """Whether the `<id>.json` at `path` holds `record` as its metadata; absent or corrupt does not."""
+    return asset_record.read(path)[asset_record.METADATA] == record
+
+
+def _write(path: str, record: dict, mat_id) -> bool:
+    """Write one metadata section; a failure is logged and answered False, never raised."""
     try:
-        with open(path, "r", encoding="utf-8") as handle:
-            return handle.read() == payload
-    except (OSError, ValueError):
-        return False
-
-
-def _write(path: str, payload: str, mat_id) -> bool:
-    """Write one stamp atomically; a failure is logged and answered False, never raised."""
-    try:
-        with hostos.scratch_beside(path) as scratch:
-            with open(scratch, "w", encoding="utf-8", newline="\n") as handle:
-                handle.write(payload)
+        asset_record.write_section(path, asset_record.METADATA, record)
         return True
-    except OSError as exc:  # a safety net is never the thing being saved
-        debug.event("library", "recovery stamp not written",
+    except (OSError, ValueError) as exc:  # a safety net is never the thing being saved
+        debug.event("library", "asset metadata not written",
                     mat_id=str(mat_id), error=str(exc))
         return False
 
 
-class _StampWorker(QtCore.QThread):
-    """Checks the stamps a save did not change against disk, writing any that differ."""
+def _as_stored(record: dict) -> dict:
+    """`record` as it reads back from json, so a comparison with the file is exact."""
+    return json.loads(json.dumps(record, sort_keys=True))
 
-    checked = QtCore.Signal(object, object)    # (this worker, [(key, repr)] of stamps now current)
+
+class _StampWorker(QtCore.QThread):
+    """Checks the metadata a save did not change against disk, writing any that differ."""
+
+    checked = QtCore.Signal(object, object)    # (this worker, [(key, repr)] of records now current)
 
     def __init__(self, where, preferences, items) -> None:
         super().__init__()
-        self.where = where
-        self._preferences = preferences    # dir and asset_dir only, read on the GUI thread
-        self._items = items    # [(key, repr, payload)], every one a string
+        self.where = where    # (library dir, section database)
+        self._preferences = preferences    # dir and ext only, read on the GUI thread
+        self._items = items    # [(key, repr, record)]
         self._canceled = False    # set under _STAMP_LOCK: no write after it, its findings dropped
 
     def cancel(self) -> None:
@@ -65,17 +65,17 @@ class _StampWorker(QtCore.QThread):
 
     def run(self) -> None:
         current = []
-        for known, seen, payload in self._items:
+        section = self.where[1]
+        for known, seen, record in self._items:
             if self._canceled or self.isInterruptionRequested():
                 return
             try:
-                path = material.payload_path(self._preferences, known[1],
-                                             material.STAMP_SUFFIX)
+                path = asset_record.path_for(self._preferences, known[1], section)
             except hostos.PathEscape:
                 continue
-            if not _holds(path, payload):
+            if not _holds(path, record):
                 with _STAMP_LOCK:
-                    written = not self._canceled and _write(path, payload, known[1])
+                    written = not self._canceled and _write(path, record, known[1])
                 if not written:
                     continue
             current.append((known, seen))
@@ -90,19 +90,20 @@ class _StampEngine(QtCore.QObject):
         self._threads = []    # a running QThread must keep a reference until it ends ▸r/model-contracts
 
     def start(self, where, preferences, items) -> None:
-        """Check `items` of the library at `where` on a worker, its older checks stopped first."""
-        self.cancel(where)
+        """Check `items` of `where`, (library dir, section), on a worker, its older checks stopped first."""
+        self.cancel(*where)
         worker = _StampWorker(where, preferences, items)
         worker.checked.connect(self._checked)
         worker.finished.connect(functools.partial(self._finished, worker))    # never sender()
         self._threads.append(worker)
         worker.start()
 
-    def cancel(self, where=None) -> None:
-        """Stop the checks of the library at `where`, or all; none writes after this returns."""
+    def cancel(self, where=None, section=None) -> None:
+        """Stop the checks of library `where` and of `section`, None for any; none writes after."""
         with _STAMP_LOCK:
             for worker in self._threads:
-                if where is None or worker.where == where:
+                if ((where is None or worker.where[0] == where)
+                        and (section is None or worker.where[1] == section)):
                     worker.cancel()
 
     def _checked(self, worker, current) -> None:
@@ -124,31 +125,38 @@ stamps = workers.install(__name__ + ".stamps", _StampEngine, QtCore.QCoreApplica
 
 
 class _StampWriter:
-    """Rewrites stale stamps; call only after a successful index write. ▸p/recovery-stamp"""
+    """Rewrites stale metadata in `<id>.json`; only after an index write. ▸p/recovery-stamp"""
 
     def __init__(self, library):
         self._library = library
+        self._section = library.DB_FILENAME
 
     @staticmethod
-    def forget(preferences, mat_id) -> None:
-        """Drop what this session knows of one asset's stamp, so the next save checks it again."""
-        stamps.cancel(str(preferences.dir))    # a running check may hold the record before this one
+    def forget(preferences, mat_id, section=None) -> None:
+        """Drop what this session knows of one asset's metadata; the next save checks it."""
+        stamps.cancel(str(preferences.dir), section)    # a running check may hold an older record
         _STAMPED.pop((str(preferences.dir), str(mat_id)), None)
 
     @staticmethod
-    def forget_library(preferences) -> None:
-        """Drop what this session knows of every stamp in one library, once its rows are read afresh."""
+    def forget_library(preferences, section=None) -> None:
+        """Drop what this session knows of one library's metadata, its rows read afresh."""
         where = str(preferences.dir)
-        stamps.cancel(where)
+        stamps.cancel(where, section)
         for known in [key for key in _STAMPED if key[0] == where]:
             del _STAMPED[known]
 
+    def _worker_preferences(self):
+        preferences = self._library.preferences
+        return types.SimpleNamespace(dir=preferences.dir, ext=preferences.ext)
+
     def refresh(self, indexed=None) -> int:
-        """Stamp now the records unlike `indexed`, the index before this save; a worker checks the rest."""
+        """Write now the records unlike `indexed`, the index before; a worker checks the rest."""
+        if self._section not in database.ASSET_FILE_OWNERS:    # Code and Colors own no asset folder
+            return 0
         written, later = 0, []
         preferences = self._library.preferences
         where = str(preferences.dir)
-        stamps.cancel(where)    # no older check may write after the stamps written here
+        stamps.cancel(where, self._section)    # no older check may write after these
         for asset in list(self._library._assets):
             known = (where, str(asset.mat_id))
             try:
@@ -158,26 +166,24 @@ class _StampWriter:
                     continue
                 if not material.is_safe_asset_id(known[1]):
                     continue
-                payload = json.dumps(record, indent=1, sort_keys=True)
+                stored = _as_stored(record)
                 if indexed is not None and self._indexed(indexed.get(known[1]), record):
-                    later.append((known, seen, payload))
+                    later.append((known, seen, stored))
                     continue
-                path = material.payload_path(preferences, known[1],
-                                             material.STAMP_SUFFIX)
+                path = asset_record.path_for(preferences, known[1], self._section)
             except hostos.PathEscape:
                 continue
             except (TypeError, ValueError) as exc:  # logged, never raised: the index write already landed
-                debug.event("library", "recovery stamp could not be built",
+                debug.event("library", "asset metadata could not be built",
                             mat_id=str(asset.mat_id), error=str(exc))
                 continue
-            if _holds(path, payload):
+            if _holds(path, stored):
                 _STAMPED[known] = seen
-            elif _write(path, payload, asset.mat_id):
+            elif _write(path, stored, asset.mat_id):
                 written += 1
                 _STAMPED[known] = seen
         if later:
-            stamps.start(where, types.SimpleNamespace(dir=preferences.dir,
-                                                      asset_dir=preferences.asset_dir), later)
+            stamps.start((where, self._section), self._worker_preferences(), later)
         return written
 
     def _indexed(self, row, record) -> bool:
@@ -261,7 +267,7 @@ class AssetLibrary(grid_engine.GridEngine,
         self._assets = [self._asset_from_row(d)  # non-dict rows are skipped
                         for d in self._data["assets"]
                         if isinstance(d, dict)]
-        _StampWriter.forget_library(self.preferences)
+        _StampWriter.forget_library(self.preferences, self.DB_FILENAME)
         self._remember_content_state()
 
 
@@ -318,32 +324,18 @@ class AssetLibrary(grid_engine.GridEngine,
         return material.Material.from_dict(row)
 
     def _tile_image_path(self, row: int, spec=None) -> str:
-        """The file a row's tile loads: its capture or chosen icon, else its render; "" if unsafe."""
-        if spec is None:
-            spec = self.tile_icon(row)
-        if (spec or {}).get("face") == "capture":
-            return self.capture_path(row)
+        """The file a row's tile loads: its one picture, render or capture; "" if unsafe."""
         return tile_icons.tile_read_path(
-            self.preferences, str(self._assets[row].mat_id),
-            tile_icons.is_custom(spec))
+            self.preferences, str(self._assets[row].mat_id), self.DB_FILENAME)
 
     def capture_path(self, row: int) -> str:
-        """Where this row's capture lives; "" for a row that does not exist or an unsafe id."""
+        """Where a capture of this row is written: its one picture; "" for no row or an unsafe id."""
         if not 0 <= row < len(self._assets):
             return ""
         mat_id = str(self._assets[row].mat_id)
         if not material.is_safe_asset_id(mat_id):
             return ""
-        return captures.asset_path(self.preferences, mat_id)
-
-    def has_capture(self, row: int) -> bool:
-        return captures.exists(self.capture_path(row))
-
-    def capture_image(self, row: int):
-        """The row's capture, read now for the Customize preview; None where there is none."""
-        path = self.capture_path(row)
-        image = QtGui.QImage(path) if captures.exists(path) else QtGui.QImage()
-        return None if image.isNull() else image
+        return tile_icons.thumbnail_path(self.preferences, mat_id, self.DB_FILENAME)
 
     def _on_capture_landed(self, key) -> None:
         """A capture landed for `key`: re-point and repaint that tile, dropping the old picture."""
@@ -354,7 +346,7 @@ class AssetLibrary(grid_engine.GridEngine,
 
     def switch_model_data(self):
         """Point this model at the library Preferences names; stamp checks stop."""
-        stamps.cancel()    # a check still running holds the records of the library left behind
+        stamps.cancel(section=self.DB_FILENAME)    # a running check holds the library left behind
         self.beginResetModel()  # required: without it proxies and selection keep stale rows ▸r/model-contracts
         try:
             self._data = database.open_document(self, reload=True)
@@ -363,7 +355,7 @@ class AssetLibrary(grid_engine.GridEngine,
                 self._asset_from_row(d) for d in self._data["assets"]
                 if isinstance(d, dict)
             ]
-            _StampWriter.forget_library(self.preferences)
+            _StampWriter.forget_library(self.preferences, self.DB_FILENAME)
             self._remember_content_state()  # a reload is a fresh read of the library, content included
             self._drop_content_label_caches()
             self.rebuild_thumbs()
@@ -412,7 +404,7 @@ class AssetLibrary(grid_engine.GridEngine,
             self._row_keys.append(key)
         self._thumb_rows[key] = row
         if base_changed:    # the ACTIVE version's archive slot follows a fresh base picture
-            versions.record_render(self.preferences, mat_id)
+            versions.record_render(self.preferences, mat_id, self.VERSION_SECTION)
         thumbnails.engine.discard(key)
         self.row_changed(
             row, [QtCore.Qt.ItemDataRole.DecorationRole])
@@ -441,9 +433,6 @@ class AssetLibrary(grid_engine.GridEngine,
         home = hostos.canonical_path_key(str(self.preferences.dir or ""))
         if spec is None:
             spec = self.tile_icon(row)
-        if (spec or {}).get("face") == "capture":
-            return (home, self.DB_FILENAME, self._assets[row].mat_id,
-                    "capture", "", "", 0)
         if not tile_icons.is_custom(spec):
             return (home, self.DB_FILENAME, self._assets[row].mat_id,
                     "", "", "", 0)
@@ -460,14 +449,14 @@ class AssetLibrary(grid_engine.GridEngine,
         return True
 
     def default_face(self, row: int) -> str:
-        """Preview where the row can have a picture, Generic where it cannot."""
-        return "preview" if self.can_preview(row) else "generic"
+        """Image where the row can have a picture, Generic where it cannot."""
+        return "image" if self.can_preview(row) else "generic"
 
     def preview_image(self, row: int):
         """The row's own picture, read now for the Customize preview; None where there is none yet."""
         if not 0 <= row < len(self._assets):
             return None
-        image = QtGui.QImage(tile_icons.thumbnail_path(self.preferences, self._assets[row].mat_id))
+        image = QtGui.QImage(self._tile_image_path(row))
         return None if image.isNull() else image
 
     def _missing_thumb_image(self, row: int = -1):
@@ -606,36 +595,20 @@ class AssetLibrary(grid_engine.GridEngine,
         return failed
 
     def _tile_icon_landed(self, row: int, spec, stored: bool) -> bool:
-        """After the store write: compose or drop this row's icon picture and refresh its tile."""
-        asset = self._assets[row]
-        written = stored
-        if tile_icons.is_custom(spec):
-            written = written and bool(
-                tile_icons.render_for(self.preferences, asset.mat_id, spec)
-            )
-        else:
-            tile_icons.clear_for(self.preferences, asset.mat_id)
+        """After the store write: refresh the tile; a custom icon is composed for display, no file."""
         self._add_thumb_paths(row, base_changed=False)
-        return written
+        return stored
 
     def commit_tile_icons(self, rows=None) -> None:
         """Nothing to commit: `set_tile_icons` wrote the icon store, and no record field moved."""
 
     def rerender_tile_icons(self) -> int:
         """Recompose every icon in this library, for when the look changed rather than the choice."""
-        made = 0
-        for row, asset in enumerate(self._assets):
-            spec = self.tile_icon(row)
-            if not tile_icons.is_custom(spec):
-                continue
-            if tile_icons.render_for(self.preferences, asset.mat_id, spec):
-                made += 1
-            self._add_thumb_paths(row, base_changed=False)
-        return made
+        return tile_icons.repaint_custom(self)    # composed in memory: a repaint is the whole update
 
     def _decoration_image(self, row: int):
-        """A row's tile picture, the library's own PNG through the thumbnail engine."""
-        if tile_icons.face_for(self, row) == "generic":
+        """A row's tile picture: its PNG through the thumbnail engine, or its icon composed in memory."""
+        if tile_icons.face_for(self, row) in ("generic", "custom"):
             return tile_icons.chosen_image(self, row)
         key = self._thumb_key(row)
         image = thumbnails.engine.request_file(key, self._mat_paths[row])
@@ -671,7 +644,7 @@ class AssetLibrary(grid_engine.GridEngine,
         except (AttributeError, TypeError) as exc:
             debug.event("library", "could not mark a row for removal",
                         error=str(exc))
-        _StampWriter.forget(self.preferences, going.mat_id)    # its stamp may be unlinked with it
+        _StampWriter.forget(self.preferences, going.mat_id, self.DB_FILENAME)    # unlinked with it, maybe
 
         self.beginRemoveRows(QtCore.QModelIndex(), row, row)  # del by INDEX: by value drops the first EQUAL one
         del self._assets[row]
@@ -707,7 +680,7 @@ class AssetLibrary(grid_engine.GridEngine,
             return str(asset.license or "")
 
         if role == self.CropRole:
-            return tile_icons.face_for(self, row) == "capture"
+            return tile_icons.face_for(self, row) == "image"    # a capture fills the tile; a render is square
 
         if role == self.FavoriteRole:
             return locations.is_favourite(  # the USER'S star, in the library store, never the record
@@ -790,7 +763,7 @@ class AssetLibrary(grid_engine.GridEngine,
         wanted: dict = {}
         for asset_id, field, value in fields:
             wanted.setdefault(str(asset_id), {})[field] = value
-            _StampWriter.forget(self.preferences, asset_id)
+            _StampWriter.forget(self.preferences, asset_id, self.DB_FILENAME)
         for row, asset in enumerate(self._assets):
             changes = wanted.get(str(asset.mat_id))
             if not changes:
@@ -849,7 +822,7 @@ class AssetLibrary(grid_engine.GridEngine,
         for row in rows:
             try:
                 parsed.append(self._asset_from_row(row))
-                _StampWriter.forget(self.preferences, parsed[-1].mat_id)
+                _StampWriter.forget(self.preferences, parsed[-1].mat_id, self.DB_FILENAME)
             except Exception as exc:                        # noqa: BLE001
                 debug.event("database", "adopted row not readable",
                             file=self.DB_FILENAME, error=str(exc),
@@ -879,7 +852,7 @@ class AssetLibrary(grid_engine.GridEngine,
         for index in range(len(self._assets) - 1, -1, -1):  # one pass, highest row first so indices stay valid
             if str(self._assets[index].mat_id) not in ids:
                 continue
-            _StampWriter.forget(self.preferences, self._assets[index].mat_id)
+            _StampWriter.forget(self.preferences, self._assets[index].mat_id, self.DB_FILENAME)
             self.beginRemoveRows(QtCore.QModelIndex(), index, index)
             try:
                 del self._assets[index]
@@ -953,7 +926,7 @@ class AssetLibrary(grid_engine.GridEngine,
 
     def asset_files(self, mat_id: str) -> dict:
         """`asset_files_for` this library; a new per-asset file is added THERE and nowhere else."""
-        return asset_files.asset_files_for(self.preferences, mat_id)
+        return asset_files.asset_files_for(self.preferences, mat_id, self.DB_FILENAME)
 
     def _hold_pre_edit_files(self, mat_id: str) -> dict:
         """Copy the asset's current files aside for the version store: {archive suffix: held path}."""
@@ -1139,8 +1112,8 @@ class AssetLibrary(grid_engine.GridEngine,
             return None
         try:
             return hostos.disk_state(material.payload_path(
-                self.preferences, mat_id, self.preferences.ext))
-        except (hostos.PathEscape, TypeError):
+                self.preferences, mat_id, self.preferences.ext, self.DB_FILENAME))
+        except (hostos.PathEscape, TypeError, KeyError):    # Code and Colors own no `.mat`
             return None
 
     def _remember_content_state(self) -> None:
@@ -1151,11 +1124,7 @@ class AssetLibrary(grid_engine.GridEngine,
         }
         self._version_count_cache = {}  # per id, so a paint pass never opens the ledger; invalidated per write
         self._active_version_cache = {}
-        try:  # one listdir seeds both caches for assets with no versions folder
-            have = set(os.listdir(versions.store_root(
-                self.preferences, self.VERSION_SECTION)))
-        except OSError:
-            have = set()
+        have = versions.stored_ids(self.preferences, self.VERSION_SECTION)    # seeds both caches
         for asset in self._assets:
             if str(asset.mat_id) not in have:
                 self._version_count_cache[str(asset.mat_id)] = 0
@@ -1219,7 +1188,7 @@ class MaterialLibrary(AssetLibrary):
         if mid in self._usd_cache:
             return self._usd_cache[mid]
         try:
-            node_type = material_files.get_saved_node_type(self.preferences, asset)
+            node_type = material_files.get_saved_node_type(self.preferences, asset, self.DB_FILENAME)
             result = node_type in material_files.LOP_CAPABLE_NODE_TYPES
         except Exception:
             result = False

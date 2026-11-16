@@ -20,11 +20,35 @@ from PySide6 import QtCore, QtWidgets
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
-from amaze.core import database, material  # noqa: E402
+from amaze.core import asset_record, database, library_files, material  # noqa: E402
 from amaze.helpers import hostos  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
 SCHEMA = database.SCHEMA_VERSION
+MATERIALS_KEY = library_files.SECTION_FOLDERS[library_files.MATERIALS] + "/"    # "materials/"
+
+
+def _metadata_id(path) -> str:
+    """The asset whose `<id>.json`, or a scratch of it, `path` names in a section folder; else ""."""
+    name = os.path.basename(str(path))
+    folder = os.path.basename(os.path.dirname(os.path.abspath(str(path))))
+    if folder in library_files.SECTION_FOLDERS.values() and material.RECORD_SUFFIX in name:
+        return name.split(".")[0]
+    return ""
+
+
+def _metadata_path(preferences, mat_id) -> str:
+    """A material's `<id>.json`, whose metadata section the format 3 stamp became."""
+    return asset_record.path_for(preferences, mat_id, library_files.MATERIALS)
+
+
+def _metadata(preferences, mat_id) -> dict:
+    return asset_record.read(_metadata_path(preferences, mat_id))[asset_record.METADATA]
+
+
+def _drop_metadata(preferences, mat_id) -> None:
+    """The metadata section gone and the builder kept: format 4's missing stamp."""
+    asset_record.write_section(_metadata_path(preferences, mat_id), asset_record.METADATA, {})
 
 
 class _Case(unittest.TestCase):
@@ -552,7 +576,6 @@ class ARepairedFileCanBeSavedAgainTest(_SettingsHome):
         class _Prefs:
             """A stub, never a real `Prefs`: one under hython finds the install."""
 
-            asset_dir = "mat/"
             img_dir = "img/"
             img_ext = ".png"
             ext = ".mat"
@@ -1404,9 +1427,8 @@ class AOneRowSaveTouchesOneStamp(unittest.TestCase):
         real = builtins.open
 
         def counting(file, *args, **kwargs):
-            name = os.path.basename(str(file))
-            if material.STAMP_SUFFIX in name:
-                opened.append(name.split(".")[0])
+            if _metadata_id(file):
+                opened.append(_metadata_id(file))
             return real(file, *args, **kwargs)
 
         with mock.patch("builtins.open", counting):
@@ -1414,12 +1436,10 @@ class AOneRowSaveTouchesOneStamp(unittest.TestCase):
         return opened
 
     def _stamp_path(self, mat_id):
-        return os.path.join(self.prefs.dir, self.prefs.asset_dir,
-                            str(mat_id) + material.STAMP_SUFFIX)
+        return _metadata_path(self.prefs, mat_id)
 
     def _stamp(self, mat_id):
-        with open(self._stamp_path(mat_id), encoding="utf-8") as handle:
-            return json.load(handle)
+        return _metadata(self.prefs, mat_id)
 
     def _renamed_elsewhere(self, mat_id, name):
         """Another machine renames `mat_id`, writing its index row and its stamp as its save does."""
@@ -1431,9 +1451,8 @@ class AOneRowSaveTouchesOneStamp(unittest.TestCase):
                 row["name"] = name
         with open(index, "w", encoding="utf-8") as handle:
             json.dump(document, handle)
-        stamp = dict(self._stamp(mat_id), name=name)
-        with open(self._stamp_path(mat_id), "w", encoding="utf-8") as handle:
-            json.dump(stamp, handle, indent=1, sort_keys=True)
+        asset_record.write_section(self._stamp_path(mat_id), asset_record.METADATA,
+                                   dict(self._stamp(mat_id), name=name))
 
     def _undo_rename_here(self, row, mat_id, name):
         self.assertEqual("Elsewhere", self.model.assets[row].name,
@@ -1497,12 +1516,10 @@ class AFirstSaveLeavesTheUnchangedStampsToAWorker(unittest.TestCase):
         self.assertGreater(len(self.ids), 3, "premise: four rows")
 
     def _stamp_path(self, mat_id):
-        return os.path.join(self.prefs.dir, self.prefs.asset_dir,
-                            str(mat_id) + material.STAMP_SUFFIX)
+        return _metadata_path(self.prefs, mat_id)
 
     def _stamp(self, mat_id):
-        with open(self._stamp_path(mat_id), encoding="utf-8") as handle:
-            return json.load(handle)
+        return _metadata(self.prefs, mat_id)
 
     @staticmethod
     def _until(done, seconds=10.0) -> bool:
@@ -1522,7 +1539,7 @@ class AFirstSaveLeavesTheUnchangedStampsToAWorker(unittest.TestCase):
 
         def held(path, payload):
             if (threading.current_thread() is not threading.main_thread()
-                    and os.path.basename(path) == mat_id + material.STAMP_SUFFIX):
+                    and os.path.basename(path) == mat_id + material.RECORD_SUFFIX):
                 reached.set()
                 release.wait(10)
             return real(path, payload)
@@ -1534,8 +1551,8 @@ class AFirstSaveLeavesTheUnchangedStampsToAWorker(unittest.TestCase):
         return reached, release
 
     def _held_by_a_check(self, mat_id):
-        """`mat_id`'s stamp removed, then a save leaves a check stopped on the way to rewriting it."""
-        os.remove(self._stamp_path(mat_id))
+        """`mat_id`'s metadata dropped, then a save leaves a check stopped on the way to rewriting it."""
+        _drop_metadata(self.prefs, mat_id)
         reached, release = self._worker_reads_wait(mat_id)
         self.assertTrue(self.model.set_tile_name(self._row(self.ids[2]), "First Here"),
                         "premise: saved")
@@ -1549,10 +1566,8 @@ class AFirstSaveLeavesTheUnchangedStampsToAWorker(unittest.TestCase):
         opened, real = [], builtins.open
 
         def counting(file, *args, **kwargs):
-            name = os.path.basename(str(file))
-            if (material.STAMP_SUFFIX in name
-                    and threading.current_thread() is threading.main_thread()):
-                opened.append(name.split(".")[0])
+            if _metadata_id(file) and threading.current_thread() is threading.main_thread():
+                opened.append(_metadata_id(file))
             return real(file, *args, **kwargs)
 
         with mock.patch("builtins.open", counting):
@@ -1598,11 +1613,11 @@ class AFirstSaveLeavesTheUnchangedStampsToAWorker(unittest.TestCase):
 
     def test_an_unchanged_missing_stamp_is_written_by_the_worker_before_shutdown(self):
         unchanged, written, real = self.ids[3], [], hostos.scratch_beside
-        os.remove(self._stamp_path(unchanged))
+        _drop_metadata(self.prefs, unchanged)
 
         def watched(path, *args, **kwargs):
-            if path.endswith(material.STAMP_SUFFIX):
-                written.append((os.path.basename(path).split(".")[0],
+            if _metadata_id(path):
+                written.append((_metadata_id(path),
                                 threading.current_thread() is threading.main_thread()))
             return real(path, *args, **kwargs)
 
@@ -1651,7 +1666,7 @@ class AFirstSaveLeavesTheUnchangedStampsToAWorker(unittest.TestCase):
         self.assertEqual(-1, self._row(held), "premise: the delete was taken in")
         release.set()
         test_support.settle_stamps()
-        self.assertFalse(os.path.exists(self._stamp_path(held)),
+        self.assertEqual({}, self._stamp(held),
                          "a check wrote a stamp back for an asset deleted while it ran")
 
     def test_a_library_switch_stops_the_check_of_the_library_left(self):
@@ -1662,7 +1677,7 @@ class AFirstSaveLeavesTheUnchangedStampsToAWorker(unittest.TestCase):
         self.model.switch_model_data()
         release.set()
         test_support.settle_stamps()
-        self.assertFalse(os.path.exists(left),
+        self.assertEqual({}, asset_record.read(left)[asset_record.METADATA],
                          "a check went on writing into the library left behind")
 
     def test_what_a_stopped_check_found_never_counts(self):
@@ -1713,14 +1728,15 @@ class _CheckCase(unittest.TestCase):
         from amaze.core import repair
         self.library_mod = library_mod
         self.repair = repair
-        self.mat_dir = os.path.join(self.prefs.dir, self.prefs.asset_dir)
+        self.mat_dir = material.section_folder(self.prefs.dir, library_files.MATERIALS)
+        self.node_dir = material.section_folder(self.prefs.dir, library_files.NODES)
         self.img_dir = os.path.join(self.prefs.dir, self.prefs.img_dir)
 
     def _model(self):
         return self.library_mod.MaterialLibrary(preferences=self.prefs)
 
     def _survey(self):
-        return self.repair.survey(self.prefs.dir, self.prefs.asset_dir, self.prefs.img_dir)
+        return self.repair.survey(self.prefs.dir, self.prefs.img_dir)
 
     def _text(self, findings):
         return "\n".join(self.repair.report_lines(findings))
@@ -1731,7 +1747,7 @@ class _CheckCase(unittest.TestCase):
         return self.repair.move_aside(findings, "unlisted")
 
     def _unlisted(self, findings, folder=None):
-        return findings["unaccounted"][folder or self.prefs.asset_dir]
+        return findings["unaccounted"][folder or MATERIALS_KEY]
 
     def _own_path(self):
         return os.path.join(self.prefs.dir, "library.json")
@@ -1744,10 +1760,12 @@ class _CheckCase(unittest.TestCase):
         with open(self._own_path(), "w", encoding="utf-8") as handle:
             json.dump(document, handle, indent=4)
 
-    def _files_for(self, asset_id):
-        """Both halves present, so only the unlisted check is under test."""
-        paths = [os.path.join(self.mat_dir, asset_id + ".mat"),
-                 os.path.join(self.mat_dir, asset_id + ".interface")]
+    def _files_for(self, asset_id, folder=None):
+        """Both files present, so only the unlisted check is under test."""
+        folder = folder or self.mat_dir
+        os.makedirs(folder, exist_ok=True)
+        paths = [os.path.join(folder, asset_id + ".mat"),
+                 os.path.join(folder, asset_id + material.RECORD_SUFFIX)]
         for path in paths:
             with open(path, "w", encoding="utf-8") as handle:
                 handle.write("owned by " + asset_id + "\n")
@@ -1821,12 +1839,13 @@ class AnEmptyListWithFilesLeftBehindIsAskedAboutTest(_CheckCase):
     """Listing nothing is not owning nothing; the unlisted files are named and the user decides."""
 
     COP_ID = "COPOWNED1"
+    NODES_KEY = library_files.SECTION_FOLDERS[library_files.NODES] + "/"
 
     def setUp(self):
         super().setUp()
         self.cops = os.path.join(self.prefs.dir, "cops.json")
         self.code = os.path.join(self.prefs.dir, "code.json")
-        self.owned = self._files_for(self.COP_ID)
+        self.owned = self._files_for(self.COP_ID, self.node_dir)
 
     def _list(self, path, ids=(), text=None, encoding="utf-8"):
         with open(path, "w", encoding=encoding) as handle:
@@ -1855,10 +1874,10 @@ class AnEmptyListWithFilesLeftBehindIsAskedAboutTest(_CheckCase):
                             "%s moved before anyone chose to move it" % os.path.basename(path))
         self.assertNotIn("could not be read", text)
         self.assertIn("Node: the database is there and holds nothing.", text)
-        self.assertIn("2 files in the mat folder", text,
+        self.assertIn("2 files in the nodes folder", text,
                       "the report does not say how many files, in which folder")
-        self.assertNotIn("mat/ folder", text,
-                         "the folder is named with the separator prefs stores it with")
+        self.assertNotIn("nodes/ folder", text,
+                         "the folder is named with the separator the survey keys it by")
         explanations = [line for line in self.repair.report_lines(findings)
                         if "looks the same whether" in line]
         self.assertEqual(1, len(explanations), "the ambiguity is not said, or said twice")
@@ -1893,7 +1912,7 @@ class AnEmptyListWithFilesLeftBehindIsAskedAboutTest(_CheckCase):
         self.assertFalse(getattr(connector, "_write_blocked", False),
                          "premise: its load was not refused")
         findings = self._survey()
-        self.assertIn(self.COP_ID + ".mat", self._unlisted(findings),
+        self.assertIn(self.COP_ID + ".mat", self._unlisted(findings, self.NODES_KEY),
                       "an open model that agrees its list is empty hid the files left behind")
         with self.assertRaises(ValueError):
             self.repair.move_aside(findings, "unlisted")
@@ -1906,7 +1925,7 @@ class AnEmptyListWithFilesLeftBehindIsAskedAboutTest(_CheckCase):
         self._list(self.cops)
         self._list(self.code, ids=[self.COP_ID])
         findings = self._survey()
-        self.assertNotIn(self.COP_ID + ".mat", self._unlisted(findings),
+        self.assertNotIn(self.COP_ID + ".mat", self._unlisted(findings, self.NODES_KEY),
                          "the union was read as one list instead of all of them")
         self._move_unlisted(findings)
         for path in self.owned:
@@ -1919,12 +1938,13 @@ class AnEmptyListWithFilesLeftBehindIsAskedAboutTest(_CheckCase):
         self._list(self.cops)
         for path in self.owned:
             os.remove(path)
-        leftover = os.path.join(self.img_dir, "GONEMATERIAL1.png")
+        leftover = os.path.join(self.mat_dir, "GONEMATERIAL1.png")    # the one picture, orphaned
         with open(leftover, "wb") as handle:
             handle.write(b"a thumbnail whose material is gone")
         findings = self._survey()
-        self.assertEqual([], self._unlisted(findings),
-                         "premise: nothing in the asset folder may be unlisted")
+        self.assertEqual([], self._unlisted(findings, self.NODES_KEY),
+                         "premise: nothing in the Nodes folder may be unlisted")
+        self.assertIn("GONEMATERIAL1.png", self._unlisted(findings, MATERIALS_KEY))
         self.assertTrue(findings["complete"])
         self._move_unlisted(findings)
         self.assertFalse(os.path.exists(leftover),
@@ -1943,17 +1963,20 @@ class AnEmptyListWithFilesLeftBehindIsAskedAboutTest(_CheckCase):
         self.assertFalse(os.path.exists(genuine), "the stray stayed beside an empty Code list")
 
     def test_an_empty_code_list_is_still_read_into_the_union(self):
-        """A Code list's ids count, so its tile icon is not unlisted."""
+        """A Code list's ids count, so its captured picture is not unlisted."""
         self._list(self.cops, ids=[self.COP_ID])
         self._list(self.code, ids=["CODEASSET1"])
-        icon = os.path.join(self.img_dir, "CODEASSET1_icon.png")
+        code_dir = os.path.join(self.prefs.dir, library_files.CODE_FOLDER)
+        os.makedirs(code_dir, exist_ok=True)
+        icon = os.path.join(code_dir, "CODEASSET1.png")
         with open(icon, "wb") as handle:
-            handle.write(b"a Code tile's own icon")
+            handle.write(b"a Code tile's own capture")
         findings = self._survey()
-        self.assertNotIn("CODEASSET1_icon.png", self._unlisted(findings, self.prefs.img_dir))
+        self.assertNotIn("CODEASSET1.png",
+                         self._unlisted(findings, library_files.CODE_FOLDER + "/"))
         self._move_unlisted(findings)
         self.assertTrue(os.path.exists(icon),
-                        "a Code asset's icon was moved - the Code list's ids are not in the union")
+                        "a Code asset's picture was moved - the Code list's ids are not in the union")
 
     def test_the_report_carries_no_parse_position(self):
         """No raw exception text on screen, no errno, no parse position."""
@@ -2019,7 +2042,7 @@ class AnEmptyListWithFilesLeftBehindIsAskedAboutTest(_CheckCase):
         """Fail closed: an empty answer is the one that lets files move."""
         shutil.rmtree(self.mat_dir)
         findings = self._survey()
-        self.assertEqual([self.prefs.asset_dir], findings["unreadable_folders"],
+        self.assertEqual([MATERIALS_KEY], findings["unreadable_folders"],
                          "a folder that could not be listed was reported as holding nothing")
         self.assertFalse(findings["complete"])
         with self.assertRaises(ValueError):
@@ -2027,11 +2050,13 @@ class AnEmptyListWithFilesLeftBehindIsAskedAboutTest(_CheckCase):
 
     def test_the_guard_and_the_sweep_share_one_classifier(self):
         """A guard counting a different set than the sweep touches is a second opinion."""
-        pair = (".mat", ".interface")
+        pair = self.repair.ASSET_SIDECARS
         self.assertEqual(
             "ABC", database.asset_id_for_file("ABC_cop.mat", pair, "_cop"))
         self.assertEqual(
-            "ABC", database.asset_id_for_file("ABC.interface", pair, "_cop"))
+            "ABC", database.asset_id_for_file("ABC.json", pair, "_cop"))
+        self.assertIsNone(    # format 3's sidecar is no asset file: a superseded leftover
+            database.asset_id_for_file("ABC.interface", pair, "_cop"))
         self.assertIsNone(
             database.asset_id_for_file("ABC.mat.writing", pair, "_cop"),
             "a scratch file is not an asset file, and the sweep does not "

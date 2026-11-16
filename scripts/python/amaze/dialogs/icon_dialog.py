@@ -26,8 +26,7 @@ class IconDialog(base_dialog.AssetDialog):
                  parent=None, tile_name=None,
                  tile_name_enabled: bool = True, tile_tags=None,
                  categories=None, tile_category="",
-                 face=None, faces=None, can_preview=True,
-                 can_capture=False) -> None:
+                 face=None, faces=None, can_preview=True) -> None:
         super().__init__(tile_name if tile_name and tile_name_enabled
                          else amazetheme.TITLE_TILE_ICON,    # the asset's name; a multi-selection keeps the generic one
                          fixed_size=False, parent=parent)
@@ -40,7 +39,6 @@ class IconDialog(base_dialog.AssetDialog):
             tile_icons.normalise(current))    # what the tile shows now
         self._faces = dict(faces or {})    # {face: image} for the preview square
         self._can_preview = bool(can_preview)
-        self._can_capture = bool(can_capture)
         self.new_tile_name = None
         self.new_tags = None
         self.new_category = None    # NOT greyed on a multi-selection: moving a whole selection to one category is the point of it
@@ -222,7 +220,7 @@ class IconDialog(base_dialog.AssetDialog):
         self.face_combo.setToolTip(ui_helpers.tooltip_text(tooltips.CUSTOMIZE_ICON))
         for face, label in zip(tile_icons.FACES, amazetheme.FACE_LABELS):
             self.face_combo.addItem(label, face)
-        offered = {"preview": self._can_preview, "capture": self._can_capture}    # none: greyed
+        offered = {"image": self._can_preview}    # a row with no picture greys Image
         for position, face in enumerate(tile_icons.FACES):
             self.face_combo.model().item(position).setEnabled(offered.get(face, True))
         self.face_combo.setCurrentIndex(tile_icons.FACES.index(self._face))

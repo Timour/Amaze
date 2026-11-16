@@ -17,7 +17,7 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze.core import code_library, repair, versions  # noqa: E402
+from amaze.core import code_library, library_files, material, repair, versions  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
 FIRST, SECOND, THIRD = "@P.y += 1;\n", "@P.y += 2;\r\n", "@P.y += 3;\n"
@@ -62,13 +62,16 @@ class TheStoreSitsBesideTheMaterialStore(_Case):
         texts = [name for name in names if name.endswith(versions.CODE_SUFFIX)]
         self.assertEqual(2, len(texts), "the original and the new version: %s" % names)
         self.assertFalse(os.path.exists(os.path.join(
-            self.prefs.dir, self.prefs.asset_dir, "versions", self.mat_id)),
+            self.materials, "versions", self.mat_id)),
             "a code version landed in the material store")
 
-    def test_the_material_store_has_not_moved(self):
-        self.assertEqual(
-            os.path.join(self.prefs.dir, self.prefs.asset_dir, "versions", "X1"),
-            versions.versions_dir(self.prefs, "X1"))
+    def test_the_material_store_is_in_the_materials_folder(self):
+        self.assertEqual(os.path.join(self.materials, "versions", "X1"),
+                         versions.versions_dir(self.prefs, "X1"))
+
+    @property
+    def materials(self):
+        return material.section_folder(self.prefs.dir, library_files.MATERIALS)
 
     def test_a_text_file_the_ledger_lacks_is_adopted(self):
         """A sync can lose a ledger row; the file is still a version."""
@@ -359,12 +362,13 @@ class TheSweepsLeaveCodeVersionsAlone(_Case):
 
     def test_check_library_moves_a_stray_and_leaves_the_code_store(self):
         self._save(self.model.NEW_VERSION, SECOND, "helper fast")
-        stray = os.path.join(self.prefs.dir, self.prefs.asset_dir, "STRAYCODE.mat")
+        stray = os.path.join(material.section_folder(self.prefs.dir, library_files.MATERIALS),
+                             "STRAYCODE.mat")
         with open(stray, "w", encoding="utf-8") as handle:
             handle.write("listed by nothing\n")
         before = sorted(os.listdir(self.store))
         test_support.reset_database_singletons()    # an action refuses a library this process holds
-        findings = repair.survey(self.prefs.dir, self.prefs.asset_dir, self.prefs.img_dir)
+        findings = repair.survey(self.prefs.dir, self.prefs.img_dir)
         repair.move_aside(findings, "unlisted")
         self.assertFalse(os.path.exists(stray), "premise: the move aside did not run")
         self.assertEqual(before, sorted(os.listdir(self.store)))

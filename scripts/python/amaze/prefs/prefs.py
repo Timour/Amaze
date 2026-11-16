@@ -7,10 +7,10 @@ import amaze
 from amaze import branding
 from amaze.core import database
 from amaze.core import debug
+from amaze.core import library_files
 from amaze.core import renderers
 from amaze.helpers import hostos
 from amaze.prefs.persistence import (
-    ASSET_SUBDIR,
     IMG_SUBDIR,
     SHARED_KEYS,
     _INTRODUCED_SECTIONS,
@@ -79,7 +79,8 @@ def seed_test_folder(folder: str) -> tuple:
         if not os.path.isdir(path):
             os.makedirs(path, exist_ok=True)
             made.append(TEST_LIB_SUBDIR + "/")
-        for tail in (IMG_SUBDIR, ASSET_SUBDIR):
+        for tail in (IMG_SUBDIR,) + tuple(library_files.SECTION_FOLDERS[section] + "/"
+                                         for section in library_files.ASSET_SECTIONS):
             folder_path = os.path.join(path, tail)
             if not os.path.isdir(folder_path):
                 made.append(tail)
@@ -289,10 +290,6 @@ class Prefs(_Persistence):
     @property
     def img_dir(self) -> str:
         return self._img_dir
-
-    @property
-    def asset_dir(self) -> str:
-        return self._asset_dir
 
     @property
     def img_ext(self) -> str:

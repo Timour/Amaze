@@ -80,6 +80,12 @@ def build_menu(panel, context, entries, indexes, current):
     """The QMenu for one entry table and its {action: (verb, payload)}, without showing it."""
     menu = QtWidgets.QMenu(panel)
     verbs = {}
+    _fill(menu, panel, context, entries, indexes, current, verbs)
+    return menu, verbs
+
+
+def _fill(menu, panel, context, entries, indexes, current, verbs) -> None:
+    """Add one entry table's rows to `menu`; `children` names rows or is a table of entries."""
     rows = []
     for entry in entries:
         if not entry.label:
@@ -97,6 +103,11 @@ def build_menu(panel, context, entries, indexes, current):
         if entry.count_suffix and len(indexes) > 1:
             label += " (%d)" % len(indexes)
         enabled = _enabled(context, entry, indexes, current)
+        if isinstance(entry.children, tuple):    # a fixed submenu: each row keeps its own shown/needs
+            submenu = menu.addMenu(label)
+            submenu.menuAction().setEnabled(enabled)
+            _fill(submenu, panel, context, entry.children, indexes, current, verbs)
+            continue
         if entry.children:
             children = getattr(context, entry.children)(indexes, current)
             if any(child and _is_chip(child[2]) for child in children):    # colour chips: the menu paints them
@@ -137,7 +148,6 @@ def build_menu(panel, context, entries, indexes, current):
             verbs[action] = (entry.verb, not state)
         else:
             verbs[action] = (entry.verb, None)
-    return menu, verbs
 
 
 def build_grid_menu(panel, context, indexes, current):

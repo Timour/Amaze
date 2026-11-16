@@ -38,7 +38,7 @@ class TileCapture:
                 lambda: scene_captures.capture_tile(model.capture_path(row), model.tile_key(row)),
                 model.tile_key(row))
         if captured:
-            self.panel.apply_icon_spec(model, [row], {"face": "capture"})
+            self.panel.apply_icon_spec(model, [row], {"face": "image"})
 
     def capture_and_report(self, target: str = "") -> bool:
         """The open scene onto its File tile; "" means whatever is open. Answers whether it landed."""

@@ -356,14 +356,14 @@ class GradientTileIconTest(unittest.TestCase):
         self.lib = gradient_library.GradientLibrary(preferences=self.prefs)
         self.row = _row_named(self, self.lib, "ours")
 
-    def test_generic_shows_the_drop_and_preview_the_swatch(self):
+    def test_generic_shows_the_drop_and_image_the_swatch(self):
         from PySide6 import QtCore
         index = self.lib.index(self.row, 0)
         painted = self.lib.data(index, QtCore.Qt.ItemDataRole.DecorationRole)
         self.lib.set_tile_icon(self.row, {"face": "generic"})
         drop = tile_icons.generic_image(gradient_library.GradientLibrary.TILE_FACE)
         self.assertEqual(drop, self.lib.data(index, QtCore.Qt.ItemDataRole.DecorationRole))
-        self.lib.set_tile_icon(self.row, {"face": "preview"})
+        self.lib.set_tile_icon(self.row, {"face": "image"})    # no capture: the painted swatch
         self.assertEqual(painted, self.lib.data(index, QtCore.Qt.ItemDataRole.DecorationRole))
         self.assertNotEqual(drop, painted)
 
@@ -856,10 +856,12 @@ class ColorsHonourARefusedSave(unittest.TestCase):
         return [r.get("name") for r in rows if isinstance(r, dict)]
 
     def _stamp_of(self, asset_id):
-        path = self.lib.asset_files(asset_id)["stamp"]
+        """The palette's one file, its captured picture in `colors/`; the row owns it."""
+        path = self.lib.asset_files(asset_id).get("thumbnail")
+        self.assertTrue(path, "premise: the palette owns its picture")
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "w", encoding="utf-8") as fh:
-            json.dump({"id": asset_id, "name": "doomed"}, fh)
+        with open(path, "wb") as fh:
+            fh.write(b"\x89PNG\r\n")
         return path
 
     def test_a_refused_delete_puts_the_palette_back(self):

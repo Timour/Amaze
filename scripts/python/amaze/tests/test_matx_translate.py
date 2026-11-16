@@ -374,7 +374,8 @@ class HostedPictureImportTest(unittest.TestCase):
                 save=functools.partial(material_actions.add_asset, model))
         self.assertTrue(ok, reason)
         render.assert_not_called()
-        thumb = QtGui.QImage(tile_icons.thumbnail_path(self.prefs, model.assets[-1].mat_id))
+        thumb = QtGui.QImage(tile_icons.thumbnail_path(self.prefs, model.assets[-1].mat_id,
+                                                       model.DB_FILENAME))
         self.assertEqual((24, 24), (thumb.width(), thumb.height()),
                          "the thumbnail is not the hosted picture")
         self.assertEqual("#3366cc", thumb.pixelColor(12, 12).name())

@@ -292,7 +292,7 @@ class AmazePanel(QtWidgets.QWidget):
         if choice != 0:
             debug.event("session", "index repair declined")
             return False
-        ok, how = repair.repair_index(folder, self.prefs.asset_dir, guard=False)
+        ok, how = repair.repair_index(folder, guard=False)
         if not ok:
             self._say_repair_failed(
                 ui, folder, switching,
@@ -544,6 +544,8 @@ class AmazePanel(QtWidgets.QWidget):
         if (library_actions.index_unreadable(self.prefs.dir)
                 and not self._repaired(self.prefs.dir)):
             return self._stay_closed()
+        if not self._converted(self.prefs.dir):
+            return self._stay_closed()    # a library is used in format 4 only, once whole
         library_actions.prepare(self.prefs)
         if not library_actions.index_present(self.prefs.dir):    # prepare could not set one up
             return self._stay_closed()
@@ -558,6 +560,61 @@ class AmazePanel(QtWidgets.QWidget):
         self._seed_curated_content()    # once per library, marker-guarded
         if not self.prefs.test_mode and self.prefs.note_library_opened(self.prefs.real_dir):
             self.prefs.save()    # the Library list, the most recently opened first
+        return True
+
+    def _converted(self, folder: str) -> bool:
+        """A format 3 library converted whole, told first and shown as it goes; headless, never."""
+        from amaze.core import library_conversion, library_policy
+        if (not folder or not library_actions.index_present(folder)
+                or not library_conversion.needs_conversion(folder)):
+            return True    # no library here, or nothing to convert: the open goes on as before
+        ui = getattr(hou, "ui", None)
+        if ui is None:    # a script or a test converts by calling the converter, not by opening
+            debug.event("session", "library not opened - it needs converting", dir=folder)
+            return False
+
+        def confirm():
+            return ui.displayMessage(
+                messages.CONFIRM_CONVERT_LIBRARY % library_policy.LIBRARY_VERSION_SINCE,
+                buttons=messages.BUTTONS_CONVERT_LIBRARY, default_choice=0, close_choice=1,
+                severity=hou.severityType.Message, title=messages.TITLE_AMAZE) == 0    # closing: Cancel
+
+        with contextlib.ExitStack() as shown:    # the progress opens after the box, at the first asset
+            held = []
+
+            def progress(done, total):
+                if not held:
+                    held.append(shown.enter_context(hou.InterruptableOperation(
+                        messages.CONVERT_LIBRARY_PROGRESS, open_interrupt_dialog=True)))
+                try:
+                    held[0].updateProgress(float(done) / max(total, 1))
+                except hou.OperationInterrupted:    # the button is Houdini's own: a press is ignored
+                    pass
+            outcome = library_conversion.convert(folder, confirm, progress)
+        if outcome.status == library_conversion.BLOCKED:
+            ui.displayMessage(messages.CONVERT_LIBRARY_BLOCKED % outcome.why,
+                              severity=hou.severityType.Warning, title=messages.TITLE_AMAZE)
+            return False
+        if outcome.status == library_conversion.CANCELLED:
+            return False    # nothing touched; the question comes again at the next open
+        if outcome.status != library_conversion.DONE:
+            return True
+        if not outcome.set_aside:
+            ui.displayMessage(messages.CONVERT_LIBRARY_DONE, severity=hou.severityType.Message,
+                              title=messages.TITLE_AMAZE)
+            return True
+        left = outcome.set_aside
+        counted = wording.and_list([
+            "%d %s" % (count, database.section_noun(section, count))
+            for section, count in ((section, sum(1 for one in left if one.section == section))
+                                   for section in database.ASSET_FILE_OWNERS) if count])
+        choice = ui.displayMessage(
+            messages.CONVERT_LIBRARY_DONE_SOME_LEFT % counted,
+            details="\n".join(one.name for one in left),    # every name, one a line
+            buttons=messages.BUTTONS_UNCONVERTED, default_choice=0, close_choice=0,
+            severity=hou.severityType.Warning, title=messages.TITLE_AMAZE)
+        if choice == 1:    # Move to Trash: the user's own choice, so through the trash
+            library_conversion.trash_set_aside(folder, left)
         return True
 
     def _open_models(self) -> str:
@@ -1700,7 +1757,7 @@ class AmazePanel(QtWidgets.QWidget):
         for row, mat in enumerate(model.assets):
             if str(mat.mat_id) in before:
                 continue
-            path = tile_icons.tile_read_path(model.preferences, str(mat.mat_id), False)
+            path = tile_icons.tile_read_path(model.preferences, str(mat.mat_id), model.DB_FILENAME)
             if path and not os.path.exists(path):    # a hosted picture is already the thumbnail
                 rows.append(row)
         material_actions.render_thumbnails(model, rows)    # one husk per renderer ▸r/husk-startup
@@ -2263,8 +2320,8 @@ class AmazePanel(QtWidgets.QWidget):
             offered = list(categories)    # the OWNING section's list, handed in by its menu
             shared = {model.tile_category(row) for row in rows}
             tile_category = shared.pop() if len(shared) == 1 else ""    # mixed: the dialog opens blank
-        faces = {"preview": model.preview_image(rows[0]),    # what the preview square shows per face
-                 "capture": model.capture_image(rows[0]),
+        capture = getattr(model, "capture_image", None)    # a File row's capture is its image
+        faces = {"image": (capture and capture(rows[0])) or model.preview_image(rows[0]),
                  "generic": tile_icons.generic_image(model.tile_face_art(rows[0]))}
         dialog = icon_dialog.IconDialog(
             model.tile_icon(rows[0]),
@@ -2278,7 +2335,6 @@ class AmazePanel(QtWidgets.QWidget):
             face=tile_icons.face_for(model, rows[0]),
             faces=faces,
             can_preview=any(model.can_preview(row) for row in rows),
-            can_capture=any(model.has_capture(row) for row in rows),
         )
         self._icon_dialog = dialog
 

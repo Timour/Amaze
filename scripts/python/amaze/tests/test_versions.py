@@ -17,9 +17,11 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze.core import versions  # noqa: E402
+from amaze.core import asset_record, library_files, material, versions  # noqa: E402
 from amaze.actions import materials as material_actions  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
+
+MATERIALS = library_files.MATERIALS
 
 
 class _Case(unittest.TestCase):
@@ -31,9 +33,17 @@ class _Case(unittest.TestCase):
         with open(os.path.join(self.prefs.dir, "library.json"),
                   encoding="utf-8") as fh:
             self.mat_id = str(json.load(fh)["assets"][1]["id"])
-        self.base_mat = os.path.join(self.prefs.dir,
-                                     self.prefs.asset_dir,
-                                     self.mat_id + ".mat")
+        self.base_mat = material.payload_path(self.prefs, self.mat_id, ".mat", MATERIALS)
+        self.base_record = asset_record.path_for(self.prefs, self.mat_id, MATERIALS)
+        self.base_png = os.path.join(material.section_folder(self.prefs.dir, MATERIALS),
+                                     self.mat_id + ".png")    # the asset's one picture
+
+    def _base_builder(self):
+        return asset_record.read(self.base_record)[asset_record.BUILDER]
+
+    def _set_base_builder(self, interface):
+        asset_record.write_section(self.base_record, asset_record.BUILDER,
+                                   {"type": "subnet", "interface": interface, "values": {}})
 
     def _base_bytes(self):
         with open(self.base_mat, "rb") as fh:
@@ -50,14 +60,14 @@ class PreEditHoldsTheRightFilesTest(_Case):
     def test_the_material_wins_over_its_companions(self):
         from amaze.core import library as library_mod
 
-        assets_dir = os.path.join(self.prefs.dir, self.prefs.asset_dir)
+        assets_dir = material.section_folder(self.prefs.dir, MATERIALS)
         img_dir = os.path.join(self.prefs.dir, self.prefs.img_dir)
         os.makedirs(img_dir, exist_ok=True)
         with open(os.path.join(assets_dir, self.mat_id + "_cop.mat"),
                   "wb") as fh:
             fh.write(b"COP-COMPANION-NOT-THE-MATERIAL")
         with open(os.path.join(img_dir, self.mat_id + "_icon.png"),
-                  "wb") as fh:
+                  "wb") as fh:    # a format 3 composite left behind, never the picture
             fh.write(b"ICON-COMPOSITE-NOT-THE-RENDER")
 
         model = library_mod.MaterialLibrary(preferences=self.prefs)
@@ -69,7 +79,7 @@ class PreEditHoldsTheRightFilesTest(_Case):
                 "the held .mat is not the material - the companion won "
                 "the suffix collision and Version 1 archives the wrong "
                 "bytes")
-        base_png = os.path.join(img_dir, self.mat_id + ".png")
+        base_png = self.base_png
         if os.path.exists(base_png):
             with open(base_png, "rb") as fh:
                 base = fh.read()
@@ -83,8 +93,10 @@ class PreEditHoldsTheRightFilesTest(_Case):
                 ".png", held,
                 "the icon composite stood in for a render the asset "
                 "does not have")
-        self.assertIn(".interface", held,
-                      "the interface never joined the held set")
+        self.assertIn(".json", held,
+                      "the builder record never joined the held set")
+        self.assertNotIn(".interface", held,
+                         "a converted asset held a format 3 .interface it does not own")
 
 
 class APreEditHoldLeavesNoFolderBehind(_Case):
@@ -164,27 +176,24 @@ class AFailedRollbackSpeaksTest(_Case):
 
 
 class ASwitchPutsTheWholeVersionOnTheBase(_Case):
-    """A version saved without a sidecar or a render takes the other version's OUT of the base."""
+    """A version saved without a builder or a render takes the other version's OUT of the base."""
 
     def setUp(self):
         super().setUp()
-        self.builder = self.base_mat[:-len(".mat")] + ".builder.json"
-        images = os.path.join(self.prefs.dir, self.prefs.img_dir)
-        os.makedirs(images, exist_ok=True)
-        self.png = os.path.join(images, self.mat_id + ".png")
+        self.builder = self.base_record
+        self.png = self.base_png
         for path in (self.builder, self.png):    # version 1: an older save, its render not landed
             if os.path.exists(path):
                 os.remove(path)
         self.assertEqual(1, versions.create_version(self.prefs, self.mat_id))
         self._rewrite_base(b"V2-NETWORK")
-        for path, text in ((self.builder, '{"dialog_script": "v2"}'), (self.png, "V2-RENDER")):
-            with open(path, "w", encoding="utf-8") as fh:
-                fh.write(text)
+        self._set_base_builder("v2")
+        with open(self.png, "w", encoding="utf-8") as fh:
+            fh.write("V2-RENDER")
         self.assertEqual(2, versions.create_version(self.prefs, self.mat_id))
 
     def _in_base(self):
-        return {kind: os.path.exists(path)
-                for kind, path in ((".builder.json", self.builder), (".png", self.png))}
+        return {"builder": bool(self._base_builder()), ".png": os.path.exists(self.png)}
 
     def _archived_png(self, number):
         stem = {int(r["n"]): r["file"] for r in versions.list_versions(self.prefs, self.mat_id)}
@@ -193,10 +202,11 @@ class ASwitchPutsTheWholeVersionOnTheBase(_Case):
 
     def test_a_kind_the_version_lacks_leaves_the_base(self):
         self.assertTrue(versions.switch_active(self.prefs, self.mat_id, 1))
-        self.assertEqual({".builder.json": False, ".png": False}, self._in_base(),
-                         "version 1 sits beside version 2's sidecar or picture")
+        self.assertEqual({"builder": False, ".png": False}, self._in_base(),
+                         "version 1 sits beside version 2's builder or picture")
         self.assertTrue(versions.switch_active(self.prefs, self.mat_id, 2))
-        self.assertEqual({".builder.json": True, ".png": True}, self._in_base())
+        self.assertEqual({"builder": True, ".png": True}, self._in_base())
+        self.assertEqual("v2", self._base_builder().get("interface"))
         self.assertTrue(versions.switch_active(self.prefs, self.mat_id, 1))
         self.assertEqual([1, 2], [int(r["n"]) for r in versions.list_versions(
             self.prefs, self.mat_id)], "a switch back and forth minted a version")
@@ -240,6 +250,43 @@ class ASwitchPutsTheWholeVersionOnTheBase(_Case):
         self.assertFalse(recorded.called, "a switch recorded the base picture as a fresh render")
 
 
+class AVersionHoldsTheBuilderAndNeverTheMetadata(_Case):
+    """`<stem>.json` is the builder alone, so a switch keeps the base's own metadata."""
+
+    def _archive(self, number, suffix):
+        stem = {int(r["n"]): r["file"] for r in versions.list_versions(self.prefs, self.mat_id)}
+        return os.path.join(versions.versions_dir(self.prefs, self.mat_id),
+                            stem[number] + suffix)
+
+    def _set_metadata(self, name):
+        asset_record.write_section(self.base_record, asset_record.METADATA,
+                                   {"id": self.mat_id, "name": name})
+
+    def test_an_archive_holds_no_metadata_and_a_metadata_edit_mints_nothing(self):
+        self._set_metadata("Before")
+        self._set_base_builder("v1")
+        self.assertEqual(1, versions.create_version(self.prefs, self.mat_id))
+        archived = asset_record.read(self._archive(1, ".json"))
+        self.assertEqual({}, archived[asset_record.METADATA], "a version archived the metadata")
+        self.assertEqual("v1", archived[asset_record.BUILDER].get("interface"))
+        self._set_metadata("Renamed")
+        self.assertTrue(versions.keep_base(self.prefs, self.mat_id))
+        self.assertEqual(1, versions.version_count(self.prefs, self.mat_id),
+                         "a metadata edit made the base differ from its version")
+
+    def test_a_switch_takes_the_builder_and_keeps_the_metadata(self):
+        self._set_base_builder("v1")
+        versions.create_version(self.prefs, self.mat_id)
+        self._set_base_builder("v2")
+        versions.create_version(self.prefs, self.mat_id)
+        self._set_metadata("Current name")
+        self.assertTrue(versions.switch_active(self.prefs, self.mat_id, 1))
+        record = asset_record.read(self.base_record)
+        self.assertEqual("v1", record[asset_record.BUILDER].get("interface"))
+        self.assertEqual("Current name", record[asset_record.METADATA].get("name"),
+                         "the switch put an old version's metadata on the base")
+
+
 class TheBaseModelSwitchesInItsOwnSection(_Case):
     """`switch_version` asks the store its model names, as every other version call does."""
 
@@ -247,9 +294,13 @@ class TheBaseModelSwitchesInItsOwnSection(_Case):
         from amaze.core import library as library_mod
         model = library_mod.MaterialLibrary(preferences=self.prefs)
         row = model.find_asset_row_by_id(self.mat_id)
-        model.VERSION_SECTION = versions.Section(
-            lambda preferences: (preferences.asset_dir, "elsewhere"),
-            versions.MATERIAL.kinds, versions.MATERIAL.source_kinds)
+        model.VERSION_SECTION = versions.NODE    # its store and its base are both in nodes/
+        nodes_dir = material.section_folder(self.prefs.dir, library_files.NODES)
+        os.makedirs(nodes_dir, exist_ok=True)
+        for path in (self.base_mat, self.base_record):
+            os.replace(path, os.path.join(nodes_dir, os.path.basename(path)))
+        self.base_mat = material.payload_path(self.prefs, self.mat_id, ".mat",
+                                              library_files.NODES)
         original = self._base_bytes()
         versions.create_version(self.prefs, self.mat_id, section=model.VERSION_SECTION)
         self._rewrite_base(b"EDITED-STATE")
@@ -276,11 +327,8 @@ class TheArchiveIsEachVersionsDurableThumbnail(_Case):
     """record_render copies a fresh PNG into the active slot only, so each version keeps its picture."""
 
     def _png_paths(self):
-        img_dir = os.path.join(self.prefs.dir, self.prefs.img_dir)
-        os.makedirs(img_dir, exist_ok=True)
-        base = os.path.join(img_dir, self.mat_id + ".png")
         folder = versions.versions_dir(self.prefs, self.mat_id)
-        return base, folder
+        return self.base_png, folder
 
     def test_a_fresh_render_lands_in_the_active_slot_only(self):
         base, folder = self._png_paths()
@@ -369,8 +417,7 @@ class TheBaseFilesFollowTheLibrarysExtensions(_Case):
         renamed = self.base_mat[:-len(".mat")] + ".matx"
         os.replace(self.base_mat, renamed)
         self.legacy_mat, self.base_mat = self.base_mat, renamed
-        images = os.path.join(self.prefs.dir, self.prefs.img_dir)
-        os.makedirs(images, exist_ok=True)
+        images = material.section_folder(self.prefs.dir, MATERIALS)    # the one picture's home
         self.base_image = os.path.join(images, self.mat_id + ".jpg")
         with open(self.base_image, "wb") as fh:
             fh.write(b"RENDER-AS-JPEG")
@@ -538,7 +585,7 @@ class VersionFilesCarryTheirWriterTest(_Case):
         row = versions.list_versions(self.prefs, self.mat_id)[0]
         legacy = os.path.join(folder, "1.mat")
         os.rename(os.path.join(folder, "%s.mat" % row["file"]), legacy)
-        for kind in (".interface", ".builder.json", ".png"):
+        for kind in (".json", ".interface", ".builder.json", ".png"):
             source = os.path.join(folder, "%s%s" % (row["file"], kind))
             if os.path.exists(source):
                 os.rename(source,

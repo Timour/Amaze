@@ -254,31 +254,49 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
             self.assertEqual(6, len(json.load(handle)["icons"]),
                              "the icon table did not survive the writes")
 
-    def test_save_asset_pair_uses_unique_scratches(self):
-        """`.mat`/`.interface` is the asset itself, with no `.bak-*` tier behind it. ▸p/asset-write-unit"""
+    def _asset_writer(self, asset_id):
+        """A handler over `self.dir` as its library, a builder, and the asset's two paths."""
+        import hou
+        from amaze.core import asset_record, library_files, material
         from amaze.render import nodes
 
+        class _Prefs:
+            """Only what the asset paths read: the library folder."""
+            dir = self.dir + os.sep
+
         handler = nodes.NodeHandler.__new__(nodes.NodeHandler)
-        interface_path = os.path.join(self.dir, "ASSET1.interface")
-        mat_path = os.path.join(self.dir, "ASSET1.mat")
+        handler._preferences = _Prefs()
+        builder = hou.node("/obj").createNode("subnet")
+        self.addCleanup(builder.destroy)
+        group = builder.parmTemplateGroup()
+        group.append(hou.FloatParmTemplate("amaze_n", "N", 1))
+        builder.setParmTemplateGroup(group)
+        mat_path = material.payload_path(_Prefs, asset_id, ".mat", library_files.MATERIALS)
+        record_path = asset_record.path_for(_Prefs, asset_id, library_files.MATERIALS)
+        return handler, builder, mat_path, record_path
+
+    def test_save_asset_pair_uses_unique_scratches(self):
+        """`.mat`/`.json` is the asset itself, with no `.bak-*` tier behind it. ▸p/asset-write-unit"""
+        from amaze.core import asset_record
+
+        handler, builder, mat_path, record_path = self._asset_writer("ASSET1")
 
         def write_mat(scratch):
             with open(scratch, "w", encoding="utf-8") as handle:
                 handle.write("the node network\n")
 
         for n in range(4):
-            handler.save_asset_pair(
-                interface_path, mat_path, "promoted parms %d\n" % n,
-                write_mat)
+            builder.parm("amaze_n").set(n + 1)
+            handler.save_asset_pair(mat_path, write_mat, builder, "ASSET1")
         self._assert_unique("save_asset_pair")
         self.assertEqual(8, len(self.seen),
                          "the two files did not each get their own scratch")
-        self.assertEqual([], self._leftovers(),
+        self.assertEqual([], self._leftovers(os.path.dirname(mat_path)),
                          "a scratch file was left in the asset folder, "
                          "where Clean Library will find it and have to "
                          "decide whether it is an orphan")
-        with open(interface_path, encoding="utf-8") as handle:
-            self.assertEqual("promoted parms 3\n", handle.read())
+        values = asset_record.read(record_path)["builder"]["values"]
+        self.assertEqual({"val": 4.0}, values.get("amaze_n"))
         with open(mat_path, encoding="utf-8") as handle:
             self.assertEqual("the node network\n", handle.read())
 
@@ -424,8 +442,6 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
 
     def test_a_scratch_is_not_leaked_when_the_second_one_cannot_be_made(self):
         """Both scratches are made inside the try, so a failed second one never strands the first."""
-        from amaze.render import nodes
-
         real_scratch = hostos.unique_scratch
         calls = []
 
@@ -435,18 +451,20 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
                 raise OSError(24, "Too many open files")
             return real_scratch(path, *args, **kwargs)
 
+        handler, builder, mat_path, _record = self._asset_writer("LEAK")
+
+        def write_mat(scratch):
+            with open(scratch, "w", encoding="utf-8") as handle:
+                handle.write("net\n")
+
         hostos.unique_scratch = second_one_fails
         self.addCleanup(setattr, hostos, "unique_scratch", real_scratch)
-        handler = nodes.NodeHandler.__new__(nodes.NodeHandler)
         with self.assertRaises(OSError):
-            handler.save_asset_pair(
-                os.path.join(self.dir, "LEAK.interface"),
-                os.path.join(self.dir, "LEAK.mat"), "parms\n",
-                lambda scratch: None)
+            handler.save_asset_pair(mat_path, write_mat, builder, "LEAK")
         self.assertEqual(2, len(calls), "premise: the second call must have "
                          "been reached and failed")
         self.assertEqual(
-            [], sorted(os.listdir(self.dir)),
+            [], sorted(os.listdir(os.path.dirname(mat_path))),
             "the first scratch was left in the asset folder, where Clean "
             "Library has to decide whether it is an orphan")
 
@@ -479,10 +497,9 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
         self.addCleanup(holder.destroy)
         holder.createNode("null", "inside")
         handler = nodes.NodeHandler.__new__(nodes.NodeHandler)
-        interface_path = os.path.join(self.dir, "REAL.interface")
         mat_path = os.path.join(self.dir, "REAL.mat")
         handler.save_asset_pair(
-            interface_path, mat_path, "promoted parms\n",
+            mat_path,
             lambda scratch: holder.saveItemsToFile(
                 holder.children(), scratch, save_hda_fallbacks=False))
         self.assertGreater(
@@ -500,57 +517,54 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
             directories.append(os.path.dirname(os.path.abspath(src))),
             real_replace(src, dst))[1]
         self.addCleanup(setattr, hostos, "replace_file", real_replace)
-        from amaze.render import nodes
-        handler = nodes.NodeHandler.__new__(nodes.NodeHandler)
+        handler, builder, mat_path, _record = self._asset_writer("A")
         handler.save_asset_pair(
-            os.path.join(self.dir, "A.interface"),
-            os.path.join(self.dir, "A.mat"), "parms\n",
-            lambda scratch: open(scratch, "w").write("net\n"))
-        self.assertEqual([os.path.abspath(self.dir)] * 2, directories)
+            mat_path, lambda scratch: open(scratch, "w").write("net\n"), builder, "A")
+        self.assertEqual([os.path.dirname(os.path.abspath(mat_path))] * 2, directories)
 
     def test_a_failed_mat_write_promotes_neither_file(self):
-        """A failed `.mat` write leaves no new `.interface` beside a stale `.mat`. ▸p/asset-write-unit"""
-        from amaze.render import nodes
+        """A failed `.mat` write leaves no new builder beside a stale `.mat`. ▸p/asset-write-unit"""
+        from amaze.core import asset_record
         import hou
 
-        handler = nodes.NodeHandler.__new__(nodes.NodeHandler)
-        interface_path = os.path.join(self.dir, "ASSET2.interface")
-        mat_path = os.path.join(self.dir, "ASSET2.mat")
-        with open(interface_path, "w", encoding="utf-8") as handle:
-            handle.write("the good old interface\n")
+        handler, builder, mat_path, record_path = self._asset_writer("ASSET2")
+        os.makedirs(os.path.dirname(mat_path), exist_ok=True)
+        old = {"type": "subnet", "interface": "the good old interface", "values": {}}
+        asset_record.write_section(record_path, asset_record.BUILDER, old)
         with open(mat_path, "w", encoding="utf-8") as handle:
             handle.write("the good old network\n")
+        builder.parm("amaze_n").set(7)
 
         def write_nothing(_scratch):
             return None             # exactly what a failed save looks like
 
         with self.assertRaises(hou.OperationFailed):
-            handler.save_asset_pair(interface_path, mat_path,
-                                    "a new interface\n", write_nothing)
-        with open(interface_path, encoding="utf-8") as handle:
-            self.assertEqual(
-                "the good old interface\n", handle.read(),
-                "the .interface was replaced although the .mat write "
-                "failed - the pair is no longer written as one unit")
+            handler.save_asset_pair(mat_path, write_nothing, builder, "ASSET2")
+        self.assertEqual(
+            old, asset_record.read(record_path)["builder"],
+            "the builder was replaced although the .mat write "
+            "failed - the pair is no longer written as one unit")
         with open(mat_path, encoding="utf-8") as handle:
             self.assertEqual("the good old network\n", handle.read())
-        self.assertEqual([], self._leftovers(),
+        self.assertEqual([], self._leftovers(os.path.dirname(mat_path)),
                          "the failed write left its scratch files behind")
 
     def test_concurrent_asset_pair_writers_never_mix(self):
         """Mixing is forced with a barrier, so the headline assertion can go red. ▸p/testing-can-fail"""
-        from amaze.render import nodes
+        from amaze.core import asset_record
 
         hostos.replace_file = self._real_replace
-        interface_path = os.path.join(self.dir, "RACE.interface")
-        mat_path = os.path.join(self.dir, "RACE.mat")
+        writers = {mark: self._asset_writer("RACE") for mark in ("A", "B")}
+        _handler, _builder, mat_path, record_path = writers["A"]
+        for number, mark in enumerate(("A", "B"), 1):
+            writers[mark][1].parm("amaze_n").set(number)    # each writer's builder says who
         mixed = []
         raised = []
         scratches = {}
         both_half_written = threading.Barrier(2, timeout=30)
 
         def write(mark):
-            handler = nodes.NodeHandler.__new__(nodes.NodeHandler)
+            handler, builder = writers[mark][:2]
             body = (mark * 79 + "\n") * 256
             half = len(body) // 2
 
@@ -569,8 +583,7 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
                                  % (mark, marks))
 
             try:
-                handler.save_asset_pair(interface_path, mat_path, body,
-                                        write_mat)
+                handler.save_asset_pair(mat_path, write_mat, builder, "RACE")
             except Exception as exc:                     # noqa: BLE001
                 raised.append("%s: %s" % (type(exc).__name__, exc))
 
@@ -592,13 +605,13 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
             "two overlapping writers were handed the same scratch path, so "
             "they share one buffer by construction")
         self.assertEqual([], raised, "a concurrent write raised")
-        for path in (interface_path, mat_path):
-            with open(path, encoding="utf-8") as handle:
-                marks = set(handle.read().replace("\n", ""))
-            self.assertEqual(
-                1, len(marks),
-                "%s holds bytes from both writers" % os.path.basename(path))
-        self.assertEqual([], self._leftovers(),
+        with open(mat_path, encoding="utf-8") as handle:
+            marks = set(handle.read().replace("\n", ""))
+        self.assertEqual(1, len(marks), "the .mat holds bytes from both writers")
+        values = asset_record.read(record_path)["builder"].get("values", {})
+        self.assertIn(values.get("amaze_n"), ({"val": 1.0}, {"val": 2.0}),
+                      "the .json holds neither writer's builder whole")
+        self.assertEqual([], self._leftovers(os.path.dirname(mat_path)),
                          "a scratch file survived the race")
 
     def test_a_new_file_gets_exactly_what_a_plain_open_would_have(self):
@@ -1511,8 +1524,8 @@ class SandboxRefusesEveryPrimitiveTest(unittest.TestCase):
         hostos.config_root = lambda: self.outside
         self.addCleanup(setattr, hostos, "config_root", real_config)
         library = os.path.join(self.inside, "library")
-        os.makedirs(os.path.join(library, "mat"))
-        leftover = os.path.join(library, "mat", "LEFTOVER.mat")
+        os.makedirs(os.path.join(library, "materials"))
+        leftover = os.path.join(library, "materials", "LEFTOVER.mat")
         with open(leftover, "w", encoding="utf-8") as handle:
             handle.write("x")
         self._refused(quarantine.quarantine_file, library, leftover)

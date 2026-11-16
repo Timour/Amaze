@@ -33,8 +33,8 @@ def ink_colour(token: str) -> str:
     return INKS.get(str(token or "").strip().lower(), INKS[DEFAULT_INK])
 
 
-FACES = ("preview", "capture", "generic", "custom")    # the Icon menu, in its order ▸r/tile-faces
-PLAIN_FACES = ("preview", "capture", "generic")    # stored as {"face": ...}: no icon to compose
+FACES = ("image", "generic", "custom")    # the Icon menu, in its order ▸r/tile-faces
+PLAIN_FACES = ("image", "generic")    # stored as {"face": ...}: no icon to compose
 
 
 def is_custom(spec) -> bool:
@@ -42,12 +42,13 @@ def is_custom(spec) -> bool:
     return bool((spec or {}).get("name"))
 
 
-def face_of(spec, default: str = "preview", can_preview: bool = True) -> str:
+def face_of(spec, default: str = "image", can_preview: bool = True) -> str:
     """The face a stored choice shows, one of FACES; the row's default when nothing is stored."""
     if is_custom(spec):
         return "custom"
-    face = (spec or {}).get("face") or default
-    if face == "preview" and not can_preview:
+    face = (spec or {}).get("face")
+    face = face if face in PLAIN_FACES else default
+    if face == "image" and not can_preview:
         return "generic"
     return face
 
@@ -292,27 +293,22 @@ def stroke_for(preferences) -> float:
     return FEATHER_STROKE_UNITS if weight == "feather" else STROKE_UNITS
 
 
-def _image_parts(preferences, asset_id, icon: bool) -> tuple:
-    """(image folder, file name) of a render or its icon - the one spelling every door below joins."""
-    return (os.path.join(preferences.dir, preferences.img_dir),
-            str(asset_id) + ("_icon" if icon else "") + preferences.img_ext)
+def _picture_name(preferences, asset_id) -> str:
+    return str(asset_id) + (getattr(preferences, "img_ext", "") or ".png")
 
 
-def thumbnail_path(preferences, asset_id: str) -> str:
-    """`<library>/img/<id>.png`, the one composition of a thumbnail path, contained to the library."""
-    return hostos.contained_join(*_image_parts(preferences, asset_id, False))
+def thumbnail_path(preferences, asset_id: str, section: str) -> str:
+    """The asset's one picture, `<section folder>/<id>.png`, render or capture; contained."""
+    return hostos.contained_join(material.section_folder(preferences.dir, section),
+                                 _picture_name(preferences, asset_id))
 
 
-def icon_image_path(preferences, asset_id: str) -> str:
-    """A tile's composed icon path, beside its thumbnail with a suffix, contained like it."""
-    return hostos.contained_join(*_image_parts(preferences, asset_id, True))
-
-
-def tile_read_path(preferences, asset_id: str, icon: bool) -> str:
-    """A tile's image path as the two above compose it; "" for an unsafe id. No realpath."""
+def tile_read_path(preferences, asset_id: str, section: str) -> str:
+    """A tile's picture path, no realpath; "" for an unsafe id, which plain joins could not hold."""
     if not material.is_safe_asset_id(asset_id):
         return ""
-    return os.path.join(*_image_parts(preferences, asset_id, icon))
+    return os.path.join(material.section_folder(preferences.dir, section),
+                        _picture_name(preferences, asset_id))
 
 
 def render_size(preferences) -> int:
@@ -330,28 +326,6 @@ def compose_for(preferences, spec):
         return None
     return compose(spec["name"], spec["bg"], render_size(preferences),
                    stroke_for(preferences), spec["ink"])
-
-
-def render_for(preferences, asset_id: str, spec) -> str:
-    """Compose an asset's icon to disk: its path, or "" with no icon; the caller deletes cleared ones."""
-    spec = normalise(spec)
-    if not is_custom(spec):
-        return ""
-    path = icon_image_path(preferences, asset_id)
-    if not write(path, spec["name"], spec["bg"], render_size(preferences),
-                 stroke_for(preferences), spec["ink"]):
-        return ""
-    return path
-
-
-def clear_for(preferences, asset_id: str) -> None:
-    """Remove a composed icon file. Missing is success."""
-    path = icon_image_path(preferences, asset_id)
-    try:
-        if os.path.exists(path):
-            os.remove(path)
-    except OSError as exc:
-        debug.event("icons", "composed icon not removed", error=str(exc))
 
 
 def forget_composed() -> None:

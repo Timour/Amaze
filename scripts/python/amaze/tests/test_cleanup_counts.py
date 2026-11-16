@@ -3,7 +3,7 @@ import json
 import os
 import unittest
 
-from amaze.core import database, repair
+from amaze.core import database, library_files, material, repair
 from amaze.tests import test_support
 
 
@@ -14,15 +14,16 @@ class TheThumbnailCountKnowsItsSectionTest(unittest.TestCase):
         self.prefs = test_support.fixture_prefs(self)
         test_support.reset_database_singletons()
         self.addCleanup(test_support.reset_database_singletons)
-        self.mat_dir = os.path.join(self.prefs.dir, self.prefs.asset_dir)
+        self.node_dir = material.section_folder(self.prefs.dir, library_files.NODES)
+        os.makedirs(self.node_dir, exist_ok=True)
         self.cops = os.path.join(self.prefs.dir, "cops.json")
         self.assertFalse(os.path.exists(self.cops), "premise: the fixture has no cops.json")
 
     def _row(self, asset_id: str, context: str) -> dict:
-        for suffix in (".mat", ".interface"):    # both halves present, no render
-            with open(os.path.join(self.mat_dir, asset_id + suffix), "w",
+        for suffix in (".mat", material.RECORD_SUFFIX):    # both files present, no render
+            with open(os.path.join(self.node_dir, asset_id + suffix), "w",
                       encoding="utf-8") as handle:
-                handle.write("a node setup\n")
+                handle.write('{"format": 1}\n')
         return {"id": asset_id, "name": asset_id, "renderer": context,
                 "categories": ["Main"], "tags": []}
 
@@ -31,7 +32,7 @@ class TheThumbnailCountKnowsItsSectionTest(unittest.TestCase):
                 self._row("SOPSETUP1", "SOP")]
         with open(self.cops, "w", encoding="utf-8") as handle:
             json.dump({"categories": ["_All", "Main"], "tags": [], "assets": rows}, handle)
-        findings = repair.survey(self.prefs.dir, self.prefs.asset_dir, self.prefs.img_dir)
+        findings = repair.survey(self.prefs.dir, self.prefs.img_dir)
         self.assertEqual(["SOPSETUP1"],
                          [one for one, _name in findings["missing_renders"]["cops.json"]],
                          "the two LOP setups were counted as missing a render")
