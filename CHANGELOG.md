@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.34.2
+
+- **Check Library** is in Preferences ▸ Library. **Check** shows three lights, **Errors**, **Files** and **Ref**, each with a count. When it finds something the button reads **Repair** and opens a list of what was found, with **Fix All** and **Fix Safe**.
+- **Fix Safe** adds unlisted assets to their database and removes favorites and Files folders whose target is gone. **Fix All** also restores or rebuilds a corrupt or missing database, removes listed assets whose files are gone, and moves leftover and unknown files to the trash.
+- **Generate Material** is live in every section.
+- The `matX` folder shows its own icon. On Windows the library folder and `matX` show their icons too.
+- A 2.0 library no longer holds `policy.json`.
+
 ## 1.34.1
 
 - **Sort by name** is in the File sidebar's right-click menu too. It sorts the locations alphabetically by the name each shows, below All and $HIP.
