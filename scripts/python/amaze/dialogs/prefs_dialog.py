@@ -769,7 +769,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         label.setToolTip(ui_helpers.tooltip_text(text) if text else text)
 
     def _set_check_button(self, fixable: bool) -> None:
-        """`Check`, or a red `Repair` once a check found what can be fixed; one drawn box."""
+        """`Check`, or a red `Repair` once a check found something; one drawn box."""
         self._btn_check.setText(amazetheme.BTN_REPAIR if fixable else amazetheme.BTN_CHECK)
         self._btn_check.setStyleSheet(
             "QPushButton { background-color: %s; color: %s; border: none; border-radius: %dpx; }"
