@@ -266,14 +266,15 @@ def import_entries(models, prefs, bundle, entries,
             wording.byte_size(needed), wording.byte_size(MAX_UNPACKED_BYTES)))
     summary = {"imported": 0, "skipped": 0, "files": 0, "refused": 0,
                "categories": {}, "problems": []}
-    staged = []    # appended rows, saved once per model by `_commit_assets`
+    staged = []    # appended rows and their written files, landed once per model by `_commit_assets`
+    taken = set()    # texture targets already staged: two entries may share one
     for entry in entries:
         name = str((entry.get("record") or {}).get("name")
                    or entry.get("name") or "?")
         try:
             if entry.get("type") == "asset":
                 appended = _import_asset(models, prefs, bundle, entry,
-                                         restore, summary)
+                                         restore, summary, taken)
                 if appended is not None:
                     staged.append(appended)
             elif entry.get("type") == "file":
@@ -293,8 +294,24 @@ def import_entries(models, prefs, bundle, entries,
     return summary
 
 
+def _land_model(prefs, model, items) -> bool:
+    """One model's appended rows and every file they brought, as ONE change; False: none landed."""
+    from amaze.core import library_db
+    if not library_db.accepts(prefs, model.DB_FILENAME):
+        return False
+    held = library_db.guard_of(prefs)
+    with library_db.library_for(prefs).holding():
+        model._stage_rows(model._doc())
+
+    def files(change):
+        for _model, asset, _entry, _row, written in items:
+            asset_record.add_staged(change, held, written,
+                                    metadata=json.loads(json.dumps(asset.get_as_dict())))
+    return bool(library_db.save(prefs, model.DB_FILENAME, also=files))
+
+
 def _commit_assets(prefs, staged, summary) -> None:
-    """Save each model once for its appended rows, then the notes of those that landed; refused, back."""
+    """Land each model's rows and files once, then the notes of those that landed; refused, back."""
     pages = {}
     by_model = {}
     for item in staged:
@@ -302,7 +319,7 @@ def _commit_assets(prefs, staged, summary) -> None:
     for items in by_model.values():
         model = items[0][0]
         try:
-            stored = model.save()
+            stored = _land_model(prefs, model, items)
         except Exception as exc:                          # noqa: BLE001
             debug.event("packages", "entry refused", error=str(exc),
                         name=model.DB_FILENAME)
@@ -310,11 +327,13 @@ def _commit_assets(prefs, staged, summary) -> None:
                                        for item in items)
             stored = False
         if not stored:
-            for _model, asset, _entry, _row in reversed(items):
-                model._take_back_refused_append(asset)    # the payload files left behind are Clean Library's
+            for _model, asset, _entry, _row, written in reversed(items):
+                asset_record.discard(written)
+                model._take_back_refused_append(asset)
             summary["refused"] += len(items)
             continue
-        for _model, asset, entry, row in items:
+        for _model, asset, entry, row, _written in items:
+            model._content_state[str(asset.mat_id)] = model._content_stat(asset.mat_id)    # landed now
             page = entry.get("note") or {}
             section = str(entry.get("section") or "")
             if page.get("items"):
@@ -332,8 +351,8 @@ def _commit_assets(prefs, staged, summary) -> None:
                     names=sorted(pages))
 
 
-def _import_asset(models, prefs, bundle, entry, restore, summary):
-    """One asset entry's files and row into its section's model, unsaved; None when skipped."""
+def _import_asset(models, prefs, bundle, entry, restore, summary, taken):
+    """One asset entry's row into its model and its files into scratches, unsaved; None when skipped."""
     section = str(entry.get("section") or "")
     model = models.get(section)
     if model is None:
@@ -357,37 +376,51 @@ def _import_asset(models, prefs, bundle, entry, restore, summary):
     asset = model._asset_from_row(row)
     targets = model.asset_files(asset.mat_id)
     held = {}    # the builder's members, read into `<id>.json` rather than landed as files
-    for kind, arcname in (entry.get("files") or {}).items():
-        if kind == RECORD_KIND or kind in library_conversion.OLD_MEMBER_KINDS:
-            held[kind] = _small_member(bundle, arcname)
-            continue
-        target = targets.get(kind)
-        if not target or kind in DERIVED:
-            continue
-        hostos.check_sandbox(target)
-        os.makedirs(os.path.dirname(target), exist_ok=True)
-        with hostos.scratch_beside(target) as scratch:
-            with open(scratch, "wb") as handle:
-                copy_member(bundle, arcname, handle)
-    store_prefix = texstore.TOKEN_PREFIX + texstore.STORE_DIR_NAME + "/"
-    for token, arcname in (entry.get("textures") or {}).items():
-        if not str(token).startswith(store_prefix):    # only store tokens may land
-            raise PackageError("not a store texture token: %r" % token)
-        target = hostos.contained_join(    # PathEscape on `..`; the entry counts refused
-            prefs.dir, *str(token)[len(texstore.TOKEN_PREFIX):].split("/"))
-        if os.path.exists(target):
-            if _holds(bundle, arcname, target):
-                continue    # byte-identical - another asset already shares the file
-            debug.event("packages", "texture member replaced",
-                        token=str(token))
-        hostos.check_sandbox(target)
-        os.makedirs(os.path.dirname(target), exist_ok=True)
-        with hostos.scratch_beside(target) as scratch:
-            with open(scratch, "wb") as handle:
-                copy_member(bundle, arcname, handle)
-    _land_builder(model, asset.mat_id, held)
+    written = []    # (asset_record.TAKE, target, scratch) and the record: landed with the row
+    try:
+        for kind, arcname in (entry.get("files") or {}).items():
+            if kind == RECORD_KIND or kind in library_conversion.OLD_MEMBER_KINDS:
+                held[kind] = _small_member(bundle, arcname)
+                continue
+            target = targets.get(kind)
+            if not target or kind in DERIVED:
+                continue
+            written.append(_staged_member(bundle, arcname, target))
+        store_prefix = texstore.TOKEN_PREFIX + texstore.STORE_DIR_NAME + "/"
+        for token, arcname in (entry.get("textures") or {}).items():
+            if not str(token).startswith(store_prefix):    # only store tokens may land
+                raise PackageError("not a store texture token: %r" % token)
+            target = hostos.contained_join(    # PathEscape on `..`; the entry counts refused
+                prefs.dir, *str(token)[len(texstore.TOKEN_PREFIX):].split("/"))
+            if target in taken:
+                continue
+            if os.path.exists(target):
+                if _holds(bundle, arcname, target):
+                    continue    # byte-identical - another asset already shares the file
+                debug.event("packages", "texture member replaced",
+                            token=str(token))
+            written.append(_staged_member(bundle, arcname, target))
+            taken.add(target)
+        written.extend(_staged_builder(model, asset.mat_id, held))
+    except BaseException:
+        asset_record.discard(written)
+        raise
     model._append_record(asset)
-    return model, asset, entry, row
+    return model, asset, entry, row, written
+
+
+def _staged_member(bundle, member, target) -> tuple:
+    """`member` written whole into a scratch beside `target`, staged to land there."""
+    hostos.check_sandbox(target)
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    scratch = hostos.unique_scratch(target)
+    try:
+        with open(scratch, "wb") as handle:
+            copy_member(bundle, member, handle)
+    except BaseException:
+        hostos.discard_scratch(scratch)
+        raise
+    return (asset_record.TAKE, target, scratch)
 
 
 BUILDER_MEMBER_MAX = 16 * 1024 * 1024    # a builder is text; anything larger is not one
@@ -402,15 +435,14 @@ def _small_member(bundle, member) -> bytes:
     return raw
 
 
-def _land_builder(model, mat_id, held: dict) -> None:
-    """The builder a package carries into `<id>.json`; an old shape is read by the converter."""
-    if not held or model.DB_FILENAME not in library_files.ASSET_SECTIONS:
-        return
-    builder = library_conversion.builder_from_members(held)
-    if builder:
-        asset_record.write_section(asset_record.path_for(
-            model.preferences, mat_id, model.DB_FILENAME),
-            asset_record.BUILDER, builder)
+def _staged_builder(model, mat_id, held: dict) -> list:
+    """The asset's `<id>.json`, with the builder a package carries; an old shape is the converter's."""
+    if model.DB_FILENAME not in library_files.ASSET_SECTIONS:
+        return []
+    builder = library_conversion.builder_from_members(held) if held else {}
+    sections = {asset_record.BUILDER: builder} if builder else {}
+    return [(asset_record.RECORD, asset_record.path_for(
+        model.preferences, mat_id, model.DB_FILENAME), sections)]
 
 
 def _import_file(prefs, bundle, entry, summary) -> None:

@@ -48,9 +48,10 @@ class _Case(unittest.TestCase):
                 versions.list_versions(self.prefs, self.mat_id, versions.CODE)]
 
     def _on_disk(self):
-        with open(os.path.join(self.prefs.dir, "code.json"), encoding="utf-8") as handle:
-            rows = json.load(handle)["assets"]
-        return next(row for row in rows if str(row.get("id")) == self.mat_id)
+        from amaze.core import library_db
+        library_db.flush()
+        with open(os.path.join(self.prefs.dir, library_files.CODE), encoding="utf-8") as handle:
+            return json.load(handle)["assets"][self.mat_id]
 
 
 class TheStoreSitsBesideTheMaterialStore(_Case):
@@ -141,32 +142,39 @@ class SelectSwitchesTheSnippet(_Case):
 
 
 class ARefusedListWriteIsSaidOnTheStatusLine(_Case):
-    """A snippet whose list write fails waits in memory: a status line says so, never restart advice."""
+    """A snippet whose list write fails waits in memory: the library's own alert says so, alone."""
 
     def _refused(self, act):
-        from amaze import messages
-        with test_support.full_disk_for(os.path.join(self.prefs.dir, "code.json")), \
+        from amaze.core import library_db
+        with test_support.full_disk_for(os.path.join(self.prefs.dir, library_files.CODE)), \
                 test_support.captured_log() as log:
             act()
-        alerts = [text for text in log.messages("alert")
-                  if "could not save the library" not in text]
-        self.assertEqual([], alerts, "an alert beside the library's own was shown")
-        return messages, log.messages("refuse")
+            library_db.flush()
+        self.assertEqual(["could not save the library"],
+                         ["could not save the library" for text in log.messages("alert")
+                          if "could not save the library" in text][:1],
+                         "the library's own alert was not said")
+        self.assertEqual([], [text for text in log.messages("alert")
+                              if "could not save the library" not in text],
+                         "an alert beside the library's own was shown")
+        self.assertEqual([], log.messages("refuse"), "a status line joined the library's alert")
+        held = library_db.document(self.prefs, library_files.CODE)
+        self.assertTrue(held.dirty, "the refused snippet was dropped, not kept for the next save")
 
-    def test_a_new_snippet_is_said_added(self):
-        messages, said = self._refused(
-            lambda: self.model.add_asset(SECOND, "probe", "VEX", "Examples", "", False))
-        self.assertEqual([messages.ASSET_ADDED_LIBRARY_NOT_SAVED % "probe"], said)
+    def test_a_new_snippet_waits_for_the_next_save(self):
+        self._refused(lambda: self.model.add_asset(SECOND, "probe", "VEX", "Examples", "", False))
+        row = next(asset for asset in self.model.assets if asset.name == "probe")
+        self.mat_id = str(row.mat_id)
+        self.assertEqual(SECOND, self._on_disk()["code"], "the kept snippet never landed")
 
-    def test_a_saved_version_is_said_updated(self):
-        messages, said = self._refused(
-            lambda: self._save(self.model.NEW_VERSION, SECOND, "helper fast"))
-        self.assertEqual([messages.MATERIAL_UPDATED_LIBRARY_NOT_SAVED % "helper fast"], said)
+    def test_a_saved_version_waits_for_the_next_save(self):
+        self._refused(lambda: self._save(self.model.NEW_VERSION, SECOND, "helper fast"))
+        self.assertEqual("helper fast", self._on_disk()["name"], "the kept version never landed")
 
-    def test_a_switched_version_is_said_updated(self):
+    def test_a_switched_version_waits_for_the_next_save(self):
         self._save(self.model.NEW_VERSION, SECOND, "helper fast")
-        messages, said = self._refused(lambda: self.model.switch_version(self.row, 1))
-        self.assertEqual([messages.MATERIAL_UPDATED_LIBRARY_NOT_SAVED % "helper"], said)
+        self._refused(lambda: self.model.switch_version(self.row, 1))
+        self.assertEqual("helper", self._on_disk()["name"], "the kept switch never landed")
 
 
 class TheModelCarriesCodeVersions(_Case):
@@ -321,10 +329,10 @@ class TheEditorWindowKeepsVersions(unittest.TestCase):
         self.assertEqual((FIRST, "helper"), (asset.code, asset.name))
 
     def test_with_versions_off_apply_saves_the_snippet_alone(self):
-        from amaze.core import library_policy
+        from amaze.core import library_settings
         self.model.save_version(self._row(), self.model.NEW_VERSION, SECOND, "helper fast",
                                 "VEX", "Examples", "")
-        self.assertTrue(library_policy.set_allow_overwrite(self.panel.prefs.dir, False))
+        self.assertTrue(library_settings.set_allow_overwrite(self.panel.prefs, False))
 
         def steps(dialog):
             self.assertTrue(dialog._plus.isHidden(), "Versions is off and the + is still there")

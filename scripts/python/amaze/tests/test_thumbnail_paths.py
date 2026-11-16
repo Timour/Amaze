@@ -83,12 +83,12 @@ class TheThumbnailPathIsComposedInOnePlace(unittest.TestCase):
     def test_an_unsafe_id_cannot_escape_the_image_directory(self):
         """The picture path refuses an escaping id, for the readers and the writers alike."""
         with self.assertRaises(hostos.PathEscape):
-            tile_icons.thumbnail_path(self.prefs, "../../../Documents/x", "library.json")
+            tile_icons.thumbnail_path(self.prefs, "../../../Documents/x", library_files.MATERIALS)
 
     def test_a_format_3_picture_is_never_read(self):
         """img/ and captures/ are the converter's: the one picture is in the section folder."""
         root = str(self.prefs.dir)
-        home = tile_icons.thumbnail_path(self.prefs, "abc", "cops.json")
+        home = tile_icons.thumbnail_path(self.prefs, "abc", library_files.NODES)
         self.assertEqual(os.path.join("nodes", "abc.png"),
                          os.path.relpath(home, root))
         for folder in (library_files.CAPTURE_FOLDER, library_files.RENDER_FOLDER):
@@ -97,7 +97,7 @@ class TheThumbnailPathIsComposedInOnePlace(unittest.TestCase):
             with open(old, "wb") as handle:
                 handle.write(b"png")
             with self.subTest(folder=folder):
-                self.assertEqual(home, tile_icons.thumbnail_path(self.prefs, "abc", "cops.json"),
+                self.assertEqual(home, tile_icons.thumbnail_path(self.prefs, "abc", library_files.NODES),
                                  "a format 3 picture was read")
 
     def _tile_reads(self, model, row):
@@ -132,7 +132,7 @@ class TheThumbnailPathIsComposedInOnePlace(unittest.TestCase):
                    if path and not os.path.realpath(path).startswith(library)]
         self.assertEqual(
             [], outside,
-            "an id read verbatim from library.json sent the tile loader "
+            "an id read verbatim from a database sent the tile loader "
             "outside the library")
 
     def test_a_rebuild_resolves_no_path_on_disk(self):
@@ -164,7 +164,7 @@ class TheThumbnailPathIsComposedInOnePlace(unittest.TestCase):
                                  tile_icons.tile_read_path(self.prefs, "abc", section))
         for unsafe in ("../../../Documents/x", "..", "a/b"):
             self.assertEqual("", tile_icons.tile_read_path(
-                self.prefs, unsafe, "library.json"))
+                self.prefs, unsafe, library_files.MATERIALS))
 
 
 class TheCacheKeyCarriesTheLibrary(unittest.TestCase):
@@ -830,12 +830,12 @@ class BundledFilesAreFoundThroughOneLookup(unittest.TestCase):
 
     def test_package_file_returns_a_real_bundled_path(self):
         import amaze
-        found = amaze.package_file("res", "def", "library.json")
+        found = amaze.package_file("res", "def", "starter_snippets.json")
         self.assertTrue(os.path.isabs(found), "not an absolute path")
         self.assertTrue(found.startswith(amaze.PACKAGE_ROOT),
                         "resolved outside the package")
         self.assertTrue(os.path.exists(found),
-                        "the starter library is not where this says")
+                        "the starter snippets are not where this says")
 
     def test_no_source_file_concatenates_the_install_variable(self):
         """The unsafe join must be unwritable; the concatenation is often on the next line, so read both."""
@@ -935,7 +935,7 @@ class BundledFilesAreFoundThroughOneLookup(unittest.TestCase):
         self.addCleanup(hou.putenv, "AMAZE", real or "")
         for label, found in (
                 ("a bundled resource", amaze.package_file("res", "def",
-                                                          "library.json")),
+                                                          "starter_snippets.json")),
                 ("a curated def", gradient_library._def_path("gradients.json")),
         ):
             self.assertTrue(

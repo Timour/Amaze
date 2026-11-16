@@ -18,7 +18,7 @@ sys.path.insert(
 
 from amaze import amazetheme  # noqa: E402
 from amaze.panel import sections  # noqa: E402
-from amaze.core import keyed_store, notes  # noqa: E402
+from amaze.core import library_db, notes  # noqa: E402
 from amaze.panel import notes_panel  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
@@ -392,7 +392,6 @@ class ALibrarySwitchLeavesTheNoteWhereItWasTyped(unittest.TestCase):
         self.panel.resize(1400, 800)
         self.panel.show()
         self.addCleanup(self.panel.hide)
-        self.addCleanup(keyed_store.release)
         self.panel.section_tabs.setChecked("material")
         self.panel.btn_notes.setChecked(True)
         QtWidgets.QApplication.processEvents()
@@ -417,8 +416,10 @@ class ALibrarySwitchLeavesTheNoteWhereItWasTyped(unittest.TestCase):
         return other
 
     def _typed_in(self, library, key):
-        keyed_store.release()    # the page as it is ON DISK, not as a cached table holds it
-        page = notes.note_for(types.SimpleNamespace(dir=library), key)
+        library_db.flush()
+        holder = types.SimpleNamespace(dir=library)
+        library_db.release(holder)    # the page as it is ON DISK, not as a held table has it
+        page = notes.note_for(holder, key)
         return [item.get("text", "") for item in page.get("items", [])]
 
     def test_a_pending_edit_is_written_to_the_library_it_was_typed_in(self):

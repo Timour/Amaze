@@ -456,7 +456,7 @@ class _Persistence:
             return False  # absent is a fresh install, not broken: no latch
         if not store.writable:
             debug.event("prefs", "settings unreadable - opening without a "
-                        "library", path=self.path, trace=store.trace)
+                        "library", path=self.path)
             return False  # the store kept the `.unreadable` copy; writes are refused for the session
         data = store.everyones()
         self.data = dict(data)  # a copy: refresh_data() mutates it, and the store's document must not change

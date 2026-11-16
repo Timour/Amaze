@@ -8,6 +8,7 @@ import tempfile
 import unittest
 
 from amaze.core import documents, guard
+from amaze.tests import test_support  # noqa: F401 - arms the sandbox for a run on its own
 
 MATERIALS = "materials.json"
 ASSETS, COMMENTS, STARS = "assets", "comments", "stars"

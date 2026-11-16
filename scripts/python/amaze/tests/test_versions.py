@@ -30,9 +30,9 @@ class _Case(unittest.TestCase):
         self.prefs = test_support.fixture_prefs(self)
         test_support.reset_database_singletons()
         self.addCleanup(test_support.reset_database_singletons)
-        with open(os.path.join(self.prefs.dir, "library.json"),
+        with open(os.path.join(self.prefs.dir, library_files.MATERIALS),
                   encoding="utf-8") as fh:
-            self.mat_id = str(json.load(fh)["assets"][1]["id"])
+            self.mat_id = sorted(key for key in json.load(fh)["assets"] if key != "-1")[0]
         self.base_mat = material.payload_path(self.prefs, self.mat_id, ".mat", MATERIALS)
         self.base_record = asset_record.path_for(self.prefs, self.mat_id, MATERIALS)
         self.base_png = os.path.join(material.section_folder(self.prefs.dir, MATERIALS),
@@ -133,16 +133,13 @@ class APreEditHoldLeavesNoFolderBehind(_Case):
 
 
 class SwitchRollsBackOnALedgerRefusal(_Case):
-    """switch_active writes the ledger after the promotion, so a refused write rolls the base back."""
+    """The ledger lands with the base files as one unit: a refused ledger moves nothing."""
 
     def test_the_base_returns_when_the_ledger_will_not_write(self):
-        from unittest import mock
-
         versions.create_version(self.prefs, self.mat_id)          # V1
         self._rewrite_base(b"EDITED-STATE")
         versions.create_version(self.prefs, self.mat_id)          # V2
-        with mock.patch.object(versions, "_write_ledger",
-                               return_value=False):
+        with test_support.full_disk_for(versions._ledger_path(self.prefs, self.mat_id)):
             self.assertFalse(
                 versions.switch_active(self.prefs, self.mat_id, 1))
         self.assertEqual(
@@ -152,27 +149,6 @@ class SwitchRollsBackOnALedgerRefusal(_Case):
         self.assertEqual(
             2, versions.active_version(self.prefs, self.mat_id),
             "the ledger moved despite the refusal")
-
-
-class AFailedRollbackSpeaksTest(_Case):
-    """A rollback that also fails alerts the user instead of only logging."""
-
-    def test_the_user_hears_when_the_rollback_also_fails(self):
-        from unittest import mock
-
-        versions.create_version(self.prefs, self.mat_id)          # V1
-        self._rewrite_base(b"EDITED-STATE")
-        versions.create_version(self.prefs, self.mat_id)          # V2
-        with mock.patch.object(versions, "_write_ledger",
-                               return_value=False), \
-             mock.patch.object(versions, "_copy_set",
-                               side_effect=[True, False]), \
-             mock.patch.object(versions.debug, "alert") as spoke:
-            self.assertFalse(
-                versions.switch_active(self.prefs, self.mat_id, 1))
-        self.assertTrue(
-            spoke.called,
-            "a divergence the next save builds on stayed in the log")
 
 
 class ASwitchPutsTheWholeVersionOnTheBase(_Case):
@@ -211,30 +187,23 @@ class ASwitchPutsTheWholeVersionOnTheBase(_Case):
         self.assertEqual([1, 2], [int(r["n"]) for r in versions.list_versions(
             self.prefs, self.mat_id)], "a switch back and forth minted a version")
 
-    def test_a_kind_that_will_not_leave_puts_the_whole_base_back(self):
+    def test_a_kind_that_will_not_leave_is_finished_once_it_can(self):
         from unittest import mock
-        real = versions.hostos.replace_file
+        from amaze.core import guard, library_db
+        real = guard.Disk.remove
 
-        def held(source, dest):    # the picture held open by a viewer while it is moved aside
-            if os.path.normpath(source) == os.path.normpath(self.png):
-                raise PermissionError(13, "Permission denied", source)
-            return real(source, dest)
+        def held(disk, path):    # the picture held open by a viewer while it is removed
+            if os.path.normpath(path) == os.path.normpath(self.png):
+                raise PermissionError(13, "Permission denied", path)
+            return real(disk, path)
 
-        def base():
-            found = []
-            for path in (self.base_mat, self.builder, self.png):
-                if not os.path.exists(path):
-                    found.append(None)
-                    continue
-                with open(path, "rb") as fh:
-                    found.append(fh.read())
-            return found
-
-        before = base()
-        with mock.patch.object(versions.hostos, "replace_file", held):
+        with mock.patch.object(guard.Disk, "remove", held):
             self.assertFalse(versions.switch_active(self.prefs, self.mat_id, 1))
-        self.assertEqual(before, base(), "a switch that could not finish left the base mixed")
-        self.assertEqual(2, versions.active_version(self.prefs, self.mat_id))
+        self.assertTrue(library_db.guard_of(self.prefs).recover(),
+                        "the half-applied switch left no journal to finish")
+        self.assertEqual({"builder": False, ".png": False}, self._in_base(),
+                         "the finished switch left version 2's files beside version 1")
+        self.assertEqual(1, versions.active_version(self.prefs, self.mat_id))
 
     def test_a_switch_through_the_model_records_no_picture(self):
         """Held twice: the switch vacates the picture, the repaint records none (the spy's pin)."""
@@ -631,17 +600,6 @@ class VersionFilesCarryTheirWriterTest(_Case):
         self.assertTrue(asked, "the versioned asset must still read "
                         "its ledger - the seed only answers absence")
 
-    def test_the_ledger_has_a_snapshot_tier(self):
-        """versions.json was the one store without one."""
-        self.prefs.library_user ="Crimson"
-        versions.create_version(self.prefs, self.mat_id)
-        self._rewrite_base(b"EDITED")
-        versions.create_version(self.prefs, self.mat_id)
-        folder = versions.versions_dir(self.prefs, self.mat_id)
-        traces = [name for name in os.listdir(folder)
-                  if name.startswith(versions.LEDGER + ".bak")]
-        self.assertTrue(traces, "no snapshot beside versions.json")
-
 
 class TheWholeLoopThroughTheModelTest(unittest.TestCase):
     """A parameter-only save mints versions; a switch rebaselines, so Update Existing is not refused."""
@@ -740,33 +698,24 @@ class DeletingAUser(unittest.TestCase):
     def _become(self, uid):
         self.prefs.library_user = uid
 
-    def test_delete_sweeps_only_their_tagged_rows(self):
-        from amaze.core import keyed_store, locations, users
+    def test_delete_removes_the_record_and_touches_nobody_elses_rows(self):
+        from amaze.core import library_db, locations, users
         anna = users.create(self.prefs, "Anna")
         bo = users.create(self.prefs, "Bo")
         self._become(anna)
         self.assertTrue(locations.set_favourite(self.prefs, "m-anna", True))
-        self.assertTrue(locations.register(
-            self.prefs, os.path.join(self.prefs.dir, "anna-folder")))
         self._become(bo)
         self.assertTrue(locations.set_favourite(self.prefs, "m-bo", True))
 
         self.assertTrue(users.delete(self.prefs, anna))
 
         self.assertEqual({bo: "Bo"}, users.all_users(self.prefs))
-        favs = keyed_store.open_store(
-            locations.FAVOURITES_SPEC, self.prefs).everyones()
-        owners = {keyed_store.untagged_key(
-            locations.FAVOURITES_SPEC, key)[0] for key in favs}
-        self.assertEqual({bo}, owners,
-                         "the sweep left the deleted user's stars, or "
-                         "took the survivor's: %s" % favs)
-        records = keyed_store.open_store(
-            locations.SPEC, self.prefs).everyones()
-        owners = {keyed_store.untagged_key(
-            locations.SPEC, key)[0] for key in records}
-        self.assertNotIn(anna, owners,
-                         "the deleted user's registered folder survived")
+        stars = library_db.document(self.prefs, library_files.FILES).everyones(locations.STARS)
+        self.assertTrue(stars.get(bo), "the deletion took the survivor's stars: %s" % stars)
+        self.assertTrue(stars.get(anna), "the deletion rewrote another user's rows: %s" % stars)
+        self.assertTrue(locations.is_favourite(self.prefs, "m-bo"))
+        self.assertFalse(locations.is_favourite(self.prefs, "m-anna"),
+                         "the deleted user's star shows for the survivor")
         self.assertFalse(users.delete(self.prefs, "f" * 32),
                          "deleting a stranger answered success")
 

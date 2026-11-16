@@ -543,9 +543,9 @@ class AssetSection(Section):
         with ui_helpers.relayout(st.model):    # the asset rows change IN PLACE, the pair's one job
             for name in names:
                 st.model.rename_category(name, new_name)
-        for name in names:
-            st.categories.rename_category(name, new_name)    # OUTSIDE the pair: it saves its list
         st.model.save()    # AFTER the pair: a save adopts a peer's rows, and an insert in it segfaults H21
+        for name in names:
+            st.categories.rename_category(name, new_name)    # after the rows: its save must not undo them
         self.stand_on_key(new_name if standing in names else standing)    # a renamed row by its new name
         self.panel.refresh_sidebar_categories()    # counts and empty-category hiding follow the rename
 
@@ -1790,7 +1790,7 @@ class FileSection(FolderSection):
                   shown="selection_has_importable"),
         MenuEntry("Copy Path", verb="menu_copy_path"),
         SEPARATOR,
-        MenuEntry("Open Location", verb="menu_reveal", needs="one"),
+        MenuEntry("Show Location", verb="menu_reveal", needs="one"),
     ) + GRID_MENU_TAIL
 
     _PATH_ONLY = DropRule(on_node="drop_file_path_on_node",    # per row kind: every kind hands its path to the node; the no-node door differs

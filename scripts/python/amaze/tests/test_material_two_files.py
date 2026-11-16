@@ -605,7 +605,7 @@ class OnlyTheConverterNamesFormat3Test(unittest.TestCase):
              "LEGACY_ASSET_FOLDER",
              "library.json", "cops.json", "gradients.json", "notes.json", "icons.json",
              "favourites.json", "locations.json", "location_paths.json", "users.json",
-             "prefs.json", "policy.json",
+             "prefs.json", "policy.json", "pre-adopt", "PRE_ADOPT",
              ".bak-", "bak-first", "bak-before-restore", "history_root", "record_history",
              "snapshot_before_write", "seed_restore_floor", "existed_before",
              ".amaze_gradient_seed", ".amaze_code_starter", ".assetlib_", "material_favorites",

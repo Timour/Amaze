@@ -50,9 +50,9 @@ class AStarNeverLandsOnARowThatWasNotAskedFor(unittest.TestCase):
         """Record which mat_id the star was written against."""
         written = []
         with mock.patch.object(locations, "is_favourite",
-                               lambda prefs, mat_id: False), \
+                               lambda prefs, mat_id, *_database: False), \
              mock.patch.object(locations, "set_favourites",
-                               lambda prefs, wanted:
+                               lambda prefs, wanted, *_database:
                                written.extend(wanted)), \
              mock.patch.object(model, "row_changed", lambda *a, **k: None), \
              mock.patch.object(model, "index", lambda r, c: _FakeIndex(r)), \

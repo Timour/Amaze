@@ -270,7 +270,7 @@ def _out_of_place(directory: str, listing: dict) -> dict:
         if kind == naming.SCRATCH:
             if info is not None and now - when >= SCRATCH_MIN_AGE:
                 leftovers.append((relative, kind, size, when))
-        elif kind in (naming.PRE_ADOPT_COPY, naming.SUPERSEDED):
+        elif kind == naming.SUPERSEDED:
             leftovers.append((relative, kind, size, when))
         elif kind == naming.DUPLICATE:
             why = _why_a_duplicate_stays(directory, relative, detail, listing)
@@ -904,8 +904,6 @@ def _check_lines(findings: dict) -> tuple:
 _LEFTOVER_KINDS = (    # (kind, one, more)
     (naming.SCRATCH, "temporary file from a save that did not finish",
      "temporary files from saves that did not finish"),
-    (naming.PRE_ADOPT_COPY, "backup kept from before an earlier texture update",
-     "backups kept from before an earlier texture update"),
     (naming.SUPERSEDED, "file of the older format whose content is now in the asset's .json",
      "files of the older format whose content is now in their asset's .json"),
     (naming.DUPLICATE, "conflict copy a sync service made of a file still here",

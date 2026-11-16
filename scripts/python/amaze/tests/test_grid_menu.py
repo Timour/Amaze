@@ -300,20 +300,20 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
         top = ["New Folder", "----", "Save Scene", "----"]    # the folder shown, whatever is selected
         for kind, count, expected in (
                 (locations.KIND_IMAGE, 1,
-                 top + ["Load Asset", "Copy Path", "----", "Open Location",
+                 top + ["Load Asset", "Copy Path", "----", "Show Location",
                         "Thumbnail > [Render Image, Capture Scene, Customize]", "Favorite"]),
                 (locations.KIND_IMAGE, 2,    # an image loads onto ONE node parameter
-                 top + ["Load Asset(off)", "Copy Path", "----", "Open Location(off)",
+                 top + ["Load Asset(off)", "Copy Path", "----", "Show Location(off)",
                         "Thumbnail > [Render Image, Capture Scene(off), Customize]", "Favorite"]),
                 (locations.KIND_GEO, 2,      # geometry loads the whole selection
-                 top + ["Load Asset", "Copy Path", "----", "Open Location(off)",
+                 top + ["Load Asset", "Copy Path", "----", "Show Location(off)",
                         "Thumbnail > [Render Image, Capture Scene(off), Customize]", "Favorite"]),
                 (locations.KIND_HIP, 1,      # a scene captures only while it is the open one
                  ["New Folder", "----", "Open Scene", "Save Scene", "----",
-                  "Copy Path", "----", "Open Location",
+                  "Copy Path", "----", "Show Location",
                   "Thumbnail > [Capture Scene(off), Customize]", "Favorite"]),
                 (locations.KIND_OTHER, 1,    # what Houdini cannot open is absent, not greyed
-                 top + ["Copy Path", "----", "Open Location",
+                 top + ["Copy Path", "----", "Show Location",
                         "Thumbnail > [Capture Scene, Customize]", "Favorite"])):
             with self.subTest(kind=kind, selected=count):
                 rows = self._rows_of_kind(kind)

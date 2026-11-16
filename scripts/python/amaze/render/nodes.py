@@ -723,6 +723,7 @@ class NodeHandler:
     def __init__(self, preferences: prefs.Prefs) -> None:
         self._preferences = preferences
         self.staging = None    # a list: an asset's files wait there for the caller to land with its row
+        self.after_landing = []    # what reads the staged files, run by the caller once they landed
         self.supplied_thumbnail = ""    # a picture an import brought, saved instead of a render
         self.render_after_save = True    # False: a new save skips its render, a batch follows
         self._builder_node = None
@@ -1581,12 +1582,18 @@ class NodeHandler:
         else:
             debug.event("save", "cop thumb source", source=None)
 
-        self.after_save_thumbnail(
-            update, "Network", asset_id, node.path(),
-            lambda: thumbs.ThumbNailRenderer(
-                self._preferences).render_network_thumbnail(
-                    cop_nodes.context_of(node, items),
-                    asset_id, self._cop_info.get("thumb_node", "")), NODES)
+        context = cop_nodes.context_of(node, items)
+        thumb_node = self._cop_info.get("thumb_node", "")
+
+        def render_later():    # a SOP picture is read from the saved archive, so it waits for the landing
+            self.after_save_thumbnail(
+                update, "Network", asset_id, node.path(),
+                lambda: thumbs.ThumbNailRenderer(self._preferences).render_network_thumbnail(
+                    context, asset_id, thumb_node), NODES)
+        if self.staging is None:
+            render_later()
+        else:
+            self.after_landing.append(render_later)
         return True
 
     def import_cop_asset(

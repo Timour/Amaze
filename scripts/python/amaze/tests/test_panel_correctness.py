@@ -24,7 +24,7 @@ sys.path.insert(
 
 from amaze.core import file_library, geo_library  # noqa: E402
 from amaze.core import grid_columns, grid_engine  # noqa: E402
-from amaze.core import keyed_store, locations, notes, tile_icons  # noqa: E402
+from amaze.core import library_db, locations, notes, tile_icons  # noqa: E402
 from amaze.dialogs import save_dialog  # noqa: E402
 from amaze.prefs import prefs as prefs_mod  # noqa: E402
 from amaze.helpers import theme, ui_helpers  # noqa: E402
@@ -41,10 +41,13 @@ def _location_prefs(case, names, colors, show_all, recursive):
     prefs._file_folders = []
     prefs._file_favorites = []
     prefs._file_location_records = {}
-    for path in set(names) | set(colors) | set(show_all) | set(recursive):
-        prefs._file_folders.append(path)
-        record = prefs._file_location_records.setdefault(
-            path, {"registered": True})
+    prefs._users_blocks = {}
+    locations.forget()
+    case.addCleanup(shutil.rmtree, prefs._directory, True)
+    case.addCleanup(library_db.release)
+    case.addCleanup(locations.forget)
+    for path in sorted(set(names) | set(colors) | set(show_all) | set(recursive)):
+        record = {"registered": True}
         if path in names:
             record["name"] = names[path]
         if path in colors:
@@ -53,11 +56,8 @@ def _location_prefs(case, names, colors, show_all, recursive):
             record["show_all"] = show_all[path]
         if path in recursive:
             record["recursive"] = True
-    locations.forget()
-    locations.migrate(prefs)
-    case.addCleanup(shutil.rmtree, prefs._directory, True)
-    case.addCleanup(keyed_store.release)
-    case.addCleanup(locations.forget)
+        case.assertTrue(locations.set_record(prefs, path, record),
+                        "premise: the location %s was not written" % path)
     return prefs
 
 PACKAGE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -693,31 +693,30 @@ class LocateFolderKeepsEveryPerLocationSetting(unittest.TestCase):
 
     def test_a_relocate_carries_the_comments_and_the_tile_icons_too(self):
         """Comments and icons key on the path, so a relocate must carry them."""
-        prefs = _location_prefs(self, {}, {}, {}, [])
-        keyed_store.release()
+        prefs = _location_prefs(self, {"/old/": "Plates"}, {}, {}, [])
+        key = locations.file_ident(prefs, "/old/shot.exr")
+        self.assertTrue(key.startswith(locations.LOC_PREFIX), "premise: /old/ owns no file")
 
         self.assertTrue(notes.set_note(
-            prefs, notes.note_key("file", "/old/shot.exr"),
+            prefs, notes.note_key("file", key),
             [{"t": "text", "text": "check the gamma"}]))
         self.assertTrue(tile_icons.set_override(
-            prefs, "/old/shot.exr", {"name": "box", "bg": "#ef8878"}))
-        asset_key = notes.note_key("material", "/old/thing")    # notes.json mixes ids with paths
+            prefs, key, {"name": "box", "bg": "#ef8878"}, locations.FILES))
+        asset_key = notes.note_key("material", "/old/thing")    # an asset id that looks like a path
         self.assertTrue(notes.set_note(
             prefs, asset_key, [{"t": "text", "text": "not a path"}]))
 
-        model = file_library.FileFolders.__new__(file_library.FileFolders)
-        model.preferences = prefs
-        model._on_folder_relocated("/old/", "/new/")
+        self.assertTrue(locations.relocate_record(prefs, "/old/", "/new/"))
+        moved = locations.file_ident(prefs, "/new/shot.exr")
 
         self.assertTrue(
-            notes.has_note(prefs, notes.note_key("file", "/new/shot.exr")),
+            notes.has_note(prefs, notes.note_key("file", moved)),
             "the comment was orphaned on the old path")
-        self.assertFalse(
-            notes.has_note(prefs, notes.note_key("file", "/old/shot.exr")),
-            "the comment was copied rather than moved")
+        self.assertEqual("", locations.file_ident(prefs, "/old/shot.exr").partition(
+            locations.LOC_PREFIX)[1], "the old path still names a location")
         self.assertEqual(
             "box",
-            tile_icons.override_for(prefs, "/new/shot.exr").get("name"),
+            tile_icons.override_for(prefs, moved, locations.FILES).get("name"),
             "the tile icon was orphaned on the old path")
         self.assertTrue(
             notes.has_note(prefs, asset_key),
@@ -729,7 +728,7 @@ class LocateFolderKeepsEveryPerLocationSetting(unittest.TestCase):
         prefs = _location_prefs(self, {"/a/tex/": "Bokeh", "/a/textures/": "two"},
                                 {"/a/tex/": "#ff8000"}, {"/a/tex/": True},
                                 ["/a/tex/"])
-        keyed_store.retire_prefix(prefs, "/a/tex/")
+        locations.retire_prefix(prefs, "/a/tex/")
         self.assertEqual(
             {}, locations.record(prefs, "/a/tex/"),
             "a per-location fact came back with the path - the colour "
@@ -1079,12 +1078,12 @@ class ClosingPreferencesRescansTheFileFolderOnce(unittest.TestCase):
 
     def test_closing_onto_another_library_scans_its_location_once(self):
         theirs = test_support.fresh_files_folder(self)
+        library = test_support.with_fixture_user(test_support.fresh_library(self))
+        test_support.with_fixture_location(library, theirs)
         settings = os.path.join(self.panel.prefs.path, "settings.json")
         with open(settings, encoding="utf-8") as handle:
             data = json.load(handle)
-        data.update(directory=test_support.fresh_library(self),
-                    file_folders=[theirs], last_file_folder=theirs,
-                    file_location_records={theirs: {"registered": True}})
+        data.update(directory=library, file_folders=[theirs], last_file_folder=theirs)
         with open(settings, "w", encoding="utf-8") as handle:
             json.dump(data, handle)
         scans = self._scans_while(self.panel._prefs_dialog_closed)

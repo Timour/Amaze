@@ -877,27 +877,32 @@ class TheSelectionSpeaksInROWS(unittest.TestCase):
             dragged, header.sectionSize(column),
             "the tab switch re-seeded the default over the user's drag")
 
-    def test_recategorising_a_selection_is_TWO_index_writes(self):
-        """One for the new category, one for the whole selection: each write hashes the full index."""
+    def test_recategorising_a_selection_is_one_database_write(self):
+        """The new category and the whole selection live in one database, so they are one save."""
         from unittest import mock
-
-        from amaze.helpers import hostos as hostos_mod
+        from amaze.core import guard, library_db, library_files
 
         self._select_row(0)
+        library_db.flush()
         writes = []
-        real = hostos_mod.write_json_atomic
+        real = guard.Disk.write
 
-        def counting(path, *args, **kwargs):
-            if str(path).endswith("library.json"):
+        def counting(disk, path, data):
+            name = os.path.basename(str(path))
+            if name.startswith(library_files.MATERIALS + ".") and name.endswith(guard.SCRATCH):
                 writes.append(str(path))
-            return real(path, *args, **kwargs)
+            return real(disk, path, data)
 
-        with mock.patch.object(hostos_mod, "write_json_atomic",
-                               counting):
+        def timer():    # the panel's save timer: the gesture's changes wait for one flush
+            return None
+        library_db.set_scheduler(timer)
+        self.addCleanup(library_db.drop_scheduler, timer)
+        with mock.patch.object(guard.Disk, "write", counting):
             self.panel.assign_category_active("One Write")
+            library_db.flush()
         self.assertEqual(
-            2, len(writes),
-            "recategorising one row wrote the index %d times"
+            1, len(writes),
+            "recategorising one row wrote the database %d times"
             % len(writes))
 
     def test_the_table_offers_the_menu_and_the_primary_action(self):

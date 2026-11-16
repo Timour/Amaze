@@ -3,15 +3,14 @@
  "manifest": {
   "materials.json": {
    "by": "",
-   "created": "2026-11-16_111709"
+   "created": "2026-11-16_125542"
   }
  },
- "marks": {},
  "policy": {
   "library": {
+   "_at": "2026-11-16_125542",
+   "_by": "",
    "version": 4
   }
- },
- "settings": {},
- "users": {}
+ }
 }

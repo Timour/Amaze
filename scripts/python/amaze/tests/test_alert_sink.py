@@ -522,61 +522,26 @@ class TheTenSitesAreConvertedTest(unittest.TestCase):
     EXPECTED = {    # file -> conditions; empty: moved to the registry ▸p/source-derived-tests
         os.path.join("core", "gradient_library.py"): (
             "colors-not-saved",),    # the trailing comma is load-bearing: a bare string is walked one character at a time
-        os.path.join("core", "database.py"): ("unreadable-",),
+        os.path.join("core", "library_db.py"): ("database-%s-%s-%s", "database-write-failed-%s",
+                                                "shrunk-%s-%s"),
         os.path.join("core", "tile_icons.py"): ("icons-not-saved",),
         os.path.join("core", "notes.py"): (),
-        os.path.join("core", "keyed_store.py"): (),
         os.path.join("core", "matx_sources.py"): (
             "online-unsafe-archive-paths",),
     }
 
-    def test_the_side_tables_conditions_moved_to_the_registry(self):
-        """The stores declare their own sentences, so no `key="..."` literal remains to grep."""
-        from amaze.core import keyed_store
-
-        for spec in keyed_store.stores():
-            if not spec.in_library:
-                continue
-            self.assertTrue(
-                spec.unreadable_alert,
-                "%s has no sentence for the user when it cannot be "
-                "read - the condition is the whole reason the store "
-                "refuses to write" % spec.filename)
-            self.assertTrue(spec.alert_key,
-                            "%s raises its alert with no key, so it "
-                            "cannot be de-duplicated" % spec.filename)
-            self.assertIn(
-                "Check Library", spec.unreadable_alert,
-                "%s tells the user it will not save over their work "
-                "without saying how to get it back" % spec.filename)
-        keys = {spec.alert_key for spec in keyed_store.stores()}
-        self.assertIn("notes-unreadable", keys)
-        self.assertIn("icons-unreadable", keys)
-        settings = keyed_store.store_for(keyed_store.SETTINGS)    # machine-local, so the loop skips it; EXPECTED can no longer see it either
-        self.assertEqual("prefs-unreadable", settings.alert_key)
-        self.assertIn("Check Library", settings.unreadable_alert)
-
-        source = open(os.path.join(self.ROOT, "core", "keyed_store.py"),
-                      encoding="utf-8").read()
-        self.assertIn(
-            "key=spec.alert_key", source,
-            "the engine raises the stores' alerts some other way, so "
-            "the declared keys are decoration")
-
-        speaks = {spec.filename for spec in keyed_store.stores()
-                  if spec.denied_alert}    # the whole SET, because an omission and a deliberate silence read identically in a registry
-        self.assertEqual(
-            {"notes.json", "icons.json", "prefs.json", "settings.json"},
-            speaks,
-            "the stores that report a denied write changed - a comment, "
-            "a tile icon, a shared setting and a preference stay on "
-            "screen looking saved, so nothing but this tells the user; "
-            "a location and a favourite are derived from their store "
-            "and simply do not appear")
-        self.assertIn(
-            "if spec.denied_alert:", source,
-            "the engine no longer raises the declared denial, so those "
-            "sentences are decoration")
+    def test_a_database_that_does_not_read_says_how_to_get_it_back(self):
+        """Each database is judged by one door, whose read-only sentences point at Check Library."""
+        from amaze import messages
+        for text in (messages.DATABASE_CORRUPT_READ_ONLY, messages.DATABASE_MISSING_READ_ONLY,
+                     messages.DATABASE_SHRUNK):
+            self.assertIn("Check Library", text,
+                          "a database the user cannot write says nothing of how to get it back")
+        source = open(os.path.join(self.ROOT, "core", "library_db.py"), encoding="utf-8").read()
+        for name in ("DATABASE_CORRUPT_READ_ONLY", "DATABASE_MISSING_READ_ONLY",
+                     "LIBRARY_FORMAT_AHEAD_READ_ONLY", "DATABASE_SHRUNK", "LIBRARY_WRITE_FAILED"):
+            self.assertIn("messages." + name, source,
+                          "%s is no longer said by the one door that judges a database" % name)
 
     def test_every_condition_is_raised_through_alert(self):
         missing = []
@@ -630,6 +595,26 @@ class EveryWayInHandsTheLogItsSpeaker(unittest.TestCase):
         import inspect
         from amaze.utils import rc_calls
         self.assertIn("start()", inspect.getsource(rc_calls.save))
+
+
+class AHeldDatabaseIsNeverCalledCorrupt(unittest.TestCase):
+    """A database that is there but cannot be opened is read-only for now, never said to be corrupt."""
+
+    def test_held_is_read_only_silent_and_judged_again(self):
+        from amaze.core import guard, library_db, library_files
+        prefs = test_support.fixture_prefs(self)
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        path = os.path.join(prefs.dir, library_files.MATERIALS)
+        with test_support.refused_at_open(path), test_support.captured_log() as log:
+            held = library_db.document(prefs, library_files.MATERIALS)
+            self.assertEqual(guard.HELD, held.verdict, "premise: the file read as something else")
+            self.assertFalse(library_db.accepts(prefs, library_files.MATERIALS),
+                             "a database that cannot be opened takes changes")
+        self.assertEqual([], log.messages("alert"), "a held database was alerted about")
+        library_db.refresh(prefs)
+        self.assertEqual(guard.FINE, library_db.document(prefs, library_files.MATERIALS).verdict,
+                         "the database was not judged again once it opened")
 
 
 if __name__ == "__main__":

@@ -23,7 +23,7 @@ sys.path.insert(
 from amaze import messages  # noqa: E402
 from amaze.actions import materials as material_actions  # noqa: E402
 from amaze.actions import nodes as node_actions  # noqa: E402
-from amaze.core import library_policy, matx_import, renderers, tile_icons  # noqa: E402
+from amaze.core import library_settings, material, matx_import, renderers, tile_icons  # noqa: E402
 from amaze.dialogs import base_dialog, code_dialog  # noqa: E402
 from amaze.panel import sections  # noqa: E402
 from amaze.render import nodes as render_nodes  # noqa: E402
@@ -389,13 +389,13 @@ class FavouritingWorksInEverySection(unittest.TestCase):
 
 
 class AStarOverASelectionWritesOnce(unittest.TestCase):
-    """One star gesture over many tiles commits the favourites store once and saves settings once."""
+    """One star gesture over many tiles writes its database once and saves no settings."""
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
 
-    def _gesture(self, key):
-        from amaze.helpers import hostos
+    def _gesture(self, key, database):
+        from amaze.core import guard, library_db
         from amaze.prefs import prefs as prefs_mod
         self.panel.section_tabs.setChecked(key)
         QtWidgets.QApplication.processEvents()
@@ -403,37 +403,43 @@ class AStarOverASelectionWritesOnce(unittest.TestCase):
         proxy = self.panel.thumblist.model()
         rows = range(min(proxy.rowCount(), 5))
         self.assertGreater(len(rows), 1, "premise: %s shows two tiles" % key)
-        context.toggle_favourite([proxy.index(0, 0)])    # a first star migrates
+        context.toggle_favourite([proxy.index(0, 0)])
         context.toggle_favourite([proxy.index(0, 0)])
         QtWidgets.QApplication.processEvents()
+        library_db.flush()
         role = proxy.sourceModel().FavoriteRole
         before = [bool(proxy.index(r, 0).data(role)) for r in rows]
         writes, saves = [], []
-        real_write = hostos.write_json_atomic
+        real_write = guard.Disk.write
 
-        def counted(path, *args, **kwargs):
-            if os.path.basename(path) == "favourites.json":
+        def counted(disk, path, data):
+            name = os.path.basename(path)
+            if name.startswith(database + ".") and name.endswith(guard.SCRATCH):
                 writes.append(path)
-            return real_write(path, *args, **kwargs)
+            return real_write(disk, path, data)
 
-        with mock.patch.object(hostos, "write_json_atomic", counted), \
+        with mock.patch.object(guard.Disk, "write", counted), \
                 mock.patch.object(prefs_mod.Prefs, "save",
                                   lambda *_a, **_k: saves.append(1)):
             context.toggle_favourite([proxy.index(r, 0) for r in rows])
-        QtWidgets.QApplication.processEvents()
+            QtWidgets.QApplication.processEvents()
+            library_db.flush()
         after = [bool(proxy.index(r, 0).data(role)) for r in rows]
         return before, after, len(writes), len(saves)
 
     def test_each_section_writes_a_selection_s_stars_once(self):
-        for key in ("material", "gradient", "file"):
+        from amaze.core import library_files
+        for key, database in (("material", library_files.MATERIALS),
+                              ("gradient", library_files.COLORS),
+                              ("file", library_files.FILES)):
             with self.subTest(section=key):
-                before, after, writes, saves = self._gesture(key)
+                before, after, writes, saves = self._gesture(key, database)
                 self.assertEqual([not star for star in before], after,
                                  "%s did not flip every tile" % key)
-                self.assertEqual(1, writes, "%s wrote favourites.json %d "
-                                 "times for one gesture" % (key, writes))
-                self.assertEqual(1, saves, "%s saved settings %d times "
-                                 "for one gesture" % (key, saves))
+                self.assertEqual(1, writes, "%s wrote %s %d times for one gesture"
+                                 % (key, database, writes))
+                self.assertEqual(0, saves, "%s saved settings %d times for a star, "
+                                 "which lives in the database alone" % (key, saves))
 
 
 class ANonModalDialogHoldsIDENTITYNotRowNumbers(unittest.TestCase):
@@ -606,7 +612,7 @@ class NoRowMovesInsideALayoutChange(unittest.TestCase):
         path = os.path.join(self.panel.prefs.dir, model.DB_FILENAME)
         with open(path, encoding="utf-8-sig") as handle:
             document = json.load(handle)
-        document["assets"].append(dict(row, categories=[], tags=[]))
+        document["assets"][row["id"]] = dict(row, categories=[], tags=[])
         with open(path, "w", encoding="utf-8") as handle:
             json.dump(document, handle, indent=4)
 
@@ -698,7 +704,8 @@ class NoRowMovesInsideALayoutChange(unittest.TestCase):
         self._peer_adds_a_row(self.model, {"id": "PEER-OVER",
                                            "name": "Saved elsewhere"})
 
-        def updating(_model, _row, _node):
+        def updating(_model, row, _node):
+            self.model.assets[row].date = "2026-11-16 12:00:00"    # what an update changes
             self.model.save()    # the update's own last step
             return "Karma"
 
@@ -747,8 +754,7 @@ class ARowHeldAcrossASaveIsFoundAgain(unittest.TestCase):
         path = os.path.join(self.panel.prefs.dir, model.DB_FILENAME)
         with open(path, encoding="utf-8-sig") as handle:
             document = json.load(handle)
-        document["assets"] = [row for row in document["assets"]
-                              if str(row.get("id")) != str(mat_id)]
+        del document["assets"][str(mat_id)]
         with open(path, "w", encoding="utf-8") as handle:
             json.dump(document, handle, indent=4)
 
@@ -878,7 +884,7 @@ class ARowHeldAcrossASaveIsFoundAgain(unittest.TestCase):
                 mock.patch.object(hou, "ui", asking, create=True), \
                 mock.patch.object(self.panel, "_find_existing_asset_row",
                                   lambda node: where[id(node)]), \
-                mock.patch.object(library_policy, "allow_overwrite",
+                mock.patch.object(library_settings, "allow_overwrite",
                                   lambda *_a: True), \
                 mock.patch.object(material_actions, "update_asset_content", update):
             self.panel.save_asset()
@@ -990,11 +996,10 @@ class ADeleteOverASelectionSavesOnce(unittest.TestCase):
         self.assertTrue(self.files, "premise: the assets own files")
 
     def _delete(self, refuse=False):
-        from amaze.core import database, library
-        save = database.DatabaseConnector.save
-        with mock.patch.object(database.DatabaseConnector, "save",
-                               autospec=True,
-                               side_effect=(lambda db: False) if refuse
+        from amaze.core import library, library_db
+        save = library_db.save
+        with mock.patch.object(library_db, "save",
+                               side_effect=(lambda *_a, **_k: False) if refuse
                                else save) as saves, \
                 mock.patch.object(library.AssetLibrary, "rebuild_thumbs",
                                   autospec=True,
@@ -1025,9 +1030,11 @@ class ADeleteOverASelectionSavesOnce(unittest.TestCase):
         self.assertEqual(self.files, [p for p in self.files if os.path.exists(p)],
                          "a refused delete unlinked files")
         self.assertTrue(self.model.save(), "premise: the next save landed")
-        path = os.path.join(self.panel.prefs.dir, "library.json")
+        from amaze.core import library_db
+        library_db.flush()
+        path = os.path.join(self.panel.prefs.dir, self.model.DB_FILENAME)
         with open(path, encoding="utf-8-sig") as handle:
-            on_disk = {str(row.get("id")) for row in json.load(handle)["assets"]}
+            on_disk = set(json.load(handle)["assets"])
         self.assertEqual(set(self.ids), set(self.ids) & on_disk,
                          "the declined delete reached disk with the next save")
 
@@ -1043,7 +1050,8 @@ class ACustomizeOverASelectionSavesOnce(unittest.TestCase):
         self.ids = [str(self.model.assets[row].mat_id) for row in self.rows]
 
     def _apply(self, tags, category):
-        from amaze.core import database
+        from amaze.core import library, library_db
+        library_db.flush()
         self.panel.edit_tile_icon(
             self.model, None, [self.model.index(row, 0) for row in self.rows])
         dialog = self.panel._icon_dialog
@@ -1053,11 +1061,11 @@ class ACustomizeOverASelectionSavesOnce(unittest.TestCase):
         dialog.spec = {"name": "star", "bg": "#4af2a1", "ink": "dark"}
         dialog.new_tags = tags
         dialog.new_category = category
-        with mock.patch.object(database.DatabaseConnector, "save",
-                               autospec=True,
-                               side_effect=database.DatabaseConnector.save) as save:
+        with mock.patch.object(library.AssetLibrary, "save", autospec=True,
+                               side_effect=library.AssetLibrary.save) as save:
             dialog.finished.emit(1)
             QtWidgets.QApplication.processEvents()
+            library_db.flush()
         return save.call_count
 
     def _record(self, mat_id):
@@ -1073,10 +1081,9 @@ class ACustomizeOverASelectionSavesOnce(unittest.TestCase):
             record = self._record(mat_id)
             self.assertIn("probe-tag", record.tags)
             self.assertEqual(["Probe Shelf"], list(record.categories))
-        path = os.path.join(self.panel.prefs.dir, "library.json")
+        path = os.path.join(self.panel.prefs.dir, self.model.DB_FILENAME)
         with open(path, encoding="utf-8-sig") as handle:
-            on_disk = {str(row.get("id")): row
-                       for row in json.load(handle)["assets"]}
+            on_disk = json.load(handle)["assets"]
         for mat_id in self.ids:
             self.assertEqual(["Probe Shelf"], on_disk[mat_id]["categories"],
                              "the edit never reached the file")
@@ -1129,7 +1136,7 @@ class _SavesThroughThePanel:
             for patch in (mock.patch.object(hou, "selectedNodes", lambda: held),
                           mock.patch.object(hou, "ui", types.SimpleNamespace(
                               displayMessage=self._answering), create=True),
-                          mock.patch.object(library_policy, "allow_overwrite", lambda *_a: True),
+                          mock.patch.object(library_settings, "allow_overwrite", lambda *_a: True),
                           *patches):
                 stack.enter_context(patch)
             log = stack.enter_context(test_support.captured_log())
@@ -1138,26 +1145,27 @@ class _SavesThroughThePanel:
 
 
 class ASaveVersionTheListCannotTakeIsSaidOnce(_SavesThroughThePanel, unittest.TestCase):
-    """Save Version with the library list write refused: one status line after the batch, no dialog."""
+    """Save Version with the list write refused: the library's alert alone, the rows kept for later."""
 
     def _save_over(self, count):
+        from amaze.core import library_db
         assets = self._karma(count)
         index = self._list_of(self.panel.material_model)
         shown, log = self._save(self._held(assets), test_support.full_disk_for(index))
         self.assertEqual([], shown, "a dialog joined the library's own alert")
         self.assertTrue(log.matching("could not save the library", "alert"),
                         "premise: the list write went through")
-        return assets, log.messages("refuse")
+        held = library_db.document(self.panel.prefs, self.panel.material_model.DB_FILENAME)
+        self.assertTrue(held.dirty, "the refused rows were dropped, not kept for the next save")
+        library_db.flush()
+        self.assertFalse(held.dirty, "the kept rows did not land once the disk took them")
+        return log.messages("refuse")
 
-    def test_one_update_names_the_material(self):
-        assets, said = self._save_over(1)
-        self.assertEqual([messages.MATERIAL_UPDATED_LIBRARY_NOT_SAVED % assets[0].name], said,
-                         "the status line did not say the library was not saved")
+    def test_one_update_is_kept_for_the_next_save(self):
+        self.assertEqual([], self._save_over(1), "a status line joined the library's own alert")
 
-    def test_several_updates_share_one_line(self):
-        _assets, said = self._save_over(2)
-        self.assertEqual([messages.MATERIALS_UPDATED_LIBRARY_NOT_SAVED % 2], said,
-                         "the batch did not end on one line counting its unsaved updates")
+    def test_several_updates_are_kept_for_the_next_save(self):
+        self.assertEqual([], self._save_over(2), "a status line joined the library's own alert")
 
 
 class ASaveVersionSaysWhatItDidNotUpdateOnce(_SavesThroughThePanel, unittest.TestCase):
@@ -1225,51 +1233,54 @@ class ASaveVersionSaysWhatItDidNotUpdateOnce(_SavesThroughThePanel, unittest.Tes
 
 
 class ASaveNewTheListCannotTakeIsSaidOnce(_SavesThroughThePanel, unittest.TestCase):
-    """A new material or node setup whose list write fails: a status line, the library's alert alone."""
+    """A new material or node setup whose list write fails lands nothing and is named in one dialog."""
 
     def _dialog(self, name=""):
         return types.SimpleNamespace(categories="", tags="", fav=False, name=name)
 
+    def _folder_of(self, model):
+        return material.section_folder(self.panel.prefs.dir, model.DB_FILENAME)
+
     def _save_new(self, count):
         held = self._builders(count)
-        index = self._list_of(self.panel.material_model)
-        with test_support.full_disk_for(index), test_support.captured_log() as log, \
+        model = self.panel.material_model
+        index = self._list_of(model)
+        rows, files = model.rowCount(), sorted(os.listdir(self._folder_of(model)))
+        with test_support.full_disk_for(index), \
                 mock.patch.object(hou, "ui", types.SimpleNamespace(
                     displayMessage=self._answering), create=True):
             self.panel.sections["material"].commit_save(held, held[0], self._dialog())
-        self.assertEqual([], self.shown, "a dialog joined the library's own alert")
-        self.assertEqual([], [text for text in log.messages("alert")
-                              if "could not save the library" not in text],
-                         "an alert beside the library's own said the material was not listed")
-        return held, log.messages("refuse")
+        self.assertEqual(rows, model.rowCount(), "a material the list refused shows as a tile")
+        self.assertEqual(files, sorted(os.listdir(self._folder_of(model))),
+                         "a material the list refused left its files in the library")
+        return held
 
     def test_one_new_material_is_named(self):
-        held, said = self._save_new(1)
-        self.assertEqual([messages.ASSET_ADDED_LIBRARY_NOT_SAVED % held[0].name()], said,
-                         "the status line did not say the library was not saved")
+        held = self._save_new(1)
+        self.assertEqual([(messages.MATERIALS_SAVE_FAILURES,
+                           messages.SAVE_DID_NOT_COMPLETE_LINE % held[0].name())], self.shown)
 
     def test_several_new_materials_share_one_line(self):
-        _held, said = self._save_new(2)
-        self.assertEqual([messages.MATERIALS_ADDED_LIBRARY_NOT_SAVED % 2], said,
-                         "the save did not end on one line counting its unlisted materials")
+        held = self._save_new(2)
+        lines = "\n".join(messages.SAVE_DID_NOT_COMPLETE_LINE % node.name() for node in held)
+        self.assertEqual([(messages.MATERIALS_SAVE_FAILURES, lines)], self.shown,
+                         "the refused materials were not named in one dialog")
 
     def test_a_new_node_setup_is_named(self):
         lop = hou.node("/obj").createNode("lopnet", "refused_setup")
         self.addCleanup(lop.destroy)
         lop.createNode("sphere")
-        index = self._list_of(self.panel.cop_model)
-        with test_support.full_disk_for(index), test_support.captured_log() as log, \
+        model = self.panel.cop_model
+        index = self._list_of(model)
+        rows = model.rowCount()
+        with test_support.full_disk_for(index), \
                 mock.patch.object(hou, "selectedItems", lambda: [lop]), \
                 mock.patch.object(hou, "ui", types.SimpleNamespace(
                     displayMessage=self._answering), create=True):
             self.panel.sections["cop"].commit_save([lop], lop, self._dialog("probe_setup"))
-        self.assertEqual([], self.shown, "a dialog joined the library's own alert")
-        self.assertEqual([messages.ASSET_ADDED_LIBRARY_NOT_SAVED % "probe_setup"],
-                         log.messages("refuse"),
-                         "the status line did not say the library was not saved")
-        self.assertEqual([], [text for text in log.messages("alert")
-                              if "could not save the library" not in text],
-                         "an alert beside the library's own said the setup was not listed")
+        self.assertEqual([messages.NODE_SAVE_FAILED % "refused_setup"], self.shown,
+                         "the refused setup was not named once")
+        self.assertEqual(rows, model.rowCount(), "a setup the list refused shows as a tile")
 
 
 if __name__ == "__main__":

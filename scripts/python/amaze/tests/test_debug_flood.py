@@ -220,23 +220,26 @@ class TestOneRecordCarriesTheWholeList(_LogCase):
 
 
 class EverySaveLeavesItsRecord(_LogCase):
-    """A database save promises one record per call, however many arrive in a row."""
+    """A refused database save promises one record per call, however many arrive in a row."""
 
     def _saves(self):
         return [r for r in self._records()
-                if r.get("cat") == "database" and r.get("msg") == "save"]
+                if r.get("cat") == "database" and r.get("msg") == "save did not land"]
 
     def test_six_saves_in_a_row_each_leave_a_record(self):
-        from amaze.core import database
+        import types
+        from amaze.core import library_db, library_files
         library = tempfile.mkdtemp(prefix="amaze_flood_saves_")
         self.addCleanup(shutil.rmtree, library, True)
         test_support.reset_database_singletons()
         self.addCleanup(test_support.reset_database_singletons)
-        db = database.DatabaseConnector("code.json")
-        db.load(library + os.sep)
+        holder = types.SimpleNamespace(dir=library + os.sep, library_user=test_support.FIXTURE_USER)
+        held = library_db.document(holder, library_files.CODE)
         before = len(self._saves())
-        for _ in range(6):
-            db.save()
+        with test_support.full_disk_for(os.path.join(library, library_files.CODE)):
+            for n in range(6):
+                held.put("assets", "snippet%d" % n, {"name": "snippet %d" % n})
+                library_db.save(holder, library_files.CODE)
         self.assertEqual(
             before + 6, len(self._saves()),
             "save records went missing - they share one flood key, so "

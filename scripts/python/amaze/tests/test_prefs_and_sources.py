@@ -175,13 +175,13 @@ class SharedDefaultsLiveInOneTable(unittest.TestCase):
                          "a junk folder-layout value loaded raw")
 
     def test_a_library_folder_saved_without_its_slash_loads_with_it(self):
-        """A folder without its slash glued onto file names: `librarylibrary.json`."""
+        """A folder without its slash glued onto file names: `libraryDataBase.json`."""
         library = tempfile.mkdtemp(prefix="amaze_no_slash_").replace("\\", "/")
         self.addCleanup(shutil.rmtree, library, True)
         p = prefs_mod.Prefs()
         p.path = self._settings({"directory": library.rstrip("/")})
         p.load()
-        self.assertEqual(library.rstrip("/") + "/library.json", p.dir + "library.json")
+        self.assertEqual(library.rstrip("/") + "/DataBase.json", p.dir + "DataBase.json")
 
     def test_load_clamps_parallel_downloads_as_the_adopt_does(self):
         p = prefs_mod.Prefs()
@@ -493,30 +493,33 @@ class TheTestLibrarySwitchIsAnOverlay(unittest.TestCase):
         self.assertFalse(
             os.path.isdir(os.path.join(folder, "cache")),
             "a cache folder was made - the cache does not move")
-        index = os.path.join(folder, "lib", "library.json")
+        from amaze.core import guard, library_files
+        index = os.path.join(folder, "lib", library_files.MASTER)
         self.assertTrue(os.path.isfile(index),
-                        "no library.json - the library would not load")
-        import json
-        with open(index, encoding="utf-8") as handle:
-            self.assertEqual(["_All"], json.load(handle)["categories"])
+                        "no %s - the library would not load" % library_files.MASTER)
+        self.assertEqual(guard.FINE, guard.Guard(os.path.join(folder, "lib")).read(
+            library_files.MASTER).verdict, "the seeded library does not read as whole")
 
     def test_seeding_never_overwrites_what_is_already_there(self):
         """Run twice, or on a folder already holding test materials, the second pass adds nothing."""
         import json
         folder = tempfile.mkdtemp(prefix="amaze_testlib_reseed_")
         self.addCleanup(shutil.rmtree, folder, True)
+        from amaze.core import library_files
         prefs_mod.seed_test_folder(folder)
-        index = os.path.join(folder, "lib", "library.json")
+        index = os.path.join(folder, "lib", library_files.MASTER)
+        with open(index, encoding="utf-8") as handle:
+            document = json.load(handle)
+        document["users"] = {"mat_001": {"name": "kept"}}
         with open(index, "w", encoding="utf-8") as handle:
-            json.dump({"categories": ["_All", "metal"], "tags": [],
-                       "assets": [{"id": "mat_001"}]}, handle)
+            json.dump(document, handle)
 
         ok, _what = prefs_mod.seed_test_folder(folder)
 
         self.assertTrue(ok)
         with open(index, encoding="utf-8") as handle:
             kept = json.load(handle)
-        self.assertEqual([{"id": "mat_001"}], kept["assets"],
+        self.assertEqual({"mat_001": {"name": "kept"}}, kept["users"],
                          "re-seeding erased the test library's content")
 
     def test_a_test_library_loads_where_no_real_one_was_ever_configured(self):
@@ -1451,11 +1454,11 @@ class TheOverwriteSwitchFollowsTheLibrary(unittest.TestCase):
     """A library switch under the open dialog re-reads the overwrite policy for the new library."""
 
     def test_switching_libraries_rereads_the_overwrite_policy(self):
-        from amaze.core import library_policy
+        from amaze.core import library_settings
         from amaze.dialogs import prefs_dialog
         from amaze.tests import test_support
         p = test_support.fixture_prefs(self)
-        library_policy.set_allow_overwrite(p.dir, False)
+        library_settings.set_allow_overwrite(p, False)
         dlg = prefs_dialog.PrefsDialog(p, panel=None)
         self.addCleanup(dlg.deleteLater)
         self.assertFalse(dlg._cbx_allow_overwrite.isChecked(),
@@ -1523,9 +1526,9 @@ class PreferencesSpeakTheDrawnWords(unittest.TestCase):
 
     def test_the_material_versions_help(self):
         from amaze import messages
-        from amaze.core import library_policy
+        from amaze.core import library_settings
         dlg = self._dialog()
-        library_policy.set_allow_overwrite(dlg._prefs.dir, False)
+        library_settings.set_allow_overwrite(dlg._prefs, False)
         seen = {}
 
         def display(text, *_args, **kwargs):

@@ -42,7 +42,6 @@ RECORD_SUFFIX = ".json"    # `<id>.json`: metadata and builder, `core/asset_reco
 PICTURE_SUFFIX = ".png"    # `<id>.png`: the asset's one picture, rendered or captured
 ASSET_SUFFIXES = (".mat", RECORD_SUFFIX)    # `repair.ASSET_SIDECARS`
 COMPANION_TAIL = "_cop"    # `<id>_cop.mat`, a material's companion COP network
-PRE_ADOPT = ".pre-adopt"    # the backups an earlier texture adoption left beside `.mat`
 VERSION_SUFFIXES = (".mat", RECORD_SUFFIX, PICTURE_SUFFIX)
 CODE_VERSION_SUFFIX = ".txt"
 
@@ -68,7 +67,6 @@ VERSION_LEDGER = "ledger"
 PACKAGE = "package"
 FOLDER = "folder"            # a folder the convention names
 SCRATCH = "scratch"    # and the kinds that do not
-PRE_ADOPT_COPY = "pre-adopt"
 DUPLICATE = "duplicate"      # a known name with ` <n>` before its last suffix: a sync service's second copy
 UNKNOWN = "unknown"
 OS_NOISE_KIND = "os-noise"
@@ -78,7 +76,7 @@ SUPERSEDED = "superseded"    # what the format 4 conversion left behind; `librar
 KNOWN = frozenset((LIST, JOURNAL_FILE, BACKUP, ASSET, RECORD, COMPANION, RENDER, FILE_CAPTURE,
                    COMMENT_IMAGE, VERSION, VERSION_LEDGER, PACKAGE, FOLDER))
 COPIES = frozenset((BACKUP,))    # a duplicate of one of these is swept whatever its bytes
-OUT_OF_PLACE = frozenset((SCRATCH, PRE_ADOPT_COPY, DUPLICATE, UNKNOWN))    # `walk` stats these, and only these
+OUT_OF_PLACE = frozenset((SCRATCH, DUPLICATE, UNKNOWN))    # `walk` stats these, and only these
 
 _STEM = re.compile(r"^(?:[^\W_]+-)?\d+$")    # a version stem: `<writer>-<n>` or `<n>`, the writer alphanumeric
 _FILE_CAPTURE = re.compile(r"^file_[0-9a-f]{40}\.png$")
@@ -146,9 +144,6 @@ def _backup(name: str):
 
 
 def _asset_folder(name: str):
-    if name.endswith(PRE_ADOPT):
-        found = asset_id(name[: -len(PRE_ADOPT)], (".mat",))
-        return (PRE_ADOPT_COPY, found) if found else None
     if name[: -len(".mat")].endswith(COMPANION_TAIL):
         found = asset_id(name, (".mat",), COMPANION_TAIL)
         if found:

@@ -428,7 +428,7 @@ Browses folders on disk.
   showing, since there is no one folder to make them in.
 
 The right-click menu: **New Folder**, **Open Scene**, **Save Scene**,
-**Load Asset**, **Copy Path**, **Open Location**, **Thumbnail**
+**Load Asset**, **Copy Path**, **Show Location**, **Thumbnail**
 (**Render Image**, **Capture Scene**, **Customize**) and **Favorite**.
 
 <img src="docs/images/menu_file_tile.png" width="210">

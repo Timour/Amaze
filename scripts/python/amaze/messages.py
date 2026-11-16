@@ -22,7 +22,6 @@ ASSET_NOT_SAVED_DATABASE_REFUSED = "\"%s\" was not saved: its database is read-o
 ASSET_NOT_DELETED_LIST_NOT_UPDATED = "\"%s\" was not deleted because its database could not be updated. Nothing was changed. Use Library ▸ Check Library… in the Amaze panel, then try again."
 EDIT_CONFLICT_KEPT_YOURS = "Someone else changed \"%s\" while you had it open.\n\nAmaze kept your version and discarded theirs."
 EDIT_CONFLICT_KEPT_YOURS_BY = "%s changed \"%s\" while you had it open.\n\nAmaze kept your version and discarded theirs."
-VERSION_SWITCH_DIVERGED = "The version switch didn't finish: the material's files hold version %d but its version list still names the old one. All archived versions are still there.\n\nSwitch the version again to finish."
 UNSAFE_ARCHIVE_PATHS_SKIPPED = "%d file(s) in this download tried to write outside your library folder and were skipped. Nothing outside the library was touched; the rest imported normally. If the material looks wrong, delete it and download again."
 NO_LIBRARY_FOLDER_CONFIGURED = "Amaze has no library folder set. Pick one in Preferences (Amaze panel), then run Check Library again."
 LIBRARY_FOLDER_UNREACHABLE = "Amaze can't reach its library folder:\n%s\nIf it's on a drive or in a synced folder, connect it and run Check Library again. If you moved the library, point Preferences at the new location."
@@ -36,16 +35,10 @@ SETTINGS_MISSING_REPAIR_REPORT = "Amaze's settings file is missing, so Check Lib
 SETTINGS_NO_LIBRARY_REPAIR_REPORT = "Your settings have no library folder set, so Check Library can't tell which library to check.\n\nBackups of your settings:\n%s"
 SETTINGS_COPY_LINE_UNREADABLE = "%s — this backup can't be read"
 SETTINGS_UNREADABLE_NO_COPIES = "Amaze's settings couldn't be read and there's no backup to restore.\n\nTo start fresh, move settings.json out of this folder and open Amaze:\n\n%s"
-SETTINGS_COPY_CANNOT_BE_READ = "That backup of your settings can't be read."
-CONFIRM_PUT_SETTINGS_BACK = "Restore your settings from the backup of %s?"
-HELP_PUT_SETTINGS_BACK = "Amaze then opens the library it pointed to at that time, with the same view.%s"
-SETTINGS_NOW_SAVED_FIRST = " Your current settings are backed up first — run Check Library again and it offers that backup."
-SETTINGS_PUT_BACK_DONE = "Your settings are restored from the backup of %s.\n\nOpen Amaze to use them.%s"
-SETTINGS_EARLIER_COPY_KEPT = " Your previous settings are backed up too — run Check Library again and restore the backup of %s to go back to them."
 CONFIRM_MOVE_FILES_ASIDE = "Move %s to the trash?"
 NOTHING_MOVED_ASIDE_REASON = "Amaze moved nothing: %s."
-FILES_MOVED_ASIDE_SOME_FAILED = "%s moved to Amaze's trash on this computer (outside your library, deleted after 30 days). %s could not be moved and are still in place."
-FILES_MOVED_ASIDE_DONE = "%s moved to Amaze's trash on this computer (outside your library, deleted after 30 days)."
+FILES_MOVED_ASIDE_SOME_FAILED = "%s moved to the library's trash folder (deleted after 30 days). %s could not be moved and are still in place."
+FILES_MOVED_ASIDE_DONE = "%s moved to the library's trash folder (deleted after 30 days)."
 CONFIRM_MOVE_UNKNOWN_ASIDE = 'Move the files Amaze does not know to the trash?'
 
 CONFIRM_SET_ASIDE_FOLDERS = 'Set aside %s in the Files section?'
@@ -384,7 +377,7 @@ BUTTONS_SAVE_VERSION_OR_NEW = ('Save Version', 'Save New', 'Cancel')
 BUTTONS_SAVE_NEW = ('Save New', 'Cancel')
 
 
-HELP_CHECK_LIBRARY = "Check Library looks at every database and folder in your library and changes nothing until you press a button. Files you move to the trash go into Amaze's trash folder on this computer, outside your library, and are deleted after 30 days."
+HELP_CHECK_LIBRARY = "Check Library looks at every database and folder in your library and changes nothing until you press a button. Files you move to the trash go into the library's trash folder and are deleted after 30 days."
 
 HELP_MATERIAL_VERSIONS = "This is shared: everyone working from this library gets the same setting.\n\nWith it on, saving over an existing material keeps the previous version, and the + in the code editor keeps versions of a snippet."
 HELP_DELETE_USER = 'Their favorites and registered folders are removed from this library everywhere it syncs. A machine signed in as "%s" will ask who is using the library the next time it opens. This cannot be undone.'
@@ -395,7 +388,7 @@ HELP_ADD_BACK = 'Each one comes back with the metadata saved beside its files: n
 
 HELP_PUT_SAVED_COPY_BACK = "That backup is from %s and holds %d %s. %s\n\nYour %s' own files and thumbnails are not touched either way, and the database you have now is backed up in the library folder first - run Check Library again and it offers that backup."
 
-HELP_MOVE_FILES_ASIDE = "%s They move into Amaze's trash folder on this computer, outside your library, so they do not sync. They are deleted after 30 days. To restore one before then, copy it back into the library.\n\nEverything showing in Amaze stays.%s"
+HELP_MOVE_FILES_ASIDE = "%s They move into the library's trash folder and are deleted after 30 days. To restore one before then, copy it back into the library.\n\nEverything showing in Amaze stays.%s"
 
 HELP_MOVE_UNLISTED = 'The orphaned files: %s.'
 
@@ -403,7 +396,7 @@ HELP_MOVE_LEFTOVERS = 'The files Amaze left behind and no longer needs: %s.'
 
 HELP_MOVE_UNLISTED_LAST = ' Do this only if you have already tried restoring a backup of a database: if one of these files belongs to a material whose database was lost, restoring the database is what brings it back.'
 
-HELP_MOVE_UNKNOWN_ASIDE = "These are not files Amaze made or knows: %s. They move into Amaze's trash folder on this computer, outside your library, and are deleted after 30 days."
+HELP_MOVE_UNKNOWN_ASIDE = "These are not files Amaze made or knows: %s. They move into the library's trash folder and are deleted after 30 days."
 
 HELP_SET_ASIDE_FOLDERS = "Each folder's comments, icons and favorites are kept, and come back when the folder is added again. Its files are not touched.%s"
 

@@ -21,7 +21,7 @@ _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 from amaze import messages  # noqa: E402
 from amaze.core import captures, debug, file_library, file_moves  # noqa: E402
-from amaze.core import keyed_store, notes, texture_library, thumbnails, tile_icons  # noqa: E402
+from amaze.core import guard, library_db, notes, texture_library, thumbnails, tile_icons  # noqa: E402
 from amaze.core import workers  # noqa: E402
 from amaze.core import locations as locations_mod  # noqa: E402
 from amaze.helpers import hostos  # noqa: E402
@@ -499,7 +499,7 @@ class WhatAmazeKeepsFollowsTheFileTest(unittest.TestCase):
     def _kept(self, key):
         return (locations_mod.is_favourite(self.prefs, key),
                 notes.has_note(self.prefs, notes.note_key("file", key)),
-                bool(tile_icons.override_for(self.prefs, key)),
+                bool(tile_icons.override_for(self.prefs, key, locations_mod.FILES)),
                 captures.exists(captures.file_path(self.prefs, key)))
 
     def test_star_comment_icon_and_capture_follow_the_file(self):
@@ -509,16 +509,18 @@ class WhatAmazeKeepsFollowsTheFileTest(unittest.TestCase):
         self.assertEqual((True, True, True, True), self._kept(new))
         self.assertEqual((False, False, False, False), self._kept(old))
 
-    def test_another_users_star_follows_too(self):
+    def test_another_users_star_is_never_rewritten(self):
+        """A user writes only their own stars: the move leaves another user's as it was."""
         model, row, old = self._annotate()
         self.prefs.library_user = OTHER_USER
         model.toggle_favorite(row)
         self.prefs.library_user = test_support.FIXTURE_USER
         new = self._moved()
-        spec = keyed_store.store_for(keyed_store.FAVOURITES)
-        stored = keyed_store.open_store(spec, self.prefs).everyones()
-        self.assertIn(OTHER_USER + keyed_store.USER_SEP + new, stored)
-        self.assertNotIn(OTHER_USER + keyed_store.USER_SEP + old, stored)
+        stored = library_db.document(self.prefs, locations_mod.FILES).everyones(locations_mod.STARS)
+        self.assertEqual({old: True}, {key: value for key, value in
+                                       stored.get(OTHER_USER, {}).items()
+                                       if key in (old, new)},
+                         "the move rewrote another user's star")
 
     def test_an_entry_left_at_the_new_place_yields_to_the_file_arriving(self):
         self._annotate()
@@ -535,16 +537,16 @@ class WhatAmazeKeepsFollowsTheFileTest(unittest.TestCase):
         stale = captures.file_key(self.prefs, self.landed)
         notes.set_note(self.prefs, notes.note_key("file", stale),
                        [{"t": "text", "text": "stale"}])
-        real_write, refused = hostos.write_json_atomic, []
+        real_write, refused = guard.Disk.write, []
 
-        def held_once(path, *args, **kwargs):    # a Windows hold that clears within a second
-            if os.path.basename(path) == notes.NOTES_FILE and not refused:
+        def held_once(disk, path, data):    # a Windows hold that clears within a second
+            if os.path.basename(path).startswith(locations_mod.FILES + ".") and not refused:
                 refused.append(path)
                 raise PermissionError(errno.EACCES, "held for a moment", path)
-            return real_write(path, *args, **kwargs)
+            return real_write(disk, path, data)
 
-        with mock.patch.object(hostos, "write_json_atomic", held_once), \
-                mock.patch.object(keyed_store.debug, "alert"):
+        with mock.patch.object(guard.Disk, "write", held_once), \
+                mock.patch.object(library_db.debug, "alert"):
             new = self._moved()
         self.assertTrue(refused, "premise: no write of the comments was refused")
         self.assertEqual(stale, new, "premise: the file landed where the stale comment is")

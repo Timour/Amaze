@@ -20,7 +20,7 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze.core import asset_record  # noqa: E402
+from amaze.core import asset_record, material  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 from amaze.actions import materials as material_actions  # noqa: E402
 
@@ -780,47 +780,52 @@ class ARefusedImportIsTakenBackWhole(unittest.TestCase):
         return out
 
     def _import_refused(self, out):
-        from unittest import mock
-        from amaze.core import database
-        with mock.patch.object(database.DatabaseConnector, "save",
-                               return_value=False):
+        path = os.path.join(self.panel.prefs.dir, self.model.DB_FILENAME)
+        with test_support.full_disk_for(path):
             return self.panel.package_import.import_file(out)
 
     def _ids(self):
         return [str(a.mat_id) for a in self.model.assets]
 
+    def _files(self):
+        return sorted(os.listdir(material.section_folder(
+            self.panel.prefs.dir, self.model.DB_FILENAME)))
+
     def test_a_refused_import_is_not_written_by_the_next_save(self):
+        from amaze.core import library_db
         out = self._package_of_a_material()
-        before = self._ids()
+        before, files = self._ids(), self._files()
         self.assertEqual(1, self._import_refused(out)["refused"])
         self.assertEqual(before, self._ids(),
                          "a refused import stayed in the grid")
         self.assertEqual(self.model.rowCount(), len(self.model._mat_paths),
                          "the take-back left the thumbnail maps out of step")
+        self.assertEqual(files, self._files(),
+                         "a refused import left its files, or their scratches, in the library")
 
         self.assertTrue(self.model.save(), "premise: the next save failed")
+        library_db.flush()
 
-        path = os.path.join(self.panel.prefs.dir, "library.json")
+        path = os.path.join(self.panel.prefs.dir, self.model.DB_FILENAME)
         with open(path, encoding="utf-8-sig") as handle:
-            on_disk = [str(row.get("id")) for row in json.load(handle)["assets"]]
+            on_disk = list(json.load(handle)["assets"])
         self.assertEqual(sorted(before), sorted(on_disk),
                          "the refused import reached disk with the next save")
 
     def test_the_right_row_leaves_after_the_save_dropped_another(self):
         """The save first takes in another machine's deletion, so the new row has moved."""
-        path = os.path.join(self.panel.prefs.dir, "library.json")
+        from amaze.core import library_db
+        path = os.path.join(self.panel.prefs.dir, self.model.DB_FILENAME)
         self.assertTrue(self.model.save(), "premise: the first save failed")
+        library_db.flush()
         out = self._package_of_a_material()
         with open(path, encoding="utf-8-sig") as handle:
             document = json.load(handle)
-        victim = str(document["assets"][2]["id"])
-        document["assets"] = [row for row in document["assets"]
-                              if str(row.get("id")) != victim]
+        victim = sorted(key for key in document["assets"] if key != "-1")[1]
+        del document["assets"][victim]
         with open(path, "w", encoding="utf-8", newline="\n") as handle:
             json.dump(document, handle, indent=4)
-        self.assertTrue(self.panel.category_model.save(),
-                        "premise: the sidebar save was refused")
-        expected = [mat_id for mat_id in self._ids() if mat_id != victim]
+        expected =[mat_id for mat_id in self._ids() if mat_id != victim]
 
         self.assertEqual(1, self._import_refused(out)["refused"])
 
@@ -845,44 +850,53 @@ class AFiveAssetImportSavesOnce(unittest.TestCase):
         packages.write_package(self.out, [
             packages.collect_asset(self.model, a.mat_id) for a in owners[:5]])
 
-    def _import(self, refuse=False):
+    def _import(self, refuse=False, out=None):
         from unittest import mock
-        from amaze.core import database, packages
-        save = database.DatabaseConnector.save
-        with mock.patch.object(database.DatabaseConnector, "save",
-                               autospec=True,
-                               side_effect=(lambda db: False) if refuse
+        from amaze.core import library_db, packages
+        save = library_db.save
+        with mock.patch.object(library_db, "save",
+                               side_effect=(lambda *_a, **_k: False) if refuse
                                else save) as saves:
             summary = packages.import_package(
-                self.panel.package_import.models(), self.panel.prefs, self.out)
+                self.panel.package_import.models(), self.panel.prefs, out or self.out)
         return summary, saves.call_count
 
+    def _folder(self):
+        return sorted(os.listdir(material.section_folder(
+            self.panel.prefs.dir, self.model.DB_FILENAME)))
+
     def test_five_materials_land_in_one_save(self):
-        before = self.model.rowCount()
+        held = test_support.asset_ids(self.model)
         summary, saves = self._import()
         self.assertEqual(5, summary["imported"], summary)
         self.assertEqual(1, saves, "five imported materials saved the list "
                                    "%d times" % saves)
-        self.assertEqual(before + 5, self.model.rowCount())
-        path = os.path.join(self.panel.prefs.dir, "library.json")
+        arrived = test_support.arrived(self.model, held)
+        self.assertEqual(5, len(arrived))
+        path = os.path.join(self.panel.prefs.dir, self.model.DB_FILENAME)
         with open(path, encoding="utf-8-sig") as handle:
-            on_disk = {str(r.get("id")) for r in json.load(handle)["assets"]}
-        self.assertTrue({str(a.mat_id) for a in self.model.assets[-5:]}
-                        <= on_disk, "the imported rows never reached the file")
+            on_disk = set(json.load(handle)["assets"])
+        self.assertTrue({str(a.mat_id) for a in arrived} <= on_disk,
+                        "the imported rows never reached the file")
+        landed = self._folder()
+        for asset in arrived:
+            for suffix in (".mat", ".json"):
+                self.assertIn(str(asset.mat_id) + suffix, landed,
+                              "an imported row landed without its files")
 
     def test_a_refused_save_takes_all_five_back(self):
-        before = [str(a.mat_id) for a in self.model.assets]
+        before, files = [str(a.mat_id) for a in self.model.assets], self._folder()
         summary, _saves = self._import(refuse=True)
         self.assertEqual((0, 5), (summary["imported"], summary["refused"]),
                          summary)
         self.assertEqual(before, [str(a.mat_id) for a in self.model.assets],
                          "a refused import left rows in the grid")
         self.assertEqual(self.model.rowCount(), len(self.model._mat_paths))
+        self.assertEqual(files, self._folder(),
+                         "a refused import left its files, or their scratches, behind")
 
     def test_five_note_pages_land_in_one_write(self):
-        from unittest import mock
         from amaze.core import notes, packages
-        from amaze.helpers import hostos
         owners = [a for a in self.model.assets
                   if any(os.path.exists(p) for p in
                          self.model.asset_files(a.mat_id).values())][:5]
@@ -894,20 +908,10 @@ class AFiveAssetImportSavesOnce(unittest.TestCase):
         noted = _out_path(self, "noted.amazepkg")
         packages.write_package(noted, items)
         held = test_support.asset_ids(self.model)
-        writes = []
-        real = hostos.write_json_atomic
-
-        def counted(path, *args, **kwargs):
-            if os.path.basename(path) == notes.SPEC.filename:
-                writes.append(path)
-            return real(path, *args, **kwargs)
-
-        with mock.patch.object(hostos, "write_json_atomic", counted):
-            summary = packages.import_package(
-                self.panel.package_import.models(), self.panel.prefs, noted)
+        summary, saves = self._import(out=noted)
         self.assertEqual(5, summary["imported"], summary)
-        self.assertEqual(1, len(writes), "five note pages wrote %s %d times"
-                         % (notes.SPEC.filename, len(writes)))
+        self.assertEqual(2, saves, "five note pages were not one save after the rows' "
+                                   "one: %d saves" % saves)
         pages = [notes.note_for(self.panel.prefs,
                                 notes.note_key("material", a.mat_id))
                  for a in test_support.arrived(self.model, held)]

@@ -14,6 +14,7 @@ _schedulers: list = globals().get("_schedulers", [])    # the panels' save timer
 _said: dict = globals().get("_said", {})    # (library key, database) -> the verdict last alerted
 _listeners: dict = globals().get("_listeners", {})    # told after each save: the models
 _in_use: set = globals().get("_in_use", set())    # library keys a panel's models serve
+_present: set = globals().get("_present", set())    # library folders seen there; `look_again` drops them
 
 TROUBLE = (guard.CORRUPT, guard.MISSING, guard.NEWER)
 
@@ -24,12 +25,18 @@ def key_of(preferences) -> str:
 
 
 def _user_of(key: str) -> str:
-    """The user making changes in the library at `key`: asked at each change, "" with no folder."""
+    """The user making changes in the library at `key`, "" with no folder; a folder seen stays seen."""
     preferences = _preferences.get(key)
     folder = str(getattr(preferences, "dir", "") or "")
-    if not folder or not os.path.isdir(folder):
+    if not folder or (folder not in _present and not os.path.isdir(folder)):
         return ""
+    _present.add(folder)
     return str(getattr(preferences, "library_user", "") or "")
+
+
+def look_again() -> None:
+    """The next change asks the filesystem whether each library folder is still there."""
+    _present.clear()
 
 
 def library_for(preferences) -> documents.Library:
@@ -212,10 +219,11 @@ def judge(key: str, held: documents.Document) -> None:
     """Say a database's trouble once per file per session; one that reads again is forgotten."""
     where = (key, held.name)
     verdict = held.verdict
-    if verdict == guard.CORRUPT and _refused_open(key, held.name):
+    if verdict == guard.HELD:
+        _said.pop(where, None)
         debug.event("database", "database not opened - access refused", file=held.name,
                     why=held.why)
-        return    # access, not damage: the door that opens the library says why
+        return    # access, not damage: read-only until a read opens it; the library's door says why
     if verdict not in TROUBLE:
         _said.pop(where, None)
     elif _said.get(where) != verdict:
@@ -242,20 +250,9 @@ def judge(key: str, held: documents.Document) -> None:
             library_files.section_noun(held.name, backed)), key="shrunk-%s-%s" % where)
 
 
-def _refused_open(key: str, name: str) -> bool:
-    """The database's file is there but this account may not open it."""
-    folder = str(getattr(_preferences.get(key), "dir", "") or "")
-    try:
-        with open(os.path.join(folder, name), "rb"):
-            return False
-    except FileNotFoundError:
-        return False
-    except OSError:
-        return True
-
-
 def refresh(preferences=None) -> dict:
     """Take in other sessions' saves; {library key: [databases that changed]}."""
+    look_again()
     moved = {}
     for key, found in list(_libraries.items()):
         if preferences is not None and key != key_of(preferences):
@@ -288,6 +285,7 @@ def held_libraries() -> list:
 
 def release(preferences=None) -> None:
     """Forget the databases held: a library switch onto another tree, or a test."""
+    look_again()
     if preferences is None:
         _libraries.clear()
         _said.clear()

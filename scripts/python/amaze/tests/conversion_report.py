@@ -17,16 +17,15 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze.core import database, material as matmod  # noqa: E402
+from amaze.core import guard, library_files, material as matmod  # noqa: E402
 from amaze.render import material_converter, nodes  # noqa: E402
 
 
 def library_materials(library_dir: str) -> list:
     """Every Redshift material in the library; loads, never saves."""
-    database.DatabaseConnector._instances.pop("library.json", None)
-    data = database.DatabaseConnector("library.json").load(library_dir)
+    data = guard.Guard(library_dir).read(library_files.MATERIALS).document or {}
     out = []
-    for record in data.get("assets", []):
+    for record in (data.get("assets") or {}).values():
         if "Redshift" not in str(record.get("renderer", "")):
             continue
         mat = matmod.Material()

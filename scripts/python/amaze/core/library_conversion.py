@@ -130,6 +130,8 @@ def old_shape(relative: str) -> bool:
     top, name = parts[0], parts[-1]
     if top == OLD_FOLDER:    # what the conversion left there is unknown to it: named, never swept
         return False
+    if len(parts) == 2 and library_files.owns_assets(top) and name.endswith(PRE_ADOPT):
+        return bool(_id_of(name[: -len(PRE_ADOPT)], (".mat",)))
     if len(parts) == 2 and library_files.owns_assets(top):
         return bool(_id_of(name, OLD_SUFFIXES))
     if len(parts) == 2 and top == OLD_PICTURES:

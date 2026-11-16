@@ -463,14 +463,16 @@ class CheckLibrarySaysWhereFilesGo(unittest.TestCase):
     """Check Library moves a file into the holding folder; it does not delete it."""
 
     def test_every_move_names_how_long_the_holding_folder_keeps_them(self):
-        from amaze.core import quarantine
-        kept = "%d days" % quarantine.QUARANTINE_DAYS
+        from amaze.core import guard
+        kept = "%d days" % guard.TRASH_DAYS
         for name in ("HELP_CHECK_LIBRARY", "HELP_MOVE_FILES_ASIDE", "HELP_MOVE_UNKNOWN_ASIDE",
-                     "FILES_MOVED_ASIDE_DONE"):
+                     "FILES_MOVED_ASIDE_DONE", "FILES_MOVED_ASIDE_SOME_FAILED"):
             with self.subTest(name=name):
                 self.assertIn(kept, getattr(messages, name),
                               "it does not say files are kept in the holding folder, "
                               "so it reads as a permanent delete")
+                self.assertIn("library's trash", getattr(messages, name),
+                              "it places the trash somewhere other than the library's own folder")
 
     def test_no_sentence_names_a_tool_that_is_gone(self):
         from amaze import tooltips

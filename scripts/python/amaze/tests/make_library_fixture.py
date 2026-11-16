@@ -1,5 +1,4 @@
 """Build the committed fixture: `USER=amaze hython make_library_fixture.py`. ▸r/author-stamp"""
-import json
 import os
 import shutil
 import sys
@@ -10,8 +9,9 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze import branding
-from amaze.core import asset_record, library_files, library_policy, material
+from amaze.core import asset_record, library_files, material
+from amaze.core import guard as library_guard
+from amaze.prefs import prefs
 from amaze.render import nodes as nodes_mod
 from amaze.tests import make_file_fixtures as guard
 
@@ -34,15 +34,13 @@ DATE = "2026-01-27 20:07:06"   # fixed, so a rerun does not rewrite every row th
 
 def sentinel_row() -> dict:
     """The id -1 row the real format carries at the head of the list."""
-    return {"id": -1, "name": "", "categories": [""], "tags": [""],
-            "favorite": 0, "date": -1, "renderer": "", "usd": 0,
-            "builder": 0}
+    return {"id": "-1", "name": "", "categories": [], "tags": [""],
+            "date": -1, "renderer": "", "usd": 0}
 
 
 def asset_row(asset_id: str, name: str, category: str) -> dict:
     return {"id": asset_id, "name": name, "categories": [category],
-            "tags": [""], "favorite": False, "date": DATE,
-            "renderer": "MaterialX", "usd": 1, "builder": 0}
+            "tags": [""], "date": DATE, "renderer": "MaterialX", "usd": 1}
 
 
 def build_material(parent: hou.Node, name: str, colour) -> hou.Node:
@@ -100,22 +98,25 @@ def main() -> int:
                     thumb]
         print("%s  %s" % (asset_id, name))
 
+    if not prefs.create_library(OUT):    # DataBase.json through the creation door
+        print("REFUSED: the library could not be created")
+        return 1
     rows = [sentinel_row()] + [asset_row(i, n, c) for i, n, c, _colour in MATERIALS]
-    document = {"format": branding.LIBRARY_FORMAT,
-                "categories": {name: {"order": order}
-                               for order, name in enumerate(CATEGORIES[1:])},
-                "assets": {str(row["id"]): row for row in rows}}
-    index = os.path.join(OUT, library_files.MATERIALS)
-    with open(index, "w", encoding="utf-8") as handle:
-        json.dump(document, handle, indent=1)
-    written.append(index)
-    master = os.path.join(OUT, library_files.MASTER)
-    with open(master, "w", encoding="utf-8") as handle:
-        json.dump({"format": branding.LIBRARY_FORMAT,
-                   "policy": {"library": {"version": library_policy.LIBRARY_VERSION}}},
-                  handle, indent=1)
-    written.append(master)
+    held = library_guard.Guard(OUT)
+    reading = held.read(library_files.MATERIALS)
+    change = held.change("")
+    change.put(reading.ticket, {
+        "categories": {name: {"order": order} for order, name in enumerate(CATEGORIES[1:])},
+        "assets": {str(row["id"]): dict(row, id=str(row["id"])) for row in rows}})
+    change.commit()
+    written += [os.path.join(OUT, name) for name in (library_files.MATERIALS, library_files.MASTER)]
     shutil.rmtree(guard.SCRATCH_ROOT, ignore_errors=True)
+    shutil.rmtree(os.path.join(OUT, library_files.BACKUP_FOLDER), ignore_errors=True)
+    verdicts = {name: held.read(name).verdict for name in os.listdir(OUT) if name.endswith(".json")}
+    print("verdicts: %s" % verdicts)
+    if set(verdicts.values()) != {library_guard.FINE}:
+        print("REFUSED: the fixture does not read as a whole 2.0 library")
+        return 1
 
     total = sum(os.path.getsize(p) for p in written if os.path.isfile(p))
     print("\n%d files, %.1f KB total" % (len(written), total / 1024.0))

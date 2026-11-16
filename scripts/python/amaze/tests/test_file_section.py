@@ -25,7 +25,7 @@ from amaze.actions import files as files_actions  # noqa: E402
 from amaze import messages  # noqa: E402
 from amaze.core import debug, file_library, geo_library, scene_captures  # noqa: E402
 from amaze.core import locations as locations_mod  # noqa: E402
-from amaze.core import tile_icons  # noqa: E402
+from amaze.core import library_files, tile_icons  # noqa: E402
 from amaze.helpers import helpers, hostos  # noqa: E402
 from amaze.panel import delegates  # noqa: E402
 from amaze.prefs import prefs as prefs_module  # noqa: E402
@@ -1632,7 +1632,7 @@ class LocationManagementTest(unittest.TestCase):
 
     def test_a_record_another_machine_wrote_shows_after_a_reread(self):
         """A reread at the Preferences door shows another writer's name and colour on the next paint."""
-        from amaze.core import category, keyed_store
+        from amaze.core import category, library_db
         folders = [self._tmpdir() for _ in range(2)]
         model, prefs = self._folders_model(*folders)
         prefs.set_file_folder_name(folders[0], "Mine")
@@ -1645,14 +1645,18 @@ class LocationManagementTest(unittest.TestCase):
         self.assertEqual(["Mine", ""], paint(), "premise: the stored name")
         key = locations_mod.LOC_PREFIX + locations_mod.location_id(
             prefs, folders[0])
-        other = keyed_store.own_store(locations_mod.SPEC, prefs)
-        self.assertTrue(other.set(key, dict(other.get(key), name="Theirs",
-                                            color="#e0523a")),
-                        "premise: the other writer did not save")
+        library_db.flush(prefs)
+        path = os.path.join(prefs.dir, locations_mod.FILES)
+        with open(path, encoding="utf-8") as handle:
+            document = json.load(handle)
+        mine = document[locations_mod.LOCATIONS][str(prefs.library_user)]
+        mine[key] = dict(mine[key], name="Theirs", color="#e0523a")
+        with open(path, "w", encoding="utf-8") as handle:    # another machine's save
+            json.dump(document, handle)
         self.assertEqual(["Mine", ""], paint(),
                          "premise: the file was read again before the door")
-        self.assertIn(locations_mod.SPEC.filename,
-                      keyed_store.refresh_all(prefs),
+        from amaze.core import model_registry
+        self.assertIn(locations_mod.FILES, model_registry.refresh_all(prefs),
                       "premise: the door did not reread the locations file")
         self.assertEqual(["Theirs", "#e0523a"], paint(),
                          "the sidebar kept the record from before the reread")
@@ -1723,15 +1727,12 @@ class LocationManagementTest(unittest.TestCase):
         old = self._tmpdir()
         new = self._tmpdir()
         old_key = old if old.endswith("/") else old + "/"
-        prefs = _prefs_with_settings(self, {    # a REAL Prefs, not the stub: a stub carrying its own copy of the move would only verify the copy
-            "file_folders": [first, old],
-            "file_favorites": [old_key + "keep.exr", "/elsewhere/other.exr"],
-            "file_location_records": {
-                first: {"registered": True},
-                old: {"registered": True},
-            },
-        })
+        prefs = _prefs_with_settings(self, {})    # a REAL Prefs: a stub's own copy of the move proves only the copy
         prefs.dir = self._tmpdir(prefix="amaze_loc_lib_")
+        for folder in (first, old):
+            prefs.add_file_folder(folder)
+        for path in (old_key + "keep.exr", "/elsewhere/other.exr"):
+            prefs.add_file_favorite(path)
         model = file_library.FileFolders(prefs)
 
         rewritten = model.relocate_folder(2, new)
@@ -2171,6 +2172,7 @@ class RemovingANestedLocationTest(unittest.TestCase):
     """A file a remaining location still lists keeps its comment, star and icon."""
 
     ICON = {"name": "activity", "bg": "#ff8000"}
+    OTHER = "0123456789abcdef0123456789abcdef"
 
     def setUp(self):
         self.outer = tempfile.mkdtemp(prefix="amaze_outer_")
@@ -2229,7 +2231,8 @@ class RemovingANestedLocationTest(unittest.TestCase):
         inner_id = locations_mod.location_id(prefs, self.inner)
         self.assertTrue(key.startswith("loc:" + inner_id + "/"),
                         "premise: the nested location does not own the file")
-        prefs.library_user = LocationsArePerUserTest.OTHER
+        from amaze.core import library_db
+        prefs.library_user = self.OTHER
         locations_mod.set_favourite(prefs, key, True)
         prefs.library_user = test_support.FIXTURE_USER
 
@@ -2239,11 +2242,9 @@ class RemovingANestedLocationTest(unittest.TestCase):
             (True, True, "activity"), self._shown(prefs, self.outer),
             "removing the nested location retired the star, comment or "
             "icon of a file the outer location still lists")
-        prefs.library_user = LocationsArePerUserTest.OTHER
-        self.assertTrue(
-            locations_mod.is_favourite(
-                prefs, locations_mod.file_ident(prefs, self.file)),
-            "another user's star on that file was retired")
+        stars = library_db.document(prefs, locations_mod.FILES).everyones(locations_mod.STARS)
+        self.assertIn(key, stars.get(self.OTHER, {}),
+                      "another user's star on that file was retired")
 
     def test_a_location_nothing_else_covers_still_loses_them(self):
         from amaze.core import notes
@@ -2256,23 +2257,14 @@ class RemovingANestedLocationTest(unittest.TestCase):
             (False, False, {}),
             (locations_mod.is_favourite(prefs, key),
              notes.has_note(prefs, notes.note_key("file", key)),
-             tile_icons.override_for(prefs, key)),
+             tile_icons.override_for(prefs, key, locations_mod.FILES)),
             "a removed location no other location covers kept a star, "
             "comment or icon, so re-adding it is not a clean slate")
 
     def test_a_refused_move_retires_nothing(self):
-        from amaze.core import keyed_store
         prefs = self._nested(self.outer, self.inner)
         self._annotate(prefs)
-        real = keyed_store.Store.rekey_stored
-
-        def refuse_comments(store, moves):
-            if store.spec.filename == "notes.json":
-                return keyed_store.Written(False, keyed_store.REASON_DENIED)
-            return real(store, moves)
-
-        with mock.patch.object(keyed_store.Store, "rekey_stored",
-                               refuse_comments):
+        with mock.patch.object(locations_mod, "files_moved", lambda *_a: False):
             self._remove(prefs, self.inner)
 
         self.assertEqual(
@@ -2280,16 +2272,14 @@ class RemovingANestedLocationTest(unittest.TestCase):
             "a comment that could not move was retired anyway")
 
     def test_a_key_spelled_as_a_path_moves_too(self):
-        from amaze.core import keyed_store, notes
+        from amaze.core import library_db, notes
         prefs = self._nested(self.outer, self.inner)
         spelled = hostos.storage_path_key(self.file)
-        stores = [keyed_store.open_store(spec, prefs) for spec in
-                  (locations_mod.FAVOURITES_SPEC, notes.SPEC, tile_icons.SPEC)]
-        stores[0]._table[test_support.FIXTURE_USER + "|" + spelled] = {
-            "favourite": True}
-        stores[1]._table["file:" + spelled] = {
-            "items": [{"t": "text", "text": "kept"}]}
-        stores[2]._table[spelled] = tile_icons.normalise(self.ICON)
+        held = library_db.document(prefs, locations_mod.FILES)
+        held.put_mine(locations_mod.STARS, spelled, True)
+        library_db.save(prefs, locations_mod.FILES)
+        notes.set_note(prefs, notes.note_key("file", spelled), [{"t": "text", "text": "kept"}])
+        tile_icons.set_override(prefs, spelled, self.ICON, locations_mod.FILES)
 
         self.assertTrue(locations_mod.rehome_covered(prefs, self.inner))
 
@@ -2297,8 +2287,9 @@ class RemovingANestedLocationTest(unittest.TestCase):
                  + "/tex/plate.txt")
         self.assertEqual(
             [True, True, True],
-            [store.has(prefix + moved) for store, prefix in
-             zip(stores, ("", "file:", ""))],
+            [moved in held.mine(locations_mod.STARS),
+             moved in held.table(locations_mod.COMMENTS),
+             moved in held.table(locations_mod.ICONS)],
             "a path-spelled key the outer location covers stayed behind "
             "for the retire")
 
@@ -2339,20 +2330,16 @@ class TheFolderOrderHasOneSpellingTest(unittest.TestCase):
             "removing a location while the library is unreachable left "
             "its row - the order copy holds another spelling of it")
 
-    def test_a_remove_with_no_library_after_a_restart_takes_the_row_off(self):
+    def test_with_no_library_no_settings_row_is_left_to_remove(self):
         prefs = _prefs_with_settings(self, {
             "directory": "",
             "file_folders": ["~/tex/"],
             "file_location_records": {"~/tex/": {"registered": True}},
         })
-        folder = self._under_home("tex")
-        self.assertEqual([hostos.canonical_path_key(folder)],
-                         self._listed(prefs),
-                         "premise: the stored location did not load")
-        prefs.remove_file_folder(prefs.file_folders[0])
+        self._under_home("tex")
         self.assertEqual([], self._listed(prefs),
-                         "a location read back from settings could not be "
-                         "removed with no library configured")
+                         "a location read back from settings shows with no library, "
+                         "where no remove can reach it")
 
     def test_locate_after_a_reorder_keeps_the_row(self):
         prefs, _library = _location_prefs(self, {})
@@ -2390,44 +2377,31 @@ class ALocationWriteIsAnnouncedOnlyWhenItLandsTest(unittest.TestCase):
                     (name, self.model.rowCount())))
 
     def _refused(self):
-        from amaze.core import keyed_store
-        real = keyed_store.Store._commit
+        return test_support.full_disk_for(os.path.join(self.prefs.dir, locations_mod.FILES))
 
-        def refuse_locations(store, staged, keys, retire=()):
-            if store.spec.filename == locations_mod.LOCATIONS_FILE:
-                return keyed_store.Written(False, keyed_store.REASON_DENIED)
-            return real(store, staged, keys, retire)
+    def _on_disk(self):
+        with open(os.path.join(self.prefs.dir, locations_mod.FILES), encoding="utf-8") as handle:
+            document = json.load(handle)
+        user = str(self.prefs.library_user)
+        return (sorted(document.get(locations_mod.LOCATIONS, {}).get(user, {})),
+                sorted(document.get(locations_mod.STARS, {}).get(user, {})))
 
-        return mock.patch.object(keyed_store.Store, "_commit",
-                                 refuse_locations)
-
-    def test_a_refused_remove_or_add_changes_and_announces_nothing(self):
+    def test_a_refused_remove_waits_whole_and_lands_as_one(self):
+        from amaze.core import library_db
         files = file_library.FileFiles(self.prefs)
         files.set_folder(self.folder)
         files.toggle_favorite(0)
-        key = files.file_key(0)
+        library_db.flush()
+        before = self._on_disk()
+        self.assertTrue(before[0] and before[1], "premise: no location or star on disk")
         with self._refused():
-            landed = self.model.remove_folder(1)
-        self.assertTrue(locations_mod.is_favourite(self.prefs, key),
-                        "a refused removal retired the star of a file the "
-                        "location still lists")
-        self.assertEqual(
-            [hostos.canonical_path_key(self.folder)],
-            [hostos.canonical_path_key(p) for p in self.prefs.file_folders],
-            "a refused removal still took the location off the list")
-        self.assertEqual([], self.heard,
-                         "the sidebar was told a row left that is still "
-                         "there")
-        self.assertFalse(landed)
-        other = tempfile.mkdtemp(prefix="amaze_landed_other_")
-        self.addCleanup(shutil.rmtree, other, ignore_errors=True)
-        with self._refused():
-            landed = self.model.add_folder(other)
-        self.assertEqual([], self.heard,
-                         "the sidebar was told about a row the refused "
-                         "write never made")
-        self.assertFalse(landed)
-        self.assertEqual(2, self.model.rowCount())
+            self.model.remove_folder(1)
+            library_db.flush()
+        self.assertEqual(before, self._on_disk(),
+                         "a refused removal wrote part of itself")
+        library_db.flush()
+        self.assertEqual(([], []), self._on_disk(),
+                         "the waiting removal did not land whole once the disk took it")
 
     def test_a_landed_write_is_announced_around_the_change(self):
         other = tempfile.mkdtemp(prefix="amaze_landed_other_")
@@ -2537,7 +2511,7 @@ class CheckLibraryDropsOnlyFileStarsTest(unittest.TestCase):
         model = panel.material_model
         mat_id = model.assets[1].mat_id    # row 0 is the fixture's odd id -1
         model.toggle_fav(1)
-        self.assertTrue(locations_mod.is_favourite(panel.prefs, mat_id),
+        self.assertTrue(locations_mod.is_favourite(panel.prefs, mat_id, model.DB_FILENAME),
                         "premise: the material star did not set")
         dead = os.path.join(panel.prefs.file_folders[0], "gone.exr")
         panel.prefs.add_file_favorite(dead)
@@ -2550,7 +2524,7 @@ class CheckLibraryDropsOnlyFileStarsTest(unittest.TestCase):
         repair.drop_dead_stars(findings, guard=False)
 
         self.assertTrue(
-            locations_mod.is_favourite(panel.prefs, mat_id),
+            locations_mod.is_favourite(panel.prefs, mat_id, model.DB_FILENAME),
             "Check Library removed a material's star - its bare asset id "
             "was checked as a file path, and no file is named like an id")
         self.assertNotIn(str(mat_id), "\n".join(lines),
@@ -2558,23 +2532,18 @@ class CheckLibraryDropsOnlyFileStarsTest(unittest.TestCase):
         self.assertFalse(locations_mod.is_favourite(panel.prefs, dead),
                          "a favourite whose file is gone survived Check Library")
 
-    def test_the_offline_copy_lists_no_asset_star_as_a_file(self):
-        shape = LocationsFollowTheLibraryTest.REAL_SHAPE
-        prefs, library = _location_prefs(self, shape)
+    def test_the_file_favourites_list_no_asset_star(self):
+        prefs, _library = _location_prefs(self, {})
+        folder = tempfile.mkdtemp(prefix="amaze_star_folder_")
+        self.addCleanup(shutil.rmtree, folder, ignore_errors=True)
+        prefs.add_file_folder(folder)
+        plate = os.path.join(folder, "plate.exr")
         mat_id = "139888336268658010"
-        self.assertTrue(locations_mod.set_favourite(prefs, mat_id, True))
-        self.assertIn(
-            test_support.FIXTURE_USER + "|" + mat_id,
-            prefs.last_known_favourites,
-            "premise: the mirror did not copy the material star")
-        locations_mod.forget()
-        prefs.dir = os.path.join(library, "not-mounted")
-        self.assertTrue(locations_mod.showing_last_known(prefs),
-                        "premise: the library still answers")
-
-        self.assertEqual(
-            sorted(shape["file_favorites"]), sorted(prefs.file_favorites),
-            "the offline copy hands a material id to the File favourites")
+        self.assertTrue(locations_mod.set_favourite(prefs, mat_id, True, library_files.MATERIALS))
+        self.assertTrue(locations_mod.set_favourite(prefs, plate, True))
+        self.assertEqual([hostos.canonical_path_key(plate)],
+                         [hostos.canonical_path_key(p) for p in prefs.file_favorites],
+                         "the File favourites hand on a material id, or lost the file")
 
 
 class CheckLibrarySetsAFolderMissingHereAsideTest(unittest.TestCase):
@@ -2603,13 +2572,13 @@ class CheckLibrarySetsAFolderMissingHereAsideTest(unittest.TestCase):
                         "premise: the registered folder does not own its file")
         notes.set_note(self.prefs, notes.note_key("file", self.key),
                        [{"t": "text", "text": "approved by lighting"}])
-        tile_icons.set_override(self.prefs, self.key, self.ICON)
+        tile_icons.set_override(self.prefs, self.key, self.ICON, locations_mod.FILES)
         locations_mod.set_favourite(self.prefs, self.key, True)
         self.assertEqual((True, True, True), self._kept(), "premise: nothing was set")
 
     def _kept(self):
         return (self.notes.has_note(self.prefs, self.notes.note_key("file", self.key)),
-                bool(tile_icons.override_for(self.prefs, self.key)),
+                bool(tile_icons.override_for(self.prefs, self.key, locations_mod.FILES)),
                 locations_mod.is_favourite(self.prefs, self.key))
 
     def _registered(self):
@@ -3143,103 +3112,6 @@ class AStarSurvivesTheMoveThroughTheModelDoors(unittest.TestCase):
             "path after all")
 
 
-class AssetFavouritesMigrateIntoTheLibraryTest(unittest.TestCase):
-    """`material_favorites` moves into the store under the active user and pops once all read back."""
-
-    def setUp(self):
-        from amaze.core import keyed_store
-        self.keyed_store = keyed_store
-        locations_mod.forget()
-        self.addCleanup(locations_mod.forget)
-        self.lib = tempfile.mkdtemp(prefix="amaze_favmig_lib_")
-        self.addCleanup(shutil.rmtree, self.lib, ignore_errors=True)
-
-    def _store(self, p):
-        return self.keyed_store.open_store(locations_mod.FAVOURITES_SPEC, p)
-
-    def test_the_first_favourite_ask_moves_the_list_and_retires_the_key(self):
-        p = _prefs_with_settings(self, {
-            "directory": self.lib,
-            "material_favorites": ["mat-a", "mat-b"]})
-        self.assertIn(
-            "material_favorites", p.data,
-            "premise: load() left the list alone - migrating there "
-            "made every load() caller a library writer")
-        self.assertTrue(locations_mod.is_favourite(p, "mat-a"))    # the first favourite question a product surface asks is the trigger
-        self.assertTrue(self._store(p).has("mat-a"))
-        self.assertTrue(self._store(p).has("mat-b"))
-        self.assertNotIn(
-            "material_favorites", p.data,
-            "the key survived a proven migration - the courtesy will "
-            "carry it forever and re-run the union every launch")
-        with open(os.path.join(p.path, "settings.json"),
-                  encoding="utf-8") as handle:
-            self.assertNotIn("material_favorites", json.load(handle),
-                             "the retirement never reached disk")
-
-    def test_without_a_user_the_list_waits_then_lands(self):
-        p = _prefs_with_settings(self, {
-            "directory": self.lib, "library_user": "",
-            "material_favorites": ["mat-a"]})
-        self.assertIn(
-            "material_favorites", p.data,
-            "the list was consumed with nobody to own it - the stars "
-            "went into a blank tag or nowhere")
-        p.library_user = "picked-uid"
-        result = locations_mod.migrate_asset_favourites(p)
-        self.assertEqual("migrated", result.get("state"))
-        self.assertTrue(self._store(p).has("mat-a"))
-        self.assertNotIn("material_favorites", p.data)
-
-    def test_the_union_keeps_what_the_store_already_holds(self):
-        p = _prefs_with_settings(self, {
-            "material_favorites": ["mat-a", "mat-b"]})
-        p.dir = self.lib
-        self._store(p).set("mat-b", True)
-        result = locations_mod.migrate_asset_favourites(p)
-        self.assertEqual("migrated", result.get("state"))
-        mine = self._store(p).all()
-        self.assertEqual(
-            {"mat-a", "mat-b"}, set(mine),
-            "the union lost or duplicated a star between the settings "
-            "list and what the store already held")
-
-    def test_an_unstar_cannot_be_resurrected_by_the_pending_list(self):
-        p = _prefs_with_settings(self, {
-            "material_favorites": ["mat-a"]})
-        p.dir = self.lib
-        locations_mod.set_favourite(p, "mat-a", False)
-        self.assertFalse(
-            locations_mod.is_favourite(p, "mat-a"),
-            "the unstar was resurrected - the write ran before the "
-            "pending settings list was unioned in")
-        self.assertNotIn("material_favorites", p.data)
-
-    def test_the_paint_path_finishes_a_deferred_migration(self):
-        p = _prefs_with_settings(self, {
-            "material_favorites": ["mat-a"]})
-        p.dir = self.lib
-        self.assertTrue(
-            locations_mod.is_favourite(p, "mat-a"),
-            "a star still waiting in settings did not light once the "
-            "library appeared - the paint path never retried")
-
-    def test_test_mode_defers_and_keeps_the_list(self):
-        test_lib = tempfile.mkdtemp(prefix="amaze_favmig_test_")
-        self.addCleanup(shutil.rmtree, test_lib, ignore_errors=True)
-        p = _prefs_with_settings(self, {
-            "directory": self.lib, "test_mode": True,
-            "test_dir": test_lib,
-            "material_favorites": ["mat-a"]})
-        self.assertIn(
-            "material_favorites", p.data,
-            "Test Mode consumed the real library's stars - they landed "
-            "in the test library and the key is gone for the real one")
-        self.assertFalse(
-            self._store(p).has("mat-a"),
-            "the star reached the TEST library's store")
-
-
 class TheUserPickerFollowsTheLibrary(unittest.TestCase):
     """Switching libraries reloads the open user picker with the new library's users."""
 
@@ -3337,22 +3209,6 @@ class ReadinessIsAskedOncePerGeneration(unittest.TestCase):
         locations_mod.forget()    # what a library switch runs
         self.assertTrue(locations_mod.ready(prefs),
                         "a library that came back stayed unseen after the switch door")
-
-    def test_a_pre_tag_row_a_refresh_reads_is_adopted_at_the_next_read(self):
-        from amaze.core import keyed_store
-        prefs, library = _location_prefs(self, {})
-        self.assertTrue(locations_mod.register(prefs, library), "premise: no location store")
-        self.assertTrue(locations_mod.ready(prefs), "premise: the library cannot answer")
-        path = os.path.join(library, "locations.json")
-        with open(path, encoding="utf-8") as handle:
-            document = json.load(handle)
-        document["locations"]["/peer/folder/"] = {"registered": True, "name": "Peer"}
-        with open(path, "w", encoding="utf-8") as handle:
-            json.dump(document, handle)    # an older build on another machine
-        keyed_store.refresh_all(prefs)
-        self.assertEqual({"registered": True, "name": "Peer"},
-                         locations_mod.record(prefs, "/peer/folder/"),
-                         "a row a refresh read waited for the next location write")
 
 
 class NewFolderAndSaveScene(unittest.TestCase):

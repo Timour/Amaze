@@ -94,6 +94,7 @@ def touch() -> None:
     """Bump the generation after location state was edited outside this module."""
     global _generation
     _generation += 1
+    library_db.look_again()
 
 
 def _mine(preferences, section: str) -> dict:

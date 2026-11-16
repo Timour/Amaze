@@ -22,7 +22,6 @@ naming = _load_convention()
 
 PROBLEMS = (    # (kind, headline); each entry's line names its kind
     (naming.SCRATCH, "LEFTOVER SCRATCH - a save died partway"),
-    (naming.PRE_ADOPT_COPY, "PRE-ADOPT BACKUPS - left by an earlier texture update"),
     (naming.DUPLICATE, "DUPLICATES - a sync service's second copy of a known file"),
     (naming.UNKNOWN, "UNKNOWN - not part of a library"),
     (naming.UNREADABLE, "UNREADABLE - a folder that would not list"),

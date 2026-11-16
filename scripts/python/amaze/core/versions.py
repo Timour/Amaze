@@ -159,15 +159,20 @@ def _land(preferences, writes: dict, removals=(), why: str = "") -> bool:
     from amaze.core import library_db
     held = library_db.guard_of(preferences)
     change = held.change(str(getattr(preferences, "library_user", "") or ""))
+    outside = {}    # a caller's own staged copy, as a snippet's text is: written once the unit lands
     try:
         for path, data in writes.items():
             relative = held.inside(path)
             if not relative:
-                raise OSError("%s is outside the library" % path)
+                outside[path] = data
+                continue
             change.put_file(relative, data)
         for path in removals:
             change.remove(held.inside(path))
         change.commit()
+        for path, data in outside.items():
+            with open(path, "wb") as handle:
+                handle.write(data)
     except OSError as exc:
         debug.event("versions", "not written - nothing changed", why=why, error=str(exc))
         return False

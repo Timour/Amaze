@@ -719,7 +719,7 @@ class AKeyframedTexturePathCrossesEvaluated(unittest.TestCase):
 
 
 class AnOnlineImportWhoseListWasNotSavedSaysSo(unittest.TestCase):
-    """The online import answers ok with a `ListNotSaved` naming the material its list did not take."""
+    """An online import whose list write is refused lands nothing, and its answer names the material."""
 
     def setUp(self):
         test_support.pin_env(self, "OCIO", "/dev/null")
@@ -748,11 +748,14 @@ class AnOnlineImportWhoseListWasNotSavedSaysSo(unittest.TestCase):
             save=lambda *a, **k: material_actions.add_asset(model, *a, **k))
         return record, ok, reason
 
-    def test_the_answer_names_the_unlisted_material(self):
+    def test_a_refused_list_lands_nothing_and_names_the_material(self):
+        held = test_support.asset_ids(self.model)
         with test_support.full_disk_for(os.path.join(self.prefs.dir, self.model.DB_FILENAME)):
             record, ok, reason = self._import("unlisted")
-        self.assertTrue(ok, reason)
-        self.assertEqual(matx_import.record_name(record), str(reason))
+        self.assertFalse(ok, "an import whose row was refused answered success")
+        self.assertIn(matx_import.record_name(record), str(reason))
+        self.assertEqual([], test_support.arrived(self.model, held),
+                         "an import whose row was refused shows as a tile")
 
     def test_a_listed_import_answers_no_reason(self):
         _record, ok, reason = self._import("listed")

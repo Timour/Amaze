@@ -10,6 +10,7 @@ import unittest
 from amaze import branding
 from amaze.core import guard
 from amaze.helpers import hostos
+from amaze.tests import test_support  # noqa: F401 - arms the sandbox for a run on its own
 
 MATERIALS = "materials.json"
 NODES = "nodes.json"

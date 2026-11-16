@@ -17,7 +17,7 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze.core import database, material as matmod  # noqa: E402
+from amaze.core import guard, library_files, material as matmod  # noqa: E402
 from amaze.render import material_converter, nodes  # noqa: E402
 from amaze.tests.conversion_report import _Prefs  # noqa: E402
 
@@ -46,10 +46,9 @@ def _read_shader(shader) -> dict:
 
 def from_library(library_dir: str, limit: int = 0) -> list:
     """Convert the library's Redshift materials and read each shader."""
-    database.DatabaseConnector._instances.pop("library.json", None)
-    data = database.DatabaseConnector("library.json").load(library_dir)
+    data = guard.Guard(library_dir).read(library_files.MATERIALS).document or {}
     records = [
-        r for r in data.get("assets", [])
+        r for r in (data.get("assets") or {}).values()
         if "Redshift" in str(r.get("renderer", ""))
     ]
     if limit:

@@ -406,8 +406,8 @@ class TheCategoryVerbsMoveNoRowInsideALayoutChange(unittest.TestCase):
         path = os.path.join(self.panel.prefs.dir, self.model.DB_FILENAME)
         with open(path, encoding="utf-8-sig") as handle:
             document = json.load(handle)
-        document["assets"].append({"id": "PEER-CAT", "categories": [],
-                                   "name": "Filed elsewhere", "tags": []})
+        document["assets"]["PEER-CAT"] = {"id": "PEER-CAT", "categories": [],
+                                          "name": "Filed elsewhere", "tags": []}
         with open(path, "w", encoding="utf-8") as handle:
             json.dump(document, handle, indent=4)
 

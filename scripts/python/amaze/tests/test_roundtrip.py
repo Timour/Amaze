@@ -388,7 +388,7 @@ class TestRoundTrip(unittest.TestCase):
             self.assertFalse(os.path.exists(base + retired),
                              "a format 4 save still wrote %s" % retired)
 
-        test_support.reset_database_singletons()  # persistence: a fresh model over the same dir, so the row comes from library.json
+        test_support.reset_database_singletons()  # persistence: a fresh model over the same dir, so the row comes from the database
         reloaded = library_mod.MaterialLibrary(preferences=self.prefs)
         row = reloaded.find_asset_row_by_id(mat_id)
         self.assertNotEqual(row, -1, "saved row missing after reload")
@@ -444,7 +444,7 @@ class TestRoundTrip(unittest.TestCase):
     def test_failed_save_leaves_no_phantom_row(self):
         """A save whose file write fails registers no row; skipped on Windows (no chmod) ▸r/platform-files"""
         rows_before = self.model.rowCount()
-        index_path = os.path.join(self.prefs.dir, "library.json")
+        index_path = os.path.join(self.prefs.dir, MATERIALS)
         index_before = open(index_path, "rb").read()
 
         mats_dir = material.section_folder(self.prefs.dir, MATERIALS)
@@ -463,7 +463,7 @@ class TestRoundTrip(unittest.TestCase):
         self.assertEqual(self.model.rowCount(), rows_before,
                          "failed save registered a phantom row")
         self.assertEqual(open(index_path, "rb").read(), index_before,
-                         "failed save rewrote library.json")
+                         "failed save rewrote the materials database")
         self.assertIsNone(builder.userData("assetlib_id"),
                           "failed save stamped the node as saved")
 
@@ -551,7 +551,7 @@ class ARedshiftImportReadsItsInterfaceOnce(unittest.TestCase):
 
 
 class TestUnsafeAssetIds(unittest.TestCase):
-    """An id from library.json becomes a filename: the shape check and the containment are tested."""
+    """An id from a database becomes a filename: the shape check and the containment are tested."""
 
     def test_the_real_shapes_are_accepted_and_traversal_is_refused(self):
         """Guards the guard: "32 hex only" would refuse the fixture's legacy timestamp ids and "-1"."""
@@ -627,11 +627,11 @@ class TestUnsafeAssetIds(unittest.TestCase):
         test_support.reset_database_singletons()
         self.addCleanup(test_support.reset_database_singletons)
 
-        index_path = os.path.join(prefs_obj.dir, "library.json")
+        index_path = os.path.join(prefs_obj.dir, MATERIALS)
         with open(index_path, encoding="utf-8") as handle:
             data = json.load(handle)
-        data["assets"][0]["id"] = "../../.ssh/authorized_keys"
-        data["assets"][0]["name"] = "tampered"
+        data["assets"]["../../.ssh/authorized_keys"] = dict(
+            data["assets"].pop("-1"), id="../../.ssh/authorized_keys", name="tampered")
         with open(index_path, "w", encoding="utf-8") as handle:
             json.dump(data, handle)
 
@@ -952,8 +952,7 @@ class AnUpdateWhoseListWriteIsRefused(unittest.TestCase):
 
     def _listed(self, mat_id):
         with open(self._index(), encoding="utf-8") as handle:
-            return next(row for row in json.load(handle)["assets"]
-                        if str(row.get("id")) == mat_id)
+            return json.load(handle)["assets"][mat_id]
 
     def _index(self):
         return os.path.join(self.prefs.dir, self.model.DB_FILENAME)
@@ -976,16 +975,14 @@ class AnUpdateWhoseListWriteIsRefused(unittest.TestCase):
         self.assertNotEqual(listed["date"], mat.date, "premise: the record kept its date")
         self.assertTrue(answer, "the files are new, yet the update answered that nothing was "
                         "written, which the panel shows as Update failed")
-        self.assertIsInstance(answer, library_mod.ListNotSaved,
-                              "the update answered a plain success while its list entry "
-                              "was not saved, so the panel could not say so")
         self.assertEqual(1, len(log.messages("alert")),
                          "a second alert joined the save's own: %s" % log.messages("alert"))
         self.assertTrue(log.matching("could not save the library", "alert"),
                         log.messages("alert"))
-        self.assertTrue(log.matching("list was not saved", "library"),
-                        "the update did not record that its list write was refused")
-        self.assertTrue(self.model.save(), "premise: the next save was refused too")
+        from amaze.core import library_db
+        self.assertTrue(library_db.document(self.prefs, self.model.DB_FILENAME).dirty,
+                        "the refused record was dropped, not kept for the next save")
+        library_db.flush()
         self.assertEqual(mat.date, self._listed(mat_id)["date"],
                          "the next save that works did not write the update's record")
 
@@ -1002,21 +999,21 @@ class AnAddWhoseListWriteIsRefused(unittest.TestCase):
         self.staging = hou.node("/obj").createNode("matnet")
         self.addCleanup(self.staging.destroy)
 
-    def test_the_answer_says_so_and_the_library_alert_is_the_only_one(self):
+    def test_nothing_lands_and_the_answer_says_so(self):
         node = _build_material(self.staging, "refused_add_probe")
         held = test_support.asset_ids(self.model)
         index = os.path.join(self.prefs.dir, self.model.DB_FILENAME)
+        folder = material.section_folder(self.prefs.dir, MATERIALS)
+        files = sorted(os.listdir(folder))
         with test_support.full_disk_for(index), test_support.captured_log() as log:
             answer = material_actions.add_asset(self.model, node, "", "", False)
-        self.assertEqual(1, len(test_support.arrived(self.model, held)),
-                         "premise: the new tile is not in the grid")
-        self.assertIsInstance(answer, library_mod.ListNotSaved,
-                              "the add answered a plain success while its list entry "
-                              "was not saved, so the panel could not say so")
-        self.assertEqual(1, len(log.messages("alert")),
-                         "a second alert joined the library's own: %s" % log.messages("alert"))
-        self.assertTrue(log.matching("could not save the library", "alert"),
-                        log.messages("alert"))
+        self.assertEqual([], test_support.arrived(self.model, held),
+                         "a material whose row was refused shows as a tile")
+        self.assertFalse(answer, "the add answered success while nothing landed")
+        self.assertEqual(files, sorted(os.listdir(folder)),
+                         "a material whose row was refused left its files")
+        self.assertLessEqual(len(log.messages("alert")), 1,
+                             "a second alert joined the library's own: %s" % log.messages("alert"))
 
 
 class StructureSignatureTest(unittest.TestCase):

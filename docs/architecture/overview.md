@@ -267,7 +267,7 @@ settings, and Apply asks `takes_library` before it writes anything.
 
 **A LIBRARY AND ITS USER ARE PICKED TOGETHER** (Preferences ▸ Library,
 P01). The Library list is settings.json's `libraries`; picking one shows
-its users from its own `users.json` and preselects by name, then the
+its users from its own `DataBase.json` ▸ `users` and preselects by name, then the
 only user. Nothing switches until Apply, which opens the library with
 the picked user and puts both back when it stays closed. A user named
 for a library not yet made is created after the library opens. At start
@@ -411,185 +411,19 @@ change of several files is being applied.
 - **`core/library_conversion.py`** is the only code that knows an older
   library; it leaves `policy.json` so an older Amaze stays out.
 
-### The keyed side-tables before 2.0 (history)
-
-- **ONE FILE, ONE TABLE.** `open_store` caches per file, so every
-  reader of a store shares one table and one stale-write baseline —
-  and the cache identity is the CANONICAL path, because
-  `preferences.dir` is not stable as text and two spellings of one
-  directory would otherwise mint two Stores over one file.
-  `own_store` is the deliberate opt-out, for a document whose holders
-  legitimately disagree (two panes of one Houdini).
-- **Adapter API:** a store is DATA — `register(filename, payload,
-  keyspace, label, noun, …)` declares it; the adapter attaches its
-  normaliser with `bind()`. **Registration is how a store comes into
-  existence**, so `stores()` is the ONE enumeration for every consumer
-  that may import the package — **Check Library and the restore
-  picker.** **`tools/library-audit.py` is NOT one of them and never can
-  be**: it is deliberately pure stdlib, with no Houdini and no import
-  from the package, so it runs on a machine where Houdini will not start
-  or against a library copied onto a stick. It loads
-  `core/library_files.py` by file path, and that module's
-  `SIDE_TABLES` names the stores again, so **a new store has to be added
-  in two places**. A test holds the two equal (`test_check_engine`,
-  `test_keyed_store`), and the audit still fails loudly where they
-  drift — `--strict` reports an undeclared file as UNKNOWN and exits 1.
-- **Adapters:** the **Comments store** (`core/notes.py` → `notes.json`),
-  the **Tile Icon store** (`core/tile_icons.py` → `icons.json`), the
-  **User store** (`core/users.py` → `users.json`), the **Shared
-  Settings store** (`core/library_prefs.py` → `prefs.json`, the
-  eighteen settings that are one answer for everyone who opens the
-  library; `prefs/persistence.py` is the one consumer, with a
-  last-known `shared_settings` copy in settings.json for when the
-  library is unreachable), the **Location record** and **Favourites**
-  (`core/locations.py` → `locations.json`, `favourites.json`), and
-  **this machine's own settings** (`prefs/persistence.py` →
-  `settings.json`) — the one store NOT in the library, because it holds
-  the pointer to it.
-
-  settings.json is a DOCUMENT, not a table of rows, and four
-  declarations carry that: `payload=""`, `falsy_is_a_value` (`False`,
-  `0` and `""` are answers, so removal is `retire`), `absence_is_fresh`
-  (deleting it is its own prescribed recovery), and `merge_rules` keyed
-  by a PATH with a wildcard so `users/*/file_folders` reaches a
-  collected key. Its write door is `replace(document, retire=…)`, and
-  retired keys drop AFTER the peer adoption or they are adopted
-  straight back on every save.
-  Favourites serve EVERY section since 2026-08-13, through one door —
-  `locations.is_favourite` / `set_favourite` — keyed by
-  `loc:<id>/<relative>` for File rows a registered location owns and
-  by bare asset id for Material/Node/Code/Color, the icons.json
-  scheme; an id rides through the path conversion unchanged, and no
-  path prefix can ever match one, so the location fan-outs never
-  touch it.
-
-  **A LOCATION IS AN ID, ITS PATH ONE PROPERTY** (2026-08-27): the
-  **Location identity table** (`location_paths.json`, untagged,
-  shared) holds one row per registered folder — id → its current
-  path — and it is the ONLY place a location's path is stored. The
-  per-user record keys by `loc:<id>`, and every per-file key
-  (favourite, comment, tile icon) by `loc:<id>/<relative>`, so
-  **Locate Folder is one field edit on one shared row**: every user
-  and every machine follows at once, and no key ever embeds a dead
-  path. A `loc:` key is an ID to the whole engine whatever the
-  store's keyspace — never spelling-converted, never rewritten by
-  `relocate` (kept only as the belt for path keys an older build
-  wrote, which `locations.convert_to_ids` re-homes per session,
-  collapsing rival ids two machines minted offline toward the
-  smaller). A file inside two nested locations belongs to the
-  INNERMOST (`locations.file_ident`), the same rule the sidebar
-  colours use. `retire_prefix` retires the identity row and the
-  id-keyed state along with the legacy path keys, so Remove stays
-  one door.
-  All seven are files IN THE LIBRARY. The last two were views onto
-  `settings.json` until 2026-08-05, which is why an icon or a comment on
-  a file could disappear when you switched library while the file stayed
-  registered: a File row's facts answered to two different scopes.
-  `settings.json` keeps a COPY of both, written from the store and never
-  read back into it — it is what the File section shows when the library
-  is unreachable, and the shape an older build reads after a rollback on
-  the SAME machine — `settings.json` is per-machine and does not travel
-  between computers, so the copy is not back-compatibility for anyone
-  else. Two computers sharing a library share these files directly, and
-  a second computer's own registered folders MERGE in, adopt-only, the
-  first time it runs this build. The pointer
-  to the library (`directory`) stays in `settings.json`; it is the one
-  thing that cannot live inside what it points at.
-- **The engine owns:** the absence verdict, the damage latch, the
-  restore tier, the field-wise merge, the atomic write, the key
-  lifecycle, the user tag, and the one answer that carries a REASON.
-
-**A store may declare its keys PER-USER**, and the engine tags them:
-`Spec.user_tagged` prefixes the owner's UID as `<uid>|<key>` inside
-`storage_key()`, the one door every read and write already passes
-through. So one library holds everyone's per-user choices with each
-person seeing only their own, and a rename relabels somebody without
-moving a key.
-
-- `all()` is SCOPED to the current user. `everyones()` is the unscoped
-  read, for repair and migration only.
-- No user picked means NO key rather than a shared one — the write is
-  refused with `REASON_NO_USER`. An empty write still answers
-  UNCHANGED, because doing nothing cannot fail.
-- A key carrying no tag is DROPPED from every read surface and never
-  held with the foreign values (those are written back). It waits in
-  an orphan bucket until the first commit retires it from the file, so
-  a store that decides its pre-tag rows are ADOPTED can file them
-  under the current user first — `adopt_orphans()`, one write for the
-  whole move. Favourites decided against and drop theirs for good;
-  locations adopt theirs into whoever opens the library.
-- Tagged today: `favourites.json` and `locations.json` — every star
-  and every registered folder is one user's. A location removal still
-  sweeps EVERY user's keys under the folder (`retire_stored`): a
-  removal is a shared act, and the clean slate holds across the tag.
-  With a library present and nobody picked yet, the File sidebar
-  serves the settings copy instead of opening empty while the ASK
-  dialog waits, and location writes refuse like a favourite's.
-
-**Absence is a VERDICT the engine resolves, never a value a caller
-receives.** Opening answers **READ** (parsed from a file that is
-there), **FRESH** (absent, and nothing says it was ever here) or
-**BLIND** (absent-but-proven, or present-but-unparseable). Only the
-first two may be written. There is no `if os.path.exists(path):` in
-any store, so there is no missing `else` for a store to be missing —
-which is exactly what `icons.json` was missing.
-
-**A read hands out a COPY; a write STAGES and commits only on
-success.** The cache is a projection of the last successful write,
-never a scratchpad a caller mutates in place — so a refused save can no
-longer light a tile's comment badge for a note that was never written.
-
-**The engine performs all three failure reports; the store supplies the
-WORDS.** `unreadable_alert` when the file will not parse — **on EITHER
-read**, the load's and the adopt-before-write one, since 2026-08-29;
-the second read used to swallow a parse failure and write over the
-peer's bytes, which nothing else held —
-`refused_sentence` when a latched store declines a write, and
-`denied_alert` when the disk refuses one — the last of which the
-adapters used to do themselves, so `notes.py` and `tile_icons.py` held
-the same ten lines with two words different and the other two stores
-held none. The engine appends the CAUSE from
-`hostos.why_failed` (§ 4g), so an instruction names the object that is
-actually wrong.
-
-**A blank `denied_alert` is a DECISION, and only two stores speak.**
-Telling someone about a failure they can already see is worse than
-silence. A comment and a tile icon stay on screen looking saved, so
-nothing but an alert says otherwise — those two speak. A registered
-location and a File favourite are DERIVED from their store and the
-cache does not move on failure, so the folder never appears and the
-star never lights: the gesture visibly does nothing, and that IS the
-report. `test_alert_sink` asserts the whole SET, because an omission
-and a deliberate silence read identically in a registry (2026-08-10).
-
-**A key that MOVES moves in one write.** `rekey(moves)` is one guarded
-commit for the whole rename, because a half-rewritten keyspace is worse
-than the orphaning it fixes. Expressed as delete-then-add it is two
-independent trips to disk, and a denial between them loses what was
-being moved: `relocate_file_folder` did exactly that with a location's
-own record until 2026-08-10, so one transient outage of a synced
-library deregistered the folder and took its colour, custom name,
-recursion and Show All Files with it. The door is
-`locations.relocate_record(prefs, old, new)`.
-
-**The owner announces, the engine fans out.** A folder that moved is
-one call — `relocate(prefs, old, new)` — naming the prefix and no
-store; a location that is gone is `retire_prefix(prefs, path)`. The
-caller never enumerates the stores, because a list held by a caller is
-a list someone can write short, and both callers that held one already
-had been. Whether a store SURVIVES a location removal is
-`survives_forget` on its spec — a product decision said once (a Remove
-from the sidebar clears the comments, tile icons and stars under it,
-and the identity row dies with the pointer). Check Library never
-removes: a folder absent from this machine is SET ASIDE, the pointer
-only (`repair.set_aside_folders` → `prefs.remove_file_folder`, the call
-`FolderTreeModel.set_aside_folder` makes too), so the per-file state
-waits for the folder to return and re-attaches by id. A folder on a
-volume that is not mounted is not set aside at all.
-
-`<file>.json.bak-first` arrives on the FIRST write —
-`hostos.seed_restore_floor` mints the write-once floor from the file
-just created, since `snapshot_before_write` has nothing to copy yet.
+- **A location is an id, its path one property**: `files.json` ▸
+  `paths` holds id → path, and every per-file key is
+  `loc:<id>/<relative>`, so Locate Folder is one field edit. A file
+  inside two nested locations belongs to the innermost
+  (`locations.file_ident`).
+- **A user writes only their own stars**: a file move or a location
+  removal moves or retires this user's stars, never another user's.
+- **Check Library never removes a location**: a folder absent from
+  this machine is set aside, the pointer only
+  (`repair.set_aside_folders`), so its files' state waits for it.
+- **`core/library_settings.py`** holds the shared settings and the
+  overwrite switch in `DataBase.json` ▸ `settings`;
+  **`core/library_policy.py`** the library's version stamp.
 
 ### 4d. The **Material Engine**
 
@@ -851,11 +685,11 @@ model (§5, the one model set). Lives in `core/grid_engine.py`.
 
 | Term | What it is | In code |
 |---|---|---|
-| **Library** | The on-disk folder holding every section's data: the databases (`library.json`, `cops.json`, ...) + each asset section's folder (`materials/`, `nodes/`) + `img/` (thumbnails) + `matX/` (downloaded MaterialX). Path in `settings.json`. | — |
+| **Library** | The on-disk folder holding every section's data: the six databases (§4c) + each asset section's folder (`materials/`, `nodes/`) + `backup/`, `trash/` + `matX/` (downloaded MaterialX). Path in `settings.json`. | — |
 | **Library Model** | The Qt model over a **Library**'s JSON. The shared engine is `AssetLibrary` (records, categories, tags, tile icons, saves, deletes, the connector's guards — nothing renderer-shaped); the four section models subclass it over their own JSON. `MaterialLibrary` adds what a MATERIAL is: its USD and shader-type labels, and the repaint when a render lands; saving, updating, converting, loading and rendering one are `actions/materials.py`'s. Colors rides the same engine with its palette payload (`colors`/`ramp`) carried on the record. | `core/library.py` → `AssetLibrary`, `MaterialLibrary`; `cop_library.py`; `code_library.py`; `gradient_library.py` |
-| **Material** | One asset record (id, name, categories, tags, renderer, date, …). **NOT a favourite and NOT a tile icon** — both were retired from the record by schema 5 and live in `favourites.json` (per-user, since 2026-08-13) and `icons.json` respectively; schema 7 retired `builder` the same way (write-only since the Mantra import path left, 2026-08-14); `Material._RETIRED_KEYS` names all three so they are recognised and dropped rather than carried as unknown keys. **One category per asset** — multi-category was removed 2026-07-27; tags are the many-to-many axis. | `core/material.py` |
-| **Tile Icon** | A chosen Feather symbol on a colour, for assets with nothing to render; **`icons.json` is the ONE home**, keyed by asset id in every section, and since schema 5 the ONLY home — the record field that used to back it up is stripped from every row, so there is no second answer to drift. Composed to `<id>_icon.png` BESIDE the render, never over it — except Color, which composes in memory. | `core/tile_icons.py` |
-| **Comment** | A page of text + to-dos per asset (the Comments pane, toggled from the toolbar). Renamed from Notes 2026-08-01 - the WORDS changed, every identifier did not: `NotesRole`, `notes.json`, `notes_panel.py` and the `show_notes` / `notes_panel_width` keys are contracts with data on disk and with other machines. Stored in `notes.json` beside the index, keyed `<section>:<id>` / `file:<path>`, wearing icons.json's guard set (unreadable latch, adopt-on-write, snapshot tier). Tiles with a note carry the lower-right badge via `NotesRole` (UserRole + 10, both model families). WHICH asset the pane points at is the context's own answer — `Section.comment_subject(index)`, one of the four area hooks — because only the context can map an index through its proxy and read its roles; the panel finds the live current index and delegates. `takes_comments` is the separate, selection-free half that the toolbar chip reads. EVERY section takes notes, Color included - a gradient carries a full-uuid4 identity in `id` (from birth, or from the schema-8 migration that mints one for any row arriving without it — a construction-time backfill did this until 2026-08-20; the field was `uid` before 2026-08-09 and the VALUE never changed, so existing keys still resolve), keyed `gradient:<value>`. | `core/notes.py`, `panel/notes_panel.py` |
+| **Material** | One asset record (id, name, categories, tags, renderer, date, …). **NOT a favourite and NOT a tile icon**: those are the database's `stars` (per user) and `icons` sections. **One category per asset** — multi-category was removed 2026-07-27; tags are the many-to-many axis. | `core/material.py` |
+| **Tile Icon** | A chosen Feather symbol on a colour, for assets with nothing to render; the section's database ▸ `icons` is the one home, keyed by asset id (a file key in `files.json`). Composed to `<id>_icon.png` BESIDE the render, never over it — except Color, which composes in memory. | `core/tile_icons.py` |
+| **Comment** | A page of text + to-dos per asset (the Comments pane, toggled from the toolbar). Stored in the section's database ▸ `comments`, keyed by asset id or file key; a comment item belongs to its author. WHICH asset the pane points at is the context's own answer — `Section.comment_subject(index)`, one of the four area hooks — because only the context can map an index through its proxy and read its roles; the panel finds the live current index and delegates. `takes_comments` is the separate, selection-free half that the toolbar chip reads. EVERY section takes notes, Color included - a gradient carries a full-uuid4 identity in `id` (from birth, or from the schema-8 migration that mints one for any row arriving without it — a construction-time backfill did this until 2026-08-20; the field was `uid` before 2026-08-09 and the VALUE never changed, so existing keys still resolve), keyed `gradient:<value>`. | `core/notes.py`, `panel/notes_panel.py` |
 | **Category Colour** | A colour on a category, painted under every tile in it and down its sidebar row. Stored beside the category names in the same JSON, so the grid reads it from the connector's shared data dict. | `core/category.py` → `Categories.set_color` |
 | **Categories Model** | The Sidebar list for an Asset section. | `core/category.py` → `Categories` |
 | **Sidebar Proxy** | Presents the STORED category order (no sort — the manual order, 2026-08-14) and hides empty categories (renderer-aware). All four category sidebars go through it, Color included; the save dialog's dropdown keeps its own alphabetical sort. | `category.CategoriesSidebarProxy` |
@@ -867,59 +701,17 @@ model (§5, the one model set). Lives in `core/grid_engine.py`.
 | **Filtering & sorting** | THREE proxies, one base: `core/grid_proxy.py`'s `GridProxyModel`, inherited by `MultiFilterProxyModel` (the asset sections and Online), `TextureFilterProxyModel` (File) and `GradientFilterProxyModel` (Color). They differ in what they FILTER ON; the base owns WHAT IS SHOWN, and the ORDER is the model's (the Grid Engine, §4i) - a proxy's `sortColumn()` stays -1, so rows coming back from a filter come back in the model's order and nothing re-sorts after an insert. `setDynamicSortFilter(False)` also turns off the re-test of a row whose DATA changed (2026-08-03 — un-favouriting a tile with Favourites-only on left it in the grid, star off), so the base puts that back: role-aware (`watched_roles`) and coalesced onto one pass per event-loop turn. | `core/grid_proxy.py`, `core/multifilterproxy_model.py` |
 | **Scrolling** | Both axes go through one handler: per-PIXEL scroll mode and `dragdrop_widgets.wheelEvent`, which reads the dominant axis, converts a classic wheel's 120-unit notches, and applies the `scroll_speed` preference. Horizontal was on Qt's per-ITEM default until 2026-08-01 — one step is a whole row, which reads as wild acceleration — and it went unnoticed because nothing could scroll sideways until list rows grew wider than the panel. | `panel/dragdrop_widgets.py` |
 | **Splitter panes** | THE construction (2026-08-01): sidebar \| grid \| comments, with exactly ONE flexible pane — the grid (stretch 1); both side panes hold (stretch 0), so every redistribution Qt performs lands on the grid. Each side pane OWNS its width: BOTH are `ui_helpers.HeldPane`, which asks for the remembered drag or the design width through `sizeHint`, and `_on_splitter_moved` records both into `sidebar_width` / `notes_panel_width`. Nothing on the panel computes a pane's width: measured 2026-08-03, the splitter has already honoured the hint before any post-show code runs, so the 50 lines that redistributed for the Comments pane were recomputing what was true. Never bookkeeping around Qt's relayout — that shipped once and lost. | `panel.py` `_build_splitter_and_sidebar`, `ui_helpers.HeldPane` |
-| **Prefs** | Settings, one shared instance injected into every model. `settings.json` lives where the OS keeps preferences (`~/Library/Preferences/Amaze` on macOS, `%APPDATA%/Amaze` on Windows, `$XDG_CONFIG_HOME/Amaze` on Linux) — never in the install — and holds bootstrap, this machine's view state and last-known copies; the eighteen SHARED settings are the library's own, in `prefs.json` through the Shared Settings store (§4c), adopted at load and pushed on save. Split in two 2026-08-09: `prefs.py` answers what a setting IS (64 property pairs plus the location, favourite and section-filter accessors), and `prefs/persistence.py` carries it to and from disk — save, load, the field-wise merge between two panes of one session, the migration out of older installs, and the portable path encoding. `_Persistence` is mixed into `Prefs`, so every call site still says `prefs.save()` and the document's shape is untouched. | `prefs/prefs.py` → `Prefs`, from `settings.json` |
-| **Database** | The JSON read/write layer, one connector per JSON filename — **all four databases, since 2026-08-09**. | `core/database.py` |
+| **Prefs** | Settings, one shared instance injected into every model. `settings.json` lives where the OS keeps preferences (`~/Library/Preferences/Amaze` on macOS, `%APPDATA%/Amaze` on Windows, `$XDG_CONFIG_HOME/Amaze` on Linux) — never in the install — and holds bootstrap, this machine's view state and last-known copies; the SHARED settings are the library's own, in `DataBase.json` ▸ `settings` (`core/library_settings.py`), adopted at load and pushed on save. Split in two 2026-08-09: `prefs.py` answers what a setting IS (64 property pairs plus the location, favourite and section-filter accessors), and `prefs/persistence.py` carries it to and from disk — save, load, the field-wise merge between two panes of one session, the migration out of older installs, and the portable path encoding. `_Persistence` is mixed into `Prefs`, so every call site still says `prefs.save()` and the document's shape is untouched. | `prefs/prefs.py` → `Prefs`, from `settings.json` |
+| **Database** | One of the six JSON documents of keyed sections, read and written through the guard (§4c). | `core/guard.py`, `core/documents.py`, `core/library_db.py` |
 
-### The two stamps every database carries
+### The stamp every library carries
 
-- **`version` — the SCHEMA**: what shape the document is in. A load
-  applies `_MIGRATIONS` up to `SCHEMA_VERSION` (**7**), and three steps
-  are registered. **4→5** strips the retired `favorite` and `icon`
-  fields from every row; `icon` moved to `icons.json`, and neither is
-  left to the unknown-key courtesy, because a key carried verbatim
-  would be written straight back by the next save. **5→6** strips
-  `favorite` again, and the second pass is the interesting one: Colors
-  is the one section whose rows never pass through `Material`, so
-  nothing dropped the field on read and every colour star toggled after
-  the 4→5 step landed back on the shared document. Stars live in
-  `favourites.json` now, per-user and owner-tagged — a field on a
-  shared record is everyone's, which was the defect. Stripped rather
-  than adopted, matching the File store's rule that a star with no
-  owner is nobody's. **6→7** strips `builder` — written by every save
-  since the fork, read by nothing since the Mantra import path was
-  removed 2026-08-14, so the field came off the format (decided
-  2026-08-17); `Material._RETIRED_KEYS` names it so a row that still
-  carries one is dropped on read rather than ridden back by `_extra`.
-  The steps that upgraded pre-release shapes were
-  deleted — a document with no step for its version keeps that version,
-  records an incomplete chain, and is refused rather than stamped as
-  current.
-- **`format` — whether this build may WRITE at all**
-  (`branding.LIBRARY_FORMAT`, **4** since an asset became two files in its section's folder;
-  3 was the location-ID conversion). A format 3 library opens normally and its saves stamp 4. A library stamped ahead of this
-  build opens read-only and points at the updater. It is the general
-  answer to an old build meeting a new library, which is why per-field
-  compatibility shims are not written.
-
-**A FRESH document is BORN at `SCHEMA_VERSION`; it does not start low
-and climb.** There is no step below 4, so anything created unstamped
-reads as legacy 1, stops in a gap, records an incomplete chain, and is
-then held at 1 by every subsequent save — it cannot climb out, and it
-cannot adopt a peer's stamp either. So every creation door stamps at
-creation, deriving the number from `SCHEMA_VERSION` and
-`branding.LIBRARY_FORMAT` rather than writing a literal. The doors are
-`DatabaseConnector`'s absent-sibling seed, which stamps by going through
-`save()`, and `prefs.write_fresh_index`, which the other two both call —
-`prefs.seed_test_folder` for the Test Library, and
-`prefs.seed_starter_index` for `actions/library.py`'s `prepare` seed from
-`res/def/library.json`. **The shipped starter itself carries no
-`version` key on purpose**: a literal there would be a second source of
-truth that goes stale at the next bump, so the stamp belongs to the door
-and one writer applies it. `tests/test_fresh_library.py` pins both.
-
-A PEER's document is migrated before it is merged (`_migrate_peer` —
-shape only). **Absence is not a delete**: `set()` unions by id, so a
-delete is said out loud through `forget()`.
+`DataBase.json` ▸ `policy` ▸ `library` ▸ `version` (`library_policy`)
+says what this build may do: a library stamped ahead opens read-only
+and points at the updater. There is no schema chain; an older library
+is converted once by `core/library_conversion.py`, and every creation
+door (`prefs.create_library`, `prefs.seed_test_folder`) stamps the
+current version.
 
 ---
 
@@ -1008,7 +800,7 @@ that this stays so.
 Executing `.interface` is what the builder data replaced. `asCode()` output is
 Python whose only documented contract is that it RUNS, so importing a
 material used to run whatever was in a file chosen by an id read
-verbatim out of `library.json`. The sidecar records the one thing the
+verbatim out of the database. The sidecar records the one thing the
 executed file uniquely carried - the container's own parameter
 interface and values - in a form that is parsed. Measured on a real
 548-asset library: with sidecars present, every importable asset
@@ -1224,7 +1016,10 @@ panel/empty_state.py      EMPTY STATE ENGINE - which blank an empty
 panel/dragdrop_widgets.py Drag-and-drop into the network editor
 core/thumbnails.py        THUMBNAIL ENGINE (cache, budget, loaders)
 core/conversion.py        CONVERSION ENGINE (file -> QImage, verified)
-core/keyed_store.py       KEYED STORE ENGINE (guarded JSON side-tables)
+core/guard.py             DATABASE ENGINE: the one door to a library's files
+core/documents.py         each database as keyed sections, the merge
+core/library_db.py        one Library per open library, the save timer
+core/library_conversion.py  the only code that knows an older library
 render/nodes.py           MATERIAL ENGINE (build_karma_material) + save/import
 render/cop_nodes.py       the Node section's Houdini knowledge: which context
                           a network holds, which container to create, and
@@ -1263,7 +1058,7 @@ core/users.py             WHO uses this library - a uuid4 UID per
                           person with a name beside it. Everything a
                           user owns is tagged with the UID, so a rename
                           relinks the label and moves nothing
-core/notes.py             the notes store (notes.json, per-asset pages)
+core/notes.py             comments: each database's `comments` section
 core/packages.py          the .amazepkg container (library packages are
                           format 2): export collectors, guarded writer,
                           refusing reader
@@ -1304,15 +1099,15 @@ actions/library.py        the steps of opening a library that need no
 core/texstore.py          the texture store: $AMAZELIB tokens, the
                           FileReference scan, save-time adoption and
                           the scene-side resolve
-core/library_prefs.py     the SHARED settings store (prefs.json) - the
-                          library-wide half of ROADMAP line 22; read
-                          and written by prefs/persistence.py alone
+core/library_settings.py  the SHARED settings: DataBase.json ▸ settings
+core/library_policy.py    the library's version stamp in DataBase.json
 panel/notes_panel.py      the Comments pane (right splitter dock)
 core/{texture,geo}_library.py   per-kind engines: image cache/proxy, geo knowledge
 render/thumbs.py          Thumbnail SCENE building (shaderball, flipbook)
 render/husk_job.py        ONE background husk per thumbnail batch:
                           its command, progress, Cancel, each PNG
 prefs/prefs.py            Prefs - what a setting IS (the property pairs)
+prefs/settings_store.py   settings.json on this computer: read, merge, write
 prefs/persistence.py      how it is STORED - save/load/merge/migrate,
                           mixed into Prefs, plus the portable paths
 core/folders.py           FolderTreeModel (shared Folder-archetype base, locations and subfolders)
@@ -1353,25 +1148,10 @@ core/versions.py          the version store of materials and code - the
                           base is always the ACTIVE version's, each
                           version also has an archived copy, and
                           versions.json is the ledger
-core/quarantine.py        the holding folder: where a library-internal
-                          removal puts what it takes - machine-local,
-                          one folder a day, keyed by the library id,
-                          expiring after QUARANTINE_DAYS; `held` is what
-                          the report's last line says. Pure stdlib,
-                          because the Houdini-free restore tool calls
-                          it too
 core/library_files.py     the naming convention, its one home: every
                           name a library file may have, and what
-                          anything else is - scratch, a pre-adopt
-                          backup, a duplicate, unknown - plus `walk`,
-                          one scandir per folder. Pure stdlib; the
-                          engine imports it, database.asset_id_for_file
-                          delegates to it, tools/library-audit.py loads
-                          it by path
-helpers/restore.py        the only code that READS the .bak copies and
-                          the only code that puts one back - one
-                          implementation behind Check Library and the
-                          Houdini-free tools/restore.py
+                          anything else is - scratch, a duplicate,
+                          unknown - plus `walk`, one scandir per folder
 core/gallery_import.py    Houdini .gal gallery entries -> library assets
 core/matx_icon.py         the PhysicallyBased icon, for value-only
                           online sources that ship no texture to render
