@@ -218,6 +218,8 @@ class AFullConversionTest(_OldLibrary):
         self.assertEqual([1], asked, "confirm() was not asked exactly once")
         self.assertEqual(library_policy.LIBRARY_VERSION, library_version(self.dir))
         self.assertFalse(library_conversion.needs_conversion(self.dir))
+        self.assertFalse(os.path.lexists(self.at(library_conversion.OLD_POLICY)),
+                         "the old policy file was left in a converted library")
 
         mat1 = self.record("MAT1")
         self.assertEqual(CONVERTED_BUILDER, mat1["builder"])
@@ -875,8 +877,6 @@ class OnlyTheConverterNamesFormat3Test(unittest.TestCase):
             checked += 1
             with open(path, encoding="utf-8") as handle:
                 for number, line in enumerate(handle, 1):
-                    if line.startswith("FENCE = "):    # a 2.0 library's own file, kept for older Amaze
-                        continue
                     for name in self.NAMES:
                         if name in line:
                             offenders.append("%s:%d %s" % (os.path.relpath(path, REPO),

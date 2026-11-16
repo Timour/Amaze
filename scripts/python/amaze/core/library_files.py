@@ -13,7 +13,6 @@ LISTS = (MATERIALS, NODES, CODE, COLORS)    # the sections whose rows are assets
 DATABASES = (MASTER,) + LISTS + (FILES,)    # `guard.DATABASES`, held equal by a test
 ROOT_FILES = DATABASES
 JOURNAL = ".amaze-journal"    # `guard.JOURNAL`: there only while a change is being applied
-FENCE = "policy.json"    # one line an Amaze from before 2.0 reads, and stays out
 BACKUP_FOLDER = "backup"    # `guard.BACKUP_DIR`
 TRASH_FOLDER = "trash"    # `guard.TRASH_DIR`, one folder per day
 
@@ -52,7 +51,8 @@ SCRATCH_INFIXES = (".rendering.", ".capturing.")    # a render or capture scratc
 SCRATCH_PREFIX = ".amaze_scratch"
 
 OS_NOISE = (".DS_Store", "Thumbs.db", "desktop.ini", ".Spotlight-V100",    # the system's own, left alone and not reported
-            ".fseventsd", ".TemporaryItems", "Icon\r")    # the last carries a folder's icon on macOS
+            ".fseventsd", ".TemporaryItems", "Icon\r",    # `Icon\r` carries a folder's icon on macOS,
+            "amaze_folder.ico")    # and this with `desktop.ini` on Windows: `hostos.WINDOWS_FOLDER_ICON`
 
 LIST = "list"    # the kinds that belong in a library
 JOURNAL_FILE = "journal"
@@ -133,7 +133,7 @@ def is_os_noise(name: str) -> bool:
 def _root(name: str):
     if name in DATABASES:
         return LIST, name
-    if name in (JOURNAL, FENCE):
+    if name == JOURNAL:
         return JOURNAL_FILE, name
     return None
 

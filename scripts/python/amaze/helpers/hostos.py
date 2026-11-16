@@ -224,9 +224,47 @@ _SET_FOLDER_ICON = (    # NSWorkspace writes that file and marks the folder, thr
     ".setIconForFileOptions($.NSImage.alloc.initWithContentsOfFile(argv[0]), argv[1], 0); }")
 
 
-def give_folder_icon(folder: str, icns: str) -> bool:
-    """macOS: `folder` shown with the icon in `icns`, unless it carries one; whether it was set now."""
-    if not is_macos() or not os.path.isdir(folder) or not os.path.isfile(icns) \
+WINDOWS_FOLDER_ICON = "amaze_folder.ico"    # Windows: the icon, copied into the folder it is for
+WINDOWS_FOLDER_INI = "desktop.ini"    # Windows: the file inside a folder that names the folder's icon
+_READONLY, _HIDDEN, _SYSTEM = 0x1, 0x2, 0x4    # Windows file attributes
+
+
+def _add_attributes(path: str, attributes: int) -> bool:
+    """Windows: `attributes` added to what `path` carries; whether they were set."""
+    import ctypes
+    kernel = ctypes.windll.kernel32    # type: ignore[attr-defined]
+    kernel.GetFileAttributesW.restype = ctypes.c_uint32
+    held = kernel.GetFileAttributesW(str(path))
+    if held == 0xFFFFFFFF:
+        return False
+    return bool(kernel.SetFileAttributesW(str(path), held | attributes))
+
+
+def _give_windows_folder_icon(folder: str, ico: str) -> bool:
+    """The icon and a `desktop.ini` naming it, both hidden in `folder`; an ini there is left alone."""
+    ini = os.path.join(folder, WINDOWS_FOLDER_INI)
+    if not os.path.isfile(ico) or os.path.lexists(ini):
+        return False
+    icon = os.path.join(folder, WINDOWS_FOLDER_ICON)
+    try:
+        shutil.copyfile(ico, icon)
+        with open(ini, "w", encoding="utf-8", newline="\r\n") as handle:
+            handle.write("[.ShellClassInfo]\nIconResource=%s,0\n" % WINDOWS_FOLDER_ICON)
+        _add_attributes(icon, _HIDDEN)
+        _add_attributes(ini, _HIDDEN | _SYSTEM)
+        return _add_attributes(folder, _READONLY)    # Explorer reads the ini of a folder marked so
+    except (OSError, AttributeError):
+        return False
+
+
+def give_folder_icon(folder: str, artwork: str) -> bool:
+    """`folder` shown with `artwork`.icns on macOS or `artwork`.ico on Windows, unless it carries one."""
+    if not os.path.isdir(folder):
+        return False
+    if is_windows():
+        return _give_windows_folder_icon(folder, artwork + ".ico")
+    icns = artwork + ".icns"
+    if not is_macos() or not os.path.isfile(icns) \
             or os.path.lexists(os.path.join(folder, FOLDER_ICON_FILE)):
         return False
     try:

@@ -171,7 +171,7 @@ class _ConversionRehearsal:
         old_left = [path for path in sizes if "/" not in path and (
             path in library_conversion.OLD_ROOT_FILES + tuple(library_conversion.OLD_MARKS)
             or any(tail in path for tail in library_conversion.OLD_COPY_TAILS))
-            and path not in (library_conversion.OLD_POLICY,) + library_files.DATABASES]
+            and path not in library_files.DATABASES]
         self.assertEqual([], old_left, "old root files or their copies were left")
         kept_aside = {os.path.normpath(path) for one in outcome.set_aside for path in one.files}
         shaped = [path for path in sizes if library_conversion.old_shape(path)

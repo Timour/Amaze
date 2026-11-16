@@ -469,15 +469,37 @@ class TheFixesKeepTheirWordTest(_Library):
         carrier = os.path.join(self.dir, hostos.FOLDER_ICON_FILE)
         if hostos.is_macos():
             self.assertTrue(hostos.give_folder_icon(self.dir, package_file(
-                "ui", "library_folder.icns")), "the folder was given no icon")
+                "ui", "library_folder")), "the folder was given no icon")
             self.assertTrue(os.path.exists(carrier))
             self.assertFalse(hostos.give_folder_icon(self.dir, package_file(
-                "ui", "library_folder.icns")), "a folder that carries its icon was given one again")
+                "ui", "library_folder")), "a folder that carries its icon was given one again")
         else:
             _make(carrier)
         result = repair.move_aside(self.survey(), "unknown", guard_session=False)
         self.assertEqual([], result["moved"])
         self.assertTrue(os.path.exists(carrier))
+
+    def test_on_windows_the_folder_gets_its_icon_and_an_ini_that_names_it(self):
+        from unittest import mock
+        from amaze import package_file
+        from amaze.helpers import hostos
+        marked = []
+        with mock.patch.object(hostos, "is_windows", lambda: True), mock.patch.object(
+                hostos, "_add_attributes", lambda path, bits: marked.append((path, bits)) or True):
+            for artwork in ("library_folder", "matx_folder"):
+                self.assertTrue(os.path.isfile(package_file("ui", artwork + ".ico")))
+            self.assertTrue(hostos.give_folder_icon(self.dir, package_file("ui", "library_folder")))
+            ini = os.path.join(self.dir, hostos.WINDOWS_FOLDER_INI)
+            with open(ini, "rb") as handle:
+                self.assertEqual(b"[.ShellClassInfo]\r\nIconResource=amaze_folder.ico,0\r\n",
+                                 handle.read())
+            self.assertTrue(os.path.isfile(os.path.join(self.dir, hostos.WINDOWS_FOLDER_ICON)))
+            self.assertEqual([(os.path.join(self.dir, hostos.WINDOWS_FOLDER_ICON), 0x2),
+                              (ini, 0x2 | 0x4), (self.dir, 0x1)], marked)
+            self.assertFalse(hostos.give_folder_icon(self.dir, package_file("ui", "library_folder")),
+                             "a folder with a desktop.ini was given another")
+        result = repair.move_aside(self.survey(), "unknown", guard_session=False)
+        self.assertEqual([], result["moved"], "the icon's two files were taken for unknown ones")
 
     def test_unknown_files_and_folders_go_to_the_trash(self):
         _make(os.path.join(self.dir, "notes.txt"))

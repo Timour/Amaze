@@ -170,7 +170,6 @@ RETIRED_ROW_KEYS = ("favorite", "icon", "builder")    # the old schema chain, v4
 RETIRED_TEXT_FIELDS = ("about", "description")    # a row's text that is now its comment
 USER_SEP = "|"    # an old per-user key: `<uid>|<key>`
 LOC = "loc:"
-FENCE_VERSION = library_policy.LIBRARY_VERSION    # in the `policy.json` fence an older Amaze reads
 _MINT_NAMESPACE = uuid.uuid5(uuid.NAMESPACE_URL, "amaze:minted-asset-id")    # never change: ids derive from it
 
 
@@ -209,7 +208,7 @@ def _converted_databases(library_dir: str) -> bool:
     """Whether the six databases are already written: a conversion stopped after that step."""
     document, _why = _read_old(library_dir, library_files.MASTER)
     entry = ((document or {}).get("policy") or {}).get("library") or {}
-    return isinstance(entry, dict) and entry.get("version") == FENCE_VERSION
+    return isinstance(entry, dict) and entry.get("version") == library_policy.LIBRARY_VERSION
 
 
 def _databases(library_dir: str) -> tuple:
@@ -262,7 +261,7 @@ def _listing(folder: str) -> list:
 
 
 def _old_databases_left(library_dir: str) -> list:
-    """The old root files still here; a `policy.json` beside `DataBase.json` is the fence."""
+    """The old root files still here; a `policy.json` beside `DataBase.json` is Check Library's."""
     master = os.path.isfile(os.path.join(library_dir, library_files.MASTER))
     left = []
     for name in OLD_ROOT_FILES + tuple(OLD_MARKS):
@@ -1048,13 +1047,11 @@ def build_databases(library_dir: str, set_aside=(), user: str = "", machine_star
 
 
 def _write_databases(library_dir: str, built: dict, user: str) -> None:
-    """The six databases and the fence an older Amaze reads, as ONE change; OSError propagates."""
+    """The six databases, as ONE change; OSError propagates."""
     held = guard.Guard(library_dir)
     change = held.change(user)
     for name, document in built.items():
         change.replace(name, document)
-    change.put_file(OLD_POLICY, (json.dumps({"library_version": FENCE_VERSION}, indent=1)
-                                 + "\n").encode("utf-8"))
     change.commit()
 
 
@@ -1077,7 +1074,7 @@ def _remove_old_root_files(library_dir: str, user: str) -> int:
     change = held.change(user)
     gone = []
     for name in OLD_ROOT_FILES + tuple(OLD_MARKS):
-        if name not in (OLD_POLICY, "code.json") and os.path.lexists(
+        if name != "code.json" and os.path.lexists(
                 os.path.join(library_dir, name)):
             gone.append(name)
         gone.extend(_old_traces(library_dir, name))

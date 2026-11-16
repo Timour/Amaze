@@ -180,6 +180,13 @@ MIN_PANEL_WIDTH = 500    #: design px through `theme.ui_px` at use; the grid pan
 _ICON_ASKED = globals().get("_ICON_ASKED", set())    # library folders given their icon this session
 
 
+def _give_folder_icons(library_dir: str) -> None:
+    """The library folder and its `matX` folder each shown with their own icon."""
+    hostos.give_folder_icon(library_dir, amaze.package_file("ui", "library_folder"))
+    hostos.give_folder_icon(os.path.join(library_dir, library_files.PACKAGE_FOLDER),
+                            amaze.package_file("ui", "matx_folder"))
+
+
 class _LibraryAt:
     """The preferences, read as if `folder` were the library and `user` its user."""
 
@@ -581,8 +588,7 @@ class AmazePanel(QtWidgets.QWidget):
             self.prefs.save()    # the Library list, the most recently opened first
         if hou.isUIAvailable() and self.prefs.dir not in _ICON_ASKED:    # once a session, off the UI thread
             _ICON_ASKED.add(self.prefs.dir)
-            threading.Thread(target=hostos.give_folder_icon, daemon=True, args=(
-                self.prefs.dir, amaze.package_file("ui", "library_folder.icns"))).start()
+            threading.Thread(target=_give_folder_icons, daemon=True, args=(self.prefs.dir,)).start()
         return True
 
     def convert_old_library(self) -> bool:
