@@ -788,7 +788,7 @@ class ARowHeldAcrossASaveIsFoundAgain(unittest.TestCase):
         self._deleted_elsewhere(code, code.assets[0].mat_id)
 
         def accepting(dialog):
-            dialog._harvest()
+            dialog._read_fields()
             dialog.category = "Brand New"
             dialog.code = "// edited here"
             dialog.applied.emit()    # what Apply emits to the section, with these two fields set

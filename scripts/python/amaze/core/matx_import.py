@@ -222,7 +222,7 @@ def to_renderer(builder, scratch, name: str, renderer: str):
             made.builder.setName(wording.sanitize_usd_path(name) or "material",
                                  unique_name=True)    # it was built beside the MaterialX one
         except hou.Error as exc:
-            debug.event("import", "twin not renamed", error=str(exc))
+            debug.event("import", "second builder not renamed", error=str(exc))
     report = made.report
     if report.skipped or report.approximated:
         debug.alert("\n".join(report.summary_lines()),

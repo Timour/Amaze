@@ -53,17 +53,17 @@ def move_file_capture(preferences, old_key: str, new_key: str) -> bool:
     except OSError as exc:
         debug.event("capture", "a moved file's capture stays under its old key", error=str(exc))
         return False
-    announce(new_key)
+    signal_capture_saved(new_key)
     return True
 
 
 class _Signals(QtCore.QObject):
     """Emits a tile key when a new capture is saved, so every open model repaints that tile."""
 
-    landed = QtCore.Signal(object)
+    capture_saved = QtCore.Signal(object)
 
 
-_RELAY_VERSION = 1    # bumped when a signal is added, removed or changes arity
+_RELAY_VERSION = 2    # bumped when a signal is added, removed or changes arity
 
 signals = globals().get("signals")    # kept across a module reload, so connections made before it keep working
 if signals is None or getattr(signals, "version", None) != _RELAY_VERSION:
@@ -71,12 +71,12 @@ if signals is None or getattr(signals, "version", None) != _RELAY_VERSION:
     signals.version = _RELAY_VERSION
 
 
-def announce(key: str) -> None:
+def signal_capture_saved(key: str) -> None:
     """Tell every live model that the tile keyed `key` has a new capture."""
     try:
-        signals.landed.emit(str(key))
+        signals.capture_saved.emit(str(key))
     except Exception as exc:                                  # noqa: BLE001
-        debug.event("capture", "could not announce a capture",
+        debug.event("capture", "could not signal a saved capture",
                     key=str(key), error=str(exc))
 
 

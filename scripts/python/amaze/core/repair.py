@@ -125,7 +125,7 @@ def survey(preferences_or_directory, img_dir: str = "img/") -> dict:
         "unaccounted": unaccounted,
         "preferences": preferences,
     }
-    findings["stamps"] = _stamps_of_unlisted_pairs(findings, listing)
+    findings["unlisted_metadata"] = _metadata_of_unlisted_pairs(findings, listing)
     findings.update(_listed_rows_checked(lists, listing))
     findings.update(_out_of_place(directory, listing))
     findings.update(_files_section(preferences))
@@ -239,11 +239,11 @@ def metadata_of(folders, asset_id: str):
     return None
 
 
-def _stamps_of_unlisted_pairs(findings: dict, listing: dict) -> dict:
+def _metadata_of_unlisted_pairs(findings: dict, listing: dict) -> dict:
     """{id: record or None} for each unlisted pair or lone metadata: the only files a survey opens."""
     folders = [path for _key, path in _folders_of(findings)]
     return {asset_id: metadata_of(folders, asset_id)
-            for asset_id in _ids_with_a_stamp(findings)}
+            for asset_id in _unlisted_ids_with_metadata(findings)}
 
 
 def _on_disk(listing: dict, folders: list, names: tuple) -> bool:
@@ -259,9 +259,9 @@ def _listed_rows_checked(lists: list, listing: dict) -> dict:
         filename = entry["filename"]
         if filename not in naming.ASSET_SECTIONS:
             continue
-        home = naming.SECTION_FOLDERS[filename]
-        folders = [home]
-        listed = home in listing["names"]
+        section_folder = naming.SECTION_FOLDERS[filename]
+        folders = [section_folder]
+        listed = section_folder in listing["names"]
         gone, unrendered, loose = [], [], []
         for row in entry.get("rows", ()):
             asset_id = str(row.get("id", ""))
@@ -304,7 +304,7 @@ def _out_of_place(directory: str, listing: dict) -> dict:
         elif kind == naming.SUPERSEDED:
             leftovers.append((relative, kind, size, when))
         elif kind == naming.DUPLICATE:
-            why = _why_a_duplicate_stays(directory, relative, detail, listing)
+            why = _duplicate_kept_reason(directory, relative, detail, listing)
             if why:
                 held_back.append((relative, detail, size, when, why))
             else:
@@ -318,7 +318,7 @@ def _out_of_place(directory: str, listing: dict) -> dict:
             "unknown_folders": unknown_folders}
 
 
-def _why_a_duplicate_stays(directory: str, relative: str, original: str, listing=None) -> str:
+def _duplicate_kept_reason(directory: str, relative: str, original: str, listing=None) -> str:
     """Empty when the duplicate may be removed, else `alone` or `differs`."""
     parts = naming.split(original)
     if listing is not None:
@@ -477,12 +477,12 @@ def ids_claimed_by(directory: str) -> tuple:
     return by_file, unreadable
 
 
-def rebuild_from_stamps(directory: str, index_filename: str = naming.MATERIALS) -> dict:
+def rebuild_from_metadata(directory: str, index_filename: str = naming.MATERIALS) -> dict:
     """A section database rebuilt from each asset's metadata; `unreadable` names unread siblings."""
     assets, damaged = {}, []
     categories = []
-    home = naming.SECTION_FOLDERS.get(index_filename)
-    by_id = {asset_id: [folder for folder in folders if os.path.basename(folder) == home]
+    section_folder = naming.SECTION_FOLDERS.get(index_filename)
+    by_id = {asset_id: [folder for folder in folders if os.path.basename(folder) == section_folder]
              for asset_id, folders in _metadata_names(directory).items()}
     by_id = {asset_id: folders for asset_id, folders in by_id.items() if folders}
     owned_elsewhere = set()
@@ -523,7 +523,7 @@ def rebuildable(findings: dict) -> list:
 def start_empty(directory: str, name: str, guard_session: bool = True) -> dict:
     """A database that does not read and has no backup, written new and empty; {} when done."""
     if guard_session:
-        _refuse_a_houdini_that_holds_the_library()
+        _raise_if_library_open_in_houdini()
     held = _guard(directory)
     if held.read(name).verdict not in (guard.CORRUPT, guard.MISSING):
         raise ValueError("that database reads, so it was left as it is")
@@ -548,8 +548,8 @@ def rebuild(directory: str, name: str = naming.MATERIALS, guard_session: bool = 
             or_empty: bool = False) -> dict:
     """`name` rebuilt from each asset's metadata as one change; {assets, damaged}, else ValueError."""
     if guard_session:
-        _refuse_a_houdini_that_holds_the_library()
-    document = rebuild_from_stamps(directory, name)
+        _raise_if_library_open_in_houdini()
+    document = rebuild_from_metadata(directory, name)
     if document["unreadable"]:
         debug.event("repair", "rebuild refused - a sibling database is unreadable",
                     files=document["unreadable"])
@@ -584,7 +584,7 @@ def _edit(directory: str, name: str, edit) -> bool:
     return True
 
 
-def _rows_against_their_stamps(directory: str, name: str, folders: list) -> tuple:
+def _rows_against_their_metadata(directory: str, name: str, folders: list) -> tuple:
     """(rows updated from newer metadata, names of rows with no .mat and no metadata)."""
     taken, gone = [0], []
 
@@ -619,20 +619,20 @@ def _rows_against_their_stamps(directory: str, name: str, folders: list) -> tupl
     return taken[0], sorted(gone)
 
 
-def _after_a_put_back(directory: str, filename: str, how=None) -> dict:
+def _after_restore(directory: str, filename: str, how=None) -> dict:
     """After a Material or Node database is restored: newer metadata applied, later rows re-added."""
     if filename not in naming.ASSET_SECTIONS:
         return {"refreshed": 0, "newer": 0, "gone": [],
-                "said": how if how is not None else ""}
+                "summary": how if how is not None else ""}
     folders = [os.path.join(directory, naming.SECTION_FOLDERS[filename])]
-    refreshed, gone = _rows_against_their_stamps(directory, filename, folders)
+    refreshed, gone = _rows_against_their_metadata(directory, filename, folders)
     newer = _rows_newer_than_the_copy(directory, filename)
     return {"refreshed": refreshed, "newer": newer, "gone": gone,
-            "said": _put_back_sentence(refreshed, newer, gone, filename, how)}
+            "summary": _restore_sentence(refreshed, newer, gone, filename, how)}
 
 
-def _put_back_sentence(refreshed: int, newer: int, gone: list,
-                       filename: str = naming.MATERIALS, how=None) -> str:
+def _restore_sentence(refreshed: int, newer: int, gone: list,
+                      filename: str = naming.MATERIALS, how=None) -> str:
     """`how`, then the rows updated or re-added after the backup, and the rows whose files are gone."""
     def counted(count, after):
         return "the %d %s %s after it %s" % (
@@ -644,17 +644,17 @@ def _put_back_sentence(refreshed: int, newer: int, gone: list,
         done.append(counted(refreshed, "changed") + " brought up to date")
     if newer:
         done.append(counted(newer, "saved") + " added back")
-    said = wording.and_list(done)
+    sentence = wording.and_list(done)
     if how is not None:
-        said = how + (", and " + said if said else "")
+        sentence = how + (", and " + sentence if sentence else "")
     if gone:
-        said += "%s%s %s in it, but %s files are gone" % (
-            " - " if said else "",
+        sentence += "%s%s %s in it, but %s files are gone" % (
+            " - " if sentence else "",
             wording.and_list(gone[:8]) + (" and %d more" % (len(gone) - 8) if len(gone) > 8 else ""),
             "is" if len(gone) == 1 else "are", "its" if len(gone) == 1 else "their")
-    if how is None and said:
-        said = "Also, " + said + "."
-    return said
+    if how is None and sentence:
+        sentence = "Also, " + sentence + "."
+    return sentence
 
 
 def _rows_newer_than_the_copy(directory: str, filename: str) -> int:
@@ -729,7 +729,7 @@ def offered_copies(findings: dict) -> list:
             for offer in sorted(group, key=lambda one: one[2]["when"], reverse=True)]
 
 
-def copy_named_by_what_it_holds(filename: str, snap: dict) -> str:
+def backup_description(filename: str, snap: dict) -> str:
     """A backup named by its date and count."""
     if snap["error"]:
         return "from %s, cannot be read" % snap["when"]
@@ -749,7 +749,7 @@ def _snapshot_line(entry: dict) -> str:
         return line
     parts = []
     for _tier, snap in entry["snapshots"]:
-        part = copy_named_by_what_it_holds(entry["filename"], snap)
+        part = backup_description(entry["filename"], snap)
         if part not in parts:    # two identical backup descriptions are shown once
             parts.append(part)
     return "%s: backups - %s." % (entry["label"], "; ".join(parts))
@@ -1092,28 +1092,28 @@ def _what_can_be_recovered(findings: dict) -> list:
     found = recoverable(findings)
     rest = unaccounted_total(findings) - len(
         _files_of(findings, [one for ids in found.values() for one in ids]))
-    said = [_recover_sentence(findings, found)] if found else []
-    if rest and said:
-        said.append("The rest are halves of an asset whose other file is not "
-                    "in the folder, so they can only be moved to the trash.")
+    sentences = [_recover_sentence(findings, found)] if found else []
+    if rest and sentences:
+        sentences.append("The rest are halves of an asset whose other file is not "
+                         "in the folder, so they can only be moved to the trash.")
     spared = len(_files_of(findings, stamped_unlisted(findings)))
     if spared:
         one = spared == 1
-        said.append("Moving files to the trash leaves %s where %s: the metadata of what "
-                    "%s to is saved beside %s, so %s can still be recovered."
-                    % (files(spared), "it is" if one else "they are",
-                       "it belongs" if one else "they belong", "it" if one else "them",
-                       "it" if one else "they"))
-    return [" ".join(said)] if said else []
+        sentences.append("Moving files to the trash leaves %s where %s: the metadata of what "
+                         "%s to is saved beside %s, so %s can still be recovered."
+                         % (files(spared), "it is" if one else "they are",
+                            "it belongs" if one else "they belong", "it" if one else "them",
+                            "it" if one else "they"))
+    return [" ".join(sentences)] if sentences else []
 
 
 def _recover_sentence(findings: dict, found: dict) -> str:
     """What Recover puts in each database, by name when there are 6 or fewer."""
-    stamps = _stamps(findings)
+    metadata = _unlisted_metadata(findings)
     few = sum(len(ids) for ids in found.values()) <= 6
     parts = []
     for filename, ids in found.items():
-        names = " (%s)" % wording.and_list([str((stamps.get(one) or {}).get("name") or one)
+        names = " (%s)" % wording.and_list([str((metadata.get(one) or {}).get("name") or one)
                                             for one in ids]) if few else ""
         parts.append("%s%s in the %s database"
                      % (_counted(len(ids), filename), names, naming.section_label(filename)))
@@ -1125,15 +1125,15 @@ def _folder_name(folder: str) -> str:
     return str(folder).rstrip("/\\") or folder
 
 
-_SESSION_HOLDS_THE_LIBRARY = (
+_LIBRARY_OPEN_IN_SESSION = (
     "this Houdini session has already read the library, so open Amaze and use "
     "Check in Preferences ▸ Library")
 
 
-def _refuse_a_houdini_that_holds_the_library(refusal=ValueError) -> None:
+def _raise_if_library_open_in_houdini(refusal=ValueError) -> None:
     """Every action checks this itself; a disabled button is not relied on."""
     if session_has_a_library_open():
-        raise refusal(_SESSION_HOLDS_THE_LIBRARY)
+        raise refusal(_LIBRARY_OPEN_IN_SESSION)
 
 
 def movable(findings: dict) -> dict:
@@ -1176,7 +1176,7 @@ MOVABLE = ("unlisted", "leftovers", "unknown")
 def move_aside(findings: dict, what, guard_session: bool = True) -> dict:
     """What `what` names, one of MOVABLE or several, into the library's trash as ONE change."""
     if guard_session:
-        _refuse_a_houdini_that_holds_the_library()
+        _raise_if_library_open_in_houdini()
     asked = (what,) if isinstance(what, str) else tuple(what)
     for one in asked:
         if one not in MOVABLE:
@@ -1211,7 +1211,7 @@ def move_aside(findings: dict, what, guard_session: bool = True) -> dict:
                 take(relative, name)
     if "leftovers" in asked:
         for relative, kind, _size, _when in findings.get("leftovers", ()):
-            if kind == naming.DUPLICATE and _why_a_duplicate_stays(
+            if kind == naming.DUPLICATE and _duplicate_kept_reason(
                     directory, relative, naming.classify(relative)[1]):
                 failed.append(relative)    # changed since the check: it now differs from the original
                 continue
@@ -1236,7 +1236,7 @@ def move_aside(findings: dict, what, guard_session: bool = True) -> dict:
 def set_aside_folders(findings: dict, guard_session: bool = True) -> list:
     """Remove each folder not on this computer from the Files section; its files are untouched."""
     if guard_session:
-        _refuse_a_houdini_that_holds_the_library()
+        _raise_if_library_open_in_houdini()
     preferences = findings["preferences"]
     done = []
     for path in findings.get("dead_folders", ()):
@@ -1251,7 +1251,7 @@ def set_aside_folders(findings: dict, guard_session: bool = True) -> list:
 def drop_dead_stars(findings: dict, guard_session: bool = True) -> list:
     """Unstar each starred file gone from a folder that is still here, as one change."""
     if guard_session:
-        _refuse_a_houdini_that_holds_the_library()
+        _raise_if_library_open_in_houdini()
     from amaze.core import locations
     gone = [path for path in findings.get("dead_stars", ())
             if not os.path.exists(path) and os.path.isdir(os.path.dirname(path))]
@@ -1264,7 +1264,7 @@ def drop_dead_stars(findings: dict, guard_session: bool = True) -> list:
 def rescue_uncategorised(findings: dict, guard_session: bool = True) -> dict:
     """Each row with no category put in Uncategorized, database by database; {database: n}."""
     if guard_session:
-        _refuse_a_houdini_that_holds_the_library()
+        _raise_if_library_open_in_houdini()
     done = {}
     for filename, rows in findings.get("uncategorised", {}).items():
         wanted = {asset_id for asset_id, _name in rows}
@@ -1291,9 +1291,9 @@ def rows_without_a_mat(findings: dict) -> dict:
     """{database: [id]} of the listed rows whose `.mat` is not in its section's folder now."""
     found = {}
     for filename, rows in (findings.get("missing_files") or {}).items():
-        home = os.path.join(findings["directory"], naming.SECTION_FOLDERS[filename])
+        section_folder = os.path.join(findings["directory"], naming.SECTION_FOLDERS[filename])
         ids = [asset_id for asset_id, _name in rows
-               if not os.path.lexists(os.path.join(home, asset_id + ".mat"))]
+               if not os.path.lexists(os.path.join(section_folder, asset_id + ".mat"))]
         if ids:
             found[filename] = ids
     return found
@@ -1302,7 +1302,7 @@ def rows_without_a_mat(findings: dict) -> dict:
 def drop_rows_without_files(findings: dict, guard_session: bool = True) -> dict:
     """Each row whose `.mat` is gone out of its database, its files trashed; {removed, moved}."""
     if guard_session:
-        _refuse_a_houdini_that_holds_the_library()
+        _raise_if_library_open_in_houdini()
     directory = findings["directory"]
     done, moved = {}, []
     for filename, ids in rows_without_a_mat(findings).items():
@@ -1347,7 +1347,7 @@ def recoverable(findings: dict) -> dict:
 def recover(findings: dict, guard_session: bool = True) -> dict:
     """Every `recoverable` pair into its folder's database as ONE change: {database: rows added}."""
     if guard_session:
-        _refuse_a_houdini_that_holds_the_library()
+        _raise_if_library_open_in_houdini()
     found = recoverable(findings)
     held = _guard(findings["directory"])
     change = held.change("")
@@ -1377,8 +1377,8 @@ def stamped_unlisted(findings: dict) -> list:
     """The unlisted ids with readable metadata, in a pair or alone: what can still be recovered."""
     if "asset_dirs" not in findings:
         return []
-    stamps = _stamps(findings)
-    return sorted(asset_id for asset_id, record in stamps.items() if record is not None)
+    metadata = _unlisted_metadata(findings)
+    return sorted(asset_id for asset_id, record in metadata.items() if record is not None)
 
 
 def _unaccounted_assets(findings: dict) -> list:
@@ -1387,19 +1387,19 @@ def _unaccounted_assets(findings: dict) -> list:
             for name in findings["unaccounted"].get(key, [])]
 
 
-def _ids_with_a_stamp(findings: dict) -> list:
+def _unlisted_ids_with_metadata(findings: dict) -> list:
     """The unlisted complete pairs, and the ids whose unlisted metadata has no `.mat`, by id."""
     alone = [metadata_stem(name) for name in _unaccounted_assets(findings)]
     return sorted(set(complete_pairs(findings)) | {one for one in alone if one})
 
 
-def _stamps(findings: dict) -> dict:
+def _unlisted_metadata(findings: dict) -> dict:
     """The metadata of the unlisted pairs, read once per survey."""
-    if "stamps" not in findings:
+    if "unlisted_metadata" not in findings:
         found = [path for _key, path in _folders_of(findings)]
-        findings["stamps"] = {asset_id: metadata_of(found, asset_id)
-                              for asset_id in _ids_with_a_stamp(findings)}
-    return findings["stamps"]
+        findings["unlisted_metadata"] = {asset_id: metadata_of(found, asset_id)
+                              for asset_id in _unlisted_ids_with_metadata(findings)}
+    return findings["unlisted_metadata"]
 
 
 def why_nothing_can_be_added(findings: dict, filename: str = "") -> str:
@@ -1456,48 +1456,50 @@ def _stage_rows(findings: dict, held: guard.Guard, change, filename: str, ids: l
     for other, claimed in by_file.items():
         if other != filename:
             taken |= claimed
-    added, minted = [], []
-    home = [os.path.join(directory, naming.SECTION_FOLDERS[filename])]
+    added, placeholders = [], []
+    section_folders = [os.path.join(directory, naming.SECTION_FOLDERS[filename])]
     claimed = [one for one in ids if one in taken]    # a database has listed them since the check
     categories = document.setdefault("categories", {})
     for asset_id in [one for one in ids if one not in taken]:
-        record = metadata_of(home, asset_id)
+        record = metadata_of(section_folders, asset_id)
         if record is None:
             record = material.Material(
                 name="%s %s" % (RECOVERED_NAME, asset_id), cats=RECOVERED_CATEGORY, tags=[],
                 fav=False, renderer="", mat_id=asset_id).get_as_dict()
-            minted.append(asset_id)
+            placeholders.append(asset_id)
         record["id"] = asset_id
         rows[asset_id] = record
         added.append(asset_id)
         for cat in record.get("categories") or []:    # a row with metadata restores its own categories
             if cat and cat not in categories:
                 categories[cat] = {"order": len(categories)}
-    if minted and RECOVERED_CATEGORY not in categories:
+    if placeholders and RECOVERED_CATEGORY not in categories:
         categories[RECOVERED_CATEGORY] = {"order": len(categories)}
     if added:
         change.put(reading.ticket, document)
-        _move_home(findings, held, change, filename, added)
+        _move_into_section_folder(findings, held, change, filename, added)
         staged.update(added)
     debug.event("repair", "orphaned files recovered into a database",
-                file=filename, added=len(added), from_metadata=len(added) - len(minted),
+                file=filename, added=len(added), from_metadata=len(added) - len(placeholders),
                 written_new=reading.verdict == guard.FRESH)
-    return {"added": added, "path": held.path(filename), "minted": minted, "claimed": claimed}
+    return {"added": added, "path": held.path(filename), "placeholders": placeholders,
+            "claimed": claimed}
 
 
-def _move_home(findings: dict, held: guard.Guard, change, filename: str, ids: list) -> None:
+def _move_into_section_folder(findings: dict, held: guard.Guard, change, filename: str,
+                              ids: list) -> None:
     """Move the files of rows just added to `filename` into its section's folder, same change."""
     if filename not in naming.ASSET_SECTIONS:
         return
-    home = os.path.join(findings["directory"], naming.SECTION_FOLDERS[filename])
+    section_folder = os.path.join(findings["directory"], naming.SECTION_FOLDERS[filename])
     wanted = set(ids)
     for _key, folder in _folders_of(findings):
-        if os.path.normpath(folder) == os.path.normpath(home):
+        if os.path.normpath(folder) == os.path.normpath(section_folder):
             continue
         for name in _listdir(folder):
             if naming.asset_id(name, ASSET_SIDECARS + (".png",), "_cop") not in wanted:
                 continue
-            target = os.path.join(home, name)
+            target = os.path.join(section_folder, name)
             if os.path.lexists(target):
                 continue
             change.take(held.inside(target), os.path.join(folder, name))
@@ -1560,10 +1562,10 @@ def target_of(findings: dict, filename: str) -> str:
     return os.path.join(findings["directory"], filename)
 
 
-def put_back(findings: dict, filename: str, tier: str, guard_session: bool = True) -> dict:
+def restore_backup(findings: dict, filename: str, tier: str, guard_session: bool = True) -> dict:
     """Restore one backup through the guard; for Materials or Nodes, then re-add later rows."""
     if guard_session:
-        _refuse_a_houdini_that_holds_the_library(
+        _raise_if_library_open_in_houdini(
             lambda phrase: RestoreRefused("Nothing was restored: %s." % phrase))
     held = _guard(findings["directory"])
     try:
@@ -1576,9 +1578,9 @@ def put_back(findings: dict, filename: str, tier: str, guard_session: bool = Tru
     undo = next((entry for entry, _when in held.backups(filename)
                  if entry.endswith(guard.UNDO_TAIL)), "")
     debug.event("repair", "backup restored", file=filename, backup=tier, undo=undo)
-    done = {"tier": tier, "undo": undo, "said": ""}
+    done = {"tier": tier, "undo": undo, "summary": ""}
     if filename in naming.ASSET_SECTIONS:
-        done.update(_after_a_put_back(findings["directory"], filename))
+        done.update(_after_restore(findings["directory"], filename))
     return done
 
 

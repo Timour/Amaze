@@ -116,7 +116,7 @@ def discard(staged: list) -> None:
             hostos.discard_scratch(what)
 
 
-def land(preferences, staged: list) -> None:
+def commit_staged_files(preferences, staged: list) -> None:
     """Commit an asset's staged files as one change, its row unchanged; OSError when it fails."""
     from amaze.core import guard, library_db
     held = library_db.guard_of(preferences)

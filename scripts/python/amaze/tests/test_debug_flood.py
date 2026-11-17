@@ -224,7 +224,7 @@ class EverySaveLeavesItsRecord(_LogCase):
 
     def _saves(self):
         return [r for r in self._records()
-                if r.get("cat") == "database" and r.get("msg") == "save did not land"]
+                if r.get("cat") == "database" and r.get("msg") == "save failed"]
 
     def test_six_saves_in_a_row_each_leave_a_record(self):
         import types

@@ -120,11 +120,11 @@ def _same_folder(one: str, other: str) -> bool:
     return bool(one and other) and hostos.comparable_path(one) == hostos.comparable_path(other)
 
 
-def _ink(label, color: str) -> None:
+def _set_text_color(label, color: str) -> None:
     """Colour a label's text with a stylesheet, as Houdini's stylesheet overrides a palette."""
-    ink = QtGui.QColor(color)
+    rgba = QtGui.QColor(color)
     label.setStyleSheet("QLabel { color: rgba(%d, %d, %d, %d); }"
-                        % (ink.red(), ink.green(), ink.blue(), ink.alpha()))
+                        % (rgba.red(), rgba.green(), rgba.blue(), rgba.alpha()))
 
 
 def _content_holder(inner, width: int = amazetheme.PREFS_CONTENT_WIDTH) -> QtWidgets.QWidget:
@@ -136,7 +136,7 @@ def _content_holder(inner, width: int = amazetheme.PREFS_CONTENT_WIDTH) -> QtWid
     return holder
 
 
-def _drawn_reach(frame_key: str) -> int:
+def _drawn_content_width(frame_key: str) -> int:
     """How far right of the inset a frame's widest drawn row reaches, never less than the column."""
     right = max(x + w for kind, x, _y, w, _h, _text in amazetheme.DIALOG_LAYOUT[frame_key]["nodes"]
                 if not kind.startswith(("QTabBar", "QWidget")))
@@ -397,11 +397,11 @@ class PrefsDialog(base_dialog.AssetDialog):
         if dialog.canceled:
             return
         if self._name_taken(dialog.name, besides="" if new else data):
-            self._say_name_taken(dialog.name)
+            self._show_name_taken(dialog.name)
             return
         self.rename_library_user(dialog.name)
 
-    def _say_name_taken(self, name: str) -> None:
+    def _show_name_taken(self, name: str) -> None:
         try:
             import hou
         except ImportError:
@@ -424,7 +424,7 @@ class PrefsDialog(base_dialog.AssetDialog):
             if not self._name_taken(dialog.name):
                 self.create_library_user(dialog.name)
                 return
-            self._say_name_taken(dialog.name)
+            self._show_name_taken(dialog.name)
         self._reload_library_users(picked=self._last_user_pick)    # leave the create row: reselect the previous pick
 
     def delete_library_user(self, uid) -> None:
@@ -475,8 +475,8 @@ class PrefsDialog(base_dialog.AssetDialog):
             ui.displayMessage(messages.LIBRARY_PATH_INVALID,
                               severity=hou.severityType.Warning, title=branding.APP_NAME)
             return
-        if library_actions.list_not_arrived(folder):
-            debug.event("prefs", "library not added - its list has not arrived", dir=folder)
+        if library_actions.folder_not_empty_without_library(folder):
+            debug.event("prefs", "library not added - the folder is not empty and holds no library", dir=folder)
             ui.displayMessage(messages.LIBRARY_FOLDER_NOT_EMPTY,
                               severity=hou.severityType.Warning, title=messages.TITLE_AMAZE)
             return
@@ -518,7 +518,7 @@ class PrefsDialog(base_dialog.AssetDialog):
             name, uid = self._new_user, users.create(self._prefs, self._new_user)
             if not uid:
                 if users.name_taken(self._prefs, name):
-                    self._say_name_taken(name)
+                    self._show_name_taken(name)
                 self._fill_libraries()
                 return False
         library_db.flush()    # pending changes are saved as the user who made them
@@ -606,7 +606,7 @@ class PrefsDialog(base_dialog.AssetDialog):
             _show_quietly(self._cbx_allow_overwrite, not checked)
 
     def _build_library_tab(self) -> QtWidgets.QWidget:
-        page, form = self._tab_page(_drawn_reach("P01"))
+        page, form = self._tab_page(_drawn_content_width("P01"))
         self._added_libraries: list = []    # folders Add put in the Library list, until applied
         self._new_user = ""                  # a user named for the picked library, created on Apply
         self._last_user_pick = None
@@ -689,7 +689,7 @@ class PrefsDialog(base_dialog.AssetDialog):
             amazetheme.BTN_APPLY, self.apply_library, tooltips.PREFS_APPLY_LIBRARY)
         self._btn_accept_library = self._library_button(
             amazetheme.BTN_ACCEPT, self.accept_library, tooltips.PREFS_ACCEPT_LIBRARY)
-        self._stand_at_the_bottom(page, self._apply_row(
+        self._place_at_bottom(page, self._apply_row(
             self._lbl_library_apply, self._btn_apply_library, self._btn_accept_library))
 
         self._tab_built["P01"] = {
@@ -723,7 +723,7 @@ class PrefsDialog(base_dialog.AssetDialog):
 
     def _dim_label(self, text: str = "") -> QtWidgets.QLabel:
         label = QtWidgets.QLabel(text)
-        _ink(label, amazetheme.P01_DIM_INK)
+        _set_text_color(label, amazetheme.P01_DIM_INK)
         return label
 
     def _build_check_rows(self, form: QtWidgets.QFormLayout) -> None:
@@ -746,7 +746,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         self._spanning_row(form, self._lbl_databases, *pairs, self._lbl_check_info,
                            self._btn_check)
 
-    def _stand_at_the_bottom(self, page, row) -> None:
+    def _place_at_bottom(self, page, row) -> None:
         """`row` under the page's stretch, its buttons ending where the frame draws them."""
         outer = page.layout()
         row.setFixedWidth(theme.ui_px(amazetheme.PREFS_CONTENT_WIDTH))
@@ -791,7 +791,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         found = library_check.summary(findings)
         fills = {library_check.CLEAN: amazetheme.P01_LIGHT_CLEAN,
                  library_check.FOUND: amazetheme.P01_LIGHT_FOUND,
-                 library_check.UNJUDGED: amazetheme.P01_LIGHT_UNJUDGED}
+                 library_check.UNCHECKED: amazetheme.P01_LIGHT_UNJUDGED}
         for part, light, count in zip(library_check.PARTS, self._check_lights,
                                       self._check_counts):
             state, number = found["lights"][part]
@@ -804,7 +804,7 @@ class PrefsDialog(base_dialog.AssetDialog):
     def _survey_open_library(self) -> dict:
         """One survey of the open library on disk, the panel's pending changes saved first."""
         if self._panel is not None:
-            check_actions.let_go(self._panel)
+            check_actions.save_before_check(self._panel)
         findings = repair.survey(self._prefs)
         debug.event("repair", "surveyed", complete=findings["complete"],
                     unaccounted=repair.unaccounted_total(findings),
@@ -829,7 +829,7 @@ class PrefsDialog(base_dialog.AssetDialog):
             panel = self._panel
             repair_dialog.repair_found(
                 findings, guard=False,
-                changed=None if panel is None else lambda: check_actions.read_again(panel))
+                changed=None if panel is None else lambda: check_actions.reload_after_check(panel))
             findings = self._survey_open_library()
         self._show_check(findings)
 
@@ -840,9 +840,9 @@ class PrefsDialog(base_dialog.AssetDialog):
             return
         shown, line, warn, _may_apply = self._library_note(self._picked_library())
         label.setText(shown)
-        _ink(label, amazetheme.P01_WARNING_INK if warn else amazetheme.P01_FORMAT_INK)
+        _set_text_color(label, amazetheme.P01_WARNING_INK if warn else amazetheme.P01_FORMAT_INK)
         self._lbl_library_apply.setText(line)
-        _ink(self._lbl_library_apply, amazetheme.P01_WARNING_INK)
+        _set_text_color(self._lbl_library_apply, amazetheme.P01_WARNING_INK)
         self._sync_library_buttons()
 
     def _build_render_tab(self) -> QtWidgets.QWidget:
@@ -1271,12 +1271,12 @@ class PrefsDialog(base_dialog.AssetDialog):
         picture.move(*box["add-on picture"][:2])
         picture.adjustSize()
         built = {"add-on picture": picture}
-        for kind, text, ink in (
+        for kind, text, color in (
                 ("add-on version", messages.ADDON_VERSION % manifest["version"], amazetheme.P05_DIM_INK),
                 ("add-on author", messages.ADDON_AUTHOR % manifest["author"], amazetheme.P05_DIM_INK),
                 ("add-on short description", group["short_description"], amazetheme.P05_TEXT_INK)):
             label = QtWidgets.QLabel(text, holder)
-            label.setStyleSheet("color: %s;" % ink)
+            label.setStyleSheet("color: %s;" % color)
             if kind == "add-on short description":
                 label.setWordWrap(True)
                 label.setAlignment(QtCore.Qt.AlignmentFlag.AlignTop | QtCore.Qt.AlignmentFlag.AlignLeft)

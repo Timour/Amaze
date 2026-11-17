@@ -323,7 +323,7 @@ class ThumbnailEngine(QtCore.QObject):
             hostos.promote_scratch(scratch, dest)
         except (OSError, hostos.SandboxRefused) as exc:
             hostos.discard_scratch(scratch)
-            debug.event("thumbnails", "converted png not filed", path=dest, error=str(exc))
+            debug.event("thumbnails", "converted png not written", path=dest, error=str(exc))
             return
         self.converted.emit(key, dest)
 

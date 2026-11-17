@@ -373,7 +373,7 @@ class _RecordingSection:
         self.moves = []
         self.stood = 0
 
-    def stand_again(self):
+    def reselect_sidebar_row(self):
         self.stood += 1
 
     def sidebar_movable(self, index):
@@ -516,7 +516,7 @@ class HoldGestureTest(unittest.TestCase):
         controller.eventFilter(view, esc)
         self.assertFalse(controller.reordering())
         self.assertEqual(["_All", "a", "b", "c"], model._categories)
-        self.assertEqual(1, section.stood, "`stand_again` was not called to restore the cleared highlight")
+        self.assertEqual(1, section.stood, "`reselect_sidebar_row` was not called to restore the cleared highlight")
         self._release(view, controller, self._row_center(view, 3))
         self.assertEqual(0, section.commits)
 
@@ -710,8 +710,8 @@ class FolderOrderTest(unittest.TestCase):
         model = file_library.FileFolders(prefs)
         section = sections.FileSection.__new__(sections.FileSection)    # the menu action alone, with no panel
         with mock.patch.object(sections.FileSection, "_p", lambda _s, _name: model), \
-                mock.patch.object(sections.FileSection, "standing_key", lambda _s: ""), \
-                mock.patch.object(sections.FileSection, "stand_on_key") as stand, \
+                mock.patch.object(sections.FileSection, "shown_sidebar_key", lambda _s: ""), \
+                mock.patch.object(sections.FileSection, "select_sidebar_key") as stand, \
                 mock.patch.object(sections.FileSection, "panel", mock.Mock(prefs=prefs), create=True), \
                 mock.patch.object(locations, "commit_registered_order") as commit:
             section.menu_sort_locations([], None)

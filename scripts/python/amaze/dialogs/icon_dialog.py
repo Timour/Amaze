@@ -47,7 +47,7 @@ class IconDialog(base_dialog.AssetDialog):
         self.spec = dict(current)
         self._name = current.get("name", "") or "box"
         self._bg = current.get("bg", "") or tile_icons.PRESETS[0][1]
-        self._ink = current.get("ink", "") or tile_icons.DEFAULT_INK
+        self._icon_shade = current.get("ink", "") or tile_icons.DEFAULT_INK
         self._buttons_by_name: dict = {}
 
         content = QtWidgets.QWidget()
@@ -130,7 +130,7 @@ class IconDialog(base_dialog.AssetDialog):
         """The icon grid only; the search field is ABOVE it, in the column that holds both."""
         chooser_bg = self.palette().color(   # the dialog's OWN window colour, so the grid is not a lighter area in it
             QtGui.QPalette.ColorRole.Window).name()
-        icon_ink = theme.color_hex("text_bright")
+        icon_color = theme.color_hex("text_bright")
 
         area = QtWidgets.QScrollArea()
         area.setWidgetResizable(True)
@@ -146,7 +146,7 @@ class IconDialog(base_dialog.AssetDialog):
             " border: %dpx solid %s; }"
             % (chooser_bg, amazetheme.D02_CHOOSER_RADIUS,
                theme.color_hex("field"), amazetheme.D02_CHECKED_BORDER,
-               icon_ink)
+               icon_color)
         )
         self._grid = QtWidgets.QGridLayout(holder)
         self._grid.setSpacing(amazetheme.D02_GRID_SPACING)
@@ -156,7 +156,7 @@ class IconDialog(base_dialog.AssetDialog):
         group.setExclusive(True)
         icon_px = theme.ui_px(CELL - 14)
         self._icon_px = icon_px
-        self._icon_ink = icon_ink
+        self._icon_color = icon_color
         self._icon_dpr = None                             # the device pixel ratio of the current icons; None until first drawn ▸r/screen-dpr
         for name in tile_icons.icon_names():
             button = QtWidgets.QToolButton()
@@ -169,7 +169,7 @@ class IconDialog(base_dialog.AssetDialog):
                 lambda _checked=False, chosen=name: self._choose(chosen))
             group.addButton(button)
             self._buttons_by_name[name] = button
-        self._ink_for_screen()      # called again in showEvent, once the window has a screen ▸r/screen-dpr
+        self._redraw_icons_for_screen()      # called again in showEvent, once the window has a screen ▸r/screen-dpr
         self._relayout(tile_icons.icon_names())
 
         area.setStyleSheet("QScrollArea { background: %s; border: none; }"
@@ -232,8 +232,8 @@ class IconDialog(base_dialog.AssetDialog):
         row, self.light_toggle = switch_row(
             amazetheme.LABEL_LIGHT_ICON,
             tooltips.CUSTOMIZE_LIGHT_ICON)
-        self.light_toggle.setChecked(self._ink == "light")
-        self.light_toggle.toggled.connect(self._set_ink_light)
+        self.light_toggle.setChecked(self._icon_shade == "light")
+        self.light_toggle.toggled.connect(self._set_icon_light)
         stack.addLayout(row)
         stack.addSpacing(theme.ui_px(amazetheme.D02_ROW_GAP))
 
@@ -278,8 +278,8 @@ class IconDialog(base_dialog.AssetDialog):
             "background:%s; border:%dpx solid #222;"
             % (self._bg, amazetheme.D02_SWATCH_BORDER))
 
-    def _set_ink_light(self, on: bool) -> None:
-        self._ink = "light" if on else "dark"
+    def _set_icon_light(self, on: bool) -> None:
+        self._icon_shade = "light" if on else "dark"
         self._refresh_preview()
 
     def _build_actions(self):
@@ -310,9 +310,9 @@ class IconDialog(base_dialog.AssetDialog):
     def showEvent(self, event) -> None:
         """Redraw the grid icons for the screen the dialog opened on. ▸r/screen-dpr"""
         super().showEvent(event)
-        self._ink_for_screen()
+        self._redraw_icons_for_screen()
 
-    def _ink_for_screen(self) -> None:
+    def _redraw_icons_for_screen(self) -> None:
         """Redraw the chooser icons when this window's ratio differs from the icons' ratio."""
         dpr = float(self.devicePixelRatioF())
         if dpr == self._icon_dpr:
@@ -320,13 +320,13 @@ class IconDialog(base_dialog.AssetDialog):
         self._icon_dpr = dpr
         for name, button in self._buttons_by_name.items():
             button.setIcon(QtGui.QIcon(self._chooser_icon(
-                name, self._icon_px, dpr, self._icon_ink)))
+                name, self._icon_px, dpr, self._icon_color)))
 
     @staticmethod
-    def _chooser_icon(name: str, icon_px, dpr: float, ink: str):
+    def _chooser_icon(name: str, icon_px, dpr: float, color: str):
         """One chooser icon: the Feather SVG recoloured, rendered at device pixels, ratio set."""
         return ui_helpers.device_pixmap(
-            tile_icons.icon_path(name), icon_px, dpr, {"currentColor": ink})
+            tile_icons.icon_path(name), icon_px, dpr, {"currentColor": color})
 
     def _relayout(self, names) -> None:
         while self._grid.count():
@@ -368,7 +368,7 @@ class IconDialog(base_dialog.AssetDialog):
         face = self.face_combo.currentData()
         if face == "custom":
             image = tile_icons.compose(self._name, self._bg, 256,
-                                       self._stroke, self._ink)
+                                       self._stroke, self._icon_shade)
         else:
             image = self._faces.get(face) or self._faces.get("generic")    # no picture yet: generic
         if image is None:
@@ -380,7 +380,7 @@ class IconDialog(base_dialog.AssetDialog):
             QtCore.Qt.TransformationMode.SmoothTransformation,
         ))
 
-    def _harvest_tile_name(self) -> None:
+    def _read_tile_name(self) -> None:
         """The new name, or None when the field is absent, greyed, blank or unchanged."""
         if self.tile_name_edit is None or \
                 not self.tile_name_edit.isEnabled():
@@ -389,7 +389,7 @@ class IconDialog(base_dialog.AssetDialog):
         if text and text != (self._tile_name or ""):
             self.new_tile_name = text
 
-    def _harvest_tags(self) -> None:
+    def _read_tags(self) -> None:
         """The tag line to write, or None when absent, greyed or unchanged; an empty field clears the tags."""
         if self.tags_edit is None or not self.tags_edit.isEnabled():
             return
@@ -397,7 +397,7 @@ class IconDialog(base_dialog.AssetDialog):
         if text != (self._tile_tags or "").strip():
             self.new_tags = text
 
-    def _harvest_category(self) -> None:
+    def _read_category(self) -> None:
         """The category to move to, or None when the field is absent, blank or unchanged."""
         if self.category_combo is None:
             return
@@ -405,26 +405,26 @@ class IconDialog(base_dialog.AssetDialog):
         if chosen and chosen != (self._tile_category or "").strip():
             self.new_category = chosen
 
-    def _harvest(self) -> None:
+    def _read_fields(self) -> None:
         """Everything a commit writes: the chosen face, and the name, tags and category."""
         self.new_tile_name = self.new_tags = self.new_category = None    # reset: only THIS commit's values
         face = self.face_combo.currentData()
         if face == "custom":
             self.spec = tile_icons.normalise(
-                {"name": self._name, "bg": self._bg, "ink": self._ink})
+                {"name": self._name, "bg": self._bg, "ink": self._icon_shade})
         else:
             self.spec = {"face": face}    # the model stores it only where it is not the default
-        self._harvest_tile_name()
-        self._harvest_tags()
-        self._harvest_category()
+        self._read_tile_name()
+        self._read_tags()
+        self._read_category()
 
     def _apply(self) -> None:
         """Commit and STAY OPEN; `canceled` stays True, so a later X re-applies nothing."""
-        self._harvest()
+        self._read_fields()
         self.applied.emit()
-        self._rebase()
+        self._keep_committed_values()
 
-    def _rebase(self) -> None:
+    def _keep_committed_values(self) -> None:
         """What Apply just committed is what the next commit compares against."""
         if self.new_tile_name is not None:
             self._tile_name = self.new_tile_name
@@ -434,5 +434,5 @@ class IconDialog(base_dialog.AssetDialog):
             self._tile_category = self.new_category
 
     def _accept(self) -> None:
-        self._harvest()
+        self._read_fields()
         self._on_accept()

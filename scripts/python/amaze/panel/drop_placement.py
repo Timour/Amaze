@@ -191,8 +191,8 @@ class DropPlacement:
                     liblop.setCurrent(True, True)
                     node2 = liblop
             except hou.Error as refusal:    # a locked asset raises PermissionError, not OperationFailed
-                debug.event("drag", "the network refused a material "
-                            "library", dest=lopnet.path(),
+                debug.event("drag", "material library not created "
+                            "in the network", dest=lopnet.path(),
                             error=str(refusal))
                 debug.refuse(messages.NETWORK_REFUSED_MATERIAL_LIBRARY
                              % (lopnet.name(), refusal))
@@ -275,8 +275,8 @@ class DropPlacement:
         except AttributeError:
             return None
 
-    def create_carrier(self, dest, type_name: str, name: str,
-                       position=None):
+    def create_holder_node(self, dest, type_name: str, name: str,
+                           position=None):
         """Create `type_name` in `dest` if it can hold one, else None; the caller owns the undo group."""
         from amaze.helpers import helpers
         if dest is None:
@@ -286,14 +286,14 @@ class DropPlacement:
         except (AttributeError, hou.OperationFailed):
             return None
         if category is None or hou.nodeType(category, type_name) is None:
-            debug.event("interact", "no carrier for this network",
-                        carrier=type_name, dest=dest.path())
+            debug.event("interact", "no holder node type for this network",
+                        holder=type_name, dest=dest.path())
             return None
         try:
             node = dest.createNode(type_name)
         except hou.Error as refusal:    # the hou.Error is logged and None returned
-            debug.event("interact", "the network refused the carrier",
-                        carrier=type_name, dest=dest.path(),
+            debug.event("interact", "holder node not created",
+                        holder=type_name, dest=dest.path(),
                         error=str(refusal))
             return None
         if name:
@@ -305,6 +305,6 @@ class DropPlacement:
             helpers.auto_place(node)
         else:
             helpers.place_nodes([node], position)
-        debug.event("interact", "carrier created", carrier=type_name,
+        debug.event("interact", "holder node created", holder=type_name,
                     dest=dest.path())
         return node

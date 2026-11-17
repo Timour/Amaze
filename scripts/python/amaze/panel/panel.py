@@ -67,7 +67,7 @@ def _reload(module):
         importlib.reload(module)
 
 
-def _saves_released(schedule, *_destroyed) -> None:
+def _flush_saves_on_close(schedule, *_destroyed) -> None:
     """On panel close: drop its save timer and save every pending change now."""
     library_db.drop_scheduler(schedule)
     library_db.flush()
@@ -178,7 +178,7 @@ _reload(delegates)
 FILTER_DEBOUNCE_MS = 180    #: the search box's pause before it filters ▸p/filter-pass-cost
 
 MIN_PANEL_WIDTH = 500    #: design px through `theme.ui_px` at use; the grid pane has none ▸r/qt-windows-macos
-_ICON_ASKED = globals().get("_ICON_ASKED", set())    # library folders given their icon this session
+_FOLDERS_GIVEN_ICONS = globals().get("_FOLDERS_GIVEN_ICONS", set())    # library folders given their icon this session
 
 
 def _give_folder_icons(library_dir: str) -> None:
@@ -202,7 +202,7 @@ class _LibraryAt:
 
 
 
-class _FirstPaint(QtCore.QObject):
+class _AfterFirstPaint(QtCore.QObject):
     """Calls `done` once, after `viewport`'s first paint has RETURNED, then removes its filter."""
 
     def __init__(self, viewport, done) -> None:
@@ -255,7 +255,7 @@ class AmazePanel(QtWidgets.QWidget):
         if loaded:
             self.init_ui()
             if (library_actions.index_unreadable(self.prefs.dir)
-                    or library_actions.list_not_arrived(self.prefs.dir)):
+                    or library_actions.folder_not_empty_without_library(self.prefs.dir)):
                 self._defer_open_library()    # a dialog opened during the build blocks the pane
                 opened = False    # the pane opens without a library; its dialog comes later
             else:
@@ -370,7 +370,7 @@ class AmazePanel(QtWidgets.QWidget):
         proxy.hide_empty = self.prefs.hide_empty_categories
         return proxy
 
-    def _hold_saves(self) -> None:
+    def _start_save_timer(self) -> None:
         """This panel's save timer: a burst of changes is one save, written when it fires or at close."""
         if getattr(self, "_save_timer", None) is not None:
             return
@@ -380,14 +380,14 @@ class AmazePanel(QtWidgets.QWidget):
         timer.timeout.connect(library_db.flush)
         schedule = timer.start
         library_db.set_scheduler(schedule)
-        self.destroyed.connect(functools.partial(_saves_released, schedule))
+        self.destroyed.connect(functools.partial(_flush_saves_on_close, schedule))
         app = QtCore.QCoreApplication.instance()
         if app is not None and not getattr(app, "_amaze_flush_at_quit", False):
             app.aboutToQuit.connect(library_db.flush)
             app._amaze_flush_at_quit = True
 
     def setup(self):
-        self._hold_saves()
+        self._start_save_timer()
         for attr, model in model_registry.models_for(self.prefs).items():
             setattr(self, attr, model)    # shared with every panel on this library; the proxies below are this panel's
         files_actions.connect(self.file_files_model, self.file_folders_model,
@@ -415,7 +415,7 @@ class AmazePanel(QtWidgets.QWidget):
             crop_role=self.material_model.CropRole,
             tile_badges=sections.MaterialSection.tile_badges,
             tile_model=library.MaterialLibrary,
-            on_badge=self._badge_verb,
+            on_badge=self._badge_click_handler,
         )
 
         node_roles = dict(
@@ -426,7 +426,7 @@ class AmazePanel(QtWidgets.QWidget):
             date_role=self.material_model.DateRole,
             id_role=self.material_model.IdRole,
             crop_role=self.material_model.CropRole,
-            on_badge=self._badge_verb,
+            on_badge=self._badge_click_handler,
         )
         self.asset_delegate = delegates.AssetItemDelegate(    # Node and Code: their own delegate, without the version roles
             self.material_model.RendererLabelRole, self.thumblist,
@@ -447,7 +447,7 @@ class AmazePanel(QtWidgets.QWidget):
             crop_role=self.file_files_model.CropRole,
             tile_badges=sections.FileSection.tile_badges,
             tile_model=file_library.FileFiles,
-            on_badge=self._badge_verb,
+            on_badge=self._badge_click_handler,
         )
         self._sync_notes_button_pixmaps()
         self.sidebar_delegate.show_counts = self.prefs.sidebar_counts
@@ -467,7 +467,7 @@ class AmazePanel(QtWidgets.QWidget):
             crop_role=self.gradient_model.CropRole,
             tile_badges=sections.GradientSection.tile_badges,
             tile_model=gradient_library.GradientLibrary,
-            on_badge=self._badge_verb,
+            on_badge=self._badge_click_handler,
         )
 
         self.cop_category_sorted_model = self._sidebar_proxy(self.cop_category_model)
@@ -552,8 +552,8 @@ class AmazePanel(QtWidgets.QWidget):
 
     def takes_library(self, folder: str) -> bool:
         """Accept a picked folder only once its index reads: Repair first, or nothing is written."""
-        if library_actions.list_not_arrived(folder):
-            debug.event("session", "library not taken - its list has not arrived", dir=folder)
+        if library_actions.folder_not_empty_without_library(folder):
+            debug.event("session", "library not opened - the folder is not empty and holds no library", dir=folder)
             ui = getattr(hou, "ui", None)
             if ui is not None:
                 ui.displayMessage(
@@ -587,8 +587,8 @@ class AmazePanel(QtWidgets.QWidget):
         self._seed_curated_content()    # once per library, marker-guarded
         if self.prefs.note_library_opened(self.prefs.dir):
             self.prefs.save()    # the Library list, the most recently opened first
-        if hou.isUIAvailable() and self.prefs.dir not in _ICON_ASKED:    # once a session, off the UI thread
-            _ICON_ASKED.add(self.prefs.dir)
+        if hou.isUIAvailable() and self.prefs.dir not in _FOLDERS_GIVEN_ICONS:    # once a session, off the UI thread
+            _FOLDERS_GIVEN_ICONS.add(self.prefs.dir)
             threading.Thread(target=_give_folder_icons, daemon=True, args=(self.prefs.dir,)).start()
         return True
 
@@ -654,14 +654,14 @@ class AmazePanel(QtWidgets.QWidget):
 
         from amaze.render import classic_rebuild
         with contextlib.ExitStack() as shown:    # the progress dialog opens after the confirmation, at the first asset
-            held = []
+            operation = []
 
             def progress(done, total):
-                if not held:
-                    held.append(shown.enter_context(hou.InterruptableOperation(
+                if not operation:
+                    operation.append(shown.enter_context(hou.InterruptableOperation(
                         messages.CONVERT_LIBRARY_PROGRESS, open_interrupt_dialog=True)))
                 try:
-                    held[0].updateProgress(float(done) / max(total, 1))
+                    operation[0].updateProgress(float(done) / max(total, 1))
                 except hou.OperationInterrupted:    # the button is Houdini's own: a press is ignored
                     pass
             outcome = library_conversion.convert(
@@ -699,18 +699,18 @@ class AmazePanel(QtWidgets.QWidget):
         self._offer_old_trash(ui, outcome.old_trash)
         return True
 
-    def _offer_old_trash(self, ui, held: str) -> None:
+    def _offer_old_trash(self, ui, old_trash: str) -> None:
         """Offer once to delete this computer's old trash for the library; the user decides."""
         from amaze.core import library_conversion
-        if not held:
+        if not old_trash:
             return
-        files, size = library_conversion.old_trash_size(held)
+        files, size = library_conversion.old_trash_size(old_trash)
         choice = ui.displayMessage(
             messages.OLD_TRASH_QUESTION % (files, library_conversion.size_text(size)),
             buttons=messages.BUTTONS_OLD_TRASH, default_choice=1, close_choice=1,
             severity=hou.severityType.Message, title=messages.TITLE_AMAZE)
         if choice == 0:
-            library_conversion.delete_old_trash(held)
+            library_conversion.delete_old_trash(old_trash)
 
     def _open_models(self) -> str:
         """The models' step of `open_library`: "" once they use `prefs.dir`, else the reason."""
@@ -734,7 +734,7 @@ class AmazePanel(QtWidgets.QWidget):
         if switching:
             self.prefs.dir = self._models_dir
             self.prefs.save()
-            debug.event("session", "library kept", dir=self.prefs.dir)
+            debug.event("session", "previous library left open", dir=self.prefs.dir)
         if why:    # `debug.refuse` defers it: a modal in the pane's build draws black ▸r/modal-in-pane-build
             debug.refuse(debug.Damage(messages.LIBRARY_NOT_OPENED_SWITCHING % why if switching
                                       else messages.LIBRARY_NOT_OPENED % why))
@@ -834,7 +834,7 @@ class AmazePanel(QtWidgets.QWidget):
                                         if found.verdict == updater.UNREACHABLE
                                         else hou.severityType.Message))
         elif update_dialog.confirmed(found, library_dir):
-            update_dialog.install_and_say(found)
+            update_dialog.install_and_report(found)
 
     def _seed_curated_content(self) -> None:
         """Add the shipped starters, on construction and on a switch. ▸archive/actions/library.py"""
@@ -954,7 +954,7 @@ class AmazePanel(QtWidgets.QWidget):
                 construct_to_painted_ms=round(
                     (time.perf_counter() - t0) * 1000, 1))
 
-        _FirstPaint(grid.visible_view(self).viewport(), _record)
+        _AfterFirstPaint(grid.visible_view(self).viewport(), _record)
 
     def ensure_library_user(self) -> str:
         """After the first paint: this computer's user, or a prompt to open Preferences."""
@@ -1250,7 +1250,7 @@ class AmazePanel(QtWidgets.QWidget):
         """View ▸ Export Category: the sidebar's selected category, or the whole section on All."""
         section = self._exports_category()
         if section is not None:
-            section.export_category(section.standing_category())
+            section.export_category(section.selected_category())
 
     def _build_view_toggles(self) -> None:
         """The favorites chip and the grid/list toggle."""
@@ -1311,9 +1311,9 @@ class AmazePanel(QtWidgets.QWidget):
         cat_wrapper_layout.addWidget(self.cat_list)
         if splitter is not None and cat_index >= 0:
             splitter.insertWidget(cat_index, self.cat_wrapper)    # the grid is the only flexible pane; the other two keep their width
-            held = (self.cat_wrapper, getattr(self, "notes_panel", None))
+            fixed_width = (self.cat_wrapper, getattr(self, "notes_panel", None))
             for i in range(splitter.count()):
-                flexible = splitter.widget(i) not in held
+                flexible = splitter.widget(i) not in fixed_width
                 splitter.setStretchFactor(i, 1 if flexible else 0)
 
     def _build_sidebar_palette(self) -> None:
@@ -1745,7 +1745,7 @@ class AmazePanel(QtWidgets.QWidget):
         self.locate_folder_user(model)
         context = self.active_section()
         if context is not None:
-            context.stand_again()    # a cancelled or failed Locate moved only the highlight
+            context.reselect_sidebar_row()    # a cancelled or failed Locate moved only the highlight
 
     def hip_path_for(self, index):
         """The scene path behind a File-grid index, or '' for a row that is not a scene."""
@@ -1814,7 +1814,7 @@ class AmazePanel(QtWidgets.QWidget):
             context.set_sidebar_colour(name, colour)    # the context decides the store and the repaint
 
 
-    def _badge_verb(self, verb):
+    def _badge_click_handler(self, verb):
         """A badge click runs the section's `verb` method: on the selection if the tile is in it."""
         def click(index):
             context = self.active_section()
@@ -1844,7 +1844,7 @@ class AmazePanel(QtWidgets.QWidget):
         ids = [model.tile_key(self.material_sorted_model.mapToSource(index).row())
                for index in indexes]    # by ID, with no layout pair: each converted copy inserts and saves
         lines, converted, eligible, sources, unlisted = [], 0, 0, set(), []
-        held = {str(mat.mat_id) for mat in model.assets}    # the converted copies are the rows added after this
+        before = {str(mat.mat_id) for mat in model.assets}    # the converted copies are the rows added after this
         for row in (model.find_asset_row_by_id(mat_id) for mat_id in ids):
             if row < 0:
                 continue
@@ -1863,7 +1863,7 @@ class AmazePanel(QtWidgets.QWidget):
             if isinstance(ok, library.ListNotSaved):
                 unlisted.append(mat.name)    # the copy keeps its source's name
             lines.extend(report.summary_lines())
-        self.render_landed(held)
+        self.render_new_thumbnails(before)
         shown = " and ".join(renderers.label(source)
                              for source in conversion_engine.targets() if source in sources)
         ui = getattr(hou, "ui", None)
@@ -1873,9 +1873,9 @@ class AmazePanel(QtWidgets.QWidget):
                 details="\n".join(lines), title=messages.TITLE_AMAZE,
                 severity=(hou.severityType.Message if converted == eligible
                           else hou.severityType.Warning))
-        library.say_unlisted(unlisted)    # the status line, last, so nothing after it overwrites the line
+        library.report_unlisted(unlisted)    # the status line, last, so nothing after it overwrites the line
 
-    def render_landed(self, before: set) -> None:
+    def render_new_thumbnails(self, before: set) -> None:
         """ONE render batch for the materials saved since `before` that have no thumbnail yet."""
         model = self.material_model
         if not model.preferences.render_on_import:    # the setting each save checked when it rendered alone
@@ -2045,21 +2045,21 @@ class AmazePanel(QtWidgets.QWidget):
         self.refresh_sidebar_categories()
         imported, skipped, failed = (summary.get(key, 0) for key in ("imported", "skipped", "failed"))
         if interrupted:
-            said = messages.GALLERY_IMPORT_INTERRUPTED % (imported, skipped, failed)
+            text = messages.GALLERY_IMPORT_INTERRUPTED % (imported, skipped, failed)
         elif renders:
-            said = messages.GALLERY_IMPORT_FINISHED_RENDERING % (imported, skipped, failed)
+            text = messages.GALLERY_IMPORT_FINISHED_RENDERING % (imported, skipped, failed)
         else:
-            said = messages.GALLERY_IMPORT_FINISHED_IMPORTED_SKIPPED % (imported, skipped, failed)
+            text = messages.GALLERY_IMPORT_FINISHED_IMPORTED_SKIPPED % (imported, skipped, failed)
         if ui is not None:
-            ui.displayMessage(said, title=messages.TITLE_AMAZE,
+            ui.displayMessage(text, title=messages.TITLE_AMAZE,
                               severity=hou.severityType.Warning if failed else hou.severityType.Message)
-        library.say_unlisted(unlisted)    # the status line, last
+        library.report_unlisted(unlisted)    # the status line, last
 
-    def stand_again(self) -> None:
+    def reselect_sidebar_row(self) -> None:
         """Re-highlight the shown grid's sidebar row, after the rows were re-read."""
         context = self.active_section()
         if context is not None:
-            context.stand_again()
+            context.reselect_sidebar_row()
 
     def open_usdlib_folder(self) -> None:
         """Open the Library Folder in the System explorer"""
@@ -2400,7 +2400,7 @@ class AmazePanel(QtWidgets.QWidget):
         from amaze.dialogs import icon_dialog
         if model is None or not proxy_indexes:
             return
-        held = []    # tile keys, never rows: rows can change while the dialog is open
+        tile_keys = []    # tile keys, never rows: rows can change while the dialog is open
         rows = []
         for proxy_index in proxy_indexes:
             source = proxy.mapToSource(proxy_index) if proxy is not None \
@@ -2410,8 +2410,8 @@ class AmazePanel(QtWidgets.QWidget):
             key = model.tile_key(source.row())
             if key:
                 rows.append(source.row())
-                held.append(key)
-        if not held:
+                tile_keys.append(key)
+        if not tile_keys:
             return
 
         existing = getattr(self, "_icon_dialog", None)    # non-modal, one at a time
@@ -2453,9 +2453,9 @@ class AmazePanel(QtWidgets.QWidget):
         )
         self._icon_dialog = dialog
 
-        def _apply_edits(dialog=dialog, held=frozenset(held), model=model):
+        def _apply_edits(dialog=dialog, tile_keys=frozenset(tile_keys), model=model):
             rows = [row for row in range(model.rowCount())    # resolved on commit; a tile deleted meanwhile is skipped
-                    if model.tile_key(row) in held]
+                    if model.tile_key(row) in tile_keys]
             if not rows:
                 return
             self.apply_icon_spec(model, rows, dialog.spec)
@@ -2585,15 +2585,15 @@ class AmazePanel(QtWidgets.QWidget):
             self._cannot_load_here()
             return
         try:
-            landed = self._apply_click_rule(section, rule, index,
-                                            payload)    # the menu entry's extra argument
+            applied = self._apply_click_rule(section, rule, index,
+                                             payload)    # the menu entry's extra argument
         except hou.PermissionError as refusal:    # only this class; anything else still raises
-            debug.exception("click refused", refusal,
+            debug.exception("click failed - permission error", refusal,
                             section=getattr(section, "key", ""))
             debug.refuse(str(refusal),    # ▸p/refusal-sink
                          section=getattr(section, "key", ""))
             return
-        if not landed:
+        if not applied:
             self._cannot_load_here()
 
     def _apply_click_rule(self, section, rule, index, payload=None) -> bool:
@@ -2604,8 +2604,8 @@ class AmazePanel(QtWidgets.QWidget):
             hint = sections.drop_verb(section, rule.click_on_node)    # the verbs a rule names resolve on the SECTION, never on the panel
             if bool(hint(index, sel[0], **extra)):
                 return True
-            debug.event("interact", "click hint declined - falling "
-                        "through to the network",
+            debug.event("interact", "the selected node did not accept the payload - "
+                        "trying the network",
                         verb=rule.click_on_node, node=sel[0].path())
         if rule.click_resolve:
             verb = sections.drop_verb(section, rule.click_resolve)
@@ -3070,12 +3070,12 @@ class AmazePanel(QtWidgets.QWidget):
         stack = section.stack() if section is not None else None
         if stack is None:
             return
-        standing = stack.proxy.filter_value(stack.model.CategoryRole)    # the grid's filter, never the selection
-        if not standing:
+        shown = stack.proxy.filter_value(stack.model.CategoryRole)    # the grid's filter, never the selection
+        if not shown:
             return    # All: every category is a row, and All is always one
-        row = self._sidebar_row_stored(proxy, standing)
+        row = self._sidebar_row_stored(proxy, shown)
         if row is None:
-            self._stand_on_all_category()
+            self._select_all_category()
             return
         current = ui_helpers.live_current_index(self.cat_list)
         if current is None or current.row() != row.row():
@@ -3094,7 +3094,7 @@ class AmazePanel(QtWidgets.QWidget):
                 return index
         return None
 
-    def _stand_on_all_category(self) -> None:
+    def _select_all_category(self) -> None:
         """Point the sidebar at All and refilter - the hidden-category fallback."""
         self._stand_on_category("All")
 
@@ -3439,7 +3439,7 @@ class AmazePanel(QtWidgets.QWidget):
                 ui.displayMessage(messages.MATERIALS_NOT_UPDATED, details="\n".join(
                     messages.MATERIAL_NOT_UPDATED_LINE % (name, reason) for name, reason in refused),
                     title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
-        library.say_unlisted(unlisted, updated=True)    # the status line, last, so nothing overwrites it
+        library.report_unlisted(unlisted, updated=True)    # the status line, last, so nothing overwrites it
 
     def _update_existing_asset(self, mat_id: str, node: hou.Node) -> bool:
         """Overwrite asset `mat_id`'s files from the scene node: False if the list was not saved."""

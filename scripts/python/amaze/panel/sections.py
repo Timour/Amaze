@@ -33,7 +33,7 @@ FilterEntry = collections.namedtuple(    # `id` is what the remembered choice sa
 DropRule = collections.namedtuple(
     "DropRule",
     "on_node on_space resolve click_on_node click_resolve "
-    "carrier_type context",
+    "holder_node_type context",
     defaults=(None, None, None, None, None, "", ""),
 )    # context: the childTypeCategory a network must have to accept this drop ("" = any network)
 
@@ -90,8 +90,8 @@ class Section:
     DROP = None           # one DropRule, or None for a section that never drags
     DROP_BY_KIND: dict = {}  # File declares per row KIND; non-empty takes precedence over DROP
 
-    carrier_type = ""     # the node type a drop on empty network space creates, when constant
-    carrier_type_verb = ""  # names a method instead, where it is not
+    holder_node_type = ""     # the node type a drop on empty network space creates, when constant
+    holder_node_type_method = ""  # names a method instead, where it is not
     search_hint = ""      # per-ARCHETYPE: the archetype decides what is MATCHED
     FILTER_CHOICES: tuple = ()  # FilterEntry rows after the everything-entry
     ALL_ID = "All"        # the everything-entry's id
@@ -103,14 +103,14 @@ class Section:
         sidebar = self._p(self.sidebar_attr)
         if sidebar is None:
             return
-        self._restand = QtCore.QTimer(panel)    # restarted by every signal, so it fires once per event loop pass
-        self._restand.setSingleShot(True)
-        self._restand.setInterval(0)
-        self._restand.timeout.connect(self._stand_again_if_shown)
+        self._reselect_timer = QtCore.QTimer(panel)    # restarted by every signal, so it fires once per event loop pass
+        self._reselect_timer.setSingleShot(True)
+        self._reselect_timer.setInterval(0)
+        self._reselect_timer.timeout.connect(self._reselect_sidebar_row_if_shown)
         for moved in (sidebar.modelReset, sidebar.layoutChanged, sidebar.rowsRemoved):
-            moved.connect(self._sidebar_moved)
+            moved.connect(self._sidebar_rows_changed)
 
-    def drop_takes_nothing(self) -> bool:
+    def reject_drop(self) -> bool:
         """A drop no target accepts: the red cross and a status line that it was canceled; False."""
         debug.refuse(messages.DROP_CANCELED)
         return False
@@ -189,9 +189,9 @@ class Section:
         """Grid export: the user picks the destination, then `export_package_to` writes it."""
         path = self.panel.package_import.ask_destination()
         if path:
-            self._say_export(lambda: self.export_package_to(list(indexes), path), path)
+            self._export_and_report(lambda: self.export_package_to(list(indexes), path), path)
 
-    def _say_export(self, export, path: str) -> None:
+    def _export_and_report(self, export, path: str) -> None:
         """Run one export and show what it wrote, that it wrote nothing, or why it failed."""
         from amaze.core import packages
         warning = hou.severityType.Warning
@@ -199,18 +199,18 @@ class Section:
             count = export()
         except (packages.PackageError, OSError) as exc:
             debug.exception("package export", exc, path=path)
-            said, severity = messages.PACKAGE_NOT_SAVED % exc, warning
+            text, severity = messages.PACKAGE_NOT_SAVED % exc, warning
         else:
             name = os.path.basename(path)
             if not count:
-                said, severity = messages.PACKAGE_EXPORT_EMPTY, warning
+                text, severity = messages.PACKAGE_EXPORT_EMPTY, warning
             elif count == 1:
-                said, severity = messages.PACKAGE_EXPORTED_ONE % name, hou.severityType.Message
+                text, severity = messages.PACKAGE_EXPORTED_ONE % name, hou.severityType.Message
             else:
-                said, severity = messages.PACKAGE_EXPORTED % (count, name), hou.severityType.Message
+                text, severity = messages.PACKAGE_EXPORTED % (count, name), hou.severityType.Message
         ui = getattr(hou, "ui", None)
         if ui is not None:
-            ui.displayMessage(said, title=messages.TITLE_AMAZE, severity=severity)
+            ui.displayMessage(text, title=messages.TITLE_AMAZE, severity=severity)
 
     def filter_text(self, text: str) -> None:
         pass
@@ -228,48 +228,48 @@ class Section:
         """Narrow this section to one Filter-menu value; the section defines what an entry means."""
         pass
 
-    def nothing_yet(self, source) -> bool:
+    def shows_empty_state(self, source) -> bool:
         """Whether to show the first-run empty state: `source`, the grid's model, is empty."""
         return not (source.rowCount() if source is not None else 0)
 
     def select_category(self, index) -> None:
         pass
 
-    def standing_key(self) -> str:
+    def shown_sidebar_key(self) -> str:
         """The sidebar key the GRID shows, "" for All; a right press moves only the sidebar."""
         return ""
 
-    def stand_again(self) -> None:
+    def reselect_sidebar_row(self) -> None:
         """Re-highlight the sidebar row the grid is filtered to; both go to All once it is gone."""
         view, model = self._sidebar_view()
         if model is None:
             return
-        key = self.standing_key()
+        key = self.shown_sidebar_key()
         target = self._row_keyed(model, key) if key else model.index(0, 0)
         if target is None:
-            self.stand_on_key(key)
+            self.select_sidebar_key(key)
             return
         self._highlight(view, target)
 
-    def _sidebar_moved(self, *_args) -> None:
-        """Sidebar rows reset, moved or removed, maybe by another panel: queue `stand_again`."""
+    def _sidebar_rows_changed(self, *_args) -> None:
+        """Sidebar rows reset, moved or removed, maybe by another panel: queue `reselect_sidebar_row`."""
         try:
-            self._restand.start()
+            self._reselect_timer.start()
         except RuntimeError:    # the panel was deleted, and File's shared model outlives it
             pass
 
-    def _stand_again_if_shown(self) -> None:
-        """Run `stand_again` only while this section is shown and no press-hold reorder runs."""
+    def _reselect_sidebar_row_if_shown(self) -> None:
+        """Run `reselect_sidebar_row` only while this section is shown and no press-hold reorder runs."""
         reorder = getattr(self.panel, "sidebar_reorder", None)
         if self.panel.active_section() is self and not (reorder is not None and reorder.reordering()):
-            self.stand_again()
+            self.reselect_sidebar_row()
 
-    def stand_after_removal(self, removed) -> None:
+    def reselect_after_removal(self, removed) -> None:
         """Rows in `removed` left the sidebar: reselect the grid's row in both, or All if gone."""
-        standing = self.standing_key()
-        self.stand_on_key("" if standing in removed else standing)
+        shown = self.shown_sidebar_key()
+        self.select_sidebar_key("" if shown in removed else shown)
 
-    def stand_on_key(self, key: str) -> None:
+    def select_sidebar_key(self, key: str) -> None:
         """Select the row keyed `key` in sidebar and grid; All when no row has that key."""
         view, model = self._sidebar_view()
         if model is None:
@@ -485,12 +485,12 @@ class AssetSection(Section):
                               self._p(self.delegate_attr))
         panel.set_conversion_bar_visible(False)  # may be another section's
         panel.sync_list_columns()  # different section = different names
-        self._stand_on_first_row()
+        self._select_first_sidebar_row()
 
     def library_switched(self) -> None:
-        self._stand_on_first_row()
+        self._select_first_sidebar_row()
 
-    def _stand_on_first_row(self) -> None:
+    def _select_first_sidebar_row(self) -> None:
         """Select the sidebar's first row and filter the grid to it; a select from code fires no click."""
         selected_name = self.panel.select_default_sidebar_row(self._p(self.sidebar_attr))
         model = self._p(self.model_attr)
@@ -538,14 +538,14 @@ class AssetSection(Section):
             name = self.sidebar_key(index)
             if name and not category.is_all(name):
                 names.append(name)
-        standing = self.standing_key()    # the grid's row: a right press moved only the sidebar
+        shown = self.shown_sidebar_key()    # the grid's row: a right press moved only the sidebar
         with ui_helpers.relayout(st.model):    # the asset rows change IN PLACE, the only case for this pair
             for name in names:
                 st.model.rename_category(name, new_name)
         st.model.save()    # AFTER the pair: a save merges rows another Houdini wrote, and an insert inside segfaults H21
         for name in names:
             st.categories.rename_category(name, new_name)    # after the rows: its save must not undo them
-        self.stand_on_key(new_name if standing in names else standing)    # a renamed row is found by its new name
+        self.select_sidebar_key(new_name if shown in names else shown)    # a renamed row is found by its new name
         self.panel.refresh_sidebar_categories()    # updates counts and empty-category hiding after the rename
 
     exports_selection = True
@@ -579,7 +579,7 @@ class AssetSection(Section):
 
     exports_categories = True
 
-    def standing_category(self):
+    def selected_category(self):
         """The one category selected in the sidebar, or None for All, no row, or several."""
         rows = self.sidebar_selection()
         name = self.sidebar_key(rows[0]) if len(rows) == 1 else None
@@ -589,7 +589,7 @@ class AssetSection(Section):
         """Export `name`'s category (None: the whole section) to a path the user picks."""
         path = self.panel.package_import.ask_destination()
         if path:
-            self._say_export(lambda: self.export_category_to(name, path), path)
+            self._export_and_report(lambda: self.export_category_to(name, path), path)
 
     def menu_remove_category(self, indexes, current, payload=None) -> None:
         st = self.stack()
@@ -610,16 +610,16 @@ class AssetSection(Section):
         st.model.save()    # AFTER the pair: a save merges rows another Houdini wrote, and an insert inside segfaults H21
         for name in names:
             st.categories.remove_category(name)    # outside the relayout wrapper: begin/endRemoveRows notify the view; pairing them segfaults
-        self.stand_after_removal(names)
+        self.reselect_after_removal(names)
 
     def menu_sort_categories(self, indexes, current, payload=None) -> None:
         """The one-off Sort by name: sorts every row below All, whichever row was clicked."""
         _proxy, source = self._sidebar_categories()
         if source is None:
             return
-        standing = self.standing_key()    # the grid's row: a right press moved only the sidebar
+        shown = self.shown_sidebar_key()    # the grid's row: a right press moved only the sidebar
         source.sort_categories()    # a model reset, which clears the sidebar's selection
-        self.stand_on_key(standing)
+        self.select_sidebar_key(shown)
 
     def tile_models(self):
         st = self.stack()
@@ -738,7 +738,7 @@ class AssetSection(Section):
         st.proxy.setFilter(st.model.CategoryRole,
                         "" if category.is_all(stored) else stored)    # `""` makes `_All` match everything, not a literal category no asset has
 
-    def standing_key(self) -> str:
+    def shown_sidebar_key(self) -> str:
         st = self.stack()
         return (st.proxy.filter_value(st.model.CategoryRole) or "") if st is not None else ""
 
@@ -791,19 +791,19 @@ class MaterialSection(AssetSection):
                         data=str(data), count=len(ids))
             if kind == "lop":
                 if not data:
-                    return self.drop_takes_nothing()    # empty viewport space is a MISS, not an import offer
+                    return self.reject_drop()    # empty viewport space is a MISS, not an import offer
                 shown = panel.drop_placement.material_lop_viewport_drop(ids, viewer, data)
                 return "menu" if shown is not False else False    # "menu" only when a menu was shown: it suppresses the miss icon
             if kind == "obj" and data is not None:
                 with dragengine.drop_group("Amaze Assign Material"):
                     return bool(panel.assign_material_to_obj(ids, data))    # False when the picked object has no shop_materialpath
-            return self.drop_takes_nothing()
+            return self.reject_drop()
         context = panel.drop_placement.context_under_cursor("materiallibrary")
         if context is None or not cop_nodes.accepts_context(
                 context, self.DROP.context):    # the wrong network is a miss and creates nothing; DROP.context decides
             debug.event("drag", "material release", target="miss",
                         context=context.path() if context else "")
-            return self.drop_takes_nothing()
+            return self.reject_drop()
         debug.event("drag", "material release", target="network",
                     context=context.path(), count=len(ids))
         position = panel.drop_placement.release_position_in(context)
@@ -821,12 +821,12 @@ class MaterialSection(AssetSection):
         else:
             self.panel.import_asset_to_mat()
 
-    def _sources_held(self, indexes) -> frozenset:
+    def _convertible_renderers(self, indexes) -> frozenset:
         """The renderers among these rows that convert: one loop over the rows per menu."""
         from amaze.render.material_conversion import engine as conversion_engine
-        held = getattr(self, "_held", None)
-        if held is not None and held[0] is indexes:
-            return held[1]
+        cached = getattr(self, "_convertible_cache", None)
+        if cached is not None and cached[0] is indexes:
+            return cached[1]
         wanted = set(conversion_engine.targets())
         found = set()
         st = self.stack()
@@ -836,8 +836,8 @@ class MaterialSection(AssetSection):
                 found.add(renderers.normalized(renderer))
             if found == wanted:
                 break
-        self._held = (indexes, frozenset(found))
-        return self._held[1]
+        self._convertible_cache = (indexes, frozenset(found))
+        return self._convertible_cache[1]
 
     def selection_is_convertible(self, indexes, current) -> bool:
         """The parent is disabled when no child is enabled: an empty submenu looks broken."""
@@ -846,10 +846,10 @@ class MaterialSection(AssetSection):
     def convert_targets(self, indexes, current) -> tuple:
         """Renderers to convert TO: a child is enabled when a selected material converts to it."""
         from amaze.render.material_conversion import engine as conversion_engine
-        held = self._sources_held(indexes)
+        convertible = self._convertible_renderers(indexes)
         return tuple(
             (renderer.label, renderer.key, renderer.icon,
-             any(conversion_engine.can_convert(source, renderer.key) for source in held))
+             any(conversion_engine.can_convert(source, renderer.key) for source in convertible))
             for renderer in renderers.offered(self.panel.prefs)
             if renderer.key in conversion_engine.targets())
 
@@ -926,7 +926,7 @@ class MaterialSection(AssetSection):
         self.panel.prefs.save()
         self.panel.update_renderer_toggles()
         self.panel.refresh_sidebar_categories()
-        library.say_unlisted(unlisted)    # the status line, last, so nothing after it overwrites the line
+        library.report_unlisted(unlisted)    # the status line, last, so nothing after it overwrites the line
 
     def update_preview(self, indexes) -> None:
         """Update Render on Material tiles: the whole selection in one render batch."""
@@ -983,7 +983,7 @@ class CopSection(AssetSection):
         context = panel.drop_placement.context_under_cursor(
             cop_nodes.is_container)
         if context is None:
-            return self.drop_takes_nothing()
+            return self.reject_drop()
         try:
             source_index = panel.cop_sorted_model.mapToSource(index)
         except Exception:
@@ -1104,13 +1104,13 @@ class CodeSection(AssetSection):
         SEPARATOR,
     ) + GRID_MENU_TAIL
 
-    DROP = DropRule(on_node="drop_code_at_release",    # to the node under the cursor; on empty space a carrier node is created
+    DROP = DropRule(on_node="drop_code_at_release",    # to the node under the cursor; on empty space a holder node is created
                     on_space="create_code_node_in",
                     click_on_node="drop_code_at_release")
 
-    carrier_type_verb = "code_carrier_type"    # per language AND per network kind, so a method returns it
+    holder_node_type_method = "code_holder_node_type"    # per language AND per network kind, so a method returns it
 
-    CODE_CARRIERS = {    # the node type created per language and network kind; an absent pair creates nothing
+    CODE_HOLDER_NODE_TYPES = {    # the node type created per language and network kind; an absent pair creates nothing
         "vex": {"Sop": "attribwrangle", "Lop": "attribwrangle",
                 "Cop": "wrangle"},
         "opencl": {"Sop": "opencl", "Cop": "opencl"},
@@ -1127,7 +1127,7 @@ class CodeSection(AssetSection):
             return None, None
         return row, model.assets[row]
 
-    def _carrier_for(self, asset, dest) -> str:
+    def _holder_node_type_for(self, asset, dest) -> str:
         """The node type `asset` becomes in `dest`, or "" where that network kind has none."""
         if asset is None or dest is None:
             return ""
@@ -1136,25 +1136,25 @@ class CodeSection(AssetSection):
             category = dest.childTypeCategory()
         except (AttributeError, hou.OperationFailed):
             return ""
-        return self.CODE_CARRIERS.get(language, {}).get(
+        return self.CODE_HOLDER_NODE_TYPES.get(language, {}).get(
             category.name() if category is not None else "", "")
 
-    def code_carrier_type(self, index, dest) -> str:
+    def code_holder_node_type(self, index, dest) -> str:
         """WHICH node type a snippet becomes in `dest`: the drag preview shows this type."""
-        return self._carrier_for(self._code_asset(index)[1], dest)
+        return self._holder_node_type_for(self._code_asset(index)[1], dest)
 
     def create_code_node_in(self, index, dest, position=None) -> bool:
-        """The snippet's carrier in `dest`, where that network kind has one, loaded with the snippet."""
+        """A holder node for the snippet in `dest`, where that network kind has one, loaded with it."""
         from amaze.core import dragengine
         panel = self.panel
         row, asset = self._code_asset(index)
-        type_name = self._carrier_for(asset, dest)
+        type_name = self._holder_node_type_for(asset, dest)
         if not type_name:
             return False
         name = wording.sanitize_usd_path(
             str(getattr(asset, "name", "") or "")) or "snippet"
         with dragengine.drop_group("Amaze Create Code Node"):
-            node = panel.drop_placement.create_carrier(dest, type_name, name, position)
+            node = panel.drop_placement.create_holder_node(dest, type_name, name, position)
             if node is None:
                 return False
             ok, _reason = code_actions.apply_to_node(panel.code_model, row, node)
@@ -1321,7 +1321,7 @@ class FolderSection(Section):
             active = self.panel.active_section() is self
         except RuntimeError:    # the panel was deleted, and the shared model outlives it
             return
-        shown = self.standing_key()
+        shown = self.shown_sidebar_key()
         if active and shown and (shown.rstrip("/") + "/").startswith(old):
             self.activate()
 
@@ -1443,7 +1443,7 @@ class FolderSection(Section):
         remember = folders.SCENE_LABEL if folders.is_scene_row(index) else None    # by SCENE_LABEL: the scene's folder can change
         self._browse(index.data(folders.BrowseRole), remember)    # a location's path, or a subfolder's
 
-    def standing_key(self) -> str:
+    def shown_sidebar_key(self) -> str:
         files = self._p(self.files_attr)
         return files.browsing() if files is not None else ""
 
@@ -1451,30 +1451,30 @@ class FolderSection(Section):
         index = model.index_of(key)    # a location, or a subfolder already read
         return index if index.isValid() else None
 
-    def stand_on_key(self, key: str) -> None:
+    def select_sidebar_key(self, key: str) -> None:
         """A rowless subfolder selects its location: until its row is read, or always if deleted."""
         view, folders = self._sidebar_view()
-        if not (key and folders is not None and self._rowless(folders, key)):
-            super().stand_on_key(key)
+        if not (key and folders is not None and self._has_no_row(folders, key)):
+            super().select_sidebar_key(key)
             return
         if not os.path.isdir(key):    # deleted from disk: select its location row and show its files
-            super().stand_on_key(folders.top_of(key))
+            super().select_sidebar_key(folders.top_of(key))
             return
         self._highlight(view, folders.index(folders.row_of(folders.top_of(key)), 0))
-        if self.standing_key() != key:
+        if self.shown_sidebar_key() != key:
             self._browse(key)
         reveal = getattr(view, "reveal", None)
         if reveal is not None:
             reveal(key)
 
     @staticmethod
-    def _rowless(folders, path: str) -> bool:
+    def _has_no_row(folders, path: str) -> bool:
         """Is `path` a folder inside a top row's folder, with no row of its own?"""
         owner = folders.top_of(path)
         return (owner.rstrip("/") != path.rstrip("/") and folders.row_of(owner) is not None
                 and not folders.index_of(path).isValid())
 
-    def nothing_yet(self, source) -> bool:
+    def shows_empty_state(self, source) -> bool:
         folders = self._p(self.folders_attr)    # the grid lists one location; the empty state means none
         return folders is None or not folders._folders()
 
@@ -1632,15 +1632,15 @@ class FolderSection(Section):
         paths = [self._path_of(index) for index in
                  (grid_columns.selected_rows(selection) if selection is not None else ())]
         scene = scene_captures.current_scene_path()
-        held = [path for path in paths if path and scene
-                and hostos.canonical_path_key(path) == hostos.canonical_path_key(scene)]
-        said = [messages.MOVE_OPEN_SCENE % os.path.basename(path) for path in held]
-        pairs = file_moves.targets([path for path in paths if path not in held], folder)
+        open_scene = [path for path in paths if path and scene
+                      and hostos.canonical_path_key(path) == hostos.canonical_path_key(scene)]
+        notices = [messages.MOVE_OPEN_SCENE % os.path.basename(path) for path in open_scene]
+        pairs = file_moves.targets([path for path in paths if path not in open_scene], folder)
         if not pairs:
-            if said:
-                debug.refuse(" ".join(said))
+            if notices:
+                debug.refuse(" ".join(notices))
             return False
-        self._start_move(pairs, folder, said, undo=False)
+        self._start_move(pairs, folder, notices, undo=False)
         return True
 
     def can_undo_move(self, indexes, current) -> bool:
@@ -1653,12 +1653,12 @@ class FolderSection(Section):
         self._last_move = ()
         self._start_move(pairs, os.path.dirname(pairs[0][1]), [], undo=True)
 
-    def _start_move(self, pairs, folder: str, said, undo: bool) -> None:
+    def _start_move(self, pairs, folder: str, notices, undo: bool) -> None:
         self._move_job = {"count": len(pairs), "name": self._folder_name(folder),
-                          "said": list(said), "undo": undo, "percent": -1}
-        file_moves.mover.start(pairs, self.panel.prefs, self._move_ticked, self._move_landed)
+                          "notices": list(notices), "undo": undo, "percent": -1}
+        file_moves.mover.start(pairs, self.panel.prefs, self._move_progress, self._move_finished)
 
-    def _move_ticked(self, done, total) -> None:
+    def _move_progress(self, done, total) -> None:
         """A cross-drive copy's progress on the status line, once per whole percent."""
         job = self._move_job
         percent = int(done * 100 / total) if total else 100
@@ -1666,7 +1666,7 @@ class FolderSection(Section):
             job["percent"] = percent
             debug.status(messages.MOVE_PROGRESS % (_file_count(job["count"]), job["name"], percent))
 
-    def _move_landed(self, result) -> None:
+    def _move_finished(self, result) -> None:
         """Refresh the models of the moved files, offer Undo, and show the result on one line."""
         job = self._move_job
         for attr in (self.files_attr, self.folders_attr):
@@ -1675,20 +1675,20 @@ class FolderSection(Section):
                 (model.refresh_counts if attr == self.folders_attr
                  else model.refresh_current_folder)()
         self._last_move = () if job["undo"] else tuple(result.moved)
-        said = list(job["said"])
+        lines = list(job["notices"])
         if result.moved:
             count = _file_count(len(result.moved))
-            said.insert(0, messages.MOVE_BACK % count if job["undo"]
-                        else messages.MOVE_DONE % (count, job["name"]))
-        said += self._taken_lines(result.skipped)
-        said += [messages.MOVE_FAILED % (os.path.basename(source), why)
-                 for source, why in result.failed]
-        if job["said"] or result.skipped or result.failed:
-            debug.refuse(" ".join(said))
-        elif said:
-            debug.status(" ".join(said))
+            lines.insert(0, messages.MOVE_BACK % count if job["undo"]
+                         else messages.MOVE_DONE % (count, job["name"]))
+        lines += self._name_in_use_lines(result.skipped)
+        lines += [messages.MOVE_FAILED % (os.path.basename(source), why)
+                  for source, why in result.failed]
+        if job["notices"] or result.skipped or result.failed:
+            debug.refuse(" ".join(lines))
+        elif lines:
+            debug.status(" ".join(lines))
 
-    def _taken_lines(self, skipped) -> list:
+    def _name_in_use_lines(self, skipped) -> list:
         """One sentence per folder with names already in use: the first three, then a count."""
         by_folder = {}
         for _source, dest in skipped:
@@ -1798,7 +1798,7 @@ class FileSection(FolderSection):
             on_node="drop_file_path_on_node",
             on_space="create_image_node_in",
             click_on_node="drop_file_path_on_node",
-            carrier_type="mtlximage"),  # the drag preview shows THIS node type
+            holder_node_type="mtlximage"),  # the drag preview shows THIS node type
         locations.KIND_GEO: DropRule(
             on_node="drop_file_path_on_node",
             resolve="drop_geo_at_release",
@@ -1906,7 +1906,7 @@ class FileSection(FolderSection):
         base = wording.sanitize_usd_path(
             os.path.splitext(os.path.basename(path))[0]) or "image"
         with dragengine.drop_group("Amaze Create Image Node"):
-            node = panel.drop_placement.create_carrier(dest, "mtlximage", base, position)
+            node = panel.drop_placement.create_holder_node(dest, "mtlximage", base, position)
             if node is None:
                 return False
             parm = helpers.find_file_parm(node)
@@ -1950,11 +1950,11 @@ class FileSection(FolderSection):
         folders = self._p(self.sidebar_attr)
         if folders is None:
             return
-        standing = self.standing_key()    # the grid's folder: a right press moved only the sidebar
+        shown = self.shown_sidebar_key()    # the grid's folder: a right press moved only the sidebar
         if not folders.sort_folders():    # a model reset, which clears the sidebar's selection
             return
         locations.commit_registered_order(self.panel.prefs)    # one write, as on a drag's release
-        self.stand_on_key(standing)
+        self.select_sidebar_key(shown)
 
     def _selected_location(self, current) -> str:
         return self.sidebar_key(current) if current is not None else ""
@@ -2031,7 +2031,7 @@ class FileSection(FolderSection):
         self.panel.add_file_folder_user()
 
     def menu_remove_location(self, indexes, current, payload=None) -> None:
-        self.stand_after_removal(self.panel.remove_file_folder_user())
+        self.reselect_after_removal(self.panel.remove_file_folder_user())
 
     def menu_locate_location(self, indexes, current, payload=None) -> None:
         self.panel.locate_folder_user(self._p(self.folders_attr))
@@ -2080,7 +2080,7 @@ class OnlineContext(Section):
     def sidebar_key(self, index) -> str:
         return self.panel.matx_source_model.category_at(index.row()) or ""
 
-    def standing_key(self) -> str:
+    def shown_sidebar_key(self) -> str:
         role = self.panel.matx_online_model.CategoryRole
         return self.panel.matx_sorted_model.filter_value(role) or ""
 
@@ -2253,19 +2253,19 @@ class GradientSection(AssetSection):
         entry = self._entry_at(index)
         if entry is None:
             return False
-        return self._create_gradient_carrier(entry, dest, basis,
-                                             position=position)
+        return self._create_gradient_holder_node(entry, dest, basis,
+                                                 position=position)
 
-    def _create_gradient_carrier(self, entry, dest, basis: str = "",
-                                 position=None) -> bool:
+    def _create_gradient_holder_node(self, entry, dest, basis: str = "",
+                                     position=None) -> bool:
         """Node creation shared by the drop (an index) and the click actions (an entry)."""
         from amaze.core import dragengine
         from amaze.helpers import helpers
         name = wording.sanitize_usd_path(
             str(entry.get("name") or "")) or "gradient"
         with dragengine.drop_group("Amaze Create Gradient Node"):
-            node = self.panel.drop_placement.create_carrier(dest, "hmtlxrampc", name,
-                                                            position)
+            node = self.panel.drop_placement.create_holder_node(dest, "hmtlxrampc", name,
+                                                                position)
             if node is None:
                 return False
             parm = helpers.find_color_ramp_parm(node)
@@ -2295,7 +2295,7 @@ class GradientSection(AssetSection):
                 "Amaze: copied %s (%s)" % (hex_code, color.get("name", ""))
             )
 
-    carrier_type = "hmtlxrampc"  # the MaterialX colour ramp
+    holder_node_type = "hmtlxrampc"  # the MaterialX colour ramp
 
     def accepts_category_drop(self, index, name: str) -> bool:
         return name in self.panel.gradient_model.user_categories()    # excludes any synthetic sidebar row

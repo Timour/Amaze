@@ -157,7 +157,7 @@ def set_notes(preferences, pages: dict) -> bool:
 
 def image_folder(database: str) -> str:
     """`<section folder>/comments`, where the images of `database`'s comments are stored."""
-    return "%s/%s" % (library_files.COMMENT_HOMES[database], library_files.COMMENT_FOLDER)
+    return "%s/%s" % (library_files.DATABASE_FOLDERS[database], library_files.COMMENT_FOLDER)
 
 
 def adopt_image(preferences, source: str, key: str) -> str:

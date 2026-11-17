@@ -26,7 +26,7 @@ class SidebarTreeView(QtWidgets.QTreeView):
         self.setUniformRowHeights(True)
         self.setIndentation(theme.ui_px(amazetheme.SIDEBAR_INDENT))
         self._open: dict = {}    # id(model) -> the folder paths open in it
-        self._standing = None    # (model, path) to select once its row is inserted
+        self._pending_reveal = None    # (model, path) to select once its row is inserted
         self._watched = None
         self._arrow_press = False
         self._pressed = None    # the row under a left press, kept until the release
@@ -87,7 +87,7 @@ class SidebarTreeView(QtWidgets.QTreeView):
         self._arrow_press = False
         pressed = self.indexAt(event.position().toPoint())
         if pressed.isValid():
-            self._standing = None    # a row the user clicked cancels a pending folder reveal
+            self._pending_reveal = None    # a row the user clicked cancels a pending folder reveal
         left = event.button() == QtCore.Qt.MouseButton.LeftButton
         self._pressed = QtCore.QPersistentModelIndex(pressed) if left else None
         super().mousePressEvent(event)
@@ -110,7 +110,7 @@ class SidebarTreeView(QtWidgets.QTreeView):
         before = QtCore.QPersistentModelIndex(self.currentIndex())
         super().keyPressEvent(event)
         if QtCore.QModelIndex(before) != self.currentIndex():
-            self._standing = None    # the user changed the current row: cancel the pending reveal
+            self._pending_reveal = None    # the user changed the current row: cancel the pending reveal
 
     def mouseDoubleClickEvent(self, event):
         index = self._on_arrow(event)
@@ -161,11 +161,11 @@ class SidebarTreeView(QtWidgets.QTreeView):
             index = model.index_of(path)
             if index.isValid() and not self.isExpanded(index):
                 self.expand(index)
-        standing = self._standing
-        if standing is not None and standing[0] is model:
-            index = model.index_of(standing[1])
+        pending = self._pending_reveal
+        if pending is not None and pending[0] is model:
+            index = model.index_of(pending[1])
             if index.isValid():
-                self._standing = None
+                self._pending_reveal = None
                 self.selectionModel().setCurrentIndex(
                     index, QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
                 self.scrollTo(index)
@@ -184,7 +184,7 @@ class SidebarTreeView(QtWidgets.QTreeView):
             if here.rstrip("/") == location.rstrip("/"):
                 break
             opened.add(here)
-        self._standing = (model, path)
+        self._pending_reveal = (model, path)
         self._reopen()
 
 
@@ -346,7 +346,7 @@ class SidebarReorder(QtCore.QObject):
             return
         if snapshot is not None:
             section.restore_sidebar_order(snapshot)    # a reset, which clears the highlight
-        section.stand_again()
+        section.reselect_sidebar_row()
 
 
 def droppable_index(panel, pos):
@@ -413,11 +413,11 @@ def set_hover_row(panel, row) -> None:
     delegate = getattr(panel, "sidebar_delegate", None)
     if delegate is None:
         return
-    held = (QtCore.QPersistentModelIndex(row) if isinstance(row, QtCore.QModelIndex)
-            else QtCore.QPersistentModelIndex())
-    if held == delegate.drag_index:
+    persistent = (QtCore.QPersistentModelIndex(row) if isinstance(row, QtCore.QModelIndex)
+                  else QtCore.QPersistentModelIndex())
+    if persistent == delegate.drag_index:
         return
-    delegate.drag_index = held
+    delegate.drag_index = persistent
     if panel.cat_list is not None:
         panel.cat_list.viewport().repaint()
 

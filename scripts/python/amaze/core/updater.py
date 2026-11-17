@@ -205,7 +205,7 @@ def download(url: str, into: str, digest: str = "", size: int = 0, on_bytes=None
     target = os.path.join(into, "amaze-update.zip")
     ceiling = min(size, MAX_DOWNLOAD_BYTES) if size else MAX_DOWNLOAD_BYTES
 
-    def below_the_ceiling(read, total):
+    def check_size_limit(read, total):
         if read > ceiling:
             raise OSError(
                 "the download is larger than a release should "
@@ -216,7 +216,7 @@ def download(url: str, into: str, digest: str = "", size: int = 0, on_bytes=None
 
     with hostos.scratch_beside(target) as scratch:
         try:
-            read = matx_sources.stream_into(url, scratch, below_the_ceiling)
+            read = matx_sources.stream_into(url, scratch, check_size_limit)
         except matx_sources.ShortDownload as short:
             raise OSError(
                 "the download stopped early - %d bytes of %d. Nothing has "
@@ -374,7 +374,7 @@ def _carry_addons(old: str, new: str) -> None:
     try:
         addons.carry(old, new)
     except OSError as exc:
-        debug.event("updater", "add-ons not carried", error=str(exc), kept=old)
+        debug.event("updater", "add-ons not copied", error=str(exc), kept=old)
         raise OSError(
             "the installed add-ons could not be copied into the update (%s), "
             "so it was not installed. Nothing has been changed." % exc) from exc

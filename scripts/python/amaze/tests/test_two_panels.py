@@ -86,7 +86,7 @@ class TwoPanelsShareOneLibraryTest(unittest.TestCase):
         index, model = self._named_asset(self.a)
         target = model._assets[index.row()].mat_id
         model._unlist_row(index.row())
-        self.assertIn(str(target), model._forgotten, "premise: the mark was not made")
+        self.assertIn(str(target), model._removed_ids, "premise: the mark was not made")
 
         self.assertTrue(self.b.material_model.save(),
                         "the other panel's save failed")

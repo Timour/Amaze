@@ -504,7 +504,7 @@ class Change:
                 raise OSError("a change recorded in the library is still waiting to be applied")
             steps, tickets, written = [], {}, []
             try:
-                writes = self._judged()
+                writes = self._changed_databases()
                 for name, (old, data) in writes.items():
                     if old and name in self._replacing and _parse(old, DATABASES[name])[0] is None:
                         old = None    # a replaced file that could not be parsed is not backed up
@@ -554,7 +554,7 @@ class Change:
                 guard._prune_backups(name)
             return tickets
 
-    def _judged(self) -> dict:
+    def _changed_databases(self) -> dict:
         """{name: (old bytes or None, new bytes)} for each database that really changes."""
         guard, disk = self.guard, self.guard.disk
         writes, created = {}, []

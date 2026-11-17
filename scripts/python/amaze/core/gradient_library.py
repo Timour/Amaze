@@ -164,10 +164,10 @@ class GradientLibrary(library.AssetLibrary):
             if not seeded:
                 return  # def files unreachable this run: leave the marker off and retry next launch
             if not self.save():  # the mark is PERMANENT, so it is never made for a failed save
-                debug.event("gradient", "curated seed not marked - the save was refused")
+                debug.event("gradient", "curated seed not marked - save() returned False")
                 return
             if not all(saved for saved in library_db.flush(self.preferences).values()):
-                debug.event("gradient", "curated seed not marked - the save did not land")
+                debug.event("gradient", "curated seed not marked - the save failed")
                 return
             if pages:
                 notes.set_notes(self.preferences, pages)  # after the rows: a comment for a palette that was not saved belongs to no row
@@ -263,7 +263,7 @@ class GradientLibrary(library.AssetLibrary):
             messages.PALETTE_NOT_DELETED % (asset.name or "That palette"),
             key="colors-delete-refused")
 
-    def _tile_icon_landed(self, row: int, spec, stored: bool) -> bool:
+    def _tile_icon_saved(self, row: int, spec, stored: bool) -> bool:
         """No PNG is written for a palette; the row's paths are refreshed, as a Capture face reads a file."""
         self._add_thumb_paths(row, base_changed=False)    # also repaints the tile
         return stored

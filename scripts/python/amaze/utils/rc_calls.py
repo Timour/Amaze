@@ -270,7 +270,7 @@ def check_for_updates() -> None:
             buttons=messages.BUTTONS_INSTALL_UPDATE,
             close_choice=1, title=messages.TITLE_AMAZE, severity=hou.severityType.Message) == 0 \
             and update_dialog.confirmed(found, library):    # Continue or Cancel, as on the About tab
-        update_dialog.install_and_say(found)
+        update_dialog.install_and_report(found)
 
 
 def reload_asset_files() -> None:

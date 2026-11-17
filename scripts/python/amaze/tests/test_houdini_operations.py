@@ -103,7 +103,7 @@ class TheOnlineImportRunsInsideHoudinisOperation(_OnThePanel):
 
         with mock.patch.object(hou, "InterruptableOperation", operation), \
                 mock.patch.object(self.panel.online_import, "import_material", side_effect=one), \
-                mock.patch.object(self.panel, "render_landed"):
+                mock.patch.object(self.panel, "render_new_thumbnails"):
             self.panel.online_import.import_records([_record(t) for t in titles])
         return imported
 

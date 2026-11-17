@@ -93,7 +93,7 @@ def touch() -> None:
     """Bump the generation after location state was edited outside this module."""
     global _generation
     _generation += 1
-    library_db.look_again()
+    library_db.recheck_folders()
 
 
 def _mine(preferences, section: str) -> dict:
@@ -285,11 +285,11 @@ def set_record(preferences, path: str, value) -> bool:
     _generation += 1
     _keep_order(preferences)
     if saved and not known:
-        _rehome_into(preferences, path, lid)
+        _rekey_into_new_location(preferences, path, lid)
     return bool(saved) or saved.reason == "unchanged"
 
 
-def _rehome_into(preferences, path: str, lid: str) -> None:
+def _rekey_into_new_location(preferences, path: str, lid: str) -> None:
     """A location is new: the keys of files under it, kept under an outer one or by path, follow."""
     held = _files(preferences)
     inside = {path_identity(path): lid}
@@ -300,12 +300,12 @@ def _rehome_into(preferences, path: str, lid: str) -> None:
         if fresh and fresh != key and fresh != LOC_PREFIX + lid:
             moves[key] = fresh
     if moves and files_moved(preferences, moves, everyone=True):
-        _carry_captures(preferences, moves)
+        _move_captures(preferences, moves)
         debug.event("file", "a new location took over the keys of the files under it",
                     moved=len(moves))
 
 
-def _carry_captures(preferences, moves: dict) -> None:
+def _move_captures(preferences, moves: dict) -> None:
     """Each re-keyed file's capture moved to its new key; skipped where Qt is not loaded."""
     try:
         from amaze.core import captures
@@ -411,8 +411,8 @@ def set_favourites(preferences, wanted: dict, database: str = FILES) -> bool:
         return False
     with library_db.library_for(preferences).holding():
         for key, on in wanted.items():
-            home = str(key) if database != FILES else _file_star_key(preferences, key)
-            held.put_mine(FAVORITES, home, True if on else None)
+            star_key = str(key) if database != FILES else _file_star_key(preferences, key)
+            held.put_mine(FAVORITES, star_key, True if on else None)
     saved = library_db.save(preferences, database)
     return bool(saved) or saved.reason == "unchanged"
 
@@ -462,7 +462,7 @@ def fold_duplicate_ids(preferences) -> int:
     saved = library_db.save(preferences, FILES)
     _generation += 1
     if saved:
-        _carry_captures(preferences, moves)
+        _move_captures(preferences, moves)
     debug.event("file", "two ids of one folder made one", folders=len(pairs), keys=len(moves),
                 saved=bool(saved))
     return len(pairs) if saved else 0
@@ -527,7 +527,7 @@ def retire_prefix(preferences, path: str) -> bool:
     return bool(saved) or saved.reason == "unchanged"
 
 
-def rehome_covered(preferences, path: str) -> bool:
+def rekey_to_covering_location(preferences, path: str) -> bool:
     """Move keys under the location at `path` to a REMAINING location covering them; False on failure."""
     if not library_present(preferences) or not ready(preferences):
         return True
@@ -548,13 +548,13 @@ def rehome_covered(preferences, path: str) -> bool:
             moves[key] = fresh
     if not moves:
         return True
-    landed = files_moved(preferences, moves)
-    if landed:
-        _carry_captures(preferences, moves)
+    moved = files_moved(preferences, moves)
+    if moved:
+        _move_captures(preferences, moves)
     if moves:
         debug.event("file", "a removed location's keys moved to the one still covering them",
                     moved=len(moves))
-    return landed
+    return moved
 
 
 def forget() -> None:

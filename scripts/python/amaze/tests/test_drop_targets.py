@@ -245,9 +245,9 @@ class TestTheGhostTick(DropTargetTest):
     def test_a_new_gesture_forgets_the_previous_answers(self):
         editor = ScriptedEditor([], {})
         dragengine.ghost_tick(editor, now=1000.0)
-        dragengine.set_ghost_answers(True, (None, "x", 3), "copnet")
+        dragengine.set_ghost_tick_results(True, (None, "x", 3), "copnet")
         dragengine.begin("material")
-        blocked, target, type_name = dragengine.ghost_answers()
+        blocked, target, type_name = dragengine.ghost_tick_results()
         self.assertFalse(blocked)
         self.assertEqual((None, "", -1), tuple(target))
         self.assertEqual("", type_name)

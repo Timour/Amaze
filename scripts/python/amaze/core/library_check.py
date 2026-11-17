@@ -5,7 +5,7 @@ from amaze.core import debug, guard, repair
 from amaze.core import library_files as naming
 from amaze.helpers import wording
 
-CLEAN, FOUND, UNJUDGED = "clean", "found", "unjudged"
+CLEAN, FOUND, UNCHECKED = "clean", "found", "unchecked"
 ERRORS, FILES, REFS = "errors", "files", "refs"
 PARTS = (ERRORS, FILES, REFS)
 
@@ -103,26 +103,26 @@ def _files_count(findings: dict) -> int:
 
 
 def lights(findings: dict) -> dict:
-    """{part: (CLEAN, 0) | (FOUND, count) | (UNJUDGED, None)} for Errors, Files and Ref."""
+    """{part: (CLEAN, 0) | (FOUND, count) | (UNCHECKED, None)} for Errors, Files and Ref."""
     held = bool(_in_state(findings, ("held",)))
     unread = _in_state(findings, _UNREAD)
     refs = len(findings.get("dead_stars") or ()) + len(findings.get("dead_folders") or ())
     files_unread = any(entry["filename"] == naming.FILES for entry in unread)
 
-    def judged(unjudged: bool, count: int) -> tuple:
-        if unjudged:
-            return UNJUDGED, None
+    def status(unchecked: bool, count: int) -> tuple:
+        if unchecked:
+            return UNCHECKED, None
         return (FOUND, count) if count else (CLEAN, 0)
 
     return {
-        ERRORS: judged(held, len(unread)),
-        FILES: judged(held or not findings.get("complete"), _files_count(findings)),
-        REFS: judged(held or files_unread or findings.get("preferences") is None
+        ERRORS: status(held, len(unread)),
+        FILES: status(held or not findings.get("complete"), _files_count(findings)),
+        REFS: status(held or files_unread or findings.get("preferences") is None
                      or (not refs and bool(findings.get("unmounted_folders"))), refs),
     }
 
 
-def _unjudged_line(findings: dict) -> str:
+def _unchecked_line(findings: dict) -> str:
     """Why a part is amber, when nothing found says it already."""
     held = _in_state(findings, ("held",))
     if held:
@@ -135,7 +135,7 @@ def _unjudged_line(findings: dict) -> str:
 
 
 def finding_lines(findings: dict) -> list:
-    """The Repair dialog's lines: each kind of finding in a judged part, most serious first."""
+    """The Repair dialog's lines: each kind of finding in a checked part, most serious first."""
     shown = lights(findings)
     said = []
     for part, lines in ((ERRORS, _error_lines), (FILES, _file_lines), (REFS, _ref_lines)):
@@ -262,7 +262,7 @@ def summary(findings: dict) -> dict:
     return {"lights": lights(findings),
             "lines": lines,
             "names": found_names(findings),
-            "info": (lines[0] if lines else _unjudged_line(findings)
+            "info": (lines[0] if lines else _unchecked_line(findings)
                      or messages.CHECK_NOTHING_TO_REPAIR),
             "safe": bool(safe_fixes(findings)),
             "fixable": bool(fixes)}
@@ -274,11 +274,11 @@ def _nothing_done() -> dict:
 
 
 def _attempt(done: dict, what: str, fix, *args, **kwargs):
-    """`fix` run; what it raises when it does not land is kept in `done`, and None returned."""
+    """`fix` run; what it raises when it fails is kept in `done`, and None returned."""
     try:
         return fix(*args, **kwargs)
     except FIX_FAILED as exc:
-        debug.event("repair", "a fix did not land", fix=what, error=str(exc))
+        debug.event("repair", "a fix failed", fix=what, error=str(exc))
         done["failed"].append(str(exc).rstrip("."))
         return None
 
@@ -294,10 +294,10 @@ def _fix_safe(findings: dict, done: dict, guard_session: bool) -> None:
     fixes = safe_fixes(findings)
     if "recover" in fixes:
         result = _attempt(done, "recover", repair.recover, findings, guard_session=guard_session)
-        for filename, landed in (result or {}).items():
-            if landed["added"]:
+        for filename, recovered in (result or {}).items():
+            if recovered["added"]:
                 done["recovered"][filename] = (done["recovered"].get(filename, 0)
-                                               + len(landed["added"]))
+                                               + len(recovered["added"]))
     if "folders" in fixes:
         done["locations"] += len(_attempt(done, "folders", repair.set_aside_folders, findings,
                                           guard_session=guard_session) or ())
@@ -318,7 +318,7 @@ def _mend_databases(findings: dict, done: dict, guard_session: bool) -> None:
     """Each corrupt or missing database: its newest backup that reads, else a rebuild, else empty."""
     rebuild = []
     for filename, backup in _mendable(findings):
-        if backup and _attempt(done, "restore", repair.put_back, findings, filename, backup,
+        if backup and _attempt(done, "restore", repair.restore_backup, findings, filename, backup,
                                guard_session=guard_session) is not None:
             done["restored"].append(filename)
         elif filename in naming.ASSET_SECTIONS:

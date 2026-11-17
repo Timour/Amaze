@@ -141,7 +141,7 @@ class CodeLibrary(library.AssetLibrary):
         new_mat.code = code
         self._append_record(new_mat)
         if not self.save():    # inline, so it stays in memory until a later save succeeds
-            self.report_refused_index_write(new_mat)
+            self.report_failed_index_write(new_mat)
         return str(new_mat.mat_id)
 
     def save_from_editor(self, mat_id: str, version, code: str, name: str, language: str,
@@ -219,7 +219,7 @@ class CodeLibrary(library.AssetLibrary):
                     self.preferences, mat_id, number, versions.CODE, held):
                 return False
             if not self._write_snippet(asset, code, name, language, cats, tags):
-                self.report_refused_index_write(asset, updated=True)
+                self.report_failed_index_write(asset, updated=True)
                 return False
             if number == self.NEW_VERSION:
                 return bool(versions.create_version(
@@ -249,7 +249,7 @@ class CodeLibrary(library.AssetLibrary):
                 self.preferences, mat_id, versions.CODE) or asset.name
             asset.set_current_date()
             if not self._store_text(asset, code):
-                self.report_refused_index_write(asset, updated=True)
+                self.report_failed_index_write(asset, updated=True)
                 return False
             return True
         except OSError as exc:
@@ -314,7 +314,7 @@ class CodeLibrary(library.AssetLibrary):
                 added += 1
             if added:
                 if not self.save():  # no mark unless the snippets were saved
-                    debug.event("session", "starter snippets not marked - the save was refused")
+                    debug.event("session", "starter snippets not marked - save() returned False")
                     return
                 library_db.flush(self.preferences)
                 if pages:

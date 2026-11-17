@@ -150,7 +150,7 @@ class OnlyAPythonSnippetCanRun(unittest.TestCase):
         for name, language, shown in (("execute", "Python", True),
                                       ("execute", "VEX", False)):
             with self.subTest(badge=name, language=language):
-                self.assertEqual(shown, self._badge(name).shows(language))
+                self.assertEqual(shown, self._badge(name).is_on(language))
 
 
 class TheCodeTextIsHalfStrength(unittest.TestCase):

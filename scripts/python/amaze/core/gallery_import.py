@@ -78,7 +78,7 @@ def import_entries(save, entries, staging_parent=None,
         summary.setdefault(key, 0)
     summary.setdefault("categories", {})
     asked = {} if library is None else {"render": False}    # `library`: one batch render after
-    landed = []
+    saved_ids = []
     if save is None or not entries:
         return summary
     with hou.undos.disabler():    # make and destroy undo-free, or Ctrl+Z restores it ▸r/undo-groups
@@ -107,7 +107,7 @@ def import_entries(save, entries, staging_parent=None,
                     summary["categories"][category] = summary[
                         "categories"
                     ].get(category, 0) + 1
-                    landed.append(node.userData("assetlib_id") or "")    # the id the save wrote on the node
+                    saved_ids.append(node.userData("assetlib_id") or "")    # the id the save wrote on the node
                 except (AttributeError, hou.Error) as exc:    # one entry fails, not the run ▸r/gallery-entries
                     summary["failed"] += 1
                     debug.event("gallery", "entry import failed",
@@ -131,7 +131,7 @@ def import_entries(save, entries, staging_parent=None,
     })
     if library is not None and library.preferences.render_on_import:
         from amaze.render import thumbs
-        rows = [library.find_asset_row_by_id(key) for key in landed if key]
+        rows = [library.find_asset_row_by_id(key) for key in saved_ids if key]
         mats = [library.assets[row] for row in rows if row != -1]
         if mats:
             thumbs.ThumbNailRenderer.render_assets(library.preferences, mats)

@@ -331,9 +331,9 @@ class CodeDialog(base_dialog.AssetDialog):
         band.setObjectName("amaze_header_band")
         band.setFixedHeight(theme.ui_px(amazetheme.drawn_band(self.FRAME_KEY)[0]))
         band.setAutoFillBackground(True)
-        ground = band.palette()
-        ground.setColor(QtGui.QPalette.ColorRole.Window, QtGui.QColor(amazetheme.CODE_BAND))
-        band.setPalette(ground)
+        background = band.palette()
+        background.setColor(QtGui.QPalette.ColorRole.Window, QtGui.QColor(amazetheme.CODE_BAND))
+        band.setPalette(background)
         row = QtWidgets.QHBoxLayout(band)
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(0)
@@ -376,11 +376,11 @@ class CodeDialog(base_dialog.AssetDialog):
         self._tabs[self._front]["name"] = self._line_name.text().strip()
         self._tabbar.show_tabs([tab["name"] for tab in self._tabs], self._front)
 
-    def _keep_front(self) -> None:
+    def _store_front_tab(self) -> None:
         tab = self._tabs[self._front]
         tab["name"], tab["code"] = self._line_name.text().strip(), self._editor.toPlainText()
 
-    def _bring_forward(self, index: int) -> None:
+    def _show_tab(self, index: int) -> None:
         """Show tab `index`: its name in the field, its code in the editor."""
         self._front = index
         tab = self._tabs[index]
@@ -390,27 +390,27 @@ class CodeDialog(base_dialog.AssetDialog):
 
     def _select_tab(self, index: int) -> None:
         if index != self._front:
-            self._keep_front()
-            self._bring_forward(index)
+            self._store_front_tab()
+            self._show_tab(index)
 
     def _close_tab(self, index: int) -> None:
         """Close one tab; its version stays, and the last tab cannot close."""
         if len(self._tabs) < 2:
             return
         if index != self._front:
-            self._keep_front()
+            self._store_front_tab()
         del self._tabs[index]
         if index < self._front:
             self._front -= 1
         elif index == self._front:    # its unsaved edits are discarded
-            self._bring_forward(min(index, len(self._tabs) - 1))
+            self._show_tab(min(index, len(self._tabs) - 1))
             return
         self._name_changed()
 
     def _open_tab(self, tab: dict) -> None:
-        self._keep_front()
+        self._store_front_tab()
         self._tabs.append(tab)
-        self._bring_forward(len(self._tabs) - 1)
+        self._show_tab(len(self._tabs) - 1)
 
     def _fill_version_menu(self) -> None:
         menu = self._version_menu
@@ -463,7 +463,7 @@ class CodeDialog(base_dialog.AssetDialog):
         self.can_add_version = self._versions_on    # the snippet exists once an Apply saved it
         self._plus.setEnabled(self.can_add_version)
 
-    def _harvest(self) -> bool:
+    def _read_fields(self) -> bool:
         self.name = self._line_name.text().strip()
         self.language = self._combo_lang.currentText().strip()
         self.category = base_dialog.chosen_category(self._combo_category)
@@ -477,6 +477,6 @@ class CodeDialog(base_dialog.AssetDialog):
 
     def _apply(self) -> None:
         """Read the fields and emit `applied`; the caller saves, the window stays open."""
-        if self._harvest():
+        if self._read_fields():
             self.canceled = False
             self.applied.emit()

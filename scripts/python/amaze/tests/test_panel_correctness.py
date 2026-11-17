@@ -832,7 +832,7 @@ class EveryActivateEstablishesADefaultRow(unittest.TestCase):
     def test_all_four_use_the_shared_helper(self):
         """`setModel` leaves nothing selected, and one `activate` fixes it."""
         self.assertIn(
-            "self._stand_on_first_row()",
+            "self._select_first_sidebar_row()",
             method_source("panel/sections.py", "AssetSection",
                           "activate"),
             "AssetSection.activate establishes its default sidebar "
@@ -840,7 +840,7 @@ class EveryActivateEstablishesADefaultRow(unittest.TestCase):
         self.assertIn(
             "select_default_sidebar_row",
             method_source("panel/sections.py", "AssetSection",
-                          "_stand_on_first_row"),
+                          "_select_first_sidebar_row"),
             "the shared default row no longer goes through the panel's helper")
 
 

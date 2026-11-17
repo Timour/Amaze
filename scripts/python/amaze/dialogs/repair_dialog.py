@@ -33,7 +33,7 @@ def open_panel_tab():
     return None
 
 
-def _say(text: str, severity=None) -> None:
+def _show_message(text: str, severity=None) -> None:
     """Show a message; `severity` Warning for what failed, Error for damage, else Message."""
     hou.ui.displayMessage(text, title=messages.TITLE_CHECK_LIBRARY,    # type: ignore
                           severity=severity or hou.severityType.Message)    # type: ignore
@@ -51,10 +51,10 @@ def _repair_settings(settings: dict) -> None:
     """settings.json is unreadable, missing or names no library: offer its saved copies."""
     folder = os.path.dirname(settings["path"])
     if not settings["snapshots"]:
-        _say(messages.SETTINGS_UNREADABLE_NO_COPIES % folder, hou.severityType.Error)
+        _show_message(messages.SETTINGS_UNREADABLE_NO_COPIES % folder, hou.severityType.Error)
         return
     if open_panel_tab() is not None:
-        _say(messages.CHECK_LIBRARY_IN_THE_PANEL)
+        _show_message(messages.CHECK_LIBRARY_IN_THE_PANEL)
         return
     findings = {"directory": folder, "lists": [], "settings": settings,
                 "complete": False, "unaccounted": {}}
@@ -94,14 +94,14 @@ def run(preferences=None) -> None:
         if named:
             _repair_settings(dict(settings, state="no-library", snapshots=named))
             return
-        _say(messages.NO_LIBRARY_FOLDER_CONFIGURED, hou.severityType.Warning)
+        _show_message(messages.NO_LIBRARY_FOLDER_CONFIGURED, hou.severityType.Warning)
         return
     if not os.path.isdir(configured):
-        _say(messages.LIBRARY_FOLDER_UNREACHABLE % configured, hou.severityType.Warning)
+        _show_message(messages.LIBRARY_FOLDER_UNREACHABLE % configured, hou.severityType.Warning)
         debug.event("repair", "refused - the library folder is not there", path=configured)
         return
     if open_panel_tab() is not None:
-        _say(messages.CHECK_LIBRARY_IN_THE_PANEL)
+        _show_message(messages.CHECK_LIBRARY_IN_THE_PANEL)
         debug.event("repair", "refused - a panel is open")
         return
     findings = repair.survey(configured)
@@ -146,16 +146,16 @@ def repair_found(findings: dict, guard: bool = True, changed=None) -> bool:
         changed()
     lines = library_check.done_lines(done)
     if lines:
-        said, severity = "\n".join(lines), hou.severityType.Message    # type: ignore
+        text, severity = "\n".join(lines), hou.severityType.Message    # type: ignore
     elif done["failed"]:
-        said = messages.NOTHING_CHANGED_REASON % done["failed"][0]
+        text = messages.NOTHING_CHANGED_REASON % done["failed"][0]
         severity = hou.severityType.Warning               # type: ignore
     elif skipped:
         return False    # Skip These left nothing else for Fix All to do
     else:
-        said = messages.LIBRARY_CHANGED_SINCE_CHECK
+        text = messages.LIBRARY_CHANGED_SINCE_CHECK
         severity = hou.severityType.Warning               # type: ignore
-    hou.ui.displayMessage(said, title=messages.TITLE_AMAZE, severity=severity)    # type: ignore
+    hou.ui.displayMessage(text, title=messages.TITLE_AMAZE, severity=severity)    # type: ignore
     return bool(lines)
 
 
@@ -256,15 +256,15 @@ def act(findings: dict, action: str, guard: bool = True, changed=None) -> bool:
             "trash": _do_move_aside, "unknown": _do_move_unknown,
             "set-aside": _do_set_aside, "stars": _do_set_aside,
             "uncategorised": _do_uncategorised}[action]
-    landed = []
+    succeeded = []
 
     def changed_once():
-        landed.append(True)
+        succeeded.append(True)
         if changed is not None:
             changed()
 
     done(findings, guard, changed_once)
-    return bool(landed)
+    return bool(succeeded)
 
 
 def _do_recover(findings: dict, guard: bool, changed) -> None:
@@ -282,20 +282,20 @@ def _do_recover(findings: dict, guard: bool, changed) -> None:
     try:
         result = repair.recover(findings, guard_session=guard)
     except FIX_FAILED as exc:
-        _say(messages.NOTHING_CHANGED_REASON % exc, hou.severityType.Warning)
+        _show_message(messages.NOTHING_CHANGED_REASON % exc, hou.severityType.Warning)
         return
     changed()
     added = {name: done["added"] for name, done in result.items()}
     recovered = wording.and_list(["%s to %s" % (repair.per_section({name: ids}),
                                                 naming.section_label(name))
                                   for name, ids in added.items() if ids])
-    minted = sum(len(done["minted"]) for done in result.values())
-    if minted:
-        said = messages.ORPHANED_FILES_RECOVERED_SOME_UNNAMED % (
-            recovered, minted, repair.RECOVERED_CATEGORY, repair.RECOVERED_NAME)
+    placeholders = sum(len(done["placeholders"]) for done in result.values())
+    if placeholders:
+        text = messages.ORPHANED_FILES_RECOVERED_SOME_UNNAMED % (
+            recovered, placeholders, repair.RECOVERED_CATEGORY, repair.RECOVERED_NAME)
     else:
-        said = messages.ORPHANED_FILES_RECOVERED_DONE % recovered
-    _added(said, {"added": [one for ids in added.values() for one in ids],
+        text = messages.ORPHANED_FILES_RECOVERED_DONE % recovered
+    _added(text, {"added": [one for ids in added.values() for one in ids],
                   "claimed": [one for done in result.values() for one in done["claimed"]]})
 
 
@@ -314,12 +314,12 @@ def _do_restore(findings: dict, guard: bool, changed) -> None:
     if offer is None:
         return
     older = [other for other in offers if other[0] == offer[0] and other is not offer]
-    if _put_copy_back(findings, offer, guard, changed, older=bool(older)) != "older":
+    if _restore_backup_copy(findings, offer, guard, changed, older=bool(older)) != "older":
         return
     offer = _pick(older, messages.PICK_OLDER_COPY_TO_PUT_BACK
                   % naming.section_label(offer[0]), messages.COLUMN_OLDER_SAVED_COPIES)
     if offer is not None:
-        _put_copy_back(findings, offer, guard, changed)
+        _restore_backup_copy(findings, offer, guard, changed)
 
 
 def _do_rebuild(findings: dict, guard: bool, changed) -> None:
@@ -341,22 +341,22 @@ def _do_rebuild(findings: dict, guard: bool, changed) -> None:
     try:
         done = repair.rebuild(findings["directory"], name, guard_session=guard)
     except FIX_FAILED as exc:
-        _say(messages.SECTION_LIST_UNCHANGED_REASON % (label, exc), hou.severityType.Warning)
+        _show_message(messages.SECTION_LIST_UNCHANGED_REASON % (label, exc), hou.severityType.Warning)
         return
     changed()
     def counted(count):
         return "%d %s" % (count, naming.section_noun(name, count))
-    said = messages.DATABASE_REBUILT_DONE % (label, counted(done["assets"]))
+    text = messages.DATABASE_REBUILT_DONE % (label, counted(done["assets"]))
     if done["damaged"]:
-        said += messages.DATABASE_REBUILT_SOME_UNREAD % counted(done["damaged"])
-    _say(said)
+        text += messages.DATABASE_REBUILT_SOME_UNREAD % counted(done["damaged"])
+    _show_message(text)
 
 
 def _pick(offers: list, message: str, header: str, sections: bool = False):
     """One copy from a list that opens on its first row; None on Cancel."""
     chosen = hou.ui.selectFromList(                       # type: ignore
         [("%s - " % naming.section_label(filename) if sections else "")
-         + repair.copy_named_by_what_it_holds(filename, snap)
+         + repair.backup_description(filename, snap)
          for filename, _tier, snap, _current in offers],
         default_choices=(0,), exclusive=True,
         clear_on_cancel=True,    # without it Cancel returns the row that was preselected
@@ -372,24 +372,24 @@ def _copy_buttons(older: bool) -> dict:
             "close_choice": len(buttons) - 1}
 
 
-def _put_copy_back(findings: dict, offer: tuple, guard: bool, changed, older: bool = False):
+def _restore_backup_copy(findings: dict, offer: tuple, guard: bool, changed, older: bool = False):
     """Confirm one copy and put it back; `older` when Older Copies was pressed instead."""
     filename, tier, snap, current = offer
     label = naming.section_label(filename)
     if snap["error"]:
-        _say(messages.CHOSEN_SAVED_COPY_CANNOT_BE_READ % label, hou.severityType.Warning)
+        _show_message(messages.CHOSEN_SAVED_COPY_CANNOT_BE_READ % label, hou.severityType.Warning)
         return None
-    held = snap["count"] or 0
+    copy_count = snap["count"] or 0
     if current["error"]:
         change = messages.CURRENT_LIST_UNREADABLE
     else:
         now_holds = current["count"] or 0
         change = (messages.CURRENT_LIST_COMPARED
-                  % (now_holds, now_holds, held, label, snap["when"]))
+                  % (now_holds, now_holds, copy_count, label, snap["when"]))
     picked = hou.ui.displayMessage(                       # type: ignore
         messages.CONFIRM_PUT_SAVED_COPY_BACK % (label, snap["when"]),
         help=messages.HELP_PUT_SAVED_COPY_BACK
-             % (snap["when"], held, naming.section_noun(filename, held),
+             % (snap["when"], copy_count, naming.section_noun(filename, copy_count),
                 change, naming.section_noun(filename, 2)),
         severity=hou.severityType.Warning,                # type: ignore
         title=messages.TITLE_CHECK_LIBRARY,
@@ -399,18 +399,18 @@ def _put_copy_back(findings: dict, offer: tuple, guard: bool, changed, older: bo
     if picked != 0:
         return None
     try:
-        done = repair.put_back(findings, filename, tier, guard_session=guard)
+        done = repair.restore_backup(findings, filename, tier, guard_session=guard)
     except repair.RestoreRefused as exc:
-        _say(str(exc), hou.severityType.Warning)
+        _show_message(str(exc), hou.severityType.Warning)
         return None
     changed()
     undo = repair.undo_facts(findings, filename, done["undo"])
     if undo:
-        went_back = messages.LIST_EARLIER_COPY_KEPT % undo["when"]
+        earlier_copy = messages.LIST_EARLIER_COPY_KEPT % undo["when"]
     else:
-        went_back = messages.NO_EARLIER_LIST
-    _say(messages.SAVED_COPY_PUT_BACK_DONE
-         % (label, snap["when"], " " + done["said"] if done["said"] else "", went_back))
+        earlier_copy = messages.NO_EARLIER_LIST
+    _show_message(messages.SAVED_COPY_PUT_BACK_DONE
+                  % (label, snap["when"], " " + done["summary"] if done["summary"] else "", earlier_copy))
     return None
 
 
@@ -418,22 +418,22 @@ def _moved(result: dict) -> None:
     """What a move aside did, and what it could not move."""
     claimed = result.get("claimed")    # files a database added since the check
     if result["failed"]:
-        _say(messages.FILES_MOVED_ASIDE_SOME_FAILED
-             % (repair.files(len(result["moved"])), repair.files(len(result["failed"]))),
-             hou.severityType.Warning)
+        _show_message(messages.FILES_MOVED_ASIDE_SOME_FAILED
+                      % (repair.files(len(result["moved"])), repair.files(len(result["failed"]))),
+                      hou.severityType.Warning)
     elif result["moved"] or not claimed:
-        _say(messages.FILES_MOVED_ASIDE_DONE % repair.files(len(result["moved"])))
+        _show_message(messages.FILES_MOVED_ASIDE_DONE % repair.files(len(result["moved"])))
     if claimed:
-        _say(messages.LIBRARY_CHANGED_SINCE_CHECK, hou.severityType.Warning)
+        _show_message(messages.LIBRARY_CHANGED_SINCE_CHECK, hou.severityType.Warning)
 
 
-def _added(said: str, result: dict) -> None:
+def _added(text: str, result: dict) -> None:
     """Show what Recover did, and that the library changed if a database added files since then."""
     claimed = result.get("claimed")
     if result["added"] or not claimed:
-        _say(said)
+        _show_message(text)
     if claimed:
-        _say(messages.LIBRARY_CHANGED_SINCE_CHECK, hou.severityType.Warning)
+        _show_message(messages.LIBRARY_CHANGED_SINCE_CHECK, hou.severityType.Warning)
 
 
 def _do_move_aside(findings: dict, guard: bool, changed) -> None:
@@ -441,21 +441,21 @@ def _do_move_aside(findings: dict, guard: bool, changed) -> None:
     aside = repair.movable(findings)
     unlisted = 0 if repair.why_unlisted_stay(findings) else repair.unaccounted_total(aside)
     leftovers = findings.get("leftovers") or []
-    said = []
+    help_lines = []
     if unlisted:
-        said.append(messages.HELP_MOVE_UNLISTED % repair.files_by_folder(aside))
+        help_lines.append(messages.HELP_MOVE_UNLISTED % repair.files_by_folder(aside))
     if leftovers:
-        said.append(messages.HELP_MOVE_LEFTOVERS % ", ".join(entry[0] for entry in leftovers))
+        help_lines.append(messages.HELP_MOVE_LEFTOVERS % ", ".join(entry[0] for entry in leftovers))
     if not _confirmed(messages.CONFIRM_MOVE_FILES_ASIDE % repair.files(unlisted + len(leftovers)),
                       messages.BUTTONS_MOVE_ASIDE,
                       messages.HELP_MOVE_FILES_ASIDE % (
-                          " ".join(said), messages.HELP_MOVE_UNLISTED_LAST if unlisted else "")):
+                          " ".join(help_lines), messages.HELP_MOVE_UNLISTED_LAST if unlisted else "")):
         return
     what = (("unlisted",) if unlisted else ()) + (("leftovers",) if leftovers else ())
     try:
         result = repair.move_aside(findings, what, guard_session=guard)
     except FIX_FAILED as exc:
-        _say(messages.NOTHING_MOVED_ASIDE_REASON % exc, hou.severityType.Warning)
+        _show_message(messages.NOTHING_MOVED_ASIDE_REASON % exc, hou.severityType.Warning)
         return
     if result["moved"]:
         changed()
@@ -472,7 +472,7 @@ def _do_move_unknown(findings: dict, guard: bool, changed) -> None:
     try:
         result = repair.move_aside(findings, "unknown", guard_session=guard)
     except FIX_FAILED as exc:
-        _say(messages.NOTHING_MOVED_ASIDE_REASON % exc, hou.severityType.Warning)
+        _show_message(messages.NOTHING_MOVED_ASIDE_REASON % exc, hou.severityType.Warning)
         return
     if result["moved"]:
         changed()
@@ -495,18 +495,18 @@ def _do_set_aside(findings: dict, guard: bool, changed) -> None:
         folders = repair.set_aside_folders(findings, guard_session=guard) if dead else []
         gone = repair.drop_dead_stars(findings, guard_session=guard) if stars else []
     except FIX_FAILED as exc:
-        _say(messages.NOTHING_CHANGED_REASON % exc, hou.severityType.Warning)
+        _show_message(messages.NOTHING_CHANGED_REASON % exc, hou.severityType.Warning)
         return
     if folders or gone:
         changed()
     if folders:
-        _say(messages.FOLDERS_SET_ASIDE_DONE % (
+        _show_message(messages.FOLDERS_SET_ASIDE_DONE % (
             repair.folders(len(folders)),
             messages.DEAD_STARS_ALSO_REMOVED % repair.favorites(len(gone)) if gone else ""))
     elif gone:
-        _say(messages.DEAD_STARS_REMOVED_DONE % repair.favorites(len(gone)))
+        _show_message(messages.DEAD_STARS_REMOVED_DONE % repair.favorites(len(gone)))
     if len(folders) < len(dead) or not (folders or gone):    # a folder was skipped: it exists again, or its drive is offline
-        _say(messages.LIBRARY_CHANGED_SINCE_CHECK, hou.severityType.Warning)
+        _show_message(messages.LIBRARY_CHANGED_SINCE_CHECK, hou.severityType.Warning)
 
 
 def _do_uncategorised(findings: dict, guard: bool, changed) -> None:
@@ -518,11 +518,11 @@ def _do_uncategorised(findings: dict, guard: bool, changed) -> None:
     try:
         done = repair.rescue_uncategorised(findings, guard_session=guard)
     except FIX_FAILED as exc:
-        _say(messages.NOTHING_CHANGED_REASON % exc, hou.severityType.Warning)
+        _show_message(messages.NOTHING_CHANGED_REASON % exc, hou.severityType.Warning)
         return
     if done:
         changed()
-    _say(messages.PUT_IN_UNCATEGORIZED_DONE % (
+    _show_message(messages.PUT_IN_UNCATEGORIZED_DONE % (
         repair.uncategorised_count({"uncategorised": {
             filename: [None] * count for filename, count in done.items()}}),
         repair.UNCATEGORISED))

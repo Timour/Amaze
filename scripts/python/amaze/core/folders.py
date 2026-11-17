@@ -121,10 +121,10 @@ class _CountEngine(QtCore.QObject):
         super().__init__()
         self._threads = []    # a running QThread must keep a reference until it ends ▸r/model-contracts
 
-    def start(self, job, landed, ended) -> None:
-        """One worker over one folder: `landed(path, token, result)`, then `ended(worker)`."""
+    def start(self, job, on_counted, ended) -> None:
+        """One worker over one folder: `on_counted(path, token, result)`, then `ended(worker)`."""
         worker = _CountWorker(*job)
-        worker.counted.connect(landed)
+        worker.counted.connect(on_counted)
         worker.finished.connect(    # bound here, never sender(): ordering is per sender ▸r/model-contracts
             functools.partial(self._finished, worker, ended))
         self._threads.append(worker)
@@ -166,7 +166,7 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
     relocate_folder_method = ""    # changes one folder's path IN ITS OWN ROW ▸p/folder-sidebar
     move_folder_method = ""        # the sidebar reorder; empty = this section's folders do not reorder
     COUNT_WORKERS = 2    # parallel reads: a slow share blocks one; four slowed painting ▸r/count-workers
-    ANNOUNCE_MS = 100    # reads finishing within this window repaint the sidebar once, not each
+    SIGNAL_COUNTS_MS = 100    # reads finishing within this window repaint the sidebar once, not each
     _counts_asked = QtCore.Signal()    # queued: a request from ANY thread is handled on the GUI thread
 
     def __init__(self, preferences, parent: QtCore.QObject | None = None) -> None:
@@ -181,8 +181,8 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
         self._queued: list = []
         self._live = 0    # this model's workers still running
         self._count_scheduled = False
-        self._unannounced: set = set()    # counted, the views not notified yet
-        self._announce_armed = False
+        self._counts_not_signalled: set = set()    # counted, the views not notified yet
+        self._signal_counts_pending = False
         self._rows: list = []
         self._rows_key = None    # the token `_rows` was read with; None forces a reread
         self._held = None    # the rows the views know, while a write runs; SET here ▸r/qobject-missing-attribute
@@ -266,7 +266,7 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
             self._out_of_date((old,), keep=False)
             self.scene_folder_left.emit(old)
             return True
-        self._repoint(1, _SCENE, old, path, lambda: setattr(self, "_scene", path))
+        self._replace_top_row_folder(1, _SCENE, old, path, lambda: setattr(self, "_scene", path))
         self.scene_folder_changed.emit(old, path)
         return True
 
@@ -285,7 +285,7 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
         try:
             write()
             after = list(getattr(self.preferences, self.folders_attr))
-            self._announce(before, after)
+            self._signal_row_changes(before, after)
         finally:
             self._held = None
         for path in set(before) - set(after):
@@ -294,7 +294,7 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
                           keep=False)
         return before, after
 
-    def _announce(self, before: list, after: list) -> None:
+    def _signal_row_changes(self, before: list, after: list) -> None:
         """One row added or removed as row signals, anything else as a reset, a refused write as none."""
         if after == before:
             return
@@ -453,17 +453,17 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
         wanted = [self._join(path, name) for name in names]
         for row_id in list(self._by_path.get(path, ())):
             self._merge(row_id, wanted)
-        self._unannounced.add(path)
+        self._counts_not_signalled.add(path)
         if not self._walking:
-            self._announce_counts()    # the last one finished: notify now
-        elif not self._announce_armed:
-            self._announce_armed = True
-            QtCore.QTimer.singleShot(self.ANNOUNCE_MS, self._announce_counts)
+            self._signal_counts()    # the last one finished: notify now
+        elif not self._signal_counts_pending:
+            self._signal_counts_pending = True
+            QtCore.QTimer.singleShot(self.SIGNAL_COUNTS_MS, self._signal_counts)
 
-    def _announce_counts(self) -> None:
+    def _signal_counts(self) -> None:
         """Every count arrived since the last call, signalled in ONE pass, so the views repaint once."""
-        self._announce_armed = False
-        paths, self._unannounced = self._unannounced, set()
+        self._signal_counts_pending = False
+        paths, self._counts_not_signalled = self._counts_not_signalled, set()
         if not paths:
             return
         rows = [index for index in map(self.index_of, sorted(paths)) if index.isValid()]
@@ -725,9 +725,9 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
 
     def remove_folder(self, row: int) -> bool:
         # All and the scene row are not locations; True when the location was removed
-        return self.set_aside_folder(row)
+        return self.unregister_folder(row)
 
-    def set_aside_folder(self, row: int) -> bool:
+    def unregister_folder(self, row: int) -> bool:
         """Remove the location at ROW, nothing else; its files' data is kept for when it is re-added."""
         path = self.registered_at(row)
         if not path:
@@ -815,12 +815,12 @@ class FolderTreeModel(QtCore.QAbstractItemModel):
             self.preferences.save()
             self._rows_key = None
             self._records_key = None
-        self._repoint(row, None, old_path, new_path, write)
+        self._replace_top_row_folder(row, None, old_path, new_path, write)
         index = self.index(0, 0)
         self.dataChanged.emit(index, index)    # All's total changed
         return rewritten
 
-    def _repoint(self, row: int, parent_id, old_path: str, new_path: str, write) -> None:
+    def _replace_top_row_folder(self, row: int, parent_id, old_path: str, new_path: str, write) -> None:
         """One top row shows another folder IN PLACE: its subfolder rows go, `write` saves the change."""
         old_id = self._id(parent_id, old_path)
         kids = self._kids.get(old_id)

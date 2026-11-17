@@ -766,8 +766,8 @@ class TheGestureRunsOnBOTHViews(unittest.TestCase):
                 self.assertTrue(
                     issubclass(view, dragdrop_widgets.GridGestureMixin),
                     "%s does not inherit the shared gesture" % name)
-                self.assertEqual(dragdrop_widgets.GridGestureMixin.ARMED_SECTIONS,
-                                 view.ARMED_SECTIONS)
+                self.assertEqual(dragdrop_widgets.GridGestureMixin.DRAG_SECTIONS,
+                                 view.DRAG_SECTIONS)
                 for handler in ("mousePressEvent", "mouseMoveEvent",
                                 "mouseReleaseEvent", "_release", "_begin_drag"):
                     self.assertNotIn(

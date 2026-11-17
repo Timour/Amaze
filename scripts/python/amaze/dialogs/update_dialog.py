@@ -6,7 +6,7 @@ from amaze import messages
 from amaze.core import debug, updater
 
 
-def install_and_say(found) -> bool:
+def install_and_report(found) -> bool:
     """Install `found` and show the result in a message; True once it is installed."""
     try:
         updater.install(found)

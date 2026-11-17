@@ -13,7 +13,7 @@ from amaze.helpers import hostver
 serial = 0
 
 PICK_INTERVAL = 0.03
-_UNASKED = object()    # "no tracked answer supplied", distinct from a tracked miss (None)
+_NO_PANE_KIND = object()    # no tracked pane kind passed, distinct from a tracked miss (None)
 CLEAR_DELAY = 0.25
 
 _hover = {
@@ -68,19 +68,19 @@ def begin(section_key: str, ids=()) -> None:
     _hover["logged_hit"] = 0
     _hover["probes_left"] = 40
     _hover["explained"] = False
-    _hover["snap_failure_said"] = False
+    _hover["snap_failure_logged"] = False
     _reset_move()
     _move["snap_pos"] = None
-    _move["landing"] = None    # the previous release has already read it
+    _move["release_snap_pos"] = None    # the previous release has already read it
 
 
 def end() -> None:
     """End a gesture, however it ended: restore the highlight, keep the snap point for the drop."""
-    landing = _move.get("snap_pos")    # the release reads it after this clears the outline
+    release_snap_pos = _move.get("snap_pos")    # the release reads it after this clears the outline
     _restore_highlight()
     ghost_clear()
     _reset_move()
-    _move["landing"] = landing
+    _move["release_snap_pos"] = release_snap_pos
 
 
 _move = {
@@ -94,7 +94,7 @@ _move = {
     "pane_kind": None,
     "pane_rect": None,
     "snap_pos": None,    # the drawn outline's snapped centre, while one is drawn
-    "landing": None,    # the snap point at end(), returned until the next begin()
+    "release_snap_pos": None,    # the snap point at end(), returned until the next begin()
     "snap_view": None,    # (editor, network, visible bounds) that `snap_rects` were fetched for
     "snap_rects": [],
 }
@@ -162,19 +162,19 @@ def ghost_tick(editor, now=None) -> bool:
     return True
 
 
-def set_ghost_answers(blocked, target, type_name) -> None:
+def set_ghost_tick_results(blocked, target, type_name) -> None:
     """The tick's results, kept for the moves between ticks."""
     _move["blocked"] = bool(blocked)
     _move["target"] = target
     _move["type_name"] = type_name or ""
 
 
-def ghost_answers():
+def ghost_tick_results():
     """(blocked, wire_target, type_name) as of the last tick."""
     return _move["blocked"], _move["target"], _move["type_name"]
 
 
-_ghosted: list = []
+_editors_with_overlay: list = []
 
 def _new_node_half() -> tuple:
     """The host's placement-ghost half size, asked each time."""
@@ -202,8 +202,8 @@ def _snap_delta(editor, rect):
         if result.isValid():
             return result.delta()
     except Exception as exc:                              # noqa: BLE001
-        if not _hover.get("snap_failure_said"):    # once a gesture: this runs on every move
-            _hover["snap_failure_said"] = True
+        if not _hover.get("snap_failure_logged"):    # once a gesture: this runs on every move
+            _hover["snap_failure_logged"] = True
             _dbg("placement snap unavailable", error=repr(exc))
     return None
 
@@ -243,7 +243,7 @@ def ghost_snap_position():
     """The drawn ghost's snapped centre, else the snap point `end()` kept, else None."""
     if _move.get("snap_pos") is not None:
         return _move["snap_pos"]
-    return _move.get("landing")
+    return _move.get("release_snap_pos")
 
 
 def _ghost_half_for(editor) -> tuple:
@@ -311,16 +311,16 @@ def ghost_show(editor, position, type_name: str = "",
         editor.redraw()
     except (AttributeError, hou.OperationFailed, hou.ObjectWasDeleted):
         return
-    if editor not in _ghosted:
-        _ghosted.append(editor)
+    if editor not in _editors_with_overlay:
+        _editors_with_overlay.append(editor)
 
 
 def ghost_clear() -> None:
     """Clear every overlay and drop highlight this module set - on EVERY exit path."""
     _move["snap_pos"] = None
     _forget_snap_rects()
-    while _ghosted:
-        editor = _ghosted.pop()
+    while _editors_with_overlay:
+        editor = _editors_with_overlay.pop()
         try:
             editor.setOverlayShapes([])
             editor.setDropTargetItem(None, "", -1)
@@ -485,8 +485,8 @@ def wire_highlight(editor, target) -> None:
         editor.setDropTargetItem(item, name, index)
     except (AttributeError, hou.OperationFailed, hou.ObjectWasDeleted):
         return
-    if editor not in _ghosted:
-        _ghosted.append(editor)
+    if editor not in _editors_with_overlay:
+        _editors_with_overlay.append(editor)
 
 
 def splice_preview(editor, connection, position, shapes=()) -> tuple:
@@ -801,7 +801,7 @@ def _pick(viewer, world, x, y, scale=1.0, widget_h=0):
 
 
 def hover_update(panel, section_key, pane_tab=None,
-                 pane_kind=_UNASKED) -> None:
+                 pane_kind=_NO_PANE_KIND) -> None:
     """Per-move hover, throttled: pick and highlight; pass the tracked pane. ▸p/drag-move-cost"""
     if section_key != "material":
         return
@@ -810,7 +810,7 @@ def hover_update(panel, section_key, pane_tab=None,
     if now - _hover["last_pick"] < PICK_INTERVAL:
         return
     _hover["last_pick"] = now
-    if pane_kind is _UNASKED and pane_tab is None:
+    if pane_kind is _NO_PANE_KIND and pane_tab is None:
         viewer, x, y, wh, scale = _scene_viewer_under_cursor()
     elif pane_kind != hou.paneTabType.SceneViewer:
         viewer, x, y, wh, scale = None, 0, 0, 0, 1.0

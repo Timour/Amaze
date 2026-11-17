@@ -677,7 +677,7 @@ class NodeHandler:
             if getattr(self, "staging", None) is not None:
                 self.staging.extend(staged)    # the caller commits them with the row
             elif preferences is not None:
-                asset_record.land(preferences, staged)
+                asset_record.commit_staged_files(preferences, staged)
             else:
                 for kind, target, held in staged:
                     hostos.promote_scratch(held, target)

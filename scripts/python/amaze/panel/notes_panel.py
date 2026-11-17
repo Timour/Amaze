@@ -31,7 +31,7 @@ def _fill(widget, hex_color: str) -> None:
     widget.setAutoFillBackground(True)
 
 
-def _ink(label, role: str, opacity: float = 1.0) -> None:
+def _set_text_color(label, role: str, opacity: float = 1.0) -> None:
     """Label text in one of the theme's text colours, via the palette, same reasoning as _fill."""
     color = QtGui.QColor(theme.color_hex(role))
     color.setAlphaF(opacity)
@@ -73,16 +73,16 @@ class _AddButton(QtWidgets.QToolButton):
 _glyph_cache: dict = globals().get("_glyph_cache", {})   # keyed on every input and kept across module reloads
 
 
-def _feather_icon(name: str, side: int, ink: str, widget=None) -> QtGui.QPixmap:
+def _feather_icon(name: str, side: int, color: str, widget=None) -> QtGui.QPixmap:
     """A Feather icon recoloured at device resolution; pass the painted widget. ▸r/screen-dpr"""
     import amaze
     dpr = theme.screen_ratio(widget)
-    key = (name, int(side), str(ink), float(dpr))   # EVERY input in the key: colour changes per to-do state, dpr when the window moves screen
+    key = (name, int(side), str(color), float(dpr))   # EVERY input in the key: colour changes per to-do state, dpr when the window moves screen
     cached = _glyph_cache.get(key)
     if cached is not None:
         return cached
     path = amaze.package_file("ui", "feather", name + ".svg")
-    pixmap = ui_helpers.device_pixmap(path, side, dpr, {"currentColor": ink})
+    pixmap = ui_helpers.device_pixmap(path, side, dpr, {"currentColor": color})
     _glyph_cache[key] = pixmap
     return pixmap
 
@@ -131,21 +131,21 @@ class _NoteEdit(QtWidgets.QTextEdit):
         """The picture item an unloaded block replaces; None once its text has been edited out."""
         if block.userState() != STATE_UNLOADED:
             return None
-        held = block.blockFormat()
-        shown = str(held.property(_UNLOADED_TEXT) or "")
+        block_format = block.blockFormat()
+        shown = str(block_format.property(_UNLOADED_TEXT) or "")
         if not shown or shown not in block.text():
             return None
-        return {"t": "image", "src": str(held.property(_UNLOADED_SRC) or ""), "text": shown}
+        return {"t": "image", "src": str(block_format.property(_UNLOADED_SRC) or ""), "text": shown}
 
-    def _stand_in(self, cursor, src: str, shown: str) -> None:
+    def _insert_unloaded_image_text(self, cursor, src: str, shown: str) -> None:
         """Insert `shown` in the cursor's block, storing `src` so `serialize` saves the picture."""
         block = cursor.block()
         block.setUserState(STATE_UNLOADED)
         self._restyle_block(block, False, False)
-        held = QtGui.QTextBlockFormat()
-        held.setProperty(_UNLOADED_SRC, src)
-        held.setProperty(_UNLOADED_TEXT, shown)
-        cursor.mergeBlockFormat(held)
+        block_format = QtGui.QTextBlockFormat()
+        block_format.setProperty(_UNLOADED_SRC, src)
+        block_format.setProperty(_UNLOADED_TEXT, shown)
+        cursor.mergeBlockFormat(block_format)
         cursor.insertText(shown, self._label_format(False))
 
     @staticmethod
@@ -410,8 +410,8 @@ class _NoteEdit(QtWidgets.QTextEdit):
                 if self.make_image_here(cursor, src):
                     cursor = self.textCursor()
                 else:    # file not synced yet, or deleted: the item's fallback text, never a blank ▸p/comment-images
-                    self._stand_in(cursor, src,
-                                   item.get("text") or "[image: %s]" % os.path.basename(src))
+                    self._insert_unloaded_image_text(cursor, src,
+                                                     item.get("text") or "[image: %s]" % os.path.basename(src))
                 first = False
                 continue
             if item.get("t") == "todo":
@@ -557,23 +557,23 @@ class NotesPanel(ui_helpers.HeldPane):
         self.body_widget = body
         page_box.addWidget(body, 1)
         self._ghost = True
-        self._show_ghost()
+        self._show_no_selection()
 
     def _paint_accents(self) -> None:
         import amaze
         dpr = theme.screen_ratio(self)
         side, plus_side = theme.ui_px(_DRAWN["icon"]), theme.ui_px(_DRAWN["plus"])
-        dead = getattr(self, "_ghost", False)    # nothing selected: labels and icons dimmed as in N01B
-        text = amazetheme.COMMENT_DIM_TEXT_OPACITY if dead else 1.0
-        _ink(self.name_label, "text_bright", text)
-        _ink(self.type_label, "text", text)
+        dimmed = getattr(self, "_ghost", False)    # nothing selected: labels and icons dimmed as in N01B
+        text = amazetheme.COMMENT_DIM_TEXT_OPACITY if dimmed else 1.0
+        _set_text_color(self.name_label, "text_bright", text)
+        _set_text_color(self.type_label, "text", text)
         self._icon_label.setPixmap(_faded(ui_helpers.device_pixmap(
             amaze.package_file("ui", "icon_comments.svg"), side, dpr,
-            {amazetheme.COMMENT_INK: amazetheme.COMMENT_DIM_ICON_INK} if dead else None),
-            amazetheme.COMMENT_DIM_ICON_OPACITY if dead else 1.0, dpr))
+            {amazetheme.COMMENT_INK: amazetheme.COMMENT_DIM_ICON_INK} if dimmed else None),
+            amazetheme.COMMENT_DIM_ICON_OPACITY if dimmed else 1.0, dpr))
         self.add_button.setIcon(QtGui.QIcon(ui_helpers.device_pixmap(
             amaze.package_file("ui", "icon_comments_add.svg"), plus_side, dpr,
-            {amazetheme.COMMENT_ADD_INK: amazetheme.COMMENT_DIM_ADD_INK} if dead else None)))
+            {amazetheme.COMMENT_ADD_INK: amazetheme.COMMENT_DIM_ADD_INK} if dimmed else None)))
         self.add_button.setIconSize(QtCore.QSize(plus_side, plus_side))
 
     def adopt_look(self, source: QtWidgets.QWidget) -> None:
@@ -621,9 +621,9 @@ class NotesPanel(ui_helpers.HeldPane):
         self.flush()
         self._key = None
         self._library = ""
-        self._show_ghost()
+        self._show_no_selection()
 
-    def _show_ghost(self) -> None:
+    def _show_no_selection(self) -> None:
         """The no-selection look (N01B): the SAME window dimmed, never a different layout."""
         self._ghost = True
         self._loading = True
@@ -699,7 +699,7 @@ class NotesPanel(ui_helpers.HeldPane):
         if written:
             self.changed.emit(self._key)
         else:
-            debug.event("notes", "page not persisted",
+            debug.event("notes", "comment not saved",
                         key=str(self._key))
 
     def hideEvent(self, event) -> None:

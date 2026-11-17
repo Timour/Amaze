@@ -193,7 +193,7 @@ class EveryContextCarriesTheBadgesItsModelCanAnswer(AreaBindingCase):
             panel = self.activate(key)
             model = getattr(panel, BINDINGS[key]["grid"]).sourceModel()
             for badge, role_name in BADGE_ROLES.items():
-                if not role_name or delegates.BADGE[badge].equals or delegates.BADGE[badge].art_for:
+                if not role_name or delegates.BADGE[badge].equals or delegates.BADGE[badge].svg_for:
                     continue    # no role, or values of a shared one: a model having it proves nothing
                 if not hasattr(model, role_name):
                     continue
@@ -522,8 +522,8 @@ class TheReleaseVerbsLiveOnTheirSections(unittest.TestCase):
             names = {name for rule in rules for name in (
                 rule.on_node, rule.on_space, rule.resolve,
                 rule.click_on_node, rule.click_resolve) if name}
-            if getattr(cls, "carrier_type_verb", ""):
-                names.add(cls.carrier_type_verb)
+            if getattr(cls, "holder_node_type_method", ""):
+                names.add(cls.holder_node_type_method)
             for name in sorted(names):
                 if not callable(getattr(cls, name, None)):
                     missing.append("%s.%s" % (cls.__name__, name))

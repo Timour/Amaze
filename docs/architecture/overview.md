@@ -183,7 +183,7 @@ can be left undeclared.
 | `resolve` | DRAG, finds its own target | `(index)` |
 | `click_on_node` | CLICK, the SELECTION | `(index, node)` |
 | `click_resolve` | CLICK, finds its own target | `(index)` |
-| `carrier_type` | — | name of the node type the `on_space` method CREATES, where that is a constant, so the drag preview draws its shape from the same declaration the creating method reads |
+| `holder_node_type` | — | name of the node type the `on_space` method CREATES, where that is a constant, so the drag preview draws its shape from the same declaration the creating method reads |
 | `context` | — | the `childTypeCategory` a network must have to accept this drop; empty for any network |
 
 `sections.MenuEntry`, one row of a menu table:
@@ -229,14 +229,14 @@ a click provides the section.
 
 **One RESOLVER for the verbs a rule names**, `sections.drop_verb(
 section, name)` (2026-08-13, ROADMAP line 24): every named verb — the
-release bodies, the click verbs, the creation rules, the carrier-type
-answer — is a method of the declaring Section, and both drag and click
+release bodies, the click verbs, the creation rules, the holder node
+type — is a method of the declaring Section, and both drag and click
 look it up there. The panel fallback the migration kept is REMOVED; a
 declaration naming a verb its section does not define raises an error,
 and `test_area_bindings` checks every declaration to keep it that way.
 The panel keeps the shared release plumbing the verbs call
 (`drop_placement.context_under_cursor`,
-`drop_placement.release_position_in`, `drop_placement.create_carrier`,
+`drop_placement.release_position_in`, `drop_placement.create_holder_node`,
 `drop_placement.scene_path`, `_node_under_cursor`) — shared because it
 has no per-type behaviour.
 
@@ -866,11 +866,11 @@ contracts other code and the docs rely on:
   (`library_files.walk`, one `os.scandir` per folder) and every report,
   button and count reads that one dict. In the panel it is called from Preferences ▸
   Library's Databases row (`prefs_dialog._survey_open_library`):
-  its button saves every model first (`check.let_go`), surveys, and
+  its button saves every model first (`check.save_before_check`), surveys, and
   shows `library_check.summary` as three lights; once something can be
   fixed it reads Repair and opens `repair_dialog.repair_found`, whose
   Fix Safe and Fix All act with `guard=False`, read every model again
-  (`check.read_again`) and check again. A part that cannot be checked
+  (`check.reload_after_check`) and check again. A part that cannot be checked
   (a database in use, a folder that cannot be listed) is never fixed.
   The shelf tool's function (`repair_dialog.run`) acts with `guard=True`,
   stops with a message while an Amaze pane is open, and only reports once this
@@ -1005,7 +1005,7 @@ panel/online_import.py    The online import: catalogue records into the
 panel/package_import.py   The package import: .amazepkg files and store
                           tiles into the library (`panel.package_import`)
 panel/drop_placement.py   Where a drop or a click creates nodes: the network,
-                          the position, the carrier (`panel.drop_placement`)
+                          the position, the holder node (`panel.drop_placement`)
 panel/tile_capture.py     Capture: the Scene View onto one tile, or the
                           open scene onto its File tile (`panel.tile_capture`)
 panel/sections.py         The Sections (node-types) + registry + the
@@ -1077,9 +1077,9 @@ actions/addons.py         the add-on check and install the Add-On tab
                           runs: which store versions are newer, then
                           fetching and installing them, each result
                           shown in one sentence
-actions/check.py          Check Library in the panel: `let_go` saves
-                          every model and the settings before the
-                          check acts, `read_again` re-reads the
+actions/check.py          Check Library in the panel: `save_before_check`
+                          saves every model and the settings before the
+                          check acts, `reload_after_check` re-reads the
                           settings and every model after each action
                           (the Reload path without its save)
 actions/code.py           the Code section's Houdini actions: a Python

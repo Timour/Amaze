@@ -1645,7 +1645,7 @@ class TheCommentsPaneStandsOnItsFrame(unittest.TestCase):
         self.assertIn(amazetheme.COMMENT_ADD_INK.lower(), art)
         with mock.patch.object(ui_helpers, "device_pixmap",
                                wraps=ui_helpers.device_pixmap) as drawn:
-            self.pane._show_ghost()
+            self.pane._show_no_selection()
         swaps = [c.args[3] for c in drawn.call_args_list
                  if c.args[0].endswith("icon_comments_add.svg")]
         self.assertEqual(
@@ -1718,7 +1718,7 @@ class TheEmptyPaneStandsOnN01B(unittest.TestCase):
                            (self.pane.type_label, "text")):
             with self.subTest(label=label.text()):
                 shown = self._brightest_on_header(label)
-                notes_panel._ink(label, ink, 1.0)
+                notes_panel._set_text_color(label, ink, 1.0)
                 full = self._brightest_on_header(label)
                 for part in ("red", "green", "blue"):
                     ground = getattr(bg, part)()

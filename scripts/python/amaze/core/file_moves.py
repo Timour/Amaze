@@ -16,7 +16,7 @@ Result = collections.namedtuple("Result", "moved skipped failed")    # pairs, pa
 PART = ".amaze-part"    # suffix of a cross-drive copy until it is complete and renamed to its name
 CHUNK = 4 << 20    # bytes per read: one stop check and one progress tick between reads
 HELD_WAITS = (0.05, 0.15, 0.35)    # seconds between tries at a file Windows says is in use
-carriers = globals().get("carriers", {})    # name -> fn(preferences, pairs), set by higher-level modules
+move_hooks = globals().get("move_hooks", {})    # name -> fn(preferences, pairs), set by higher-level modules
 
 
 class Stopped(Exception):
@@ -175,17 +175,17 @@ def move(pairs, tick=None, stopped=lambda: False) -> Result:
         if stopped():
             break
         try:
-            landed = _move_one(source, dest, tick, stopped)
+            was_moved = _move_one(source, dest, tick, stopped)
         except Stopped:
             break
         except OSError as exc:
             failed.append((source, exc.strerror or str(exc)))
             continue
-        (moved if landed else skipped).append((source, dest))
+        (moved if was_moved else skipped).append((source, dest))
     return Result(moved, skipped, failed)
 
 
-def carry(preferences, pairs) -> None:
+def rekey_moved_files(preferences, pairs) -> None:
     """Re-key what Amaze stores for each moved file: star, comment, icon, capture, thumbnails."""
     keys = {}
     for old, new in pairs:
@@ -201,11 +201,11 @@ def carry(preferences, pairs) -> None:
         except OSError as exc:
             debug.event("move", "a capture did not follow its file",
                         key=before, error=str(exc))
-    for name, follow in list(carriers.items()):
+    for name, hook in list(move_hooks.items()):
         try:
-            follow(preferences, pairs)
-        except Exception as exc:                          # noqa: BLE001 - one failing carrier does not stop the rest
-            debug.event("move", "a carrier failed", carrier=name, error=str(exc))
+            hook(preferences, pairs)
+        except Exception as exc:                          # noqa: BLE001 - one failing hook does not stop the rest
+            debug.event("move", "a move hook failed", hook=name, error=str(exc))
 
 
 def _size(path: str) -> int:
@@ -219,7 +219,7 @@ class _MoveWorker(QtCore.QThread):
     """Moves one batch off the GUI thread; when stopped, the file being copied stays at its source."""
 
     ticked = QtCore.Signal(object, object)    # (bytes copied, bytes to copy)
-    landed = QtCore.Signal(object)    # the Result
+    move_finished = QtCore.Signal(object)    # the Result
 
     def __init__(self, pairs) -> None:
         super().__init__()
@@ -243,10 +243,10 @@ class _MoveWorker(QtCore.QThread):
 
         try:
             result = move(self.pairs, tick, self._stopped)
-        except Exception as exc:                          # noqa: BLE001 - logged; `landed` is still emitted
+        except Exception as exc:                          # noqa: BLE001 - logged; `move_finished` is still emitted
             debug.event("move", "move failed", error=str(exc))
             result = Result([], [], [(source, str(exc)) for source, _dest in self.pairs])
-        self.landed.emit(result)
+        self.move_finished.emit(result)
 
 
 class _MoveEngine(QtCore.QObject):
@@ -255,20 +255,20 @@ class _MoveEngine(QtCore.QObject):
     def __init__(self) -> None:
         super().__init__()
         self._worker = None    # a running QThread must keep a reference until it ends ▸r/model-contracts
-        self._job = None    # (preferences, ticked, landed) of the running move
+        self._job = None    # (preferences, ticked, on_finished) of the running move
 
     def busy(self) -> bool:
         return self._worker is not None
 
-    def start(self, pairs, preferences, ticked, landed) -> bool:
-        """Move `pairs` on a worker: `ticked(done, total)`, then `landed(result)`; False while busy."""
+    def start(self, pairs, preferences, ticked, on_finished) -> bool:
+        """Move `pairs` on a worker: `ticked(done, total)`, then `on_finished(result)`; False while busy."""
         if self._worker is not None:
             return False
         worker = _MoveWorker(pairs)
         worker.ticked.connect(self._ticked)    # BOUND slots, so each call runs on this object's thread
-        worker.landed.connect(self._landed)
+        worker.move_finished.connect(self._on_move_finished)
         worker.finished.connect(self._finished)
-        self._worker, self._job = worker, (preferences, ticked, landed)
+        self._worker, self._job = worker, (preferences, ticked, on_finished)
         worker.start()
         return True
 
@@ -276,13 +276,13 @@ class _MoveEngine(QtCore.QObject):
         if self._job is not None:
             self._job[1](done, total)
 
-    def _landed(self, result) -> None:
+    def _on_move_finished(self, result) -> None:
         if self._job is None:
             return
-        preferences, _ticked, landed = self._job
-        carry(preferences, result.moved)    # on the GUI thread, the one the stores are written from
+        preferences, _ticked, on_finished = self._job
+        rekey_moved_files(preferences, result.moved)    # on the GUI thread, the one the stores are written from
         try:
-            landed(result)
+            on_finished(result)
         except RuntimeError:    # the calling panel was deleted; the files and their keys have moved
             pass
 

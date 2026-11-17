@@ -80,12 +80,12 @@ class ListRows(QtWidgets.QStyledItemDelegate):
         painter.restore()
 
 
-def _draw(painter, metrics, text, rect, ink, elide) -> None:
-    painter.setPen(ink)
+def _draw(painter, metrics, text, rect, color, elide) -> None:
+    painter.setPen(color)
     painter.drawText(rect, _ALIGN, metrics.elidedText(text, elide, rect.width()))
 
 
-def ground_list(view) -> None:
+def set_list_background(view) -> None:
     """A drawn list's background: Houdini's list colour, with the drawn corner radius."""
     view.setStyleSheet(
         "QListWidget { background-color: %s; border: none; border-radius: %dpx; }"
@@ -101,7 +101,7 @@ def drawn_list(frame_key: str, selection_mode, delegate) -> QtWidgets.QListWidge
     view.setUniformItemSizes(True)
     delegate.setParent(view)    # the view does not own its delegate ▸r/delegate-orphans
     view.setItemDelegate(delegate)
-    ground_list(view)
+    set_list_background(view)
     ui_helpers.pin_drawn(view, frame_key, "QListWidget", None)
     return view
 

@@ -38,7 +38,7 @@ def index_present(lib_dir: str) -> bool:
     return bool(lib_dir) and os.path.isfile(os.path.join(lib_dir, library_files.MASTER))
 
 
-def list_not_arrived(lib_dir: str) -> bool:
+def folder_not_empty_without_library(lib_dir: str) -> bool:
     """Whether the folder holds no library and is not empty: a new library needs an empty folder."""
     return (prefs_mod.can_hold_a_library(lib_dir) and not index_present(lib_dir)
             and bool(starter_would_overwrite(lib_dir)))

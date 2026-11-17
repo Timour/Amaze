@@ -169,7 +169,7 @@ def open_catlist_menu(panel, context) -> None:
         return
     _open(panel, context, getattr(context, "SIDEBAR_MENU", ()),
           context.sidebar_selection(), panel.cat_list)
-    context.stand_again()    # the right-click moved only the highlight; restore it, picked or not
+    context.reselect_sidebar_row()    # the right-click moved only the highlight; restore it, picked or not
 
 
 def selected_current(view, indexes):
@@ -196,18 +196,18 @@ def _open(panel, context, entries, indexes, view) -> None:
     current = selected_current(view, indexes)    # the row the menu is about is ALWAYS a selected row
 
     menu, verbs = build_menu(panel, context, entries, indexes, current)
-    held = [QtCore.QPersistentModelIndex(index) for index in indexes]    # exec_ runs Qt's loop: a model can reset
-    held_current = QtCore.QPersistentModelIndex(current) if current is not None else None
+    persistent = [QtCore.QPersistentModelIndex(index) for index in indexes]    # exec_ runs Qt's loop: a model can reset
+    persistent_current = QtCore.QPersistentModelIndex(current) if current is not None else None
     chosen = menu.exec_(QtGui.QCursor.pos())
     verb, payload = verbs.get(chosen, ("", None))    # a dismissed menu and a never-built entry are both None - a dict lookup, never `==` chains
     menu.deleteLater()    # after the lookup, which is keyed by its QActions ▸r/menu-lifetime
     if not verb:
         return
-    live = [QtCore.QModelIndex(index) for index in held if index.isValid()]
-    if held and not live and _needs(entries, verb) != "always":
+    live = [QtCore.QModelIndex(index) for index in persistent if index.isValid()]
+    if persistent and not live and _needs(entries, verb) != "always":
         return    # every row the menu was opened on was removed from the model
-    if held_current is not None and held_current.isValid():
-        current = QtCore.QModelIndex(held_current)
+    if persistent_current is not None and persistent_current.isValid():
+        current = QtCore.QModelIndex(persistent_current)
     else:
         current = live[0] if live else None
     getattr(context, verb)(live, current, payload)
@@ -430,7 +430,7 @@ def style_table_header(panel) -> None:
         "  border-right: 1px solid %s; padding-left: %dpx;"
         "}" % (
             panel.HEADER_BG.name(), panel.HEADER_BG.name(),
-            delegates.AssetItemDelegate.LIST_INK.name(),
+            delegates.AssetItemDelegate.LIST_TEXT_COLOR.name(),
             panel.HEADER_DIVIDER.name(), panel.CELL_PAD,
         ))
 

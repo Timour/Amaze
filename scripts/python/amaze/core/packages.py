@@ -147,7 +147,7 @@ def manifest_from(bundle, path: str) -> dict:
             "- update Amaze to import it" % (got, FORMAT))
     problems = _shape_problems(manifest)
     if problems:
-        debug.event("packages", "manifest refused",
+        debug.event("packages", "manifest not valid",
                     package=os.path.basename(path), problems=problems[:20])
         raise PackageError(messages.PACKAGE_NOT_READABLE
                            % os.path.basename(path))
@@ -280,13 +280,13 @@ def import_entries(models, prefs, bundle, entries,
             elif entry.get("type") == "file":
                 _import_file(prefs, bundle, entry, summary)
         except zipfile.BadZipFile as exc:
-            debug.event("packages", "entry refused", error=str(exc),
+            debug.event("packages", "entry not imported", error=str(exc),
                         name=name)
             summary["refused"] += 1
             summary["problems"].append(
                 "%s did not read back whole" % name)
         except Exception as exc:                          # noqa: BLE001
-            debug.event("packages", "entry refused", error=str(exc),
+            debug.event("packages", "entry not imported", error=str(exc),
                         name=name)
             summary["refused"] += 1
             summary["problems"].append("%s: %s" % (name, exc))    # the real cause, as raised
@@ -294,7 +294,7 @@ def import_entries(models, prefs, bundle, entries,
     return summary
 
 
-def _land_model(prefs, model, items) -> bool:
+def _save_model_rows(prefs, model, items) -> bool:
     """One model's appended rows and every file they brought, as ONE change; False: none saved."""
     from amaze.core import library_db
     if not library_db.accepts(prefs, model.DB_FILENAME):
@@ -319,9 +319,9 @@ def _commit_assets(prefs, staged, summary) -> None:
     for items in by_model.values():
         model = items[0][0]
         try:
-            stored = _land_model(prefs, model, items)
+            stored = _save_model_rows(prefs, model, items)
         except Exception as exc:                          # noqa: BLE001
-            debug.event("packages", "entry refused", error=str(exc),
+            debug.event("packages", "entry not imported", error=str(exc),
                         name=model.DB_FILENAME)
             summary["problems"].extend("%s: %s" % (item[1].name or "?", exc)
                                        for item in items)

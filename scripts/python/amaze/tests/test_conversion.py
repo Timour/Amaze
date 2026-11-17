@@ -312,7 +312,7 @@ class AStuckChildEndsItsFilesChain(unittest.TestCase):
         with test_support.captured_log() as log, _sigkill_deferred():
             with mock.patch.object(conversion, "_FORMAT_ADAPTERS", adapters):
                 conversion.convert_image(self.source, 64)
-        for message in ("a converter hit its timeout", "helper abandoned to the graveyard"):
+        for message in ("a converter hit its timeout", "helper kept in _ABANDONED until it exits"):
             with self.subTest(message):
                 found = [r for r in log.records("convert") if r.get("msg") == message]
                 self.assertEqual(1, len(found), "premise: no %r record" % message)

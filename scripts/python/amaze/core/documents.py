@@ -325,7 +325,7 @@ class Document:
                 reading = self.guard.read(self.name)
                 if not reading.writable:
                     self.verdict, self.why, self._ticket = reading.verdict, reading.why, None
-                    debug.event("documents", "save refused - the file no longer reads",
+                    debug.event("documents", "save stopped - the file can no longer be read",
                                 file=self.name, verdict=reading.verdict)
                     return Saved(False, reading.verdict, reading.why, merged)
                 self._merge(reading.document)

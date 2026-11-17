@@ -11,10 +11,10 @@ from amaze.helpers import hostos
 _libraries: dict = globals().get("_libraries", {})    # library key -> documents.Library
 _preferences: dict = globals().get("_preferences", {})    # library key -> the Prefs last passed in
 _schedulers: list = globals().get("_schedulers", [])    # the panels' save timers, newest last
-_said: dict = globals().get("_said", {})    # (library key, database) -> the verdict last alerted
+_alerted: dict = globals().get("_alerted", {})    # (library key, database) -> the verdict last alerted
 _listeners: dict = globals().get("_listeners", {})    # called after each save: the models
 _in_use: set = globals().get("_in_use", set())    # library keys in use by a panel's models
-_present: set = globals().get("_present", set())    # folders found on disk; `look_again` clears
+_present: set = globals().get("_present", set())    # folders found on disk; `recheck_folders` clears
 _users: dict = globals().get("_users", {})    # library key -> the user last making changes there
 
 TROUBLE = (guard.CORRUPT, guard.MISSING, guard.NEWER)
@@ -38,7 +38,7 @@ def _user_of(key: str) -> str:
     return _users[key]
 
 
-def look_again() -> None:
+def recheck_folders() -> None:
     """Make the next change check on disk whether each library folder still exists."""
     _present.clear()
 
@@ -56,9 +56,9 @@ def library_for(preferences) -> documents.Library:
 
 
 def document(preferences, name: str) -> documents.Document:
-    """One database of this library; `judge` alerts the user once about its problems."""
+    """One database of this library; `alert_database_problem` alerts once about its problems."""
     found = library_for(preferences).document(name)
-    judge(key_of(preferences), found)
+    alert_database_problem(key_of(preferences), found)
     return found
 
 
@@ -83,12 +83,12 @@ def _read_again(key: str, held: documents.Document) -> None:
     except OSError as exc:
         debug.event("database", "refresh failed", library=key, error=str(exc))
         return
-    judge(key, held)
+    alert_database_problem(key, held)
     if moved:
-        _tell_listeners(key, held.name)
+        _call_listeners(key, held.name)
 
 
-def _tell_listeners(key: str, name: str) -> None:
+def _call_listeners(key: str, name: str) -> None:
     """Call each `on_saved` listener: the models load what a save or a read merged in."""
     for listener in list(_listeners.values()):
         try:
@@ -123,13 +123,13 @@ def _deferred(save) -> None:
         return
     held = getattr(save, "__self__", None)
     if held is None:
-        told(save())
+        report_save(save())
         return
     for key, found in list(_libraries.items()):
         if any(one is held for one in found.opened().values()):
             _save_one(key, held)
             return
-    told(save())
+    report_save(save())
 
 
 def changed(preferences, name: str) -> None:
@@ -167,7 +167,7 @@ def _records(key: str, held: documents.Document):
 
 
 def _save_one(key: str, held: documents.Document, also=None) -> documents.Saved:
-    """Save one database, its records' metadata and the caller's files, then report via `told`."""
+    """Save one database, its records' metadata and the caller's files, then `report_save`."""
     records = _records(key, held)
     if records is None or not held.dirty:
         both = also
@@ -179,10 +179,10 @@ def _save_one(key: str, held: documents.Document, also=None) -> documents.Saved:
             also(change)    # last: a record the caller writes whole overrides the metadata above
     _read_again(key, held)
     saved = held.save(also=both)
-    told(saved, held.name)
-    judge(key, held)
+    report_save(saved, held.name)
+    alert_database_problem(key, held)
     if saved.merged:    # only then does memory hold rows the models have not shown
-        _tell_listeners(key, held.name)
+        _call_listeners(key, held.name)
     return saved
 
 
@@ -195,8 +195,8 @@ def flush(preferences=None) -> dict:
         for name, held in found.opened().items():
             if held.dirty:
                 done[name] = _save_one(key, held)
-            judge(key, held)
-            say_collisions(key, held)
+            alert_database_problem(key, held)
+            alert_collisions(key, held)
     return done
 
 
@@ -205,20 +205,20 @@ def save(preferences, name: str, also=None) -> documents.Saved:
     return _save_one(key_of(preferences), document(preferences, name), also)
 
 
-def told(saved, name: str = "") -> None:
-    """Report a save: a failed disk write alerts; a read-only database is alerted by `judge`."""
+def report_save(saved, name: str = "") -> None:
+    """Report a save: a failed disk write alerts; a read-only one by `alert_database_problem`."""
     for key, found in list(_libraries.items()):
         for held in found.opened().values():
-            say_collisions(key, held)
+            alert_collisions(key, held)
     if saved or saved.reason in (documents.NO_USER,) + TROUBLE:
         return
-    debug.event("database", "save did not land", file=name, reason=saved.reason,
+    debug.event("database", "save failed", file=name, reason=saved.reason,
                 detail=saved.detail)
     debug.alert(messages.LIBRARY_WRITE_FAILED % (saved.detail or saved.reason),
                 key="database-write-failed-%s" % saved.reason)
 
 
-def say_collisions(key: str, held: documents.Document) -> None:
+def alert_collisions(key: str, held: documents.Document) -> None:
     """Each field two users changed at once, alerted once, naming the other user."""
     for collision in held.take_collisions():
         entry = held.get(collision.section, collision.key) \
@@ -243,19 +243,19 @@ def display_name(key: str, uid: str) -> str:
     return str(record.get("name") or "")
 
 
-def judge(key: str, held: documents.Document) -> None:
+def alert_database_problem(key: str, held: documents.Document) -> None:
     """Alert a database's problem once per file per session; cleared when it reads again."""
     where = (key, held.name)
     verdict = held.verdict
     if verdict == guard.HELD:
-        _said.pop(where, None)
+        _alerted.pop(where, None)
         debug.event("database", "database not opened - access refused", file=held.name,
                     why=held.why)
         return    # access, not damage: read-only until it opens; a save attempt alerts with `why`
     if verdict not in TROUBLE:
-        _said.pop(where, None)
-    elif _said.get(where) != verdict:
-        _said[where] = verdict
+        _alerted.pop(where, None)
+    elif _alerted.get(where) != verdict:
+        _alerted[where] = verdict
         label = library_files.section_label(held.name)
         debug.event("database", "database refused - read-only", file=held.name,
                     verdict=verdict, why=held.why)
@@ -268,9 +268,9 @@ def judge(key: str, held: documents.Document) -> None:
         debug.alert(text, key="database-%s-%s-%s" % (verdict, key, held.name))
     shrunk = where + ("shrunk",)
     if not held.shrunk:
-        _said.pop(shrunk, None)
-    elif _said.get(shrunk) != held.shrunk:
-        _said[shrunk] = held.shrunk
+        _alerted.pop(shrunk, None)
+    elif _alerted.get(shrunk) != held.shrunk:
+        _alerted[shrunk] = held.shrunk
         holds, backed = held.shrunk
         debug.alert(messages.DATABASE_SHRUNK % (
             library_files.section_label(held.name), holds,
@@ -280,7 +280,7 @@ def judge(key: str, held: documents.Document) -> None:
 
 def refresh(preferences=None) -> dict:
     """Load other sessions' saves; {library key: [databases that changed]}."""
-    look_again()
+    recheck_folders()
     moved = {}
     for key, found in list(_libraries.items()):
         if preferences is not None and key != key_of(preferences):
@@ -291,8 +291,8 @@ def refresh(preferences=None) -> dict:
             debug.event("database", "refresh failed", library=key, error=str(exc))
             continue
         for held in found.opened().values():
-            judge(key, held)
-            say_collisions(key, held)
+            alert_database_problem(key, held)
+            alert_collisions(key, held)
     return moved
 
 
@@ -313,10 +313,10 @@ def held_libraries() -> list:
 
 def release(preferences=None) -> None:
     """Drop the cached databases: on a switch to another library folder, or in a test."""
-    look_again()
+    recheck_folders()
     if preferences is None:
         _libraries.clear()
-        _said.clear()
+        _alerted.clear()
         _in_use.clear()
         _users.clear()
         return

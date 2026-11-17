@@ -66,7 +66,7 @@ class AlertIsOncePerConditionTest(unittest.TestCase):
 
 
 class SayUnlistedNamesWhatTheListDidNotTake(unittest.TestCase):
-    """`library.say_unlisted`: one status line at the end of six callers; none when all saved"""
+    """`library.report_unlisted`: one status line at the end of six callers; none when all saved"""
 
     def setUp(self):
         from amaze.utils import rc_calls
@@ -84,7 +84,7 @@ class SayUnlistedNamesWhatTheListDidNotTake(unittest.TestCase):
     def _say(self, names, **kwargs):
         from amaze.core import library as library_mod
         with mock.patch.object(hou, "ui", self._ui(), create=True):
-            library_mod.say_unlisted(names, **kwargs)
+            library_mod.report_unlisted(names, **kwargs)
         self.assertEqual([], self.shown, "the status line opened a dialog")
         return self.said
 
@@ -121,7 +121,7 @@ class TheOnlineImportEndsOnThatLine(unittest.TestCase):
             self.material_model = types.SimpleNamespace(assets=())
             self.landed = []
 
-        def render_landed(self, held):
+        def render_new_thumbnails(self, held):
             self.landed.append(held)
 
     def _batch(self, answers):

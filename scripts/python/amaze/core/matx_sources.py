@@ -210,7 +210,7 @@ class DownloadTooLarge(OSError):
         super().__init__(messages.DOWNLOAD_TOO_LARGE % wording.byte_size(ceiling))
 
 
-def _drain(resp, write, on_bytes=None, total=0) -> int:
+def _copy_body(resp, write, on_bytes=None, total=0) -> int:
     """A response body through `write` in 64 KB chunks, on_bytes(read, total) after each."""
     read = 0
     while True:
@@ -240,7 +240,7 @@ def stream_into(url: str, path: str, on_bytes=None, ceiling: int = 0) -> int:
             if on_bytes is not None:
                 on_bytes(read, total)
 
-        read = _drain(resp, fh.write, counted, total)
+        read = _copy_body(resp, fh.write, counted, total)
     if total and read != total:    # a short body ends the loop normally ▸r/matx-source-quirks
         raise ShortDownload(url, read, total)
     return read
@@ -255,7 +255,7 @@ def ranged_reader(url: str):
                 data = resp.read()
             else:
                 chunks = []
-                _drain(resp, chunks.append, on_bytes, want)
+                _copy_body(resp, chunks.append, on_bytes, want)
                 data = b"".join(chunks)
         if len(data) != want:    # a host that ignores Range returns the whole object
             raise ShortDownload(url, len(data), want)

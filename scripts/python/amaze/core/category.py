@@ -161,12 +161,12 @@ class Categories(QtCore.QAbstractListModel):
         self.beginResetModel()
         try:
             self._categories[:] = names
-            self._told_views()
+            self._mark_rows_shown()
         finally:
             self.endResetModel()
         return True
 
-    def _told_views(self) -> None:
+    def _mark_rows_shown(self) -> None:
         """Record that the views show these rows: every local change calls this, so only a merge resets."""
         self._shown = list(self._categories)
 
@@ -181,7 +181,7 @@ class Categories(QtCore.QAbstractListModel):
         finally:
             self.endRemoveRows()
         self._removed.add(cat)
-        self._told_views()
+        self._mark_rows_shown()
         self._recolor(cat, "")
         self.save()
 
@@ -204,7 +204,7 @@ class Categories(QtCore.QAbstractListModel):
         if new != old:
             self._removed.add(old)
             self._removed.discard(new)
-        self._told_views()
+        self._mark_rows_shown()
         self._recolor(old, new)
         self.save()
 
@@ -228,7 +228,7 @@ class Categories(QtCore.QAbstractListModel):
                 self._categories[:] = cleaned
             finally:
                 self.endResetModel()
-            self._told_views()
+            self._mark_rows_shown()
             self.save()
         return changed
 
@@ -248,7 +248,7 @@ class Categories(QtCore.QAbstractListModel):
             self._categories.insert(to_row, self._categories.pop(from_row))  # IN PLACE, never a rebuild
         finally:
             self.endMoveRows()
-        self._told_views()
+        self._mark_rows_shown()
         return True
 
     def sort_categories(self) -> None:
@@ -275,7 +275,7 @@ class Categories(QtCore.QAbstractListModel):
             self._categories[:] = list(snapshot)
         finally:
             self.endResetModel()
-        self._told_views()
+        self._mark_rows_shown()
 
     def _recolor(self, old_name: str, new_name: str) -> None:
         """Keep a colour through a rename, or drop it on a removal (empty new_name)."""
@@ -307,7 +307,7 @@ class Categories(QtCore.QAbstractListModel):
         finally:
             self.endInsertRows()
         self._removed.discard(cat)
-        self._told_views()
+        self._mark_rows_shown()
         self.save()
 
     def colors(self) -> dict:

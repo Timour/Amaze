@@ -22,7 +22,7 @@ _DATA_SPACES = ("raw", "linear", "lin_rec709", "scene_linear")    # spaces Karma
 _FLOAT_MIN = 1.17549435e-38    # float32's smallest normal value; MaterialX rejects any smaller value except 0
 
 
-class Unread(ValueError):
+class Untranslated(ValueError):
     """A shader input driven by a node this module does not translate."""
 
 
@@ -36,10 +36,10 @@ def _driver(inp):
 
 
 def _driving_prim(inp, owner):
-    """The prim wired into `inp`; an unwired `inp` raises Unread, as this module cannot translate it."""
+    """The prim wired into `inp`; an unwired `inp` raises Untranslated, as it cannot be translated."""
     driven = _driver(inp)
     if driven is None:
-        raise Unread("%s.%s is not wired" % (owner.GetName(), inp.GetBaseName()))
+        raise Untranslated("%s.%s is not wired" % (owner.GetName(), inp.GetBaseName()))
     return driven[0]
 
 
@@ -55,7 +55,7 @@ def _value(inp, material):
         return inp.Get(), inp.GetAttr()
     prim, name = driven
     if prim != material.GetPrim():
-        raise Unread("%s is driven by %s" % (inp.GetBaseName(), prim.GetName()))
+        raise Untranslated("%s is driven by %s" % (inp.GetBaseName(), prim.GetName()))
     source = material.GetInput(name)
     return source.Get(), source.GetAttr()
 
@@ -80,7 +80,7 @@ def _image(prim, material):
     driven = _driver(texcoord) if texcoord else None
     if driven is not None and _input_value(
             UsdShade.Shader(driven[0]), "index", material, 0) != 0:
-        raise Unread("%s reads a second UV set" % prim.GetName())
+        raise Untranslated("%s reads a second UV set" % prim.GetName())
     return {
         "file": path,
         "colorspace": str(attr.GetColorSpace() or ""),
@@ -96,30 +96,30 @@ def _flipped_image(prim, material):
     if _shader_id(prim).startswith(IMAGE):
         return prim, (False, False, False)
     if _shader_id(prim) != COMBINE:
-        raise Unread("a normal map is fed by %s" % prim.GetName())
+        raise Untranslated("a normal map is fed by %s" % prim.GetName())
     combine = UsdShade.Shader(prim)
     images, flips = set(), []
     for name, axis in AXES:
         choice = _driver(combine.GetInput(name))
         if choice is None or not _shader_id(choice[0]).startswith(IF_EQUAL):
-            raise Unread("%s.%s is not a flip selector" % (prim.GetName(), name))
+            raise Untranslated("%s.%s is not a flip selector" % (prim.GetName(), name))
         pick = UsdShade.Shader(choice[0])
         same = (bool(_input_value(pick, "value1", material))
                 == bool(_input_value(pick, "value2", material)))
         picked = _driver(pick.GetInput("in1" if same else "in2"))    # ifequal outputs in1 when equal
         if picked is None or _shader_id(picked[0]) != SEPARATE or picked[1] != axis:
-            raise Unread("%s does not pick channel %s" % (choice[0].GetName(), axis))
+            raise Untranslated("%s does not pick channel %s" % (choice[0].GetName(), axis))
         source = _driving_prim(UsdShade.Shader(picked[0]).GetInput("in"), picked[0])
         inverted = _shader_id(source) == INVERT
         if inverted:
             amount = _input_value(UsdShade.Shader(source), "amount", material)
             if amount is not None and tuple(amount) != (1.0, 1.0, 1.0):
-                raise Unread("%s inverts by %s" % (source.GetName(), tuple(amount)))
+                raise Untranslated("%s inverts by %s" % (source.GetName(), tuple(amount)))
             source = _driving_prim(UsdShade.Shader(source).GetInput("in"), source)
         images.add(source.GetPath())
         flips.append(inverted)
     if len(images) != 1:
-        raise Unread("%s mixes channels of %d images" % (prim.GetName(), len(images)))
+        raise Untranslated("%s mixes channels of %d images" % (prim.GetName(), len(images)))
     return prim.GetStage().GetPrimAtPath(images.pop()), tuple(flips)
 
 
@@ -171,8 +171,8 @@ def material_spec(usda_path: str) -> dict:
                 if normal is not None:
                     spec["normals"][name] = normal
             else:
-                raise Unread("%s is driven by %s" % (name, kind))
-        except Unread as why:
+                raise Untranslated("%s is driven by %s" % (name, kind))
+        except Untranslated as why:
             spec["unread"].append(str(why))
     return spec
 

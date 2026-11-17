@@ -472,7 +472,7 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
         panel.section_tabs.setChecked("material")
         QtWidgets.QApplication.processEvents()
         context = panel.active_section()
-        with mock.patch.object(type(context), "_sources_held",
+        with mock.patch.object(type(context), "_convertible_renderers",
                                lambda _self, _indexes: frozenset(held)), \
                 plugins_loaded("Redshift", "Octane"):
             indexes = context.grid_selection()
@@ -607,7 +607,7 @@ class EveryRendererRowWEARSTheFilterMenusIcon(unittest.TestCase):
             setattr(panel.prefs, flag, True)    # a property with no deleter: mock cannot undo it
         stack.enter_context(plugins_loaded("Redshift", "Octane"))
         stack.enter_context(mock.patch.object(
-            sections.MaterialSection, "_sources_held",
+            sections.MaterialSection, "_convertible_renderers",
             lambda _self, _indexes: frozenset({"Karma"})))
         panel.section_tabs.setChecked("material")
         QtWidgets.QApplication.processEvents()

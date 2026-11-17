@@ -284,7 +284,7 @@ def _reap_or_abandon(process) -> bool:
     if process.waitForFinished(500):
         return True
 
-    def _gone(*_args, process=process):
+    def _release_abandoned(*_args, process=process):
         try:
             _ABANDONED.remove(process)
         except ValueError:
@@ -295,11 +295,11 @@ def _reap_or_abandon(process) -> bool:
     app = QtCore.QCoreApplication.instance()
     if app is not None:    # a finished worker runs no event loop, so `finished` would never arrive there
         process.moveToThread(app.thread())
-    process.finished.connect(_gone)
-    debug.event("convert", "helper abandoned to the graveyard",
+    process.finished.connect(_release_abandoned)
+    debug.event("convert", "helper kept in _ABANDONED until it exits",
                 program=process.program(), args=process.arguments())
     if process.state() == QtCore.QProcess.ProcessState.NotRunning:    # it may have exited between the failed wait and the connect, so `finished` will not come
-        _gone()
+        _release_abandoned()
     return False
 
 
@@ -487,7 +487,7 @@ def _uniform(image: QtGui.QImage) -> bool:
     return True
 
 
-def _judge(image: QtGui.QImage) -> str:
+def _rejection_reason(image: QtGui.QImage) -> str:
     """Is an adapter's output acceptable? Empty when it is, else why not. ▸p/conversion-shape"""
     if image is None or image.isNull():
         return "null image"
@@ -540,9 +540,9 @@ def _run_adapters(adapters, source: str, ctx: _Ctx, need: str,
             if step.image is None:
                 ctx.tried(name, "output unreadable: %s" % (step.reason,))
                 continue
-            verdict = _judge(step.image)
-            if verdict:
-                ctx.tried(name, verdict)
+            rejected = _rejection_reason(step.image)
+            if rejected:
+                ctx.tried(name, rejected)
                 if ctx.fallback is None:
                     ctx.fallback = step.image    # kept, not returned ▸p/conversion-shape
                     ctx.fallback_via = name
@@ -593,23 +593,23 @@ def convert_image(path: str, size: int, cancelled=None, hfs=None) -> Conversion:
 
     step = _fitted(path, ctx)
     if step.image is not None:
-        return _answered(ctx, step)
+        return _converted(ctx, step)
     if step.need != FORMAT:
-        return _unanswered(ctx, step.need, step.reason)    # FIT already tried every converter inside _fitted
+        return _not_converted(ctx, step.need, step.reason)    # FIT already tried every converter inside _fitted
 
     declared_mb = _decoded_megabytes(_exr_size(path))    # Qt declares no size for an EXR; its header does
     if declared_mb > MAX_RESCUE_MEGABYTES:
         debug.event("convert", "image too large to convert - declined",
                     path=path, declared_mb=round(declared_mb),
                     ceiling_mb=MAX_RESCUE_MEGABYTES, why="the EXR header's data window")
-        return _unanswered(ctx, FORMAT, REASON_TOO_LARGE)
+        return _not_converted(ctx, FORMAT, REASON_TOO_LARGE)
     step = _run_adapters(_FORMAT_ADAPTERS, path, ctx, FORMAT, _fitted)
     if step.image is not None:
-        return _answered(ctx, step)
-    return _unanswered(ctx, FORMAT, step.reason)
+        return _converted(ctx, step)
+    return _not_converted(ctx, FORMAT, step.reason)
 
 
-def _answered(ctx: _Ctx, step: _Step) -> Conversion:
+def _converted(ctx: _Ctx, step: _Step) -> Conversion:
     """Log which converter succeeded and why the first try failed, if any. ▸p/conversion-shape"""
     if ctx.attempts:
         debug.event("convert", "converted by a fallback",
@@ -619,7 +619,7 @@ def _answered(ctx: _Ctx, step: _Step) -> Conversion:
                       attempts=ctx.attempts)
 
 
-def _unanswered(ctx: _Ctx, need: str, reason: str) -> Conversion:
+def _not_converted(ctx: _Ctx, need: str, reason: str) -> Conversion:
     """No adapter produced a picture; a kept uniform image is returned here. ▸p/conversion-shape"""
     if reason in (REASON_UNREADABLE, REASON_STALLED) and ctx.fallback is not None:
         debug.event("convert", "converted, but every pixel is identical",

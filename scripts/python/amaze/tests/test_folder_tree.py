@@ -456,7 +456,7 @@ class TheSceneFolderIsOneMoreTopRow(unittest.TestCase):
         self.assertEqual(self.roots[0], model.registered_at(2))
         self.assertEqual("", model.registered_at(len(self.roots) + 2))
         self.assertFalse(model.remove_folder(1), "the scene row was removed")
-        self.assertFalse(model.set_aside_folder(1), "the scene row was set aside")
+        self.assertFalse(model.unregister_folder(1), "the scene row was removed")
         self.assertEqual(-1, model.relocate_folder(1, self.roots[1]), "the scene row relocated")
         self.assertFalse(model.move_folder(1, 2), "the scene row moved")
         self.assertFalse(model.move_folder(2, 1), "a location moved above the scene row")

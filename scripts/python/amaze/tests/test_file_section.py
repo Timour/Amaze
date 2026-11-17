@@ -517,7 +517,7 @@ class CreationRuleTest(unittest.TestCase):
         if str(getattr(asset, "renderer", "")).lower() != "vex":
             self.skipTest("the first snippet is not VEX")
         rule = sections_mod.SECTION_INDEX["code"].DROP
-        promised = dragdrop_widgets.GridGestureMixin._ghost_type(    # the index is passed in, as the live drag passes it
+        promised = dragdrop_widgets.GridGestureMixin._preview_node_type(    # the index is passed in, as the live drag passes it
             self.panel, rule, "code", sop, index)
         self.assertTrue(self.panel.sections["code"].create_code_node_in(index, sop))
         made = [c for c in sop.children() if "wrangle" in c.type().name()]
@@ -525,7 +525,7 @@ class CreationRuleTest(unittest.TestCase):
                          "the drag preview showed a different node than the "
                          "drop created")
         self.assertEqual(
-            "", dragdrop_widgets.GridGestureMixin._ghost_type(
+            "", dragdrop_widgets.GridGestureMixin._preview_node_type(
                 self.panel, rule, "code", vop),
             "a network with no carrier still got a preview node type")
 
@@ -540,11 +540,11 @@ class CreationRuleTest(unittest.TestCase):
                     given_back.append(True)
 
         editor = _Editor()
-        dragengine._ghosted.append(editor)
+        dragengine._editors_with_overlay.append(editor)
         dragengine.end()
         self.assertTrue(given_back, "the overlay was never cleared")
-        self.assertEqual([], dragengine._ghosted,
-                         "`dragengine._ghosted` still lists an editor")
+        self.assertEqual([], dragengine._editors_with_overlay,
+                         "`dragengine._editors_with_overlay` still lists an editor")
 
     def test_the_editor_is_put_back_in_its_own_network(self):
         """An import moves an unpinned editor elsewhere, so its PWD is saved and restored."""
@@ -2277,7 +2277,7 @@ class RemovingANestedLocationTest(unittest.TestCase):
         notes.set_note(prefs, notes.note_key("file", spelled), [{"t": "text", "text": "kept"}])
         tile_icons.set_override(prefs, spelled, self.ICON, locations_mod.FILES)
 
-        self.assertTrue(locations_mod.rehome_covered(prefs, self.inner))
+        self.assertTrue(locations_mod.rekey_to_covering_location(prefs, self.inner))
 
         moved = ("loc:" + locations_mod.location_id(prefs, self.outer)
                  + "/tex/plate.txt")

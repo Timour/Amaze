@@ -34,7 +34,7 @@ FILES_FOLDER = "files"    # the Files section's: `files/<sha1 of the file's key>
 CODE_FOLDER = SECTION_FOLDERS[CODE]
 PACKAGE_FOLDER = "matX"    # a permanent store: the check does not enter it, the audit looks for scratch only
 COMMENT_FOLDER = "comments"    # `<section folder>/comments/`: the pictures pasted into its comments
-COMMENT_HOMES = dict(SECTION_FOLDERS, **{FILES: FILES_FOLDER})    # every database, and its folder
+DATABASE_FOLDERS = dict(SECTION_FOLDERS, **{FILES: FILES_FOLDER})    # every database, and its folder
 IMPORT_FOLDER = "import"    # where Package Import writes plain files: a File location, its contents the user's
 LEDGER = "versions.json"
 
@@ -184,11 +184,11 @@ def _folder(parts: list) -> bool:
     depth = len(parts)
     top = parts[0]
     if depth == 1:
-        return top in tuple(COMMENT_HOMES.values()) + (
+        return top in tuple(DATABASE_FOLDERS.values()) + (
             PACKAGE_FOLDER, IMPORT_FOLDER, BACKUP_FOLDER, TRASH_FOLDER)
     if top in (PACKAGE_FOLDER, TRASH_FOLDER):
         return True
-    if depth == 2 and parts[1] == COMMENT_FOLDER and top in COMMENT_HOMES.values():
+    if depth == 2 and parts[1] == COMMENT_FOLDER and top in DATABASE_FOLDERS.values():
         return True
     if (owns_assets(top) or top == CODE_FOLDER) and parts[1] == VERSIONS:
         return depth == 2 or (depth == 3 and parts[2].isalnum())
@@ -209,7 +209,7 @@ def _plain(parts: list):
         return _picture(name)
     if depth == 2 and top == FILES_FOLDER:
         return (FILE_CAPTURE, "") if _FILE_CAPTURE.match(name) else None
-    if depth == 3 and parts[1] == COMMENT_FOLDER and top in COMMENT_HOMES.values():
+    if depth == 3 and parts[1] == COMMENT_FOLDER and top in DATABASE_FOLDERS.values():
         return (COMMENT_IMAGE, "") if _COMMENT_IMAGE.match(name.lower()) else None
     if depth == 4 and parts[1] == VERSIONS and parts[2].isalnum():
         if top == CODE_FOLDER:

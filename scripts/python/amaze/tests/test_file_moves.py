@@ -493,7 +493,7 @@ class WhatAmazeKeepsFollowsTheFileTest(unittest.TestCase):
 
     def _moved(self):
         result = file_moves.move(file_moves.targets([self.plate], self.b))
-        file_moves.carry(self.prefs, result.moved)
+        file_moves.rekey_moved_files(self.prefs, result.moved)
         return captures.file_key(self.prefs, self.landed)
 
     def _kept(self, key):
@@ -583,7 +583,7 @@ class ThePicturesFollowTheFileTest(unittest.TestCase):
 
     def _move(self, sources, folder=None):
         result = file_moves.move(file_moves.targets(sources, folder or self.b))
-        file_moves.carry(self.prefs, result.moved)
+        file_moves.rekey_moved_files(self.prefs, result.moved)
         return result.moved
 
     def _on_disk(self, cache):
@@ -646,7 +646,7 @@ class ThePicturesFollowTheFileTest(unittest.TestCase):
         self.images.put(landed, _picture("#2040ff"))    # rendered again at the new path
         self.images.save()
         back = file_moves.move(file_moves.back(moved))
-        file_moves.carry(self.prefs, back.moved)
+        file_moves.rekey_moved_files(self.prefs, back.moved)
         png = self.images.valid_path(self.plate)
         self.assertIsNotNone(png, "the file moved back without a thumbnail")
         self.assertEqual("#2040ff", QtGui.QImage(png).pixelColor(1, 1).name(),
@@ -769,7 +769,7 @@ class TheFileTabMovesWhatLandsOnAFolderTest(unittest.TestCase):
         skipped = [(os.path.join(self.a, n), os.path.join(self.b, n)) for n in names]
         self.assertEqual(
             [messages.MOVE_TAKEN_MANY % ("1.exr, 2.exr, 3.exr and 2 more", "b")],
-            self.section._taken_lines(skipped))
+            self.section._name_in_use_lines(skipped))
 
     def test_hovering_a_subfolder_lights_that_row_only(self):
         """Rows are numbered per parent in a tree, so the highlight stores the index, not a row."""

@@ -306,7 +306,7 @@ def needs_conversion(library_dir: str) -> bool:
 
 
 def _pictures_to_move(library_dir: str) -> bool:
-    """Whether `rehome_pictures` has work left: an old file capture, or an old comment picture."""
+    """Whether `move_old_pictures` has work left: an old file capture, or an old comment picture."""
     for name in _listing(os.path.join(library_dir, OLD_CAPTURES)):
         match = OLD_FILE_CAPTURE.match(name)    # one whose new name is taken stays: Check reports it
         if match and not os.path.lexists(os.path.join(
@@ -451,9 +451,9 @@ def _convert_asset(library_dir: str, asset_id: str, section: str, rows: dict,
 
 def _old_files(library_dir: str, asset_id: str, section: str) -> list:
     """Every format 3 file of one asset, wherever it lies."""
-    home = material.section_folder(library_dir, section)
+    section_dir = material.section_folder(library_dir, section)
     old_dir = os.path.join(library_dir, OLD_FOLDER)
-    candidates = [os.path.join(folder, asset_id + suffix) for folder in (old_dir, home)
+    candidates = [os.path.join(folder, asset_id + suffix) for folder in (old_dir, section_dir)
                   for suffix in OLD_SUFFIXES]
     candidates += [os.path.join(old_dir, asset_id + suffix) for suffix in (".mat", "_cop.mat")]
     candidates += [os.path.join(library_dir, OLD_PICTURES, asset_id + ".png"),
@@ -467,15 +467,15 @@ def _convert_one(library_dir: str, asset_id: str, section: str, rows: dict,
     """`_convert_asset`'s work; every new file it writes is listed in `created`."""
     old_files = _old_files(library_dir, asset_id, section)
     old_dir = os.path.join(library_dir, OLD_FOLDER)
-    home = material.section_folder(library_dir, section)
+    section_dir = material.section_folder(library_dir, section)
     old = {suffix: path for suffix in OLD_SUFFIXES
            for path in (os.path.join(old_dir, asset_id + suffix),
-                        os.path.join(home, asset_id + suffix)) if os.path.lexists(path)}
+                        os.path.join(section_dir, asset_id + suffix)) if os.path.lexists(path)}
     moves = []    # (source, target, keep the target as it is because it is newer)
     for suffix in (".mat", "_cop.mat"):
         source = os.path.join(old_dir, asset_id + suffix)
         if os.path.lexists(source):
-            target = os.path.join(home, asset_id + suffix)
+            target = os.path.join(section_dir, asset_id + suffix)
             moves.append((source, target, os.path.lexists(target)))
     render = os.path.join(library_dir, OLD_PICTURES, asset_id + ".png")
     capture = os.path.join(library_dir, OLD_CAPTURES, asset_id + ".png")
@@ -483,13 +483,13 @@ def _convert_one(library_dir: str, asset_id: str, section: str, rows: dict,
     render, capture = (render if os.path.lexists(render) else "",
                        capture if os.path.lexists(capture) else "")
     shown = _shown_picture(faces, asset_id, section, render, capture)
-    picture = os.path.join(home, asset_id + ".png")
+    picture = os.path.join(section_dir, asset_id + ".png")
     pictures = [path for path in (render, capture) if path]
     if os.path.lexists(icon):
         pictures.append(icon)
     if section in library_files.ASSET_SECTIONS and not any(
             target for _s, target, _n in moves if target.endswith(asset_id + ".mat")) \
-            and not os.path.lexists(os.path.join(home, asset_id + ".mat")):
+            and not os.path.lexists(os.path.join(section_dir, asset_id + ".mat")):
         return _kept(asset_id, "its .mat is missing", counts), old_files
     for source, target, newer in moves:
         if not newer:
@@ -560,8 +560,8 @@ def _classics(library_dir: str, rows: dict) -> dict:
 
 def _new_files(library_dir: str, asset_id: str, section: str) -> list:
     """The 2.0 files of one asset that are there."""
-    home = material.section_folder(library_dir, section)
-    return [path for path in (os.path.join(home, asset_id + suffix)
+    section_dir = material.section_folder(library_dir, section)
+    return [path for path in (os.path.join(section_dir, asset_id + suffix)
                               for suffix in (".mat", "_cop.mat", ".json", ".png"))
             if os.path.lexists(path)]
 
@@ -748,7 +748,7 @@ def _convert(library_dir: str, confirm, progress, user: str, machine_stars, show
         return Outcome(CANCELLED)
     classics = _classics(library_dir, rows)
     rebuilt = set()
-    doomed = {}    # id -> SetAside: classic Materials whose renderer is not loaded, sent to the trash
+    to_trash = {}    # id -> SetAside: classic Materials whose renderer is not loaded, sent to the trash
     for renderer in renderers.ALL:
         ids = [asset_id for asset_id, found in classics.items() if found is renderer]
         if not ids or classic is None or classic.loaded(renderer):
@@ -757,7 +757,7 @@ def _convert(library_dir: str, confirm, progress, user: str, machine_stars, show
             debug.event("convert", "conversion declined - a renderer is not loaded",
                         renderer=renderer.key)
             return Outcome(CANCELLED)
-        doomed.update({asset_id: None for asset_id in ids})
+        to_trash.update({asset_id: None for asset_id in ids})
     old_trash = old_trash_of(library_dir)
     faces = _stored_faces(library_dir)
     counts = {"converted": 0, "deleted": 0, "kept": 0, "left": 0}
@@ -769,7 +769,7 @@ def _convert(library_dir: str, confirm, progress, user: str, machine_stars, show
         if progress is not None:    # display only: the user cannot stop a conversion partway
             progress(done, len(units))
         if kind == "versions" and os.path.basename(item[0]) in classics:
-            held = doomed.get(os.path.basename(item[0]))
+            held = to_trash.get(os.path.basename(item[0]))
             if held is not None:    # to the trash with its asset
                 held.files.extend(_files_under(item[0]))
             elif os.path.basename(item[0]) in rebuilt:    # archives no 2.0 Amaze can load
@@ -790,8 +790,8 @@ def _convert(library_dir: str, confirm, progress, user: str, machine_stars, show
             counts["left"] += 1    # a picture or stamp with no asset: Check Library reports it
             continue
         row = rows.get(owner, {}).get(item)
-        if item in doomed:
-            doomed[item] = SetAside(item, owner, row, sorted(set(
+        if item in to_trash:
+            to_trash[item] = SetAside(item, owner, row, sorted(set(
                 _old_files(library_dir, item, owner) + _new_files(library_dir, item, owner))))
             continue
         ok, old_files = _convert_asset(library_dir, item, owner, rows, faces, counts)
@@ -802,7 +802,7 @@ def _convert(library_dir: str, confirm, progress, user: str, machine_stars, show
                 ok, old_files = False, _new_files(library_dir, item, owner)
         if not ok:
             set_aside.append(SetAside(item, owner, row, old_files))
-    trashed = [one for one in doomed.values() if one is not None]
+    trashed = [one for one in to_trash.values() if one is not None]
     if trashed and not trash_set_aside(library_dir, trashed):
         set_aside.extend(trashed)    # still in the folder: named in the result with the others
         trashed = []
@@ -833,7 +833,7 @@ def _convert(library_dir: str, confirm, progress, user: str, machine_stars, show
             debug.event("convert", "the new databases did not read back - the old files stay")
             return Outcome(BLOCKED, "the new databases did not read back as they were written.")
     counts["deleted"] += _remove_old_root_files(library_dir, user)
-    rehome_pictures(library_dir, user)    # an OSError stops the run: the next one moves them
+    move_old_pictures(library_dir, user)    # an OSError stops the run: the next one moves them
     debug.event("convert", "library conversion", set_aside=len(set_aside), **counts)
     return Outcome(DONE, set_aside=set_aside, counts=counts, old_trash=old_trash)
 
@@ -1029,8 +1029,8 @@ def build_databases(library_dir: str, set_aside=(), user: str = "", machine_star
         owner, bare = _owner_and_key(key, user)
         if not owner or not isinstance(record, dict) or not record:
             continue
-        home = bare if bare.startswith(LOC) else LOC + paths.id_for(bare)
-        files["locations"].setdefault(owner, {})[paths.file_key(home)] = _show_ticks(
+        location_key = bare if bare.startswith(LOC) else LOC + paths.id_for(bare)
+        files["locations"].setdefault(owner, {})[paths.file_key(location_key)] = _show_ticks(
             dict(record), show_unknown)
     for key, page in _old_table(library_dir, "notes.json").items():
         items = _first_shape(page)
@@ -1138,7 +1138,7 @@ def _remove_old_root_files(library_dir: str, user: str) -> int:
     return len(gone)
 
 
-def rehome_pictures(library_dir: str, user: str = "") -> int:
+def move_old_pictures(library_dir: str, user: str = "") -> int:
     """File captures into `files/`, comment pictures into their section, as one change; how many."""
     held = guard.Guard(library_dir)
     change = held.change(user)
@@ -1152,7 +1152,7 @@ def rehome_pictures(library_dir: str, user: str = "") -> int:
     pictures = set(_listing(os.path.join(library_dir, OLD_COMMENT_PICTURES)))
     used = set()
     prefix = OLD_COMMENT_PICTURES + "/"
-    for database in library_files.COMMENT_HOMES:
+    for database in library_files.DATABASE_FOLDERS:
         reading = held.read(database)
         if reading.verdict != guard.FINE:
             continue
@@ -1180,8 +1180,8 @@ def rehome_pictures(library_dir: str, user: str = "") -> int:
     for name in _listing(os.path.join(library_dir, OLD_PICTURES)):
         if name.endswith(".lock"):    # lock files an old render left beside a deleted picture
             _remove([os.path.join(library_dir, OLD_PICTURES, name)])
-    for home in (library_files.SECTION_FOLDERS[name] for name in library_files.LISTS):
-        root = os.path.join(library_dir, home, library_files.VERSIONS)
+    for section_dir in (library_files.SECTION_FOLDERS[name] for name in library_files.LISTS):
+        root = os.path.join(library_dir, section_dir, library_files.VERSIONS)
         for asset_id in _listing(root):    # the copies the old engine kept beside a version ledger
             _remove([os.path.join(root, asset_id, name)
                      for name in _listing(os.path.join(root, asset_id))

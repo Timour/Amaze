@@ -406,7 +406,7 @@ class TypingCostsOnePassNotOnePerKeystroke(unittest.TestCase):
         panel.cb_favsonly.setChecked(True)
         self.addCleanup(panel.cb_favsonly.setChecked, False)
         self.addCleanup(lambda: panel.filter_actions["All"].trigger())
-        self.addCleanup(panel._stand_on_all_category)
+        self.addCleanup(panel._select_all_category)
         proxy = panel.material_sorted_model
         self.assertEqual(4, len(proxy._filters), "premise: a filter is not set")
         panel._on_tab_toggled("code", True)

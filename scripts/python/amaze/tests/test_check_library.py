@@ -112,7 +112,7 @@ class TheFixesActThroughTheGuardTest(_Library):
         offers = repair.offered_copies(findings)
         self.assertTrue(offers, "the backup of the two materials is not offered")
         filename, backup, _snap, _now = offers[0]
-        done = repair.put_back(findings, filename, backup, guard_session=False)
+        done = repair.restore_backup(findings, filename, backup, guard_session=False)
         self.assertEqual({"AAA1", "AAA2"}, set(_read(self.dir, MATERIALS)["assets"]))
         self.assertTrue(done["undo"].endswith(guard.UNDO_TAIL), "nothing kept to undo")
 
@@ -239,9 +239,9 @@ class TheFolderDecidesTheSectionTest(_Library):
     def test_a_rebuild_takes_only_the_metadata_in_its_own_folder(self):
         self.asset("NODE3", {"id": "NODE3", "name": "Rig", "renderer": "Karma"}, self.nodes)
         self.asset("NEW4", {"id": "NEW4", "name": "Moss", "renderer": "sop"})
-        built = repair.rebuild_from_stamps(self.dir, MATERIALS)
+        built = repair.rebuild_from_metadata(self.dir, MATERIALS)
         self.assertEqual({"AAA1", "AAA2", "NEW4"}, set(built["assets"]))
-        self.assertEqual({"NODE3"}, set(repair.rebuild_from_stamps(self.dir, NODES)["assets"]))
+        self.assertEqual({"NODE3"}, set(repair.rebuild_from_metadata(self.dir, NODES)["assets"]))
 
 
 def _make(path: str, data: bytes = b"x", age_s: float = 0) -> str:
@@ -575,7 +575,7 @@ class TheThreeLightsTest(_Library):
         self.assertFalse(found["fixable"])
 
     def test_references_are_not_judged_without_the_files_section(self):
-        self.assertEqual((library_check.UNJUDGED, None),
+        self.assertEqual((library_check.UNCHECKED, None),
                          self.lights()["lights"][library_check.REFS])
 
     def test_a_corrupt_database_is_one_error_and_leaves_the_files_unjudged(self):
@@ -583,7 +583,7 @@ class TheThreeLightsTest(_Library):
         self.asset("ORPHAN1")
         found = self.lights()
         self.assertEqual((library_check.FOUND, 1), found["lights"][library_check.ERRORS])
-        self.assertEqual((library_check.UNJUDGED, None), found["lights"][library_check.FILES])
+        self.assertEqual((library_check.UNCHECKED, None), found["lights"][library_check.FILES])
         self.assertEqual("The Materials database is corrupt.", found["info"])
         self.assertEqual(["The Materials database is corrupt."], found["lines"])
         self.assertTrue(found["fixable"], "a rebuild from the assets' files is not offered")
@@ -607,7 +607,7 @@ class TheThreeLightsTest(_Library):
             findings = self.survey()
         found = self.lights(findings)
         for part in library_check.PARTS:
-            self.assertEqual((library_check.UNJUDGED, None), found["lights"][part], part)
+            self.assertEqual((library_check.UNCHECKED, None), found["lights"][part], part)
         self.assertEqual("The Library database is in use.", found["info"])
         self.assertEqual([], found["lines"])
         self.assertFalse(found["fixable"])
@@ -623,7 +623,7 @@ class TheThreeLightsTest(_Library):
         os.chmod(self.materials, 0)
         self.addCleanup(os.chmod, self.materials, 0o755)
         found = self.lights()
-        self.assertEqual((library_check.UNJUDGED, None), found["lights"][library_check.FILES])
+        self.assertEqual((library_check.UNCHECKED, None), found["lights"][library_check.FILES])
         self.assertEqual("The materials folder cannot be read.", found["info"])
         self.assertFalse(found["fixable"])
 
@@ -702,7 +702,7 @@ class TheThreeLightsTest(_Library):
         with mock.patch.object(repair.hostos, "volume_unreachable",
                                lambda path: os.path.normpath(path) == os.path.normpath(away)):
             findings = repair.survey(prefs)
-        self.assertEqual((library_check.UNJUDGED, None),
+        self.assertEqual((library_check.UNCHECKED, None),
                          library_check.lights(findings)[library_check.REFS])
 
 

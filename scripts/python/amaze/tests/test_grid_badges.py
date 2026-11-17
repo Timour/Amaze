@@ -197,12 +197,12 @@ class TheCommentBadgeIsAButton(unittest.TestCase):
 
     def test_a_commentless_tile_shows_the_outline_badge_like_the_heart(self):
         row = next(b for b in delegates.BADGES if b.name == "comment")
-        self.assertEqual("badge_comment", row.art)
+        self.assertEqual("badge_comment", row.svg)
         self.assertFalse(row.dims, "the filled bubble is not drawn as its art is")
-        self.assertFalse(row.hover_art, "the filled bubble has a second art for hover")
-        self.assertEqual("badge_comment_off", row.off_art,
+        self.assertFalse(row.hover_svg, "the filled bubble has a second art for hover")
+        self.assertEqual("badge_comment_off", row.off_svg,
                          "a tile with no comments shows no badge")
-        self.assertEqual("badge_comment_off_hover", row.off_hover_art,
+        self.assertEqual("badge_comment_off_hover", row.off_hover_svg,
                          "the outline badge does not colour under the pointer")
 
 
@@ -220,7 +220,7 @@ class TheCommentBadgeOpensThePane(unittest.TestCase):
         panel._on_tab_toggled("material", True)
         index = panel.material_sorted_model.index(0, 0)
         with mock.patch.object(panel.btn_notes, "click") as click:
-            panel._badge_verb("menu_comments")(index)
+            panel._badge_click_handler("menu_comments")(index)
         self.assertEqual(1, click.call_count, "the badge runs code of its own")
 
     def test_the_badge_opens_and_closes_the_pane(self):
@@ -228,9 +228,9 @@ class TheCommentBadgeOpensThePane(unittest.TestCase):
         panel._on_tab_toggled("material", True)
         index = panel.material_sorted_model.index(0, 0)
         panel.btn_notes.setChecked(False)
-        panel._badge_verb("menu_comments")(index)
+        panel._badge_click_handler("menu_comments")(index)
         self.assertTrue(panel.btn_notes.isChecked(), "the badge click did not open the pane")
-        panel._badge_verb("menu_comments")(index)
+        panel._badge_click_handler("menu_comments")(index)
         self.assertFalse(panel.btn_notes.isChecked(), "the badge click did not close the pane")
 
 

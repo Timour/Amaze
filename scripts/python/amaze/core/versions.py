@@ -105,7 +105,7 @@ def _ledger_bytes(ledger: dict) -> bytes:
     return json.dumps(ledger, indent=1).encode("utf-8")
 
 
-def _land(preferences, writes: dict, removals=(), why: str = "") -> bool:
+def _commit_files(preferences, writes: dict, removals=(), why: str = "") -> bool:
     """{path: bytes} written and `removals` removed as ONE commit via guard.py; whether it succeeded."""
     from amaze.core import library_db
     held = library_db.guard_of(preferences)
@@ -132,8 +132,9 @@ def _land(preferences, writes: dict, removals=(), why: str = "") -> bool:
 
 def _write_ledger(preferences, mat_id: str, ledger: dict,
                   section: Section = MATERIAL) -> bool:
-    return _land(preferences, {_ledger_path(preferences, mat_id, section): _ledger_bytes(ledger)},
-                 why="ledger")
+    return _commit_files(preferences,
+                         {_ledger_path(preferences, mat_id, section): _ledger_bytes(ledger)},
+                         why="ledger")
 
 
 def version_count(preferences, mat_id: str, section: Section = MATERIAL) -> int:
@@ -234,7 +235,7 @@ def _copy_set(preferences, sources: dict, targets: dict, kinds: tuple = _KINDS,
         source = sources.get(kind)
         present = source and os.path.exists(source)
         if required and not present:
-            debug.event("versions", "no %s to copy - refused" % kind, source=source)
+            debug.event("versions", "no %s to copy - copy stopped" % kind, source=source)
             return False
         if not present:
             if targets.get(kind) and os.path.exists(targets[kind]):
@@ -249,7 +250,7 @@ def _copy_set(preferences, sources: dict, targets: dict, kinds: tuple = _KINDS,
             return False
     if ledger is not None:
         writes[ledger[0]] = _ledger_bytes(ledger[1])
-    return _land(preferences, writes, vacated, why="version files")
+    return _commit_files(preferences, writes, vacated, why="version files")
 
 
 def create_version(preferences, mat_id: str, name: str = "",
@@ -257,7 +258,7 @@ def create_version(preferences, mat_id: str, name: str = "",
     """Archive the base, saved BEFORE the call, as a new active version; its number, 0 on failure."""
     ledger = read_ledger(preferences, mat_id, section)
     if ledger.get("unreadable"):
-        debug.event("versions", "create refused - ledger unreadable",
+        debug.event("versions", "version not created - ledger unreadable",
                     mat_id=str(mat_id))
         return 0
     number = max([int(v.get("n", 0)) for v in ledger["versions"]] or [0]) + 1
@@ -341,12 +342,12 @@ def switch_active(preferences, mat_id: str, number: int, section: Section = MATE
         return False
     row = _row_for(ledger, number)
     if row is None:
-        debug.event("versions", "switch refused - no such version",
+        debug.event("versions", "switch not made - no such version",
                     mat_id=str(mat_id), n=number)
         return False
     base = base_paths or _base_paths(preferences, mat_id, section)
     if not keep_base(preferences, mat_id, section, base, base_name):
-        debug.event("versions", "switch refused - the base holds "
+        debug.event("versions", "switch not made - the base holds "
                                 "unarchived content and could not "
                                 "be archived",
                     mat_id=str(mat_id), n=number)
@@ -357,7 +358,7 @@ def switch_active(preferences, mat_id: str, number: int, section: Section = MATE
         return False
     ledger["active"] = int(number)
     if not _restore(preferences, mat_id, int(number), base, section, ledger):
-        debug.event("versions", "switch refused - nothing changed", mat_id=str(mat_id),
+        debug.event("versions", "switch not made - nothing changed", mat_id=str(mat_id),
                     n=int(number))
         return False
     debug.event("versions", "active version switched",
@@ -413,7 +414,7 @@ def record_base(preferences, mat_id: str, kind: str, section: Section = MATERIAL
             return True
         with open(source, "rb") as handle:
             data = handle.read()
-        if not _land(preferences, {target: data}, why="active slot"):
+        if not _commit_files(preferences, {target: data}, why="active slot"):
             return False
     except (OSError, hostos.PathEscape) as exc:    # best-effort: it follows a save, never raises
         debug.event("versions", "base not recorded to the active slot",

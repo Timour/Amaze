@@ -306,16 +306,16 @@ class _AssetSidebarPaths(_HighlightCase):
         self.check("a reorder held across an event-loop turn", held_across_a_turn, grid="Other")
 
     def test_a_burst_of_resets_stands_again_once(self):
-        """However many resets arrive in one event-loop turn, `stand_again` runs once."""
+        """However many resets arrive in one event-loop turn, `reselect_sidebar_row` runs once."""
         section = self.panel.active_section()
         categories = section.stack().categories
         self.stand()
         order, stood = categories.order_snapshot(), []
-        with mock.patch.object(section, "stand_again", lambda: stood.append(1)):
+        with mock.patch.object(section, "reselect_sidebar_row", lambda: stood.append(1)):
             categories.restore_order(order[:1] + order[:0:-1])    # one reset
             categories.restore_order(order)    # and a second, in the same turn
             _pump()
-        self.assertEqual([1], stood, "two resets in one turn ran stand_again %d times" % len(stood))
+        self.assertEqual([1], stood, "two resets in one turn ran reselect_sidebar_row %d times" % len(stood))
 
 
 class MaterialSidebarTest(_AssetSidebarPaths, unittest.TestCase):

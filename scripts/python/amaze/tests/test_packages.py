@@ -304,7 +304,7 @@ class ExportMenuTest(unittest.TestCase):
         self.assertTrue(action.isEnabled(), "Export Category is off in a section with categories")
         for expected in (None, "Metal"):    # None is All: the whole section
             with self.subTest(standing=expected or "All"), \
-                    mock.patch.object(type(section), "standing_category", lambda _s, e=expected: e), \
+                    mock.patch.object(type(section), "selected_category", lambda _s, e=expected: e), \
                     mock.patch.object(type(section), "export_category") as export:
                 action.trigger()
                 self.assertEqual((expected,), export.call_args[0])

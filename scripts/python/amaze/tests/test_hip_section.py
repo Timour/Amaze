@@ -516,7 +516,7 @@ class RepaintDoesNotStatTheDiskTest(unittest.TestCase):
         self.assertTrue(thumbnails.engine.is_missing(key),
                         "the setup did not leave a remembered missing capture")
         _write_png(model.capture_path(0), _two_tone_png_bytes())
-        captures.announce(model.tile_key(0))
+        captures.signal_capture_saved(model.tile_key(0))
         self.assertFalse(thumbnails.engine.is_missing(key),
                          "the engine still reports missing after a capture was written")
         shown = _settled_decoration(model, 0)
@@ -647,12 +647,12 @@ class SlowCapturePromptTest(unittest.TestCase):
         def heard(key):
             landed.append(key)
 
-        captures.signals.landed.connect(heard)
-        self.addCleanup(captures.signals.landed.disconnect, heard)
+        captures.signals.capture_saved.connect(heard)
+        self.addCleanup(captures.signals.capture_saved.disconnect, heard)
         with self.assertRaises(scene_captures.CaptureRefused):
             scene_captures.capture_tile(tile_icons.thumbnail_path(
                 self.prefs, "abc", "materials.json"), "abc")
-        self.assertEqual([], landed, "a refused capture still emitted `landed`")
+        self.assertEqual([], landed, "a refused capture still emitted `capture_saved`")
 
 
 class TileCropTest(unittest.TestCase):
@@ -719,11 +719,11 @@ class TileCropTest(unittest.TestCase):
         self.assertEqual([False, False, False, False], crops(),
                          "a row with no capture crops its square picture")
         _write_png(model.capture_path(0), _two_tone_png_bytes())
-        captures.announce(model.tile_key(0))    # as a capture does: the cached missing state is cleared
+        captures.signal_capture_saved(model.tile_key(0))    # as a capture does: the cached missing state is cleared
         self.assertEqual([True, False, False, False], crops(),
                          "a scene showing its capture does not fill the tile")
         _write_png(model.capture_path(1), _two_tone_png_bytes())
-        captures.announce(model.tile_key(1))
+        captures.signal_capture_saved(model.tile_key(1))
         self.assertEqual([True, True, False, False], crops(),
                          "an image showing its capture does not fill the tile")
         model.tile_icon = lambda row: {"face": "generic"} if row == 0 else {}
@@ -885,8 +885,8 @@ class IconAssetsTest(unittest.TestCase):
         from amaze import amazetheme
         from amaze.helpers import ui_helpers
         from amaze.panel import delegates
-        arts = sorted({b.off_art for b in delegates.BADGES if b.off_art}
-                      | {b.art for b in delegates.BADGES if b.dims})
+        arts = sorted({b.off_svg for b in delegates.BADGES if b.off_svg}
+                      | {b.svg for b in delegates.BADGES if b.dims})
         self.assertEqual(["badge_comment_off", "badge_favourite_off", "badge_versions"], arts)
         backdrop = r'<path[^>]*?id="Rounded-Rectangle[^"]*"[^>]*?>'
         for art in arts:
@@ -914,8 +914,8 @@ class IconAssetsTest(unittest.TestCase):
         """On hover the background keeps the rest opacity and the icon gets its colour."""
         from amaze import amazetheme
         from amaze.panel import delegates
-        pairs = [(b.off_art, b.off_hover_art) for b in delegates.BADGES if b.off_hover_art]
-        pairs += [(b.art, b.hover_art) for b in delegates.BADGES if b.dims and b.hover_art]
+        pairs = [(b.off_svg, b.off_hover_svg) for b in delegates.BADGES if b.off_hover_svg]
+        pairs += [(b.svg, b.hover_svg) for b in delegates.BADGES if b.dims and b.hover_svg]
         self.assertEqual(3, len(pairs), "the three outline button badges do not all colour on hover")
         for rest, hover in pairs:
             with open(self._ui(hover + ".svg"), encoding="utf-8") as fh:
@@ -1182,7 +1182,7 @@ class CaptureRefreshesTheTileTest(unittest.TestCase):
     """A capture itself drops the engine's decoded copy, so the tile refreshes for every caller."""
 
     def test_the_whole_chain_repaints_the_right_row(self):
-        """End to end: emit -> _on_capture_landed -> the matching file_key's row dropped, repainted."""
+        """End to end: emit -> _on_capture_saved -> the matching file_key's row dropped, repainted."""
         tmp = _Tmp(self)
         scene = tmp.touch("one.hiplc")
         tmp.touch("two.hiplc")
@@ -1196,7 +1196,7 @@ class CaptureRefreshesTheTileTest(unittest.TestCase):
         model.dataChanged.connect(
             lambda tl, br, roles=None: painted.append(tl.row()))
 
-        captures.signals.landed.emit(model.tile_key(row))
+        captures.signals.capture_saved.emit(model.tile_key(row))
 
         self.assertEqual(
             [row], painted,
@@ -1212,12 +1212,12 @@ class CaptureRefreshesTheTileTest(unittest.TestCase):
         model.set_folder(tmp.dir)
         painted = []
         model.dataChanged.connect(lambda *a, **k: painted.append(1))
-        captures.signals.landed.emit("/elsewhere/other.hiplc")
+        captures.signals.capture_saved.emit("/elsewhere/other.hiplc")
         self.assertEqual([], painted,
                          "a capture elsewhere repainted this model")
 
     def test_the_capture_path_is_wired_to_the_models(self):
-        """Read from source: a capture is announced once written; both model classes listen."""
+        """Read from source: a capture is signalled once written; both model classes listen."""
         package = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
         def read(name):
@@ -1228,11 +1228,11 @@ class CaptureRefreshesTheTileTest(unittest.TestCase):
         start = code.find("def capture_tile")
         self.assertGreater(start, -1, "capture_tile is gone")
         body = code[start:code.find("\ndef ", start + 10)]
-        self.assertIn("captures.announce(", body, "a capture no longer announces itself")
-        self.assertGreater(body.find("captures.announce("), body.find("capture_viewport("),
-                           "the capture is announced BEFORE it is written")
+        self.assertIn("captures.signal_capture_saved(", body, "a capture no longer emits its signal")
+        self.assertGreater(body.find("captures.signal_capture_saved("), body.find("capture_viewport("),
+                           "the capture is signalled BEFORE it is written")
         for module in ("file_library.py", "library.py"):
-            self.assertIn("captures.signals.landed.connect(", read(module),
+            self.assertIn("captures.signals.capture_saved.connect(", read(module),
                           "%s does not listen for a capture" % module)
 
 
@@ -1721,7 +1721,7 @@ class NewerLibraryTest(unittest.TestCase):
         found = updater.Update(updater.NEWER, version="9.9", url="https://example.invalid/r.zip",
                                sentence="newer", library_version=self.newer)
         with mock.patch.object(updater, "check", return_value=found), \
-                mock.patch.object(update_dialog, "install_and_say") as install:
+                mock.patch.object(update_dialog, "install_and_report") as install:
             self.panel._offer_amaze_update()
         install.assert_called_once_with(found)
         self.assertEqual(1, len(asked), "a release reading this library asked Continue too")
@@ -1762,7 +1762,7 @@ class AssetCaptureTest(unittest.TestCase):
         thumbnails.engine.discard = dropped.append
         self.addCleanup(setattr, thumbnails.engine, "discard", original)
         self.model.dataChanged.connect(lambda tl, br, roles=None: painted.append(tl.row()))
-        captures.signals.landed.emit(self.model.tile_key(0))
+        captures.signals.capture_saved.emit(self.model.tile_key(0))
         self.assertEqual([0], painted, "the captured tile was not repainted")
         self.assertIn(self.model._thumb_key(0), dropped, "the old picture was kept")
 
@@ -1820,7 +1820,7 @@ class CaptureFromTheMenuTest(unittest.TestCase):
 
     def _refusals(self):
         said = []
-        _patch(self, self.panel.tile_capture, "report_refused", said.append)
+        _patch(self, self.panel.tile_capture, "show_capture_warning", said.append)
         return said
 
     def test_one_tile_in_any_section_can_be_captured(self):
@@ -1996,7 +1996,7 @@ class CheckLibraryConfirmsBeforeChangingTest(unittest.TestCase):
     """Source-derived: every action Check Library runs is confirmed first, Cancel on Return and Esc."""
 
     ACTIONS = ("repair.move_aside(", "repair.recover(",
-               "repair.put_back(", "repair.set_aside_folders(", "repair.drop_dead_stars(",
+               "repair.restore_backup(","repair.set_aside_folders(", "repair.drop_dead_stars(",
                "repair.rescue_uncategorised(")
     GATES = ("_confirmed(", "**_copy_buttons(")
 
@@ -2034,7 +2034,7 @@ class CheckLibraryConfirmsBeforeChangingTest(unittest.TestCase):
         confirm = code[code.find("def _confirmed("):code.find("\ndef ", code.find("def _confirmed("))]
         self.assertIn("default_choice=1", confirm)
         self.assertIn("close_choice=1", confirm)
-        buttons = code[code.find("def _copy_buttons("):code.find("\ndef _put_copy_back(")]
+        buttons = code[code.find("def _copy_buttons("):code.find("\ndef _restore_backup_copy(")]
         self.assertIn('"default_choice": len(buttons) - 1', buttons)
         self.assertIn('"close_choice": len(buttons) - 1', buttons)
 

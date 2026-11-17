@@ -21,7 +21,7 @@ class TileCapture:
         elif not indexes and getattr(context, "key", "") == "file":
             self.capture_and_report()    # "" = the scene the viewport is showing
         else:
-            self.report_refused(messages.CAPTURE_SELECT_ONE_TILE)
+            self.show_capture_warning(messages.CAPTURE_SELECT_ONE_TILE)
 
     def onto_tile(self, context, proxy_index) -> None:
         """The Scene View as one tile's picture, the tile then showing it. Never automatic ▸r/tile-captures"""
@@ -50,12 +50,12 @@ class TileCapture:
         try:
             capture()
         except scene_captures.CaptureRefused as exc:
-            debug.event("hip", "capture refused", file=label, reason=str(exc))
-            self.report_refused(str(exc))
+            debug.event("hip", "capture failed", file=label, reason=str(exc))
+            self.show_capture_warning(str(exc))
             return False
         return True
 
-    def report_refused(self, text: str) -> None:
+    def show_capture_warning(self, text: str) -> None:
         ui = getattr(hou, "ui", None)
         if ui is not None:
             ui.displayMessage(text, title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)

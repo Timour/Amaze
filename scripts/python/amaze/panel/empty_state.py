@@ -41,8 +41,8 @@ def verdict(panel) -> tuple:
     source = proxy.sourceModel() if hasattr(proxy, "sourceModel") else None
     total = source.rowCount() if source is not None else 0
     section = panel.active_section()
-    nothing_yet = section.nothing_yet(source) if section is not None else not total
-    if nothing_yet:
+    empty = section.shows_empty_state(source) if section is not None else not total
+    if empty:
         return (NOTHING_YET, "")
 
     search = ""

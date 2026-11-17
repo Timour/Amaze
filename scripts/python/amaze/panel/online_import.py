@@ -42,7 +42,7 @@ class OnlineImport:
             return
         total = len(records)
         failures, unlisted = [], []
-        held = {str(mat.mat_id) for mat in getattr(self.panel.material_model, "assets", ())}
+        before = {str(mat.mat_id) for mat in getattr(self.panel.material_model, "assets", ())}
         with self.download_operation(records) as progress_for:
             for i, rec in enumerate(records):
                 on_progress = progress_for(i, rec.title)
@@ -61,14 +61,14 @@ class OnlineImport:
                 elif isinstance(reason, library.ListNotSaved):
                     unlisted.append(str(reason))
         if self.panel.material_model is not None:
-            self.panel.render_landed(held)
+            self.panel.render_new_thumbnails(before)
         ui = getattr(hou, "ui", None)
         if failures and ui is not None:    # ONE dialog for the batch, never one per record
             ui.displayMessage(
                 messages.AMAZE_COULD_NOT % (len(failures), total),
                 details="\n".join(failures[:10]),
                 title=messages.TITLE_AMAZE, severity=hou.severityType.Warning)
-        library.say_unlisted(unlisted)    # the status line, last: nothing after it writes the line
+        library.report_unlisted(unlisted)    # the status line, last: nothing after it writes the line
 
     def import_material(self, record, on_progress=None,
                         renderer=renderers.HUB.key, render=True):

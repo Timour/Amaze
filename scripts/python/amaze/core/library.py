@@ -48,7 +48,7 @@ class ListNotSaved(str):
     __slots__ = ()
 
 
-def say_unlisted(names, updated: bool = False) -> None:
+def report_unlisted(names, updated: bool = False) -> None:
     """One status line for the rows a batch left unlisted: the next successful save lists them."""
     if not names:
         return
@@ -105,14 +105,14 @@ class AssetLibrary(grid_engine.GridEngine,
     def __init__(self, preferences: prefs.Prefs) -> None:
         super().__init__()
         self.preferences = preferences  # required, and shared with the panel ▸p/duplication-third-verb
-        self._forgotten = set()    # ids this model removed, dropped from the database at its save
+        self._removed_ids = set()    # ids this model removed, dropped from the database at its save
         self._assets = self._read_rows()
         self._colours_seen = self._colours()
         self._remember_content_state()
 
         self._thumb_rows = {}  # maps each loaded thumbnail's key back to the row to repaint
         thumbnails.signals.ready.connect(self._on_thumb_key_ready)  # through the relay, never the engine singleton, which a module reload replaces
-        captures.signals.landed.connect(self._on_capture_landed)    # from any panel or the shelf
+        captures.signals.capture_saved.connect(self._on_capture_saved)    # from any panel or the shelf
         self.rebuild_thumbs()
         self.order_rows()    # in the grid's order before any view has the rows
 
@@ -123,7 +123,7 @@ class AssetLibrary(grid_engine.GridEngine,
     def _read_rows(self) -> list:
         """One record per row in the database; an unreadable row is skipped."""
         found = []
-        self._served = library_db.key_of(self.preferences)    # the library these rows came from
+        self._rows_library_key = library_db.key_of(self.preferences)    # the library these rows came from
         for key, row in self._doc().table(ROWS).items():
             if not isinstance(row, dict):
                 continue
@@ -159,7 +159,7 @@ class AssetLibrary(grid_engine.GridEngine,
             return ""
         return tile_icons.thumbnail_path(self.preferences, mat_id, self.DB_FILENAME)
 
-    def _on_capture_landed(self, key) -> None:
+    def _on_capture_saved(self, key) -> None:
         """A capture was saved for `key`: refresh that tile's paths, drop its cached picture, repaint."""
         for row in range(self.rowCount()):
             if self.tile_key(row) == str(key):
@@ -170,7 +170,7 @@ class AssetLibrary(grid_engine.GridEngine,
         """Point this model at the library Preferences names, its rows read afresh."""
         self.beginResetModel()  # required: without it proxies and selection keep stale rows ▸r/model-contracts
         try:
-            self._forgotten = set()
+            self._removed_ids = set()
             self._assets = self._read_rows()
             self._colours_seen = self._colours()
             self._remember_content_state()  # a reload is a fresh read of the library, content included
@@ -245,13 +245,13 @@ class AssetLibrary(grid_engine.GridEngine,
 
     def _thumb_key(self, row: int, spec=None):
         """Shared-RAM-cache key for one row's picture; every input to the picture belongs in it."""
-        home = hostos.canonical_path_key(str(self.preferences.dir or ""))
+        library_key = hostos.canonical_path_key(str(self.preferences.dir or ""))
         if spec is None:
             spec = self.tile_icon(row)
         if not tile_icons.is_custom(spec):
-            return (home, self.DB_FILENAME, self._assets[row].mat_id,
+            return (library_key, self.DB_FILENAME, self._assets[row].mat_id,
                     "", "", "", 0)
-        return (home, self.DB_FILENAME, self._assets[row].mat_id,
+        return (library_key, self.DB_FILENAME, self._assets[row].mat_id,
                 spec["name"], spec["bg"], spec["ink"],
                 tile_icons.stroke_for(self.preferences))
 
@@ -405,11 +405,11 @@ class AssetLibrary(grid_engine.GridEngine,
         failed = len(rows) - len(valid)
         for row in valid:
             stored = held[str(self._assets[row].mat_id)]
-            if not self._tile_icon_landed(row, chosen[row], stored):
+            if not self._tile_icon_saved(row, chosen[row], stored):
                 failed += 1
         return failed
 
-    def _tile_icon_landed(self, row: int, spec, stored: bool) -> bool:
+    def _tile_icon_saved(self, row: int, spec, stored: bool) -> bool:
         """After the store write: refresh the tile; a custom icon is composed for display, no file."""
         self._add_thumb_paths(row, base_changed=False)
         return stored
@@ -453,7 +453,7 @@ class AssetLibrary(grid_engine.GridEngine,
         """Take one row out of the model, marked for removal at the next save; maps NOT rebuilt."""
         if not 0 <= row < len(self._assets):
             return False
-        self._forgotten.add(str(self._assets[row].mat_id))    # RECORD THE DELETE: a row only removed from the model stays saved
+        self._removed_ids.add(str(self._assets[row].mat_id))    # RECORD THE DELETE: a row only removed from the model stays saved
         self.beginRemoveRows(QtCore.QModelIndex(), row, row)  # del by INDEX: by value drops the first EQUAL one
         del self._assets[row]
         self.endRemoveRows()
@@ -532,16 +532,16 @@ class AssetLibrary(grid_engine.GridEngine,
         """Put every record in the database as this user's change, drop the removed rows; not saved."""
         for asset in self._assets:
             held.put(ROWS, str(asset.mat_id), as_stored(asset.get_as_dict()))
-        for key in self._forgotten:
+        for key in self._removed_ids:
             held.drop(ROWS, key)
-        self._forgotten = set()
+        self._removed_ids = set()
 
     def save(self) -> bool:
         """Stage the records in the database for the timer to save; False when it accepts no change."""
         if not library_db.accepts(self.preferences, self.DB_FILENAME):
             return False
-        if getattr(self, "_served", None) not in (None, library_db.key_of(self.preferences)):
-            debug.event("library", "save refused - the rows are another library's",
+        if getattr(self, "_rows_library_key", None) not in (None, library_db.key_of(self.preferences)):
+            debug.event("library", "save skipped - the rows are from another library",
                         store=self.DB_FILENAME, dir=str(self.preferences.dir))
             return False    # the folder changed without a switch: these rows are from another library
         held = self._doc()
@@ -555,8 +555,8 @@ class AssetLibrary(grid_engine.GridEngine,
         rows = {key: dict(stored(row), id=row.get("id", key))
                 for key, row in self._doc().table(ROWS).items() if isinstance(row, dict)}
         have = {str(asset.mat_id): asset for asset in self._assets}
-        adopted = [row for key, row in rows.items()
-                   if key not in have and key not in self._forgotten]
+        added = [row for key, row in rows.items()
+                   if key not in have and key not in self._removed_ids]
         gone = [{"id": key} for key in have if key not in rows]
         fields = []
         for key, asset in have.items():
@@ -565,15 +565,15 @@ class AssetLibrary(grid_engine.GridEngine,
             mine = as_stored(asset.get_as_dict())
             fields.extend((key, field, value) for field, value in as_stored(rows[key]).items()
                           if mine.get(field) != value)
-        self._adopt_rows(adopted)
-        self._adopt_fields(fields)
+        self._insert_added_rows(added)
+        self._apply_field_changes(fields)
         self._drop_rows(gone)
         colours = self._colours()
         recoloured = colours != self._colours_seen
         self._colours_seen = colours
         if recoloured:
             self.repaint_category_colours()
-        return bool(adopted or fields or gone or recoloured)
+        return bool(added or fields or gone or recoloured)
 
     def repaint_category_colours(self) -> None:
         """Repaint every tile's category band, for that role only: a colour never resizes a column."""
@@ -582,9 +582,9 @@ class AssetLibrary(grid_engine.GridEngine,
                 self.index(0, 0), self.index(self.rowCount() - 1, 0),
                 [self.CategoryColorRole])
 
-    def _adopt_fields(self, fields: list) -> None:
+    def _apply_field_changes(self, fields: list) -> None:
         """Apply other sessions' `(id, field, value)` changes to the records in place; notify views."""
-        if not isinstance(fields, list) or not fields:  # a list, by contract, like `_adopt_rows`
+        if not isinstance(fields, list) or not fields:  # a list, by contract, like `_insert_added_rows`
             return
         wanted: dict = {}
         for asset_id, field, value in fields:
@@ -597,7 +597,7 @@ class AssetLibrary(grid_engine.GridEngine,
                 fresh = self._asset_from_row(
                     dict(asset.get_as_dict(), **changes))
             except Exception as exc:                        # noqa: BLE001
-                debug.event("database", "adopted field not readable",
+                debug.event("database", "changed field not readable",
                             file=self.DB_FILENAME, error=str(exc),
                             asset_id=str(asset.mat_id))
                 continue
@@ -652,7 +652,7 @@ class AssetLibrary(grid_engine.GridEngine,
             return False
         return True
 
-    def _adopt_rows(self, rows: list) -> None:
+    def _insert_added_rows(self, rows: list) -> None:
         """Insert rows another session added, with the row signals; an unparseable row is skipped."""
         if not isinstance(rows, list):  # a list, by contract
             return
@@ -661,7 +661,7 @@ class AssetLibrary(grid_engine.GridEngine,
             try:
                 parsed.append(self._asset_from_row(row))
             except Exception as exc:                        # noqa: BLE001
-                debug.event("database", "adopted row not readable",
+                debug.event("database", "added row not readable",
                             file=self.DB_FILENAME, error=str(exc),
                             asset_id=str(row.get("id", "")))
         if not parsed:
@@ -674,7 +674,7 @@ class AssetLibrary(grid_engine.GridEngine,
         finally:
             self.endInsertRows()
         self.rebuild_thumbs()
-        self.resort()    # now: the save that adopted them may still hold its own rows
+        self.resort()    # now: the save that added them may still hold its own rows
 
     def _drop_rows(self, rows: list) -> None:
         """Remove rows another session deleted, with the row signals; nothing on disk is touched."""
@@ -752,13 +752,13 @@ class AssetLibrary(grid_engine.GridEngine,
             self.save()
         return changed
 
-    def report_refused_index_write(self, asset, updated: bool = False) -> None:
+    def report_failed_index_write(self, asset, updated: bool = False) -> None:
         """Show on the status line that an inline asset's list write failed; it is kept in memory."""
         name = asset.name or "The asset"
         debug.event("save", "inline asset not saved - the index write "
                     "was refused", name=name, mat_id=asset.mat_id,
                     model=self.DB_FILENAME)
-        say_unlisted([name], updated=updated)    # the library's own alert said why; a restart loses it
+        report_unlisted([name], updated=updated)    # the library's own alert said why; a restart loses it
 
     def asset_files(self, mat_id: str) -> dict:
         """`asset_files_for` this library; a new per-asset file is added THERE and nowhere else."""
@@ -820,7 +820,7 @@ class AssetLibrary(grid_engine.GridEngine,
         with library_db.library_for(self.preferences).holding():
             self._stage_rows(self._doc())
             taken = self._unlist_what_belongs(going)
-        folder = "%s/%s/" % (library_files.COMMENT_HOMES[self.DB_FILENAME],
+        folder = "%s/%s/" % (library_files.DATABASE_FOLDERS[self.DB_FILENAME],
                              library_files.COMMENT_FOLDER)
         owned += [src for _key, (page, _icon, _star) in taken.items()
                   for src in _picture_sources(page) if src.startswith(folder)
@@ -831,7 +831,7 @@ class AssetLibrary(grid_engine.GridEngine,
                 if relative:
                     change.trash(relative)
         if not library_db.save(self.preferences, self.DB_FILENAME, also=trash):
-            self._take_back_refused_removals(going, taken)    # nothing on disk changed: the change is all or nothing
+            self._restore_unsaved_removals(going, taken)    # nothing on disk changed: the change is all or nothing
             self._report_refused_delete(going[-1][1])
             return 0
         return len(going)
@@ -863,7 +863,7 @@ class AssetLibrary(grid_engine.GridEngine,
                 held.put_mine("favorites", key, None)
         return taken
 
-    def _take_back_refused_removals(self, going, taken=None) -> None:
+    def _restore_unsaved_removals(self, going, taken=None) -> None:
         """Put back `(row, record)` pairs whose delete failed to save, in the model and the database."""
         held = self._doc()
         with library_db.library_for(self.preferences).holding():

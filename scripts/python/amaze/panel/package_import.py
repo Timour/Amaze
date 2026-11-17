@@ -22,7 +22,7 @@ class PackageImport:
         summary = packages.import_package(self.models(),
                                           self.panel.prefs, path,
                                           restore=restore)
-        self.absorb_summary(summary)
+        self.register_imported_categories(summary)
         return summary
 
     def import_package(self) -> None:
@@ -89,7 +89,7 @@ class PackageImport:
                 models[cls.key] = model
         return models
 
-    def absorb_summary(self, summary) -> None:
+    def register_imported_categories(self, summary) -> None:
         """Register a package import's categories on their sidebars, and its import folder."""
         for key, names in summary.get("categories", {}).items():
             section = self.panel.sections.get(key)
@@ -138,7 +138,7 @@ class PackageImport:
                 self.models(), self.panel.prefs, bundle, [entry],
                 restore=restore)
             self.panel._last_package_summary = summary
-            self.absorb_summary(summary)
+            self.register_imported_categories(summary)
             if on_progress is not None:
                 on_progress(1.0)
             if summary.get("refused"):

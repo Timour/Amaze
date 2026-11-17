@@ -273,7 +273,7 @@ def capture_open_scene(preferences, target: str = "") -> str:
                 "No scene is open, so there is nothing to capture.")
         target = opened
     elif target != opened:
-        debug.event("hip", "capture refused - a different scene is open",
+        debug.event("hip", "capture not taken - a different scene is open",
                     wanted=target, open=opened)
         raise CaptureRefused(
             "Houdini has a different scene open, so the capture would "
@@ -281,7 +281,7 @@ def capture_open_scene(preferences, target: str = "") -> str:
             "Open this scene first.")
 
     if not os.path.isfile(target):  # an unsaved scene has no file to file a thumbnail against
-        debug.event("hip", "capture refused - the scene is not on disk",
+        debug.event("hip", "capture not taken - the scene is not on disk",
                     file=target)
         raise CaptureRefused(
             "This scene has not been saved yet, so there is nothing to "
@@ -294,7 +294,7 @@ def capture_open_scene(preferences, target: str = "") -> str:
 def capture_tile(out: str, key: str) -> str:
     """Capture the Scene View as the thumbnail of tile `key`, then signal every model."""
     path = capture_viewport(out, _viewer_for_capture())
-    captures.announce(key)    # the engine serves a decoded copy until the model drops it
+    captures.signal_capture_saved(key)    # the engine serves a decoded copy until the model drops it
     return path
 
 
@@ -303,7 +303,7 @@ def _viewer_for_capture():
     viewer = scene_viewer()
     state = viewport_state(viewer)
     if state.get("blocking"):
-        debug.event("hip", "capture refused - viewport is rendering",
+        debug.event("hip", "capture not taken - viewport is rendering",
                     renderer=state.get("renderer", ""),
                     error=state.get("error", ""))
         message = "Please stop the viewport render before capturing."

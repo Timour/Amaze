@@ -92,7 +92,7 @@ def adopt_file(source: str, prefs, folder: str) -> str:
     if not os.path.isfile(source):
         return ""
     destination = os.path.join(store_dir(prefs), folder, "textures")
-    target = _landing(destination, source)
+    target = _target_path(destination, source)
     if not os.path.exists(target):
         hostos.check_sandbox(target)
         os.makedirs(destination, exist_ok=True)
@@ -131,7 +131,7 @@ def resolve_parms(node, prefs, write_path=None) -> int:
     return changed
 
 
-def _landing(destination: str, source: str) -> str:
+def _target_path(destination: str, source: str) -> str:
     """The target path for `source`: its basename, numbered when a different file has the name."""
     name = hostos.safe_filename(os.path.basename(source))
     target = os.path.join(destination, name)
@@ -148,7 +148,7 @@ def _set(parm, value: str, root) -> bool:
     """Write `value`; follow a reference only to a parm under `root`. ▸r/texture-refs"""
     import hou
     try:
-        parm.set(value, follow_parm_reference=_lands_under(parm, root))
+        parm.set(value, follow_parm_reference=_reference_ends_under(parm, root))
         return True
     except (hou.OperationFailed, hou.PermissionError) as exc:    # locked or keyframed: the reference stands ▸r/hou-errors
         debug.event("texstore", "parm not rewritten", parm=parm.path(),
@@ -156,7 +156,7 @@ def _set(parm, value: str, root) -> bool:
         return False
 
 
-def _lands_under(parm, root) -> bool:
+def _reference_ends_under(parm, root) -> bool:
     """Whether the end of `parm`'s reference chain is `root` or a node under it."""
     seen = {parm.path()}
     target = parm.getReferencedParm()

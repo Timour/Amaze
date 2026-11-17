@@ -653,7 +653,7 @@ class BadgeFamilyTest(unittest.TestCase):
     def test_every_button_badge_wears_the_one_rest_and_hover_opacity(self):
         """Every button badge uses the rest opacity; hovered, its hover art or hover opacity."""
         role = QtCore.Qt.ItemDataRole.UserRole + 66
-        family = {b.name for b in delegates.BADGES if b.dims or b.off_art}
+        family = {b.name for b in delegates.BADGES if b.dims or b.off_svg}
         self.assertEqual({"favourite", "versions", "comment"}, family)
         cases = (("favourite", False), ("versions", 3), ("comment", False))
         current = {}
@@ -680,8 +680,8 @@ class BadgeFamilyTest(unittest.TestCase):
                 for name, value in cases:
                     current["value"] = value
                     badge = delegates.BADGE[name]
-                    art = badge.off_art if value is False else badge.art
-                    drawn = badge.off_hover_art if value is False else badge.hover_art
+                    art = badge.off_svg if value is False else badge.svg
+                    drawn = badge.off_hover_svg if value is False else badge.hover_svg
                     for hovered, want in ((False, (art, rest)),
                                           (True, (drawn, None) if drawn else (art, hover))):
                         delegate = test_support.tile_delegate({name: role})

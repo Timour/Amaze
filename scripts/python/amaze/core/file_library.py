@@ -77,14 +77,14 @@ def sweep_folder_cache(preferences, folder: str, remaining) -> int:
         held = set(manifest)
         for cache in live:
             held.update(cache.paths())
-        doomed = sorted(
+        to_remove = sorted(
             path for path in held
             if path.startswith(prefix)
             and not any(path.startswith(k) for k in keep_prefixes)
         )
-        if not doomed:
+        if not to_remove:
             continue
-        for path in doomed:
+        for path in to_remove:
             png = os.path.join(
                 cache_dir,
                 texture_library.ThumbnailCache._cache_filename(path))    # the cache's own naming
@@ -103,14 +103,14 @@ def sweep_folder_cache(preferences, folder: str, remaining) -> int:
             debug.event("file", "sweep could not rewrite the manifest",
                         dir=name, error=str(exc))
         for cache in live:
-            cache.forget(doomed)
+            cache.forget(to_remove)
     if removed:
         debug.event("file", "removed folder's cache swept",
                     folder=folder, thumbnails=removed)
     return removed
 
 
-def carry_thumbnails(preferences, pairs) -> int:
+def move_thumbnails(preferences, pairs) -> int:
     """Move the cached pictures of moved files: in every cache, each picture and manifest entry."""
     key = texture_library.ThumbnailCache._key
     moves = {key(old): key(new) for old, new in pairs if key(old) != key(new)}
@@ -120,7 +120,7 @@ def carry_thumbnails(preferences, pairs) -> int:
     except OSError:
         return 0
     import json as json_mod
-    carried = 0
+    moved_count = 0
     for name in names:
         if not name.startswith(("texture_thumbnails_", "geo_thumbnails_")):
             continue
@@ -152,13 +152,13 @@ def carry_thumbnails(preferences, pairs) -> int:
                 except OSError:
                     continue    # no picture to move: the entry is dropped, and the file is rendered again
             manifest[new] = entry
-            carried += 1
+            moved_count += 1
         if not changed:
             continue
         try:
             hostos.write_json_atomic(manifest_path, manifest, indent=None)
         except OSError as exc:
-            debug.event("file", "moved pictures not filed", dir=name, error=str(exc))
+            debug.event("file", "moved pictures' manifest not written", dir=name, error=str(exc))
             continue
         for cache in live:
             cache.moved(moves)
@@ -166,10 +166,10 @@ def carry_thumbnails(preferences, pairs) -> int:
                 thumbnails.engine.discard(
                     ("geo", path, cache.cache_dir) if name.startswith("geo_")
                     else ("tex", path, cache.size))
-    return carried
+    return moved_count
 
 
-file_moves.carriers["thumbnails"] = carry_thumbnails    # a file move also moves its cached pictures
+file_moves.move_hooks["thumbnails"] = move_thumbnails    # a file move also moves its cached pictures
 
 
 def location_kinds(preferences, location: str) -> frozenset:
@@ -227,7 +227,7 @@ class FileFolders(folders.FolderTreeModel):
             return False    # All and the scene row are not locations
         if not super().remove_folder(row):
             return False    # a failed removal keeps the location, so every key under it stays
-        if not locations.rehome_covered(self.preferences, path):
+        if not locations.rekey_to_covering_location(self.preferences, path):
             return True    # a failed move removes no keys, so no file a remaining location lists loses its key
         locations.retire_prefix(self.preferences, path)    # what is still keyed under it, then its path row
         sweep_folder_cache(    # its cached thumbnails, except those a remaining location covers; captures stay
@@ -293,7 +293,7 @@ class FileFiles(grid_engine.GridEngine,
         thumbnails.signals.convert_attempted.connect(
             self._on_convert_attempted)
         thumbnails.signals.converted.connect(self._on_converted)
-        captures.signals.landed.connect(self._on_capture_landed)    # from any panel or the shelf
+        captures.signals.capture_saved.connect(self._on_capture_saved)    # from any panel or the shelf
 
     def _get_image_cache(self):
         """The texture pipeline's cache, rebuilt when the cache generation or the size changes."""
@@ -591,7 +591,7 @@ class FileFiles(grid_engine.GridEngine,
             return image
         return self.preview_image(row)    # no capture, or not loaded yet: the file's own preview
 
-    def _on_capture_landed(self, key) -> None:
+    def _on_capture_saved(self, key) -> None:
         """A capture was saved for `key`: drop the old picture and repaint the rows showing that file."""
         thumbnails.engine.discard(("capture", captures.file_path(self.preferences, str(key))))
         for row in range(len(self._files)):

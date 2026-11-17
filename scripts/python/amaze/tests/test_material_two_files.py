@@ -598,7 +598,7 @@ class WhatTheConversionReplacesIsKeptTest(_OldLibrary):
         write(self.at("img", "comments", name), b"pasted")
         write(self.at("notes.json"), {"notes": {"material:KEEP1": {"items": [
             {"t": "image", "src": "img/comments/" + name, "id": "c1", "author": ""}]}}})
-        with mock.patch.object(library_conversion, "rehome_pictures",
+        with mock.patch.object(library_conversion, "move_old_pictures",
                                side_effect=OSError(13, "The file is in use")):
             outcome, _asked = self.convert()
         self.assertEqual(library_conversion.STOPPED, outcome.status)
@@ -665,7 +665,7 @@ class NothingChangesUnlessItRunsTest(_OldLibrary):
         from amaze.actions import library as library_actions
         before = self.lay_out()
         self.assertFalse(library_actions.index_present(self.dir), "an older library was read as a current one")
-        self.assertTrue(library_actions.list_not_arrived(self.dir),
+        self.assertTrue(library_actions.folder_not_empty_without_library(self.dir),
                         "a folder that is not empty would be given a new library")
         with mock.patch.object(library_actions.debug, "alert") as said:
             library_actions.prepare(self.prefs)
@@ -1138,7 +1138,7 @@ class TheRebuildReadsTheNewFileTest(_Library):
         self.metadata("REB1")
         self.old_asset("REB2")
         self.old_asset("REB3", self.materials)
-        rebuilt = repair.rebuild_from_stamps(self.dir)
+        rebuilt = repair.rebuild_from_metadata(self.dir)
         names = {row["id"] for row in rebuilt["assets"].values()}
         self.assertIn("REB1", names, "the rebuild could not read `<id>.json`")
         self.assertNotIn("REB2", names, "the rebuild read a format 3 stamp in mat/")
@@ -1155,7 +1155,7 @@ class AnyIdTheWriterTakesIsReadBackTest(_Library):
         test_support.settle_stamps()
         written = os.path.join(self.materials, "-1.json")
         self.assertTrue(os.path.exists(written), "premise: the writer takes the id -1")
-        rebuilt = repair.rebuild_from_stamps(self.dir)
+        rebuilt = repair.rebuild_from_metadata(self.dir)
         self.assertIn("-1", {str(row["id"]) for row in rebuilt["assets"].values()})
         findings = repair.survey(self.dir)
         self.assertNotIn("materials/-1.json",
@@ -1255,7 +1255,7 @@ class PicturesLiveInTheirSectionTest(_Library):
         change = held.change(test_support.FIXTURE_USER)
         change.put(reading.ticket, document)
         change.commit()
-        self.assertEqual(2, library_conversion.rehome_pictures(self.dir, test_support.FIXTURE_USER))
+        self.assertEqual(2, library_conversion.move_old_pictures(self.dir, test_support.FIXTURE_USER))
         self.assertEqual(b"a file's capture", read_bytes(self.at("files", capture + ".png")))
         self.assertEqual(b"a picture in a comment",
                          read_bytes(self.at("materials", "comments", shown)))

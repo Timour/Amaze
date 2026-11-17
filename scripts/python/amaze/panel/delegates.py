@@ -16,33 +16,33 @@ QtGui.QPixmapCache.setCacheLimit(65536)   # 64MB, app-wide for all of Houdini; s
 class Badge:
     """One tile badge: its ID, the model role it reads, its click `verb`, its SVGs and tooltips."""
 
-    __slots__ = ("name", "art", "role", "role_attr", "verb", "minimum", "equals", "dims",
-                 "hover_art", "press_art", "off_art", "off_hover_art", "tip", "off_tip",
-                 "art_for")
+    __slots__ = ("name", "svg", "role", "role_attr", "verb", "minimum", "equals", "dims",
+                 "hover_svg", "press_svg", "off_svg", "off_hover_svg", "tip", "off_tip",
+                 "svg_for")
 
-    def __init__(self, name, art, role="", role_attr="", verb="", minimum=0, equals="",
-                 dims=False, hover_art="", press_art="", off_art="", off_hover_art="",
-                 tip="", off_tip="", art_for=None) -> None:
+    def __init__(self, name, svg, role="", role_attr="", verb="", minimum=0, equals="",
+                 dims=False, hover_svg="", press_svg="", off_svg="", off_hover_svg="",
+                 tip="", off_tip="", svg_for=None) -> None:
         self.name = name
-        self.art = art
+        self.svg = svg
         self.role = role              # the model role, by name, whose value decides if it is drawn; "" = always
         self.role_attr = role_attr    # the delegate attribute holding that role's number; list columns read it
         self.verb = verb              # the section method a click runs; "" = an indicator, not a button
         self.minimum = minimum        # drawn when the count is at least this: one version has no history
         self.equals = equals          # the role value this badge is drawn for; "" = any truthy value
         self.dims = dims              # its ON art's icon is drawn at the button opacities, rest and hover
-        self.hover_art = hover_art    # a separate SVG for the hover state, where it has one
-        self.press_art = press_art    # a separate SVG while the button is held down, where it has one
-        self.off_art = off_art        # drawn while the role is falsy, its icon at the button opacities
-        self.off_hover_art = off_hover_art    # the off state under the pointer, at full opacity
+        self.hover_svg = hover_svg    # a separate SVG for the hover state, where it has one
+        self.press_svg = press_svg    # a separate SVG while the button is held down, where it has one
+        self.off_svg = off_svg        # drawn while the role is falsy, its icon at the button opacities
+        self.off_hover_svg = off_hover_svg    # the off state under the pointer, at full opacity
         self.tip = tip               # the tooltip text, from tooltips.py; "" = no tooltip
         self.off_tip = off_tip        # the tooltip in the off state, where a click does the opposite
-        self.art_for = art_for        # returns the SVG name for the role's value, where it differs by value
+        self.svg_for = svg_for        # returns the SVG name for the role's value, where it differs by value
 
-    def shows(self, value) -> bool:
+    def is_on(self, value) -> bool:
         """Whether a truthy role value shows this badge's ON state, per `minimum` or `equals`."""
-        if self.art_for:
-            return bool(self.art_for(value))
+        if self.svg_for:
+            return bool(self.svg_for(value))
         if self.minimum:
             return int(value) >= self.minimum
         return not self.equals or value == self.equals
@@ -60,18 +60,18 @@ def _renderer_badge(stored) -> str:
 BADGES = (      # in paint order; art in `ui/badge_*.svg`, one file each ▸r/tile-from-frame
     Badge("open", "badge_open", "OpenSceneRole", "_open_role"),    # the scene currently open
     Badge("favourite", "badge_favourite", "FavoriteRole", "_favorite_role", "menu_favourite",
-          off_art="badge_favourite_off",    # the on state is drawn as the SVG is, with no hover change
-          off_hover_art="badge_favourite_off_hover",
+          off_svg="badge_favourite_off",    # the on state is drawn as the SVG is, with no hover change
+          off_hover_svg="badge_favourite_off_hover",
           tip=tooltips.BADGE_FAVORITE_REMOVE, off_tip=tooltips.BADGE_FAVORITE_ADD),
     Badge("versions", "badge_versions", "VersionsRole", "_versions_role", "menu_versions",
-          minimum=2, dims=True, hover_art="badge_versions_hover", tip=tooltips.BADGE_VERSIONS),
+          minimum=2, dims=True, hover_svg="badge_versions_hover", tip=tooltips.BADGE_VERSIONS),
     Badge("comment", "badge_comment", "NotesRole", "_notes_role", "menu_comments",
-          off_art="badge_comment_off", off_hover_art="badge_comment_off_hover",    # on is as drawn
+          off_svg="badge_comment_off", off_hover_svg="badge_comment_off_hover",    # on is as drawn
           tip=tooltips.BADGE_COMMENTS),
     Badge("execute", "badge_execute", "RendererRole", "_execute_role", "menu_run",
-          equals="Python", hover_art="badge_execute_hover", press_art="badge_execute_press",
+          equals="Python", hover_svg="badge_execute_hover", press_svg="badge_execute_press",
           tip=tooltips.BADGE_EXECUTE),    # the language role: Run is for Python only
-    Badge("renderer", "", "RendererRole", "_renderer_role", art_for=_renderer_badge),
+    Badge("renderer", "", "RendererRole", "_renderer_role", svg_for=_renderer_badge),
 )
 BADGE = {badge.name: badge for badge in BADGES}
 
@@ -87,7 +87,7 @@ def role_color(index, role):
     return color if color.isValid() else None
 
 
-def show_item_words(event, view, index) -> bool:
+def show_capped_tooltip(event, view, index) -> bool:
     """Show an item's tooltip at the pointer, width-capped; False when it has none."""
     if event is None or event.type() != QtCore.QEvent.Type.ToolTip:
         return False
@@ -164,8 +164,8 @@ class GridCellDelegate(QtWidgets.QStyledItemDelegate):
                           cell, painter, option.widget)
 
     def helpEvent(self, event, view, option, index):
-        """A cell's tooltip, width-capped by `show_item_words`, as on the tiles."""
-        return (show_item_words(event, view, index)
+        """A cell's tooltip, width-capped by `show_capped_tooltip`, as on the tiles."""
+        return (show_capped_tooltip(event, view, index)
                 or super().helpEvent(event, view, option, index))
 
 
@@ -247,7 +247,7 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
     GRID_IMG_TEXT_GAP = theme.ui_px(_TILE["img_text_gap"])
 
     CATEGORY_COLOR = QtGui.QColor(amazetheme.LIST_INK)    # the Category column for a category with no colour
-    LIST_INK = QtGui.QColor(amazetheme.LIST_INK)          # list mode's text colour, all but Category
+    LIST_TEXT_COLOR = QtGui.QColor(amazetheme.LIST_INK)    # list mode's text colour, all but Category
     SELECTED_TEXT = QtGui.QColor(amazetheme.LIST_SELECTED_TEXT)     # every column's text colour on a selected row
 
     _badge_cache = {}    # rendered badge per (art, size, dpr, opacity), app-wide
@@ -502,9 +502,9 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
             return start + span - size - inset
         return start + inset
 
-    FAV_MARK_COLOR = LIST_INK      # the mark columns' colour: LIST_INK, like every other list column
-    OPEN_MARK_COLOR = LIST_INK
-    NOTE_MARK_COLOR = LIST_INK
+    FAV_MARK_COLOR = LIST_TEXT_COLOR      # the mark columns' colour: LIST_TEXT_COLOR, like every other list column
+    OPEN_MARK_COLOR = LIST_TEXT_COLOR
+    NOTE_MARK_COLOR = LIST_TEXT_COLOR
 
     @staticmethod
     def _paint_tick(painter, rect, color):
@@ -575,8 +575,8 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
             return ""
         value = index.data(getattr(self, badge.role_attr)) if badge.role else True
         if value:
-            return "on" if badge.shows(value) else ""
-        return "off" if badge.off_art and badge.name in self._badge_clicks else ""    # a button at rest
+            return "on" if badge.is_on(value) else ""
+        return "off" if badge.off_svg and badge.name in self._badge_clicks else ""    # a button at rest
 
     def _badge_rect(self, option_rect, name):
         """Where the badge `name` is drawn, for hit-testing: the placement `_paint_badges` uses."""
@@ -635,22 +635,22 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
                 continue
             hovered = self._is_button_hovered(badge.name, index)
             opacity = self._button_opacity(hovered)
-            if state == "off" and hovered and badge.off_hover_art:
-                art, opacity = badge.off_hover_art, None
+            if state == "off" and hovered and badge.off_hover_svg:
+                svg, opacity = badge.off_hover_svg, None
             elif state == "off":
-                art = badge.off_art
-            elif badge.press_art and self._is_button_pressed(badge.name, index):
-                art, opacity = badge.press_art, None
-            elif badge.hover_art and hovered:
-                art, opacity = badge.hover_art, None
-            elif badge.art_for:
-                art = badge.art_for(index.data(getattr(self, badge.role_attr)))
+                svg = badge.off_svg
+            elif badge.press_svg and self._is_button_pressed(badge.name, index):
+                svg, opacity = badge.press_svg, None
+            elif badge.hover_svg and hovered:
+                svg, opacity = badge.hover_svg, None
+            elif badge.svg_for:
+                svg = badge.svg_for(index.data(getattr(self, badge.role_attr)))
                 opacity = None
             else:
-                art = badge.art
+                svg = badge.svg
                 opacity = opacity if badge.dims else None    # full opacity, so the on heart keeps its colour
             side = self._placed_side(badge.name, icon_side)
-            mark = self._badge_pixmap(art, side, dpr, opacity)
+            mark = self._badge_pixmap(svg, side, dpr, opacity)
             if mark.isNull():
                 continue
             mark_w, mark_h = self._logical_size(mark)    # logical, not physical, pixels
@@ -808,8 +808,8 @@ class SidebarItemDelegate(QtWidgets.QStyledItemDelegate):
                 and QtCore.QPersistentModelIndex(index) == self.drag_index)
 
     def helpEvent(self, event, view, option, index):
-        """A row's tooltip, such as a folder's path, width-capped by `show_item_words`."""
-        return (show_item_words(event, view, index)
+        """A row's tooltip, such as a folder's path, width-capped by `show_capped_tooltip`."""
+        return (show_capped_tooltip(event, view, index)
                 or super().helpEvent(event, view, option, index))
 
     def _swatch_color(self, index):

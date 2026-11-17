@@ -23,7 +23,7 @@ def _find_panel(widget: QtWidgets.QWidget):
 class GridGestureMixin:
     """The self-managed drag gesture, mixed into both views. ▸r/pick-boundary ▸r/native-drag-paint"""
 
-    ARMED_SECTIONS = ("material", "gradient", "cop", "code", "file")    #: every section whose rows can start a drag; drop behaviour is per section (sections.DropRule)
+    DRAG_SECTIONS = ("material", "gradient", "cop", "code", "file")    #: every section whose rows can start a drag; drop behaviour is per section (sections.DropRule)
 
     def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
         self._drag_start = None    # None whenever no left-button press is in progress
@@ -114,7 +114,7 @@ class GridGestureMixin:
         if (
             event.button() == QtCore.Qt.MouseButton.LeftButton
             and not online
-            and section in self.ARMED_SECTIONS
+            and section in self.DRAG_SECTIONS
             and self.indexAt(point).isValid()    # only over a real item
         ):
             self._drag_start = point
@@ -153,7 +153,7 @@ class GridGestureMixin:
                 self._begin_drag()
             if self._dragging:
                 from amaze.core import dragengine
-                if self._promote_to_field_drag():
+                if self._switch_to_qdrag_over_parm_pane():
                     return
                 self._move_preview()
                 if self._drag_panel is not None:    # drop-target feedback is driven from the cursor position
@@ -189,13 +189,13 @@ class GridGestureMixin:
 
     def _drag_row(self):
         """The pressed row as an index, None once it was removed from the model during the drag."""
-        held = self._drag_index
-        if held is None or not held.isValid():
+        row = self._drag_index
+        if row is None or not row.isValid():
             return None
-        return QtCore.QModelIndex(held)
+        return QtCore.QModelIndex(row)
 
     def _begin_drag(self) -> None:
-        """Start the self-managed drag for any ARMED_SECTIONS row: a name tag following the cursor."""
+        """Start the self-managed drag for any DRAG_SECTIONS row: a name tag following the cursor."""
         from amaze.core import dragengine
         self._dragging = True
         dragengine.begin(self._drag_section or "")
@@ -273,7 +273,7 @@ class GridGestureMixin:
 
         QtCore.QTimer.singleShot(self.INDICATOR_MS, _done)
 
-    def _promote_to_field_drag(self) -> bool:
+    def _switch_to_qdrag_over_parm_pane(self) -> bool:
         """Switch a File row drag over a Parameters pane to a real QDrag; Qt then runs the drag."""
         from amaze.core import dragengine
         if self._drag_section != "file":
@@ -377,7 +377,7 @@ class GridGestureMixin:
                                 if outcome:
                                     self._splice_if_on_a_wire(panel, event)
             except hou.PermissionError as refusal:    # only this class: a locked network raises it; any other error propagates
-                debug.exception("drop refused", refusal,
+                debug.exception("drop failed - permission error", refusal,
                                 section=self._drag_section)
                 debug.refuse(str(refusal),    # Houdini's own message; `outcome` stays False so the red X shows ▸p/refusal-sink
                              section=self._drag_section)
@@ -385,11 +385,11 @@ class GridGestureMixin:
                 self._finish_preview(outcome)
 
     @staticmethod
-    def _ghost_type(panel, rule, section, dest, index=None) -> str:
+    def _preview_node_type(panel, rule, section, dest, index=None) -> str:
         """The node type an on_space drop would create in `dest`; `""` is none: a plain box."""
         cls = sections.SECTION_INDEX.get(section)
-        name = rule.carrier_type or getattr(cls, "carrier_type", "")
-        verb = getattr(cls, "carrier_type_verb", "")
+        name = rule.holder_node_type or getattr(cls, "holder_node_type", "")
+        verb = getattr(cls, "holder_node_type_method", "")
         if not name and verb and index is not None:
             try:
                 live = getattr(panel, "sections", {}).get(section)
@@ -436,11 +436,11 @@ class GridGestureMixin:
                     if rule.on_space or rule.resolve:
                         target = dragengine.wire_under_cursor(
                             pane_tab, spot)
-                    type_name = self._ghost_type(
+                    type_name = self._preview_node_type(
                         panel, rule, section, pane_tab.pwd(), idx)
-                dragengine.set_ghost_answers(blocked, target, type_name)
+                dragengine.set_ghost_tick_results(blocked, target, type_name)
                 dragengine.wire_highlight(pane_tab, target)
-            blocked, target, type_name = dragengine.ghost_answers()
+            blocked, target, type_name = dragengine.ghost_tick_results()
             if blocked:
                 dragengine.ghost_clear()    # Houdini's own node highlight shows this case
                 return
@@ -461,38 +461,38 @@ class GridGestureMixin:
         if rule.on_node is not None:
             node = panel._node_under_cursor()
             if node is not None:
-                take = sections.drop_verb(section, rule.on_node)
-                return bool(take(idx, node))
+                apply_to_node = sections.drop_verb(section, rule.on_node)
+                return bool(apply_to_node(idx, node))
         if rule.resolve is not None:
-            aim = sections.drop_verb(section, rule.resolve)
-            return bool(aim(idx))
+            resolve = sections.drop_verb(section, rule.resolve)
+            return bool(resolve(idx))
         if rule.on_space is not None:
             net = panel.drop_placement.network_under_release()
             if net is None:
-                return section.drop_takes_nothing()
+                return section.reject_drop()
             create = sections.drop_verb(section, rule.on_space)    # the position is used only when the editor under the cursor shows that network
             return bool(create(idx, net, panel.drop_placement.release_position_in(net)))
-        return section.drop_takes_nothing()
+        return section.reject_drop()
 
     @staticmethod
     def _splice_if_on_a_wire(panel, event) -> None:
         """Insert the nodes `helpers.placed_nodes` returns into the wire under the cursor."""
         from amaze.core import dragengine
         from amaze.helpers import helpers
-        landed = helpers.placed_nodes()
-        if not landed:
+        placed = helpers.placed_nodes()
+        if not placed:
             return
         editor = dragengine.pane_tab_under_cursor()
         net = panel.drop_placement.network_under_release()
         spot = panel.drop_placement.release_position_in(net) if net is not None else None
         wire, _name, _index = dragengine.wire_under_cursor(    # the placed nodes are excluded: they are already under the cursor
-            editor, spot, exclude=landed)
+            editor, spot, exclude=placed)
         if wire is not None:
-            dragengine.splice_into_wire(wire, landed, editor)
+            dragengine.splice_into_wire(wire, placed, editor)
             return
         dragengine.connect_to_neighbour(    # no wire, but a lone node or the end of a chain has a connector near the cursor
             dragengine.connector_under_cursor(
-                editor, spot, exclude=landed), landed, editor)
+                editor, spot, exclude=placed), placed, editor)
 
 
 def _node_paths_from_mime(mime) -> list:
