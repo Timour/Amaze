@@ -93,6 +93,8 @@ def refresh_all(preferences=None) -> list:
 
 def _after_save(key: str, name: str) -> None:
     """After a save merged another session's changes, refresh every model on that database."""
+    if name == library_files.FILES:
+        locations.touch()    # as in `refresh_all`: a merge may have changed the location ids
     held = library_db.preferences_of(key)
     if held is not None and key in _models:
         apply_merged(held, name)

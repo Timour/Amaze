@@ -66,7 +66,31 @@ def guard_of(preferences) -> guard.Guard:
 def accepts(preferences, name: str) -> bool:
     """Whether a change to database `name` can be kept now: it is writable and a user is set."""
     found = document(preferences, name)
+    _read_again(key_of(preferences), found)
     return found.writable and bool(found.user())
+
+
+def _read_again(key: str, held: documents.Document) -> None:
+    """Read a database that takes no change once more: a file in use a moment ago may open now."""
+    if held.writable:
+        return
+    try:
+        moved = held.refresh()
+    except OSError as exc:
+        debug.event("database", "refresh failed", library=key, error=str(exc))
+        return
+    judge(key, held)
+    if moved:
+        _tell_listeners(key, held.name)
+
+
+def _tell_listeners(key: str, name: str) -> None:
+    """Call each `on_saved` listener: the models load what a save or a read merged in."""
+    for listener in list(_listeners.values()):
+        try:
+            listener(key, name)
+        except Exception as exc:                             # noqa: BLE001
+            debug.event("database", "a listener after a save failed", error=str(exc))
 
 
 def set_scheduler(schedule) -> None:
@@ -149,14 +173,11 @@ def _save_one(key: str, held: documents.Document, also=None) -> documents.Saved:
         def both(change):
             records(change)
             also(change)    # last: a record the caller writes whole overrides the metadata above
+    _read_again(key, held)
     saved = held.save(also=both)
     told(saved, held.name)
     judge(key, held)
-    for listener in list(_listeners.values()):
-        try:
-            listener(key, held.name)
-        except Exception as exc:                             # noqa: BLE001
-            debug.event("database", "a listener after a save failed", error=str(exc))
+    _tell_listeners(key, held.name)
     return saved
 
 

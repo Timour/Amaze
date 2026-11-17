@@ -616,6 +616,26 @@ class AHeldDatabaseIsNeverCalledCorrupt(unittest.TestCase):
         self.assertEqual(guard.FINE, library_db.document(prefs, library_files.MATERIALS).verdict,
                          "the database was not checked again once it could be opened")
 
+    def test_the_next_change_reads_it_again_with_no_refresh(self):
+        from amaze.core import guard, library_db, library_files
+        prefs = test_support.fixture_prefs(self)
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        path = os.path.join(prefs.dir, library_files.MATERIALS)
+        held = library_db.document(prefs, library_files.MATERIALS)
+        rows = set(held.table("assets"))
+        with test_support.refused_at_open(path):
+            held.refresh()
+            self.assertEqual((guard.HELD, False), (held.verdict, held.writable),
+                             "premise: the file read as something else")
+        self.assertTrue(library_db.accepts(prefs, library_files.MATERIALS),
+                        "a database that opens again stays read-only until Preferences is opened")
+        self.assertEqual(rows, set(held.table("assets")))
+        self.assertTrue(held.put("assets", "ZZ9", {"id": "ZZ9", "name": "after"}))
+        library_db.flush(prefs)
+        again = guard.Guard(prefs.dir).read(library_files.MATERIALS).document
+        self.assertIn("ZZ9", again["assets"], "the change made after it opened was not saved")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
