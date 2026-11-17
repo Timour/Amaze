@@ -1,4 +1,4 @@
-"""What a release over a network editor may wire itself to. ▸r/drop-targets"""
+"""Which node or connector a drop on a network editor connects to. ▸r/drop-targets"""
 
 import os
 import sys
@@ -22,7 +22,7 @@ from amaze.tests import test_support  # noqa: E402,F401
 
 
 class ScriptedEditor(object):
-    """Answers what it is told and keeps the box it was asked with, so a test can pin the radius."""
+    """Returns fixed hit-test results and records the box queried, so a test checks the radius."""
 
     def __init__(self, triples, rects, scale=100.0):
         self._triples = triples
@@ -48,7 +48,7 @@ class ScriptedEditor(object):
 
 
 class ScriptedPane(object):
-    """A pane tab answering a fixed kind and screen rect, so the pane-tracking tests need no desktop."""
+    """A pane tab with a fixed type and screen rect, so the pane-tracking tests need no desktop."""
 
     def __init__(self, rect):
         self._rect = rect
@@ -101,7 +101,7 @@ class TestTheConnectorQuestion(DropTargetTest):
                 (hou.Vector2(0.0, -0.30),
                  [(target, "output", 0), (target, "node", 0)],
                  (target, "output", 0)),
-                (hou.Vector2(0.0, 0.30), [(target, "input", 2)],    # the input index survives
+                (hou.Vector2(0.0, 0.30), [(target, "input", 2)],    # the input index is kept
                  (target, "input", 2))):
             with self.subTest(connector=wanted[1:]):
                 editor = ScriptedEditor(triples, {target: _rect(0.0, 0.0)})
@@ -109,7 +109,7 @@ class TestTheConnectorQuestion(DropTargetTest):
                     wanted, dragengine.connector_under_cursor(editor, point))
 
     def test_on_the_body_a_neighbours_stub_does_not_win(self):
-        # released dead centre, containment outranks a neighbour sorting first ▸r/drop-targets
+        # released at the centre, the containing body comes before a neighbour sorting first ▸r/drop-targets
         body = self.node("crowded_body")
         neighbour = self.node("crowded_neighbour")
         point = hou.Vector2(0.0, 0.0)
@@ -121,7 +121,7 @@ class TestTheConnectorQuestion(DropTargetTest):
             (None, "", -1))
 
     def test_a_neighbour_sorting_first_does_not_steal_the_target(self):
-        # a node body vetoes only where the cursor is INSIDE it; a neighbour standing nearby is stepped over
+        # a node body blocks a target only where the cursor is INSIDE it; a nearby neighbour is skipped
         aimed = self.node("aimed_at")
         neighbour = self.node("standing_nearby")
         point = hou.Vector2(0.0, -0.30)
@@ -154,13 +154,13 @@ class TestTheConnectorQuestion(DropTargetTest):
         self.assertEqual(
             dragengine.connector_under_cursor(
                 ScriptedEditor([], {}), hou.Vector2(0.0, 0.0)),
-            (None, "", -1), "an empty hit test still answered a connector")
+            (None, "", -1), "an empty hit test still returned a connector")
 
 
 class TestWhatJustLandedIsNeverTheTarget(DropTargetTest):
 
     def test_the_landed_node_is_never_its_own_target(self):
-        # placement runs first, so the fresh node sits under the cursor ▸r/drop-targets
+        # placement runs first, so the new node is under the cursor ▸r/drop-targets
         landed = self.node("just_landed")
         target = self.node("real_target")
         point = hou.Vector2(0.0, -0.30)
@@ -168,7 +168,7 @@ class TestWhatJustLandedIsNeverTheTarget(DropTargetTest):
                 ([(landed, "node", 0), (target, "output", 0)],
                  {landed: _rect(0.0, -0.30), target: _rect(0.0, 0.0)},
                  (target, "output", 0)),
-                ([(landed, "output", 0), (landed, "input", 0)],    # its stubs sit OUTSIDE its body
+                ([(landed, "output", 0), (landed, "input", 0)],    # its connectors are OUTSIDE its body
                  {landed: _rect(0.0, 0.0)}, (None, "", -1))):
             with self.subTest(wanted=wanted[1]):
                 editor = ScriptedEditor(triples, rects)
@@ -178,7 +178,7 @@ class TestWhatJustLandedIsNeverTheTarget(DropTargetTest):
 
 
 class TestTheWiringSurvivesAStaleConnectorIndex(DropTargetTest):
-    """A connector index gone by the release raises `hou.InvalidInput`; the drop lands unwired."""
+    """A connector index gone at release raises `hou.InvalidInput`; the node is left unconnected."""
 
     def test_a_live_index_still_wires(self):
         # the degrade tests below mean nothing unless this path really reaches `setInput`
@@ -197,7 +197,7 @@ class TestTheWiringSurvivesAStaleConnectorIndex(DropTargetTest):
         landed = self.node("stale_output_landed")
         stale = len(target.outputConnectors())    # one past the end - the index the hit test reported before the node lost an output
         with self.assertRaises(hou.InvalidInput):
-            landed.setInput(0, target, stale)    # the host's own documented answer, pinned here so this cannot pass for want of a raise
+            landed.setInput(0, target, stale)    # Houdini's documented exception, asserted so this cannot pass because nothing raises
         self.assertFalse(
             dragengine.connect_to_neighbour((target, "output", stale),
                                             [landed]))
@@ -216,7 +216,7 @@ class TestTheWiringSurvivesAStaleConnectorIndex(DropTargetTest):
 
 
 class TestTheGhostTick(DropTargetTest):
-    """The outline follows every move; costly target questions run on the tick. ▸p/drag-move-cost"""
+    """The outline follows every move; costly target lookups run on the tick. ▸p/drag-move-cost"""
 
     def setUp(self):
         super().setUp()
@@ -230,17 +230,17 @@ class TestTheGhostTick(DropTargetTest):
         editor = ScriptedEditor([], {})
         t0 = 1000.0
         self.assertTrue(dragengine.ghost_tick(editor, now=t0),
-                        "a fresh gesture's first move must resolve")
+                        "a new drag's first move must look up its targets")
         self.assertFalse(dragengine.ghost_tick(editor, now=t0 + 0.001),
-                         "the second move re-asked inside the interval")
-        self.assertTrue(dragengine.ghost_tick(    # 1.01: float subtraction lands a hair under the exact boundary
+                         "the second move looked up again inside the interval")
+        self.assertTrue(dragengine.ghost_tick(    # 1.01: float subtraction gives slightly less than the exact boundary
             editor, now=t0 + dragengine.PICK_INTERVAL * 1.01))
         self.assertTrue(
             dragengine.ghost_tick(
                 ScriptedEditor([], {}),
                 now=t0 + dragengine.PICK_INTERVAL * 1.01 + 0.001),
-            "crossing into another editor must not serve the old "
-            "editor's answers for the rest of the interval")
+            "crossing into another editor must not reuse the old "
+            "editor's results for the rest of the interval")
 
     def test_a_new_gesture_forgets_the_previous_answers(self):
         editor = ScriptedEditor([], {})
@@ -253,7 +253,7 @@ class TestTheGhostTick(DropTargetTest):
         self.assertEqual("", type_name)
         self.assertTrue(
             dragengine.ghost_tick(ScriptedEditor([], {}), now=1000.001),
-            "a fresh gesture must resolve on its first move")
+            "a new drag must look up its targets on its first move")
 
     def test_forbidden_drop_on_wire_skips_the_hit_test(self):
         editor = ScriptedEditor([], {})
@@ -265,8 +265,8 @@ class TestTheGhostTick(DropTargetTest):
         self.assertEqual((None, "", -1), found)
         self.assertIsNone(
             editor.asked_with,
-            "the box was queried for an answer the preference had "
-            "already refused")
+            "the box was queried although the preference had "
+            "already turned drop-on-wire off")
 
     def test_the_pane_is_looked_up_once_and_held_by_its_rect(self):
         from PySide6 import QtCore, QtGui
@@ -294,7 +294,7 @@ class TestTheGhostTick(DropTargetTest):
                     _tab, _kind, fresh = dragengine.pane_under_cursor_tracked(
                         now=1000.0 + later)
                 self.assertEqual(lookups, len(looked),
-                                 "%s: the desktop was walked %d times"
+                                 "%s: the pane lookup ran %d times"
                                  % (case, len(looked)))
                 self.assertEqual(lookups == 2, fresh)
 
@@ -313,7 +313,7 @@ class TestTheGhostTick(DropTargetTest):
         self.assertEqual(first, second)
         self.assertEqual(
             before, len(calls),
-            "the second ask went back to the host for a shape that "
+            "the second call queried Houdini again for a shape that "
             "cannot change within a session")
 
 
@@ -327,7 +327,7 @@ class TestTheReachIsTheHostsOwn(DropTargetTest):
         dragengine.connector_under_cursor(
             editor, hou.Vector2(0.0, -0.30))
         p1, p2, for_drop = editor.asked_with
-        self.assertTrue(for_drop, "the box must be a DROP question")
+        self.assertTrue(for_drop, "the box must be a DROP query (`for_drop`)")
         self.assertAlmostEqual(
             (p2.x() - p1.x()) / 2.0,
             editor.lengthToScreen(dragengine.DROP_TARGET_RADIUS),
@@ -378,7 +378,7 @@ class TestThePreviewSurvivesItsOwnNames(unittest.TestCase):
 
 
 class _OverlayEditor(object):
-    """Takes the outline the engine draws, so a snapped ghost can be shown headless."""
+    """Records the outline `dragengine` draws, so a snapped outline can be tested headless."""
 
     def __init__(self):
         self.shapes = None
@@ -394,13 +394,13 @@ class _OverlayEditor(object):
 
 
 class TheReleaseLandsWhereTheOutlineSnapped(unittest.TestCase):
-    """The release asks where to land AFTER `end()` has cleared the outline."""
+    """The release reads the drop position AFTER `end()` has cleared the outline."""
 
     DELTA = hou.Vector2(0.25, -0.5)
 
     def setUp(self):
         dragengine.begin("material")
-        self.addCleanup(dragengine.begin, "")    # a landing left behind would serve the next module
+        self.addCleanup(dragengine.begin, "")    # a snap position left set would be read by the next test module
 
     def _draw_snapped(self):
         """An outline drawn at (1, 2) that the host's snap moved by DELTA."""
@@ -419,8 +419,8 @@ class TheReleaseLandsWhereTheOutlineSnapped(unittest.TestCase):
         landing = dragengine.ghost_snap_position()
         self.assertIsNotNone(
             landing,
-            "end() forgot the snapped point before the release asked "
-            "for it, so the node lands at the raw cursor instead")
+            "end() cleared the snapped point before the release read "
+            "it, so the node is placed at the raw cursor instead")
         self.assertEqual((1.25, 1.5), drawn)
         self.assertEqual(drawn, (landing.x(), landing.y()))
 
@@ -436,7 +436,7 @@ class TheReleaseLandsWhereTheOutlineSnapped(unittest.TestCase):
                     step()
                 self.assertIsNone(
                     dragengine.ghost_snap_position(),
-                    "%s inherited a landing no outline shows" % case)
+                    "%s kept a snap position no outline shows" % case)
 
 
 class ATrackedMissIsAnAnswer(unittest.TestCase):

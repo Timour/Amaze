@@ -1,4 +1,4 @@
-"""The multi-drop material import: one refusal ends it. ▸p/refusal-sink"""
+"""The multi-drop material import: the first failed import stops it. ▸p/refusal-sink"""
 
 import os
 import sys
@@ -18,7 +18,7 @@ from amaze.tests import test_support                      # noqa: F401
 
 
 class _Model:
-    """Answers the three calls the walk makes, recording what it was asked."""
+    """Fakes the three model calls the import loop makes, recording each row it imports."""
 
     def __init__(self, answers):
         self._answers = answers
@@ -39,7 +39,7 @@ class _Model:
 
 
 class TheGroupedImportStopsAtTheFirstRefusalTest(unittest.TestCase):
-    """The `break` is the aggregation: N assets must not mean N dialogs."""
+    """The `break` keeps it to one dialog: N failed assets must not open N dialogs."""
 
     def setUp(self):
         self.panel = panel_module.AmazePanel.__new__(
@@ -65,8 +65,8 @@ class TheGroupedImportStopsAtTheFirstRefusalTest(unittest.TestCase):
             ["a", "b", "c"])
         self.assertEqual(
             [0, 1], model.attempted,
-            "the walk carried on past a refusal, so a multi-drop can "
-            "raise one dialog per asset")
+            "the import loop went on past a failed import, so a "
+            "multi-drop can open one dialog per asset")
         self.assertEqual(1, refused.call_count)
 
     def test_every_asset_lands_when_none_refuses(self):
@@ -75,7 +75,7 @@ class TheGroupedImportStopsAtTheFirstRefusalTest(unittest.TestCase):
             ["a", "b"])
         self.assertEqual([0, 1], model.attempted)
         self.assertEqual([], refused.call_args_list,
-                         "a clean multi-drop still spoke to the user")
+                         "a multi-drop with no failure still called `debug.refuse`")
 
     def test_an_id_the_model_does_not_hold_is_skipped_not_refused(self):
         """A missing row is `continue`, never `break`: one stale id must not stop the assets still there."""
@@ -83,11 +83,11 @@ class TheGroupedImportStopsAtTheFirstRefusalTest(unittest.TestCase):
             {"gone": (-1, None), "b": (1, (True, "", []))},
             ["gone", "b"])
         self.assertEqual([1], model.attempted,
-                         "a stale id was imported, or stopped the walk")
+                         "a stale id was imported, or stopped the import loop")
         self.assertEqual([], refused.call_args_list)
 
     def test_a_refusal_with_no_reason_does_not_speak(self):
-        """`not ok` with an empty reason says nothing, and still stops the walk."""
+        """`not ok` with an empty reason does not call `debug.refuse`, and still stops the loop."""
         model, refused = self._run(
             {"a": (0, (False, "", [])), "b": (1, (True, "", []))},
             ["a", "b"])

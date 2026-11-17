@@ -1,4 +1,4 @@
-"""Sidebar menu pins: `Section.SIDEBAR_MENU` goes through the same builder as `GRID_MENU`."""
+"""Sidebar menu tests: `Section.SIDEBAR_MENU` goes through the same builder as `GRID_MENU`."""
 
 import json
 import os
@@ -42,13 +42,13 @@ def _row(action) -> str:
 
 
 def render(menu) -> list:
-    """Every row of a menu, its submenus inline - the shape the before/after recording used."""
+    """Every row of a menu, its submenus inline - the format the before/after recording used."""
     return [_row(action) for action in menu.actions()]
 
 
 LABEL = "Label > [Red, Yellow, Blue, Green, ----, Custom, Remove]"    # the colour submenu
 SHOW_NEW = ("Show > [Pathname[ ], Subfolder[ ], ----, Other Files[x], ----, "
-            "Images[x], Geometry[x], HIP[x]]")    # a location added today: every kind on
+            "Images[x], Geometry[x], HIP[x]]")    # a newly added location: every kind on
 
 
 class TheTableIsWellFormED(unittest.TestCase):
@@ -76,7 +76,7 @@ class TheTableIsWellFormED(unittest.TestCase):
 
 
 class TheSidebarMenusAreWhatSHIPPED(unittest.TestCase):
-    """Each sidebar menu keeps its shipped shape; a difference is a regression, not a style call."""
+    """Each sidebar menu keeps its shipped rows; any difference is a regression, not a choice."""
 
     @classmethod
     def setUpClass(cls):
@@ -145,7 +145,7 @@ class TheSidebarMenusAreWhatSHIPPED(unittest.TestCase):
                 self.assertEqual(expected, self._show(key, rows))
 
     def _file_location(self):
-        """The fixture's first location, Show ticked the way a location added today is."""
+        """The fixture's first location, with Show ticked as for a newly added location."""
         prefs = self.panel.prefs
         path = prefs.file_folders[0]
         self.addCleanup(locations.set_field, prefs, path, "kinds",
@@ -154,7 +154,7 @@ class TheSidebarMenusAreWhatSHIPPED(unittest.TestCase):
         return path
 
     def test_file_show_reads_the_location_it_is_on(self):
-        """A tick that does not read its own state is a switch showing the wrong position."""
+        """Each Show tick reads the location's own field, or it shows the wrong state."""
         prefs = self.panel.prefs
         path = self._file_location()
         prefs.set_file_folder_kinds(path, (locations.KIND_OTHER,
@@ -168,7 +168,7 @@ class TheSidebarMenusAreWhatSHIPPED(unittest.TestCase):
 
 
 class ADismissedSidebarMenuRunsNOTHING(unittest.TestCase):
-    """Dismissal fires no verb: dispatch is a dict, so a None pick cannot reach a verb."""
+    """Dismissing the menu runs no verb: dispatch is a dict, so a None pick matches no verb."""
 
     @classmethod
     def setUpClass(cls):
@@ -216,11 +216,11 @@ class EachSubmenuRowWritesWhatItSays(unittest.TestCase):
         self.panel = test_support.fixture_panel(self)
 
     def _on_row(self, key, row=None):
-        """A right press on `row` of `key`'s sidebar, else its first real row; answers the context and key."""
+        """Right-presses `row` of `key`'s sidebar, else the first real row; returns context, key."""
         self.panel.section_tabs.setChecked(key)
         QtWidgets.QApplication.processEvents()
         view = self.panel.cat_list
-        if row is None:    # File's first location sits under All and the scene row
+        if row is None:    # File's first location is below All and the scene row
             row = getattr(view.model(), "_offset", lambda: 1)()
         if row >= view.model().rowCount():
             self.skipTest("the %s sidebar has no row %d" % (key, row))
@@ -230,7 +230,7 @@ class EachSubmenuRowWritesWhatItSays(unittest.TestCase):
         return context, context.sidebar_key(index)
 
     def _choose(self, *labels):
-        """A right press on the row `_on_row` named, then its menu: `labels` down the submenus."""
+        """Right-presses the row `_on_row` chose, then picks `labels` down through the submenus."""
         view = self.panel.cat_list
         view.selectionModel().setCurrentIndex(    # every menu opens on its own right press
             view.model().index(self._row, 0), QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
@@ -354,7 +354,7 @@ class TheChipsSitWhereTheDesignDrawsThem(unittest.TestCase):
 class StructuralSignalsStayOutsideRelayout(unittest.TestCase):
     """`ui_helpers.relayout` is for data changes only, never around row inserts or removals."""
 
-    ROW_WRITERS = (    # each inserts or removes rows, or saves - and a save adopts a peer's rows
+    ROW_WRITERS = (    # each inserts or removes rows, or saves - and a save loads another session's rows
         "save", "add_asset", "import_record", "update_asset",
         "update_asset_content", "convert",
         "check_add_category", "remove_asset",
@@ -362,7 +362,7 @@ class StructuralSignalsStayOutsideRelayout(unittest.TestCase):
     CATEGORY_WRITERS = ("remove_category", "rename_category")    # move rows or save on a CATEGORIES model
 
     def test_no_relayout_wraps_a_row_move_or_a_save(self):
-        """Every file that may open the pair, every verb that can move rows under it."""
+        """Every file that may open a `relayout` pair, every method that can move rows inside it."""
         import ast
 
         package = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -391,11 +391,11 @@ class StructuralSignalsStayOutsideRelayout(unittest.TestCase):
         self.assertEqual(
             [], offenders,
             "a call that can insert, remove or save runs inside a "
-            "layout-change pair - the H21 segfault shape: %s" % offenders)
+            "layout-change pair - the pattern that segfaults H21: %s" % offenders)
 
 
 class TheCategoryVerbsMoveNoRowInsideALayoutChange(unittest.TestCase):
-    """Rename and Remove edit asset rows in place; the save that follows adopts a peer's rows."""
+    """Rename and Remove edit asset rows in place; the next save loads another session's rows."""
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
@@ -423,10 +423,10 @@ class TheCategoryVerbsMoveNoRowInsideALayoutChange(unittest.TestCase):
     def _assert_no_row_moved_inside(self, caught, verb):
         self.assertIn("Filed elsewhere",
                       [asset.name for asset in self.model.assets],
-                      "premise: the save adopted nothing")
+                      "premise: the save loaded no other session's row")
         self.assertEqual(
             [], caught,
-            "%s moved rows inside a layout-change pair - the shape that "
+            "%s moved rows inside a layout-change pair - the pattern that "
             "segfaults H21: %s" % (verb, caught))
 
     def test_rename(self):
@@ -439,7 +439,7 @@ class TheCategoryVerbsMoveNoRowInsideALayoutChange(unittest.TestCase):
             self.section.menu_rename_category([index], index)
         self._assert_no_row_moved_inside(caught, "Rename")
         self.assertEqual("Surfaces", self.panel.selected_category_name(),
-                         "the renamed row is no longer where you stand")
+                         "the renamed row is no longer the selected one")
         self.assertEqual(
             "Surfaces", self.panel.material_sorted_model.filter_value(
                 self.model.CategoryRole),
@@ -514,7 +514,7 @@ class _FourAssetSidebars:
             kept, gone = "Kept", "Gone"
             for name in (kept, gone):
                 self._file(key, name)
-        self.panel.active_section().stack().categories.check_add_category("Below")    # where Qt slides
+        self.panel.active_section().stack().categories.check_add_category("Below")    # where Qt moves the selection
         self.panel.refresh_sidebar_categories()
         self.assertEqual(self._row(gone) + 1, self._row("Below"), "premise: no row below")
         return kept, gone
@@ -536,7 +536,7 @@ class _FourAssetSidebars:
         return index
 
     def _stand(self, stored):
-        """A left click: the press, then the sidebar's own clicked handler. Answers the tiles."""
+        """A left click: the press, then the sidebar's own clicked handler. Returns the tiles."""
         self._press(stored)
         self.panel.update_selected_cat()
         QtWidgets.QApplication.processEvents()
@@ -548,13 +548,13 @@ class _FourAssetSidebars:
 
     def _assert_standing(self, stored, tiles):
         st = self.panel.active_section().stack()
-        self.assertEqual(tiles, self._tiles(), "the grid is not the row it stands on")
+        self.assertEqual(tiles, self._tiles(), "the grid does not show the selected row")
         self.assertEqual("" if category.is_all(stored) else stored,
                          st.proxy.filter_value(st.model.CategoryRole) or "",
                          "the grid is narrowed to another category")
         view = self.panel.cat_list
         row = self._row(stored)
-        self.assertEqual(row, view.currentIndex().row(), "the sidebar stands elsewhere")
+        self.assertEqual(row, view.currentIndex().row(), "the sidebar's current row is another")
         self.assertEqual([row], [index.row() for index in view.selectedIndexes()],
                          "the sidebar highlights another row")
 
@@ -570,7 +570,7 @@ class _FourAssetSidebars:
 
 
 class RemovingACategoryLeavesNoTileOfIt(_FourAssetSidebars, unittest.TestCase):
-    """Remove takes the row you stand on to All, any other row leaves you where you are."""
+    """Remove on the selected row selects All; on any other row the selection stays."""
 
     def _remove(self, stored):
         index = self._press(stored)
@@ -600,7 +600,7 @@ class RemovingACategoryLeavesNoTileOfIt(_FourAssetSidebars, unittest.TestCase):
 
 
 class RenameAndSortStandWhereTheGridStood(_FourAssetSidebars, unittest.TestCase):
-    """A right press moves only the sidebar, so Rename and Sort keep both on the grid's row."""
+    """A right press changes only the sidebar, so Rename and Sort leave both on the grid's row."""
 
     def _rename(self, stored):
         index = self._press(stored)
@@ -664,7 +664,7 @@ class RenameAndSortStandWhereTheGridStood(_FourAssetSidebars, unittest.TestCase)
 
 
 class ADismissedMenuStandsWhereTheGridStands(_FourAssetSidebars, unittest.TestCase):
-    """A right press moves only the sidebar, so a menu closed with no pick puts it back."""
+    """A right press changes only the sidebar, so a menu closed with no pick restores it."""
 
     def test_the_highlight_returns_to_the_grids_row(self):
         def case(kept, gone, everything, kept_tiles):
@@ -678,7 +678,7 @@ class ADismissedMenuStandsWhereTheGridStands(_FourAssetSidebars, unittest.TestCa
 
 
 class ANameThatReadsAsAnotherIsThatCategory(unittest.TestCase):
-    """`_WIP` reads WIP, so a typed WIP names it: Add and Rename never leave two rows reading alike."""
+    """`_WIP` shows as WIP, so typed WIP means it: Add and Rename never make two rows alike."""
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
@@ -708,7 +708,7 @@ class ANameThatReadsAsAnotherIsThatCategory(unittest.TestCase):
         filed = [asset for asset in self.panel.material_model.assets
                  if stored in asset.categories]
         self.assertTrue(filed, "premise: nothing is filed under %r" % stored)
-        self.assertTrue(self.panel._stand_on_category(stored), "premise: no row to stand on")
+        self.assertTrue(self.panel._stand_on_category(stored), "premise: no row to select")
         index = self._sidebar_row(stored)
         with self._typing(typed):
             self.section.menu_rename_category([index], index)
@@ -728,7 +728,7 @@ class ANameThatReadsAsAnotherIsThatCategory(unittest.TestCase):
                          [list(asset.categories) for asset in filed],
                          "the renamed tiles are not under the row reading WIP")
         self.assertEqual("_WIP", self.panel.selected_category_name(),
-                         "the sidebar left the row the renamed tiles went to")
+                         "the sidebar does not select the row the renamed tiles moved to")
         self.assertEqual("_WIP", self.panel.material_sorted_model.filter_value(
             self.panel.material_model.CategoryRole),
             "the grid is narrowed to a category that is gone")
@@ -740,7 +740,7 @@ class ANameThatReadsAsAnotherIsThatCategory(unittest.TestCase):
         self.assertEqual([["Karma_Mats"]] * len(filed),
                          [list(asset.categories) for asset in filed])
         self.assertEqual("Karma_Mats", self.panel.selected_category_name(),
-                         "the sidebar slid onto the row below the merged one")
+                         "the sidebar selected the row below the merged one")
 
     def test_renaming_to_All_changes_nothing(self):
         before = self._rows_read()

@@ -19,7 +19,7 @@ _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 import hou  # noqa: E402
 
-sys.path.insert(    # three dirnames land on python/, the checkout, not the install ▸p/checkout-not-install
+sys.path.insert(    # three dirnames reach python/, the checkout, not the install ▸p/checkout-not-install
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
@@ -43,7 +43,7 @@ class TestFacts(unittest.TestCase):
             self.assertGreater(kinds[kind], 0, "no %s facts" % kind)
 
     def test_metals_carry_a_measured_finish(self):
-        """The reference set lists metals as mirrors; the measured finish gives a metal its surface."""
+        """The reference set gives metals roughness 0; the measured finish gives a metal its own."""
         rough = [f["roughness"] for f in generator.online_facts()
                  if generator.fact_kind(f) == "metal" and f["roughness"] > 0]
         self.assertGreaterEqual(len(rough), 5)
@@ -161,7 +161,7 @@ class TestGeneratedSpecs(unittest.TestCase):
         self.assertGreater(checked, 0, "no scattering material sampled")
 
     def test_subsurface_hue_stays_bounded(self):
-        """Skin that hue-rotates freely is no longer skin."""
+        """A subsurface hue stays within 0.06 of its source, or skin no longer looks like skin."""
         rng = random.Random(99)
         facts = [f for f in generator.online_facts()
                  if generator.fact_kind(f) == "subsurface"]
@@ -194,7 +194,7 @@ class TestGeneratedSpecs(unittest.TestCase):
                 self.assertEqual(spec.get("sheen", 0.0), 0.0, prov)
 
     def test_vinyl_film_is_not_classified_as_fabric(self):
-        """The satin trap in the generator class table: a colourway name must not beat the description."""
+        """In the generator's class table, a colour name like `satin` must not outrank the description."""
         fact = generator._normalise("RGL", "satin_blue", {
             "color": [0.68, 0.74, 0.75], "metalness": 0.0,
             "roughness": 0.3,
@@ -204,7 +204,7 @@ class TestGeneratedSpecs(unittest.TestCase):
         self.assertFalse(generator._is_fabric(fact))
 
     def test_every_spec_key_exists_on_the_shader(self):
-        """A key the shader does not have is set silently into nothing."""
+        """A key the shader does not have is ignored without an error."""
         staging = hou.node("/obj").createNode("matnet")
         probe = staging.createNode("mtlxstandard_surface")
         try:
@@ -313,7 +313,7 @@ class TestCatalogueFreshness(unittest.TestCase):
                     if (r.payload.get("values") or {}).get("color")
                 ]
                 self.assertEqual(len(with_colour), len(records),
-                                 "%s tiles would paint grey offline"
+                                 "%s tiles would show grey offline"
                                  % source.name)
         finally:
             matx_sources.get_text, matx_sources.get_json = real_text, real_json
@@ -361,7 +361,7 @@ class TestCatalogueFreshness(unittest.TestCase):
         return real
 
     def test_a_bad_payload_is_refused_with_no_table_to_fall_back_on(self):
-        """The unreadable-table re-fetch goes through the shape gate too ▸r/matx-source-quirks"""
+        """With no table, the re-fetch also goes through `_usable` ▸r/matx-source-quirks"""
         pb = self._pb()
         real_json = matx_sources.get_json
         real_table = self._without_the_shipped_table(pb)
@@ -379,7 +379,7 @@ class TestCatalogueFreshness(unittest.TestCase):
             self.assertIsNone(
                 pb._all,
                 "an unusable live response became the catalogue - the "
-                "shape gate was bypassed on the unreadable-table path")
+                "_usable check was skipped on the unreadable-table path")
             self.assertNotIsInstance(
                 caught.exception, TypeError,
                 "the payload reached the code that slices it, so it was "
@@ -394,7 +394,7 @@ class TestCatalogueFreshness(unittest.TestCase):
             pb.refresh()
 
     def test_a_transient_failure_still_gets_its_second_chance(self):
-        """The accept path: with no table, a transient first failure still gets its good retry."""
+        """With no table, a first transient failure is retried and the good response is kept."""
         pb = self._pb()
         real_json = matx_sources.get_json
         real_table = self._without_the_shipped_table(pb)
@@ -412,16 +412,16 @@ class TestCatalogueFreshness(unittest.TestCase):
             try:
                 records = pb.list_materials(limit=1000)
             except Exception as exc:                    # noqa: BLE001
-                self.fail("a good response on the retry was refused (%s), "    # named: an over-strict gate raises here
+                self.fail("a good response on the retry was rejected (%s), "    # an over-strict `_usable` raises here
                           "so a transient failure with no shipped table "
                           "loses the catalogue" % exc)
             self.assertEqual(
                 len(self.GOOD_PAYLOAD), len(records),
-                "the retry's records did not survive to the caller")
+                "the retry's records did not reach the caller")
             self.assertEqual(
                 [], answers,
                 "the retry never happened - this test is not exercising "
-                "the second chance it was written for")
+                "the retry it was written for")
         finally:
             matx_sources.get_json = real_json
             pb._table_path = real_table
@@ -516,7 +516,7 @@ class RGLRoughnessTest(unittest.TestCase):
 
     def test_a_painted_satin_reaches_the_import_with_its_reflection(self):
         values = matx_sources.RGLSource()._values_for("satin_blue")
-        self.assertIn("specularColor", values, "the shipped satin_blue is not painted")
+        self.assertIn("specularColor", values, "the shipped satin_blue has no specularColor")
         self.assertLess(values["color"][0], values["color"][2], "satin_blue is not blue")
 
 
@@ -547,7 +547,7 @@ class TestDownloadIntegrity(unittest.TestCase):
             self.assertFalse(
                 os.path.exists(os.path.join(
                     self.tmp, "not_a_real_material_rgb.bsdf")),
-                "a bad download was kept and would poison this material "
+                "a bad download was kept and would break this material "
                 "permanently - the file exists, so it is never refetched")
         finally:
             matx_sources.download = real_download
@@ -573,7 +573,7 @@ class TestDownloadIntegrity(unittest.TestCase):
         try:
             with self.assertRaises(ValueError):
                 self.rgl.fetch(record, None, self.tmp)
-            self.assertTrue(calls, "the poisoned cache was reused, not "
+            self.assertTrue(calls, "the bad cached file was reused, not "
                                    "refetched")
         finally:
             matx_sources.download = real_download
@@ -581,7 +581,7 @@ class TestDownloadIntegrity(unittest.TestCase):
     TRUNCATED = b"tensor_file\0" + bytes([1, 0]) + struct.pack("<I", 5)    # the magic, then nothing
 
     def _served(self, body) -> list:
-        """The network door answering every request with `body`; answers the URLs asked."""
+        """Patch `_request` to return `body` for every request; returns the URLs requested."""
         from unittest import mock
         from amaze.tests.test_packages import _Served
         asked = []
@@ -638,7 +638,7 @@ class ThirdPartyHostTest(unittest.TestCase):
                          matx_sources.GPUOpenSource.API)
 
     def test_no_source_url_carries_our_app_name(self):
-        """Our name has no business inside anyone else's domain."""
+        """No third-party URL may contain our app name."""
         import inspect
 
         from amaze.core import matx_sources
@@ -655,10 +655,10 @@ class ThirdPartyHostTest(unittest.TestCase):
 
 
 class TruncatedDownloadTest(unittest.TestCase):
-    """A short transfer is never promoted: HTTPResponse does not raise on a short body."""
+    """A short transfer never reaches the final path: HTTPResponse accepts a short body."""
 
     def _serve_once(self, body: bytes, declared_length=None) -> str:
-        """A one-shot HTTP server that can lie about Content-Length, answering its URL."""
+        """A one-shot HTTP server that can send a wrong Content-Length; returns its URL."""
         import socket
         import threading
 
@@ -704,7 +704,7 @@ class TruncatedDownloadTest(unittest.TestCase):
         self.assertIn("truncated", str(caught.exception))
         self.assertFalse(
             os.path.exists(dest),
-            "a truncated transfer was promoted to the final path, where "
+            "a truncated transfer was renamed to the final path, where "
             "every cache layer treats it as a finished download forever")
         self.assertFalse(os.path.exists(dest + ".part"),
                          "the partial file was left behind")
@@ -723,11 +723,11 @@ class TruncatedDownloadTest(unittest.TestCase):
                     matx_sources.download(url, dest)
                 self.assertEqual(messages.DOWNLOAD_TOO_LARGE % "1000 bytes", str(caught.exception))
                 self.assertEqual([], os.listdir(os.path.dirname(dest)),
-                                 "a refused download left a file behind")
+                                 "a rejected download left a file behind")
 
     def test_a_complete_transfer_still_lands(self):
-        """The guard must not be so strict it refuses good downloads."""
-        for body, declared in ((b"y" * 5000, 5000), (b"z" * 300, None)):    # no Content-Length is no lie
+        """The size checks must not reject good downloads."""
+        for body, declared in ((b"y" * 5000, 5000), (b"z" * 300, None)):    # a missing Content-Length is not a wrong one
             with self.subTest(declared=declared):
                 url = self._serve_once(body, declared_length=declared)
                 dest = self._dest()
@@ -760,7 +760,7 @@ class SilentOnlineFailureTest(unittest.TestCase):
         said = log.matching("could not reach")
         self.assertTrue(
             said,
-            "a dead host produced an empty resolution list and said "
+            "an unreachable host produced an empty resolution list and logged "
             "nothing - indistinguishable from a material with no mtlx")
         self.assertIn("PolyHaven", said[0],    # one record, asserted on itself
                       "the message does not name the site that is down, "
@@ -784,7 +784,7 @@ class SilentOnlineFailureTest(unittest.TestCase):
             "returns Uncategorized without retrying")
 
         calls = []
-        matx_sources.get_json = lambda *a, **k: (    # the API back: the next call works, then is cached
+        matx_sources.get_json = lambda *a, **k: (    # the API reachable again: the next call works, then is cached
             calls.append(1), {"results": [{"id": "u1", "title": "Metal"}]})[1]
         self.assertEqual({"u1": "Metal"}, source._category_map())
         source._category_map()
@@ -823,10 +823,10 @@ class MtlxRepairHonestyTest(unittest.TestCase):
             repairs[0]["fixed_to"],
             "a repair that could not be written was reported as done - "
             "the material renders black while the log says success")
-        # this function owes the cause; the caller owns the consequence
+        # this function logs the cause; the caller handles the result
         self.assertTrue(
             log.matching("could not be updated"),
-            "a failed rewrite was marked unrepaired but never said why, "
+            "a failed rewrite was marked unrepaired but never logged why, "
             "so the log cannot tell it from a material with no textures "
             "to repair: %r" % (log.messages(),))
 
@@ -863,7 +863,7 @@ class MtlxRepairFindsTheColourMapUnderItsOtherNames(unittest.TestCase):
 
 
 class PartialCatalogueTest(unittest.TestCase):
-    """A catalogue missing a whole source never becomes the baseline of a cold cache."""
+    """A catalogue missing a whole source is never written to an empty cache."""
 
     def setUp(self):
         from amaze.core import matx_library
@@ -897,8 +897,8 @@ class PartialCatalogueTest(unittest.TestCase):
         said = log.matching("not kept")
         self.assertTrue(
             said,
-            "a short list was shown with nothing said about it, so it "
-            "reads exactly like the sites having nothing: %r"
+            "a short list was shown with nothing logged about it, so it "
+            "looks exactly like the sites having nothing: %r"
             % (log.messages(),))
         self.assertIn("1", said[0],
                       "the message does not say HOW MANY sites are "
@@ -934,7 +934,7 @@ class PartialCatalogueTest(unittest.TestCase):
 
 
 class NoNetworkBeforeTheProgressBarTest(unittest.TestCase):
-    """Deciding whether to show a progress bar costs no requests: the answer needs none."""
+    """Deciding whether to show a progress bar makes no requests: the answer needs none."""
 
     def setUp(self):
         self.real_json = matx_sources.get_json
@@ -1050,10 +1050,10 @@ class CertificateVerificationTest(unittest.TestCase):
         self.assertTrue(
             ctx.get_ca_certs(),
             "the SSL context trusts no certificate authorities, so every "
-            "https request will fail into the unverified retry")
+            "https request will fail verification")
 
     def test_a_non_ssl_error_is_not_retried_unverified(self):
-        """A 404 or a timeout never reaches a relaxed retry; counted at the opener, not urlopen."""
+        """A 404 or a timeout is not retried at all; counted at the opener, not urlopen."""
         import urllib.error
 
         real = matx_sources.urllib.request.build_opener

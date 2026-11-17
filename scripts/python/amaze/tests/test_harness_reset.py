@@ -48,12 +48,12 @@ class ResetDropsEveryHeldLibraryTest(unittest.TestCase):
         self.assertEqual(["FIRST1"], self._held(["FIRST1"]))
         test_support.reset_database_singletons()
         self.assertEqual(["SECOND1"], self._held(["SECOND1"]),
-                         "the held copy answered from the previous fixture's data")
+                         "the held copy returned the previous fixture's data")
 
 
 @unittest.skipUnless(hou, "Houdini is not loaded")
 class PinEnvSetsOnlyWhatTheProductReadsAsUnset(unittest.TestCase):
-    """`pin_env` sets a variable where the product gate would refuse it, then restores it."""
+    """`pin_env` sets a variable the product would read as unset, then restores it."""
 
     NAME = "AMAZE_PIN_ENV_PROBE"
 
@@ -77,7 +77,7 @@ class PinEnvSetsOnlyWhatTheProductReadsAsUnset(unittest.TestCase):
             with self.subTest(start=start):
                 before, inside, after = self._through_a_pin(start)
                 self.assertEqual("/pinned", inside, "the product reads %r as unset" % start)
-                self.assertEqual(before, after, "the session's own state did not come back")
+                self.assertEqual(before, after, "the session's own state was not restored")
 
     def test_a_value_of_its_own_is_left_alone(self):
         self.assertEqual(("/its/own",) * 3, self._through_a_pin("/its/own"))
@@ -85,7 +85,7 @@ class PinEnvSetsOnlyWhatTheProductReadsAsUnset(unittest.TestCase):
 
 @unittest.skipUnless(hou, "Houdini is not loaded")
 class RendererLoadedAsksTheProductsProbe(unittest.TestCase):
-    """`renderer_loaded` reads the conversion engine's answer, so `plugins_loaded` reaches it."""
+    """`renderer_loaded` calls the conversion engine's check, so `plugins_loaded` can fake it."""
 
     def test_it_follows_the_answer_plugins_loaded_fakes(self):
         for loaded in ("Redshift", "Octane"):

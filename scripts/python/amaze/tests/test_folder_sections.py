@@ -24,7 +24,7 @@ from amaze.tests import test_support  # noqa: E402
 
 
 class DeleteLocalCacheTest(unittest.TestCase):
-    """`Delete Local Cache` must not break Geometry: the memoised geometry cache gets its dir back."""
+    """`Delete Local Cache` must not break Geometry: the memoised geometry cache remakes its dir."""
 
     def setUp(self):
         self.source = os.path.join(
@@ -45,7 +45,7 @@ class DeleteLocalCacheTest(unittest.TestCase):
         self.textures.clear()
         self.assertFalse(
             os.path.isdir(self.geometry.cache_dir),
-            "clear() no longer sweeps the geometry dirs - this test is "
+            "clear() no longer deletes the geometry dirs - this test is "
             "not exercising the case it was written for")
 
         self.geometry.put(self.source, self.image)
@@ -69,7 +69,7 @@ class DeleteLocalCacheTest(unittest.TestCase):
 
 
 class CacheIsolationTest(unittest.TestCase):
-    """clear() sweeps the cache root, so the root must be the test redirect, never the user's."""
+    """clear() deletes folders in the cache root, so it must be a test folder, not the user's."""
 
     def test_a_clear_cannot_reach_the_users_cache(self):
         root = os.path.realpath(hostos.cache_root())
@@ -83,7 +83,7 @@ class CacheIsolationTest(unittest.TestCase):
             texture_library.ThumbnailCache(256).cache_dir)
         self.assertNotEqual(
             os.path.realpath(real), os.path.realpath(swept),
-            "clear() would sweep the real cache directory")
+            "clear() would delete the real cache directory")
 
 
 class ProgressAccountingTest(unittest.TestCase):
@@ -162,7 +162,7 @@ class AFolderLoadTouchesEachFileOnce(unittest.TestCase):
         self.assertEqual(
             "file", {spec[1] for spec in model._row_specs
                      if spec[0] and spec[0][0] == "tex"}.pop(),
-            "premise: the images are not served from the cache")
+            "premise: the images are not read from the cache")
         self.assertEqual([], [name for name in names[:4] if stated.count(name) > 1],    # 0 is the flat scan's own listing stat
                          "a cached image was stated more than once: %s" % stated)
         self.assertEqual(sorted(names), sorted(kinds),
@@ -204,7 +204,7 @@ class ReconcileIsOnePassTest(unittest.TestCase):
                     % (why, cache._manifest.passes))
 
     def test_a_stale_entry_is_dropped_and_other_folders_left_alone(self):
-        """One pass must not mean one fewer correctness check."""
+        """Reading the manifest once must still drop stale entries and keep other folders'."""
         cache = texture_library.ThumbnailCache(256, prefix="recon_test2")
         self.addCleanup(shutil.rmtree, cache.cache_dir, True)
         folder = tempfile.mkdtemp(prefix="amaze_recon_")
@@ -214,7 +214,7 @@ class ReconcileIsOnePassTest(unittest.TestCase):
         cache.reconcile_many({folder: []})
         self.assertEqual(
             {}, cache._manifest,
-            "an entry whose file is gone survived the reconcile")
+            "an entry whose file is gone was kept by the reconcile")
         cache = self._cache(entries=10)
         before = dict(cache._manifest)
         cache.reconcile_many({"/live/sub0": ["a.png"]})
@@ -361,7 +361,7 @@ class TheFlatScanStatsFromTheListingTest(unittest.TestCase):
             scanned = model._scan(folder)
         self.assertEqual(["a.png", "b.exr"], [name for _d, name, _st in scanned])
         self.assertTrue(all(st is not None and st.st_size == 0 for _d, _n, st in scanned),
-                        "the scan stopped handing on the stat it made")
+                        "the scan no longer returns the stat it made")
         self.assertEqual([], statted, "each file was opened to stat it")
 
 
@@ -384,7 +384,7 @@ class StaleRowTest(unittest.TestCase):
         stale = model.index(1, 0)
         model._files = [("/tmp", "a.png")]      # the folder shrank
         self.assertTrue(stale.isValid(),
-                        "isValid() is expected to stay True - that is the trap")
+                        "isValid() is expected to stay True - that is the case tested")
         try:
             value = model.data(stale, QtCore.Qt.ItemDataRole.DisplayRole)
         except IndexError:
@@ -394,7 +394,7 @@ class StaleRowTest(unittest.TestCase):
 
 
 class TheFilesAndProxyArePairedOnce(unittest.TestCase):
-    """`tile_models` pairs them, `Section._model_and_rows` maps a selection; a re-deriving door drifts."""
+    """`tile_models` pairs them, `Section._model_and_rows` maps a selection; nothing else does."""
 
     def test_no_door_derives_the_pair_or_maps_a_selection_for_itself(self):
         import ast
@@ -412,7 +412,7 @@ class TheFilesAndProxyArePairedOnce(unittest.TestCase):
                       and any(isinstance(n, ast.Attribute) and n.attr == "mapToSource"
                               for n in ast.walk(scope)))
         self.assertEqual([], pairs, "the files+proxy pair is re-derived outside tile_models()")
-        self.assertEqual([], maps, "a door maps proxy indexes itself, not via _model_and_rows")
+        self.assertEqual([], maps, "a method maps proxy indexes itself, not via _model_and_rows")
 
     def test_a_dropped_index_is_no_row_and_each_is_mapped_once(self):
         """An invalid map is no row, never -1, and one map per index: a proxy can move in between."""
@@ -429,7 +429,7 @@ class TheFilesAndProxyArePairedOnce(unittest.TestCase):
 
 
 class FileOpensOnTheFolderItLeft(unittest.TestCase):
-    """Activation stands on the remembered location's row, on All, or on the scene row."""
+    """Opening File selects the remembered location's row, All, or the scene row."""
 
     def test_activation_stands_on_the_remembered_row(self):
         panel = test_support.fixture_panel(self)
@@ -473,7 +473,7 @@ class AFixturePanelRendersGeometryOnlyWhenAsked(unittest.TestCase):
 
 
 class RemovingALocationLeavesNoTileOfIt(unittest.TestCase):
-    """Remove Location takes the row you stand on to All, any other row leaves you where you are."""
+    """Remove Location on the selected row selects All; on any other row the selection stays."""
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
@@ -482,7 +482,7 @@ class RemovingALocationLeavesNoTileOfIt(unittest.TestCase):
         self.folders = self.panel.file_folders_model
         self.kept = self.folders.registered_at(self.folders._offset())    # the first location
         self.gone = test_support.fresh_files_folder(self)
-        below = test_support.fresh_files_folder(self)    # the row Qt slides the selection onto
+        below = test_support.fresh_files_folder(self)    # the row Qt moves the selection to
         for path in (self.gone, below):
             self.assertTrue(self.folders.add_folder(path), "premise: no location added")
         self.section = self.panel.sections["file"]
@@ -499,7 +499,7 @@ class RemovingALocationLeavesNoTileOfIt(unittest.TestCase):
         return index
 
     def _stand(self, row):
-        """A left click: the press, then the sidebar's own clicked handler. Answers the tiles."""
+        """A left click: the press, then the sidebar's own clicked handler. Returns the tiles."""
         self._press(row)
         self.panel.update_selected_cat()
         QtWidgets.QApplication.processEvents()
@@ -521,9 +521,9 @@ class RemovingALocationLeavesNoTileOfIt(unittest.TestCase):
         prefix = hostos.canonical_path_key(self.gone).rstrip("/") + "/"
         stale = [path for path in self._tiles() if path.startswith(prefix)]
         self.assertEqual([], stale, "tiles of the removed location still show")
-        self.assertEqual(tiles, self._tiles(), "the grid is not the row it stands on")
+        self.assertEqual(tiles, self._tiles(), "the grid does not show the selected row")
         view = self.panel.cat_list
-        self.assertEqual(row, view.currentIndex().row(), "the sidebar stands elsewhere")
+        self.assertEqual(row, view.currentIndex().row(), "the sidebar's current row is another")
         self.assertEqual([row], [index.row() for index in view.selectedIndexes()],
                          "the sidebar highlights another row")
 
@@ -548,7 +548,7 @@ class RemovingALocationLeavesNoTileOfIt(unittest.TestCase):
 
 
 class _Source:
-    """The two answers `_model_and_rows` asks a mapped index for."""
+    """The two methods `_model_and_rows` calls on a mapped index."""
 
     def __init__(self, valid, row=0):
         self._valid = valid
@@ -562,14 +562,14 @@ class _Source:
 
 
 class _DroppingProxy:
-    """Every index has gone: mapToSource answers an invalid one."""
+    """Every index is gone: mapToSource returns an invalid one."""
 
     def mapToSource(self, _index):
         return _Source(False, -1)
 
 
 class _CountingProxy:
-    """Counts the maps, and answers a valid row for each."""
+    """Counts the mapToSource calls, and returns a valid row for each."""
 
     def __init__(self):
         self.calls = 0

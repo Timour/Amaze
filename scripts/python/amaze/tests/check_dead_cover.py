@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests skipped on every Houdini run, from two or more reports; a bad report refuses (exit 2)."""
+"""Tests skipped on every Houdini run, from two or more reports; a bad report exits with 2."""
 
 import json
 import os
@@ -9,7 +9,7 @@ MINIMUM_REPORTS = 2
 
 
 def load(path: str):
-    """One run's report, or why not; a run that executed nothing vouches for nothing."""
+    """One run's report, or why it is unusable; a report of 0 tests run is rejected."""
     if not os.path.exists(path):
         return None, ("no report at %s - that run never reached the end "
                       "of run_suite.py, so it crashed or was killed" % path)

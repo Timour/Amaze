@@ -64,7 +64,7 @@ class OnlyASectionThatRENDERSOffersUpdatePreview(unittest.TestCase):
     """Update Render only where a preview is rendered (Materials, Nodes), never derived (Code, Color)."""
 
     def test_only_a_section_that_renders_puts_it_in_a_menu(self):
-        """The flag says who can re-render, the menu gate reads it, and File asks the selection."""
+        """The class flag marks who can re-render, the menu reads it, File checks the selection."""
         for name, renders, in_menu in (("MaterialSection", True, True),
                                        ("CopSection", True, True),
                                        ("FileSection", True, False),
@@ -84,10 +84,10 @@ class OnlyASectionThatRENDERSOffersUpdatePreview(unittest.TestCase):
                     "selection" % name)
 
     def _preview_gate(self, name):
-        """Render Image is one row of the shared Thumbnail submenu; whether it is listed is the gate."""
+        """Render Image is a row of the shared Thumbnail submenu; this returns whether it is listed."""
         entry = next(e for e in sections.GRID_MENU_TAIL
                      if e.label == "Thumbnail")
-        context = getattr(sections, name)(None)  # a panel-less instance: the gate reads the section, and False for an absent model
+        context = getattr(sections, name)(None)  # an instance with no panel: the submenu reads the section, and False for a missing model
         return "Render Image" in [row[0] for row in getattr(context, entry.children)([], None)]
 
 
@@ -141,7 +141,7 @@ class DeleteIsONEShapeWithFourSetsOfWORDS(unittest.TestCase):
 
 
 class TheCUSTOMIZEDialogSurvivesAModelRESET(unittest.TestCase):
-    """A model reset voids every persistent index, so tiles are found by `tile_key(row)` identity."""
+    """A model reset invalidates every persistent index, so tiles are found by `tile_key(row)`."""
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
@@ -160,12 +160,12 @@ class TheCUSTOMIZEDialogSurvivesAModelRESET(unittest.TestCase):
         QtWidgets.QApplication.processEvents()
 
     def test_a_RESET_that_moves_nothing_or_REORDERS_still_finds_the_asset(self):
-        """The case row numbers get wrong and identity does not."""
+        """The case where row numbers fail and `tile_key` identity does not."""
         model = self.panel.material_model
         self.assertGreater(model.rowCount(), 2, "need three assets")
 
         def bare():
-            model.beginResetModel()    # every row stays put, and every held index dies anyway
+            model.beginResetModel()    # every row stays put, and every stored index is invalidated anyway
             model.endResetModel()
 
         def reordering():
@@ -186,15 +186,15 @@ class TheCUSTOMIZEDialogSurvivesAModelRESET(unittest.TestCase):
                 self.assertIn(target, by_id, "the asset vanished")
                 self.assertTrue(
                     model.tile_icon(by_id[target]),
-                    "the icon was dropped: a model reset killed the held "
+                    "the icon was dropped: a model reset invalidated the stored "
                     "indexes and the dialog had nothing left to apply to")
                 self.assertFalse(
                     model.tile_icon(by_id[bystander]),
-                    "the icon landed on a different asset - the rows were "
+                    "the icon was applied to a different asset - the rows were "
                     "re-ordered under the open dialog")
 
     def test_every_tile_model_says_what_its_rows_are_KEYED_by(self):
-        """The three families, one question: an id, a path or a uid, without the panel knowing which."""
+        """Each model keys its rows by an id, a path or a uid, without the panel knowing which."""
         for attr in ("material_model", "cop_model", "code_model",
                      "file_files_model", "gradient_model"):
             with self.subTest(model=attr):
@@ -202,15 +202,15 @@ class TheCUSTOMIZEDialogSurvivesAModelRESET(unittest.TestCase):
                 self.assertIsNotNone(model, "%s is missing" % attr)
                 self.assertTrue(
                     callable(getattr(model, "tile_key", None)),
-                    "%s cannot say what its rows are keyed by" % attr)
+                    "%s has no tile_key method for its rows" % attr)
                 if model.rowCount():
                     key = model.tile_key(0)
                     self.assertTrue(
-                        key, "%s answered an empty key for row 0, which "
+                        key, "%s returned an empty key for row 0, which "
                         "every row would share" % attr)
                     self.assertEqual(
                         "", model.tile_key(model.rowCount() + 5),
-                        "%s answers a key for a row that does not exist"
+                        "%s returns a key for a row that does not exist"
                         % attr)
 
 
@@ -281,7 +281,7 @@ class NoMENUKnowsHowToFavourite(unittest.TestCase):
 
 
 class FavouritingWorksInEverySection(unittest.TestCase):
-    """Through the real panel and models, the verb flips the star in all three archetypes."""
+    """Through the real panel and models, the verb toggles the star in all three section kinds."""
 
     @classmethod
     def setUpClass(cls):
@@ -296,7 +296,7 @@ class FavouritingWorksInEverySection(unittest.TestCase):
         self.assertIsNotNone(proxy, "the %s tab has no grid" % key)
         self.assertGreater(proxy.rowCount(), 0,
                            "the %s fixture is empty, so this test "
-                           "cannot say anything" % key)
+                           "cannot check anything" % key)
         context = panel.active_section()
         if displaced:
             self.assertGreater(
@@ -389,7 +389,7 @@ class FavouritingWorksInEverySection(unittest.TestCase):
 
 
 class AStarOverASelectionWritesOnce(unittest.TestCase):
-    """One star gesture over many tiles writes its database once and saves no settings."""
+    """One favourite toggle over many tiles writes its database once and saves no settings."""
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
@@ -435,15 +435,15 @@ class AStarOverASelectionWritesOnce(unittest.TestCase):
             with self.subTest(section=key):
                 before, after, writes, saves = self._gesture(key, database)
                 self.assertEqual([not star for star in before], after,
-                                 "%s did not flip every tile" % key)
-                self.assertEqual(1, writes, "%s wrote %s %d times for one gesture"
+                                 "%s did not toggle every tile" % key)
+                self.assertEqual(1, writes, "%s wrote %s %d times for one toggle"
                                  % (key, database, writes))
                 self.assertEqual(0, saves, "%s saved settings %d times for a star, "
-                                 "which lives in the database alone" % (key, saves))
+                                 "which is stored in the database alone" % (key, saves))
 
 
 class ANonModalDialogHoldsIDENTITYNotRowNumbers(unittest.TestCase):
-    """Customize is non-modal, so the library can move under it; OK applies to the tile, not a row."""
+    """Customize is non-modal, so the rows can shift; OK applies to the tile, not a row number."""
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
@@ -460,7 +460,7 @@ class ANonModalDialogHoldsIDENTITYNotRowNumbers(unittest.TestCase):
         return dialog
 
     def test_a_single_selection_opens_showing_that_tile_s_own_tags(self):
-        """Through the panel's door, not the dialog's constructor: a tagged tile opens with its tags."""
+        """Through `edit_tile_icon`, not the dialog constructor: a tagged tile opens with its tags."""
         self.model.set_tile_tags(2, "granite, polished")
         dialog = self._open_for(2)
         self.assertEqual("granite, polished", dialog.tags_edit.text(),
@@ -471,7 +471,7 @@ class ANonModalDialogHoldsIDENTITYNotRowNumbers(unittest.TestCase):
         bystander_id = str(self.model.assets[1].mat_id)
         dialog = self._open_for(2)
 
-        # The library moves under the open dialog.
+        # The library changes while the dialog is open.
         self.model.removeRow(0)
         QtWidgets.QApplication.processEvents()
 
@@ -489,11 +489,11 @@ class ANonModalDialogHoldsIDENTITYNotRowNumbers(unittest.TestCase):
             "dialog applied to a stale row number")
         self.assertFalse(
             self.model.tile_icon(by_id[bystander_id]),
-            "the icon landed on a DIFFERENT asset, which is the defect: "
-            "the rows shifted under a non-modal dialog")
+            "the icon was applied to a DIFFERENT asset, which is the defect: "
+            "the rows shifted while a non-modal dialog was open")
 
     def test_a_selection_that_is_GONE_applies_to_nothing(self):
-        """Deleting the tile being customised leaves the choice no subject; no other asset is painted."""
+        """Deleting the tile being customised leaves no target; no other asset gets the icon."""
         dialog = self._open_for(1)
         survivor_ids = [str(a.mat_id) for a in self.model.assets]
         del survivor_ids[1]
@@ -515,7 +515,7 @@ class ANonModalDialogHoldsIDENTITYNotRowNumbers(unittest.TestCase):
 
 
 class TheStarBadgeClickActsOnTheSELECTION(unittest.TestCase):
-    """The star flips the whole selection if its tile is selected, else just its own tile."""
+    """The star toggles the whole selection if its tile is selected, else just its own tile."""
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
@@ -552,10 +552,10 @@ class TheStarBadgeClickActsOnTheSELECTION(unittest.TestCase):
                 self.assertEqual(
                     {row: before[row] != (row in flipped) for row in rows},
                     {row: self._fav(row) for row in rows},
-                    "a star clicked %s flipped the wrong tiles" % why)
+                    "a star clicked %s toggled the wrong tiles" % why)
 
     def test_which_delegates_offer_the_star_and_comment_clicks(self):
-        """Every LOCAL grid wires the star, the online one none; every drawn comment badge is wired."""
+        """Every LOCAL grid handles star clicks, the online one none; each drawn comment badge too."""
         for name in ("thumb_delegate", "asset_delegate",
                      "file_delegate", "gradient_delegate"):
             self.assertIn(
@@ -563,26 +563,26 @@ class TheStarBadgeClickActsOnTheSELECTION(unittest.TestCase):
                 "%s offers no star button" % name)
         self.assertNotIn(
             "favourite", self.panel.matx_delegate._badge_clicks,
-            "the online grid grew a star button it cannot serve")
+            "the online grid has a star button it cannot handle")
         self.assertIn("versions", self.panel.thumb_delegate._badge_clicks)
         self.assertNotIn(
             "versions", self.panel.asset_delegate._badge_clicks,
-            "Node/Code wired the versions click their sections cannot "
-            "serve")
+            "Node/Code handle the versions click their sections do not "
+            "support")
         drawn = [d for d in self.panel.tile_delegates()
                  if "comment" in d.badges()]
         self.assertTrue(
-            drawn, "no delegate draws a comment badge, so this proves "
+            drawn, "no delegate draws a comment badge, so this checks "
                    "nothing")
         for delegate in drawn:
             self.assertIn(
                 "comment", delegate._badge_clicks,
-                "a delegate reads the notes role but wires no comment "
-                "click, so the badge paints and hovers dead")
+                "a delegate reads the notes role but handles no comment "
+                "click, so the badge is drawn and does nothing")
 
 
 def _karma_material(test, name):
-    """A real Karma material in /mat - what a conversion or an import hands add_asset."""
+    """A real Karma material in /mat - what a conversion or an import passes to add_asset."""
     node = hou.node("/mat").createNode("subnet", name)
     node.createNode("mtlxstandard_surface", "surf")
     test.addCleanup(node.destroy)
@@ -593,7 +593,7 @@ class NoRowMovesInsideALayoutChange(unittest.TestCase):
     """A row insert inside a layout-change pair segfaults H21 (research.md, measured 2026-08-04)."""
 
     def setUp(self):
-        test_support.pin_env(self, "OCIO", "/dev/null")    # save_node gates on $OCIO; nothing renders here
+        test_support.pin_env(self, "OCIO", "/dev/null")    # save_node requires $OCIO; nothing renders here
         self.panel = test_support.fixture_panel(self)
         self.panel.prefs.render_on_import = 0
         self.model = self.panel.material_model
@@ -607,7 +607,7 @@ class NoRowMovesInsideALayoutChange(unittest.TestCase):
             QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
 
     def _peer_adds_a_row(self, model, row):
-        """Another machine writes a row; OUR next save adopts it, which is an INSERT."""
+        """Another machine writes a row; OUR next save reads it in, which is an INSERT."""
         self.assertTrue(model.save(), "premise: the baseline save failed")
         path = os.path.join(self.panel.prefs.dir, model.DB_FILENAME)
         with open(path, encoding="utf-8-sig") as handle:
@@ -743,13 +743,13 @@ class NoRowMovesInsideALayoutChange(unittest.TestCase):
 
 
 class ARowHeldAcrossASaveIsFoundAgain(unittest.TestCase):
-    """Every save takes in another machine's deletions, so a row number held across one names another."""
+    """Every save applies another machine's deletions, so a row number kept across one may be wrong."""
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
 
     def _deleted_elsewhere(self, model, mat_id):
-        """Another machine deletes `mat_id`; the next save of the file takes the deletion in."""
+        """Another machine deletes `mat_id`; the next save of the file applies the deletion."""
         self.assertTrue(model.save(), "premise: the baseline save failed")
         path = os.path.join(self.panel.prefs.dir, model.DB_FILENAME)
         with open(path, encoding="utf-8-sig") as handle:
@@ -777,7 +777,7 @@ class ARowHeldAcrossASaveIsFoundAgain(unittest.TestCase):
         self.assertEqual(
             ["Brand New"], list(target.categories),
             "the dropped asset kept its category: the list's save took in "
-            "a deletion above it, and the row held from before named another")
+            "a deletion above it, and the row kept from before pointed to another")
 
     def test_an_edited_snippet_is_the_one_saved(self):
         code = self.panel.code_model
@@ -791,7 +791,7 @@ class ARowHeldAcrossASaveIsFoundAgain(unittest.TestCase):
             dialog._harvest()
             dialog.category = "Brand New"
             dialog.code = "// edited here"
-            dialog.applied.emit()    # what Apply hands the section, with these two fields set
+            dialog.applied.emit()    # what Apply emits to the section, with these two fields set
             return 0
 
         with mock.patch.object(code_dialog.CodeDialog, "exec", accepting):
@@ -799,7 +799,7 @@ class ARowHeldAcrossASaveIsFoundAgain(unittest.TestCase):
 
         self.assertEqual(
             "// edited here", target.code,
-            "the edit landed on another snippet: the category list's save "
+            "the edit was saved to another snippet: the category list's save "
             "took in a deletion above it, and the row held from before moved")
 
     def _material_tiles(self):
@@ -931,7 +931,7 @@ class ARowHeldAcrossASaveIsFoundAgain(unittest.TestCase):
 
 
 class CustomizeOffersTheOwningSectionsCategories(unittest.TestCase):
-    """Customize lists the categories of the section whose tiles it edits; a mixed pick opens blank."""
+    """Customize lists the categories of the section it edits; a mixed selection opens with none."""
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
@@ -982,7 +982,7 @@ class CustomizeOffersTheOwningSectionsCategories(unittest.TestCase):
         dialog.accept_button.click()
         QtWidgets.QApplication.processEvents()
         self.assertTrue(self.model.tile_icon(self.rows[0]),
-                        "premise: the icon change did not land")
+                        "premise: the icon change was not applied")
         self.assertEqual(
             [["Rigs"], ["Terrain"]],
             [list(self.model.assets[row].categories) for row in self.rows],
@@ -992,7 +992,7 @@ class CustomizeOffersTheOwningSectionsCategories(unittest.TestCase):
 
 
 class ADeleteOverASelectionSavesOnce(unittest.TestCase):
-    """Five tiles deleted together cost one list write and one thumbnail-map rebuild."""
+    """Five tiles deleted together make one database write and one thumbnail-map rebuild."""
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
@@ -1037,22 +1037,22 @@ class ADeleteOverASelectionSavesOnce(unittest.TestCase):
         before = [str(a.mat_id) for a in self.model.assets]
         self._delete(refuse=True)
         self.assertEqual(before, [str(a.mat_id) for a in self.model.assets],
-                         "a refused delete did not put every row back where "
+                         "a delete whose save failed did not put every row back where "
                          "it was")
         self.assertEqual(self.files, [p for p in self.files if os.path.exists(p)],
-                         "a refused delete unlinked files")
-        self.assertTrue(self.model.save(), "premise: the next save landed")
+                         "a delete whose save failed unlinked files")
+        self.assertTrue(self.model.save(), "premise: the next save succeeds")
         from amaze.core import library_db
         library_db.flush()
         path = os.path.join(self.panel.prefs.dir, self.model.DB_FILENAME)
         with open(path, encoding="utf-8-sig") as handle:
             on_disk = set(json.load(handle)["assets"])
         self.assertEqual(set(self.ids), set(self.ids) & on_disk,
-                         "the declined delete reached disk with the next save")
+                         "the failed delete reached disk with the next save")
 
 
 class ACustomizeOverASelectionSavesOnce(unittest.TestCase):
-    """Tags and a category typed into Customize over five tiles reach the list in ONE save."""
+    """Tags and a category typed into Customize over five tiles reach the database in ONE save."""
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
@@ -1087,7 +1087,7 @@ class ACustomizeOverASelectionSavesOnce(unittest.TestCase):
     def test_tags_and_a_category_over_five_tiles_save_once(self):
         saves = self._apply("probe-tag", "Probe Shelf")
         self.assertEqual(1, saves,
-                         "Customize over five tiles wrote the list %d times"
+                         "Customize over five tiles wrote the database %d times"
                          % saves)
         for mat_id in self.ids:
             record = self._record(mat_id)
@@ -1103,14 +1103,14 @@ class ACustomizeOverASelectionSavesOnce(unittest.TestCase):
     def test_an_edit_that_changes_nothing_saves_nothing(self):
         self._apply("probe-tag", "Probe Shelf")
         self.assertEqual(0, self._apply("probe-tag", "Probe Shelf"),
-                         "re-applying what every tile already carries saved")
+                         "re-applying what every tile already has caused a save")
 
 
 class _SavesThroughThePanel:
     """A fixture panel whose Save runs for real on fresh Karma builders, every dialog recorded."""
 
     def setUp(self):
-        test_support.pin_env(self, "OCIO", "/dev/null")    # save_node gates on $OCIO; nothing renders here
+        test_support.pin_env(self, "OCIO", "/dev/null")    # save_node requires $OCIO; nothing renders here
         self.panel = test_support.fixture_panel(self)
         self.staging = hou.node("/obj").createNode("matnet")
         self.addCleanup(self.staging.destroy)
@@ -1139,11 +1139,11 @@ class _SavesThroughThePanel:
         return os.path.join(self.panel.prefs.dir, model.DB_FILENAME)
 
     def _answering(self, text, *_args, **kwargs):
-        self.shown.append((text, kwargs["details"]) if kwargs.get("details") else text)    # a list rides in details
+        self.shown.append((text, kwargs["details"]) if kwargs.get("details") else text)    # a list is passed in `details`
         return 0    # Save Version, the first button
 
     def _save(self, held, *patches):
-        """The panel's Save over `held`, answered Save Version: (the dialogs after that question, log)."""
+        """The panel's Save over `held`, choosing Save Version: (the dialogs after that question, log)."""
         with contextlib.ExitStack() as stack:
             for patch in (mock.patch.object(hou, "selectedNodes", lambda: held),
                           mock.patch.object(hou, "ui", types.SimpleNamespace(
@@ -1157,27 +1157,27 @@ class _SavesThroughThePanel:
 
 
 class ASaveVersionTheListCannotTakeIsSaidOnce(_SavesThroughThePanel, unittest.TestCase):
-    """Save Version with the list write refused: the library's alert alone, the rows kept for later."""
+    """Save Version with the database write failing: only the library's alert; rows kept for later."""
 
     def _save_over(self, count):
         from amaze.core import library_db
         assets = self._karma(count)
         index = self._list_of(self.panel.material_model)
         shown, log = self._save(self._held(assets), test_support.full_disk_for(index))
-        self.assertEqual([], shown, "a dialog joined the library's own alert")
+        self.assertEqual([], shown, "a dialog was shown besides the library's own alert")
         self.assertTrue(log.matching("could not save the library", "alert"),
-                        "premise: the list write went through")
+                        "premise: the database write went through")
         held = library_db.document(self.panel.prefs, self.panel.material_model.DB_FILENAME)
-        self.assertTrue(held.dirty, "the refused rows were dropped, not kept for the next save")
+        self.assertTrue(held.dirty, "the unsaved rows were dropped, not kept for the next save")
         library_db.flush()
-        self.assertFalse(held.dirty, "the kept rows did not land once the disk took them")
+        self.assertFalse(held.dirty, "the kept rows were not saved once the disk accepted writes")
         return log.messages("refuse")
 
     def test_one_update_is_kept_for_the_next_save(self):
-        self.assertEqual([], self._save_over(1), "a status line joined the library's own alert")
+        self.assertEqual([], self._save_over(1), "a status line was shown besides the library's own alert")
 
     def test_several_updates_are_kept_for_the_next_save(self):
-        self.assertEqual([], self._save_over(2), "a status line joined the library's own alert")
+        self.assertEqual([], self._save_over(2), "a status line was shown besides the library's own alert")
 
 
 class ASaveVersionSaysWhatItDidNotUpdateOnce(_SavesThroughThePanel, unittest.TestCase):
@@ -1199,7 +1199,7 @@ class ASaveVersionSaysWhatItDidNotUpdateOnce(_SavesThroughThePanel, unittest.Tes
         self.addCleanup(hou.putenv, "OCIO", was)
         shown, _log = self._save(self._held(assets))
         self.assertEqual([messages.OCIO_NOT_SET], shown,
-                         "an unset $OCIO was said more than once, or with Update failed after it")
+                         "an unset $OCIO was shown more than once, or with Update failed after it")
         self.assertEqual(before, self._files(assets), "a material was written without $OCIO")
 
     def test_a_node_that_is_no_builder_is_one_sentence(self):
@@ -1207,7 +1207,7 @@ class ASaveVersionSaysWhatItDidNotUpdateOnce(_SavesThroughThePanel, unittest.Tes
         shown, _log = self._save(self._held(assets, builder=False))
         self.assertEqual(
             [messages.MATERIAL_NOT_UPDATED % (assets[0].name, messages.UPDATE_REFUSED_NOT_A_BUILDER)],
-            shown, "the refusal and Update failed came as two dialogs")
+            shown, "the not-a-builder message and Update failed came as two dialogs")
 
     def test_two_changed_on_disk_are_both_named_in_one_message(self):
         assets = self._karma(2)
@@ -1221,8 +1221,8 @@ class ASaveVersionSaysWhatItDidNotUpdateOnce(_SavesThroughThePanel, unittest.Tes
         lines = "\n".join(messages.MATERIAL_NOT_UPDATED_LINE
                           % (asset.name, messages.UPDATE_REFUSED_CHANGED_ON_DISK) for asset in assets)
         self.assertEqual([(messages.MATERIALS_NOT_UPDATED, lines)], shown,
-                         "the second material's refusal was not named, or came as its own dialog")
-        self.assertEqual([], log.messages("alert"), "the refusal alerted beside the one message")
+                         "the second material was not named, or came as its own dialog")
+        self.assertEqual([], log.messages("alert"), "an alert was logged besides the one message")
 
     def test_an_error_in_one_save_does_not_stop_the_batch(self):
         assets = self._karma(2)
@@ -1236,7 +1236,7 @@ class ASaveVersionSaysWhatItDidNotUpdateOnce(_SavesThroughThePanel, unittest.Tes
             shown, _log = self._save(self._held(assets), mock.patch.object(
                 render_nodes.NodeHandler, "_save_copy", failing))
         except OSError as exc:
-            self.fail("the error escaped Save Version, after %s: %s" % (tried, exc))
+            self.fail("the error propagated out of Save Version, after %s: %s" % (tried, exc))
         self.assertEqual(["held0", "held1"], tried, "the error stopped the batch")
         lines = "\n".join(messages.MATERIAL_NOT_UPDATED_LINE
                           % (asset.name, OSError(28, "No space left on device")) for asset in assets)
@@ -1245,7 +1245,7 @@ class ASaveVersionSaysWhatItDidNotUpdateOnce(_SavesThroughThePanel, unittest.Tes
 
 
 class ASaveNewTheListCannotTakeIsSaidOnce(_SavesThroughThePanel, unittest.TestCase):
-    """A new material or node setup whose list write fails lands nothing and is named in one dialog."""
+    """A new material or node setup whose database write fails saves nothing; one dialog names it."""
 
     def _dialog(self, name=""):
         return types.SimpleNamespace(categories="", tags="", fav=False, name=name)
@@ -1262,9 +1262,9 @@ class ASaveNewTheListCannotTakeIsSaidOnce(_SavesThroughThePanel, unittest.TestCa
                 mock.patch.object(hou, "ui", types.SimpleNamespace(
                     displayMessage=self._answering), create=True):
             self.panel.sections["material"].commit_save(held, held[0], self._dialog())
-        self.assertEqual(rows, model.rowCount(), "a material the list refused shows as a tile")
+        self.assertEqual(rows, model.rowCount(), "a material the database did not save shows as a tile")
         self.assertEqual(files, sorted(os.listdir(self._folder_of(model))),
-                         "a material the list refused left its files in the library")
+                         "a material the database did not save left its files in the library")
         return held
 
     def test_one_new_material_is_named(self):
@@ -1276,7 +1276,7 @@ class ASaveNewTheListCannotTakeIsSaidOnce(_SavesThroughThePanel, unittest.TestCa
         held = self._save_new(2)
         lines = "\n".join(messages.SAVE_DID_NOT_COMPLETE_LINE % node.name() for node in held)
         self.assertEqual([(messages.MATERIALS_SAVE_FAILURES, lines)], self.shown,
-                         "the refused materials were not named in one dialog")
+                         "the unsaved materials were not named in one dialog")
 
     def test_a_new_node_setup_is_named(self):
         lop = hou.node("/obj").createNode("lopnet", "refused_setup")
@@ -1291,8 +1291,8 @@ class ASaveNewTheListCannotTakeIsSaidOnce(_SavesThroughThePanel, unittest.TestCa
                     displayMessage=self._answering), create=True):
             self.panel.sections["cop"].commit_save([lop], lop, self._dialog("probe_setup"))
         self.assertEqual([messages.NODE_SAVE_FAILED % "refused_setup"], self.shown,
-                         "the refused setup was not named once")
-        self.assertEqual(rows, model.rowCount(), "a setup the list refused shows as a tile")
+                         "the unsaved setup was not named once")
+        self.assertEqual(rows, model.rowCount(), "a setup the database did not save shows as a tile")
 
 
 if __name__ == "__main__":

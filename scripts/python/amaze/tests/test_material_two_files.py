@@ -1,4 +1,4 @@
-"""Format 4: an asset is `<section>/<id>.mat|.json|.png`; format 3 is the converter's alone."""
+"""Format 4: an asset is `<section>/<id>.mat|.json|.png`; only the converter reads format 3."""
 import hashlib
 import json
 import os
@@ -81,7 +81,7 @@ class _Interrupt(Exception):
 
 
 class _Library(unittest.TestCase):
-    """A fixture copy, preferences that name it, and format 3 shapes laid as converter input."""
+    """A fixture copy, preferences pointing at it, and format 3 files written as converter input."""
 
     def setUp(self):
         self.prefs = test_support.fixture_prefs(self)
@@ -121,7 +121,7 @@ class _Library(unittest.TestCase):
         return {}
 
     def old_asset(self, asset_id: str, folder=None, builder=True, stamp=True) -> list:
-        """A format 3 asset: `.mat`, `.interface`, as asked its sidecar and its stamp."""
+        """A format 3 asset: `.mat`, `.interface`, and optionally its sidecar and its stamp."""
         folder = folder or self.old
         made = [write(os.path.join(folder, asset_id + ".mat"), "nodes of %s\n" % asset_id),
                 write(os.path.join(folder, asset_id + ".interface"), INTERFACE)]
@@ -150,7 +150,7 @@ class _Library(unittest.TestCase):
         return outcome, asked
 
     def mismatch_for(self, asset_id: str):
-        """`asset_record.read` answering wrong for `asset_id`'s new file once it exists."""
+        """`asset_record.read` returning a wrong record for `asset_id`'s new file once it exists."""
         real = asset_record.read
 
         def reading(path):
@@ -161,7 +161,7 @@ class _Library(unittest.TestCase):
 
 
 class _OldLibrary(_Library):
-    """An older library laid out from nothing: its root files, `mat/`, `img/`, `captures/`."""
+    """An older library built from scratch: its root files, `mat/`, `img/`, `captures/`."""
 
     def setUp(self):
         test_support.reset_database_singletons()
@@ -182,7 +182,7 @@ class _OldLibrary(_Library):
 
 
 class AFullConversionTest(_OldLibrary):
-    """A small format 3 library converted whole: every shape lands, nothing old is left."""
+    """A small format 3 library converted whole: every kind of file converts, nothing old left."""
 
     def lay_out(self):
         self.database("library.json", ["MAT1", "BOTH1", "NOMAT1"])
@@ -215,7 +215,7 @@ class AFullConversionTest(_OldLibrary):
         self.assertTrue(library_conversion.needs_conversion(self.dir))
         outcome, asked = self.convert()
         self.assertEqual(library_conversion.DONE, outcome.status)
-        self.assertEqual([1], asked, "confirm() was not asked exactly once")
+        self.assertEqual([1], asked, "confirm() was not called exactly once")
         self.assertEqual(library_policy.LIBRARY_VERSION, library_version(self.dir))
         self.assertFalse(library_conversion.needs_conversion(self.dir))
         self.assertFalse(os.path.lexists(self.at(library_conversion.OLD_POLICY)),
@@ -456,7 +456,7 @@ class AnUnknownFileInMatStaysTest(_OldLibrary):
 
 
 class AnInterruptedConversionRerunsTest(_OldLibrary):
-    """Stopped after an asset's new files were written and before its old ones went."""
+    """Stopped after an asset's new files were written and before its old ones were deleted."""
 
     def lay_out(self):
         self.database("library.json", ["RUN1", "RUN2"])
@@ -542,7 +542,7 @@ class NothingChangesUnlessItRunsTest(_OldLibrary):
     def test_opening_it_changes_nothing_and_makes_no_library_in_it(self):
         from amaze.actions import library as library_actions
         before = self.lay_out()
-        self.assertFalse(library_actions.index_present(self.dir), "an older library read as one")
+        self.assertFalse(library_actions.index_present(self.dir), "an older library was read as a current one")
         self.assertTrue(library_actions.list_not_arrived(self.dir),
                         "a folder that is not empty would be given a new library")
         with mock.patch.object(library_actions.debug, "alert") as said:
@@ -702,7 +702,7 @@ class TheBoxesTest(_OldLibrary):
 
 
 class _Classic:
-    """A stand-in for the Houdini side: is the renderer loaded, what the box answers, the rebuild."""
+    """Fakes the Houdini side: whether the renderer is loaded, the box's answer, the rebuild."""
 
     def __init__(self, test, loaded=True, trash=True, fails=False) -> None:
         self.test, self.is_loaded, self.trash, self.fails = test, loaded, trash, fails
@@ -725,7 +725,7 @@ class _Classic:
 
 
 class AClassicMaterialIsRebuiltTest(_OldLibrary):
-    """A Material saved in a classic container is rebuilt, trashed at the user's word, or set aside."""
+    """A classic-container Material is rebuilt, trashed if the user chooses, or set aside."""
 
     def setUp(self):
         super().setUp()
@@ -928,7 +928,7 @@ class OneSectionNeverClobbersTheOtherTest(_Library):
         self.assertEqual({"name": "n"}, asset_record.read(path)["metadata"])
 
     def test_a_corrupt_file_reads_empty_and_is_never_written_over(self):
-        """Neither a section write nor the save of its row replaces bytes that did not read."""
+        """Neither a section write nor the save of its row replaces a file that cannot be read."""
         path = write(asset_record.path_for(self.prefs, "BAD1", MATERIALS), "{nope")
         write(os.path.join(self.materials, "BAD1.mat"), "nodes of BAD1\n")
         self.assertEqual({"metadata": {}, "builder": {}}, asset_record.read(path))
@@ -938,7 +938,7 @@ class OneSectionNeverClobbersTheOtherTest(_Library):
         self.assertTrue(held.put("assets", "BAD1", dict(ROW, id="BAD1")))
         test_support.settle_stamps()
         self.assertTrue(held.get("assets", "BAD1"), "premise: the row was saved")
-        self.assertEqual(b"{nope", read_bytes(path), "a record that did not read was written over")
+        self.assertEqual(b"{nope", read_bytes(path), "an unreadable record was overwritten")
 
     def test_the_saved_builder_is_the_json_s_alone(self):
         self.old_asset("ALONE1", self.materials)
@@ -1056,7 +1056,7 @@ class OnePicturePerAssetTest(_Library):
         from amaze.core import tile_icons
         model, row = self.model()
         render = tile_icons.thumbnail_path(self.prefs, self.ASSET, MATERIALS)
-        self.assertEqual(render, model.capture_path(row), "a capture lands somewhere else")
+        self.assertEqual(render, model.capture_path(row), "a capture is written somewhere else")
         before = self.trashed()
         write(model.capture_path(row), "captured")
         for face in ("generic", "image", "generic", "image"):    # both directions, twice
@@ -1137,7 +1137,7 @@ class PicturesLiveInTheirSectionTest(_Library):
 
 
 class AFreshLibraryTest(unittest.TestCase):
-    """A new library is born with a folder per asset section and no `mat/`."""
+    """A new library is created with a folder per asset section and no `mat/`."""
 
     def test_the_section_folders_are_made(self):
         from amaze.actions import library as library_actions
@@ -1163,7 +1163,7 @@ class OldFilesBesideANewOneAreLeftoversTest(_Library):
 
 
 class EveryOldStoreArrivesTest(unittest.TestCase):
-    """Each old root file lands in the right section of the right 2.0 database."""
+    """Each old root file is converted into the right section of the right 2.0 database."""
 
     USER = "a" * 32    # the user converting
     PEER = "b" * 32
@@ -1227,7 +1227,7 @@ class EveryOldStoreArrivesTest(unittest.TestCase):
             self.PEER + "|A1": True, self.PEER + "|/x/a.exr": True, "A2": True}})
         built = self.built()
         self.assertEqual({self.PEER: {"A1": True}, self.USER: {"A2": True}},
-                         built[MATERIALS]["favorites"], "a star from before users is not the converter")
+                         built[MATERIALS]["favorites"], "a star from before users is not the converting user's")
         self.assertEqual({self.PEER: {"/x/a.exr": True}}, built[library_files.FILES]["favorites"])
 
     def test_the_stars_this_computer_kept_in_its_settings_arrive(self):
@@ -1316,7 +1316,7 @@ class EveryOldStoreArrivesTest(unittest.TestCase):
         self.assertEqual(["Walls", "Floors"], list(built["categories"]))
 
     def test_about_and_description_become_the_comment_first_and_once(self):
-        """The retired text lands above what the user wrote, once, and the row keeps no copy."""
+        """The retired text is put above what the user wrote, once, and the row keeps no copy."""
         self.section([{"id": "A1", "about": "Credit 1", "description": "Described 1"},
                       {"id": "A2", "about": "Credit 2"}])
         mine = {"t": "todo", "label": "check the roughness", "done": False, "id": "m1",
@@ -1337,7 +1337,7 @@ class EveryOldStoreArrivesTest(unittest.TestCase):
         self.section([{"id": "A1", "favorite": True, "icon": {"name": "box"}, "builder": {}}])
         built = self.built()[MATERIALS]
         self.assertEqual({"id": "A1"}, built["assets"]["A1"])
-        self.assertEqual({}, built["favorites"], "a row field star became a star")
+        self.assertEqual({}, built["favorites"], "a row's `favorite` field became a star")
 
     def test_older_spellings_of_the_id_and_a_row_with_none(self):
         self.section([{"mat_id": "M1"}, {"uid": "U1"}, {"name": "bare"}, {"id": "K1"}],
@@ -1350,7 +1350,7 @@ class EveryOldStoreArrivesTest(unittest.TestCase):
         minted = [key for key, row in first.items() if row.get("name") == "bare"]
         self.assertEqual(1, len(minted), "a row with no id was given none")
         self.assertEqual(minted, [key for key, row in again.items() if row.get("name") == "bare"],
-                         "the minted id changes between two runs, orphaning its comments")
+                         "the generated id changes between two runs, orphaning its comments")
         self.assertEqual({"id"}, set(first["M1"]), "the old spelling of the id stayed on the row")
 
 

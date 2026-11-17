@@ -1,4 +1,4 @@
-"""Panel and UI correctness: one route per question, not three."""
+"""Panel and UI correctness: one code path per question, not three."""
 
 import ast
 import json
@@ -32,7 +32,7 @@ from amaze.tests import test_support  # noqa: E402
 
 
 def _location_prefs(case, names, colors, recursive):
-    """Only what a location record composes; a real `Prefs` finds the install."""
+    """Only the attributes a location record reads; a real `Prefs` looks up the install."""
     prefs = prefs_mod.Prefs.__new__(prefs_mod.Prefs)
     prefs.save = lambda: None
     prefs._directory = tempfile.mkdtemp(prefix="amaze_locations_")
@@ -98,7 +98,7 @@ class _PanelCase(unittest.TestCase):
 
 
 class EveryAssetSidebarFollowsItsFilter(unittest.TestCase):
-    """A category can never show a count it cannot deliver."""
+    """A category never shows a count that differs from what its grid shows."""
 
     def test_every_push_reaches_all_four_sidebars_through_one_route(self):
         """By AST: a text search matches `apply_filter`'s own docstring."""
@@ -107,7 +107,7 @@ class EveryAssetSidebarFollowsItsFilter(unittest.TestCase):
             {"material", "cop", "code", "gradient"},
             set(panel_mod.AmazePanel.SIDEBAR_PROXY_ATTRS),
             "a section gained or lost a sidebar proxy without the "
-            "one list that every push walks")
+            "one list that every filter update reads")
         self.assertTrue(
             self._calls("panel/sections.py", "AssetSection", "apply_filter",
                         "set_renderer_filter"),
@@ -116,8 +116,8 @@ class EveryAssetSidebarFollowsItsFilter(unittest.TestCase):
         self.assertTrue(
             self._calls("panel/panel.py", "AmazePanel",
                         "_prefs_dialog_closed", "sidebar_proxies"),
-            "the Preferences push enumerates the proxies by hand "
-            "again - the enumeration that was short is exactly how "
+            "the Preferences update lists the proxies by hand "
+            "again - a hand-written list that was short is exactly how "
             "Code was missed")
 
     @staticmethod
@@ -160,7 +160,7 @@ class ACategoryIsActedOnByItsStoredName(_PanelCase):
         self.assertEqual(
             "WIP", index.data(QtCore.Qt.ItemDataRole.DisplayRole),
             "the sidebar no longer strips the underscore - this test "
-            "can no longer see its subject")
+            "no longer checks anything")
         self.assertEqual(
             "_WIP", self.panel.raw_category_name(index),
             "the panel reads the DISPLAYED name, so Rename matches no "
@@ -169,14 +169,14 @@ class ACategoryIsActedOnByItsStoredName(_PanelCase):
             "beside it and files the asset under that")
 
     def test_every_acting_site_goes_through_the_helper(self):
-        """A category acts on the name it stores, through `sidebar_key`."""
+        """A category is acted on by its stored name, through `sidebar_key`."""
         for name in ("droppable_index", "category_at_point"):
             source = func_source("panel/sidebar.py", name)
             self.assertIn(
                 "raw_category_name", source,
-                "%s reads a category name without the helper - a "
-                "fourth site getting this wrong is what the helper "
-                "exists to stop" % name)
+                "%s reads a category name without the helper - the "
+                "helper exists so that no fourth call site gets "
+                "this wrong" % name)
 
         self.assertIn(
             "raw_category_name",
@@ -191,19 +191,19 @@ class ACategoryIsActedOnByItsStoredName(_PanelCase):
                 method_source("panel/sections.py", "AssetSection", verb),
                 "%s reads a category name without going through "
                 "sidebar_key" % verb)
-        source = source_of("panel/panel.py")    # one answer for the selected category, or the dialogs disagree
+        source = source_of("panel/panel.py")    # one function for the selected category, or the dialogs disagree
         self.assertEqual(
             1, source.count("def selected_category_name"),
-            "the shared answer is gone or duplicated")
+            "selected_category_name is gone or duplicated")
         self.assertIn(
             "selected_category_name",
             func_source("panel/panel.py", "_current_code_category"),
-            "_current_code_category answers 'which category is selected' "
+            "_current_code_category works out 'which category is selected' "
             "on its own again")
         self.assertIn(    # Material, Node and Code share one body; Color keeps its first-category default
             "selected_category_name",
             method_source("panel/sections.py", "AssetSection", "save_categories"),
-            "the asset sections answer 'which category is selected' on their own again")
+            "the asset sections work out 'which category is selected' on their own again")
         for cls in ("MaterialSection", "CopSection", "CodeSection"):
             with self.assertRaises(AssertionError, msg="%s keeps a save_categories of its own" % cls):
                 method_source("panel/sections.py", cls, "save_categories")
@@ -226,7 +226,7 @@ class TheMapNamesEveryModule(unittest.TestCase):
         return paths
 
     def test_the_map_places_every_module_in_its_directory(self):
-        """`dir/stem`, never the bare stem: prose about a word satisfies that."""
+        """`dir/stem`, never the bare stem: any prose using the word would match that."""
         repo = os.path.dirname(os.path.dirname(os.path.dirname(PACKAGE)))
         overview = os.path.join(repo, "docs", "architecture", "overview.md")
         if not os.path.exists(overview):
@@ -258,7 +258,7 @@ class TheMapNamesEveryModule(unittest.TestCase):
 
 
 def _material(test, name):
-    """A real Karma material in /mat - the save door asks the node what it is."""
+    """A real Karma material in /mat - the save code checks the node's type."""
     import hou
     node = hou.node("/mat").createNode("subnet", name)
     node.createNode("mtlxstandard_surface")
@@ -267,7 +267,7 @@ def _material(test, name):
 
 
 class TheSaveDialogOffersEveryCategory(unittest.TestCase):
-    """The dropdown's list comes from the one category-names home, not a name-anchored filter."""
+    """The dropdown's list comes from `category_names_from`, not a filter on how a name starts."""
 
     def test_a_category_starting_with_All_is_offered(self):
         from unittest import mock
@@ -331,12 +331,12 @@ class TheMaterialSaveOffersANameOnlyWhenOneWillDo(unittest.TestCase):
         self.assertEqual(
             ("", False),
             self._asked([self._node("a"), self._node("b")]),
-            "a multi-selection was offered a live Name field, so one "
-            "typed name would land on every material saved")
+            "a multi-selection was offered an enabled Name field, so one "
+            "typed name would be given to every material saved")
 
 
 class AClickLeavesTheConfiguredStepsAlone(unittest.TestCase):
-    """A jump step left in place lets a handle press zero both steps, killing wheel and arrow keys."""
+    """A jump step left in place lets a handle press zero both steps, so wheel and arrow keys stop."""
 
     def test_a_handle_press_does_not_zero_the_steps(self):
         slider = ui_helpers.ClickSlider()
@@ -349,12 +349,12 @@ class AClickLeavesTheConfiguredStepsAlone(unittest.TestCase):
         slider._apply_mouse_value(slider._x_for_value(slider.value()))
         self.assertEqual(
             (50, 50), (slider.singleStep(), slider.pageStep()),
-            "the press clobbered the configured steps with the click "
+            "the press overwrote the configured steps with the click "
             "distance - a handle press leaves them 0")
 
 
 class StepSizeKeepsTheSliderOnItsMarks(unittest.TestCase):
-    """Step Size on: a click, a key and a wheel notch each land on a snap mark."""
+    """Step Size on: a click, a key and a wheel notch each stop on a snap mark."""
 
     def _slider(self, stepped=True):
         slider = ui_helpers.ClickSlider()
@@ -380,9 +380,9 @@ class StepSizeKeepsTheSliderOnItsMarks(unittest.TestCase):
     def test_a_click_between_marks_lands_on_the_nearest(self):
         slider = self._slider()
         slider._apply_mouse_value(slider._x_for_value(200))
-        self.assertEqual(192, slider.value(), "a click at 200 did not land on 192")
+        self.assertEqual(192, slider.value(), "a click at 200 did not snap to 192")
         slider._apply_mouse_value(slider._x_for_value(140))
-        self.assertEqual(128, slider.value(), "a click at 140 did not land on 128")
+        self.assertEqual(128, slider.value(), "a click at 140 did not snap to 128")
 
     def test_keys_step_from_mark_to_mark(self):
         slider = self._slider()
@@ -444,11 +444,11 @@ class ASelfPaintedWidgetDimsWhenDisabled(unittest.TestCase):
         self.assertNotEqual(
             rendered(True), rendered(False),
             "the size slider paints identically enabled and disabled - "
-            "in LIST mode it looks live, ignores every click because Qt "
-            "withholds mouse events, and reads as broken")
+            "in LIST mode it looks enabled, ignores every click because Qt "
+            "withholds mouse events, and looks broken")
 
     def test_a_disabled_toggle_switch_neither_shines_nor_beckons(self):
-        """The Customize dialog greys its Light Icon switch, so it does not read as a live control."""
+        """The Customize dialog greys its Light Icon switch, so it does not look enabled."""
         switch = ui_helpers.ToggleSwitch("Light Icon")
         switch.resize(switch.sizeHint())
 
@@ -506,7 +506,7 @@ class ASelfPaintedWidgetDimsWhenDisabled(unittest.TestCase):
 class NodeAndCodeDoNotBorrowTheVersionColumn(unittest.TestCase):
 
     def test_they_get_a_delegate_without_the_version_roles(self):
-        """A column exists if the section's declared delegate carries its role."""
+        """A column exists if the section's declared delegate has its role."""
         import importlib
 
         sections = importlib.import_module("amaze.panel.sections")
@@ -561,10 +561,10 @@ class TheOnlineGridIsFittedLikeTheOthers(unittest.TestCase):
         self.assertEqual(
             long_name,
             model.index(0, column).data(QtCore.Qt.ItemDataRole.DisplayRole),
-            "the setup did not reach the Name column - not a test")
+            "the setup did not reach the Name column - nothing is checked")
         self.assertEqual(
             before, table.columnWidth(column),
-            "the Name column changed width because rows landed - its "
+            "the Name column changed width because rows arrived - its "
             "width must not depend on WHEN the model fills")
         self.assertEqual(
             theme.ui_px(panel.COLUMN_DEFAULT_WIDTH["name"]),
@@ -573,7 +573,7 @@ class TheOnlineGridIsFittedLikeTheOthers(unittest.TestCase):
 
 
 class EveryColumnIsCoveredByTheTablesHangingOffIt(unittest.TestCase):
-    """A column missing from a table does not raise, it arrives half-configured."""
+    """A column missing from a table does not raise, it is only partly configured."""
 
     def test_every_column_has_a_width_a_roles_entry_and_real_ticks(self):
         """The roles table from source: it is a local inside `sync_table_columns`."""
@@ -603,7 +603,7 @@ class EveryColumnIsCoveredByTheTablesHangingOffIt(unittest.TestCase):
                 if names and set(names) <= keys:
                     listed |= set(names)
         self.assertTrue(
-            listed, "no per-column table was found, so this is vacuous")
+            listed, "no per-column table was found, so this checks nothing")
         missing = keys - listed
         self.assertEqual(
             set(), missing,
@@ -634,7 +634,7 @@ class OneProgressBarOwnerPerThingShown(unittest.TestCase):
                       "raised out of the finally")
         self.assertLess(source.index('tmp_path = ""'),
                         source.index("InterruptableOperation"))
-        filtered = source.index("is_cache")    # the bar opens with the pass, so caches leave the list first
+        filtered = source.index("is_cache")    # the bar is shown when the pass starts, so caches are removed first
         self.assertLess(
             filtered, source.index("total = len(misses)"),
             "caches are filtered after the total is taken, so a pass "
@@ -644,7 +644,7 @@ class OneProgressBarOwnerPerThingShown(unittest.TestCase):
             "caches are filtered after the bar is opened")
 
     def test_what_counts_as_a_cache_is_the_FILE_CACHE_SOPs_own_output(self):
-        """Two extensions, longest-wins, or `.bgeo.sc` reads as `.bgeo`."""
+        """Two extensions, longest-wins, or `.bgeo.sc` is taken as `.bgeo`."""
         self.assertTrue(geo_library.is_cache("a.filecache1_v1.0001.bgeo.sc"))
         self.assertTrue(geo_library.is_cache("smoke_v2.0004.vdb"))
         self.assertFalse(
@@ -674,9 +674,9 @@ class LocateFolderKeepsEveryPerLocationSetting(unittest.TestCase):
         locations.set_field(prefs, "/old/", "pathname", True)
         model = file_library.FileFolders.__new__(file_library.FileFolders)
         model.preferences = prefs
-        locations.relocate_record(prefs, "/old/", "/new/")    # the product order: the identity's path edit first, then the hook for path-keyed stragglers
+        locations.relocate_record(prefs, "/old/", "/new/")    # the product order: the record's path change first, then the hook for other path-keyed data
         model._on_folder_relocated("/old/", "/new/")
-        # Against the record: the derived dicts would read back this seed.
+        # Checked on the record: the derived dicts would return this test's own seed.
         self.assertEqual({}, locations.record(prefs, "/old/"),
                          "the old path kept its record after the move")
         self.assertEqual(
@@ -684,7 +684,7 @@ class LocateFolderKeepsEveryPerLocationSetting(unittest.TestCase):
              "recursive": True,
              "kinds": ["hip", "image"], "pathname": True},
             locations.record(prefs, "/new/"),
-            "a per-location fact did not survive Locate Folder")
+            "a per-location fact was lost by Locate Folder")
 
     def test_a_relocate_carries_the_comments_and_the_tile_icons_too(self):
         """Comments and icons key on the path, so a relocate must carry them."""
@@ -706,13 +706,13 @@ class LocateFolderKeepsEveryPerLocationSetting(unittest.TestCase):
 
         self.assertTrue(
             notes.has_note(prefs, notes.note_key("file", moved)),
-            "the comment was orphaned on the old path")
+            "the comment stayed on the old path")
         self.assertEqual("", locations.file_ident(prefs, "/old/shot.exr").partition(
             locations.LOC_PREFIX)[1], "the old path still names a location")
         self.assertEqual(
             "box",
             tile_icons.override_for(prefs, moved, locations.FILES).get("name"),
-            "the tile icon was orphaned on the old path")
+            "the tile icon stayed on the old path")
         self.assertTrue(
             notes.has_note(prefs, asset_key),
             "an asset key that merely LOOKS like a path was rewritten "
@@ -733,7 +733,7 @@ class LocateFolderKeepsEveryPerLocationSetting(unittest.TestCase):
 
 
 class ThereIsOneFontTable(unittest.TestCase):
-    """One table owns every font, the way one already owns the colours."""
+    """One table in theme.py defines every font, as one already defines the colours."""
 
     def test_no_module_but_theme_sizes_a_font_by_a_LITERAL(self):
         """Point-size literals only; pixel sizes are ▸p/designed-dialog."""
@@ -783,7 +783,7 @@ class ThereIsOneFontTable(unittest.TestCase):
     def test_a_role_derives_and_never_decides(self):
         from amaze.helpers import theme as theme_mod
         base = QtGui.QFont()
-        base.setPointSizeF(20.0)          # above the floor, so it stands
+        base.setPointSizeF(20.0)          # above the minimum, so it is kept
         title = theme_mod.font("empty_headline", base)
         self.assertAlmostEqual(25.0, title.pointSizeF(), places=3,
                                msg="the empty headline stopped deriving "
@@ -796,7 +796,7 @@ class ThereIsOneFontTable(unittest.TestCase):
             theme_mod.font("subtilte")
 
     def test_the_floor_and_a_role_leave_a_PIXEL_sized_font_alone(self):
-        """A pixel-sized font answers -1 to `pointSizeF`; clamping or scaling converts it."""
+        """A pixel-sized font returns -1 from `pointSizeF`; clamping or scaling converts it."""
         from amaze.helpers import theme as theme_mod
         pixel = QtGui.QFont()
         pixel.setPixelSize(9)
@@ -811,7 +811,7 @@ class ThereIsOneFontTable(unittest.TestCase):
         QtCore.qInstallMessageHandler(None)
         self.assertEqual(
             [], [line for line in refused if "setPointSizeF" in line],
-            "the role scaled -1 and handed Qt a size it refuses")
+            "the role scaled -1 and passed Qt a size it rejects")
         self.assertEqual(9, title.pixelSize(),
                          "a pixel-sized font was converted to points")
         self.assertTrue(title.bold(), "the role lost its weight")
@@ -852,7 +852,7 @@ class AnOnlineBatchSurvivesOneBadRecord(unittest.TestCase):
                      "import_records_to_scene"):
             self.assertIn(
                 "except Exception", func_source("panel/online_import.py", name),
-                "%s abandons its batch on a raising record" % name)
+                "%s stops its batch on a record that raises" % name)
 
 
 class TheCommentGlyphsAreRasterisedOnce(unittest.TestCase):
@@ -871,7 +871,7 @@ class TheCommentGlyphsAreRasterisedOnce(unittest.TestCase):
         notes_panel._feather_icon("check", 14, "#ffffff")
         self.assertGreaterEqual(
             len(notes_panel._glyph_cache), 2,
-            "the ink is not in the cache key, so a checked and an "
+            "the colour is not in the cache key, so a checked and an "
             "unchecked to-do would share one pixmap")
 
 
@@ -896,7 +896,7 @@ class TheColourBandFollowsTheOwningLocation(unittest.TestCase):
         model = file_library.FileFiles(prefs)
         self.assertEqual(
             "#123456", model._folder_colour(sub),
-            "a subfolder row of a recursive location paints bandless")
+            "a subfolder row of a recursive location is drawn without its colour band")
         self.assertEqual("#123456", model._folder_colour(root))
 
         calls = []
@@ -911,8 +911,8 @@ class TheColourBandFollowsTheOwningLocation(unittest.TestCase):
             model._folder_colour(sub)
         self.assertEqual(
             [], calls,
-            "the paint path re-reads a record per tile - the folder "
-            "cache is not holding")
+            "the paint code re-reads a record per tile - the folder "
+            "cache is not used")
 
         model.colours_changed()
         with mock.patch.object(locations, "record", counting):
@@ -952,7 +952,7 @@ class TheOnlineWorldNeedsALibrary(unittest.TestCase):
         self.assertFalse(self.panel._is_online(),
                          "the panel is left half in the online world")
         self.assertFalse(self.panel.btn_online.isChecked(),
-                         "the Online chip reads on with nothing behind it")
+                         "the Online chip shows as on with no online view loaded")
 
     def test_the_door_and_every_route_through_it_refuse(self):
         self.panel.enter_online_world()
@@ -967,11 +967,11 @@ class TheOnlineWorldNeedsALibrary(unittest.TestCase):
         with mock.patch.object(sys, "excepthook",
                                lambda *info: raised.append(info[1])):
             self.panel.btn_online.click()
-            self.panel.btn_online.setChecked(True)    # past a disabled chip
+            self.panel.btn_online.setChecked(True)    # bypassing a disabled chip
         self.assertEqual([], raised, "the Online chip raised in its slot")
         self._assert_still_local()
         self.assertFalse(self.panel.btn_online.isEnabled(),
-                         "the Online chip is live on a panel with no "
+                         "the Online chip is enabled on a panel with no "
                          "library")
 
 
@@ -1045,7 +1045,7 @@ class LeavingOnlineLandsOnAShownSection(unittest.TestCase):
 
         landed = panel.section_tabs._checked_key
         self.assertIn(landed, panel.prefs.enabled_sections,
-                      "leaving Online landed on a hidden tab")
+                      "leaving Online selected a hidden tab")
         self.assertEqual(landed, panel.current_section,
                          "the tab shown and the section behind it disagree")
         self.assertIs(
@@ -1088,7 +1088,7 @@ class ClosingPreferencesRescansTheFileFolderOnce(unittest.TestCase):
 
 
 class TheGridCannotBeSqueezedOutOfExistence(unittest.TestCase):
-    """Three floors: the grid pays for both side panes, so the panel's proves nothing."""
+    """Only the window has a minimum width; a minimum on a pane would add to it."""
 
     def setUp(self):
         from amaze.tests import test_support
@@ -1194,7 +1194,7 @@ class TheHighlighterReadsEachLineOnce(unittest.TestCase):
                  vs.NUMBER.name(): "n",
                  vs.TYPE.name(): "t", vs.KEYWORD.name(): "k",
                  vs.FUNCTION.name(): "f", vs.ATTRIB.name(): "a",
-                 vs.DEFAULT.name(): "d"}    # last: an ink shared with the plain one reads as plain
+                 vs.DEFAULT.name(): "d"}    # last: a colour shared with the default one counts as default
         chars = ["."] * len(line)
         for start, length, colour in runs:
             for i in range(start, start + length):
@@ -1265,7 +1265,7 @@ class TheCodeLooksLikeHoudinis(unittest.TestCase):
             test_support.fixture_panel(self)
         painted = {colour.name() for _s, _l, colour in vex_syntax.spans('int a = f(1); // "x"')}
         self.assertLessEqual(painted, {ink.name() for ink in live.values()},
-                             "the tokenizer still paints colours the panel did not hand it")
+                             "the tokenizer still paints colours the panel did not pass to it")
         self.assertEqual(live["comment"].name(), vex_syntax.COMMENT.name())
 
 
@@ -1273,7 +1273,7 @@ class TheHighlighterBuildsOneFormatPerColour(unittest.TestCase):
     """A re-highlight paints thousands of runs, so each colour's format is built once and shared."""
 
     def _handed(self):
-        """Every format the highlighter hands Qt over the golden lines."""
+        """Every format the highlighter passes to Qt for the PAINTED lines."""
         from amaze.helpers import vex_syntax
         handed = []
 

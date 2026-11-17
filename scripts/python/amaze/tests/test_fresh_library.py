@@ -1,4 +1,4 @@
-"""Every door that creates a library must make a WHOLE one. ▸p/library-creation-doors"""
+"""Every function that creates a library must make a complete one. ▸p/library-creation-doors"""
 
 import json
 import os
@@ -26,7 +26,7 @@ class EveryNewLibraryIsBornThroughOneDoor(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.lib, ignore_errors=True)
 
     def test_it_is_born_at_this_amazes_version(self):
-        """A library with no version recorded reads as one to convert."""
+        """A library with no version recorded is treated as one to convert."""
         prefs_mod.create_library(self.lib)
         with open(os.path.join(self.lib, "DataBase.json"), encoding="utf-8") as handle:
             master = json.load(handle)
@@ -49,7 +49,7 @@ class EveryNewLibraryIsBornThroughOneDoor(unittest.TestCase):
             self.assertEqual(before, handle.read(), "the library's database was rewritten")
 
     def test_panel_load_creates_through_this_door(self):
-        """Pinned from SOURCE: every opening creates through prepare(); a bare copy goes red."""
+        """Read from SOURCE: every opening creates through prepare(); a plain copy fails it."""
         import inspect
         from amaze.actions import library as library_actions
         source = inspect.getsource(library_actions.prepare)
@@ -58,7 +58,7 @@ class EveryNewLibraryIsBornThroughOneDoor(unittest.TestCase):
 
 
 class TheAssetWriterMakesItsFolderInsideTheLibraryOnly(unittest.TestCase):
-    """The scoped writer makes a missing library folder, refuses a destination outside it."""
+    """The scoped writer makes a missing library folder and raises for a destination outside it."""
 
     def setUp(self):
         from amaze.render import nodes
@@ -87,7 +87,7 @@ class TheAssetWriterMakesItsFolderInsideTheLibraryOnly(unittest.TestCase):
         self.assertTrue(os.path.isfile(os.path.join(self.root, "materials", "7.mat")))
 
     def test_a_first_save_makes_the_builder_record_beside_it(self):
-        """The `<id>.json` lands in the section folder the same first save just made."""
+        """The `<id>.json` is written to the section folder the same first save just made."""
         import hou
         from amaze.core import asset_record
         staging = hou.node("/obj").createNode("subnet", "fresh_builder")
@@ -100,13 +100,13 @@ class TheAssetWriterMakesItsFolderInsideTheLibraryOnly(unittest.TestCase):
                          "the first save left no builder beside its .mat")
 
     def test_a_refused_destination_is_not_created(self):
-        """Refusing after making the folder would be the same bug with a better error message."""
+        """Raising after making the folder would be the same bug with a better error message."""
         with self.assertRaises(hostos.PathEscape):
             self._save(os.path.join(self.outside, "elsewhere"))
         self.assertFalse(os.path.exists(os.path.join(self.outside, "elsewhere")))
 
     def test_a_handler_with_no_library_creates_nothing(self):
-        """The `__new__` fixture shape has no root to contain against, so it must make no folder."""
+        """The `__new__` fixture has no library root to check against, so it must make no folder."""
         handler = self.nodes.NodeHandler.__new__(self.nodes.NodeHandler)
         target = os.path.join(self.root, "unmade")
         with self.assertRaises(FileNotFoundError):
@@ -115,15 +115,15 @@ class TheAssetWriterMakesItsFolderInsideTheLibraryOnly(unittest.TestCase):
 
 
 class TheBuilderFieldIsRetired(unittest.TestCase):
-    """The record class drops `builder`, or `_extra` carries it back into the database."""
+    """The record class drops `builder`, or `_extra` writes it back into the database."""
 
     def test_the_record_class_retires_builder_everywhere(self):
-        """`from_dict` -> `get_as_dict` must drop the key, or `_extra` rides it back on the next save."""
+        """`from_dict` -> `get_as_dict` must drop the key, or `_extra` writes it on the next save."""
         mat = material.Material.from_dict(
             {"id": "B7", "name": "n", "builder": 1})
         self.assertNotIn(
             "builder", mat.get_as_dict(),
-            "the record still emits `builder` - the next save undoes the step")
+            "the record still emits `builder` - the next save writes it back")
 
 
 class EveryWayIntoAnEmptyFolderReadiesIt(unittest.TestCase):
@@ -139,7 +139,7 @@ class EveryWayIntoAnEmptyFolderReadiesIt(unittest.TestCase):
         settings = os.path.join(self.panel.prefs.path, "settings.json")
         with open(settings, encoding="utf-8") as handle:
             data = json.load(handle)
-        data["directory"] = self.empty    # what each door re-reads before it opens the folder
+        data["directory"] = self.empty    # what each of the three ways re-reads before it opens the folder
         with open(settings, "w", encoding="utf-8") as handle:
             json.dump(data, handle)
 

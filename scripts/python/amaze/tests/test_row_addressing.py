@@ -1,4 +1,4 @@
-"""A star and a render each take a ROW and refuse one outside the model; fixture Prefs only."""
+"""`toggle_fav` and `render_thumbnails` take a ROW and skip one outside the model; fixture Prefs."""
 
 import os
 import sys
@@ -66,13 +66,13 @@ class AStarNeverLandsOnARowThatWasNotAskedFor(unittest.TestCase):
                 self.assertEqual(
                     starred, self._flip(_model(self, 3), row),
                     "row %d starred the wrong asset - an invalid index "
-                    "answers -1, which resolves to the LAST one" % row)
+                    "returns -1, which indexes the LAST one" % row)
 
 
 class ABatchRefusesARowItCannotRender(unittest.TestCase):
 
     def test_a_row_past_the_end_is_not_rendered(self):
-        """`isValid()` cannot answer this: a plain QModelIndex survives the rows behind it going away."""
+        """`isValid()` cannot tell: a plain QModelIndex stays valid after its rows are removed."""
         model = library.MaterialLibrary.__new__(library.MaterialLibrary)
         model.preferences = test_support.fixture_prefs(self)
         model._assets = [_Asset("id0")]

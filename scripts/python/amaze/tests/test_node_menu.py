@@ -52,7 +52,7 @@ def _run(expression, kwargs):
 
 
 def _gone(path):
-    """Whatever holds `path` now destroyed: after a swap the twin holds the source's path."""
+    """Destroy whatever node is at `path` now: after a swap the twin is at the source's path."""
     node = hou.node(path)
     if node is not None:
         node.destroy()
@@ -124,7 +124,7 @@ class TheMenuIsOneAmazeSubmenu(unittest.TestCase):
         submenu = submenus[0]
         self.assertEqual("Amaze", submenu.find("label").text)
         self.assertIn("KINDS = " + KINDS, _expression(submenu),
-                      "the submenu no longer offers itself where any section can take the node")
+                      "the submenu is no longer shown where any section can save the node")
         children = [(c.tag, c.get("id"), c.findtext("label")) for c in submenu
                     if c.tag in ("scriptItem", "separatorItem")]
         self.assertEqual([
@@ -157,7 +157,7 @@ class TheMenuIsOneAmazeSubmenu(unittest.TestCase):
         self.assertIn('rc_calls.save(kwargs.get("node", None))', save.findtext("scriptCode"))
 
     def test_a_click_reloads_rc_calls_only_behind_the_dev_switch(self):
-        """As the pypanel: a reload reruns the module body each click, so only the dev switch asks."""
+        """As the pypanel: a reload reruns the module each click, so only the dev switch reloads."""
         import importlib
         from amaze.utils import rc_calls
         items = list(_submenu().iter("scriptItem"))
@@ -240,7 +240,7 @@ class AConvertBuildsTheTwinBesideTheNode(unittest.TestCase):
             self.addCleanup(node.destroy)
         self.assertEqual(1, len(made), "not one twin: %s; said %s" % (made, self.said))
         twin, = made
-        label = renderers.get(target).engine    # the menu's word: Karma, never the library's MaterialX
+        label = renderers.get(target).engine    # the menu's label: Karma, never the library's MaterialX
         self.assertEqual("%s_%s" % (source.name(), label.lower()), twin.name())
         self.assertTrue(twin.isCurrent(), "the twin is not the current node")
         self.assertTrue(twin.isSelected(), "the twin is not selected")
@@ -286,8 +286,8 @@ class AConvertBuildsTheTwinBesideTheNode(unittest.TestCase):
         source = _materialx(self, "menu_placed")
         source.setPosition(hou.Vector2(7, -3))
         twin = self._convert(source, "Redshift")
-        self.assertNotEqual(hou.Vector2(0, 0), twin.position(), "the twin landed at the origin")
-        self.assertNotEqual(source.position(), twin.position(), "the twin sits on the source")
+        self.assertNotEqual(hou.Vector2(0, 0), twin.position(), "the twin was placed at the origin")
+        self.assertNotEqual(source.position(), twin.position(), "the twin is at the source's position")
         self.assertFalse(_overlaps(source, twin), "the twin overlaps the source")
         for axis in (0, 1):
             self.assertLessEqual(abs(twin.position()[axis] - source.position()[axis]), 4,
@@ -373,7 +373,7 @@ class ASwapPutsTheTwinInTheNodesPlace(unittest.TestCase):
         geo.parm("shop_materialpath").set(source.path())
         self._swap(source, "Redshift")
         reached = hou.node(geo.parm("shop_materialpath").eval())
-        self.assertIsNotNone(reached, "the object's material path names nothing after the swap")
+        self.assertIsNotNone(reached, "the object's material path points to no node after the swap")
         self.assertEqual("Redshift", nodes.NodeHandler(None).get_renderer_from_node(reached))
 
     def test_a_swap_that_makes_no_shader_keeps_the_old_node(self):
@@ -398,7 +398,7 @@ class ASwapPutsTheTwinInTheNodesPlace(unittest.TestCase):
 
 
 class ASelectionConvertsAsOne(unittest.TestCase):
-    """A right-click on a selected node converts the whole selection, as the save door saves it."""
+    """A right-click on a selected node converts the whole selection, as Save saves it."""
 
     def setUp(self):
         _speakers(self)

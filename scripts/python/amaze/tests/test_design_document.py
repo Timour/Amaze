@@ -1,4 +1,4 @@
-"""No second home for a colour, a dialog size or a drawn word ▸p/one-design-document"""
+"""Colours, dialog sizes and empty texts are set only in amazetheme.py ▸p/one-design-document"""
 import ast
 import os
 import re
@@ -12,7 +12,7 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 HEX = re.compile(r'"#[0-9a-fA-F]{3,8}"')
 
-DRAWS_CHROME = (    # files that paint the panel and dialogs; their colours belong in the document
+DRAWS_CHROME = (    # files that draw the panel and dialogs; their colours belong in amazetheme.py
     "helpers/ui_helpers.py",
     "panel/panel.py",
     "panel/delegates.py",
@@ -37,7 +37,7 @@ def _literal_hexes(path):
     found = []
     for number, line in enumerate(source.splitlines(), 1):
         if line.lstrip().startswith("#"):
-            continue        # a hex quoted in a comment explains, it does not paint
+            continue        # a hex in a comment is not a colour the code uses
         code = line.split("    # ")[0]
         for hit in HEX.findall(code):
             found.append((number, hit, line.strip()))
@@ -61,17 +61,17 @@ class NoSecondHomeForAColour(unittest.TestCase):
         self.assertEqual(
             [], offenders,
             "a design colour was written where it is drawn instead of "
-            "in amazetheme.py - one document, so a Figma change is one "
+            "in amazetheme.py - one file, so a Figma change is one "
             "edit:\n  " + "\n  ".join(offenders))
 
     def test_the_document_can_see_a_hex_at_all(self):
-        """A scanner that matches nothing passes forever."""
+        """A scan that matches nothing always passes."""
         with open(os.path.join(_ROOT, "amazetheme.py"),
                   encoding="utf-8") as handle:
             body = handle.read()
         self.assertTrue(
             HEX.findall(body),
-            "the scanner finds no hex even in the design document, so "
+            "the scanner finds no hex even in amazetheme.py, so "
             "it cannot fail when one is added elsewhere")
 
 
@@ -86,7 +86,7 @@ DIALOG_DIR = os.path.join(_ROOT, "dialogs")
 
 
 class NoDialogSetsItsOwnWidth(unittest.TestCase):
-    """No dialog sets its own width; the shell applies it ▸p/shared-means-it-fails-together"""
+    """No dialog sets its own width; base_dialog.py does ▸p/shared-means-it-fails-together"""
 
     def _self_sizing_calls(self, path):
         with open(path, encoding="utf-8") as handle:
@@ -135,7 +135,7 @@ class NoDialogSetsItsOwnWidth(unittest.TestCase):
         offenders = []
         for name in sorted(os.listdir(DIALOG_DIR)):
             if not name.endswith(".py") or name == "base_dialog.py":
-                continue        # the shell is the one place a width is applied
+                continue        # base_dialog.py is the only file that applies a width
             for line, call in self._self_sizing_calls(
                     os.path.join(DIALOG_DIR, name)):
                 offenders.append("dialogs/%s:%d  self.%s(...)"
@@ -143,12 +143,12 @@ class NoDialogSetsItsOwnWidth(unittest.TestCase):
         self.assertEqual(
             [], offenders,
             "a dialog sizes ITSELF instead of declaring FORM_WIDTH and "
-            "letting the shell apply it - that is how four dialogs came "
+            "letting base_dialog.py apply it - that is how four dialogs came "
             "to render four different widths:\n  "
             + "\n  ".join(offenders))
 
     def test_no_dialog_sizes_itself_from_its_own_geometry(self):
-        """Geometry never reads the widget back; `sizeHint` is the layout answer ▸p/sized-from-nothing"""
+        """No geometry call reads the widget's size; the layout gives `sizeHint` ▸p/sized-from-nothing"""
         offenders = []
         for name in sorted(os.listdir(DIALOG_DIR)):
             if not name.endswith(".py"):
@@ -160,19 +160,19 @@ class NoDialogSetsItsOwnWidth(unittest.TestCase):
         self.assertEqual(
             [], offenders,
             "a dialog sizes itself from its own geometry. Before the "
-            "first show() that is Qt's 640x480 default, not anything the "
-            "layout or amazetheme said - which is why Preferences drew "
-            "at 640 while the document said 480:\n  "
+            "first show() that is Qt's 640x480 default, not a size from the "
+            "layout or amazetheme - which is why Preferences was drawn "
+            "at 640 while amazetheme.py gave 480:\n  "
             + "\n  ".join(offenders))
 
     def test_the_geometry_scan_can_see_one(self):
-        """The scanner that found nothing must be shown a real one."""
+        """The scan that found nothing must find a planted one."""
         import tempfile
         for scan, body, found in (
                 (self._geometry_from_itself,
                  "        self.resize(self.width(), 10)\n",
                  [(3, "resize", "width")]),
-                (self._geometry_from_itself,    # a document width and a layout hint pass
+                (self._geometry_from_itself,    # an amazetheme width and a sizeHint pass
                  "        self.resize(theme.ui_px(A.W),\n"
                  "                    self.sizeHint().height())\n", []),
                 (self._self_sizing_calls,
@@ -187,7 +187,7 @@ class NoDialogSetsItsOwnWidth(unittest.TestCase):
                         "the scanner misreads a sample written to test it")
 
     def test_every_dialog_width_is_a_named_constant(self):
-        """A FORM_WIDTH assigned a bare number is a second home for a size, however short."""
+        """A FORM_WIDTH assigned a bare number defines a size outside amazetheme.py."""
         offenders = []
         for name in sorted(os.listdir(DIALOG_DIR)):
             if not name.endswith(".py"):
@@ -215,7 +215,7 @@ class NoDialogSetsItsOwnWidth(unittest.TestCase):
 
 
 class TheNamedFrameSizesAreTheDrawnFrames(unittest.TestCase):
-    """A frame size a call site names is the drawn frame's, for every frame of its family."""
+    """Each named size equals the `DIALOG_LAYOUT` frame size of every frame that uses it."""
 
     def test_each_named_size_is_every_family_frame(self):
         layout = amazetheme.DIALOG_LAYOUT
@@ -239,13 +239,13 @@ class TheDrawnWordsComeFromTheDocument(unittest.TestCase):
 
     def test_every_blank_reads_its_words_from_it(self):
         self.assertIs(amazetheme.EMPTY_SHARED, empty_state.SHARED,
-                      "the shared blanks grew a second copy of their "
-                      "words")
+                      "the shared empty-state texts have a second copy "
+                      "in empty_state.py")
         self.assertEqual(
             {empty_state.NO_MATCH, empty_state.NO_FAVOURITES,
              empty_state.UNREACHABLE}, set(amazetheme.EMPTY_SHARED),
-            "the shared blanks are not the three drawn - an empty category "
-            "shows its grid, never words")
+            "the shared empty-state texts are not the three drawn - an empty "
+            "category shows its grid, never a text")
         for key, cls, expected in (
                 ("material", sections.MaterialSection,
                  amazetheme.EMPTY_MATERIAL),
@@ -256,16 +256,16 @@ class TheDrawnWordsComeFromTheDocument(unittest.TestCase):
                 ("file", sections.FileSection, amazetheme.EMPTY_FILE)):
             with self.subTest(section=key):
                 self.assertIs(expected, cls.EMPTY,
-                              "%s spells its first-run blank itself" % key)
+                              "%s defines its own empty-library text" % key)
 
     def test_a_button_label_is_named_once(self):
-        """Two constants holding the same words is the drift this file exists to stop."""
+        """Two constants holding the same label can come to differ: each label is defined once."""
         labels = {name: value for name, value in vars(amazetheme).items()
                   if name.startswith(("BTN_", "LABEL_", "TITLE_"))}
         seen = {}
         for name, value in sorted(labels.items()):
             self.assertNotIn(
                 value, seen,
-                "%s and %s are both %r - one of them is the drift"
+                "%s and %s are both %r - one of them should go"
                 % (seen.get(value), name, value))
             seen[value] = name

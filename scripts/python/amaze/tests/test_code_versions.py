@@ -1,4 +1,4 @@
-"""Code versions go through the material version engine: code/versions/<id>/, the same ledger."""
+"""Code versions use `versions.py`, as materials do: code/versions/<id>/, the same ledger."""
 
 import json
 import os
@@ -64,7 +64,7 @@ class TheStoreSitsBesideTheMaterialStore(_Case):
         self.assertEqual(2, len(texts), "the original and the new version: %s" % names)
         self.assertFalse(os.path.exists(os.path.join(
             self.materials, "versions", self.mat_id)),
-            "a code version landed in the material store")
+            "a code version was written to the material store")
 
     def test_the_material_store_is_in_the_materials_folder(self):
         self.assertEqual(os.path.join(self.materials, "versions", "X1"),
@@ -100,7 +100,7 @@ class TheEditorSavesVersions(_Case):
                          "the version's text lost its line endings")
         self.assertEqual(("helper fast", SECOND),
                          (self._on_disk()["name"], self._on_disk()["code"]),
-                         "the list does not hold the active version")
+                         "code.json does not hold the active version")
 
     def test_apply_rewrites_the_version_it_shows(self):
         self._save(self.model.NEW_VERSION, SECOND, "helper fast")
@@ -142,11 +142,11 @@ class SelectSwitchesTheSnippet(_Case):
         kept = [v for v in versions.list_versions(self.prefs, self.mat_id, versions.CODE)
                 if self.model.version_text(self.row, v["n"]) == THIRD]
         self.assertEqual(["edited elsewhere"], [v["name"] for v in kept],
-                         "the edit no version held was lost to the switch")
+                         "the edit that no version held was lost by the switch")
 
 
 class ARefusedListWriteIsSaidOnTheStatusLine(_Case):
-    """A snippet whose list write fails waits in memory: the library's own alert says so, alone."""
+    """A snippet whose code.json write fails stays in memory; only the library's alert is shown."""
 
     def _refused(self, act):
         from amaze.core import library_db
@@ -157,28 +157,28 @@ class ARefusedListWriteIsSaidOnTheStatusLine(_Case):
         self.assertEqual(["could not save the library"],
                          ["could not save the library" for text in log.messages("alert")
                           if "could not save the library" in text][:1],
-                         "the library's own alert was not said")
+                         "the library's own alert was not logged")
         self.assertEqual([], [text for text in log.messages("alert")
                               if "could not save the library" not in text],
                          "an alert beside the library's own was shown")
-        self.assertEqual([], log.messages("refuse"), "a status line joined the library's alert")
+        self.assertEqual([], log.messages("refuse"), "a status line was shown beside the library's alert")
         held = library_db.document(self.prefs, library_files.CODE)
-        self.assertTrue(held.dirty, "the refused snippet was dropped, not kept for the next save")
+        self.assertTrue(held.dirty, "the unsaved snippet was dropped, not kept for the next save")
 
     def test_a_new_snippet_waits_for_the_next_save(self):
         self._refused(lambda: self.model.add_asset(SECOND, "probe", "VEX", "Examples", "", False))
         row = next(asset for asset in self.model.assets if asset.name == "probe")
         self.mat_id = str(row.mat_id)
-        self.assertEqual(SECOND, self._on_disk()["code"], "the kept snippet never landed")
+        self.assertEqual(SECOND, self._on_disk()["code"], "the kept snippet was never written")
 
     def test_a_saved_version_waits_for_the_next_save(self):
         self._refused(lambda: self._save(self.model.NEW_VERSION, SECOND, "helper fast"))
-        self.assertEqual("helper fast", self._on_disk()["name"], "the kept version never landed")
+        self.assertEqual("helper fast", self._on_disk()["name"], "the kept version was never written")
 
     def test_a_switched_version_waits_for_the_next_save(self):
         self._save(self.model.NEW_VERSION, SECOND, "helper fast")
         self._refused(lambda: self.model.switch_version(self.row, 1))
-        self.assertEqual("helper", self._on_disk()["name"], "the kept switch never landed")
+        self.assertEqual("helper", self._on_disk()["name"], "the kept switch was never written")
 
 
 class TheModelCarriesCodeVersions(_Case):
@@ -190,7 +190,7 @@ class TheModelCarriesCodeVersions(_Case):
         self.assertEqual("helper fast", self.model.data(index, self.model.ActiveVersionRole))
 
     def test_the_badge_roles_follow_a_save_and_a_select(self):
-        """Both roles are cached per id, so each version door drops what it moved."""
+        """Both roles are cached per id, so each method that changes versions clears that id."""
         index = self.model.index(self.row, 0)
 
         def shown():
@@ -199,19 +199,19 @@ class TheModelCarriesCodeVersions(_Case):
 
         self.assertEqual((0, ""), shown(), "premise: the roles were not read before the save")
         self._save(self.model.NEW_VERSION, SECOND, "helper fast")
-        self.assertEqual((2, "helper fast"), shown(), "a save left the row on its cached roles")
+        self.assertEqual((2, "helper fast"), shown(), "after a save the row still read its cached roles")
         self.assertTrue(self.model.switch_version(self.row, 1))
-        self.assertEqual((2, "helper"), shown(), "a select left the row on its cached roles")
+        self.assertEqual((2, "helper"), shown(), "after a select the row still read its cached roles")
 
     def test_deleting_the_snippet_takes_its_versions(self):
         self._save(self.model.NEW_VERSION, SECOND, "helper fast")
         with patch.object(hou, "ui", MagicMock(), create=True):
             self.assertEqual(1, self.model.remove_rows([self.row]))
-        self.assertFalse(os.path.exists(self.store), "the snippet's versions outlived it")
+        self.assertFalse(os.path.exists(self.store), "the snippet's versions were not deleted with it")
 
 
 class TheEditorWindowKeepsVersions(unittest.TestCase):
-    """D11 through the Code section's own door: Apply saves and the window stays open."""
+    """D11 opened by the Code section's `_edit_code_row`: Apply saves and the window stays open."""
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
@@ -286,7 +286,7 @@ class TheEditorWindowKeepsVersions(unittest.TestCase):
             dialog._editor.setPlainText("// edited, not saved")
             dialog._show_version(1)
             seen["two"] = (dialog._tabbar.names(), dialog._editor.toPlainText())
-            dialog._show_version(1)    # its tab comes forward, no second tab
+            dialog._show_version(1)    # its tab is selected, no second tab opens
             dialog._select_tab(0)
             seen["back"] = (len(dialog._tabbar.names()), dialog._editor.toPlainText())
             dialog._close_tab(1)
@@ -370,7 +370,7 @@ class TheEditorWindowKeepsVersions(unittest.TestCase):
 
 
 class TheSweepsLeaveCodeVersionsAlone(_Case):
-    """Check Library moves what the lists lack and leaves the code store. ▸r/version-store"""
+    """Check Library moves files no database lists, not the code store. ▸r/version-store"""
 
     def test_check_library_moves_a_stray_and_leaves_the_code_store(self):
         self._save(self.model.NEW_VERSION, SECOND, "helper fast")
@@ -379,7 +379,7 @@ class TheSweepsLeaveCodeVersionsAlone(_Case):
         with open(stray, "w", encoding="utf-8") as handle:
             handle.write("listed by nothing\n")
         before = sorted(os.listdir(self.store))
-        test_support.reset_database_singletons()    # an action refuses a library this process holds
+        test_support.reset_database_singletons()    # an action fails on a library this process has open
         findings = repair.survey(self.prefs.dir, self.prefs.img_dir)
         repair.move_aside(findings, "unlisted")
         self.assertFalse(os.path.exists(stray), "premise: the move aside did not run")

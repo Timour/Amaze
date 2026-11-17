@@ -88,11 +88,11 @@ class EveryGridModelAnswersThroughTheEngine(unittest.TestCase):
             with self.subTest(model=cls.__name__):
                 self.assertIs(
                     grid_engine.GridEngine.data, cls.data,
-                    "%s answers the grid with its own data() - a second answer "
-                    "the engine's columns and sort cannot see" % cls.__name__)
+                    "%s defines its own data() - a second implementation "
+                    "that the engine's columns and sort do not use" % cls.__name__)
 
     def test_a_later_column_is_ONE_data_call(self):
-        """A Name cell is one data() and one row read - the sort pays it per row, the list per paint."""
+        """One data() and one row read per Name cell: per row in a sort, per paint in the view."""
         model = Names(["b", "a", "c"])
         model.reads = 0
         asked = []
@@ -102,7 +102,7 @@ class EveryGridModelAnswersThroughTheEngine(unittest.TestCase):
             asked.append(index.column())
             return real(index, role)
 
-        model.data = counted    # an engine re-entering data() would land here too
+        model.data = counted    # an engine calling data() again would be counted here too
         for row in range(3):
             self.assertEqual(model._names[row],
                              model.data(model.index(row, NAME), DISPLAY))
@@ -116,7 +116,7 @@ class TheModelSortsItsOwnRows(unittest.TestCase):
 
     def test_a_sort_reads_each_row_once_not_per_comparison(self):
         names = ["material %04d" % n for n in range(1000)]
-        random.Random(7).shuffle(names)    # jumbled, the way SimReady's archives list
+        random.Random(7).shuffle(names)    # shuffled, as SimReady's archives list their files
         model, proxy = _grid(names)
         model.reads = 0
         proxy.sort(NAME, DOWN)
@@ -128,7 +128,7 @@ class TheModelSortsItsOwnRows(unittest.TestCase):
 
     def test_the_proxy_keeps_the_models_order(self):
         model, proxy = _grid(["b", "C", "a"])
-        self.assertEqual(["a", "b", "C"], _shown(proxy), "A to Z, case aside")
+        self.assertEqual(["a", "b", "C"], _shown(proxy), "A to Z, ignoring case")
         proxy.sort(NAME, DOWN)
         self.assertEqual(-1, proxy.sortColumn(),
                          "the proxy sorted itself - every comparison a call into Python")
@@ -152,7 +152,7 @@ class TheModelSortsItsOwnRows(unittest.TestCase):
 
 
 class TheOrderHoldsHoweverRowsChange(unittest.TestCase):
-    """Inserts, renames and filters keep the model's order; what reads nothing it sorts by is free."""
+    """Inserts, renames and filters keep the order; a change to an unsorted role costs no sort."""
 
     def test_a_burst_of_new_rows_lands_in_order_with_ONE_sort(self):
         model, proxy = _grid(["zulu"])
@@ -183,7 +183,7 @@ class TheOrderHoldsHoweverRowsChange(unittest.TestCase):
         model.reads = 0
         model.row_changed(0, [QtCore.Qt.ItemDataRole.DecorationRole])
         _settle()
-        self.assertEqual(0, model.reads, "a thumbnail landing re-sorted the grid")
+        self.assertEqual(0, model.reads, "a thumbnail arriving re-sorted the grid")
 
     def test_a_row_list_out_of_step_is_never_moved(self):
         model, proxy = _grid(["b", "a"])
@@ -194,7 +194,7 @@ class TheOrderHoldsHoweverRowsChange(unittest.TestCase):
 
 
 class ASavedAssetHoldsItsSortedRow(unittest.TestCase):
-    """The insert door sorts at once, so its caller is never left holding a row about to move."""
+    """`_append_record` sorts at once, so the row it returns is the record's row after the sort."""
 
     @classmethod
     def setUpClass(cls):
@@ -208,7 +208,7 @@ class ASavedAssetHoldsItsSortedRow(unittest.TestCase):
         record.set_data("!first by name", "", "", False, "VEX")
         row = model._append_record(record)
         self.assertIs(record, model._assets[row])
-        self.assertEqual(0, row, "a name sorting first did not land first")
+        self.assertEqual(0, row, "a name sorting first was not put at row 0")
         model._take_back_refused_append(record)
 
 

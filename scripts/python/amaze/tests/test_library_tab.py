@@ -86,7 +86,7 @@ class TheUserIsPickedByTheRule(unittest.TestCase):
 
 
 class WhatApplyingDoesIsSaidFirst(unittest.TestCase):
-    """The Format line and the line beside Apply, per library version and when out of reach."""
+    """The Format line and the line beside Apply, per library version and when unreachable."""
 
     def setUp(self):
         self.prefs = test_support.fixture_prefs(self)
@@ -129,7 +129,7 @@ class WhatApplyingDoesIsSaidFirst(unittest.TestCase):
 
 
 class WhatActsOnALibraryWaitsForIt(unittest.TestCase):
-    """With another library picked, the buttons that act on a library rest until Apply."""
+    """With another library picked, the buttons that act on a library are disabled until Apply."""
 
     def test_the_library_buttons_rest_on_a_picked_library(self):
         prefs = test_support.fixture_prefs(self)
@@ -188,7 +188,7 @@ class TheDatabasesRowShowsOneCheck(unittest.TestCase):
         self.assertEqual("0", counts[0])
         self.assertEqual((amazetheme.P01_LIGHT_FOUND, "1"), (fills[2], counts[2]))
         self.assertNotIn(amazetheme.P01_LIGHT_IDLE, fills)
-        self.assertTrue(info, "the row says nothing about what it found")
+        self.assertTrue(info, "the row shows nothing about what it found")
         self.assertEqual("Repair", button)
         sheet = self.dialog._btn_check.styleSheet()
         self.assertIn(amazetheme.P01_REPAIR_FILL, sheet)
@@ -315,7 +315,7 @@ class NothingSwitchesBeforeApply(unittest.TestCase):
             self.assertFalse(test_support.apply_library(self, self.panel, other))
         self.assertEqual(self.before_dir, self.panel.prefs.dir)
         self.assertEqual(self.before_user, self.panel.prefs.library_user,
-                         "the user moved to a library that did not open")
+                         "the user was switched to a library that did not open")
 
     def test_a_new_library_is_made_with_its_user_on_apply(self):
         folder = _empty_folder(self)

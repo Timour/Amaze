@@ -1,4 +1,4 @@
-"""The empty grid: which blank, whose words, and a button that works."""
+"""`empty_state.py`: which empty-state page shows, its texts, and a button that can be clicked."""
 import os
 import shutil
 import unittest
@@ -16,7 +16,7 @@ _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])    # a su
 
 
 def faces(panel) -> list:
-    """Which of the grid pane's three faces are up: `table`, `list`, `blank`."""
+    """Which of the grid pane's three widgets are shown: `table`, `list`, `blank`."""
     page = getattr(panel, "empty_page", None)
     return [name for name, widget in (
         ("table", getattr(panel, "thumbtable", None)),
@@ -25,7 +25,7 @@ def faces(panel) -> list:
 
 
 def pane_hit(panel):
-    """The widget a click in the middle of the grid pane lands on."""
+    """The widget under a click in the middle of the grid pane."""
     host = grid.grid_pane_layout(panel).parentWidget()
     host.resize(600, 400)    # a never-shown pane is 100x30
     host.layout().activate()
@@ -38,7 +38,7 @@ def right_click_menu(testcase, panel, table) -> list:
     hit = pane_hit(panel)
     view = grid.visible_view(panel)
     testcase.assertTrue(hit is view or view.isAncestorOf(hit),
-                        "a right-click on the empty grid lands on %s, not the grid"
+                        "a right-click on the empty grid reaches %s, not the grid"
                         % type(hit).__name__)
     hit = view.viewport()    # never shown, so its geometry is not laid out
     shown = []
@@ -55,7 +55,7 @@ def right_click_menu(testcase, panel, table) -> list:
 
 
 class TheDeclarationsAreWellFormed(unittest.TestCase):
-    """Source-derived: no panel needed."""
+    """Read from the section classes: no panel needed."""
 
     def test_every_section_declares_a_noun_and_a_first_run_blank(self):
         for key, cls in sections.SECTION_INDEX.items():
@@ -65,11 +65,11 @@ class TheDeclarationsAreWellFormed(unittest.TestCase):
                             "%s declares no empty_noun, so the shared "
                             "sentences cannot name it" % key)
             self.assertIn(empty_state.NOTHING_YET, getattr(cls, "EMPTY", {}),
-                          "%s declares no nothing-yet, and there is no "
-                          "shared one to fall back to" % key)
+                          "%s declares no NOTHING_YET text, and there is no "
+                          "shared one to use instead" % key)
 
     def test_every_declared_verb_is_a_method_on_the_panel(self):
-        """A verb naming nothing hides its own button, silently."""
+        """A verb that is not a panel method hides its button without an error."""
         tables = [empty_state.SHARED]
         tables += [getattr(c, "EMPTY", {})
                    for c in sections.SECTION_INDEX.values()]
@@ -107,12 +107,12 @@ class TheEngineSaysWhichBlank(unittest.TestCase):
         self.panel = test_support.fixture_panel(self)
 
     def test_a_search_that_matches_nothing_is_not_an_empty_library(self):
-        """A search matching nothing is its own blank; the filter biting is asserted, never skipped."""
+        """A search matching nothing has its own empty state; that the filter empties it is checked."""
         view = grid.visible_view(self.panel)
         if view.model() is None or not view.model().rowCount():
             self.skipTest("the fixture library has no rows to filter")
         self.assertEqual((None, ""), empty_state.verdict(self.panel),
-                         "a library with rows in it asked for a blank")
+                         "a library with rows in it returned an empty state")
         before = view.model().rowCount()
         self.panel.line_filter.setText("zzzz-no-such-asset")
         self.panel.filter_thumb_view()
@@ -121,12 +121,12 @@ class TheEngineSaysWhichBlank(unittest.TestCase):
 
         blank, detail = empty_state.verdict(self.panel)
         self.assertEqual(empty_state.NO_MATCH, blank,
-                         "a filtered-to-nothing grid read as an empty "
+                         "a filtered-to-nothing grid was taken for an empty "
                          "library, which tells the user their work is "
                          "gone")
         self.assertIn("zzzz", detail)
 
-        self.panel.clear_filter_box()    # NOTHING ELSE: the real button makes no second push
+        self.panel.clear_filter_box()    # NOTHING ELSE: the real button makes no second filter call
         self.assertEqual("", self.panel.line_filter.text())
         self.assertEqual(before, view.model().rowCount(),
                          "the box is empty and the grid is still "
@@ -134,7 +134,7 @@ class TheEngineSaysWhichBlank(unittest.TestCase):
 
 
 class TheFavouritesBlankIsItsOwnBlank(unittest.TestCase):
-    """The favourites star over nothing starred has its own blank, not the category one."""
+    """The favourites filter with nothing starred has its own empty state, not the category one."""
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
@@ -169,8 +169,8 @@ class TheFavouritesBlankIsItsOwnBlank(unittest.TestCase):
         blank, _detail = empty_state.verdict(self.panel)
         self.assertEqual(
             empty_state.NO_FAVOURITES, blank,
-            "an unstarred library behind the favourites star read as "
-            "an empty category, quoting an empty name")
+            "an unstarred library under the favourites filter was taken "
+            "for an empty category, quoting an empty name")
 
         self.panel.clear_favourites_filter()    # NOTHING ELSE is called: the button's own verb
         QtWidgets.QApplication.processEvents()
@@ -190,19 +190,19 @@ class TheFavouritesBlankIsItsOwnBlank(unittest.TestCase):
         blank, _detail = empty_state.verdict(self.panel)
         self.assertEqual(
             empty_state.NO_MATCH, blank,
-            "with a search active the search explains the blank, and "
+            "with a search active the search explains the empty grid, and "
             "clearing it must come first")
 
     def test_one_star_anywhere_flips_the_discriminator(self):
-        """A star set THIS instant must reach `_any_favourite` - no cache may sit under it."""
+        """A star just set must show in `_any_favourite` at once - no cache may be in between."""
         self._unstar_everything()
         self.assertFalse(empty_state._any_favourite(self.source))
         self.panel.grid_toggle_favourite([self.proxy.index(0, 0)])
         QtWidgets.QApplication.processEvents()
         self.assertTrue(
             empty_state._any_favourite(self.source),
-            "the star just set is invisible to the discriminator, so "
-            "the favourites blank would claim no favourites exist")
+            "_any_favourite does not see the star just set, so the "
+            "favourites empty state would say no favourites exist")
 
     def test_unstarring_a_multi_selection_lands_on_the_selected_rows(self):
         """Under favourites-only a flip drops its proxy row, so map every row to source before any flip."""
@@ -221,12 +221,12 @@ class TheFavouritesBlankIsItsOwnBlank(unittest.TestCase):
                    if self.source.index(r, 0).data(self.role))
         self.assertEqual(0, left,
                          "unstarring both favourites left %d starred - "
-                         "the loop flipped through stale proxy rows"
+                         "the loop toggled through stale proxy rows"
                          % left)
 
 
 class TheButtonCanBeClicked(unittest.TestCase):
-    """Attribute, hit test and real events each guard a different failure. ▸r/transparent-for-mouse"""
+    """Attribute, hit test and real events each catch a different failure. ▸r/transparent-for-mouse"""
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
@@ -239,7 +239,7 @@ class TheButtonCanBeClicked(unittest.TestCase):
         for widget in [self.page] + self.page.findChildren(QtWidgets.QWidget):
             self.assertFalse(
                 widget.testAttribute(attribute),
-                "%s refuses mouse events, so nothing inside it can be "
+                "%s ignores mouse events, so nothing inside it can be "
                 "clicked" % (widget.objectName() or type(widget).__name__))
 
         self.page.say(self.panel, empty_state.NO_MATCH, "brick")
@@ -247,13 +247,13 @@ class TheButtonCanBeClicked(unittest.TestCase):
         self.page.layout().activate()
         button = self.page.button()
         self.assertTrue(button.isVisibleTo(self.page),
-                        "premise: this blank offers a button")
+                        "premise: this empty state shows a button")
         centre = button.geometry().center()    # a HIT TEST, not a signal emission
         self.assertIs(button, self.page.childAt(centre),
-                      "a click in the middle of the button lands on "
-                      "something else")
+                      "a click in the middle of the button reaches "
+                      "another widget")
 
-        fired = []    # real QMouseEvents, device-carrying overload ▸r/transparent-for-mouse
+        fired = []    # real QMouseEvents, the overload that takes a device ▸r/transparent-for-mouse
         button.clicked.connect(lambda *_: fired.append(True))
         middle = QtCore.QPointF(button.rect().center())
         pointer = QtGui.QPointingDevice.primaryPointingDevice()
@@ -292,7 +292,7 @@ class TheTextWraps(unittest.TestCase):
                 room = width - margins.left() - margins.right()
                 self.assertEqual(room, label.width(),
                                  "the sentence does not fill the pane, so "
-                                 "it is at some other width's mercy")
+                                 "its width depends on something else")
                 self.assertLessEqual(
                     abs((label.x() + label.width() // 2) - width // 2), 1,
                     "the sentence is not centred in the pane")
@@ -318,15 +318,15 @@ class OnlyOneFaceIsUp(unittest.TestCase):
         self.assertEqual(["blank"], self._shown())
         grid.apply_grid_face(self.panel, False)
         self.assertEqual(["list"], self._shown(),
-                         "clearing the blank did not restore the view mode")
+                         "clearing the empty state did not restore the view mode")
         grid.apply_grid_face(self.panel, True)
-        grid.show_table(self.panel, True)    # a view-mode switch: only the model ends a blank
+        grid.show_table(self.panel, True)    # a view-mode switch: only the model clears an empty state
         self.assertEqual(["blank"], self._shown(),
-                         "a view-mode change dismissed the blank")
+                         "a view-mode change hid the empty state")
 
 
 class TheQuoteRidesTheFirstRunBlankOnly(unittest.TestCase):
-    """Only a first-run blank carries a quotation, and the page clears it on any other blank."""
+    """Only the first-run empty state shows a quotation; the page clears it for any other."""
 
     def test_a_declared_quote_is_a_line_and_an_attribution(self):
         for key, cls in sections.SECTION_INDEX.items():
@@ -338,7 +338,7 @@ class TheQuoteRidesTheFirstRunBlankOnly(unittest.TestCase):
                 "%s declares a QUOTE that is not (line, attribution)"
                 % key)
             self.assertTrue(all(str(part).strip() for part in quote),
-                            "%s declares a QUOTE with a blank half"
+                            "%s declares a QUOTE with an empty part"
                             % key)
 
     def test_only_the_first_run_blank_carries_it(self):
@@ -352,19 +352,19 @@ class TheQuoteRidesTheFirstRunBlankOnly(unittest.TestCase):
         page.say(panel, empty_state.NOTHING_YET, "")
         page.say(panel, empty_state.NO_MATCH, "brick")
         self.assertTrue(page._quote.isHidden(),    # isHidden: isVisible is False under a never-shown parent ▸r/qt-text-checklists
-                        "the quotation stayed up over a blank that "
-                        "declares none")
+                        "the quotation stayed visible on an empty state "
+                        "that declares none")
         self.assertEqual("", page._quote.text())
 
 
 class AnEmptyCategoryIsThePlainGrid(unittest.TestCase):
-    """A category with no rows shows its grid, empty: no words, its own right-click menu, its drops."""
+    """A category with no rows shows its grid, empty: no text, its own right-click menu, its drops."""
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
 
     def _stand_on_a_new_category(self, key):
-        """Add `Probe` through the sidebar's own verb, stand on it, answer the grid's proxy."""
+        """Add `Probe` with the sidebar's own menu action, select it, return the grid's proxy."""
         panel = self.panel
         panel.section_tabs.setChecked(key)
         QtWidgets.QApplication.processEvents()
@@ -389,9 +389,9 @@ class AnEmptyCategoryIsThePlainGrid(unittest.TestCase):
                                 "premise: the section holds rows elsewhere")
                 self.assertEqual((None, ""),
                                  empty_state.verdict(self.panel),
-                                 "an empty category still asks for a blank")
+                                 "an empty category still returns an empty state")
                 self.assertNotIn("blank", faces(self.panel),
-                                 "words cover the grid of an empty category")
+                                 "a text covers the grid of an empty category")
                 self.assertEqual(1, len(faces(self.panel)),
                                  "not exactly one grid view is up: %s"
                                  % faces(self.panel))
@@ -404,11 +404,11 @@ class AnEmptyCategoryIsThePlainGrid(unittest.TestCase):
                 shown = right_click_menu(self, self.panel, table)
                 self.assertTrue(shown, "the right-click opened no menu")
                 self.assertEqual(("New File", True), shown[0],
-                                 "the empty grid's menu does not lead with "
-                                 "a live New File: %s" % shown)
+                                 "the empty grid's menu does not start with "
+                                 "an enabled New File: %s" % shown)
 
     def test_a_drop_on_it_lands_where_a_populated_grid_sends_it(self):
-        """Qt hands a drop to the first widget up from the cursor that accepts drops."""
+        """Qt delivers a drop to the first widget up from the cursor that accepts drops."""
         def drop_target():
             widget = pane_hit(self.panel)
             while widget is not None and not widget.acceptDrops():
@@ -422,14 +422,14 @@ class AnEmptyCategoryIsThePlainGrid(unittest.TestCase):
         populated = drop_target()
         self.assertIsInstance(populated,
                               dragdrop_widgets.DragDropCentralWidget,
-                              "premise: a populated grid drops on the save door")
+                              "premise: a populated grid passes drops to the save widget")
         self._stand_on_a_new_category("material")
         self.assertIs(populated, drop_target(),
-                      "a node dropped on an empty category goes somewhere "
-                      "a populated grid does not send it")
+                      "a node dropped on an empty category reaches another "
+                      "widget than on a populated grid")
 
     def test_the_favourites_star_over_it_shows_the_grid(self):
-        """The library has a star elsewhere, so the no-favourites blank would be false here."""
+        """The library has a star elsewhere, so the no-favourites empty state would be wrong."""
         panel = self.panel
         panel.section_tabs.setChecked("material")
         QtWidgets.QApplication.processEvents()
@@ -511,7 +511,7 @@ class AnEmptyLocationIsThePlainGrid(unittest.TestCase):
                             "premise: the fixture location was not removed")
 
     def _stand(self, row):
-        """A left click on the sidebar row: select it, then its own clicked handler."""
+        """A left click on the sidebar row: select it, then call its clicked handler."""
         view = self.panel.cat_list
         view.selectionModel().setCurrentIndex(
             view.model().index(row, 0),
@@ -522,9 +522,9 @@ class AnEmptyLocationIsThePlainGrid(unittest.TestCase):
 
     def _assert_plain_grid(self):
         self.assertEqual((None, ""), empty_state.verdict(self.panel),
-                         "an empty location still asks for a blank")
+                         "an empty location still returns an empty state")
         self.assertNotIn("blank", faces(self.panel),
-                         "words cover the grid of an empty location")
+                         "a text covers the grid of an empty location")
         self.assertEqual(1, len(faces(self.panel)),
                          "not exactly one grid view is up: %s" % faces(self.panel))
 
@@ -566,7 +566,7 @@ class AnEmptyLocationIsThePlainGrid(unittest.TestCase):
 
 
 class TheUnreachableBlankPointsAtSomethingReal(unittest.TestCase):
-    """Only a scan clears a folder's unreadable flag, so the blank names only a registered folder."""
+    """Only a scan clears the unreadable flag, so the empty state names only a registered folder."""
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
@@ -579,7 +579,7 @@ class TheUnreachableBlankPointsAtSomethingReal(unittest.TestCase):
                         "/no/such/folder/")
         self.assertEqual("", empty_state.unreadable_folder(self.panel),
                          "a folder that is not in the sidebar at all "
-                         "was still blamed for the empty grid")
+                         "was still named as the cause of the empty grid")
         folders = self.panel.file_folders_model
         registered = folders._folders()
         if not registered:
@@ -589,10 +589,10 @@ class TheUnreachableBlankPointsAtSomethingReal(unittest.TestCase):
                         registered[0])
         self.assertEqual(registered[0],
                          empty_state.unreadable_folder(self.panel),
-                         "the blank cannot name the folder it is about")
+                         "the empty state cannot name the folder it is about")
 
     def test_a_dead_folder_does_not_hijack_another_folders_blank(self):
-        """The blank describes the folder looked at, never a dead folder elsewhere."""
+        """The empty state describes the selected folder, never an unreadable folder elsewhere."""
         folders = self.panel.file_folders_model
         registered = folders._folders()
         if not registered:
@@ -606,8 +606,8 @@ class TheUnreachableBlankPointsAtSomethingReal(unittest.TestCase):
         self.model.set_folder(healthy)
         self.assertEqual(
             "", empty_state.unreadable_folder(self.panel),
-            "an empty result in a healthy folder was blamed on a dead "
-            "folder the user is not even looking at")
+            "an empty result in a readable folder was blamed on an "
+            "unreadable folder the user has not selected")
 
     def test_the_locate_button_moves_the_folder_the_message_names(self):
         """With the sidebar on All, the verb selects the named folder before the shared picker runs."""
@@ -617,7 +617,7 @@ class TheUnreachableBlankPointsAtSomethingReal(unittest.TestCase):
         self.addCleanup(folders.remove_folder, folders.row_of(target))
         self.assertIsNotNone(folders.row_of(target),
                              "premise: the second folder registered")
-        self.panel.section_tabs.setChecked("file")    # the blank's sidebar is File's
+        self.panel.section_tabs.setChecked("file")    # the empty state shown is File's
         QtWidgets.QApplication.processEvents()
         self.panel.sections["file"].stand_on_key("")    # the grid and the sidebar on All
         self.model._unreadable_folders.add(target)    # after the scans, which would clear it
@@ -650,7 +650,7 @@ class EveryBoundProxyAnnouncesItsFilterPass(unittest.TestCase):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
 
     def test_every_context_binds_a_proxy_with_refiltered(self):
-        """Read off each context's own `activate()`, so a new section is covered unasked."""
+        """Read off each context's own `activate()`, so a new section is covered too."""
         panel = self.panel
         self.addCleanup(lambda: panel.active_section().activate())
         contexts = dict(panel.sections, online=panel.online_context)

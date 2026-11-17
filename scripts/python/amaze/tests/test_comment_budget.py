@@ -1,4 +1,4 @@
-"""The comment sweep, ratcheted: the count may fall, never rise. ▸p/comment-standard"""
+"""Comment blocks and lines over the cap: the count may fall, never rise. ▸p/comment-standard"""
 
 import ast
 import os
@@ -73,7 +73,7 @@ def _scanned():
 
 
 def over_the_cap():
-    """Every block in the package over the cap, fattest first."""
+    """Every block in the package over the cap, largest first."""
     found = []
     for path in _scanned():
         for size, line, what in _blocks(path):
@@ -121,7 +121,7 @@ class TheCommentBudget(unittest.TestCase):
                "\n".join("  %4d  %s  %s" % row for row in found[:10])))
 
     def test_the_scan_can_find_a_block(self):
-        """A budget that scans nothing passes forever: it must read the package and see a block."""
+        """A scan that reads no file always passes: it must read the package and find a block."""
         self.assertGreater(len(list(_scanned())), 100, "the walk reads almost nothing")
         folder = tempfile.mkdtemp(prefix="amaze_budget_")
         self.addCleanup(shutil.rmtree, folder, True)

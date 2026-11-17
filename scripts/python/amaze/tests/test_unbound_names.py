@@ -11,7 +11,7 @@ _AMAZE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def _watched_module_names() -> set:
-    """Every module name this gate holds a file to: the amaze package's and stdlib's. ▸p/code-motion"""
+    """Every module name the check covers: the amaze package's and stdlib's. ▸p/code-motion"""
     names = set(sys.stdlib_module_names)
     for root, dirs, files in os.walk(_AMAZE):
         dirs[:] = [d for d in dirs if d != "__pycache__"]

@@ -29,14 +29,14 @@ def _write_settings(panel, **changes):
 
 
 class SwitchRereadsCase(unittest.TestCase):
-    """One panel for the class - the door under test is the panel's."""
+    """One panel for the class - the function under test is the panel's `switch_all_models`."""
 
     @classmethod
     def setUpClass(cls):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
 
     def test_switch_rereads_stores_from_disk(self):
-        """An edit that lands on disk behind the cache shows after the next `switch_all_models`."""
+        """An edit written to disk outside the cache shows after the next `switch_all_models`."""
         panel = self.panel
         prefs = panel.prefs
         self.addCleanup(test_support.reset_database_singletons)
@@ -60,19 +60,19 @@ class SwitchRereadsCase(unittest.TestCase):
         self.assertEqual(
             "#4af2a1",
             tile_icons.override_for(prefs, key, library_files.MATERIALS).get("bg"),
-            "the switch served the cached row instead of re-reading the "
+            "the switch returned the cached row instead of re-reading the "
             "file - switching back to a library shows stale data until "
             "Houdini restarts")
 
 
 class ASwitchReadsTheSettingsOnce(unittest.TestCase):
-    """The models of a switch take the Prefs it loaded: one read of settings.json, not one each."""
+    """The models in a switch use the Prefs it loaded: one read of settings.json, not one each."""
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
 
     def _switch_reads(self, folder) -> int:
-        """Name `folder` in settings.json as Preferences does, switch, and count the reads of it."""
+        """Write `folder` to settings.json as Preferences does, switch, and count reads of it."""
         _write_settings(self.panel, directory=folder)    # the harness turns Prefs.save off
         settings = os.path.abspath(os.path.join(self.panel.prefs.path, "settings.json"))
         reads, real = [], open
@@ -94,7 +94,7 @@ class ASwitchReadsTheSettingsOnce(unittest.TestCase):
         self.assertEqual(1, self._switch_reads(other),
                          "each model re-read settings.json for itself")
         self.assertEqual(self._landed(other), self._landed(self.panel.prefs.dir),
-                         "the switch did not land on the new library")
+                         "the switch did not open the new library")
         self.assertTrue(test_support.serves(library_files.MATERIALS, self.panel.prefs.dir),
                         "the models were not re-pointed at the new library")
 
@@ -108,9 +108,9 @@ class ASwitchReadsTheSettingsOnce(unittest.TestCase):
         for model in self.panel.library_models():
             with self.subTest(model=type(model).__name__):
                 self.assertEqual(self._landed(other), self._landed(model.preferences.dir),
-                                 "a shared model kept the library another panel's Prefs named")
+                                 "a shared model kept the library from another panel's Prefs")
                 self.assertEqual(self._landed(other), self._landed(self.panel.prefs.dir),
-                                 "the panel that switched still names the old library")
+                                 "the panel that switched still points to the old library")
 
 
 class TheRegisteredFoldersFollowTheLibrary(unittest.TestCase):
@@ -139,7 +139,7 @@ class TheRegisteredFoldersFollowTheLibrary(unittest.TestCase):
                          % ", ".join(missing))
 
     def test_the_folder_model_resets_so_the_view_repaints(self):
-        """The folders read through to prefs; the switch must still reset the model to tell the view."""
+        """The folders read through to prefs; the switch must still reset the model so views update."""
         panel = self.panel
         model = panel.file_folders_model
         self.assertIsNotNone(model)
@@ -152,7 +152,7 @@ class TheRegisteredFoldersFollowTheLibrary(unittest.TestCase):
                   "the old library's folders is never told to redraw")
 
     def test_a_switch_reaches_the_folder_model(self):
-        """End to end through the panel's own door, which is what the library toggle runs."""
+        """End to end through `switch_all_models`, which is what the library toggle runs."""
         panel = self.panel
         seen = []
         panel.file_folders_model.modelReset.connect(lambda: seen.append(True))
@@ -178,7 +178,7 @@ class AfterASwitchFileShowsTheNewLibrarysLocation(unittest.TestCase):
         with open(settings, encoding="utf-8") as handle:
             data = json.load(handle)
         other = test_support.seeded_library(self)
-        test_support.with_fixture_location(other, theirs)    # the location lives in its library
+        test_support.with_fixture_location(other, theirs)    # the location is stored in its library
         data.update(directory=other)
         data["users"][panel.prefs.library_user].update(file_folders=[theirs],
                                                        last_file_folder=theirs)
@@ -188,9 +188,9 @@ class AfterASwitchFileShowsTheNewLibrarysLocation(unittest.TestCase):
         QtWidgets.QApplication.processEvents()
         self.assertNotEqual(old, files._folder,
                             "the grid still lists the previous library's location")
-        self.assertEqual(theirs, files._folder, "File landed off its remembered location")
+        self.assertEqual(theirs, files._folder, "File did not open its remembered location")
         standing = panel.cat_list.selectionModel().selectedIndexes()
-        self.assertTrue(standing, "the sidebar stands on no location")
+        self.assertTrue(standing, "the sidebar has no location selected")
         self.assertEqual(standing[0].data(folders.PathRole) or "", files._folder)
 
 
@@ -227,7 +227,7 @@ class AfterASwitchAnAssetGridFollowsItsSidebar(unittest.TestCase):
                     st.proxy.filter_value(st.model.CategoryRole) or "",
                     "the grid keeps the previous library's category")
                 self.assertTrue(panel.cat_list.selectionModel().selectedIndexes(),
-                                "the sidebar stands on no row")
+                                "the sidebar has no row selected")
 
 
 class AfterASwitchTheGridAndTheSidebarShareOneDocument(unittest.TestCase):
@@ -269,7 +269,7 @@ class AfterASwitchTheGridAndTheSidebarShareOneDocument(unittest.TestCase):
 
 
 class AnUnreadableNodeFileDoesNotStopTheSwitch(unittest.TestCase):
-    """A library whose nodes.json will not parse: every model still switches; saving says why not."""
+    """A library whose nodes.json will not parse: every model still switches; saving shows why."""
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
@@ -303,12 +303,12 @@ class AnUnreadableNodeFileDoesNotStopTheSwitch(unittest.TestCase):
 
     def test_a_node_save_is_refused_for_the_file_it_could_not_read(self):
         with test_support.captured_log() as log:
-            self.panel.switch_all_models()    # the door that reads the settings; a model reads none
+            self.panel.switch_all_models()    # the function that reads the settings; a model reads none
             self.assertFalse(self.panel.cop_model.save(),
                              "premise: a save over an unread file went ahead")
         self.assertIn(
             messages.DATABASE_CORRUPT_READ_ONLY % "Nodes", log.messages("alert"),
-            "the refusal never said the Nodes database is corrupt: %s" % log.messages())
+            "no alert stated that the Nodes database is corrupt: %s" % log.messages())
 
 
 class OneLibraryChangeIsOneSwitch(unittest.TestCase):
@@ -410,7 +410,7 @@ class EveryWayOntoALibraryTakesOneOrder(unittest.TestCase):
 
 
 class AnUnreadableListIsAskedAboutBeforeTheSwitch(unittest.TestCase):
-    """A library whose list will not read asks Repair or Cancel; Cancel keeps the open library."""
+    """A library with an unreadable database offers Repair or Cancel; Cancel keeps the open one."""
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
@@ -442,7 +442,7 @@ class AnUnreadableListIsAskedAboutBeforeTheSwitch(unittest.TestCase):
         return dialog
 
     def _add_and_apply(self):
-        """Add the folder the chooser answers, name a user for it, then Apply."""
+        """Add the folder the file chooser returns, create a user for it, then Apply."""
         dialog = self._preferences()
         dialog.add_library()
         dialog.create_library_user("Tester")
@@ -539,7 +539,7 @@ class AnUnreadableListIsAskedAboutBeforeTheSwitch(unittest.TestCase):
                          os.path.normpath(self.panel._models_dir),
                          "the rebuilt library did not open")
         with open(held, "rb") as handle:
-            self.assertEqual(held_bytes, handle.read(), "the open library's list was written")
+            self.assertEqual(held_bytes, handle.read(), "the open library's database was written")
 
     def test_check_library_offers_no_fix_on_a_library_this_houdini_holds(self):
         from amaze.dialogs import repair_dialog
@@ -559,13 +559,13 @@ class AnUnreadableListIsAskedAboutBeforeTheSwitch(unittest.TestCase):
 
 
 class AListThatWillNotOpenIsNotSwitchedTo(unittest.TestCase):
-    """r7 and r2 at Preferences' Apply: a list refused at OPEN keeps what was open; `{}` opens."""
+    """r7, r2 at Preferences' Apply: a database failing at OPEN keeps the open one; `{}` opens."""
 
     def setUp(self):
         self.other = test_support.seeded_library(self)
 
     def _apply(self, panel, refused=True):
-        """Apply onto `self.other`, saves real: (opened, what was said, the list's own sentence)."""
+        """Apply onto `self.other`, real saves: (opened, dialogs shown, the database's message)."""
         from amaze.actions import library as library_actions
         from amaze.prefs import persistence
         from amaze.prefs import prefs as prefs_mod
@@ -577,13 +577,13 @@ class AListThatWillNotOpenIsNotSwitchedTo(unittest.TestCase):
                 mock.patch.object(prefs_mod.Prefs, "save", persistence._Persistence.save), \
                 (test_support.refused_at_open(index) if refused else contextlib.nullcontext()):
             opened = test_support.apply_library(self, panel, self.other)
-            for _ in range(20):    # the sentence waits for an idle Qt
+            for _ in range(20):    # the message is shown when Qt is idle
                 QtWidgets.QApplication.processEvents()
             why = library_actions.index_unopenable(self.other)
         return opened, said, why
 
     def _next_start(self, panel) -> str:
-        """The library settings.json names, read the way the next pane reads it."""
+        """The library named in settings.json, read the way the next pane reads it."""
         from amaze.prefs import prefs as prefs_mod
         reader = prefs_mod.Prefs()
         reader.path = panel.prefs.path
@@ -594,20 +594,20 @@ class AListThatWillNotOpenIsNotSwitchedTo(unittest.TestCase):
         panel = test_support.fixture_panel(self)
         before, user = panel.prefs.dir, panel.prefs.library_user
         opened, said, why = self._apply(panel)
-        self.assertFalse(opened, "Apply answered a library that stayed closed as open")
+        self.assertFalse(opened, "Apply returned open for a library that stayed closed")
         self.assertEqual(before, panel._models_dir, "the open library was left")
         self.assertEqual((before, user), (panel.prefs.dir, panel.prefs.library_user))
         self.assertEqual(before, self._next_start(panel),
                          "the next Houdini opens the library that would not open")
         self.assertTrue(test_support.serves(library_files.MATERIALS, before),
-                        "the list's connection was left on the library that did not open")
+                        "the database connection was left on the library that did not open")
         self.assertEqual([messages.LIBRARY_NOT_OPENED_SWITCHING % why], said)
 
     def test_a_pane_without_a_library_keeps_its_settings_too(self):
         panel = test_support.fixture_unconfigured_panel(self)
         opened, said, why = self._apply(panel)
         self.assertFalse(opened)
-        self.assertIsNone(panel.material_model, "a list that will not open was opened")
+        self.assertIsNone(panel.material_model, "a database that cannot be opened was opened")
         self.assertEqual("", self._next_start(panel),
                          "the next Houdini starts on the library that would not open")
         self.assertEqual([messages.LIBRARY_NOT_OPENED % why], said)

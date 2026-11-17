@@ -18,7 +18,7 @@ from amaze.tests.test_shell_gates import (
 
 
 class SyncInstallGateTest(GateFixture):
-    """`sync-install.sh`'s slower cases; refusals guarding the real install stay in the default run."""
+    """`sync-install.sh`'s slower cases; its checks on the real install stay in the default run."""
 
     def test_it_ships_and_runs_no_suite(self):
         """The push and `run-tests.sh` test the commit; a sync only copies it and checks the copy."""
@@ -27,14 +27,14 @@ class SyncInstallGateTest(GateFixture):
         self.assertIn(SYNC_SHIPPED_MSG, result.stdout)
         self.assertEqual(self.suite_calls(), [], "the sync ran the suite")
         lines = [line for line in result.stdout.splitlines() if line.strip()]
-        self.assertEqual(lines[-1], SYNC_END,    # an exit status cannot tell a finish from a set -e death
+        self.assertEqual(lines[-1], SYNC_END,    # an exit status cannot tell a full run from an early `set -e` exit
                          "sync-install stopped early:\n%s" % result.stdout)
         for relative in (os.path.join("scripts", "python", "amaze", "widget.py"),
                          "OPmenu.xml",
-                         os.path.join("toolbar", "Amaze.shelf")):    # the shelf carries the hotkey
+                         os.path.join("toolbar", "Amaze.shelf")):    # the shelf file defines the hotkey
             self.assertTrue(
                 os.path.isfile(os.path.join(self.install, relative)),
-                "%s did not land in the install" % relative)
+                "%s was not copied to the install" % relative)
 
     def test_a_scratch_destination_takes_a_dirty_tree(self):
         """A sabotage is a dirty tree, so it gets a different DESTINATION rather than an exemption."""
@@ -48,12 +48,12 @@ class SyncInstallGateTest(GateFixture):
         self.assertTrue(
             os.path.exists(os.path.join(scratch, "scripts", "python",
                                         "amaze", "stray.py")),
-            "the dirty tree did not reach the scratch install, so a "
-            "sabotage would be judged on code that does not hold it")
+            "the dirty tree was not copied to the scratch install, so a "
+            "sabotage would be tested on code that does not contain it")
         self.assertFalse(
             os.path.exists(os.path.join(self.install, "OPmenu.xml")),
             "the REAL install was written during a scratch sync - "
-            "knowingly-broken code just reached the tree a live Houdini "
+            "knowingly-broken code was copied to the folder a running Houdini "
             "reads")
 
     def test_a_populated_directory_is_not_treated_as_scratch(self):
@@ -67,7 +67,7 @@ class SyncInstallGateTest(GateFixture):
         self.assertIn("not empty", self.both(result))
         self.assertTrue(
             os.path.exists(os.path.join(scratch, "someones_work.txt")),
-            "it refused and overwrote the directory anyway")
+            "it exited with an error and overwrote the directory anyway")
 
     def test_a_committed_change_ships_without_being_pushed(self):
         """Committed, not pushed: the runner syncs before it tests, so a push cannot be required."""
@@ -85,7 +85,7 @@ class SyncInstallGateTest(GateFixture):
         self.assertIn(SYNC_SHIPPED_MSG, result.stdout)
 
     def test_it_wires_the_push_gate_in_a_fresh_clone(self):
-        """A fresh clone has no hook until this wires it; losing that silently reopens the push gate."""
+        """A fresh clone has no hook until the sync sets it; without that, no push is checked."""
         self.assertEqual(
             subprocess.run(("git", "-C", self.repo, "config", "--get",
                             "core.hooksPath"), capture_output=True, text=True,
@@ -99,7 +99,7 @@ class SyncInstallGateTest(GateFixture):
 
 
 class PrePushGateTest(GateFixture):
-    """`pre-push`'s slower cases; the process gate and the red-suite refusal stay in the default run."""
+    """`pre-push`'s slower cases; the process gate and failing-suite check run by default."""
 
     def test_green_suite_allows_the_push_and_says_so(self):
         self._commit(os.path.join("scripts", "python", "amaze", "widget.py"))
@@ -114,7 +114,7 @@ class PrePushGateTest(GateFixture):
 
     def test_a_suite_that_cannot_run_is_refused(self):
         self._commit(os.path.join("scripts", "python", "amaze", "widget.py"))
-        for mode in ("crash", "no_tests", "silent", "leak"):    # dead, empty, mute, or a leak
+        for mode in ("crash", "no_tests", "silent", "leak"):    # crashes, runs no test, prints nothing, or leaks
             with self.subTest(mode=mode):
                 result = self.push(mode)
                 self.assertNotEqual(result.returncode, 0,
@@ -139,7 +139,7 @@ SIZE = "test_widget.W.test_size"
 
 
 class PrePushSelectionTest(GateFixture):
-    """A push runs the tests it reaches, or the whole suite when unsure. ▸p/suite-selects"""
+    """A push runs the tests its change reaches, else the whole suite. ▸p/suite-selects"""
 
     def _mapped(self):
         """A committed widget with two defs, and the map a green full run of it wrote."""

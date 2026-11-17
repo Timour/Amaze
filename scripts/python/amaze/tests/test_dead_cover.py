@@ -1,4 +1,4 @@
-"""A test skipped on every Houdini protects nothing: pins the intersection, refusals and wiring."""
+"""`check_dead_cover.py`: tests skipped on every Houdini, its exit 2 on bad input, its wiring."""
 
 import ast
 import io
@@ -94,8 +94,8 @@ class TheIntersectionTest(_ReportsMixin):
         code, output = self.run_check(a, b)
         self.assertEqual(code, 1)
         self.assertIn("test_y.B.test_dead", output,
-                      "the dead test was not NAMED, and a count is exactly "
-                      "what the suite already gave us")
+                      "the dead test's id is not in the output, and a count "
+                      "alone is what the suite already prints")
         for expected in ("Redshift not installed", "no hou.ui headless",
                          "Houdini22.0", "Houdini22.5"):
             self.assertIn(expected, output,
@@ -106,7 +106,7 @@ class TheIntersectionTest(_ReportsMixin):
 class TheRefusalsTest(_ReportsMixin):
 
     def test_every_input_it_cannot_judge_refuses(self):
-        """Exit 2, never an all-clear: a Houdini crash exits 0, so testsRun is the only signal."""
+        """Exit 2, never 0: a Houdini crash exits 0, so testsRun is the only signal."""
         a = self.write_report("a.json", [["test_y.B.test_dead", "why"]])
         bad = os.path.join(self.dir, "bad.json")
         with open(bad, "w", encoding="utf-8") as handle:
@@ -120,7 +120,7 @@ class TheRefusalsTest(_ReportsMixin):
                 ("one report alone", (a,), "at least")):
             with self.subTest(why):
                 code, output = self.run_check(*paths)
-                self.assertEqual(code, 2, "%s did not refuse:\n%s"
+                self.assertEqual(code, 2, "%s did not exit with 2:\n%s"
                                  % (why, output))
                 self.assertIn(said, output)
 
@@ -159,10 +159,10 @@ class TheReportWriterTest(_ReportsMixin):
                 os.path.join(self.dir, name), houdini)
         code, output = self.run_check(os.path.join(self.dir, "a.json"),
                                       os.path.join(self.dir, "b.json"))
-        self.assertEqual(code, 1, "the writer's own output did not reach "
-                                  "the checker, so the two halves are "
-                                  "pinned only against a hand-built "
-                                  "fixture:\n%s" % output)
+        self.assertEqual(code, 1, "check_dead_cover.main did not find the "
+                                  "dead test in reports written by "
+                                  "write_skip_report, so the two only match "
+                                  "a hand-built fixture:\n%s" % output)
         self.assertIn("test_y.B.test_dead", output)
         self.assertIn("Houdini22.5", output)
 
@@ -199,7 +199,7 @@ class WhatUnittestItselfGuaranteesTest(unittest.TestCase):
 class TheWiringTest(unittest.TestCase):
 
     def test_all_versions_reports_each_run_and_checks_them_together(self):
-        """The shell sets the variable the runner reads, runs the checker, and guards a subset run."""
+        """run-tests.sh sets the variable run_suite reads, runs the checker, detects a subset run."""
         with open(RUN_TESTS_SH, encoding="utf-8") as handle:
             source = handle.read()
         for needle, lost in (
@@ -253,8 +253,8 @@ class EverythingLoadsOnADirectRunTest(unittest.TestCase):
         self.assertEqual(
             {}, offenders,
             "these modules define tests below unittest.main(), so a "
-            "direct run collects only part of the file and prints a "
-            "green over the rest: %s" % offenders)
+            "direct run collects only part of the file and reports a "
+            "pass without the rest: %s" % offenders)
 
 
 if __name__ == "__main__":
