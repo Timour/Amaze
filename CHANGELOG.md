@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.34.7
+
+- Preferences ▸ About: the logo is no longer squeezed.
+
 ## 1.34.6
 
 - Comments and test names in the code are reworded.
