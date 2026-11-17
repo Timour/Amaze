@@ -98,7 +98,7 @@ class TestFloodGuard(_LogCase):
         self.assertEqual(len(after), before + 1)
         self.assertEqual(after[-1]["msg"], "quiet")
 
-    def test_the_three_crash_doors_write_one_record_shape(self):
+    def test_the_three_crash_handlers_write_one_record_shape(self):
         """A slot, an uncaught raise and a handled one: the tenth record, field for field."""
         for name in ("_excepthook_installed", "_previous_excepthook"):
             self.addCleanup(setattr, debug, name, getattr(debug, name))
@@ -107,7 +107,7 @@ class TestFloodGuard(_LogCase):
         debug._excepthook_installed = False
         debug._install_excepthook()
 
-        @debug.guarded("Door.slot")
+        @debug.guarded("Test.slot")
         def _slot():
             raise RuntimeError("deleted")
 
@@ -118,17 +118,17 @@ class TestFloodGuard(_LogCase):
                 raise RuntimeError("deleted")
             except RuntimeError as exc:
                 sys.excepthook(type(exc), exc, exc.__traceback__)
-                debug.exception("Door.handled", exc, row=3)
+                debug.exception("Test.handled", exc, row=3)
         tenth = {}
         for record in self._records():
             if record.get("cat") == "exception":
                 tenth[record["msg"]] = record
         self.assertEqual(
-            {"slot crash in Door.slot: RuntimeError":
+            {"slot crash in Test.slot: RuntimeError":
                  {"value": "deleted", "repeat_count": 10, "suppressed": 4},
              "unhandled: RuntimeError":
                  {"value": "deleted", "repeat_count": 10, "suppressed": 4},
-             "Door.handled": {"row": 3, "repeat_count": 10, "suppressed": 4}},
+             "Test.handled": {"row": 3, "repeat_count": 10, "suppressed": 4}},
             {msg: record["data"] for msg, record in tenth.items()})
         self.assertTrue(all("RuntimeError: deleted" in record["traceback"]
                             for record in tenth.values()))

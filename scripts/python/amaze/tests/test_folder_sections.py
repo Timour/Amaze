@@ -396,7 +396,7 @@ class StaleRowTest(unittest.TestCase):
 class TheFilesAndProxyArePairedOnce(unittest.TestCase):
     """`tile_models` pairs them, `Section._model_and_rows` maps a selection; nothing else does."""
 
-    def test_no_door_derives_the_pair_or_maps_a_selection_for_itself(self):
+    def test_no_method_derives_the_pair_or_maps_a_selection_for_itself(self):
         import ast
         import inspect
         tree = ast.parse(inspect.getsource(sections))

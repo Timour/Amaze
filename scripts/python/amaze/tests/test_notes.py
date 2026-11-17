@@ -1276,7 +1276,7 @@ class APictureIsATHIRDItemType(unittest.TestCase):
 
 
 class ThePictureButtonIsActuallyRun(unittest.TestCase):
-    """Runs the Qt slot: a missing name shows only when it runs. ▸p/mock-hides-the-door"""
+    """Runs the Qt slot: a missing name shows only when it runs. ▸p/mock-hides-the-call"""
 
     def setUp(self):
         from amaze.core import notes as notes_mod

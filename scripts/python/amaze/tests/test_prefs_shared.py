@@ -374,7 +374,7 @@ class AMachineRunningBeforeAChangeTakesIt(SharedPrefsCase):
             b.save()
         return a, b
 
-    def test_a_save_after_a_refresh_door_keeps_the_peers_value(self):
+    def test_a_save_after_refresh_all_keeps_the_peers_value(self):
         a, b = self.both_open()
         with self.on("A"):
             a.rendersize = 512
@@ -386,7 +386,7 @@ class AMachineRunningBeforeAChangeTakesIt(SharedPrefsCase):
         self.assertEqual(512, self.stored("rendersize"), "B wrote its own value back")
         self.assertEqual(512, b.rendersize, "B still returns its own value")
 
-    def test_with_no_door_the_second_save_keeps_it_too(self):
+    def test_with_no_refresh_all_the_second_save_keeps_it_too(self):
         a, b = self.both_open()
         with self.on("A"):
             a.rendersize = 1024

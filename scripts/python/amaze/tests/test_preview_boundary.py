@@ -1,4 +1,4 @@
-"""Other code imports `amaze.preview`, never its submodules. ▸p/preview-door"""
+"""Other code imports `amaze.preview`, never its submodules. ▸p/preview-exports"""
 import ast
 import os
 import types
@@ -9,7 +9,7 @@ from amaze.tests import test_support  # noqa: F401
 PACKAGE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ENGINE = os.path.join(PACKAGE, "preview")
 
-DOOR = "amaze.preview"
+MODULE = "amaze.preview"
 
 
 def _python_files(root):
@@ -21,7 +21,7 @@ def _python_files(root):
 
 
 def _imports(path):
-    """Every module name this file imports, in either spelling. ▸p/preview-door"""
+    """Every module name this file imports, in either spelling. ▸p/preview-exports"""
     with open(path, encoding="utf-8") as handle:
         tree = ast.parse(handle.read(), filename=path)
     found = set()
@@ -38,10 +38,10 @@ def _imports(path):
     return found
 
 
-class ThePreviewEngineIsAPackageWithADoor(unittest.TestCase):
+class ThePreviewEngineIsAPackageWithAnAPI(unittest.TestCase):
 
-    def test_a_reload_rebinds_every_name_the_door_offers(self):
-        """A name the reload forgets keeps its OLD function bound. ▸p/preview-door"""
+    def test_a_reload_rebinds_every_name_the_package_exports(self):
+        """A name a reload misses keeps its OLD function bound. ▸p/preview-exports"""
         from amaze import preview
         self.assertTrue(
             getattr(preview, "__all__", None),
@@ -50,7 +50,7 @@ class ThePreviewEngineIsAPackageWithADoor(unittest.TestCase):
         preview.reload_engine()
         inside = [m for m in vars(preview).values()
                   if isinstance(m, types.ModuleType)
-                  and getattr(m, "__name__", "").startswith(DOOR + ".")]
+                  and getattr(m, "__name__", "").startswith(MODULE + ".")]
         self.assertTrue(
             inside,
             "amaze.preview binds no submodule of its own, so there is nothing "
@@ -74,14 +74,14 @@ class ThePreviewEngineIsAPackageWithADoor(unittest.TestCase):
             "reload_engine() left these bound to the code it replaced, "
             "so a dev reload refreshes everything but them: %s" % stale)
 
-    def test_nothing_outside_reaches_past_the_door(self):
+    def test_nothing_outside_imports_a_submodule(self):
         """Naming `amaze.preview` is fine; naming anything under it is not."""
         offenders = []
         for path in _python_files(PACKAGE):
             if path.startswith(ENGINE + os.sep):
                 continue
             for name in _imports(path):
-                if name.startswith(DOOR + ".") and name != DOOR:
+                if name.startswith(MODULE + ".") and name != MODULE:
                     offenders.append("%s imports %s" % (
                         os.path.relpath(path, PACKAGE), name))
         self.assertEqual(

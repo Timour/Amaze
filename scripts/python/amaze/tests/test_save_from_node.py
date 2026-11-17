@@ -22,28 +22,28 @@ from amaze.panel import sections  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
 
-def _material(test, name="door_mtl"):
+def _material(test, name="save_mtl"):
     node = hou.node("/mat").createNode("subnet", name)
     node.createNode("mtlxstandard_surface", "surf")
     test.addCleanup(node.destroy)
     return node
 
 
-def _geo(test, name="door_geo"):
+def _geo(test, name="save_geo"):
     geo = hou.node("/obj").createNode("geo", name)
     test.addCleanup(geo.destroy)
     return geo
 
 
 def _wrangle(test):
-    wrangle = _geo(test, "door_wrangle_geo").createNode(
-        "attribwrangle", "door_wrangle")
+    wrangle = _geo(test, "save_wrangle_geo").createNode(
+        "attribwrangle", "save_wrangle")
     wrangle.parm("snippet").set("@Cd = 1;")
     return wrangle
 
 
 def _ramp_node(test):
-    null = _geo(test, "door_ramp_geo").createNode("null", "door_ramp")
+    null = _geo(test, "save_ramp_geo").createNode("null", "save_ramp")
     group = null.parmTemplateGroup()
     group.append(hou.RampParmTemplate("tint", "Tint",
                                       hou.rampParmType.Color))
@@ -63,12 +63,12 @@ def _choosing(section_key, language=""):
     return mock.patch.object(save_dialog.SaveDialog, "exec", fake_exec)
 
 
-class TheDoorOffersWhatCanTakeTheNode(unittest.TestCase):
+class SaveTargetsOfferWhatCanTakeTheNode(unittest.TestCase):
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
 
-    def test_the_door_offers_what_can_take_the_selection(self):
+    def test_save_targets_offer_what_can_take_the_selection(self):
         """A multi-selection never offers a one-node section, and an empty wrangle no Code."""
         wrangle = _wrangle(self)
 
@@ -93,11 +93,11 @@ class TheDoorOffersWhatCanTakeTheNode(unittest.TestCase):
                                  "%s is offered these" % why)
 
 
-class TheDoorOpensOnTheLikeliestSection(unittest.TestCase):
+class SaveGuessPicksTheLikeliestSection(unittest.TestCase):
 
-    def test_the_door_opens_on_the_likeliest_section(self):
+    def test_save_guess_picks_the_likeliest_section(self):
         """The open section is chosen only when it can hold the node."""
-        sub = hou.node("/obj").createNode("subnet", "door_obj_subnet")
+        sub = hou.node("/obj").createNode("subnet", "save_obj_subnet")
         self.addCleanup(sub.destroy)
         wrangle = _wrangle(self)
         for why, keys, nodes, prefer, expected in (
@@ -159,7 +159,7 @@ class TheChosenSectionIsWhereTheSaveLands(unittest.TestCase):
         self.panel.prefs.render_on_import = 0
 
     def test_a_material_saved_to_node_comes_back_in_a_material_library(self):
-        node = _material(self, "door_to_node")
+        node = _material(self, "save_to_node")
         before = self.panel.cop_model.rowCount()
         held = test_support.asset_ids(self.panel.cop_model)
         with _choosing("cop"):
@@ -176,7 +176,7 @@ class TheChosenSectionIsWhereTheSaveLands(unittest.TestCase):
             self.addCleanup(made.destroy)
         self.assertTrue(ok, reason)
         self.assertEqual("Vop", created[0].childTypeCategory().name())
-        self.assertIsNotNone(created[0].node("door_to_node/surf"),
+        self.assertIsNotNone(created[0].node("save_to_node/surf"),
                              "the material's interior did not come back")
 
     def test_a_wrangle_saved_as_code_keeps_the_chosen_language(self):
@@ -200,7 +200,7 @@ class ASaveKeepsTheArtistsSelection(unittest.TestCase):
         self.panel.prefs.render_on_import = 0
 
     def test_the_saved_node_is_still_the_selection(self):
-        node = _material(self, "door_selected")
+        node = _material(self, "save_selected")
         hou.clearAllSelected()
         node.setSelected(True)
         before = self.panel.material_model.rowCount()
@@ -222,7 +222,7 @@ class ADroppedNodeIsSavedAtTheTopOfTheEventLoop(unittest.TestCase):
     def test_the_deferred_save_waits_while_amaze_is_still_at_work(self):
         from PySide6 import QtCore
         from amaze.panel import dragdrop_widgets
-        node = _material(self, "door_dropped")
+        node = _material(self, "save_dropped")
         target = self.panel.findChild(dragdrop_widgets.DragDropCentralWidget)
         self.assertIsNotNone(target, "premise: the panel has no drop target")
         mime = QtCore.QMimeData()
@@ -249,7 +249,7 @@ class ADroppedNodeIsSavedAtTheTopOfTheEventLoop(unittest.TestCase):
         """The drop selects what it saves; the artist's next Ctrl+Z is not that selection."""
         from PySide6 import QtCore
         from amaze.panel import dragdrop_widgets
-        node = _material(self, "door_drop_undo")
+        node = _material(self, "save_drop_undo")
         node.setSelected(False, clear_all_selected=True)
         target = self.panel.findChild(dragdrop_widgets.DragDropCentralWidget)
         mime = QtCore.QMimeData()
@@ -277,13 +277,13 @@ class ASaveLeavesNothingOnTheUndoStack(unittest.TestCase):
         test_support.pin_env(self, "OCIO", "/dev/null")
         prefs = test_support.fixture_prefs(self)
         prefs.render_on_import = 0
-        node = _material(self, "door_undo")
+        node = _material(self, "save_undo")
         node.setSelected(True, True)
         handler = nodes.NodeHandler(prefs)
         handler._renderer = "Karma"
         hou.undos.clear()
         self.addCleanup(hou.undos.clear)
-        self.assertTrue(handler.save_node(node, "doorundo", False),
+        self.assertTrue(handler.save_node(node, "saveundo", False),
                         "premise: the material did not save")
         self.assertEqual(
             (), hou.undos.undoLabels(),
@@ -325,7 +325,7 @@ class AnUpdateBeforeARestartSaysSo(unittest.TestCase):
         from amaze import messages
         from amaze.utils import rc_calls
 
-        node = _geo(self, "door_unselected")
+        node = _geo(self, "save_unselected")
         hou.clearAllSelected()
         said = []
         fake_ui = types.SimpleNamespace(

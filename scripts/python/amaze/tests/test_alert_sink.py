@@ -128,7 +128,7 @@ class TheOnlineImportEndsOnThatLine(unittest.TestCase):
         """`import_records` on len(answers) records; `import_material` returns each (ok, reason)."""
         from amaze.panel import online_import as online_import_mod
 
-        class Door(online_import_mod.OnlineImport):
+        class StubImport(online_import_mod.OnlineImport):
             def import_material(self, record, on_progress=None, **kwargs):
                 return answers[record]
 
@@ -138,7 +138,7 @@ class TheOnlineImportEndsOnThatLine(unittest.TestCase):
                 displayMessage=lambda text, *a, **k: self.shown.append(
                     "\n\n".join(filter(None, (text, k.get("details")))))),    # the list is passed in `details`
                 create=True):
-            Door(panel).import_records(list(answers))
+            StubImport(panel).import_records(list(answers))
         return panel
 
     def setUp(self):
@@ -288,12 +288,12 @@ class RefuseIsTheGestureSinkTest(unittest.TestCase):
             debug.refuse(debug.Damage("gone"))
         self.assertEqual([], self.printed, "a fallback printed on Windows")
 
-class TheDamageDoorMarksItsRefusalsTest(unittest.TestCase):
+class TheImportFunctionsMarkTheirRefusalsTest(unittest.TestCase):
     """Every literal refusal the import functions in nodes.py return, classified. ▸p/refusal-sink"""
 
     ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    DOORS = ("_payload_or_refusal", "_import_asset_to_scene_inner",
-             "_import_cop_asset_inner", "_load_saved")
+    FUNCTIONS = ("_payload_or_refusal", "_import_asset_to_scene_inner",
+                 "_import_cop_asset_inner", "_load_saved")
 
     DAMAGE = {    # opening words -> library damaged? A forwarded reason keeps the marking of its source
         '"%s": asset file is missing on disk.': True,
@@ -323,14 +323,14 @@ class TheDamageDoorMarksItsRefusalsTest(unittest.TestCase):
         return ""
 
     def _authored_refusals(self):
-        """{sentence: marked} for every literal refusal the DOORS functions return."""
+        """{sentence: marked} for every literal refusal the FUNCTIONS return."""
         with open(os.path.join(self.ROOT, "render", "nodes.py"),
                   encoding="utf-8") as fh:
             tree = ast.parse(fh.read())
         found = {}
         for func in ast.walk(tree):
             if not (isinstance(func, ast.FunctionDef)
-                    and func.name in self.DOORS):
+                    and func.name in self.FUNCTIONS):
                 continue
             for node in ast.walk(func):
                 if not (isinstance(node, ast.Return)
@@ -356,7 +356,7 @@ class TheDamageDoorMarksItsRefusalsTest(unittest.TestCase):
             [], missing,
             "refusal(s) this test classifies are no longer returned by %s "
             "- update their keys in the commit that moved them, never drop "
-            "the entry:\n  %s" % (", ".join(self.DOORS),
+            "the entry:\n  %s" % (", ".join(self.FUNCTIONS),
                                   "\n  ".join(missing)))
         wrong = []
         for sentence, marked in sorted(found.items()):
@@ -447,7 +447,7 @@ class NoReleaseVerbOpensAModalInline(unittest.TestCase):
                     elif owner in ("context", "section"):
                         stack.append(("section", called, path + " > " + called))
         reached = {name for _side, name in seen}
-        self.assertEqual([], [door for door in self.REACHED if door not in reached],
+        self.assertEqual([], [name for name in self.REACHED if name not in reached],
                          "premise: the walk no longer reaches these functions - update REACHED")
         self.assertEqual(
             [], offenders,

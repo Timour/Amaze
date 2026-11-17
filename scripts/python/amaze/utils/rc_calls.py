@@ -102,8 +102,8 @@ def save(node=None) -> None:
     panel = _find_panel()   # first: a refused save must not change the selection
     if not panel:
         return
-    door = getattr(panel, "save_from_node", None)
-    if door is None:    # the menu is reloaded from disk, the panel is not: an update needs a restart
+    save_from_node = getattr(panel, "save_from_node", None)
+    if save_from_node is None:    # the menu is reloaded from disk, the panel is not: an update needs a restart
         ui = getattr(hou, "ui", None)
         if ui is not None:
             ui.displayMessage(messages.RESTART_TO_FINISH_UPDATE,
@@ -111,7 +111,7 @@ def save(node=None) -> None:
         return
     if node is not None and not node.isSelected():
         node.setSelected(True, clear_all_selected=True)
-    door(node)
+    save_from_node(node)
 
 
 def node_renderer(node) -> str:

@@ -383,9 +383,9 @@ class EveryWayOntoALibraryTakesOneOrder(unittest.TestCase):
             return real(*args, **kwargs)
         return recorded
 
-    def _assert_order(self, door):
+    def _assert_order(self, route):
         self.assertEqual(self.ORDER, self.order,
-                         "%s opened the library in another order" % door)
+                         "%s opened the library in another order" % route)
 
     def test_opening_the_pane(self):
         test_support.reopened_panel(self)

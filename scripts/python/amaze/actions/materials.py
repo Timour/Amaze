@@ -196,7 +196,7 @@ def import_asset_to_scene(
     target: str = "auto",
     context_node=None,
 ):
-    """Load `index` into the scene by `target`: (ok, reason, created). ▸p/material-import-door"""
+    """Load `index` into the scene by `target`: (ok, reason, created). ▸p/material-import-entry"""
     importer = nodes.NodeHandler(model.preferences)
     ok, reason, created = importer.import_asset_to_scene(
         model._assets[index.row()], target, context_node=context_node

@@ -433,7 +433,7 @@ class APaletteCategoryWithACommaStaysWholeTest(unittest.TestCase):
         self.lib = gradient_library.GradientLibrary(
             preferences=_fixture_prefs(self, self.dir))
 
-    def test_the_drop_door_files_it_under_the_whole_name(self):
+    def test_set_user_category_files_it_under_the_whole_name(self):
         row = _row_named(self, self.lib, "ours")
         self.assertEqual(1, self.lib.set_user_category([row], self.NAME))
         self.assertEqual([self.NAME], self.lib.assets[row].categories,
@@ -1181,15 +1181,15 @@ class TheAllMarkerIsNotChurnedOnEverySave(unittest.TestCase):
 class TheGradientEntryIsResolvedOnce(unittest.TestCase):
     """Every GradientSection method gets its entry through `_entry_at`, which has the check."""
 
-    def test_no_door_walks_the_proxy_for_itself(self):
+    def test_no_method_walks_the_proxy_for_itself(self):
         import ast
         import inspect
         tree = ast.parse(inspect.getsource(sections))
-        doors = [scope for klass in ast.walk(tree)
+        funcs = [scope for klass in ast.walk(tree)
                  if isinstance(klass, ast.ClassDef) and klass.name == "GradientSection"
                  for scope in klass.body if isinstance(scope, ast.FunctionDef)]
-        self.assertTrue(doors, "premise: the scan reads GradientSection")
-        found = sorted(scope.name for scope in doors if scope.name != "_entry_at"
+        self.assertTrue(funcs, "premise: the scan reads GradientSection")
+        found = sorted(scope.name for scope in funcs if scope.name != "_entry_at"
                        and any(isinstance(n, ast.Attribute) and n.attr == "mapToSource"
                                for n in ast.walk(scope)))
         self.assertEqual([], found, "a GradientSection method resolves its own entry, not via _entry_at")

@@ -206,7 +206,7 @@ class TheChipFollowsTheBar(unittest.TestCase):
             "the chip's press did not reach the engine as a flush "
             "followed by a cancel")
 
-    def test_the_bar_has_one_visibility_door(self):
+    def test_the_bar_has_one_visibility_setter(self):
         """Source scan: the bar's `setVisible` appears once, inside `set_conversion_bar_visible`."""
         package_root = os.path.dirname(os.path.dirname(
             os.path.abspath(file_library.__file__)))
@@ -233,14 +233,14 @@ class TheChipFollowsTheBar(unittest.TestCase):
                   encoding="utf-8") as handle:
             text = handle.read()
         tree = ast.parse(text)
-        door = None
+        setter = None
         for node in ast.walk(tree):
             if isinstance(node, ast.FunctionDef) \
                     and node.name == "set_conversion_bar_visible":
-                door = node
-        self.assertIsNotNone(door, "set_conversion_bar_visible is gone")
+                setter = node
+        self.assertIsNotNone(setter, "set_conversion_bar_visible is gone")
         self.assertTrue(
-            door.lineno <= sites[0][1] <= door.end_lineno,
+            setter.lineno <= sites[0][1] <= setter.end_lineno,
             "the one setVisible call is outside set_conversion_bar_visible")
 
 

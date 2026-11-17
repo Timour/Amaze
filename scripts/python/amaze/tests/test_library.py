@@ -147,7 +147,7 @@ class TestMaterialLibrary(unittest.TestCase):
         self.assertEqual({"tag1", "tag2", "tag3"}, tags)
         self.assertEqual("", self.library.sanitize_tags(""))
 
-    def test_a_toggle_flips_the_star_through_the_one_favourites_door(self):
+    def test_a_toggle_flips_the_star_through_set_favourites(self):
         """Keyed by the asset's id in the library store, so two users' stars cannot collide."""
         from amaze.core import library as library_mod
         mat_id = self.library._assets[0].mat_id

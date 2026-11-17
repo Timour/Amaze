@@ -178,7 +178,7 @@ class RedshiftLoadsOnlyWithBothItsContainers(unittest.TestCase):
         self.assertEqual("", self._why_not(self.BOTH))
 
 
-class TheLibraryDoorRefusesFirst(unittest.TestCase):
+class MaterialsConvertRefusesFirst(unittest.TestCase):
     """`actions.materials.convert` returns the reason before it rebuilds anything."""
 
     @classmethod

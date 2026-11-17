@@ -218,7 +218,7 @@ MATERIALS, NODES = library_files.MATERIALS, library_files.NODES    # the two sec
 
 
 def ensure_asset_folder(preferences, path: str) -> None:
-    """Make `path`'s folder if inside the library; raise if not. ▸p/library-creation-doors"""
+    """Make `path`'s folder if inside the library; raise if not. ▸p/library-creation"""
     folder = os.path.dirname(path)
     if not folder:
         return
@@ -805,7 +805,7 @@ class NodeHandler:
         return {"mat"}
 
     def _payload_or_refusal(self, mat, section=MATERIALS) -> tuple:
-        """(path, `""`) or (`""`, message): the ONLY check. ▸p/material-import-door"""
+        """(path, `""`) or (`""`, message): the ONLY check. ▸p/material-import-entry"""
         if not material.is_safe_asset_id(mat.mat_id):
             debug.event("import", "refused unsafe asset id",
                         material=mat.name, mat_id=str(mat.mat_id)[:120])
@@ -845,7 +845,7 @@ class NodeHandler:
         return ok, reason, created
 
     def _import_asset_to_scene_inner(self, mat: material.Material, target: str = "auto"):
-        """Import to `auto`, `mat`, `lop` or `context_node`: (ok, why) ▸p/material-import-door"""
+        """Import to `auto`, `mat`, `lop` or `context_node`: (ok, why) ▸p/material-import-entry"""
         from amaze.helpers import helpers
         payload, refusal = self._payload_or_refusal(mat)
         if refusal:
@@ -1165,7 +1165,7 @@ class NodeHandler:
         return self._builder_node
 
     def load_interface_mtlx(self, mat: material.Material) -> None:
-        """Rebuild the mtlx builder, no exec. ▸p/material-import-door"""
+        """Rebuild the mtlx builder, no exec. ▸p/material-import-entry"""
         self._builder_node = make_karma_builder(
             self._hou_parent, mat.name
         )

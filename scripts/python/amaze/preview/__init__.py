@@ -6,7 +6,7 @@ from amaze.preview import usd_scene
 
 _LEAF_FIRST = (thumbnail_scene, usd_scene)
 
-_DOOR = {
+_EXPORTS = {
     "ocio_from_viewer": thumbnail_scene,
     "safe_set": thumbnail_scene,
     "build_usd_scaffold": usd_scene,
@@ -14,13 +14,13 @@ _DOOR = {
     "exr_to_png": usd_scene,
 }
 
-__all__ = list(_DOOR) + ["reload_engine"]
+__all__ = list(_EXPORTS) + ["reload_engine"]
 
 
 def _bind() -> None:
-    """Rebind every name in `_DOOR` to its module's CURRENT attribute. ▸p/preview-door"""
+    """Rebind `_EXPORTS` names to their module's CURRENT attribute. ▸p/preview-exports"""
     globals().update({name: getattr(module, name)
-                      for name, module in _DOOR.items()})
+                      for name, module in _EXPORTS.items()})
 
 
 def reload_engine() -> None:

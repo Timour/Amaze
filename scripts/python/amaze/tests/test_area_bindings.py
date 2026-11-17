@@ -489,7 +489,7 @@ class TheBindingsAreDeclaredNotHandWritten(unittest.TestCase):
 
     _PUT_BACKS = ("preserving_selection_and_current", "keep_editor_focus")    # ▸p/amaze-follows-houdini
 
-    def test_no_import_door_puts_the_artist_back(self):
+    def test_no_import_module_puts_the_artist_back(self):
         """An import leaves the new node selected and the editors where Houdini puts them."""
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         found = []

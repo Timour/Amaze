@@ -109,13 +109,13 @@ class AnAssetSavedElsewhereShowsUpWithoutARestart(unittest.TestCase):
         with open(self.path, encoding="utf-8-sig") as handle:
             return json.load(handle)
 
-    def test_the_registry_door_reaches_every_shared_model(self):
+    def test_refresh_all_reaches_every_shared_model(self):
         """What `onActivateInterface` calls when the tab comes back."""
         from amaze.core import model_registry
 
         self.assertTrue(self.model.save())
         document = self._document()
-        document["assets"]["VIA-THE-DOOR"] = {"id": "VIA-THE-DOOR", "name": "Theirs",
+        document["assets"]["VIA-REGISTRY"] = {"id": "VIA-REGISTRY", "name": "Theirs",
                                               "categories": [], "tags": []}
         with open(self.path, "w", encoding="utf-8") as handle:
             json.dump(document, handle, indent=4)

@@ -316,7 +316,7 @@ class ExportMenuTest(unittest.TestCase):
             panel.sync_package_export()
             self.assertFalse(action.isEnabled(), "Export Category is enabled on the online grid")
 
-    def test_the_grid_act_door_writes_the_selection(self):
+    def test_export_package_to_writes_the_selection(self):
         from amaze.core import packages
         section = self.panel.sections["gradient"]
         proxy = self.panel.gradient_sorted_model
@@ -370,7 +370,7 @@ class ExportMenuTest(unittest.TestCase):
             self.assertEqual((messages.PACKAGE_NOT_SAVED % "no room", hou.severityType.Warning),
                              said(), "an export that could not be written showed no message")
 
-    def test_the_category_act_door_writes_every_member(self):
+    def test_export_category_to_writes_every_member(self):
         from amaze.core import packages
         section = self.panel.sections["gradient"]
         model = self.panel.gradient_model
@@ -383,7 +383,7 @@ class ExportMenuTest(unittest.TestCase):
         self.assertEqual(
             want, len(packages.read_manifest(out)["entries"]))
 
-    def test_the_file_grid_act_door_packs_the_file(self):
+    def test_the_file_grid_export_packs_the_file(self):
         from amaze.core import packages
         import types
         from amaze.core import file_library
@@ -649,7 +649,7 @@ class PackageImportTest(unittest.TestCase):
         self.assertEqual(files, _files_under(self.panel.prefs.dir),
                          "a refused package still wrote into the library")
 
-    def test_the_import_door_says_why_a_misshapen_package_is_refused(self):
+    def test_import_package_says_why_a_misshapen_package_is_refused(self):
         from unittest import mock
 
         from amaze import messages
@@ -666,7 +666,7 @@ class PackageImportTest(unittest.TestCase):
         self.assertEqual((messages.PACKAGE_NOT_READABLE % "misshapen.amazepkg",),
                          ui.displayMessage.call_args.args)
 
-    def test_the_import_door_refuses_while_no_library_is_open(self):
+    def test_import_package_refuses_while_no_library_is_open(self):
         from unittest import mock
 
         from amaze import messages
@@ -682,7 +682,7 @@ class PackageImportTest(unittest.TestCase):
         ui.displayMessage.assert_called_once()
         self.assertEqual((messages.NO_LIBRARY_CONFIGURED,), ui.displayMessage.call_args.args)
 
-    def test_the_import_door_warns_with_the_reasons_when_entries_were_refused(self):
+    def test_import_package_warns_with_the_reasons_when_entries_were_refused(self):
         from unittest import mock
 
         from amaze import messages

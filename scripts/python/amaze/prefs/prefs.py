@@ -36,7 +36,7 @@ def can_hold_a_library(folder: str) -> bool:
 
 
 def create_library(lib_dir: str) -> bool:
-    """Create `DataBase.json` with its version; True once it exists. ▸p/library-creation-doors"""
+    """Create `DataBase.json` with its version; True once it exists. ▸p/library-creation"""
     from amaze.core import documents, guard, library_policy, library_settings
     held = guard.Guard(lib_dir)
     reading = held.read(library_files.MASTER)

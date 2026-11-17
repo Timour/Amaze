@@ -120,7 +120,7 @@ test_viewport_pick test_host_engines test_log_export \
 test_hip_section test_library_settings test_library_list test_library_tab test_atomic_write \
 test_gradient_guard test_cleanup_counts test_check_library test_harness_reset \
 test_stale_proxy_index test_alert_sink \
-test_headless_dialogs test_save_door test_node_menu \
+test_headless_dialogs test_save_from_node test_node_menu \
 test_versions test_code_versions test_grid_scroll test_file_section test_notes \
 test_repair test_toolbar_filter test_shaderball_assets \
 test_cancel_conversions test_section_tabs test_code_tile \

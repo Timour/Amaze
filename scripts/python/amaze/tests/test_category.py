@@ -179,7 +179,7 @@ class ALocalEditIsNotReadAsAMerge(unittest.TestCase):
 
     def test_no_local_edit_is_read_as_a_merge(self):
         model = self.model
-        for door, edit in (
+        for verb, edit in (
                 ("add", lambda: (model.check_add_category("Zeta"),
                                  model.check_add_category("Alpha"))),
                 ("move", lambda: model.move_category(4, 1)),
@@ -187,10 +187,10 @@ class ALocalEditIsNotReadAsAMerge(unittest.TestCase):
                 ("remove", lambda: model.remove_category("Alpha")),
                 ("sort", lambda: (model.check_add_category("Aardvark"),
                                   model.sort_categories()))):
-            with self.subTest(door=door):
+            with self.subTest(verb=verb):
                 self.assertEqual(
                     0, self._resets_on_refresh_after(edit),
-                    "the refresh reset the sidebar after a local %s" % door)
+                    "the refresh reset the sidebar after a local %s" % verb)
 
 
 class TheAllRowHasOneRule(unittest.TestCase):

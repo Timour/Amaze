@@ -69,20 +69,20 @@ class TheGuardedPanelRefusesHeadlessTest(unittest.TestCase):
                          "this host HAS a ui, so nothing here is tested")
         self.panel = test_support.fixture_panel(self)
 
-    def test_every_guarded_door_refuses_instead_of_crashing(self):
+    def test_every_guarded_function_refuses_instead_of_crashing(self):
         """No library, no editor, no selected folder: each returns early. No network reads None."""
         panel = self.panel
         geo = hou.node("/obj").createNode("geo", "headless_convert_geo")    # no conversion route: the error message is shown
         self.addCleanup(geo.destroy)
-        doors = (("open_usdlib_folder", lambda: panel.open_usdlib_folder()),
+        calls = (("open_usdlib_folder", lambda: panel.open_usdlib_folder()),
                  ("_active_network_pwd", lambda: self.assertIsNone(panel._active_network_pwd())),
                  ("locate_folder_user", lambda: panel.locate_folder_user(None)),
                  ("rc_calls.convert(None)", lambda: rc_calls.convert(None, "Karma")),
                  ("rc_calls.convert(geo)", lambda: rc_calls.convert(geo, "Karma")),
                  ("rc_calls.convert(geo, swap)", lambda: rc_calls.convert(geo, "Karma", swap=True)))
         panel.material_model = None
-        for name, call in doors:
-            with self.subTest(door=name):
+        for name, call in calls:
+            with self.subTest(function=name):
                 try:
                     call()
                 except AttributeError as crash:
@@ -135,7 +135,7 @@ class TheGuardStillOpensTheDialogTest(unittest.TestCase):
                          "that has a ui")
 
 
-class EveryDoorFindsTheSameVisibleNetworkEditor(unittest.TestCase):
+class EveryLookupFindsTheSameVisibleNetworkEditor(unittest.TestCase):
     """Current tab first, then any; the panel's two lookups and `NodeHandler` agree."""
 
     def test_the_three_readers_agree(self):
@@ -237,7 +237,7 @@ class TheCursorLookupRefusesHeadlessTest(unittest.TestCase):
         for name, call in (("pane_tab_under_cursor", dragengine.pane_tab_under_cursor),
                            ("viewport_release_target",
                             lambda: dragengine.viewport_release_target(None))):
-            with self.subTest(door=name):
+            with self.subTest(function=name):
                 try:
                     answer = call()
                 except AttributeError as crash:
@@ -416,13 +416,13 @@ class EveryDialogRidesTheHouseShellTest(unittest.TestCase):
             "misses them: %s" % strays)
 
 
-class TheMaterialDoorFollowsTheClickTest(unittest.TestCase):
+class TheMaterialSaveFollowsTheClickTest(unittest.TestCase):
     """Right-click Save on a material saves the clicked node, which is made the selection."""
 
     def setUp(self):
         mat = hou.node("/mat")
-        self.a = mat.createNode("materialbuilder", "door_click")
-        self.b = mat.createNode("materialbuilder", "door_other")
+        self.a = mat.createNode("materialbuilder", "click_node")
+        self.b = mat.createNode("materialbuilder", "other_node")
         self.addCleanup(self.a.destroy)
         self.addCleanup(self.b.destroy)
         self.panel = mock.Mock()

@@ -49,9 +49,9 @@ class TheBugReportCarriesTheMachine(unittest.TestCase):
         prefs = test_support.fixture_prefs(self)
         dlg = prefs_dialog.PrefsDialog(prefs, panel=None)
         self.addCleanup(dlg.deleteLater)
-        with mock.patch.object(prefs_dialog, "_open_url") as door:
+        with mock.patch.object(prefs_dialog, "_open_url") as open_url:
             dlg._btn_report.click()
-        door.assert_called_once_with(prefs_dialog.bug_report_url())
+        open_url.assert_called_once_with(prefs_dialog.bug_report_url())
 
 
 if __name__ == "__main__":

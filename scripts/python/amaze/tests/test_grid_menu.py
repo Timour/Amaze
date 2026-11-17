@@ -535,7 +535,7 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
         self.assertEqual([mock.call("Redshift"), mock.call("Karma"),
                           mock.call("Karma")], convert.call_args_list)
 
-    def test_online_import_carries_the_renderer_to_its_door(self):
+    def test_online_import_carries_the_renderer_to_import_records(self):
         """C06a/C06b: the picked Import child is passed on as `renderer`; a bare call means Karma."""
         panel = self.panel
         context = panel.online_context
@@ -553,7 +553,7 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
             self.assertEqual({"renderer": "Karma"},
                              lib.call_args.kwargs)
 
-    def test_neither_online_scene_door_puts_the_editor_back(self):
+    def test_neither_online_scene_import_puts_the_editor_back(self):
         """Both online scene imports run with no restore block open. ▸p/amaze-follows-houdini"""
         import types
         from amaze.helpers import helpers

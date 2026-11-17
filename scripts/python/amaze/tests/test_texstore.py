@@ -271,7 +271,7 @@ class ResolveParmsTest(unittest.TestCase):
                          image.parm("file").unexpandedString())
 
 
-class SaveDoorTest(unittest.TestCase):
+class SaveFromNodeTest(unittest.TestCase):
     """Save to Amaze adopts on the staged copy, never the scene node; the row holds the inventory."""
 
     @classmethod

@@ -2042,9 +2042,9 @@ class CheckLibraryConfirmsBeforeChangingTest(unittest.TestCase):
         self.assertNotIn("displayMessage(", self._source("actions", "check.py"))
         code = self._source("dialogs", "repair_dialog.py")
         start = code.find("def repair_found(")
-        door = code[start:code.find("\ndef ", start)]
-        self.assertTrue(door, "premise: the Repair dialog is gone")
-        self.assertEqual(2, door.count("displayMessage("),
+        body = code[start:code.find("\ndef ", start)]
+        self.assertTrue(body, "premise: the Repair dialog is gone")
+        self.assertEqual(2, body.count("displayMessage("),
                          "the Repair dialog shows messages beyond what it found and what the fix did")
 
 

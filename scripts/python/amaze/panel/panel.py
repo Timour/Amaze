@@ -282,7 +282,7 @@ class AmazePanel(QtWidgets.QWidget):
         self.code_category_model = None
         self.file_files_model = None    # show_prefs hands it to Preferences, which takes None
         self.file_folders_model = None
-        self.matx_online_model = None    # setup() builds the online world; its door refuses without it
+        self.matx_online_model = None    # setup() builds the online world; `enter_online_world` refuses without it
         self._sync_online_chip()
 
     def _defer_open_library(self) -> None:
@@ -3260,7 +3260,7 @@ class AmazePanel(QtWidgets.QWidget):
             return
         nodes = selected if node in selected else [node]
         keys = self._save_targets(nodes)
-        debug.event("save", "save door", node=node.path(), offered=keys,
+        debug.event("save", "save_from_node", node=node.path(), offered=keys,
                     prefer=prefer)
         if not keys:
             if ui is not None:
@@ -3481,7 +3481,7 @@ class AmazePanel(QtWidgets.QWidget):
         networks = self._view_create_networks()
         every = hou.selectedNodes()
         sel = [node for node in every if node.parent() in networks]
-        debug.event("interact", "click door selection",
+        debug.event("interact", "click_on_row selection",
                     visible=len(sel), total=len(every),
                     networks=len(networks))
         return sel

@@ -520,7 +520,7 @@ class TheSwapTest(unittest.TestCase):
                          "did not exist")
 
 
-class TheNetworkDoorTest(unittest.TestCase):
+class TheNetworkRequestTest(unittest.TestCase):
 
     def _source(self):
         path = os.path.join(os.path.dirname(os.path.abspath(updater.__file__)),

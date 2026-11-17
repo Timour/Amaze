@@ -29,7 +29,7 @@ def onCreateInterface():
 
 
 # Houdini calls this when the tab becomes visible again. Coming back to
-# Amaze is a door: without it, everything on screen is the copy read when
+# Amaze rereads the library: without that, everything shown is the copy read when
 # the panel opened, so a colleague's new material or comment needs a
 # Houdini restart to appear.
 def onActivateInterface():

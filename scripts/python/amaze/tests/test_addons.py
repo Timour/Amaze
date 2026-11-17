@@ -212,13 +212,13 @@ class TheReaderTest(_Workspace):
                  messages.ADDON_NODE_FIELD_NOT_TEXT % (["x"], "label"))):
             copy = self._rewritten(path, manifest)
             root = tempfile.mkdtemp(prefix="amaze_root_", dir=self.dir)
-            for door in (addons.read,
+            for call in (addons.read,
                          lambda p: addons.install(p, root, running=(22, 0, 466))):
-                with self.subTest(name, door=door):
+                with self.subTest(name, call=call):
                     with self.assertRaises(packages.PackageError) as caught:
-                        door(copy)
+                        call(copy)
                     self.assertIn(said, str(caught.exception))
-            with self.subTest(name, door="nothing written"):
+            with self.subTest(name, call="nothing written"):
                 self.assertEqual([], os.listdir(root))
 
     def test_the_library_import_refuses_an_add_on(self):

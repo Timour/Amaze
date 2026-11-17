@@ -89,7 +89,7 @@ RENDERER_DEFAULTS = {"_" + r.switch: True for r in renderers.ALL}  # every rende
 
 RENDERER_KEYS = {"_" + r.switch: r.switch_stored for r in renderers.ALL}  # keys in files on disk: never rename them
 
-IMG_SUBDIR = "img/"  # with each asset section's folder, what a library needs ▸p/library-creation-doors
+IMG_SUBDIR = "img/"  # with each asset section's folder, what a library needs ▸p/library-creation
 
 _UNSEEN = object()  # a shared key this session never read from nor wrote to the library: the next push writes it
 

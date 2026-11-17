@@ -260,7 +260,7 @@ class AConstantOnAWireLandsAsAValue(unittest.TestCase):
 
 @unittest.skipUnless(test_support.renderer_loaded("Redshift"),
                      "the Redshift plugin is not loaded")
-class TheLibraryDoorMakesANewRedshiftEntry(unittest.TestCase):
+class MaterialsConvertMakesANewRedshiftEntry(unittest.TestCase):
     """Convert to Redshift reads the saved Karma material and adds the converted copy."""
 
     @classmethod

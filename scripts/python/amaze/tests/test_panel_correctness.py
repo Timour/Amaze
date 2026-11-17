@@ -954,7 +954,7 @@ class TheOnlineWorldNeedsALibrary(unittest.TestCase):
         self.assertFalse(self.panel.btn_online.isChecked(),
                          "the Online chip shows as on with no online view loaded")
 
-    def test_the_door_and_every_route_through_it_refuse(self):
+    def test_enter_online_world_and_every_route_through_it_refuse(self):
         self.panel.enter_online_world()
         self._assert_still_local()
         self.panel.open_online_source("PhysicallyBased")

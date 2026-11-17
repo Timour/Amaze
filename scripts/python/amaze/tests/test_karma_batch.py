@@ -327,7 +327,7 @@ class UpdateRenderOnMaterialTiles(unittest.TestCase):
         self.assertEqual([wanted], batches)
 
 
-class AMultiMaterialDoorRendersOneBatch(unittest.TestCase):
+class AMultiMaterialSaveRendersOneBatch(unittest.TestCase):
     """Convert to and an online Import to Library: no husk per save, then ONE batch. ▸r/husk-startup"""
 
     @classmethod
@@ -349,9 +349,9 @@ class AMultiMaterialDoorRendersOneBatch(unittest.TestCase):
             self.addCleanup(patcher.stop)
         self.each = thumbs.ThumbNailRenderer.create_thumb    # the render a save starts
 
-    def _landed(self, door):
+    def _landed(self, action):
         held = test_support.asset_ids(self.model)
-        door()
+        action()
         return sorted(str(mat.mat_id) for mat in test_support.arrived(self.model, held))
 
     def test_convert_to_renders_its_twins_in_one_batch(self):

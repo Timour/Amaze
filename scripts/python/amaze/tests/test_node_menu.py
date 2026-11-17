@@ -136,7 +136,7 @@ class TheMenuIsOneAmazeSubmenu(unittest.TestCase):
             ("separatorItem", "amazeSeparator2", None),
             ("scriptItem", "amazeSave", "Save")], children)
 
-    def test_each_item_calls_its_door(self):
+    def test_each_item_calls_rc_calls_convert(self):
         submenu = _submenu()
         for item_id, _label, target in CONVERTS:
             with self.subTest(item_id):

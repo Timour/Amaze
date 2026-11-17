@@ -829,7 +829,7 @@ class ARemapOnAColourChainStillRemaps(unittest.TestCase):
 class VendorTransformsAreOpenPBRsAlone(unittest.TestCase):
     """The fuzz^2.5 curve and coat-roughness mix are OpenPBR-only; elsewhere they corrupt 1:1 values."""
 
-    def test_only_the_openpbr_door_runs_them(self):
+    def test_only_the_openpbr_converter_runs_them(self):
         from amaze.render import material_converter as mc
         parent = hou.node("/mat")
         if parent is None:
@@ -1231,7 +1231,7 @@ class RevealGoesThroughHoudiniFirst(unittest.TestCase):
             ui_helpers.reveal(self.folder)
         self.assertEqual([self.folder, self.folder], self.revealed)
 
-    def test_every_caller_inside_houdini_uses_the_one_door(self):
+    def test_every_caller_inside_houdini_uses_houdinis_file_browser(self):
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         callers = []
         for folder in ("panel", "dialogs", "actions", "utils", "core", "render"):

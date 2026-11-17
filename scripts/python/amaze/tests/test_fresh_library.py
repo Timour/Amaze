@@ -1,4 +1,4 @@
-"""Every function that creates a library must make a complete one. ▸p/library-creation-doors"""
+"""Every function that creates a library must make a complete one. ▸p/library-creation"""
 
 import json
 import os
@@ -18,7 +18,7 @@ from amaze.prefs import prefs as prefs_mod
 from amaze.tests import test_support
 
 
-class EveryNewLibraryIsBornThroughOneDoor(unittest.TestCase):
+class EveryNewLibraryIsBornThroughCreateLibrary(unittest.TestCase):
     """`create_library` writes the library's own database and nothing else."""
 
     def setUp(self):
@@ -48,7 +48,7 @@ class EveryNewLibraryIsBornThroughOneDoor(unittest.TestCase):
         with open(path, "rb") as handle:
             self.assertEqual(before, handle.read(), "the library's database was rewritten")
 
-    def test_panel_load_creates_through_this_door(self):
+    def test_panel_load_creates_through_create_library(self):
         """Read from SOURCE: every opening creates through prepare(); a plain copy fails it."""
         import inspect
         from amaze.actions import library as library_actions

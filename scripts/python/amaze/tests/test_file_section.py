@@ -758,7 +758,7 @@ class CreationRuleTest(unittest.TestCase):
             "the double-click imported beside the selection instead of "
             "filling it")
 
-    def test_an_invisible_selection_cannot_hijack_the_click_door(self):
+    def test_an_invisible_selection_cannot_hijack_click_on_row(self):
         """A double-click considers only selected nodes inside the visible editors' networks."""
         sop = self._geo()
         elsewhere = self._matnet()
@@ -793,7 +793,7 @@ class CreationRuleTest(unittest.TestCase):
             "$HOME/textures/amaze_dbl.png",
             helpers.find_file_parm(children[0]).rawValue())
 
-    def test_the_click_doors_find_the_network_that_supports_the_payload(self):
+    def test_click_on_row_finds_the_network_that_supports_the_payload(self):
         """One resolver walks the visible networks; the first that can hold the carrier is used."""
         vop = self._matnet()
         sop = self._geo()
@@ -2936,7 +2936,7 @@ class ABarePrefsLoadWritesNothingButItsOwnFile(unittest.TestCase):
             "functions do that, after the product requests a favourite")
 
 
-class AStarSurvivesTheMoveThroughTheModelDoors(unittest.TestCase):
+class AStarSurvivesTheMoveThroughRelocateFolder(unittest.TestCase):
     """Star a row, Locate the folder, re-scan: the star is keyed to the location id and stays set."""
 
     def test_the_star_is_still_lit_at_the_new_path(self):
@@ -3009,7 +3009,7 @@ class TheUserPickerFollowsTheLibrary(unittest.TestCase):
         SWAPS = {"set_library", "switch_all_models", "open_library"}
         tree = ast.parse(inspect.getsource(prefs_dialog))
         offenders = []
-        door = set()
+        sync_rows_calls = set()
         for node in ast.walk(tree):
             if not isinstance(node, ast.FunctionDef):
                 continue
@@ -3019,10 +3019,10 @@ class TheUserPickerFollowsTheLibrary(unittest.TestCase):
                 and isinstance(inner.func, ast.Attribute)
             }
             if node.name == "_sync_rows":
-                door = called
+                sync_rows_calls = called
             if called & SWAPS and "_sync_rows" not in called:
                 offenders.append(node.name)
-        self.assertIn("_reload_library_users", door,
+        self.assertIn("_reload_library_users", sync_rows_calls,
                       "_sync_rows, which every library change calls, no longer "
                       "reloads the user picker")
         self.assertEqual(
@@ -3055,7 +3055,7 @@ class ReadinessIsAskedOncePerGeneration(unittest.TestCase):
         self.assertEqual(1, self._looks_at_the_library(prefs, page),
                          "after `touch()` the library folder was not checked again exactly once")
 
-    def test_a_library_that_appears_is_seen_after_the_switch_door(self):
+    def test_a_library_that_appears_is_seen_after_forget(self):
         prefs, library = _location_prefs(self, {})
         here, away = library.rstrip("/\\"), library.rstrip("/\\") + "_away"
         os.rename(here, away)    # a share not mounted yet

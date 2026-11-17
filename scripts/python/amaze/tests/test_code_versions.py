@@ -222,7 +222,7 @@ class TheEditorWindowKeepsVersions(unittest.TestCase):
     def _row(self):
         return self.model.find_asset_row_by_id(self.mat_id)
 
-    def _through_the_door(self, steps, opening=None):
+    def _through_code_dialog(self, steps, opening=None):
         from amaze.dialogs import code_dialog
 
         def driving(dialog):
@@ -244,7 +244,7 @@ class TheEditorWindowKeepsVersions(unittest.TestCase):
             dialog._editor.setPlainText(THIRD)
             dialog._apply()
             self.assertEqual(2, dialog.version, "the window lost the version it saved")
-        self._through_the_door(steps)
+        self._through_code_dialog(steps)
         self.assertEqual([(1, "helper"), (2, "Version 2")], self._listed())
         self.assertEqual(THIRD, self.model.assets[self._row()].code)
 
@@ -258,7 +258,7 @@ class TheEditorWindowKeepsVersions(unittest.TestCase):
                              (dialog._editor.toPlainText(), dialog._line_name.text()))
             dialog._editor.setPlainText(THIRD)
             dialog._apply()
-        self._through_the_door(steps)
+        self._through_code_dialog(steps)
         self.assertEqual(1, versions.active_version(self.panel.prefs, self.mat_id, versions.CODE))
         self.assertEqual(THIRD, self.model.version_text(self._row(), 1))
         self.assertEqual(SECOND, self.model.version_text(self._row(), 2))
@@ -271,7 +271,7 @@ class TheEditorWindowKeepsVersions(unittest.TestCase):
         def steps(dialog):
             dialog._fill_version_menu()
             seen["menu"] = [(a.text(), a.isChecked()) for a in dialog._version_menu.actions()]
-        self._through_the_door(steps)
+        self._through_code_dialog(steps)
         from amaze import amazetheme
         self.assertEqual([(amazetheme.MENU_NEW_VERSION, False), ("", False),
                           ("helper fast", True), ("helper", False)], seen["menu"])
@@ -293,7 +293,7 @@ class TheEditorWindowKeepsVersions(unittest.TestCase):
             seen["closed"] = dialog._tabbar.names()
             dialog._close_tab(0)    # the last tab stays
             seen["last"] = dialog._tabbar.names()
-        self._through_the_door(steps)
+        self._through_code_dialog(steps)
         self.assertEqual((["helper fast", "helper"], FIRST), seen["two"])
         self.assertEqual((2, "// edited, not saved"), seen["back"], "a tab lost its edits")
         self.assertEqual((["helper fast"], ["helper fast"]), (seen["closed"], seen["last"]))
@@ -309,7 +309,7 @@ class TheEditorWindowKeepsVersions(unittest.TestCase):
             dialog._select_tab(0)
             self.assertEqual(1, dialog.version, "the snippet's own tab is not version 1 now")
             self.assertEqual(FIRST, dialog._editor.toPlainText())
-        self._through_the_door(steps)
+        self._through_code_dialog(steps)
         self.assertEqual([(1, "helper"), (2, "Version 2")], self._listed())
 
     def test_the_versions_badge_opens_the_window_and_select_switches(self):
@@ -344,7 +344,7 @@ class TheEditorWindowKeepsVersions(unittest.TestCase):
             dialog._editor.setPlainText(THIRD)
             dialog._apply()
             self.assertFalse(dialog._plus.isEnabled(), "an Apply turned the + back on")
-        self._through_the_door(steps)
+        self._through_code_dialog(steps)
         self.assertEqual(THIRD, self.model.assets[self._row()].code)
         self.assertEqual([(1, "helper"), (2, "helper fast")], self._listed())
         self.assertEqual(SECOND, self.model.version_text(self._row(), 2),
@@ -361,7 +361,7 @@ class TheEditorWindowKeepsVersions(unittest.TestCase):
             self.assertTrue(dialog._plus.isEnabled(), "the saved snippet still offers no versions")
             dialog._editor.setPlainText(THIRD)
             dialog._apply()
-        self._through_the_door(
+        self._through_code_dialog(
             steps, lambda: self.panel._add_code_snippet("", "VEX", ""))
         added = [a for a in self.model.assets if a.name == "fresh"]
         self.assertEqual((before + 1, 1), (len(self.model.assets), len(added)),

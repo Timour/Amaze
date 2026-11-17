@@ -591,7 +591,7 @@ class TheWireSpliceReadsThePlacementFunnel(unittest.TestCase):
         from amaze.helpers import helpers
         helpers.forget_placed()
 
-    def test_every_door_leaves_its_nodes_in_the_funnel(self):
+    def test_both_placements_leave_their_nodes_in_the_funnel(self):
         from amaze.helpers import helpers
         made = self.net.createNode("box")
         helpers.forget_placed()

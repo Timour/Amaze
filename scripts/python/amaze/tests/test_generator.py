@@ -960,7 +960,7 @@ class NoNetworkBeforeTheProgressBarTest(unittest.TestCase):
                 "decision blocks the UI thread"
                 % (source.name, len(self.calls)))
 
-    def test_both_doors_find_a_records_source_one_way(self):
+    def test_import_and_model_find_a_records_source_one_way(self):
         """The import and the model find the same source by name, or none, off the network."""
         panel = test_support.fixture_panel(self)
         named = panel.matx_online_model.sources[0]
