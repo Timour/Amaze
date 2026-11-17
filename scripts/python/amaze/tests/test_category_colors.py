@@ -1,4 +1,4 @@
-"""Category colours are keyed by name: a rename carries the colour and a removal takes it."""
+"""Category colours are keyed by name: a rename keeps the colour and a removal deletes it."""
 
 import os
 import sys
@@ -67,7 +67,7 @@ class CategoryColorTest(unittest.TestCase):
         self.assertEqual("", self.cats.color_of("Metal"))
 
     def test_a_removed_category_takes_its_colour_with_it(self):
-        """Otherwise the colour lies in wait and reattaches to the next category reusing the name."""
+        """Otherwise the stored colour is applied to the next category created with the same name."""
         self.cats.set_color("Metal", "#4af2a1")
         self.cats.remove_category("Metal")
         self.cats.check_add_category("Metal")

@@ -1,4 +1,4 @@
-"""The Library list, most recent first, and Manage Libraries (D15), which takes them off it."""
+"""The list of libraries, most recent first, and Manage Libraries (D15), which removes from it."""
 
 import json
 import os
@@ -106,7 +106,7 @@ class OpeningALibraryPutsItFirst(unittest.TestCase):
         path = os.path.join(self.panel.prefs.path, "settings.json")
         with open(path, encoding="utf-8") as handle:
             data = json.load(handle)
-        data.update(directory=other, libraries=[first])    # the saves the fixture panel switches off
+        data.update(directory=other, libraries=[first])    # the fixture panel does not save
         with open(path, "w", encoding="utf-8") as handle:
             json.dump(data, handle)
         self.assertTrue(self.panel.open_library())
@@ -161,7 +161,7 @@ class ManageLibrariesTest(unittest.TestCase):
             handle.write("{}")
         self._select(self.b)
         self.dialog._remove.click()
-        self.assertTrue(os.path.isfile(marker), "Remove from List touched the folder")
+        self.assertTrue(os.path.isfile(marker), "Remove from List changed the folder")
 
     def test_no_band_sits_over_the_list(self):
         self.assertIsNone(self.dialog.findChild(QtWidgets.QLabel, "amaze_header_band_text"))
@@ -172,7 +172,7 @@ class ManageLibrariesTest(unittest.TestCase):
 
 
 class TheManageWindowStandsOnItsFrame(unittest.TestCase):
-    """D15's window, list, buttons and rows land where the frame draws them."""
+    """D15's window, list, buttons and rows match the boxes of its design frame."""
 
     def setUp(self):
         self.prefs = test_support.fixture_prefs(self)
@@ -215,7 +215,7 @@ class TheManageWindowStandsOnItsFrame(unittest.TestCase):
 
         selected = QtGui.QColor(amazetheme.D15_SELECTED_INK).name()
         self.assertEqual(selected, ink(px(rows["box_x"]) + 1, top + 1),
-                         "the selected row is not painted where it is drawn")
+                         "the selected row is not painted at its designed box")
         self.assertNotEqual(selected, ink(px(rows["box_x"]) + 1, top - 1),
                             "the selection fills the gap the frame leaves above the row")
         self.assertNotEqual(selected, ink(px(rows["box_x"]) - 1, top + 1),
@@ -225,7 +225,7 @@ class TheManageWindowStandsOnItsFrame(unittest.TestCase):
 
 
 class EveryDrawnListWearsTheListGround(unittest.TestCase):
-    """D15 and D01 build their list through one door, `drawn_list`, so one test holds both."""
+    """D15 and D01 both build their list with `drawn_list`, so one test covers both."""
 
     def _dialogs(self):
         from amaze.dialogs import versions_dialog
@@ -255,7 +255,7 @@ class EveryDrawnListWearsTheListGround(unittest.TestCase):
 
                 ground = theme.list_ground().name()
                 self.assertEqual(ground, ink(x + 10, y + high - 3),
-                                 "the bare list is not the list colour")
+                                 "the empty list area is not the list colour")
                 self.assertNotEqual(ground, ink(x, y),
                                     "the list's corner is square; the frame rounds it")
 

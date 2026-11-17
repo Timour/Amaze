@@ -1,4 +1,4 @@
-"""The Grid menu: one builder over per-section tables; pinned menus are recorded shipped output."""
+"""Grid menu: `grid.py` builds it from per-section tables; expected menus are recorded output."""
 
 import ast
 import contextlib
@@ -63,7 +63,7 @@ def rows_of(table):
 
 
 def holds_rows(entry) -> bool:
-    """A fixed submenu: its rows carry the verbs, so it carries none of its own."""
+    """A fixed submenu: its rows have the verbs, so it has none of its own."""
     return isinstance(entry.children, tuple)
 
 
@@ -122,7 +122,7 @@ class TheTableIsWellFormED(unittest.TestCase):
 
 
 class NoMenuIsWrittenInThePanelAnyMore(unittest.TestCase):
-    """The six panel handlers are gone, and no seventh menu may grow in panel.py beside the table."""
+    """The six panel handlers are gone; no new menu may be built in panel.py beside the table."""
 
     def _panel_tree(self):
         body = []
@@ -135,11 +135,11 @@ class NoMenuIsWrittenInThePanelAnyMore(unittest.TestCase):
     MAY_BUILD_A_MENU = {  # the menus panel.py may still build, named rather than counted
         "init_ui",                      # the toolbar's Filter menu
         "material_lop_viewport_drop",   # the Drag & Drop Engine's
-        "_build_menus",                 # the online eye's kind filter (All/Materials/Colors/Nodes/Code) - a toolbar menu, not a grid route
+        "_build_menus",                 # the online eye's kind filter (All/Materials/Colors/Nodes/Code) - a toolbar menu, not a grid menu
     }
 
     def test_ONE_builder_constructs_the_GRID_menu(self):
-        """A grid QMenu built anywhere but the builder is a second route around the table."""
+        """A grid QMenu built anywhere but in `grid.py` bypasses the table."""
         with open(os.path.join(PACKAGE, "panel", "grid.py"),
                   encoding="utf-8") as handle:
             self.assertIn("QtWidgets.QMenu(", handle.read(),
@@ -155,13 +155,13 @@ class NoMenuIsWrittenInThePanelAnyMore(unittest.TestCase):
                     builders.add(func.name)
         self.assertEqual(
             self.MAY_BUILD_A_MENU, builders,
-            "panel.py builds menus in %s - anything new here is a "
-            "second route through an area that has a table"
+            "panel.py builds menus in %s - anything new here "
+            "bypasses the table that area already has"
             % sorted(builders - self.MAY_BUILD_A_MENU))
 
 
 class TheBuilderTidiesItsOwnSeparators(unittest.TestCase):
-    """A table with conditional rows yields leading, doubled and trailing dividers; the builder tidies."""
+    """Conditional rows yield leading, doubled and trailing dividers; the builder removes them."""
 
     def test_no_leading_doubled_or_trailing_divider_survives(self):
         for rows, tidy in (([None, "b"], ["b"]),
@@ -173,7 +173,7 @@ class TheBuilderTidiesItsOwnSeparators(unittest.TestCase):
 
 
 class TheMenusAreWhatSHIPPED(unittest.TestCase):
-    """The six handlers' recorded output through the one builder; the empty cases are the one change."""
+    """The six old handlers' recorded output, now built by `grid.py`; only the empty cases differ."""
 
     @classmethod
     def setUpClass(cls):
@@ -197,8 +197,8 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
                                       flags.NoUpdate)
         self.assertEqual(
             len(rows), len(selection.selectedIndexes()),
-            "the helper did not select %d rows, so this test is about "
-            "a different selection than it says" % len(rows))
+            "the helper did not select %d rows, so this test checks "
+            "a different selection than intended" % len(rows))
 
         seen = []
         with mock.patch.object(QtWidgets.QMenu, "exec_",
@@ -217,7 +217,7 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
                 if (proxy.index(row, 0).data(role) or "") == kind]
 
     def test_material_with_one_two_or_nothing_selected(self):
-        """Every entry acts on the whole selection and stays live."""
+        """Every entry acts on the whole selection and stays enabled."""
         for rows, expected in (
                 ((0,),
                  ["Load Asset to > [/mat, /stage/materiallibrary]",
@@ -253,10 +253,10 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
         swatches = [row for row in shown if row.startswith("Copy Color")]
         self.assertEqual(1, len(swatches))
         self.assertIn("#", swatches[0],
-                      "the swatch rows do not carry their hex codes")
+                      "the swatch rows do not show their hex codes")
 
     def test_color_with_two_selected(self):
-        """The per-entry actions grey; Customize, Favorite and Delete act on the whole selection."""
+        """Per-entry actions grey out; Customize, Favorite and Delete act on the whole selection."""
         shown = self._show("gradient", (0, 1))
         self.assertEqual(
             ["Load Asset(off)", "----", "Thumbnail > [Capture Scene(off), Customize]",
@@ -266,7 +266,7 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
         for row in shown:
             if row.startswith(("Load Asset as", "Copy Color")):
                 self.assertTrue(row.endswith("(off)"),
-                                "%r stayed live on a multi-selection" % row)
+                                "%r stayed enabled on a multi-selection" % row)
 
     def test_node_keeps_its_shape(self):
         """The fixture has no Node assets, so this is the empty case, which once produced no menu."""
@@ -287,12 +287,12 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
                 self.assertEqual(expected, self._show("code", rows))
 
     def test_code_offers_NEW_FILE_over_an_empty_selection(self):
-        """The one entry that acts on nothing, so the one live when nothing is selected."""
+        """The one entry that acts on nothing, so the only one enabled when nothing is selected."""
         shown = self._show("code")
         self.assertEqual("New File", shown[0])
         self.assertTrue(all(row.endswith("(off)") for row in shown[1:]
                             if row != "----"),
-                        "something other than New File is live over an "
+                        "something other than New File is enabled with an "
                         "empty selection: %s" % shown)
 
     def test_file_menus_follow_the_kind_and_the_count_and_never_delete(self):
@@ -322,7 +322,7 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
                 self.assertEqual(expected, self._show("file", rows[:count]))
 
     def test_online_menu_over_an_empty_selection(self):
-        """Built directly, as the online world reaches the network; only Refresh stays live when empty."""
+        """Built directly, as the online context uses the network; only Refresh is enabled when empty."""
         context = self.panel.online_context
         menu, _verbs = grid.build_grid_menu(self.panel, context, [], None)
         plugins = (off_unless_loaded("Redshift"), off_unless_loaded("Octane"))
@@ -343,12 +343,12 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
         self.assertIn("Import to Materials (3)", labels)
         self.assertIn("Import to Scene (3)", labels)
         self.assertNotIn("Refresh (3)", labels,
-                         "Refresh acts on nothing, so a count is a lie")
+                         "Refresh acts on no rows, so a count is wrong")
         one = pretend[:1]
         menu, _verbs = grid.build_grid_menu(self.panel, context, one, one[0])
         self.assertIn("Import to Materials",
                       [action.text() for action in menu.actions()],
-                      "a single row carries a count")
+                      "a single row shows a count")
 
 
 class TheRowTheMenuIsAboutIsAlwaysSELECTED(unittest.TestCase):
@@ -426,7 +426,7 @@ class AMenuDoesNotOUTLIVEItsRightClick(unittest.TestCase):
 
 
 class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
-    """Dispatch is by dict lookup: a dismissed menu answers None and must run nothing."""
+    """Dispatch is by dict lookup: a dismissed menu returns None and must run nothing."""
 
     @classmethod
     def setUpClass(cls):
@@ -467,7 +467,7 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
                     "%s ran %s after the menu was dismissed" % (key, called))
 
     def _material_convert_children(self, *held):
-        """Convert to's children with the selection's renderers and every plugin pinned: the TABLE."""
+        """Convert to's children with renderers and plugins mocked, so only the TABLE decides."""
         panel = self.panel
         panel.section_tabs.setChecked("material")
         QtWidgets.QApplication.processEvents()
@@ -482,7 +482,7 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
         return row[0] if row else None
 
     def test_convert_to_greys_the_renderer_the_selection_already_is(self):
-        """Drawn as C01b: the child naming what the selection already is greys; the others are live."""
+        """Drawn as C01b: the selection's own renderer is greyed, the other children enabled."""
         self.assertEqual("Convert > [MaterialX(off), Redshift, Octane]",
                          self._material_convert_children("Karma"))
         self.assertEqual("Convert > [MaterialX, Redshift(off), Octane]",
@@ -493,7 +493,7 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
                          self._material_convert_children("Octane"))
 
     def _select_karma_rows(self, count):
-        """Select up to `count` Karma materials; answers the menu's own selection."""
+        """Select up to `count` Karma materials; returns the menu's own selection."""
         panel = self.panel
         panel.section_tabs.setChecked("material")
         QtWidgets.QApplication.processEvents()
@@ -513,7 +513,7 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
         return indexes
 
     def test_the_parent_greys_when_no_child_is_live(self):
-        """A Karma selection where neither Redshift nor Octane is loaded has nothing to become."""
+        """With neither Redshift nor Octane loaded, a Karma selection has nothing to convert to."""
         panel = self.panel
         indexes = self._select_karma_rows(1)
         with plugins_loaded():
@@ -523,7 +523,7 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
         self.assertEqual(["Convert > [MaterialX(off), Redshift(off), Octane(off)](off)"], row)
 
     def test_convert_to_dispatches_by_the_child_picked(self):
-        """One verb, the payload names the renderer: each child reaches its own converter and no other."""
+        """One verb whose payload names the renderer: each child calls only its own converter."""
         panel = self.panel
         panel.section_tabs.setChecked("material")
         QtWidgets.QApplication.processEvents()
@@ -536,7 +536,7 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
                           mock.call("Karma")], convert.call_args_list)
 
     def test_online_import_carries_the_renderer_to_its_door(self):
-        """C06a/C06b: the Import child picked reaches the panel as `renderer`; a bare call means Karma."""
+        """C06a/C06b: the picked Import child is passed on as `renderer`; a bare call means Karma."""
         panel = self.panel
         context = panel.online_context
         records = ["rec"]
@@ -554,7 +554,7 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
                              lib.call_args.kwargs)
 
     def test_neither_online_scene_door_puts_the_editor_back(self):
-        """Both online doors reach the scene with no restore block open. ▸p/amaze-follows-houdini"""
+        """Both online scene imports run with no restore block open. ▸p/amaze-follows-houdini"""
         import types
         from amaze.helpers import helpers
         from amaze.render import nodes
@@ -577,19 +577,19 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
                 mock.patch.object(panel, "matx_online_model"), \
                 mock.patch.object(type(context), "_records", lambda self, idx: [rec]):
             panel.matx_online_model.record.return_value = rec
-            context.double_click(index)    # the door the menu verb does not share
+            context.double_click(index)    # the import path the menu verb does not share
             context.menu_import_to_scene([], None)
         self.assertEqual([0, 0], depth,
-                         "a door reached the scene inside a restore block")
+                         "an import reached the scene inside a restore block")
 
 
 def icon_image(action):
-    """What a row's icon draws at 16 px: two rows wear the same icon when these match."""
+    """What a row's icon draws at 16 px: two rows have the same icon when these match."""
     return action.icon().pixmap(QtCore.QSize(16, 16)).toImage()
 
 
 class EveryRendererRowWEARSTheFilterMenusIcon(unittest.TestCase):
-    """Drawn as C13, C01b, C06a and C06b: one icon per renderer, named once, drawn by one engine."""
+    """C13, C01b, C06a, C06b: one icon per renderer, named in one table, drawn by one function."""
 
     RENDERERS = ("MaterialX", "Redshift", "Octane")
 
@@ -598,10 +598,10 @@ class EveryRendererRowWEARSTheFilterMenusIcon(unittest.TestCase):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
 
     def _everything_offered(self):
-        """Every renderer offered in Preferences and loaded, Convert to asked about Karma rows."""
+        """Every renderer offered in Preferences and loaded, Convert to built for Karma rows."""
         panel = self.panel
         stack = contextlib.ExitStack()
-        stack.callback(panel.build_filter_menu)    # runs LAST: the fixture's own offer, back
+        stack.callback(panel.build_filter_menu)    # runs LAST: rebuilds the menu with the fixture's own settings
         for flag in ("renderer_redshift_enabled", "renderer_octane_enabled"):
             stack.callback(setattr, panel.prefs, flag, getattr(panel.prefs, flag))
             setattr(panel.prefs, flag, True)    # a property with no deleter: mock cannot undo it
@@ -645,7 +645,7 @@ class EveryRendererRowWEARSTheFilterMenusIcon(unittest.TestCase):
                 rows = self._rows(menu, name)
                 for renderer in self.RENDERERS:
                     with self.subTest(menu=name, renderer=renderer):
-                        self.assertIn(renderer, rows, "%s lost %s" % (name, renderer))
+                        self.assertIn(renderer, rows, "%s does not list %s" % (name, renderer))
                         self.assertFalse(rows[renderer].icon().isNull(),
                                          "%s ▸ %s has no icon" % (name, renderer))
                         self.assertEqual(
@@ -654,7 +654,7 @@ class EveryRendererRowWEARSTheFilterMenusIcon(unittest.TestCase):
                             "%s ▸ %s is not the Filter menu's icon" % (name, renderer))
 
     def test_a_renderer_switched_off_is_offered_by_no_menu(self):
-        """Hidden in Preferences ▸ Show/Hide: gone from Filter, Convert to and both Imports."""
+        """Hidden in Preferences ▸ Show/Hide: removed from Filter, Convert to and both Imports."""
         panel = self.panel
         for hidden in renderers.ALL:
             with self.subTest(hidden=hidden.label), self._everything_offered() as stack:
@@ -700,11 +700,11 @@ class EveryRendererRowWEARSTheFilterMenusIcon(unittest.TestCase):
                   for name in files if name.endswith(".py")
                   and "filter_redshift" in open(os.path.join(root, name)).read()]
         self.assertEqual([os.path.join("core", "renderers.py")], owners,
-                         "the renderer icon table has more than one home")
+                         "the renderer icon names are defined in more than one file")
 
 
 class AVerbActsOnlyOnRowsStillThere(unittest.TestCase):
-    """The menu's event loop can move the grid; its verb gets the picked rows as they are now."""
+    """The menu's event loop can change the grid; the verb gets the picked rows' current state."""
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
@@ -746,10 +746,10 @@ class AVerbActsOnlyOnRowsStillThere(unittest.TestCase):
 
         self._pick_through_the_menu("gradient", 2, "Favorite", _remove_above)
         self.assertEqual(before ^ {picked}, self._starred(model),
-                         "the star landed on another tile than the one picked")
+                         "the favourite was set on another tile than the one picked")
 
     def test_a_folder_reloaded_under_the_menu_hands_its_verb_nothing(self):
-        """A move landing reloads the folder; Copy Path then copies nothing rather than a dead row."""
+        """A finished move reloads the folder; Copy Path then copies nothing, not a stale path."""
         clipboard = QtWidgets.QApplication.clipboard()
         clipboard.setText("sentinel")
         self._pick_through_the_menu("file", 0, "Copy Path",
@@ -758,7 +758,7 @@ class AVerbActsOnlyOnRowsStillThere(unittest.TestCase):
 
 
 class EveryVerbREACHESItsOwner(unittest.TestCase):
-    """The five verbs that already had owners, reached THROUGH them rather than copied into a table."""
+    """The five verbs the panel already defined are called THROUGH it, not copied into a table."""
 
     @classmethod
     def setUpClass(cls):
@@ -799,7 +799,7 @@ class EveryVerbREACHESItsOwner(unittest.TestCase):
                     self.assertTrue(verb.called)
 
     def test_CUSTOMIZE_reaches_the_shared_handler_in_every_section(self):
-        """`tile_models()` answers the models each context has, so Customize reaches a real pair."""
+        """`tile_models()` returns the models each context has, so Customize reaches a real pair."""
         for key in ("material", "gradient", "code", "file"):
             with self.subTest(section=key):
                 with mock.patch.object(type(self.panel),

@@ -1,4 +1,4 @@
-"""The two host engines own their branches, checked on source with comments and strings removed."""
+"""Only hostver.py compares versions, only hostos.py the OS; comments and strings skipped."""
 
 import os
 import shutil
@@ -45,7 +45,7 @@ def _code_only(path):
 
 
 def _modules(exclude):
-    """Every shipped .py, minus the tests and the named owner."""
+    """Every shipped .py except the tests and the files named in `exclude`."""
     for root, dirs, files in os.walk(_PKG):
         dirs[:] = [d for d in dirs
                    if d not in ("tests", "__pycache__", "res", "ui")]
@@ -88,7 +88,7 @@ class TestHostEngineOwnership(unittest.TestCase):
             % "\n  ".join(offenders))
 
     def test_no_module_tests_the_platform_directly(self):
-        """hostos.py's own rule, finally checked."""
+        """The rule hostos.py states: no other module tests the platform."""
         offenders = self._offenders(
             "hostos.py", ("sys.platform", "platform.system("))
         self.assertEqual(
@@ -97,7 +97,7 @@ class TestHostEngineOwnership(unittest.TestCase):
             % "\n  ".join(offenders))
 
     def test_the_scan_survives_the_owner_being_excluded(self):
-        """Sabotage: without the exclusion the scan must find hostver.py, or the greens mean nothing."""
+        """Control: without the exclusion the scan must find hostver.py, or a pass proves nothing."""
         hits = self._offenders("no_such_file.py", ("applicationVersion()[",))
         self.assertTrue(
             any("hostver.py" in h for h in hits),
@@ -106,7 +106,7 @@ class TestHostEngineOwnership(unittest.TestCase):
 
 
 class TestHostVerAnswers(unittest.TestCase):
-    """The engine hands out ANSWERS, not version numbers."""
+    """hostver returns capability answers (bools), not version numbers."""
 
     def test_every_capability_is_a_bool(self):
         from amaze.helpers import hostver
@@ -114,7 +114,7 @@ class TestHostVerAnswers(unittest.TestCase):
         self.assertIsInstance(hostver.has_new_cops(), bool)
 
     def test_a_broken_hou_does_not_take_the_app_down(self):
-        """houdini_version() feeds every capability Env; if hou raises, a gesture degrades, not crashes."""
+        """houdini_version() fills every capability Env; if hou raises, it returns (), no crash."""
         import hou
         from amaze.helpers import hostver
         real = hou.applicationVersion
@@ -129,7 +129,7 @@ class TestHostVerAnswers(unittest.TestCase):
 
 
 class TestOpinionComposition(unittest.TestCase):
-    """base value + opinions that apply to THIS environment."""
+    """A capability's base value, overridden by the opinions that apply to this Env."""
 
     def _hv(self):
         from amaze.helpers import hostver
@@ -192,10 +192,10 @@ class TestOpinionComposition(unittest.TestCase):
                 self.assertEqual(
                     wanted,
                     hv.OBJ_PICK_DEVICE_PIXELS.resolve(self._env(**env)),
-                    "%s got the answer it was never measured to need" % env)
+                    "%s resolved to a value no measurement supports" % env)
 
     def test_a_raising_predicate_vetoes_instead_of_propagating(self):
-        """Consulted inside a mouse handler, a broken predicate degrades to the base, never kills it."""
+        """Called inside a mouse handler, a raising predicate vetoes its opinion; the base applies."""
         hv = self._hv()
 
         def _boom(env):
@@ -231,7 +231,7 @@ class TestOpinionComposition(unittest.TestCase):
 
 
 class AFailedWriteSaysWhichFailure(unittest.TestCase):
-    """`hostos.why_failed` answers from the measured errno, never a guessed cause. ▸r/failed-write"""
+    """`hostos.why_failed` names a cause only for a measured errno, never a guess. ▸r/failed-write"""
 
     def _cause(self, number):
         from amaze.helpers import hostos
@@ -250,10 +250,10 @@ class AFailedWriteSaysWhichFailure(unittest.TestCase):
         for number, cause, says, never in (
                 (errno.ENOENT, hostos.FAILED_UNREACHABLE, "cannot be reached",
                  ("another program",)),
-                (errno.EACCES, hostos.FAILED_READ_ONLY, "folder", ()),    # POSIX rename asks the FOLDER
+                (errno.EACCES, hostos.FAILED_READ_ONLY, "folder", ()),    # POSIX: a read-only FOLDER
                 (errno.EROFS, hostos.FAILED_READ_ONLY, "", ()),
                 (errno.ENOSPC, hostos.FAILED_FULL, "", ()),
-                (999, hostos.FAILED_UNKNOWN, "",    # unmeasured: claim no cause at all
+                (999, hostos.FAILED_UNKNOWN, "",    # unmeasured: name no cause at all
                  ("another program", "read-only", "full", "cannot be reached"))):
             with self.subTest(errno=number):
                 got, sentence = self._cause(number)
@@ -265,7 +265,7 @@ class AFailedWriteSaysWhichFailure(unittest.TestCase):
                                      "not have" % number)
 
     def _windows_cause(self, winerror):
-        """A held file the way WINDOWS raises it, which no POSIX host can produce."""
+        """A file open in another program, as WINDOWS raises it, which no POSIX host can produce."""
         import errno
 
         from amaze.helpers import hostos
@@ -275,7 +275,7 @@ class AFailedWriteSaysWhichFailure(unittest.TestCase):
         return hostos.why_failed(exc, "/lib/notes.json")
 
     def test_a_held_file_is_recognised_in_its_WINDOWS_spelling(self):
-        """A held destination is real only on Windows, and there it arrives as EACCES, not EBUSY."""
+        """A destination open elsewhere fails only on Windows, raised as EACCES, not EBUSY."""
         from amaze.helpers import hostos
 
         for winerror, cause in ((32, hostos.FAILED_HELD), (33, hostos.FAILED_HELD),
@@ -283,14 +283,14 @@ class AFailedWriteSaysWhichFailure(unittest.TestCase):
             with self.subTest(winerror=winerror):
                 got, sentence = self._windows_cause(winerror)
                 self.assertEqual(cause, got,
-                                 "winerror %d was misread" % winerror)
+                                 "winerror %d got the wrong cause" % winerror)
                 self.assertEqual(cause == hostos.FAILED_HELD,
                                  "another program" in sentence)
 
 
 @unittest.skipUnless(sys.platform == "win32", "Windows refuses a replace onto these; POSIX does not")
 class AWindowsReplaceRefusalNamesTheFile(unittest.TestCase):
-    """Both arrive as winerror 5, which alone reads as a read-only folder. ▸r/windows-files"""
+    """Both raise winerror 5, which by itself means a read-only folder. ▸r/windows-files"""
 
     def setUp(self):
         self.folder = tempfile.mkdtemp()
@@ -328,7 +328,7 @@ class AWindowsReplaceRefusalNamesTheFile(unittest.TestCase):
                                          wintypes.LPVOID, wintypes.DWORD, wintypes.DWORD,
                                          wintypes.HANDLE)
         held = kernel32.CreateFileW(self.path, 0x80000000, 0, None, 3, 0x80, None)
-        self.assertNotEqual(wintypes.HANDLE(-1).value, held, "premise: the file could be held")
+        self.assertNotEqual(wintypes.HANDLE(-1).value, held, "premise: CreateFileW opened the file")
         self.addCleanup(kernel32.CloseHandle, held)
         cause, sentence = self._refusal()
         self.assertEqual(hostos.FAILED_HELD, cause)

@@ -1,4 +1,4 @@
-"""A read notices what another machine wrote, without restarting Houdini."""
+"""`model_registry.refresh_all` re-reads what another machine wrote, without restarting Houdini."""
 
 import json
 import os
@@ -51,13 +51,13 @@ class AUserMadeElsewhereShowsUpWithoutARestart(_Case):
                                                      "u-them": {"name": "Colleague"}}})
         self.assertEqual(
             {"u-me": "Me"}, users.all_users(self.prefs),
-            "premise: the read already saw it, so nothing here is stale")
+            "premise: the read already returns it, so nothing here is stale")
 
         model_registry.refresh_all(self.prefs)
 
         self.assertEqual(
             {"u-me": "Me", "u-them": "Colleague"}, users.all_users(self.prefs),
-            "a user created on another machine is still invisible")
+            "a user created on another machine is still not listed")
 
 
 class ThePreferencesDialogSeesTheCurrentPeople(unittest.TestCase):
@@ -75,7 +75,7 @@ class ThePreferencesDialogSeesTheCurrentPeople(unittest.TestCase):
         from amaze.dialogs import prefs_dialog
 
         self.assertTrue(users.create(self.panel.prefs, "Me"),
-                        "premise: the fixture could not mint a user")
+                        "premise: the fixture could not create a user")
         before = users.all_users(self.panel.prefs)
         self.assertNotIn("Colleague", before.values(),
                          "premise: this user already exists")
@@ -98,7 +98,7 @@ class ThePreferencesDialogSeesTheCurrentPeople(unittest.TestCase):
 
 
 class AnAssetSavedElsewhereShowsUpWithoutARestart(unittest.TestCase):
-    """The same staleness one layer down: `load()` answers its cached document forever."""
+    """The same staleness one layer down: `load()` keeps returning its cached document."""
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
@@ -123,11 +123,11 @@ class AnAssetSavedElsewhereShowsUpWithoutARestart(unittest.TestCase):
         moved = model_registry.refresh_all()
 
         self.assertIn("material_model", moved,
-                      "the door reported nothing, so nothing was re-read")
+                      "refresh_all reported nothing, so nothing was re-read")
         self.assertIn("Theirs", [a.name for a in self.model.assets])
 
     def test_a_category_another_machine_added_reaches_the_sidebar(self):
-        """A peer's material arrives under a category the sidebar must also have."""
+        """Another machine's material comes with a category the sidebar must also show."""
         self.assertTrue(self.model.save())
         sidebar = self.panel.category_model
         before = sidebar.rowCount()
@@ -145,14 +145,14 @@ class AnAssetSavedElsewhereShowsUpWithoutARestart(unittest.TestCase):
 
         self.assertEqual(before + 1, sidebar.rowCount(),
                          "the category is not in the sidebar")
-        self.assertTrue(heard, "the rows changed and no view was told")
+        self.assertTrue(heard, "the rows changed and modelReset was not emitted")
 
     def test_a_refresh_with_nobody_writing_changes_nothing(self):
         from amaze.core import model_registry
         self.assertTrue(self.model.save())
         before = self.model.rowCount()
         self.assertNotIn("material_model", model_registry.refresh_all(),
-                         "nothing moved, yet it re-read")
+                         "nothing changed, yet it re-read")
         self.assertEqual(before, self.model.rowCount())
 
 

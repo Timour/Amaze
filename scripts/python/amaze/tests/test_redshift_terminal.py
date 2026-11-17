@@ -1,4 +1,4 @@
-"""Renders-black on Redshift, which ends a material in a terminal node, not a named connector."""
+"""The renders-black check on Redshift, whose materials end in a terminal node, not an output."""
 
 import os
 import sys
@@ -25,7 +25,7 @@ from amaze.tests import test_support  # noqa: E402 - redirects the log
 @unittest.skipUnless(test_support.renderer_loaded("Redshift"),
                      "the Redshift plugin is not loaded (H22 has no build)")
 class RedshiftMaterialsHoldTheTerminalInvariant(unittest.TestCase):
-    """Both polarities, so a green cannot mean `always True`."""
+    """Tests both outcomes, so a pass cannot come from a check that always returns True."""
 
     def setUp(self):
         self.parent = hou.node("/mat") or hou.node("/").createNode("mat")
@@ -40,13 +40,13 @@ class RedshiftMaterialsHoldTheTerminalInvariant(unittest.TestCase):
                   % [c.type().name() for c in self.builder.children()])
 
     def test_a_stock_redshift_material_reads_as_wired(self):
-        """A freshly created vopnet ships wired."""
+        """A newly created vopnet has its terminal wired."""
         self.assertTrue(
             nodes.surface_terminal_wired(self.builder),
             "a stock redshift_vopnet must not report as renders-black")
 
     def test_an_unwired_terminal_is_caught(self):
-        """The polarity that matters: this is the pitch-black material."""
+        """The case that matters: a terminal with no inputs renders the material black."""
         terminal = self._terminal()
         for index, connected in enumerate(terminal.inputs()):
             if connected is not None:
@@ -62,7 +62,7 @@ class TheTwoTerminalsDoNotSpellTheirInputsAlike(unittest.TestCase):
     SENTINEL = object()
 
     def test_each_terminals_spelling_is_found_and_nothing_wired_is_none(self):
-        """Each terminal spelling is found; an unwired role answers None."""
+        """Each terminal spelling is found; an unwired role returns None."""
         for inputs, role in (({"BumpMap": self.SENTINEL}, "bump"),
                              ({"Bump Map": self.SENTINEL}, "bump"),
                              ({"Displacement": self.SENTINEL}, "displacement")):
@@ -71,13 +71,13 @@ class TheTwoTerminalsDoNotSpellTheirInputsAlike(unittest.TestCase):
         self.assertIsNone(material.terminal_input({"Surface": self.SENTINEL}, "bump"))
 
     def test_a_role_the_table_does_not_name_is_a_programming_error(self):
-        """Silence here would be a lookup that never fires - the bug."""
+        """Returning None here would hide a lookup that can never match - the bug."""
         with self.assertRaises(KeyError):
             material.terminal_input({}, "diffuse")
 
 
 class NoTerminalInputIsLookedUpByHand(unittest.TestCase):
-    """The spellings have one home; the hand-written lookup is made to fail so it cannot come back."""
+    """The spellings are only in `TERMINAL_INPUTS`; this test fails on any hand-written lookup."""
 
     def test_the_package_asks_through_terminal_input(self):
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -105,7 +105,7 @@ class NoTerminalInputIsLookedUpByHand(unittest.TestCase):
 @unittest.skipUnless(test_support.renderer_loaded("Redshift"),
                      "the Redshift plugin is not installed")
 class TheSpellingTableIsWhatThePluginSays(unittest.TestCase):
-    """The table is a measurement, so the plugin gets to refute it on any host carrying Redshift."""
+    """The table was measured, so it is checked against the plugin on any host with Redshift."""
 
     def _terminal(self, parent, builder_type, terminal_type):
         builder = parent.createNode(builder_type)

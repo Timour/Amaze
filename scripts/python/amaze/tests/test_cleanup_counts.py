@@ -1,4 +1,4 @@
-"""Check Library counts a missing render only where a tile can hold one, in the section's noun."""
+"""Check Library counts a missing render only for assets that get one, in the section's noun."""
 import json
 import os
 import unittest
@@ -8,7 +8,7 @@ from amaze.tests import test_support
 
 
 class TheThumbnailCountKnowsItsSectionTest(unittest.TestCase):
-    """A LOP setup has no render to miss, a SOP setup does, and the count says node."""
+    """A LOP setup is not counted as missing a render, a SOP setup is, and the count reads node."""
 
     def setUp(self):
         self.prefs = test_support.fixture_prefs(self)

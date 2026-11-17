@@ -1,4 +1,4 @@
-"""One stage and ONE husk per BATCH, counted rather than timed: a clock test is about the machine."""
+"""One stage and ONE husk per BATCH, counted not timed: a timing test would measure the machine."""
 
 import os
 import sys
@@ -24,7 +24,7 @@ from amaze.tests import test_support  # noqa: E402 - redirects the log
 
 
 class ASelectionIsOneHuskPerRenderer(unittest.TestCase):
-    """A husk's start-up is most of a thumbnail, so a batch pays it once. ▸r/husk-startup"""
+    """Husk start-up is most of a thumbnail's time, so a batch starts it once. ▸r/husk-startup"""
 
     def _model(self, renderers):
         from amaze.core import library, material
@@ -97,7 +97,7 @@ class TheBatchWritesOneStage(unittest.TestCase):
         self.assertEqual([10], written)
         self.assertEqual(1, len(submitted), "more than one husk for one batch")
         self.assertEqual(10, len(submitted[0].frames))
-        net.destroy.assert_called_once()    # under the disabler: a bare destroy returns on Ctrl+Z
+        net.destroy.assert_called_once()    # inside the undo disabler: otherwise Ctrl+Z restores the net
         submitted[0].discard()
 
     def test_a_material_with_no_material_node_is_left_out(self):
@@ -154,11 +154,11 @@ class WithNoSceneViewerNothingIsImported(unittest.TestCase):
 
 
 OCIO = {"display": "sRGB - Display", "view": "ACES 1.0 - SDR Video", "space": "ACEScg"}
-ABSENT_SETTINGS = "amaze_absent_octane_settings"    # a stage type no category has: createNode refuses
+ABSENT_SETTINGS = "amaze_absent_octane_settings"    # a node type no category has: createNode fails
 
 
 def _viewer_and_husk(testcase):
-    """A Scene Viewer's OCIO for both seams, and husk's queue recording instead of rendering."""
+    """Patch `ocio_from_viewer` in both modules; husk's queue records jobs instead of rendering."""
     for seam in (preview.thumbnail_scene, preview):
         patcher = mock.patch.object(seam, "ocio_from_viewer", lambda: dict(OCIO))
         patcher.start()
@@ -177,7 +177,7 @@ class AnOctaneTwinWithoutOctaneIsRefusedNotRaised(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        test_support.pin_env(test_support.class_scope(cls), "OCIO", "/dev/null")    # save_node refuses without one
+        test_support.pin_env(test_support.class_scope(cls), "OCIO", "/dev/null")    # save_node fails without one
 
     def setUp(self):
         from amaze.core import library
@@ -190,7 +190,7 @@ class AnOctaneTwinWithoutOctaneIsRefusedNotRaised(unittest.TestCase):
         self.twin = self._octane_twin()
 
     def _octane_twin(self):
-        """A MaterialX builder carrying Octane's mark, saved as Convert to Octane saves one."""
+        """A MaterialX builder with Octane's mark, saved the way Convert to Octane saves one."""
         from amaze.render import nodes
         from amaze.render.material_conversion import octane
         builder = nodes.make_karma_builder(hou.node("/mat"), "octane_twin_probe")
@@ -228,11 +228,11 @@ class AnOctaneTwinWithoutOctaneIsRefusedNotRaised(unittest.TestCase):
             try:
                 material_actions.render_thumbnails(self.model, rows)
             except hou.Error as exc:
-                self.fail("Update Render raised out of the menu: %s" % exc)
+                self.fail("Update Render raised from the menu action: %s" % exc)
         self.assertEqual(1, len(shown), "not ONE message for the batch: %r" % shown)
         self.assertIn('"%s"' % self.twin.name, shown[0])
         self.assertIn("Octane", shown[0])
-        self.assertNotIn(self.twin.name, imported, "the twin was imported before refusing")
+        self.assertNotIn(self.twin.name, imported, "the twin was imported before being rejected")
         self.assertEqual([len(karma)], [len(job.frames) for job in self.submitted],
                          "the MaterialX materials in the same Update Render did not render")
 
@@ -247,13 +247,13 @@ class AnOctaneTwinWithoutOctaneIsRefusedNotRaised(unittest.TestCase):
                 ok = thumbs.ThumbNailRenderer.render_batch(
                     self.prefs, "Octane", [("REFUSED_STAGE", material)])
             except hou.Error as exc:
-                self.fail("the refused stage escaped render_batch: %s" % exc)
+                self.fail("render_batch raised on the failed stage: %s" % exc)
         self.assertFalse(ok)
         self.assertEqual([], self.submitted)
         self.assertEqual(before, set(hou.node("/obj").children()), "a half-built stage was left")
         self.assertEqual(1, len([r for r in log.records("exception")
                                  if r["data"].get("renderer") == "Octane"]),
-                         "the refusal was not logged with its traceback")
+                         "the failure was not logged with its traceback")
 
 
 class ASaveAskedNotToRenderRendersNothing(unittest.TestCase):
@@ -286,7 +286,7 @@ class ASaveAskedNotToRenderRendersNothing(unittest.TestCase):
 
 
 class ALandedRenderRepaintsItsTile(unittest.TestCase):
-    """The panel connects a Material model once; a landed PNG repaints that one tile."""
+    """The panel connects a Material model once; a newly written PNG repaints that one tile."""
 
     def test_one_connection_however_many_panels(self):
         from amaze.core import library
@@ -302,7 +302,7 @@ class ALandedRenderRepaintsItsTile(unittest.TestCase):
             self.addCleanup(husk_job.jobs.thumbnailWritten.disconnect,
                             model._on_thumbnail_written)
             husk_job.jobs.thumbnailWritten.emit(str(model.assets[0].mat_id))
-        self.assertEqual([0], painted, "a landed render repainted no tile, or one twice")
+        self.assertEqual([0], painted, "a written thumbnail repainted no tile, or one twice")
 
 
 class UpdateRenderOnMaterialTiles(unittest.TestCase):
@@ -332,7 +332,7 @@ class AMultiMaterialDoorRendersOneBatch(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        if not hou.getenv("OCIO"):    # save_node refuses without one
+        if not hou.getenv("OCIO"):    # save_node fails without one
             hou.putenv("OCIO", "/dev/null")
 
     def setUp(self):
@@ -421,13 +421,13 @@ class AMultiMaterialDoorRendersOneBatch(unittest.TestCase):
         records = [record("batch-hosted", True), record("batch-plain", False)]
         with mock.patch.object(self.panel.matx_online_model, "_sources", [Source()]):
             landed = self._landed(lambda: self.panel.online_import.import_records(records))
-        self.assertEqual(2, len(landed), "premise: the two records did not land")
+        self.assertEqual(2, len(landed), "premise: the two records were not saved")
         plain = [str(mat.mat_id) for mat in self.model.assets
                  if mat._extra.get("online_uid") == "batch-plain" and str(mat.mat_id) in landed]
         self.assertEqual(1, len(plain), "premise: the plain record is not one row")
         self.assertEqual(0, self.each.call_count, "a record started a render of its own")
         self.assertEqual([plain], self.batches,
-                         "not ONE batch of what landed without a hosted picture")
+                         "not ONE batch of the saved records without a hosted thumbnail")
 
 
 if __name__ == "__main__":

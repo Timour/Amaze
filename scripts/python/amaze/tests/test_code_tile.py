@@ -22,7 +22,7 @@ from amaze.tests import test_support  # noqa: E402
 
 
 class ASnippetRunsInThisHoudini(unittest.TestCase):
-    """`run_python` runs as one undo step and answers an error by its last line."""
+    """`run_python` runs as one undo step and returns an error's last line."""
 
     def tearDown(self):
         for node in hou.node("/obj").children():
@@ -56,7 +56,7 @@ class ASnippetRunsInThisHoudini(unittest.TestCase):
 
 
 class ASnippetOntoANodeIsSetOrRefused(unittest.TestCase):
-    """`apply_to_node` sets the snippet, or says why not. ▸r/hou-errors"""
+    """`apply_to_node` sets the snippet, or returns why not. ▸r/hou-errors"""
 
     def setUp(self):
         geo = hou.node("/obj").createNode("geo", "apply_probe")
@@ -81,7 +81,7 @@ class ASnippetOntoANodeIsSetOrRefused(unittest.TestCase):
             try:
                 ok, reason = code_actions.apply_to_node(self.model, 0, self.wrangle)
             except hou.Error as exc:
-                self.fail("a refused parm escaped as %s: %s" % (type(exc).__name__, exc))
+                self.fail("a refused parm write raised %s: %s" % (type(exc).__name__, exc))
         self.assertFalse(ok)
         self.assertTrue(reason.startswith("Could not set the parameter"), reason)
         self.assertEqual("", self.wrangle.parm("snippet").eval().strip())
@@ -97,7 +97,7 @@ SHELF_KEYS = {    # hom.zip ▸ tool_script.txt; `bbox` is "may not be present" 
 
 
 class AShelfScriptGetsItsKwargs(unittest.TestCase):
-    """Run hands a snippet the `kwargs` a shelf click would, modifiers mapped per OS."""
+    """Run gives a snippet the `kwargs` a shelf click would, modifiers mapped per OS."""
 
     def test_a_shelf_script_reads_kwargs(self):
         probe = types.ModuleType("_amaze_kwargs_probe")
@@ -169,7 +169,7 @@ class TheCodeTextIsHalfStrength(unittest.TestCase):
 
 
 class TheRunButtonAnswersThePointer(unittest.TestCase):
-    """Rest, hover and held down each ask for their own art."""
+    """Rest, hover and pressed each request their own pixmap."""
 
     def _asked(self, hovered=False, pressed=False):
         role = QtCore.Qt.ItemDataRole.UserRole + 77

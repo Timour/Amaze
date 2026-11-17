@@ -1,4 +1,4 @@
-"""Exporting the debug log for support: a deliberate act, never a background mirror. ▸p/log-export"""
+"""Exporting the debug log for support: only on request, never in the background. ▸p/log-export"""
 
 import os
 import sys
@@ -15,7 +15,7 @@ from amaze.tests import test_support  # redirects the log
 
 
 class _Log:
-    """A throwaway log file, and a throwaway place to export it to."""
+    """A temporary log file, and a temporary folder to export it to."""
 
     def __init__(self, testcase, contents='{"cat": "test"}\n'):
         self.tmp = tempfile.mkdtemp(prefix="amaze_export_")
@@ -43,10 +43,10 @@ class TestExportSucceeds(unittest.TestCase):
         self.assertTrue(os.path.isfile(target))
         with open(log.source, "rb") as a, open(target, "rb") as b:
             self.assertEqual(a.read(), b.read(),
-                             "the export is not a faithful copy")
+                             "the export differs from the log")
 
     def test_the_name_identifies_the_machine_os_and_houdini(self):
-        """Two machines' logs must not collide, and must be told apart unopened."""
+        """Two machines' logs get different names, and differ by name without being opened."""
         log = _Log(self)
         name = os.path.basename(debug.export_log(log.dest))
         self.assertTrue(name.startswith("amaze-"), name)
@@ -73,7 +73,7 @@ class TestExportSucceeds(unittest.TestCase):
 
 
 class TestExportRefusesOutLoud(unittest.TestCase):
-    """Every refusal carries its reason - a silent no-op teaches nothing. ▸p/log-export"""
+    """Every `ExportRefused` states its reason - a silent no-op gives none. ▸p/log-export"""
 
     def test_no_log_yet_says_so_and_names_the_path(self):
         log = _Log(self, contents=None)
@@ -81,12 +81,12 @@ class TestExportRefusesOutLoud(unittest.TestCase):
             debug.export_log(log.dest)
         message = str(caught.exception)
         self.assertIn(log.source, message,
-                      "the refusal did not say WHERE it looked")
+                      "the error does not name the log path it checked")
         self.assertIn("Debug Mode", message,
-                      "the refusal did not say what to do about it")
+                      "the error does not name Debug Mode as the fix")
 
     def test_an_empty_log_is_refused_rather_than_exported(self):
-        """Exporting a 0-byte file looks like success and hands over nothing."""
+        """Exporting a 0-byte file looks like success and delivers nothing."""
         log = _Log(self, contents="")
         with self.assertRaises(debug.ExportRefused) as caught:
             debug.export_log(log.dest)
@@ -97,7 +97,7 @@ class TestExportRefusesOutLoud(unittest.TestCase):
         with self.assertRaises(debug.ExportRefused) as caught:
             debug.export_log("")
         self.assertIn("destination", str(caught.exception).lower(),
-                      "the refusal did not say a folder must be chosen")
+                      "the error does not mention the destination folder")
 
     def test_an_unwritable_destination_says_which_one(self):
         log = _Log(self)
@@ -132,9 +132,9 @@ class TestOsFacts(unittest.TestCase):
         self.assertTrue(hostos.machine_name(),
                         "machine_name returned nothing with no source "
                         "available - the export name would collide")
-        _platform.node = lambda: "Bad Name: 'x'/y\\z*?\""    # a hand-named machine
+        _platform.node = lambda: "Bad Name: 'x'/y\\z*?\""    # a machine name a user typed
         name = hostos.machine_name()
-        self.assertTrue(name, "a name of bad characters reduced to nothing")
+        self.assertTrue(name, "a name of unsafe characters became empty")
         for bad in ("/", "\\", ":", " ", "'", "*", "?", '"'):
             self.assertNotIn(bad, name,
                              "%r is not safe in a filename: %s"
@@ -142,7 +142,7 @@ class TestOsFacts(unittest.TestCase):
 
 
 class NoteRespectsTheConsoleRuleTest(unittest.TestCase):
-    """`debug.note` must not print on Windows, where it is the only safe sink. ▸r/qt-windows-macos"""
+    """`debug.note` must not print on Windows; there it writes the log only. ▸r/qt-windows-macos"""
 
     def _capture(self, windows):
         import io
@@ -175,7 +175,7 @@ class NoteRespectsTheConsoleRuleTest(unittest.TestCase):
         self._capture(windows=True)
         self.assertTrue(
             any("a diagnostic line" == r.get("msg") for r in written),
-            "suppressing the print also lost the line entirely")
+            "with the print suppressed, the line missed the log too")
 
 
 class CapturedLogHelperTest(unittest.TestCase):
@@ -189,12 +189,12 @@ class CapturedLogHelperTest(unittest.TestCase):
         self.assertEqual(
             ["a captured diagnostic"],
             log.matching("a captured diagnostic"),
-            "captured_log() saw nothing, so every assertion made "
-            "through it would fail whatever the code said")
+            "captured_log() captured nothing, so every assertion made "
+            "through it would fail whatever the code did")
         self.assertEqual([], log.matching("something else entirely"))
         self.assertEqual(["a captured diagnostic"], log.messages(),
-                         "an event read as a note - the category filter "
-                         "is what lets a test pin that the user was told")
+                         "an event was returned as a note - the category filter "
+                         "lets a test check what the user was shown")
         self.assertTrue(log.matching("an internal detail",
                                      category="test"))
 
@@ -203,14 +203,14 @@ class CapturedLogHelperTest(unittest.TestCase):
         with test_support.captured_log():
             self.assertTrue(debug.is_on(),
                             "captured_log did not turn Debug Mode on, so "
-                            "note()'s log write stays gated off")
+                            "note() never writes to the log")
         self.assertEqual(
             was_on, debug.is_on(),
             "captured_log left Debug Mode changed - one use of it would "
             "reconfigure logging for every later test in the process")
         self.assertEqual(
             test_support.TEST_LOG, debug._path,
-            "captured_log left the log pointed at its own throwaway "
+            "captured_log left `debug._path` at its own temporary "
             "file, which is deleted - so nothing after it is recorded")
         with self.assertRaises(ValueError):
             with test_support.captured_log():

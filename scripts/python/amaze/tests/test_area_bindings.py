@@ -51,7 +51,7 @@ BINDINGS = {   # context key -> what it binds into each area, by attribute name;
     },
 }
 
-ONLINE_BINDINGS = {   # a parallel world driving the same four widgets, with a delegate carrying only its own roles
+ONLINE_BINDINGS = {   # the online models use the same four widgets, with a delegate that has only online roles
     "grid": "matx_sorted_model",
     "selection": "matx_selection_model",
     "delegate": "matx_delegate",
@@ -89,7 +89,7 @@ class EveryLibraryBackedModelIsDeclaredBySection(unittest.TestCase):
             {}, broken,
             "a section declares a library-backed model the panel "
             "cannot repoint, so a library switch would leave it "
-            "serving the old library: %s" % broken)
+            "showing the old library: %s" % broken)
 
     def test_every_switchable_model_the_panel_builds_is_declared(self):
         declared = self._declared()
@@ -108,7 +108,7 @@ class EveryLibraryBackedModelIsDeclaredBySection(unittest.TestCase):
         self.assertEqual(
             set(), undeclared,
             "these models can be repointed but no section declares "
-            "them, so a library switch leaves them serving the "
+            "them, so a library switch leaves them showing the "
             "previous library: %s" % sorted(undeclared))
 
 
@@ -120,7 +120,7 @@ class AreaBindingCase(unittest.TestCase):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
 
     def activate(self, key):
-        """Put the panel into one context and let Qt settle."""
+        """Put the panel into one context and process pending Qt events."""
         panel = self.panel
         if panel._is_online():
             panel.leave_online_world()
@@ -129,8 +129,8 @@ class AreaBindingCase(unittest.TestCase):
         QtWidgets.QApplication.processEvents()
         self.assertEqual(
             key, panel.current_section,
-            "the panel did not switch to %s, so nothing below is about "
-            "the section it claims" % key)
+            "the panel did not switch to %s, so the checks below test "
+            "the wrong section" % key)
         return panel
 
     def bound(self, panel):
@@ -152,12 +152,12 @@ class AreaBindingCase(unittest.TestCase):
         QtWidgets.QApplication.processEvents()
 
 
-BADGE_ROLES = {   # badge per context and the role its model must answer; exceptions carry their reason
+BADGE_ROLES = {   # badge -> the model role it reads; each exception has its reason beside it
     "open": "OpenSceneRole",
     "favourite": "FavoriteRole",
     "versions": "VersionsRole",
     "comment": "NotesRole",
-    "execute": "RendererRole",    # the language: drawn for one value, so the role alone says nothing
+    "execute": "RendererRole",    # the language: drawn for one value, so having the role proves nothing
     "renderer": "RendererRole",   # drawn for the renderers Amaze offers, each with its own art
 }
 
@@ -173,7 +173,7 @@ ONLINE_BADGES = {"favourite"}   # the online world is read-only: nothing there c
 
 
 class EveryContextCarriesTheBadgesItsModelCanAnswer(AreaBindingCase):
-    """A badge is a fact the section has, so a badge left unwired fails loudly here."""
+    """Each section declares its badges, so a badge left unwired fails this test."""
 
     def test_each_section_carries_exactly_the_badges_it_should(self):
         for key, expected in EXPECTED_BADGES.items():
@@ -182,8 +182,8 @@ class EveryContextCarriesTheBadgesItsModelCanAnswer(AreaBindingCase):
                 delegate = panel.thumblist.itemDelegate()
                 self.assertEqual(
                     expected, set(delegate.badges()),
-                    "%s's tiles do not carry the badges it should - a "
-                    "badge wired nowhere paints nothing and says nothing"
+                    "%s's tiles do not have the expected badges - a "
+                    "badge wired nowhere is not painted and raises no error"
                     % key)
 
     def test_a_model_that_can_answer_a_badge_has_it_wired(self):
@@ -194,7 +194,7 @@ class EveryContextCarriesTheBadgesItsModelCanAnswer(AreaBindingCase):
             model = getattr(panel, BINDINGS[key]["grid"]).sourceModel()
             for badge, role_name in BADGE_ROLES.items():
                 if not role_name or delegates.BADGE[badge].equals or delegates.BADGE[badge].art_for:
-                    continue    # no role, or values of a shared one: a model having it says nothing
+                    continue    # no role, or values of a shared one: a model having it proves nothing
                 if not hasattr(model, role_name):
                     continue
                 if badge in expected:
@@ -202,7 +202,7 @@ class EveryContextCarriesTheBadgesItsModelCanAnswer(AreaBindingCase):
                 self.assertIn(
                     (key, badge),
                     (("cop", "versions"), ("gradient", "versions")),
-                    "%s's model answers %s but its tiles carry no %s "
+                    "%s's model has %s but its tiles show no %s "
                     "badge, and that is not one of the exceptions "
                     "this file records a reason for" % (key, role_name,
                                                         badge))
@@ -215,10 +215,10 @@ class EveryContextCarriesTheBadgesItsModelCanAnswer(AreaBindingCase):
         self.addCleanup(panel.leave_online_world)
         self.assertEqual(
             ONLINE_BADGES, set(panel.thumblist.itemDelegate().badges()),
-            "the online grid carries a badge no online record can fill")
+            "the online grid shows a badge no online record has data for")
 
     def test_the_table_and_the_expectations_name_the_same_badges(self):
-        """Keyed off `delegates.BADGES`, so a badge added to no section cannot pass unseen."""
+        """Keyed off `delegates.BADGES`, so a badge added to no section fails this test."""
         from amaze.panel import delegates
         self.assertEqual(
             {badge.name: badge.role for badge in delegates.BADGES}, BADGE_ROLES,
@@ -293,11 +293,11 @@ class TheToolbarFollowsTheContext(AreaBindingCase):
         self.assertGreater(
             outstanding, done,
             "the File section is showing the conversion bar with no "
-            "conversions outstanding, which means it inherited it from "
-            "the section before rather than raising it for its own work")
+            "conversions outstanding, so it kept it from "
+            "the previous section instead of showing it for its own work")
 
     def test_capture_is_offered_on_every_tab(self):
-        """Named, not looked up with a fallback: a pin that can skip is not a pin."""
+        """The button is named directly, not looked up with a fallback that could skip the check."""
         button = self.panel.btn_hip_capture
         for key in BINDINGS:
             with self.subTest(section=key):
@@ -316,8 +316,8 @@ class TheCommentsPaneFollowsTheContext(AreaBindingCase):
                 subject = panel._notes_subject()
                 self.assertTrue(
                     subject is None or isinstance(subject, str),
-                    "%s answered the Comments pane with %r, which is "
-                    "neither a key nor 'no subject'" % (key, subject))
+                    "%s returned %r for the Comments pane, which is "
+                    "neither a key nor None" % (key, subject))
                 if subject:
                     self.assertIn(
                         ":", subject,
@@ -327,7 +327,7 @@ class TheCommentsPaneFollowsTheContext(AreaBindingCase):
 
 
 class TheOnlineWorldBindsTheSameFourAreas(AreaBindingCase):
-    """The online world is parallel, not a view mode, but drives the same four widgets."""
+    """The online world is a separate mode, not a view mode, but uses the same four widgets."""
 
     def test_entering_binds_the_online_models_and_leaving_puts_back_yours(self):
         panel = self.activate("gradient")
@@ -346,11 +346,11 @@ class TheOnlineWorldBindsTheSameFourAreas(AreaBindingCase):
         for area in ("grid", "selection", "delegate", "sidebar"):
             self.assertIs(
                 after[area], before[area],
-                "coming back from the online world left the %s on "
+                "leaving the online world bound the %s to "
                 "something else" % area)
 
     def test_picking_a_source_resets_the_catalogue_ONCE(self):
-        """A loaded catalogue answers a source pick with one reset, showing that source."""
+        """Picking a source in a loaded catalogue resets the model once and shows that source."""
         from amaze.core import matx_sources
 
         panel = self.activate("material")
@@ -359,7 +359,7 @@ class TheOnlineWorldBindsTheSameFourAreas(AreaBindingCase):
         names = [source.name for source in online.sources[:2]]
         for attr in ("_all", "_loaded"):
             self.addCleanup(setattr, online, attr, getattr(online, attr))
-        online._generation += 1    # outdates any fetch still in flight, or it lands on the seed ▸p/seeded-catalogue
+        online._generation += 1    # invalidates any running fetch, or its result replaces the seed ▸p/seeded-catalogue
         online._all = [matx_sources.MatxRecord(
             source=name, uid="%s-%d" % (name, n), title="%s %d" % (name, n),
             category="Metal") for name in names for n in range(3)]
@@ -376,21 +376,21 @@ class TheOnlineWorldBindsTheSameFourAreas(AreaBindingCase):
                                       for row in range(online.rowCount())})
 
     def test_its_delegate_carries_no_role_the_online_model_lacks(self):
-        """Columns follow the active delegate's roles, so the online one carries only online roles."""
+        """Columns follow the active delegate's roles, so the online one has only online roles."""
         delegate = self.panel.matx_delegate
         model = self.panel.matx_online_model
         for role in ("_versions_role", "_licence_role", "_notes_role",
                      "_active_version_role", "_category_color_role"):
             self.assertFalse(
                 getattr(delegate, role, None),
-                "the online delegate carries %s, so the grid paints a "
-                "column no online record can fill" % role)
-        self.assertEqual(model.CategoryRole, delegate._category_role)  # ...and the roles it carries are the online model's, so it cannot pass by carrying none
+                "the online delegate has %s, so the grid paints a "
+                "column no online record has data for" % role)
+        self.assertEqual(model.CategoryRole, delegate._category_role)  # ...and the roles it has are the online model's, so it cannot pass by having none
         self.assertEqual(model.FavoriteRole, delegate._favorite_role)
         self.assertEqual(model.TagRole, delegate._tag_role)
 
     def test_entering_and_leaving_go_through_ONE_path(self):
-        """Entering and leaving run everything `_on_tab_toggled` does, so Capture and Comments follow."""
+        """Entering and leaving run everything `_on_tab_toggled` does, so Capture and Comments update."""
         panel = self.activate("file")
         self.addCleanup(self._restore)
         self.assertTrue(panel.btn_hip_capture.isEnabled(),
@@ -401,18 +401,18 @@ class TheOnlineWorldBindsTheSameFourAreas(AreaBindingCase):
         QtWidgets.QApplication.processEvents()
         self.assertFalse(
             panel.btn_hip_capture.isEnabled(),
-            "Capture is still live in the online world, where no tile "
-            "is in the library to keep one")
+            "Capture is still enabled in the online world, where no tile "
+            "is in the library to store a capture")
         self.assertFalse(panel.btn_hip_capture.isHidden(),
-                         "Capture left the toolbar online; it greys there")
+                         "Capture is hidden online; it should be greyed out")
         self.assertFalse(   # not `assertIsNone(panel._notes_subject())`: with no online rows it is None regardless
             panel.online_context.takes_comments,
-            "the online world claims a comment can be written against "
-            "an online record, which has no library asset to carry it")
+            "the online context allows a comment on "
+            "an online record, which has no library asset to store it")
 
 
 class TheOnlineWorldIsASKEDLikeAnySection(AreaBindingCase):
-    """Panel paths ask the online context like any section; `_is_online()` is left for world questions."""
+    """The panel calls the online context like any section; `_is_online()` only tests the mode."""
 
     def test_the_context_declares_every_verb_the_branches_relied_on(self):
         """Every verb a deleted branch relied on is still declared by the online context."""
@@ -420,7 +420,7 @@ class TheOnlineWorldIsASKEDLikeAnySection(AreaBindingCase):
         online = sections.OnlineContext
         self.assertEqual(
             "", online.search_hint,
-            "the online world wants a placeholder now, so deleting "
+            "the online world has a placeholder now, so deleting "
             "_sync_filter_placeholder's branch changed what is drawn")
         self.assertEqual(
             (), getattr(online, "SIDEBAR_MENU", None),
@@ -431,7 +431,7 @@ class TheOnlineWorldIsASKEDLikeAnySection(AreaBindingCase):
             self.assertIn(
                 verb, vars(online),
                 "OnlineContext does not declare %s, so the panel branch "
-                "deleted for it has nothing to land on and the online "
+                "deleted for it has nothing to call and the online "
                 "world silently does nothing" % verb)
 
     def test_the_sidebar_still_filters_the_catalogue_when_online(self):
@@ -455,18 +455,18 @@ class TheOnlineWorldIsASKEDLikeAnySection(AreaBindingCase):
         row = next((r for r in range(source_model.rowCount())
                     if source_model.category_at(r) == "Metal"), None)
         self.assertIsNotNone(
-            row, "the seeded category never reached the online sidebar, "
+            row, "the seeded category is not in the online sidebar, "
                  "so clicking it cannot prove anything")
         panel.online_context.select_category(source_model.index(row, 0))
         self.assertEqual(   # `_filters` is the proxy's own store: MultiFilterProxyModel offers no filter reader
             "Metal",
             panel.matx_sorted_model._filters.get(online.CategoryRole),
             "selecting an online category did not narrow the catalogue, "
-            "so the branch moved off the panel without arriving")
+            "so the code moved from the panel to OnlineContext is broken")
 
 
 class EveryTileDelegateIsSweptByEverySweep(AreaBindingCase):
-    """Tile delegates come from one accessor built from the sections, so every sweep reaches each."""
+    """`tile_delegates()` is built from the sections, so every loop over it reaches each delegate."""
 
     def test_every_sections_delegate_is_in_the_one_list(self):
         panel = self.panel
@@ -475,13 +475,13 @@ class EveryTileDelegateIsSweptByEverySweep(AreaBindingCase):
             with self.subTest(section=key):
                 self.assertIn(
                     getattr(panel, expected[key and "delegate"]), swept,
-                    "%s's delegate is not in the list every sweep walks, "
-                    "so it never hears about column widths or the accent"
+                    "%s's delegate is not in `tile_delegates()`, "
+                    "so it never gets column width or accent changes"
                     % key)
         self.assertEqual(
             len(set(id(d) for d in swept)), len(swept),
-            "the same delegate is in the list twice, so a sweep does its "
-            "work on it twice")
+            "the same delegate is in the list twice, so a loop updates "
+            "it twice")
 
 
 class TheBindingsAreDeclaredNotHandWritten(unittest.TestCase):
@@ -503,7 +503,7 @@ class TheBindingsAreDeclaredNotHandWritten(unittest.TestCase):
                     found.append("%s uses %s" % (name, wrapper))
         self.assertEqual(
             [], found,
-            "an import door puts the selection or the network editors "
+            "an import module puts the selection or the network editors "
             "back, which undoes what Houdini does for a new node: %s" % found)
 
 
@@ -534,7 +534,7 @@ class TheReleaseVerbsLiveOnTheirSections(unittest.TestCase):
 
 
 class EveryDoubleClickReachesTheClickWalker(unittest.TestCase):
-    """A double-click is the click walker's in every section, one added tomorrow included."""
+    """A double-click calls `click_on_row` in every section, including a newly added one."""
 
     def test_every_section_and_a_new_one_reach_the_walker(self):
         from amaze.panel import sections
@@ -556,7 +556,7 @@ class EveryDoubleClickReachesTheClickWalker(unittest.TestCase):
                 index = object()
                 section.double_click(index)
                 self.assertEqual([(section, index)], panel.walked,
-                                 "%s's double-click never reached the walker" % cls.__name__)
+                                 "%s's double-click never called `click_on_row`" % cls.__name__)
 
 
 if __name__ == "__main__":

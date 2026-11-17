@@ -1,4 +1,4 @@
-"""Octane 2026.6 materials built for real; plugin cases skip where Octane is absent."""
+"""Octane 2026.6 materials built in Houdini; plugin tests are skipped where Octane is not loaded."""
 
 import math
 import os
@@ -35,7 +35,7 @@ RED = (0.8, 0.05, 0.05)
 
 
 def _octane_builder(parent):
-    """Octane's own builder, made by Octane's own factory."""
+    """An Octane builder, made by Octane's `createMaskedOctaneSubnet`."""
     import octane_material_builder
     return octane_material_builder.createMaskedOctaneSubnet(target_node=parent)
 
@@ -103,7 +103,7 @@ class TheTileNamesAnOctaneShader(unittest.TestCase):
 
 
 class TheOctaneSamplesSetting(unittest.TestCase):
-    """Its own dial, like Karma's: Octane's path tracing counts samples on its own scale."""
+    """Its own setting, like Karma's: Octane's path tracing counts samples on its own scale."""
 
     def test_it_is_a_shared_setting_with_its_default_clamped_to_its_row(self):
         self.assertEqual(
@@ -119,7 +119,7 @@ class TheOctaneSamplesSetting(unittest.TestCase):
 
 
 class TheOctaneCheckFollowsTheHost(unittest.TestCase):
-    """Both polarities, so a green cannot mean `always True`."""
+    """Both outcomes are tested, so a check that is always True cannot pass."""
 
     def test_it_agrees_with_the_type_registry_and_reads_an_empty_one_as_absent(self):
         registered = hou.vopNodeTypeCategory().nodeType(OCTANE_SHADER) is not None
@@ -149,12 +149,12 @@ class WhatOctaneIgnoresIsJudgedByTheReadersDefaultTest(unittest.TestCase):
         self.assertEqual(1, len([line for line in said.skipped if "filtertype" in line]),
                          said.skipped)
         self.assertFalse(octane_reader.at_default(image, "filtertype"))
-        self.assertTrue(octane_reader.at_default(image, "no_such_parm"), "a parm it lacks")
+        self.assertTrue(octane_reader.at_default(image, "no_such_parm"), "a missing parm")
 
 
 @unittest.skipUnless(test_support.renderer_loaded("Octane"), "the Octane plugin is not loaded")
 class OctanesOwnBuilderIsAnOctaneMaterial(unittest.TestCase):
-    """Recognised by Octane's own marker, before any MaterialX walk."""
+    """Recognised by Octane's user-data marker, before any MaterialX check."""
 
     def setUp(self):
         self.builder = _octane_builder(hou.node("/mat"))
@@ -164,7 +164,7 @@ class OctanesOwnBuilderIsAnOctaneMaterial(unittest.TestCase):
         return nodes.NodeHandler(None).get_renderer_from_node(node)
 
     def test_the_marker_decides_and_materialx_inside_does_not(self):
-        """The other polarity: a MaterialX subnet stays Karma, a markless one stays refused."""
+        """The other outcome: a MaterialX subnet is Karma, an unmarked empty one is no renderer."""
         self.assertEqual("Octane", self._renderer(self.builder))
         image = self.builder.createNode("mtlximage")
         _shader(self.builder).setNamedInput("baseColor", image, 0)
@@ -179,11 +179,11 @@ class OctanesOwnBuilderIsAnOctaneMaterial(unittest.TestCase):
 
 @unittest.skipUnless(test_support.renderer_loaded("Octane"), "the Octane plugin is not loaded")
 class OctanesOwnBuilderRoundTrips(unittest.TestCase):
-    """Saved whole, as a MaterialX builder is, so it comes back as Octane's builder."""
+    """Saved as one node, as a MaterialX builder is, so it imports as Octane's builder."""
 
     @classmethod
     def setUpClass(cls):
-        test_support.pin_env(test_support.class_scope(cls), "OCIO", "/dev/null")    # save_node gates on $OCIO; nothing renders here
+        test_support.pin_env(test_support.class_scope(cls), "OCIO", "/dev/null")    # save_node requires $OCIO; nothing renders here
 
     def setUp(self):
         test_support.reset_database_singletons()
@@ -206,7 +206,7 @@ class OctanesOwnBuilderRoundTrips(unittest.TestCase):
     def _saved(self, node):
         held = test_support.asset_ids(self.model)
         renderer = material_actions.add_asset(self.model, node, "OctaneProbe", "", False)
-        self.assertEqual("Octane", renderer, "the save did not take it as Octane")
+        self.assertEqual("Octane", renderer, "the save did not detect it as Octane")
         saved, = test_support.arrived(self.model, held)
         return saved
 
@@ -253,14 +253,14 @@ class OctanesOwnBuilderRoundTrips(unittest.TestCase):
         self.assertIn("outputs:Octane:surface", outputs)
 
     def test_the_classic_container_is_saved_as_the_solaris_builder(self):
-        """`octane_vopnet` is rebuilt while saving; the library holds the Solaris builder alone."""
+        """`octane_vopnet` is rebuilt while saving; the library stores only the Solaris builder."""
         asset = self._saved(self.mat.createNode("octane_vopnet"))
         self.assertEqual(renderers.OCTANE.usd_builder, material_files.get_saved_node_type(
             self.prefs, asset, library_files.MATERIALS))
         self.assertEqual(renderers.OCTANE.usd_builder, self._imported(asset).type().name())
 
     def test_the_classic_container_is_rebuilt_on_its_way_into_solaris(self):
-        """Copy To /stage: the classic one becomes the Solaris builder, its shader kept."""
+        """Copy To /stage: the classic one is rebuilt as the Solaris builder, its shader kept."""
         classic = self.mat.createNode("octane_vopnet")
         classic.node("Standard_Surface").parmTuple("baseColor").set(RED)
         asset = self._saved(classic)
@@ -286,11 +286,11 @@ class OctanesOwnBuilderRoundTrips(unittest.TestCase):
 
 
 class AMarkedSubnetSavesWholeWithoutThePlugin(unittest.TestCase):
-    """Octane's mark alone routes the save and the import, so this runs where Octane is absent."""
+    """Octane's user-data mark alone decides the save and import, so this runs without Octane."""
 
     @classmethod
     def setUpClass(cls):
-        test_support.pin_env(test_support.class_scope(cls), "OCIO", "/dev/null")    # save_node gates on $OCIO; nothing renders here
+        test_support.pin_env(test_support.class_scope(cls), "OCIO", "/dev/null")    # save_node requires $OCIO; nothing renders here
 
     def setUp(self):
         test_support.reset_database_singletons()
@@ -316,7 +316,7 @@ class AMarkedSubnetSavesWholeWithoutThePlugin(unittest.TestCase):
         imported, = created
         self.addCleanup(imported.destroy)
         self.assertEqual("1", imported.userData(renderers.OCTANE.builder_mark),
-                         "the subnet was saved as its contents, so its mark stayed behind")
+                         "the subnet was saved as its contents, so its mark was lost")
         self.assertEqual([], [c.name() for c in imported.children()
                               if c.type().name() == "subnet"],
                          "the builder came back nested inside another subnet")
@@ -334,7 +334,7 @@ class TheOctaneThumbnailIsTheMaterialXStage(unittest.TestCase):
         self.prefs = test_support.fixture_prefs(self)
         self.prefs.octane_rendersamples = 77    # not 256: the default proves nothing
         self.scaffold = preview.build_usd_scaffold(self.prefs, "Octane")
-        self.assertIsNotNone(self.scaffold, "no scaffold with the OCIO seam patched")
+        self.assertIsNotNone(self.scaffold, "no scaffold with `ocio_from_viewer` patched")
         self.addCleanup(test_support.drop_node, self.scaffold["net"])
         self.settings = self.scaffold["render_props"]
 
@@ -353,7 +353,7 @@ class TheOctaneThumbnailIsTheMaterialXStage(unittest.TestCase):
             cap = preview.usd_scene.OCTANE_PATH_TRACING_CAP
             self.assertIn("pathtracing",
                           settings.parmTemplateGroup().containingFolder(cap).name(),
-                          "the cap written is another kernel's")
+                          "the cap parm set is another kernel's")
             self.assertEqual(77, settings.parm(cap).eval())
         with self.subTest("an ACEScg picture the size of the tile"):
             self.assertEqual("ACEScg", settings.parm(
@@ -378,7 +378,7 @@ class TheOctaneThumbnailIsTheMaterialXStage(unittest.TestCase):
         return upstream.stage()
 
     def test_karmas_stage_is_left_as_it_was(self):
-        """The other polarity: the edit and the EXR floor are Octane's alone."""
+        """The other outcome: the camera and light edits and the EXR floor apply to Octane only."""
         karma = preview.build_usd_scaffold(self.prefs, "Karma")
         self.addCleanup(test_support.drop_node, karma["net"])
         self.assertEqual("reference::2.0", karma["lib1"].inputs()[0].type().name())
@@ -420,7 +420,7 @@ class TheOctaneThumbnailIsTheMaterialXStage(unittest.TestCase):
         lib = self.scaffold["net"].createNode("materiallibrary")
         rebuilt = octane_api.classic_into(lib, vopnet)
         fed = rebuilt.node("octane_material").input(0)
-        self.assertIsNotNone(fed, "nothing feeds the rebuilt material")
+        self.assertIsNotNone(fed, "the rebuilt material has no input")
         self.assertEqual("Standard_Surface", fed.name())
         for got, want in zip(fed.parmTuple("baseColor").eval(), RED):
             self.assertAlmostEqual(want, got, places=5)

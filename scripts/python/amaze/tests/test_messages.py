@@ -1,4 +1,4 @@
-"""Dialog messages live in `messages.py` and match their callers ▸p/messages-need-one-home"""
+"""Dialog messages are in `messages.py` and match their callers ▸p/messages-need-one-home"""
 import ast
 import os
 import re
@@ -16,8 +16,8 @@ TEXT_KEYWORDS = {"text", "help", "buttons", "title", "message", "details", "deta
 SINKS = {"alert", "refuse", "status", "note"}    # read as `debug.<sink>(sentence)`
 BOX_STATICS = {"information", "warning", "critical", "question", "about"}
 BOX_SETTERS = {"setText", "setInformativeText", "setDetailedText", "setWindowTitle", "addButton"}
-WRAPPERS = {"str", "tuple", "list", "sorted", "Damage"}    # hand their argument's words through
-INTERFACE = ("panel", "dialogs", "utils")    # text followed past the call, and notes read, only here
+WRAPPERS = {"str", "tuple", "list", "sorted", "Damage"}    # return their argument's text
+INTERFACE = ("panel", "dialogs", "utils")    # only here: text traced through calls, notes checked
 
 PLACEHOLDER = re.compile(r"%[sdif]")
 FIELD = re.compile(r"%[-+ #0-9.]*[sdifr%]")
@@ -39,12 +39,12 @@ def _constants():
 
 
 def _worded(text) -> bool:
-    """A literal a reader takes for wording: a word of three letters once its `%` fields are out."""
+    """Whether a literal is wording: it holds a 3-letter word once its `%` fields are removed."""
     return isinstance(text, str) and bool(A_WORD.search(FIELD.sub("", text)))
 
 
 def _own(root):
-    """Every node of `root`'s own body; a nested def or class is a scope of its own."""
+    """Every node in `root`'s body, without descending into a nested def or class."""
     stack = list(ast.iter_child_nodes(root))
     while stack:
         node = stack.pop()
@@ -83,7 +83,7 @@ def _bindings(root) -> dict:
 
 
 def _callee(node):
-    """The name a call reaches inside its own module - `f(...)`, `self.f(...)`, `cls.f(...)`."""
+    """The name a call targets in its own module -`f(...)`, `self.f(...)`, `cls.f(...)`."""
     func = node.func if isinstance(node, ast.Call) else None
     if isinstance(func, ast.Name):
         return func.id
@@ -94,7 +94,7 @@ def _callee(node):
 
 
 class _Module:
-    """One module's scopes, so a dialog's text is followed back to the literal it came from."""
+    """One module's scopes, so a dialog's text is traced back to the literal it came from."""
 
     def __init__(self, tree, follow: bool) -> None:
         self.follow = follow
@@ -115,7 +115,7 @@ class _Module:
                     self.calls.setdefault(_callee(node), []).append((node, root, local))
 
     def words(self, expr, root, local, seen=frozenset()) -> str:
-        """The longest wording one of this module's literals gives `expr`; "" when none reaches it."""
+        """The longest worded literal of this module that `expr` can take; `""` when there is none."""
         if isinstance(expr, ast.Constant):
             return expr.value if _worded(expr.value) else ""
         parts, texts = [], []
@@ -125,7 +125,7 @@ class _Module:
         elif isinstance(expr, ast.BinOp):
             parts = [expr.left, expr.right]
             if not self.follow and isinstance(expr.op, ast.Mod):
-                parts = [expr.left]    # outside the interface a template's arguments are not read
+                parts = [expr.left]    # outside INTERFACE a template's arguments are not checked
         elif not self.follow:
             pass
         elif isinstance(expr, ast.BoolOp):
@@ -161,11 +161,11 @@ class _Module:
         return [self.words(value, root, local, seen)]
 
     def _called(self, call, root, local, seen) -> list:
-        """A call's words: a join's items, a wrapper's argument, a callback's, or what returns."""
+        """A call's text: a join's items, a wrapper's or callback's argument, or what it returns."""
         func, args = call.func, call.args
         name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
         if isinstance(func, ast.Attribute) and name == "join":
-            args = args[:1]    # the separator is glue, never wording
+            args = args[:1]    # the separator is never wording
         elif isinstance(func, ast.Attribute) and name in ("format", "strip", "rstrip", "lstrip"):
             args = [func.value] + list(args)
         elif name in WRAPPERS:
@@ -173,7 +173,7 @@ class _Module:
         elif self.follow and _callee(call) in self.functions:
             return self._returned(_callee(call), None, seen)
         elif not (self.follow and isinstance(func, ast.Name) and self._parameter(func.id, root)):
-            return []    # another module's answer; a callback handed in hands its argument on
+            return []    # another module's result; a callback parameter passes its argument on
         return [self.words(arg, root, local, seen) for arg in args]
 
     def _returned(self, name, at, seen) -> list:
@@ -205,7 +205,7 @@ class _Module:
         return name in [a.arg for a in args.posonlyargs + args.args + args.kwonlyargs]
 
     def _named(self, name, root, local, seen) -> list:
-        """A name's words: what its scope binds it to, its callers' arguments, or the module's."""
+        """A name's text: what its scope binds it to, its callers' arguments, or the module's."""
         key = ("name", name, id(root))
         if key in seen:
             return []
@@ -264,7 +264,7 @@ def _texts(call, boxes, interface) -> list:
 
 
 def _spelled_messages(tree, where: str = "panel") -> list:
-    """[(line, words)] for each dialog in `tree` whose text carries words of its own module."""
+    """[(line, words)] for each dialog in `tree` whose text holds a literal of its own module."""
     interface = where.replace("\\", "/").split("/")[0] in INTERFACE
     module = _Module(tree, follow=interface)
     found = []
@@ -283,7 +283,7 @@ def _spelled_messages(tree, where: str = "panel") -> list:
 
 
 class NoDialogSpellsItsOwnMessage(unittest.TestCase):
-    """A message written at the call site is a second home for words, out of reach of a Figma edit."""
+    """A message written at the call site is not in messages.py, so a Figma edit cannot change it."""
 
     def test_no_message_literal_survives_at_a_call_site(self):
         offenders = []
@@ -298,11 +298,11 @@ class NoDialogSpellsItsOwnMessage(unittest.TestCase):
                 offenders.append("%s:%d  %r" % (where, line, words[:48]))
         self.assertEqual(
             [], offenders,
-            "a dialog spells its own message instead of taking one from "
-            "messages.py - a Figma edit can never reach it:\n  "
+            "a dialog writes its own message instead of taking one from "
+            "messages.py - a Figma edit can never change it:\n  "
             + "\n  ".join(offenders))
 
-    SEEN = (    # every shape a dialog's words have been spelled in, each reported once
+    SEEN = (    # every form a dialog's text has been written in, each reported once
         'ui.displayMessage("a sentence long enough")',
         'ui.displayMessage("a sentence long enough %s" % x)',
         'ui.displayMessage("Amaze: " + reason)',
@@ -329,7 +329,7 @@ class NoDialogSpellsItsOwnMessage(unittest.TestCase):
         'def f(say):\n    failures = ["a failed: why"]\n'
         '    ui.displayMessage(say("\\n".join(failures)))',
     )
-    UNSEEN = (    # words that are the register's, data, or glue
+    UNSEEN = (    # text from messages.py, data, or separators
         'ui.displayMessage(messages.X % "\\n".join(x))',
         'ui.displayMessage(messages.X % (n, "s" if n != 1 else ""), buttons=messages.B)',
         'ui.displayMessage(messages.X % (snap["when"], db.section_label("library.json")))',
@@ -345,7 +345,7 @@ class NoDialogSpellsItsOwnMessage(unittest.TestCase):
         for shape in self.UNSEEN:
             with self.subTest(shape=shape):
                 self.assertEqual([], _spelled_messages(ast.parse(shape)),
-                                 "words that are not the call's own were flagged")
+                                 "text not written at the call site was flagged")
         self.assertEqual([], _spelled_messages(ast.parse(
             'debug.note("a sentence long enough")'), "core/x.py"),
             "a core note was read as dialog text")
@@ -422,7 +422,7 @@ class ThePlaceholdersAgreeWithTheCallers(unittest.TestCase):
 
 
 class EveryMessageBoxSaysWhoAndHowBad(unittest.TestCase):
-    """Houdini's own box: a title (else it reads `Houdini`), a severity, and a list in `details`."""
+    """`displayMessage`: a title (else it shows `Houdini`), a severity, and a list in `details`."""
 
     def _calls(self):
         for path in _sources():
@@ -440,7 +440,7 @@ class EveryMessageBoxSaysWhoAndHowBad(unittest.TestCase):
         self.assertEqual([], bare)
 
     def test_no_message_carries_a_joined_list_in_its_text(self):
-        """`messages.X % (..., "\\n".join(rows))` is a list in the body: it goes to details=."""
+        """`messages.X % (..., "\\n".join(rows))` is a list in the body: it belongs in details=."""
         def joins(node):
             return any(isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
                        and n.func.attr == "join" for n in ast.walk(node))
@@ -450,7 +450,7 @@ class EveryMessageBoxSaysWhoAndHowBad(unittest.TestCase):
         self.assertEqual([], listed)
 
 class AListUnderShowDetailsEndsItsSentence(unittest.TestCase):
-    """The list sits under Show Details, so the sentence before it ends in a period."""
+    """The list is under Show Details, so the sentence before it ends in a period."""
 
     def test_no_summary_points_at_a_list_with_a_colon(self):
         for name in ("AMAZE_COULD_NOT", "SCENE_BUILD_PARTIAL_FAILURE", "MATERIALS_NOT_UPDATED",
@@ -513,4 +513,4 @@ class CheckLibrarySaysWhereFilesGo(unittest.TestCase):
         wired = open(os.path.join(_PKG, "panel", "panel.py"), encoding="utf-8").read()
         for action in root.iter("action"):
             self.assertIn("self.ui." + action.get("name"), wired,
-                          "%s is declared and nothing in the panel reaches it" % action.get("name"))
+                          "%s is declared and panel.py never uses it" % action.get("name"))

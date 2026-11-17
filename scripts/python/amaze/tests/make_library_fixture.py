@@ -33,7 +33,7 @@ DATE = "2026-01-27 20:07:06"   # fixed, so a rerun does not rewrite every row th
 
 
 def sentinel_row() -> dict:
-    """The id -1 row the real format carries at the head of the list."""
+    """The id -1 row the real format has first in the list."""
     return {"id": "-1", "name": "", "categories": [], "tags": [""],
             "date": -1, "renderer": "", "usd": 0}
 
@@ -54,7 +54,7 @@ def build_material(parent: hou.Node, name: str, colour) -> hou.Node:
 
 
 def save_pair(builder: hou.Node, asset_id: str, folder: str) -> None:
-    """The .mat and the builder of `<id>.json`, the type alone as format 3 left it. ▸p/asset-write-unit"""
+    """Write the .mat and `<id>.json` with only the builder type, as format 3 did. ▸p/asset-write-unit"""
     document = {"format": asset_record.FORMAT,
                 "builder": {"type": builder.type().name(), "interface": "", "values": {}}}
     with open(os.path.join(folder, asset_id + ".json"), "wb") as handle:
@@ -90,7 +90,7 @@ def main() -> int:
     for asset_id, name, _category, colour in MATERIALS:
         builder = build_material(parent, name, colour)
         save_pair(builder, asset_id, assets)
-        thumb = os.path.join(assets, asset_id + ".png")    # the asset's one picture, beside its files
+        thumb = os.path.join(assets, asset_id + ".png")    # the asset's only thumbnail, in the folder with its files
         make_thumbnail(thumb, colour)
         builder.destroy()
         written += [os.path.join(assets, asset_id + ".mat"),
@@ -98,7 +98,7 @@ def main() -> int:
                     thumb]
         print("%s  %s" % (asset_id, name))
 
-    if not prefs.create_library(OUT):    # DataBase.json through the creation door
+    if not prefs.create_library(OUT):    # writes DataBase.json through `prefs.create_library`
         print("REFUSED: the library could not be created")
         return 1
     rows = [sentinel_row()] + [asset_row(i, n, c) for i, n, c, _colour in MATERIALS]

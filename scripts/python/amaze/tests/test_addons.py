@@ -1,4 +1,4 @@
-"""Add-on packages: the one writer, the refusing reader, the whole-folder installer, the carry."""
+"""Add-on packages in `addons.py`: `write`, the validating `read`, `install` and `carry`."""
 
 import json
 import os
@@ -242,8 +242,8 @@ class TheInstallerTest(_Workspace):
         addons.install(self.package(folder="any_tool"), self.amaze, running=(22, 0, 466))
         with open(addons.package_file(self.amaze, "any_tool"), encoding="utf-8") as handle:
             self.assertEqual({"hpath": ["$HOUDINI_PACKAGE_PATH/any_tool"]}, json.load(handle),
-                             "no `load_package_once`: it does not reach a startup folder's copy "
-                             "from a package_path folder, and a later copy carrying it suppresses "
+                             "no `load_package_once`: it does not apply to a startup folder's copy "
+                             "from a package_path folder, and a later copy that has it suppresses "
                              "an earlier one of the same name ▸r/load-package-once")
 
     def test_an_update_replaces_the_folder_whole(self):
@@ -252,7 +252,7 @@ class TheInstallerTest(_Workspace):
         shutil.rmtree(self.root)
         addons.install(self.package(version="1.3.0"), self.amaze, running=(22, 0, 466))
         self.assertFalse(os.path.exists(os.path.join(self._folder(), "scripts", "python", "old.py")),
-                         "a file the new version dropped stayed behind")
+                         "a file removed in the new version is still installed")
         self.assertEqual("1.3.0", addons.installed(self.amaze, "example")["version"])
 
     def test_an_older_houdini_is_refused_and_nothing_changes(self):
@@ -297,7 +297,7 @@ class TheInstallerTest(_Workspace):
         with mock.patch.object(addons, "MAX_UNPACKED_BYTES", listed):
             addons.install(path, self.amaze, running=(22, 0, 466))
         self.assertEqual("1.3.0", addons.installed(self.amaze, "example")["version"],
-                         "an add-on of exactly the cap was refused")
+                         "an add-on exactly at the size limit was rejected")
 
     def test_an_install_reads_no_member_whole(self):
         reads, whole = [], zipfile.ZipFile.read
@@ -408,7 +408,7 @@ class TheStoreTest(_ThreeRows):
 
 
     def test_the_download_lands_in_houdinis_temp_dir(self):
-        """Houdini's scratch, as the thumbnail jobs use, not Python's own."""
+        """Downloads go to `HOUDINI_TEMP_DIR`, as the thumbnail jobs do, not tempfile's default."""
         import hou
         houdini_temp = os.path.join(self.dir, "houdini_temp")
         os.makedirs(houdini_temp)
@@ -428,7 +428,7 @@ class TheStoreTest(_ThreeRows):
                 [("Example", "1.3.0", "https://example.invalid/addons/Example-1.3.0.amazepkg")],
                 self.amaze)
         self.assertEqual(houdini_temp, os.path.dirname(os.path.dirname(landed[0])))
-        self.assertEqual([], os.listdir(houdini_temp), "the scratch folder was left behind")
+        self.assertEqual([], os.listdir(houdini_temp), "the temporary folder was not removed")
 
     def test_an_esc_during_the_download_installs_nothing_and_says_so(self):
         """The download runs under Esc with a progress bar; the install that follows never does."""
@@ -465,7 +465,7 @@ class TheStoreTest(_ThreeRows):
         self.assertIsNone(addons.installed(self.amaze, "example"), "a stopped download installed")
 
     def test_an_esc_after_one_add_on_says_which_one_did_install(self):
-        """A stop on the second download leaves the first installed, and the sentence says so."""
+        """A stop on the second download leaves the first installed, and the message names it."""
         import hou
         calls = []
 
@@ -531,7 +531,7 @@ class AnAmazeUpdateKeepsItsAddOnsTest(_Workspace):
                       for name in names if addons.ROOT in folder.split(os.sep))
 
     def test_a_carry_that_fails_refuses_the_update_and_keeps_the_old_install(self):
-        """The refusal names its reason, the old install stays whole, the next update carries."""
+        """The OSError has the reason, the old install is kept, the next update copies them."""
         test_support.write_text(os.path.join(self.amaze, "scripts", "which.txt"), "1.0")
         test_support.write_text(os.path.join(self.amaze, self.HOME_MADE), "a home-made add-on")
         real, calls = addons.carry, []
@@ -546,14 +546,14 @@ class AnAmazeUpdateKeepsItsAddOnsTest(_Workspace):
             with self.assertRaises(OSError) as refused:
                 updater.apply_update(self._release("staged1", "1.1"), self.amaze)
             self.assertIn("add-ons", str(refused.exception))
-            self.assertIn("Permission denied", str(refused.exception), "the refusal lost its reason")
-            self.assertEqual("1.0", self._which(), "a refused update still replaced the install")
+            self.assertIn("Permission denied", str(refused.exception), "the OSError lost its reason")
+            self.assertEqual("1.0", self._which(), "a failed update still replaced the install")
             self.assertEqual([os.path.join("Amaze", self.HOME_MADE)], self._add_on_files(),
-                             "a refused update moved the add-ons out of the install")
+                             "a failed update moved the add-ons out of the install")
             updater.apply_update(self._release("staged2", "1.2"), self.amaze)
         self.assertEqual("1.2", self._which())
         self.assertEqual([os.path.join("Amaze", self.HOME_MADE)], self._add_on_files(),
-                         "after the next update the add-ons are not in the install alone")
+                         "after the next update the add-ons are not only in the install")
 
     def test_a_leftover_beside_the_install_gives_its_add_ons_back_before_it_goes(self):
         """`<install>.replacing` from an older build can hold the only copy of the add-ons."""
@@ -575,12 +575,12 @@ class AnAmazeUpdateKeepsItsAddOnsTest(_Workspace):
             with self.assertRaises(OSError):
                 updater.apply_update(self._release("staged", "1.2"), self.amaze)
         self.assertEqual([os.path.join("Amaze.replacing", self.HOME_MADE)], self._add_on_files(),
-                         "a leftover holding add-ons was deleted without carrying them")
+                         "a leftover holding add-ons was deleted without copying them")
         self.assertEqual("1.1", self._which())
 
 
 class TheCarryTest(_Workspace):
-    """`carry` copies what a new tree lacks; the old install keeps its add-ons until it goes."""
+    """`carry` copies what a new tree lacks; the old install keeps its add-ons until deleted."""
 
     def setUp(self):
         super().setUp()
@@ -598,9 +598,9 @@ class TheCarryTest(_Workspace):
         test_support.write_text(os.path.join(self.new, addons.ROOT, "a", "otls", "a.hda"), "installed since")
         addons.carry(self.amaze, self.new)
         with open(os.path.join(self.new, addons.ROOT, "a", "otls", "a.hda"), encoding="utf-8") as fh:
-            self.assertEqual("installed since", fh.read(), "the carry wrote over an add-on there")
+            self.assertEqual("installed since", fh.read(), "`carry` overwrote an add-on in the new tree")
         self.assertEqual(self._tree(self.amaze), self._tree(self.new))
-        self.assertEqual(4, len(self._tree(self.amaze)), "the carry emptied the old tree")
+        self.assertEqual(4, len(self._tree(self.amaze)), "`carry` emptied the old tree")
 
     def test_a_carry_that_dies_part_way_takes_back_what_it_copied(self):
         real = shutil.copytree
@@ -617,8 +617,8 @@ class TheCarryTest(_Workspace):
             with self.assertRaises(OSError) as failed:
                 addons.carry(self.amaze, self.new)
         self.assertEqual("[Errno 28] No space left on device", str(failed.exception),
-                         "the reason reads as copytree's list rather than its first cause")
-        self.assertEqual([], self._tree(self.new), "a failed carry left part of the add-ons behind")
+                         "the message is copytree's error list, not its first cause")
+        self.assertEqual([], self._tree(self.new), "a failed `carry` left part of the add-ons in the new tree")
         self.assertFalse(os.path.exists(os.path.join(self.new, addons.ROOT)))
         self.assertEqual(4, len(self._tree(self.amaze)), "a failed carry lost add-on files")
 
@@ -635,7 +635,7 @@ class ThePackageTemplateTest(unittest.TestCase):
                          "package_path cannot use $AMAZE, so it repeats the folder in full")
 
     def test_the_template_loads_one_amaze_when_two_package_files_carry_its_name(self):
-        """Houdini loads the first `Amaze.json` carrying `load_package_once` ▸r/load-package-once."""
+        """Houdini loads the first `Amaze.json` that has `load_package_once` ▸r/load-package-once."""
         with open(os.path.join(REPO, "Amaze.json"), encoding="utf-8") as handle:
             template = json.load(handle)
         self.assertIs(True, template.get("load_package_once"))

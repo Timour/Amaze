@@ -39,7 +39,7 @@ def _literals(path):
     try:
         tree = ast.parse(source)
     except SyntaxError:
-        return []                # not ours to police; py_compile owns syntax
+        return []                # py_compile catches syntax errors
     docs = set()
     for node in ast.walk(tree):
         if isinstance(node, (ast.Module, ast.ClassDef,
@@ -59,7 +59,7 @@ def _waiver(path, label):
 
 def _package_modules():
     for root, dirs, files in os.walk(PACKAGE):
-        dirs[:] = [d for d in dirs if d != "tests"]    # RETIRED lives here
+        dirs[:] = [d for d in dirs if d != "tests"]    # RETIRED is defined here
         for name in sorted(files):
             if name.endswith(".py"):
                 yield os.path.join(root, name)

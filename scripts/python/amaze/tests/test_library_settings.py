@@ -56,7 +56,7 @@ class ThePolicyTest(_Library):
         self.assertTrue(library_settings.allow_overwrite(self.prefs))
         self.assertTrue(library_settings.set_allow_overwrite(self.prefs, False))
         self.assertFalse(library_settings.allow_overwrite(self.prefs))
-        self.assertFalse(library_settings.allow_overwrite(self.dir), "the folder's answer differs")
+        self.assertFalse(library_settings.allow_overwrite(self.dir), "the folder's value differs")
         self.assertEqual({"value": False}, {
             key: value for key, value in self.master()["policy"]["allow_overwrite"].items()
             if not key.startswith("_")})

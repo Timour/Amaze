@@ -1,4 +1,4 @@
-"""Documents: a user's changes, two users merged, bursts as one save, refusals that hold."""
+"""`documents.py`: per-user changes, two users merged, many changes in one save, blocked writes."""
 
 import datetime
 import json
@@ -8,7 +8,7 @@ import tempfile
 import unittest
 
 from amaze.core import documents, guard
-from amaze.tests import test_support  # noqa: F401 - arms the sandbox for a run on its own
+from amaze.tests import test_support  # noqa: F401 - enables the sandbox when this file runs alone
 
 MATERIALS = "materials.json"
 ASSETS, COMMENTS, STARS = "assets", "comments", "favorites"
@@ -126,7 +126,7 @@ class TwoUsersAtOnceTest(_Two):
         self.assertEqual("Erik's name", self.both_save()[ASSETS]["A1"]["name"])
         self.assertEqual([documents.Collision(MATERIALS, ASSETS, "A1", "name", ANNA)],
                          self.erik.take_collisions())
-        self.assertEqual([], self.erik.take_collisions(), "a collision is handed over once")
+        self.assertEqual([], self.erik.take_collisions(), "`take_collisions` returned a collision twice")
 
     def test_an_edit_outranks_a_removal(self):
         self.anna.drop(ASSETS, "A2")
@@ -186,7 +186,7 @@ class TwoUsersAtOnceTest(_Two):
         self.assertTrue(self.anna.save())
         self.assertTrue(self.erik.refresh())
         self.assertEqual("Changed", self.erik.get(ASSETS, "A1")["name"])
-        self.assertFalse(self.erik.refresh(), "nothing moved since")
+        self.assertFalse(self.erik.refresh(), "nothing changed on disk since")
         self.assertFalse(self.erik.dirty)
 
 
@@ -216,11 +216,11 @@ class ABurstIsOneSaveTest(_Two):
         disk.reads = 0
         for number in range(20):
             document.put(ASSETS, "B%d" % number, {"name": "burst %d" % number})
-        self.assertEqual(20, len(asked), "each change asks the caller's timer")
-        self.assertEqual((0, 0), (disk.reads, disk.swaps), "and nothing is written until it fires")
+        self.assertEqual(20, len(asked), "each change calls the caller's `defer`")
+        self.assertEqual((0, 0), (disk.reads, disk.swaps), "and nothing is written until the deferred save runs")
         self.assertTrue(asked[-1]())
         self.assertEqual((1, 1), (disk.reads, disk.swaps))
-        self.assertEqual(documents.UNCHANGED, asked[0]().reason, "a second firing has nothing left")
+        self.assertEqual(documents.UNCHANGED, asked[0]().reason, "a second deferred save has nothing to write")
         self.assertEqual(22, len(self.on_disk()[ASSETS]))
 
     def test_flush_saves_what_is_waiting_and_only_that(self):
@@ -235,7 +235,7 @@ class ABurstIsOneSaveTest(_Two):
 
 
 class ARowAndItsFilesTest(_Two):
-    """A change held back saves with the files it belongs to, in one unit."""
+    """A change made inside `holding()` is saved together with its files, in one commit."""
 
     def test_a_held_change_waits_and_lands_with_its_files(self):
         asked = []
@@ -243,7 +243,7 @@ class ARowAndItsFilesTest(_Two):
         document = library.document(MATERIALS)
         with library.holding():
             document.put(ASSETS, "A9", {"name": "saved with its file"})
-        self.assertEqual([], asked, "a held change never asks the timer")
+        self.assertEqual([], asked, "a change inside `holding()` never calls `defer`")
         saved = document.save(also=lambda change: change.put_file("materials/A9.mat", b"nodes"))
         self.assertTrue(saved)
         self.assertIn("A9", self.on_disk()[ASSETS])
@@ -287,7 +287,7 @@ class RefusalsHoldTest(_Two):
                 handle.write(broken)
             self.anna.refresh()
             self.assertEqual({"A1", "A2"}, set(self.anna.table(ASSETS)),
-                             "a refresh blanked what was held")
+                             "a refresh emptied the data in memory")
             self.assertFalse(self.anna.writable)
             self.assertFalse(self.anna.put(ASSETS, "A9", {"name": "refused"}))
         os.remove(self.path())
@@ -314,7 +314,7 @@ class RefusalsHoldTest(_Two):
         saved = self.anna.save()
         self.assertEqual((False, guard.CORRUPT), (saved.ok, saved.reason))
         self.assertEqual(b"half a fi", open(self.path(), "rb").read())
-        self.assertEqual("mine", self.anna.get(ASSETS, "A9")["name"], "the change is still held")
+        self.assertEqual("mine", self.anna.get(ASSETS, "A9")["name"], "the change is still in memory")
 
     def test_a_file_that_vanished_is_not_made_again_from_memory(self):
         self.anna.put(ASSETS, "A9", {"name": "mine"})

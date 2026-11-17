@@ -36,14 +36,14 @@ class TheToolbarIsATable(unittest.TestCase):
                 self.assertTrue(
                     hasattr(sections.Section, fact),
                     "%s follows %r, which no context declares - so every "
-                    "context answers the default and the control never "
+                    "context returns the default and the control never "
                     "changes" % (control, fact))
         listed = {control for control, _f, _v in table}
         for control in ("cb_favsonly", "btn_notes", "btn_filter",
                         "btn_hip_capture"):
             self.assertIn(control, listed,
-                          "%s no longer follows the context table, so it "
-                          "silently stops following its context" % control)
+                          "%s is missing from `TOOLBAR_CONTROLS`, so it "
+                          "no longer changes with the active section" % control)
 
 
 class EveryContextDeclaresWhatItOffers(unittest.TestCase):
@@ -75,11 +75,11 @@ class EveryContextDeclaresWhatItOffers(unittest.TestCase):
                      and issubclass(getattr(sections, name), sections.Section)
                      and not getattr(sections, name).takes_capture]
         self.assertEqual(["OnlineContext"], declining,
-                         "Capture is withheld by %s" % declining)
+                         "Capture is disabled in %s" % declining)
 
 
 class TheToolbarFollowsTheContextLive(unittest.TestCase):
-    """Driven through a real panel - the table is only worth having if walking it moves the widgets."""
+    """Run on a real panel - the table is only useful if applying it changes the widgets."""
 
     @classmethod
     def setUpClass(cls):
@@ -122,15 +122,15 @@ class TheToolbarFollowsTheContextLive(unittest.TestCase):
                               "nothing")
         for control, fact, verb in AmazePanel.TOOLBAR_CONTROLS:
             with self.subTest(control=control):
-                if control == "btn_filter":    # the one exception: online the eye carries the kind filter, re-enabled by the sync block
+                if control == "btn_filter":    # the one exception: online the eye button holds the kind filter, re-enabled by the sync block
                     self.assertTrue(
                         self._state(control, verb),
-                        "the eye is dead in the online world - the "
-                        "kind filter lives on it there")
+                        "the eye is disabled in the online world - the "
+                        "kind filter is on that button there")
                     continue
                 self.assertEqual(
                     getattr(context, fact), self._state(control, verb),
-                    "%s is live in the online world, where it has "
+                    "%s is enabled in the online world, where it has "
                     "nothing to act on" % control)
         for control, _fact, verb in AmazePanel.TOOLBAR_CONTROLS:
             if verb != "enabled":
@@ -139,8 +139,8 @@ class TheToolbarFollowsTheContextLive(unittest.TestCase):
                 self.assertFalse(
                     getattr(panel, control).isHidden(),
                     "%s is HIDDEN in the online world - a control the "
-                    "table answers by enabled-ness greys out there, it "
-                    "does not vanish" % control)
+                    "table sets by enabled-ness is greyed out there, "
+                    "not hidden" % control)
 
     def _restore(self):
         panel = self.panel
@@ -150,7 +150,7 @@ class TheToolbarFollowsTheContextLive(unittest.TestCase):
 
 
 class TheToolbarStandsOnItsFrame(unittest.TestCase):
-    """The toolbar's height, edges, gaps and controls land where B01 draws them. ▸r/toolbar-from-frame"""
+    """The toolbar's height, edges, gaps and controls match frame B01. ▸r/toolbar-from-frame"""
 
     @classmethod
     def setUpClass(cls):
@@ -209,7 +209,7 @@ class TheToolbarStandsOnItsFrame(unittest.TestCase):
                          "the label does not start where it is drawn")
 
     def test_the_box_and_the_gear_are_where_they_are_drawn(self):
-        """Right of the label positions move with the font, so the box is held by its gap."""
+        """Right of the label positions move with the font, so the box is checked by its gap."""
         label = self._widget("filter_label").geometry()
         field, box = self.node[("field", "line_filter")], self._widget("line_filter").geometry()
         drawn_label = self.node[("label", "filter_label")]

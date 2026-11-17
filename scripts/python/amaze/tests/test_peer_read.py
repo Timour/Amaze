@@ -1,4 +1,4 @@
-"""`hostos.peer_read` - the ONE freshness check every merge path uses."""
+"""`hostos.peer_read` - the only check every merge path uses for whether a file changed on disk."""
 
 import json
 import os
@@ -52,7 +52,7 @@ class PeerReadTest(unittest.TestCase):
         self.assertEqual(first.fingerprint, again.fingerprint)
 
     def test_a_same_size_edit_is_caught(self):
-        """Same size, different content; not a discriminator, as APFS moves the mtime too. ▸r/peer-read"""
+        """Same size, different content; not a discriminator, as APFS sets the mtime too. ▸r/peer-read"""
         self._write({"a": 1})
         first = self._read()
         self._write({"a": 2})
@@ -67,13 +67,13 @@ class PeerReadTest(unittest.TestCase):
                 self._write(None, raw=raw)
                 answer = self._read()
                 self.assertEqual(hostos.PEER_UNREADABLE, answer.verdict,
-                                 "a caller told 'nothing changed' would write over it")
+                                 "a caller that reads `unchanged` would overwrite the file")
                 self.assertIsNone(answer.document)
                 self.assertTrue(answer.error,
-                                "the refusal names no cause, so the log cannot either")
+                                "`answer.error` is empty, so the log cannot name a cause")
 
     def test_fingerprint_of_matches_peer_read_without_parsing(self):
-        """The identity door for a caller that does not want the document."""
+        """`fingerprint_of` gives the fingerprint to a caller that does not need the document."""
         for raw in (json.dumps({"a": 1}).encode("utf-8"), b"{ this is not json"):
             with self.subTest(raw=raw):
                 self._write(None, raw=raw)

@@ -1,4 +1,4 @@
-"""Per-device view state is one user's: flat while nobody, a block once somebody is chosen."""
+"""Per-device view state: top-level keys while no user is picked, the user's block once one is."""
 
 import json
 import os
@@ -92,8 +92,8 @@ class TwoUsersKeepTheirOwnViewState(PerUserCase):
         p.library_user = UID_B
         self.assertEqual(0.75, p.scroll_speed,
                          "a key the incoming block lacks kept the "
-                         "previous user's value - one arrangement "
-                         "bled into another")
+                         "previous user's value - one user's layout "
+                         "leaked into another's")
 
     def test_a_switch_snapshots_unsaved_changes_first(self):
         self.write_settings({
@@ -114,7 +114,7 @@ class TwoUsersKeepTheirOwnViewState(PerUserCase):
 
 
 class OneLayoutIsReadAndWritten(PerUserCase):
-    """With a user picked their view state is their block's alone; keys it does not know stay put."""
+    """With a user picked, view state comes only from their block; unknown keys stay in the file."""
 
     def test_a_flat_value_beside_a_picked_user_is_not_read(self):
         self.write_settings({
@@ -135,7 +135,7 @@ class OneLayoutIsReadAndWritten(PerUserCase):
         self.write_settings(dict(older, users={}))
         p = self.prefs()
         p.load()
-        self.assertEqual("", p.library_user, "an older key named the user")
+        self.assertEqual("", p.library_user, "an older key set the user")
         self.assertEqual(256, p.rendersize, "a flat shared key was read")
         self.assertEqual("", p.section_filter("material"))
         p.save()
@@ -167,7 +167,7 @@ class OneLayoutIsReadAndWritten(PerUserCase):
 class PerUserSettingsHaveOneHome(PerUserCase):
 
     def test_nobody_picked_reads_and_writes_no_per_user_setting(self):
-        """Per-user settings live in a user's block alone: none is read or written outside one."""
+        """Per-user settings are only in a user's block: none is read or written outside one."""
         self.write_settings({"view_mode": "list", "thumbsize": 300})
         p = self.prefs()
         p.load()
@@ -227,13 +227,13 @@ class ABlocksUnknownKeysSurviveTheRebuild(PerUserCase):
         block = self.read_settings()["users"][UID_A]
         self.assertEqual(7, block.get("future_key"),
                          "rebuilding the block dropped a key a newer "
-                         "build wrote - the courtesy must hold at "
+                         "build wrote - unknown keys must be kept at "
                          "block level too")
         self.assertEqual(200, block.get("thumbsize"))
 
 
 class TheCopiesFollowTheirUser(PerUserCase):
-    """The last-known File copies are per-user state: in the block once somebody, flat while nobody."""
+    """The last-known File copies are per-user state: in the user's block, top-level with no user."""
 
     FLAT = {
         "library_user": UID_A,
@@ -259,7 +259,7 @@ class TheCopiesFollowTheirUser(PerUserCase):
 
 
 class ASaveAsksTheDiskOnlyAboutPathsItCouldReHome(PerUserCase):
-    """A settings save asks the disk about a File copy's path only when it lies under a home folder."""
+    """A settings save checks a File copy's path on disk only when it is under a home folder."""
 
     SHARE = "/Volumes/AmazeProbeShare/projects"
 
@@ -336,18 +336,18 @@ class ASaveAsksTheDiskOnlyAboutPathsItCouldReHome(PerUserCase):
             os.makedirs(os.path.join(here, "job"))
             p.save()
         self.assertEqual([here + "/job/"], list(p.last_known_folders),
-                         "a save kept a dead path after its folder appeared here")
+                         "a save kept the old path after its folder appeared here")
 
 
 class DeletingAUserDropsTheirBlock(PerUserCase):
-    """A deleted user's view state leaves settings.json with them, and every other block stays."""
+    """A deleted user's view state is removed from settings.json, and every other block stays."""
 
     def _two_users_with_blocks(self):
         from amaze.core import users
         p = test_support.fixture_prefs(self)
         keep = users.create(p, "Cobalt")
         gone = users.create(p, "Sienna")
-        for uid in (gone, keep, gone):    # each switch files the user it leaves under their uid
+        for uid in (gone, keep, gone):    # each switch saves the previous user under their uid
             users.adopt(p, uid)
         held = self._blocks(p)
         self.assertTrue({keep, gone, test_support.FIXTURE_USER} <= set(held),
@@ -366,7 +366,7 @@ class DeletingAUserDropsTheirBlock(PerUserCase):
         self.assertTrue(users.delete(p, gone))
         held = self._blocks(p)
         self.assertNotIn(gone, held, "the deleted user's block stayed")
-        self.assertIn(keep, held, "a surviving user's block went too")
+        self.assertIn(keep, held, "a remaining user's block was removed too")
         self.assertIn(test_support.FIXTURE_USER, held)
 
     def test_deleting_yourself_drops_your_block_and_no_other(self):
@@ -376,7 +376,7 @@ class DeletingAUserDropsTheirBlock(PerUserCase):
         self.assertTrue(users.delete(p, gone))
         held = self._blocks(p)
         self.assertNotIn(gone, held,
-                         "deleting the current user filed their state "
+                         "deleting the current user saved their state "
                          "back under the deleted uid")
         self.assertIn(keep, held)
         self.assertIn(test_support.FIXTURE_USER, held)
@@ -420,7 +420,7 @@ class DeletingAUserDropsTheirBlock(PerUserCase):
 
 
 class EachBlockKnowsItsLibrary(PerUserCase):
-    """A block names its user's library, so a user that library stops listing can go."""
+    """A block records its user's library, so a user that library no longer lists can be removed."""
 
     STRANGER = "c0ffee00c0ffee00c0ffee00c0ffee00"
 
@@ -482,7 +482,7 @@ class EachBlockKnowsItsLibrary(PerUserCase):
         self.assertEqual(self._key(p), self._blocks(p)[keep].get("library"))
 
     def test_a_user_deleted_elsewhere_loses_their_block_here(self):
-        """Another machine's delete reaches only `DataBase.json`; this machine's next save follows it."""
+        """Another machine's delete changes only `DataBase.json`; this machine's next save applies it."""
         from amaze.core import users
         p, keep = self._library()
         gone = users.create(p, "Sienna")
@@ -507,9 +507,9 @@ class EachBlockKnowsItsLibrary(PerUserCase):
         self._reopened(p).save()
         held = self._blocks(p)
         self.assertEqual(self._key(p), held[keep].get("library"),
-                         "a listed user's old block was not claimed")
+                         "a listed user's old block did not get the library field")
         self.assertEqual({"view_mode": "list"}, held.get(self.STRANGER),
-                         "an unclaimed block was pruned or claimed blind")
+                         "an unlisted user's block was pruned or given the field")
 
     def test_an_unreadable_roster_prunes_nothing(self):
         from amaze.core import users
@@ -523,7 +523,7 @@ class EachBlockKnowsItsLibrary(PerUserCase):
             users.all_users(p)
             p.save()
         self.assertIn(gone, self._blocks(p),
-                      "a roster that would not read pruned a block")
+                      "an unreadable roster pruned a block")
 
     def test_an_empty_roster_prunes_nothing(self):
         from amaze.core import users
@@ -548,19 +548,19 @@ class EachBlockKnowsItsLibrary(PerUserCase):
                          self._blocks(p).get(self.STRANGER, {}).get("library"))
 
     def test_the_user_this_machine_points_at_keeps_their_block(self):
-        """Deleted elsewhere while picked here, the block goes once someone else is picked."""
+        """Deleted elsewhere while picked here, the block is removed once someone else is picked."""
         from amaze.core import users
         p, keep = self._library()
         other = users.create(p, "Sienna")
         self._elsewhere(p, lambda table: table.pop(keep))
         p.save()
         self.assertIn(keep, self._blocks(p),
-                      "the block of the user this machine is was pruned")
+                      "the block of this machine's current user was pruned")
         users.adopt(p, other)
         self.assertNotIn(keep, self._blocks(p))
 
     def test_a_user_another_houdini_added_keeps_their_block(self):
-        """A roster read before another Houdini added a user is stale, never grounds to prune."""
+        """A roster read before another Houdini added a user is stale, never a reason to prune."""
         p, keep = self._library()
         self._elsewhere(p, lambda table: table.update({self.STRANGER: {"name": "Sienna"}}))
         library = self._key(p)
@@ -568,7 +568,7 @@ class EachBlockKnowsItsLibrary(PerUserCase):
             {self.STRANGER: {"view_mode": "list", "library": library}}))
         p.save()
         self.assertIn(self.STRANGER, self._blocks(p),
-                      "premise: the save took the other Houdini's block in")
+                      "premise: the save merged the other Houdini's block")
         p.save()
         self.assertIn(self.STRANGER, self._blocks(p),
                       "a user missing only from a stale roster lost their block")
@@ -583,7 +583,7 @@ class EachBlockKnowsItsLibrary(PerUserCase):
         self._unreadable_roster(p)
         p.save()
         self.assertIn(gone, self._blocks(p),
-                      "a roster a peer left unreadable pruned from its cache")
+                      "with the roster unreadable, a prune used the cached copy")
 
     def test_a_merge_keeps_the_field_a_save_did_not_know(self):
         p, keep = self._library()
@@ -593,7 +593,7 @@ class EachBlockKnowsItsLibrary(PerUserCase):
         p.save()
         second.save()
         self.assertEqual(self._key(p), self._blocks(p)[keep].get("library"),
-                         "a writer that did not carry the field erased it")
+                         "a save without the field erased it")
 
     def test_a_stale_houdini_saving_after_a_delete_leaves_the_block_out(self):
         """Another Houdini deletes a user; this one, its roster read before that, saves."""

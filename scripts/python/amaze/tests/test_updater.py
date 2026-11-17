@@ -1,4 +1,4 @@
-"""The updater end to end, its one network door mocked. ▸p/updater-shape ▸r/release-digest"""
+"""The updater end to end, `matx_sources._request` mocked. ▸p/updater-shape ▸r/release-digest"""
 
 import errno
 import hashlib
@@ -23,7 +23,7 @@ from amaze.tests import test_support
 
 
 class _Response(io.BytesIO):
-    """What urlopen hands back, as a context manager with headers."""
+    """What urlopen returns: a context manager with headers."""
 
     def __init__(self, payload, headers=None):
         super().__init__(payload if isinstance(payload, bytes)
@@ -41,7 +41,7 @@ class _Response(io.BytesIO):
 class _FeedMixin(unittest.TestCase):
 
     def answer(self, payload=None, headers=None, raising=None):
-        """Point the ONE network door at a fixture."""
+        """Patch the ONE network call, `matx_sources._request`, to return a fixture."""
         calls = []
 
         def fake(url):
@@ -56,7 +56,7 @@ class _FeedMixin(unittest.TestCase):
         return calls
 
     def answer_each(self, by_url):
-        """Each URL its own answer: a payload, raw bytes, or an exception to raise."""
+        """Each URL its own response: a payload, raw bytes, or an exception to raise."""
         calls = []
 
         def fake(url):
@@ -88,7 +88,7 @@ class TheVersionComparisonTest(unittest.TestCase):
 class TheCheckTest(_FeedMixin):
 
     def test_no_release_yet_is_reported_gracefully(self):
-        """Before 1.0 is tagged: a 404 on a repo that itself answers 200. ▸p/updater-shape"""
+        """Before 1.0 is tagged: a 404 on a repo that itself returns 200. ▸p/updater-shape"""
         self.answer(raising=urllib.error.HTTPError(
             updater.RELEASES_URL, 404, "Not Found", {}, None))
         result = updater.check("1.0")
@@ -114,7 +114,7 @@ class TheCheckTest(_FeedMixin):
         self.answer({"tag_name": "9.9", "assets": [],
                      "zipball_url": "https://example.invalid/src.zip"})
         self.assertTrue(updater.check("1.0").url,
-                        "a source-only release came back with no URL")
+                        "a source-only release returned no URL")
 
     def test_an_uploaded_zip_wins_over_the_source_archive(self):
         self.answer({"tag_name": "9.9",
@@ -148,7 +148,7 @@ class TheCheckTest(_FeedMixin):
 
 
 class TheReleaseNamesItsLibraryVersion(_FeedMixin):
-    """A newer release says what it updates libraries to, read off its own code before installing."""
+    """A newer release reports the library version it brings, read from its code before install."""
 
     FEED = {"tag_name": "9.9", "assets": [], "zipball_url": "https://example.invalid/z"}
 
@@ -159,7 +159,7 @@ class TheReleaseNamesItsLibraryVersion(_FeedMixin):
                 b'LIBRARY_VERSION = 3    # x\nLIBRARY_VERSION_SINCE = "9.8.0"\n'})
         found = updater.check("1.0")
         self.assertEqual((3, "9.8.0"), (found.library_version, found.library_since))
-        self.assertEqual(updater.RELEASES_URL, calls[0], "the API is still asked once, first")
+        self.assertEqual(updater.RELEASES_URL, calls[0], "the API is still called once, first")
 
     def test_a_release_from_before_library_versions_brings_version_1(self):
         self.answer_each({updater.RELEASES_URL: self.FEED,
@@ -171,7 +171,7 @@ class TheReleaseNamesItsLibraryVersion(_FeedMixin):
         self.answer_each({updater.RELEASES_URL: self.FEED,
                           updater.LIBRARY_POLICY_URL % "9.9": urllib.error.URLError("offline")})
         found = updater.check("1.0")
-        self.assertTrue(found, "an unread library version withdrew the update")
+        self.assertTrue(found, "an unreadable library version cancelled the update")
         self.assertEqual(0, found.library_version)
         self.assertFalse(updater.updates_library(found, tempfile.gettempdir()))
 
@@ -185,7 +185,7 @@ class TheReleaseNamesItsLibraryVersion(_FeedMixin):
         self.assertFalse(updater.updates_library(found, ""), "no library, nothing to update")
 
     def test_older_amaze_reads_this_trees_library_version_where_it_looks(self):
-        """Released updaters fetch this path and these two lines; moving either blinds them."""
+        """Released updaters fetch this path and these two lines; moving either breaks them."""
         from amaze.core import library_policy
         package = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         tree = os.path.dirname(os.path.dirname(os.path.dirname(package)))
@@ -232,7 +232,7 @@ class TheDownloadTest(_FeedMixin):
         self.assertTrue(os.path.exists(path))
 
     def test_a_truncated_download_is_refused_and_removed(self):
-        """A short body ends the read loop normally; the length check refuses it. ▸p/updater-shape"""
+        """A short body ends the read loop normally; the length check rejects it. ▸p/updater-shape"""
         self.answer(b"PK\x03\x04", headers={"Content-Length": "9999"})
         with self.assertRaises(OSError) as caught:
             updater.download("https://example.invalid/z", self.dir)
@@ -246,7 +246,7 @@ class TheDownloadTest(_FeedMixin):
             updater.download("https://example.invalid/z", self.dir)
 
     def test_a_missing_or_unreadable_length_is_unknown_not_zero_or_an_error(self):
-        """As 0 it refused every server sending none; as a number it raised ValueError."""
+        """As 0 it rejected every server sending none; parsed as a number it raised ValueError."""
         for headers in ({}, {"Content-Length": "junk"}):
             with self.subTest(headers=headers):
                 self.answer(b"PK\x03\x04body", headers=headers)
@@ -318,7 +318,7 @@ class _Operation:
 
 
 class TheInstallCanBeStoppedTest(_FeedMixin):
-    """The download and staging run under Esc with a progress bar; the swap never does."""
+    """The download and staging can be stopped with Esc and show progress; the swap cannot."""
 
     def setUp(self):
         import hou
@@ -364,7 +364,7 @@ class TheInstallCanBeStoppedTest(_FeedMixin):
             updater.install(self.found)
         self.assertEqual(messages.DOWNLOAD_STOPPED, str(caught.exception))
         swap.assert_not_called()
-        self.assertEqual([], os.listdir(self.install), "the install was touched")
+        self.assertEqual([], os.listdir(self.install), "the install folder was changed")
 
     def test_the_swap_runs_outside_the_operation(self):
         """An Esc inside the renames would leave half an install."""
@@ -455,7 +455,7 @@ class TheSwapTest(unittest.TestCase):
         self.assertEqual("old", self._which(self.install))
 
     def test_a_cache_on_ANOTHER_VOLUME_still_installs(self):
-        """`os.rename` raises EXDEV across filesystems; only a copy crosses. ▸r/cross-volume-move"""
+        """`os.rename` raises EXDEV across filesystems; only a copy works. ▸r/cross-volume-move"""
         real = os.rename
         calls = []
 
@@ -508,7 +508,7 @@ class TheSwapTest(unittest.TestCase):
             "loads half a release")
         self.assertFalse(
             os.path.exists(os.path.join(self.install, "fragment.txt")),
-            "the half-copied file survived the rollback")
+            "the half-copied file remained after the rollback")
         self.assertEqual("old", self._which(self.install))
 
     def test_a_missing_staged_update_leaves_the_install_alone(self):
@@ -516,8 +516,8 @@ class TheSwapTest(unittest.TestCase):
             updater.apply_update(os.path.join(self.root, "nothing"),
                                  self.install)
         self.assertEqual("old", self._which(self.install),
-                         "the install was disturbed by an update that "
-                         "was never there to apply")
+                         "the install was changed by an update that "
+                         "did not exist")
 
 
 class TheNetworkDoorTest(unittest.TestCase):
@@ -529,7 +529,7 @@ class TheNetworkDoorTest(unittest.TestCase):
             return handle.read()
 
     def test_the_updater_opens_no_url_of_its_own(self):
-        """Scanned as a call, not as the word. ▸p/updater-shape"""
+        """Searched for as the call `urlopen(`, not as the bare word. ▸p/updater-shape"""
         self.assertNotIn(
             "urlopen(", self._source(),
             "updater.py opens a URL directly, so the suite's block on "
@@ -549,7 +549,7 @@ class TheNetworkDoorTest(unittest.TestCase):
 
 
 class TheAboutTabCanActuallyRunAnInstall(unittest.TestCase):
-    """The Qt slot, driven at the seam with both updater halves stubbed. ▸p/updater-shape"""
+    """`install_update` run with `fetch_and_stage` and `apply_update` stubbed. ▸p/updater-shape"""
 
     def setUp(self):
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -618,11 +618,11 @@ class TheAboutTabCanActuallyRunAnInstall(unittest.TestCase):
             dialog.install_update()
 
         self.assertIn("not a zip archive", dialog._lbl_version.text(),
-                      "the updater's finished sentence was replaced or "
-                      "swallowed")
+                      "the updater's own message was replaced or "
+                      "dropped")
         self.assertEqual("Install Update", dialog._btn_update.text(),
-                         "a refused install withdrew an offer that still "
-                         "stands, so a retry has to check again first")
+                         "a refused install removed the Install Update "
+                         "offer, so a retry has to check again first")
 
     def test_an_unknown_install_location_changes_nothing(self):
         import hou
@@ -645,7 +645,7 @@ class TheAboutTabCanActuallyRunAnInstall(unittest.TestCase):
 
 
 class TheAboutTabOffersTheUpdateInOnePlace(unittest.TestCase):
-    """One permanent version line and one morphing button; no row comes or goes. ▸p/updater-shape"""
+    """One version line, one button with changing text; no row added or removed. ▸p/updater-shape"""
 
     def setUp(self):
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -663,7 +663,7 @@ class TheAboutTabOffersTheUpdateInOnePlace(unittest.TestCase):
         return dialog
 
     def _form(self, dialog):
-        """The About form, reached through the version line; the dialog keeps no handle on it."""
+        """The About form, found from the version label; the dialog keeps no reference to it."""
         from PySide6 import QtWidgets
 
         return dialog._lbl_version.parentWidget().findChild(
@@ -674,10 +674,10 @@ class TheAboutTabOffersTheUpdateInOnePlace(unittest.TestCase):
 
         self.assertEqual("Amaze version " + branding.APP_VERSION,
                          dialog._lbl_version.text(),
-                         "the About tab does not say which Amaze this is "
-                         "until the release feed is asked")
+                         "the About tab does not show which Amaze this is "
+                         "until the release feed is checked")
         self.assertTrue(dialog._lbl_version.wordWrap(),
-                        "an update sentence lands in this label, and it "
+                        "an update message is shown in this label, and it "
                         "would widen the dialog instead of wrapping")
 
     def test_a_found_release_morphs_the_button_and_the_next_press_installs(
@@ -693,12 +693,12 @@ class TheAboutTabOffersTheUpdateInOnePlace(unittest.TestCase):
         with patch.object(updater, "check", return_value=found), \
                 patch.object(updater, "install") as install:
             dialog._btn_update.click()
-            install.assert_not_called()    # the first press ASKS; nothing on disk moves until a second, deliberate one
+            install.assert_not_called()    # the first press CHECKS; nothing on disk changes until a second press
             self.assertEqual("Install Update", dialog._btn_update.text(),
                              "a release was found and the button still "
                              "only offers to look for one")
             self.assertIn("9.9", dialog._lbl_version.text(),
-                          "the answer did not land in the version line")
+                          "the result is not shown in the version line")
             dialog._btn_update.click()
 
         install.assert_called_once_with(found)
@@ -715,7 +715,7 @@ class TheAboutTabOffersTheUpdateInOnePlace(unittest.TestCase):
             dialog._btn_update.click()
 
         self.assertEqual(answer.sentence, dialog._lbl_version.text(),
-                         "the answer went somewhere other than the "
+                         "the result was shown somewhere other than the "
                          "version line")
         self.assertEqual("Check for Updates", dialog._btn_update.text(),
                          "the button offers an install after a check that "
@@ -728,7 +728,7 @@ class TheAboutTabOffersTheUpdateInOnePlace(unittest.TestCase):
             library_version=library_version, library_since="9.8.0")
 
     def _answering(self, choice):
-        """hou.ui with displayMessage answering `choice`; every question is kept."""
+        """hou.ui whose displayMessage returns `choice`; every call is recorded."""
         import hou
         import types
         from unittest import mock
@@ -789,22 +789,22 @@ class TheAboutTabOffersTheUpdateInOnePlace(unittest.TestCase):
 
         self.assertEqual(
             1, len(dividers),
-            "the About form draws %d dividers; the document draws one, "
+            "the About form has %d dividers; the design has one, "
             "above Add-On beta versions" % len(dividers))
         rows = [form.getWidgetPosition(widget)[0] for widget in (
             dialog._lbl_version, dialog._btn_update.parentWidget(),
             dialog._cbx_debug.parentWidget(), dialog._cbx_addon_betas)]
         self.assertNotIn(-1, rows, "a row was not found on the form")
         self.assertEqual(sorted(rows), rows,
-                         "the rows do not run version, buttons, debug, "
+                         "the rows are not in the order version, buttons, debug, "
                          "Add-On beta versions: %s" % rows)
         self.assertEqual([rows[2] + 1, rows[3] - 1], [dividers[0]] * 2,
-                         "the divider does not sit between the debug row "
+                         "the divider is not between the debug row "
                          "and Add-On beta versions")
 
 
 class TheShelfToolAsksTheSameQuestion(unittest.TestCase):
-    """The Updates tool runs its own script from the shelf file, through the About tab's engine."""
+    """The Updates shelf tool runs its own script, using the updater calls the About tab uses."""
 
     def setUp(self):
         import xml.etree.ElementTree as ET
@@ -819,7 +819,7 @@ class TheShelfToolAsksTheSameQuestion(unittest.TestCase):
         test_support.set_library_version(self.library, 1)
 
     def _run(self, library_version, answers):
-        """Click the tool: each dialog answers the next of `answers`; what was asked and installed."""
+        """Run the tool: each dialog returns the next of `answers`; gives (texts shown, installs)."""
         import hou
         import types
         from unittest import mock
@@ -850,7 +850,7 @@ class TheShelfToolAsksTheSameQuestion(unittest.TestCase):
     def test_an_update_that_leaves_the_library_asks_nothing_more(self):
         asked, installs = self._run(1, [0])
         self.assertEqual(1, installs)
-        self.assertNotIn("not compatible", " ".join(asked), "a plain update asked Continue")
+        self.assertNotIn("not compatible", " ".join(asked), "a plain update showed Continue")
 
 
 class AReleaseIsStagedIntoTheINSTALLShape(unittest.TestCase):
@@ -887,10 +887,10 @@ class AReleaseIsStagedIntoTheINSTALLShape(unittest.TestCase):
                                        os.path.join(self.dir, "staged"))
         self.assertEqual(sorted(updater.INSTALL_ENTRIES),
                          sorted(os.listdir(staged)),
-                         "the staged tree is not what the install holds")
+                         "the staged tree differs from the install entries")
         self.assertTrue(
             os.path.exists(os.path.join(staged, "scripts", "marker.txt")),
-            "the staged tree did not carry the release's own files")
+            "the staged tree does not contain the release's own files")
 
     def test_a_release_missing_an_install_entry_is_refused(self):
         with self.assertRaises(OSError) as caught:
@@ -923,7 +923,7 @@ class AReleaseIsStagedIntoTheINSTALLShape(unittest.TestCase):
         self.assertIn("not a zip archive", str(caught.exception))
 
     def test_a_flat_archive_works_too(self):
-        """An uploaded asset need not wrap itself in a folder as the zipball does. ▸p/updater-shape"""
+        """An uploaded asset need not have a top folder as the zipball does. ▸p/updater-shape"""
         staged = updater.stage_release(
             self._release_zip(root="", extras=False),
             os.path.join(self.dir, "staged"))
@@ -931,7 +931,7 @@ class AReleaseIsStagedIntoTheINSTALLShape(unittest.TestCase):
                          sorted(os.listdir(staged)))
 
     def test_the_staged_tree_swaps_in_and_the_old_one_is_kept(self):
-        """End to end, which is the thing that had never run."""
+        """End to end, which had never been tested before."""
         install = os.path.join(self.dir, "install")
         os.makedirs(os.path.join(install, "scripts"))
         with open(os.path.join(install, "scripts", "old.txt"), "w",
@@ -944,13 +944,13 @@ class AReleaseIsStagedIntoTheINSTALLShape(unittest.TestCase):
 
         self.assertTrue(
             os.path.exists(os.path.join(install, "scripts", "marker.txt")),
-            "the release did not land in the install")
+            "the release files are not in the install")
         self.assertFalse(
             os.path.exists(install + ".backup"),
             "a copy of the old install was left beside the new one")
 
     def test_the_install_entries_match_the_ship_script(self):
-        """Two homes for one list, so a source-derived guard rather than a promise. ▸p/updater-shape"""
+        """One list in two files, so this test compares them rather than trusting. ▸p/updater-shape"""
         root = os.path.dirname(os.path.dirname(os.path.dirname(    # five dirnames to the repo root, the spelling test_keyed_store already uses
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
         script = os.path.join(root, "tools", "sync-install.sh")
@@ -1011,7 +1011,7 @@ class AReleaseIsCheckedBeforeItIsTrusted(_FeedMixin):
                              digest=self.digest, size=len(swapped))
         self.assertIn("checksum", str(caught.exception))
         self.assertEqual([], os.listdir(self.dir),
-                         "the unverified file was promoted anyway")
+                         "the unverified file was kept anyway")
 
     def test_a_checksum_this_amaze_cannot_compute_is_a_refusal(self):
         """"Cannot check" must never read as "checked"."""
@@ -1069,7 +1069,7 @@ class AReleaseIsCheckedBeforeItIsTrusted(_FeedMixin):
         self.assertIn("unpacks to more than", str(caught.exception))
         self.assertLess(on_disk, 1024 * 1024,
                         "the fixture did not compress, so it does not "
-                        "stand for a bomb")
+                        "represent a zip bomb")
 
     def test_an_ordinary_release_is_nowhere_near_the_ceilings(self):
         """The ceilings are guards, far above the size of a real release."""
