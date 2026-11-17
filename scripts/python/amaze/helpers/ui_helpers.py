@@ -142,13 +142,22 @@ _SVG_CACHE: dict = globals().get("_SVG_CACHE", {})   # rasterised SVGs keyed by 
 
 
 _PAINT_OPACITY = re.compile(r'((?:fill|stroke)-opacity)(="|:)[0-9.]+')
+_SVG_ELEMENT = re.compile(r"<[^>]+>")
+BADGE_BACKDROP_ID = 'id="Rounded-Rectangle'    # the layer every badge's backdrop is exported under
 
 
 def at_opacity(text: str, opacity) -> str:
-    """SVG text with every fill and stroke opacity set to `opacity`; None leaves it as drawn."""
+    """SVG text with the icon's paint opacities set to `opacity`; the backdrop element keeps its own."""
     if opacity is None:
         return text
-    return _PAINT_OPACITY.sub(lambda m: "%s%s%g" % (m.group(1), m.group(2), opacity), text)
+
+    def element(match):
+        tag = match.group(0)
+        if BADGE_BACKDROP_ID in tag:
+            return tag
+        return _PAINT_OPACITY.sub(lambda m: "%s%s%g" % (m.group(1), m.group(2), opacity), tag)
+
+    return _SVG_ELEMENT.sub(element, text)
 
 
 def render_svg_pixmap(path, size, color_replacements=None, opacity=None):

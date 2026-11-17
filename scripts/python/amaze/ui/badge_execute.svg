@@ -1,6 +1,10 @@
-<svg width="45" height="45" viewBox="0 0 45 45" fill="none" xmlns="http://www.w3.org/2000/svg">
+<svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
 <g>
-<rect width="45" height="45" rx="22.5" fill="#6A9955" fill-opacity="0.5"/>
-<path d="M30.5 20.9019C32.5 22.0566 32.5 24.9434 30.5 26.0981L20.75 31.7272C18.75 32.8819 16.25 31.4386 16.25 29.1292L16.25 17.8708C16.25 15.5614 18.75 14.1181 20.75 15.2728L30.5 20.9019Z" fill="#1B1B1B"/>
+<g id="Version-copy">
+<path id="Rounded-Rectangle-copy" fill-rule="evenodd" clip-rule="evenodd" d="M0 17C0 19.7614 2.23858 22 5 22H17C19.7614 22 22 19.7614 22 17V5C22 2.23858 19.7614 0 17 0H5C2.23858 0 0 2.23858 0 5V17Z" fill="#000000" fill-opacity="0.75"/>
+</g>
+<g id="play">
+<path d="M16.8334 11L7.45837 16.1962L7.45837 5.80385L16.8334 11Z" fill="#D9D9D9"/>
+</g>
 </g>
 </svg>

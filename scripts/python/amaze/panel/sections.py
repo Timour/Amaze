@@ -1255,7 +1255,7 @@ class CodeSection(AssetSection):
     category_attr = "code_category_model"
     sidebar_attr = "code_category_sorted_model"
     delegate_attr = "code_delegate"
-    tile_badges = ("favourite", "execute", "versions", "edit", "comment")
+    tile_badges = ("favourite", "execute", "versions", "comment")
     filter_tooltip = "Show snippets in one language."
 
     FILTER_CHOICES = (    # the stored language strings, "Code" the catch-all; not imported from code_dialog

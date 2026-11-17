@@ -30,10 +30,10 @@ class Badge:
         self.verb = verb              # the section verb a click runs; "" draws an indicator
         self.minimum = minimum        # a count draws at or above this: one version has no history
         self.equals = equals          # the role's value this badge draws for; "" = any truthy one
-        self.dims = dims              # its ON art wears the button opacities, rest and hover
+        self.dims = dims              # its ON art's icon wears the button opacities, rest and hover
         self.hover_art = hover_art    # a hover state drawn as its own art, where it has one
         self.press_art = press_art    # while the button is held down, where it has one
-        self.off_art = off_art        # drawn while the role is falsy, at the button opacities
+        self.off_art = off_art        # drawn while the role is falsy, its icon at the button opacities
         self.off_hover_art = off_hover_art    # the off state under the pointer, drawn as it is
         self.tip = tip               # the hover words, from tooltips.py; "" = silent
         self.off_tip = off_tip        # the words in the off state, where a click does the opposite
@@ -66,13 +66,11 @@ BADGES = (      # in paint order; art in `ui/badge_*.svg`, one file each ▸r/ti
     Badge("versions", "badge_versions", "VersionsRole", "_versions_role", "menu_versions",
           minimum=2, dims=True, hover_art="badge_versions_hover", tip=tooltips.BADGE_VERSIONS),
     Badge("comment", "badge_comment", "NotesRole", "_notes_role", "menu_comments",
-          dims=True, off_art="badge_comment_off", off_hover_art="badge_comment_off_hover",
+          off_art="badge_comment_off", off_hover_art="badge_comment_off_hover",    # on is as drawn
           tip=tooltips.BADGE_COMMENTS),
     Badge("execute", "badge_execute", "RendererRole", "_execute_role", "menu_run",
           equals="Python", hover_art="badge_execute_hover", press_art="badge_execute_press",
           tip=tooltips.BADGE_EXECUTE),    # the language role: Run is for Python only
-    Badge("edit", "badge_edit", verb="menu_edit", dims=True, hover_art="badge_edit_hover",
-          tip=tooltips.BADGE_EDIT),
     Badge("renderer", "", "RendererRole", "_renderer_role", art_for=_renderer_badge),
 )
 BADGE = {badge.name: badge for badge in BADGES}

@@ -90,7 +90,7 @@ P01_LIGHT_FOUND = "#ff3600"     # a part with findings
 P01_LIGHT_UNJUDGED = "#ffae00"  # a part that could not be judged now
 P01_REPAIR_FILL = "#f15b42"     # the Repair button's background
 P01_REPAIR_INK = "#f9f9f9"      # the Repair button's text
-P01_REPAIR_RADIUS = 2           # the Repair button's corners, a stylesheet px
+P01_REPAIR_RADIUS = 4           # the corners Houdini draws on a standard button ▸r/plain-button-style
 P01_LIGHT_COUNT_GAP = 6         # a light to its count, as drawn for two of the three
 D15_SELECTED_INK = UPDATE_WARNING_FILL   # ▸ D15 Manage Libraries: a row picked for removal
 D15_DIM_INK = "#787878"        # a library that cannot be reached: its name and `not connected`
@@ -130,8 +130,8 @@ TILE_TEXT = "#cdc8bc"           # ▸ the tile and list delegates
 TILE_SUBTITLE = "#5d7abd"       # the sidebar's drag highlight until the panel applies the accent
 CODE_TEXT_OPACITY = 0.5         # T05B: a code tile's text at half strength, under its run button
 CODE_TILE_GROUND = "#1b1b1b"    # and the ground under it, the one the default tile faces have
-BADGE_REST_OPACITY = 0.75       # every button badge at rest, ground and icon alike
-BADGE_HOVER_OPACITY = 1.0       # and under the pointer
+BADGE_REST_OPACITY = 0.75       # every button badge's icon at rest; the backdrop stays as drawn
+BADGE_HOVER_OPACITY = 1.0       # and the icon under the pointer
 MENU_ICON = 16                  # ▸ C13: a menu entry's icon box, the size Houdini draws it ▸r/menu-checked-look
 LIST_INK = "#d8d6d4"            # a table is read down its columns, so every column paints in this except Category
 LIST_SELECTED_TEXT = "#000000"  # every column of a selected row
@@ -713,7 +713,7 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
             ("badge open (top-left) ▸ badge_open", 110, 110, 22, 22, None),
         ),
     },
-    "T05": {   # the code tile on its generic face: Run in the middle, Versions and Edit below
+    "T05": {   # the code tile on its generic face: Run in the lower-right corner, Versions lower-left
         "frame": (138, 177),
         "nodes": (
             ("tile card", 4, 4, 130, 173, None),
@@ -722,9 +722,8 @@ DIALOG_LAYOUT = {    # ▸ every drawn figure: (kind, x, y, w, h, text) per node
             ("tile name", 9, 142, 52, 15, "Mtxl to RS"),
             ("tile subtitle", 9, 157, 37, 15, "Python"),
             ("badge favourite (top-right) ▸ badge_favourite", 110, 6, 22, 22, None),
-            ("badge edit (lower-left) ▸ badge_edit", 110, 110, 22, 22, None),
+            ("badge execute (lower-right) ▸ badge_execute", 110, 110, 22, 22, None),
             ("badge comment (lower-right) ▸ badge_comment", 6, 6, 22, 22, None),
-            ("badge execute (centre) ▸ badge_execute", 46, 46, 45, 45, None),
             ("badge versions (lower-left) ▸ badge_versions", 6, 110, 22, 22, None),
         ),
     },

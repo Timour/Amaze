@@ -140,7 +140,7 @@ A tile has up to four **badges**, one per corner:
 | <img src="scripts/python/amaze/ui/badge_versions.svg" width="100"> | lower-left | [Versions](#versions). Opens the version list. |
 | <img src="scripts/python/amaze/ui/badge_renderer_materialx.svg" width="100"> | lower-right | The renderer a material is for: MaterialX, Redshift or Octane (Material). |
 | <img src="scripts/python/amaze/ui/badge_open.svg" width="100"> | lower-right | The scene that is open in Houdini (File). |
-| <img src="scripts/python/amaze/ui/badge_edit.svg" width="100"> | lower-right | Opens the snippet in the code editor (Code). |
+| <img src="scripts/python/amaze/ui/badge_execute.svg" width="100"> | lower-right | Runs a Python snippet (Code). |
 
 ---
 
@@ -390,10 +390,10 @@ The right-click menu:
 Amaze** on a node with a code parameter saves its code as a snippet;
 **Language** is read from the node and can be changed.
 
-A Python snippet's tile has a green run button. It runs the snippet with
-the same `kwargs` a shelf tool receives, as one step in **Edit ▸ Undo**.
-Errors show in Houdini's status bar with the snippet's name. The pencil
-in the lower-right corner of a snippet's tile opens the editor.
+A Python snippet's tile has a run button in its lower-right corner. It
+runs the snippet with the same `kwargs` a shelf tool receives, as one
+step in **Edit ▸ Undo**. Errors show in Houdini's status bar with the
+snippet's name. **Edit** on the right-click menu opens the editor.
 
 ---
 

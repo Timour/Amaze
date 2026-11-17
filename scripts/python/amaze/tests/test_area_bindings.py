@@ -158,14 +158,13 @@ BADGE_ROLES = {   # badge per context and the role its model must answer; except
     "versions": "VersionsRole",
     "comment": "NotesRole",
     "execute": "RendererRole",    # the language: drawn for one value, so the role alone says nothing
-    "edit": "",                   # no role: on every tile that lists it
     "renderer": "RendererRole",   # drawn for the renderers Amaze offers, each with its own art
 }
 
 EXPECTED_BADGES = {
     "material": {"favourite", "versions", "comment", "renderer"},
     "cop": {"favourite", "comment"},  # NOT versions: VersionsRole is inherited, and no Node asset keeps any
-    "code": {"favourite", "execute", "versions", "edit", "comment"},
+    "code": {"favourite", "execute", "versions", "comment"},
     "file": {"favourite", "open", "comment"},  # only File has the open badge: only a scene can be the one Houdini has open
     "gradient": {"favourite", "comment"},
 }

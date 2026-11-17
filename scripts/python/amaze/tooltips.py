@@ -152,6 +152,4 @@ BADGE_FAVORITE_ADD = 'Add to favorites.'
 
 BADGE_EXECUTE = 'Run this snippet.'
 
-BADGE_EDIT = 'Edit this snippet.'
-
 NOTES_ADD_TODO = 'Add a bullet point or an image.'   # ▸ Comments pane

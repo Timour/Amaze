@@ -198,7 +198,7 @@ class TheCommentBadgeIsAButton(unittest.TestCase):
     def test_a_commentless_tile_shows_the_outline_badge_like_the_heart(self):
         row = next(b for b in delegates.BADGES if b.name == "comment")
         self.assertEqual("badge_comment", row.art)
-        self.assertTrue(row.dims, "it does not wear the family's rest and hover strength")
+        self.assertFalse(row.dims, "the filled bubble is not drawn as its art is")
         self.assertFalse(row.hover_art, "the filled bubble grew a second art for hover")
         self.assertEqual("badge_comment_off", row.off_art,
                          "a tile with no comments shows no badge")

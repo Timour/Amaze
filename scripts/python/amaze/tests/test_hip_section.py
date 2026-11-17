@@ -780,7 +780,7 @@ class IconAssetsTest(unittest.TestCase):
     def test_the_shipped_icons_exist(self):
         for name in ("badge_open.svg", "badge_favourite.svg",  # a missing badge paints nothing
                      "badge_versions.svg", "badge_comment.svg",
-                     "badge_execute.svg", "badge_edit.svg",
+                     "badge_execute.svg", "badge_execute_hover.svg", "badge_execute_press.svg",
                      "icon_screenshot.svg", "logo.svg"):
             self.assertTrue(os.path.isfile(self._ui(name)),
                             "ui/%s is missing" % name)
@@ -881,14 +881,14 @@ class IconAssetsTest(unittest.TestCase):
         return 0.2126 * r + 0.7152 * g + 0.0722 * b
 
     def test_a_button_badge_is_one_art_at_two_strengths(self):
-        """Every rest art is drawn at the rest strength, and the hover strength reaches all of it."""
+        """Every rest art is drawn at the rest strength; the hover strength reaches its icon alone."""
         from amaze import amazetheme
         from amaze.helpers import ui_helpers
         from amaze.panel import delegates
         arts = sorted({b.off_art for b in delegates.BADGES if b.off_art}
                       | {b.art for b in delegates.BADGES if b.dims})
-        self.assertEqual(["badge_comment", "badge_comment_off", "badge_edit",
-                          "badge_favourite_off", "badge_versions"], arts)
+        self.assertEqual(["badge_comment_off", "badge_favourite_off", "badge_versions"], arts)
+        backdrop = r'<path[^>]*?id="Rounded-Rectangle[^"]*"[^>]*?>'
         for art in arts:
             self.assertTrue(self._paths(art + ".svg"), "%s draws nothing" % art)
             with open(self._ui(art + ".svg"), encoding="utf-8") as fh:
@@ -901,10 +901,12 @@ class IconAssetsTest(unittest.TestCase):
             hover = ui_helpers.at_opacity(text, amazetheme.BADGE_HOVER_OPACITY)
             self.assertNotEqual(self._paint_of(rest), self._paint_of(hover),
                                 "%s looks the same at rest and under the pointer" % art)
+            self.assertEqual(re.findall(backdrop, text, re.S), re.findall(backdrop, hover, re.S),
+                             "%s changed its backdrop under the pointer" % art)
             alphas = {float(v) for _k, v in re.findall(
-                r'((?:fill|stroke)-opacity)[=:]"?([0-9.]+)', hover)}
+                r'((?:fill|stroke)-opacity)[=:]"?([0-9.]+)', re.sub(backdrop, "", hover, flags=re.S))}
             self.assertEqual({amazetheme.BADGE_HOVER_OPACITY}, alphas,
-                             "%s keeps a part the hover strength does not reach" % art)
+                             "%s keeps an icon part the hover strength does not reach" % art)
         self.assertTrue(self._paths("badge_favourite.svg"),
                         "the favourite state draws nothing")
 
@@ -914,7 +916,7 @@ class IconAssetsTest(unittest.TestCase):
         from amaze.panel import delegates
         pairs = [(b.off_art, b.off_hover_art) for b in delegates.BADGES if b.off_hover_art]
         pairs += [(b.art, b.hover_art) for b in delegates.BADGES if b.dims and b.hover_art]
-        self.assertEqual(4, len(pairs), "the four button badges do not all colour on hover")
+        self.assertEqual(3, len(pairs), "the three outline button badges do not all colour on hover")
         for rest, hover in pairs:
             with open(self._ui(hover + ".svg"), encoding="utf-8") as fh:
                 text = fh.read()
@@ -928,15 +930,15 @@ class IconAssetsTest(unittest.TestCase):
             self.assertNotIn("#FFFFFF", inks, "%s keeps %s's white icon" % (hover, rest))
 
     def test_the_run_button_keeps_its_shape_and_changes_its_paint(self):
-        """Rest, hover and press draw one play mark; only the disc's colour answers. ▸r/tile-from-frame"""
+        """Rest, hover and press draw one shape; only the play mark's paint differs. ▸r/tile-from-frame"""
         rest = self._paths("badge_execute.svg")
         self.assertTrue(rest, "the run button draws nothing")
         for state in ("badge_execute_hover.svg", "badge_execute_press.svg"):
             drawn = self._paths(state)
             self.assertEqual(len(rest), len(drawn),
                              "%s draws a different number of parts" % state)
-            self.assertEqual(rest[-1], drawn[-1],
-                             "%s changed the play mark's shape" % state)
+            self.assertEqual(rest, drawn,
+                             "%s changed the backdrop's or the play mark's shape" % state)
         paints = {self._paint(name).__repr__() for name in (
             "badge_execute.svg", "badge_execute_hover.svg", "badge_execute_press.svg")}
         self.assertEqual(3, len(paints), "two of the run button's states look the same")
@@ -956,11 +958,11 @@ class IconAssetsTest(unittest.TestCase):
         return colour.lower(), float(alpha)
 
     def test_the_badge_backdrop_is_the_one_the_DESIGN_ships(self):
-        """The badge backdrop is the design's black across the family; it changes only with the art."""
-        expected_alpha = {"badge_open": 0.75, "badge_favourite": 0.75,    # as drawn; the button
-                          "badge_versions": 0.75, "badge_comment": 0.75,    # arts' own value is
-                          "badge_favourite_off": 0.75, "badge_edit": 0.75,    # replaced when painted
-                          "badge_comment_off": 0.75}
+        """Every badge file, in every state, has the design's one backdrop: black at one strength."""
+        names = sorted(name[:-len(".svg")] for name in os.listdir(self._ui(""))
+                       if name.startswith("badge_") and name.endswith(".svg"))
+        self.assertIn("badge_execute_press", names)
+        expected_alpha = dict.fromkeys(names, 0.75)
         backdrops = {}
         for name in expected_alpha:
             with open(self._ui(name + ".svg"), encoding="utf-8") as fh:

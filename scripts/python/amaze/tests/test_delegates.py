@@ -563,7 +563,7 @@ class BadgeFamilyTest(unittest.TestCase):
     """The four badges are one family: one art set, `_badge_pixmap`, `_badge_side`, no re-tint."""
 
     NAMES = ("badge_open", "badge_favourite", "badge_favourite_off", "badge_versions",
-             "badge_comment", "badge_edit") + tuple(r.badge for r in renderers.ALL)
+             "badge_comment", "badge_execute") + tuple(r.badge for r in renderers.ALL)
 
     def test_all_four_arts_exist_and_render(self):
         for name in self.NAMES:
@@ -624,9 +624,8 @@ class BadgeFamilyTest(unittest.TestCase):
             ("open", True, "badge_open", corner, None),
             ("favourite", True, "badge_favourite", corner, None),
             ("versions", 3, "badge_versions", corner, rest),
-            ("comment", True, "badge_comment", corner, rest),
-            ("execute", "Python", "badge_execute", min(45, round(45 * 128 / 130.0)), None),
-            ("edit", True, "badge_edit", corner, rest),
+            ("comment", True, "badge_comment", corner, None),
+            ("execute", "Python", "badge_execute", corner, None),
             ("renderer", "Redshift", "badge_renderer_redshift", corner, None),
         )
         self.assertEqual(
@@ -655,9 +654,8 @@ class BadgeFamilyTest(unittest.TestCase):
         """Every button badge rests at the one strength; under the pointer its hover art wins."""
         role = QtCore.Qt.ItemDataRole.UserRole + 66
         family = {b.name for b in delegates.BADGES if b.dims or b.off_art}
-        self.assertEqual({"favourite", "versions", "comment", "edit"}, family)
-        cases = (("favourite", False), ("versions", 3), ("comment", True),
-                 ("comment", False), ("edit", True))
+        self.assertEqual({"favourite", "versions", "comment"}, family)
+        cases = (("favourite", False), ("versions", 3), ("comment", False))
         current = {}
 
         class _Model(QtCore.QAbstractListModel):
@@ -700,18 +698,31 @@ class BadgeFamilyTest(unittest.TestCase):
                         self.assertEqual([want], asked,
                                          "%s at %s" % (name, "hover" if hovered else "rest"))
 
-    def test_the_opacity_reaches_every_part_of_the_art(self):
-        """Ground and icon alike take the state's strength, read off the rendered pixels."""
+    def test_the_backdrop_is_the_same_in_every_state(self):
+        """The backdrop keeps its drawn strength at any icon opacity, read off the rendered pixels."""
         for name in ("badge_favourite_off", "badge_versions", "badge_comment",
-                     "badge_comment_off", "badge_edit"):
-            for opacity in (0.4, 0.75):
+                     "badge_comment_off", "badge_execute"):
+            as_drawn = delegates.AssetItemDelegate._badge_pixmap(name, 44, 1.0, None).toImage()
+            if as_drawn.isNull():
+                self.skipTest("%s.svg not resolvable outside an install" % name)
+            drawn = as_drawn.pixelColor(22, 3).alpha()    # the backdrop, clear of the icon
+            self.assertAlmostEqual(0.75 * 255, drawn, delta=3, msg="%s as drawn" % name)
+            for opacity in (0.4, 1.0):
                 image = delegates.AssetItemDelegate._badge_pixmap(
                     name, 44, 1.0, opacity).toImage()
-                if image.isNull():
-                    self.skipTest("%s.svg not resolvable outside an install" % name)
-                ground = image.pixelColor(22, 3).alpha()    # the dark ground, clear of the icon
-                self.assertAlmostEqual(opacity * 255, ground, delta=3,
-                                       msg="%s ground at %s" % (name, opacity))
+                self.assertEqual(drawn, image.pixelColor(22, 3).alpha(),
+                                 "%s backdrop at icon opacity %s" % (name, opacity))
+
+    def test_the_opacity_reaches_the_icon(self):
+        """`at_opacity` sets the icon's opacities and leaves the backdrop element as written."""
+        from amaze.helpers import ui_helpers
+        text = ('<svg><path id="Rounded-Rectangle-copy" fill="#000000" fill-opacity="0.75"/>'
+                '<path id="Shape" stroke="#FFFFFF" stroke-opacity="0.75"/></svg>')
+        self.assertEqual(
+            '<svg><path id="Rounded-Rectangle-copy" fill="#000000" fill-opacity="0.75"/>'
+            '<path id="Shape" stroke="#FFFFFF" stroke-opacity="1"/></svg>',
+            ui_helpers.at_opacity(text, 1.0))
+        self.assertEqual(text, ui_helpers.at_opacity(text, None))
 
 
 class SidebarIndentTest(unittest.TestCase):

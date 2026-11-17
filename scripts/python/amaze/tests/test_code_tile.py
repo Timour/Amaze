@@ -141,15 +141,14 @@ class AShelfScriptGetsItsKwargs(unittest.TestCase):
 
 
 class OnlyAPythonSnippetCanRun(unittest.TestCase):
-    """The Run button reads the snippet's language; every snippet has the pencil."""
+    """The Run button reads the snippet's language."""
 
     def _badge(self, name):
         return next(b for b in delegates.BADGES if b.name == name)
 
-    def test_run_is_for_python_and_the_pencil_for_every_snippet(self):
+    def test_run_is_for_python_alone(self):
         for name, language, shown in (("execute", "Python", True),
-                                      ("execute", "VEX", False),
-                                      ("edit", "VEX", True)):
+                                      ("execute", "VEX", False)):
             with self.subTest(badge=name, language=language):
                 self.assertEqual(shown, self._badge(name).shows(language))
 
@@ -224,11 +223,11 @@ class ThePanelWiresTheCodeButtons(unittest.TestCase):
             self.skipTest("the code grid filters the probe out")
         return index, row
 
-    def test_the_buttons_are_the_code_tiles_alone(self):
+    def test_the_run_button_is_the_code_tiles_alone(self):
         self.assertIn("execute", self.panel.code_delegate._badge_clicks)
-        self.assertIn("edit", self.panel.code_delegate._badge_clicks)
-        self.assertNotIn("edit", self.panel.asset_delegate._badge_clicks,
-                         "the Node tiles got the snippet pencil")
+        self.assertNotIn("execute", self.panel.asset_delegate._badge_clicks,
+                         "the Node tiles got the Run button")
+        self.assertNotIn("edit", delegates.BADGE, "a code tile has no Edit badge; Edit is in its menu")
 
     def _click(self, badge, index):
         with mock.patch.object(self.panel, "current_section", "code"):
@@ -256,15 +255,6 @@ class ThePanelWiresTheCodeButtons(unittest.TestCase):
         self.assertNotEqual(brick, shown(), "a code tile's default is not its painted code")
         model.set_tile_icon(row, {"face": "generic"})
         self.assertEqual(brick, shown())
-
-    def test_the_pencil_opens_the_same_editor_as_right_click_edit(self):
-        index, row = self._proxy_index("print(1)")
-        section = self.panel.sections["code"]
-        opened = []
-        with mock.patch.object(type(section), "_edit_code_row",
-                               lambda _self, r: opened.append(r)):
-            self._click("edit", index)
-        self.assertEqual([row], opened)
 
 
 if __name__ == "__main__":
