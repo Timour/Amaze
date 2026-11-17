@@ -1,10 +1,8 @@
-"""The app's display name, tagline and two version stamps. ▸p/branding-stamps"""
+"""The app's display name and two version stamps. ▸p/branding-stamps"""
 
 APP_NAME = "Amaze"    # change this to rename the app
 
-APP_TAGLINE = "Browse it, save it, drag it."    # one-line subtitle, shown under the name in the panel and docs
-
-APP_VERSION = "1.34.4"    # the RELEASED version, MAJOR.MINOR.PATCH ▸p/version-scheme
+APP_VERSION = "1.34.5"    # the RELEASED version, MAJOR.MINOR.PATCH ▸p/version-scheme
 
 LIBRARY_FORMAT = 5    # the on-disk stamp; bump only when the on-disk shape changes ▸p/branding-stamps
 

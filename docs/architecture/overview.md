@@ -1189,7 +1189,7 @@ utils/rc_calls.py         the entry points Houdini itself calls: the
                           Capture, Updates and Reload, one call each -
                           finds the open panel by its pane-tab label;
                           `start()` hands the log its Houdini speaker
-branding.py               the app's DISPLAY name and tagline, once
+branding.py               the app's DISPLAY name, once
 amazetheme.py             THE DESIGN, in one document: every colour,
                           size, placement and word the designs fix and
                           Houdini's theme does not own. Edit a Figma

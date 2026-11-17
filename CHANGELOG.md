@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.34.5
+
+- Preferences ▸ About shows the main logo, with the version under it.
+
 ## 1.34.4
 
 - Preferences ▸ Add-On: the list no longer moves sideways, and its scroll bar sits beside the rows.

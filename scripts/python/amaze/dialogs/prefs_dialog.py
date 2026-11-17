@@ -1084,8 +1084,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         )
         browser.setHtml(
             '<p><img src="amaze_logo"></p>'
-            "<p><i>" + branding.APP_TAGLINE + "</i> "
-            + '<span style="color:%s;">v' % LINK_COLOR
+            '<p><span style="color:%s;">v' % LINK_COLOR
             + branding.APP_VERSION + "</span></p>"
             "<p>An asset library for Houdini: materials, textures, "
             "node setups, color palettes, geometry and code - browse, "
