@@ -193,6 +193,9 @@ class TheDatabasesRowShowsOneCheck(unittest.TestCase):
         sheet = self.dialog._btn_check.styleSheet()
         self.assertIn(amazetheme.P01_REPAIR_FILL, sheet)
         self.assertIn(amazetheme.P01_REPAIR_INK, sheet)
+        self.assertIn("QPushButton:hover { background-color: %s; }" % amazetheme.P01_REPAIR_HOVER, sheet)
+        self.assertIn(
+            "QPushButton:pressed { background-color: %s; }" % amazetheme.P01_REPAIR_PRESSED, sheet)
         self.assertIn("border:", sheet, "Qt paints no background on a button whose rule sets no border")
         self.dialog._btn_check.resize(75, 22)
         middle = self.dialog._btn_check.grab().toImage().pixelColor(6, 11).name()

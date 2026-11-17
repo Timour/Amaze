@@ -773,8 +773,11 @@ class PrefsDialog(base_dialog.AssetDialog):
         self._btn_check.setText(amazetheme.BTN_REPAIR if fixable else amazetheme.BTN_CHECK)
         self._btn_check.setStyleSheet(
             "QPushButton { background-color: %s; color: %s; border: none; border-radius: %dpx; }"
+            " QPushButton:hover { background-color: %s; }"
+            " QPushButton:pressed { background-color: %s; }"
             % (amazetheme.P01_REPAIR_FILL, amazetheme.P01_REPAIR_INK,
-               amazetheme.P01_REPAIR_RADIUS) if fixable else "")
+               amazetheme.P01_REPAIR_RADIUS, amazetheme.P01_REPAIR_HOVER,
+               amazetheme.P01_REPAIR_PRESSED) if fixable else "")
 
     def _show_check(self, findings: dict) -> None:
         """Fill the row from one survey: each light's colour and count, the line, the button."""
